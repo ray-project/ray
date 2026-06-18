@@ -146,6 +146,72 @@ calculate average accuracy on a validation set. To learn more about how to use
     :start-after: __validation_fn_map_batches_start__
     :end-before: __validation_fn_map_batches_end__
 
+Isolating training and validation with subclusters
+---------------------------------------------------
+
+When training and validation run concurrently on the same Ray cluster,
+they compete for the same nodes by default. To give each phase its own
+slice of the cluster — for example, A100s for training and A10Gs for
+validation — label your worker pools with a ``ray-subcluster`` value and
+pin each Dataset to its subcluster. See :ref:`data_concurrent_execution`
+for the background and compute-config setup.
+
+The pattern differs slightly between the ``TorchTrainer`` validation_fn
+and the ``map_batches`` validation_fn, because only the former goes
+through ``ray.train.DataConfig``.
+
+**TorchTrainer validation_fn.** Set the validation Dataset's selector via
+the sub-trainer's ``dataset_config``:
+
+.. literalinclude:: ../doc_code/asynchronous_validation.py
+    :language: python
+    :start-after: __validation_fn_torch_trainer_start__
+    :end-before: __validation_fn_torch_trainer_end__
+
+**map_batches validation_fn.** The ``map_batches`` path doesn't take a
+``DataConfig``, so set the selector directly on the Dataset's execution
+options inside the validation function:
+
+.. literalinclude:: ../doc_code/asynchronous_validation.py
+    :language: python
+    :start-after: __validation_fn_map_batches_start__
+    :end-before: __validation_fn_map_batches_end__
+
+**Training-side configuration.** Set the training Dataset's selector on
+the global ``ray.data.DataContext`` before constructing the Dataset (so
+reads/schema-inference tasks land on training nodes), and re-specify it
+in the trainer's ``dataset_config`` because ``DataConfig.execution_options``
+overrides the Dataset's options at training start:
+
+.. literalinclude:: ../doc_code/asynchronous_validation.py
+    :language: python
+    :start-after: __validation_fn_report_start__
+    :end-before: __validation_fn_report_end__
+
+.. note::
+
+    For *interleaved* validation — where you reuse the training workers
+    to validate on a separate "validation" Dataset inside the same
+    ``TorchTrainer`` — pass both Datasets to ``datasets={...}`` and give
+    both an entry in ``DataConfig.execution_options`` so they're each
+    scoped to their own subcluster:
+
+    .. code-block:: python
+
+        from ray.data import ExecutionOptions
+
+        dataset_config = ray.train.DataConfig(
+            datasets_to_split=["train", "validation"],
+            execution_options={
+                "train": ExecutionOptions(
+                    label_selector={"ray-subcluster": "training"}
+                ),
+                "validation": ExecutionOptions(
+                    label_selector={"ray-subcluster": "validation"}
+                ),
+            },
+        )
+
 Tuning asynchronous validation
 ------------------------------
 

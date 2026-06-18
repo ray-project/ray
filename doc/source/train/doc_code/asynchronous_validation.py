@@ -32,6 +32,7 @@ import torchmetrics
 from torch.nn import CrossEntropyLoss
 
 import ray.train.torch
+from ray.data import ExecutionOptions
 
 
 def eval_only_train_fn(config_dict: dict) -> dict:
@@ -72,6 +73,16 @@ def validation_fn(checkpoint: ray.train.Checkpoint, train_run_name: str, epoch: 
         ),
         # Use weaker GPUs for validation
         datasets={"validation": validation_dataset},
+        # Pin validation to the "validation" subcluster so it runs on the
+        # validation-labeled nodes and doesn't compete with training for
+        # resources. See https://docs.ray.io/en/latest/data/concurrent-dataset-execution.html.
+        dataset_config=ray.train.DataConfig(
+            execution_options={
+                "validation": ExecutionOptions(
+                    label_selector={"ray-subcluster": "validation"}
+                ),
+            },
+        ),
     )
     result = trainer.fit()
     # return_value holds the value returned by train function of worker 0
@@ -79,6 +90,9 @@ def validation_fn(checkpoint: ray.train.Checkpoint, train_run_name: str, epoch: 
 # __validation_fn_torch_trainer_end__
 
 # __validation_fn_map_batches_start__
+import ray.data
+
+
 class Predictor:
     def __init__(self, checkpoint: ray.train.Checkpoint):
         self.model = ...
@@ -97,6 +111,15 @@ class Predictor:
 def validation_fn(checkpoint: ray.train.Checkpoint) -> dict:
     # Set name to avoid confusion; default name is "Dataset"
     validation_dataset.set_name("validation")
+    # Pin validation to the "validation" subcluster. The map_batches path
+    # doesn't go through ``DataConfig``, so set the selector on the
+    # already-constructed Dataset's execution options. Operators read this
+    # at task-submission time, so all chained tasks (including the
+    # ``Predictor`` actors below) land on validation-labeled nodes. See
+    # https://docs.ray.io/en/latest/data/concurrent-dataset-execution.html.
+    validation_dataset.context.execution_options.label_selector = {
+        "ray-subcluster": "validation"
+    }
     eval_res = validation_dataset.map_batches(
         Predictor,
         batch_size=128,
@@ -113,6 +136,7 @@ def validation_fn(checkpoint: ray.train.Checkpoint) -> dict:
 # __validation_fn_report_start__
 import tempfile
 
+from ray.data import ExecutionOptions
 from ray.train import ValidationConfig, ValidationTaskConfig
 
 
@@ -144,12 +168,35 @@ def train_func(config: dict) -> None:
 
 
 def run_trainer() -> ray.train.Result:
+    # Set the global ``DataContext`` to the "training" subcluster BEFORE
+    # creating the training Dataset so reads/schema-inference tasks land
+    # on training nodes. ``Dataset.context`` is a deep copy of the global
+    # taken at construction, so this single setting also propagates to
+    # every operator the Dataset later launches. See
+    # https://docs.ray.io/en/latest/data/concurrent-dataset-execution.html.
+    ray.data.DataContext.get_current().execution_options.label_selector = {
+        "ray-subcluster": "training"
+    }
     train_dataset = ray.data.read_parquet(...)
+
     trainer = ray.train.torch.TorchTrainer(
         train_func,
         validation_config=ValidationConfig(fn=validation_fn),
         # Pass training dataset in datasets arg to split it across training workers
         datasets={"train": train_dataset},
+        # ``DataConfig.execution_options`` overrides the Dataset's
+        # ``execution_options`` at training start, so re-specify the
+        # label_selector here to keep per-worker ingest pinned to the
+        # "training" subcluster. The validation_fn separately pins its own
+        # Dataset to the "validation" subcluster, so the two never compete.
+        dataset_config=ray.train.DataConfig(
+            datasets_to_split=["train"],
+            execution_options={
+                "train": ExecutionOptions(
+                    label_selector={"ray-subcluster": "training"}
+                ),
+            },
+        ),
         scaling_config=ray.train.ScalingConfig(
             num_workers=2,
             use_gpu=True,
