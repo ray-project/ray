@@ -51,11 +51,7 @@ def _ipc_write_options(compression: Optional[str]) -> pa.ipc.IpcWriteOptions:
 def _partition_blocks_to_shards(
     blocks: Tuple[Block, ...], partition_fn: PartitionFn
 ) -> Dict[int, List[pa.Table]]:
-    """Partition each block independently, grouping shards by partition id.
-
-    We combine_chunks before partitioning because partition_fn's per-column
-    take is much slower on chunked input.
-    """
+    """Partition each block independently, grouping shards by partition id."""
     partition_accumulators: Dict[int, List[pa.Table]] = {}
     for block in blocks:
         block = TableBlockAccessor.try_convert_block_type(
