@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict, List, Set, Tuple
 
 from ray.core.generated.export_dataset_operator_event_pb2 import (
     ExportDatasetOperatorEventData as ProtoOperatorEventData,
@@ -10,6 +10,7 @@ from ray.data._internal.issue_detection.issue_detector import (
     IssueDetector,
     IssueType,
 )
+from ray.data._internal.logical.util import anonymize_op_name
 from ray.data._internal.operator_event_exporter import (
     OperatorEvent,
     format_export_issue_event_name,
@@ -36,6 +37,8 @@ class IssueDetectorManager:
         }
         self.executor = executor
         self._operator_event_exporter = get_operator_event_exporter()
+        # Cumulative (issue_type, anonymized_operator_name) pairs for usage collection
+        self._detected_issues: Set[Tuple[IssueType, str]] = set()
 
     def invoke_detectors(self) -> None:
         curr_time = time.perf_counter()
@@ -71,6 +74,10 @@ class IssueDetectorManager:
             if not operator:
                 continue
 
+            self._detected_issues.add(
+                (issue.issue_type, _anonymized_operator_name(operator))
+            )
+
             issue_event_type = format_export_issue_event_name(issue.issue_type)
             if (
                 self._operator_event_exporter is not None
@@ -96,3 +103,16 @@ class IssueDetectorManager:
             logger.warning(
                 f"Found {len(issues)} issues. To disable issue detection, run DataContext.get_current().issue_detectors_config.detectors = []."
             )
+
+    def get_detected_issues(self) -> Set[Tuple[IssueType, str]]:
+        """Return a copy of the detected (issue_type, operator_name) pairs."""
+        return set(self._detected_issues)
+
+
+def _anonymized_operator_name(operator: "PhysicalOperator") -> str:
+    """Anonymized name for a physical op; fused ops join their logical ops with
+    "->" (matching operator fusion's naming). ``"Unknown"`` if it has none."""
+    logical_ops = getattr(operator, "_logical_operators", None)
+    if not logical_ops:
+        return "Unknown"
+    return "->".join(anonymize_op_name(op) for op in logical_ops)

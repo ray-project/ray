@@ -27,6 +27,7 @@ from ray.data._internal.logical.util import anonymize_op_name
 from ray.data.block import VALID_BATCH_FORMATS, _apply_batch_format
 
 if TYPE_CHECKING:
+    from ray.data._internal.issue_detection.issue_detector import IssueType
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 
 logger = logging.getLogger(__name__)
@@ -78,6 +79,14 @@ class _PipelinePerf:
     node_deaths: Optional[int] = None
 
 
+@dataclass(frozen=True)
+class _Issue:
+    """An issue detected during execution, tied to an anonymized operator."""
+
+    issue_type: str
+    operator: str
+
+
 @dataclass
 class _Entry:
     id: str
@@ -85,6 +94,7 @@ class _Entry:
     env: _Env
     workload: _Workload
     performance: Optional[_PipelinePerf] = None
+    detected_issues: List[_Issue] = field(default_factory=list)
 
 
 # Bounded buffer of recent executions. OrderedDict so eviction picks the
@@ -135,8 +145,13 @@ def record_workload(
 
 def record_execution_result(
     execution_id: str,
+    detected_issues: Optional[List[Tuple["IssueType", str]]] = None,
 ) -> None:
-    """Fill in performance for a previously recorded execution and flush.
+    """Fill in performance and detected issues for a previously recorded
+    execution and flush.
+
+    ``detected_issues`` is a list of ``(issue_type, anonymized_operator_name)``
+    pairs surfaced by the issue detectors during execution.
 
     Short-circuits when the user has opted out of Ray usage stats (via
     ``RAY_USAGE_STATS_ENABLED=0``, ``ray disable-usage-stats``, or
@@ -153,10 +168,24 @@ def record_execution_result(
                 return
             spilled_at_start = _spillage_dict.pop(execution_id, None)
             entry.performance = _collect_pipeline_perf(spilled_at_start, spilled_now)
+            entry.detected_issues = _collect_issues(detected_issues)
             payload = _serialize_locked()
         record_extra_usage_tag(TagKey.DATA_USAGE, payload)
     except Exception:
         logger.debug("Failed to record execution result usage", exc_info=True)
+
+
+def _collect_issues(
+    detected_issues: Optional[List[Tuple["IssueType", str]]],
+) -> List[_Issue]:
+    """Convert (issue_type, operator) pairs into ``_Issue`` records, mapping
+    each ``IssueType`` enum to its string value."""
+    if not detected_issues:
+        return []
+    return [
+        _Issue(issue_type=getattr(issue_type, "value", issue_type), operator=operator)
+        for issue_type, operator in detected_issues
+    ]
 
 
 def _serialize_locked() -> str:
