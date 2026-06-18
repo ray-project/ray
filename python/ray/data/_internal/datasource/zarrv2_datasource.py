@@ -243,12 +243,6 @@ class ZarrV2Datasource(Datasource):
     ) -> None:
         super().__init__()
         _check_import(self, module="zarr", package="zarr")
-
-        # This datasource targets Zarr v2 stores via zarr-python 2.x APIs
-        # (``zarr.util.normalize_storage_path``, ``.zarray`` metadata,
-        # ``zarr.open(fs.get_mapper(...))``) that were removed/reworked in
-        # zarr-python 3.x. Fail fast with an actionable message rather than a
-        # cryptic ImportError mid-read if an incompatible version is installed.
         import zarr
 
         if int(zarr.__version__.split(".")[0]) >= 3:
@@ -302,15 +296,9 @@ class ZarrV2Datasource(Datasource):
 
             if isinstance(self._fs, ZipFileSystem) and self.paths[0].endswith(".zip"):
                 # An explicit archive filesystem: the store is the archive root,
-                # not a ``.zip``-named entry inside it. (A real sub-path within
-                # the archive is preserved by the scheme-strip below.)
+                # not a ``.zip``-named entry inside it.
                 self._store_path = ""
             else:
-                # Strip any URI scheme (e.g. ``gs://`` / ``s3://``) so the path
-                # is backend-relative; pyarrow filesystems (wrapped in
-                # ``ArrowFSWrapper``) require this. Mirrors the
-                # ``filesystem is None`` branch, which strips the scheme via
-                # ``_resolve_paths_and_filesystem``.
                 _, store_path = split_protocol(self.paths[0])
                 self._store_path = store_path.rstrip("/")
 
