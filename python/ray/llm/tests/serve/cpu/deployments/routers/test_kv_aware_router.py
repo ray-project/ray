@@ -1,8 +1,10 @@
-"""The KVRouterActor is attached iff the request router is a KVAwareRouter.
+"""KVRouterActor attachment and live replica-membership tracking.
 
-Covered two ways: ``build_openai_app`` with a Python ``LLMConfig``, and a
-declarative YAML config deployed via ``serve deploy`` (the dotted-string router
-class only YAML can express).
+Attachment is covered two ways: ``build_openai_app`` with a Python ``LLMConfig``,
+and a declarative YAML config deployed via ``serve deploy`` (the dotted-string
+router class only YAML can express). Membership tracking is covered by deploying
+a dummy multi-replica deployment and asserting the actor's LongPoll listener
+stays in sync with the live replicas across scale up/down.
 """
 
 import os
@@ -22,8 +24,17 @@ from ray.llm._internal.serve.core.ingress.builder import (
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     KV_ROUTER_ACTOR_NAME,
     KVRouterActor,
+    get_worker_id,
 )
-from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX
+from ray.serve._private.common import (
+    REPLICA_ID_FULL_ID_STR_PREFIX,
+    DeploymentID,
+    DeploymentTargetInfo,
+    ReplicaID,
+    RunningReplicaInfo,
+)
+from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX, SERVE_NAMESPACE
+from ray.serve.config import DeploymentActorConfig
 from ray.serve.llm.request_router import KVAwareRouter
 from ray.util.state import list_actors
 
@@ -58,6 +69,37 @@ def get_kv_actor_names(app_name: str) -> list:
         for a in list_actors(filters=[("state", "=", "ALIVE")])
         if a["name"] and a["name"].startswith(prefix) and a["name"].endswith(suffix)
     ]
+
+
+def discover_deployment_actor(app_name, deployment_name, actor_name):
+    """Handle to a deployment-scoped actor by app/deployment/logical name."""
+    prefix = f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}{app_name}::{deployment_name}::"
+    suffix = f"::{actor_name}"
+    for entry in ray.util.list_named_actors(all_namespaces=True):
+        name = entry.get("name") or ""
+        if (
+            entry.get("namespace") == SERVE_NAMESPACE
+            and name.startswith(prefix)
+            and (name.endswith(suffix))
+        ):
+            return ray.get_actor(name, namespace=SERVE_NAMESPACE)
+    return None
+
+
+def get_candidate_ids(app_name):
+    handle = discover_deployment_actor(app_name, "Driver", KV_ROUTER_ACTOR_NAME)
+    assert handle is not None
+    return ray.get(handle.get_candidate_worker_ids.remote())
+
+
+def get_live_replica_worker_ids(app_name, deployment_name="Driver"):
+    """Worker ids derived directly from the deployment's alive replica actors."""
+    prefix = f"{REPLICA_ID_FULL_ID_STR_PREFIX}{app_name}#{deployment_name}#"
+    return {
+        get_worker_id(a["name"][len(prefix) :])
+        for a in list_actors(filters=[("state", "=", "ALIVE")])
+        if a["name"] and a["name"].startswith(prefix)
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -103,6 +145,117 @@ def test_yaml_config_attaches_kv_actor(serve_instance):
         wait_for_condition(lambda: len(get_kv_actor_names(app_name)) == 1, timeout=60)
     finally:
         serve.delete(app_name, _blocking=True)
+
+
+@serve.deployment(
+    num_replicas=4,
+    deployment_actors=[
+        DeploymentActorConfig(
+            name=KV_ROUTER_ACTOR_NAME,
+            actor_class=KVRouterActor,
+            actor_options={"num_cpus": 0},
+        ),
+    ],
+)
+class Driver:
+    """Dummy deployment with a KVRouterActor deployment actor."""
+
+    async def __call__(self) -> str:
+        return "ok"
+
+
+class TestReplicaTrackingIntegration:
+    def test_tracks_running_replicas(self, serve_instance):
+        """KVRouterActor's LongPollClient receives the running replicas."""
+        app_name = "kv-replica-tracking"
+        serve.run(Driver.bind(), name=app_name, route_prefix="/kv_track")
+        try:
+            wait_for_condition(
+                lambda: len(get_candidate_ids(app_name)) == 4, timeout=30
+            )
+            # The tracked workers are exactly those of the live replica actors.
+            assert set(get_candidate_ids(app_name)) == get_live_replica_worker_ids(
+                app_name
+            )
+        finally:
+            serve.delete(app_name, _blocking=True)
+
+    def test_membership_broadcast_on_scale(self, serve_instance):
+        """A scale up then down is broadcast over LongPoll; the actor re-syncs to
+        exactly the live replica set each time.
+        """
+        app_name = "kv-replica-scale"
+
+        def tracks_live_replicas(expected):
+            # The tracked workers match the live replica actors by their actual
+            # ids (a stale handle is possible while the deployment is updated).
+            try:
+                tracked = set(get_candidate_ids(app_name))
+            except ray.exceptions.RayActorError:
+                return False
+            return len(tracked) == expected and tracked == get_live_replica_worker_ids(
+                app_name
+            )
+
+        def scale(num_replicas):
+            serve.run(
+                Driver.options(num_replicas=num_replicas).bind(),
+                name=app_name,
+                route_prefix="/kv_scale",
+            )
+
+        scale(2)
+        try:
+            wait_for_condition(lambda: tracks_live_replicas(2), timeout=30)
+            scale(4)  # upscale: the new replicas are picked up over LongPoll.
+            wait_for_condition(lambda: tracks_live_replicas(4), timeout=30)
+            scale(2)  # downscale: the departed replicas are dropped.
+            wait_for_condition(lambda: tracks_live_replicas(2), timeout=30)
+        finally:
+            serve.delete(app_name, _blocking=True)
+
+
+class _LocalKVRouterActor(KVRouterActor.__ray_actor_class__):
+    """In-process KVRouterActor with LongPoll disabled, to drive
+    ``_on_deployment_targets`` directly with synthetic snapshots.
+    """
+
+    def _start_replica_tracking(self) -> None:
+        pass
+
+
+def make_target_info(unique_ids):
+    """A DeploymentTargetInfo with one running replica per id, exactly as the
+    controller broadcasts it over LongPoll."""
+    deployment_id = DeploymentID(name="d", app_name="app")
+    running_replicas = [
+        RunningReplicaInfo(
+            replica_id=ReplicaID(unique_id=uid, deployment_id=deployment_id),
+            node_id="node",
+            node_ip="10.0.0.1",
+            availability_zone="az",
+            actor_name=f"actor-{uid}",
+            max_ongoing_requests=1,
+        )
+        for uid in unique_ids
+    ]
+    return DeploymentTargetInfo(is_available=True, running_replicas=running_replicas)
+
+
+class TestOnDeploymentTargets:
+    async def test_reconciles_added_and_removed_workers(self):
+        actor = _LocalKVRouterActor()
+        actor._on_deployment_targets(make_target_info(["a", "b"]))
+        assert set(await actor.get_candidate_worker_ids()) == {
+            get_worker_id("a"),
+            get_worker_id("b"),
+        }
+        # "a" departs and "c" joins: the tracked set follows the new snapshot.
+        actor._on_deployment_targets(make_target_info(["b", "c"]))
+        assert set(await actor.get_candidate_worker_ids()) == {
+            get_worker_id("b"),
+            get_worker_id("c"),
+        }
 
 
 if __name__ == "__main__":

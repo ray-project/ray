@@ -1,12 +1,28 @@
+import asyncio
+import hashlib
 import logging
-from typing import List, Optional, TypedDict
+from typing import Dict, List, Optional, TypedDict
 
 import ray
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray import serve
+from ray.serve._private.common import DeploymentTargetInfo
+from ray.serve._private.constants import (
+    SERVE_CONTROLLER_NAME,
+    SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
+)
+from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 KV_ROUTER_ACTOR_NAME = "serve_llm_kv_router"
+
+
+def get_worker_id(replica_unique_id: str) -> int:
+    """Deterministically derive a Dynamo worker id from a replica's unique id."""
+    return int.from_bytes(
+        hashlib.blake2b(replica_unique_id.encode(), digest_size=8).digest(), "big"
+    )
 
 
 class WorkerSelection(TypedDict):
@@ -27,23 +43,81 @@ class KVRouterActor:
     """Deployment-scoped Ray actor backing KV-aware routing.
 
     Attached to the LLMServer deployment via Serve's ``DeploymentActorConfig``,
-    independent of any replica's lifetime. It exposes the KV-aware routing
-    interfaces: ``select_worker`` and the request-lifecycle hooks.
+    independent of any replica's lifetime. So far it tracks live replica
+    membership; KV indexing and scoring are still to come.
 
-    TODO (jeffreywang): Implement these
     1. Created once per deployment, attached to the LLMServer deployment via
        Serve's ``DeploymentActorConfig`` (independent of any replica's lifetime).
-    2. Owns an in-process Dynamo ``SelectionService``.
-    3. Tracks live replicas via a ``LongPollClient`` on ``DEPLOYMENT_TARGETS``:
-       replicas advertise their engine KV-events endpoint through
-       ``record_routing_stats``, and ``_on_deployment_targets`` registers new
-       workers (the service dials them connect-out) and evicts departed ones.
-    4. The ``SelectionService`` maintains a global KV index radix tree, fed by
-       every replica's KV events; each node records which workers hold that KV
-       block.
-    5. Scoring ranks candidate workers by KV-cache overlap (queried from the KV
-       index) plus prefill/decode load to pick the best worker.
+    2. TODO (jeffreywang): Own an in-process Dynamo ``SelectionService``.
+    3. Tracks live replicas via a ``LongPollClient`` on ``DEPLOYMENT_TARGETS``,
+       mapping each running replica to a Dynamo worker id.
+    4. TODO (jeffreywang): The ``SelectionService`` maintains a global KV index
+       radix tree, fed by every replica's KV events; each node records which
+       workers hold that KV block.
+    5. TODO (jeffreywang): Scoring ranks candidate workers by KV-cache overlap
+       (queried from the KV index) plus prefill/decode load to pick the best
+       worker.
     """
+
+    def __init__(self):
+        self._replica_id_by_worker: Dict[int, str] = {}
+        self._long_poll_client: Optional[LongPollClient] = None
+        self._start_replica_tracking()
+
+    def _start_replica_tracking(self) -> None:
+        """Subscribe to this deployment's running replicas via LongPollClient."""
+        deployment_id = serve.get_deployment_actor_context().deployment_id
+        controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+        self._long_poll_client = LongPollClient(
+            controller,
+            {
+                (
+                    LongPollNamespace.DEPLOYMENT_TARGETS,
+                    deployment_id,
+                ): self._on_deployment_targets,
+            },
+            # Relies on KVRouterActor being an async actor (it defines async
+            # methods), so Ray runs __init__ inside the actor's event loop.
+            call_in_event_loop=asyncio.get_running_loop(),
+            client_id=f"{type(self).__name__}:{deployment_id}",
+        )
+
+    def _on_deployment_targets(self, target_info: DeploymentTargetInfo) -> None:
+        """LongPoll listener: reconcile tracked workers against the running-replica
+        snapshot.
+
+        Each running replica is mapped to a Dynamo worker id (``get_worker_id``);
+        newly running replicas are added and departed ones dropped.
+        """
+        members: Dict[int, str] = {}
+        for replica in target_info.running_replicas:
+            worker_id = get_worker_id(replica.replica_id.unique_id)
+            members[worker_id] = replica.replica_id.to_full_id_str()
+
+        registered = set(self._replica_id_by_worker)
+        added = members.keys() - registered
+        removed = registered - members.keys()
+
+        for worker_id in removed:
+            self._replica_id_by_worker.pop(worker_id, None)
+        for worker_id in added:
+            self._replica_id_by_worker[worker_id] = members[worker_id]
+
+        if added or removed:
+            logger.info(
+                "KV router replica membership updated: +%d -%d, tracking %d worker(s).",
+                len(added),
+                len(removed),
+                len(self._replica_id_by_worker),
+            )
+
+    async def get_candidate_worker_ids(self) -> List[int]:
+        """(Test only) The workers currently tracked from running replicas.
+
+        Async so it runs on the actor's event loop, serialized with
+        ``_on_deployment_targets`` which mutates the same map on that loop.
+        """
+        return sorted(self._replica_id_by_worker)
 
     async def select_worker(
         self,
