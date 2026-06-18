@@ -34,10 +34,12 @@
 namespace ray {
 namespace rpc {
 
-void GrpcServer::Init(bool enable_default_health_check_service) {
+void GrpcServer::Init() {
   RAY_CHECK(num_threads_ > 0) << "Num of threads in gRPC must be greater than 0";
   cqs_.resize(num_threads_);
-  grpc::EnableDefaultHealthCheckService(enable_default_health_check_service);
+  // Enable built in health check implemented by gRPC:
+  //   https://github.com/grpc/grpc/blob/master/doc/health-checking.md
+  grpc::EnableDefaultHealthCheckService(true);
   grpc::reflection::InitProtoReflectionServerBuilderPlugin();
   grpc::channelz::experimental::InitChannelzService();
 }
