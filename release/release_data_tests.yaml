@@ -65,10 +65,10 @@
       num_files: [50]
       row_group_size: [64MiB]
       compression_ratio: [5.0]
-      read_memory: [4294967296]
-      max_bucket_size: [5GiB, 15GiB, 30GiB]
-      batch_target_bytes: [256MiB, 512MiB, 1GiB, 2GiB, 4GiB]
-      use_version: [v3]
+      read_memory: [2147483648, 4294967296]
+      max_bucket_size: [5GiB]
+      batch_target_bytes: [256MiB]
+      use_version: [v1]
       trial: [1]
   run:
     timeout: 10800
@@ -78,7 +78,7 @@
       --num-files {{num_files}}
       --row-group-size {{row_group_size}}
       --compression-ratio {{compression_ratio}}
-      --output s3://runtime-release-test-artifacts/read_path_optimisation/chunked_parquet/{{file_size}}_{{num_files}}_{{row_group_size}}_{{compression_ratio}}_{{max_bucket_size}}_{{batch_target_bytes}}_{{use_version}}_{{trial}}
+      --output s3://runtime-release-test-artifacts/read_path_optimisation/chunked_parquet/{{file_size}}_{{num_files}}_{{row_group_size}}_{{compression_ratio}}_{{max_bucket_size}}_{{batch_target_bytes}}_{{read_memory}}_{{use_version}}_{{trial}}
       --read-back
       --read-memory {{read_memory}}
       --use-version {{use_version}}
