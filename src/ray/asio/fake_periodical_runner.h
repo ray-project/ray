@@ -37,19 +37,15 @@ namespace ray {
  * clock. Whenever the clock's time is advanced (via AdvanceTime/SetTime), the
  * clock calls back into the runner, which invokes every function whose next
  * scheduled run time has been reached. If more than one period has elapsed
- * since the last advance, the function is invoked once per elapsed period
- * ("catch up").
+ * since the last advance, the function is invoked once per elapsed period.
  *
  *   FakeClock clock;
  *   FakePeriodicalRunner runner(clock);
  *   runner.RunFnPeriodically(fn, 100, "fn");  // period_ms = 100
  *   clock.AdvanceTime(absl::Milliseconds(100));  // invokes fn once
  *
- * The coupling to the clock is loose: the runner only uses the clock's generic
- * Now()/RegisterOnAdvanceCallback()/UnregisterOnAdvanceCallback() APIs, and the
- * clock has no knowledge of the runner. The runner unregisters its callback
- * from the clock on destruction, so it is safe to destroy the runner before
- * the clock.
+ * The runner registers an "on advance callback" with the clock on construction
+ * and deregisters it on destruction.
  */
 class FakePeriodicalRunner : public PeriodicalRunnerInterface {
  public:
