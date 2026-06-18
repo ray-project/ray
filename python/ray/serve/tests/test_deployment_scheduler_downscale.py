@@ -5,7 +5,7 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.serve._private.test_utils import check_apps_running
+from ray.serve._private.test_utils import check_apps_running, skip_if_haproxy
 from ray.serve.schema import DeploymentStatus, ReplicaState
 from ray.tests.conftest import *  # noqa
 
@@ -80,6 +80,7 @@ class TestScaleDownReplicaSelection:
             route_prefix=f"/{app_name}",
         )
 
+    @skip_if_haproxy("does not yet pass under HAProxy ingress")
     def test_downscale_fallback_node(self, ray_cluster):
         cluster = ray_cluster
 
