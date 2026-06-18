@@ -279,7 +279,7 @@ ray start --head  # or ray start --address=<head-ip>:6379 on workers
 
 #### Installing HAProxy manually (example)
 
-Some platforms have no `ray-haproxy` wheel, such as non-glibc Linux, macOS, and Windows. On those platforms, install HAProxy 2.8+ from source on every node. These steps are provided as an example only.
+Some platforms have no `ray-haproxy` wheel, such as non-glibc Linux, macOS, and Windows. On those platforms, install HAProxy 2.8 from source on every node. These steps are provided as an example only.
 
 The following steps are for Ubuntu/Debian:
 ```bash
