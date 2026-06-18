@@ -213,13 +213,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 value=time.perf_counter() - self._time_after_sampling,
             )
 
-        # Log current weight seq no.
-        self.metrics.log_value(
-            key=WEIGHTS_SEQ_NO,
-            value=self._weights_seq_no,
-            window=1,
-        )
-
         # Pull-based weight sync: if a global `EnvRunnerStateServer` is configured, ask
         # it for the latest state, transferring it only if it is newer than ours.
         if self._env_runner_state_server is not None:
@@ -246,6 +239,13 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     )
             if _server_state is not None:
                 self.set_state(_server_state)
+
+        # Log current weight seq no.
+        self.metrics.log_value(
+            key=WEIGHTS_SEQ_NO,
+            value=self._weights_seq_no,
+            window=1,
+        )
 
         with self.metrics.log_time(SAMPLE_TIMER):
             # If no execution details are provided, use the config to try to infer the
