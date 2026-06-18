@@ -221,6 +221,7 @@ class TestAPPO(unittest.TestCase):
         Also checks the global server actor is created only when the flag is enabled.
         """
         for use_server in [False, True]:
+            print(f"Testing with use_server={use_server}")
             config = (
                 appo.APPOConfig()
                 .environment("CartPole-v1")

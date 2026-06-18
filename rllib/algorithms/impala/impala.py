@@ -867,8 +867,13 @@ class IMPALA(Algorithm):
                         self._metrics_impala_training_step_sync_env_runner_state_time
                     ):
                         if self._env_runner_state_server is not None:
-                            # Push the merged state to the single global server;
-                            # EnvRunners pull it at the top of `sample()`.
+                            # Push the full merged EnvRunner state (connector
+                            # states + RLModule weights kept as an ObjectRef +
+                            # counters/WEIGHTS_SEQ_NO) to the EnvRunnerStateServer.
+                            # `push` is fire-and-forget and only rebinds the actor's
+                            # stored reference (O(1)); the weights cross the wire only
+                            # when an EnvRunner pulls a newer version at the top of
+                            # its `sample()` call.
                             env_runner_state = (
                                 self.env_runner_group.get_merged_env_runner_state(
                                     config=self.config,
