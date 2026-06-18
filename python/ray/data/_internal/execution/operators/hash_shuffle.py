@@ -592,6 +592,23 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             deque
         )
 
+        # Preliminary per-aggregator ``ray_remote_args`` advertised to the
+        # autoscaler (via ``base_resource_usage``) *before* the aggregator pool
+        # is created. Sized from the modest default (``estimated_dataset_bytes``
+        # is ``None``) so it needs no dataset-size estimate and never calls
+        # ``infer_metadata`` -- the only inputs are the (fixed) aggregator count
+        # and total cluster resources. This keeps the aggregator footprint
+        # visible to the autoscaler from the moment the operator is constructed
+        # (matching the legacy eager-pool behavior), so nodes are provisioned
+        # proactively instead of reactively after the shuffle starts. The pool's
+        # actual (sample-sized) args take over once it is created.
+        self._preliminary_aggregator_ray_remote_args = (
+            self._build_aggregator_ray_remote_args(
+                total_available_cluster_resources=total_available_cluster_resources,
+                estimated_dataset_bytes=None,
+            )
+        )
+
         # Online sample of arriving input bundles used to size the aggregator
         # pool before it is started. Tracked in *bundles* to match the unit of
         # ``upstream_op_num_outputs()`` (estimated output bundle count). The byte
@@ -1199,26 +1216,33 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
     @property
     def base_resource_usage(self) -> ExecutionResources:
-        if self._aggregator_pool is None:
-            return ExecutionResources.zero()
+        # Advertise the aggregator footprint even before the pool is created so
+        # the autoscaler can provision nodes proactively. Once the pool exists,
+        # report its actual (sample-sized) args; until then, use the preliminary
+        # args computed at construction. ``num_aggregators`` is fixed and the
+        # pool is built with the same value, so the count is stable across the
+        # transition (the per-aggregator size may step up once sized).
+        ray_remote_args = (
+            self._aggregator_pool._aggregator_ray_remote_args
+            if self._aggregator_pool is not None
+            else self._preliminary_aggregator_ray_remote_args
+        )
 
         return ExecutionResources(
-            cpu=(
-                self._aggregator_pool.num_aggregators
-                * self._aggregator_pool._aggregator_ray_remote_args["num_cpus"]
-            ),
+            cpu=self._num_aggregators * ray_remote_args["num_cpus"],
             gpu=0,
-            memory=(
-                self._aggregator_pool.num_aggregators
-                * self._aggregator_pool._aggregator_ray_remote_args.get("memory", 0)
-            ),
+            memory=self._num_aggregators * ray_remote_args.get("memory", 0),
             object_store_memory=0,
         )
 
-    def _create_aggregator_pool(
-        self, *, estimated_dataset_bytes: Optional[int]
-    ) -> "AggregatorPool":
-        total_available_cluster_resources = _get_total_cluster_resources()
+    def _build_aggregator_ray_remote_args(
+        self,
+        *,
+        total_available_cluster_resources: ExecutionResources,
+        estimated_dataset_bytes: Optional[int],
+    ) -> Dict[str, Any]:
+        """Build per-aggregator ``ray_remote_args`` from the default sizing,
+        with the override applied on top (if any)."""
         ray_remote_args = self._get_default_aggregator_ray_remote_args(
             num_partitions=self._num_partitions,
             num_aggregators=self._num_aggregators,
@@ -1229,6 +1253,17 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         if self._aggregator_ray_remote_args_override is not None:
             # Set default values missing for configs missing in the override.
             ray_remote_args.update(self._aggregator_ray_remote_args_override)
+
+        return ray_remote_args
+
+    def _create_aggregator_pool(
+        self, *, estimated_dataset_bytes: Optional[int]
+    ) -> "AggregatorPool":
+        total_available_cluster_resources = _get_total_cluster_resources()
+        ray_remote_args = self._build_aggregator_ray_remote_args(
+            total_available_cluster_resources=total_available_cluster_resources,
+            estimated_dataset_bytes=estimated_dataset_bytes,
+        )
 
         return AggregatorPool(
             num_input_seqs=self._num_input_seqs,

@@ -727,6 +727,53 @@ def test_hash_shuffle_does_not_infer_metadata_for_memory_during_construction(
     logical_op_mock.infer_metadata.assert_not_called()
 
 
+def test_hash_shuffle_advertises_aggregator_footprint_before_pool_created(
+    ray_start_regular,
+):
+    """The aggregator footprint must be visible to the autoscaler from
+    construction (before the pool is created), so nodes are provisioned
+    proactively rather than reactively after the shuffle starts."""
+    logical_op_mock = MagicMock(LogicalOperator)
+    logical_op_mock.estimated_num_outputs.return_value = 16
+
+    op_mock = MagicMock(PhysicalOperator)
+    op_mock._output_dependencies = []
+    op_mock._logical_operators = [logical_op_mock]
+    op_mock.num_output_splits.return_value = 1
+
+    with patch(
+        "ray.data._internal.execution.operators.hash_shuffle"
+        "._get_total_cluster_resources",
+        return_value=ExecutionResources(cpu=4.0, memory=32 * GiB),
+    ):
+        op = HashShuffleOperator(
+            input_op=op_mock,
+            data_context=DataContext.get_current(),
+            key_columns=("id",),
+        )
+
+    # Pool is still deferred ...
+    assert op._aggregator_pool is None
+
+    # ... but the operator already advertises a non-zero aggregator footprint
+    # derived from the preliminary (modest-default) args.
+    base = op.base_resource_usage
+    prelim = op._preliminary_aggregator_ray_remote_args
+    assert base.cpu == op._num_aggregators * prelim["num_cpus"] > 0
+    assert base.memory == op._num_aggregators * prelim["memory"] > 0
+
+    # Once the pool is created, the footprint tracks the pool's actual args.
+    pool = _create_aggregator_pool_for_test(op, 2 * GiB)
+    op._aggregator_pool = pool
+    after = op.base_resource_usage
+    assert (
+        after.cpu == op._num_aggregators * pool._aggregator_ray_remote_args["num_cpus"]
+    )
+    assert (
+        after.memory == op._num_aggregators * pool._aggregator_ray_remote_args["memory"]
+    )
+
+
 def test_hash_shuffle_buffers_inputs_to_estimate_memory_at_execution(
     ray_start_regular,
 ):
