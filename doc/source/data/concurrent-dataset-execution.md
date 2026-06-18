@@ -63,32 +63,36 @@ workload.
 
 ### 2. Tag each Dataset with a `label_selector`
 
-Set the selector on the **global** `DataContext` *before* creating the
-Dataset:
+Copy the current `DataContext`, set the selector on the copy, and apply
+the copy temporarily with the `DataContext.current()` context manager.
+Construct your Dataset inside the `with` block:
 
 ```python
 import ray
 
-# Set the global DataContext first.
-ctx = ray.data.DataContext.get_current()
+ctx = ray.data.DataContext.get_current().copy()
 ctx.execution_options.label_selector = {"ray-subcluster": "tenant_a"}
 
-# Now create the Dataset. ``Dataset.context`` is a deep copy of the global
-# ``DataContext`` taken at construction time, so it inherits the selector
-# automatically — you don't need to also set ``dataset.context``.
-dataset = ray.data.read_parquet("s3://my-bucket/tenant_a/")
+with ray.data.DataContext.current(ctx):
+    # Tasks launched during construction (reads, schema inference) read
+    # the temporary context. ``Dataset.context`` is a deep copy of the
+    # current context, so the new Dataset keeps the selector after the
+    # ``with`` block exits.
+    dataset = ray.data.read_parquet("s3://my-bucket/tenant_a/")
 ```
 
 :::{important}
-Set the global `DataContext` selector *before* creating the Dataset, not
-after. Tasks Ray Data spawns during construction (for example, the parquet
-read tasks that infer the schema) read the global context directly, so
-setting `dataset.context.execution_options.label_selector` after the fact
-doesn't retroactively re-route them.
-:::
+Mutating `ray.data.DataContext.get_current()` in place permanently
+affects every subsequent Dataset in the same driver process. Use the
+`DataContext.current()` context manager so each Dataset's selector is
+scoped to its own construction block.
 
-If you have more than one Dataset in the same driver, set the global
-context to each Dataset's subcluster *just before* you create that Dataset.
+Also: set the selector *before* creating the Dataset, not after. Tasks
+Ray Data spawns during construction (for example, the parquet read tasks
+that infer the schema) read the current context, so setting
+`dataset.context.execution_options.label_selector` after the fact doesn't
+retroactively re-route them.
+:::
 
 ## Example: two Datasets, two subclusters
 
@@ -96,18 +100,20 @@ context to each Dataset's subcluster *just before* you create that Dataset.
 import ray
 import threading
 
-ctx = ray.data.DataContext.get_current()
 
-# Tenant A: subcluster "tenant_a".
-ctx.execution_options.label_selector = {"ray-subcluster": "tenant_a"}
-ds_a = ray.data.read_parquet("s3://my-bucket/tenant_a/")
+def make_dataset(subcluster: str, path: str) -> ray.data.Dataset:
+    ctx = ray.data.DataContext.get_current().copy()
+    ctx.execution_options.label_selector = {"ray-subcluster": subcluster}
+    with ray.data.DataContext.current(ctx):
+        return ray.data.read_parquet(path)
 
-# Tenant B: subcluster "tenant_b". Set the global context again
-# right before creating ds_b.
-ctx.execution_options.label_selector = {"ray-subcluster": "tenant_b"}
-ds_b = ray.data.read_parquet("s3://my-bucket/tenant_b/")
 
-# Run them concurrently. ds_a's tasks only land on
+# Construct each Dataset in the main thread so the temporary contexts
+# don't race on the process-global ``_default_context``.
+ds_a = make_dataset("tenant_a", "s3://my-bucket/tenant_a/")
+ds_b = make_dataset("tenant_b", "s3://my-bucket/tenant_b/")
+
+# Then run them concurrently. ds_a's tasks only land on
 # ray-subcluster=tenant_a nodes; ds_b's only on
 # ray-subcluster=tenant_b nodes.
 threading.Thread(target=lambda: ds_a.materialize()).start()

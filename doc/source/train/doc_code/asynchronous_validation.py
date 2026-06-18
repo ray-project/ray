@@ -107,15 +107,21 @@ class Predictor:
         return {"res": (pred.argmax(1) == label).cpu().numpy()}
 
 
+# Construct ``validation_dataset`` under a DataContext copy pinned to the
+# "validation" subcluster. ``Dataset.context`` is a deep copy of the
+# current context taken at construction, so the selector is baked in and
+# every downstream operator (including the ``map_batches`` below) inherits
+# it — no in-function mutation needed. See
+# https://docs.ray.io/en/latest/data/concurrent-dataset-execution.html.
+ctx = ray.data.DataContext.get_current().copy()
+ctx.execution_options.label_selector = {"ray-subcluster": "validation"}
+with ray.data.DataContext.current(ctx):
+    validation_dataset = ray.data.read_parquet(...)
+
+
 def validation_fn(checkpoint: ray.train.Checkpoint) -> dict:
     # Set name to avoid confusion; default name is "Dataset"
     validation_dataset.set_name("validation")
-    # Pin to the "validation" subcluster. map_batches doesn't use
-    # DataConfig, so set the selector on ds.context directly. See
-    # https://docs.ray.io/en/latest/data/concurrent-dataset-execution.html.
-    validation_dataset.context.execution_options.label_selector = {
-        "ray-subcluster": "validation"
-    }
     eval_res = validation_dataset.map_batches(
         Predictor,
         batch_size=128,
@@ -164,13 +170,15 @@ def train_func(config: dict) -> None:
 
 
 def run_trainer() -> ray.train.Result:
-    # Pin reads to the "training" subcluster by setting the global before
-    # constructing the Dataset. See
-    # https://docs.ray.io/en/latest/data/concurrent-dataset-execution.html.
-    ray.data.DataContext.get_current().execution_options.label_selector = {
-        "ray-subcluster": "training"
-    }
-    train_dataset = ray.data.read_parquet(...)
+    # Pin reads to the "training" subcluster by applying a copy of the
+    # DataContext via the DataContext.current() context manager. The copy
+    # is scoped to the `with` block; mutating the global DataContext
+    # directly would permanently affect every subsequent Dataset in this
+    # driver. See https://docs.ray.io/en/latest/data/concurrent-dataset-execution.html.
+    ctx = ray.data.DataContext.get_current().copy()
+    ctx.execution_options.label_selector = {"ray-subcluster": "training"}
+    with ray.data.DataContext.current(ctx):
+        train_dataset = ray.data.read_parquet(...)
 
     trainer = ray.train.torch.TorchTrainer(
         train_func,

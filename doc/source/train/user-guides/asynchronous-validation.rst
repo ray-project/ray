@@ -182,33 +182,37 @@ through the sub-trainer's ``dataset_config``:
         ...
 
 **map_batches validation_fn.** The ``map_batches`` path doesn't take a
-``DataConfig``, so set the selector directly on the Dataset's execution
-options inside the validation function:
+``DataConfig``. Construct ``validation_dataset`` under a
+``DataContext.current()`` block so the selector is baked into the
+Dataset at construction — every downstream operator inherits it:
 
 .. code-block:: python
 
+    ctx = ray.data.DataContext.get_current().copy()
+    ctx.execution_options.label_selector = {"ray-subcluster": "validation"}
+    with ray.data.DataContext.current(ctx):
+        validation_dataset = ray.data.read_parquet(...)
+
     def validation_fn(checkpoint) -> dict:
-        validation_dataset.context.execution_options.label_selector = {
-            "ray-subcluster": "validation"
-        }
         eval_res = validation_dataset.map_batches(...)
         ...
 
-**Training-side configuration.** Set the training Dataset's selector on
-the global ``ray.data.DataContext`` before constructing the Dataset (so
-reads/schema-inference tasks land on training nodes), and re-specify it
-in the trainer's ``dataset_config`` because ``DataConfig.execution_options``
-overrides the Dataset's options at training start:
+**Training-side configuration.** Apply a copy of the ``DataContext``
+with the ``DataContext.current()`` context manager when constructing the
+training Dataset (so reads/schema-inference tasks land on training nodes),
+and re-specify the selector in the trainer's ``dataset_config`` because
+``DataConfig.execution_options`` overrides the Dataset's options at
+training start:
 
 .. code-block:: python
 
     from ray.data import ExecutionOptions
 
     def run_trainer() -> ray.train.Result:
-        ray.data.DataContext.get_current().execution_options.label_selector = {
-            "ray-subcluster": "training"
-        }
-        train_dataset = ray.data.read_parquet(...)
+        ctx = ray.data.DataContext.get_current().copy()
+        ctx.execution_options.label_selector = {"ray-subcluster": "training"}
+        with ray.data.DataContext.current(ctx):
+            train_dataset = ray.data.read_parquet(...)
 
         trainer = ray.train.torch.TorchTrainer(
             ...,
