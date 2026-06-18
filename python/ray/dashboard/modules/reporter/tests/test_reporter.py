@@ -287,6 +287,8 @@ def test_prometheus_physical_stats_record(
             "ray_node_mem_total_host" in metric_names,
             "ray_component_rss_mb" in metric_names,
             "ray_component_uss_mb" in metric_names,
+            "ray_component_rss_bytes" in metric_names,
+            "ray_component_uss_bytes" in metric_names,
             "ray_component_num_fds" in metric_names,
             "ray_node_disk_io_read" in metric_names,
             "ray_node_disk_io_write" in metric_names,
@@ -353,6 +355,8 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
             "ray_component_cpu_percentage",
             "ray_component_rss_mb",
             "ray_component_uss_mb",
+            "ray_component_rss_bytes",
+            "ray_component_uss_bytes",
             "ray_component_num_fds",
         ]
         for metric in expected_metrics:
@@ -392,7 +396,7 @@ def test_report_stats(tmp_path):
             assert val == stats["shm"]
         print(record.gauge.name)
         print(record)
-    assert len(records) == 43
+    assert len(records) == 49
     # Verify RayNodeType and IsHeadNode tags
     for record in records:
         if record.gauge.name.startswith("node_"):
@@ -424,7 +428,7 @@ def test_report_stats(tmp_path):
     # Test stats without raylets
     stats["raylet"] = None
     records = agent._to_records(stats, cluster_stats)
-    assert len(records) == 41
+    assert len(records) == 46
     # Test stats with gpus
     stats["gpus"] = [
         {
@@ -451,11 +455,11 @@ def test_report_stats(tmp_path):
         }
     ]
     records = agent._to_records(stats, cluster_stats)
-    assert len(records) == 50
+    assert len(records) == 55
     # Test stats without autoscaler report
     cluster_stats = {}
     records = agent._to_records(stats, cluster_stats)
-    assert len(records) == 48
+    assert len(records) == 53
 
     stats_payload = agent._generate_stats_payload(stats)
     assert stats_payload is not None
@@ -705,7 +709,7 @@ def test_get_tpu_usage(tmp_path):
 
             expected_utilizations = [
                 TpuUtilizationInfo(
-                    index="0",
+                    index=0,
                     name="1234-0",
                     tpu_type="tpu-v6e-slice",
                     tpu_topology="2x2",
@@ -716,7 +720,7 @@ def test_get_tpu_usage(tmp_path):
                     memory_total=4000,
                 ),
                 TpuUtilizationInfo(
-                    index="1",
+                    index=1,
                     name="1234-1",
                     tpu_type="tpu-v6e-slice",
                     tpu_topology="2x2",
@@ -728,6 +732,57 @@ def test_get_tpu_usage(tmp_path):
                 ),
             ]
             assert tpu_utilizations == expected_utilizations
+
+
+def test_get_tpu_usage_idle_and_duplicates(tmp_path):
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
+
+    # 4 TPUs, all idle (0.0 utilization)
+    # Utilization metrics use indices 0-3
+    # Other metrics use indices 10, 11, 14, 15
+    # Also includes duplicate samples for index 0 and 10 to test robustness.
+    fake_metrics_content = """
+    # Duplicate samples for duty_cycle index 10
+    duty_cycle{accelerator_id="1234-10",container="ray-worker",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    duty_cycle{accelerator_id="1234-10",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    duty_cycle{accelerator_id="1234-11",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    duty_cycle{accelerator_id="1234-14",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    duty_cycle{accelerator_id="1234-15",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    # Duplicate samples for tensorcore_utilization index 0
+    tensorcore_utilization{accelerator_id="1234-0",container="ray-worker",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    tensorcore_utilization{accelerator_id="1234-0",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    tensorcore_utilization{accelerator_id="1234-1",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    tensorcore_utilization{accelerator_id="1234-2",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    tensorcore_utilization{accelerator_id="1234-3",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    # Memory metrics
+    memory_total{accelerator_id="1234-10",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 4000
+    memory_total{accelerator_id="1234-11",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 4000
+    memory_total{accelerator_id="1234-14",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 4000
+    memory_total{accelerator_id="1234-15",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 4000
+    """
+    with patch.multiple(
+        "ray.dashboard.modules.reporter.reporter_agent",
+        TPU_DEVICE_PLUGIN_ADDR="localhost:2112",
+    ):
+        with patch("requests.get") as mock_get:
+            mock_response = MagicMock()
+            mock_response.content = fake_metrics_content.encode("utf-8")
+            mock_get.return_value = mock_response
+
+            tpu_utilizations = agent._get_tpu_usage()
+
+            # Should have 4 unique TPUs
+            assert len(tpu_utilizations) == 4
+            # Verify mapping (10 mapped to 0, 11 to 1, etc.)
+            assert tpu_utilizations[0]["index"] == 0
+            assert tpu_utilizations[0]["memory_total"] == 4000
+            assert tpu_utilizations[3]["index"] == 3
+            assert tpu_utilizations[3]["memory_total"] == 4000
 
 
 def test_report_stats_tpu(tmp_path):
@@ -927,14 +982,14 @@ def test_report_per_component_stats(tmp_path):
     }
 
     def get_uss_and_cpu_and_num_fds_records(records):
-        component_uss_mb_records = defaultdict(list)
+        component_uss_bytes_records = defaultdict(list)
         component_cpu_percentage_records = defaultdict(list)
         component_num_fds_records = defaultdict(list)
         for record in records:
             name = record.gauge.name
-            if name == "component_uss_mb":
+            if name == "component_uss_bytes":
                 comp = record.tags["Component"]
-                component_uss_mb_records[comp].append(record)
+                component_uss_bytes_records[comp].append(record)
             if name == "component_cpu_percentage":
                 comp = record.tags["Component"]
                 component_cpu_percentage_records[comp].append(record)
@@ -942,7 +997,7 @@ def test_report_per_component_stats(tmp_path):
                 comp = record.tags["Component"]
                 component_num_fds_records[comp].append(record)
         return (
-            component_uss_mb_records,
+            component_uss_bytes_records,
             component_cpu_percentage_records,
             component_num_fds_records,
         )
@@ -983,7 +1038,7 @@ def test_report_per_component_stats(tmp_path):
             cpu_records,
             num_fds_records,
             comp,
-            float(stats["memory_full_info"].uss) / 1.0e6,
+            float(stats["memory_full_info"].uss),
             stats["cpu_percent"],
             stats["num_fds"],
         )
@@ -1003,7 +1058,7 @@ def test_report_per_component_stats(tmp_path):
         cpu_records,
         num_fds_records,
         "ray::IDLE",
-        float(idle_stats["memory_full_info"].uss) / 1.0e6,
+        float(idle_stats["memory_full_info"].uss),
         idle_stats["cpu_percent"],
         idle_stats["num_fds"],
     )
