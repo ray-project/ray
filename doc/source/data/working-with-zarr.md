@@ -13,7 +13,7 @@ This guide covers:
 - [Controlling chunk size](#controlling-chunk-size)
 - [Reading row-aligned arrays](#reading-row-aligned-arrays)
 - [Custom codecs](#custom-codecs)
-- [Cloud storage and credentials](#cloud-storage-and-credentials)
+- [Zarr's .zattrs](#zarr-zattrs)
 
 For the full parameter reference, see {func}`ray.data.read_zarr`.
 
@@ -145,6 +145,7 @@ ray.init(runtime_env={
 This is a particularity of the underlying Zarr library.
 
 
+(zarr-zattrs)=
 ## Zarr's .zattrs
 
 `read_zarr` doesn't surface each array's `.zattrs` (Zarr user attributes) in the row
