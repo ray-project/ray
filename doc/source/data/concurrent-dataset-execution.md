@@ -4,9 +4,9 @@
 
 When two or more Ray Data Datasets share a single Ray cluster, they compete
 for the same pool of nodes by default. That competition can cause unwanted
-contention — one Dataset's reads can starve another's GPU stage, autoscaling
-decisions get muddled, and runtime becomes a function of whatever else
-happens to be running.
+contention — one Dataset's reads can starve a second Dataset's GPU stage,
+autoscaling decisions get muddled, and runtime becomes a function of
+whatever else happens to be running.
 
 Ray Data lets you assign each Dataset to its own **subcluster** — a labeled
 subset of nodes that only that Dataset uses. Subclusters give you smooth,
@@ -120,8 +120,8 @@ When the Datasets are wired into a `TorchTrainer` (or any
 `DataParallelTrainer`), `ray.train.DataConfig` is the more ergonomic entry
 point — it takes a per-dataset `ExecutionOptions` map. See
 {ref}`train-validating-checkpoints` for the full pattern, including how to
-set the training-side selector via `DataConfig` and the validation-side
-selector inside your `validation_fn`.
+set the training-side selector through `DataConfig` and the
+validation-side selector inside your `validation_fn`.
 
 ## API reference
 

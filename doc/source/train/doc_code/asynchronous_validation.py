@@ -73,9 +73,8 @@ def validation_fn(checkpoint: ray.train.Checkpoint, train_run_name: str, epoch: 
         ),
         # Use weaker GPUs for validation
         datasets={"validation": validation_dataset},
-        # Pin validation to the "validation" subcluster so it runs on the
-        # validation-labeled nodes and doesn't compete with training for
-        # resources. See https://docs.ray.io/en/latest/data/concurrent-dataset-execution.html.
+        # Pin to the "validation" subcluster so it doesn't compete with
+        # training. See https://docs.ray.io/en/latest/data/concurrent-dataset-execution.html.
         dataset_config=ray.train.DataConfig(
             execution_options={
                 "validation": ExecutionOptions(
@@ -111,11 +110,8 @@ class Predictor:
 def validation_fn(checkpoint: ray.train.Checkpoint) -> dict:
     # Set name to avoid confusion; default name is "Dataset"
     validation_dataset.set_name("validation")
-    # Pin validation to the "validation" subcluster. The map_batches path
-    # doesn't go through ``DataConfig``, so set the selector on the
-    # already-constructed Dataset's execution options. Operators read this
-    # at task-submission time, so all chained tasks (including the
-    # ``Predictor`` actors below) land on validation-labeled nodes. See
+    # Pin to the "validation" subcluster. map_batches doesn't use
+    # DataConfig, so set the selector on ds.context directly. See
     # https://docs.ray.io/en/latest/data/concurrent-dataset-execution.html.
     validation_dataset.context.execution_options.label_selector = {
         "ray-subcluster": "validation"
@@ -168,11 +164,8 @@ def train_func(config: dict) -> None:
 
 
 def run_trainer() -> ray.train.Result:
-    # Set the global ``DataContext`` to the "training" subcluster BEFORE
-    # creating the training Dataset so reads/schema-inference tasks land
-    # on training nodes. ``Dataset.context`` is a deep copy of the global
-    # taken at construction, so this single setting also propagates to
-    # every operator the Dataset later launches. See
+    # Pin reads to the "training" subcluster by setting the global before
+    # constructing the Dataset. See
     # https://docs.ray.io/en/latest/data/concurrent-dataset-execution.html.
     ray.data.DataContext.get_current().execution_options.label_selector = {
         "ray-subcluster": "training"
@@ -184,11 +177,8 @@ def run_trainer() -> ray.train.Result:
         validation_config=ValidationConfig(fn=validation_fn),
         # Pass training dataset in datasets arg to split it across training workers
         datasets={"train": train_dataset},
-        # ``DataConfig.execution_options`` overrides the Dataset's
-        # ``execution_options`` at training start, so re-specify the
-        # label_selector here to keep per-worker ingest pinned to the
-        # "training" subcluster. The validation_fn separately pins its own
-        # Dataset to the "validation" subcluster, so the two never compete.
+        # DataConfig.execution_options overrides ds.context at training
+        # start, so re-pin per-worker ingest to "training" here.
         dataset_config=ray.train.DataConfig(
             datasets_to_split=["train"],
             execution_options={

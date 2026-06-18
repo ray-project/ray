@@ -92,7 +92,7 @@ The ``validation_fn`` above runs in a single Ray task, but you can improve its p
 even more Ray tasks or actors. The Ray team recommends doing this with one of the following approaches:
 
 * Creating a :class:`ray.train.torch.TorchTrainer` that only does validation, not training.
-* (Experimental) Using :func:`ray.data.Dataset.map_batches` to calculate metrics on a validation set.
+* Using :func:`ray.data.Dataset.map_batches` to calculate metrics on a validation set.
 
 Choose an approach
 ~~~~~~~~~~~~~~~~~~
@@ -134,8 +134,8 @@ loss on a validation set. Note the following about this example:
     :start-after: __validation_fn_torch_trainer_start__
     :end-before: __validation_fn_torch_trainer_end__
 
-(Experimental) Example: validation with Ray Data map_batches
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Example: validation with Ray Data map_batches
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The following is a ``validation_fn`` that uses :func:`ray.data.Dataset.map_batches` to
 calculate average accuracy on a validation set. To learn more about how to use
@@ -160,22 +160,39 @@ The pattern differs slightly between the ``TorchTrainer`` validation_fn
 and the ``map_batches`` validation_fn, because only the former goes
 through ``ray.train.DataConfig``.
 
-**TorchTrainer validation_fn.** Set the validation Dataset's selector via
-the sub-trainer's ``dataset_config``:
+**TorchTrainer validation_fn.** Set the validation Dataset's selector
+through the sub-trainer's ``dataset_config``:
 
-.. literalinclude:: ../doc_code/asynchronous_validation.py
-    :language: python
-    :start-after: __validation_fn_torch_trainer_start__
-    :end-before: __validation_fn_torch_trainer_end__
+.. code-block:: python
+
+    from ray.data import ExecutionOptions
+
+    def validation_fn(checkpoint, ...) -> dict:
+        trainer = ray.train.torch.TorchTrainer(
+            ...,
+            datasets={"validation": validation_dataset},
+            dataset_config=ray.train.DataConfig(
+                execution_options={
+                    "validation": ExecutionOptions(
+                        label_selector={"ray-subcluster": "validation"}
+                    ),
+                },
+            ),
+        )
+        ...
 
 **map_batches validation_fn.** The ``map_batches`` path doesn't take a
 ``DataConfig``, so set the selector directly on the Dataset's execution
 options inside the validation function:
 
-.. literalinclude:: ../doc_code/asynchronous_validation.py
-    :language: python
-    :start-after: __validation_fn_map_batches_start__
-    :end-before: __validation_fn_map_batches_end__
+.. code-block:: python
+
+    def validation_fn(checkpoint) -> dict:
+        validation_dataset.context.execution_options.label_selector = {
+            "ray-subcluster": "validation"
+        }
+        eval_res = validation_dataset.map_batches(...)
+        ...
 
 **Training-side configuration.** Set the training Dataset's selector on
 the global ``ray.data.DataContext`` before constructing the Dataset (so
@@ -183,10 +200,29 @@ reads/schema-inference tasks land on training nodes), and re-specify it
 in the trainer's ``dataset_config`` because ``DataConfig.execution_options``
 overrides the Dataset's options at training start:
 
-.. literalinclude:: ../doc_code/asynchronous_validation.py
-    :language: python
-    :start-after: __validation_fn_report_start__
-    :end-before: __validation_fn_report_end__
+.. code-block:: python
+
+    from ray.data import ExecutionOptions
+
+    def run_trainer() -> ray.train.Result:
+        ray.data.DataContext.get_current().execution_options.label_selector = {
+            "ray-subcluster": "training"
+        }
+        train_dataset = ray.data.read_parquet(...)
+
+        trainer = ray.train.torch.TorchTrainer(
+            ...,
+            datasets={"train": train_dataset},
+            dataset_config=ray.train.DataConfig(
+                datasets_to_split=["train"],
+                execution_options={
+                    "train": ExecutionOptions(
+                        label_selector={"ray-subcluster": "training"}
+                    ),
+                },
+            ),
+        )
+        ...
 
 .. note::
 
