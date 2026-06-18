@@ -1,6 +1,9 @@
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from typing_extensions import override
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 
 from ray.data._internal.execution.bundle_queue import BaseBundleQueue, FIFOBundleQueue
 from ray.data._internal.execution.interfaces import (
@@ -59,7 +62,11 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
     def _output_queues(self) -> List["BaseBundleQueue"]:
         return [self._output_buffer]
 
-    def start(self, options: ExecutionOptions, block_ref_counter=None):
+    def start(
+        self,
+        options: ExecutionOptions,
+        block_ref_counter: Optional["BlockRefCounter"] = None,
+    ):
         # Whether to preserve deterministic ordering of output blocks.
         # When True, blocks are emitted in round-robin order across inputs,
         # ensuring the same input always produces the same output order.

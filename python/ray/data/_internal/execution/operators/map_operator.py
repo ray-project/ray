@@ -29,6 +29,8 @@ from ray.data._internal.util import GiB
 if TYPE_CHECKING:
     import pyarrow as pa
 
+    from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+
 import ray
 from ray import ObjectRef
 from ray._raylet import ObjectRefGenerator
@@ -485,7 +487,11 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
 
-    def start(self, options: "ExecutionOptions", block_ref_counter=None):
+    def start(
+        self,
+        options: "ExecutionOptions",
+        block_ref_counter: Optional["BlockRefCounter"] = None,
+    ):
         super().start(options, block_ref_counter)
         # Create output queue with desired ordering semantics.
         if options.preserve_order:

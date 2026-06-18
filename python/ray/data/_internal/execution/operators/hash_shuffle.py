@@ -80,6 +80,7 @@ from ray.data.context import (
 )
 
 if typing.TYPE_CHECKING:
+    from ray.data._internal.execution.block_ref_counter import BlockRefCounter
     from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
@@ -673,7 +674,11 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         self._reduce_bar = None
         self._reduce_metrics = OpRuntimeMetrics(self)
 
-    def start(self, options: ExecutionOptions, block_ref_counter=None) -> None:
+    def start(
+        self,
+        options: ExecutionOptions,
+        block_ref_counter: Optional["BlockRefCounter"] = None,
+    ) -> None:
         super().start(options, block_ref_counter)
 
     @property
