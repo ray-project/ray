@@ -199,10 +199,11 @@ void ActorWideGeneratorBackpressureWaiter::TeardownTask(
   int64_t outstanding = metadata.per_task_generated - metadata.per_task_consumed;
   if (outstanding > 0) {
     total_objects_generated_ -= outstanding;
-    if (total_objects_generated_ - total_objects_consumed_ < backpressure_threshold_) {
-      backpressure_cond_var_.SignalAll();
-    }
   }
+  // Always signal so any task parked in ReserveActorWideSlot (per_task_generated
+  // could still be 0 if it never got to admit anything) wakes up and rechecks
+  // task_alive immediately rather than waiting on the 1s WaitWithTimeout tick.
+  backpressure_cond_var_.SignalAll();
 }
 
 int64_t ActorWideGeneratorBackpressureWaiter::TotalObjectConsumed() const {

@@ -773,6 +773,9 @@ void CoreWorker::HandleOwnerDied(const WorkerID &dead_owner) {
       if (state.owner_worker_id == dead_owner) {
         dead_entries.push_back({state.waiter, state.actor_metadata});
         to_erase.push_back(generator_id);
+        // Mark the gen task canceled so the executor loop bails before the
+        // next gen.send instead of running another iteration of user code.
+        canceled_tasks_.insert(generator_id.TaskId());
       }
     }
     for (const auto &generator_id : to_erase) {

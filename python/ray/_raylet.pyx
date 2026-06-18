@@ -1397,6 +1397,12 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
 
         while True:
             try:
+                # Bail before running any more user code if the task has been
+                # canceled (e.g. the owner died and HandleOwnerDied marked it
+                # canceled).
+                if CCoreWorkerProcess.GetCoreWorker().IsTaskCanceled(
+                        context.task_id.native()):
+                    break
                 # Actor-wide backpressure pre-check. Block (releasing the
                 # GIL) until the actor's shared budget admits this yield's
                 # objects (`_num_objects_per_yield`). No-op when the actor
@@ -2032,6 +2038,12 @@ cdef void execute_task(
                             if generator_backpressure_num_objects != -1:
                                 raise ValueError(
                                     "_generator_backpressure_num_objects is "
+                                    "not supported for an async actor."
+                                )
+                            if (<StreamingGeneratorExecutionContext>context
+                                    ).actor_backpressure_metadata.get() != NULL:
+                                raise ValueError(
+                                    "_actor_generator_backpressure_num_objects is "
                                     "not supported for an async actor."
                                 )
                             # Note that the report RPCs are called inside an

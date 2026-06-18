@@ -250,6 +250,17 @@ def test_backpressure_invalid(shutdown_only):
     with pytest.raises(ValueError):
         ray.get(next(gen))
 
+    @ray.remote(_actor_generator_backpressure_num_objects=1)
+    class AsyncActorWithActorBP:
+        async def f(self):
+            for i in range(10):
+                yield i
+
+    async_actor_bp = AsyncActorWithActorBP.remote()
+    gen = async_actor_bp.f.remote()
+    with pytest.raises(ValueError):
+        ray.get(next(gen))
+
     with pytest.raises(ValueError, match="backpressure_num_objects=0 is not allowed"):
 
         @ray.remote(_generator_backpressure_num_objects=0)
@@ -935,6 +946,82 @@ os._exit(0)
     reporter = ray.get_actor(reporter_name, namespace=namespace)
     try:
         assert ray.get(a.ping.remote(), timeout=_ACTOR_GEN_BP_WAIT_S) == "ok"
+    finally:
+        ray.kill(a)
+        ray.kill(reporter)
+
+
+def test_actor_generator_backpressure_owner_death_skips_between_yield_work(
+    shutdown_only,
+):
+    """After owner death we should not run another iteration of between-yield
+    user code before exiting. HandleOwnerDied marks the task canceled; the
+    executor loop bails before the next gen.send."""
+    namespace = "actor_generator_backpressure_owner_death_skip"
+    actor_name = f"actor_generator_backpressure_owner_death_skip_actor_{os.getpid()}"
+    reporter_name = (
+        f"actor_generator_backpressure_owner_death_skip_reporter_{os.getpid()}"
+    )
+    address = ray.init(num_cpus=2, namespace=namespace).address_info["address"]
+
+    driver = f"""
+import os
+
+import ray
+from ray._common.test_utils import wait_for_condition
+
+ray.init(address="{address}", namespace="{namespace}")
+
+
+@ray.remote(name="{reporter_name}", lifetime="detached")
+class Reporter:
+    def __init__(self):
+        self.between_yield_count = 0
+
+    def between_yield(self):
+        self.between_yield_count += 1
+
+    def count(self):
+        return self.between_yield_count
+
+
+@ray.remote(
+    name="{actor_name}",
+    lifetime="detached",
+    max_concurrency=1,
+    _actor_generator_backpressure_num_objects=10,
+)
+class A:
+    @ray.method(_generator_backpressure_num_objects=1)
+    def gen(self, reporter):
+        for i in range(10):
+            ray.get(reporter.between_yield.remote())
+            yield i
+
+    def ping(self):
+        return "ok"
+
+
+reporter = Reporter.remote()
+a = A.remote()
+g = a.gen.remote(reporter)
+# After this returns, the executor has run the between-yield call exactly
+# once and is parked in WaitUntilObjectConsumed for yield 0.
+wait_for_condition(lambda: ray.get(reporter.count.remote()) == 1, timeout=10)
+
+os._exit(0)
+"""
+
+    run_string_as_driver(driver)
+    a = ray.get_actor(actor_name, namespace=namespace)
+    reporter = ray.get_actor(reporter_name, namespace=namespace)
+    try:
+        # The actor must accept new tasks (gen task drained).
+        assert ray.get(a.ping.remote(), timeout=_ACTOR_GEN_BP_WAIT_S) == "ok"
+        # And the between-yield code must not have run another iteration after
+        # owner death — the count stays at the one call made before the driver
+        # exited.
+        assert ray.get(reporter.count.remote()) == 1
     finally:
         ray.kill(a)
         ray.kill(reporter)
