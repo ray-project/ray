@@ -106,7 +106,9 @@ def _make_producer_cls(mode: str, concurrency: int):
 def _make_consumer_cls(consumer_mode: str, concurrency: int):
     if consumer_mode == "read-only":
 
-        @ray.remote(num_cpus=0, max_concurrency=concurrency)
+        @ray.remote(
+            num_cpus=0, max_concurrency=concurrency, enable_tensor_transport=True
+        )
         class Consumer:
             def __init__(self):
                 _enable_ptrace()
@@ -117,7 +119,9 @@ def _make_consumer_cls(consumer_mode: str, concurrency: int):
 
     else:
 
-        @ray.remote(num_cpus=0, max_concurrency=concurrency)
+        @ray.remote(
+            num_cpus=0, max_concurrency=concurrency, enable_tensor_transport=True
+        )
         class Consumer:
             def __init__(self):
                 _enable_ptrace()
@@ -136,6 +140,9 @@ def _make_consumer_cls(consumer_mode: str, concurrency: int):
                     ):
                         continue
                     for chunk in col.chunks:
+                        # TODO(karticam): This thing feels sus.
+                        #  check if this implementation is correct and it
+                        #  actually avoids copies.
                         arr = chunk.to_numpy(zero_copy_only=False, writable=True)
                         arr += 1
                 return table.num_rows
@@ -204,11 +211,12 @@ class _Stream:
             self._prod_rr += 1
             # Consumer LB: argmin outstanding.
             idx = min(range(len(self._consumers)), key=lambda i: self._in_flight[i])
+            submit_t = time.perf_counter()
             ref = producer.make_table.remote(self._size_mb)
             cref = self._consumers[idx].process.remote(ref)
             self._in_flight[idx] += 1
             self._ref_idx[cref] = idx
-            self._submit_times[cref] = time.perf_counter()
+            self._submit_times[cref] = submit_t
             self._pending.append(cref)
 
     def wait_available(self, timeout: float = 0.001):

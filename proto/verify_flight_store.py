@@ -25,6 +25,20 @@ FLIGHT_MODE = "native"  # "plasma" | "native" | "rdt"
 # ---------------------------------------------------------------------------
 
 
+def _enable_ptrace():
+    """Enable process_vm_readv/writev between sibling workers.
+
+    Must run inside the actor process, since yama/ptrace_scope is read at
+    syscall time per-caller. Requires passwordless sudo on the node.
+    """
+    import subprocess
+
+    subprocess.check_output(
+        "echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope",
+        shell=True,
+    )
+
+
 def case_empty():
     return pa.table({"x": pa.array([], type=pa.int64())})
 
@@ -114,6 +128,9 @@ def _producer_cls():
 
         @ray.remote(num_cpus=1)
         class Producer:
+            def __init__(self):
+                _enable_ptrace()
+
             @ray.method(tensor_transport="ARROW_FLIGHT")
             def make(self, case_name):
                 for name, fn in CASES:
@@ -125,6 +142,9 @@ def _producer_cls():
 
         @ray.remote(num_cpus=1)
         class Producer:
+            def __init__(self):
+                _enable_ptrace()
+
             def make(self, case_name):
                 for name, fn in CASES:
                     if name == case_name:
@@ -134,8 +154,11 @@ def _producer_cls():
     return Producer
 
 
-@ray.remote(num_cpus=1)
+@ray.remote(num_cpus=1, enable_tensor_transport=True)
 class Consumer:
+    def __init__(self):
+        _enable_ptrace()
+
     def passthrough(self, table):
         # Forces the table to actually be materialized in this process.
         assert isinstance(table, pa.Table), f"got {type(table)}"
