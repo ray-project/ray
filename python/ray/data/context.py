@@ -97,6 +97,14 @@ DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS = env_integer(
     "RAY_DATA_MAX_HASH_SHUFFLE_AGGREGATORS", 128
 )
 
+DEFAULT_HASH_SHUFFLE_COMPRESSION = os.environ.get(
+    "RAY_DATA_HASH_SHUFFLE_COMPRESSION", "zstd"
+)
+
+DEFAULT_HASH_SHUFFLE_REDUCE_BATCH_SIZE = env_integer(
+    "RAY_DATA_HASH_SHUFFLE_REDUCE_BATCH_SIZE", 16
+)
+
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
 # This default enables locality-based scheduling in Ray for tasks where arg data
@@ -626,6 +634,10 @@ class DataContext:
             :class:`IcebergConfig` for details.
         default_hash_shuffle_parallelism: Default parallelism level for hash-based
             shuffle operations if the number of partitions is unspecifed.
+        hash_shuffle_compression: Codec used to compress hash-shuffle
+            intermediate shards: "none", "lz4", or "zstd" (default "zstd").
+        hash_shuffle_reduce_batch_size: Number of shard object references each
+            hash-shuffle reduce task dereferences per ``ray.get()`` call.
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -710,6 +722,12 @@ class DataContext:
     # Default hash-shuffle parallelism level (will be used when not
     # provided explicitly)
     default_hash_shuffle_parallelism: int = DEFAULT_MIN_PARALLELISM
+
+    # Codec for hash-shuffle intermediate shards ("none", "lz4", or "zstd").
+    hash_shuffle_compression: str = DEFAULT_HASH_SHUFFLE_COMPRESSION
+
+    # Shard refs each reduce task dereferences per ray.get() call.
+    hash_shuffle_reduce_batch_size: int = DEFAULT_HASH_SHUFFLE_REDUCE_BATCH_SIZE
 
     # Max number of aggregators (actors) that could be provisioned
     # to perform aggregations on partitions produced during hash-shuffling
