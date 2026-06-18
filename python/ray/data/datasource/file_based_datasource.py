@@ -182,22 +182,23 @@ class FileBasedDatasource(Datasource):
         self._filesystem = RetryingPyFileSystem.wrap(
             self._filesystem, retryable_errors=self._data_context.retried_io_errors
         )
-        paths, file_sizes = map(
-            list,
-            zip(
-                *meta_provider.expand_paths(
-                    paths,
-                    self._filesystem,
-                    partitioning,
-                    ignore_missing_paths=ignore_missing_paths,
-                )
-            ),
-        )
 
+        # When glob expansion returns no paths and ignore_missing_paths is True,
+        # store empty lists so downstream code (get_read_tasks) produces an empty
+        # Dataset instead of raising.
         if ignore_missing_paths and len(paths) == 0:
-            raise ValueError(
-                "None of the provided paths exist. "
-                "The 'ignore_missing_paths' field is set to True."
+            file_sizes = []
+        else:
+            paths, file_sizes = map(
+                list,
+                zip(
+                    *meta_provider.expand_paths(
+                        paths,
+                        self._filesystem,
+                        partitioning,
+                        ignore_missing_paths=ignore_missing_paths,
+                    )
+                ),
             )
 
         if self._partition_filter is not None:

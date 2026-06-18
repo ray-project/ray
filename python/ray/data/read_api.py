@@ -491,6 +491,8 @@ def _read_datasource_v2(
     # execution inside the ListFiles op — no caching layer needed.
     sample = sample_files(indexer, datasource.paths, datasource.filesystem, pruners)
     if len(sample) == 0:
+        if datasource.ignore_missing_paths:
+            return from_blocks([])
         raise ValueError(
             f"no files found under {datasource.paths!r}. Check the path and any "
             "configured `partition_filter` or `file_extensions` filters."
