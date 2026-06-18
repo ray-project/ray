@@ -123,6 +123,14 @@ def build_and_run_pipeline(
 
     ds.write_datasink(NullDatasink())
 
+    # Tag each tenant's per-stage breakdown so multi-run logs (multiple
+    # threads writing to stdout) stay attributable.
+    tag = subcluster if subcluster is not None else "no-subcluster"
+    print(
+        f"\n===== ds.stats() [tenant={tag}] =====\n{ds.stats()}\n===== end stats =====\n",
+        flush=True,
+    )
+
 
 # ---------------------------------------------------------------------------
 # Main
