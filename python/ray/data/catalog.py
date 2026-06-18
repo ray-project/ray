@@ -211,7 +211,7 @@ class UnityCatalog(Catalog):
     @staticmethod
     def _infer_format(table_info: dict, table_url: str) -> Optional[ReaderFormat]:
         """Best-effort format hint from table metadata or file extension."""
-        fmt = table_info.get("data_source_format", "").lower()
+        fmt = (table_info.get("data_source_format") or "").lower()
         if fmt in {f.value for f in ReaderFormat}:
             return ReaderFormat(fmt)
 
