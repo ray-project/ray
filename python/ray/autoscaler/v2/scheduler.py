@@ -1227,6 +1227,23 @@ class ResourceDemandScheduler(IResourceScheduler):
         # Schedule the tasks/actor resource requests
         all_requests = ResourceRequestUtil.ungroup_by_count(request.resource_requests)
         if len(all_requests) > AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE:
+            # Sort by complexity before truncation so that specialized requests
+            # (GPU, label selectors, placement constraints) are preserved and
+            # homogeneous simple requests are the ones being truncated.
+            all_requests = sorted(
+                all_requests,
+                key=lambda req: (
+                    len(req.placement_constraints),
+                    (
+                        len(req.label_selectors[0].label_constraints)
+                        if req.label_selectors
+                        else 0
+                    ),
+                    len(req.resources_bundle.values()),
+                    sum(req.resources_bundle.values()),
+                ),
+                reverse=True,
+            )
             logger.info(
                 "Truncating %d resource demands to %d for scheduling.",
                 len(all_requests),
@@ -1982,9 +1999,11 @@ class ResourceDemandScheduler(IResourceScheduler):
             if node_cache.was_seen_or_mark(node):
                 continue
 
-            # Quick feasibility pre-check: skip nodes that definitely cannot
-            # fit any request, avoiding expensive deepcopy + try_schedule.
-            if min_resource_demand:
+            # Quick feasibility pre-check: skip RAY_RUNNING nodes that definitely
+            # cannot fit any request, avoiding expensive deepcopy + try_schedule.
+            # Only applied to running nodes (the main perf bottleneck) to avoid
+            # interfering with new node template evaluation.
+            if min_resource_demand and node.im_instance_status == Instance.RAY_RUNNING:
                 avail = node.get_available_resources(resource_request_source)
                 if not _can_fit_any_request(avail, min_resource_demand):
                     continue
