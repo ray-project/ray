@@ -43,7 +43,7 @@ from ray.data._internal.stats import (
 from ray.data._internal.util import MemoryProfiler
 from ray.data.block import BlockExecStats, BlockStats
 from ray.data.context import DataContext
-from ray.data.tests.util import _RowCountStats, column_udf
+from ray.data.tests.util import _ReadTaskStats, column_udf
 from ray.tests.conftest import *  # noqa
 
 
@@ -185,7 +185,10 @@ def test_custom_op_stats_are_carried_to_driver(ray_start_regular_shared):
         ctx = TaskContext.get_current()
         assert ctx is not None
 
-        ctx.custom_op_stats = _RowCountStats(num_rows=batch.num_rows)
+        ctx.custom_op_stats = _ReadTaskStats(
+            num_rows=batch.num_rows,
+            num_columns=len(batch.column_names),
+        )
         return batch
 
     ds = (
@@ -205,7 +208,7 @@ def test_custom_op_stats_are_carried_to_driver(ray_start_regular_shared):
             if task_exec_stats is not None and task_exec_stats.custom_op_stats:
                 custom_stats.append(task_exec_stats.custom_op_stats)
 
-    assert custom_stats == [_RowCountStats(num_rows=4)]
+    assert custom_stats == [_ReadTaskStats(num_rows=4, num_columns=1)]
 
 
 def gen_expected_metrics(

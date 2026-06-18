@@ -25,8 +25,9 @@ from ray.data.expressions import Expr
 
 
 @dataclass(frozen=True)
-class _RowCountStats(CustomOpStats):
+class _ReadTaskStats(CustomOpStats):
     num_rows: int
+    num_columns: int
 
 
 @ray.remote
