@@ -2,7 +2,7 @@
 
 # Sandboxed Code Execution with Ray and Agent Sandbox
 
-This example shows how to use the [Agent Sandbox](https://github.com/kubernetes-sigs/agent-sandbox) with Ray and KubeRay to execute LLM-generated code in a secure sandboxed environment. This example uses GKE and gVisor but can be modified to work on other providers.
+This example shows how to use the [Agent Sandbox](https://github.com/kubernetes-sigs/agent-sandbox) with Ray and KubeRay to orchestrate code execution in a secure sandboxed environment. This example uses GKE and gVisor but can be modified to work on other sandbox runtimes.
 
 ---
 
@@ -29,17 +29,11 @@ The following example creates a KubeRay RayJob, which runs a Ray job that uses t
 Run the following command to create a GKE cluster. In this example we will create two separate node pools, one for KubeRay provisioned Pods and one for Sandbox pods using the gVisor runtime:
 
 ```bash
-# 1. The System Pool (For Ray Head and Ray Workers)
-# We use e2-standard-4 (4 vCPU, 16GB RAM) to give the Ray orchestration processes enough headroom.
-
-gcloud container node-pools create ray-system-pool \
+gcloud container node-pools create ray-worker-pool \
     --cluster=<YOUR_CLUSTER_NAME> \
     --machine-type=e2-standard-4 \
     --num-nodes=2
 
-# 2. The Sandbox Pool (For untrusted code execution)
-# Explicitly enable gVisor on this pool. GKE will automatically taint
-# these nodes so regular workloads aren't placed here.
 gcloud container node-pools create ray-gvisor-pool \
     --cluster=<YOUR_CLUSTER_NAME> \
     --sandbox type=gvisor \
@@ -47,33 +41,17 @@ gcloud container node-pools create ray-gvisor-pool \
     --num-nodes=1
 ```
 
-### Step 2: Install KubeRay Operator
+### Step 2: Install KubeRay operator
 
-If you haven't already, install the KubeRay Operator using Helm:
-
-```bash
-# Add the KubeRay Helm repository
-helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-helm repo update
-
-# Deploy KubeRay Operator
-helm install kuberay-operator kuberay/kuberay-operator --version 1.1.0 --namespace default
-```
-
-Verify that the operator is running:
-```bash
-kubectl get pods -l app.kubernetes.io/name=kuberay-operator
-```
+Follow the instructions in [KubeRay operator](kuberay-operator-deploy) to install the KubeRay operator.
 
 ### Step 3: Deploy Agent Sandbox 
 
 Install the Custom Resource Definitions (CRDs), controllers, and extensions from the official Agent Sandbox release.
 
 ```bash
-# Set the desired version of Agent Sandbox
-export VERSION="v0.1.0"
+export VERSION="v0.4.6"
 
-# Install core manifests and API extensions
 kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${VERSION}/manifest.yaml
 kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${VERSION}/extensions.yaml
 ```
@@ -90,13 +68,9 @@ metadata:
   name: ray-sandbox-manager-role
   namespace: default
 rules:
-# 1. Permission to claim and delete sandboxes (the pool controller
-#    provisions fresh ones to backfill, no SDK-side recycling involved)
 - apiGroups: ["extensions.agents.x-k8s.io"]
   resources: ["sandboxclaims"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-
-# 2. Permission to watch the underlying sandbox status
 - apiGroups: ["agents.x-k8s.io"]
   resources: ["sandboxes"]
   verbs: ["get", "list", "watch"]
@@ -130,20 +104,20 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ra
 ```
 
 The following resources are created:
-- **`SandboxTemplate`**: defines the per-sandbox podSpec. The Pod is configured to use gVisor, sets `automountServiceAccountToken: false` so untrusted code inside the sandbox cannot read a Kubernetes ServiceAccount token, and sets `networkPolicyManagement: Unmanaged` because the NetworkPolicy below is stricter than the controller's Secure Default. The template also labels every sandbox pod with `app: ray-native-pool` so other selectors (the NetworkPolicy podSelector, your own `kubectl get` queries) can target them by a stable, human-readable label.
-- **`SandboxWarmPool`** (`ray-native-pool`) — keeps 6 pre-booted sandbox pods ready so the Ray actors' claims complete in under 200ms.
+- **`SandboxTemplate`**: defines the per-sandbox podSpec. The Pod is configured to use gVisor, sets `automountServiceAccountToken: false` so untrusted code inside the sandbox cannot read a Kubernetes ServiceAccount token, and sets `networkPolicyManagement: Unmanaged` because the NetworkPolicy below is stricter than the controller's Secure Default. The template also labels every sandbox pod with `app: python-runtime-pool` so other selectors (the NetworkPolicy podSelector, your own `kubectl get` queries) can target them by a stable, human-readable label.
+- **`SandboxWarmPool`** (`python-runtime-pool`) — keeps 6 pre-booted sandbox pods ready so the Ray actors' claims complete in under 200ms.
 - **`NetworkPolicy`** (`ray-native-pool-restrict-egress`) — default-denies egress for every sandbox pod except DNS. This is what makes the demo's containment claims in Step 7 concrete: the `lateral_internal_probe.py` and `reverse_shell_attempt.py` snippets hit TCP timeouts because the CNI drops their packets at the node, not because of any cluster-default policy you may or may not have.
 
 Verify the warm pool pods are running:
 
 ```bash
-kubectl get pods -l app=ray-native-pool
+kubectl get pods -l app=python-runtime-pool
 ```
 
 Based on the configuration of the SandboxWarmpool, we expect 6 gVisor Pods to be running:
 
 ```bash
-GVISOR_POD=$(kubectl get pod -l app=ray-native-pool -o jsonpath='{.items[0].metadata.name}')
+GVISOR_POD=$(kubectl get pod -l app=python-runtime-pool -o jsonpath='{.items[0].metadata.name}')
 kubectl get pod "$GVISOR_POD" -o jsonpath='{.spec.automountServiceAccountToken}{"\n"}'   # expect: false
 kubectl exec "$GVISOR_POD" -- ls /var/run/secrets/kubernetes.io/serviceaccount/ 2>&1     # expect: No such file or directory
 ```
@@ -153,8 +127,7 @@ kubectl exec "$GVISOR_POD" -- ls /var/run/secrets/kubernetes.io/serviceaccount/ 
 Run the following command to create a RayJob resource:
 
 ```sh
-# Create the RayJob
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox/ray-standard-setup.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox/ray-cluster.yaml
 ```
 
 The RayJob is configured to do the following:
@@ -174,71 +147,24 @@ kubectl get pods -l job-name=agent-sandbox-code-execution-demo
 # Stream the demo logs
 kubectl logs -f -l job-name=agent-sandbox-code-execution-demo
 ```
-Once the job starts, three `SandboxExecutor` Ray actors each claim one pod from `ray-native-pool` (the SDK reports per-actor adoption latency — sub-200ms when the warm pool is healthy). Every Python snippet that follows runs **inside the sandbox pod, never on the Ray worker**: gVisor isolates the syscall surface, the `ray-native-pool-restrict-egress` NetworkPolicy applied in Step 5 default-denies all egress except DNS, and `sandbox.commands.run(..., timeout=5)` bounds wall-clock blast radius per call. 
 
-Six snippets are dispatched to the executors in parallel via `ray.get` three safe and three deliberately dangerous. The driver prints one verdict line per snippet — `[OK]` if a safe snippet succeeded or a dangerous one was **caught by the sandbox**, `[UNEXPECTED]` otherwise — followed by an `X/6 snippets behaved as expected` summary.
+Once the job starts, three `SandboxExecutor` Ray actors each claim one pod from `ray-native-pool` (the SDK reports per-actor adoption latency — sub-200ms when the warm pool is healthy). Every Python snippet that follows runs **inside the sandbox pod, never on the Ray worker**: gVisor isolates the syscall surface, the `ray-native-pool-restrict-egress` NetworkPolicy applied in Step 5 default-denies all egress except DNS, and `sandbox.commands.run(..., timeout=5)` bounds wall-clock blast radius per call. 
 
 Expected output (abridged):
 
 ```
-... cli.py:66 -- Job 'agent-sandbox-code-execution-demo-xxxxx' submitted successfully
-...
-Spinning up 3 SandboxExecutor actors, each claiming one sandbox from the 'ray-native-pool' WarmPool...
-(SandboxExecutor pid=...) [executor-2] adopted sandbox 'sandbox-claim-...' in 0.164s
-(SandboxExecutor pid=...) [executor-0] adopted sandbox 'sandbox-claim-...' in 0.147s
-(SandboxExecutor pid=...) [executor-1] adopted sandbox 'sandbox-claim-...' in 0.141s
+Starting 2 SandboxExecutors...
+Dispatching 2 code executors...
+(SandboxExecutor pid=457, ip=10.72.5.24) [executor-1] claimed sandbox 'sandbox-claim-6d4504d8' in 0.257s
 
-Dispatching 6 snippets across 3 sandbox executors (Ray fans them out in parallel)...
+--- Execution Results ---
 
-============================================================
-Execution Results
-============================================================
+[compute_fib.py] (Exit Code: 0)
+  Stdout: fib(20) = 6765
 
-[OK] compute_fib.py (expected: safe) -> SUCCEEDED
-  stdout: fib(20) = 6765
+[json_aggregation.py] (Exit Code: 0)
+  Stdout: {"mean": 11.0, "max": 25}
 
-[OK] json_aggregation.py (expected: safe) -> SUCCEEDED
-  stdout: {"mean": 11.0, "max": 25}
-
-[OK] string_processing.py (expected: safe) -> SUCCEEDED
-  stdout: {'words': 3, 'chars': 18}
-
-[OK] lateral_internal_probe.py (expected: dangerous) -> EXITED (1)
-  stderr: Traceback (most recent call last):
-  File "/app/lateral_internal_probe.py", line 6, in <module>
-    s.connect(('10.0.0.1', 6379))
-TimeoutError: timed out
-
-[OK] reverse_shell_attempt.py (expected: dangerous) -> EXITED (1)
-  stderr: Traceback (most recent call last):
-  File "/app/reverse_shell_attempt.py", line 4, in <module>
-    s.connect(('192.0.2.1', 4444))
-TimeoutError: timed out
-
-[OK] cpu_burn_loop.py (expected: dangerous) -> RAISED
-  error: SandboxRequestError: Failed to communicate with the sandbox at http://...:8888/execute.
-
-============================================================
-Summary: 6/6 snippets behaved as expected
-============================================================
-```
-
-
----
-
-## Clean Up
-
-```bash
-# Delete the RayJob
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox/ray-standard-setup.yaml
-
-# Delete the SandboxTemplate, SandboxWarmPool, and NetworkPolicy
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/agent-sandbox/sandbox.yaml
-
-# Delete RBAC rules
-kubectl delete -f rbac.yaml
-
-# Delete node pools
-gcloud container node-pools delete ray-gvisor-pool --cluster=<YOUR_CLUSTER_NAME>
-gcloud container node-pools delete ray-system-pool --cluster=<YOUR_CLUSTER_NAME>
+Cleaning up sandboxes...
+(SandboxExecutor pid=342, ip=10.72.1.10) [executor-0] claimed sandbox 'sandbox-claim-3a93b626' in 0.212s
 ```
