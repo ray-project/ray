@@ -197,23 +197,32 @@ Dataset at construction — every downstream operator inherits it:
         eval_res = validation_dataset.map_batches(...)
         ...
 
-**Training-side configuration.** Apply a copy of the ``DataContext``
-with the ``DataContext.current()`` context manager when constructing the
-training Dataset (so reads/schema-inference tasks land on training nodes),
-and re-specify the selector in the trainer's ``dataset_config`` because
-``DataConfig.execution_options`` overrides the Dataset's options at
-training start:
+**Training-side configuration.** A Train pipeline needs the selector
+specified in two places — they cover different phases and are not
+redundant:
+
+1. **At Dataset construction**, via the ``DataContext.current()`` context
+   manager, so construction-time tasks (parquet schema inference, file
+   listing) land on training nodes.
+2. **In the trainer's** ``dataset_config``, because Train wholesale
+   replaces ``ds.context.execution_options`` with ``DataConfig``'s
+   per-dataset entry at training start. Anything not restated in
+   ``DataConfig.execution_options`` — ``label_selector`` included — is
+   dropped, so per-worker ingest would lose its pinning.
 
 .. code-block:: python
 
     from ray.data import ExecutionOptions
 
     def run_trainer() -> ray.train.Result:
+        # (1) Pin construction-time tasks.
         ctx = ray.data.DataContext.get_current().copy()
         ctx.execution_options.label_selector = {"ray-subcluster": "training"}
         with ray.data.DataContext.current(ctx):
             train_dataset = ray.data.read_parquet(...)
 
+        # (2) Pin per-worker ingest — Train replaces ds.context options
+        # wholesale, so the selector must be restated here.
         trainer = ray.train.torch.TorchTrainer(
             ...,
             datasets={"train": train_dataset},

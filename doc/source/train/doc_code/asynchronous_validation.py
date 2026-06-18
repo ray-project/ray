@@ -170,11 +170,11 @@ def train_func(config: dict) -> None:
 
 
 def run_trainer() -> ray.train.Result:
-    # Pin reads to the "training" subcluster by applying a copy of the
-    # DataContext via the DataContext.current() context manager. The copy
-    # is scoped to the `with` block; mutating the global DataContext
-    # directly would permanently affect every subsequent Dataset in this
-    # driver. See https://docs.ray.io/en/latest/data/concurrent-dataset-execution.html.
+    # 1) Construction-time tasks (parquet schema inference, file listing)
+    # read the current DataContext. Pin them to "training" with a copy of
+    # the DataContext applied via the DataContext.current() context
+    # manager — scoped to the `with` block so it doesn't leak. See
+    # https://docs.ray.io/en/latest/data/concurrent-dataset-execution.html.
     ctx = ray.data.DataContext.get_current().copy()
     ctx.execution_options.label_selector = {"ray-subcluster": "training"}
     with ray.data.DataContext.current(ctx):
@@ -185,8 +185,10 @@ def run_trainer() -> ray.train.Result:
         validation_config=ValidationConfig(fn=validation_fn),
         # Pass training dataset in datasets arg to split it across training workers
         datasets={"train": train_dataset},
-        # DataConfig.execution_options overrides ds.context at training
-        # start, so re-pin per-worker ingest to "training" here.
+        # 2) DataConfig.execution_options REPLACES ds.context.execution_options
+        # wholesale at training start, dropping anything not re-specified
+        # (including label_selector). Restate the selector here so per-worker
+        # ingest stays pinned to "training".
         dataset_config=ray.train.DataConfig(
             datasets_to_split=["train"],
             execution_options={
