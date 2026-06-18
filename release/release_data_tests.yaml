@@ -65,7 +65,7 @@
       num_files: [50]
       row_group_size: [64MiB]
       compression_ratio: [5.0]
-      read_memory: [2147483648]
+      read_memory: [4294967296]
       max_bucket_size: [5GiB, 15GiB, 30GiB]
       batch_target_bytes: [256MiB, 512MiB, 1GiB, 2GiB, 4GiB]
       use_version: [v3]
