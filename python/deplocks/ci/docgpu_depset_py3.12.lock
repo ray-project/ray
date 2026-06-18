@@ -392,10 +392,6 @@ attrs==26.1.0 \
     #   jsonschema
     #   open-spiel
     #   referencing
-authlib==1.6.12 \
-    --hash=sha256:0656d8482f28fc8221929d5f35b2bde5d13e10555ebc06b4561b0d622e83b1bd \
-    --hash=sha256:e9229ad7fde610b139dd12f5edbe97eab9ee78bfb85691247e767727850b99ab
-    # via gradio
 autograd==1.8.0 \
     --hash=sha256:107374ded5b09fc8643ac925348c0369e7b0e73bbed9565ffd61b8fd04425683 \
     --hash=sha256:4ab9084294f814cf56c280adbe19612546a35574d67c574b04933c7d2ecb7d78
@@ -1261,7 +1257,6 @@ cryptography==44.0.3 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
     #   adal
-    #   authlib
     #   azure-cli-core
     #   azure-identity
     #   joserfc
@@ -2734,7 +2729,6 @@ itsdangerous==2.2.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   flask
-    #   gradio
 jax==0.4.33 ; sys_platform != 'darwin' \
     --hash=sha256:5f33e30b49060ebc990b1f8d75f89d15b9fec263f6fff34ef1af1d01996d314f \
     --hash=sha256:f0d788692fc0179653066c9e1c64e57311b8c15a389837fd7baf328abefcbb92
@@ -4542,7 +4536,6 @@ numpy==2.2.6 \
     #   torch-geometric
     #   torchmetrics
     #   torchvision
-    #   trackio
     #   transformers
     #   triad
     #   utilsforecast
@@ -5113,7 +5106,6 @@ orjson==3.11.8 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   gradio
     #   tensordict
-    #   trackio
 ormsgpack==1.12.2 \
     --hash=sha256:0b39e629fd2e1c5b2f46f99778450b59454d1f901bc507963168985e79f09c5d \
     --hash=sha256:118576ea6006893aea811b17429bfc561b4778fad393f5f538c84af70b01260c \
@@ -5300,6 +5292,7 @@ pandas==2.3.3 \
     #   ray
     #   statsforecast
     #   statsmodels
+    #   tbparse
     #   trackio
     #   triad
     #   utilsforecast
@@ -5475,7 +5468,6 @@ pillow==11.3.0 \
     #   moviepy
     #   tensorboard
     #   torchvision
-    #   trackio
 pkginfo==1.12.1.2 \
     --hash=sha256:5cd957824ac36f140260964eba3c6be6442a8359b8c48f4adf90210f33a04b7b \
     --hash=sha256:c783ac885519cab2c34927ccfa6bf64b5a704d7c69afaea583dd9b7afe969343
@@ -5499,7 +5491,6 @@ plotly==6.7.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ax-platform
-    #   trackio
 pluggy==1.6.0 \
     --hash=sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3 \
     --hash=sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746
@@ -6046,7 +6037,6 @@ pydub==0.25.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   gradio
-    #   trackio
 pygame==2.5.2 \
     --hash=sha256:03879ec299c9f4ba23901b2649a96b2143f0a5d787f0b6c39469989e2320caf1 \
     --hash=sha256:074aa6c6e110c925f7f27f00c7733c6303407edc61d738882985091d1eb2ef17 \
@@ -7766,11 +7756,16 @@ tblib==3.2.2 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/train-test-requirements.txt
     #   distributed
+tbparse==0.0.9 \
+    --hash=sha256:51a001728bc539a1efed9f03450b1e0151ad14011c8c52f156cf55dc1fbaa884 \
+    --hash=sha256:528e7da6929148b612a517adb5fbdee709224cb7e2420489a9b6b174f2f808bc
+    # via trackio
 tensorboard==2.20.0 \
     --hash=sha256:9dc9f978cb84c0723acf9a345d96c184f0293d18f166bb8d59ee098e6cfaaba6
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
+    #   tbparse
     #   tensorflow
 tensorboard-data-server==0.7.2 \
     --hash=sha256:7e0610d205889588983836ec05dc098e80f97b7e7bbff7e994ebb78f578d0ddb \
@@ -8101,8 +8096,9 @@ tqdm==4.67.1 \
     #   statsforecast
     #   torch-geometric
     #   transformers
-trackio==0.20.2 \
-    --hash=sha256:8934715dca1e3ab8f4e9fe0dcf837a4393ab24f7d576e5f22dd65dc139482098
+trackio==0.2.2 \
+    --hash=sha256:0748e53354acf15b565837d38b9d4f2710b46fabf39cba4ba873ab911fdb2093 \
+    --hash=sha256:78eee4f120b54c0416f7dba9ba8caaf4abf1eeff46dbc39630df6c5c574ff6de
     # via -r python/requirements/ml/core-requirements.txt
 traitlets==5.14.3 \
     --hash=sha256:9ed0579d3502c94b4b3732ac120375cda96f923114522847de4b3bb98b96b6b7 \
