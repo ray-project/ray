@@ -616,6 +616,15 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         # hold the whole dataset (a single oversized bundle trips it immediately).
         self._sample_bytes: int = 0
         self._sample_bundles: int = 0
+        # Per-input-sequence sample totals. The two sides of a join (or any
+        # multi-input shuffle) can have very different per-bundle byte sizes and
+        # stream in at different rates, so extrapolating a single *global*
+        # average against the *summed* output count of all inputs skews the
+        # estimate whenever the early window is dominated by one input. We
+        # therefore extrapolate each input against its own output count and sum
+        # the contributions (see ``_estimate_dataset_bytes_from_sample``).
+        self._sample_bytes_by_input: DefaultDict[int, int] = defaultdict(int)
+        self._sample_bundles_by_input: DefaultDict[int, int] = defaultdict(int)
         self._sample_byte_limit: int = (
             data_context.target_max_block_size or DEFAULT_TARGET_MAX_BLOCK_SIZE
         )
@@ -699,8 +708,11 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             # Accumulate an online sample (across all input sequences) used to
             # size the aggregator pool. Once we've seen a small, bounded window
             # we start the shuffle and stream the remainder.
-            self._sample_bytes += input_bundle.size_bytes()
+            bundle_bytes = input_bundle.size_bytes()
+            self._sample_bytes += bundle_bytes
             self._sample_bundles += 1
+            self._sample_bytes_by_input[input_index] += bundle_bytes
+            self._sample_bundles_by_input[input_index] += 1
             if self._should_start_shuffle_from_sample():
                 self._start_shuffle(
                     estimated_dataset_bytes=self._extrapolate_dataset_bytes()
@@ -937,20 +949,47 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
     def _estimate_dataset_bytes_from_sample(self) -> Optional[int]:
         """Bundle-ratio estimate of total dataset bytes from the online sample,
-        or ``None`` if no reliable estimate can be derived yet."""
+        or ``None`` if no reliable estimate can be derived yet.
+
+        Each input sequence is extrapolated against *its own* output count using
+        its own sampled per-bundle average; the contributions are then summed.
+        This avoids skewing the estimate when the sample window is dominated by
+        one input (e.g. one side of a join that streams in first) while the
+        total bundle count spans every input. Inputs not yet sampled fall back
+        to the global average bundle size.
+        """
         if self._sample_bundles == 0:
             return None
 
-        expected_total_bundles = self.upstream_op_num_outputs()
-        if expected_total_bundles <= 0:
-            # Upstream output count hasn't materialized yet (e.g. DataSource V2
-            # before any read task finished).
+        global_avg_bytes_per_bundle = self._sample_bytes / self._sample_bundles
+
+        total_estimate = 0.0
+        saw_output_count = False
+        for input_index, input_op in enumerate(self.input_dependencies):
+            expected_bundles = input_op.num_outputs_total() or 0
+            if expected_bundles <= 0:
+                # This input's output count hasn't materialized yet (e.g.
+                # DataSource V2 before any read task finished).
+                continue
+            saw_output_count = True
+
+            sampled_bundles = self._sample_bundles_by_input.get(input_index, 0)
+            # Never extrapolate below what we've already observed for this input.
+            expected_bundles = max(expected_bundles, sampled_bundles)
+            if sampled_bundles > 0:
+                avg_bytes_per_bundle = (
+                    self._sample_bytes_by_input[input_index] / sampled_bundles
+                )
+            else:
+                avg_bytes_per_bundle = global_avg_bytes_per_bundle
+            total_estimate += avg_bytes_per_bundle * expected_bundles
+
+        if not saw_output_count:
+            # No input has a materialized output count yet.
             return None
 
-        avg_bytes_per_bundle = self._sample_bytes / self._sample_bundles
-        # Never extrapolate below what we've already observed.
-        expected_total_bundles = max(expected_total_bundles, self._sample_bundles)
-        return math.ceil(avg_bytes_per_bundle * expected_total_bundles)
+        # Never extrapolate below the bytes we've already physically observed.
+        return max(math.ceil(total_estimate), self._sample_bytes)
 
     def _start_shuffle(self, *, estimated_dataset_bytes: Optional[int]) -> None:
         if self._shuffle_started:

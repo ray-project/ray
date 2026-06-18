@@ -1116,6 +1116,82 @@ def test_hash_shuffle_aggregate_sampling_across_input_sequences(ray_start_regula
     create_pool.assert_called_once()
 
 
+def _make_join_op(left_num_outputs, right_num_outputs):
+    """Build a JoinOperator whose two upstreams report the given output-bundle
+    counts (None/0 => unknown)."""
+
+    def _join_input_mock(num_outputs):
+        logical_op_mock = MagicMock(LogicalOperator)
+        logical_op_mock.estimated_num_outputs.return_value = 16
+        # No logical size estimate (mirrors DataSource V2), so the sampled
+        # estimate is what `_extrapolate_dataset_bytes` returns.
+        logical_op_mock.infer_metadata.return_value = BlockMetadata(
+            num_rows=None,
+            size_bytes=None,
+            exec_stats=None,
+            input_files=None,
+        )
+        op_mock = MagicMock(PhysicalOperator)
+        op_mock._output_dependencies = []
+        op_mock._logical_operators = [logical_op_mock]
+        op_mock.num_output_splits.return_value = 1
+        op_mock.num_outputs_total.return_value = num_outputs
+        return op_mock
+
+    with patch(
+        "ray.data._internal.execution.operators.hash_shuffle.ray.cluster_resources",
+        return_value={"CPU": 4.0, "memory": 32 * GiB},
+    ):
+        op = JoinOperator(
+            left_input_op=_join_input_mock(left_num_outputs),
+            right_input_op=_join_input_mock(right_num_outputs),
+            data_context=DataContext.get_current(),
+            left_key_columns=("id",),
+            right_key_columns=("id",),
+            join_type=JoinType.INNER,
+            num_partitions=16,
+        )
+    return op
+
+
+def test_hash_shuffle_extrapolates_per_input_sequence(ray_start_regular):
+    # Each input is extrapolated against its OWN output count using its OWN
+    # sampled per-bundle average, so a sample dominated by one (light) input
+    # doesn't drag down the estimate for the other (heavy) input.
+    op = _make_join_op(left_num_outputs=100, right_num_outputs=100)
+    # input 0: 8 bundles @ 200 bytes/bundle. input 1: 2 bundles @ 2000 bytes.
+    op._sample_bytes_by_input[0] = 1600
+    op._sample_bundles_by_input[0] = 8
+    op._sample_bytes_by_input[1] = 4000
+    op._sample_bundles_by_input[1] = 2
+    op._sample_bytes = 5600
+    op._sample_bundles = 10
+    assert not op._inputs_complete
+
+    # Per-input: 200 * 100 + 2000 * 100 = 220_000.
+    # (A global average of 560 bytes/bundle would give only 560 * 200 = 112_000,
+    # badly under-sizing the pool for the heavy right input.)
+    assert op._extrapolate_dataset_bytes() == 220_000
+
+
+def test_hash_shuffle_unsampled_input_falls_back_to_global_average(
+    ray_start_regular,
+):
+    # An input with a known output count but no sampled bundles yet uses the
+    # global average bundle size rather than being dropped from the estimate.
+    op = _make_join_op(left_num_outputs=100, right_num_outputs=50)
+    # Only input 0 has been sampled: 8 bundles @ 200 bytes.
+    op._sample_bytes_by_input[0] = 1600
+    op._sample_bundles_by_input[0] = 8
+    op._sample_bytes = 1600
+    op._sample_bundles = 8
+    assert not op._inputs_complete
+
+    # input 0: 200 * 100 = 20_000; input 1 (unsampled): global avg 200 * 50 =
+    # 10_000. Total = 30_000.
+    assert op._extrapolate_dataset_bytes() == 30_000
+
+
 def test_partial_aggregate_preserves_sort_after_builder_compaction(
     ray_start_regular,
     monkeypatch,
