@@ -12,7 +12,7 @@ import pandas as pd
 from fsspec.core import split_protocol
 from fsspec.spec import AbstractFileSystem
 
-from ray.data._internal.util import _check_import
+from ray.data._internal.util import _check_import, _is_local_scheme
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 
@@ -254,6 +254,10 @@ class ZarrV2Datasource(Datasource):
 
         self.allow_full_metadata_scan = allow_full_metadata_scan
         self.paths = [str(path)]
+        # ``local://`` stores live on the driver's local disk, so pin reads to
+        # the driver node (workers on other nodes can't see those files).
+        # Mirrors FileBasedDatasource. Non-local/cloud stores read distributed.
+        self._supports_distributed_reads = not _is_local_scheme(self.paths)
 
         # Resolve filesystem + store path. The order of precedence:
         #   1. Explicit ``filesystem=`` always wins.
@@ -328,14 +332,18 @@ class ZarrV2Datasource(Datasource):
 
         # Open the store with zarr (consolidated metadata when available). zarr
         # reads and validates `.zarray`/`.zmetadata` here, so the datasource does
-        # not re-check that metadata itself.
+        # not re-check that metadata itself. Detect consolidation by *trying*
+        # ``open_consolidated`` rather than a separately-constructed ``exists``
+        # probe: the probe can disagree with the mapper's own key lookup (e.g.
+        # archive/root stores whose store path is empty) and wrongly treat a
+        # consolidated store as unconsolidated.
         store = self._fs.get_mapper(self._store_path)
-        z_meta_path = f"{self._store_path.rstrip('/')}/.zmetadata"
-        self._consolidated = self._fs.exists(z_meta_path)
-        if self._consolidated:
+        try:
             self.root = zarr.open_consolidated(store, mode="r")
-        else:
+            self._consolidated = True
+        except KeyError:
             self.root = zarr.open(store, mode="r")
+            self._consolidated = False
 
         self._metadata_by_path = self._load_metadata(array_paths)
         if not self._metadata_by_path:
@@ -421,6 +429,10 @@ class ZarrV2Datasource(Datasource):
                     f"per-array chunk_shapes dict that resolves all aligned "
                     f"arrays to the same axis-0 prefix) to re-tile them."
                 )
+
+    @property
+    def supports_distributed_reads(self) -> bool:
+        return self._supports_distributed_reads
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         """Total bytes = sum over selected arrays of ``prod(shape) * itemsize``."""
@@ -588,13 +600,21 @@ class ZarrV2Datasource(Datasource):
         from zarr.util import normalize_storage_path
 
         root = self.root
-
-        if isinstance(root, zarr.Array):
-            return {"": ZarrArrayMeta.from_zarr_array(root)}
-
         requested = (
             {normalize_storage_path(p) for p in array_paths} if array_paths else None
         )
+
+        if isinstance(root, zarr.Array):
+            # A store that is itself an array exposes exactly one path: "" (root).
+            # Reject any requested path that isn't the root so a bad ``array_paths``
+            # fails loudly here instead of silently returning the root array.
+            if requested is not None and requested != {""}:
+                raise ValueError(
+                    f"This Zarr store is a single root-level array (path ''), "
+                    f"but array_paths={array_paths!r} requested other path(s). "
+                    f"Pass array_paths=[''] or omit it."
+                )
+            return {"": ZarrArrayMeta.from_zarr_array(root)}
 
         if not self._consolidated and not self.allow_full_metadata_scan:
             if requested is None:
@@ -612,6 +632,8 @@ class ZarrV2Datasource(Datasource):
                     raise ValueError(
                         f"Array path {raw!r} not found in Zarr store."
                     ) from e
+                if not isinstance(arr, zarr.Array):
+                    raise ValueError(f"Array path {raw!r} is a group, not an array.")
                 out[name] = ZarrArrayMeta.from_zarr_array(arr)
             return out
 

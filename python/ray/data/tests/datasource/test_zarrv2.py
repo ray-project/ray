@@ -252,6 +252,49 @@ def test_array_paths_missing_zarray_file_raises_value_error(
         )
 
 
+def test_local_scheme_pins_reads_to_driver_node(zarrv2_group_store):
+    """``local://`` stores can't be read distributed; plain/cloud paths can."""
+    local = zarrv2_datasource.ZarrV2Datasource("local://" + str(zarrv2_group_store))
+    assert local.supports_distributed_reads is False
+
+    plain = zarrv2_datasource.ZarrV2Datasource(str(zarrv2_group_store))
+    assert plain.supports_distributed_reads is True
+
+
+def test_consolidation_detected_via_open_consolidated(
+    zarrv2_group_store, unconsolidated_zarrv2_store
+):
+    """``_consolidated`` reflects whether ``.zmetadata`` actually opened."""
+    consolidated = zarrv2_datasource.ZarrV2Datasource(
+        str(zarrv2_group_store), array_paths=["images"]
+    )
+    assert consolidated._consolidated is True
+
+    unconsolidated = zarrv2_datasource.ZarrV2Datasource(
+        str(unconsolidated_zarrv2_store), array_paths=["images"]
+    )
+    assert unconsolidated._consolidated is False
+
+
+def test_array_paths_rejects_group_path(tmp_path):
+    """Requesting a group path (not an array) on an unconsolidated store errors."""
+    store_path = tmp_path / "withgroup.zarr"
+    root = zarr.open_group(str(store_path), mode="w")
+    grp = root.create_group("grp")
+    grp.create_dataset("inner", data=np.arange(4, dtype="<i4"), chunks=(2,))
+    # Not consolidated -> the per-array ``.zarray`` lookup path.
+    with pytest.raises(ValueError, match="is a group, not an array"):
+        zarrv2_datasource.ZarrV2Datasource(str(store_path), array_paths=["grp"])
+
+
+def test_root_array_rejects_non_root_array_paths(zarrv2_root_store):
+    """A single root-level array rejects array_paths that aren't the root ''."""
+    with pytest.raises(ValueError, match="single root-level array"):
+        zarrv2_datasource.ZarrV2Datasource(
+            str(zarrv2_root_store), array_paths=["missing"]
+        )
+
+
 # ---------------------------------------------------------------------------
 # chunk_shapes validation
 # ---------------------------------------------------------------------------
