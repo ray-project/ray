@@ -12,7 +12,7 @@ ray_cc_library(
 
 ray_cc_library(
     name = "clock",
-    srcs = ["clock.cc"],
+    srcs = ["fake_clock.cc"],
     hdrs = ["clock.h"],
     deps = [
         "@com_google_absl//absl/synchronization",
