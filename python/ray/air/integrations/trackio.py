@@ -85,7 +85,7 @@ def setup_trackio(
         rank_zero_only: If True, only the rank 0 worker in distributed training
             will initialize Trackio. If False, all workers will create runs.
         **kwargs: Additional keyword arguments accepted for forward
-        compatibility.
+            compatibility.
 
     Returns:
         A Trackio run object returned by ``trackio.init()``.
@@ -137,6 +137,7 @@ def setup_trackio(
         gpu_log_interval=gpu_log_interval,
         dataset_id=dataset_id,
         space_id=space_id,
+        **kwargs,
     )
 
     if kwargs:
