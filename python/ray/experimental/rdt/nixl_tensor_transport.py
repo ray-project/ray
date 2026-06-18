@@ -230,6 +230,10 @@ class NixlTensorTransport(TensorTransportManager):
         self._memory_pool: Optional[MemoryPoolManager] = None
         # The NIXL backend the agent was actually created with ("UCX" or "LIBFABRIC").
         self._backend: Optional[str] = None
+        # Cached agent-init failure message. Set when backend selection fails
+        # deterministically (e.g. the LIBFABRIC GPUDirect probe) so repeated
+        # calls fail fast instead of rebuilding and re-probing an agent.
+        self._agent_init_error: Optional[str] = None
 
     def tensor_transport_backend(self) -> str:
         return "NIXL"
@@ -346,31 +350,43 @@ class NixlTensorTransport(TensorTransportManager):
             free_fn()
 
     def get_nixl_agent(self):
-        """
-        Creates a NIXL agent if not already created.
-        """
-        if self._nixl_agent is not None:
-            return self._nixl_agent
+        """Returns the NIXL agent, building it once on first use.
 
+        A deterministic init failure (e.g. the LIBFABRIC GPUDirect probe) is
+        cached and re-raised on later calls, so we don't rebuild and re-probe an
+        agent every time (which would orphan libfabric resources).
+        """
+        if self._agent_init_error is not None:
+            raise RuntimeError(self._agent_init_error)
+        if self._nixl_agent is None:
+            self._nixl_agent = self._init_nixl_agent()
+        return self._nixl_agent
+
+    def _init_nixl_agent(self):
+        """Builds the NIXL agent for the selected backend, validating LIBFABRIC."""
         backend, is_override = self._resolve_backend()
         agent = self._make_nixl_agent(backend)
 
         # Auto-selected LIBFABRIC: EFA presence doesn't guarantee GPUDirect works,
         # so validate before committing and fail loudly instead of hitting a
         # cryptic NIXL_ERR_BACKEND at transfer time. An override skips this.
-        if backend == "LIBFABRIC" and not is_override:
-            if not self._libfabric_registration_works(agent):
-                raise RuntimeError(
-                    "EFA devices were detected, but a realistic-size CUDA memory "
-                    "registration failed under the LIBFABRIC backend. This usually "
-                    "means GPUDirect isn't available (missing nvidia-peermem/dmabuf) "
-                    "or the probe ran against VMM memory "
-                    "(PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True). Fix the "
-                    "instance setup, or set RAY_NIXL_BACKEND=UCX to use UCX instead."
-                )
+        if (
+            backend == "LIBFABRIC"
+            and not is_override
+            and not self._libfabric_registration_works(agent)
+        ):
+            del agent  # release the unusable agent's libfabric resources
+            self._agent_init_error = (
+                "EFA devices were detected, but a realistic-size CUDA memory "
+                "registration failed under the LIBFABRIC backend. This usually "
+                "means GPUDirect isn't available (missing nvidia-peermem/dmabuf) "
+                "or the probe ran against VMM memory "
+                "(PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True). Fix the "
+                "instance setup, or set RAY_NIXL_BACKEND=UCX to use UCX instead."
+            )
+            raise RuntimeError(self._agent_init_error)
 
         self._backend = backend
-        self._nixl_agent = agent
         logger.info("Using NIXL backend: %s", backend)
         return agent
 

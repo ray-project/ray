@@ -119,7 +119,7 @@ def test_autodetected_libfabric_commits_when_probe_passes(monkeypatch):
 def test_autodetected_libfabric_raises_when_probe_fails(monkeypatch):
     """A failed validation probe signals a misconfigured instance, so fail loudly."""
     _patch_globs(monkeypatch, {"/sys/class/net/efa*"})
-    _capture_created_backends(monkeypatch)
+    created = _capture_created_backends(monkeypatch)
     monkeypatch.setattr(
         NixlTensorTransport,
         "_libfabric_registration_works",
@@ -129,6 +129,12 @@ def test_autodetected_libfabric_raises_when_probe_fails(monkeypatch):
     transport = NixlTensorTransport()
     with pytest.raises(RuntimeError, match="LIBFABRIC"):
         transport.get_nixl_agent()
+
+    # The deterministic failure is cached: a second call fails fast without
+    # rebuilding and re-probing another agent.
+    with pytest.raises(RuntimeError, match="LIBFABRIC"):
+        transport.get_nixl_agent()
+    assert created == ["LIBFABRIC"]
 
 
 def test_override_skips_probe(monkeypatch):
