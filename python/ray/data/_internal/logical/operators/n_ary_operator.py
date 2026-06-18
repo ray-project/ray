@@ -69,22 +69,13 @@ class NAry(LogicalOperator):
     def __init__(
         self,
         input_dependencies: List[LogicalOperator],
-        num_outputs: Optional[int] = None,
     ):
         """Initialize the n-ary operator.
 
         Args:
             input_dependencies: The input operators.
-            num_outputs: The estimated number of output bundles, or ``None`` if unknown.
         """
-        super().__init__(
-            _num_outputs=num_outputs,
-        )
         object.__setattr__(self, "_input_dependencies", list(input_dependencies))
-
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return self._num_outputs
 
     def _with_new_input_dependencies(
         self, input_dependencies: List[LogicalOperator]
@@ -97,7 +88,6 @@ class Zip(NAry):
     """Logical operator for zip."""
 
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __init__(
         self,
@@ -106,7 +96,6 @@ class Zip(NAry):
         for input_op in input_dependencies:
             assert isinstance(input_op, LogicalOperator), input_op
         object.__setattr__(self, "_input_dependencies", list(input_dependencies))
-        object.__setattr__(self, "_num_outputs", None)
 
     def estimated_num_outputs(self):
         total_num_outputs = 0
@@ -145,7 +134,6 @@ class Mix(NAry, LogicalOperatorUnifiesInputSchemas):
 
     _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
     weights: List[float] = field(init=False, repr=False)
     stopping_condition: MixStoppingCondition = field(init=False, repr=False)
 
@@ -168,7 +156,6 @@ class Mix(NAry, LogicalOperatorUnifiesInputSchemas):
             assert isinstance(input_op, LogicalOperator), input_op
         object.__setattr__(self, "_name", self.__class__.__name__)
         object.__setattr__(self, "_input_dependencies", list(input_dependencies))
-        object.__setattr__(self, "_num_outputs", None)
         object.__setattr__(self, "weights", weights)
         object.__setattr__(self, "stopping_condition", stopping_condition)
 
@@ -201,7 +188,6 @@ class Union(
     """Logical operator for union."""
 
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __init__(
         self,
@@ -210,7 +196,6 @@ class Union(
         for input_op in input_dependencies:
             assert isinstance(input_op, LogicalOperator), input_op
         object.__setattr__(self, "_input_dependencies", list(input_dependencies))
-        object.__setattr__(self, "_num_outputs", None)
 
     def estimated_num_outputs(self):
         total_num_outputs = 0
