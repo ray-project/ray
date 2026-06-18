@@ -28,3 +28,8 @@ h5py==3.12.1
 
 # Requirements for rendering.
 moviepy
+
+# For ONNX export tests (policy_inference_after_training examples, --use-onnx-for-inference).
+onnx==1.16.0; sys_platform != 'darwin' or platform_machine != 'arm64'
+onnxruntime==1.18.0; sys_platform != 'darwin' or platform_machine != 'arm64'
+onnxscript; sys_platform != 'darwin' or platform_machine != 'arm64'

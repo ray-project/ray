@@ -27,6 +27,7 @@ shows you how to achieve several tasks.
     working-with-zarr
     working-with-pytorch
     working-with-llms
+    how-to-avoid-ooms
     monitoring-your-workload
     execution-configurations
     batch_inference
