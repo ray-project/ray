@@ -240,6 +240,7 @@ anyio==4.13.0 \
     --hash=sha256:334b70e641fd2221c1505b3890c69882fe4a2df910cba14d97019b90b24439dc
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
     #   httpx
     #   starlette
     #   taskiq
@@ -1594,6 +1595,12 @@ h5py==3.12.1 \
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   keras
     #   tensorflow
+hf-gradio==0.4.1 \
+    --hash=sha256:76b8cb8be6abe62d74c1ad2d35b42f0629db89aa9e1a8d033cecfe7c856eeab3 \
+    --hash=sha256:a017d942618f0d495a58ee4563047fa04bef614c00e0cb789a9a6d0633cffa7b
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
 hf-xet==1.5.1 ; platform_machine == 'AMD64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64' \
     --hash=sha256:0c97106032ef70467b4f6bc2d0ccc266d7613ee076afc56516c502f87ce1c4a6 \
     --hash=sha256:3474760d10e3bb6f92ff3f024fcb00c0b3e4001e9b035c7483e49a5dd17aa70f \
@@ -1679,7 +1686,10 @@ httpx==0.28.1 \
     --hash=sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
+    #   gradio-client
     #   huggingface-hub
+    #   safehttpx
 huey==2.6.0 \
     --hash=sha256:1b9df9d370b49c6d5721ba8a01ac9a787cf86b3bdc584e4679de27b920395c3f \
     --hash=sha256:8d11f8688999d65266af1425b831f6e3773e99415027177b8734b0ffd5e251f6
@@ -4744,6 +4754,12 @@ s3fs==2023.12.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/core-requirements.txt
+safehttpx==0.1.7 \
+    --hash=sha256:c4f4a162db6993464d7ca3d7cc4af0ffc6515a606dfd220b9f82c6945d869cde \
+    --hash=sha256:db201c0978c41eddb8bb480f3eee59dd67304fdd91646035e9d9a720049a9d23
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
 safetensors==0.8.0 \
     --hash=sha256:040070828e36dc8e122178bbbd5830ff9e97920affb84cbe0f46442497bed358 \
     --hash=sha256:096ec1a98435df7beb08853bb5aa9081a84f23d0adc67ed1a0a10550f608373f \
@@ -5354,6 +5370,9 @@ tqdm==4.67.1 \
     #   proglog
     #   torch-geometric
     #   transformers
+trackio==0.20.2 \
+    --hash=sha256:8934715dca1e3ab8f4e9fe0dcf837a4393ab24f7d576e5f22dd65dc139482098
+    # via -r python/requirements/ml/core-requirements.txt
 transformers==5.11.0 \
     --hash=sha256:06d0a34eab529955f8e704b530663c7d6bd6f9c7a9e47a05cddb4a44e7b6566b \
     --hash=sha256:1dbecade5b8a09bdf3e9e8fdfc9d312cb9eccf5a201080dc894b373f0f3eb5f4
@@ -5381,6 +5400,8 @@ typer==0.24.1 \
     --hash=sha256:e39b4732d65fbdcde189ae76cf7cd48aeae72919dea1fdfc16593be016256b45
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
+    #   hf-gradio
     #   huggingface-hub
     #   transformers
 typing-extensions==4.15.0 \
