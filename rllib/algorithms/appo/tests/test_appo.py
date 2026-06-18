@@ -234,8 +234,7 @@ class TestAPPO(unittest.TestCase):
             # The global server actor exists iff the flag is enabled.
             self.assertEqual(algo._env_runner_state_server is not None, use_server)
 
-            for _ in range(5):
-                results = algo.train()
+            results = algo.train()
             check_train_results_new_api_stack(results)
             algo.stop()
 

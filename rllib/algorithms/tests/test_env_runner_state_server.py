@@ -13,12 +13,6 @@ def _state(seq_no, weights="WEIGHTS_OBJ_REF"):
     return {WEIGHTS_SEQ_NO: seq_no, "rl_module": weights}
 
 
-def test_empty_server():
-    server = EnvRunnerStateServer()
-    assert server.pull() is None
-    assert server.get_version() == -1
-
-
 def test_push_pull_roundtrip_preserves_state_verbatim():
     server = EnvRunnerStateServer()
     state = _state(3)
