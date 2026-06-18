@@ -3367,7 +3367,6 @@ def _wait_generators_bulk(
         ready_local_ref_set = set(ready_last_refs) if last_refs_fetch_local else set()
         ready_batch_infos = []
         refs_to_fetch_local = []
-        refs_seen = set()
         for gen_index in ready_last_indices:
             refs = generator_refs[gen_index]
             fetch_locals = ray_generators[gen_index][1]
@@ -3376,9 +3375,8 @@ def _wait_generators_bulk(
                 if not fetch_local:
                     continue
                 required_local_refs.append(ref)
-                if ref not in ready_local_ref_set and ref not in refs_seen:
+                if ref not in ready_local_ref_set:
                     refs_to_fetch_local.append(ref)
-                    refs_seen.add(ref)
             ready_batch_infos.append((gen_index, refs, required_local_refs))
 
         if refs_to_fetch_local:

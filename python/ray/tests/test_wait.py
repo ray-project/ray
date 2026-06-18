@@ -165,7 +165,7 @@ def test__wait_generators_bulk_fetch_local(monkeypatch, ray_start_cluster):
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
-def test__wait_generators_bulk(ray_start_regular):
+def test__wait_generators_bulk_wait_for_at_most_num_return(ray_start_regular):
     @ray.remote
     def gen(base, delays):
         for i, delay in enumerate(delays):
@@ -241,7 +241,7 @@ def test__wait_generators_bulk_validation(ray_start_regular):
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
-def test__wait_generators_bulk_after_eof(ray_start_regular):
+def test__wait_generators_bulk_after_eof_raise_EndOfStreamError(ray_start_regular):
     @ray.remote
     def empty_gen():
         if False:

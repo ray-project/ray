@@ -4858,6 +4858,15 @@ cdef class CoreWorker:
 
     def try_read_next_object_ref_stream_n(
             self, ObjectRef generator_id, int64_t num_items):
+        """
+        Advance the ObjectRefStream cursor by num_items.
+
+        Args:
+            generator_id: The object ref id of the streaming generator task.
+            num_items: The number of indexes to advance past, starting from
+                the current head of the stream.
+        """
+
         cdef:
             CObjectID c_generator_id = generator_id.native()
 
@@ -4895,6 +4904,18 @@ cdef class CoreWorker:
                 c_object_ref_and_is_ready_pair.second)
 
     def peek_object_ref_stream_n(self, ObjectRef generator_id, int64_t num_items):
+        """
+        Read multiple next indexes of an ObjectRefStream of generator_id without
+        consuming them.
+
+        Args:
+            generator_id: The object ref id of the streaming generator task.
+            num_items: Number of next refs to peek.
+
+        Returns:
+            Object references for the next indexes and whether each object is
+            ready.
+        """
         cdef:
             CObjectID c_generator_id = generator_id.native()
             c_vector[pair[CObjectReference, c_bool]] c_object_refs_and_ready
