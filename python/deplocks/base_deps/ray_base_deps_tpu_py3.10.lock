@@ -2564,6 +2564,10 @@ pyyaml==6.0.3 \
     #   orbax-checkpoint
     #   ray
     #   uvicorn
+ray-haproxy==2.8.20 ; sys_platform == 'linux' \
+    --hash=sha256:a955cbb370c9b9a4dadecd265ddff3ac6d007ad70eae293f05ef753a22b5e1f2 \
+    --hash=sha256:da23d7d28c39247826466ddfe3c166db7cef5dcd44d8a64b8f9eb91e7089076c
+    # via ray
 referencing==0.37.0 \
     --hash=sha256:381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231 \
     --hash=sha256:44aefc3142c5b842538163acb373e24cce6632bd54bdb01b21ad5863489f50d8

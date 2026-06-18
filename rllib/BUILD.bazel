@@ -3492,18 +3492,6 @@ py_test(
     ],
 )
 
-py_test(
-    name = "examples/_old_api_stack/catalogs/mobilenet_v2_encoder",
-    size = "small",
-    srcs = ["examples/_old_api_stack/catalogs/mobilenet_v2_encoder.py"],
-    main = "examples/_old_api_stack/catalogs/mobilenet_v2_encoder.py",
-    tags = [
-        "examples",
-        "no_main",
-        "team:rllib",
-    ],
-)
-
 # subdirectory: checkpoints/
 # ....................................
 py_test(

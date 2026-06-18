@@ -385,6 +385,9 @@ class SchedulingNode:
             disable_launch_config_check: If outdated node check through launch config is
                 disabled.
 
+        Returns:
+            A scheduling node for the instance, or None if the instance is not
+            schedulable.
         """
         if not SchedulingNode.is_schedulable(instance):
             return None
@@ -392,10 +395,23 @@ class SchedulingNode:
         node_config = node_type_configs.get(instance.im_instance.instance_type, None)
 
         if instance.im_instance.status == Instance.RAY_RUNNING:
-            assert instance.ray_node is not None, (
-                "ray node should not be None "
-                f"when the instance is running ray: instance={instance}"
-            )
+            if instance.ray_node is None:
+                # Defensive: a RAY_RUNNING instance whose ray_node we cannot
+                # find in GCS indicates a transient inconsistency between the
+                # instance manager and GCS (e.g. the worker pod restarted
+                # during the drain window and the stuck-instance handler
+                # reverted the instance back to RAY_RUNNING with a stale
+                # node_id). Skip rather than asserting, so that a single bad
+                # row does not crash the entire reconcile loop and block all
+                # autoscaling decisions.
+                logger.warning(
+                    "Skipping RAY_RUNNING instance with ray_node=None (stale "
+                    f"state): instance_id={instance.im_instance.instance_id}, "
+                    f"node_id={instance.im_instance.node_id}. This usually "
+                    "indicates a transient inconsistency between the instance "
+                    "manager and GCS."
+                )
+                return None
             # An running ray node
             return SchedulingNode(
                 node_type=instance.im_instance.instance_type,
@@ -509,7 +525,9 @@ class SchedulingNode:
             node_kind: The node kind.
             im_instance_id: The instance id of the im instance.
             im_instance_status: The instance status of the im instance.
-            node_kind: The node kind.
+
+        Returns:
+            A scheduling node for the given node config.
         """
         return SchedulingNode(
             node_type=node_config.name,
@@ -614,6 +632,10 @@ class SchedulingNode:
             label of the resource request, we should give it a higher score.
 
         TODO(rickyx): add pluggable scoring functions here.
+
+        Args:
+            resource_request_source: The resource request source to score
+                against.
 
         Returns:
             A utilization score for this node.
@@ -920,6 +942,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             Args:
                 req: The scheduling request. The caller should make sure the
                     request is valid.
+
+            Returns:
+                A schedule context populated from the scheduling request.
             """
 
             nodes = []
@@ -1524,7 +1549,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         Args:
             ctx: The schedule context.
-            requests_by_count: The resource requests.
+            requests: The resource requests.
 
         Returns:
             A list of infeasible resource requests.
@@ -1626,8 +1651,8 @@ class ResourceDemandScheduler(IResourceScheduler):
         then try to schedule the requests on new nodes if possible.
 
         Args:
-            requests_to_sched: The resource requests to be scheduled.
             ctx: The current scheduling context.
+            requests_to_sched: The resource requests to be scheduled.
             resource_request_source: The source of the resource request, i.e.
                 pending demands from ray actors/tasks or cluster resource
                 constraints.
