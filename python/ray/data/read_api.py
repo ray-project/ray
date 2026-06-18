@@ -989,19 +989,16 @@ def read_zarr(
             ``.zarray`` files when ``array_paths`` is unspecified and
             ``.zmetadata`` is missing. This may be slow or expensive for large
             remote stores, so it is disabled by default.
-        align_axis_0: Opt-in switch to the wide-form schema. Pass ``True``
-            to emit one row per axis-0 chunk with one column per selected
-            array, plus ``t_start`` and ``t_stop`` columns naming the
-            global axis-0 range. All selected arrays must share
-            ``shape[0]`` and must end up with the same effective axis-0
-            chunk size after ``chunk_shapes`` resolution. The
-            default (``False``) uses the long-form chunk-per-row schema.
-        overlap: With ``align_axis_0``, extend each row's per-array data
-            forward by ``overlap`` timesteps (clipped at the store end) for
-            sliding-window pipelines; see
-            :ref:`Working with Zarr <working_with_zarr>`. Row ownership
-            (the ``t_start``/``t_stop`` columns) is unchanged. Requires
-            ``align_axis_0=True``. Defaults to ``0``.
+        align_axis_0: If ``True``, emit the wide-form schema: one row per
+            axis-0 chunk with one column per selected array, plus ``t_start``
+            and ``t_stop`` columns naming the global axis-0 range. All selected
+            arrays must share ``shape[0]`` and resolve to the same effective
+            axis-0 chunk size after ``chunk_shapes`` resolution. Defaults to
+            ``False`` (long-form, one chunk per row).
+        overlap: The number of additional axis-0 timesteps to extend each
+            row's per-array data forward by, clipped at the store end, for
+            sliding-window pipelines. Only valid with ``align_axis_0=True``.
+            Defaults to ``0``. See :ref:`Working with Zarr <working_with_zarr>`.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
