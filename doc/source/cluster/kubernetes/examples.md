@@ -18,7 +18,7 @@ examples/rayserve-llm-example
 examples/rayserve-deepseek-example
 examples/verl-post-training
 examples/argocd
-examples/rayjob-agent-sandbox-direct-proxy
+examples/rayjob-agent-sandbox
 ```
 
 
@@ -36,5 +36,5 @@ This section presents example Ray workloads to try out on your Kubernetes cluste
 - {ref}`kuberay-rayservice-llm-example`
 - {ref}`kuberay-rayservice-deepseek-example`
 - {ref}`kuberay-verl`
-- {ref}`kuberay-agent-sandbox-direct-proxy`
+- {ref}`kuberay-agent-sandbox`
 
