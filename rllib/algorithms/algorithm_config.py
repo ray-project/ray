@@ -344,6 +344,8 @@ class AlgorithmConfig(_Config):
         self.add_default_connectors_to_module_to_env_pipeline = True
         self.merge_env_runner_states = "training_only"
         self.broadcast_env_runner_states = True
+        self.use_env_runner_state_server = False
+        self.env_runner_state_server_max_concurrency = 16
         self.episode_lookback_horizon = 1
         # TODO (sven): Rename into `sample_timesteps` (or `sample_duration`
         #  and `sample_duration_unit` (replacing batch_mode), like we do it
@@ -368,6 +370,7 @@ class AlgorithmConfig(_Config):
         self.num_learners = 0
         self.num_gpus_per_learner = 0
         self.num_cpus_per_learner = "auto"
+        self.custom_resources_per_learner = {}
         self.num_aggregator_actors_per_learner = 0
         self.max_requests_in_flight_per_aggregator_actor = 3
         self.local_gpu_idx = 0
@@ -1876,6 +1879,8 @@ class AlgorithmConfig(_Config):
         episode_lookback_horizon: Optional[int] = NotProvided,
         merge_env_runner_states: Optional[Union[str, bool]] = NotProvided,
         broadcast_env_runner_states: Optional[bool] = NotProvided,
+        use_env_runner_state_server: Optional[bool] = NotProvided,
+        env_runner_state_server_max_concurrency: Optional[int] = NotProvided,
         compress_observations: Optional[bool] = NotProvided,
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
         batch_mode: Optional[str] = NotProvided,
@@ -2001,6 +2006,14 @@ class AlgorithmConfig(_Config):
             broadcast_env_runner_states: True, if merged EnvRunner states (from the
                 central connector pipelines) should be broadcast back to all remote
                 EnvRunner actors.
+            use_env_runner_state_server: If True (new API stack, async algorithms like
+                IMPALA/APPO), EnvRunners pull the latest weights and merged connector
+                states from a single global `EnvRunnerStateServer` actor at the top of
+                each `sample()` call, instead of the Algorithm broadcasting state to
+                every EnvRunner.
+            env_runner_state_server_max_concurrency: `max_concurrency` of the
+                `EnvRunnerStateServer` actor, i.e. how many EnvRunner `pull` requests it
+                serves concurrently. Only used when `use_env_runner_state_server=True`.
             use_worker_filter_stats: Whether to use the workers in the EnvRunnerGroup to
                 update the central filters (held by the local worker). If False, stats
                 from the workers aren't used and are discarded.
@@ -2159,6 +2172,12 @@ class AlgorithmConfig(_Config):
             self.merge_env_runner_states = merge_env_runner_states
         if broadcast_env_runner_states is not NotProvided:
             self.broadcast_env_runner_states = broadcast_env_runner_states
+        if use_env_runner_state_server is not NotProvided:
+            self.use_env_runner_state_server = use_env_runner_state_server
+        if env_runner_state_server_max_concurrency is not NotProvided:
+            self.env_runner_state_server_max_concurrency = (
+                env_runner_state_server_max_concurrency
+            )
         if use_worker_filter_stats is not NotProvided:
             self.use_worker_filter_stats = use_worker_filter_stats
         if update_worker_filter_stats is not NotProvided:
@@ -2275,6 +2294,7 @@ class AlgorithmConfig(_Config):
         num_learners: Optional[int] = NotProvided,
         num_cpus_per_learner: Optional[Union[str, float, int]] = NotProvided,
         num_gpus_per_learner: Optional[Union[float, int]] = NotProvided,
+        custom_resources_per_learner: Optional[Dict[str, float]] = NotProvided,
         num_aggregator_actors_per_learner: Optional[int] = NotProvided,
         max_requests_in_flight_per_aggregator_actor: Optional[float] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
@@ -2310,6 +2330,11 @@ class AlgorithmConfig(_Config):
                 `num_learners=0`, any value greater than 0 runs the
                 training on a single GPU on the main process, while a value of 0 runs
                 the training on main process CPUs.
+            custom_resources_per_learner: Any custom Ray resources to allocate
+                per Learner worker. Useful for pinning Learners to specific
+                nodes via custom resource labels. Note: do NOT put ``"CPU"``
+                or ``"GPU"`` in here -- use ``num_cpus_per_learner`` and
+                ``num_gpus_per_learner`` instead.
             num_aggregator_actors_per_learner: The number of aggregator actors per
                 Learner (if num_learners=0, one local learner is created). Must be at
                 least 1. Aggregator actors perform the task of a) converting episodes
@@ -2365,6 +2390,18 @@ class AlgorithmConfig(_Config):
             self.num_cpus_per_learner = num_cpus_per_learner
         if num_gpus_per_learner is not NotProvided:
             self.num_gpus_per_learner = num_gpus_per_learner
+        if custom_resources_per_learner is not NotProvided:
+            if (
+                "CPU" in custom_resources_per_learner
+                or "GPU" in custom_resources_per_learner
+            ):
+                raise ValueError(
+                    "Do not include 'CPU' or 'GPU' in "
+                    "`custom_resources_per_learner`. Use `num_cpus_per_learner` "
+                    "and `num_gpus_per_learner` instead. Got: "
+                    f"{custom_resources_per_learner}"
+                )
+            self.custom_resources_per_learner = custom_resources_per_learner
         if num_aggregator_actors_per_learner is not NotProvided:
             self.num_aggregator_actors_per_learner = num_aggregator_actors_per_learner
         if max_requests_in_flight_per_aggregator_actor is not NotProvided:

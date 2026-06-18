@@ -1105,6 +1105,9 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
                 Available options: "cloudpickle", "pickle", "msgpack", "orjson".
                 Defaults to "cloudpickle".
 
+        Returns:
+            A new ``DeploymentHandle`` with the requested options applied.
+
         Example:
 
         .. code-block:: python
@@ -1137,25 +1140,8 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
             response_serialization=response_serialization,
         )
 
-    def _get_request_router(
-        self,
-    ) -> Optional["ray.serve._private.request_router.request_router.RequestRouter"]:
-        """Temporary: expose the request router used by the HTTP router.
-
-        TODO(eicherseiji): Replace this with DeploymentHandle.choose_replica()
-        when ray-project/ray#60865 lands.
-        """
-        if self._router is None:
-            return None
-
-        asyncio_router = getattr(self._router, "_asyncio_router", None)
-        if asyncio_router is not None:
-            return asyncio_router.request_router
-
-        return getattr(self._router, "request_router", None)
-
     def remote(
-        self, *args, **kwargs
+        self, *args: Any, **kwargs: Any
     ) -> Union[DeploymentResponse[Any], DeploymentResponseGenerator[Any]]:
         """Issue a remote call to a method of the deployment.
 
@@ -1183,6 +1169,10 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
                 remote method call.
             **kwargs: Keyword arguments to be serialized and passed to the
                 remote method call.
+
+        Returns:
+            A ``DeploymentResponse`` (or ``DeploymentResponseGenerator`` if
+            streaming is enabled) representing the in-flight call.
         """
 
         future, request_metadata = self._remote(args, kwargs)

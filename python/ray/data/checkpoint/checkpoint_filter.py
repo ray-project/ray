@@ -19,6 +19,7 @@ from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint.checkpoint_writer import PENDING_CHECKPOINT_SUFFIX
 from ray.data.checkpoint.util import build_pending_checkpoint_trie
+from ray.data.context import DataContext
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.types import ObjectRef
 
@@ -87,7 +88,9 @@ def _clean_pending_checkpoints_task(
     def _clean() -> int:
         # 1. List all files in checkpoint dir, find pending ones
         ckpt_files = checkpoint_filesystem.get_file_info(
-            FileSelector(checkpoint_path_unwrapped, recursive=False)
+            FileSelector(
+                checkpoint_path_unwrapped, recursive=False, allow_not_found=True
+            )
         )
         pending_suffix = f"{PENDING_CHECKPOINT_SUFFIX}.parquet"
         pending_file_paths = [
@@ -166,11 +169,21 @@ def convert_and_sort_checkpointed_ids(
 class CheckpointManager(abc.ABC):
     """Manage checkpoint data."""
 
-    def __init__(self, checkpoint_config: CheckpointConfig):
+    def __init__(
+        self,
+        checkpoint_config: CheckpointConfig,
+        data_context: DataContext,
+    ):
         """Initialize the CheckpointManager.
 
         Args:
             checkpoint_config: the checkpoint config.
+            data_context: the DataContext snapshot whose ``execution_options``
+                should govern the Ray tasks fired during checkpoint loading
+                and pending-checkpoint cleanup. Pass the dataset's
+                ``_context`` (not ``DataContext.get_current()``) so the
+                label_selector and other execution options stay consistent
+                with the rest of materialize.
         """
         self.checkpoint_path = checkpoint_config.checkpoint_path
         self.filesystem = checkpoint_config.filesystem
@@ -181,6 +194,7 @@ class CheckpointManager(abc.ABC):
         self.checkpoint_path_unwrapped = _unwrap_protocol(
             checkpoint_config.checkpoint_path
         )
+        self._data_context = data_context
 
     def load_checkpoint(
         self,
@@ -265,8 +279,8 @@ class CheckpointManager(abc.ABC):
         ref_bundle: RefBundle = ref_bundles[0]
         schema: Schema = ref_bundle.schema
         assert len(ref_bundle.blocks) == 1
-        block_ref: ObjectRef[Block] = ref_bundle.blocks[0][0]
-        metadata: BlockMetadata = ref_bundle.blocks[0][1]
+        block_ref: ObjectRef[Block] = ref_bundle.blocks[0].ref
+        metadata: BlockMetadata = ref_bundle.blocks[0].metadata
         # Validate the loaded checkpoint
         self._validate_loaded_checkpoint(schema, metadata)
 
@@ -274,10 +288,14 @@ class CheckpointManager(abc.ABC):
         # Note: the convert is very time-consuming.
         # Get the object ref the checkpointed IDs, because we do not want the IDs
         # to occupy the memory of the head node.
+        ctx_label_selector = self._data_context.execution_options.label_selector
+        task = convert_and_sort_checkpointed_ids
+        if ctx_label_selector:
+            task = task.options(label_selector=ctx_label_selector)
         (
             checkpointed_ids_ref,
             checkpoint_size_ref,
-        ) = convert_and_sort_checkpointed_ids.remote(block_ref, self.id_column)
+        ) = task.remote(block_ref, self.id_column)
 
         checkpoint_size = ray.get(checkpoint_size_ref)
 
@@ -312,9 +330,13 @@ class CheckpointManager(abc.ABC):
             return
         if data_file_filesystem is None:
             data_file_filesystem = self.filesystem
+        ctx_label_selector = self._data_context.execution_options.label_selector
+        task = _clean_pending_checkpoints_task
+        if ctx_label_selector:
+            task = task.options(label_selector=ctx_label_selector)
         try:
             cleaned_count = ray.get(
-                _clean_pending_checkpoints_task.remote(
+                task.remote(
                     self.checkpoint_path_unwrapped,
                     self.filesystem,
                     _unwrap_protocol(data_file_dir),

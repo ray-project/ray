@@ -255,6 +255,12 @@ class RunningReplica:
         return self._replica_info.routing_stats
 
     @property
+    def replica_metadata(self) -> Dict[str, Any]:
+        """Static per-replica metadata captured once when the replica became ready."""
+        # Return a copy so callers can't mutate the RunningReplicaInfo's dict.
+        return self._replica_info.replica_metadata.copy()
+
+    @property
     def max_ongoing_requests(self) -> int:
         """Max concurrent requests that can be sent to this replica."""
         return self._replica_info.max_ongoing_requests
@@ -403,12 +409,19 @@ class ReplicaSelection:
     availability_zone: Optional[str]
     """Cloud availability zone of the replica's node."""
 
+    replica_metadata: Dict[str, Any]
+    """Static, immutable per-replica metadata published by the deployment's
+    ``record_replica_metadata`` hook (captured once when the replica became
+    ready). Empty dict if the deployment does not define the hook."""
+
     # Internal fields (not part of public API)
     _replica: RunningReplica
     _deployment_id: Optional[DeploymentID]
     _request_metadata: RequestMetadata
     _method_name: str
-    _slot_token: str  # Token for reserved slot
+    # Token to be used for replica reservation;
+    # Can be None when created via the pick-only path
+    _slot_token: Optional[str]
     _dispatched: bool = field(
         default=False, init=False
     )  # Tracks if dispatch was called
@@ -433,6 +446,7 @@ class ReplicaSelection:
             "port": self.port,
             "node_id": self.node_id,
             "availability_zone": self.availability_zone,
+            "replica_metadata": self.replica_metadata,
         }
 
     def _mark_dispatched(self) -> None:
@@ -452,9 +466,12 @@ class ReplicaSelection:
         """Internal: Release the reserved slot.
 
         Returns the replica's reported num_ongoing_requests after the release,
-        or None if dispatch already consumed the slot (and ``force`` is False).
+        or None if dispatch already consumed the slot (and ``force`` is False),
+        or None if this selection was created without a reservation.
         """
+        if self._slot_token is None:
+            return
         if self._dispatched and not force:
-            return None
+            return
 
         return await self._replica.release_slot(self._slot_token)

@@ -96,3 +96,69 @@ print(f"Response from ThroughputAwareRequestRouterApp: {response}")
 #   Response from ThroughputAwareRequestRouterApp:
 #   Replica(id='tkywafya', deployment='ThroughputAwareRequestRouterApp', app='default')
 # __end_deploy_app_with_throughput_aware_request_router__
+
+
+# __begin_deploy_app_with_round_robin_router__
+@serve.deployment(
+    request_router_config=RequestRouterConfig(
+        request_router_class=(
+            "ray.serve.experimental.round_robin_router:RoundRobinRouter"
+        ),
+    ),
+    num_replicas=4,
+    ray_actor_options={"num_cpus": 0},
+)
+class RoundRobinRouterApp:
+    def __init__(self):
+        context = _get_internal_replica_context()
+        self.replica_id: ReplicaID = context.replica_id
+
+    async def __call__(self):
+        return self.replica_id
+
+
+handle = serve.run(RoundRobinRouterApp.bind())
+response = handle.remote().result()
+print(f"Response from RoundRobinRouterApp: {response}")
+# __end_deploy_app_with_round_robin_router__
+
+
+# __begin_deploy_app_with_consistent_hash_router__
+import requests
+from starlette.requests import Request
+
+@serve.deployment(
+    request_router_config=RequestRouterConfig(
+        request_router_class=(
+            "ray.serve.experimental.consistent_hash_router:ConsistentHashRouter"
+        ),
+        request_router_kwargs={
+            "num_virtual_nodes": 100,
+            "num_fallback_replicas": 2,
+        },
+    ),
+    num_replicas=4,
+    ray_actor_options={"num_cpus": 0},
+)
+class ConsistentHashRouterApp:
+    def __init__(self):
+        context = _get_internal_replica_context()
+        self.replica_id: ReplicaID = context.replica_id
+
+    async def __call__(self, request: Request) -> str:
+        return str(self.replica_id)
+
+
+serve.run(ConsistentHashRouterApp.bind())
+
+# Clients pin a session to a replica by sending the same `x-session-id`
+# on every request.
+response = requests.get(
+    "http://localhost:8000/",
+    headers={"x-session-id": "example-session-id"},
+)
+print(f"Response from ConsistentHashRouterApp: {response.text}")
+# Example output:
+#   Response from ConsistentHashRouterApp:
+#   Replica(id='...', deployment='ConsistentHashRouterApp', app='default')
+# __end_deploy_app_with_consistent_hash_router__

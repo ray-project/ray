@@ -52,6 +52,7 @@
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
+#include "ray/util/clock.h"
 #include "ray/util/shared_lru.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
@@ -201,7 +202,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
              std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
              uint32_t pid,
              ray::observability::MetricInterface &task_by_state_counter,
-             ray::observability::MetricInterface &actor_by_state_counter);
+             ray::observability::MetricInterface &actor_by_state_counter,
+             ClockInterface &clock);
 
   CoreWorker(CoreWorker const &) = delete;
 
@@ -340,6 +342,13 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// (meaning if the object's value if retrievable).
   /// It should not be nil.
   std::pair<rpc::ObjectReference, bool> PeekObjectRefStream(const ObjectID &generator_id);
+
+  /// Read the next index of an ObjectRefStream of generator_id without
+  /// consuming an index, and return just the ObjectID of that index.
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  /// \return The ObjectID of the next index. It should not be nil.
+  ObjectID PeekObjectIdStream(const ObjectID &generator_id);
 
   /// Asynchronously delete the ObjectRefStream that was created upon the
   /// initial task submission. This method triggers a timer. On each interval,
@@ -519,8 +528,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Object ID generated for the put.
   /// \param[out] data Buffer for the user to write the object into.
-  /// \param[in] owner_address The address of object's owner. If not provided,
-  /// defaults to this worker.
   /// \param[in] inline_small_object Whether to inline create this object if it's
   /// small.
   /// \param[in] tensor_transport The tensor transport to use for the object.
@@ -532,7 +539,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       const std::vector<ObjectID> &contained_object_ids,
       ObjectID *object_id,
       std::shared_ptr<Buffer> *data,
-      const std::unique_ptr<rpc::Address> &owner_address = nullptr,
       bool inline_small_object = true,
       const std::optional<std::string> &tensor_transport = std::nullopt);
 
@@ -564,12 +570,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ///
   /// \param[in] object_id Object ID corresponding to the object.
   /// \param[in] pin_object Whether or not to pin the object at the local raylet.
-  /// \param[in] The address of object's owner. If not provided,
-  /// defaults to this worker.
   /// \return Status.
-  Status SealOwned(const ObjectID &object_id,
-                   bool pin_object,
-                   const std::unique_ptr<rpc::Address> &owner_address = nullptr);
+  Status SealOwned(const ObjectID &object_id, bool pin_object);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateExisting()` call and then writing into the returned buffer.
@@ -774,12 +776,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// NOTE: The API doesn't guarantee the ordering of the report. The
   /// owner is supposed to reorder the report based on the item_index.
   ///
-  /// \param[in] returned_object A intermediate ray object to report
-  /// to the owner before the task terminates. This object must have been
+  /// \param[in] returned_objects Intermediate ray objects to report
+  /// to the owner before the task terminates. These objects must have been
   /// created dynamically from this worker via AllocateReturnObject.
-  /// If the Object ID is nil, it means it is the end of the task return.
-  /// In this case, the owner is responsible for setting finished = true,
-  /// otherwise it will panic.
   /// \param[in] generator_id The return object ref ID from a current generator
   /// task.
   /// \param[in] owner_address The address of the owner of the current task.
@@ -790,7 +789,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param[in] waiter The class to pause the thread if generator backpressure limit
   /// is reached.
   Status ReportGeneratorItemReturns(
-      const std::pair<ObjectID, std::shared_ptr<RayObject>> &returned_object,
+      const std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
+          &returned_objects,
       const ObjectID &generator_id,
       const rpc::Address &owner_address,
       int64_t item_index,
@@ -1282,11 +1282,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                   rpc::SendReplyCallback send_reply_callback);
 
   // Set local worker as the owner of object.
-  // Request by borrower's worker, execute by owner's worker.
-  void HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
-                               rpc::AssignObjectOwnerReply *reply,
-                               rpc::SendReplyCallback send_reply_callback);
-
   // Get the number of pending tasks.
   void HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
                              rpc::NumPendingTasksReply *reply,
@@ -1367,7 +1362,24 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   void AsyncRetryTask(TaskSpecification &spec, uint32_t delay_ms);
 
+  /// Send a FreeLocalObjects RPC to every raylet holding a copy of the object.
+  ///
+  /// \param object_id The object whose copies should be freed.
+  /// \param locations All nodes that hold a copy of the object, including primary
+  /// and secondary copies.
+  void FreeObjectOnNodesAsync(const ObjectID &object_id,
+                              const absl::flat_hash_set<NodeID> &locations);
+
  private:
+  /// Resolve a raylet RPC client by node id. Should be used to only get a temporary RPC
+  /// client, since the retryable GRPC client relies on clients going out of scope to
+  /// determine when to fail any pending RPCs
+  ///
+  /// \param node_id The node to resolve.
+  /// \return The local client for the current node, the pooled client for any
+  /// other live node, or nullptr if the node is dead or unknown to GCS.
+  std::shared_ptr<RayletClientInterface> GetRayletRpcClient(const NodeID &node_id);
+
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
                                            const std::shared_ptr<nlohmann::json> &parent);
 
@@ -1416,7 +1428,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       bool enable_task_events = true,
       const std::unordered_map<std::string, std::string> &labels = {},
       const LabelSelector &label_selector = {},
-      const std::vector<FallbackOption> &fallback_strategy = {});
+      const std::vector<FallbackOption> &fallback_strategy = {},
+      int64_t num_objects_per_yield = 1);
 
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
@@ -1955,5 +1968,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   // Shutdown synchronization primitives
   std::atomic<bool> connected_{true};
   std::atomic<bool> event_loops_running_{false};
+
+  /// Clock used for timestamping events, retries, and timeouts.
+  ClockInterface &clock_;
 };
 }  // namespace ray::core

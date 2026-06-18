@@ -18,7 +18,6 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
-    RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
     RAY_SERVE_PROXY_USE_GRPC,
@@ -42,6 +41,7 @@ from ray.serve._private.utils import (
     inside_ray_client_context,
     resolve_deployment_response,
 )
+from ray.serve.config import ControllerOptions
 from ray.util.placement_group import PlacementGroup
 
 # NOTE: Please read carefully before changing!
@@ -242,10 +242,17 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
     )
 
 
-def get_controller_impl():
+def get_controller_impl(controller_options: Optional[ControllerOptions] = None):
+    """Build the Ray actor class for the Serve controller.
+
+    ``controller_options`` is the validated ``ControllerOptions`` model from
+    ``serve.start`` / ``serve.run`` / the YAML schema. Today only its
+    ``runtime_env`` field is consumed; future fields (num_cpus, resources,
+    max_concurrency overrides) slot in here.
+    """
     from ray.serve._private.controller import ServeController
 
-    controller_impl = ray.remote(
+    actor_options = dict(
         name=SERVE_CONTROLLER_NAME,
         namespace=SERVE_NAMESPACE,
         num_cpus=0,
@@ -255,19 +262,10 @@ def get_controller_impl():
         resources={HEAD_NODE_RESOURCE_NAME: 0.001},
         max_concurrency=CONTROLLER_MAX_CONCURRENCY,
         enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
-    )(ServeController)
+    )
+    if controller_options is not None and controller_options.runtime_env:
+        # The validator on ControllerOptions guarantees this is a dict
+        # containing only the ``env_vars`` key with str->str entries.
+        actor_options["runtime_env"] = controller_options.runtime_env
 
-    return controller_impl
-
-
-def get_proxy_actor_class():
-    # These imports are lazy to avoid circular imports
-
-    if RAY_SERVE_ENABLE_HA_PROXY:
-        from ray.serve._private.haproxy import HAProxyManager
-
-        return HAProxyManager
-    else:
-        from ray.serve._private.proxy import ProxyActor
-
-        return ProxyActor
+    return ray.remote(**actor_options)(ServeController)

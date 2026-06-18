@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import TYPE_CHECKING, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -11,6 +11,15 @@ from typing_extensions import override
 if TYPE_CHECKING:
     from ray.data.datasource.partitioning import Partitioning
 
+from ray._common.utils import env_bool, env_integer
+from ray.data._internal.datasource.parquet_datasource import (
+    AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR,
+    _check_for_pickle_object_columns,
+)
+from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
+    _fragments_from_chunk_metadata,
+)
+from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
@@ -19,6 +28,7 @@ from ray.data._internal.datasource_v2.readers.file_reader import (
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
     PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
 )
+from ray.data._internal.util import MiB
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -26,6 +36,13 @@ from ray.util.debug import log_once
 logger = logging.getLogger(__name__)
 
 _UNSET = object()
+
+# Per-stream read-ahead buffer for ``use_buffered_stream=True``. PyArrow's
+# default (~8 KiB) produces many tiny range requests on S3; 8 MiB
+# amortizes per-request latency across meaningful payload sizes.
+_PARQUET_FRAGMENT_BUFFER_SIZE = env_integer(
+    "RAY_DATA_PARQUET_FRAGMENT_BUFFER_SIZE", 8 * MiB
+)
 
 
 def _estimate_batch_size_from_metadata(
@@ -145,6 +162,7 @@ class ParquetFileReader(FileReader):
         include_paths: bool = False,
         include_row_hash: bool = False,
         schema: Optional[pa.Schema] = None,
+        parquet_format_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """Initialize the Parquet reader.
 
@@ -167,6 +185,11 @@ class ParquetFileReader(FileReader):
             schema: Caller-supplied unified schema forwarded to the base
                 :class:`FileReader` for per-fragment inference override
                 and partition-column type casting.
+            parquet_format_kwargs: Extra kwargs spread into
+                :class:`pyarrow.dataset.ParquetFileFormat` (e.g.
+                ``coerce_int96_timestamp_unit``, ``pre_buffer``,
+                ``dictionary_columns``). Used to forward the deprecated
+                ``dataset_kwargs`` arg on the V2 path.
         """
         super().__init__(
             format=FileFormat.PARQUET,
@@ -182,10 +205,18 @@ class ParquetFileReader(FileReader):
             schema=schema,
         )
         self._explicit_batch_size = batch_size
+        self._allow_pickle_object_columns = env_bool(
+            AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False
+        )
         self._target_block_size = target_block_size
+        self._parquet_format_kwargs: Dict[str, Any] = parquet_format_kwargs or {}
         self._sampled_batch_size: int | object = (
             _UNSET  # pyrefly: ignore[bad-assignment]
         )
+
+    @override
+    def _make_format(self) -> pds.ParquetFileFormat:
+        return pds.ParquetFileFormat(**self._parquet_format_kwargs)
 
     @override
     def _resolve_batch_size(self, dataset: pds.Dataset) -> int:
@@ -231,7 +262,63 @@ class ParquetFileReader(FileReader):
         self._sampled_batch_size = max(math.ceil(self._target_block_size / row_size), 1)
 
     @override
+    def _get_fragments_to_read(
+        self,
+        dataset: pds.Dataset,
+        manifest: FileManifest,
+    ) -> List[Tuple[pds.Fragment, int]]:
+        """Fan file fragments into chunk-level sub-fragments per manifest row.
+
+        For each manifest row, looks up the file's fragment by path and:
+
+        - If ``chunk_metadata`` is ``None`` (whole-file case), the file
+          fragment is yielded as-is with a row offset of 0. This matches
+          ``ParquetFileChunker``'s behavior for files at or below
+          ``target_chunk_size`` and the default ``WholeFileChunker`` for
+          non-chunking callers.
+        - Otherwise the row carries a :class:`ParquetFileChunkMetadata`;
+          we slice the fragment via
+          :func:`~ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils._fragments_from_chunk_metadata`
+          which returns one sub-fragment per row group in the chunk's
+          row-group range, paired with the cumulative pre-filter row
+          offset of that row group within the file. The downstream
+          ``_compute_row_hashes`` call uses this offset so row hashes
+          remain unique across sub-fragments that share ``fragment.path``.
+
+        Paths are deduped by :meth:`FileReader.read` before the dataset is
+        built, so the dataset has exactly one fragment per file. The
+        per-row chunk metadata drives the fan-out here, not the dataset
+        itself — multiple manifest rows can share a single path with
+        different chunk indices.
+        """
+        path_to_fragment = {
+            fragment.path: fragment for fragment in dataset.get_fragments()
+        }
+        fragments: List[Tuple[pds.Fragment, int]] = []
+        for path, chunk_metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
+            fragment = path_to_fragment[path]
+            if chunk_metadata is None:
+                fragments.append((fragment, 0))
+            else:
+                fragments.extend(
+                    _fragments_from_chunk_metadata(fragment, chunk_metadata)
+                )
+        return fragments
+
+    @override
     def _iter_fragment_tables(
+        self,
+        fragment: pds.Fragment,
+        scanner_kwargs: dict,
+    ) -> "Iterator[pa.Table]":
+        for table in self._iter_fragment_tables_without_pickle_check(
+            fragment, scanner_kwargs
+        ):
+            if not self._allow_pickle_object_columns:
+                _check_for_pickle_object_columns(table)
+            yield table
+
+    def _iter_fragment_tables_without_pickle_check(
         self,
         fragment: pds.Fragment,
         scanner_kwargs: dict,
@@ -399,18 +486,30 @@ class ParquetFileReader(FileReader):
 
     @override
     def _arrow_scanner_kwargs(self) -> dict:
-        # pre_buffer=True (pyarrow default) holds a whole fragment's worth of
-        # decoded column chunks resident before yielding batches, so
-        # pa.total_allocated_bytes() climbs monotonically across batches and
-        # peaks near full fragment size. Disabling pre_buffer with
-        # use_buffered_stream caps peak near a small multiple of one row group
-        # while keeping throughput equal to the default. batch_readahead=1
-        # (inherited from FileReader base kwargs) plus fragment_readahead=1
-        # is enough to keep decode pipelined. See apache/arrow#39808.
+        # ``pre_buffer`` is left at pyarrow's default (``True``). With
+        # ``pre_buffer=True`` pyarrow plans a single coalesced range
+        # request covering all needed column chunks for a fragment and
+        # issues it in one I/O burst, then decodes from memory. With
+        # ``pre_buffer=False`` pyarrow opens a per-column buffered
+        # stream and fetches lazily — fine on narrow schemas (few large
+        # columns) but catastrophic on wide schemas (thousands of small
+        # columns become thousands of range requests). V1
+        # ``ParquetDatasource`` also relies on the default. The
+        # cross-fragment memory accumulation that originally motivated
+        # disabling ``pre_buffer`` (apache/arrow#39808) is already
+        # addressed by V2's per-fragment scanners.
+        #
+        # ``buffer_size`` controls the per-stream read-ahead buffer
+        # pyarrow issues against the filesystem when ``use_buffered_stream``
+        # is on. The default is small (8 KiB), which produces many tiny
+        # range requests on S3. 8 MiB amortizes S3 latency across
+        # meaningful bytes per round-trip. Tunable via env var for
+        # workloads that need a different point on the latency/memory-
+        # peak curve.
         kwargs: dict = {
             "fragment_scan_options": pds.ParquetFragmentScanOptions(
-                pre_buffer=False,
                 use_buffered_stream=True,
+                buffer_size=_PARQUET_FRAGMENT_BUFFER_SIZE,
             ),
             "fragment_readahead": 1,
         }

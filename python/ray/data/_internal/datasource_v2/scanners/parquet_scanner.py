@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional
 
 import pyarrow as pa
 
@@ -33,6 +33,11 @@ class ParquetScanner(ArrowFileScanner):
     target_block_size: Optional[int] = None
     include_paths: bool = False
     include_row_hash: bool = False
+    # Extra kwargs forwarded to ``pds.ParquetFileFormat(**kwargs)`` inside
+    # the per-task ``ParquetFileReader`` (e.g. ``coerce_int96_timestamp_unit``,
+    # ``pre_buffer``, ``dictionary_columns``). Carries the deprecated
+    # ``dataset_kwargs`` payload from ``read_parquet`` to the worker.
+    parquet_format_kwargs: Dict[str, Any] = field(default_factory=dict)
 
     def read_schema(self) -> pa.Schema:
         """Return schema after column pruning and tensor check.
@@ -79,4 +84,5 @@ class ParquetScanner(ArrowFileScanner):
             include_paths=self.include_paths,
             include_row_hash=self.include_row_hash,
             schema=self.schema,
+            parquet_format_kwargs=dict(self.parquet_format_kwargs),
         )

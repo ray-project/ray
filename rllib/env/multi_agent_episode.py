@@ -2042,12 +2042,13 @@ class MultiAgentEpisode:
     ) -> None:
         """Overwrites all or some of this Episode's extra model outputs with `new_data`.
 
-        This is a helper method to batch `SingleAgentEpisode.set_extra_model_outputs`.
-        For more detail, see `SingleAgentEpisode.set_extra_model_outputs`.
+        This batches `SingleAgentEpisode.set_extra_model_outputs` calls for the
+        agent IDs provided in `new_data`. For more detail, see
+        `SingleAgentEpisode.set_extra_model_outputs`.
 
         Args:
-            key: The `key` within `self.extra_model_outputs` to override data on or
-                to insert as a new key into `self.extra_model_outputs`.
+            key: Existing extra model output key to override on each target agent
+                episode.
             new_data: A dict mapping agent IDs to new extra model outputs data.
                 Each value in the dict is the new extra model outputs data to overwrite existing data with.
                 This may be a list of individual reward(s) in case this episode
@@ -2646,6 +2647,14 @@ class MultiAgentEpisode:
 
         # Extract data directly from the infinite lookback buffer object.
         else:
+            # When a specific extra_model_outputs key was requested, the callers
+            # may pass the full extra_model_outputs dict (instead of the indexed
+            # sub-buffer/value). Ensure both are properly indexed here.
+            if what == "extra_model_outputs" and extra_model_outputs_key is not None:
+                if isinstance(inf_lookback_buffer, dict):
+                    inf_lookback_buffer = inf_lookback_buffer[extra_model_outputs_key]
+                if hanging_val is not None and isinstance(hanging_val, dict):
+                    hanging_val = hanging_val[extra_model_outputs_key]
             return inf_lookback_buffer.get(
                 indices=index_incl_lookback - inf_lookback_buffer.lookback,
                 neg_index_as_lookback=True,
@@ -2716,6 +2725,8 @@ class MultiAgentEpisode:
         inf_lookback_buffer = getattr(sa_episode, what)
         if extra_model_outputs_key is not None:
             inf_lookback_buffer = inf_lookback_buffer[extra_model_outputs_key]
+            if hanging_val is not None:
+                hanging_val = hanging_val[extra_model_outputs_key]
 
         # If there are self.SKIP_ENV_TS_TAG items in `indices_incl_lookback` and user
         # wants to fill these (together with outside-episode-bounds indices) ->

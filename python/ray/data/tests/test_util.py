@@ -10,11 +10,11 @@ import ray
 from ray._common.retry import matches_error
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.data._internal.execution.util import merge_label_selector
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.operators import Read
 from ray.data._internal.logical.util import (
-    _op_name_white_list,
     _recorded_operators,
     _recorded_operators_lock,
 )
@@ -41,7 +41,7 @@ def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] =
     If `clear_after_check` is True, we clear the list of recorded operators
     (so that subsequent checks do not use existing records of operator usage)."""
     for op_name in op_names:
-        assert op_name in _op_name_white_list
+        assert op_name not in ("Unknown", "ReadCustom", "WriteCustom"), op_name
         with _recorded_operators_lock:
             assert _recorded_operators.get(op_name, 0) > 0, (
                 op_name,
@@ -558,6 +558,60 @@ def test_rows_same(actual: pd.DataFrame, expected: pd.DataFrame, expected_equal:
 )
 def test_get_max_task_capacity(allocated, min_scheduling, expected):
     assert get_max_task_capacity(allocated, min_scheduling) == expected
+
+
+class TestMergeLabelSelector:
+    """Tests for ``merge_label_selector``.
+
+    The helper merges a DataContext-level label_selector into a ray_remote_args
+    dict. Operator-level entries win on key conflicts.
+    """
+
+    def test_ctx_none_returns_input_unchanged(self):
+        args = {"num_cpus": 1}
+        assert merge_label_selector(args, None) is args
+
+    def test_ctx_empty_returns_input_unchanged(self):
+        args = {"num_cpus": 1}
+        assert merge_label_selector(args, {}) is args
+
+    def test_ctx_only(self):
+        args = {"num_cpus": 1}
+        out = merge_label_selector(args, {"subcluster": "train"})
+        assert out == {"num_cpus": 1, "label_selector": {"subcluster": "train"}}
+        assert args == {"num_cpus": 1}  # input not mutated
+
+    def test_op_only_no_ctx(self):
+        args = {"label_selector": {"node": "X"}}
+        assert merge_label_selector(args, None) is args
+
+    def test_op_and_ctx_no_collision(self):
+        args = {"label_selector": {"node": "X"}}
+        out = merge_label_selector(args, {"subcluster": "train"})
+        assert out["label_selector"] == {"subcluster": "train", "node": "X"}
+
+    def test_op_wins_on_collision(self):
+        args = {"label_selector": {"subcluster": "val"}}
+        out = merge_label_selector(args, {"subcluster": "train"})
+        assert out["label_selector"] == {"subcluster": "val"}
+
+    def test_input_not_mutated(self):
+        args = {"label_selector": {"node": "X"}}
+        ctx = {"subcluster": "train"}
+        merge_label_selector(args, ctx)
+        assert args == {"label_selector": {"node": "X"}}
+        assert ctx == {"subcluster": "train"}
+
+
+def test_execution_options_label_selector_field():
+    """Smoke test that ExecutionOptions exposes label_selector."""
+    from ray.data._internal.execution.interfaces import ExecutionOptions
+
+    options = ExecutionOptions()
+    assert options.label_selector is None
+
+    options = ExecutionOptions(label_selector={"subcluster": "train"})
+    assert options.label_selector == {"subcluster": "train"}
 
 
 if __name__ == "__main__":

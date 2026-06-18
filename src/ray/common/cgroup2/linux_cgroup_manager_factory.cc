@@ -39,7 +39,6 @@ std::unique_ptr<CgroupManagerInterface> CgroupManagerFactory::Create(
     const std::string &node_id,
     const int64_t system_reserved_cpu_weight,
     const int64_t system_reserved_memory_bytes,
-    const int64_t object_store_memory_bytes,
     const std::string &system_pids) {
   if (!enable_resource_isolation) {
     return std::make_unique<NoopCgroupManager>();
@@ -67,11 +66,9 @@ std::unique_ptr<CgroupManagerInterface> CgroupManagerFactory::Create(
   float user_memory_proportion_high = RayConfig::instance().user_memory_proportion_high();
   float user_memory_proportion_max = RayConfig::instance().user_memory_proportion_max();
 
-  // The system reserved memory here already includes object store memory when
-  // we resolved the resource isolation config.
-  int64_t user_memory_high_bytes = std::min(
-      total_memory_bytes - system_reserved_memory_bytes + object_store_memory_bytes,
-      static_cast<int64_t>(total_memory_bytes * user_memory_proportion_high));
+  int64_t user_memory_high_bytes =
+      std::min(total_memory_bytes - system_reserved_memory_bytes,
+               static_cast<int64_t>(total_memory_bytes * user_memory_proportion_high));
   int64_t user_memory_max_bytes =
       static_cast<int64_t>(total_memory_bytes * user_memory_proportion_max);
 

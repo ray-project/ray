@@ -249,6 +249,9 @@ class Experiment:
         Args:
             name: Name of Experiment.
             spec: JSON configuration of experiment.
+
+        Returns:
+            An ``Experiment`` constructed from the provided ``spec``.
         """
         if "run" not in spec:
             raise TuneError("No trainable specified!")
