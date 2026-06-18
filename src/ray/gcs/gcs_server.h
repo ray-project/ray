@@ -152,7 +152,8 @@ class GcsServer {
   /// Initialize gcs health check manager.
   void InitGcsHealthCheckManager(const GcsInitData &gcs_init_data);
 
-  /// Start the IOContextMonitor that probes the GCS io_contexts and determines the gRPC health check status.
+  /// Start the IOContextMonitor that probes the GCS io_contexts and determines the gRPC
+  /// health check status.
   void InitIOContextMonitor();
 
   /// Initialize gcs resource manager.
