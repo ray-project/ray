@@ -2865,7 +2865,16 @@ cdef void _invoke_object_out_of_scope_callback(
             id_binary = c_object_id.Binary()
             callback(id_binary)
         except BaseException:
-            logger.exception("Error in object out-of-scope callback")
+            # Invoked from C++ through a C function pointer, so a propagating
+            # exception would be undefined behavior; that is why we catch
+            # everything here, including KeyboardInterrupt/SystemExit.
+            logger.exception(
+                "Exception in the callback registered via "
+                "CoreWorker.add_object_out_of_scope_callback for object %s. The "
+                "callback must be non-blocking and exception-free, so check it "
+                "for I/O, blocking calls, or bugs that raise.",
+                c_object_id.Hex().decode("ascii"),
+            )
         finally:
             cpython.Py_DECREF(<object>user_callback)
 
@@ -4231,6 +4240,13 @@ cdef class CoreWorker:
         main Python thread. It must be thread-safe; use a lock if it ever accesses
         state shared with the main thread.
 
+        .. warning::
+            The callback runs on a single thread shared by every out-of-scope
+            notification for this worker, so it MUST be O(1) and non-blocking.
+            Anything that blocks here serializes every subsequent callback on
+            this worker. Please do not register any hanging/failing operations
+            here.
+
         If the callback raises, the exception is logged and swallowed so that
         subsequent callbacks are not affected.
 
@@ -4247,19 +4263,9 @@ cdef class CoreWorker:
             raise TypeError(
                 f"callback must be callable, got {type(callback).__name__!r}"
             )
-        cdef:
-            CObjectID c_object_id = object_ref.native()
-            CAddress c_owner_address
-        op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
-            c_object_id, &c_owner_address)
-        check_status(op_status)
-        this_worker_id = CCoreWorkerProcess.GetCoreWorker().GetWorkerID().Binary()
-        if c_owner_address.worker_id() != this_worker_id:
-            raise ValueError(
-                f"add_object_out_of_scope_callback can only be called for objects "
-                f"owned by this worker. Object {object_ref.hex()} is owned by worker "
-                f"{c_owner_address.worker_id().hex()}."
-            )
+        cdef CObjectID c_object_id = object_ref.native()
+        check_status(CCoreWorkerProcess.GetCoreWorker().CheckObjectOwnedByUs(
+            c_object_id))
         cpython.Py_INCREF(callback)
         registered = CCoreWorkerProcess.GetCoreWorker() \
             .AddObjectOutOfScopeOrFreedCallback(

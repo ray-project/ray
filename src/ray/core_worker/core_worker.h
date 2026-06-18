@@ -431,6 +431,17 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                                           void (*callback)(const ObjectID &, void *),
                                           void *callback_context);
 
+  /// Validate that the given object is owned by this worker. Used to gate
+  /// owner-only operations (e.g. registering an out-of-scope/freed callback)
+  /// so the error is constructed in C++ and propagated through the standard
+  /// Status path rather than re-implemented at each binding.
+  ///
+  /// \param[in] object_id The object to check.
+  /// \return Status::OK if this worker is the owner of the object;
+  ///         Status::InvalidArgument otherwise (the rejected case in practice is
+  ///         a borrowed object owned by another worker).
+  Status CheckObjectOwnedByUs(const ObjectID &object_id) const;
+
   int GetMemoryStoreSize() { return memory_store_->Size(); }
 
   /// Returns a map of all ObjectIDs currently in scope with a pair of their

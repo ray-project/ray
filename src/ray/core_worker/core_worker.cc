@@ -2504,6 +2504,17 @@ bool CoreWorker::AddObjectOutOfScopeOrFreedCallback(const ObjectID &object_id,
       });
 }
 
+Status CoreWorker::CheckObjectOwnedByUs(const ObjectID &object_id) const {
+  if (reference_counter_->OwnedByUs(object_id)) {
+    return Status::OK();
+  }
+  return Status::InvalidArgument(absl::StrFormat(
+      "Cannot register an out-of-scope/freed callback for object %s: it is not "
+      "owned by this worker (it may be owned by another worker, or have no "
+      "ownership record). These callbacks can only be registered by the owner.",
+      object_id.Hex()));
+}
+
 Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
   absl::flat_hash_set<TaskID> unknown_child_task_ids;
   auto child_task_ids = task_manager_->GetPendingChildrenTasks(task_id);
