@@ -876,5 +876,69 @@ os._exit(0)
         ray.kill(reporter)
 
 
+def test_actor_generator_backpressure_owner_death_unblocks_task_waiter(shutdown_only):
+    namespace = "actor_generator_backpressure_owner_death_waiter"
+    actor_name = f"actor_generator_backpressure_owner_death_waiter_actor_{os.getpid()}"
+    reporter_name = (
+        f"actor_generator_backpressure_owner_death_waiter_reporter_{os.getpid()}"
+    )
+    address = ray.init(num_cpus=2, namespace=namespace).address_info["address"]
+
+    driver = f"""
+import os
+
+import ray
+from ray._common.test_utils import wait_for_condition
+
+ray.init(address="{address}", namespace="{namespace}")
+
+
+@ray.remote(name="{reporter_name}", lifetime="detached")
+class Reporter:
+    def __init__(self):
+        self.counts = {{}}
+
+    def report(self, tag):
+        self.counts[tag] = self.counts.get(tag, 0) + 1
+
+    def count(self, tag):
+        return self.counts.get(tag, 0)
+
+
+@ray.remote(
+    name="{actor_name}",
+    lifetime="detached",
+    max_concurrency=1,
+    _actor_generator_backpressure_num_objects=10,
+)
+class A:
+    @ray.method(_generator_backpressure_num_objects=1)
+    def gen(self, reporter, tag):
+        for i in range(2):
+            ray.get(reporter.report.remote(tag))
+            yield i
+
+    def ping(self):
+        return "ok"
+
+
+reporter = Reporter.remote()
+a = A.remote()
+g = a.gen.remote(reporter, "first")
+wait_for_condition(lambda: ray.get(reporter.count.remote("first")) == 1, timeout=10)
+
+os._exit(0)
+"""
+
+    run_string_as_driver(driver)
+    a = ray.get_actor(actor_name, namespace=namespace)
+    reporter = ray.get_actor(reporter_name, namespace=namespace)
+    try:
+        assert ray.get(a.ping.remote(), timeout=_ACTOR_GEN_BP_WAIT_S) == "ok"
+    finally:
+        ray.kill(a)
+        ray.kill(reporter)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

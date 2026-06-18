@@ -70,6 +70,11 @@ class TaskGeneratorBackpressureWaiter {
   void OnObjectReportAccepted();
   void OnObjectConsumed(int64_t total_objects_consumed);
 
+  /// Permanently disable backpressure for this waiter. After this is called,
+  /// WaitUntilObjectConsumed returns immediately and WaitAllObjectsReported
+  /// stops waiting on outstanding report acks.
+  void DisableBackpressure();
+
   bool NeedsObjectConsumedUpdates() const;
   int64_t TotalObjectConsumed() const;
   int64_t TotalObjectGenerated() const;
@@ -83,6 +88,7 @@ class TaskGeneratorBackpressureWaiter {
   int64_t total_objects_generated_ = 0;
   int64_t num_object_reports_in_flight_ = 0;
   int64_t total_objects_consumed_ = 0;
+  bool backpressure_disabled_ = false;
 };
 
 /// Shared across all streaming-generator tasks on one actor; enforces

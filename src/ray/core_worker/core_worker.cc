@@ -760,15 +760,18 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
 }
 
 void CoreWorker::HandleOwnerDied(const WorkerID &dead_owner) {
-  std::vector<std::shared_ptr<ActorTaskBackpressureMetadata>> to_teardown;
+  // Snapshot affected entries under the lock; act on them after releasing.
+  struct DeadOwnerEntry {
+    std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter;
+    std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata;
+  };
+  std::vector<DeadOwnerEntry> dead_entries;
   {
     absl::MutexLock lock(&mutex_);
     std::vector<ObjectID> to_erase;
     for (auto &[generator_id, state] : generator_backpressure_states_) {
       if (state.owner_worker_id == dead_owner) {
-        if (state.actor_metadata) {
-          to_teardown.push_back(state.actor_metadata);
-        }
+        dead_entries.push_back({state.waiter, state.actor_metadata});
         to_erase.push_back(generator_id);
       }
     }
@@ -776,8 +779,17 @@ void CoreWorker::HandleOwnerDied(const WorkerID &dead_owner) {
       generator_backpressure_states_.erase(generator_id);
     }
   }
-  for (auto &actor_metadata : to_teardown) {
-    actor_metadata->Teardown();
+  for (auto &entry : dead_entries) {
+    // Permanently disable per-task backpressure so the task can drain to its
+    // natural exit instead of parking forever in WaitUntilObjectConsumed (the
+    // dead owner will never send a consumption update) or WaitAllObjectsReported
+    // (the in-flight report RPC may keep retrying until the client pool gives up).
+    if (entry.waiter) {
+      entry.waiter->DisableBackpressure();
+    }
+    if (entry.actor_metadata) {
+      entry.actor_metadata->Teardown();
+    }
   }
 }
 
