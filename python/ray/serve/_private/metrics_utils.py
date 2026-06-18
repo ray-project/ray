@@ -18,7 +18,7 @@ from typing import (
     Union,
 )
 
-from ray._raylet import (
+from ray.serve._private._timeseries_utils import (
     merge_instantaneous_total_cython,
     time_weighted_average_cython,
 )

@@ -4,24 +4,9 @@
 # cython: cdivision=True
 # cython: initializedcheck=False
 
-# =============================================================================
-# WARNING: This file is used EXCLUSIVELY by Ray Serve.
-# =============================================================================
-#
 # These Cython-optimized timeseries utilities exist solely to support the
 # Ray Serve controller's autoscaling metrics pipeline (specifically the
 # per-deployment timeseries aggregation in the Serve replica scheduler).
-#
-# This code lives in `ray/includes/` and is compiled into `_raylet.so` because
-# Rather than introducing a new top-level `.pyx` / `.so` for a single
-# Serve-internal optimization, we include it here alongside the other
-# `.pxi` helpers that ship in `_raylet`.
-#
-# If you are not working on Ray Serve autoscaling, you almost certainly do not
-# need to modify this file.
-# =============================================================================
-
-
 
 # C library imports
 from libc.stdlib cimport malloc, free
@@ -94,7 +79,6 @@ cdef inline void _ts_heap_push(_TsHeapNode* heap, int* size, _TsHeapNode node) n
     heap[size[0]] = node
     _ts_heap_sift_up(heap, size[0])
     size[0] += 1
-
 
 cdef int _kway_merge_timeseries_nogil(double** timestamps_arrays, double** values_arrays,
                               int* series_lengths, int num_series,
@@ -334,7 +318,6 @@ def merge_instantaneous_total_cython(list replicas_timeseries):
             free(values_arrays)
         if series_lengths:
             free(series_lengths)
-
 
 cdef double _compute_time_weighted_average_nogil(double* timestamps, double* values, int n,
                                                  double window_start, double window_end) noexcept nogil:
