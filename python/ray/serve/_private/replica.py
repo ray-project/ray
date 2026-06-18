@@ -2072,7 +2072,9 @@ class Replica:
                 )
             except Exception:
                 logger.exception("Error shutting down the direct ingress HTTP server.")
-        elif self._direct_ingress_http_server_task:
+        # Always cancel the task so the listener is guaranteed to stop even if
+        # the graceful close above errored (mirrors the gRPC path below).
+        if self._direct_ingress_http_server_task:
             self._direct_ingress_http_server_task.cancel()
 
         if self._direct_ingress_grpc_server is not None:
