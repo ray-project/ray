@@ -1,18 +1,3 @@
-"""Zarr v2 datasource for Ray Data.
-
-Two output schemas, selected at the call site:
-
-* Long-form (default). Each output row corresponds to one chunk of one
-  array. Arrays in the same call need not share any dimension; they coexist
-  as separate rows distinguished by an ``array`` column.
-* Wide-form (``align_axis_0=True``). Each output row is one axis-0 chunk
-  shared across all selected arrays; the row carries one column per array
-  plus ``t_start`` / ``t_stop`` for the global range.
-
-See :class:`ZarrV2Datasource` for the row schemas and
-:func:`ray.data.read_zarr` for the public API.
-"""
-
 from __future__ import annotations
 
 import logging

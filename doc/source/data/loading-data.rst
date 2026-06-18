@@ -152,10 +152,7 @@ To view the full list of supported file formats, see the
 
     .. tab-item:: Zarr
 
-        To read a Zarr v2 store, call :func:`~ray.data.read_zarr`. By default Ray Data
-        emits one row per array chunk; with ``align_axis_0=True`` it emits one row per
-        axis-0 chunk across row-aligned arrays. See
-        :ref:`Working with Zarr <working_with_zarr>` for details.
+        To read a Zarr v2 store, call :func:`~ray.data.read_zarr`.
 
         .. code-block:: python
 

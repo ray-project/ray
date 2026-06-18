@@ -976,22 +976,12 @@ def read_zarr(
             Also acceptsan :class:`fsspec.spec.AbstractFileSystem`.
             pyarrow filesystems are wrapped internally with
             :class:`fsspec.implementations.arrow.ArrowFSWrapper`
-        chunk_shapes: Optional override(s) for chunk geometry along the
-            leading axes. Accepts either:
-
-            * A sequence of positive integers (list or tuple), applied as
-              a shared prefix to every selected array, overriding the
-              leading axes and keeping trailing axes at each array's
-              native chunking.
-            * A dict mapping array paths to per-array prefix overrides,
-              for cases where only some arrays should be re-tiled or
-              different arrays should use different leading-axis chunks.
-              Arrays omitted from the dict keep their native chunks.
-
-            A shared list/tuple override may not be longer than the
-            smallest selected array's rank. Each per-array dict override
-            may not be longer than its target array's rank. If ``None``
-            (the default), every array keeps its native chunks.
+        chunk_shapes: Optional re-tiling of the leading chunk axes at read
+            time (see :ref:`Working with Zarr <working_with_zarr>`). Either a
+            sequence applied as a shared prefix across all selected arrays
+            (trailing axes keep native chunks), or a dict of per-array
+            prefixes (arrays absent from it keep native chunks). An override
+            may not exceed its target array's rank. Defaults to native chunks.
         array_paths: Optional list of array paths within the Zarr store to
             read. If unspecified, all arrays discovered in the store are
             included.
@@ -1006,17 +996,12 @@ def read_zarr(
             ``shape[0]`` and must end up with the same effective axis-0
             chunk size after ``chunk_shapes`` resolution. The
             default (``False``) uses the long-form chunk-per-row schema.
-        overlap: When set with ``align_axis_0``, extends each row's per-array
-            data forward by ``overlap`` timesteps from the next row's owned
-            range (clipped at the end of the store). Used for sliding-window
-            pipelines: with ``overlap=K-1``, any window of length ``K``
-            starting in this row's owned ``[t_start, t_stop)`` fits
-            entirely within the row's per-array slice, so a downstream
-            ``flat_map`` doesn't need cross-row state. The row's ownership
-            (the ``t_start``/``t_stop`` columns) is unchanged; only
-            ``chunk.shape[0]`` of each per-array column grows by up to
-            ``overlap``. Requires ``align_axis_0=True``. Defaults to ``0`` —
-            no overlap, each row's data exactly covers its owned range.
+        overlap: With ``align_axis_0``, extend each row's per-array data
+            forward by ``overlap`` timesteps (clipped at the store end) for
+            sliding-window pipelines; see
+            :ref:`Working with Zarr <working_with_zarr>`. Row ownership
+            (the ``t_start``/``t_stop`` columns) is unchanged. Requires
+            ``align_axis_0=True``. Defaults to ``0``.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
