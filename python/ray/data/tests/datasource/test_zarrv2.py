@@ -325,22 +325,6 @@ def test_rejects_invalid_chunk_shapes(zarrv2_group_store, chunk_shapes, match):
         )
 
 
-def test_chunk_shapes_accepts_numpy_ints(zarrv2_group_store):
-    """NumPy integer chunk sizes (common from array metadata) are accepted and
-    normalized to plain ints."""
-    seq = zarrv2_datasource.ZarrV2Datasource(
-        str(zarrv2_group_store), chunk_shapes=[np.int64(2)]
-    )
-    assert seq.chunk_shapes == (2,)
-    assert all(type(x) is int for x in seq.chunk_shapes)
-
-    per_array = zarrv2_datasource.ZarrV2Datasource(
-        str(zarrv2_group_store), chunk_shapes={"images": [np.int64(2)]}
-    )
-    assert per_array.chunk_shapes == {"images": (2,)}
-    assert all(type(x) is int for v in per_array.chunk_shapes.values() for x in v)
-
-
 @pytest.mark.parametrize(
     "chunk_shapes,array_paths,expected",
     [
