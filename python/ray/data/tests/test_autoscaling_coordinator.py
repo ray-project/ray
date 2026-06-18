@@ -8,8 +8,10 @@ from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator impor
     HEAD_NODE_RESOURCE_LABEL,
     DefaultAutoscalingCoordinator,
     _AutoscalingCoordinatorActor,
+    _format_resources_for_log,
     get_or_create_autoscaling_coordinator,
 )
+from ray.data._internal.util import GiB
 from ray.tests.conftest import wait_for_condition
 
 CLUSTER_NODES_WITH_HEAD = [
@@ -210,6 +212,49 @@ def test_double_allocation_with_multiple_request_remaining():
     # Both requesters should get their specific requests + fair share of remaining
     assert res1 == req1 + [expected_remaining_per_requester]
     assert res2 == req2 + [expected_remaining_per_requester]
+
+
+def test_format_resources_for_log():
+    # Two bundles that are identical except for sub-precision differences in
+    # object_store_memory (8.96 vs 9.04 GiB), plus custom labels and a GPU: 0
+    # entry. They should aggregate into a single entry, with custom/zero
+    # resources dropped.
+    resources = [
+        {
+            "CPU": 8,
+            "GPU": 0,
+            "memory": 32 * GiB,
+            "object_store_memory": int(8.96 * GiB),
+            "anyscale/cpu_only:true": 1.0,
+            "anyscale/region:us-west-2": 1.0,
+            "node:10.0.193.159": 1.0,
+        },
+        {
+            "CPU": 8,
+            "GPU": 0,
+            "memory": 32 * GiB,
+            "object_store_memory": int(9.04 * GiB),
+            "anyscale/cpu_only:true": 1.0,
+            "anyscale/region:us-west-2": 1.0,
+            "node:10.0.241.173": 1.0,
+        },
+        {
+            "CPU": 0,
+            "GPU": 0,
+            "memory": 0,
+            "object_store_memory": 0,
+            "anyscale/cpu_only:true": 1.0,
+            "node:10.0.252.14": 1.0,
+        },
+    ]
+
+    log_message = _format_resources_for_log(resources)
+    assert log_message == (
+        "[2 x {CPU: 8, memory: 32.0GiB, object_store_memory: 9.0GiB}]"
+    )
+    assert "anyscale/" not in log_message
+    assert "node:" not in log_message
+    assert "GPU" not in log_message
 
 
 @pytest.fixture
@@ -546,14 +591,14 @@ def test_sdk_forwarding_merges_subcluster_into_each_bundle():
             # Empty per-bundle entry — should still receive the subcluster.
             {},
         ],
-        subcluster_selector={"__subcluster__": "training"},
+        subcluster_selector={"ray-subcluster": "training"},
         expire_after_s=10,
     )
     mock_send.assert_called_once_with(
         [{"CPU": 1}, {"CPU": 1}],
         label_selectors=[
-            {"node_id": "n1", "__subcluster__": "training"},
-            {"__subcluster__": "training"},
+            {"node_id": "n1", "ray-subcluster": "training"},
+            {"ray-subcluster": "training"},
         ],
     )
 
@@ -586,10 +631,10 @@ def test_request_rejects_per_bundle_cross_subcluster():
             requester_id="r",
             resources=[{"CPU": 1}, {"CPU": 1}],
             label_selectors=[
-                {"__subcluster__": "training"},
-                {"__subcluster__": "validation"},
+                {"ray-subcluster": "training"},
+                {"ray-subcluster": "validation"},
             ],
-            subcluster_selector={"__subcluster__": "training"},
+            subcluster_selector={"ray-subcluster": "training"},
             expire_after_s=10,
         )
 
@@ -605,18 +650,18 @@ def test_request_rejects_changing_subcluster_selector():
     coord.request_resources(
         requester_id="r",
         resources=[{"CPU": 1}],
-        subcluster_selector={"__subcluster__": "training"},
+        subcluster_selector={"ray-subcluster": "training"},
         expire_after_s=10,
     )
     with pytest.raises(ValueError, match="Cannot change subcluster_selector"):
         coord.request_resources(
             requester_id="r",
             resources=[{"CPU": 1}],
-            subcluster_selector={"__subcluster__": "validation"},
+            subcluster_selector={"ray-subcluster": "validation"},
             expire_after_s=10,
         )
     # Registry must be unchanged after the rejected call.
-    assert coord._subcluster_selectors["r"] == {"__subcluster__": "training"}
+    assert coord._subcluster_selectors["r"] == {"ray-subcluster": "training"}
 
 
 def test_label_selector_change_triggers_resend():
@@ -649,19 +694,19 @@ LABELED_CLUSTER_NODES = [
     {
         "NodeID": "n-train-1",
         "Resources": {"CPU": 8, "object_store_memory": 1000},
-        "Labels": {"__subcluster__": "training"},
+        "Labels": {"ray-subcluster": "training"},
         "Alive": True,
     },
     {
         "NodeID": "n-train-2",
         "Resources": {"CPU": 8, "object_store_memory": 1000},
-        "Labels": {"__subcluster__": "training"},
+        "Labels": {"ray-subcluster": "training"},
         "Alive": True,
     },
     {
         "NodeID": "n-val-1",
         "Resources": {"CPU": 4, "object_store_memory": 500},
-        "Labels": {"__subcluster__": "validation"},
+        "Labels": {"ray-subcluster": "validation"},
         "Alive": True,
     },
     {
@@ -686,14 +731,14 @@ def test_label_selector_disjoint_requesters_dont_cross_talk():
     coord.request_resources(
         requester_id="train",
         resources=[{"CPU": 4}],
-        subcluster_selector={"__subcluster__": "training"},
+        subcluster_selector={"ray-subcluster": "training"},
         expire_after_s=10,
         request_remaining=True,
     )
     coord.request_resources(
         requester_id="val",
         resources=[{"CPU": 4}],
-        subcluster_selector={"__subcluster__": "validation"},
+        subcluster_selector={"ray-subcluster": "validation"},
         expire_after_s=10,
         request_remaining=True,
     )
@@ -735,7 +780,7 @@ def test_labeled_and_unlabeled_requesters_are_isolated():
     coord.request_resources(
         requester_id="train",
         resources=[{"CPU": 1}],
-        subcluster_selector={"__subcluster__": "training"},
+        subcluster_selector={"ray-subcluster": "training"},
         expire_after_s=10,
         request_remaining=True,
     )
@@ -761,7 +806,7 @@ def test_label_selector_unmatched_yields_no_allocation():
     coord.request_resources(
         requester_id="ghost",
         resources=[{"CPU": 1}],
-        subcluster_selector={"__subcluster__": "nonexistent"},
+        subcluster_selector={"ray-subcluster": "nonexistent"},
         expire_after_s=10,
         request_remaining=True,
     )
@@ -775,7 +820,7 @@ def test_label_selector_partial_fit_when_demand_exceeds_capacity():
     coord.request_resources(
         requester_id="val",
         resources=[{"CPU": 3}, {"CPU": 3}, {"CPU": 3}],
-        subcluster_selector={"__subcluster__": "validation"},
+        subcluster_selector={"ray-subcluster": "validation"},
         expire_after_s=10,
     )
     # Validation has one 4-CPU node; only the first 3-CPU bundle fits.
@@ -789,7 +834,7 @@ def test_full_tick_exercises_update_merge_reallocate():
         {
             "NodeID": "n1",
             "Resources": {"CPU": 4},
-            "Labels": {"__subcluster__": "training"},
+            "Labels": {"ray-subcluster": "training"},
             "Alive": True,
         },
     ]
@@ -802,7 +847,7 @@ def test_full_tick_exercises_update_merge_reallocate():
     coord.request_resources(
         requester_id="train",
         resources=[{"CPU": 1}],
-        subcluster_selector={"__subcluster__": "training"},
+        subcluster_selector={"ray-subcluster": "training"},
         expire_after_s=10,
         request_remaining=True,
     )
@@ -816,7 +861,7 @@ def test_full_tick_exercises_update_merge_reallocate():
         {
             "NodeID": "n2",
             "Resources": {"CPU": 8},
-            "Labels": {"__subcluster__": "training"},
+            "Labels": {"ray-subcluster": "training"},
             "Alive": True,
         }
     )
@@ -837,7 +882,7 @@ def test_labeled_requester_with_empty_resources_stays_pinned():
     coord.request_resources(
         requester_id="train_idle",
         resources=[],
-        subcluster_selector={"__subcluster__": "training"},
+        subcluster_selector={"ray-subcluster": "training"},
         expire_after_s=10,
         request_remaining=True,
     )
@@ -846,7 +891,7 @@ def test_labeled_requester_with_empty_resources_stays_pinned():
     coord.request_resources(
         requester_id="val_active",
         resources=[{"CPU": 2}],
-        subcluster_selector={"__subcluster__": "validation"},
+        subcluster_selector={"ray-subcluster": "validation"},
         expire_after_s=10,
         request_remaining=True,
     )
@@ -877,11 +922,11 @@ def test_proxy_forwards_label_selector_from_init():
     proxy = DefaultAutoscalingCoordinator(
         requester_id="r",
         autoscaling_coordinator_actor=mock_actor,
-        subcluster_selector={"__subcluster__": "training"},
+        subcluster_selector={"ray-subcluster": "training"},
     )
     proxy.request_resources(resources=[{"CPU": 1}, {"CPU": 2}], expire_after_s=10)
     kwargs = mock_actor.request_resources.remote.call_args.kwargs
-    assert kwargs["subcluster_selector"] == {"__subcluster__": "training"}
+    assert kwargs["subcluster_selector"] == {"ray-subcluster": "training"}
 
 
 def test_proxy_forwards_label_selector_on_empty_resources():
@@ -892,12 +937,12 @@ def test_proxy_forwards_label_selector_on_empty_resources():
     proxy = DefaultAutoscalingCoordinator(
         requester_id="r",
         autoscaling_coordinator_actor=mock_actor,
-        subcluster_selector={"__subcluster__": "training"},
+        subcluster_selector={"ray-subcluster": "training"},
     )
     proxy.request_resources(resources=[], expire_after_s=10, request_remaining=True)
     kwargs = mock_actor.request_resources.remote.call_args.kwargs
     assert kwargs["resources"] == []
-    assert kwargs["subcluster_selector"] == {"__subcluster__": "training"}
+    assert kwargs["subcluster_selector"] == {"ray-subcluster": "training"}
 
 
 def test_proxy_passes_caller_label_selectors_through():
@@ -908,7 +953,7 @@ def test_proxy_passes_caller_label_selectors_through():
     proxy = DefaultAutoscalingCoordinator(
         requester_id="r",
         autoscaling_coordinator_actor=mock_actor,
-        subcluster_selector={"__subcluster__": "training"},
+        subcluster_selector={"ray-subcluster": "training"},
     )
     proxy.request_resources(
         resources=[{"CPU": 1}],
@@ -917,7 +962,7 @@ def test_proxy_passes_caller_label_selectors_through():
     )
     kwargs = mock_actor.request_resources.remote.call_args.kwargs
     assert kwargs["label_selectors"] == [{"node_id": "n1"}]
-    assert kwargs["subcluster_selector"] == {"__subcluster__": "training"}
+    assert kwargs["subcluster_selector"] == {"ray-subcluster": "training"}
 
 
 if __name__ == "__main__":

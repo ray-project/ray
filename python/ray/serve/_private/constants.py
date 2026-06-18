@@ -638,6 +638,9 @@ DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S = 30
 # Name of deployment request routing stats method implemented by user.
 REQUEST_ROUTING_STATS_METHOD = "record_routing_stats"
 
+# Name of deployment static replica metadata method implemented by user.
+RECORD_REPLICA_METADATA_METHOD = "record_replica_metadata"
+
 # By default, we run user code in a separate event loop.
 # This flag can be set to 0 to run user code in the same event loop as the
 # replica's main event loop.
@@ -695,22 +698,15 @@ RAY_SERVE_ENABLE_DIRECT_INGRESS = (
 # Feature flag to use HAProxy.
 RAY_SERVE_ENABLE_HA_PROXY = os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1"
 
-# Experimental: use HAProxy binary from the ray-haproxy PyPI package instead
-# of a system-installed binary. When enabled, get_haproxy_binary() resolves
-# the binary from the ray_haproxy package (pip install ray-haproxy).
-RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY = (
-    os.environ.get("RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY", "0") == "1"
-)
-
 # Feature flag to include client IP address in HTTP access logs.
 # Off by default for privacy; set to "1" to enable.
 RAY_SERVE_LOG_CLIENT_ADDRESS = (
     os.environ.get("RAY_SERVE_LOG_CLIENT_ADDRESS", "0") == "1"
 )
 
-# Absolute path to the HAProxy binary. Defaults to bare "haproxy" (PATH lookup).
-# Set in Docker images to avoid PATH-resolution failures (e.g. broken mounts).
-RAY_SERVE_HAPROXY_BINARY_PATH = get_env_str("RAY_SERVE_HAPROXY_BINARY_PATH", "haproxy")
+# Absolute path to an HAProxy binary. When set, it takes precedence over the
+# bundled ray-haproxy package.
+RAY_SERVE_HAPROXY_BINARY_PATH = get_env_str("RAY_SERVE_HAPROXY_BINARY_PATH", "")
 
 # HAProxy configuration defaults
 # Maximum number of concurrent connections
@@ -748,6 +744,12 @@ RAY_SERVE_HAPROXY_SERVER_STATE_FILE = os.environ.get(
 # HAProxy hard stop after timeout
 RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S", "120")
+)
+
+# Timeout for a spawned HAProxy to take over the admin socket (pid-verified).
+# Generous: a reload under load transfers listener FDs from a busy predecessor.
+RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S = int(
+    os.environ.get("RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S", "30")
 )
 
 # Minimum spacing between HAProxy reloads. Broadcasts arriving inside
@@ -933,8 +935,15 @@ RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT = int(
 
 # Hold released replica ports out of the pool this long so proxies can
 # drop their stale slot before a new replica grabs the same port. 0 disables.
+# Defaults to hard-stop-after plus a margin: soft-stopped (reloaded-out)
+# HAProxy workers run no health checks and keep routing to their frozen
+# server list until hard-stop-after fires, so a freed port must stay out
+# of the pool at least that long or another app's replica can inherit the
+# old app's traffic. The margin covers the broadcast/reload lag before an
+# old worker's hard-stop clock starts.
 RAY_SERVE_PORT_QUARANTINE_S = get_env_float_non_negative(
-    "RAY_SERVE_PORT_QUARANTINE_S", 10.0
+    "RAY_SERVE_PORT_QUARANTINE_S",
+    float(RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S + 30),
 )
 # The minimum drain period for a HTTP proxy.
 # If RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS is set to 1,

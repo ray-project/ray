@@ -79,12 +79,12 @@ def test_all_500s_raises_with_full_context(mock_global_node, no_sleep):
         mock_get.return_value = _make_resp(500, text="prometheus exploded")
         with pytest.raises(RuntimeError) as exc_info:
             get_system_metric_for_component(
-                "ray_component_uss_mb", "dashboard", "http://prom-server"
+                "ray_component_uss_bytes", "dashboard", "http://prom-server"
             )
     msg = str(exc_info.value)
     assert "last_status=500" in msg
     assert "http://prom-server" in msg
-    assert "ray_component_uss_mb" in msg
+    assert "ray_component_uss_bytes" in msg
     assert "dashboard" in msg
     assert "prometheus exploded" in msg
     assert mock_get.call_count == 3
