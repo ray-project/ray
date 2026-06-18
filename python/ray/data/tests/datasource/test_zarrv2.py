@@ -271,13 +271,6 @@ def test_array_paths_missing_zarray_file_raises_value_error(
         ({"images": []}, r"chunk_shapes\['images'\] must be .*positive integers"),
         ({"images": [0]}, r"chunk_shapes\['images'\] must be .*positive integers"),
         ({"images": [1.5]}, r"chunk_shapes\['images'\] must be .*positive integers"),
-        # Bad dict keys.
-        (cast(Any, {1: [2]}), "chunk_shapes dict keys must be array-path strings"),
-        # Duplicate keys after normalization.
-        (
-            {"images": [2], "/images/": [3]},
-            "duplicate array paths after normalization",
-        ),
         # Unknown array path.
         ({"does_not_exist": [2]}, r"Unknown array path\(s\) in chunk_shapes"),
     ],

@@ -111,22 +111,8 @@ def _read_chunk(
     array_name: str,
     chunk_slices: tuple[tuple[int, int], ...],
 ) -> np.ndarray:
-    """Read ``array[chunk_slices]`` from a Zarr root.
-
-    ``chunk_slices`` is an N-tuple of ``(start, stop)`` pairs, one per axis.
-    For a 0-D (scalar) array it is the empty tuple ``()``, which reads the
-    single element.
-
-    Transient I/O errors (throttling, 5xx, connection resets, timeouts) are
-    retried by the underlying filesystem/storage backend, which owns the retry
-    policy: ``s3fs``/botocore and ``pyarrow.fs.S3FileSystem`` retry by default
-    and are tunable on the ``filesystem`` passed to ``read_zarr`` (e.g. botocore
-    ``retries`` config or pyarrow ``retry_strategy``).
-    """
     indexer = tuple(slice(s, e) for s, e in chunk_slices)
     arr = root if array_name == "" else root[array_name]
-    # ``arr`` is a zarr Array here (the caller resolves a concrete array path),
-    # but zarr's types widen it to Array | Group; asarray pins the ndarray return.
     return np.asarray(arr[indexer])
 
 
@@ -214,18 +200,11 @@ def _create_aligned_read_fn(
 
 
 def _validate_chunk_shapes_dict(chunk_shapes: dict) -> dict[str, tuple[int, ...]]:
+    """Normalize chunk_shapes keys to store paths and validate their values."""
     from zarr.util import normalize_storage_path
 
-    normalized_chunk_shapes: dict[str, tuple[int, ...]] = {}
-    original_keys_by_normalized: dict[str, str] = {}
-
+    normalized: dict[str, tuple[int, ...]] = {}
     for k, v in chunk_shapes.items():
-        if not isinstance(k, str):
-            raise ValueError(
-                "chunk_shapes dict keys must be array-path strings, "
-                f"got key {k!r} of type {type(k).__name__}"
-            )
-
         if (
             not isinstance(v, (tuple, list))
             or not v
@@ -235,19 +214,8 @@ def _validate_chunk_shapes_dict(chunk_shapes: dict) -> dict[str, tuple[int, ...]
                 f"chunk_shapes[{k!r}] must be a non-empty sequence of positive "
                 f"integers (list or tuple), got {v!r}"
             )
-
-        normalized_key = normalize_storage_path(k)
-
-        if normalized_key in original_keys_by_normalized:
-            prev_key = original_keys_by_normalized[normalized_key]
-            raise ValueError(
-                "chunk_shapes contains duplicate array paths after normalization: "
-                f"{prev_key!r} and {k!r} both normalize to {normalized_key!r}"
-            )
-
-        original_keys_by_normalized[normalized_key] = k
-        normalized_chunk_shapes[normalized_key] = tuple(v)
-    return normalized_chunk_shapes
+        normalized[normalize_storage_path(k)] = tuple(v)
+    return normalized
 
 
 # ---------------------------------------------------------------------------
