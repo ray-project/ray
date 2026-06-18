@@ -2425,6 +2425,7 @@ typing-extensions==4.15.0
     # via
     #   -r python/requirements/serve/serve-test-requirements.txt
     #   -r python/requirements/test-requirements.txt
+    #   aiohttp
     #   aiosignal
     #   alembic
     #   anyio
