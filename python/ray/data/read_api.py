@@ -966,20 +966,16 @@ def read_zarr(
 
     Args:
         path: Path to the Zarr v2 store.
-        filesystem: Optional preconfigured filesystem. Accepts either a
-            :class:`pyarrow.fs.FileSystem` or an :class:`fsspec.spec.AbstractFileSystem`.
+        filesystem: The filesystem
+            implementation to read from. PyArrow filesystems are specified in the
+            `pyarrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
+            the filesystem is automatically selected based on the scheme of the paths.
+            For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+            Also acceptsan :class:`fsspec.spec.AbstractFileSystem`.
             pyarrow filesystems are wrapped internally with
-            :class:`fsspec.implementations.arrow.ArrowFSWrapper` because
-            Zarr's storage layer requires fsspec. Use this for private
-            buckets, custom credentials, anonymous/public cloud access, or
-            any storage backend configuration that shouldn't be inferred
-            internally. Recommended for non-local Zarr stores; for local
-            paths it's usually fine to omit. If omitted, the datasource
-            infers the filesystem from ``path``. Transient-error retries
-            (throttling, 5xx, timeouts) are handled by this filesystem, so
-            configure retry behavior here -- e.g. the botocore ``retries``
-            config on an ``s3fs.S3FileSystem`` or ``retry_strategy`` on a
-            ``pyarrow.fs.S3FileSystem``.
+            :class:`fsspec.implementations.arrow.ArrowFSWrapper`
         chunk_shapes: Optional override(s) for chunk geometry along the
             leading axes. Accepts either:
 
