@@ -141,7 +141,7 @@ class LimitPushdownRule(Rule):
                 pushed_tail = self._push_limit_down(raw_limit)
             branch_tails.append(pushed_tail)
 
-        new_union = Union(*branch_tails)
+        new_union = Union(branch_tails)
         return Limit(limit_op.limit, input_dependencies=[new_union])
 
     def _push_limit_down(self, limit_op: Limit) -> LogicalOperator:

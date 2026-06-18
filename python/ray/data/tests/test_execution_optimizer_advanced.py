@@ -302,7 +302,7 @@ def test_zip_operator(ray_start_regular_shared_2_cpus):
     planner = create_planner()
     read_op1 = get_parquet_read_logical_op()
     read_op2 = get_parquet_read_logical_op()
-    op = Zip(read_op1, read_op2)
+    op = Zip([read_op1, read_op2])
     plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(plan)
     physical_op = physical_plan.dag
