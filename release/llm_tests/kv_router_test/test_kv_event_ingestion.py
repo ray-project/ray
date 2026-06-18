@@ -314,6 +314,52 @@ class TestKvEventIngestion:
             for a in (replica, actor):
                 ray.kill(a, no_restart=True)
 
+    @pytest.mark.asyncio
+    async def test_select_worker_prefers_overlap(self, ray_instance):
+        """select_worker scores via the selection service and picks the worker
+        whose cached blocks overlap the prompt, within the allowed candidate set."""
+        actor = LocalKVRouterActor.remote(block_size=BLOCK_SIZE)
+        a = FakeReplica.remote(23905)
+        b = FakeReplica.remote(23906)
+        worker_a = get_worker_id("replica-A")
+        worker_b = get_worker_id("replica-B")
+        try:
+            await actor._on_deployment_targets.remote(
+                targets(
+                    running_replica(
+                        "replica-A",
+                        await a.endpoint.remote(),
+                        await a.replay_endpoint.remote(),
+                    ),
+                    running_replica(
+                        "replica-B",
+                        await b.endpoint.remote(),
+                        await b.replay_endpoint.remote(),
+                    ),
+                )
+            )
+            await wait_registered(actor, [worker_a, worker_b])
+
+            # A caches the prompt's two blocks; B caches nothing.
+            token_ids = list(range(2 * BLOCK_SIZE))
+            await wait_for_overlap(
+                actor,
+                token_ids,
+                lambda overlap: overlap.get(worker_a) == 2,
+                publish=lambda: a.publish_stored.remote([501, 502], token_ids),
+            )
+
+            selection = await actor.select_worker.remote(
+                "req-1", token_ids, [worker_a, worker_b]
+            )
+            assert selection["worker_id"] == worker_a
+            assert selection["overlap_blocks"] >= 1
+        finally:
+            await a.close.remote()
+            await b.close.remote()
+            for x in (a, b, actor):
+                ray.kill(x, no_restart=True)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

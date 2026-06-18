@@ -5,6 +5,7 @@ from typing import Dict, List
 import pytest
 import requests
 from dynamo.llm import compute_block_hash_for_seq
+from transformers import AutoTokenizer
 
 import ray
 from ray import serve
@@ -24,6 +25,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
 from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX, SERVE_NAMESPACE
 from ray.serve.config import DeploymentActorConfig
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
+from ray.serve.llm.request_router import KVAwareRouter
 
 MODEL_ID = "qwen3-0.6b"
 MODEL_SOURCE = "Qwen/Qwen3-0.6B"
@@ -141,6 +143,22 @@ def tokenize_prompt(endpoint, messages=MESSAGES):
     return response.json()["tokens"]
 
 
+def tokenize_text(endpoint, prompt):
+    """Token ids for a raw prompt string via the completion /tokenize path.
+
+    add_special_tokens is False because a chat-templated string already carries
+    the template's special tokens as text.
+    """
+    host, port = endpoint
+    response = requests.post(
+        f"http://{host}:{port}/tokenize",
+        json={"model": MODEL_ID, "prompt": prompt, "add_special_tokens": False},
+        timeout=60,
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["tokens"]
+
+
 def num_prompt_blocks(token_ids):
     """Number of full KV blocks in a token sequence."""
     return len(compute_block_hash_for_seq(list(token_ids), BLOCK_SIZE))
@@ -216,8 +234,9 @@ class TestKvEvents:
     @pytest.mark.timeout(600)
     async def test_kv_events_reach_selection_service(self, deployed_handle):
         """Each replica's real engine KV events reach the selection service via
-        its connect-out listener, and a per-worker prefix-cache reset is observed
-        as reduced overlap."""
+        its connect-out listener, a per-worker prefix-cache reset is observed as
+        reduced overlap, and scoring routes the prompt to the higher-overlap
+        worker."""
         actor = discover_deployment_actor(
             APP_NAME, deployed_handle.deployment_name, KV_ROUTER_ACTOR_NAME
         )
@@ -296,6 +315,134 @@ class TestKvEvents:
         await async_wait_for_condition(reset_worker_cleared, timeout=60)
         overlaps = await actor.get_kv_overlap_blocks.remote(prompt_token_ids)
         assert overlaps.get(untouched_worker) == prompt_blocks
+
+        # Scoring routes the prompt to the worker holding more cached overlap.
+        selection = await actor.select_worker.remote(
+            "score-req", prompt_token_ids, worker_ids
+        )
+        assert selection["worker_id"] == untouched_worker
+
+    @pytest.mark.asyncio
+    @pytest.mark.timeout(600)
+    async def test_chat_tokens_match_prefill(self, deployed_handle):
+        """Ensure chat template is applied: a chat request scores the same overlap as
+        the prompt rendered with the model's chat template and tokenized as raw text."""
+        actor = discover_deployment_actor(
+            APP_NAME, deployed_handle.deployment_name, KV_ROUTER_ACTOR_NAME
+        )
+        assert actor is not None
+        replica_endpoints = await self._discover_replicas(deployed_handle)
+
+        async def all_registered():
+            registered = await actor.get_kv_event_worker_replicas.remote()
+            return sorted(registered.values()) == sorted(replica_endpoints)
+
+        await async_wait_for_condition(all_registered, timeout=90)
+
+        # Ground truth: render the chat template client-side and tokenize as text.
+        worker_id, replica_id = next(
+            iter((await actor.get_kv_event_worker_replicas.remote()).items())
+        )
+        endpoint = replica_endpoints[replica_id]
+        manual_prompt = AutoTokenizer.from_pretrained(MODEL_SOURCE).apply_chat_template(
+            MESSAGES, add_generation_prompt=True, tokenize=False
+        )
+        manual_token_ids = tokenize_text(endpoint, manual_prompt)
+        prompt_blocks = num_prompt_blocks(manual_token_ids)
+        assert prompt_blocks >= 2
+
+        # Warm this worker's prefix cache with the chat request and wait until the
+        # indexer reflects the manually-templated prompt's blocks.
+        post_chat(endpoint)
+
+        async def manual_fully_overlaps():
+            overlaps = await actor.get_kv_overlap_blocks.remote(manual_token_ids)
+            return overlaps.get(worker_id) == prompt_blocks
+
+        await async_wait_for_condition(manual_fully_overlaps, timeout=60)
+
+        # The chat /tokenize tokens hit the same cached blocks -> same score,
+        # proving /tokenize applied the chat template.
+        chat_token_ids = tokenize_prompt(endpoint, MESSAGES)
+        chat_overlaps = await actor.get_kv_overlap_blocks.remote(chat_token_ids)
+        assert chat_overlaps.get(worker_id) == prompt_blocks
+        assert chat_token_ids == manual_token_ids
+
+
+class TestKvScoring:
+    """End-to-end KV-aware routing: a request routed through a deployed
+    KVAwareRouter is scored by the selection service and lands on a live
+    replica."""
+
+    @pytest.fixture(scope="class")
+    def kv_aware_handle(self):
+        """Deploy with KVAwareRouter; the build auto-attaches the KVRouterActor
+        and enables engine KV events."""
+        if not ray.is_initialized():
+            ray.init(address="auto")
+        serve.shutdown()
+
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id=MODEL_ID, model_source=MODEL_SOURCE
+            ),
+            deployment_config=dict(
+                autoscaling_config=dict(
+                    min_replicas=NUM_REPLICAS, max_replicas=NUM_REPLICAS
+                ),
+                request_router_config={"request_router_class": KVAwareRouter},
+            ),
+            engine_kwargs=dict(
+                max_model_len=2048,
+                enforce_eager=True,
+                gpu_memory_utilization=0.4,
+            ),
+            experimental_configs={"KV_EVENTS_PORT_BASE": 21600},
+            runtime_env=dict(
+                env_vars={
+                    "RAY_SERVE_ENABLE_DIRECT_INGRESS": "1",
+                    "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
+                }
+            ),
+            log_engine_metrics=False,
+        )
+        app = _build_direct_streaming_llm_deployment(llm_config)
+        handle = serve.run(app, name="kv_scoring_gpu_test")
+        yield handle
+        serve.shutdown()
+
+    @pytest.mark.asyncio
+    @pytest.mark.timeout(600)
+    async def test_routes_to_higher_overlap_replica(self, kv_aware_handle):
+        """An overlapping prompt routes back to the replica that cached it,
+        scored through the full KVAwareRouter path."""
+        async with kv_aware_handle.choose_replica(
+            request_body=b"",
+            body_truncated=False,
+            _reserve=False,
+            request_token_ids=[1],  # KV-aware routing requires token ids
+        ) as selection:
+            cached_id = selection._replica.replica_id.to_full_id_str()
+            cached_endpoint = selection._replica.backend_http_endpoint
+        post_chat(cached_endpoint)
+        prompt_token_ids = tokenize_prompt(cached_endpoint)
+        assert num_prompt_blocks(prompt_token_ids) >= 2
+
+        # Worker registration and KV-event indexing are asynchronous, so poll the
+        # scoring path until it converges on the replica holding the cached blocks.
+        async def routes_to_cached_replica():
+            picks = set()
+            for _ in range(3):
+                async with kv_aware_handle.choose_replica(
+                    request_body=b"",
+                    body_truncated=False,
+                    _reserve=False,
+                    request_token_ids=prompt_token_ids,
+                ) as selection:
+                    picks.add(selection._replica.replica_id.to_full_id_str())
+            return picks == {cached_id}
+
+        await async_wait_for_condition(routes_to_cached_replica, timeout=120)
 
 
 if __name__ == "__main__":

@@ -163,6 +163,16 @@ class TestDirectStreamingLLMRouter:
         assert "no replicas" in exc_info.value.detail
 
     @pytest.mark.asyncio
+    async def test_route_returns_400_on_bad_routing_request(self):
+        router = _new_direct_router()
+        router._pick_replica = AsyncMock(side_effect=ValueError("empty prompt"))
+
+        with pytest.raises(HTTPException) as exc_info:
+            await router.route(_FakeRequest(b"{}"))
+        assert exc_info.value.status_code == 400
+        assert "empty prompt" in exc_info.value.detail
+
+    @pytest.mark.asyncio
     async def test_route_returns_503_on_deployment_unavailable(self):
         err = DeploymentUnavailableError(DeploymentID(name="LLMServer:test"))
         router = _new_direct_router()
