@@ -44,6 +44,7 @@ def setup_trackio(
     dataset_id: Optional[str] = None,
     space_id: Optional[str] = None,
     rank_zero_only: bool = True,
+    **kwargs,
 ):
     """Set up a Trackio experiment run.
 
@@ -135,6 +136,14 @@ def setup_trackio(
         dataset_id=dataset_id,
         space_id=space_id,
     )
+
+    if kwargs:
+        logger.debug(
+            "Received additional Trackio init arguments: %s",
+            kwargs,
+        )
+        run.metadata.update(kwargs)
+
     return run
 
 
