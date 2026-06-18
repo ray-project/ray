@@ -28,47 +28,67 @@ namespace ray {
 
 using SteadyTimePoint = std::chrono::steady_clock::time_point;
 
-/// Interface for a clock that returns the current time.
+/**
+ * @brief Interface for a clock that returns the current time.
+ */
 class ClockInterface {
  public:
   virtual ~ClockInterface() = default;
 
-  /// Wall clock time (may jump due to NTP). Use for timestamps and deadlines.
+  /**
+   * @brief Wall clock time (may jump due to NTP). Use for timestamps and deadlines.
+   */
   virtual absl::Time Now() const = 0;
 
-  /// Monotonic time (never goes backwards). Use for duration measurements.
+  /**
+   * @brief Monotonic time (never goes backwards). Use for duration measurements.
+   */
   virtual SteadyTimePoint SteadyNow() const = 0;
 
-  /// Convenience: monotonic time as milliseconds since the steady-clock epoch.
-  /// Use for measuring intervals (timeouts, expiry, retry delays). Unlike
-  /// NowUnixMillis(), this never jumps with NTP or manual wall-clock changes.
-  /// Mirrors ray::current_time_ms(). Not comparable across processes/nodes.
+  /**
+   * @brief Convenience: monotonic time as milliseconds since the steady-clock epoch.
+   *
+   * Use for measuring intervals (timeouts, expiry, retry delays). Unlike
+   * NowUnixMillis(), this never jumps with NTP or manual wall-clock changes.
+   * Mirrors ray::current_time_ms(). Not comparable across processes/nodes.
+   */
   int64_t SteadyNowMillis() const {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
                SteadyNow().time_since_epoch())
         .count();
   }
 
-  /// Convenience: current time as Unix milliseconds.
+  /**
+   * @brief Convenience: current time as Unix milliseconds.
+   */
   int64_t NowUnixMillis() const { return absl::ToUnixMillis(Now()); }
 
-  /// Convenience: current time as Unix microseconds.
+  /**
+   * @brief Convenience: current time as Unix microseconds.
+   */
   int64_t NowUnixMicros() const { return absl::ToUnixMicros(Now()); }
 
-  /// Convenience: current time as Unix nanoseconds.
+  /**
+   * @brief Convenience: current time as Unix nanoseconds.
+   */
   int64_t NowUnixNanos() const { return absl::ToUnixNanos(Now()); }
 };
 
-/// Real clock that delegates to absl::Now() and steady_clock::now(). Thread-safe.
+/**
+ * @brief Real clock that delegates to absl::Now() and steady_clock::now().
+ *        Thread-safe.
+ */
 class Clock final : public ClockInterface {
  public:
   absl::Time Now() const override { return absl::Now(); }
   SteadyTimePoint SteadyNow() const override { return std::chrono::steady_clock::now(); }
 };
 
-/// Fake clock for deterministic testing. Time only advances when you call
-/// AdvanceTime(). SteadyNow() is derived from Now() so they always agree.
-/// Thread-safe.
+/**
+ * @brief Fake clock for deterministic testing. Time only advances when you call
+ *        AdvanceTime(). SteadyNow() is derived from Now() so they always agree.
+ *        Thread-safe.
+ */
 class FakeClock final : public ClockInterface {
  public:
   explicit FakeClock(absl::Time start = absl::FromUnixSeconds(1000));
@@ -82,35 +102,40 @@ class FakeClock final : public ClockInterface {
   void SetTime(absl::Time time);
 
   /**
-   * Register a callback that is invoked whenever the clock's time changes (via
-   * AdvanceTime or SetTime). The callback is passed the new current time.
-   * Returns a handle that can be passed to UnregisterOnAdvanceCallback to
-   * remove the callback.
+   * @brief Register a callback that is invoked whenever the clock's time changes
+   *        (via AdvanceTime or SetTime). The callback is passed the new current
+   *        time.
    *
    * This is intentionally generic: the clock has no knowledge of who registers
    * callbacks, which keeps it loosely coupled from its observers (e.g. a fake
    * periodical runner).
+   *
+   * @return A handle that can be passed to UnregisterOnAdvanceCallback to remove
+   *         the callback.
    */
   uint64_t RegisterOnAdvanceCallback(std::function<void(absl::Time)> callback);
 
   /**
-   * Remove a callback previously registered with RegisterOnAdvanceCallback.
-   * No-op if the handle is not registered.
+   * @brief Remove a callback previously registered with RegisterOnAdvanceCallback.
+   *        No-op if the handle is not registered.
    */
   void UnregisterOnAdvanceCallback(uint64_t handle);
 
  private:
-  // Invoke all registered callbacks with the current time. Callbacks are invoked
-  // without the lock held, so they may safely call back into the clock (e.g.
-  // Now()) without deadlocking.
-  //
-  // We snapshot the callback *handles* up front, then re-look-up each handle
-  // under the lock immediately before invoking it. This guards against a
-  // use-after-free: one callback may destroy another observer, whose destructor
-  // calls UnregisterOnAdvanceCallback() to remove its (now-dangling) callback.
-  // Re-checking the handle ensures we never invoke a callback that was
-  // unregistered during this notification. Newly registered callbacks are not
-  // picked up until the next notification, which matches the snapshot semantics.
+  /**
+   * @brief Invoke all registered callbacks with the current time.
+   *
+   * Callbacks are invoked without the lock held, so they may safely call back
+   * into the clock (e.g. Now()) without deadlocking.
+   *
+   * We snapshot the callback *handles* up front, then re-look-up each handle
+   * under the lock immediately before invoking it. This guards against a
+   * use-after-free: one callback may destroy another observer, whose destructor
+   * calls UnregisterOnAdvanceCallback() to remove its (now-dangling) callback.
+   * Re-checking the handle ensures we never invoke a callback that was
+   * unregistered during this notification. Newly registered callbacks are not
+   * picked up until the next notification, which matches the snapshot semantics.
+   */
   void NotifyTimeChanged();
 
   mutable absl::Mutex mu_;

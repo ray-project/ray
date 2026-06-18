@@ -27,6 +27,7 @@
 namespace ray {
 
 std::vector<std::unique_ptr<MemoryMonitorInterface>> MemoryMonitorFactory::Create(
+    PeriodicalRunnerInterface &runner,
     KillWorkersCallback kill_workers_callback,
     bool resource_isolation_enabled,
     const CgroupManagerInterface &cgroup_manager) {
@@ -54,6 +55,7 @@ std::vector<std::unique_ptr<MemoryMonitorInterface>> MemoryMonitorFactory::Creat
 
   if (monitor_interval_ms > 0) {
     monitors.push_back(std::make_unique<ThresholdMemoryMonitor>(
+        runner,
         std::move(kill_workers_callback),
         memory_usage_threshold_bytes,
         monitor_interval_ms,

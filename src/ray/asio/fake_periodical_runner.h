@@ -28,9 +28,8 @@
 namespace ray {
 
 /**
- * \class FakePeriodicalRunner
- * A deterministic, test-only PeriodicalRunner driven by a FakeClock instead of
- * a real event loop.
+ * @brief A deterministic, test-only PeriodicalRunner driven by a FakeClock instead
+ *        of a real event loop.
  *
  * Each registered function is scheduled to run every `period_ms`. The runner
  * is purely time-driven: it reads the clock's current time at construction as
@@ -55,9 +54,9 @@ namespace ray {
 class FakePeriodicalRunner : public PeriodicalRunnerInterface {
  public:
   /**
-   * Construct a runner driven by `clock`. Reads `clock.Now()` as the initial
-   * scheduling reference and registers an on-advance callback with the clock.
-   * `clock` must outlive this runner.
+   * @brief Construct a runner driven by `clock`. Reads `clock.Now()` as the initial
+   *        scheduling reference and registers an on-advance callback with the clock.
+   *        `clock` must outlive this runner.
    */
   explicit FakePeriodicalRunner(FakeClock &clock);
 
@@ -74,25 +73,27 @@ class FakePeriodicalRunner : public PeriodicalRunnerInterface {
   struct PeriodicTask {
     std::function<void()> fn;
     absl::Duration period;
-    // The next time at which `fn` should be invoked.
+    /// The next time at which `fn` should be invoked.
     absl::Time next_run;
     std::string name;
   };
 
-  // Invoked by the clock whenever its time advances. Runs every task whose next
-  // scheduled run time is at or before `now`, once per elapsed period.
+  /**
+   * @brief Invoked by the clock whenever its time advances. Runs every task whose
+   *        next scheduled run time is at or before `now`, once per elapsed period.
+   */
   void OnTimeAdvanced(absl::Time now) ABSL_LOCKS_EXCLUDED(mutex_);
 
   FakeClock &clock_;
-  // Handle for the callback registered with `clock_`, used to unregister on
-  // destruction.
+  /// Handle for the callback registered with `clock_`, used to unregister on
+  /// destruction.
   uint64_t callback_handle_;
 
   mutable absl::Mutex mutex_;
   std::vector<PeriodicTask> tasks_ ABSL_GUARDED_BY(mutex_);
-  // The most recent time observed via the clock (at construction or
-  // OnTimeAdvanced), used as the reference point for scheduling newly
-  // registered tasks.
+  /// The most recent time observed via the clock (at construction or
+  /// OnTimeAdvanced), used as the reference point for scheduling newly
+  /// registered tasks.
   absl::Time now_ ABSL_GUARDED_BY(mutex_);
 };
 

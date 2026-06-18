@@ -245,7 +245,8 @@ NodeManager::NodeManager(
       ray_syncer_(io_service_, periodical_runner, self_node_id_.Binary(), 1, 0),
       worker_killing_policy_(WorkerKillingPolicyFactory::Create(
           config.enable_resource_isolation, *cgroup_manager)),
-      memory_monitors_(MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
+      memory_monitors_(MemoryMonitorFactory::Create(*periodical_runner,
+                                                    CreateKillWorkersCallback(),
                                                     config.enable_resource_isolation,
                                                     *cgroup_manager)),
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),

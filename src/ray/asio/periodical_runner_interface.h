@@ -20,10 +20,20 @@
 
 namespace ray {
 
+/**
+ * @brief Interface for scheduling a function to run periodically.
+ */
 class PeriodicalRunnerInterface {
  public:
   virtual ~PeriodicalRunnerInterface() = default;
 
+  /**
+   * @brief Schedule `fn` to be invoked every `period_ms` milliseconds.
+   *
+   * @param fn the function to invoke periodically.
+   * @param period_ms the interval between invocations, in milliseconds.
+   * @param name a human-readable name identifying the periodic task.
+   */
   virtual void RunFnPeriodically(std::function<void()> fn,
                                  uint64_t period_ms,
                                  std::string name) = 0;

@@ -19,10 +19,12 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "ray/asio/fake_periodical_runner.h"
 #include "ray/common/cgroup2/fake_cgroup_manager.h"
 #include "ray/common/event_memory_monitor.h"
 #include "ray/common/memory_monitor_interface.h"
 #include "ray/common/threshold_memory_monitor.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 
@@ -30,6 +32,9 @@ class MemoryMonitorFactoryTest : public ::testing::Test {
  protected:
   static constexpr int64_t kUserMemoryMaxBytes = 10LL * 1024 * 1024 * 1024;  // 10 GB
   static constexpr int64_t kUserMemoryHighBytes = 8LL * 1024 * 1024 * 1024;  // 8 GB
+
+  FakeClock clock_;
+  FakePeriodicalRunner runner_{clock_};
 };
 
 TEST_F(MemoryMonitorFactoryTest,
@@ -37,7 +42,8 @@ TEST_F(MemoryMonitorFactoryTest,
   FakeCgroupManager cgroup_manager(kUserMemoryMaxBytes, kUserMemoryHighBytes);
 
   std::vector<std::unique_ptr<MemoryMonitorInterface>> monitors =
-      MemoryMonitorFactory::Create([](std::string) {},
+      MemoryMonitorFactory::Create(runner_,
+                                   [](std::string) {},
                                    /*resource_isolation_enabled=*/false,
                                    cgroup_manager);
 
@@ -51,7 +57,8 @@ TEST_F(MemoryMonitorFactoryTest,
   FakeCgroupManager cgroup_manager(kUserMemoryMaxBytes, kUserMemoryHighBytes);
 
   std::vector<std::unique_ptr<MemoryMonitorInterface>> monitors =
-      MemoryMonitorFactory::Create([](std::string) {},
+      MemoryMonitorFactory::Create(runner_,
+                                   [](std::string) {},
                                    /*resource_isolation_enabled=*/true,
                                    cgroup_manager);
 

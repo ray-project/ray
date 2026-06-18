@@ -17,6 +17,7 @@
 #include <memory>
 #include <vector>
 
+#include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/memory_monitor_interface.h"
 
@@ -31,6 +32,8 @@ class MemoryMonitorFactory {
    *
    * On non-Linux platforms, returns a vector with a single NoopMemoryMonitor.
    *
+   * @param runner the periodical runner used by the monitors to schedule their
+   * periodic memory checks. Must outlive the returned monitors.
    * @param kill_workers_callback function to invoke when memory pressure is detected.
    * @param resource_isolation_enabled When resource isolation is enabled, the
    * memory monitors will work with the configured cgroup constraints to better
@@ -41,6 +44,7 @@ class MemoryMonitorFactory {
    * @return a vector of memory monitor instances.
    */
   static std::vector<std::unique_ptr<MemoryMonitorInterface>> Create(
+      PeriodicalRunnerInterface &runner,
       KillWorkersCallback kill_workers_callback,
       bool resource_isolation_enabled,
       const CgroupManagerInterface &cgroup_manager);

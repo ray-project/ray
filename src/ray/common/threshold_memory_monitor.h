@@ -15,11 +15,9 @@
 #pragma once
 
 #include <cstdint>
-#include <memory>
 #include <optional>
-#include <thread>
+#include <string>
 
-#include "ray/asio/periodical_runner.h"
 #include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/memory_monitor_interface.h"
 
@@ -36,6 +34,10 @@ namespace ray {
 class ThresholdMemoryMonitor : public MemoryMonitorInterface {
  public:
   /**
+   * @brief Schedules the periodic memory check on the externally-provided
+   *        `runner`, which must outlive this monitor.
+   *
+   * @param runner the periodical runner used to schedule the periodic memory check.
    * @param kill_workers_callback function to execute when the memory usage limit is
    *        exceeded.
    * @param memory_usage_threshold_bytes the threshold in bytes that triggers the
@@ -54,23 +56,6 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
    *        will use to calculate the aggregate object store memory usage. Not used if
    *        resource isolation is disabled.
    */
-  ThresholdMemoryMonitor(KillWorkersCallback kill_workers_callback,
-                         int64_t memory_usage_threshold_bytes,
-                         uint64_t monitor_interval_ms,
-                         bool resource_isolation_enabled,
-                         const std::string &root_cgroup_path = kDefaultCgroupPath,
-                         const std::string &user_cgroup_path = kDefaultCgroupPath,
-                         const std::string &system_cgroup_path = kDefaultCgroupPath);
-
-  /**
-   * @brief Constructor that uses an externally-provided periodical runner instead
-   *        of spawning a dedicated IO thread. Intended for tests, where a
-   *        FakePeriodicalRunner driven by a FakeClock allows the periodic memory
-   *        check to be triggered deterministically. `runner` must outlive this
-   *        monitor.
-   *
-   * All other parameters behave as in the production constructor above.
-   */
   ThresholdMemoryMonitor(PeriodicalRunnerInterface &runner,
                          KillWorkersCallback kill_workers_callback,
                          int64_t memory_usage_threshold_bytes,
@@ -80,7 +65,7 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
                          const std::string &user_cgroup_path = kDefaultCgroupPath,
                          const std::string &system_cgroup_path = kDefaultCgroupPath);
 
-  ~ThresholdMemoryMonitor() override;
+  ~ThresholdMemoryMonitor() override = default;
 
   /**
    * @brief Enables the memory monitor to trigger the kill callback.
@@ -122,8 +107,8 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
    */
   std::optional<MemoryUsageSnapshot> IsResourceIsolationThresholdExceeded();
 
-  /// Callback function that executes at each monitoring interval,
-  /// on a dedicated thread managed by this class.
+  /// Callback function that executes at each monitoring interval when the memory
+  /// usage exceeds the threshold.
   KillWorkersCallback kill_workers_callback_;
 
   /// Flag to indicate that the worker killing event is in progress.
@@ -147,37 +132,8 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
   /// use to monitor the aggregate object store memory usage.
   std::string system_cgroup_path_;
 
-  /**
-   * IO service for running the memory monitoring event loop. Only created by the
-   * production constructor; null when an external runner is injected.
-   */
-  std::unique_ptr<instrumented_io_context> io_service_;
-
-  /**
-   * Work guard to prevent the io service from exiting when no work. Only created
-   * by the production constructor.
-   */
-  std::unique_ptr<
-      boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>
-      work_guard_;
-
-  /**
-   * Thread executing the io service. Started before the runner so the io_service
-   * is ready to process work. Explicitly joined in the destructor. Only created
-   * by the production constructor.
-   */
-  std::unique_ptr<std::thread> thread_;
-
-  /**
-   * Periodical runner owned by the production constructor (backed by io_service_).
-   * Null when an external runner is injected.
-   */
-  std::shared_ptr<PeriodicalRunner> owned_runner_;
-
-  /**
-   * The runner used to schedule the periodic memory check. References either
-   * owned_runner_ (production) or an externally-provided runner (tests).
-   */
+  /// The externally-provided runner used to schedule the periodic memory check.
+  /// Must outlive this monitor.
   PeriodicalRunnerInterface &runner_;
 };
 
