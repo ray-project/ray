@@ -4293,6 +4293,8 @@ def read_iceberg(
 
             resolved = catalog.resolve(table_identifier, reader=ReaderFormat.ICEBERG)
             catalog_kwargs = resolved.catalog_kwargs or {}
+            if resolved.table_identifier is not None:
+                table_identifier = resolved.table_identifier
 
     # Setup the Datasource
     datasource = IcebergDatasource(
@@ -4601,6 +4603,8 @@ def read_unity_catalog(
         return read_delta(table, catalog=catalog, **reader_kwargs)
     if fmt is ReaderFormat.PARQUET:
         return read_parquet(table, catalog=catalog, **reader_kwargs)
+    if fmt is ReaderFormat.ICEBERG:
+        return read_iceberg(table_identifier=table, catalog=catalog, **reader_kwargs)
     raise ValueError(f"Unsupported data_format for read_unity_catalog: {fmt!r}")
 
 

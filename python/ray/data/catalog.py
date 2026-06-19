@@ -48,7 +48,6 @@ class ReaderFormat(str, Enum):
     ICEBERG = "iceberg"
 
 
-@PublicAPI(stability="alpha")
 @dataclass
 class ResolvedSource:
     """The output of :meth:`Catalog.resolve` — location/credentials for a reader.
@@ -57,7 +56,7 @@ class ResolvedSource:
 
     * ``read_delta``:   ``path`` + (``storage_options`` and/or ``filesystem``)
     * ``read_parquet``: ``path`` + ``filesystem``
-    * ``read_iceberg``: ``catalog_kwargs``
+    * ``read_iceberg``: ``catalog_kwargs`` + ``table_identifier``
 
     Unused fields are ``None``.
     """
@@ -66,6 +65,10 @@ class ResolvedSource:
     filesystem: Optional["pyarrow.fs.FileSystem"] = None
     storage_options: Optional[Dict[str, Any]] = None
     catalog_kwargs: Optional[Dict[str, Any]] = None
+    # Identifier the reader should address the table by, if the catalog rewrites
+    # it (e.g. Iceberg REST scopes the warehouse to the catalog, so the table is
+    # addressed as ``schema.table`` rather than ``catalog.schema.table``).
+    table_identifier: Optional[str] = None
     data_format: Optional[ReaderFormat] = None  # hint, e.g. ReaderFormat.DELTA
 
 
@@ -177,10 +180,17 @@ class UnityCatalog(Catalog):
         # PyIceberg speaks the Iceberg REST protocol; Unity Catalog implements
         # it and vends data-file credentials via the access-delegation header.
         # No manual S3/ADLS/GCS keys are needed here.
+        #
+        # The REST catalog is scoped to a single UC catalog via `warehouse`, so
+        # the table is addressed by `schema.table` (the catalog prefix would
+        # otherwise be double-applied, e.g. `tmp.tmp.schema.table`).
+        catalog_name, _, namespace_table = table.partition(".")
         return ResolvedSource(
+            table_identifier=namespace_table,
             catalog_kwargs={
                 "type": "rest",
-                "uri": f"{self._base_url}/api/2.1/unity-catalog/iceberg",
+                "uri": f"{self._base_url}/api/2.1/unity-catalog/iceberg-rest",
+                "warehouse": catalog_name,
                 "token": self._provider.get_token(),
                 "header.X-Iceberg-Access-Delegation": "vended-credentials",
             },
