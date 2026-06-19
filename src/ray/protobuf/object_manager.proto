@@ -39,10 +39,13 @@ message PushRequest {
 }
 
 message PullRequest {
-  // Node ID of the requesting client.
+  // Field 2 was `bytes object_id`. They are reserved so
+  // the tag is never silently reused.
+  reserved 2;
+  reserved "object_id";
+
   bytes node_id = 1;
-  // Requested ObjectID.
-  bytes object_id = 2;
+  repeated bytes object_ids = 3;
 }
 
 message FreeObjectsRequest {

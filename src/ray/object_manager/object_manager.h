@@ -419,11 +419,12 @@ class ObjectManager : public ObjectManagerInterface,
                           uint64_t chunk_index,
                           const std::string &data);
 
-  /// Send pull request
+  /// Send pull request for a batch of objects to a single remote node.
   ///
-  /// \param object_id Object id
-  /// \param client_id Remote server client id
-  void SendPullRequest(const ObjectID &object_id, const NodeID &client_id);
+  /// \param object_ids Objects to pull from the same remote node. Must be
+  ///                   non-empty.
+  /// \param client_id Remote server client id.
+  void SendPullRequest(const std::vector<ObjectID> &object_ids, const NodeID &client_id);
 
   /// Retry free objects request
   ///

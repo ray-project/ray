@@ -15,6 +15,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_set>
@@ -66,7 +67,8 @@ class PullManager {
   PullManager(
       NodeID self_node_id,
       std::function<bool(const ObjectID &)> object_is_local,
-      std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
+      std::function<void(const std::vector<ObjectID> &, const NodeID &)>
+          send_pull_request,
       std::function<void(const ObjectID &)> cancel_pull_request,
       std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
       RestoreSpilledObjectCallback restore_spilled_object,
@@ -360,6 +362,15 @@ class PullManager {
   void TryToMakeObjectLocal(const ObjectID &object_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(active_objects_mu_);
 
+  /// Batched variant of TryToMakeObjectLocal. Objects with a remote
+  /// location are grouped by destination node and sent as a single Pull
+  /// RPC per node. Objects that fall through to the local spill restore
+  /// or fetch-timeout path are handled per-object via TryToMakeObjectLocal.
+  ///
+  /// \param object_ids The objects to attempt to make local.
+  void TryToMakeObjectsLocal(const std::vector<ObjectID> &object_ids)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(active_objects_mu_);
+
   /// Returns whether the set of active pull requests exceeds the memory allowance
   /// for pulls. Note that exceeding the quota is allowed in certain situations,
   /// e.g., for get requests and to ensure at least one active request.
@@ -371,12 +382,15 @@ class PullManager {
   /// Unpin the given object if pinned.
   void UnpinObject(const ObjectID &object_id);
 
-  /// Try to Pull an object from one of its expected client locations. If there
-  /// are more client locations to try after this attempt, then this method
-  /// will try each of the other clients in succession.
+  /// Pick a remote node to pull the object from. This does not send an
+  /// RPC, so the caller can group objects bound for the same node into a
+  /// single batched Pull request.
   ///
-  /// \return True if a pull request was sent, otherwise false.
-  bool PullFromRandomLocation(const ObjectID &object_id);
+  /// \param object_id The object to pull.
+  /// \return The chosen node, or nullopt if no remote location is known.
+  /// In the nullopt case the caller should fall through to the local
+  /// spill restore path.
+  std::optional<NodeID> PickPullLocation(const ObjectID &object_id);
 
   /// Update the request retry time for the given request.
   /// The retry timer is incremented exponentially, capped at 1024 * 10 seconds.
@@ -430,7 +444,8 @@ class PullManager {
   /// See the constructor's arguments.
   NodeID self_node_id_;
   const std::function<bool(const ObjectID &)> object_is_local_;
-  const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
+  const std::function<void(const std::vector<ObjectID> &, const NodeID &)>
+      send_pull_request_;
   const std::function<void(const ObjectID &)> cancel_pull_request_;
   const RestoreSpilledObjectCallback restore_spilled_object_;
   const std::function<double()> get_time_seconds_;
