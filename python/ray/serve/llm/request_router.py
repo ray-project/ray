@@ -1,3 +1,6 @@
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    KVAwareRouter as _KVAwareRouter,
+)
 from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (
     PrefixCacheAffinityRouter as _PrefixCacheAffinityRouter,
 )
@@ -38,5 +41,12 @@ class PrefixCacheAffinityRouter(_PrefixCacheAffinityRouter):
         eviction_interval_secs: How often (in seconds) to run the eviction
         policy.
     """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class KVAwareRouter(_KVAwareRouter):
+    """A request router that routes by KV-cache overlap via a KV router actor."""
 
     pass

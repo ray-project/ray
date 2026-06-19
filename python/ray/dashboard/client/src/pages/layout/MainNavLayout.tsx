@@ -110,6 +110,11 @@ const NAV_ITEMS = [
     path: "/logs",
     id: "logs",
   },
+  {
+    title: "Platform Events",
+    path: "/platform-events",
+    id: "platform-events",
+  },
 ];
 
 const MainNavBar = () => {
@@ -118,6 +123,7 @@ const MainNavBar = () => {
   const {
     metricsContextLoaded,
     grafanaHost,
+    platformEventsEnabled,
     serverTimeZone,
     currentTimeZone,
     themeMode,
@@ -129,6 +135,9 @@ const MainNavBar = () => {
   let navItems = NAV_ITEMS;
   if (!metricsContextLoaded || grafanaHost === "DISABLED") {
     navItems = navItems.filter(({ id }) => id !== "metrics");
+  }
+  if (!platformEventsEnabled) {
+    navItems = navItems.filter(({ id }) => id !== "platform-events");
   }
 
   return (
