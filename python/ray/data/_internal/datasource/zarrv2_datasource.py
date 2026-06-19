@@ -9,8 +9,6 @@ from itertools import product
 from typing import TYPE_CHECKING, List, Optional
 
 import numpy as np
-from fsspec.core import split_protocol
-from fsspec.spec import AbstractFileSystem
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import, _is_local_scheme
@@ -20,6 +18,7 @@ from ray.data.datasource.datasource import Datasource, ReadTask
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from fsspec.spec import AbstractFileSystem
     from pyarrow import fs as pyarrow_fs
     from zarr import Array as ZarrArray
     from zarr.hierarchy import Group as ZarrGroup
@@ -39,7 +38,6 @@ class ZarrArrayMeta:
 
     @classmethod
     def from_zarr_array(cls, arr: "ZarrArray") -> ZarrArrayMeta:
-        """Adapt an opened ``zarr.Array`` (already validated by zarr on open)."""
         return cls(
             shape=tuple(int(s) for s in arr.shape),
             chunks=tuple(int(c) for c in arr.chunks),
@@ -52,7 +50,6 @@ class ZarrArrayMeta:
 
     @property
     def itemsize(self) -> int:
-        """Bytes per element."""
         return np.dtype(self.dtype).itemsize
 
     def effective_chunks(
@@ -144,18 +141,9 @@ def _create_read_fn(
     batch: list[_ChunkDescriptor],
     root: ZarrRoot,
 ) -> Callable[[], Iterable[Block]]:
-    """Build a read-task callable that materializes one block for one batch.
+    """Build a callable that materializes one block per batch.
 
-    Each output row carries ``(array, chunk_index, chunk_slices, chunk)``.
-    ``chunk`` is the data at its natural shape — possibly shorter than the
-    nominal chunk shape at trailing boundaries.
-
-    The caller is expected to pass batches whose chunks all come from one
-    array. Arrow's tensor extension requires all tensor elements in a
-    column to share rank, so mixing 4-D image chunks with 1-D label chunks
-    in one block would fail at build time.
-    :meth:`ZarrV2Datasource.get_read_tasks` enforces this by allocating one
-    batch per array.
+    This is the case where arrays are not aligned.
     """
 
     def read_fn() -> Iterable[Block]:
@@ -179,12 +167,14 @@ def _create_aligned_read_fn(
     aligned_array_names: list[str],
     root: ZarrRoot,
 ) -> Callable[[], Iterable[Block]]:
-    """Build a read-task callable for aligned (wide-row) reads.
+    """Build a callable for aligned (wide-row) reads.
 
     Each output row carries ``t_start``, ``t_stop``, and one column per
     aligned array holding that array's ``[t_start:t_stop, ...]`` slice at
     its natural shape (edge rows may be shorter). All arrays in one row
     share the same axis-0 range.
+
+    This is the case where arrays are aligned on axis 0.
     """
 
     def read_fn() -> Iterable[Block]:
@@ -261,7 +251,6 @@ class ZarrV2Datasource(Datasource):
         self.paths = [str(path)]
         # ``local://`` stores live on the driver's local disk, so pin reads to
         # the driver node (workers on other nodes can't see those files).
-        # Mirrors FileBasedDatasource. Non-local/cloud stores read distributed.
         self._supports_distributed_reads = not _is_local_scheme(self.paths)
 
         # Resolve filesystem + store path. The order of precedence:
@@ -308,6 +297,8 @@ class ZarrV2Datasource(Datasource):
                 # not a ``.zip``-named entry inside it.
                 self._store_path = ""
             else:
+                from fsspec.core import split_protocol
+
                 _, store_path = split_protocol(self.paths[0])
                 self._store_path = store_path.rstrip("/")
 
@@ -334,13 +325,8 @@ class ZarrV2Datasource(Datasource):
 
                 self.chunk_shapes = tuple(int(x) for x in chunk_shapes)
 
-        # Open the store with zarr (consolidated metadata when available). zarr
-        # reads and validates `.zarray`/`.zmetadata` here, so the datasource does
-        # not re-check that metadata itself. Detect consolidation by *trying*
-        # ``open_consolidated`` rather than a separately-constructed ``exists``
-        # probe: the probe can disagree with the mapper's own key lookup (e.g.
-        # archive/root stores whose store path is empty) and wrongly treat a
-        # consolidated store as unconsolidated.
+        # Open the store with zarr (consolidated metadata when available).
+        # Detect consolidation by *trying* ``open_consolidated``.
         store = self._fs.get_mapper(self._store_path)
         try:
             self.root = zarr.open_consolidated(store, mode="r")
@@ -365,11 +351,6 @@ class ZarrV2Datasource(Datasource):
                 raise ValueError(
                     f"Unknown array path(s) in chunk_shapes: {unknown_chunk_shape_keys}"
                 )
-
-        if not isinstance(align_axis_0, bool):
-            raise TypeError(
-                f"align_axis_0 must be a bool, got {type(align_axis_0).__name__}"
-            )
 
         if not align_axis_0:
             self._aligned_array_names = None
@@ -397,7 +378,7 @@ class ZarrV2Datasource(Datasource):
         # Validate overlap. Only meaningful when arrays are co-iterated as
         # wide rows, since the trailing lookahead is exposed via the
         # per-array column being longer than ``t_stop - t_start``.
-        if isinstance(overlap, bool) or not isinstance(overlap, int) or overlap < 0:
+        if not isinstance(overlap, int) or overlap < 0:
             raise ValueError(f"overlap must be a non-negative integer, got {overlap!r}")
         if overlap and self._aligned_array_names is None:
             raise ValueError(
@@ -451,23 +432,7 @@ class ZarrV2Datasource(Datasource):
         per_task_row_limit: Optional[int] = None,
         data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
-        """Enumerate every chunk and wrap it (or batches of chunks) in ReadTasks.
-
-        Long-form mode (default): one task per per-array chunk batch.
-        Per-array batching keeps each block's ``chunk`` column rank-uniform
-        (Arrow's tensor extension requires this). ``parallelism`` is
-        treated as a per-array budget — each array's chunks are split into
-        ``min(parallelism, n_chunks_for_array)`` tasks.
-
-        Aligned mode (``align_axis_0=True``): one task per batch of
-        aligned axis-0 chunks. Each yielded row carries ``t_start``,
-        ``t_stop``, and one column per selected array containing that
-        array's slice for the row's axis-0 range.
-        """
-        # ``data_context`` is part of the Datasource ABC; this datasource
-        # doesn't read anything off it today (no context-aware behavior).
-        # Threaded through to the helpers so they keep the same signature
-        # in case a future change needs it.
+        """Enumerate every chunk and wrap it (or batches of chunks) in ReadTasks."""
         if self._aligned_array_names is not None:
             return self._get_aligned_read_tasks(
                 parallelism, per_task_row_limit, data_context
@@ -482,7 +447,6 @@ class ZarrV2Datasource(Datasource):
         per_task_row_limit: Optional[int] = None,
         data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
-        """Long-form read tasks. See :meth:`get_read_tasks` for semantics."""
         read_tasks: List[ReadTask] = []
         for name, meta in self._metadata_by_path.items():
             chunks = self._array_chunks[name]
