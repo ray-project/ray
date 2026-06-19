@@ -873,7 +873,11 @@ class Worker:
         except TypeError as e:
             sio = io.StringIO()
             ray.util.inspect_serializability(value, print_file=sio)
-            msg = f"Could not serialize the put value {repr(value)}:\n{sio.getvalue()}"
+            msg = (
+                "Could not serialize the put value "
+                f"{repr(value)}:\n"
+                f"{sio.getvalue()}"
+            )
             raise TypeError(msg) from e
 
         # If the object is mutable, then the raylet should never read the
@@ -1672,7 +1676,8 @@ def init(
         ray._private.utils.set_sigterm_handler(sigterm_handler)
     else:
         logger.warning(
-            "SIGTERM handler is not set because current thread is not the main thread."
+            "SIGTERM handler is not set because current thread "
+            "is not the main thread."
         )
 
     # If available, use RAY_ADDRESS to override if the address was left
@@ -1935,7 +1940,8 @@ def init(
             )
         if labels is not None:
             raise ValueError(
-                "When connecting to an existing cluster, labels must not be provided."
+                "When connecting to an existing cluster, "
+                "labels must not be provided."
             )
         if object_store_memory is not None:
             raise ValueError(
@@ -3176,7 +3182,7 @@ def wait(
 
     if timeout is not None and timeout < 0:
         raise ValueError(
-            f"The 'timeout' argument must be nonnegative. Received {timeout}"
+            "The 'timeout' argument must be nonnegative. " f"Received {timeout}"
         )
 
     for ray_waitable in ray_waitables:
@@ -3507,49 +3513,49 @@ def remote(__function: Callable[[T0, T1, T2], R]) -> RemoteFunction2[R, T0, T1, 
 
 @overload
 def remote(
-    __function: Callable[[T0, T1, T2, T3], R],
+    __function: Callable[[T0, T1, T2, T3], R]
 ) -> RemoteFunction3[R, T0, T1, T2, T3]:
     ...
 
 
 @overload
 def remote(
-    __function: Callable[[T0, T1, T2, T3, T4], R],
+    __function: Callable[[T0, T1, T2, T3, T4], R]
 ) -> RemoteFunction4[R, T0, T1, T2, T3, T4]:
     ...
 
 
 @overload
 def remote(
-    __function: Callable[[T0, T1, T2, T3, T4, T5], R],
+    __function: Callable[[T0, T1, T2, T3, T4, T5], R]
 ) -> RemoteFunction5[R, T0, T1, T2, T3, T4, T5]:
     ...
 
 
 @overload
 def remote(
-    __function: Callable[[T0, T1, T2, T3, T4, T5, T6], R],
+    __function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]
 ) -> RemoteFunction6[R, T0, T1, T2, T3, T4, T5, T6]:
     ...
 
 
 @overload
 def remote(
-    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R],
+    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]
 ) -> RemoteFunction7[R, T0, T1, T2, T3, T4, T5, T6, T7]:
     ...
 
 
 @overload
 def remote(
-    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R],
+    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
 ) -> RemoteFunction8[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]:
     ...
 
 
 @overload
 def remote(
-    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R],
+    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
 ) -> RemoteFunction9[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
     ...
 
