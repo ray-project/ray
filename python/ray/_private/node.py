@@ -481,7 +481,9 @@ class Node:
         # internal_kv directly; the marker file bridges that gap. (This
         # is a plain file on the GCS storage volume, not a Kubernetes
         # sidecar container.) Falls through to the Redis path below for
-        # non-rocksdb deployments.
+        # non-rocksdb deployments. See
+        # src/ray/gcs/store_client/rocksdb_session_name_recovery.md for the
+        # full rationale and write-path invariants.
         if self._is_rocksdb_gcs():
             rocksdb_storage_path = self._resolve_ray_config("gcs_storage_path", "")
             if not rocksdb_storage_path:
