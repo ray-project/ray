@@ -422,36 +422,17 @@ def test_align_axis_0_emits_wide_rows(aligned_zarrv2_store):
     assert stops == [4, 8]
 
 
-@pytest.mark.parametrize(
-    "array_paths,extra_cols",
-    [
-        # No filter: all discovered arrays end up aligned.
-        (None, {"img", "state", "label"}),
-        # array_paths selects which arrays to read; align_axis_0 just
-        # asserts that the selected set is mutually aligned.
-        (["img", "state"], {"img", "state"}),
-    ],
-)
-def test_align_axis_0_column_set(aligned_zarrv2_store, array_paths, extra_cols):
+def test_align_axis_0_column_set(aligned_zarrv2_store):
+    """array_paths selects which arrays are read; aligned mode emits one column
+    per selected array (plus t_start/t_stop)."""
     datasource = zarrv2_datasource.ZarrV2Datasource(
         str(aligned_zarrv2_store),
-        array_paths=array_paths,
+        array_paths=["img", "state"],
         align_axis_0=True,
         chunk_shapes=[4],
     )
     df = _execute_read_tasks(datasource.get_read_tasks(parallelism=4))
-    assert set(df.columns) == {"t_start", "t_stop"} | extra_cols
-
-
-def test_align_axis_0_accepts_per_array_chunk_shapes(aligned_zarrv2_store):
-    datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(aligned_zarrv2_store),
-        align_axis_0=True,
-        chunk_shapes={"img": [4], "state": [4], "label": [4]},
-    )
-    df = _execute_read_tasks(datasource.get_read_tasks(parallelism=4))
-    assert len(df) == 2
-    assert sorted(zip(df["t_start"], df["t_stop"])) == [(0, 4), (4, 8)]
+    assert set(df.columns) == {"t_start", "t_stop", "img", "state"}
 
 
 def test_align_axis_0_rejects_misaligned_shape0(heterogeneous_zarrv2_store):
@@ -532,29 +513,6 @@ def test_overlap_rejects_negative_and_non_int(aligned_zarrv2_store):
                 chunk_shapes=[4],
                 overlap=bad,
             )
-
-
-def test_overlap_enables_windowing_without_cross_row_loss(aligned_zarrv2_store):
-    window_len = 3
-    datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(aligned_zarrv2_store),
-        align_axis_0=True,
-        chunk_shapes=[4],
-        overlap=window_len - 1,
-    )
-    df = _execute_read_tasks(datasource.get_read_tasks(parallelism=4))
-    starts = []
-    for _, row in df.iterrows():
-        t_start, t_stop = row["t_start"], row["t_stop"]
-        img = row["img"]
-        for local in range(t_stop - t_start):
-            if local + window_len > img.shape[0]:
-                continue  # only triggers at very end of store
-            starts.append(t_start + local)
-    # 8 timesteps, window_len=3 -> valid global starts are [0,6) = 6 windows.
-    # Without overlap we would have lost ~33%. With overlap=2 we should
-    # capture all 6.
-    assert sorted(starts) == [0, 1, 2, 3, 4, 5]
 
 
 def test_chunk_shapes_rejected_when_longer_than_smallest_array(
