@@ -240,6 +240,9 @@ class ZarrV2Datasource(Datasource):
         _check_import(self, module="zarr", package="zarr")
         import zarr
 
+        _check_import(self, module="fsspec", package="fsspec")
+        from fsspec.spec import AbstractFileSystem
+
         if int(zarr.__version__.split(".")[0]) >= 3:
             raise ImportError(
                 f"read_zarr supports zarr-python 2.x (Zarr v2 stores), but found "

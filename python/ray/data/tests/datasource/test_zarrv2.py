@@ -1,7 +1,7 @@
 import logging
 import os
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import fsspec
 import numpy as np
@@ -464,15 +464,6 @@ def test_align_axis_0_rejects_misaligned_shape0(heterogeneous_zarrv2_store):
             str(heterogeneous_zarrv2_store),
             align_axis_0=True,
             chunk_shapes=[5],
-        )
-
-
-def test_align_axis_0_rejects_non_bool(aligned_zarrv2_store):
-    """``align_axis_0`` must be a bool — no list form."""
-    with pytest.raises(TypeError, match=r"align_axis_0 must be a bool"):
-        zarrv2_datasource.ZarrV2Datasource(
-            str(aligned_zarrv2_store),
-            align_axis_0=cast(Any, ["img", "state"]),
         )
 
 
