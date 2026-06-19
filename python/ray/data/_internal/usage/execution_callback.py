@@ -33,7 +33,10 @@ class UsageCallback(ExecutionCallback):
 
     def before_execution_starts(self, executor: "StreamingExecutor") -> None:
         try:
-            record_workload(self._execution_id, self._logical_plan)
+            executor._usage_uuid_map = record_workload(
+                self._execution_id,
+                self._logical_plan,
+            )
         except Exception:
             logger.debug("Usage record_workload failed", exc_info=True)
 

@@ -44,10 +44,21 @@ def test_round_trip_payload_shape(reset_collector, mock_record):
     payload = json.loads(payload_json)
     entry = payload["executions"][0]
     assert entry["id"] == "exec-1"
+    read_usage_uuid = collector._make_usage_uuid(0, "ReadRange")
+    map_batches_usage_uuid = collector._make_usage_uuid(1, "MapBatches")
     assert entry["workload"]["plan"] == {
+        "usage_uuid": map_batches_usage_uuid,
         "op": "MapBatches",
-        "inputs": [{"op": "ReadRange", "inputs": []}],
+        "inputs": [
+            {"usage_uuid": read_usage_uuid, "op": "ReadRange", "inputs": []}
+        ],
     }
+    assert [
+        (op["usage_uuid"], op["name"]) for op in entry["workload"]["ops"]
+    ] == [
+        (read_usage_uuid, "ReadRange"),
+        (map_batches_usage_uuid, "MapBatches"),
+    ]
     assert entry["workload"]["plan_str"] == "MapBatches\n+- ReadRange\n"
     assert "pyarrow" in entry["env"]
     # No issues detected in this run; the key is present and empty.
@@ -70,6 +81,20 @@ def test_detected_issues_in_payload(reset_collector, mock_record):
         {"issue_type": "hanging", "operator": "MapBatches"},
         {"issue_type": "high memory", "operator": "ReadRange"},
     ]
+
+
+def test_record_workload_returns_usage_uuid_map(reset_collector, mock_record):
+    ds = ray.data.range(1).map_batches(lambda b: b)
+    usage_uuid_map = collector.record_workload("exec-1", ds._logical_plan)
+
+    map_batches_op = ds._logical_plan.dag
+    read_op = map_batches_op.input_dependencies[0]
+    assert usage_uuid_map[id(read_op)] == collector._make_usage_uuid(
+        0, "ReadRange"
+    )
+    assert usage_uuid_map[id(map_batches_op)] == collector._make_usage_uuid(
+        1, "MapBatches"
+    )
 
 
 def test_detected_issues_enum_serialized_to_value(reset_collector, mock_record):
@@ -181,7 +206,7 @@ def test_does_not_raise_on_internal_errors(reset_collector, mock_record, monkeyp
     """Safety: a bug in collection must never break user execution."""
     monkeypatch.setattr(
         collector,
-        "_collect_workload",
+        "_collect_workload_and_usage_uuid_map",
         lambda *_: (_ for _ in ()).throw(RuntimeError("boom")),
     )
     ds = ray.data.range(10)

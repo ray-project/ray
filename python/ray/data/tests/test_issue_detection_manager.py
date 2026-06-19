@@ -127,6 +127,21 @@ def test_anonymized_operator_name_joins_fused_logical_ops(monkeypatch):
     assert idm._anonymized_operator_name(operator) == "ReadParquet->MapBatches->Filter"
 
 
+def test_anonymized_operator_name_includes_usage_uuids(monkeypatch):
+    monkeypatch.setattr(idm, "anonymize_op_name", lambda op: op)
+    operator = MagicMock()
+    operator._logical_operators = ["ReadParquet", "MapBatches", "Filter"]
+    usage_uuid_map = {
+        id(operator._logical_operators[0]): "aaaaaaaa",
+        id(operator._logical_operators[1]): "bbbbbbbb",
+        id(operator._logical_operators[2]): "cccccccc",
+    }
+    assert (
+        idm._anonymized_operator_name(operator, usage_uuid_map)
+        == "ReadParquet-aaaaaaaa->MapBatches-bbbbbbbb->Filter-cccccccc"
+    )
+
+
 def test_anonymized_operator_name_without_logical_ops():
     """An operator with no logical source collapses to "Unknown"."""
     operator = MagicMock()

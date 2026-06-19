@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import TYPE_CHECKING, Dict, List, Set, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 from ray.core.generated.export_dataset_operator_event_pb2 import (
     ExportDatasetOperatorEventData as ProtoOperatorEventData,
@@ -74,8 +74,16 @@ class IssueDetectorManager:
             if not operator:
                 continue
 
+            usage_uuid_map = getattr(
+                self.executor,
+                "_usage_uuid_map",
+                None,
+            )
             self._detected_issues.add(
-                (issue.issue_type, _anonymized_operator_name(operator))
+                (
+                    issue.issue_type,
+                    _anonymized_operator_name(operator, usage_uuid_map),
+                )
             )
 
             issue_event_type = format_export_issue_event_name(issue.issue_type)
@@ -109,10 +117,28 @@ class IssueDetectorManager:
         return set(self._detected_issues)
 
 
-def _anonymized_operator_name(operator: "PhysicalOperator") -> str:
+def _anonymized_operator_name(
+    operator: "PhysicalOperator",
+    usage_uuid_map: Optional[Dict[int, str]] = None,
+) -> str:
     """Anonymized name for a physical op; fused ops join their logical ops with
-    "->" (matching operator fusion's naming). ``"Unknown"`` if it has none."""
+    "->" (matching operator fusion's naming). When logical op IDs are available,
+    each logical op is formatted as ``<name>-<usage_uuid>``. ``"Unknown"`` if it has none."""
     logical_ops = getattr(operator, "_logical_operators", None)
     if not logical_ops:
         return "Unknown"
-    return "->".join(anonymize_op_name(op) for op in logical_ops)
+    return "->".join(
+        _anonymized_logical_op_name(op, usage_uuid_map) for op in logical_ops
+    )
+
+
+def _anonymized_logical_op_name(
+    logical_op,
+    usage_uuid_map: Optional[Dict[int, str]] = None,
+) -> str:
+    name = anonymize_op_name(logical_op)
+    if usage_uuid_map:
+        usage_uuid = usage_uuid_map.get(id(logical_op))
+        if usage_uuid is not None:
+            return f"{name}-{usage_uuid}"
+    return name

@@ -5,6 +5,7 @@ performance) and flushes it to GCS via ``record_extra_usage_tag``.
 """
 
 import importlib.metadata
+import hashlib
 import json
 import logging
 import os
@@ -41,9 +42,10 @@ class _OpConfig:
 
 
 @dataclass(frozen=True)
-class _Op:
+class _LogicalOp:
     """An operator in the plan"""
 
+    usage_uuid: str
     name: str
     config: Optional[_OpConfig] = None
 
@@ -52,6 +54,7 @@ class _Op:
 class _PlanNode:
     """A node in the anonymized plan tree (one logical operator)."""
 
+    usage_uuid: str
     op: str
     inputs: List["_PlanNode"] = field(default_factory=list)
 
@@ -63,7 +66,7 @@ class _Workload:
 
     plan: _PlanNode
     plan_str: str
-    ops: List[_Op]
+    ops: List[_LogicalOp]
 
 
 @dataclass(frozen=True)
@@ -111,7 +114,7 @@ _lock = threading.Lock()
 def record_workload(
     execution_id: str,
     logical_plan: "LogicalPlan",
-) -> None:
+) -> Dict[int, str]:
     """Record the planning-time workload entry for an execution.
     This consists of the DAG, env, and configs for each operator.
     Flushes eagerly so that attempted executions are captured even if
@@ -122,13 +125,14 @@ def record_workload(
     ``~/.ray/config.json``) or when ``RAY_DATA_USAGE_DISABLED=1`` is set.
     """
     if not usage_stats_enabled() or os.environ.get("RAY_DATA_USAGE_DISABLED") == "1":
-        return
+        return {}
     try:
+        workload, usage_uuid_map = _collect_workload_and_usage_uuid_map(logical_plan)
         entry = _Entry(
             id=execution_id,
             started_at=time.time(),
             env=_collect_env(),
-            workload=_collect_workload(logical_plan),
+            workload=workload,
         )
         spilled_at_start = _cluster_spilled_bytes()
         with _lock:
@@ -139,8 +143,10 @@ def record_workload(
             _spillage_dict[execution_id] = spilled_at_start
             payload = _serialize_locked()
         record_extra_usage_tag(TagKey.DATA_USAGE, payload)
+        return usage_uuid_map
     except Exception:
         logger.debug("Failed to record workload usage", exc_info=True)
+        return {}
 
 
 def record_execution_result(
@@ -208,25 +214,67 @@ def _safe_version(pkg: str) -> Optional[str]:
 def _collect_workload(logical_plan: "LogicalPlan") -> _Workload:
     """Collect anonymized plan tree, indented text rendering, and per-op
     config list."""
+    workload, _ = _collect_workload_and_usage_uuid_map(logical_plan)
+    return workload
+
+
+def _collect_workload_and_usage_uuid_map(
+    logical_plan: "LogicalPlan",
+) -> Tuple[_Workload, Dict[int, str]]:
+    """Collect workload data and per-logical-op usage UUIDs in one DAG walk."""
     dag = logical_plan.dag
-    plan, ops = _build_plan_and_ops(dag)
-    return _Workload(
-        plan=plan,
-        plan_str=_format_plan_str(dag),
-        ops=ops,
+    ordered_logical_ops: List[Tuple[LogicalOperator, str]] = []
+    plan = _build_plan(dag, ordered_logical_ops)
+    return (
+        _Workload(
+            plan=plan,
+            plan_str=_format_plan_str(dag),
+            ops=_build_ops(ordered_logical_ops),
+        ),
+        {id(op): usage_uuid for op, usage_uuid in ordered_logical_ops},
     )
 
 
-def _build_plan_and_ops(op: LogicalOperator) -> Tuple[_PlanNode, List[_Op]]:
+def _build_plan_and_ops(op: LogicalOperator) -> Tuple[_PlanNode, List[_LogicalOp]]:
     """Build plan tree and flat op list in one post-order walk."""
+    ordered_logical_ops: List[Tuple[LogicalOperator, str]] = []
+    plan = _build_plan(op, ordered_logical_ops)
+    return plan, _build_ops(ordered_logical_ops)
+
+
+def _build_plan(
+    op: LogicalOperator,
+    ordered_logical_ops: List[Tuple[LogicalOperator, str]],
+) -> _PlanNode:
+    """Build the plan tree and record logical ops in post-order."""
     child_plans: List[_PlanNode] = []
-    ops: List[_Op] = []
     for child in op.input_dependencies:
-        child_plan, child_ops = _build_plan_and_ops(child)
-        child_plans.append(child_plan)
-        ops.extend(child_ops)
+        child_plans.append(_build_plan(child, ordered_logical_ops))
 
     name = anonymize_op_name(op)
+    usage_uuid = _make_usage_uuid(len(ordered_logical_ops), name)
+    ordered_logical_ops.append((op, usage_uuid))
+    return _PlanNode(usage_uuid=usage_uuid, op=name, inputs=child_plans)
+
+
+def _build_ops(
+    ordered_logical_ops: List[Tuple[LogicalOperator, str]],
+) -> List[_LogicalOp]:
+    """Build the flat logical-op list from the canonical post-order traversal."""
+    ops: List[_LogicalOp] = []
+    for op, usage_uuid in ordered_logical_ops:
+        name = anonymize_op_name(op)
+        ops.append(
+            _LogicalOp(
+                usage_uuid=usage_uuid,
+                name=name,
+                config=_get_op_config(op),
+            )
+        )
+    return ops
+
+
+def _get_op_config(op: LogicalOperator) -> Optional[_OpConfig]:
     config: Optional[_OpConfig] = None
     if isinstance(op, AbstractUDFMap):
         batch_format = getattr(op, "batch_format", None)
@@ -237,8 +285,11 @@ def _build_plan_and_ops(op: LogicalOperator) -> Tuple[_PlanNode, List[_Op]]:
         else:
             logger.debug(f"Unexpected batch format: {batch_format!r}")
             config = _OpConfig(batch_format="unknown")
-    ops.append(_Op(name=name, config=config))
-    return _PlanNode(op=name, inputs=child_plans), ops
+    return config
+
+
+def _make_usage_uuid(index: int, name: str) -> str:
+    return hashlib.sha256(f"{index}:{name}".encode()).hexdigest()[:8]
 
 
 def _format_plan_str(op: LogicalOperator, depth: int = 0) -> str:
