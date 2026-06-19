@@ -70,7 +70,7 @@ def test_ray_prometheus_gauge_and_histogram(monkeypatch):
     histogram = sglang_metrics.RayPrometheusHistogram(
         "sglang:queue_time_seconds",
         labelnames=("model_name",),
-        buckets=(0, 0.001, 0.01, 1),
+        buckets=(0, 0.001, 0.01, 1, float("inf")),
     )
     histogram_child = histogram.labels(model_name="llama")
     histogram_child.observe(0.25)
@@ -78,7 +78,20 @@ def test_ray_prometheus_gauge_and_histogram(monkeypatch):
     assert gauge._metric.records == [("set", 7, {"model_name": "llama"})]
     assert histogram._metric.boundaries == [0.001, 0.01, 1]
     assert histogram._metric.records == [("observe", 0.25, {"model_name": "llama"})]
-    assert len(histogram_child._buckets) == 5
+    assert len(histogram_child._buckets) == 4
+
+    default_histogram = sglang_metrics.RayPrometheusHistogram(
+        "sglang:default_latency_seconds",
+        labelnames=("model_name",),
+    )
+    default_child = default_histogram.labels(model_name="llama")
+
+    assert default_histogram._metric.boundaries == list(
+        sglang_metrics.DEFAULT_HISTOGRAM_BOUNDARIES
+    )
+    assert len(default_child._buckets) == len(
+        sglang_metrics.DEFAULT_HISTOGRAM_BOUNDARIES
+    ) + 1
 
 
 def test_configure_sglang_engine_metrics_preserves_user_stat_loggers(monkeypatch):

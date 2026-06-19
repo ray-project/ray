@@ -51,8 +51,6 @@ class SGLangServer:
 
         self._llm_config = llm_config
         self.engine_kwargs = copy.deepcopy(llm_config.engine_kwargs)
-        if llm_config.log_engine_metrics:
-            configure_sglang_engine_metrics(self.engine_kwargs)
 
         try:
             import sglang
@@ -61,6 +59,9 @@ class SGLangServer:
                 "SGLang is not installed or failed to import. Please run "
                 "`pip install sglang[all]` to install required dependencies."
             ) from e
+
+        if llm_config.log_engine_metrics:
+            configure_sglang_engine_metrics(self.engine_kwargs)
 
         # TODO(issue-61108): remove this once sglang#18752 is merged and included
         # in the minimum supported SGLang version for this example.

@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, Iterable, Mapping, Optional, Type
+
+
+DEFAULT_HISTOGRAM_BOUNDARIES = (0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10)
 
 
 def _to_tags(labels: Mapping[str, Any]) -> Dict[str, str]:
@@ -13,6 +17,14 @@ def _metric_name(name: str) -> str:
     # SGLang exposes prometheus series like "sglang:num_running_reqs".
     # Ray accepts this today but warns that ":" will be rejected later.
     return name.replace(":", "_")
+
+
+def _to_ray_histogram_boundaries(values: Iterable[Any]) -> tuple[float, ...]:
+    return tuple(
+        float(value)
+        for value in values
+        if isinstance(value, (int, float)) and value > 0 and math.isfinite(value)
+    )
 
 
 class _RayMetricChild:
@@ -106,9 +118,12 @@ class RayPrometheusHistogram(_RayPrometheusMetric):
         labelnames: Optional[Iterable[str]] = None,
         **kwargs: Any,
     ) -> None:
-        self._prometheus_buckets = tuple(
+        ray_boundaries = _to_ray_histogram_boundaries(
             kwargs.get("buckets", kwargs.get("boundaries", ()))
         )
+        if not ray_boundaries:
+            ray_boundaries = DEFAULT_HISTOGRAM_BOUNDARIES
+        self._ray_boundaries = ray_boundaries
         super().__init__(name, documentation, labelnames, **kwargs)
 
     def _build_metric(self, kwargs: Mapping[str, Any]) -> Any:
@@ -117,24 +132,17 @@ class RayPrometheusHistogram(_RayPrometheusMetric):
             from ray.util import metrics
 
             metric_cls = metrics.Histogram
-        boundaries = tuple(
-            value
-            for value in kwargs.get("buckets", kwargs.get("boundaries", ()))
-            if value > 0
-        )
-        if not boundaries:
-            boundaries = (0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10)
         return metric_cls(
             self._name,
             description=self._documentation,
-            boundaries=list(boundaries),
+            boundaries=list(self._ray_boundaries),
             tag_keys=self._labelnames,
         )
 
     def labels(self, *labelvalues: Any, **labelkwargs: Any) -> _RayMetricChild:
         child = super().labels(*labelvalues, **labelkwargs)
         child._buckets = [
-            _NoopAccumulator() for _ in range(len(self._prometheus_buckets) + 1)
+            _NoopAccumulator() for _ in range(len(self._ray_boundaries) + 1)
         ]
         return child
 
@@ -145,28 +153,6 @@ class RayPrometheusHistogram(_RayPrometheusMetric):
 
 class RayPrometheusSummary(RayPrometheusHistogram):
     pass
-
-
-def _build_tokenizer_collector_cls(tokenizer_collector_cls: Type[Any]) -> Type[Any]:
-    class RaySGLangTokenizerMetricsCollector(tokenizer_collector_cls):
-        _counter_cls = RayPrometheusCounter
-        _gauge_cls = RayPrometheusGauge
-        _histogram_cls = RayPrometheusHistogram
-        _summary_cls = RayPrometheusSummary
-
-        def observe_inter_token_latency(
-            self,
-            labels: Dict[str, str],
-            internval: float,
-            num_new_tokens: int,
-        ) -> None:
-            if num_new_tokens <= 0:
-                return
-            histogram = self.histogram_inter_token_latency.labels(**labels)
-            for _ in range(num_new_tokens):
-                histogram.observe(internval)
-
-    return RaySGLangTokenizerMetricsCollector
 
 
 def build_sglang_ray_stat_loggers() -> Dict[str, Type[Any]]:
@@ -195,6 +181,24 @@ def build_sglang_ray_stat_loggers() -> Dict[str, Type[Any]]:
         _histogram_cls = RayPrometheusHistogram
         _summary_cls = RayPrometheusSummary
 
+    class RaySGLangTokenizerMetricsCollector(TokenizerMetricsCollector):
+        _counter_cls = RayPrometheusCounter
+        _gauge_cls = RayPrometheusGauge
+        _histogram_cls = RayPrometheusHistogram
+        _summary_cls = RayPrometheusSummary
+
+        def observe_inter_token_latency(
+            self,
+            labels: Dict[str, str],
+            internval: float,
+            num_new_tokens: int,
+        ) -> None:
+            if num_new_tokens <= 0:
+                return
+            histogram = self.histogram_inter_token_latency.labels(**labels)
+            for _ in range(num_new_tokens):
+                histogram.observe(internval)
+
     class RaySGLangRadixCacheMetricsCollector(RadixCacheMetricsCollector):
         _counter_cls = RayPrometheusCounter
         _gauge_cls = RayPrometheusGauge
@@ -209,9 +213,7 @@ def build_sglang_ray_stat_loggers() -> Dict[str, Type[Any]]:
 
     return {
         STAT_LOGGER_ROLE_SCHEDULER: RaySGLangSchedulerMetricsCollector,
-        STAT_LOGGER_ROLE_TOKENIZER: _build_tokenizer_collector_cls(
-            TokenizerMetricsCollector
-        ),
+        STAT_LOGGER_ROLE_TOKENIZER: RaySGLangTokenizerMetricsCollector,
         STAT_LOGGER_ROLE_STORAGE: RaySGLangStorageMetricsCollector,
         STAT_LOGGER_ROLE_RADIX_CACHE: RaySGLangRadixCacheMetricsCollector,
         STAT_LOGGER_ROLE_EXPERT_DISPATCH: RaySGLangExpertDispatchCollector,
