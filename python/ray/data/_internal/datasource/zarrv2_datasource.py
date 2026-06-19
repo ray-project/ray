@@ -5,7 +5,6 @@ import math
 import numbers
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from itertools import product
 from typing import TYPE_CHECKING, Any, List, Optional
 
 import numpy as np
@@ -115,6 +114,7 @@ def _call_with_retry(
 ) -> Any:
     if not match:
         return fn()
+    # TODO(Artur): This would be more elegant with a general retry helper for non-iterables.
     return next(
         iterate_with_retry(lambda: [fn()], description=description, match=match)
     )
@@ -142,12 +142,35 @@ def _read_chunk(
 
 
 @dataclass(frozen=True)
-class _ChunkDescriptor:
-    """One long-form row's worth of read work: which chunk of which array."""
+class _ChunkRange:
+    """A contiguous slice ``[flat_start, flat_stop)`` of an array's chunk grid.
+
+    The flat indices address the row-major flattening of the chunk grid; the
+    read fn unravels each to an N-D ``chunk_index`` lazily on the worker. Keeping
+    a range (not a materialized per-chunk list) makes read-task planning
+    O(parallelism) rather than O(total chunks) -- important for stores with very
+    many chunks.
+    """
 
     array_name: str
-    chunk_index: tuple[int, ...]
-    chunk_slices: tuple[tuple[int, int], ...]
+    meta: ZarrArrayMeta
+    chunks: tuple[int, ...]
+    grid: tuple[int, ...]
+    flat_start: int
+    flat_stop: int
+
+
+def _unravel(flat_index: int, grid: tuple[int, ...]) -> tuple[int, ...]:
+    """Row-major (C-order) flat index -> N-D chunk index.
+
+    Matches ``itertools.product(*(range(n) for n in grid))`` ordering, so the
+    emitted ``chunk_index`` sequence is identical to enumerating the grid.
+    """
+    idx = []
+    for n in reversed(grid):
+        idx.append(flat_index % n)
+        flat_index //= n
+    return tuple(reversed(idx))
 
 
 @dataclass(frozen=True)
@@ -165,29 +188,35 @@ class _AlignedChunkDescriptor:
 
 
 def _create_read_fn(
-    batch: list[_ChunkDescriptor],
+    chunk_range: _ChunkRange,
     root: ZarrRoot,
     per_task_row_limit: Optional[int],
     retry_match: Optional[List[str]],
 ) -> Callable[[], Iterable[Block]]:
-    """Build a callable that materializes one block per batch.
+    """Build a callable that materializes one block for a chunk-grid range.
 
-    This is the case where arrays are not aligned. ``per_task_row_limit`` caps
-    how many chunks this task reads so a downstream ``limit`` reads only what it
-    needs instead of the whole batch (``None`` reads the whole batch).
+    This is the case where arrays are not aligned. Chunks are enumerated lazily
+    (on the worker) from ``chunk_range``. ``per_task_row_limit`` caps how many
+    chunks this task reads so a downstream ``limit`` reads only what it needs
+    (``None`` reads the whole range).
     """
-    batch = batch[:per_task_row_limit]
+    cr = chunk_range
+    stop = cr.flat_stop
+    if per_task_row_limit is not None:
+        stop = min(stop, cr.flat_start + per_task_row_limit)
 
     def read_fn() -> Iterable[Block]:
         builder = DelegatingBlockBuilder()
-        for d in batch:
+        for flat_index in range(cr.flat_start, stop):
+            chunk_index = _unravel(flat_index, cr.grid)
+            chunk_slices = cr.meta.chunk_slices(chunk_index, cr.chunks)
             builder.add(
                 {
-                    "array": d.array_name,
-                    "chunk_index": d.chunk_index,
-                    "chunk_slices": d.chunk_slices,
+                    "array": cr.array_name,
+                    "chunk_index": chunk_index,
+                    "chunk_slices": chunk_slices,
                     "chunk": _read_chunk(
-                        root, d.array_name, d.chunk_slices, retry_match
+                        root, cr.array_name, chunk_slices, retry_match
                     ),
                 }
             )
@@ -497,28 +526,27 @@ class ZarrV2Datasource(Datasource):
         for name, meta in self._metadata_by_path.items():
             chunks = self._array_chunks[name]
             grid = self._array_grids[name]
-            descriptors = [
-                _ChunkDescriptor(
-                    array_name=name,
-                    chunk_index=chunk_index,
-                    chunk_slices=meta.chunk_slices(chunk_index, chunks),
-                )
-                for chunk_index in product(*(range(n) for n in grid))
-            ]
-            if not descriptors:
+            n_chunks = math.prod(grid)
+            if n_chunks == 0:
                 continue
-            n_tasks = max(1, min(parallelism, len(descriptors)))
-            batch_size = math.ceil(len(descriptors) / n_tasks)
-            for start in range(0, len(descriptors), batch_size):
-                batch = descriptors[start : start + batch_size]
+            # Split the chunk grid into contiguous flat-index ranges. This is
+            # O(n_tasks), not O(n_chunks): we never materialize a per-chunk list
+            # on the driver -- the read fn unravels chunks lazily on the worker.
+            n_tasks = max(1, min(parallelism, n_chunks))
+            batch_size = math.ceil(n_chunks / n_tasks)
+            for flat_start in range(0, n_chunks, batch_size):
+                flat_stop = min(flat_start + batch_size, n_chunks)
+                chunk_range = _ChunkRange(
+                    name, meta, chunks, grid, flat_start, flat_stop
+                )
                 read_tasks.append(
                     ReadTask(
                         _create_read_fn(
-                            batch, self.root, per_task_row_limit, retry_match
+                            chunk_range, self.root, per_task_row_limit, retry_match
                         ),
                         BlockMetadata(
-                            num_rows=len(batch),
-                            size_bytes=self._estimate_long_form_batch_mem_size(batch),
+                            num_rows=flat_stop - flat_start,
+                            size_bytes=self._estimate_range_mem_size(chunk_range),
                             input_files=(self.paths[0],),
                             exec_stats=None,
                         ),
@@ -527,13 +555,14 @@ class ZarrV2Datasource(Datasource):
                 )
         return read_tasks
 
-    def _estimate_long_form_batch_mem_size(self, batch: list[_ChunkDescriptor]) -> int:
-        """Sum in-memory bytes across all chunks in one long-form batch."""
-        return sum(
-            math.prod(stop - start for start, stop in desc.chunk_slices)
-            * self._metadata_by_path[desc.array_name].itemsize
-            for desc in batch
-        )
+    def _estimate_range_mem_size(self, chunk_range: _ChunkRange) -> int:
+        """Upper-bound in-memory bytes for a chunk-grid range.
+
+        Assumes a full-size chunk per index; trailing-edge chunks are smaller,
+        so this slightly over-estimates. O(1) -- it does not enumerate the range.
+        """
+        n = chunk_range.flat_stop - chunk_range.flat_start
+        return n * math.prod(chunk_range.chunks) * chunk_range.meta.itemsize
 
     def _get_aligned_read_tasks(
         self,

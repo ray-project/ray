@@ -595,6 +595,23 @@ def test_get_read_tasks_batches_chunks_by_parallelism(tmp_path):
     assert all(task.metadata.input_files == (str(store_path),) for task in read_tasks)
 
 
+def test_long_form_chunk_index_order_matches_grid(tmp_path):
+    """Lazy grid-range tasks emit chunk_index in the same row-major order as a
+    full grid enumeration (regression guard for the lazy-unravel refactor)."""
+    from itertools import product
+
+    store_path = tmp_path / "order.zarr"
+    # shape (6, 4), chunks (2, 2) -> grid (3, 2) = 6 chunks.
+    _write_real_zarr_store(
+        store_path, {"a": (np.arange(6 * 4, dtype="<i4").reshape(6, 4), (2, 2))}
+    )
+    datasource = zarrv2_datasource.ZarrV2Datasource(str(store_path))
+    # parallelism=2 -> two flat-index ranges; concatenated they must be in order.
+    df = _execute_read_tasks(datasource.get_read_tasks(parallelism=2))
+    got = [tuple(int(x) for x in ci) for ci in df["chunk_index"]]
+    assert got == list(product(range(3), range(2)))
+
+
 def test_per_task_row_limit_caps_chunks_read(tmp_path, monkeypatch):
     """per_task_row_limit bounds how many chunks a task actually reads, so a
     downstream ``limit`` doesn't pull the whole batch's I/O."""
