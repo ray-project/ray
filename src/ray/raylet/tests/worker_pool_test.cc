@@ -31,6 +31,7 @@
 #include "nlohmann/json.hpp"
 #include "ray/asio/asio_util.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
@@ -149,6 +150,7 @@ class WorkerPoolMock : public WorkerPool {
                           ClockInterface &clock)
       : WorkerPool(
             io_service,
+            PeriodicalRunner::Create(io_service),
             NodeID::FromRandom(),
             "",
             [this]() { return num_available_cpus_; },

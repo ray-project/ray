@@ -28,7 +28,8 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         """Create a UnionOperator.
 
         Args:
-            input_ops: Operators generating input data for this operator to union.
+            data_context: The :class:`DataContext` to use for this operator.
+            *input_ops: Operators generating input data for this operator to union.
         """
 
         # By default, union does not preserve the order of output blocks.
