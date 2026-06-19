@@ -107,19 +107,6 @@ class ZarrArrayMeta:
 # ---------------------------------------------------------------------------
 
 
-def _call_with_retry(
-    fn: Callable[[], Any],
-    description: str,
-    match: Optional[List[str]],
-) -> Any:
-    if not match:
-        return fn()
-    # TODO(Artur): This would be more elegant with a general retry helper for non-iterables.
-    return next(
-        iterate_with_retry(lambda: [fn()], description=description, match=match)
-    )
-
-
 def _read_chunk(
     root: ZarrRoot,
     array_name: str,
@@ -128,9 +115,7 @@ def _read_chunk(
 ) -> np.ndarray:
     """Read ``array[chunk_slices]`` as an ndarray.
 
-    Transient I/O errors matching ``retry_match`` (Ray Data's
-    ``DataContext.retried_io_errors``) are retried; the underlying filesystem's
-    own retry policy still applies underneath.
+    The underlying filesystem's own retry policy still applies underneath.
     """
 
     def _read() -> np.ndarray:
@@ -138,7 +123,14 @@ def _read_chunk(
         arr = root if array_name == "" else root[array_name]
         return np.asarray(arr[indexer])
 
-    return _call_with_retry(_read, "read a Zarr chunk", retry_match)
+    if not retry_match:
+        return _read()
+    # TODO(Artur): This would be more elegant with a general retry helper for non-iterables.
+    return next(
+        iterate_with_retry(
+            lambda: [_read()], description="read a Zarr chunk", match=retry_match
+        )
+    )
 
 
 @dataclass(frozen=True)
