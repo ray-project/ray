@@ -225,9 +225,13 @@ def _build_schema(
     # Video columns are not in the parquet; append them.
     for vk in video_keys:
         fields.append(pa.field(vk, frame_type))
-    fields.append(pa.field("task", pa.string()))
+    # task + stats are per-dataset constants repeated on every row, so they are
+    # dictionary-encoded (one shared value per block + an int32 index per row)
+    # instead of duplicating the (multi-KB) stats JSON on each row.
+    dict_str = pa.dictionary(pa.int32(), pa.string())
+    fields.append(pa.field("task", dict_str))
     fields.append(pa.field("dataset_index", pa.int32()))
-    fields.append(pa.field("stats", pa.string()))
+    fields.append(pa.field("stats", dict_str))
     return pa.schema(fields)
 
 
@@ -251,6 +255,10 @@ def _estimated_row_size_bytes(features: dict, root_for_logging: str) -> int:
                     root_for_logging,
                 )
                 continue
+    # Output rows also carry task + dataset_index + stats columns. task and
+    # stats are dictionary-encoded (the shared value lives once per block), so
+    # the per-row cost is three int32s (two dictionary indices + dataset_index).
+    total += 3 * 4
     return total
 
 
@@ -484,11 +492,16 @@ class _LeRobotReadTask(ReadTask):
     def __init__(
         self,
         segments: List[tuple],
+        roots: List[_LeRobotRoot],
         roots_ref: "ray.ObjectRef",
         rows_per_batch: int,
         per_task_row_limit: Optional[int] = None,
     ) -> None:
-        roots: List[_LeRobotRoot] = ray.get(roots_ref)
+        # ``roots`` is the driver-side list (already in memory) used to compute
+        # this task's BlockMetadata; ``roots_ref`` carries the same state to
+        # workers, where ``_read`` fetches it once from the object store. Do not
+        # ``ray.get(roots_ref)`` here — that re-deserializes the full state
+        # (including episodes_table) once per task on the driver.
         total_rows = 0
         size_bytes = 0
         all_input_files: List[str] = []
@@ -813,11 +826,16 @@ class _LeRobotReadTask(ReadTask):
         }
         for k in camera_keys:
             columns[k] = ArrowVariableShapedTensorArray.from_numpy(frame_buffers[k])
-        columns["task"] = pa.array(task_list, type=pa.string())
+        # Dictionary-encode the per-dataset-constant string columns so the
+        # (multi-KB) stats JSON and the task label are stored once per block
+        # rather than copied onto every row.
+        columns["task"] = pa.array(task_list, type=pa.string()).dictionary_encode()
         columns["dataset_index"] = pa.array(
             [dataset_index] * len(task_list), type=pa.int32()
         )
-        columns["stats"] = pa.array([stats_json] * len(task_list), type=pa.string())
+        columns["stats"] = pa.array(
+            [stats_json] * len(task_list), type=pa.string()
+        ).dictionary_encode()
         return pa.table(columns)
 
 
@@ -840,13 +858,15 @@ class LeRobotDatasource(Datasource):
         Basic usage:
 
         >>> import ray  # doctest: +SKIP
-        >>> ds = ray.data.read_lerobot("/path/to/dataset")  # doctest: +SKIP
+        >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
+        ...     "s3://anonymous@ray-example-data/lerobot/libero-mini",
+        ... )
 
         With partitioning:
 
         >>> from ray.data.datasource import LeRobotPartitioning  # doctest: +SKIP
         >>> source = LeRobotDatasource(  # doctest: +SKIP
-        ...     "/path/to/dataset",
+        ...     "s3://anonymous@ray-example-data/lerobot/libero-mini",
         ...     partitioning=LeRobotPartitioning.EPISODE,
         ... )
         >>> ds = ray.data.read_datasource(source)  # doctest: +SKIP
@@ -1242,6 +1262,7 @@ class LeRobotDatasource(Datasource):
         return [
             _LeRobotReadTask(
                 segments=entry["segments"],
+                roots=self._roots,
                 roots_ref=roots_ref,
                 rows_per_batch=rows_per_batch,
                 per_task_row_limit=per_task_row_limit,

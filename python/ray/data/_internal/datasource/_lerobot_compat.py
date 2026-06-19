@@ -103,6 +103,20 @@ def _creds_cache_cls():
                     self._cache[video_path] = (decoder, file_handle)
                 return self._cache[video_path][0]
 
+        def clear(self):
+            # The base cache drops its decoder references but does not close the
+            # fsspec file handles we opened in get_decoder; close them here to
+            # avoid leaking a file descriptor per decoded video file.
+            with self._lock:
+                for entry in self._cache.values():
+                    handle = entry[1] if isinstance(entry, tuple) else None
+                    if handle is not None:
+                        try:
+                            handle.close()
+                        except Exception:
+                            pass
+                self._cache.clear()
+
     return _CredsVideoDecoderCache
 
 

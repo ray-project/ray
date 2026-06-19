@@ -2567,6 +2567,11 @@ def read_lerobot(
         "pyarrow.fs.FileSystem | fsspec.spec.AbstractFileSystem"
     ] = None,
     frame_tolerance_s: Optional[float] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     **kwargs: Any,
 ) -> Dataset:
@@ -2588,39 +2593,35 @@ def read_lerobot(
     downstream normalization, e.g. of state/action vectors).
 
     Examples:
-        Read a local LeRobot dataset:
+        Read a LeRobot v3 dataset from a public S3 bucket (anonymous access):
 
         >>> import ray
-        >>> ds = ray.data.read_lerobot("/path/to/dataset")  # doctest: +SKIP
-        >>> ds.schema()  # doctest: +SKIP
-
-        Read from a public S3 bucket anonymously:
-
         >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
         ...     "s3://anonymous@ray-example-data/lerobot/libero-mini",
         ... )
+        >>> ds.schema()  # doctest: +SKIP
 
-        Read from S3 with episode-level partitioning:
+        Episode-level partitioning:
 
         >>> from ray.data.datasource import LeRobotPartitioning  # doctest: +SKIP
         >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
-        ...     "s3://bucket/lerobot/pusht",
+        ...     "s3://anonymous@ray-example-data/lerobot/libero-mini",
         ...     partitioning=LeRobotPartitioning.EPISODE,
-        ... )
-
-        Read multiple datasets as one:
-
-        >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
-        ...     ["/path/to/ds1", "/path/to/ds2"],
-        ...     partitioning=LeRobotPartitioning.CHAIN,
         ... )
 
         Fixed-size row blocks:
 
         >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
-        ...     "/path/to/dataset",
+        ...     "s3://anonymous@ray-example-data/lerobot/libero-mini",
         ...     partitioning=LeRobotPartitioning.ROW_BLOCK,
         ...     block_size=1024,
+        ... )
+
+        Read multiple datasets as one (paths may be local or cloud URIs):
+
+        >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
+        ...     ["/path/to/ds1", "/path/to/ds2"],
+        ...     partitioning=LeRobotPartitioning.CHAIN,
         ... )
 
     Args:
@@ -2649,9 +2650,23 @@ def read_lerobot(
             default) uses ``0.5 / fps`` — half a frame interval, e.g. ~0.05s at
             10fps. Increase to tolerate timestamp jitter; decrease for stricter
             alignment.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+            Video decoding is CPU-intensive, so raising this (and lowering
+            ``concurrency``) can prevent oversubscription.
+        num_gpus: The number of GPUs to reserve for each parallel read worker,
+            e.g. for GPU-accelerated video decoding.
+        memory: The heap memory in bytes to reserve for each parallel read
+            worker.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Use to
+            cap the number of simultaneous video decoders. By default,
+            concurrency is dynamically decided based on available resources.
         override_num_blocks: Override the number of output blocks from all read
             tasks. By default, the number is dynamically decided based on input
-            data size and available resources.
+            data size and available resources. Note: for ``FILE_GROUP``,
+            ``CHAIN``, and ``SEQUENTIAL`` the block count is bounded by the
+            partitioning (it can only reduce, not increase, the task count); use
+            ``EPISODE`` or ``ROW_BLOCK`` for finer-grained parallelism.
         **kwargs: Additional arguments forwarded to the ``LeRobotDatasource``,
             such as ``storage_options`` (fsspec credentials for cloud reads).
             ``block_size`` is required when ``partitioning`` is ``ROW_BLOCK``.
@@ -2669,6 +2684,11 @@ def read_lerobot(
     )
     return read_datasource(
         datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
 

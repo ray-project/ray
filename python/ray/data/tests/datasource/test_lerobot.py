@@ -66,16 +66,35 @@ def _create_video(path: str, num_frames: int, fps: int = FPS) -> None:
     container.close()
 
 
+def _png_bytes(value: int) -> bytes:
+    """Encode a tiny solid-color frame to PNG bytes (for image-camera datasets)."""
+    import io
+
+    from PIL import Image
+
+    img = np.full((FRAME_H, FRAME_W, FRAME_C), value % 256, dtype=np.uint8)
+    buf = io.BytesIO()
+    Image.fromarray(img).save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def create_lerobot_dataset(
     root: str,
     num_episodes: int = 3,
     frames_per_episode: int = 5,
     has_video: bool = True,
+    image_camera: bool = False,
 ) -> str:
     """Create a minimal LeRobot v3 dataset directory structure.
 
+    With ``image_camera=True`` the camera is stored as encoded-image structs
+    (``dtype: image``) inside the data parquet instead of as mp4 video (and no
+    ``videos/`` tree is written).
+
     Returns the root path.
     """
+    if image_camera:
+        has_video = False
     os.makedirs(root, exist_ok=True)
     total_frames = num_episodes * frames_per_episode
 
@@ -106,6 +125,11 @@ def create_lerobot_dataset(
         info[
             "video_path"
         ] = "videos/{video_key}/chunk-{chunk_index:03d}/file-{file_index:03d}.mp4"
+    if image_camera:
+        features["observation.image"] = {
+            "dtype": "image",
+            "shape": [FRAME_H, FRAME_W, FRAME_C],
+        }
 
     meta_dir = os.path.join(root, "meta")
     os.makedirs(meta_dir, exist_ok=True)
@@ -178,6 +202,15 @@ def create_lerobot_dataset(
             ],
         }
     )
+    if image_camera:
+        # Camera frames live in the parquet as HF Image structs (bytes + path).
+        data_table = data_table.append_column(
+            "observation.image",
+            pa.array(
+                [{"bytes": _png_bytes(i), "path": None} for i in indices],
+                type=pa.struct([("bytes", pa.binary()), ("path", pa.string())]),
+            ),
+        )
     pq.write_table(data_table, os.path.join(data_dir, "file-000.parquet"))
 
     # -- videos/ --
@@ -212,6 +245,12 @@ def lerobot_dataset_no_video(tmp_path):
     return create_lerobot_dataset(str(tmp_path / "ds_nv"), has_video=False)
 
 
+@pytest.fixture
+def lerobot_dataset_image(tmp_path):
+    """Create a minimal LeRobot dataset with an in-parquet image camera."""
+    return create_lerobot_dataset(str(tmp_path / "ds_img"), image_camera=True)
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -239,6 +278,22 @@ def test_read_lerobot_no_video(ray_start_regular_shared, lerobot_dataset_no_vide
     """Test reading a dataset without video keys."""
     ds = ray.data.read_lerobot(lerobot_dataset_no_video)
     assert ds.count() == 15
+
+
+def test_read_lerobot_image_camera(ray_start_regular_shared, lerobot_dataset_image):
+    """Image-based v3: cameras stored as in-parquet ``struct<bytes,path>`` are
+    decoded to HWC uint8 tensors, just like video cameras."""
+    ds = ray.data.read_lerobot(lerobot_dataset_image)
+    assert ds.count() == 15  # 3 episodes * 5 frames
+
+    rows = ds.take_all()
+    for row in rows:
+        frame = np.asarray(row["observation.image"])
+        assert frame.shape == (FRAME_H, FRAME_W, FRAME_C)
+        assert frame.dtype == np.uint8
+        # Decoded to a tensor, not passed through as the raw {bytes, path} struct.
+        assert not isinstance(row["observation.image"], dict)
+        assert "task" in row and "state" in row and "action" in row
 
     rows = ds.take_all()
     for row in rows:
@@ -534,6 +589,49 @@ def test_read_lerobot_all_modes_same_row_count(
         assert (
             ds.count() == expected
         ), f"Mode {mode.name}: expected {expected}, got {ds.count()}"
+
+
+# ---------------------------------------------------------------------------
+# Public-bucket integration test
+# ---------------------------------------------------------------------------
+
+
+def test_read_lerobot_integration_public_s3(ray_start_regular_shared):
+    """End-to-end read against a real LeRobot v3 dataset in a public S3 bucket.
+
+    Uses ``s3://anonymous@ray-example-data/lerobot/libero-mini`` -- a 3-episode
+    (843-frame) slice of LIBERO-10 with two 256x256 video cameras
+    (``observation.images.image``, ``observation.images.wrist_image``),
+    ``observation.state`` (8), ``action`` (7), and 3 distinct task strings.
+    """
+    ds = ray.data.read_lerobot("s3://anonymous@ray-example-data/lerobot/libero-mini")
+
+    names = ds.schema().names
+    for col in (
+        "observation.images.image",
+        "observation.images.wrist_image",
+        "observation.state",
+        "action",
+        "task",
+        "dataset_index",
+        "stats",
+    ):
+        assert col in names, col
+
+    rows = ds.take_all()
+    assert len(rows) == 843
+
+    row = rows[0]
+    for cam in ("observation.images.image", "observation.images.wrist_image"):
+        frame = np.asarray(row[cam])
+        assert frame.shape == (256, 256, 3)
+        assert frame.dtype == np.uint8
+    assert np.asarray(row["observation.state"]).shape == (8,)
+    assert np.asarray(row["action"]).shape == (7,)
+    assert isinstance(row["task"], str) and row["task"]
+
+    # LIBERO interleaves tasks, so the 3 episodes span 3 distinct task strings.
+    assert len({r["task"] for r in rows}) == 3
 
 
 if __name__ == "__main__":
