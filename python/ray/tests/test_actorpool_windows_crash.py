@@ -1,6 +1,8 @@
-import sys
 import subprocess
+import sys
+
 import pytest
+
 
 @pytest.mark.skipif(
     sys.platform != "win32",
@@ -39,14 +41,15 @@ assert results == ["success", "success"]
 
     # Run the script in a subprocess
     process = subprocess.run(
-        [sys.executable, "-c", script],
-        capture_output=True,
-        text=True
+        [sys.executable, "-c", script], capture_output=True, text=True
     )
-    
-    # A segfault/access violation will result in a non-zero exit code 
+
+    # A segfault/access violation will result in a non-zero exit code
     # (usually a large negative number or a Windows exception code like 0xC0000005)
-    assert process.returncode == 0, f"Subprocess crashed!\nSTDOUT: {process.stdout}\nSTDERR: {process.stderr}"
+    assert (
+        process.returncode == 0
+    ), f"Subprocess crashed!\nSTDOUT: {process.stdout}\nSTDERR: {process.stderr}"
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
