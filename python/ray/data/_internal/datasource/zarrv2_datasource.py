@@ -160,19 +160,6 @@ class _ChunkRange:
     flat_stop: int
 
 
-def _unravel(flat_index: int, grid: tuple[int, ...]) -> tuple[int, ...]:
-    """Row-major (C-order) flat index -> N-D chunk index.
-
-    Matches ``itertools.product(*(range(n) for n in grid))`` ordering, so the
-    emitted ``chunk_index`` sequence is identical to enumerating the grid.
-    """
-    idx = []
-    for n in reversed(grid):
-        idx.append(flat_index % n)
-        flat_index //= n
-    return tuple(reversed(idx))
-
-
 @dataclass(frozen=True)
 class _AlignedChunkDescriptor:
     """One wide row: a global axis-0 range ``[t_start, t_stop)`` across the
@@ -208,7 +195,7 @@ def _create_read_fn(
     def read_fn() -> Iterable[Block]:
         builder = DelegatingBlockBuilder()
         for flat_index in range(cr.flat_start, stop):
-            chunk_index = _unravel(flat_index, cr.grid)
+            chunk_index = tuple(int(i) for i in np.unravel_index(flat_index, cr.grid))
             chunk_slices = cr.meta.chunk_slices(chunk_index, cr.chunks)
             builder.add(
                 {
