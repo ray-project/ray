@@ -2638,13 +2638,15 @@ def read_lerobot(
             - ``CHAIN``: one task per connected component of shared files.
             - ``SEQUENTIAL``: one task for the whole dataset.
             - ``ROW_BLOCK``: fixed-size blocks (requires ``block_size`` kwarg).
-        filesystem: Filesystem for reading metadata + parquet. A pyarrow
+        filesystem: Filesystem for reading metadata and parquet. A pyarrow
             ``FileSystem`` (wrapped internally with
             :class:`~fsspec.implementations.arrow.ArrowFSWrapper`) or an fsspec
             ``AbstractFileSystem``. By default it is selected from the URI
             scheme, including the ``s3://anonymous@bucket/…`` convention for
-            public buckets. For cloud credentials, either pass a configured
-            *filesystem* or use ``storage_options`` (see below).
+            public buckets. An fsspec filesystem's credentials also cover the
+            by-URI video decode path; a pyarrow filesystem's cannot, so for
+            credentialed cloud *video* pass ``storage_options`` (see below) or an
+            fsspec filesystem instead.
         frame_tolerance_s: Max seconds a decoded video frame's timestamp may
             differ from a row's timestamp before it is rejected. ``None`` (the
             default) uses ``0.5 / fps`` — half a frame interval, e.g. ~0.05s at

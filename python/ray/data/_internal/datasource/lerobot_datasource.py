@@ -285,7 +285,7 @@ def _resolve_filesystem(
     root: Union[str, Path],
     filesystem: Optional[Any] = None,
     storage_options: Optional[Dict[str, Any]] = None,
-) -> Tuple["fsspec.AbstractFileSystem", str, str, Dict[str, Any]]:
+) -> Tuple["fsspec.AbstractFileSystem", str, str, Dict[str, Any], bool]:
     """Resolve the fsspec filesystem and paths for one LeRobot dataset *root*.
 
     Mirrors ``read_zarr``'s resolution, adapted to the two I/O paths a LeRobot
@@ -311,7 +311,9 @@ def _resolve_filesystem(
     path: the marker is stripped from ``video_root_uri`` and ``anon=True`` is
     threaded into ``video_storage_options`` (s3fs spells anonymous ``anon=True``).
 
-    Returns ``(fs, fs_root, video_root_uri, video_storage_options)``.
+    Returns ``(fs, fs_root, video_root_uri, video_storage_options,
+    video_creds_unavailable)`` — the last flag is True when an explicit pyarrow
+    *filesystem* cannot supply credentials to the by-URI video path (see below).
     """
     import fsspec
     from fsspec.core import split_protocol
@@ -328,15 +330,32 @@ def _resolve_filesystem(
         video_root_uri = f"{protocol}://{rest[len('anonymous@') :]}"
         video_storage_options.setdefault("anon", True)
 
+    video_creds_unavailable = False
     if filesystem is not None:
         from pyarrow.fs import FileSystem as _PaFileSystem
 
         if isinstance(filesystem, AbstractFileSystem):
             fs = filesystem
+            # The same filesystem must also cover the by-URI video decode path
+            # (torchcodec opens videos via fsspec.open, not through fs). fsspec
+            # filesystems expose the kwargs that recreate them, so thread those
+            # into the video options; any explicit storage_options still win.
+            video_storage_options = {
+                **(getattr(filesystem, "storage_options", None) or {}),
+                **video_storage_options,
+            }
         elif isinstance(filesystem, _PaFileSystem):
             from fsspec.implementations.arrow import ArrowFSWrapper
 
             fs = ArrowFSWrapper(filesystem)
+            # pyarrow filesystems do not expose their credentials, so we cannot
+            # thread them into the by-URI video path. For a remote root that
+            # would leave video decode without credentials; flag it so we can
+            # fail loudly later, but only if the dataset actually has video.
+            video_creds_unavailable = bool(protocol) and protocol not in (
+                "file",
+                "local",
+            )
         else:
             raise TypeError(
                 f"filesystem must be a pyarrow.fs.FileSystem or an "
@@ -360,7 +379,7 @@ def _resolve_filesystem(
         fs = ArrowFSWrapper(pa_fs)
         fs_root = resolved_paths[0].rstrip("/")
 
-    return fs, fs_root, video_root_uri, video_storage_options
+    return fs, fs_root, video_root_uri, video_storage_options, video_creds_unavailable
 
 
 def _load_lerobot_metadata(
@@ -418,6 +437,7 @@ def _build_root(
     fs_root: str,
     video_root_uri: str,
     video_storage_options: Dict[str, Any],
+    video_creds_unavailable: bool = False,
     frame_tolerance_s: Optional[float] = None,
 ) -> _LeRobotRoot:
     """Compute the per-root derived state bundle for a (pristine) lerobot
@@ -447,6 +467,14 @@ def _build_root(
         raise ValueError(
             f"{root_uri!r}: dataset has video keys {meta.video_keys} "
             "but meta/info.json has no 'video_path' template"
+        )
+    if meta.video_keys and video_creds_unavailable:
+        raise ValueError(
+            f"{root_uri!r}: an explicit pyarrow `filesystem=` cannot supply "
+            f"credentials to the video decode path (videos are streamed by URI "
+            f"through torchcodec/fsspec, not through the filesystem object). For "
+            f"credentialed cloud video, pass `storage_options=` (e.g. "
+            f"{{'key': ..., 'secret': ...}}) or an fsspec filesystem instead."
         )
 
     image_keys = list(getattr(meta, "image_keys", []) or [])
@@ -575,6 +603,16 @@ class _LeRobotReadTask(ReadTask):
         cache = new_decoder_cache(root.storage_options) if root.video_keys else None
 
         task_idx_pylist = full.column("task_index").to_pylist()
+        # Fail fast (once per segment) if the parquet data references a task id
+        # that the tasks metadata (meta/tasks.parquet) does not define, rather
+        # than raising a bare KeyError mid-stream.
+        missing_tasks = {ti for ti in task_idx_pylist if ti not in root.tasks_dict}
+        if missing_tasks:
+            raise ValueError(
+                f"task_index values {sorted(missing_tasks)} are absent from the "
+                f"dataset's tasks metadata (meta/tasks.parquet); the data and "
+                f"tasks metadata are inconsistent."
+            )
         try:
             for batch_start in range(0, n_rows, self._rows_per_batch):
                 batch_end = min(batch_start + self._rows_per_batch, n_rows)
@@ -663,7 +701,9 @@ class _LeRobotReadTask(ReadTask):
                 frames = decode_frames(
                     vpath, timestamps, tolerance_s, decoder_cache=cache
                 )
-                arr = frames.permute(0, 2, 3, 1).contiguous().numpy()
+                # .cpu() so GPU-decoded frames (num_gpus>0) move to host before
+                # the numpy conversion (CUDA tensors can't convert directly).
+                arr = frames.permute(0, 2, 3, 1).contiguous().cpu().numpy()
                 if arr.dtype != np.uint8:
                     if arr.dtype.kind == "f":
                         arr = (arr * 255.0).clip(0, 255).astype(np.uint8)
@@ -949,7 +989,7 @@ class LeRobotDatasource(Datasource):
         # self.meta for callers that want full lerobot API access.
         self.metas = [
             _load_lerobot_metadata(r, fs, fs_root)
-            for r, (fs, fs_root, _, _) in zip(roots, self._resolved)
+            for r, (fs, fs_root, _, _, _) in zip(roots, self._resolved)
         ]
 
         # The video/image deps are needed only for the camera kinds actually
@@ -1003,9 +1043,16 @@ class LeRobotDatasource(Datasource):
         # lerobot installed at runtime.
         self._roots: List[_LeRobotRoot] = [
             _build_root(
-                m, r, fs, fs_root, video_uri, video_opts, self._frame_tolerance_s
+                m,
+                r,
+                fs,
+                fs_root,
+                video_uri,
+                video_opts,
+                video_creds_unavailable=creds_unavail,
+                frame_tolerance_s=self._frame_tolerance_s,
             )
-            for m, r, (fs, fs_root, video_uri, video_opts) in zip(
+            for m, r, (fs, fs_root, video_uri, video_opts, creds_unavail) in zip(
                 self.metas, roots, self._resolved
             )
         ]

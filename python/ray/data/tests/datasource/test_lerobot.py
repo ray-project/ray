@@ -626,6 +626,67 @@ def test_read_lerobot_override_num_blocks_splits_and_merges(
     assert ds.count() == 15
 
 
+def test_read_lerobot_inconsistent_task_index_raises(
+    ray_start_regular_shared, lerobot_dataset
+):
+    """A ``task_index`` present in the data but absent from the tasks metadata
+    must raise a clear error, not a bare KeyError mid-stream."""
+    from ray.data.datasource import LeRobotDatasource
+
+    source = LeRobotDatasource(lerobot_dataset, partitioning="sequential")
+    # Drop a referenced task id from the metadata to simulate an inconsistent
+    # dataset (data references a task with no meta/tasks.parquet entry).
+    root = source._roots[0]
+    broken = dict(root.tasks_dict)
+    broken.pop(next(iter(broken)))
+    source._roots[0] = root._replace(tasks_dict=broken)
+
+    with pytest.raises(ValueError, match="tasks metadata"):
+        for task in source.get_read_tasks(1):
+            for _ in task():
+                pass
+
+
+def _fsspec_fs_with_creds():
+    """An fsspec filesystem carrying credential-like storage_options."""
+    import fsspec
+
+    fs = fsspec.filesystem("memory")
+    fs.storage_options = {"key": "SECRET"}
+    return fs
+
+
+def _pyarrow_local_fs():
+    import pyarrow.fs as pafs
+
+    return pafs.LocalFileSystem()
+
+
+@pytest.mark.parametrize(
+    "uri,fs_factory,expect_unavailable,expect_key",
+    [
+        # An fsspec filesystem's credentials reach the by-URI video path.
+        ("/tmp/ds", _fsspec_fs_with_creds, False, "SECRET"),
+        # A pyarrow filesystem can't expose creds: a remote root is flagged...
+        ("s3://bucket/ds", _pyarrow_local_fs, True, None),
+        # ...but a local pyarrow root needs none, so it isn't flagged.
+        ("/local/ds", _pyarrow_local_fs, False, None),
+    ],
+)
+def test_resolve_filesystem_video_credentials(
+    uri, fs_factory, expect_unavailable, expect_key
+):
+    """``filesystem=`` must extend to the by-URI video decode path: fsspec
+    credentials are threaded through, while the unbridgeable pyarrow-remote
+    case is flagged so the datasource can fail loudly when video is present."""
+    from ray.data._internal.datasource.lerobot_datasource import _resolve_filesystem
+
+    _, _, _, video_opts, unavailable = _resolve_filesystem(uri, filesystem=fs_factory())
+    assert unavailable is expect_unavailable
+    if expect_key is not None:
+        assert video_opts.get("key") == expect_key
+
+
 # ---------------------------------------------------------------------------
 # Public-bucket integration test
 # ---------------------------------------------------------------------------
