@@ -595,6 +595,57 @@ def test_get_read_tasks_batches_chunks_by_parallelism(tmp_path):
     assert all(task.metadata.input_files == (str(store_path),) for task in read_tasks)
 
 
+def test_per_task_row_limit_caps_chunks_read(tmp_path, monkeypatch):
+    """per_task_row_limit bounds how many chunks a task actually reads, so a
+    downstream ``limit`` doesn't pull the whole batch's I/O."""
+    store_path = tmp_path / "limit.zarr"
+    _write_real_zarr_store(store_path, {"data": (np.arange(10, dtype="<i4"), (1,))})
+    datasource = zarrv2_datasource.ZarrV2Datasource(str(store_path))
+
+    reads = []
+    real_read_chunk = zarrv2_datasource._read_chunk
+
+    def _spy(*args, **kwargs):
+        reads.append(1)
+        return real_read_chunk(*args, **kwargs)
+
+    monkeypatch.setattr(zarrv2_datasource, "_read_chunk", _spy)
+
+    # parallelism=1 -> one task batching all 10 chunks; cap it at 3.
+    tasks = datasource.get_read_tasks(parallelism=1, per_task_row_limit=3)
+    blocks = [block for task in tasks for block in task()]
+
+    total_rows = sum(BlockAccessor.for_block(b).num_rows() for b in blocks)
+    assert total_rows == 3
+    # The fix: only 3 chunks were actually read (not all 10, then truncated).
+    assert len(reads) == 3
+
+
+def test_read_chunk_retries_transient_io(monkeypatch):
+    """_read_chunk retries reads whose error matches retry_match (Ray Data's
+    DataContext.retried_io_errors), then succeeds."""
+    monkeypatch.setattr("time.sleep", lambda *_: None)  # no backoff in the test
+
+    class _FlakyArray:
+        attempts = 0
+
+        def __getitem__(self, _idx):
+            type(self).attempts += 1
+            if self.attempts < 3:
+                raise OSError("Connection reset by peer")
+            return np.arange(4, dtype="<i4")
+
+    class _Root:
+        def __getitem__(self, _name):
+            return _FlakyArray()
+
+    out = zarrv2_datasource._read_chunk(
+        _Root(), "x", ((0, 4),), retry_match=["Connection reset"]
+    )
+    np.testing.assert_array_equal(out, np.arange(4, dtype="<i4"))
+    assert _FlakyArray.attempts == 3  # failed twice, then succeeded
+
+
 def test_long_form_schema_and_materialization(tmp_path):
     """End-to-end: long-form rows are emitted with the expected columns and data."""
     store_path = tmp_path / "aligned.zarr"
