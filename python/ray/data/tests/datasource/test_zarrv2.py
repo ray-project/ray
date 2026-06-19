@@ -13,11 +13,14 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data._internal.datasource import zarrv2_datasource
+from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa: F401, F403
 
 
 def _execute_read_tasks(tasks) -> pd.DataFrame:
-    frames = [block for task in tasks for block in task()]
+    frames = [
+        BlockAccessor.for_block(block).to_pandas() for task in tasks for block in task()
+    ]
     return pd.concat(frames, ignore_index=True)
 
 
@@ -28,7 +31,9 @@ def _reconstruct_array(df: pd.DataFrame, array_name: str) -> np.ndarray:
     higher-dim arrays, use ``_reconstruct_nd`` (which orders chunks by
     ``chunk_index`` and concatenates axis 0 first).
     """
-    sub = df[df["array"] == array_name].sort_values("chunk_index")
+    sub = df[df["array"] == array_name].sort_values(
+        "chunk_index", key=lambda col: col.map(tuple)
+    )
     return np.concatenate(list(sub["chunk"]), axis=0)
 
 
@@ -742,7 +747,7 @@ def test_estimate_inmemory_data_size(tmp_path):
         lazy_fixture("local_fsspec_fs"),  # native fsspec
     ],
 )
-def test_read_zarr_basic_across_filesystems(ray_start_regular_shared, fs, local_path):
+def test_read_zarr_basic_across_filesystems(fs, local_path):
     """Round-trip a real Zarr store through read_zarr for each filesystem flavor.
 
     Mirrors the parametrized read-path coverage other Ray Data datasources use
@@ -774,7 +779,7 @@ def test_read_zarr_basic_across_filesystems(ray_start_regular_shared, fs, local_
 # ---------------------------------------------------------------------------
 
 
-def test_read_zarr_integration_public_s3(ray_start_regular_shared):
+def test_read_zarr_integration_public_s3():
     """End-to-end read against a real Zarr store in a public S3 bucket.
 
     Uses ``s3://anonymous@ray-example-data/mnist-tiny.zarr`` — a 200-sample

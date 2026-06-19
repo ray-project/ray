@@ -9,12 +9,12 @@ from itertools import product
 from typing import TYPE_CHECKING, List, Optional
 
 import numpy as np
-import pandas as pd
 from fsspec.core import split_protocol
 from fsspec.spec import AbstractFileSystem
 
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import, _is_local_scheme
-from ray.data.block import BlockMetadata
+from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 
 logger = logging.getLogger(__name__)
@@ -143,32 +143,33 @@ class _AlignedChunkDescriptor:
 def _create_read_fn(
     batch: list[_ChunkDescriptor],
     root: ZarrRoot,
-) -> Callable[[], Iterable[pd.DataFrame]]:
-    """Build a read-task callable that materializes one DataFrame for one batch.
+) -> Callable[[], Iterable[Block]]:
+    """Build a read-task callable that materializes one block for one batch.
 
-    Each output row carries ``(array, chunk_index, chunk)``. ``chunk`` is
-    the data at its natural shape — possibly shorter than the nominal chunk
-    shape at trailing boundaries.
+    Each output row carries ``(array, chunk_index, chunk_slices, chunk)``.
+    ``chunk`` is the data at its natural shape — possibly shorter than the
+    nominal chunk shape at trailing boundaries.
 
     The caller is expected to pass batches whose chunks all come from one
     array. Arrow's tensor extension requires all tensor elements in a
     column to share rank, so mixing 4-D image chunks with 1-D label chunks
-    in one block would fail at conversion time.
+    in one block would fail at build time.
     :meth:`ZarrV2Datasource.get_read_tasks` enforces this by allocating one
     batch per array.
     """
 
-    def read_fn() -> Iterable[pd.DataFrame]:
-        yield pd.DataFrame(
-            {
-                "array": [d.array_name for d in batch],
-                "chunk_index": [d.chunk_index for d in batch],
-                "chunk_slices": [d.chunk_slices for d in batch],
-                "chunk": [
-                    _read_chunk(root, d.array_name, d.chunk_slices) for d in batch
-                ],
-            }
-        )
+    def read_fn() -> Iterable[Block]:
+        builder = DelegatingBlockBuilder()
+        for d in batch:
+            builder.add(
+                {
+                    "array": d.array_name,
+                    "chunk_index": d.chunk_index,
+                    "chunk_slices": d.chunk_slices,
+                    "chunk": _read_chunk(root, d.array_name, d.chunk_slices),
+                }
+            )
+        yield builder.build()
 
     return read_fn
 
@@ -177,7 +178,7 @@ def _create_aligned_read_fn(
     batch: list[_AlignedChunkDescriptor],
     aligned_array_names: list[str],
     root: ZarrRoot,
-) -> Callable[[], Iterable[pd.DataFrame]]:
+) -> Callable[[], Iterable[Block]]:
     """Build a read-task callable for aligned (wide-row) reads.
 
     Each output row carries ``t_start``, ``t_stop``, and one column per
@@ -186,16 +187,14 @@ def _create_aligned_read_fn(
     share the same axis-0 range.
     """
 
-    def read_fn() -> Iterable[pd.DataFrame]:
-        cols: dict[str, list] = {
-            "t_start": [d.t_start for d in batch],
-            "t_stop": [d.t_stop for d in batch],
-        }
-        for name in aligned_array_names:
-            cols[name] = [
-                _read_chunk(root, name, ((d.t_start, d.t_stop_data),)) for d in batch
-            ]
-        yield pd.DataFrame(cols)
+    def read_fn() -> Iterable[Block]:
+        builder = DelegatingBlockBuilder()
+        for d in batch:
+            row = {"t_start": d.t_start, "t_stop": d.t_stop}
+            for name in aligned_array_names:
+                row[name] = _read_chunk(root, name, ((d.t_start, d.t_stop_data),))
+            builder.add(row)
+        yield builder.build()
 
     return read_fn
 
