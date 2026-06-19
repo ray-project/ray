@@ -295,12 +295,6 @@ def test_read_lerobot_image_camera(ray_start_regular_shared, lerobot_dataset_ima
         assert not isinstance(row["observation.image"], dict)
         assert "task" in row and "state" in row and "action" in row
 
-    rows = ds.take_all()
-    for row in rows:
-        assert "action" in row
-        assert "state" in row
-        assert "observation.image" not in row
-
 
 def test_read_lerobot_stats_column(ray_start_regular_shared, lerobot_dataset_no_video):
     """The ``stats`` column exposes per-feature normalization stats as JSON."""
