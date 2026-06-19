@@ -223,6 +223,15 @@ class UnityCatalog(Catalog):
         """Best-effort format hint from table metadata or file extension."""
         fmt = (table_info.get("data_source_format") or "").lower()
         if fmt in {f.value for f in ReaderFormat}:
+            # A UniForm Delta table reports DELTA but also exposes Iceberg
+            # metadata. Prefer Iceberg: these tables require columnMapping, which
+            # deltalake's pyarrow reader can't read, so the Delta path would fail.
+            if fmt == ReaderFormat.DELTA.value:
+                uniform = (table_info.get("properties") or {}).get(
+                    "delta.universalFormat.enabledFormats", ""
+                )
+                if "iceberg" in uniform.lower():
+                    return ReaderFormat.ICEBERG
             return ReaderFormat(fmt)
 
         storage_loc = table_info.get("storage_location") or table_url
