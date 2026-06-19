@@ -32,6 +32,7 @@ from typing import (
     List,
     NamedTuple,
     Optional,
+    Tuple,
     Union,
 )
 
@@ -91,10 +92,17 @@ class _LeRobotRoot(NamedTuple):
     """
 
     root: str
-    """Original root URI (local path or cloud URI), used for ``fsspec.url_to_fs``."""
+    """Root URI used to build the by-URI video paths streamed through torchcodec
+    (``s3://anonymous@b/x`` is normalized to ``s3://b/x`` — see ``storage_options``)."""
+
+    fs: "fsspec.AbstractFileSystem"
+    """Resolved fsspec filesystem for metadata + parquet I/O, built once on the
+    driver (see :func:`_resolve_filesystem`) and shipped to workers so they need
+    neither lerobot nor credential resolution at runtime."""
 
     fs_root: str
-    """Filesystem-stripped root for path joining (``s3://b/x`` -> ``b/x``)."""
+    """Dataset path relative to ``fs``'s root for path joining
+    (``s3://b/x`` -> ``b/x``)."""
 
     data_path: str
     """``info.data_path`` format string for chunked parquet files."""
@@ -103,7 +111,11 @@ class _LeRobotRoot(NamedTuple):
     """``info.video_path`` format string for chunked mp4 files (``None`` if no videos)."""
 
     video_keys: List[str]
-    """Feature keys with ``dtype == 'video'`` (camera streams)."""
+    """Feature keys with ``dtype == 'video'`` (camera streams stored as mp4)."""
+
+    image_keys: List[str]
+    """Feature keys with ``dtype == 'image'`` (camera streams stored as encoded
+    image bytes — HF ``struct<bytes, path>`` — in the parquet rows, not as mp4)."""
 
     episodes_table: pa.Table
     """Episode metadata as a pyarrow Table, augmented with
@@ -129,9 +141,10 @@ class _LeRobotRoot(NamedTuple):
     passed to :func:`lerobot.datasets.video_utils.decode_video_frames`."""
 
     storage_options: Dict[str, Any]
-    """Extra options forwarded to ``fsspec`` (``url_to_fs`` / ``fsspec.open``)
-    and to the video decode call when reading this root.  Empty dict means
-    rely on ambient fsspec credential resolution."""
+    """fsspec options for the by-URI video decode path (lerobot opens video files
+    itself via ``fsspec.open``, not through ``fs``).  For ``s3://anonymous@…``
+    roots ``anon=True`` is threaded in here.  Empty dict means rely on ambient
+    fsspec credential resolution."""
 
     stats_json: str
     """Per-feature normalization statistics (mean/std/min/max/…) from
@@ -185,12 +198,14 @@ def _build_schema(
     episodes_table: pa.Table,
     data_path: str,
     video_keys: List[str],
+    image_keys: List[str],
     fs: "fsspec.AbstractFileSystem",
     fs_root: str,
 ) -> pa.Schema:
-    """Read the Arrow schema of the first data parquet file and append the
-    variable-shape-tensor video columns plus ``task``, ``dataset_index`` and
-    ``stats``."""
+    """Read the Arrow schema of the first data parquet file and produce the
+    output schema: in-parquet ``image`` columns (HF ``struct<bytes, path>``) are
+    replaced by decoded uint8 tensor columns, ``video`` columns are appended as
+    decoded tensors, plus ``task``, ``dataset_index`` and ``stats``."""
     from ray.data.extensions import ArrowVariableShapedTensorType
 
     ep = episodes_table.slice(0, 1).to_pylist()[0]
@@ -200,9 +215,16 @@ def _build_schema(
     )
     with fs.open(path, "rb") as f:
         pq_schema = pq.read_schema(f)
-    fields = list(pq_schema)
+    image_set = set(image_keys)
+    frame_type = ArrowVariableShapedTensorType(pa.uint8(), ndim=3)
+    # Image columns live in the parquet as encoded-byte structs; swap them for
+    # the decoded-tensor type in place (preserving column order).
+    fields = [
+        pa.field(f.name, frame_type) if f.name in image_set else f for f in pq_schema
+    ]
+    # Video columns are not in the parquet; append them.
     for vk in video_keys:
-        fields.append(pa.field(vk, ArrowVariableShapedTensorType(pa.uint8(), ndim=3)))
+        fields.append(pa.field(vk, frame_type))
     fields.append(pa.field("task", pa.string()))
     fields.append(pa.field("dataset_index", pa.int32()))
     fields.append(pa.field("stats", pa.string()))
@@ -213,7 +235,7 @@ def _estimated_row_size_bytes(features: dict, root_for_logging: str) -> int:
     """Estimated in-memory size of one fully-decoded frame row, in bytes."""
     total = 0
     for feat_name, feat in features.items():
-        if feat.get("dtype") == "video":
+        if feat.get("dtype") in ("video", "image"):
             shape = feat.get("shape")
             if shape:
                 total += int(np.prod(shape))
@@ -255,8 +277,92 @@ def _stats_to_json(stats: Optional[dict]) -> str:
     return json.dumps(_convert(stats))
 
 
+def _resolve_filesystem(
+    root: Union[str, Path],
+    filesystem: Optional[Any] = None,
+    storage_options: Optional[Dict[str, Any]] = None,
+) -> Tuple["fsspec.AbstractFileSystem", str, str, Dict[str, Any]]:
+    """Resolve the fsspec filesystem and paths for one LeRobot dataset *root*.
+
+    Mirrors ``read_zarr``'s resolution, adapted to the two I/O paths a LeRobot
+    dataset needs:
+
+    * **metadata + parquet** are read through a single fsspec filesystem,
+      returned as ``fs`` with the dataset path ``fs_root`` relative to it;
+    * **video files** are streamed *by URI* through torchcodec — lerobot opens
+      those itself via ``fsspec.open``, not through ``fs`` — so they get the URI
+      ``video_root_uri`` and options ``video_storage_options`` instead.
+
+    Precedence for ``fs`` (matching every other ``read_*`` API):
+
+    1. an explicit *filesystem* — a pyarrow ``FileSystem`` (wrapped with
+       :class:`~fsspec.implementations.arrow.ArrowFSWrapper`) or an fsspec
+       ``AbstractFileSystem``;
+    2. otherwise, when *storage_options* is given, ``fsspec.url_to_fs`` so one
+       set of options covers metadata, parquet, and video;
+    3. otherwise Ray Data's standard :func:`_resolve_paths_and_filesystem`
+       (scheme detection plus conventions such as ``s3://anonymous@bucket/…``).
+
+    The ``s3://anonymous@…`` convention is also mapped onto the by-URI video
+    path: the marker is stripped from ``video_root_uri`` and ``anon=True`` is
+    threaded into ``video_storage_options`` (s3fs spells anonymous ``anon=True``).
+
+    Returns ``(fs, fs_root, video_root_uri, video_storage_options)``.
+    """
+    import fsspec
+    from fsspec.core import split_protocol
+    from fsspec.spec import AbstractFileSystem
+
+    root_uri = str(root).rstrip("/")
+    storage_options = dict(storage_options or {})
+
+    # Map Ray Data's anonymous@ convention onto the by-URI video path.
+    video_root_uri = root_uri
+    video_storage_options = dict(storage_options)
+    protocol, rest = split_protocol(root_uri)
+    if protocol and rest and rest.startswith("anonymous@"):
+        video_root_uri = f"{protocol}://{rest[len('anonymous@') :]}"
+        video_storage_options.setdefault("anon", True)
+
+    if filesystem is not None:
+        from pyarrow.fs import FileSystem as _PaFileSystem
+
+        if isinstance(filesystem, AbstractFileSystem):
+            fs = filesystem
+        elif isinstance(filesystem, _PaFileSystem):
+            from fsspec.implementations.arrow import ArrowFSWrapper
+
+            fs = ArrowFSWrapper(filesystem)
+        else:
+            raise TypeError(
+                f"filesystem must be a pyarrow.fs.FileSystem or an "
+                f"fsspec.spec.AbstractFileSystem, got {type(filesystem).__name__}"
+            )
+        _, fs_root = split_protocol(root_uri)
+        fs_root = (fs_root or root_uri).rstrip("/")
+    elif storage_options:
+        # Explicit fsspec options (credentials / endpoint_url / …): resolve via
+        # fsspec so the same options cover metadata, parquet, and video.
+        fs, fs_root = fsspec.core.url_to_fs(video_root_uri, **video_storage_options)
+        fs_root = fs_root.rstrip("/")
+    else:
+        # Default: Ray Data's standard URI->filesystem resolver (the same one
+        # every other read_* API uses); also handles s3://anonymous@… .
+        from fsspec.implementations.arrow import ArrowFSWrapper
+
+        from ray.data.datasource.path_util import _resolve_paths_and_filesystem
+
+        resolved_paths, pa_fs = _resolve_paths_and_filesystem([root_uri])
+        fs = ArrowFSWrapper(pa_fs)
+        fs_root = resolved_paths[0].rstrip("/")
+
+    return fs, fs_root, video_root_uri, video_storage_options
+
+
 def _load_lerobot_metadata(
-    root: Union[str, Path], storage_options: Optional[Dict[str, Any]] = None
+    root: Union[str, Path],
+    fs: "fsspec.AbstractFileSystem",
+    fs_root: str,
 ) -> "LeRobotDatasetMetadata":
     """Construct a pristine :class:`lerobot.LeRobotDatasetMetadata` for *root*.
 
@@ -271,16 +377,13 @@ def _load_lerobot_metadata(
     stays a clean ``FileNotFoundError`` rather than getting transformed into a
     HuggingFace Hub validation error by lerobot's local-then-Hub fallback.
 
-    *storage_options* is forwarded to ``fsspec`` for the existence check and the
-    metadata copy.
+    *fs* / *fs_root* are the resolved fsspec filesystem and the dataset path
+    relative to it (see :func:`_resolve_filesystem`); they are used for the
+    existence check and the metadata copy.
     """
-    import fsspec
     from lerobot.datasets.dataset_metadata import LeRobotDatasetMetadata
 
     root_uri = str(root).rstrip("/")
-    storage_options = dict(storage_options or {})
-
-    fs, fs_root = fsspec.core.url_to_fs(root_uri, **storage_options)
     fs_root = fs_root.rstrip("/")
     if not fs.exists(f"{fs_root}/meta/info.json"):
         raise FileNotFoundError(
@@ -307,7 +410,10 @@ def _load_lerobot_metadata(
 def _build_root(
     meta: "LeRobotDatasetMetadata",
     root: Union[str, Path],
-    storage_options: Optional[Dict[str, Any]] = None,
+    fs: "fsspec.AbstractFileSystem",
+    fs_root: str,
+    video_root_uri: str,
+    video_storage_options: Dict[str, Any],
     frame_tolerance_s: Optional[float] = None,
 ) -> _LeRobotRoot:
     """Compute the per-root derived state bundle for a (pristine) lerobot
@@ -317,13 +423,14 @@ def _build_root(
     a remote root ``meta.root`` points at a local temp copy of ``meta/`` only, so
     data/video paths must be resolved against *root* — not ``meta.root``.
 
-    *storage_options* is forwarded to ``fsspec`` and captured on the returned
-    :class:`_LeRobotRoot` so workers reuse the same credentials.
+    *fs* / *fs_root* (the resolved fsspec filesystem and the relative dataset
+    path) are used for the parquet schema read and captured on the returned
+    :class:`_LeRobotRoot` so workers reuse them.  *video_root_uri* /
+    *video_storage_options* are the URI + fsspec options for the by-URI video
+    decode path (see :func:`_resolve_filesystem`).
     """
-    import fsspec
-
     root_uri = str(root).rstrip("/")
-    storage_options = dict(storage_options or {})
+    fs_root = fs_root.rstrip("/")
 
     # In lerobot 0.5.x, meta.info is a dict; accessing meta.video_path
     # raises KeyError when the key is absent.  Use dict-aware lookup.
@@ -338,27 +445,30 @@ def _build_root(
             "but meta/info.json has no 'video_path' template"
         )
 
-    fs, fs_root = fsspec.core.url_to_fs(root_uri, **storage_options)
-    fs_root = fs_root.rstrip("/")
+    image_keys = list(getattr(meta, "image_keys", []) or [])
     episodes_table = _build_episodes_table(meta.episodes)
     tasks_dict = _build_tasks_dict(meta.tasks)
-    schema = _build_schema(episodes_table, meta.data_path, meta.video_keys, fs, fs_root)
+    schema = _build_schema(
+        episodes_table, meta.data_path, meta.video_keys, image_keys, fs, fs_root
+    )
     row_size_bytes = _estimated_row_size_bytes(meta.features, root_uri)
     stats_json = _stats_to_json(getattr(meta, "stats", None))
 
     return _LeRobotRoot(
-        root=root_uri,
+        root=video_root_uri,
+        fs=fs,
         fs_root=fs_root,
         data_path=meta.data_path,
         video_path=video_path,
         video_keys=list(meta.video_keys),
+        image_keys=image_keys,
         episodes_table=episodes_table,
         tasks_dict=tasks_dict,
         schema=schema,
         row_size_bytes=row_size_bytes,
         total_frames=meta.total_frames,
         fps=meta.fps,
-        storage_options=storage_options,
+        storage_options=video_storage_options,
         stats_json=stats_json,
         frame_tolerance_s=frame_tolerance_s,
     )
@@ -433,11 +543,9 @@ class _LeRobotReadTask(ReadTask):
            video file at a time via the torchcodec helper in ``_lerobot_compat``.
         3. Yield Arrow batches of ``self._rows_per_batch`` rows.
         """
-        import fsspec
-
         from ray.data._internal.datasource._lerobot_compat import decode_frames
 
-        fs, _ = fsspec.core.url_to_fs(root.root, **root.storage_options)
+        fs = root.fs
 
         # 1. Read all parquet rows for this segment.
         filters = [("index", ">=", start), ("index", "<", end)]
@@ -450,12 +558,16 @@ class _LeRobotReadTask(ReadTask):
             return
         n_rows = full.num_rows
 
-        # 2. Batch-decode video frames per (camera, video_file).
-        # decoded_frames[vk] is an array of N HWC uint8 frames aligned to
-        # full's row order.
+        # 2. Decode camera frames into HWC uint8 arrays aligned to full's row
+        # order: video cameras via torchcodec (per video file), image cameras by
+        # decoding the in-parquet encoded-byte structs. decoded_frames[k] is an
+        # array of N frames; camera_keys unions both kinds.
         decoded_frames: dict = {}
         if root.video_keys:
             decoded_frames = self._decode_video_frames(root, full, decode_frames)
+        if root.image_keys:
+            decoded_frames.update(self._decode_image_frames(root, full))
+        camera_keys = root.video_keys + root.image_keys
 
         # 3. Emit Arrow batches.
         task_idx_pylist = full.column("task_index").to_pylist()
@@ -467,10 +579,10 @@ class _LeRobotReadTask(ReadTask):
                 for i in range(batch_start, batch_end)
             ]
             frame_buffers = {
-                vk: decoded_frames[vk][batch_start:batch_end] for vk in root.video_keys
+                k: decoded_frames[k][batch_start:batch_end] for k in camera_keys
             }
             yield self._build_batch(
-                root.video_keys,
+                camera_keys,
                 [batch_slice],
                 frame_buffers,
                 task_list,
@@ -556,6 +668,41 @@ class _LeRobotReadTask(ReadTask):
                 for i, r in enumerate(row_indices):
                     frames_by_row[r] = arr[i]
             decoded[vk] = frames_by_row
+        return decoded
+
+    @staticmethod
+    def _decode_image_frames(root: _LeRobotRoot, full: pa.Table) -> dict:
+        """Decode in-parquet image cameras to HWC uint8 frames, one per row.
+
+        LeRobot stores ``dtype == 'image'`` cameras as HuggingFace ``Image``
+        structs (``{bytes, path}``) inside the data parquet — so, unlike video,
+        there is no separate file or timestamp matching: each row already holds
+        its own encoded frame. Returns ``{image_key: list[np.ndarray HWC uint8]}``
+        aligned to *full*'s row order.
+        """
+        import io
+
+        from PIL import Image
+
+        decoded: dict = {}
+        for ik in root.image_keys:
+            frames: List[Any] = []
+            for cell in full.column(ik).to_pylist():
+                data = cell.get("bytes") if isinstance(cell, dict) else cell
+                if data is None and isinstance(cell, dict) and cell.get("path"):
+                    p = cell["path"]
+                    p = p if p.startswith(root.fs_root) else f"{root.fs_root}/{p}"
+                    with root.fs.open(p, "rb") as fh:
+                        data = fh.read()
+                if data is None:
+                    raise ValueError(
+                        f"image column {ik!r}: row has neither inline bytes nor a path"
+                    )
+                arr = np.asarray(
+                    Image.open(io.BytesIO(data)).convert("RGB"), dtype=np.uint8
+                )
+                frames.append(arr)
+            decoded[ik] = frames
         return decoded
 
     @staticmethod
@@ -645,15 +792,18 @@ class _LeRobotReadTask(ReadTask):
 
     @staticmethod
     def _build_batch(
-        video_keys: List[str],
+        camera_keys: List[str],
         pq_buffer: List[pa.Table],
         frame_buffers: dict,
         task_list: List[str],
         dataset_index: int,
         stats_json: str,
     ) -> pa.Table:
-        """Assemble one Arrow batch from buffered parquet rows, decoded frames,
-        tasks, and per-dataset stats."""
+        """Assemble one Arrow batch from buffered parquet rows, decoded camera
+        frames, tasks, and per-dataset stats.  *camera_keys* covers both video
+        and image cameras: image columns already exist in the parquet rows as
+        encoded-byte structs and are overwritten in place by their decoded
+        tensors, while video columns are added."""
         from ray.data.extensions import ArrowVariableShapedTensorArray
 
         table = pa.concat_tables(pq_buffer)
@@ -661,7 +811,7 @@ class _LeRobotReadTask(ReadTask):
             table.schema.field(i).name: table.column(i)
             for i in range(table.num_columns)
         }
-        for k in video_keys:
+        for k in camera_keys:
             columns[k] = ArrowVariableShapedTensorArray.from_numpy(frame_buffers[k])
         columns["task"] = pa.array(task_list, type=pa.string())
         columns["dataset_index"] = pa.array(
@@ -675,8 +825,11 @@ class _LeRobotReadTask(ReadTask):
 class LeRobotDatasource(Datasource):
     """Ray Data ``Datasource`` for LeRobot v3 datasets.
 
-    Reads LeRobot v3 datasets from local or cloud storage, combining chunked
-    parquet files with decoded video frames from mp4 files.
+    Reads LeRobot v3 datasets from local or cloud storage, combining the chunked
+    parquet rows with decoded camera frames. Cameras may be stored as mp4 video
+    (``dtype: video``, decoded via torchcodec) or as encoded images inside the
+    parquet rows (``dtype: image``, decoded via Pillow); both are emitted as HWC
+    uint8 tensor columns.
 
     Use :func:`ray.data.read_lerobot` for typical use. Construct this class
     directly when you need to inspect ``source.metas`` (a list of upstream
@@ -699,23 +852,26 @@ class LeRobotDatasource(Datasource):
         >>> ds = ray.data.read_datasource(source)  # doctest: +SKIP
     """
 
-    # (importable_module_name, pip_install_string) — the lerobot entry checks
-    # for the `dataset` extra (which pulls torch/datasets) rather than the
-    # bare lerobot package.  torchcodec is required so cloud-URI videos can
-    # be streamed via HTTP-range reads (its decode path is fsspec-aware);
-    # without it, the pyav fallback would download each video to a temp
-    # file before decoding.
-    _LEROBOT_DATASOURCE_DEPENDENCIES = [
-        ("av", "av"),
+    # (importable_module_name, pip_install_string).  lerobot (the `dataset`
+    # extra pulls torch/datasets) and fsspec are always needed.  The video deps
+    # are required only for datasets with mp4 cameras: torchcodec so cloud-URI
+    # videos stream via HTTP-range reads (its decode path is fsspec-aware), and
+    # av for its container support.  Pillow is required only for datasets whose
+    # cameras are stored as in-parquet encoded images.  The conditional sets are
+    # checked after metadata load, so an image-only dataset needn't install
+    # torchcodec/av (and vice versa).
+    _BASE_DEPENDENCIES = [
         ("fsspec", "fsspec"),
-        ("torchcodec", "torchcodec"),
         ("lerobot.datasets.dataset_metadata", "lerobot[dataset]"),
     ]
+    _VIDEO_DEPENDENCIES = [("torchcodec", "torchcodec"), ("av", "av")]
+    _IMAGE_DEPENDENCIES = [("PIL", "pillow")]
 
     def __init__(
         self,
         root: Union[str, Path, List[Union[str, Path]]],
         partitioning: Union[LeRobotPartitioning, str] = LeRobotPartitioning.FILE_GROUP,
+        filesystem: Optional[Any] = None,
         storage_options: Optional[Dict[str, Any]] = None,
         frame_tolerance_s: Optional[float] = None,
         **kwargs: Any,
@@ -725,16 +881,24 @@ class LeRobotDatasource(Datasource):
         Args:
             root: Path or URI to the dataset root (local, ``gs://``, ``s3://``),
                 or a list of such paths to read multiple datasets as one.
-                All roots must share the same ``video_keys``, ``fps``, and
-                non-video feature names.
+                All roots must share the same camera keys (``video_keys`` and
+                ``image_keys``), ``fps``, and non-camera feature names.
             partitioning: How to divide the dataset into read tasks.
                 Accepts a :class:`LeRobotPartitioning` member or its string value.
                 Defaults to ``FILE_GROUP``.
-            storage_options: Extra options forwarded to ``fsspec`` when reading
-                metadata, parquet, and video files from a cloud URI (e.g.
-                ``{"anon": False}`` for S3, or credentials / a custom
-                ``endpoint_url``).  Applied to every root.  When omitted,
-                ``fsspec``'s ambient credential resolution is used.
+            filesystem: Filesystem for reading metadata + parquet. A pyarrow
+                ``FileSystem`` (wrapped internally with
+                :class:`~fsspec.implementations.arrow.ArrowFSWrapper`) or an
+                fsspec ``AbstractFileSystem``. When omitted, it is selected from
+                the URI scheme — including the ``s3://anonymous@bucket/…``
+                convention for public buckets. Applied to every root.
+            storage_options: Extra options forwarded to ``fsspec`` (e.g.
+                credentials or a custom ``endpoint_url``). When *filesystem* is
+                omitted these also select the metadata/parquet filesystem; they
+                always supply credentials for the by-URI video decode path
+                (lerobot opens video files itself via ``fsspec``). Applied to
+                every root. ``s3://anonymous@…`` roots thread ``anon=True`` in
+                automatically. When omitted, ambient fsspec resolution is used.
             frame_tolerance_s: Max seconds a decoded video frame's timestamp may
                 differ from a row's timestamp before it is rejected. ``None``
                 (the default) uses ``0.5 / fps`` — half a frame interval, e.g.
@@ -751,9 +915,10 @@ class LeRobotDatasource(Datasource):
         """
         super().__init__()
 
-        for module, package in self._LEROBOT_DATASOURCE_DEPENDENCIES:
+        for module, package in self._BASE_DEPENDENCIES:
             _check_import(self, module=module, package=package)
 
+        self._filesystem = filesystem
         self._storage_options: Dict[str, Any] = dict(storage_options or {})
 
         if frame_tolerance_s is not None and frame_tolerance_s <= 0:
@@ -764,9 +929,26 @@ class LeRobotDatasource(Datasource):
         self._frame_tolerance_s: Optional[float] = frame_tolerance_s
 
         roots = [root] if isinstance(root, (str, Path)) else list(root)
+        # Resolve the metadata/parquet filesystem + the by-URI video options
+        # once per root on the driver: (fs, fs_root, video_root_uri, video_opts).
+        self._resolved = [
+            _resolve_filesystem(r, filesystem, self._storage_options) for r in roots
+        ]
         # Pristine upstream metadata instances, exposed via self.metas /
         # self.meta for callers that want full lerobot API access.
-        self.metas = [_load_lerobot_metadata(r, self._storage_options) for r in roots]
+        self.metas = [
+            _load_lerobot_metadata(r, fs, fs_root)
+            for r, (fs, fs_root, _, _) in zip(roots, self._resolved)
+        ]
+
+        # The video/image deps are needed only for the camera kinds actually
+        # present, so we check them now that metadata is loaded.
+        if any(m.video_keys for m in self.metas):
+            for module, package in self._VIDEO_DEPENDENCIES:
+                _check_import(self, module=module, package=package)
+        if any(getattr(m, "image_keys", None) for m in self.metas):
+            for module, package in self._IMAGE_DEPENDENCIES:
+                _check_import(self, module=module, package=package)
 
         if len(self.metas) > 1:
             ref = self.metas[0]
@@ -776,6 +958,13 @@ class LeRobotDatasource(Datasource):
                         f"video_keys mismatch: {ref.root!r} has "
                         f"{ref.video_keys} but {m.root!r} has {m.video_keys}"
                     )
+                if sorted(getattr(m, "image_keys", []) or []) != sorted(
+                    getattr(ref, "image_keys", []) or []
+                ):
+                    raise ValueError(
+                        f"image_keys mismatch: {ref.root!r} has "
+                        f"{ref.image_keys} but {m.root!r} has {m.image_keys}"
+                    )
                 if m.fps != ref.fps:
                     raise ValueError(
                         f"fps mismatch: {ref.root!r} has {ref.fps} "
@@ -784,12 +973,12 @@ class LeRobotDatasource(Datasource):
                 ref_feats = {
                     k
                     for k, v in ref.features.items()
-                    if v.get("dtype") not in ("video",) and k != "task"
+                    if v.get("dtype") not in ("video", "image") and k != "task"
                 }
                 m_feats = {
                     k
                     for k, v in m.features.items()
-                    if v.get("dtype") not in ("video",) and k != "task"
+                    if v.get("dtype") not in ("video", "image") and k != "task"
                 }
                 if ref_feats != m_feats:
                     raise ValueError(
@@ -802,8 +991,12 @@ class LeRobotDatasource(Datasource):
         # driver and shipped to workers via ray.put — workers don't need
         # lerobot installed at runtime.
         self._roots: List[_LeRobotRoot] = [
-            _build_root(m, r, self._storage_options, self._frame_tolerance_s)
-            for m, r in zip(self.metas, roots)
+            _build_root(
+                m, r, fs, fs_root, video_uri, video_opts, self._frame_tolerance_s
+            )
+            for m, r, (fs, fs_root, video_uri, video_opts) in zip(
+                self.metas, roots, self._resolved
+            )
         ]
 
         if isinstance(partitioning, LeRobotPartitioning):
@@ -819,13 +1012,14 @@ class LeRobotDatasource(Datasource):
         self._partitioning: str = partitioning
         self._slice_kwargs: dict = kwargs
 
+        cameras = self._roots[0].video_keys + self._roots[0].image_keys
         logger.info(
             "LeRobotDatasource ready: %d roots, %d total frames, "
             "%d cameras %s, mode=%r",
             len(self._roots),
             sum(r.total_frames for r in self._roots),
-            len(self._roots[0].video_keys),
-            self._roots[0].video_keys,
+            len(cameras),
+            cameras,
             partitioning,
         )
 
@@ -853,9 +1047,14 @@ class LeRobotDatasource(Datasource):
         eps = ds_root.episodes_table
 
         key_columns: List[list] = []
-        for vk in ds_root.video_keys:
-            key_columns.append(eps.column(f"videos/{vk}/chunk_index").to_pylist())
-            key_columns.append(eps.column(f"videos/{vk}/file_index").to_pylist())
+        if ds_root.video_keys:
+            for vk in ds_root.video_keys:
+                key_columns.append(eps.column(f"videos/{vk}/chunk_index").to_pylist())
+                key_columns.append(eps.column(f"videos/{vk}/file_index").to_pylist())
+        else:
+            # No video files (image dataset): group by the data parquet file.
+            key_columns.append(eps.column("data/chunk_index").to_pylist())
+            key_columns.append(eps.column("data/file_index").to_pylist())
 
         from_indices = eps.column("_global_from_index").to_pylist()
         to_indices = eps.column("_global_to_index").to_pylist()
@@ -904,16 +1103,22 @@ class LeRobotDatasource(Datasource):
             if rank[ra] == rank[rb]:
                 rank[ra] += 1
 
-        video_file_to_episode: dict = {}
-        for vid_key in ds_root.video_keys:
-            vid_chunks = eps.column(f"videos/{vid_key}/chunk_index").to_pylist()
-            vid_files = eps.column(f"videos/{vid_key}/file_index").to_pylist()
+        # Chain episodes that share a file. For video datasets that's any shared
+        # video file; for image datasets (no video) it's the shared data file.
+        if ds_root.video_keys:
+            group_prefixes = [(f"videos/{k}", k) for k in ds_root.video_keys]
+        else:
+            group_prefixes = [("data", "data")]
+        file_to_episode: dict = {}
+        for prefix, label in group_prefixes:
+            chunks = eps.column(f"{prefix}/chunk_index").to_pylist()
+            files = eps.column(f"{prefix}/file_index").to_pylist()
             for ep_idx in range(n):
-                file_key = (vid_key, vid_chunks[ep_idx], vid_files[ep_idx])
-                if file_key in video_file_to_episode:
-                    union(ep_idx, video_file_to_episode[file_key])
+                file_key = (label, chunks[ep_idx], files[ep_idx])
+                if file_key in file_to_episode:
+                    union(ep_idx, file_to_episode[file_key])
                 else:
-                    video_file_to_episode[file_key] = ep_idx
+                    file_to_episode[file_key] = ep_idx
 
         from_indices = eps.column("_global_from_index").to_pylist()
         to_indices = eps.column("_global_to_index").to_pylist()
@@ -1029,7 +1234,7 @@ class LeRobotDatasource(Datasource):
             len(task_plan),
             sum(r.total_frames for r in self._roots),
             len(self._roots),
-            len(self._roots[0].video_keys),
+            len(self._roots[0].video_keys) + len(self._roots[0].image_keys),
         )
 
         roots_ref = ray.put(self._roots)

@@ -125,6 +125,7 @@ if TYPE_CHECKING:
     import daft
     import dask
     import datasets
+    import fsspec.spec
     import mars
     import modin
     import pandas
@@ -2562,6 +2563,9 @@ def read_lerobot(
     root: Union[str, List[str]],
     *,
     partitioning: Union[LeRobotPartitioning, str] = LeRobotPartitioning.FILE_GROUP,
+    filesystem: Optional[
+        "pyarrow.fs.FileSystem | fsspec.spec.AbstractFileSystem"
+    ] = None,
     frame_tolerance_s: Optional[float] = None,
     override_num_blocks: Optional[int] = None,
     **kwargs: Any,
@@ -2571,8 +2575,10 @@ def read_lerobot(
     `LeRobot <https://huggingface.co/lerobot>`_ is a platform for sharing datasets
     and pretrained models for real-world robotics. A LeRobot v3 dataset stores
     low-dimensional data (state, action, timestamps) in chunked Parquet files and
-    camera observations in chunked MP4 video files.  This reader decodes video frames
-    with PyAV and aligns them with parquet data using episode metadata.
+    camera observations either as chunked MP4 video files or as encoded images
+    stored inline in the Parquet rows.  This reader decodes camera frames (video
+    via torchcodec, images via Pillow) and aligns them with the parquet data
+    using episode metadata.
 
     Output columns include ``index``, ``episode_index``, ``frame_index``,
     ``timestamp``, state/action vectors, decoded camera frames (as variable-shaped
@@ -2587,6 +2593,12 @@ def read_lerobot(
         >>> import ray
         >>> ds = ray.data.read_lerobot("/path/to/dataset")  # doctest: +SKIP
         >>> ds.schema()  # doctest: +SKIP
+
+        Read from a public S3 bucket anonymously:
+
+        >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
+        ...     "s3://anonymous@ray-example-data/lerobot/libero-mini",
+        ... )
 
         Read from S3 with episode-level partitioning:
 
@@ -2625,6 +2637,13 @@ def read_lerobot(
             - ``CHAIN``: one task per connected component of shared files.
             - ``SEQUENTIAL``: one task for the whole dataset.
             - ``ROW_BLOCK``: fixed-size blocks (requires ``block_size`` kwarg).
+        filesystem: Filesystem for reading metadata + parquet. A pyarrow
+            ``FileSystem`` (wrapped internally with
+            :class:`~fsspec.implementations.arrow.ArrowFSWrapper`) or an fsspec
+            ``AbstractFileSystem``. By default it is selected from the URI
+            scheme, including the ``s3://anonymous@bucket/…`` convention for
+            public buckets. For cloud credentials, either pass a configured
+            *filesystem* or use ``storage_options`` (see below).
         frame_tolerance_s: Max seconds a decoded video frame's timestamp may
             differ from a row's timestamp before it is rejected. ``None`` (the
             default) uses ``0.5 / fps`` — half a frame interval, e.g. ~0.05s at
@@ -2633,7 +2652,8 @@ def read_lerobot(
         override_num_blocks: Override the number of output blocks from all read
             tasks. By default, the number is dynamically decided based on input
             data size and available resources.
-        **kwargs: Additional arguments forwarded to the ``LeRobotDatasource``.
+        **kwargs: Additional arguments forwarded to the ``LeRobotDatasource``,
+            such as ``storage_options`` (fsspec credentials for cloud reads).
             ``block_size`` is required when ``partitioning`` is ``ROW_BLOCK``.
 
     Returns:
@@ -2643,6 +2663,7 @@ def read_lerobot(
     datasource = LeRobotDatasource(
         root=root,
         partitioning=partitioning,
+        filesystem=filesystem,
         frame_tolerance_s=frame_tolerance_s,
         **kwargs,
     )
