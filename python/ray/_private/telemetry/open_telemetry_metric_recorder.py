@@ -85,10 +85,22 @@ class OpenTelemetryMetricRecorder:
                 agg_fn = MetricCardinality.get_aggregation_function(
                     metric_name, metric_type
                 )
-                return [
-                    Observation(agg_fn(values), attributes=dict(filtered))
-                    for filtered, values in values_by_filtered_tags.items()
-                ]
+                # Keep a single label schema for each metric before passing
+                # observations to the Prometheus exporter.
+                all_keys = sorted(
+                    {k for filtered in values_by_filtered_tags for k, _ in filtered}
+                )
+
+                observations = []
+                for filtered, values in values_by_filtered_tags.items():
+                    attrs = dict(filtered)
+                    observations.append(
+                        Observation(
+                            agg_fn(values),
+                            attributes={k: attrs.get(k, "") for k in all_keys},
+                        )
+                    )
+                return observations
 
         return callback
 

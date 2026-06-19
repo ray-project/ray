@@ -555,10 +555,19 @@ class DeploymentConfig(BaseModel):
         return cls.from_proto(proto)
 
     @classmethod
-    def from_default(cls, **kwargs):
+    def from_default(cls, **kwargs: Any) -> "DeploymentConfig":
         """Creates a default DeploymentConfig and overrides it with kwargs.
 
         Ignores any kwargs set to DEFAULT.VALUE.
+
+        Args:
+            **kwargs: Field overrides for ``DeploymentConfig``. Keys must match
+                the class's field names; values equal to ``DEFAULT.VALUE`` are
+                skipped (the default is kept).
+
+        Returns:
+            A ``DeploymentConfig`` initialized from defaults and updated with
+            the supplied (non-``DEFAULT.VALUE``) kwargs.
 
         Raises:
             TypeError: when a keyword that's not an argument to the class is

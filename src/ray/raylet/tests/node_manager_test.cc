@@ -32,6 +32,7 @@
 #include "mock/ray/raylet/local_lease_manager.h"
 #include "mock/ray/raylet/worker_pool.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/cgroup2/noop_cgroup_manager.h"
@@ -102,6 +103,17 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
   int64_t GetPrimaryBytes() const override { return 0; }
 
   bool HasLocallySpilledObjects() const override { return false; }
+
+  void ReleaseFreedLocalObject(const ObjectID &object_id) override {}
+
+  std::vector<ObjectID> GetLocalObjectsOwnedBy(const WorkerID &worker_id) const override {
+    return {};
+  }
+
+  std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
+      const NodeID &node_id) const override {
+    return {};
+  }
 
   std::string DebugString() const override { return ""; }
 
@@ -347,7 +359,7 @@ class NodeManagerTest : public ::testing::Test {
         *mock_object_manager_, fake_task_by_state_counter_);
 
     cluster_resource_scheduler_ = std::make_unique<ClusterResourceScheduler>(
-        io_service_,
+        ray::PeriodicalRunner::Create(io_service_),
         ray::scheduling::NodeID(raylet_node_id_.Binary()),
         node_manager_config.resource_config.GetResourceMap(),
         /*is_node_available_fn*/
@@ -405,7 +417,8 @@ class NodeManagerTest : public ::testing::Test {
           return node_manager_->GetObjectsFromPlasma(object_ids, results);
         },
         max_task_args_memory,
-        scheduler_metrics);
+        scheduler_metrics,
+        clock_);
 
     cluster_lease_manager_ = std::make_unique<ClusterLeaseManager>(
         raylet_node_id_,
@@ -419,6 +432,7 @@ class NodeManagerTest : public ::testing::Test {
 
     node_manager_ = std::make_unique<NodeManager>(
         io_service_,
+        ray::PeriodicalRunner::Create(io_service_),
         raylet_node_id_,
         "test_node_name",
         node_manager_config,
@@ -562,7 +576,7 @@ TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
-  EXPECT_CALL(mock_worker_pool_, IsWorkerAvailableForScheduling())
+  EXPECT_CALL(mock_worker_pool_, AllAliveWorkersAreActors())
       .WillRepeatedly(Return(false));
   std::promise<void> promise;
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncCheckAlive(_, _, _))
@@ -589,7 +603,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
-  EXPECT_CALL(mock_worker_pool_, IsWorkerAvailableForScheduling())
+  EXPECT_CALL(mock_worker_pool_, AllAliveWorkersAreActors())
       .WillRepeatedly(Return(false));
   EXPECT_CALL(mock_worker_pool_, PrestartWorkers(_, _)).Times(1);
 
@@ -665,7 +679,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
-  EXPECT_CALL(mock_worker_pool_, IsWorkerAvailableForScheduling())
+  EXPECT_CALL(mock_worker_pool_, AllAliveWorkersAreActors())
       .WillRepeatedly(Return(false));
   EXPECT_CALL(mock_worker_pool_, PrestartWorkers(_, _)).Times(1);
 

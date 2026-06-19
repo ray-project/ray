@@ -46,9 +46,9 @@
         "type": "query",
         "hide": 0,
         "datasource": "${datasource}",
-        "definition": "label_values(ray_vllm:request_prompt_tokens_sum{{{global_filters}}}, model_name)",
+        "definition": "label_values(ray_vllm_request_prompt_tokens_sum{{{global_filters}}}, model_name)",
         "query": {
-          "query": "label_values(ray_vllm:request_prompt_tokens_sum{{{global_filters}}}, model_name)",
+          "query": "label_values(ray_vllm_request_prompt_tokens_sum{{{global_filters}}}, model_name)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
@@ -71,9 +71,9 @@
         "type": "query",
         "hide": 0,
         "datasource": "${datasource}",
-        "definition": "label_values(ray_vllm:request_prompt_tokens_sum{{{global_filters}}}, WorkerId)",
+        "definition": "label_values(ray_vllm_request_prompt_tokens_sum{{{global_filters}}}, WorkerId)",
         "query": {
-          "query": "label_values(ray_vllm:request_prompt_tokens_sum{{{global_filters}}}, WorkerId)",
+          "query": "label_values(ray_vllm_request_prompt_tokens_sum{{{global_filters}}}, WorkerId)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,

@@ -948,14 +948,16 @@ def get_or_create_stats_actor() -> ActorHandle[_StatsActor]:
     does not exist in the connected cluster. The _StatsActor is pinned on
     on driver process' node.
     """
-    if ray._private.worker._global_node is None:
+    if not ray.is_initialized():
         raise RuntimeError(
-            "Global node is not initialized. Driver might be not connected to Ray."
+            "Ray is not initialized. Driver might be not connected to Ray."
         )
 
-    current_cluster_id = ray._private.worker._global_node.cluster_id
-
-    logger.debug(f"Stats Actor located on cluster_id={current_cluster_id}")
+    # `_global_node` is None under Ray Client (the driver is not a cluster
+    # worker), so only log the cluster_id when it is available.
+    global_node = ray._private.worker._global_node
+    if global_node is not None:
+        logger.debug(f"Stats Actor located on cluster_id={global_node.cluster_id}")
 
     # so it fate-shares with the driver.
     label_selector = {
@@ -1317,7 +1319,7 @@ class DatasetStatsSummary:
         self,
         already_printed: Optional[Set[str]] = None,
         include_parent: bool = True,
-        add_global_stats=True,
+        add_global_stats: bool = True,
     ) -> str:
         """Return a human-readable summary of this Dataset's stats.
 
@@ -1592,8 +1594,8 @@ class OperatorStatsSummary:
         and generates a `OperatorStatsSummary` object with the results.
 
         Args:
-            block_stats: List of `BlockStats` to calculate stats of
             operator_name: Name of operator associated with `blocks`
+            block_stats: List of `BlockStats` to calculate stats of
             is_sub_operator: Whether this set of blocks belongs to a sub operator.
         Returns:
             A `OperatorStatsSummary` object initialized with the calculated statistics
@@ -1796,10 +1798,13 @@ class OperatorStatsSummary:
             )
         return out
 
-    def __repr__(self, level=0) -> str:
+    def __repr__(self, level: int = 0) -> str:
         """For a given (pre-calculated) `OperatorStatsSummary` object (e.g. generated from
         `OperatorStatsSummary.from_block_metadata()`), returns a human-friendly string
         that summarizes operator execution statistics.
+
+        Args:
+            level: The indentation level to use when formatting nested summaries.
 
         Returns:
             String with summary statistics for executing the given operator.

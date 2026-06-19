@@ -105,8 +105,22 @@ class Deployment:
         deployment_config: DeploymentConfig,
         replica_config: ReplicaConfig,
         version: Optional[str] = None,
-        _internal=False,
+        _internal: bool = False,
     ) -> None:
+        """Construct a Deployment. Should only be called by Serve internals.
+
+        Args:
+            name: Unique name of this deployment.
+            deployment_config: Serve-level configuration (number of replicas,
+                user config, autoscaling, etc.).
+            replica_config: Replica-level configuration (actor options, init
+                args/kwargs, etc.).
+            version: Optional opaque deployment version used to determine
+                whether replicas need to be restarted on update.
+            _internal: Internal flag; ``Deployment`` instances must be created
+                via the ``@serve.deployment`` decorator, which sets this to
+                ``True``.
+        """
         if not _internal:
             raise RuntimeError(
                 "The Deployment constructor should not be called "
@@ -455,6 +469,9 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
     Args:
         d: Deployment object to convert
+
+    Returns:
+        The structured ``DeploymentSchema`` representing ``d``.
     """
 
     if d.ray_actor_options is not None:
