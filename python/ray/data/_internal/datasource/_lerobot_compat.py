@@ -1,9 +1,6 @@
 """Compatibility shim over lerobot's torchcodec video decoding.
 
-The datasource decodes frames by calling lerobot's *public*
-``decode_video_frames_torchcodec`` directly — no monkeypatching. It streams both
-local paths and fsspec cloud URIs via torchcodec (HTTP-range reads, never a full
-download).
+The datasource decodes frames by calling lerobot's ``decode_video_frames_torchcodec``.
 
 The only gap in ``lerobot >= 0.5.0`` is that the function's decoder cache opens
 files without credentials, so explicit ``storage_options`` never reach
@@ -17,22 +14,18 @@ now-obsolete code linger unnoticed. Instead :func:`decode_frames` emits a
 one-time ``RuntimeWarning`` the moment it detects native support, flagging that
 the shim is no longer needed.
 
-REMOVAL: once ``lerobot`` is pinned to a release where
-``_native_storage_options()`` returns True (the warning fires), delete this
-module and decode directly via
-``decode_video_frames_torchcodec(..., storage_options=...)``.
+NOTE(Artur): Once lerobot threads ``storage_options`` natively, we can remove this.
 """
 
-import functools
+from __future__ import annotations
+
 import warnings
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-# Set once the "lerobot now supports storage_options natively" warning has been
-# emitted, so it fires at most once per process.
-_WARNED_NATIVE_AVAILABLE = False
+if TYPE_CHECKING:
+    import torch
 
 
-@functools.lru_cache(maxsize=1)
 def _native_storage_options() -> bool:
     """True if lerobot's ``decode_video_frames_torchcodec`` accepts
     ``storage_options`` directly (huggingface/lerobot#3669)."""
@@ -47,17 +40,13 @@ def _native_storage_options() -> bool:
 
 
 def _warn_if_native_available() -> None:
-    """Emit a one-time ``RuntimeWarning`` when lerobot has gained native
-    ``storage_options`` support, signalling that this shim is obsolete.
+    from ray.util import log_once
 
-    We intentionally do not switch to the native path automatically: a silent
-    switch would bypass the bundled workaround and let it linger unmaintained.
-    Surfacing it as a warning prompts its removal from Ray Data instead.
-    """
-    global _WARNED_NATIVE_AVAILABLE
-    if _WARNED_NATIVE_AVAILABLE or not _native_storage_options():
+    # Native support is fixed for the life of the process, so gate on log_once
+    # first: the signature-inspecting check then runs at most once, and later
+    # calls short-circuit on the spent gate instead of re-inspecting.
+    if not (log_once("lerobot_storage_options_native") and _native_storage_options()):
         return
-    _WARNED_NATIVE_AVAILABLE = True
     warnings.warn(
         "lerobot's `decode_video_frames_torchcodec` now accepts `storage_options` "
         "natively (huggingface/lerobot#3669), but ray.data.read_lerobot is still "
@@ -71,13 +60,12 @@ def _warn_if_native_available() -> None:
     )
 
 
-@functools.lru_cache(maxsize=1)
 def _creds_cache_cls():
     """A ``VideoDecoderCache`` subclass that opens videos through ``fsspec`` with
     explicit ``storage_options``.
 
-    Defined lazily so importing this module never requires lerobot (workers only
-    import it inside the read task).
+    Defined inside a function so importing this module never requires lerobot;
+    constructed per credentialed decode (cheap — one class definition).
     """
     from lerobot.datasets.video_utils import VideoDecoderCache
 
@@ -125,7 +113,7 @@ def decode_frames(
     timestamps: List[float],
     tolerance_s: float,
     storage_options: Optional[Dict[str, Any]] = None,
-):
+) -> torch.Tensor:
     """Decode the frames nearest *timestamps* (within *tolerance_s*) from
     *video_path* via torchcodec.
 
@@ -134,15 +122,14 @@ def decode_frames(
     """
     from lerobot.datasets.video_utils import decode_video_frames_torchcodec
 
+    # We intentionally do not switch to the native path automatically: a silent
+    # switch would bypass the bundled workaround and let it linger unmaintained.
     _warn_if_native_available()
-    storage_options = dict(storage_options or {})
     if not storage_options:
         # No explicit credentials: lerobot's default decoder cache (ambient
         # fsspec resolution) is exactly what we want.
         return decode_video_frames_torchcodec(video_path, timestamps, tolerance_s)
-    # Explicit credentials: stream via a credentialed decoder cache, cleared
-    # afterwards to close the fsspec handle (we decode a whole file per call, so
-    # there is nothing to reuse across calls).
+    # Explicit credentials: stream via a credentialed decoder cache
     cache = _creds_cache_cls()(storage_options)
     try:
         return decode_video_frames_torchcodec(

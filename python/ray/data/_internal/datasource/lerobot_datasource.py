@@ -1,12 +1,11 @@
 """Ray Data datasource for LeRobot Dataset v3.
 
-LeRobot is a platform for sharing datasets and pretrained models for
-real-world robotics.  A LeRobot v3 dataset is a flat table of timestep
+A LeRobot v3 dataset is a flat table of timestep
 samples combining low-dimensional data (state, action, etc.) from chunked
 parquet files with decoded camera frames from chunked mp4 files.
 
 This datasource reads LeRobot v3 datasets from local or cloud storage,
-decoding video frames with PyAV and aligning them with parquet data using
+decoding video frames with torchcodec and aligning them with parquet data using
 episode metadata.  Metadata parsing is delegated to the upstream
 ``lerobot.datasets.dataset_metadata.LeRobotDatasetMetadata`` (patched at
 import time to support fsspec-compatible cloud URIs); the lerobot
@@ -47,6 +46,7 @@ from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.data._internal.datasource._lerobot_compat import decode_frames
 
 if TYPE_CHECKING:
     import datasets
@@ -556,8 +556,6 @@ class _LeRobotReadTask(ReadTask):
            video file at a time via the torchcodec helper in ``_lerobot_compat``.
         3. Yield Arrow batches of ``self._rows_per_batch`` rows.
         """
-        from ray.data._internal.datasource._lerobot_compat import decode_frames
-
         fs = root.fs
 
         # 1. Read all parquet rows for this segment.

@@ -369,7 +369,11 @@ def test_lerobot_compat_warns_when_lerobot_supports_storage_options(monkeypatch)
     from ray.data._internal.datasource import _lerobot_compat as compat
 
     monkeypatch.setattr(compat, "_native_storage_options", lambda: True)
-    monkeypatch.setattr(compat, "_WARNED_NATIVE_AVAILABLE", False)
+    # Clear the once-per-process log_once gate (key matches the one used in
+    # _warn_if_native_available) so the warning fires here.
+    from ray.util.debug import _logged
+
+    _logged.discard("lerobot_storage_options_native")
     with pytest.warns(RuntimeWarning, match="no longer necessary"):
         compat._warn_if_native_available()
 
