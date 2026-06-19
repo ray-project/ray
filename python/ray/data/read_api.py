@@ -4752,7 +4752,14 @@ def read_delta(
                     "the provided `filesystem` with the catalog-resolved "
                     "credentials."
                 )
-            filesystem = resolved.filesystem
+            # `to_pyarrow_dataset` emits table-relative file paths and requires
+            # the filesystem to be rooted at the table directory. The catalog
+            # vends a bucket-rooted filesystem, so wrap it in a SubTreeFileSystem
+            # rooted at the table path (see `DeltaTable.to_pyarrow_dataset`).
+            import pyarrow.fs as pafs
+
+            _, normalized_path = pafs.FileSystem.from_uri(path)
+            filesystem = pafs.SubTreeFileSystem(normalized_path, resolved.filesystem)
 
     dt = DeltaTable(path, version=version, storage_options=storage_options)
     pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)
