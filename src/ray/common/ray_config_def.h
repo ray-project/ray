@@ -436,12 +436,11 @@ RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
 // The storage backend to use for the GCS. It can be 'memory', 'redis', or
-// 'rocksdb' (the embedded storage backend from REP-64).
+// 'rocksdb'.
 RAY_CONFIG(std::string, gcs_storage, "memory")
 
-/// Filesystem path for the RocksDB GCS backend. Only meaningful when
-/// gcs_storage == "rocksdb"; the operator points this at a persistent
-/// volume mount inside the Ray head process.
+/// Filesystem path for the RocksDB GCS database files. Only meaningful when
+/// gcs_storage == "rocksdb".
 RAY_CONFIG(std::string, gcs_storage_path, "")
 
 /// Offload RocksDB I/O (including the WAL fsync that dominates per-call

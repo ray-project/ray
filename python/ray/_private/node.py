@@ -1397,29 +1397,17 @@ class Node:
         ray_usage_lib.put_cluster_metadata(
             self.get_gcs_client(), ray_init_cluster=self.ray_init_cluster
         )
-        # Persist session_name to a marker file when using the RocksDB
-        # GCS backend, so check_persisted_session_name() can find it on
-        # head process restart. The rocksdb-backed internal_kv requires
-        # GCS to be up, but check_persisted_session_name() runs before
-        # GCS comes up on restart; the marker file bridges that gap. (It
-        # is a plain file on the GCS storage volume, not a Kubernetes
-        # sidecar container.) Gated on the rocksdb GCS backend so
-        # non-rocksdb deployments are unaffected.
+        # On restart with the RocksDB GCS backend, check_persisted_session_name()
+        # needs the previous session_name before GCS (and thus internal_kv) is
+        # back up. We bridge that gap by also writing session_name to a plain
+        # file in the GCS storage directory. Only done for the RocksDB backend;
+        # others are unaffected.
         #
-        # Write the marker file BEFORE internal_kv_put. If we crash
-        # between the two, the next restart adopts the marker file's name
-        # and the internal_kv_put below inserts cleanly (overwrite=False
-        # sees no prior value). The reverse ordering would leave a
-        # persisted session_name in rocksdb with no marker file, causing
-        # the next head to generate a fresh name and trip the assertion
-        # below.
-        #
-        # A marker-file write failure here is fatal: skipping it and
-        # going on to internal_kv_put would persist the session_name in
-        # rocksdb with no companion marker file, recreating the exact
-        # assertion-trip the ordering is meant to prevent. The storage
-        # path is also where rocksdb keeps its DB files, so an unwritable
-        # path means GCS can't function regardless.
+        # Write the file BEFORE the internal_kv_put below so the two never
+        # disagree: if we crash in between, the next restart reads the file and
+        # the internal_kv_put inserts cleanly. A write failure here is fatal --
+        # the storage path also holds RocksDB's own files, so an unwritable path
+        # means GCS can't run anyway.
         if self._is_rocksdb_gcs():
             rocksdb_storage_path = self._resolve_ray_config("gcs_storage_path", "")
             if not rocksdb_storage_path:
@@ -1434,14 +1422,9 @@ class Node:
                 )
             session_name_file = os.path.join(rocksdb_storage_path, "session_name")
             os.makedirs(rocksdb_storage_path, exist_ok=True)
-            # Atomic, durable write: tmp + fsync + rename + dir fsync.
-            # The internal_kv_put below fsyncs through rocksdb's WAL, so
-            # the marker file must also be on disk before that call
-            # returns -- otherwise a power-loss crash with the page cache
-            # still dirty would leave the rocksdb state durable but no
-            # marker file, tripping the assert on next restart. Mirrors the
-            # write-fsync-rename-fsync_dir pattern rocksdb itself uses
-            # for MANIFEST writes.
+            # Atomic, durable write (tmp + fsync + rename + dir fsync) so the
+            # file survives a power-loss crash, matching the durability of the
+            # internal_kv_put below.
             tmp_fd, tmp_path = tempfile.mkstemp(
                 dir=rocksdb_storage_path,
                 prefix="session_name.",

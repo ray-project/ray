@@ -447,26 +447,13 @@ def test_dynamic_generator_reconstruction(ray_start_cluster, num_returns_type):
 def test_dynamic_generator_reconstruction_nondeterministic(
     ray_start_cluster, too_many_returns, num_returns_type
 ):
-    # REP-64 (RocksDB GCS backend): the num_returns_type=None variants
-    # (static num_returns reconstruction path) used to hang under the RocksDB
-    # GCS backend. Root cause (kill-9 repro + py-spy/eu-stack on a caught hang,
-    # plus a controlled fsync on/off and per-table isolation experiment): NOT a
-    # RocksDbStoreClient correctness defect, but WAL-fsync write *latency*. GCS
-    # publishes death notifications from inside the storage write's completion
-    # callback (publish-after-persist), so RocksDB's per-write fsync delayed the
-    # actor-death notification just enough to open a pre-existing Ray-core
-    # generator-reconstruction/task-resubmission race -- the driver hung in
-    # `list(gen)` forever (a caught hang ran 25 min with zero progress). The
-    # per-table experiment pinned the trigger to the ACTOR-table write (this
-    # test kills the failure_signal actor); relaxing fsync on NODE alone did
-    # not help, on ACTOR alone did.
-    #
-    # Fixed by gcs_rocksdb_soft_durability_tables (default "NODE,ACTOR"): the
-    # death-notification tables are written with sync=false, so notifications
-    # are no longer gated on the fsync. Durability stays at least on par with
-    # Ray's recommended Redis GCS (appendfsync everysec), and that state is
-    # re-derived after a GCS restart anyway. With that default the [None]
-    # variants now pass reliably under RocksDB, so they are no longer skipped.
+    # The num_returns_type=None variants used to hang under the RocksDB GCS
+    # backend: RocksDB's per-write WAL fsync delayed the actor-death
+    # notification enough to expose a pre-existing reconstruction race, so the
+    # driver hung in list(gen). Fixed by gcs_rocksdb_soft_durability_tables
+    # (default "NODE,ACTOR"), which skips the fsync on the death-notification
+    # tables, so these variants now pass and are no longer skipped. See the
+    # gcs_rocksdb_soft_durability_tables comment in ray_config_def.h for detail.
     config = {
         "health_check_failure_threshold": 10,
         "health_check_period_ms": 100,
