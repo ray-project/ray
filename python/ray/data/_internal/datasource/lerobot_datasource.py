@@ -7,12 +7,14 @@ parquet files with decoded camera frames from chunked mp4 files.
 This datasource reads LeRobot v3 datasets from local or cloud storage,
 decoding video frames with torchcodec and aligning them with parquet data using
 episode metadata.  Metadata parsing is delegated to the upstream
-``lerobot.datasets.dataset_metadata.LeRobotDatasetMetadata`` (patched at
-import time to support fsspec-compatible cloud URIs); the lerobot
-instances themselves are kept pristine — all Ray-Data-specific derived
-state lives in :class:`_LeRobotRoot` bundles built on the driver and
-shipped to workers via ``ray.put``.
+``lerobot.datasets.dataset_metadata.LeRobotDatasetMetadata`` (for a remote
+root, the small ``meta/`` tree is copied to a temp dir via fsspec and parsed
+locally); the lerobot instances themselves are kept pristine — all
+Ray-Data-specific derived state lives in :class:`_LeRobotRoot` bundles built
+on the driver and shipped to workers via ``ray.put``.
 """
+
+from __future__ import annotations
 
 import enum
 import json
@@ -40,20 +42,22 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 import ray
-from ray.data._internal.util import _check_import
-from ray.data.block import BlockMetadata
-from ray.data.context import DataContext
-from ray.data.datasource.datasource import Datasource, ReadTask
-from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data._internal.datasource._lerobot_compat import (
     decode_frames,
     new_decoder_cache,
 )
+from ray.data._internal.util import _check_import
+from ray.data.block import BlockMetadata
+from ray.data.context import DataContext
+from ray.data.datasource.datasource import Datasource, ReadTask
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import datasets
     import fsspec
     import pandas as pd
+    import pyarrow.fs
+
     from lerobot.datasets.dataset_metadata import LeRobotDatasetMetadata
 
 logger = logging.getLogger(__name__)
@@ -283,7 +287,7 @@ def _stats_to_json(stats: Optional[dict]) -> str:
 
 def _resolve_filesystem(
     root: Union[str, Path],
-    filesystem: Optional[Any] = None,
+    filesystem: Optional["pyarrow.fs.FileSystem | fsspec.AbstractFileSystem"] = None,
     storage_options: Optional[Dict[str, Any]] = None,
 ) -> Tuple["fsspec.AbstractFileSystem", str, str, Dict[str, Any], bool]:
     """Resolve the fsspec filesystem and paths for one LeRobot dataset *root*.
@@ -870,7 +874,7 @@ class _LeRobotReadTask(ReadTask):
         return pa.table(columns)
 
 
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 class LeRobotDatasource(Datasource):
     """Ray Data ``Datasource`` for LeRobot v3 datasets.
 
@@ -921,8 +925,11 @@ class LeRobotDatasource(Datasource):
     def __init__(
         self,
         root: Union[str, Path, List[Union[str, Path]]],
+        *,
         partitioning: Union[LeRobotPartitioning, str] = LeRobotPartitioning.FILE_GROUP,
-        filesystem: Optional[Any] = None,
+        filesystem: Optional[
+            "pyarrow.fs.FileSystem | fsspec.AbstractFileSystem"
+        ] = None,
         storage_options: Optional[Dict[str, Any]] = None,
         frame_tolerance_s: Optional[float] = None,
         **kwargs: Any,

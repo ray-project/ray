@@ -2567,13 +2567,14 @@ def read_lerobot(
         "pyarrow.fs.FileSystem | fsspec.spec.AbstractFileSystem"
     ] = None,
     frame_tolerance_s: Optional[float] = None,
+    storage_options: Optional[Dict[str, Any]] = None,
+    block_size: Optional[int] = None,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    **kwargs: Any,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from a LeRobot v3 dataset.
 
@@ -2627,8 +2628,8 @@ def read_lerobot(
     Args:
         root: Path or URI to the dataset root (local, ``gs://``, ``s3://``),
             or a list of such paths to read multiple datasets as one.
-            All roots must share the same ``video_keys``, ``fps``, and
-            non-video feature names.
+            All roots must share the same ``video_keys``, ``image_keys``,
+            ``fps``, and non-video feature names.
         partitioning: How to partition the dataset into read tasks.
             Accepts a ``LeRobotPartitioning`` member
             or its string value. Options:
@@ -2652,6 +2653,12 @@ def read_lerobot(
             default) uses ``0.5 / fps`` — half a frame interval, e.g. ~0.05s at
             10fps. Increase to tolerate timestamp jitter; decrease for stricter
             alignment.
+        storage_options: fsspec storage options for cloud reads (e.g.
+            credentials or a custom ``endpoint_url``). Used when ``filesystem``
+            is not given; with a pyarrow ``filesystem`` it still supplies the
+            credentials for the by-URI video decode path.
+        block_size: Rows per output block. Required when ``partitioning`` is
+            ``ROW_BLOCK``; ignored for the other modes.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
             Video decoding is CPU-intensive, so raising this (and lowering
             ``concurrency``) can prevent oversubscription.
@@ -2671,9 +2678,6 @@ def read_lerobot(
             ``FILE_GROUP``/``CHAIN``/``SEQUENTIAL`` task re-opens its video
             file(s) once per sub-task, so higher parallelism trades amortized
             file opens for more concurrency.
-        **kwargs: Additional arguments forwarded to the ``LeRobotDatasource``,
-            such as ``storage_options`` (fsspec credentials for cloud reads).
-            ``block_size`` is required when ``partitioning`` is ``ROW_BLOCK``.
 
     Returns:
         :class:`~ray.data.Dataset` of fully-decoded frames with state, action,
@@ -2683,8 +2687,10 @@ def read_lerobot(
         root=root,
         partitioning=partitioning,
         filesystem=filesystem,
+        storage_options=storage_options,
         frame_tolerance_s=frame_tolerance_s,
-        **kwargs,
+        # block_size is a ROW_BLOCK-only slice kwarg; only forward it when set.
+        **({"block_size": block_size} if block_size is not None else {}),
     )
     return read_datasource(
         datasource,
