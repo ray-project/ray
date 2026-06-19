@@ -124,7 +124,7 @@ def test_resolve_iceberg(uc_catalog):
     ckw = resolved.catalog_kwargs
     assert ckw["type"] == "rest"
     assert ckw["uri"] == (
-        "https://dbc-test.cloud.databricks.com/api/2.1/unity-catalog/iceberg"
+        "https://dbc-test.cloud.databricks.com/api/2.1/unity-catalog/iceberg-rest"
     )
     assert ckw["token"] == "dapi-test"
     assert ckw["header.X-Iceberg-Access-Delegation"] == "vended-credentials"
