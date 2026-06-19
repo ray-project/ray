@@ -108,23 +108,48 @@ def _creds_cache_cls():
     return _CredsVideoDecoderCache
 
 
+def new_decoder_cache(storage_options: Optional[Dict[str, Any]] = None):
+    """A torchcodec decoder cache to reuse across :func:`decode_frames` calls
+    within one read task, so each video file is opened once and its decoder
+    persists across batches (bounding per-task memory). The caller owns it and
+    must call ``.clear()`` when done (which also closes any fsspec handles).
+
+    With credentials this is our handle-closing cache; otherwise lerobot's
+    default cache (the same one ``decode_frames`` uses implicitly).
+    """
+    storage_options = dict(storage_options or {})
+    if storage_options:
+        return _creds_cache_cls()(storage_options)
+    from lerobot.datasets.video_utils import VideoDecoderCache
+
+    return VideoDecoderCache()
+
+
 def decode_frames(
     video_path: str,
     timestamps: List[float],
     tolerance_s: float,
     storage_options: Optional[Dict[str, Any]] = None,
+    decoder_cache: Optional[Any] = None,
 ) -> torch.Tensor:
     """Decode the frames nearest *timestamps* (within *tolerance_s*) from
     *video_path* via torchcodec.
 
     Works for local paths and any fsspec URI; *storage_options* supplies cloud
-    credentials. Returns a ``torch.Tensor`` of shape ``(N, C, H, W)``.
+    credentials. Pass a *decoder_cache* (from :func:`new_decoder_cache`) to reuse
+    decoders across calls — the caller then owns its lifecycle. Returns a
+    ``torch.Tensor`` of shape ``(N, C, H, W)``.
     """
     from lerobot.datasets.video_utils import decode_video_frames_torchcodec
 
     # We intentionally do not switch to the native path automatically: a silent
     # switch would bypass the bundled workaround and let it linger unmaintained.
     _warn_if_native_available()
+    if decoder_cache is not None:
+        # Caller-owned cache (credentials, if any, are baked into the cache).
+        return decode_video_frames_torchcodec(
+            video_path, timestamps, tolerance_s, decoder_cache=decoder_cache
+        )
     if not storage_options:
         # No explicit credentials: lerobot's default decoder cache (ambient
         # fsspec resolution) is exactly what we want.

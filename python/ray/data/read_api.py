@@ -2663,10 +2663,12 @@ def read_lerobot(
             concurrency is dynamically decided based on available resources.
         override_num_blocks: Override the number of output blocks from all read
             tasks. By default, the number is dynamically decided based on input
-            data size and available resources. Note: for ``FILE_GROUP``,
-            ``CHAIN``, and ``SEQUENTIAL`` the block count is bounded by the
-            partitioning (it can only reduce, not increase, the task count); use
-            ``EPISODE`` or ``ROW_BLOCK`` for finer-grained parallelism.
+            data size and available resources. The ``partitioning`` sets the base
+            grouping; ``override_num_blocks`` then merges or splits those groups
+            (in either direction) to reach the requested count. Splitting a
+            ``FILE_GROUP``/``CHAIN``/``SEQUENTIAL`` task re-opens its video
+            file(s) once per sub-task, so higher parallelism trades amortized
+            file opens for more concurrency.
         **kwargs: Additional arguments forwarded to the ``LeRobotDatasource``,
             such as ``storage_options`` (fsspec credentials for cloud reads).
             ``block_size`` is required when ``partitioning`` is ``ROW_BLOCK``.

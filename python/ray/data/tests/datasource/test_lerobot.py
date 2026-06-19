@@ -595,6 +595,37 @@ def test_read_lerobot_all_modes_same_row_count(
         ), f"Mode {mode.name}: expected {expected}, got {ds.count()}"
 
 
+def test_read_lerobot_override_num_blocks_splits_and_merges(
+    ray_start_regular_shared, lerobot_dataset
+):
+    """``override_num_blocks`` adjusts the base partitioning in both directions
+    -- splitting a single group into more tasks and merging many into fewer --
+    without dropping or duplicating rows."""
+    from ray.data.datasource import LeRobotDatasource, LeRobotPartitioning
+
+    # SEQUENTIAL is one base group; override splits it into more read tasks,
+    # each decoding its own contiguous slice of the (shared) video file.
+    source = LeRobotDatasource(
+        lerobot_dataset, partitioning=LeRobotPartitioning.SEQUENTIAL
+    )
+    tasks = source.get_read_tasks(3)
+    assert len(tasks) == 3
+    indices = [
+        i for t in tasks for block in t() for i in block.column("index").to_pylist()
+    ]
+    assert sorted(indices) == list(range(15)), "split tasks must cover every row once"
+
+    # EPISODE is three base groups; override merges them down to two tasks.
+    source = LeRobotDatasource(
+        lerobot_dataset, partitioning=LeRobotPartitioning.EPISODE
+    )
+    assert len(source.get_read_tasks(2)) == 2
+
+    # End to end, the override is honored without changing the row count.
+    ds = ray.data.read_lerobot(lerobot_dataset, override_num_blocks=8)
+    assert ds.count() == 15
+
+
 # ---------------------------------------------------------------------------
 # Public-bucket integration test
 # ---------------------------------------------------------------------------

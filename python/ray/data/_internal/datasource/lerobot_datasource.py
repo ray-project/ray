@@ -25,7 +25,6 @@ from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     Dict,
     Iterator,
     List,
@@ -46,7 +45,10 @@ from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.data._internal.datasource._lerobot_compat import decode_frames
+from ray.data._internal.datasource._lerobot_compat import (
+    decode_frames,
+    new_decoder_cache,
+)
 
 if TYPE_CHECKING:
     import datasets
@@ -83,13 +85,7 @@ class LeRobotPartitioning(enum.Enum):
 
 
 class _LeRobotRoot(NamedTuple):
-    """Per-root derived state for the LeRobot datasource.
-
-    Built once on the driver from a (pristine)
-    :class:`lerobot.LeRobotDatasetMetadata` and shipped to workers via
-    ``ray.put``.  Workers never need lerobot installed at runtime — all
-    info required to read a dataset is captured here.
-    """
+    """Per-root derived state for the LeRobot datasource built on the driver."""
 
     root: str
     """Root URI used to build the by-URI video paths streamed through torchcodec
@@ -547,18 +543,16 @@ class _LeRobotReadTask(ReadTask):
     ) -> Iterator[pa.Table]:
         """Stream decoded rows for one ``[start, end)`` range within a single root.
 
-        Strategy:
-
-        1. Read all parquet rows for the row range via predicate pushdown.
-        2. For each camera, group rows by their video file (``(chunk, file)``
-           tuple from the episode metadata), compute the per-row absolute
-           timestamp (``from_timestamp[ep] + row_ts``), and batch-decode one
-           video file at a time via the torchcodec helper in ``_lerobot_compat``.
-        3. Yield Arrow batches of ``self._rows_per_batch`` rows.
+        Reads the segment's parquet rows, then emits ``self._rows_per_batch``-row
+        Arrow batches, decoding each batch's camera frames on demand. Video
+        decoders are opened once per segment and reused across batches (a
+        per-segment cache), so peak memory is bounded to one batch's frames
+        rather than the whole segment's. Image cameras (encoded bytes in the
+        parquet) are decoded per batch directly.
         """
         fs = root.fs
 
-        # 1. Read all parquet rows for this segment.
+        # Read all parquet rows for this segment (predicate pushdown on index).
         filters = [("index", ">=", start), ("index", "<", end)]
         pq_tables = []
         for path in parquet_segs:
@@ -568,108 +562,107 @@ class _LeRobotReadTask(ReadTask):
         if full is None or full.num_rows == 0:
             return
         n_rows = full.num_rows
-
-        # 2. Decode camera frames into HWC uint8 arrays aligned to full's row
-        # order: video cameras via torchcodec (per video file), image cameras by
-        # decoding the in-parquet encoded-byte structs. decoded_frames[k] is an
-        # array of N frames; camera_keys unions both kinds.
-        decoded_frames: dict = {}
-        if root.video_keys:
-            decoded_frames = self._decode_video_frames(root, full, decode_frames)
-        if root.image_keys:
-            decoded_frames.update(self._decode_image_frames(root, full))
         camera_keys = root.video_keys + root.image_keys
 
-        # 3. Emit Arrow batches.
-        task_idx_pylist = full.column("task_index").to_pylist()
-        for batch_start in range(0, n_rows, self._rows_per_batch):
-            batch_end = min(batch_start + self._rows_per_batch, n_rows)
-            batch_slice = full.slice(batch_start, batch_end - batch_start)
-            task_list = [
-                root.tasks_dict[task_idx_pylist[i]]
-                for i in range(batch_start, batch_end)
-            ]
-            frame_buffers = {
-                k: decoded_frames[k][batch_start:batch_end] for k in camera_keys
-            }
-            yield self._build_batch(
-                camera_keys,
-                [batch_slice],
-                frame_buffers,
-                task_list,
-                dataset_index,
-                root.stats_json,
-            )
-
-    @staticmethod
-    def _decode_video_frames(
-        root: _LeRobotRoot,
-        full: pa.Table,
-        decode_fn: Callable[..., Any],
-    ) -> dict:
-        """Decode all video frames for ``full``, batched per video file.
-
-        Returns ``{video_key: list[np.ndarray HWC uint8]}`` aligned to
-        ``full``'s row order.  ``decode_fn`` (``_lerobot_compat.decode_frames``)
-        streams from local paths and fsspec cloud URIs via torchcodec.
-        """
-        n_rows = full.num_rows
-        ep_idx_col = full.column("episode_index").to_pylist()
-        ts_col = full.column("timestamp").to_pylist()
-        # Tolerance (seconds) for matching a row's timestamp to the nearest
-        # decoded video frame.  ``frame_tolerance_s=None`` falls back to half a
-        # frame interval (``0.5 / fps``, ~0.05s at 10fps).
+        # Per-segment video state: an episode->file lookup scanned once, and a
+        # decoder cache reused across batches so each video file is opened once.
+        video_meta = self._video_episode_meta(root) if root.video_keys else {}
         tolerance_s = (
             root.frame_tolerance_s
             if root.frame_tolerance_s is not None
             else 0.5 / float(root.fps)
         )
+        cache = new_decoder_cache(root.storage_options) if root.video_keys else None
 
-        # Build an O(1) lookup from episode_index to (chunk, file, from_ts)
-        # per camera, by scanning the episodes_table once.
+        task_idx_pylist = full.column("task_index").to_pylist()
+        try:
+            for batch_start in range(0, n_rows, self._rows_per_batch):
+                batch_end = min(batch_start + self._rows_per_batch, n_rows)
+                batch = full.slice(batch_start, batch_end - batch_start)
+                frame_buffers: dict = {}
+                if root.video_keys:
+                    frame_buffers.update(
+                        self._decode_video_batch(
+                            root, batch, video_meta, tolerance_s, cache
+                        )
+                    )
+                if root.image_keys:
+                    frame_buffers.update(self._decode_image_frames(root, batch))
+                task_list = [
+                    root.tasks_dict[task_idx_pylist[i]]
+                    for i in range(batch_start, batch_end)
+                ]
+                yield self._build_batch(
+                    camera_keys,
+                    [batch],
+                    frame_buffers,
+                    task_list,
+                    dataset_index,
+                    root.stats_json,
+                )
+        finally:
+            if cache is not None:
+                cache.clear()
+
+    @staticmethod
+    def _video_episode_meta(root: _LeRobotRoot) -> dict:
+        """Per-video-camera ``{episode_index: (chunk, file, from_timestamp)}``,
+        scanned once from the episodes table so per-batch decoding can resolve a
+        row's video file in O(1)."""
         eps = root.episodes_table
-        ep_idx_in_eps = eps.column("episode_index").to_pylist()
-
-        # ``video_path`` is guaranteed non-None whenever ``video_keys`` is
-        # non-empty (enforced in :func:`_build_root`).
-        assert root.video_path is not None
-        video_path_template = root.video_path
-
-        decoded: dict = {}
+        ep_idx = eps.column("episode_index").to_pylist()
+        meta: dict = {}
         for vk in root.video_keys:
             chunks = eps.column(f"videos/{vk}/chunk_index").to_pylist()
             files = eps.column(f"videos/{vk}/file_index").to_pylist()
             from_ts = eps.column(f"videos/{vk}/from_timestamp").to_pylist()
-            ep_info = {
-                ep_idx_in_eps[i]: (chunks[i], files[i], from_ts[i])
-                for i in range(len(ep_idx_in_eps))
+            meta[vk] = {
+                ep_idx[i]: (chunks[i], files[i], from_ts[i]) for i in range(len(ep_idx))
             }
+        return meta
 
-            # Group rows by video file.
+    @staticmethod
+    def _decode_video_batch(
+        root: _LeRobotRoot,
+        batch: pa.Table,
+        video_meta: dict,
+        tolerance_s: float,
+        cache: Any,
+    ) -> dict:
+        """Decode one batch's video frames to HWC uint8 arrays aligned to the
+        batch's row order.
+
+        Groups rows by video file and decodes each file's timestamps from the
+        shared (per-segment) decoder *cache*, so a file's decoder is reused
+        across batches instead of being reopened. Returns
+        ``{video_key: list[np.ndarray HWC uint8]}``.
+        """
+        # ``video_path`` is guaranteed non-None whenever ``video_keys`` is
+        # non-empty (enforced in :func:`_build_root`).
+        assert root.video_path is not None
+        n = batch.num_rows
+        ep_idx_col = batch.column("episode_index").to_pylist()
+        ts_col = batch.column("timestamp").to_pylist()
+        out: dict = {}
+        for vk in root.video_keys:
+            ep_info = video_meta[vk]
             file_to_rows: dict = {}
-            for r in range(n_rows):
+            for r in range(n):
                 chunk, fi, from_t = ep_info[ep_idx_col[r]]
                 file_to_rows.setdefault((chunk, fi), []).append((r, from_t + ts_col[r]))
-
-            frames_by_row: List[Any] = [None] * n_rows
+            frames_by_row: List[Any] = [None] * n
             for (chunk, fi), rows_and_ts in file_to_rows.items():
-                # Use the full URI (with protocol) so the patched
-                # decode_video_frames can detect cloud vs local correctly.
+                # Full URI (with protocol) so torchcodec detects cloud vs local.
                 vpath = (
                     f"{root.root}/"
-                    f"{video_path_template.format(video_key=vk, chunk_index=chunk, file_index=fi)}"
+                    f"{root.video_path.format(video_key=vk, chunk_index=chunk, file_index=fi)}"
                 )
                 row_indices = [r for r, _ in rows_and_ts]
                 timestamps = [t for _, t in rows_and_ts]
-                # decode_fn returns torch.Tensor of shape (N, C, H, W).
-                # torchvision/torchcodec backends produce uint8 CHW.
-                frames = decode_fn(
-                    vpath,
-                    timestamps,
-                    tolerance_s,
-                    storage_options=root.storage_options,
+                # decode_frames returns a torch.Tensor (N, C, H, W) uint8.
+                frames = decode_frames(
+                    vpath, timestamps, tolerance_s, decoder_cache=cache
                 )
-                # → numpy (N, H, W, C) uint8
                 arr = frames.permute(0, 2, 3, 1).contiguous().numpy()
                 if arr.dtype != np.uint8:
                     if arr.dtype.kind == "f":
@@ -678,8 +671,8 @@ class _LeRobotReadTask(ReadTask):
                         arr = arr.astype(np.uint8)
                 for i, r in enumerate(row_indices):
                     frames_by_row[r] = arr[i]
-            decoded[vk] = frames_by_row
-        return decoded
+            out[vk] = frames_by_row
+        return out
 
     @staticmethod
     def _decode_image_frames(root: _LeRobotRoot, full: pa.Table) -> dict:
@@ -1017,29 +1010,16 @@ class LeRobotDatasource(Datasource):
             )
         ]
 
-        if isinstance(partitioning, LeRobotPartitioning):
-            partitioning = partitioning.value
-
-        _valid_modes = ("sequential", "episode", "file_group", "chain", "row_block")
-        if partitioning not in _valid_modes:
+        # Accept a LeRobotPartitioning member or its string value; the enum call
+        # coerces + validates in one step (raises ValueError on an unknown value).
+        try:
+            self._partitioning: str = LeRobotPartitioning(partitioning).value
+        except ValueError:
+            valid = ", ".join(m.value for m in LeRobotPartitioning)
             raise ValueError(
-                f"Unknown partitioning {partitioning!r}. "
-                f"Choose from: {', '.join(_valid_modes)}"
-            )
-
-        self._partitioning: str = partitioning
+                f"Unknown partitioning {partitioning!r}. Choose from: {valid}"
+            ) from None
         self._slice_kwargs: dict = kwargs
-
-        cameras = self._roots[0].video_keys + self._roots[0].image_keys
-        logger.info(
-            "LeRobotDatasource ready: %d roots, %d total frames, "
-            "%d cameras %s, mode=%r",
-            len(self._roots),
-            sum(r.total_frames for r in self._roots),
-            len(cameras),
-            cameras,
-            partitioning,
-        )
 
     @property
     def meta(self) -> "LeRobotDatasetMetadata":
@@ -1215,6 +1195,42 @@ class LeRobotDatasource(Datasource):
         segments.append((prev_ri, prev_s, prev_e))
         return segments
 
+    @staticmethod
+    def _split_ranges(row_ranges: List[tuple], target: int) -> List[tuple]:
+        """Split contiguous ``(root_idx, start, end)`` ranges into ``~target``
+        sub-ranges, distributing splits proportionally to row count, so
+        ``override_num_blocks`` can request more tasks than the base partitioning
+        yields. Each sub-range stays within one base range (and hence one root).
+        Splitting a video-file group means its files are reopened per sub-task —
+        the parallelism-vs-reopen trade-off."""
+        total = sum(e - s for _, s, e in row_ranges)
+        if total <= 0 or target <= len(row_ranges):
+            return list(row_ranges)
+        out: List[tuple] = []
+        remaining_target = target
+        remaining_total = total
+        ranges = list(row_ranges)
+        for idx, (ri, s, e) in enumerate(ranges):
+            n = e - s
+            ranges_after = len(ranges) - idx - 1
+            k = (
+                max(1, round(n * remaining_target / remaining_total))
+                if remaining_total
+                else 1
+            )
+            # Leave >=1 task for each remaining range; never exceed this range's
+            # row count.
+            k = max(1, min(k, n, remaining_target - ranges_after))
+            step, rem = divmod(n, k)
+            pos = s
+            for j in range(k):
+                sz = step + (1 if j < rem else 0)
+                out.append((ri, pos, pos + sz))
+                pos += sz
+            remaining_target -= k
+            remaining_total -= n
+        return out
+
     # ------------------------------------------------------------------
     # Ray Data API
     # ------------------------------------------------------------------
@@ -1230,10 +1246,18 @@ class LeRobotDatasource(Datasource):
     ) -> List[ReadTask]:
         row_ranges = self._slice()
 
-        if parallelism > 0 and len(row_ranges) > parallelism:
+        groups: List[list]
+        if parallelism > 0 and parallelism > len(row_ranges):
+            # More tasks requested than the partitioning yields: split ranges
+            # into sub-ranges so override_num_blocks is honored (e.g. a single
+            # monolithic-mp4 dataset can still be parallelized). Splitting a
+            # file group re-opens its files per sub-task — the cost of trading
+            # amortized opens for parallelism.
+            groups = [[r] for r in self._split_ranges(row_ranges, parallelism)]
+        elif parallelism > 0 and len(row_ranges) > parallelism:
             n = len(row_ranges)
             base, remainder = divmod(n, parallelism)
-            groups: List[list] = []
+            groups = []
             i = 0
             for g in range(parallelism):
                 chunk_size = base + (1 if g < remainder else 0)
