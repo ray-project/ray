@@ -42,9 +42,10 @@ class AutoscalerMetricsReporter:
             status_count_by_type[instance_type] = _new_status_count()
 
         for instance in instances:
-            status_count = status_count_by_type.setdefault(
-                instance.instance_type, _new_status_count()
-            )
+            status_count = status_count_by_type.get(instance.instance_type)
+            if status_count is None:
+                status_count = _new_status_count()
+                status_count_by_type[instance.instance_type] = status_count
             if InstanceUtil.is_ray_pending(instance.status):
                 status_count["pending"] += 1
             elif InstanceUtil.is_ray_running(instance.status):
