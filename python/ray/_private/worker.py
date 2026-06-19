@@ -624,7 +624,8 @@ class Worker:
         """Get the job's logging config for this worker"""
 
         # Defend against teardown C++ memory access violations on Windows (Issue #62442)
-        if sys.platform == "win32" and sys.is_finalizing():
+        is_finalizing = getattr(sys, "is_finalizing", lambda: False)
+        if sys.platform == "win32" and is_finalizing():
             return None
 
         if not hasattr(self, "core_worker"):
