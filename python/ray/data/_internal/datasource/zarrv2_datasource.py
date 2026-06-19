@@ -234,7 +234,7 @@ def _create_aligned_read_fn(
     def read_fn() -> Iterable[Block]:
         builder = DelegatingBlockBuilder()
         for d in batch:
-            row = {"t_start": d.t_start, "t_stop": d.t_stop}
+            row: dict[str, Any] = {"t_start": d.t_start, "t_stop": d.t_stop}
             for name in aligned_array_names:
                 row[name] = _read_chunk(
                     root, name, ((d.t_start, d.t_stop_data),), retry_match
@@ -247,7 +247,7 @@ def _create_aligned_read_fn(
 
 def _is_positive_int(x) -> bool:
     """True for a positive integer, including NumPy integers; False for bool."""
-    return not isinstance(x, bool) and isinstance(x, numbers.Integral) and x > 0
+    return not isinstance(x, bool) and isinstance(x, numbers.Integral) and int(x) > 0
 
 
 def _validate_chunk_shapes_dict(chunk_shapes: dict) -> dict[str, tuple[int, ...]]:

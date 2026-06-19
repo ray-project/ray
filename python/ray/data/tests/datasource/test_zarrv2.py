@@ -642,7 +642,10 @@ def test_read_chunk_retries_transient_io(monkeypatch):
             return _FlakyArray()
 
     out = zarrv2_datasource._read_chunk(
-        _Root(), "x", ((0, 4),), retry_match=["Connection reset"]
+        _Root(),  # pyrefly: ignore[bad-argument-type]
+        "x",
+        ((0, 4),),
+        retry_match=["Connection reset"],
     )
     np.testing.assert_array_equal(out, np.arange(4, dtype="<i4"))
     assert _FlakyArray.attempts == 3  # failed twice, then succeeded
