@@ -16,6 +16,7 @@ Ray Train User Guides
     user-guides/results
     user-guides/fault-tolerance
     user-guides/elastic-training
+    user-guides/continuous-training-across-failures
     user-guides/monitor-your-application
     user-guides/local_mode
     user-guides/reproducibility
