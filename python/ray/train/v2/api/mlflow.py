@@ -1,6 +1,8 @@
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
+from mlflow.entities import Metric
 from mlflow.tracking import MlflowClient
 from ray.train import Checkpoint
 from ray.train.v2._internal.execution.context import TrainRunContext
@@ -64,14 +66,22 @@ class MLflowLoggerCallback(UserCallback):
         rank_0_metrics = metrics[0]
         step = rank_0_metrics.get("training_iteration", 0)
 
+        # Optimize: Log all metrics in a single O(1) batch HTTP payload
+        metrics_to_log = []
+        timestamp = int(time.time() * 1000)
         for k, v in rank_0_metrics.items():
             if isinstance(v, (int, float)):
-                self.client.log_metric(self._run_id, k, v, step=step)
+                metrics_to_log.append(
+                    Metric(key=k, value=v, timestamp=timestamp, step=step)
+                )
+
+        if metrics_to_log:
+            self.client.log_batch(self._run_id, metrics=metrics_to_log)
 
         if self.save_checkpoints_as_artifacts and checkpoint:
             try:
                 with checkpoint.as_directory() as checkpoint_dir:
-                    self.client.log_artifact(
+                    self.client.log_artifacts(
                         self._run_id,
                         checkpoint_dir,
                         artifact_path=f"checkpoints/step_{step}",
@@ -83,13 +93,28 @@ class MLflowLoggerCallback(UserCallback):
         self, run_context: TrainRunContext, worker_exceptions: Dict[int, Exception]
     ):
         if self._run_id:
-            self.client.set_terminated(self._run_id, status="FAILED")
+            try:
+                self.client.set_terminated(self._run_id, status="FAILED")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to terminate MLflow run on failure context: {e}"
+                )
+            finally:
+                self._run_id = None
+
+    def close(self, status: str = "FINISHED"):
+        """Explicitly terminate the active MLflow run."""
+        if getattr(self, "_run_id", None):
+            try:
+                self.client.set_terminated(self._run_id, status=status)
+            except Exception as e:
+                logger.warning(f"Failed to terminate MLflow run: {e}")
             self._run_id = None
 
     def __del__(self):
-        """Ensure the run status is closed out as FINISHED when the training workflow concludes."""
-        if hasattr(self, "_run_id") and self._run_id:
+        """Ensure the run status is closed out when the object lifecycle finishes."""
+        if getattr(self, "_run_id", None) and getattr(self, "client", None):
             try:
-                self.client.set_terminated(self._run_id, status="FINISHED")
+                self.close(status="FINISHED")
             except Exception:
                 pass
