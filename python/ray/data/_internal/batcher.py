@@ -1,4 +1,3 @@
-import time
 import warnings
 from typing import Optional
 
@@ -236,8 +235,6 @@ class ShufflingBatcher(BatcherInterface):
         self._total_object_store_nbytes = get_total_obj_store_mem_on_node()
         self._total_num_rows_added = 0
         self._total_nbytes_added = 0
-        self.compactions_total = 0
-        self.compaction_time_s = 0.0
 
     def add(self, block: Block):
         """Add a block to the shuffle buffer.
@@ -323,9 +320,6 @@ class ShufflingBatcher(BatcherInterface):
         """
         return self._num_compacted_rows() + self._num_uncompacted_rows()
 
-    def num_rows(self) -> int:
-        return self._num_rows()
-
     def _num_compacted_rows(self) -> int:
         """Return number of unyielded rows in the compacted buffer."""
         if self._shuffle_buffer is None:
@@ -347,7 +341,6 @@ class ShufflingBatcher(BatcherInterface):
             self._done_adding
             or self._num_compacted_rows() <= self._min_rows_to_yield_batch
         ):
-            compaction_start_s = time.perf_counter()
             if self._shuffle_buffer is not None and self._batch_head < len(
                 self._shuffled_indices
             ):
@@ -370,8 +363,6 @@ class ShufflingBatcher(BatcherInterface):
 
             self._builder = DelegatingBlockBuilder()
             self._batch_head = 0
-            self.compactions_total += 1
-            self.compaction_time_s += time.perf_counter() - compaction_start_s
 
         assert self._shuffle_buffer is not None
         assert self._shuffled_indices is not None
