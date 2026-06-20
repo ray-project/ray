@@ -154,6 +154,7 @@ __all__ = [
     "from_items",
     "from_arrow",
     "from_arrow_refs",
+    "from_blocks",
     "from_mars",
     "from_modin",
     "from_numpy",

@@ -417,8 +417,8 @@ message NumPendingTasksReply {
 }
 
 message ReportGeneratorItemReturnsRequest {
-  // Object returned from the executor (can be inlined or in plasma).
-  ReturnObject returned_object = 1;
+  // Objects returned from the executor (can be inlined or in plasma).
+  repeated ReturnObject returned_objects = 1;
   // The address of the executor.
   Address worker_addr = 2;
   // The index of the task return. It is used to

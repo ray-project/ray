@@ -23,6 +23,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--consumer-sleep-s", type=float, default=1.0)
     parser.add_argument("--num-trainers", type=int, default=8)
     parser.add_argument("--prefetch-batches", type=int, default=8)
+    parser.add_argument(
+        "--disable-locality-hints",
+        action="store_true",
+        default=False,
+        help="Disable locality hints for streaming_split",
+    )
     return parser.parse_args()
 
 
@@ -78,12 +84,6 @@ def run_training_prefetch(args: argparse.Namespace):
         output_row_bytes=args.output_row_bytes,
     )
 
-    iterators = (
-        ray.data.from_blocks(make_inputs(args.num_input_blocks))
-        .map_batches(producer)
-        .streaming_split(args.num_trainers, equal=True)
-    )
-
     trainers = [
         Trainer.options(scheduling_strategy="SPREAD").remote(
             consumer_sleep_s=args.consumer_sleep_s,
@@ -91,6 +91,21 @@ def run_training_prefetch(args: argparse.Namespace):
         )
         for _ in range(args.num_trainers)
     ]
+
+    trainer_node_ids = ray.get([trainer.get_node_id.remote() for trainer in trainers])
+
+    iterators = (
+        ray.data.from_blocks(make_inputs(args.num_input_blocks))
+        .map_batches(producer)
+        .streaming_split(
+            args.num_trainers,
+            equal=True,
+            locality_hints=trainer_node_ids
+            if not args.disable_locality_hints
+            else None,
+        )
+    )
+
     ray.get(
         [
             trainers[i].train.remote(iterators[i], batch_size=args.output_batch_rows)
@@ -113,6 +128,9 @@ class Trainer:
             prefetch_batches=self._prefetch_batches,
         ):
             time.sleep(self._consumer_sleep_s)
+
+    def get_node_id(self) -> str:
+        return ray.get_runtime_context().get_node_id()
 
 
 def main(args: argparse.Namespace):

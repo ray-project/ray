@@ -137,7 +137,7 @@ def test_read_parquet_v2_override_num_blocks_drives_partitioner(tmp_path, restor
     list_files_op = ds._logical_plan.dag.input_dependencies[0]
     assert isinstance(list_files_op, ListFiles)
     assert isinstance(list_files_op.file_partitioner, RoundRobinPartitioner)
-    assert list_files_op.file_partitioner._num_buckets == 7
+    assert list_files_op.file_partitioner.num_buckets == 7
     assert restore_ctx.read_op_min_num_blocks == original
 
 

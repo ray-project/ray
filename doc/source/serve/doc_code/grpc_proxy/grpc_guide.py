@@ -173,6 +173,7 @@ from typing import List
 from PIL import Image
 from io import BytesIO
 from torchvision import transforms
+from torchvision.models import resnet18, ResNet18_Weights
 from user_defined_protos_pb2 import (
     ImageClass,
     ImageData,
@@ -191,9 +192,7 @@ class ImageClassifier:
     ):
         self._image_downloader = _image_downloader
         self._data_preprocessor = _data_preprocessor
-        self.model = torch.hub.load(
-            "pytorch/vision:v0.10.0", "resnet18", pretrained=True
-        )
+        self.model = resnet18(weights=ResNet18_Weights.DEFAULT)
         self.model.eval()
         self.categories = self._image_labels()
 

@@ -305,7 +305,7 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
     signal_name = f"signal-{get_random_string()}"
     signal = SignalActor.options(name=signal_name).remote()
 
-    @serve.deployment(name=name, version="1", num_replicas=2)
+    @serve.deployment(name=name, num_replicas=2)
     class V1:
         def __init__(self):
             self.config = None
@@ -323,6 +323,8 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
 
         async def __call__(self, request):
             return await self.handler()
+
+    V1 = V1.options(_internal=True, version="1")
 
     def make_nonblocking_calls(expected, expect_blocking=False):
         # Returns dict[val, set(pid)].
@@ -391,7 +393,9 @@ def test_reconfigure_does_not_run_while_there_are_active_queries(serve_instance)
             await signal.wait.remote()
             return self.state["a"]
 
-    handle = serve.run(A.options(version="1", user_config={"a": 1}).bind())
+    handle = serve.run(
+        A.options(_internal=True, version="1", user_config={"a": 1}).bind()
+    )
     responses = [handle.remote() for _ in range(10)]
 
     def check():
@@ -403,7 +407,7 @@ def test_reconfigure_does_not_run_while_there_are_active_queries(serve_instance)
 
     @ray.remote(num_cpus=0)
     def reconfigure():
-        serve.run(A.options(version="1", user_config={"a": 2}).bind())
+        serve.run(A.options(_internal=True, version="1", user_config={"a": 2}).bind())
 
     # Start the reconfigure;
     # this will not complete until the signal is released
@@ -432,10 +436,10 @@ def test_reconfigure_does_not_run_while_there_are_active_queries(serve_instance)
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_redeploy_scale_down(serve_instance, use_handle):
-    # Tests redeploying with a new version and lower num_replicas.
+    # Tests redeploying new code with lower num_replicas.
     name = "test"
 
-    @serve.deployment(name=name, version="1", num_replicas=4)
+    @serve.deployment(name=name, num_replicas=4)
     def v1(*args):
         return f"1|{os.getpid()}"
 
@@ -472,7 +476,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
     responses1 = make_calls({"1": 4})
     pids1 = responses1["1"]
 
-    @serve.deployment(name=name, version="2", num_replicas=2)
+    @serve.deployment(name=name, num_replicas=2)
     def v2(*args):
         return f"2|{os.getpid()}"
 
@@ -484,10 +488,10 @@ def test_redeploy_scale_down(serve_instance, use_handle):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_redeploy_scale_up(serve_instance, use_handle):
-    # Tests redeploying with a new version and higher num_replicas.
+    # Tests redeploying new code with higher num_replicas.
     name = "test"
 
-    @serve.deployment(name=name, version="1", num_replicas=2)
+    @serve.deployment(name=name, num_replicas=2)
     def v1(*args):
         return f"1|{os.getpid()}"
 
@@ -524,7 +528,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
     responses1 = make_calls({"1": 2})
     pids1 = responses1["1"]
 
-    @serve.deployment(name=name, version="2", num_replicas=4)
+    @serve.deployment(name=name, num_replicas=4)
     def v2(*args):
         return f"2|{os.getpid()}"
 
@@ -604,13 +608,17 @@ def test_input_validation():
     with pytest.raises(RuntimeError):
         Base()
 
-    with pytest.raises(TypeError):
+    with pytest.raises(
+        ValueError, match=r"`version` in `@serve\.deployment` has been removed"
+    ):
 
         @serve.deployment(name=name, version=1)
         class BadVersion:
             pass
 
-    with pytest.raises(TypeError):
+    with pytest.raises(
+        ValueError, match=r"`version` in `Deployment\.options\(\)` has been removed"
+    ):
         Base.options(version=1)
 
     with pytest.raises(ValidationError):
@@ -683,7 +691,6 @@ def test_deployment_properties():
 
     D = serve.deployment(
         name="name",
-        version="version",
         num_replicas=2,
         user_config="hi",
         max_ongoing_requests=100,
@@ -691,16 +698,16 @@ def test_deployment_properties():
     )(DClass)
 
     assert D.name == "name"
-    assert D.version == "version"
+    assert D.version is None
     assert D.num_replicas == 2
     assert D.user_config == "hi"
     assert D.max_ongoing_requests == 100
     assert D.ray_actor_options == {"num_cpus": 2}
 
-    D = serve.deployment(
-        version=None,
-    )(DClass)
-    assert D.version is None
+    with pytest.raises(
+        ValueError, match=r"`version` in `@serve\.deployment` has been removed"
+    ):
+        serve.deployment(version=None)(DClass)
 
 
 def test_deploy_multiple_apps_batched(serve_instance):
