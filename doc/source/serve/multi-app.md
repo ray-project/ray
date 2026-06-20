@@ -191,7 +191,7 @@ For more details on the Ray Serve dashboard, see the [Serve dashboard documentat
 ## Add, delete, and update applications
 You can add, remove or update entries under the `applications` field to add, remove or update applications in the cluster. This doesn't affect other applications on the cluster. To update an application, modify the config options in the corresponding entry under the `applications` field.
 
-This is the default `replace` strategy, where the submitted config is the authoritative goal state and applications not in the config are deleted. To instead upsert only the applications you submit and leave the rest untouched, use [`--merge`](#per-application-upsert-with-merge).
+This is the default `replace` strategy, where the submitted config is the authoritative goal state and applications not in the config are deleted.
 
 :::{note}
 The in-place update behavior for an application when you resubmit a config is the same as the single-application behavior. For how an application reacts to different config changes, see [Updating a Serve Application](serve-inplace-updates).
@@ -208,7 +208,7 @@ $ serve deploy my_app.yaml --merge
 In merge mode, top level fields such as `http_options`, `grpc_options`, `proxy_location`, and `logging_config` are only applied if you explicitly set them in the YAML. If you omit them, the cluster keeps its running options.
 
 :::{note}
-Merge operates at the application level, not the field level. Each application you submit is exactly as if you redeployed that application on its own with `replace`.
+Merge operates at the application level, not the field level. Each application you submit is treated exactly as if you redeployed it on its own with `replace`.
 :::
 
 :::{note}
