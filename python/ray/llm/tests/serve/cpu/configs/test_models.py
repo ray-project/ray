@@ -5,12 +5,15 @@ from unittest.mock import MagicMock, patch
 import pydantic
 import pytest
 
+from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
 from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
 from ray.llm._internal.serve.core.configs.accelerators import (
     CPUAccelerator,
     GPUAccelerator,
     TPUAccelerator,
     TPUConfig,
+    CPUConfig,
+    GPUConfig
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
@@ -379,6 +382,27 @@ class TestAcceleratorConfigLogic:
         engine_config = llm_config.get_engine_config()
         assert engine_config.accelerator_type == "L4"
 
+    def test_vllm_engine_config_accelerator_type_with_cpu_config_raises_error(self):
+        """Test that VLLMEngineConfig rejects accelerator_type with CPU config."""
+        with pytest.raises(
+            ValueError,
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
+        ):
+            VLLMEngineConfig(
+                model_id="test-model",
+                accelerator_type="L4",
+                accelerator_config=CPUConfig(kind="cpu"),
+            )
+
+    def test_vllm_engine_config_accelerator_type_with_gpu_config_succeeds(self):
+        """Test that VLLMEngineConfig accepts accelerator_type with GPU config."""
+        engine_config = VLLMEngineConfig(
+            model_id="test-model",
+            accelerator_type="L4",
+            accelerator_config=GPUConfig(kind="gpu"),
+        )
+
+        assert engine_config.accelerator_type == "L4"
     def test_llm_config_accelerator_type_hardware_mismatch(self):
         """Test that passing a GPU accelerator_type with a TPU config raises an error."""
         with pytest.raises(
