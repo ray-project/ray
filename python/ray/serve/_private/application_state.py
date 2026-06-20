@@ -1337,8 +1337,8 @@ class ApplicationStateManager:
 
         The applications will be reconciled to match the target state of the config.
 
-        Any applications previously deployed declaratively that are *not* present in
-        the list will be deleted.
+        If `delete_missing_apps` is true, applications previously deployed
+        declaratively that are *not* present in the list will be deleted.
         """
         for app_config in app_configs:
             if app_config.name not in self._application_states:
@@ -1408,6 +1408,30 @@ class ApplicationStateManager:
 
     def get_route_prefix(self, name: str) -> Optional[str]:
         return self._application_states[name].route_prefix
+
+    def check_route_prefix_conflicts(
+        self, app_configs: List[ServeApplicationSchema]
+    ) -> None:
+        """Checks submitted route prefixes don't collide with other live apps.
+        Raises ``RayServeException`` if such a conflict exists.
+        """
+        submitted_names = {app_config.name for app_config in app_configs}
+        live_route_prefixes: Dict[str, str] = {
+            app_state.route_prefix: app_name
+            for app_name, app_state in self._application_states.items()
+            if app_state.route_prefix is not None
+            and app_state.status != ApplicationStatus.DELETING
+            and app_name not in submitted_names
+        }
+
+        for app_config in app_configs:
+            existing_app_name = live_route_prefixes.get(app_config.route_prefix)
+            if existing_app_name is not None:
+                raise RayServeException(
+                    f"Prefix {app_config.route_prefix} is being used by application "
+                    f'"{existing_app_name}". Failed to deploy application '
+                    f'"{app_config.name}".'
+                )
 
     def get_ingress_deployment_name(self, name: str) -> Optional[str]:
         if name not in self._application_states:

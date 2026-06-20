@@ -162,8 +162,9 @@ class ServeHead(SubprocessModule):
         is_merge = config.apply_strategy == ApplyStrategy.MERGE
         fields_set = config.model_fields_set
 
-        # In merge mode, only build top-level options that the user explicitly
-        # set.
+        # In merge mode, setting one of http_options/proxy_location fills the
+        # other with defaults which is a no-op on a running cluster and behaves similar to replace mode
+        # on startup.
         build_http = not is_merge or (
             "http_options" in fields_set or "proxy_location" in fields_set
         )

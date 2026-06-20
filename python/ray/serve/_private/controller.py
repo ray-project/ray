@@ -1147,17 +1147,24 @@ class ServeController:
             return
 
         ServeUsageTag.API_VERSION.record("v2")
-        if not deployment_time:
-            deployment_time = time.time()
-
-        new_config_checkpoint = {}
-        _, curr_config, _ = self._read_config_checkpoint()
         is_merge = config.apply_strategy == ApplyStrategy.MERGE
         ServeUsageTag.REST_API_APPLY_STRATEGY.record(config.apply_strategy.value)
         if is_merge:
             logger.info("Applying config (merge)")
         else:
             logger.info("Applying config (replace)")
+
+        # Check route prefix conflicts in merge mode
+        if is_merge:
+            self.application_state_manager.check_route_prefix_conflicts(
+                config.applications
+            )
+
+        if not deployment_time:
+            deployment_time = time.time()
+
+        new_config_checkpoint = {}
+        _, curr_config, _ = self._read_config_checkpoint()
 
         # In merge mode, start from the existing checkpoint so that apps not
         # in the submitted config are preserved.
@@ -1167,7 +1174,8 @@ class ServeController:
                 for app in curr_config.applications
             }
 
-        if not is_merge or "target_capacity" in config.model_fields_set:
+        # target_capacity cannot be set in merge mode
+        if not is_merge:
             self._target_capacity_direction = calculate_target_capacity_direction(
                 curr_config=curr_config,
                 new_config=config,
@@ -1179,7 +1187,7 @@ class ServeController:
                 self._target_capacity_direction,
             )
             self._target_capacity = config.target_capacity
-
+        # The behavior remains same for both merge and replace modes.
         for app_config in config.applications:
             # If the application logging config is not set, use the global logging
             # config.
@@ -1203,7 +1211,8 @@ class ServeController:
 
         # Declaratively apply the new set of applications.
         # This will delete any applications no longer in the config that were
-        # previously deployed via the REST API if is_merge is False
+        # previously deployed via the REST API unless this is a merge
+        # (delete_missing_apps=False).
         self.application_state_manager.apply_app_configs(
             config.applications,
             deployment_time=deployment_time,

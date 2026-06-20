@@ -1003,6 +1003,7 @@ class HTTPOptionsSchema(BaseModel):
         return v
 
 
+@PublicAPI(stability="alpha")
 class ApplyStrategy(str, Enum):
     """Strategy for how `serve deploy` applies the submitted config."""
 
@@ -1121,6 +1122,20 @@ class ServeDeploySchema(BaseModel):
                     f"`{app_config.name}`. Please remove it and set port in the top "
                     "level deploy config only."
                 )
+        return self
+
+    @model_validator(mode="after")
+    def target_capacity_not_set_in_merge(self):
+        # target_capacity is a cluster-wide knob applied uniformly to all apps,
+        # so it can't be altered through a partial (merge) config.
+        if (
+            self.apply_strategy == ApplyStrategy.MERGE
+            and "target_capacity" in self.model_fields_set
+        ):
+            raise ValueError(
+                "target_capacity cannot be set when apply_strategy is 'merge'. "
+                "Use a 'replace' deploy to change target_capacity."
+            )
         return self
 
     @staticmethod

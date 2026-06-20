@@ -1066,6 +1066,32 @@ class TestServeDeploySchema:
                 {"applications": [], "apply_strategy": "invalid"}
             )
 
+    def test_merge_rejects_target_capacity(self):
+        with pytest.raises(ValidationError, match="target_capacity cannot be set"):
+            ServeDeploySchema.model_validate(
+                {
+                    "applications": [],
+                    "apply_strategy": "merge",
+                    "target_capacity": 50.0,
+                }
+            )
+
+    def test_replace_allows_target_capacity(self):
+        config = ServeDeploySchema.model_validate(
+            {
+                "applications": [],
+                "apply_strategy": "replace",
+                "target_capacity": 50.0,
+            }
+        )
+        assert config.target_capacity == 50.0
+
+    def test_merge_allows_omitting_target_capacity(self):
+        config = ServeDeploySchema.model_validate(
+            {"applications": [], "apply_strategy": "merge"}
+        )
+        assert config.target_capacity is None
+
 
 class TestLoggingConfig:
     def test_parse_dict(self):
