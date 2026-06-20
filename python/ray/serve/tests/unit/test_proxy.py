@@ -797,8 +797,10 @@ class TestHTTPProxy:
         assert call_kwargs["is_error"] is True
 
     @pytest.mark.asyncio
-    async def test_http_client_disconnect_before_response_records_proxy_metrics(self):
-        """An HTTP client close before the first message should still be counted."""
+    async def test_http_client_disconnect_after_response_start_records_proxy_metrics(
+        self,
+    ):
+        """A dropped HTTP sender before response completion should still be counted."""
         http_proxy = self.create_http_proxy()
         http_proxy.proxy_router.route = "/stream"
         http_proxy.proxy_router.handle = FakeHTTPHandle(
@@ -824,6 +826,10 @@ class TestHTTPProxy:
         )
 
         response_generator = http_proxy.proxy_request(proxy_request)
+        assert await response_generator.__anext__() == {
+            "type": "http.response.start",
+            "status": "200",
+        }
         await response_generator.aclose()
 
         http_proxy._proxy_metrics.record_request.assert_called_once()
