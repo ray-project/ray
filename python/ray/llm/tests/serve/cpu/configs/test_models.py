@@ -385,7 +385,7 @@ class TestAcceleratorConfigLogic:
     def test_vllm_engine_config_accelerator_type_with_cpu_config_raises_error(self):
         """Test that VLLMEngineConfig rejects accelerator_type with CPU config."""
         with pytest.raises(
-            ValueError,
+            pydantic.ValidationError,
             match="accelerator_type='L4' cannot be used with CPU-only configurations",
         ):
             VLLMEngineConfig(
@@ -403,6 +403,7 @@ class TestAcceleratorConfigLogic:
         )
 
         assert engine_config.accelerator_type == "L4"
+
     def test_llm_config_accelerator_type_hardware_mismatch(self):
         """Test that passing a GPU accelerator_type with a TPU config raises an error."""
         with pytest.raises(
