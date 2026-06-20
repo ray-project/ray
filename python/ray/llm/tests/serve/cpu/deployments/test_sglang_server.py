@@ -263,5 +263,118 @@ async def test_concurrent_streaming_completions_exception_handling():
         assert str(e) == "Engine failure"
 
 
+@pytest.mark.anyio
+async def test_concurrent_streaming_cancelled_producer_no_sentinel():
+    """Verify that a cancelled producer does not enqueue the None sentinel.
+
+    When ``asyncio.CancelledError`` (a ``BaseException``) bypasses
+    ``except Exception``, the producer must NOT unconditionally enqueue
+    ``None`` in the ``finally`` block.  The ``completed`` flag ensures the
+    sentinel is only sent after the generator finished normally or after
+    the error was forwarded to the queue.
+
+    This test simulates early consumer disconnection, which triggers task
+    cancellation.  A successfully cancelled producer should leave no
+    dangling tasks and should not enqueue ``None``.
+    """
+    mock_engine_instance = MagicMock()
+
+    cancel_reached = asyncio.Event()
+
+    async def mock_async_generate(**kwargs):
+        prompt = kwargs["prompt"]
+        if prompt == "prompt1":
+
+            async def gen1():
+                yield {"text": "fast", "meta_info": {"finish_reason": "stop"}}
+
+            return gen1()
+        elif prompt == "prompt2":
+
+            async def gen2():
+                # Block long enough for the consumer to break out and
+                # cancel this task.
+                try:
+                    await asyncio.sleep(10)
+                except asyncio.CancelledError:
+                    cancel_reached.set()
+                    raise
+                yield {"text": "never", "meta_info": {"finish_reason": "stop"}}
+
+            return gen2()
+
+    mock_engine_instance.async_generate = AsyncMock(side_effect=mock_async_generate)
+
+    llm_config = LLMConfig(
+        model_loading_config={"model_id": "test-model"},
+        engine_kwargs={"tp_size": 1},
+    )
+    server = SGLangServer(llm_config)
+    server.engine = mock_engine_instance
+
+    request = CompletionRequest(
+        model="test-model",
+        prompt=["prompt1", "prompt2"],
+        stream=True,
+    )
+
+    # Consume only the first chunk (from prompt1) then break to simulate
+    # client disconnection.  The generator's finally block should cancel
+    # the still-running prompt2 producer.
+    chunks = []
+    async for chunk in server.completions(request):
+        chunks.append(chunk)
+        break
+
+    assert len(chunks) == 1
+
+    # Allow a brief moment for task cancellation to propagate.
+    await asyncio.sleep(0.05)
+
+    # Confirm prompt2 was actually cancelled (not silently completed).
+    assert cancel_reached.is_set()
+
+
+@pytest.mark.anyio
+async def test_concurrent_streaming_early_disconnect():
+    """Consumer closing the generator early must cancel remaining producers."""
+    mock_engine_instance = MagicMock()
+
+    async def mock_async_generate(**kwargs):
+        async def slow_gen():
+            for i in range(100):
+                yield {"text": str(i), "meta_info": {"finish_reason": None}}
+                await asyncio.sleep(0.01)
+
+        return slow_gen()
+
+    mock_engine_instance.async_generate = AsyncMock(side_effect=mock_async_generate)
+
+    llm_config = LLMConfig(
+        model_loading_config={"model_id": "test-model"},
+        engine_kwargs={"tp_size": 1},
+    )
+    server = SGLangServer(llm_config)
+    server.engine = mock_engine_instance
+
+    request = CompletionRequest(
+        model="test-model",
+        prompt=["prompt1", "prompt2"],
+        stream=True,
+    )
+
+    # Consume only a few chunks then break to simulate client disconnection.
+    chunks = []
+    async for chunk in server.completions(request):
+        chunks.append(chunk)
+        if len(chunks) >= 3:
+            break
+
+    assert len(chunks) == 3
+
+    # Allow a brief moment for task cancellation to propagate.
+    await asyncio.sleep(0.05)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -406,15 +406,19 @@ class SGLangServer:
             queue = asyncio.Queue()
 
             async def producer(index: int, prompt_string: str):
+                completed = False
                 try:
                     async for delta_text, finish_reason in self._stream_generate(
                         request, prompt_string
                     ):
                         await queue.put((index, delta_text, finish_reason))
+                    completed = True
                 except Exception as e:
                     await queue.put(e)
+                    completed = True
                 finally:
-                    await queue.put(None)
+                    if completed:
+                        await queue.put(None)
 
             tasks = [
                 asyncio.create_task(producer(i, prompt_string))
