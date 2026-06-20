@@ -10,6 +10,7 @@ stays in sync with the live replicas across scale up/down.
 import os
 import subprocess
 import sys
+from typing import List
 
 import pytest
 
@@ -87,12 +88,14 @@ def discover_deployment_actor(app_name, deployment_name, actor_name):
 
 
 def get_candidate_ids(app_name):
-    handle = discover_deployment_actor(app_name, "Driver", KV_ROUTER_ACTOR_NAME)
+    handle = discover_deployment_actor(
+        app_name, "ReplicaTrackingDeployment", KV_ROUTER_ACTOR_NAME
+    )
     assert handle is not None
     return ray.get(handle.get_candidate_worker_ids.remote())
 
 
-def get_live_replica_worker_ids(app_name, deployment_name="Driver"):
+def get_live_replica_worker_ids(app_name, deployment_name="ReplicaTrackingDeployment"):
     """Worker ids derived directly from the deployment's alive replica actors."""
     prefix = f"{REPLICA_ID_FULL_ID_STR_PREFIX}{app_name}#{deployment_name}#"
     return {
@@ -126,10 +129,7 @@ def test_build_openai_app_attaches_kv_actor():
     configs = get_kv_actor_configs(app._bound_deployment)
     assert len(configs) == 1
     actor_cfg = configs[0]
-    assert (
-        actor_cfg.get_actor_class().__ray_actor_class__
-        is KVRouterActor.__ray_actor_class__
-    )
+    assert actor_cfg.get_actor_class().__ray_actor_class__ is KVRouterActor
     assert actor_cfg.actor_options["num_cpus"] == 0
 
 
@@ -147,17 +147,29 @@ def test_yaml_config_attaches_kv_actor(serve_instance):
         serve.delete(app_name, _blocking=True)
 
 
+class _TestKVRouterActor(KVRouterActor):
+    """KVRouterActor augmented with test-only introspection."""
+
+    async def get_candidate_worker_ids(self) -> List[int]:
+        """The workers currently tracked from running replicas.
+
+        Async so it runs on the actor's event loop, serialized with
+        ``_on_deployment_targets`` which mutates the same map on that loop.
+        """
+        return sorted(self._replica_id_by_worker)
+
+
 @serve.deployment(
     num_replicas=4,
     deployment_actors=[
         DeploymentActorConfig(
             name=KV_ROUTER_ACTOR_NAME,
-            actor_class=KVRouterActor,
+            actor_class=ray.remote(_TestKVRouterActor),
             actor_options={"num_cpus": 0},
         ),
     ],
 )
-class Driver:
+class ReplicaTrackingDeployment:
     """Dummy deployment with a KVRouterActor deployment actor."""
 
     async def __call__(self) -> str:
@@ -168,7 +180,9 @@ class TestReplicaTrackingIntegration:
     def test_tracks_running_replicas(self, serve_instance):
         """KVRouterActor's LongPollClient receives the running replicas."""
         app_name = "kv-replica-tracking"
-        serve.run(Driver.bind(), name=app_name, route_prefix="/kv_track")
+        serve.run(
+            ReplicaTrackingDeployment.bind(), name=app_name, route_prefix="/kv_track"
+        )
         try:
             wait_for_condition(
                 lambda: len(get_candidate_ids(app_name)) == 4, timeout=30
@@ -199,7 +213,7 @@ class TestReplicaTrackingIntegration:
 
         def scale(num_replicas):
             serve.run(
-                Driver.options(num_replicas=num_replicas).bind(),
+                ReplicaTrackingDeployment.options(num_replicas=num_replicas).bind(),
                 name=app_name,
                 route_prefix="/kv_scale",
             )
@@ -215,7 +229,7 @@ class TestReplicaTrackingIntegration:
             serve.delete(app_name, _blocking=True)
 
 
-class _LocalKVRouterActor(KVRouterActor.__ray_actor_class__):
+class _LocalKVRouterActor(_TestKVRouterActor):
     """In-process KVRouterActor with LongPoll disabled, to drive
     ``_on_deployment_targets`` directly with synthetic snapshots.
     """

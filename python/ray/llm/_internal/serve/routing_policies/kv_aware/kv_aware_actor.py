@@ -38,7 +38,6 @@ class WorkerSelection(TypedDict):
     score: float
 
 
-@ray.remote
 class KVRouterActor:
     """Deployment-scoped Ray actor backing KV-aware routing.
 
@@ -61,6 +60,10 @@ class KVRouterActor:
     """
 
     def __init__(self):
+        # _replica_id_by_worker Maps a Dynamo worker id to the running replica's full
+        # id string, kept in sync with the deployment's live replicas over LongPoll.
+        # NOTE (jeffreywang): _replica_id_by_worker is later used by select_worker
+        # to get candidate workers to route among.
         self._replica_id_by_worker: Dict[int, str] = {}
         self._long_poll_client: Optional[LongPollClient] = None
         self._start_replica_tracking()
@@ -111,14 +114,6 @@ class KVRouterActor:
                 len(removed),
                 len(self._replica_id_by_worker),
             )
-
-    async def get_candidate_worker_ids(self) -> List[int]:
-        """(Test only) The workers currently tracked from running replicas.
-
-        Async so it runs on the actor's event loop, serialized with
-        ``_on_deployment_targets`` which mutates the same map on that loop.
-        """
-        return sorted(self._replica_id_by_worker)
 
     async def select_worker(
         self,
