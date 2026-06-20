@@ -96,32 +96,62 @@ class ActorTaskExecutionArgWaiterInterface {
  public:
   virtual ~ActorTaskExecutionArgWaiterInterface() = default;
 
-  /// Asynchronously wait for the specified arguments and call `on_args_ready` when they
-  /// are ready. Trigger an async wait for the specified arguments.
+  /// Issue an async args-fetch IPC to the raylet. Returns a tag identifying the
+  /// fetch. The caller is expected to later call `OnArgsReady` with the same tag
+  /// to register a callback that will run when the args become ready.
   ///
-  /// \param[in] on_args_ready The callback to call when arguments are ready.
-  virtual void AsyncWait(const std::vector<rpc::ObjectReference> &args,
-                         std::function<void()> on_args_ready) = 0;
+  /// THREAD-SAFE: may be called from any thread (typically the gRPC handler
+  /// thread, so the IPC is not blocked behind in-progress work on the task
+  /// execution service).
+  virtual int64_t BeginArgsFetch(const std::vector<rpc::ObjectReference> &args) = 0;
+
+  /// Register the callback to invoke when the args identified by `tag` are
+  /// ready. If the args are already ready (i.e., `MarkReady` was called for
+  /// `tag` before this call), the callback is invoked synchronously and the
+  /// entry is cleaned up.
+  ///
+  /// NOT THREAD-SAFE: must be called from the task execution service thread
+  /// (same thread as `MarkReady`).
+  virtual void OnArgsReady(int64_t tag, std::function<void()> on_args_ready) = 0;
 };
 
 class ActorTaskExecutionArgWaiter : public ActorTaskExecutionArgWaiterInterface {
  public:
-  // Callback to trigger the asynchronous wait.
-  // The caller is expected to call `MarkReady` with the provided tag when the associated
-  // arguments are ready.
+  // Callback that performs the underlying async wait for the args.
+  // The implementor is expected to call `MarkReady` with the provided tag when
+  // the associated arguments are ready.
   using AsyncWaitForArgs =
       std::function<void(const std::vector<rpc::ObjectReference> &args, int64_t tag)>;
 
   explicit ActorTaskExecutionArgWaiter(AsyncWaitForArgs async_wait_for_args);
 
-  void AsyncWait(const std::vector<rpc::ObjectReference> &args,
-                 std::function<void()> on_args_ready) override;
+  int64_t BeginArgsFetch(const std::vector<rpc::ObjectReference> &args) override;
 
+  void OnArgsReady(int64_t tag, std::function<void()> on_args_ready) override;
+
+  /// Called by the args-ready notification path on the task execution service
+  /// thread. If a callback was registered for `tag` via `OnArgsReady`, invokes
+  /// it. Otherwise records that the args have arrived; the callback will run
+  /// synchronously when `OnArgsReady` is called for `tag` later.
   void MarkReady(int64_t tag);
 
  private:
-  uint64_t next_tag_ = 0;
-  absl::flat_hash_map<int64_t, std::function<void()>> in_flight_waits_;
+  // An entry holds at most one of: a registered callback OR an
+  // `execute_immediate` flag set by `MarkReady` arriving first.
+  // `OnArgsReady` and `MarkReady` create entries,
+  // and whichever runs second consumes the entry and erases it.
+  struct WaitEntry {
+    std::function<void()> on_args_ready;
+    bool execute_immediate = false;
+  };
+
+  // Bumped by `BeginArgsFetch`
+  std::atomic<int64_t> next_tag_{0};
+
+  // Touched only by `OnArgsReady` and `MarkReady`, both on the task execution
+  // service thread. Therefore, no mutex guarding this.
+  absl::flat_hash_map<int64_t, WaitEntry> in_flight_waits_;
+
   AsyncWaitForArgs async_wait_for_args_;
 };
 

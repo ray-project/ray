@@ -24,9 +24,16 @@ namespace core {
 class ActorTaskExecutionQueueInterface {
  public:
   virtual ~ActorTaskExecutionQueueInterface() = default;
+  /// Enqueue a task for execution.
+  ///
+  /// \param[in] arg_fetch_tag Tag returned by
+  ///   `ActorTaskExecutionArgWaiter::BeginArgsFetch` for the args-fetch IPC
+  ///   issued for this task on the gRPC handler thread, or -1 if the task has
+  ///   no dependencies (and therefore no IPC was issued).
   virtual void EnqueueTask(int64_t seq_no,
                            int64_t client_processed_up_to,
-                           TaskToExecute task) = 0;
+                           TaskToExecute task,
+                           int64_t arg_fetch_tag) = 0;
   virtual void Stop() = 0;
   virtual bool CancelTaskIfFound(TaskID task_id) = 0;
 };

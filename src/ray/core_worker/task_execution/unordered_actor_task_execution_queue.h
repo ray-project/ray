@@ -53,7 +53,8 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
 
   void EnqueueTask(int64_t seq_no,
                    int64_t client_processed_up_to,
-                   TaskToExecute task) override;
+                   TaskToExecute task,
+                   int64_t arg_fetch_tag) override;
 
   /// Cancel the actor task in the queue.
   /// Tasks are in the queue if it is either queued, or executing.
@@ -64,7 +65,15 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
  private:
   void CancelAllQueuedTasks(const std::string &msg);
 
-  void RunRequest(TaskToExecute request);
+  // Pairs a queued retry attempt with the args-fetch tag that was reserved when
+  // the gRPC handler thread fired the IPC for it. The tag is consumed when the
+  // task finally runs (via OnArgsReady in RunRequest).
+  struct QueuedTask {
+    TaskToExecute task;
+    int64_t arg_fetch_tag;
+  };
+
+  void RunRequest(TaskToExecute request, int64_t arg_fetch_tag);
 
   void RunRequestWithResolvedDependencies(TaskToExecute request);
 
@@ -92,7 +101,7 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
   /// This can happen if transient network error happens after an actor
   /// task is submitted and received by the actor and the caller retries
   /// the same task.
-  absl::flat_hash_map<TaskID, TaskToExecute> queued_actor_tasks_ ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<TaskID, QueuedTask> queued_actor_tasks_ ABSL_GUARDED_BY(mu_);
   /// A map of actor task IDs -> is_canceled.
   // Pending means tasks are queued or running.
   absl::flat_hash_map<TaskID, bool> pending_task_id_to_is_canceled ABSL_GUARDED_BY(mu_);
