@@ -25,6 +25,8 @@ as well as multi-GPU training on multi-node (GPU) clusters when using the `Anysc
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | :ref:`SAC (Soft Actor Critic) <sac>`                                        | |single_agent| |multi_agent| | |multi_gpu| |multi_node_multi_gpu| | |cont_actions| |discr_actions| |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| :ref:`TQC (Truncated Quantile Critics) <tqc>`                               | |single_agent|               | |multi_gpu| |multi_node_multi_gpu| | |cont_actions|                 |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | **High-throughput on- and off policy**                                                                                                                                           |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | :ref:`APPO (Asynchronous Proximal Policy Optimization) <appo>`              | |single_agent| |multi_agent| | |multi_gpu| |multi_node_multi_gpu| | |cont_actions| |discr_actions| |
@@ -159,6 +161,36 @@ Soft Actor Critic (SAC)
 **SAC-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.sac.sac.SACConfig
+   :members: training
+
+
+.. _tqc:
+
+Truncated Quantile Critics (TQC)
+---------------------------------
+`[paper] <https://arxiv.org/abs/2005.04269>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/tqc/tqc.py>`__
+
+TQC extends :ref:`SAC <sac>` by replacing the standard twin-Q critic with distributional
+critics using quantile regression. Each of the ``n_critics`` networks outputs ``n_quantiles``
+quantile estimates instead of a single Q-value. When computing the target Q-value, TQC sorts
+all quantiles across critics and drops the top ``top_quantiles_to_drop_per_net * n_critics``
+values, effectively controlling overestimation bias while retaining a richer value distribution.
+
+Key differences from SAC:
+
+- **Distributional critics** – each critic outputs ``n_quantiles`` values trained with quantile Huber loss.
+- **Truncated targets** – top quantiles are dropped before computing Bellman targets, providing tighter bias control than the simple ``min(Q1, Q2)`` used in SAC.
+- **Configurable critic count** – ``n_critics`` is a first-class hyperparameter (default 2).
+
+
+**Tuned examples:**
+`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/tqc/pendulum_tqc.py>`__,
+`Humanoid-v5 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/tqc/humanoid_tqc.py>`__.
+
+**TQC-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
+
+.. autoclass:: ray.rllib.algorithms.tqc.tqc.TQCConfig
    :members: training
 
 
