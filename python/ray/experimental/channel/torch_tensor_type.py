@@ -1,4 +1,5 @@
 import logging
+import warnings
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import ray
@@ -142,20 +143,36 @@ class TorchTensorType(ChannelOutputType):
         _tensor_metadata_channel: Optional["Channel"] = None,
     ) -> type:
         if self.requires_accelerator():
-            from ray.experimental.channel.torch_tensor_accelerator_channel import (
-                TorchTensorAcceleratorChannel,
-            )
+            # Check if this type hint has been set up by the Compiled Graph
+            # compiler (i.e., communicator_id or communicator is set). If not,
+            # we are in a non-compiled graph context and fall back to the
+            # shared memory channel for debugging purposes.
+            if self._communicator_id is None:
+                warnings.warn(
+                    "TorchTensorType(transport='nccl') used outside of a "
+                    "Compiled Graph. Falling back to shared-memory (CPU) "
+                    "transport for debugging. Performance will be "
+                    "significantly worse than compiled NCCL.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                # Fall through to the shared memory path below.
+            else:
+                from ray.experimental.channel.torch_tensor_accelerator_channel import (
+                    TorchTensorAcceleratorChannel,
+                )
 
-            return TorchTensorAcceleratorChannel(
-                writer,
-                reader_and_node_list,
-                self,
-                driver_actor_id,
-                _tensor_metadata_channel,
-                _cpu_data_channel,
-            )
+                return TorchTensorAcceleratorChannel(
+                    writer,
+                    reader_and_node_list,
+                    self,
+                    driver_actor_id,
+                    _tensor_metadata_channel,
+                    _cpu_data_channel,
+                )
 
-        # Data does not require accelerator. Transfer via host memory using a
+        # Data does not require accelerator, OR we are in a non-compiled graph
+        # context (debugging path). Transfer via host memory using a
         # shared-memory channel.
         # TODO(swang): Allow the initial max buffer size to be overridden.
         typ = SharedMemoryType()
