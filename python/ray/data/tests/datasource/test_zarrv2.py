@@ -913,26 +913,13 @@ def fresh_ray():
 
 
 def test_custom_codec_succeeds_with_worker_setup_hook(fresh_ray, tmp_path):
-    """``worker_process_setup_hook`` runs once per worker, before any task,
-    registering a custom codec in the worker's process so chunk decode succeeds.
+    """Test that we successfully register a custom codec.
 
-    numcodecs' registry is process-local: built-in codecs (blosc, gzip, zstd)
-    self-register at import, but a custom codec must be registered in every
-    process that decodes chunks. Ray workers are separate processes, so the
-    driver's registration does not propagate -- ``worker_process_setup_hook``
-    runs the registration in each worker. The hook is passed as a *callable*
-    (cloud-pickled to the workers), not a code string; defining it locally keeps
-    the codec class out of the importable module surface.
-
-    The worker hook must be set at cluster start, so this needs its own
-    ``ray.init`` rather than the shared ``ray_start_regular_shared`` cluster.
-    The ``fresh_ray`` fixture guarantees a clean Ray before and after, so the
-    test is isolated regardless of where it runs in the suite.
+    numcodecs' registry is process-local.
     """
     import numcodecs
 
     def _register_codec():
-        """Register the test codec in the current process (driver and workers)."""
         import numcodecs
         import numpy as np
 
