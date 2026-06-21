@@ -226,6 +226,52 @@ class AllToAllOperator(
     def supports_fusion(self):
         return True
 
+    def absorbs_upstream_map_transformer(self) -> bool:
+        return True
+
+    def fuse_with_upstream_map_transformer(
+        self, upstream_map_transformer
+    ) -> "AllToAllOperator":
+        """Return a new AllToAllOperator that runs upstream_map_transformer
+        inline in each shuffle map task and takes the immediate upstream's
+        input as its own input.
+
+        The new op's bulk_fn wraps the original bulk_fn and stashes the
+        upstream transformer (plus its ray_remote_args) on the TaskContext.
+        The shuffle scheduler reads ctx and wraps every map task accordingly.
+        Callers that need additional upstream state can fetch it via
+        self.input_dependencies[0], which is the upstream op at the moment
+        fusion runs.
+        """
+        up_op = self.input_dependencies[0]
+        upstream_ray_remote_args = getattr(up_op, "_ray_remote_args", {}) or {}
+        down_transform_fn = self.get_transformation_fn()
+        up_name = up_op.name
+        new_name = f"{up_name}->{self.name}"
+
+        def fused_bulk_fn(blocks, ctx):
+            ctx.upstream_map_transformer = upstream_map_transformer
+            ctx.upstream_map_ray_remote_args = upstream_ray_remote_args
+            return down_transform_fn(blocks, ctx)
+
+        # OperatorFusionRule has already verified the two overrides are
+        # mergeable via _can_merge_target_max_block_size; pick whichever
+        # one is set.
+        target_max_block_size = (
+            up_op.target_max_block_size_override or self.target_max_block_size_override
+        )
+
+        new_input = up_op.input_dependencies[0]
+        return AllToAllOperator(
+            fused_bulk_fn,
+            new_input,
+            self.data_context,
+            target_max_block_size_override=target_max_block_size,
+            num_outputs=self._num_outputs,
+            sub_progress_bar_names=self._sub_progress_bar_names,
+            name=new_name,
+        )
+
     def throttling_disabled(self) -> bool:
         # Disable resource allocation and throttling for the operator
         return True
