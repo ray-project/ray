@@ -4,14 +4,16 @@ These tests verify the pure helper functions used by glob pattern
 expansion without requiring Ray initialization or filesystem access.
 """
 
+import os
+
 import pytest
 
 from ray.data.datasource.path_util import (
+    _expand_glob,
     _glob_match_path,
     _has_glob_chars,
     _split_glob_base,
 )
-
 
 # --- _has_glob_chars ---
 
@@ -130,6 +132,68 @@ class TestGlobMatchPath:
         assert _glob_match_path("**/c.parquet", "c.parquet")
         assert _glob_match_path("**/c.parquet", "b/c.parquet")
         assert _glob_match_path("**/c.parquet", "b/d/c.parquet")
+
+
+# --- _expand_glob ---
+
+
+class TestExpandGlob:
+    """Unit tests for _expand_glob using the local filesystem."""
+
+    def test_simple_wildcard(self, tmp_path):
+        (tmp_path / "a.parquet").write_text("a")
+        (tmp_path / "b.parquet").write_text("b")
+        (tmp_path / "c.json").write_text("c")
+
+        result = _expand_glob(str(tmp_path / "*.parquet"))
+
+        assert len(result) == 2
+        assert all(p.endswith(".parquet") for p in result)
+        assert result == sorted(result)
+        assert all(os.path.isabs(p) for p in result)
+
+    def test_recursive_glob(self, tmp_path):
+        (tmp_path / "flat.parquet").write_text("flat")
+        nested = tmp_path / "sub" / "deep"
+        nested.mkdir(parents=True)
+        (nested / "nested.parquet").write_text("nested")
+
+        result = _expand_glob(str(tmp_path / "**" / "*.parquet"))
+
+        assert len(result) == 2
+        assert any("flat.parquet" in p for p in result)
+        assert any("nested.parquet" in p for p in result)
+
+    def test_no_match_raises(self, tmp_path):
+        with pytest.raises(ValueError, match="matched no files"):
+            _expand_glob(str(tmp_path / "*.parquet"))
+
+    def test_no_match_ignored(self, tmp_path):
+        result = _expand_glob(str(tmp_path / "*.parquet"), ignore_missing_paths=True)
+        assert result == []
+
+    def test_relative_pattern(self, tmp_path, monkeypatch):
+        (tmp_path / "a.parquet").write_text("a")
+        (tmp_path / "b.parquet").write_text("b")
+        monkeypatch.chdir(tmp_path)
+
+        result = _expand_glob("*.parquet")
+
+        assert len(result) == 2
+        assert all(os.path.isabs(p) for p in result)
+
+    def test_sorted_absolute_results(self, tmp_path):
+        for name in ["z.parquet", "a.parquet", "m.parquet"]:
+            (tmp_path / name).write_text(name)
+
+        result = _expand_glob(str(tmp_path / "*.parquet"))
+
+        assert result == sorted(result)
+        assert [os.path.basename(p) for p in result] == [
+            "a.parquet",
+            "m.parquet",
+            "z.parquet",
+        ]
 
 
 if __name__ == "__main__":

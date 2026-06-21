@@ -166,7 +166,8 @@ def _has_glob_chars(path: str) -> bool:
     if "*" in check_target or "?" in check_target:
         return True
     # Bracket expression: [ followed by ], not preceded by a space.
-    return bool(re.search(r"(?<! )\[[^\]]*\]", check_target))
+    # Require at least one character between brackets to avoid matching empty [].
+    return bool(re.search(r"(?<! )\[[^\]]+\]", check_target))
 
 
 def _split_glob_base(pattern: str) -> Tuple[str, str]:
@@ -316,23 +317,21 @@ def _expand_glob(
     from pyarrow.fs import FileType
 
     base, pattern = _split_glob_base(path)
-    is_local = filesystem is None or isinstance(
-        filesystem, pyarrow.fs.LocalFileSystem
-    )
+    is_local = filesystem is None or isinstance(filesystem, pyarrow.fs.LocalFileSystem)
 
     if is_local:
         # Strip scheme (e.g. local://, file://) so pathlib can parse the path.
         local_base = _unwrap_protocol(base) if base else ""
-        base_path = (
-            pathlib.Path(local_base) if local_base else pathlib.Path(os.getcwd())
-        )
-        matched = [str(p) for p in base_path.glob(pattern) if p.is_file()]
+        if local_base:
+            base_path = pathlib.Path(local_base).resolve()
+        else:
+            base_path = pathlib.Path(os.getcwd())
+        # Return absolute paths for consistency with cloud paths
+        matched = [str(p.resolve()) for p in base_path.glob(pattern) if p.is_file()]
         if not matched:
             if ignore_missing_paths:
                 return []
-            raise ValueError(
-                f"Glob pattern '{path}' matched no files."
-            )
+            raise ValueError(f"Glob pattern '{path}' matched no files.")
         return sorted(matched)
 
     # Cloud: list base directory, filter with segment-aware glob matching.
@@ -354,6 +353,10 @@ def _expand_glob(
     # - "**" explicitly requests recursive matching across directory boundaries
     # - glob characters in a non-terminal directory segment (e.g. sub*/*.parquet)
     #   require listing into matching subdirectories
+    # NOTE: This may list more files than needed. For example, "sub*/file.parquet"
+    # triggers recursive listing even though only one level is needed. Optimizing
+    # this would require iterative expansion (list matching dirs, then descend),
+    # which adds complexity. Current approach favors simplicity over efficiency.
     pat_segs = pattern.split("/")
     needs_recursive = "**" in pattern or any(
         _has_glob_chars(seg) for seg in pat_segs[:-1]
@@ -367,13 +370,14 @@ def _expand_glob(
             # S3, GCS, HDFS, and ABFS all use "/" as path separator.
             relative = fi.path[len(base_stripped) :].lstrip("/")
             if _glob_match_path(pattern, relative):
+                # PyArrow filesystems expect paths without scheme when the
+                # filesystem object already knows the scheme (e.g. S3FileSystem
+                # expects "bucket/key", not "s3://bucket/key").
                 matched.append(fi.path)
     if not matched:
         if ignore_missing_paths:
             return []
-        raise ValueError(
-            f"Glob pattern '{path}' matched no files."
-        )
+        raise ValueError(f"Glob pattern '{path}' matched no files.")
     return sorted(matched)
 
 
@@ -436,7 +440,7 @@ def _is_filesystem_compatible_with_scheme(
     # For PyFileSystem (fsspec wrappers), check the inner fsspec protocol
     # rather than relying on type_name alone, since all fsspec wrappers
     # share type_name "py" regardless of the underlying protocol.
-    if fs_type in ("py", "RetryingPyFileSystem") or fs_type.startswith("py::"):
+    if fs_type == "py" or fs_type.startswith("py::"):
         from pyarrow.fs import FSSpecHandler, PyFileSystem
 
         actual_fs = filesystem
@@ -621,24 +625,25 @@ def _resolve_paths_and_filesystem(
             # Only for local paths — cloud URIs (s3://, gs://, etc.) are
             # already absolute; os.path.isabs misidentifies them as relative.
             parsed = urlparse(path)
-            is_cloud_fs = (
-                filesystem is not None
-                and not isinstance(filesystem, LocalFileSystem)
+            is_cloud_fs = filesystem is not None and not isinstance(
+                filesystem, LocalFileSystem
             )
             if not parsed.scheme and not os.path.isabs(path) and not is_cloud_fs:
                 path = os.path.abspath(path)
 
             if filesystem is None:
                 try:
-                    filesystem, _ = _resolve_single_path_with_fallback(
-                        path, filesystem
-                    )
+                    filesystem, _ = _resolve_single_path_with_fallback(path, filesystem)
                 except (ValueError, ImportError) as e:
-                    logger.warning(
-                        f"Failed to resolve filesystem for glob "
-                        f"'{path}': {e}, skipping"
-                    )
-                    continue
+                    if ignore_missing_paths:
+                        logger.debug(
+                            f"Failed to resolve filesystem for glob "
+                            f"'{path}': {e}, skipping"
+                        )
+                        continue
+                    raise ValueError(
+                        f"Failed to resolve filesystem for glob pattern '{path}': {e}"
+                    ) from e
             expanded = _expand_glob(path, filesystem, ignore_missing_paths)
             resolved_paths.extend(expanded)
             continue

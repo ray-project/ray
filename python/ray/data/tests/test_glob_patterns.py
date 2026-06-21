@@ -99,9 +99,7 @@ class TestLocalGlob:
 
     def test_recursive_glob(self, ray_start_regular_shared, glob_test_dir):
         """**/*.parquet recursively matches across subdirectories."""
-        ds = ray.data.read_parquet(
-            str(glob_test_dir / "nested" / "**" / "*.parquet")
-        )
+        ds = ray.data.read_parquet(str(glob_test_dir / "nested" / "**" / "*.parquet"))
         assert ds.count() == 3
 
     def test_single_char(self, ray_start_regular_shared, glob_test_dir):
@@ -116,16 +114,12 @@ class TestLocalGlob:
 
     def test_deep_nesting(self, ray_start_regular_shared, glob_test_dir):
         """** matches through 11 levels of nesting."""
-        ds = ray.data.read_parquet(
-            str(glob_test_dir / "deep" / "**" / "file.parquet")
-        )
+        ds = ray.data.read_parquet(str(glob_test_dir / "deep" / "**" / "file.parquet"))
         assert ds.count() == 1
 
     def test_double_star_middle(self, ray_start_regular_shared, glob_test_dir):
         """abc/**/c.parquet matches 0, 1, and 2 intermediate dirs."""
-        ds = ray.data.read_parquet(
-            str(glob_test_dir / "abc" / "**" / "c.parquet")
-        )
+        ds = ray.data.read_parquet(str(glob_test_dir / "abc" / "**" / "c.parquet"))
         assert ds.count() == 3
 
     def test_mixed_paths(self, ray_start_regular_shared, glob_test_dir):
@@ -135,7 +129,9 @@ class TestLocalGlob:
         ds = ray.data.read_parquet([explicit, glob_pat])
         assert ds.count() == 4  # 1 explicit + 3 glob (part-0 duplicated)
 
-    def test_relative_pattern(self, ray_start_regular_shared, glob_test_dir, monkeypatch):
+    def test_relative_pattern(
+        self, ray_start_regular_shared, glob_test_dir, monkeypatch
+    ):
         """*.parquet without directory prefix resolves against cwd.
 
         Note: monkeypatch.chdir only affects the driver process. The glob

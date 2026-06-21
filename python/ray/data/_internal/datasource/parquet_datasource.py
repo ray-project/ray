@@ -399,6 +399,8 @@ class ParquetDatasource(Datasource):
         super().__init__()
         _check_pyarrow_version()
 
+        self._ignore_missing_paths = ignore_missing_paths
+
         supports_distributed_reads = not _is_local_scheme(paths)
         if not supports_distributed_reads and ray.util.client.ray.is_connected():
             raise ValueError(
@@ -714,9 +716,9 @@ class ParquetDatasource(Datasource):
             partition_columns_selected=False,
             partition_schema=pa.schema([]),
             partitioning=None,
-            projection_map={col: col for col in columns}
-            if columns is not None
-            else None,
+            projection_map=(
+                {col: col for col in columns} if columns is not None else None
+            ),
             to_batch_kwargs=to_batch_kwargs,
             _block_udf=_block_udf,
             shuffle=shuffle,

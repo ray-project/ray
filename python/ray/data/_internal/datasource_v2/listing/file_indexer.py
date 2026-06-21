@@ -133,7 +133,9 @@ class NonSamplingFileIndexer(FileIndexer):
     ) -> Iterable[FileInfo]:
         for input_path in paths.to_pylist():
             resolved_paths, _ = _resolve_paths_and_filesystem(
-                input_path, filesystem, self._ignore_missing_paths,
+                input_path,
+                filesystem,
+                self._ignore_missing_paths,
                 expand_globs=True,
             )
 
@@ -162,7 +164,9 @@ class NonSamplingFileIndexer(FileIndexer):
         ) -> Iterator[FileInfo]:
             for input_path in path_iterator:
                 resolved_paths, _ = _resolve_paths_and_filesystem(
-                    input_path, filesystem, self._ignore_missing_paths,
+                    input_path,
+                    filesystem,
+                    self._ignore_missing_paths,
                     expand_globs=True,
                 )
 

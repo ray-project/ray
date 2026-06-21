@@ -183,9 +183,10 @@ class FileBasedDatasource(Datasource):
             self._filesystem, retryable_errors=self._data_context.retried_io_errors
         )
 
-        # When glob expansion returns no paths and ignore_missing_paths is True,
-        # store empty lists so downstream code (get_read_tasks) produces an empty
-        # Dataset instead of raising.
+        # If ignore_missing_paths is True and no paths were resolved (e.g. all
+        # explicit paths are missing, or all glob patterns matched no files),
+        # return empty lists so downstream code produces an empty Dataset
+        # instead of raising. This aligns the behavior with the parameter name.
         if ignore_missing_paths and len(paths) == 0:
             file_sizes = []
         else:

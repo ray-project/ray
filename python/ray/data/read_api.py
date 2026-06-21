@@ -1511,6 +1511,14 @@ def read_images(
         >>> ds.take(1)[0]["path"]
         'ray-example-data/batoidea/JPEGImages/1.jpeg'
 
+        Read files matching a glob pattern.
+
+        >>> ray.data.read_images("/data/*.png")  # doctest: +SKIP
+
+        Read files matching a recursive glob pattern.
+
+        >>> ray.data.read_images("/data/**/*.png")  # doctest: +SKIP
+
         If your images are arranged like:
 
         .. code::
@@ -1680,6 +1688,14 @@ def read_json(
         >>> ray.data.read_json( # doctest: +SKIP
         ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
+        Read files matching a glob pattern.
+
+        >>> ray.data.read_json("/data/*.json")  # doctest: +SKIP
+
+        Read files matching a recursive glob pattern.
+
+        >>> ray.data.read_json("/data/**/*.jsonl", lines=True)  # doctest: +SKIP
+
         By default, :meth:`~ray.data.read_json` parses
         `Hive-style partitions <https://athena.guide/articles/\
         hive-style-partitioning/>`_
@@ -1843,6 +1859,14 @@ def read_csv(
         Read a directory from remote storage.
 
         >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris-csv/")
+
+        Read files matching a glob pattern.
+
+        >>> ray.data.read_csv("/data/*.csv")  # doctest: +SKIP
+
+        Read files matching a recursive glob pattern.
+
+        >>> ray.data.read_csv("/data/**/*.csv")  # doctest: +SKIP
 
         Read files that use a different delimiter. For more uses of ParseOptions see
         https://arrow.apache.org/docs/python/generated/pyarrow.csv.ParseOptions.html  # noqa: #501
@@ -2009,6 +2033,14 @@ def read_text(
         >>> ray.data.read_text( # doctest: +SKIP
         ...    ["local:///path/to/file1", "local:///path/to/file2"])
 
+        Read files matching a glob pattern.
+
+        >>> ray.data.read_text("/data/*.txt")  # doctest: +SKIP
+
+        Read files matching a recursive glob pattern.
+
+        >>> ray.data.read_text("/data/**/*.txt")  # doctest: +SKIP
+
     Args:
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
@@ -2125,6 +2157,14 @@ def read_avro(
 
         >>> ray.data.read_avro( # doctest: +SKIP
         ...    ["local:///path/to/file1", "local:///path/to/file2"])
+
+        Read files matching a glob pattern.
+
+        >>> ray.data.read_avro("/data/*.avro")  # doctest: +SKIP
+
+        Read files matching a recursive glob pattern.
+
+        >>> ray.data.read_avro("/data/**/*.avro")  # doctest: +SKIP
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -2697,6 +2737,14 @@ def read_binary_files(
 
         >>> ray.data.read_binary_files( # doctest: +SKIP
         ...     ["local:///path/to/file1", "local:///path/to/file2"])
+
+        Read files matching a glob pattern.
+
+        >>> ray.data.read_binary_files("/data/*.pdf")  # doctest: +SKIP
+
+        Read files matching a recursive glob pattern.
+
+        >>> ray.data.read_binary_files("/data/**/*.pdf")  # doctest: +SKIP
 
         Read a file with the filepaths included as a column in the dataset.
 
