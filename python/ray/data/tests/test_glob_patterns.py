@@ -290,6 +290,45 @@ class TestS3Glob:
             ray.data.read_parquet("s3://bucket-*/*.parquet", filesystem=s3_fs)
 
 
+# --- Edge case tests ---
+
+
+@pytest.mark.usefixtures("use_datasource_v2")
+class TestGlobEdgeCases:
+    """Tests for edge cases caught by automated code review."""
+
+    def test_ignore_missing_glob_returns_empty(
+        self, ray_start_regular_shared, tmp_path
+    ):
+        """ignore_missing_paths=True with non-matching glob returns empty Dataset."""
+        ds = ray.data.read_parquet(
+            str(tmp_path / "nonexistent" / "*.parquet"),
+            ignore_missing_paths=True,
+        )
+        assert ds.count() == 0
+
+    def test_ignore_missing_multi_glob_mixed(
+        self, ray_start_regular_shared, glob_test_dir
+    ):
+        """Mix of matching and non-matching globs with ignore_missing_paths."""
+        existing = str(glob_test_dir / "flat" / "*.parquet")
+        missing = str(glob_test_dir / "nope" / "*.parquet")
+        ds = ray.data.read_parquet(
+            [existing, missing],
+            ignore_missing_paths=True,
+        )
+        assert ds.count() == 3
+
+    def test_empty_glob_with_filter_no_crash(self, ray_start_regular_shared, tmp_path):
+        """Empty glob result with file_extensions filter should not crash
+        when ignore_missing_paths=True."""
+        ds = ray.data.read_csv(
+            str(tmp_path / "empty" / "*.csv"),
+            ignore_missing_paths=True,
+        )
+        assert ds.count() == 0
+
+
 if __name__ == "__main__":
     import sys
 

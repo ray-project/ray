@@ -189,40 +189,56 @@ class FileBasedDatasource(Datasource):
         # instead of raising. This aligns the behavior with the parameter name.
         if ignore_missing_paths and len(paths) == 0:
             file_sizes = []
-        else:
-            paths, file_sizes = map(
-                list,
-                zip(
-                    *meta_provider.expand_paths(
-                        paths,
-                        self._filesystem,
-                        partitioning,
-                        ignore_missing_paths=ignore_missing_paths,
-                    )
-                ),
+        elif len(paths) == 0:
+            raise ValueError(
+                "No paths resolved or provided. If you are using glob patterns, "
+                "ensure they match at least one file."
             )
-
-        if self._partition_filter is not None:
-            # Use partition filter to skip files which are not needed.
-            path_to_size = dict(zip(paths, file_sizes))
-            paths = self._partition_filter(paths)
-            file_sizes = [path_to_size[p] for p in paths]
-            if len(paths) == 0:
-                raise ValueError(
-                    "No input files found to read. Please double check that "
-                    "'partition_filter' field is set properly."
+        else:
+            expanded = list(
+                meta_provider.expand_paths(
+                    paths,
+                    self._filesystem,
+                    partitioning,
+                    ignore_missing_paths=ignore_missing_paths,
                 )
+            )
+            if len(expanded) == 0:
+                if ignore_missing_paths:
+                    paths, file_sizes = [], []
+                else:
+                    raise ValueError(
+                        "No input files found to read. Please double check that "
+                        "the provided paths exist and are accessible."
+                    )
+            else:
+                paths, file_sizes = map(list, zip(*expanded))
 
-        if file_extensions is not None:
-            path_to_size = dict(zip(paths, file_sizes))
-            paths = [p for p in paths if _has_file_extension(p, file_extensions)]
-            file_sizes = [path_to_size[p] for p in paths]
-            if len(paths) == 0:
-                raise ValueError(
-                    "No input files found to read with the following file extensions: "
-                    f"{file_extensions}. Please double check that "
-                    "'file_extensions' field is set properly."
-                )
+        # Skip partition and extension filters when paths is empty and
+        # ignore_missing_paths is True — the caller expects an empty Dataset,
+        # not a ValueError from downstream validation.
+        if len(paths) > 0:
+            if self._partition_filter is not None:
+                # Use partition filter to skip files which are not needed.
+                path_to_size = dict(zip(paths, file_sizes))
+                paths = self._partition_filter(paths)
+                file_sizes = [path_to_size[p] for p in paths]
+                if len(paths) == 0:
+                    raise ValueError(
+                        "No input files found to read. Please double check that "
+                        "'partition_filter' field is set properly."
+                    )
+
+            if file_extensions is not None:
+                path_to_size = dict(zip(paths, file_sizes))
+                paths = [p for p in paths if _has_file_extension(p, file_extensions)]
+                file_sizes = [path_to_size[p] for p in paths]
+                if len(paths) == 0:
+                    raise ValueError(
+                        "No input files found to read with the following file extensions: "
+                        f"{file_extensions}. Please double check that "
+                        "'file_extensions' field is set properly."
+                    )
 
         _validate_shuffle_arg(shuffle)
         self._shuffle = shuffle

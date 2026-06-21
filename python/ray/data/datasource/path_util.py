@@ -280,7 +280,7 @@ def _glob_match_segs(pat_segs: List[str], rel_segs: List[str]) -> bool:
                 dp[i][j] = dp[i - 1][j] or dp[i][j - 1]
         else:
             for j in range(1, n_rel + 1):
-                if fnmatch.fnmatch(rel_segs[j - 1], seg):
+                if fnmatch.fnmatchcase(rel_segs[j - 1], seg):
                     dp[i][j] = dp[i - 1][j - 1]
 
     return dp[n_pat][n_rel]
@@ -613,6 +613,11 @@ def _resolve_paths_and_filesystem(
 
     from pyarrow.fs import LocalFileSystem
 
+    # Track the inferred filesystem separately from the input parameter so
+    # that resolving one glob path does not overwrite the shared ``filesystem``
+    # variable for subsequent iterations.
+    resolved_filesystem = filesystem
+
     resolved_paths = []
     for path in paths:
         # Expand glob patterns before resolving individual paths.
@@ -625,16 +630,27 @@ def _resolve_paths_and_filesystem(
             # Only for local paths — cloud URIs (s3://, gs://, etc.) are
             # already absolute; os.path.isabs misidentifies them as relative.
             parsed = urlparse(path)
-            is_cloud_fs = filesystem is not None and not isinstance(
-                filesystem, LocalFileSystem
+            is_cloud_fs = resolved_filesystem is not None and not isinstance(
+                resolved_filesystem, LocalFileSystem
             )
             if not parsed.scheme and not os.path.isabs(path) and not is_cloud_fs:
                 path = os.path.abspath(path)
 
-            if filesystem is None:
+            glob_fs = resolved_filesystem
+            if glob_fs is None:
                 try:
-                    filesystem, _ = _resolve_single_path_with_fallback(path, filesystem)
+                    glob_fs, _ = _resolve_single_path_with_fallback(
+                        path, resolved_filesystem
+                    )
                 except (ValueError, ImportError) as e:
+                    # For local paths (non-cloud), still attempt glob expansion
+                    # even when filesystem resolution fails — pathlib can
+                    # expand globs without a PyArrow filesystem.
+                    if not parsed.scheme:
+                        expanded = _expand_glob(path, None, ignore_missing_paths)
+                        if expanded:
+                            resolved_paths.extend(expanded)
+                            continue
                     if ignore_missing_paths:
                         logger.debug(
                             f"Failed to resolve filesystem for glob "
@@ -644,32 +660,36 @@ def _resolve_paths_and_filesystem(
                     raise ValueError(
                         f"Failed to resolve filesystem for glob pattern '{path}': {e}"
                     ) from e
-            expanded = _expand_glob(path, filesystem, ignore_missing_paths)
+            expanded = _expand_glob(path, glob_fs, ignore_missing_paths)
             resolved_paths.extend(expanded)
+            # Update the inferred filesystem from the first successful glob
+            # resolution so that subsequent paths use the same filesystem.
+            if resolved_filesystem is None and glob_fs is not None:
+                resolved_filesystem = glob_fs
             continue
 
         try:
-            resolved_filesystem, resolved_path = _resolve_single_path_with_fallback(
-                path, filesystem
+            iter_resolved_fs, resolved_path = _resolve_single_path_with_fallback(
+                path, resolved_filesystem
             )
         except (ValueError, ImportError) as e:
             logger.warning(f"Failed to resolve path '{path}': {e}, skipping")
             continue
 
-        if filesystem is None:
-            filesystem = resolved_filesystem
+        if resolved_filesystem is None:
+            resolved_filesystem = iter_resolved_fs
 
         # If the PyArrow filesystem is handled by a fsspec HTTPFileSystem, the protocol/
         # scheme of paths should not be unwrapped/removed, because HTTPFileSystem
         # expects full file paths including protocol/scheme. This is different behavior
         # compared to other file system implementation in pyarrow.fs.FileSystem.
-        if not _is_http_filesystem(resolved_filesystem):
+        if not _is_http_filesystem(iter_resolved_fs):
             resolved_path = _unwrap_protocol(resolved_path)
 
-        resolved_path = resolved_filesystem.normalize_path(resolved_path)
+        resolved_path = iter_resolved_fs.normalize_path(resolved_path)
         resolved_paths.append(resolved_path)
 
-    return resolved_paths, filesystem
+    return resolved_paths, resolved_filesystem
 
 
 def _split_uri(uri: str):
