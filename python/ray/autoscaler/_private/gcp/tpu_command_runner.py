@@ -253,12 +253,13 @@ class TPUCommandRunner(CommandRunnerInterface):
                 range(self._num_workers),
             )
 
-    def run_rsync_down(self, *args, **kwargs) -> None:
+    def run_rsync_down(self, *args: Any, **kwargs: Any) -> None:
         """Rsync files down from the cluster node.
 
         Args:
-            source: The (remote) source directory or file.
-            target: The (local) destination path.
+            *args: Forwarded to each per-worker ``run_rsync_down`` call.
+                Includes the (remote) source path and (local) target path.
+            **kwargs: Forwarded to each per-worker ``run_rsync_down`` call.
         """
         with ThreadPoolExecutor(self.num_connections) as executor:
             executor.map(
@@ -272,16 +273,16 @@ class TPUCommandRunner(CommandRunnerInterface):
         # We return only the results from worker 0 which may not always be expected.
         return self._command_runners[0].remote_shell_command_str()
 
-    def run_init(self, *args, **kwargs) -> Optional[bool]:
+    def run_init(self, *args: Any, **kwargs: Any) -> Optional[bool]:
         """Used to run extra initialization commands.
 
         Args:
-            as_head: Run as head image or worker.
-            file_mounts: Files to copy to the head and worker nodes.
-            sync_run_yet: Whether sync has been run yet.
+            *args: Forwarded to each per-worker ``run_init`` call. Includes
+                ``as_head``, ``file_mounts``, and ``sync_run_yet``.
+            **kwargs: Forwarded to each per-worker ``run_init`` call.
 
         Returns:
-            optional: Whether initialization is necessary.
+            Whether initialization is necessary on any worker.
         """
         with ThreadPoolExecutor(self.num_connections) as executor:
             results = executor.map(

@@ -379,7 +379,7 @@ py_test(
 
 py_test(
     name = "test_context_propagation",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_context_propagation.py"],
     tags = [
         "exclusive",
@@ -747,6 +747,20 @@ py_test(
 )
 
 py_test(
+    name = "test_hash_shuffle_v2",
+    size = "medium",
+    srcs = ["tests/test_hash_shuffle_v2.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_hudi",
     size = "small",
     srcs = ["tests/datasource/test_hudi.py"],
@@ -989,6 +1003,20 @@ py_test(
     name = "test_predicate_pushdown",
     size = "small",
     srcs = ["tests/test_predicate_pushdown.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_infer_schema",
+    size = "small",
+    srcs = ["tests/test_infer_schema.py"],
     tags = [
         "exclusive",
         "team:data",

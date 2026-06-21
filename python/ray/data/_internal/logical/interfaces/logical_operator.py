@@ -24,17 +24,15 @@ class LogicalOperator(Operator, ABC):
     _input_dependencies: List["LogicalOperator"] = field(
         init=False, default_factory=list, repr=False
     )
-    _num_outputs: Optional[int] = field(default=None, repr=False)
 
     @property
     def name(self) -> str:
         return self._name or self.__class__.__name__
 
     @property
-    @abstractmethod
     def num_outputs(self) -> Optional[int]:
         """Expected number of output blocks, if known."""
-        ...
+        return None
 
     def estimated_num_outputs(self) -> Optional[int]:
         """Returns the estimated number of blocks that
@@ -147,6 +145,47 @@ class LogicalOperatorSupportsProjectionPushdown(LogicalOperator):
         projection_map: Optional[Dict[str, str]],
     ) -> LogicalOperator:
         return self
+
+
+class LogicalOperatorPreservesSchema(LogicalOperator):
+    """Mixin for operators whose output column layout is identical to their
+    single input's. Provides a default ``infer_schema()`` that delegates to
+    the input. Use for ops like ``Filter``, ``Sort``, ``Limit``, etc., that
+    only re-order or filter rows.
+
+    List this mixin last in the bases of subclasses so the concrete operator
+    base (e.g., ``AbstractMap``, ``AbstractAllToAll``) drives ``__init__`` /
+    ``super()`` chains.
+    """
+
+    def infer_schema(self) -> Optional["Schema"]:
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        return self.input_dependencies[0].infer_schema()
+
+
+class LogicalOperatorUnifiesInputSchemas(LogicalOperator):
+    """Mixin for n-ary operators whose output schema is the unification of
+    all inputs' schemas (e.g., ``Union``, ``Mix``). Provides a default
+    ``infer_schema()`` that returns the result of
+    ``unify_schemas_with_validation`` over each input's schema, or
+    ``None`` if any input's schema is unresolvable.
+
+    List this mixin last in the bases of subclasses so the concrete operator
+    base (e.g., ``NAry``) drives ``__init__`` / ``super()`` chains.
+    """
+
+    def infer_schema(self) -> Optional["Schema"]:
+        import pyarrow as pa
+
+        from ray.data._internal.util import unify_schemas_with_validation
+
+        input_schemas = [op.infer_schema() for op in self.input_dependencies]
+        if not all(isinstance(s, pa.Schema) for s in input_schemas):
+            return None
+        try:
+            return unify_schemas_with_validation(input_schemas)
+        except (pa.ArrowTypeError, pa.ArrowInvalid):
+            return None
 
 
 class LogicalOperatorSupportsPredicatePushdown(LogicalOperator):

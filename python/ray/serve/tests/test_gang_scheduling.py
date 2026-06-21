@@ -1456,7 +1456,6 @@ class TestGangScaling:
 
         @serve.deployment(
             name="D",
-            version="v1",
             num_replicas=initial_num_replicas,
             ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
@@ -1467,6 +1466,7 @@ class TestGangScaling:
                 gc = ctx.gang_context
                 return {"pid": os.getpid(), "gang_id": gc.gang_id if gc else None}
 
+        D = D.options(_internal=True, version="v1")
         handle = serve.run(D.bind(), name="app")
         wait_for_condition(check_apps_running, apps=["app"])
 
@@ -1907,7 +1907,6 @@ class TestGangMigration:
 
         @serve.deployment(
             name="D",
-            version="v1",
             num_replicas=4,
             ray_actor_options={"num_cpus": 0.25},
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
@@ -1922,6 +1921,7 @@ class TestGangMigration:
                     "node_id": ray.get_runtime_context().get_node_id(),
                 }
 
+        D = D.options(_internal=True, version="v1")
         handle = serve.run(D.bind(), name="app")
         wait_for_condition(check_apps_running, apps=["app"])
 

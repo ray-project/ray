@@ -5,6 +5,7 @@ import os
 import time
 from typing import List, Optional, Tuple, Type
 
+import ray
 from ray import serve
 from ray.experimental.internal_kv import (
     _internal_kv_del,
@@ -41,10 +42,12 @@ class GangMasterInfoRegistry:
         return (cls._KEY_PREFIX + gang_id).encode("utf-8")
 
     @classmethod
-    def register(cls, gang_id: str, address: str, port: int) -> None:
+    def register(cls, gang_id: str, address: str, port: int, node_id: str) -> None:
         """Store the DP master info in GCS KV store."""
         key = cls._make_key(gang_id)
-        value = json.dumps({"address": address, "port": port}).encode("utf-8")
+        value = json.dumps(
+            {"address": address, "port": port, "node_id": node_id}
+        ).encode("utf-8")
         _internal_kv_put(key, value, overwrite=True)
 
     @classmethod
@@ -65,7 +68,7 @@ class GangMasterInfoRegistry:
         gang_id: str,
         timeout: float = TIMEOUT_SECONDS,
         poll_interval: float = POLL_INTERVAL_SECONDS,
-    ) -> Tuple[str, int]:
+    ) -> Tuple[str, int, str]:
         """Retrieve the DP master info for gang_id, polling until available.
 
         Args:
@@ -74,7 +77,7 @@ class GangMasterInfoRegistry:
             poll_interval: The poll interval in seconds.
 
         Returns:
-            A tuple of (address, port).
+            A tuple of (address, port, node_id).
 
         Raises:
             TimeoutError: If the info is not available within timeout_seconds seconds.
@@ -85,7 +88,7 @@ class GangMasterInfoRegistry:
             data = _internal_kv_get(key)
             if data is not None:
                 info = json.loads(data)
-                return info["address"], info["port"]
+                return info["address"], info["port"], info["node_id"]
             if time.monotonic() >= deadline:
                 raise TimeoutError(
                     f"Timed out waiting for DP master info for gang {gang_id} "
@@ -129,23 +132,32 @@ class DPServer(LLMServer):
 
         if self.dp_rank == 0:
             self.dp_address, self.dp_rpc_port = get_address_and_port()
+            # Record rank 0's node so every replica places vLLM's global rank 0
+            # worker (which hosts the distributed rendezvous store) on the same
+            # node whose address we advertise below. See the bundle-ordering
+            # comment in __init__ for why this matters.
+            self.dp_node_id = ray.get_runtime_context().get_node_id()
             GangMasterInfoRegistry.register(
-                self.gang_id, self.dp_address, self.dp_rpc_port
+                self.gang_id, self.dp_address, self.dp_rpc_port, self.dp_node_id
             )
             logger.info(
                 f"DP rank {self.dp_rank} has set DP master info: "
                 f"data_parallel_address={self.dp_address}, "
-                f"data_parallel_rpc_port={self.dp_rpc_port}"
+                f"data_parallel_rpc_port={self.dp_rpc_port}, "
+                f"data_parallel_node_id={self.dp_node_id}"
             )
         else:
             timestamp = time.time()
-            self.dp_address, self.dp_rpc_port = await GangMasterInfoRegistry.get(
-                self.gang_id
-            )
+            (
+                self.dp_address,
+                self.dp_rpc_port,
+                self.dp_node_id,
+            ) = await GangMasterInfoRegistry.get(self.gang_id)
             logger.info(
                 f"DP rank {self.dp_rank} got DP master info: "
                 f"data_parallel_address={self.dp_address}, "
                 f"data_parallel_rpc_port={self.dp_rpc_port}, "
+                f"data_parallel_node_id={self.dp_node_id}, "
                 f"waited {time.time() - timestamp:.3f} seconds"
             )
 
@@ -165,9 +177,21 @@ class DPServer(LLMServer):
         #
         # However, adjacent bundle indices in a placement group don't necessarily
         # map to adjacent physical ranks. We use get_bundle_indices_sorted_by_node
-        # to reorder bundle indices so that same-node bundles are adjacent and the
-        # driver node's bundles come first. This prevents us from scattering adjacent
-        # TP ranks in the same DP rank across nodes.
+        # to reorder bundle indices so that same-node bundles are adjacent and
+        # rank 0's node bundles come first. This prevents us from scattering
+        # adjacent TP ranks in the same DP rank across nodes.
+        #
+        # Ordering rank 0's node first is also required for correctness: vLLM
+        # forms a single distributed group across all DP workers whose rendezvous
+        # store is hosted by global rank 0 and reached at the advertised
+        # data_parallel_address (set above from rank 0's node). vLLM pins global
+        # rank 0 to sorted_indices[0], so that bundle must live on the same node
+        # whose address we advertised. Sorting by the cluster head node instead
+        # (the previous default) breaks this whenever the head node owns no
+        # bundles in the gang (e.g. a CPU-only head in a GPU cluster): rank 0
+        # then lands on an arbitrary node, the store binds there, and every
+        # worker hangs connecting to the wrong (advertised) address until the
+        # distributed-init timeout fires and the gang is restarted.
         #
         # Example: dp_size=2, tp_size=2, 2 GPUs per node for simplicity
         #   Gang placement group = [{GPU: 1}, {GPU: 1}, {GPU: 1}, {GPU: 1}]
@@ -179,7 +203,9 @@ class DPServer(LLMServer):
         # not the per-replica placement group.
         bundles_per_replica = len(engine_config.placement_bundles)
         pg = get_placement_group(gang_context.pg_name)
-        sorted_indices = get_bundle_indices_sorted_by_node(pg)
+        sorted_indices = get_bundle_indices_sorted_by_node(
+            pg, driver_node_id=self.dp_node_id
+        )
         os.environ["VLLM_RAY_BUNDLE_INDICES"] = self._compute_bundle_indices(
             self.dp_rank, bundles_per_replica, sorted_indices
         )

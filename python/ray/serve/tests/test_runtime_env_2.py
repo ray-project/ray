@@ -18,11 +18,12 @@ job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 ray.init(address="auto", namespace="serve", job_config=job_config)
 
 
-@serve.deployment(version="1")
+@serve.deployment
 class Test:
     def __call__(self, *args):
         return open("hello").read()
 
+Test = Test.options(_internal=True, version="1")
 handle = serve.run(Test.bind())
 assert handle.remote().result() == "world"
 """
@@ -41,11 +42,12 @@ job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 ray.init(address="auto", namespace="serve", job_config=job_config)
 
 
-@serve.deployment(version="2")
+@serve.deployment
 class Test:
     def __call__(self, *args):
         return open("hello").read()
 
+Test = Test.options(_internal=True, version="2")
 handle = serve.run(Test.bind())
 assert handle.remote().result() == "world2"
 serve.delete(SERVE_DEFAULT_APP_NAME)

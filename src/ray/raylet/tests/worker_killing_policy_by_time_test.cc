@@ -22,6 +22,7 @@
 #include "ray/common/lease/lease_spec.h"
 #include "ray/common/memory_monitor_interface.h"
 #include "ray/raylet/tests/util.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 
@@ -33,6 +34,7 @@ class WorkerKillingPolicyByTimeTest : public ::testing::Test {
   JobID job_id_ = JobID::FromInt(75);
   int32_t no_retry_ = 0;
   int32_t has_retry_ = 1;
+  FakeClock clock_;
 
   static constexpr int64_t TOTAL_SYSTEM_MEMORY_BYTES = 2000;
   static constexpr int64_t KILL_BUFFER_BYTES = 100;
@@ -74,10 +76,10 @@ TEST_F(WorkerKillingPolicyByTimeTest, TestPolicySelectsNoWorkersOnEmptyWorkerPoo
 
 TEST_F(WorkerKillingPolicyByTimeTest, TestPolicyPrioritizesRetriableOverNonRetriable) {
   TaskID owner_id = TaskID::ForDriverTask(job_id_);
-  std::shared_ptr<WorkerInterface> retriable_worker =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1);
+  std::shared_ptr<WorkerInterface> retriable_worker = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1);
   std::shared_ptr<WorkerInterface> non_retriable_worker =
-      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK, 2);
+      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 2);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(non_retriable_worker);
@@ -99,14 +101,17 @@ TEST_F(WorkerKillingPolicyByTimeTest, TestPolicyPrioritizesRetriableOverNonRetri
 TEST_F(WorkerKillingPolicyByTimeTest,
        TestPolicyPrioritizesNewerWorkersWithinSameRetriability) {
   TaskID owner_id = TaskID::ForDriverTask(job_id_);
-  std::shared_ptr<WorkerInterface> older_retriable =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1);
-  std::shared_ptr<WorkerInterface> newer_retriable =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 2);
+  std::shared_ptr<WorkerInterface> older_retriable = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1);
+  clock_.AdvanceTime(absl::Milliseconds(1));
+  std::shared_ptr<WorkerInterface> newer_retriable = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 2);
+  clock_.AdvanceTime(absl::Milliseconds(1));
   std::shared_ptr<WorkerInterface> older_non_retriable =
-      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK, 3);
+      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 3);
+  clock_.AdvanceTime(absl::Milliseconds(1));
   std::shared_ptr<WorkerInterface> newer_non_retriable =
-      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK, 4);
+      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 4);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(older_retriable);
@@ -139,14 +144,17 @@ TEST_F(WorkerKillingPolicyByTimeTest,
 
 TEST_F(WorkerKillingPolicyByTimeTest, TestPolicyFreesEnoughWorkersToGetUnderThreshold) {
   TaskID owner_id = TaskID::ForDriverTask(job_id_);
-  std::shared_ptr<WorkerInterface> worker1 =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1);
-  std::shared_ptr<WorkerInterface> worker2 =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 2);
-  std::shared_ptr<WorkerInterface> worker3 =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 3);
-  std::shared_ptr<WorkerInterface> worker4 =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 4);
+  std::shared_ptr<WorkerInterface> worker1 = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1);
+  clock_.AdvanceTime(absl::Milliseconds(1));
+  std::shared_ptr<WorkerInterface> worker2 = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 2);
+  clock_.AdvanceTime(absl::Milliseconds(1));
+  std::shared_ptr<WorkerInterface> worker3 = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 3);
+  clock_.AdvanceTime(absl::Milliseconds(1));
+  std::shared_ptr<WorkerInterface> worker4 = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 4);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(worker1);
@@ -179,14 +187,14 @@ TEST_F(WorkerKillingPolicyByTimeTest, TestPolicyFreesEnoughWorkersToGetUnderThre
 TEST_F(WorkerKillingPolicyByTimeTest, TestPolicyRetriableFlagSetCorrectly) {
   TaskID owner_id = TaskID::ForDriverTask(job_id_);
 
-  std::shared_ptr<WorkerInterface> retriable_task =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1);
+  std::shared_ptr<WorkerInterface> retriable_task = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1);
   std::shared_ptr<WorkerInterface> non_retriable_task =
-      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK, 2);
+      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 2);
   std::shared_ptr<WorkerInterface> retriable_actor = CreateTaskWorker(
-      owner_id, has_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK, 3);
-  std::shared_ptr<WorkerInterface> non_retriable_actor =
-      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK, 4);
+      owner_id, has_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK, clock_, 3);
+  std::shared_ptr<WorkerInterface> non_retriable_actor = CreateTaskWorker(
+      owner_id, no_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK, clock_, 4);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(retriable_task);
@@ -217,10 +225,10 @@ TEST_F(WorkerKillingPolicyByTimeTest, TestPolicyRetriableFlagSetCorrectly) {
 
 TEST_F(WorkerKillingPolicyByTimeTest, TestPolicySelectsNoWorkersWhenKillingInProgress) {
   TaskID owner_id = TaskID::ForDriverTask(job_id_);
-  std::shared_ptr<WorkerInterface> worker1 =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1);
-  std::shared_ptr<WorkerInterface> worker2 =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 2);
+  std::shared_ptr<WorkerInterface> worker1 = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1);
+  std::shared_ptr<WorkerInterface> worker2 = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 2);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(worker1);
@@ -244,10 +252,11 @@ TEST_F(WorkerKillingPolicyByTimeTest, TestPolicySelectsNoWorkersWhenKillingInPro
 TEST_F(WorkerKillingPolicyByTimeTest,
        TestPolicySelectsNewWorkersAfterPreviousSelectedIsKilled) {
   TaskID owner_id = TaskID::ForDriverTask(job_id_);
-  std::shared_ptr<WorkerInterface> worker1 =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1);
-  std::shared_ptr<WorkerInterface> worker2 =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 2);
+  std::shared_ptr<WorkerInterface> worker1 = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1);
+  clock_.AdvanceTime(absl::Milliseconds(1));
+  std::shared_ptr<WorkerInterface> worker2 = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 2);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(worker1);
@@ -277,9 +286,10 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   TimeBasedWorkerKillingPolicy policy(
       THRESHOLD_BYTES, KILL_BUFFER_BYTES, IDLE_WORKER_KILLING_THRESHOLD_BYTES);
 
-  std::shared_ptr<WorkerInterface> idle_exceeding = CreateWorkerWithNoLease(port_, 1001);
+  std::shared_ptr<WorkerInterface> idle_exceeding =
+      CreateWorkerWithNoLease(port_, clock_, 1001);
   std::shared_ptr<WorkerInterface> idle_not_exceeding =
-      CreateWorkerWithNoLease(port_, 1002);
+      CreateWorkerWithNoLease(port_, clock_, 1002);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(idle_exceeding);
@@ -303,8 +313,10 @@ TEST_F(WorkerKillingPolicyByTimeTest, TestTwoIdleWorkersExceedingThresholdBothSe
   TimeBasedWorkerKillingPolicy policy(
       THRESHOLD_BYTES, KILL_BUFFER_BYTES, IDLE_WORKER_KILLING_THRESHOLD_BYTES);
 
-  std::shared_ptr<WorkerInterface> idle_exceed_1 = CreateWorkerWithNoLease(port_, 1001);
-  std::shared_ptr<WorkerInterface> idle_exceed_2 = CreateWorkerWithNoLease(port_, 1002);
+  std::shared_ptr<WorkerInterface> idle_exceed_1 =
+      CreateWorkerWithNoLease(port_, clock_, 1001);
+  std::shared_ptr<WorkerInterface> idle_exceed_2 =
+      CreateWorkerWithNoLease(port_, clock_, 1002);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(idle_exceed_1);
@@ -329,8 +341,10 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   TimeBasedWorkerKillingPolicy policy(
       THRESHOLD_BYTES, KILL_BUFFER_BYTES, IDLE_WORKER_KILLING_THRESHOLD_BYTES);
 
-  std::shared_ptr<WorkerInterface> idle_under_1 = CreateWorkerWithNoLease(port_, 1001);
-  std::shared_ptr<WorkerInterface> idle_under_2 = CreateWorkerWithNoLease(port_, 1002);
+  std::shared_ptr<WorkerInterface> idle_under_1 =
+      CreateWorkerWithNoLease(port_, clock_, 1001);
+  std::shared_ptr<WorkerInterface> idle_under_2 =
+      CreateWorkerWithNoLease(port_, clock_, 1002);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(idle_under_1);
@@ -357,22 +371,25 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   TaskID owner_id = TaskID::ForDriverTask(job_id_);
 
   // Cold-start idle worker (no lease ever granted) below the idle threshold
-  std::shared_ptr<WorkerInterface> cold_idle_under = CreateWorkerWithNoLease(port_, 1001);
+  std::shared_ptr<WorkerInterface> cold_idle_under =
+      CreateWorkerWithNoLease(port_, clock_, 1001);
 
   // Cold-start idle worker above the idle threshold
-  std::shared_ptr<WorkerInterface> cold_idle_over = CreateWorkerWithNoLease(port_, 1002);
+  std::shared_ptr<WorkerInterface> cold_idle_over =
+      CreateWorkerWithNoLease(port_, clock_, 1002);
 
   // Non-cold-start idle worker — held a lease previously
-  std::shared_ptr<WorkerInterface> non_cold_idle =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1003);
+  std::shared_ptr<WorkerInterface> non_cold_idle = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1003);
   // Simulate that the worker lease has been cleaned up.
   non_cold_idle->GrantLeaseId(LeaseID::Nil());
 
   // Worker with an active granted lease (non-idle)
-  std::shared_ptr<WorkerInterface> oldest_worker =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1004);
-  std::shared_ptr<WorkerInterface> newest_worker =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1005);
+  std::shared_ptr<WorkerInterface> oldest_worker = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1004);
+  clock_.AdvanceTime(absl::Milliseconds(1));
+  std::shared_ptr<WorkerInterface> newest_worker = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1005);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(cold_idle_under);
@@ -418,17 +435,19 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   // them first (no granted lease ID sorts first) but skips them, so they
   // contribute nothing toward memory_left_to_free.
   std::shared_ptr<WorkerInterface> oldest_idle_under =
-      CreateWorkerWithNoLease(port_, 1001);
+      CreateWorkerWithNoLease(port_, clock_, 1001);
   std::shared_ptr<WorkerInterface> newest_idle_under =
-      CreateWorkerWithNoLease(port_, 1002);
+      CreateWorkerWithNoLease(port_, clock_, 1002);
 
   // Leased workers, created oldest → newest. They sort newest-first.
-  std::shared_ptr<WorkerInterface> oldest_worker =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1003);
-  std::shared_ptr<WorkerInterface> middle_worker =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1004);
-  std::shared_ptr<WorkerInterface> newest_worker =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1005);
+  std::shared_ptr<WorkerInterface> oldest_worker = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1003);
+  clock_.AdvanceTime(absl::Milliseconds(1));
+  std::shared_ptr<WorkerInterface> middle_worker = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1004);
+  clock_.AdvanceTime(absl::Milliseconds(1));
+  std::shared_ptr<WorkerInterface> newest_worker = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1005);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(oldest_idle_under);
@@ -466,9 +485,12 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   TimeBasedWorkerKillingPolicy policy(
       THRESHOLD_BYTES, KILL_BUFFER_BYTES, IDLE_WORKER_KILLING_THRESHOLD_BYTES);
 
-  std::shared_ptr<WorkerInterface> idle_small = CreateWorkerWithNoLease(port_, 1001);
-  std::shared_ptr<WorkerInterface> idle_large = CreateWorkerWithNoLease(port_, 1002);
-  std::shared_ptr<WorkerInterface> idle_medium = CreateWorkerWithNoLease(port_, 1003);
+  std::shared_ptr<WorkerInterface> idle_small =
+      CreateWorkerWithNoLease(port_, clock_, 1001);
+  std::shared_ptr<WorkerInterface> idle_large =
+      CreateWorkerWithNoLease(port_, clock_, 1002);
+  std::shared_ptr<WorkerInterface> idle_medium =
+      CreateWorkerWithNoLease(port_, clock_, 1003);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(idle_small);
