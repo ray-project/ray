@@ -57,7 +57,6 @@ if TYPE_CHECKING:
     import fsspec
     import pandas as pd
     import pyarrow.fs
-
     from lerobot.datasets.dataset_metadata import LeRobotDatasetMetadata
 
 logger = logging.getLogger(__name__)
