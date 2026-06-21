@@ -382,7 +382,7 @@ def test_chunk_shapes_resolution_across_mixed_rank(
 # ---------------------------------------------------------------------------
 
 
-def test_align_axis_0_emits_wide_rows(aligned_zarrv2_store):
+def test_align_axis_0_emits_wide_rows(ray_start_regular_shared, aligned_zarrv2_store):
     """Wide-row schema: ``t_start``, ``t_stop``, one column per selected array."""
     datasource = zarrv2_datasource.ZarrV2Datasource(
         str(aligned_zarrv2_store),
@@ -407,7 +407,7 @@ def test_align_axis_0_emits_wide_rows(aligned_zarrv2_store):
     assert stops == [4, 8]
 
 
-def test_align_axis_0_column_set(aligned_zarrv2_store):
+def test_align_axis_0_column_set(ray_start_regular_shared, aligned_zarrv2_store):
     """array_paths selects which arrays are read; aligned mode emits one column
     per selected array (plus t_start/t_stop)."""
     datasource = zarrv2_datasource.ZarrV2Datasource(
@@ -454,7 +454,7 @@ def test_align_axis_0_rejects_divergent_axis_0_chunks(aligned_zarrv2_store):
 # ---------------------------------------------------------------------------
 
 
-def test_overlap_extends_chunk_data(aligned_zarrv2_store):
+def test_overlap_extends_chunk_data(ray_start_regular_shared, aligned_zarrv2_store):
     """``overlap=N`` makes each row's per-array slice cover ``N`` extra timesteps.
 
     Aligned store has shape[0]=8, ``chunk_shapes=[4]`` -> rows own [0,4) and [4,8).
@@ -548,7 +548,7 @@ def test_rejects_unsupported_filesystem_type():
 # ---------------------------------------------------------------------------
 
 
-def test_reads_zarr_zip_local_path(zarr_zip_store):
+def test_reads_zarr_zip_local_path(ray_start_regular_shared, zarr_zip_store):
     """A local ``.zarr.zip`` path auto-wires fsspec's ZipFileSystem."""
     datasource = zarrv2_datasource.ZarrV2Datasource(str(zarr_zip_store))
     # The store has one array "data" of shape (6, 2) chunks (3, 2) -> 2 chunks.
@@ -580,7 +580,7 @@ def test_get_read_tasks_batches_chunks_by_parallelism(tmp_path):
     assert all(task.metadata.input_files == (str(store_path),) for task in read_tasks)
 
 
-def test_long_form_chunk_index_order_matches_grid(tmp_path):
+def test_long_form_chunk_index_order_matches_grid(ray_start_regular_shared, tmp_path):
     """Lazy grid-range tasks emit chunk_index in the same row-major order as a
     full grid enumeration (regression guard for the lazy-unravel refactor)."""
     from itertools import product
@@ -597,7 +597,9 @@ def test_long_form_chunk_index_order_matches_grid(tmp_path):
     assert got == list(product(range(3), range(2)))
 
 
-def test_per_task_row_limit_caps_chunks_read(tmp_path, monkeypatch):
+def test_per_task_row_limit_caps_chunks_read(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
     """per_task_row_limit bounds how many chunks a task actually reads, so a
     downstream ``limit`` doesn't pull the whole batch's I/O."""
     store_path = tmp_path / "limit.zarr"
@@ -651,7 +653,7 @@ def test_read_chunk_retries_transient_io(monkeypatch):
     assert _FlakyArray.attempts == 3  # failed twice, then succeeded
 
 
-def test_long_form_schema_and_materialization(tmp_path):
+def test_long_form_schema_and_materialization(ray_start_regular_shared, tmp_path):
     """End-to-end: long-form rows are emitted with the expected columns and data."""
     store_path = tmp_path / "aligned.zarr"
     images_src = np.arange(20, dtype="<i4").reshape(5, 4)
@@ -691,7 +693,7 @@ def test_long_form_schema_and_materialization(tmp_path):
             )
 
 
-def test_chunk_shapes_override_changes_grid(tmp_path):
+def test_chunk_shapes_override_changes_grid(ray_start_regular_shared, tmp_path):
     """User-supplied chunk_shapes controls the chunk grid and row count."""
     store_path = tmp_path / "tile.zarr"
     src = np.arange(10, dtype="<i4")
@@ -702,7 +704,9 @@ def test_chunk_shapes_override_changes_grid(tmp_path):
     assert sorted(chunk.shape[0] for chunk in df["chunk"]) == [5, 5]
 
 
-def test_heterogeneous_store_emits_one_row_per_chunk(heterogeneous_zarrv2_store):
+def test_heterogeneous_store_emits_one_row_per_chunk(
+    ray_start_regular_shared, heterogeneous_zarrv2_store
+):
     """Mixed-rank/shape/dtype arrays each contribute their chunk count to the output."""
     datasource = zarrv2_datasource.ZarrV2Datasource(str(heterogeneous_zarrv2_store))
     df = _execute_read_tasks(datasource.get_read_tasks(parallelism=16))
@@ -752,7 +756,7 @@ def test_estimate_inmemory_data_size(tmp_path):
         lazy_fixture("local_fsspec_fs"),  # native fsspec
     ],
 )
-def test_read_zarr_basic_across_filesystems(fs, local_path):
+def test_read_zarr_basic_across_filesystems(ray_start_regular_shared, fs, local_path):
     """Round-trip a real Zarr store through read_zarr for each filesystem flavor.
 
     Mirrors the parametrized read-path coverage other Ray Data datasources use
@@ -784,7 +788,7 @@ def test_read_zarr_basic_across_filesystems(fs, local_path):
 # ---------------------------------------------------------------------------
 
 
-def test_read_zarr_integration_public_s3():
+def test_read_zarr_integration_public_s3(ray_start_regular_shared):
     """End-to-end read against a real Zarr store in a public S3 bucket.
 
     Uses ``s3://anonymous@ray-example-data/mnist-tiny.zarr`` — a 200-sample
@@ -807,12 +811,108 @@ def test_read_zarr_integration_public_s3():
     assert all(c.dtype == np.uint8 for c in label_rows["chunk"])
 
 
+def test_rejects_zarr_v3(tmp_path, monkeypatch):
+    """read_zarr targets zarr-python 2.x; an incompatible v3 install must raise a
+    clear, actionable error at construction, not a cryptic ImportError mid-read."""
+    monkeypatch.setattr(zarr, "__version__", "3.0.1")
+    with pytest.raises(ImportError, match=r"zarr-python 2\.x"):
+        zarrv2_datasource.ZarrV2Datasource(str(tmp_path))
+
+
+def test_explicit_filesystem_strips_uri_scheme(ray_start_regular_shared, tmp_path):
+    """An explicit ``filesystem=`` plus a scheme-prefixed path must strip the
+    scheme so the store path is backend-relative. Regression: pyarrow
+    filesystems can't resolve a ``file://`` / ``gs://`` prefix in the path."""
+    store_path = tmp_path / "scheme.zarr"
+    _write_real_zarr_store(store_path, {"data": (np.arange(6, dtype="<i4"), (2,))})
+
+    ds = zarrv2_datasource.ZarrV2Datasource(
+        f"file://{store_path}", filesystem=pyarrow.fs.LocalFileSystem()
+    )
+    assert ds._store_path == str(store_path)
+    df = _execute_read_tasks(ds.get_read_tasks(parallelism=2))
+    assert len(df) == 3
+
+
+def test_get_read_tasks_parallelism_zero(tmp_path):
+    """parallelism=0 must not divide by zero; fall back to a single task."""
+    store_path = tmp_path / "p0.zarr"
+    _write_real_zarr_store(store_path, {"data": (np.arange(10, dtype="<i4"), (2,))})
+    ds = zarrv2_datasource.ZarrV2Datasource(str(store_path))
+    tasks = ds.get_read_tasks(parallelism=0)
+    assert len(tasks) >= 1
+
+
+def test_align_axis_0_rejects_scalar_array(tmp_path):
+    """align_axis_0=True with a 0-D (scalar) array must raise a clear error
+    rather than an IndexError when reading the (empty) axis-0 chunk size."""
+    store_path = tmp_path / "scalar.zarr"
+    root = zarr.open_group(str(store_path), mode="w")
+    root.create_dataset("vec", data=np.arange(8, dtype="<i4"), chunks=(4,))
+    root.create_dataset("scalar", data=np.array(42, dtype="<i4"))  # 0-D
+    zarr.consolidate_metadata(zarr.DirectoryStore(str(store_path)))
+
+    with pytest.raises(ValueError, match=r"0-D \(scalar\)"):
+        zarrv2_datasource.ZarrV2Datasource(str(store_path), align_axis_0=True)
+
+
+def test_reads_zarr_zip_with_explicit_zip_filesystem(
+    ray_start_regular_shared, zarr_zip_store
+):
+    """A .zip path read through an explicitly-passed fsspec ZipFileSystem must
+    resolve the store at the archive root (store path ``""``), not treat the
+    ``.zip`` name as an entry inside the archive."""
+    zip_fs = fsspec.filesystem("zip", fo=str(zarr_zip_store))
+    ds = zarrv2_datasource.ZarrV2Datasource(str(zarr_zip_store), filesystem=zip_fs)
+    assert ds._store_path == ""
+    df = _execute_read_tasks(ds.get_read_tasks(parallelism=2))
+    assert len(df) == 2
+
+
+def test_align_axis_0_columns_unify_across_blocks(
+    ray_start_regular_shared, aligned_zarrv2_store
+):
+    """Wide-form gives each array its own column, so blocks combine cleanly
+    across the dataset even with trailing edge chunks of differing shape -- the
+    batch-safe schema for row-aligned arrays."""
+    from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
+    from ray.data.block import BlockAccessor
+
+    ds = zarrv2_datasource.ZarrV2Datasource(
+        str(aligned_zarrv2_store), align_axis_0=True, chunk_shapes=[3]
+    )
+    blocks = [block for task in ds.get_read_tasks(parallelism=64) for block in task()]
+    assert len(blocks) > 1  # actually exercise cross-block unification
+    schemas = [BlockAccessor.for_block(b).to_arrow().schema for b in blocks]
+    unified = unify_schemas(schemas)  # must not raise
+    assert {"t_start", "t_stop", "img", "state", "label"}.issubset(set(unified.names))
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
+
+
 # ---------------------------------------------------------------------------
 # Custom codec registration in Ray workers
 # ---------------------------------------------------------------------------
 
 
-def test_custom_codec_succeeds_with_worker_setup_hook(tmp_path):
+@pytest.fixture
+def fresh_ray():
+    """A clean Ray for a test that needs its own ``ray.init`` (e.g. a custom
+    ``runtime_env``). Unlike ``shutdown_only`` (teardown only), it also shuts
+    down any pre-existing cluster, so isolation doesn't depend on test order.
+    """
+    if ray.is_initialized():
+        ray.shutdown()
+    yield
+    if ray.is_initialized():
+        ray.shutdown()
+
+
+def test_custom_codec_succeeds_with_worker_setup_hook(fresh_ray, tmp_path):
     """``worker_process_setup_hook`` runs once per worker, before any task,
     registering a custom codec in the worker's process so chunk decode succeeds.
 
@@ -823,6 +923,11 @@ def test_custom_codec_succeeds_with_worker_setup_hook(tmp_path):
     runs the registration in each worker. The hook is passed as a *callable*
     (cloud-pickled to the workers), not a code string; defining it locally keeps
     the codec class out of the importable module surface.
+
+    The worker hook must be set at cluster start, so this needs its own
+    ``ray.init`` rather than the shared ``ray_start_regular_shared`` cluster.
+    The ``fresh_ray`` fixture guarantees a clean Ray before and after, so the
+    test is isolated regardless of where it runs in the suite.
     """
     import numcodecs
 
@@ -861,97 +966,13 @@ def test_custom_codec_succeeds_with_worker_setup_hook(tmp_path):
     arr[:] = np.arange(8, dtype="u1")
     zarr.consolidate_metadata(zarr.DirectoryStore(str(store_path)))
 
-    if ray.is_initialized():
-        ray.shutdown()
     ray.init(
         num_cpus=1,
         logging_level=logging.ERROR,
         log_to_driver=False,
         runtime_env={"worker_process_setup_hook": _register_codec},
     )
-    try:
-        ds = ray.data.read_zarr(str(store_path))
-        rows = sorted(ds.take_all(), key=lambda r: tuple(r["chunk_index"]))
-        recon = np.concatenate([r["chunk"] for r in rows])
-        np.testing.assert_array_equal(recon, np.arange(8, dtype="u1"))
-    finally:
-        ray.shutdown()
-
-
-def test_rejects_zarr_v3(tmp_path, monkeypatch):
-    """read_zarr targets zarr-python 2.x; an incompatible v3 install must raise a
-    clear, actionable error at construction, not a cryptic ImportError mid-read."""
-    monkeypatch.setattr(zarr, "__version__", "3.0.1")
-    with pytest.raises(ImportError, match=r"zarr-python 2\.x"):
-        zarrv2_datasource.ZarrV2Datasource(str(tmp_path))
-
-
-def test_explicit_filesystem_strips_uri_scheme(tmp_path):
-    """An explicit ``filesystem=`` plus a scheme-prefixed path must strip the
-    scheme so the store path is backend-relative. Regression: pyarrow
-    filesystems can't resolve a ``file://`` / ``gs://`` prefix in the path."""
-    store_path = tmp_path / "scheme.zarr"
-    _write_real_zarr_store(store_path, {"data": (np.arange(6, dtype="<i4"), (2,))})
-
-    ds = zarrv2_datasource.ZarrV2Datasource(
-        f"file://{store_path}", filesystem=pyarrow.fs.LocalFileSystem()
-    )
-    assert ds._store_path == str(store_path)
-    df = _execute_read_tasks(ds.get_read_tasks(parallelism=2))
-    assert len(df) == 3
-
-
-def test_get_read_tasks_parallelism_zero(tmp_path):
-    """parallelism=0 must not divide by zero; fall back to a single task."""
-    store_path = tmp_path / "p0.zarr"
-    _write_real_zarr_store(store_path, {"data": (np.arange(10, dtype="<i4"), (2,))})
-    ds = zarrv2_datasource.ZarrV2Datasource(str(store_path))
-    tasks = ds.get_read_tasks(parallelism=0)
-    assert len(tasks) >= 1
-
-
-def test_align_axis_0_rejects_scalar_array(tmp_path):
-    """align_axis_0=True with a 0-D (scalar) array must raise a clear error
-    rather than an IndexError when reading the (empty) axis-0 chunk size."""
-    store_path = tmp_path / "scalar.zarr"
-    root = zarr.open_group(str(store_path), mode="w")
-    root.create_dataset("vec", data=np.arange(8, dtype="<i4"), chunks=(4,))
-    root.create_dataset("scalar", data=np.array(42, dtype="<i4"))  # 0-D
-    zarr.consolidate_metadata(zarr.DirectoryStore(str(store_path)))
-
-    with pytest.raises(ValueError, match=r"0-D \(scalar\)"):
-        zarrv2_datasource.ZarrV2Datasource(str(store_path), align_axis_0=True)
-
-
-def test_reads_zarr_zip_with_explicit_zip_filesystem(zarr_zip_store):
-    """A .zip path read through an explicitly-passed fsspec ZipFileSystem must
-    resolve the store at the archive root (store path ``""``), not treat the
-    ``.zip`` name as an entry inside the archive."""
-    zip_fs = fsspec.filesystem("zip", fo=str(zarr_zip_store))
-    ds = zarrv2_datasource.ZarrV2Datasource(str(zarr_zip_store), filesystem=zip_fs)
-    assert ds._store_path == ""
-    df = _execute_read_tasks(ds.get_read_tasks(parallelism=2))
-    assert len(df) == 2
-
-
-def test_align_axis_0_columns_unify_across_blocks(aligned_zarrv2_store):
-    """Wide-form gives each array its own column, so blocks combine cleanly
-    across the dataset even with trailing edge chunks of differing shape -- the
-    batch-safe schema for row-aligned arrays."""
-    from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
-    from ray.data.block import BlockAccessor
-
-    ds = zarrv2_datasource.ZarrV2Datasource(
-        str(aligned_zarrv2_store), align_axis_0=True, chunk_shapes=[3]
-    )
-    blocks = [block for task in ds.get_read_tasks(parallelism=64) for block in task()]
-    assert len(blocks) > 1  # actually exercise cross-block unification
-    schemas = [BlockAccessor.for_block(b).to_arrow().schema for b in blocks]
-    unified = unify_schemas(schemas)  # must not raise
-    assert {"t_start", "t_stop", "img", "state", "label"}.issubset(set(unified.names))
-
-
-if __name__ == "__main__":
-    import sys
-
-    sys.exit(pytest.main(["-v", __file__]))
+    ds = ray.data.read_zarr(str(store_path))
+    rows = sorted(ds.take_all(), key=lambda r: tuple(r["chunk_index"]))
+    recon = np.concatenate([r["chunk"] for r in rows])
+    np.testing.assert_array_equal(recon, np.arange(8, dtype="u1"))
