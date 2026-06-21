@@ -5,21 +5,21 @@ from unittest.mock import MagicMock, patch
 import pydantic
 import pytest
 
-from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
 from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
 from ray.llm._internal.serve.core.configs.accelerators import (
     CPUAccelerator,
+    CPUConfig,
     GPUAccelerator,
+    GPUConfig,
     TPUAccelerator,
     TPUConfig,
-    CPUConfig,
-    GPUConfig
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     LoraConfig,
     ModelLoadingConfig,
 )
+from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
 
 CONFIG_DIRS_PATH = str(Path(__file__).parent / "configs")
 
