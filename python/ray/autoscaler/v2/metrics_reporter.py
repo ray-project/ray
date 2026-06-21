@@ -38,6 +38,10 @@ class AutoscalerMetricsReporter:
             }
 
         for instance in instances:
+            # Skip instances whose type is no longer in node_type_configs
+            # (e.g. after a worker group is deleted), to avoid KeyError.
+            if instance.instance_type not in status_count_by_type:
+                continue
             if InstanceUtil.is_ray_pending(instance.status):
                 status_count_by_type[instance.instance_type]["pending"] += 1
             elif InstanceUtil.is_ray_running(instance.status):
