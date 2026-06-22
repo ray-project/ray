@@ -1,22 +1,7 @@
-"""Ray Data datasource for LeRobot Dataset v3.
-
-A LeRobot v3 dataset is a flat table of timestep
-samples combining low-dimensional data (state, action, etc.) from chunked
-parquet files with decoded camera frames from chunked mp4 files.
-
-This datasource reads LeRobot v3 datasets from local or cloud storage,
-decoding video frames with torchcodec and aligning them with parquet data using
-episode metadata.  Metadata parsing is delegated to the upstream
-``lerobot.datasets.dataset_metadata.LeRobotDatasetMetadata`` (for a remote
-root, the small ``meta/`` tree is copied to a temp dir via fsspec and parsed
-locally); the lerobot instances themselves are kept pristine — all
-Ray-Data-specific derived state lives in :class:`_LeRobotRoot` bundles built
-on the driver and shipped to workers via ``ray.put``.
-"""
+"""Ray Data datasource for LeRobot Dataset v3."""
 
 from __future__ import annotations
 
-import enum
 import json
 import logging
 import os
@@ -46,7 +31,11 @@ from ray.data._internal.datasource._lerobot_compat import (
     decode_frames,
     new_decoder_cache,
 )
-from ray.data._internal.util import _check_import
+from ray.data._internal.util import (
+    _check_import,
+    _is_local_scheme,
+    _resolve_custom_scheme,
+)
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -62,31 +51,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
-class LeRobotPartitioning(enum.Enum):
-    """How the dataset is partitioned into Ray Data read tasks.
-
-    Attributes:
-        EPISODE: One task per episode. Best for small local datasets; maximum
-            task count regardless of I/O cost.
-        FILE_GROUP: One task per unique video-file set. Default — balanced
-            tasks with each mp4 opened once per task.
-        CHAIN: One task per connected component of episodes sharing video
-            files. Best for large cloud datasets where minimising total
-            video-file opens matters most.
-        SEQUENTIAL: One task for the whole dataset. Best for cloud datasets
-            where peak memory must be minimised over throughput.
-        ROW_BLOCK: Fixed-size blocks of N rows (set via ``block_size``
-            argument). Boundaries may split episodes.
-    """
-
-    EPISODE = "episode"
-    FILE_GROUP = "file_group"
-    CHAIN = "chain"
-    SEQUENTIAL = "sequential"
-    ROW_BLOCK = "row_block"
-
-
 class _LeRobotRoot(NamedTuple):
     """Per-root derived state for the LeRobot datasource built on the driver."""
 
@@ -96,8 +60,7 @@ class _LeRobotRoot(NamedTuple):
 
     fs: "fsspec.AbstractFileSystem"
     """Resolved fsspec filesystem for metadata + parquet I/O, built once on the
-    driver (see :func:`_resolve_filesystem`) and shipped to workers so they need
-    neither lerobot nor credential resolution at runtime."""
+    driver (see :func:`_resolve_filesystem`) and shipped to workers."""
 
     fs_root: str
     """Dataset path relative to ``fs``'s root for path joining
@@ -291,9 +254,6 @@ def _resolve_filesystem(
 ) -> Tuple["fsspec.AbstractFileSystem", str, str, Dict[str, Any], bool]:
     """Resolve the fsspec filesystem and paths for one LeRobot dataset *root*.
 
-    Mirrors ``read_zarr``'s resolution, adapted to the two I/O paths a LeRobot
-    dataset needs:
-
     * **metadata + parquet** are read through a single fsspec filesystem,
       returned as ``fs`` with the dataset path ``fs_root`` relative to it;
     * **video files** are streamed *by URI* through torchcodec — lerobot opens
@@ -322,7 +282,10 @@ def _resolve_filesystem(
     from fsspec.core import split_protocol
     from fsspec.spec import AbstractFileSystem
 
-    root_uri = str(root).rstrip("/")
+    # Resolve Ray Data's custom schemes (``local://``, ``example://``) to plain
+    # paths: they are scheduling/convenience markers, not real fsspec protocols,
+    # so both fsspec resolution and the by-URI video path need the bare path.
+    root_uri = _resolve_custom_scheme(str(root)).rstrip("/")
     storage_options = dict(storage_options or {})
 
     # Map Ray Data's anonymous@ convention onto the by-URI video path.
@@ -896,12 +859,11 @@ class LeRobotDatasource(Datasource):
         ...     "s3://anonymous@ray-example-data/lerobot/libero-mini",
         ... )
 
-        With partitioning:
+        One read task per episode:
 
-        >>> from ray.data.datasource import LeRobotPartitioning  # doctest: +SKIP
         >>> source = LeRobotDatasource(  # doctest: +SKIP
         ...     "s3://anonymous@ray-example-data/lerobot/libero-mini",
-        ...     partitioning=LeRobotPartitioning.EPISODE,
+        ...     group_by_episode=True,
         ... )
         >>> ds = ray.data.read_datasource(source)  # doctest: +SKIP
     """
@@ -925,13 +887,12 @@ class LeRobotDatasource(Datasource):
         self,
         root: Union[str, Path, List[Union[str, Path]]],
         *,
-        partitioning: Union[LeRobotPartitioning, str] = LeRobotPartitioning.FILE_GROUP,
+        group_by_episode: bool = False,
         filesystem: Optional[
             "pyarrow.fs.FileSystem | fsspec.AbstractFileSystem"
         ] = None,
         storage_options: Optional[Dict[str, Any]] = None,
         frame_tolerance_s: Optional[float] = None,
-        **kwargs: Any,
     ):
         """Initialize LeRobot datasource.
 
@@ -940,9 +901,11 @@ class LeRobotDatasource(Datasource):
                 or a list of such paths to read multiple datasets as one.
                 All roots must share the same camera keys (``video_keys`` and
                 ``image_keys``), ``fps``, and non-camera feature names.
-            partitioning: How to divide the dataset into read tasks.
-                Accepts a :class:`LeRobotPartitioning` member or its string value.
-                Defaults to ``FILE_GROUP``.
+            group_by_episode: How to group rows into read tasks. ``False`` (the
+                default) emits one task per video-file group (each mp4 opened
+                once per task); ``True`` emits one task per episode.
+                ``override_num_blocks`` then splits or merges these into the
+                requested number of output blocks.
             filesystem: Filesystem for reading metadata + parquet. A pyarrow
                 ``FileSystem`` (wrapped internally with
                 :class:`~fsspec.implementations.arrow.ArrowFSWrapper`) or an
@@ -961,14 +924,9 @@ class LeRobotDatasource(Datasource):
                 (the default) uses ``0.5 / fps`` — half a frame interval, e.g.
                 ~0.05s at 10fps. Increase to tolerate timestamp jitter; decrease
                 for stricter alignment.
-            **kwargs: Forwarded to the partitioning helper at read time.
-                ``ROW_BLOCK`` requires ``block_size``; other modes take none.
-
         Raises:
-            ValueError: If *partitioning* is not recognised, if
-                ``block_size`` is omitted for ``ROW_BLOCK`` mode, if
-                ``frame_tolerance_s`` is non-positive, or if roots have
-                incompatible schemas.
+            ValueError: If ``frame_tolerance_s`` is non-positive, or if roots
+                have incompatible schemas.
         """
         super().__init__()
 
@@ -986,6 +944,10 @@ class LeRobotDatasource(Datasource):
         self._frame_tolerance_s: Optional[float] = frame_tolerance_s
 
         roots = [root] if isinstance(root, (str, Path)) else list(root)
+        # A ``local://`` root means the files live only on the driver's node, so
+        # pin reads there rather than distributing them (the same convention as
+        # FileBasedDatasource). Bare paths are assumed shared/distributed.
+        self._supports_distributed_reads = not _is_local_scheme(roots)
         # Resolve the metadata/parquet filesystem + the by-URI video options
         # once per root on the driver: (fs, fs_root, video_root_uri, video_opts).
         self._resolved = [
@@ -1045,8 +1007,7 @@ class LeRobotDatasource(Datasource):
                     )
 
         # Derived state used by slicing + read tasks.  Computed once on the
-        # driver and shipped to workers via ray.put — workers don't need
-        # lerobot installed at runtime.
+        # driver and shipped to workers via ray.put.
         self._roots: List[_LeRobotRoot] = [
             _build_root(
                 m,
@@ -1063,16 +1024,7 @@ class LeRobotDatasource(Datasource):
             )
         ]
 
-        # Accept a LeRobotPartitioning member or its string value; the enum call
-        # coerces + validates in one step (raises ValueError on an unknown value).
-        try:
-            self._partitioning: str = LeRobotPartitioning(partitioning).value
-        except ValueError:
-            valid = ", ".join(m.value for m in LeRobotPartitioning)
-            raise ValueError(
-                f"Unknown partitioning {partitioning!r}. Choose from: {valid}"
-            ) from None
-        self._slice_kwargs: dict = kwargs
+        self._group_by_episode: bool = group_by_episode
 
     @property
     def meta(self) -> "LeRobotDatasetMetadata":
@@ -1082,10 +1034,6 @@ class LeRobotDatasource(Datasource):
     # ------------------------------------------------------------------
     # Slicing helpers
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _slices_sequential(ds_root: _LeRobotRoot) -> List[tuple]:
-        return [(0, ds_root.total_frames)]
 
     @staticmethod
     def _slices_by_episode(ds_root: _LeRobotRoot) -> List[tuple]:
@@ -1121,8 +1069,8 @@ class LeRobotDatasource(Datasource):
                         f"Non-contiguous episodes share video-file group "
                         f"key {key!r}: existing span ends at row {prev_to} "
                         f"but the next episode (index {i}) starts at "
-                        f"row {from_idx}. Use CHAIN or EPISODE partitioning "
-                        "for datasets with non-standard episode layouts."
+                        f"row {from_idx}. Use group_by_episode=True for "
+                        "datasets with non-standard episode layouts."
                     )
                 ranges[key] = (prev_from, to_idx)
             else:
@@ -1130,88 +1078,16 @@ class LeRobotDatasource(Datasource):
 
         return list(ranges.values())
 
-    @staticmethod
-    def _slices_by_chain(ds_root: _LeRobotRoot) -> List[tuple]:
-        eps = ds_root.episodes_table
-        n = len(eps)
-
-        parent = list(range(n))
-        rank = [0] * n
-
-        def find(x: int) -> int:
-            while parent[x] != x:
-                parent[x] = parent[parent[x]]
-                x = parent[x]
-            return x
-
-        def union(a: int, b: int) -> None:
-            ra, rb = find(a), find(b)
-            if ra == rb:
-                return
-            if rank[ra] < rank[rb]:
-                ra, rb = rb, ra
-            parent[rb] = ra
-            if rank[ra] == rank[rb]:
-                rank[ra] += 1
-
-        # Chain episodes that share a file. For video datasets that's any shared
-        # video file; for image datasets (no video) it's the shared data file.
-        if ds_root.video_keys:
-            group_prefixes = [(f"videos/{k}", k) for k in ds_root.video_keys]
-        else:
-            group_prefixes = [("data", "data")]
-        file_to_episode: dict = {}
-        for prefix, label in group_prefixes:
-            chunks = eps.column(f"{prefix}/chunk_index").to_pylist()
-            files = eps.column(f"{prefix}/file_index").to_pylist()
-            for ep_idx in range(n):
-                file_key = (label, chunks[ep_idx], files[ep_idx])
-                if file_key in file_to_episode:
-                    union(ep_idx, file_to_episode[file_key])
-                else:
-                    file_to_episode[file_key] = ep_idx
-
-        from_indices = eps.column("_global_from_index").to_pylist()
-        to_indices = eps.column("_global_to_index").to_pylist()
-
-        component_ranges: dict = {}
-        for ep_idx in range(n):
-            root_rep = find(ep_idx)
-            from_idx, to_idx = from_indices[ep_idx], to_indices[ep_idx]
-            if root_rep in component_ranges:
-                prev_from, prev_to = component_ranges[root_rep]
-                component_ranges[root_rep] = (
-                    min(prev_from, from_idx),
-                    max(prev_to, to_idx),
-                )
-            else:
-                component_ranges[root_rep] = (from_idx, to_idx)
-
-        return sorted(component_ranges.values())
-
-    @staticmethod
-    def _slices_by_row_block(
-        ds_root: _LeRobotRoot, block_size: Optional[int] = None
-    ) -> List[tuple]:
-        if block_size is None:
-            raise ValueError("block_size is required when partitioning is 'row_block'")
-        total = ds_root.total_frames
-        return [(i, min(i + block_size, total)) for i in range(0, total, block_size)]
-
     def _slice(self) -> List[tuple]:
         """Return ``(root_index, start, end)`` triples for all roots, sorted."""
-        slice_fns = {
-            "sequential": self._slices_sequential,
-            "episode": self._slices_by_episode,
-            "file_group": self._slices_by_file_group,
-            "chain": self._slices_by_chain,
-            "row_block": self._slices_by_row_block,
-        }
+        slice_fn = (
+            self._slices_by_episode
+            if self._group_by_episode
+            else self._slices_by_file_group
+        )
         all_ranges: List[tuple] = []
         for root_idx, ds_root in enumerate(self._roots):
-            ranges = sorted(
-                slice_fns[self._partitioning](ds_root, **self._slice_kwargs)
-            )
+            ranges = sorted(slice_fn(ds_root))
             for i in range(1, len(ranges)):
                 if ranges[i - 1][1] != ranges[i][0]:
                     raise ValueError(
@@ -1350,4 +1226,4 @@ class LeRobotDatasource(Datasource):
 
     @property
     def supports_distributed_reads(self) -> bool:
-        return True
+        return self._supports_distributed_reads

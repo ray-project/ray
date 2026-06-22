@@ -51,10 +51,7 @@ from ray.data._internal.datasource.kafka_datasource import (
     PerPartitionOffsets,
 )
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
-from ray.data._internal.datasource.lerobot_datasource import (
-    LeRobotDatasource,
-    LeRobotPartitioning,
-)
+from ray.data._internal.datasource.lerobot_datasource import LeRobotDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
@@ -2562,13 +2559,12 @@ def read_mcap(
 def read_lerobot(
     root: Union[str, List[str]],
     *,
-    partitioning: Union[LeRobotPartitioning, str] = LeRobotPartitioning.FILE_GROUP,
+    group_by_episode: bool = False,
     filesystem: Optional[
         "pyarrow.fs.FileSystem | fsspec.spec.AbstractFileSystem"
     ] = None,
     frame_tolerance_s: Optional[float] = None,
     storage_options: Optional[Dict[str, Any]] = None,
-    block_size: Optional[int] = None,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
@@ -2602,27 +2598,17 @@ def read_lerobot(
         ... )
         >>> ds.schema()  # doctest: +SKIP
 
-        Episode-level partitioning:
-
-        >>> from ray.data.datasource import LeRobotPartitioning  # doctest: +SKIP
-        >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
-        ...     "s3://anonymous@ray-example-data/lerobot/libero-mini",
-        ...     partitioning=LeRobotPartitioning.EPISODE,
-        ... )
-
-        Fixed-size row blocks:
+        One read task per episode (instead of per video-file group):
 
         >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
         ...     "s3://anonymous@ray-example-data/lerobot/libero-mini",
-        ...     partitioning=LeRobotPartitioning.ROW_BLOCK,
-        ...     block_size=1024,
+        ...     group_by_episode=True,
         ... )
 
         Read multiple datasets as one (paths may be local or cloud URIs):
 
         >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
         ...     ["/path/to/ds1", "/path/to/ds2"],
-        ...     partitioning=LeRobotPartitioning.CHAIN,
         ... )
 
     Args:
@@ -2630,15 +2616,10 @@ def read_lerobot(
             or a list of such paths to read multiple datasets as one.
             All roots must share the same ``video_keys``, ``image_keys``,
             ``fps``, and non-video feature names.
-        partitioning: How to partition the dataset into read tasks.
-            Accepts a ``LeRobotPartitioning`` member
-            or its string value. Options:
-
-            - ``FILE_GROUP`` (default): one task per unique video-file set.
-            - ``EPISODE``: one task per episode.
-            - ``CHAIN``: one task per connected component of shared files.
-            - ``SEQUENTIAL``: one task for the whole dataset.
-            - ``ROW_BLOCK``: fixed-size blocks (requires ``block_size`` kwarg).
+        group_by_episode: How to group rows into read tasks. ``False`` (the
+            default) emits one task per video-file group (each mp4 opened once
+            per task); ``True`` emits one task per episode. Use
+            ``override_num_blocks`` to tune the final number of output blocks.
         filesystem: Filesystem for reading metadata and parquet. A pyarrow
             ``FileSystem`` (wrapped internally with
             :class:`~fsspec.implementations.arrow.ArrowFSWrapper`) or an fsspec
@@ -2657,8 +2638,6 @@ def read_lerobot(
             credentials or a custom ``endpoint_url``). Used when ``filesystem``
             is not given; with a pyarrow ``filesystem`` it still supplies the
             credentials for the by-URI video decode path.
-        block_size: Rows per output block. Required when ``partitioning`` is
-            ``ROW_BLOCK``; ignored for the other modes.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
             Video decoding is CPU-intensive, so raising this (and lowering
             ``concurrency``) can prevent oversubscription.
@@ -2672,12 +2651,11 @@ def read_lerobot(
             concurrency is dynamically decided based on available resources.
         override_num_blocks: Override the number of output blocks from all read
             tasks. By default, the number is dynamically decided based on input
-            data size and available resources. The ``partitioning`` sets the base
-            grouping; ``override_num_blocks`` then merges or splits those groups
-            (in either direction) to reach the requested count. Splitting a
-            ``FILE_GROUP``/``CHAIN``/``SEQUENTIAL`` task re-opens its video
-            file(s) once per sub-task, so higher parallelism trades amortized
-            file opens for more concurrency.
+            data size and available resources. ``group_by_episode`` sets the
+            base grouping; ``override_num_blocks`` then merges or splits those
+            groups (in either direction) to reach the requested count. Splitting
+            a video-file group re-opens its file(s) once per sub-task, so higher
+            parallelism trades amortized file opens for more concurrency.
 
     Returns:
         :class:`~ray.data.Dataset` of fully-decoded frames with state, action,
@@ -2685,12 +2663,10 @@ def read_lerobot(
     """
     datasource = LeRobotDatasource(
         root=root,
-        partitioning=partitioning,
+        group_by_episode=group_by_episode,
         filesystem=filesystem,
         storage_options=storage_options,
         frame_tolerance_s=frame_tolerance_s,
-        # block_size is a ROW_BLOCK-only slice kwarg; only forward it when set.
-        **({"block_size": block_size} if block_size is not None else {}),
     )
     return read_datasource(
         datasource,

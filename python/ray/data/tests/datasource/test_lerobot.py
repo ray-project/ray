@@ -1,11 +1,3 @@
-"""Tests for the LeRobot v3 datasource.
-
-These tests create minimal LeRobot v3 dataset layouts on disk (parquet
-metadata files, data parquet files, and small mp4 video files) and verify
-that ``ray.data.read_lerobot`` reads them correctly across all partitioning
-modes.
-"""
-
 import importlib.util
 import json
 import os
@@ -20,16 +12,12 @@ import ray
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
-# lerobot >=0.5 requires Python >=3.12, so the whole stack (lerobot, its
-# torchcodec decoder, and the av writer these tests use) is only installed on
-# py3.12+. Skip cleanly elsewhere rather than failing on the lerobot import.
-AV_AVAILABLE = importlib.util.find_spec("av") is not None
-FSSPEC_AVAILABLE = importlib.util.find_spec("fsspec") is not None
+# lerobot >=0.5 requires Python >=3.12
 LEROBOT_AVAILABLE = importlib.util.find_spec("lerobot") is not None
 
 pytestmark = pytest.mark.skipif(
-    not (AV_AVAILABLE and FSSPEC_AVAILABLE and LEROBOT_AVAILABLE),
-    reason="lerobot[dataset] (Python >=3.12), av, or fsspec not available. "
+    not LEROBOT_AVAILABLE,
+    reason="lerobot[dataset] (Python >=3.12) not available. "
     "Install with: pip install 'lerobot[dataset]>=0.5.0' av fsspec",
 )
 
@@ -87,14 +75,19 @@ def create_lerobot_dataset(
 ) -> str:
     """Create a minimal LeRobot v3 dataset directory structure.
 
-    With ``image_camera=True`` the camera is stored as encoded-image structs
-    (``dtype: image``) inside the data parquet instead of as mp4 video (and no
-    ``videos/`` tree is written).
+    A camera is stored either as mp4 video (``has_video=True``, the default) or
+    as encoded-image structs (``dtype: image``) inside the data parquet
+    (``image_camera=True``, no ``videos/`` tree); the two are mutually
+    exclusive. Pass ``has_video=False`` for a dataset with no camera at all.
 
     Returns the root path.
     """
-    if image_camera:
-        has_video = False
+    if has_video and image_camera:
+        raise ValueError(
+            "has_video and image_camera are mutually exclusive: a camera is "
+            "stored as mp4 video or as in-parquet images, not both. For an "
+            "image-camera dataset pass has_video=False, image_camera=True."
+        )
     os.makedirs(root, exist_ok=True)
     total_frames = num_episodes * frames_per_episode
 
@@ -248,7 +241,9 @@ def lerobot_dataset_no_video(tmp_path):
 @pytest.fixture
 def lerobot_dataset_image(tmp_path):
     """Create a minimal LeRobot dataset with an in-parquet image camera."""
-    return create_lerobot_dataset(str(tmp_path / "ds_img"), image_camera=True)
+    return create_lerobot_dataset(
+        str(tmp_path / "ds_img"), has_video=False, image_camera=True
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -256,44 +251,46 @@ def lerobot_dataset_image(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_read_lerobot_basic(ray_start_regular_shared, lerobot_dataset):
-    """Test basic reading of a LeRobot dataset."""
-    ds = ray.data.read_lerobot(lerobot_dataset)
-    assert ds.count() == 15  # 3 episodes * 5 frames
-
+@pytest.mark.parametrize(
+    "fixture_name, has_camera",
+    [
+        ("lerobot_dataset", True),  # mp4 video camera
+        ("lerobot_dataset_no_video", False),  # no camera, scalars only
+        ("lerobot_dataset_image", True),  # in-parquet image camera
+    ],
+    ids=["video", "no_camera", "image"],
+)
+def test_read_lerobot_camera_kinds(
+    ray_start_regular_shared, request, fixture_name, has_camera
+):
+    """Each dataset shape (video / no-camera / image) reads to the expected rows
+    and scalar columns; a camera, when present, decodes to an HWC uint8 tensor
+    (and is absent otherwise)."""
+    ds = ray.data.read_lerobot(request.getfixturevalue(fixture_name))
     rows = ds.take_all()
+    assert len(rows) == 15  # 3 episodes * 5 frames
+
     for row in rows:
-        assert "index" in row
-        assert "episode_index" in row
-        assert "frame_index" in row
-        assert "timestamp" in row
-        assert "action" in row
-        assert "state" in row
-        assert "task" in row
-        assert "dataset_index" in row
-        assert "observation.image" in row
-
-
-def test_read_lerobot_no_video(ray_start_regular_shared, lerobot_dataset_no_video):
-    """Test reading a dataset without video keys."""
-    ds = ray.data.read_lerobot(lerobot_dataset_no_video)
-    assert ds.count() == 15
-
-
-def test_read_lerobot_image_camera(ray_start_regular_shared, lerobot_dataset_image):
-    """Image-based v3: cameras stored as in-parquet ``struct<bytes,path>`` are
-    decoded to HWC uint8 tensors, just like video cameras."""
-    ds = ray.data.read_lerobot(lerobot_dataset_image)
-    assert ds.count() == 15  # 3 episodes * 5 frames
-
-    rows = ds.take_all()
-    for row in rows:
-        frame = np.asarray(row["observation.image"])
-        assert frame.shape == (FRAME_H, FRAME_W, FRAME_C)
-        assert frame.dtype == np.uint8
-        # Decoded to a tensor, not passed through as the raw {bytes, path} struct.
-        assert not isinstance(row["observation.image"], dict)
-        assert "task" in row and "state" in row and "action" in row
+        for col in (
+            "index",
+            "episode_index",
+            "frame_index",
+            "timestamp",
+            "action",
+            "state",
+            "task",
+            "dataset_index",
+            "stats",
+        ):
+            assert col in row
+        if has_camera:
+            frame = np.asarray(row["observation.image"])
+            assert frame.shape == (FRAME_H, FRAME_W, FRAME_C)
+            assert frame.dtype == np.uint8
+            # Decoded to a tensor, not the raw {bytes, path} struct.
+            assert not isinstance(row["observation.image"], dict)
+        else:
+            assert "observation.image" not in row
 
 
 def test_read_lerobot_stats_column(ray_start_regular_shared, lerobot_dataset_no_video):
@@ -315,26 +312,6 @@ def test_read_lerobot_stats_column(ray_start_regular_shared, lerobot_dataset_no_
             )
 
 
-def test_read_lerobot_frame_tolerance_default(
-    ray_start_regular_shared, lerobot_dataset_no_video
-):
-    """frame_tolerance_s defaults to None (resolved to 0.5/fps at decode time)."""
-    from ray.data.datasource import LeRobotDatasource
-
-    source = LeRobotDatasource(lerobot_dataset_no_video)
-    assert source._roots[0].frame_tolerance_s is None
-
-
-def test_read_lerobot_frame_tolerance_override(
-    ray_start_regular_shared, lerobot_dataset_no_video
-):
-    """An explicit frame_tolerance_s is threaded onto every root."""
-    from ray.data.datasource import LeRobotDatasource
-
-    source = LeRobotDatasource(lerobot_dataset_no_video, frame_tolerance_s=0.25)
-    assert source._roots[0].frame_tolerance_s == 0.25
-
-
 def test_read_lerobot_frame_tolerance_invalid(
     ray_start_regular_shared, lerobot_dataset_no_video
 ):
@@ -343,18 +320,6 @@ def test_read_lerobot_frame_tolerance_invalid(
 
     with pytest.raises(ValueError, match="frame_tolerance_s must be"):
         LeRobotDatasource(lerobot_dataset_no_video, frame_tolerance_s=0)
-
-
-def test_read_lerobot_file_uri(ray_start_regular_shared, lerobot_dataset):
-    """A ``file://`` URI exercises the remote metadata-copy + torchcodec decode
-    path (the non-local branch) end to end, using only local files."""
-    ds = ray.data.read_lerobot("file://" + lerobot_dataset)
-    assert ds.count() == 15
-
-    rows = ds.take(1)
-    assert len(rows) == 1
-    frame = np.asarray(rows[0]["observation.image"], dtype=np.uint8)
-    assert frame.size == FRAME_H * FRAME_W * FRAME_C
 
 
 def test_lerobot_compat_warns_when_lerobot_supports_storage_options(monkeypatch):
@@ -372,73 +337,9 @@ def test_lerobot_compat_warns_when_lerobot_supports_storage_options(monkeypatch)
         compat._warn_if_native_available()
 
 
-def test_read_lerobot_sequential(ray_start_regular_shared, lerobot_dataset):
-    """Test SEQUENTIAL partitioning."""
-    from ray.data.datasource import LeRobotPartitioning
-
-    ds = ray.data.read_lerobot(
-        lerobot_dataset, partitioning=LeRobotPartitioning.SEQUENTIAL
-    )
-    assert ds.count() == 15
-
-
-def test_read_lerobot_episode(ray_start_regular_shared, lerobot_dataset):
-    """Test EPISODE partitioning."""
-    from ray.data.datasource import LeRobotPartitioning
-
-    ds = ray.data.read_lerobot(
-        lerobot_dataset, partitioning=LeRobotPartitioning.EPISODE
-    )
-    assert ds.count() == 15
-
-    rows = ds.take_all()
-    episode_indices = {row["episode_index"] for row in rows}
-    assert episode_indices == {0, 1, 2}
-
-
-def test_read_lerobot_row_block(ray_start_regular_shared, lerobot_dataset):
-    """Test ROW_BLOCK partitioning."""
-    from ray.data.datasource import LeRobotPartitioning
-
-    ds = ray.data.read_lerobot(
-        lerobot_dataset,
-        partitioning=LeRobotPartitioning.ROW_BLOCK,
-        block_size=5,
-    )
-    assert ds.count() == 15
-
-
-def test_read_lerobot_chain(ray_start_regular_shared, lerobot_dataset):
-    """Test CHAIN partitioning."""
-    from ray.data.datasource import LeRobotPartitioning
-
-    ds = ray.data.read_lerobot(lerobot_dataset, partitioning=LeRobotPartitioning.CHAIN)
-    assert ds.count() == 15
-
-
-def test_read_lerobot_file_group(ray_start_regular_shared, lerobot_dataset):
-    """Test FILE_GROUP partitioning (default)."""
-    from ray.data.datasource import LeRobotPartitioning
-
-    ds = ray.data.read_lerobot(
-        lerobot_dataset, partitioning=LeRobotPartitioning.FILE_GROUP
-    )
-    assert ds.count() == 15
-
-
-def test_read_lerobot_string_partitioning(ray_start_regular_shared, lerobot_dataset):
-    """Test that string partitioning values work."""
-    ds = ray.data.read_lerobot(lerobot_dataset, partitioning="episode")
-    assert ds.count() == 15
-
-
-def test_read_lerobot_scalar_parity(ray_start_regular_shared, lerobot_dataset):
-    """Test that scalar columns are correct across partitioning modes."""
-    from ray.data.datasource import LeRobotPartitioning
-
-    ds = ray.data.read_lerobot(
-        lerobot_dataset, partitioning=LeRobotPartitioning.SEQUENTIAL
-    )
+def test_read_lerobot_row_values(ray_start_regular_shared, lerobot_dataset):
+    """Scalar columns and action/state vectors carry the expected per-row values."""
+    ds = ray.data.read_lerobot(lerobot_dataset)
     rows = sorted(ds.take_all(), key=lambda r: r["index"])
 
     for i, row in enumerate(rows):
@@ -447,38 +348,10 @@ def test_read_lerobot_scalar_parity(ray_start_regular_shared, lerobot_dataset):
         assert row["frame_index"] == i % 5
         assert row["task"] == "test_task"
         assert row["dataset_index"] == 0
-
-
-def test_read_lerobot_action_state_values(ray_start_regular_shared, lerobot_dataset):
-    """Test that action and state vector values are correct."""
-    from ray.data.datasource import LeRobotPartitioning
-
-    ds = ray.data.read_lerobot(
-        lerobot_dataset, partitioning=LeRobotPartitioning.SEQUENTIAL
-    )
-    rows = sorted(ds.take_all(), key=lambda r: r["index"])
-
-    for row in rows:
-        i = row["index"]
         action = np.asarray(row["action"], dtype=np.float32).flatten()
         state = np.asarray(row["state"], dtype=np.float32).flatten()
         np.testing.assert_allclose(action, [float(i), float(i + 1)], rtol=1e-5)
         np.testing.assert_allclose(state, [float(i) * 0.1, float(i) * 0.2], rtol=1e-5)
-
-
-def test_read_lerobot_video_frames_present(ray_start_regular_shared, lerobot_dataset):
-    """Test that video frames are decoded and present."""
-    from ray.data.datasource import LeRobotPartitioning
-
-    ds = ray.data.read_lerobot(
-        lerobot_dataset, partitioning=LeRobotPartitioning.SEQUENTIAL
-    )
-    rows = ds.take(1)
-    assert len(rows) == 1
-
-    frame = np.asarray(rows[0]["observation.image"], dtype=np.uint8)
-    # Frame should be reshapeable to (H, W, C)
-    assert frame.size == FRAME_H * FRAME_W * FRAME_C
 
 
 def test_read_lerobot_multi_root(ray_start_regular_shared, tmp_path):
@@ -507,25 +380,6 @@ def test_read_lerobot_missing_dataset(ray_start_regular_shared):
     """Test error on non-existent dataset."""
     with pytest.raises(FileNotFoundError, match="meta/info.json"):
         ray.data.read_lerobot("/nonexistent/dataset")
-
-
-def test_read_lerobot_invalid_partitioning(ray_start_regular_shared, lerobot_dataset):
-    """Test error on invalid partitioning mode."""
-    with pytest.raises(ValueError, match="Unknown partitioning"):
-        ray.data.read_lerobot(lerobot_dataset, partitioning="invalid")
-
-
-def test_read_lerobot_row_block_requires_block_size(
-    ray_start_regular_shared, lerobot_dataset
-):
-    """Test that ROW_BLOCK requires block_size."""
-    from ray.data.datasource import LeRobotPartitioning
-
-    with pytest.raises(ValueError, match="block_size is required"):
-        ds = ray.data.read_lerobot(
-            lerobot_dataset, partitioning=LeRobotPartitioning.ROW_BLOCK
-        )
-        ds.materialize()
 
 
 def test_read_lerobot_incompatible_fps_raises(ray_start_regular_shared, tmp_path):
@@ -572,48 +426,50 @@ def test_read_lerobot_metadata(ray_start_regular_shared, lerobot_dataset):
     assert source.meta.fps == FPS
 
 
-def test_read_lerobot_all_modes_same_row_count(
+def test_read_lerobot_local_scheme_pins_reads(
     ray_start_regular_shared, lerobot_dataset
 ):
-    """All partitioning modes must produce the same row count."""
-    from ray.data.datasource import LeRobotPartitioning
+    """A ``local://`` root reads correctly and pins reads to the driver
+    (``supports_distributed_reads`` is False); a bare path stays distributed."""
+    from ray.data.datasource import LeRobotDatasource
 
-    expected = 15
-    for mode in LeRobotPartitioning:
-        kwargs = {}
-        if mode == LeRobotPartitioning.ROW_BLOCK:
-            kwargs["block_size"] = 5
-        ds = ray.data.read_lerobot(lerobot_dataset, partitioning=mode, **kwargs)
-        assert (
-            ds.count() == expected
-        ), f"Mode {mode.name}: expected {expected}, got {ds.count()}"
+    assert LeRobotDatasource(lerobot_dataset).supports_distributed_reads is True
+
+    source = LeRobotDatasource(f"local://{lerobot_dataset}")
+    assert source.supports_distributed_reads is False
+    # The local:// scheme is stripped, so reading still works.
+    assert ray.data.read_lerobot(f"local://{lerobot_dataset}").count() == 15
+
+
+@pytest.mark.parametrize("group_by_episode", [False, True])
+def test_read_lerobot_grouping_same_row_count(
+    ray_start_regular_shared, lerobot_dataset, group_by_episode
+):
+    """Both groupings (per file-group and per episode) yield the same rows."""
+    ds = ray.data.read_lerobot(lerobot_dataset, group_by_episode=group_by_episode)
+    assert ds.count() == 15
 
 
 def test_read_lerobot_override_num_blocks_splits_and_merges(
     ray_start_regular_shared, lerobot_dataset
 ):
-    """``override_num_blocks`` adjusts the base partitioning in both directions
-    -- splitting a single group into more tasks and merging many into fewer --
-    without dropping or duplicating rows."""
-    from ray.data.datasource import LeRobotDatasource, LeRobotPartitioning
+    """``override_num_blocks`` adjusts the base grouping in both directions --
+    splitting groups into more tasks and merging them into fewer -- without
+    dropping or duplicating rows."""
+    from ray.data.datasource import LeRobotDatasource
 
-    # SEQUENTIAL is one base group; override splits it into more read tasks,
-    # each decoding its own contiguous slice of the (shared) video file.
-    source = LeRobotDatasource(
-        lerobot_dataset, partitioning=LeRobotPartitioning.SEQUENTIAL
-    )
-    tasks = source.get_read_tasks(3)
-    assert len(tasks) == 3
+    # The fixture has three file groups (one mp4 per episode); ask for more
+    # tasks than that to force splitting, and check every row is covered once.
+    source = LeRobotDatasource(lerobot_dataset)
+    tasks = source.get_read_tasks(6)
+    assert len(tasks) == 6
     indices = [
         i for t in tasks for block in t() for i in block.column("index").to_pylist()
     ]
     assert sorted(indices) == list(range(15)), "split tasks must cover every row once"
 
-    # EPISODE is three base groups; override merges them down to two tasks.
-    source = LeRobotDatasource(
-        lerobot_dataset, partitioning=LeRobotPartitioning.EPISODE
-    )
-    assert len(source.get_read_tasks(2)) == 2
+    # Ask for fewer tasks than groups to force merging.
+    assert len(LeRobotDatasource(lerobot_dataset).get_read_tasks(2)) == 2
 
     # End to end, the override is honored without changing the row count.
     ds = ray.data.read_lerobot(lerobot_dataset, override_num_blocks=8)
@@ -627,7 +483,7 @@ def test_read_lerobot_inconsistent_task_index_raises(
     must raise a clear error, not a bare KeyError mid-stream."""
     from ray.data.datasource import LeRobotDatasource
 
-    source = LeRobotDatasource(lerobot_dataset, partitioning="sequential")
+    source = LeRobotDatasource(lerobot_dataset)
     # Drop a referenced task id from the metadata to simulate an inconsistent
     # dataset (data references a task with no meta/tasks.parquet entry).
     root = source._roots[0]
@@ -679,49 +535,6 @@ def test_resolve_filesystem_video_credentials(
     assert unavailable is expect_unavailable
     if expect_key is not None:
         assert video_opts.get("key") == expect_key
-
-
-# ---------------------------------------------------------------------------
-# Public-bucket integration test
-# ---------------------------------------------------------------------------
-
-
-def test_read_lerobot_integration_public_s3(ray_start_regular_shared):
-    """End-to-end read against a real LeRobot v3 dataset in a public S3 bucket.
-
-    Uses ``s3://anonymous@ray-example-data/lerobot/libero-mini`` -- a 3-episode
-    (843-frame) slice of LIBERO-10 with two 256x256 video cameras
-    (``observation.images.image``, ``observation.images.wrist_image``),
-    ``observation.state`` (8), ``action`` (7), and 3 distinct task strings.
-    """
-    ds = ray.data.read_lerobot("s3://anonymous@ray-example-data/lerobot/libero-mini")
-
-    names = ds.schema().names
-    for col in (
-        "observation.images.image",
-        "observation.images.wrist_image",
-        "observation.state",
-        "action",
-        "task",
-        "dataset_index",
-        "stats",
-    ):
-        assert col in names, col
-
-    rows = ds.take_all()
-    assert len(rows) == 843
-
-    row = rows[0]
-    for cam in ("observation.images.image", "observation.images.wrist_image"):
-        frame = np.asarray(row[cam])
-        assert frame.shape == (256, 256, 3)
-        assert frame.dtype == np.uint8
-    assert np.asarray(row["observation.state"]).shape == (8,)
-    assert np.asarray(row["action"]).shape == (7,)
-    assert isinstance(row["task"], str) and row["task"]
-
-    # LIBERO interleaves tasks, so the 3 episodes span 3 distinct task strings.
-    assert len({r["task"] for r in rows}) == 3
 
 
 if __name__ == "__main__":

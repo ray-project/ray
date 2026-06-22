@@ -1,10 +1,7 @@
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
-from ray.data._internal.datasource.lerobot_datasource import (
-    LeRobotDatasource,
-    LeRobotPartitioning,
-)
+from ray.data._internal.datasource.lerobot_datasource import LeRobotDatasource
 from ray.data._internal.datasource.mcap_datasource import (
     MCAPDatasource,
     TimeRange,
@@ -64,7 +61,6 @@ __all__ = [
     "FileMetadataProvider",
     "FilenameProvider",
     "LeRobotDatasource",
-    "LeRobotPartitioning",
     "MCAPDatasource",
     "PartitionStyle",
     "PathPartitionFilter",
