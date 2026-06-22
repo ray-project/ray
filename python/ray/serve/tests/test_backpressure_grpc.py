@@ -8,8 +8,17 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import RequestProtocol
+from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
+
+# gRPC ingress is served by direct-ingress mode, not by HAProxy (which fronts
+# HTTP only). These gRPC backpressure tests are not applicable under HAProxy
+# ingress; gRPC coverage lives in the direct-ingress test steps.
+pytestmark = pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY,
+    reason="gRPC ingress is served by direct-ingress mode, not HAProxy.",
+)
 
 
 def test_grpc_backpressure(serve_instance):

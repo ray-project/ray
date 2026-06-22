@@ -12,6 +12,7 @@ from ray import serve
 from ray._common.test_utils import SignalActor
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.test_utils import (
@@ -29,6 +30,15 @@ from ray.serve.config import gRPCOptions
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.grpc_util import RayServegRPCContext, gRPCInputStream
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
+
+# gRPC ingress is served by direct-ingress mode (each replica runs its own gRPC
+# server), not by HAProxy, which fronts HTTP only. These gRPC tests are not
+# applicable under HAProxy ingress; gRPC coverage lives in the direct-ingress
+# test steps (RAY_SERVE_ENABLE_DIRECT_INGRESS=1).
+pytestmark = pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY,
+    reason="gRPC ingress is served by direct-ingress mode, not HAProxy.",
+)
 
 
 def test_serving_grpc_requests(ray_cluster):
