@@ -818,6 +818,12 @@ def _map_task(
         yielded_schema: bool = False
 
         def transform_iter_factory():
+            # Clear any per-task custom stats before each attempt (the
+            # transformer instance is reused across a worker's tasks, and across
+            # retries of this one), so a prior task/attempt's stats can't leak
+            # into this one. A producing transform repopulates it before the
+            # first block is yielded.
+            map_transformer.reset_custom_op_stats()
             blocks_iter = (
                 _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
             )
@@ -865,9 +871,9 @@ def _map_task(
                         task_exec_stats=TaskExecWorkerStats(
                             task_wall_time_s=task_dur_s,
                             max_uss_bytes=profiler.estimate_max_uss(),
-                            # Set by a producing transform via the TaskContext;
-                            # or set to None if operator does not report any custom stats.
-                            custom_op_stats=ctx.custom_op_stats,
+                            # Set by a producing transform on the
+                            # MapTransformer; None if the op reports nothing.
+                            custom_op_stats=map_transformer.custom_op_stats(),
                         ),
                     ),
                     schema=block_schema if not yielded_schema else None,

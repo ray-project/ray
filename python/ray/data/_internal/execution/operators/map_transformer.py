@@ -20,7 +20,13 @@ from ray._common.utils import env_integer
 from ray.data._internal.block_batching.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
-from ray.data.block import BatchFormat, Block, BlockAccessor, DataBatch
+from ray.data.block import (
+    BatchFormat,
+    Block,
+    BlockAccessor,
+    CustomOpStats,
+    DataBatch,
+)
 
 _DEFAULT_BATCH_SIZE_BYTES: int = env_integer(
     "RAY_DATA_DEFAULT_BATCH_SIZE_BYTES", 16 * 1024 * 1024  # 16 MiB
@@ -173,6 +179,10 @@ class MapTransformer:
         self._init_fn = init_fn if init_fn is not None else lambda: None
         self._output_block_size_option_override = output_block_size_option_override
         self._udf_time_s = 0
+        # Per-task stats reported by a transform during
+        # execution
+        # ``None`` for any operator that reports nothing.
+        self._custom_op_stats: Optional[CustomOpStats] = None
 
         # Add transformations
         self.add_transform_fns(transform_fns)
@@ -282,6 +292,23 @@ class MapTransformer:
 
     def _report_udf_time(self, udf_time: float) -> None:
         self._udf_time_s += udf_time
+
+    def set_custom_op_stats(self, stats: CustomOpStats) -> None:
+        """Set the per-task CustomOpStats to carry back to the driver.
+
+        Call once per task. ``CustomOpStats`` is frozen, so don't reassign its
+        fields; but it may reference mutable state the producer keeps updating
+        as the task runs.
+        """
+        self._custom_op_stats = stats
+
+    def custom_op_stats(self) -> Optional[CustomOpStats]:
+        """Per-task custom stats reported by a transform, else ``None``."""
+        return self._custom_op_stats
+
+    def reset_custom_op_stats(self) -> None:
+        """Clear per-task custom stats before a task runs"""
+        self._custom_op_stats = None
 
 
 class RowMapTransformFn(MapTransformFn):

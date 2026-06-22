@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional
 if TYPE_CHECKING:
     from ray.data._internal.execution.operators.map_transformer import MapTransformer
     from ray.data._internal.progress.base_progress import BaseProgressBar
-    from ray.data.block import CustomOpStats
 
 
 _thread_local = threading.local()
@@ -50,10 +49,6 @@ class TaskContext:
 
     # Additional keyword arguments passed to the task.
     kwargs: Dict[str, Any] = field(default_factory=dict)
-
-    # Custom operator stats, set by a task on the worker. None if operator does not report
-    # any custom stats.
-    custom_op_stats: Optional["CustomOpStats"] = None
 
     @classmethod
     def get_current(cls) -> Optional["TaskContext"]:
