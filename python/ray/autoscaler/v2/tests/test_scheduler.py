@@ -3592,7 +3592,8 @@ class TestSchedulerPerformanceOptimizations:
         reply = ResourceDemandScheduler(event_logger).schedule(request)
         to_launch, _ = _launch_and_terminate(reply)
         # All existing nodes have < 4 CPU available, must launch new.
-        assert to_launch == {"type_1": 2}
+        # 5 requests × 4 CPU each, new nodes have 10 CPU → fits 2 per node → need 3.
+        assert to_launch == {"type_1": 3}
 
     def test_quick_reject_does_not_skip_feasible_nodes(self):
         """Nodes with sufficient resources should still be scheduled on."""
