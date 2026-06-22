@@ -814,7 +814,10 @@ Ray Data interoperates with PyTorch and TensorFlow datasets.
 
         To convert a PyTorch dataset to a Ray Dataset, call :func:`~ray.data.from_torch`.
 
+        .. The mirror for CIFAR10 has historically been unreliable, so we skip the test.
+
         .. testcode::
+            :skipif: True
 
             import ray
             from torch.utils.data import Dataset
@@ -844,6 +847,7 @@ Ray Data interoperates with PyTorch and TensorFlow datasets.
             function with small datasets like MNIST or CIFAR.
 
         .. testcode::
+            :skipif: True
 
             import ray
             import tensorflow_datasets as tfds
