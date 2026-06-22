@@ -615,26 +615,37 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
     // a RAM-only kernel constraint. Per-tick `used_bytes` from
     // TakeUserSliceMemoryUsageSnapshot includes user-slice swap when the
     // flag is on, so add the user cgroup's swap.max budget to keep the
-    // comparison apples-to-apples. Matches the parse safety used elsewhere:
-    // accept all-digit only, treat "max" / overflow / missing as 0.
+    // comparison apples-to-apples. "max" / overflow means the user slice
+    // inherits the parent's swap budget (typically unlimited at the root),
+    // so fall back to host swap — same semantics as GetCGroupMemoryBytes
+    // and the Python helper in ray._common.utils.
     if (RayConfig::instance().count_swap_in_memory_monitor()) {
       StatusOr<std::string> user_swap_max_or =
           cgroup_manager.GetUserCgroupConstraintValue(kCgroupsV2MemorySwapMaxPath);
       if (user_swap_max_or.ok()) {
         const std::string &user_swap_max_str = user_swap_max_or.value();
-        if (!user_swap_max_str.empty() &&
-            std::all_of(user_swap_max_str.begin(),
-                        user_swap_max_str.end(),
-                        [](unsigned char c) { return std::isdigit(c); })) {
+        bool unlimited = user_swap_max_str.empty() ||
+                         !std::all_of(user_swap_max_str.begin(),
+                                      user_swap_max_str.end(),
+                                      [](unsigned char c) { return std::isdigit(c); });
+        if (!unlimited) {
           try {
             int64_t user_swap_max_bytes = std::stoll(user_swap_max_str);
             if (user_swap_max_bytes > 0) {
               resolved_memory_threshold_bytes += user_swap_max_bytes;
             }
           } catch (const std::out_of_range &) {
-            // ULLONG_MAX sentinel etc. — treat as unlimited (add nothing).
+            // ULLONG_MAX sentinel — treat as unlimited.
+            unlimited = true;
           } catch (const std::invalid_argument &) {
             // Defensive; pre-filtered by std::all_of.
+            unlimited = true;
+          }
+        }
+        if (unlimited) {
+          auto [host_swap_total, _host_swap_used] = GetHostSwapBytes();
+          if (host_swap_total > 0) {
+            resolved_memory_threshold_bytes += host_swap_total;
           }
         }
       }
