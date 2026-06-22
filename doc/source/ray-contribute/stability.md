@@ -1,25 +1,26 @@
-.. meta::
-    :description: Defines Ray's API stability guarantees and the PublicAPI (alpha, beta, stable), DeveloperAPI, and Deprecated annotations that label public interfaces. Read this to understand the stability to expect from a Ray API or how to annotate one you're adding.
+---
+myst:
+  html_meta:
+    description: "Defines Ray's API stability guarantees and the PublicAPI (alpha, beta, stable), DeveloperAPI, and Deprecated annotations that label public interfaces. Read this to understand the stability to expect from a Ray API or how to annotate one you're adding."
+---
 
-.. _api-stability:
+(api-stability)=
 
-API Stability
-=============
+# API Stability
 
 Ray provides stability guarantees for its public APIs in Ray core and libraries, which are decorated/labeled accordingly.
 
 An API can be labeled:
 
-* :ref:`PublicAPI <public-api-def>`, which means the API is exposed to end users. PublicAPI has three sub-levels (alpha, beta, stable), as described below.
-* :ref:`DeveloperAPI <developer-api-def>`, which means the API is explicitly exposed to *advanced* Ray users and library developers
-* :ref:`Deprecated <deprecated-api-def>`, which may be removed in future releases of Ray.
+* {ref}`PublicAPI <public-api-def>`, which means the API is exposed to end users. PublicAPI has three sub-levels (alpha, beta, stable), as described below.
+* {ref}`DeveloperAPI <developer-api-def>`, which means the API is explicitly exposed to *advanced* Ray users and library developers
+* {ref}`Deprecated <deprecated-api-def>`, which may be removed in future releases of Ray.
 
-Ray's PublicAPI stability definitions are based off the `Google stability level guidelines <https://google.aip.dev/181>`_, with minor differences:
+Ray's PublicAPI stability definitions are based off the [Google stability level guidelines](https://google.aip.dev/181), with minor differences:
 
-.. _api-stability-alpha:
+(api-stability-alpha)=
 
-Alpha
-~~~~~
+## Alpha
 
 An *alpha* component undergoes rapid iteration with a known set of users who
 **must** be tolerant of change. The number of users **should** be a
@@ -29,10 +30,9 @@ of them individually.
 Breaking changes **must** be both allowed and expected in alpha components, and
 users **must** have no expectation of stability.
 
-.. _api-stability-beta:
+(api-stability-beta)=
 
-Beta
-~~~~
+## Beta
 
 A *beta* component **must** be considered complete and ready to be declared
 stable, subject to public testing.
@@ -45,19 +45,18 @@ but **may** include backwards-incompatible changes to beta components.
 Backwards-incompatible changes **must** be made only after a reasonable
 deprecation period to provide users with an opportunity to migrate their code.
 
-.. _api-stability-stable:
+(api-stability-stable)=
 
-Stable
-~~~~~~
+## Stable
 
 A *stable* component **must** be fully-supported over the lifetime of the major
 API version. Because users expect such stability from components marked stable,
 there **must** be no breaking changes to these components within a major version
 (excluding extraordinary circumstances).
 
-Docstrings
-----------
+### Docstrings
 
+```{eval-rst}
 .. _public-api-def:
 
 .. autofunction:: ray.util.annotations.PublicAPI
@@ -69,5 +68,6 @@ Docstrings
 .. _deprecated-api-def:
 
 .. autofunction:: ray.util.annotations.Deprecated
+```
 
 Undecorated functions can be generally assumed to not be part of the Ray public API.
