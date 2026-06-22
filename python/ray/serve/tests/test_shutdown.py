@@ -21,6 +21,14 @@ from ray.serve.config import DeploymentActorConfig
 from ray.util.state import list_actors
 
 
+def _expected_proxy_classes():
+    """Proxy actor class names expected ALIVE while a Serve app is running."""
+    # Under HAProxy the per-node HAProxyManager joins the head-node fallback ProxyActor.
+    if RAY_SERVE_ENABLE_HA_PROXY:
+        return {"ProxyActor", "HAProxyManager"}
+    return {"ProxyActor"}
+
+
 def test_shutdown(ray_shutdown):
     ray.init(num_cpus=8)
     serve.start(http_options=dict(port=8003))
@@ -131,13 +139,9 @@ def test_single_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "ProxyActor",
+        *_expected_proxy_classes(),
         "ServeReplica:app:f",
     }
-    if RAY_SERVE_ENABLE_HA_PROXY:
-        # Under HAProxy the per-node proxy is HAProxyManager; the head-node
-        # fallback ProxyActor also remains.
-        actor_names.add("HAProxyManager")
 
     def check_alive():
         actors = list_actors(
@@ -176,13 +180,9 @@ async def test_single_app_shutdown_actors_async(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "ProxyActor",
+        *_expected_proxy_classes(),
         "ServeReplica:app:f",
     }
-    if RAY_SERVE_ENABLE_HA_PROXY:
-        # Under HAProxy the per-node proxy is HAProxyManager; the head-node
-        # fallback ProxyActor also remains.
-        actor_names.add("HAProxyManager")
 
     def check_alive():
         actors = list_actors(
@@ -221,14 +221,10 @@ def test_multi_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "ProxyActor",
+        *_expected_proxy_classes(),
         "ServeReplica:app1:f",
         "ServeReplica:app2:f",
     }
-    if RAY_SERVE_ENABLE_HA_PROXY:
-        # Under HAProxy the per-node proxy is HAProxyManager; the head-node
-        # fallback ProxyActor also remains.
-        actor_names.add("HAProxyManager")
 
     def check_alive():
         actors = list_actors(
@@ -268,14 +264,10 @@ async def test_multi_app_shutdown_actors_async(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "ProxyActor",
+        *_expected_proxy_classes(),
         "ServeReplica:app1:f",
         "ServeReplica:app2:f",
     }
-    if RAY_SERVE_ENABLE_HA_PROXY:
-        # Under HAProxy the per-node proxy is HAProxyManager; the head-node
-        # fallback ProxyActor also remains.
-        actor_names.add("HAProxyManager")
 
     def check_alive():
         actors = list_actors(

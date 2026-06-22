@@ -103,18 +103,27 @@ def test_serve_namespace(shutdown_ray_and_serve, ray_namespace):
 
         serve.run(f.bind())
 
+        proxy_classes = {"ProxyActor"}
+        if RAY_SERVE_ENABLE_HA_PROXY:
+            # Under HAProxy the per-node HAProxyManager joins the fallback ProxyActor.
+            proxy_classes.add("HAProxyManager")
+        expected_actors = {"ServeController", *proxy_classes, "ServeReplica:default:f"}
+
+        def check_serve_actors():
+            actors = list_actors(
+                address=ray_context.address_info["address"],
+                filters=[("state", "=", "ALIVE")],
+            )
+            return {actor["class_name"] for actor in actors} == expected_actors
+
+        wait_for_condition(check_serve_actors)
+
+        # All actors should be in the SERVE_NAMESPACE, so none of these calls
+        # should throw an error.
         actors = list_actors(
             address=ray_context.address_info["address"],
             filters=[("state", "=", "ALIVE")],
         )
-
-        # Under HAProxy the per-node proxy is HAProxyManager plus a head-node
-        # fallback ProxyActor, so there is one more actor than the native case
-        # (controller + proxy + replica).
-        assert len(actors) == (4 if RAY_SERVE_ENABLE_HA_PROXY else 3)
-
-        # All actors should be in the SERVE_NAMESPACE, so none of these calls
-        # should throw an error.
         for actor in actors:
             ray.get_actor(name=actor["name"], namespace=SERVE_NAMESPACE)
 
