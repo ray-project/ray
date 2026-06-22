@@ -244,15 +244,22 @@ class PredicatePushdown(Rule):
         input_op = filter_op.input_dependencies[0]
         predicate_expr = filter_op.predicate_expr
 
-        # Case 1: Check if operator supports predicate pushdown (e.g., Read).
-        # The read stage never renames columns (renaming is always carried
-        # by an ``AliasExpr`` in a ``Project`` operator above the read), so
-        # the predicate above the read is already in the same column
-        # namespace the scanner sees — no rebinding is required here.
+        # Case 1: Check if operator supports predicate pushdown (e.g., Read)
         if (
             isinstance(input_op, LogicalOperatorSupportsPredicatePushdown)
             and input_op.supports_predicate_pushdown()
         ):
+            # Rebind the predicate to the original (on-disk) column namespace
+            # if a prior projection-pushdown step renamed columns on the read.
+            # The scanner only knows original names, so any reference to a
+            # renamed column in ``predicate_expr`` has to be translated back
+            # before we hand the predicate to ``apply_predicate``.
+            rename_map = input_op.get_column_renames()
+            if rename_map:
+                predicate_expr = cls._substitute_predicate_columns(
+                    predicate_expr, rename_map
+                )
+
             # Datasources evaluate pushed predicates via PyArrow. A predicate
             # that can't be lowered to PyArrow (e.g. it contains a UDF) must
             # stay as a Filter. Split the top level AND chain so the convertible
@@ -272,9 +279,20 @@ class PredicatePushdown(Rule):
 
             # Convertible conjuncts were pushed into the read. Re-apply any
             # residual (non-convertible) conjuncts as a Filter above it.
+            # ``split.residual`` is in the original column namespace (we
+            # rewrote the whole predicate into it above); the pushed-down op
+            # still applies ``column_renames`` to its output blocks, so the
+            # Filter sees renamed columns at runtime — rebind back into the
+            # renamed namespace before wrapping.
             if split.residual is None:
                 return result_op
-            return Filter(predicate_expr=split.residual, input_dependencies=[result_op])
+            residual = split.residual
+            if rename_map:
+                inverse_rename_map = {new: old for old, new in rename_map.items()}
+                residual = cls._substitute_predicate_columns(
+                    residual, inverse_rename_map
+                )
+            return Filter(predicate_expr=residual, input_dependencies=[result_op])
 
         # Case 2: Check if operator allows predicates to pass through
         if isinstance(input_op, LogicalOperatorSupportsPredicatePassThrough):

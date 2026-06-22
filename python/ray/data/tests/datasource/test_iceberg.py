@@ -599,15 +599,12 @@ def test_projection_and_predicate_pushdown(
             pyi_expr.GreaterThanOrEqual("col_c", 5),
             {"col_a", "col_b"},
         ),
-        # Test 7: Rename + Select + Filter (all three together).
-        # Filter references a selected column (the renamed ``column_a``);
-        # filtering on a column the select dropped is not a valid plan
-        # after projection pushdown.
+        # Test 7: Rename + Select + Filter (all three together)
         (
             {"col_a": "column_a", "col_b": "column_b"},
             ["column_a", "column_b"],
-            col("column_a") >= 50,
-            pyi_expr.GreaterThanOrEqual("col_a", 50),
+            col("col_c") >= 5,
+            pyi_expr.GreaterThanOrEqual("col_c", 5),
             {"column_a", "column_b"},
         ),
         # Test 8: Complex rename + select with multiple renames
@@ -657,23 +654,15 @@ def test_rename_select_filter_combinations(
     logical_plan = ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
-    # Filter, when present, should always be pushed into the scan.
+    # Both Filter and Project should be pushed down (when applicable)
     if filter_expr is not None:
         assert not _has_operator_type(
             optimized_plan, Filter
         ), f"Filter should be pushed down, got operators: {_get_operator_types(optimized_plan)}"
-
-    # Pure column selection (no renames) is subsumed by the scan's column
-    # pruning, so no ``Project`` remains. Renames stay as a ``Project`` of
-    # ``AliasExpr``s above the pruned scan after filter pushdown.
-    if rename_map is not None:
-        assert _has_operator_type(
-            optimized_plan, Project
-        ), f"Renames should remain as a Project above the scan, got operators: {_get_operator_types(optimized_plan)}"
-    elif select_cols is not None:
+    if select_cols is not None or rename_map is not None:
         assert not _has_operator_type(
             optimized_plan, Project
-        ), f"Pure column selection should be pushed into the scan, got operators: {_get_operator_types(optimized_plan)}"
+        ), f"Projection should be pushed down, got operators: {_get_operator_types(optimized_plan)}"
 
     # Verify the results
     result = ds.to_pandas()

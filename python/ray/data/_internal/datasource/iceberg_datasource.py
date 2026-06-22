@@ -210,11 +210,15 @@ def _get_read_task(
     case_sensitive: bool,
     limit: Optional[int],
     schema: "Schema",
+    column_rename_map: Optional[Dict[str, str]],
 ) -> Iterable[Block]:
     # Determine the PyIceberg version to handle backward compatibility
     import pyiceberg
 
+    from ray.data.datasource.datasource import _DatasourceProjectionPushdownMixin
+
     def _generate_tables() -> Iterable[pa.Table]:
+        """Inner generator that yields tables without renaming."""
         if version.parse(pyiceberg.__version__) >= version.parse("0.9.0"):
             # Modern implementation using ArrowScan (PyIceberg 0.9.0+)
             from pyiceberg.io.pyarrow import ArrowScan
@@ -255,7 +259,10 @@ def _get_read_task(
             )
             yield table
 
-    yield from _generate_tables()
+    # Apply renames to all tables from the generator
+    yield from _DatasourceProjectionPushdownMixin._apply_rename_to_tables(
+        _generate_tables(), column_rename_map
+    )
 
 
 @DeveloperAPI
@@ -475,6 +482,7 @@ class IcebergDatasource(Datasource):
             case_sensitive=case_sensitive,
             limit=limit,
             schema=projected_schema,
+            column_rename_map=self.get_column_renames(),
         )
 
         read_tasks = []
