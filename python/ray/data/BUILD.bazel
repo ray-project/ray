@@ -747,6 +747,20 @@ py_test(
 )
 
 py_test(
+    name = "test_hash_shuffle_v2",
+    size = "medium",
+    srcs = ["tests/test_hash_shuffle_v2.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_hudi",
     size = "small",
     srcs = ["tests/datasource/test_hudi.py"],
@@ -1840,6 +1854,20 @@ py_test(
     name = "test_webdataset",
     size = "medium",
     srcs = ["tests/datasource/test_webdataset.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_zarrv2",
+    size = "medium",
+    srcs = ["tests/datasource/test_zarrv2.py"],
     tags = [
         "exclusive",
         "team:data",
