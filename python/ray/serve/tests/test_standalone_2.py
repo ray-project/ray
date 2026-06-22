@@ -11,7 +11,11 @@ import ray.actor
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve.context import _get_global_client
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
@@ -104,7 +108,10 @@ def test_serve_namespace(shutdown_ray_and_serve, ray_namespace):
             filters=[("state", "=", "ALIVE")],
         )
 
-        assert len(actors) == 3
+        # Under HAProxy the per-node proxy is HAProxyManager plus a head-node
+        # fallback ProxyActor, so there is one more actor than the native case
+        # (controller + proxy + replica).
+        assert len(actors) == (4 if RAY_SERVE_ENABLE_HA_PROXY else 3)
 
         # All actors should be in the SERVE_NAMESPACE, so none of these calls
         # should throw an error.
