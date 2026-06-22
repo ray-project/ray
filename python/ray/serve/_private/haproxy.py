@@ -91,7 +91,6 @@ from ray.serve.schema import (
 )
 from ray.util import metrics
 
-
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
@@ -819,7 +818,7 @@ class HAProxyApi(ProxyApi):
             for entry in entries
             if entry.isdigit() and self._is_our_haproxy(int(entry))
         )
-    
+
     async def _compute_target_mismatch(self) -> int:
         """Cardinality of the mismatch between the controller's broadcasted
         targets and the targets HAProxy actually reports in its stats.
@@ -1471,6 +1470,7 @@ class HAProxyManager(ProxyActorInterface):
 
         if RAY_SERVE_HAPROXY_METRICS_ENABLED:
             from ray.serve._private.haproxy_metrics import HAProxyMetricsCollector
+
             # The metrics collector owns all serve_haproxy_* metrics for this proxy.
             # It is constructed if haproxy metrics are enabled. start() always begins
             # node-level polling and, when ingress-request-router metrics are enabled,

@@ -12,11 +12,10 @@ import os
 import re
 import socket
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
-from ray.util import metrics
 from ray.serve._private.haproxy import HAProxyApi
-
+from ray.util import metrics
 
 logger = logging.getLogger(__name__)
 
@@ -323,7 +322,9 @@ class HAProxyMetricsCollector:
         self.start_node_metrics_polling(loop, poll_interval_s)
         if enable_ingress_router_metrics:
             os.makedirs(os.path.dirname(metrics_socket_path), exist_ok=True)
-            return loop.create_task(self.bind_and_attach(metrics_socket_path, loop=loop))
+            return loop.create_task(
+                self.bind_and_attach(metrics_socket_path, loop=loop)
+            )
 
     async def bind_and_attach(
         self,
