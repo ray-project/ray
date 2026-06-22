@@ -59,9 +59,10 @@ std::unique_ptr<CgroupManagerInterface> CgroupManagerFactory::Create(
   int64_t system_memory_bytes_min = RayConfig::instance().system_memory_bytes_min();
   int64_t system_memory_bytes_low = system_reserved_memory_bytes;
 
-  // Compute user memory limits from proportions. `memory.high` is a RAM-only
-  // kernel constraint, so when count_swap_in_memory_monitor is on we must NOT
-  // inflate this total by swap — that would silently disable the throttle.
+  // include_swap=false on purpose. memory.high is a RAM-only soft throttle —
+  // when crossed, the kernel reclaims (and swaps, if memory.swap.max allows)
+  // before letting the cgroup keep allocating. Adding swap to the number we
+  // pass to memory.high would push it past host RAM and disable the throttle.
   MemoryUsageSnapshot memory_snapshot = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
       cgroup_path,
       MemoryMonitorUtils::kProcDirectory,
