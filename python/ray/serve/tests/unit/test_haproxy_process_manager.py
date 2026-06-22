@@ -139,32 +139,18 @@ class TestIsOurHaproxy:
 
 class TestCountHaproxyProcesses:
     """`count_haproxy_processes` scans /proc for processes whose cmdline carries
-    our config path (gated by a cheap comm pre-filter), so the count spans live,
-    draining, and leaked workers."""
+    our config path, so the count spans live, draining, and leaked workers."""
 
     @pytest.mark.skipif(
         not sys.platform.startswith("linux"), reason="/proc is Linux-only"
     )
     def test_counts_matching_processes(self, api):
-        # Point config_file_path at a real token in this process's cmdline, and
-        # force the comm pre-filter to accept this pid (the test runner is
-        # python, not haproxy), so this process is counted.
+        # Point config_file_path at a real token in this process's cmdline so at
+        # least this process is counted.
         with open(f"/proc/{os.getpid()}/cmdline", "rb") as f:
             argv = [t for t in f.read().split(b"\0") if t]
         api.config_file_path = argv[0].decode()
-        api._comm_is_haproxy = lambda pid: pid == os.getpid()
         assert api.count_haproxy_processes() >= 1
-
-    @pytest.mark.skipif(
-        not sys.platform.startswith("linux"), reason="/proc is Linux-only"
-    )
-    def test_comm_filter_excludes_non_haproxy_processes(self, api):
-        # Even with a cmdline that matches, a process whose comm isn't "haproxy"
-        # is not counted -- the real test runner (python) is the live example.
-        with open(f"/proc/{os.getpid()}/cmdline", "rb") as f:
-            argv = [t for t in f.read().split(b"\0") if t]
-        api.config_file_path = argv[0].decode()
-        assert api.count_haproxy_processes() == 0
 
     @pytest.mark.skipif(
         not sys.platform.startswith("linux"), reason="/proc is Linux-only"
@@ -172,21 +158,6 @@ class TestCountHaproxyProcesses:
     def test_returns_zero_when_no_match(self, api):
         api.config_file_path = "/tmp/not-in-any-cmdline/haproxy.cfg"
         assert api.count_haproxy_processes() == 0
-
-
-class TestCommIsHaproxy:
-    """The cheap /proc/<pid>/comm pre-filter run before the cmdline match."""
-
-    @pytest.mark.skipif(
-        not sys.platform.startswith("linux"), reason="/proc is Linux-only"
-    )
-    def test_false_for_non_haproxy_process(self, api):
-        # The test runner is python, not haproxy.
-        assert api._comm_is_haproxy(os.getpid()) is False
-
-    def test_false_for_nonexistent_pid(self, api):
-        # Missing /proc entry (or any non-Linux platform) -> OSError -> False.
-        assert api._comm_is_haproxy(2_000_000_000) is False
 
 
 if __name__ == "__main__":

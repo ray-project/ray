@@ -276,9 +276,14 @@ class HAProxyMetricsCollector:
         while True:
             try:
                 await asyncio.sleep(interval_s)
-                self.process_count_gauge.set(
-                    self._haproxy_api.count_haproxy_processes()
+                # count_haproxy_processes does blocking /proc IO that scales
+                # with the node's process count; run it in a thread so the
+                # actor's event loop (health checks, reloads) isn't stalled.
+                loop = asyncio.get_running_loop()
+                count = await loop.run_in_executor(
+                    None, self._haproxy_api.count_haproxy_processes
                 )
+                self.process_count_gauge.set(count)
                 self.target_mismatch_gauge.set(
                     await self._haproxy_api.compute_target_mismatch()
                 )
