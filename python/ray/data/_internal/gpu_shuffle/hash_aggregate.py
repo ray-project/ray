@@ -16,6 +16,7 @@ from typing import (
     Sequence,
     Tuple,
     Union,
+    cast,
 )
 
 import pyarrow as pa
@@ -392,7 +393,7 @@ class GPUSum(GPUAggregateFn):
         result = sizes.merge(counts, on=list(key_columns), how="left")
         _fill_missing_count(result, count_col, count_dtype)
 
-        if len(result) > 0 and bool((result[count_col] == 0).all()):
+        if len(result) > 0 and bool(cast("cudf.Series", result[count_col] == 0).all()):
             result[acc_col] = None
             _cast_cudf_column_dtype(result, acc_col, output_dtype)
         else:
@@ -430,7 +431,7 @@ class GPUSum(GPUAggregateFn):
         result = sizes.merge(counts, on=list(key_columns), how="left")
         _fill_missing_count(result, count_col, count_dtype)
 
-        if len(result) > 0 and bool((result[count_col] == 0).all()):
+        if len(result) > 0 and bool(cast("cudf.Series", result[count_col] == 0).all()):
             result[output_name] = None
             _cast_cudf_column_dtype(result, output_name, output_dtype)
         else:
@@ -554,7 +555,7 @@ class GPUMin(GPUAggregateFn):
         result = sizes.merge(counts, on=list(key_columns), how="left")
         _fill_missing_count(result, count_col, count_dtype)
 
-        if len(result) > 0 and bool((result[count_col] == 0).all()):
+        if len(result) > 0 and bool(cast("cudf.Series", result[count_col] == 0).all()):
             result[acc_col] = None
             _cast_cudf_column_dtype(result, acc_col, output_dtype)
         else:
@@ -592,7 +593,7 @@ class GPUMin(GPUAggregateFn):
         result = sizes.merge(counts, on=list(key_columns), how="left")
         _fill_missing_count(result, count_col, count_dtype)
 
-        if len(result) > 0 and bool((result[count_col] == 0).all()):
+        if len(result) > 0 and bool(cast("cudf.Series", result[count_col] == 0).all()):
             result[output_name] = None
             _cast_cudf_column_dtype(result, output_name, output_dtype)
         else:
@@ -718,7 +719,7 @@ class GPUMax(GPUAggregateFn):
         result = sizes.merge(counts, on=list(key_columns), how="left")
         _fill_missing_count(result, count_col, count_dtype)
 
-        if len(result) > 0 and bool((result[count_col] == 0).all()):
+        if len(result) > 0 and bool(cast("cudf.Series", result[count_col] == 0).all()):
             result[acc_col] = None
             _cast_cudf_column_dtype(result, acc_col, output_dtype)
         else:
@@ -756,7 +757,7 @@ class GPUMax(GPUAggregateFn):
         result = sizes.merge(counts, on=list(key_columns), how="left")
         _fill_missing_count(result, count_col, count_dtype)
 
-        if len(result) > 0 and bool((result[count_col] == 0).all()):
+        if len(result) > 0 and bool(cast("cudf.Series", result[count_col] == 0).all()):
             result[output_name] = None
             _cast_cudf_column_dtype(result, output_name, output_dtype)
         else:
@@ -882,7 +883,7 @@ class GPUMean(GPUAggregateFn):
         result = sizes.merge(counts, on=list(key_columns), how="left")
         _fill_missing_count(result, count_col, count_dtype)
 
-        if len(result) > 0 and bool((result[count_col] == 0).all()):
+        if len(result) > 0 and bool(cast("cudf.Series", result[count_col] == 0).all()):
             result[sum_col] = None
             _cast_cudf_column_dtype(result, sum_col, output_dtype)
         else:
@@ -914,11 +915,9 @@ class GPUMean(GPUAggregateFn):
         final_null_count_col = f"{null_count_col}_final_null_count"
         sum_dtype = _cudf_column_dtype(df, sum_col)
 
-        accumulator_columns = [count_col, null_count_col, sum_col]
+        acc_cols = [count_col, null_count_col, sum_col]
         aggregated = (
-            df.groupby(list(key_columns), dropna=False)[accumulator_columns]
-            .sum()
-            .reset_index()
+            df.groupby(list(key_columns), dropna=False)[acc_cols].sum().reset_index()
         )
         result = aggregated.rename(
             columns={

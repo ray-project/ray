@@ -4,7 +4,7 @@ The planning tests do not require GPUs. Tests marked ``gpu`` exercise cuDF and
 RAPIDS MPF paths on actual GPU hardware.
 """
 
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, cast
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -14,6 +14,7 @@ import pytest
 
 import ray
 import ray.data._internal.gpu_shuffle.hash_aggregate as hash_aggregate
+from ray.actor import ActorClass, ActorHandle
 from ray.data._internal.execution.interfaces import ExecutionResources, PhysicalOperator
 from ray.data._internal.gpu_shuffle.hash_aggregate import (
     GPUAggregateFn,
@@ -402,6 +403,7 @@ class TestGPUHashAggregatePlanning:
         runtime_schema = plan.merge_input_schema(runtime_schema, block1.schema)
         runtime_schema = plan.merge_input_schema(runtime_schema, block2.schema)
 
+        assert runtime_schema is not None
         assert runtime_schema.field("value").type == pa.int32()
 
     def test_merge_input_schema_uses_logical_schema_for_shuffle_keys(self):
@@ -424,6 +426,7 @@ class TestGPUHashAggregatePlanning:
             pa.schema([("user_id", pa.int32()), ("value", pa.int64())]),
         )
 
+        assert runtime_schema is not None
         assert runtime_schema.field("user_id").type == pa.int32()
         assert runtime_schema.field("value").type == pa.int64()
 
@@ -855,11 +858,16 @@ class TestGPUHashAggregateActorReal:
     """Exercises GPU aggregate methods on actual hardware."""
 
     def _make_setup_actor(self, aggregation_plan, total_nparts: int = 2):
-        actor = GPUHashAggregateActor.options(num_gpus=1).remote(
-            nranks=1,
-            total_nparts=total_nparts,
-            aggregation_plan=aggregation_plan,
+        actor_cls = cast(ActorClass[Any], GPUHashAggregateActor)
+        actor = cast(
+            ActorHandle[Any],
+            actor_cls.options(num_gpus=1).remote(
+                nranks=1,
+                total_nparts=total_nparts,
+                aggregation_plan=aggregation_plan,
+            ),
         )
+
         _, root_address = ray.get(actor.setup_root.remote())
         ray.get(actor.setup_worker.remote(root_address))
         return actor
