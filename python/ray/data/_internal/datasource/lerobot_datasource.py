@@ -684,7 +684,8 @@ class _LeRobotReadTask(ReadTask):
                 )
                 row_indices = [r for r, _ in rows_and_ts]
                 timestamps = [t for _, t in rows_and_ts]
-                # decode_frames returns a torch.Tensor (N, C, H, W) uint8.
+                # decode_frames returns a torch.Tensor (N, C, H, W); lerobot
+                # normalizes to float32 in [0, 1], so we rescale to uint8 below.
                 frames = decode_frames(
                     vpath, timestamps, tolerance_s, decoder_cache=cache
                 )
@@ -693,7 +694,10 @@ class _LeRobotReadTask(ReadTask):
                 arr = frames.permute(0, 2, 3, 1).contiguous().cpu().numpy()
                 if arr.dtype != np.uint8:
                     if arr.dtype.kind == "f":
-                        arr = (arr * 255.0).clip(0, 255).astype(np.uint8)
+                        # Undo lerobot's /255 normalization; round rather than
+                        # truncate so pixel values survive the uint8 -> float32
+                        # -> uint8 round-trip exactly.
+                        arr = (arr * 255.0).round().clip(0, 255).astype(np.uint8)
                     else:
                         arr = arr.astype(np.uint8)
                 for i, r in enumerate(row_indices):
