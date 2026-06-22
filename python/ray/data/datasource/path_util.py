@@ -185,7 +185,12 @@ def _has_glob_chars(path: str) -> bool:
     parsed = urlparse(path)
     # For URIs, check both the netloc (e.g. bucket-*) and the path component.
     check_target = (parsed.netloc + parsed.path) if parsed.scheme else path
-    if "*" in check_target or "?" in check_target:
+    if "*" in check_target:
+        return True
+    # Only treat '?' as a glob char for cloud paths (with a scheme).
+    # Local filenames may contain literal '?' (rare but legal on most
+    # filesystems), and prior to expand_globs these paths worked unchanged.
+    if "?" in check_target and parsed.scheme:
         return True
     # Bracket expression: [ followed by ], not preceded by a space.
     # Require at least one character between brackets to avoid matching empty [].
@@ -386,10 +391,13 @@ def _expand_glob(
     try:
         selector = pyarrow.fs.FileSelector(base_stripped, recursive=needs_recursive)
         file_infos = filesystem.get_file_info(selector)
-    except Exception:
+    except (FileNotFoundError, OSError) as e:
+        # Only catch file-not-found and OS errors (e.g. missing bucket/prefix).
+        # Permission, network, and configuration errors propagate to the caller
+        # even when ignore_missing_paths=True so they are not silently swallowed.
         if ignore_missing_paths:
             return []
-        raise
+        raise ValueError(f"Glob pattern '{path}' failed to list: {e}") from e
 
     matched = []
     for fi in file_infos:
