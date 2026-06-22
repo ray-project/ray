@@ -7,6 +7,7 @@ from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
 from ray.autoscaler.v2.schema import NodeType
 from ray.core.generated.instance_manager_pb2 import Instance as IMInstance
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +29,18 @@ class AutoscalerMetricsReporter:
         filtered = []
         for instance in instances:
             if instance.instance_type not in active_types:
-                logger.info(
-                    "Skipping instance %s with unknown type %r, active types: %s",
-                    instance.instance_id,
-                    instance.instance_type,
-                    list(active_types.keys()),
-                )
+                # Log once per unknown type so transient drain windows during
+                # dynamic RayWorkerGroup removal don't spam every tick, while
+                # persistent config mismatches (e.g. a typo'd node type) still
+                # surface for operators.
+                if log_once(
+                    f"autoscaler_unknown_instance_type:{instance.instance_type}"
+                ):
+                    logger.info(
+                        "Skipping instances with unknown type %r, active types: %s",
+                        instance.instance_type,
+                        list(active_types.keys()),
+                    )
                 continue
             filtered.append(instance)
         return filtered

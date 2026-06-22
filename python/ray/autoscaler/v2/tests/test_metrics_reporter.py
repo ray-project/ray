@@ -11,6 +11,15 @@ from ray.autoscaler.v2.tests.util import create_instance
 from ray.core.generated.instance_manager_pb2 import Instance
 
 
+def _get_metrics(metrics, name) -> List[float]:
+    sample_values = []
+    for x in metrics:
+        for sample in x.samples:
+            if sample.name == name:
+                sample_values.append(sample.value)
+    return sample_values
+
+
 def test_report_nodes_resources():
     """
     Test that the metrics reporter reports the correct number of nodes and resources
@@ -67,14 +76,6 @@ def test_report_nodes_resources():
         terminating_type_2,
     ]
     reporter.report_instances(instances, node_type_configs)
-
-    def _get_metrics(metrics, name) -> List[float]:
-        sample_values = []
-        for x in metrics:
-            for sample in x.samples:
-                if sample.name == name:
-                    sample_values.append(sample.value)
-        return sample_values
 
     assert _get_metrics(
         reporter._prom_metrics.active_nodes.labels(
@@ -164,14 +165,6 @@ def test_report_skips_unknown_instance_types():
     # Both calls must not raise even though "removed_type" is unknown.
     reporter.report_instances(instances, node_type_configs)
     reporter.report_resources(instances, node_type_configs)
-
-    def _get_metrics(metrics, name) -> List[float]:
-        sample_values = []
-        for x in metrics:
-            for sample in x.samples:
-                if sample.name == name:
-                    sample_values.append(sample.value)
-        return sample_values
 
     # Only the type_1 instances are counted.
     assert _get_metrics(
