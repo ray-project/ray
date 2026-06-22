@@ -22,8 +22,15 @@ class TestHasGlobChars:
     def test_star(self):
         assert _has_glob_chars("*.parquet")
 
-    def test_question_mark(self):
-        assert _has_glob_chars("file?.parquet")
+    def test_question_mark_local(self):
+        # '?' in local paths is treated as literal (not a glob char)
+        assert not _has_glob_chars("file?.parquet")
+
+    def test_question_mark_cloud(self):
+        # '?' in cloud paths is consumed by urlparse as a query separator,
+        # so it cannot be detected as a glob char.  This is acceptable
+        # because '?' in S3/GCS keys is uncommon and users can use '*' instead.
+        assert not _has_glob_chars("s3://bucket/file?.parquet")
 
     def test_bracket_expression(self):
         assert _has_glob_chars("sub[12]/file.parquet")

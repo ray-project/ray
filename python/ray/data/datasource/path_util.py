@@ -187,10 +187,11 @@ def _has_glob_chars(path: str) -> bool:
     check_target = (parsed.netloc + parsed.path) if parsed.scheme else path
     if "*" in check_target:
         return True
-    # Only treat '?' as a glob char for cloud paths (with a scheme).
+    # Only treat '?' as a glob char for cloud paths (with a scheme) and
+    # only when it appears in the path component, not in a query string.
     # Local filenames may contain literal '?' (rare but legal on most
     # filesystems), and prior to expand_globs these paths worked unchanged.
-    if "?" in check_target and parsed.scheme:
+    if parsed.scheme and "?" in parsed.path:
         return True
     # Bracket expression: [ followed by ], not preceded by a space.
     # Require at least one character between brackets to avoid matching empty [].
