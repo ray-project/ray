@@ -365,27 +365,27 @@ class TestMergeFetch:
         assert dst.fetch.end_s == 2.0
 
     def test_merge_multiple_blocks_expands_window(self):
-        """Merging multiple blocks sums their fetch durations."""
+        """Merging multiple blocks produces the union window."""
         dst = BatchTimings()
 
-        # Block 1: fetched [1.0, 2.0] (duration: 1.0)
+        # Block 1: fetched [1.0, 2.0]
         src1 = BatchTimings()
         src1.fetch = StageTiming(start_s=1.0, end_s=2.0)
         dst.merge_fetch(src1)
 
-        # Block 2: fetched [3.0, 4.0] (duration: 1.0)
+        # Block 2: fetched [3.0, 4.0]
         src2 = BatchTimings()
         src2.fetch = StageTiming(start_s=3.0, end_s=4.0)
         dst.merge_fetch(src2)
 
-        # Block 3: fetched [5.0, 6.0] (duration: 1.0)
+        # Block 3: fetched [5.0, 6.0]
         src3 = BatchTimings()
         src3.fetch = StageTiming(start_s=5.0, end_s=6.0)
         dst.merge_fetch(src3)
 
-        # Sum of durations: 1.0 + 1.0 + 1.0 = 3.0
+        # Union: [1.0, 6.0]
         assert dst.fetch.start_s == 1.0
-        assert dst.fetch.end_s == 4.0  # 1.0 + 3.0
+        assert dst.fetch.end_s == 6.0
 
     def test_merge_unrecorded_block_ignored(self):
         """Merging a block with no fetch timing (start_s=0) is a no-op."""
@@ -399,20 +399,20 @@ class TestMergeFetch:
         assert dst.fetch.end_s == 3.0
 
     def test_merge_overlapping_blocks(self):
-        """Overlapping fetch windows sum their durations."""
+        """Overlapping fetch windows are correctly merged."""
         dst = BatchTimings()
 
         src1 = BatchTimings()
-        src1.fetch = StageTiming(start_s=1.0, end_s=5.0)  # duration: 4.0
+        src1.fetch = StageTiming(start_s=1.0, end_s=5.0)
         dst.merge_fetch(src1)
 
         src2 = BatchTimings()
-        src2.fetch = StageTiming(start_s=3.0, end_s=7.0)  # duration: 4.0
+        src2.fetch = StageTiming(start_s=3.0, end_s=7.0)
         dst.merge_fetch(src2)
 
-        # Sum of durations: 4.0 + 4.0 = 8.0
+        # Union: [1.0, 7.0]
         assert dst.fetch.start_s == 1.0
-        assert dst.fetch.end_s == 9.0  # 1.0 + 8.0
+        assert dst.fetch.end_s == 7.0
 
     def test_merge_into_empty_destination(self):
         """Merging into an empty BatchTimings takes the source window."""

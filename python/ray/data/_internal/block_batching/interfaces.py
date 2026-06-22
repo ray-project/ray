@@ -79,8 +79,10 @@ class BatchTimings:
     def merge_fetch(self, other: "BatchTimings") -> None:
         """Merge fetch timings from another batch into this one.
 
-        Sums the fetch durations rather than taking the span, to avoid
-        counting idle gaps between consecutive block fetches as fetch time.
+        Expands the fetch window to span from the earliest block fetch start
+        to the latest block fetch end. This represents the total time the
+        training thread was blocked waiting for this batch, including any
+        pipeline overhead between consecutive block fetches.
         """
         if other.fetch.start_s == 0.0:
             return
@@ -89,9 +91,11 @@ class BatchTimings:
             self.fetch.start_s = other.fetch.start_s
             self.fetch.end_s = other.fetch.end_s
         else:
-            # Subsequent blocks: add duration to existing span
-            duration = other.fetch.end_s - other.fetch.start_s
-            self.fetch.end_s += duration
+            # Subsequent blocks: expand the window
+            if other.fetch.start_s < self.fetch.start_s:
+                self.fetch.start_s = other.fetch.start_s
+            if other.fetch.end_s > self.fetch.end_s:
+                self.fetch.end_s = other.fetch.end_s
 
 
 @dataclass
