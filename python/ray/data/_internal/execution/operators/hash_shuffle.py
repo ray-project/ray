@@ -511,6 +511,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
     _DEFAULT_SHUFFLE_BLOCK_NUM_CPUS = 1.0
     _DEFAULT_AGGREGATORS_MIN_CPUS = 0.01
 
+    # TODO: remove once we migrate to shuffle V2 architecture.
     # See module-level ``MEMORY_ESTIMATION_SAMPLE_*`` constants for details.
     _MEMORY_ESTIMATION_SAMPLE_MIN_BUNDLES = MEMORY_ESTIMATION_SAMPLE_MIN_BUNDLES
     _MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES = MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES
