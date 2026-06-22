@@ -511,6 +511,22 @@ class TestIterThreaded:
             list(it)
 
     @pytest.mark.parametrize("num_workers", [1, 4])
+    def test_non_generator_fn_construction_raises(self, num_workers: int):
+        """When ``fn`` is a non-generator function that raises during
+        construction (e.g., setup code before returning the iterator), the
+        exception must surface to the consumer rather than hang. Regression
+        for the case where ``fn(_locked_iter())`` was called outside the
+        worker's try/finally."""
+
+        def fn(it: Iterator[int]) -> Iterator[int]:
+            # Body runs eagerly at call time (not a generator function).
+            raise ValueError("boom in fn construction")
+
+        it = iter_threaded(iter(range(100)), fn, num_workers=num_workers)
+        with pytest.raises(ValueError, match="boom in fn construction"):
+            list(it)
+
+    @pytest.mark.parametrize("num_workers", [1, 4])
     def test_consumer_break_stops_workers(self, num_workers: int):
         """When the consumer breaks early and the iterator is no longer
         referenced, CPython GCs the generator immediately, which runs the
