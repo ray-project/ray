@@ -26,7 +26,6 @@ class BatchTimings:
     format: StageTiming = field(default_factory=StageTiming)
     collate: StageTiming = field(default_factory=StageTiming)
     finalize: StageTiming = field(default_factory=StageTiming)
-    restore_order: StageTiming = field(default_factory=StageTiming)
     num_rows: int = 0
 
     def stages(self) -> Iterable[Tuple[str, StageTiming]]:
@@ -36,7 +35,6 @@ class BatchTimings:
             ("format", self.format),
             ("collate", self.collate),
             ("finalize", self.finalize),
-            ("restore_order", self.restore_order),
         )
 
     def merge_fetch(self, other: "BatchTimings") -> None:

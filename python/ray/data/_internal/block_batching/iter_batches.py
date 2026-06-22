@@ -218,7 +218,7 @@ class BatchIterator:
     def _restore_original_batch_order(
         self, batches: Iterator[Batch]
     ) -> Iterator[Batch]:
-        return restore_original_order(batches, stats=self._stats)
+        return restore_original_order(batches)
 
     def _pipeline(self, ref_bundles: Iterator[RefBundle]) -> Iterator[Batch]:
         # Step 1: Prefetch logical batches locally.
@@ -474,9 +474,7 @@ def prefetch_batches_locally(
     prefetcher.stop()
 
 
-def restore_original_order(
-    batch_iter: Iterator[Batch], stats: Optional[DatasetStats] = None
-) -> Iterator[Batch]:
+def restore_original_order(batch_iter: Iterator[Batch]) -> Iterator[Batch]:
     """Restores the original order of the provided `batch_iter`
 
     This function will yield items from `base_iterator` in the correct order based on
@@ -487,31 +485,13 @@ def restore_original_order(
     """
     next_index_required = 0
     buffer: Dict[int, Batch] = {}
-    restore_wait_start_s: Optional[float] = None
-    source_exhausted = False
-
-    while True:
-        while next_index_required in buffer:
-            next_batch = buffer.pop(next_index_required)
-            if restore_wait_start_s is not None:
-                next_batch.metadata.timings.restore_order.record(
-                    restore_wait_start_s, time.perf_counter()
-                )
-                restore_wait_start_s = None
-            yield next_batch
-            next_index_required += 1
-
-        if source_exhausted:
-            break
-
-        if buffer and restore_wait_start_s is None:
-            restore_wait_start_s = time.perf_counter()
-
-        try:
-            batch = next(batch_iter)
-        except StopIteration:
-            source_exhausted = True
-            continue
-
+    for batch in batch_iter:
         assert batch.metadata.batch_idx not in buffer
         buffer[batch.metadata.batch_idx] = batch
+        while next_index_required in buffer:
+            yield buffer.pop(next_index_required)
+            next_index_required += 1
+
+    while next_index_required in buffer:
+        yield buffer.pop(next_index_required)
+        next_index_required += 1

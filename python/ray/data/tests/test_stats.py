@@ -1904,7 +1904,6 @@ def test_update_iteration_metrics_exports_new_iter_metrics():
     stats.iter_blocked_format_s.add(3.0)
     stats.iter_blocked_collate_s.add(4.0)
     stats.iter_blocked_finalize_s.add(5.0)
-    stats.iter_blocked_restore_order_s.add(6.0)
     stats.iter_batches_total = 7
     stats.iter_rows_total = 8
 
@@ -1945,7 +1944,6 @@ def test_update_iteration_metrics_exports_new_iter_metrics():
         "iter_blocked_format_s",
         "iter_blocked_collate_s",
         "iter_blocked_finalize_s",
-        "iter_blocked_restore_order_s",
         "iter_batches_total",
         "iter_rows_total",
         "iter_user_s",
@@ -1961,7 +1959,6 @@ def test_update_iteration_metrics_exports_new_iter_metrics():
     assert recorded["iter_blocked_format_s"] == (3.0, expected_tags)
     assert recorded["iter_blocked_collate_s"] == (4.0, expected_tags)
     assert recorded["iter_blocked_finalize_s"] == (5.0, expected_tags)
-    assert recorded["iter_blocked_restore_order_s"] == (6.0, expected_tags)
     assert recorded["iter_batches_total"] == (7, expected_tags)
     assert recorded["iter_rows_total"] == (8, expected_tags)
 
@@ -1977,7 +1974,6 @@ def test_iter_stats_summary_has_new_fields():
     assert hasattr(iter_summary, "blocked_format_time")
     assert hasattr(iter_summary, "blocked_collate_time")
     assert hasattr(iter_summary, "blocked_finalize_time")
-    assert hasattr(iter_summary, "blocked_restore_order_time")
     assert hasattr(iter_summary, "batches_total")
     assert hasattr(iter_summary, "rows_total")
 

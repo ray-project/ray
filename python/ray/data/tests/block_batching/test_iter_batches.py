@@ -117,22 +117,15 @@ def test_restore_from_original_order():
 
 
 def test_restore_original_order_stats():
-    stats = DatasetStats(metadata={}, parent=None)
     base_iterator = [
         Batch(BatchMetadata(batch_idx=2), None),
         Batch(BatchMetadata(batch_idx=0), None),
         Batch(BatchMetadata(batch_idx=1), None),
     ]
 
-    ordered = list(restore_original_order(iter(base_iterator), stats=stats))
+    ordered = list(restore_original_order(iter(base_iterator)))
 
     assert [batch.metadata.batch_idx for batch in ordered] == [0, 1, 2]
-    assert any(
-        batch.metadata.timings.restore_order.start_s > 0
-        and batch.metadata.timings.restore_order.end_s
-        >= batch.metadata.timings.restore_order.start_s
-        for batch in ordered
-    )
 
 
 def test_report_batch_timings_overlap_attribution():
@@ -294,22 +287,8 @@ class TestReportBatchTimingsEdgeCases:
             + stats.iter_blocked_format_s.get()
             + stats.iter_blocked_collate_s.get()
             + stats.iter_blocked_finalize_s.get()
-            + stats.iter_blocked_restore_order_s.get()
         )
         assert sum_stages <= total + 1e-9
-
-    def test_restore_order_overlap(self):
-        """restore_order stage timing is correctly attributed."""
-        stats = DatasetStats(metadata={}, parent=None)
-        it = _make_report_iterator(stats)
-        batch = _make_batch_with_timings(
-            fetch_start=0.0,
-            fetch_end=1.0,
-        )
-        batch.metadata.timings.restore_order = StageTiming(start_s=1.5, end_s=2.5)
-        it._report_batch_timings(batch, blocked_start_s=0.0, blocked_end_s=3.0)
-        assert stats.iter_blocked_fetch_s.get() == pytest.approx(1.0)
-        assert stats.iter_blocked_restore_order_s.get() == pytest.approx(1.0)
 
     def test_blocked_inside_stage(self):
         """Stage [0, 10] fully contains blocked [3, 5] → overlap = 2.0."""
@@ -468,17 +447,16 @@ class TestEndToEndTimingPropagation:
 
         # Verify all stages are accessible via stages() iterator
         stage_dict = dict(batch.metadata.timings.stages())
-        assert len(stage_dict) == 6
+        assert len(stage_dict) == 5
         assert stage_dict["fetch"].start_s == 1.0
         assert stage_dict["batching"].end_s == 3.0
         assert stage_dict["format"].start_s == 3.0
         assert stage_dict["collate"].end_s == 5.0
         assert stage_dict["finalize"].start_s == 5.0
-        assert stage_dict["restore_order"].start_s == 0.0  # not recorded
         assert batch.metadata.timings.num_rows == 50
 
     def test_full_pipeline_attribution(self):
-        """End-to-end: all 6 stages with realistic timing, full overlap."""
+        """End-to-end: all 5 stages with realistic timing, full overlap."""
         stats = DatasetStats(metadata={}, parent=None)
         it = _make_report_iterator(stats)
         stats.iter_total_blocked_s.add(5.0)
@@ -496,8 +474,6 @@ class TestEndToEndTimingPropagation:
             finalize_end=3.0,
             num_rows=256,
         )
-        # Also set restore_order
-        batch.metadata.timings.restore_order = StageTiming(start_s=3.0, end_s=3.5)
 
         # Blocked window covers all stages
         it._report_batch_timings(batch, blocked_start_s=0.0, blocked_end_s=5.0)
@@ -508,20 +484,18 @@ class TestEndToEndTimingPropagation:
         assert stats.iter_blocked_format_s.get() == pytest.approx(1.0)
         assert stats.iter_blocked_collate_s.get() == pytest.approx(0.5)
         assert stats.iter_blocked_finalize_s.get() == pytest.approx(0.5)
-        assert stats.iter_blocked_restore_order_s.get() == pytest.approx(0.5)
         assert stats.iter_batches_total == 1
         assert stats.iter_rows_total == 256
 
-        # Invariant: sum = 3.5 <= total_blocked = 5.0
+        # Invariant: sum = 3.0 <= total_blocked = 5.0
         sum_stages = (
             stats.iter_blocked_fetch_s.get()
             + stats.iter_blocked_batching_s.get()
             + stats.iter_blocked_format_s.get()
             + stats.iter_blocked_collate_s.get()
             + stats.iter_blocked_finalize_s.get()
-            + stats.iter_blocked_restore_order_s.get()
         )
-        assert sum_stages == pytest.approx(3.5)
+        assert sum_stages == pytest.approx(3.0)
         assert sum_stages <= stats.iter_total_blocked_s.get() + 1e-9
 
 

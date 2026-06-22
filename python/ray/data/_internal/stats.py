@@ -532,11 +532,6 @@ class _StatsActor:
             description="Seconds user thread is blocked on batch finalization",
             tag_keys=iter_tag_keys,
         )
-        self.iter_blocked_restore_order_s = Gauge(
-            "data_iter_blocked_restore_order_seconds",
-            description="Seconds user thread is blocked on restoring batch order",
-            tag_keys=iter_tag_keys,
-        )
         self.iter_batches_total = Gauge(
             "data_iter_batches_total",
             description="Total batches delivered to the user thread",
@@ -813,9 +808,6 @@ class _StatsActor:
         self.iter_blocked_format_s.set(stats.iter_blocked_format_s.get(), tags)
         self.iter_blocked_collate_s.set(stats.iter_blocked_collate_s.get(), tags)
         self.iter_blocked_finalize_s.set(stats.iter_blocked_finalize_s.get(), tags)
-        self.iter_blocked_restore_order_s.set(
-            stats.iter_blocked_restore_order_s.get(), tags
-        )
         self.iter_batches_total.set(stats.iter_batches_total, tags)
         self.iter_rows_total.set(stats.iter_rows_total, tags)
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
@@ -1216,7 +1208,6 @@ class DatasetStats:
         self.iter_blocked_format_s: Timer = Timer()
         self.iter_blocked_collate_s: Timer = Timer()
         self.iter_blocked_finalize_s: Timer = Timer()
-        self.iter_blocked_restore_order_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_initialize_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
@@ -1282,7 +1273,6 @@ class DatasetStats:
             self.iter_blocked_format_s,
             self.iter_blocked_collate_s,
             self.iter_blocked_finalize_s,
-            self.iter_blocked_restore_order_s,
             self.iter_batches_total,
             self.iter_rows_total,
         )
@@ -1973,7 +1963,6 @@ class IterStatsSummary:
     blocked_format_time: Timer
     blocked_collate_time: Timer
     blocked_finalize_time: Timer
-    blocked_restore_order_time: Timer
     # Cumulative batch and row counters.
     batches_total: int
     rows_total: int
@@ -2090,7 +2079,6 @@ class IterStatsSummary:
             ("format", self.blocked_format_time),
             ("collate", self.blocked_collate_time),
             ("finalize (host->device)", self.blocked_finalize_time),
-            ("restore order", self.blocked_restore_order_time),
         ]
         active_stages = [(name, t) for name, t in stage_totals if t.get() > 0]
         if active_stages:
