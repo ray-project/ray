@@ -1468,6 +1468,8 @@ class HAProxyManager(ProxyActorInterface):
             config_file_path=_per_node(RAY_SERVE_HAPROXY_CONFIG_FILE_LOC),
         )
 
+        self._metrics_collector = None
+        self._metrics_attach_task: Optional[asyncio.Task] = None
         if RAY_SERVE_HAPROXY_METRICS_ENABLED:
             from ray.serve._private.haproxy_metrics import HAProxyMetricsCollector
 
@@ -1479,7 +1481,6 @@ class HAProxyManager(ProxyActorInterface):
             self._metrics_collector = HAProxyMetricsCollector(
                 haproxy_api=self._haproxy, node_id=self._node_id
             )
-            self._metrics_attach_task: Optional[asyncio.Task] = None
             try:
                 self._metrics_attach_task = self._metrics_collector.start(
                     self.event_loop,
