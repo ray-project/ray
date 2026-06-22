@@ -32,6 +32,7 @@ import pyarrow as pa
 import ray
 from ray import ObjectRef
 from ray._private.ray_constants import (
+    env_float,
     env_integer,
 )
 from ray._raylet import StreamingGeneratorStats
@@ -93,6 +94,21 @@ DEFAULT_HASH_SHUFFLE_AGGREGATOR_MAX_CONCURRENCY = env_integer(
 
 DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION = env_integer(
     "RAY_DATA_DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION", 1 * GiB
+)
+
+# Online-sampling bounds for sizing the aggregator pool from the first few
+# input bundles. We start the shuffle after observing
+# ~MEMORY_ESTIMATION_SAMPLE_RATIO of expected upstream bundles, clamped to
+# [MIN_BUNDLES, MAX_BUNDLES], or once the sample hits the byte ceiling (see
+# ``_sample_byte_limit``). A small window bounds buffering and preserves streaming.
+MEMORY_ESTIMATION_SAMPLE_MIN_BUNDLES = env_integer(
+    "RAY_DATA_MEMORY_ESTIMATION_SAMPLE_MIN_BUNDLES", 8
+)
+MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES = env_integer(
+    "RAY_DATA_MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES", 16
+)
+MEMORY_ESTIMATION_SAMPLE_RATIO = env_float(
+    "RAY_DATA_MEMORY_ESTIMATION_SAMPLE_RATIO", 0.05
 )
 
 
@@ -495,17 +511,10 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
     _DEFAULT_SHUFFLE_BLOCK_NUM_CPUS = 1.0
     _DEFAULT_AGGREGATORS_MIN_CPUS = 0.01
 
-    # Online-sampling bounds used to size the aggregator pool from the first few
-    # input bundles (instead of buffering the whole dataset). We start the
-    # shuffle once we've observed roughly ``_MEMORY_ESTIMATION_SAMPLE_RATIO`` of
-    # the expected upstream bundles, clamped to
-    # ``[_MEMORY_ESTIMATION_SAMPLE_MIN_BUNDLES, _MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES]``,
-    # or as soon as the buffered sample reaches the byte ceiling (see
-    # ``_sample_byte_limit``). Keeping the window small bounds buffering and
-    # preserves streaming/pipelining.
-    _MEMORY_ESTIMATION_SAMPLE_MIN_BUNDLES = 8
-    _MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES = 16
-    _MEMORY_ESTIMATION_SAMPLE_RATIO = 0.05
+    # See module-level ``MEMORY_ESTIMATION_SAMPLE_*`` constants for details.
+    _MEMORY_ESTIMATION_SAMPLE_MIN_BUNDLES = MEMORY_ESTIMATION_SAMPLE_MIN_BUNDLES
+    _MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES = MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES
+    _MEMORY_ESTIMATION_SAMPLE_RATIO = MEMORY_ESTIMATION_SAMPLE_RATIO
 
     def __init__(
         self,
@@ -599,13 +608,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         # hold the whole dataset (a single oversized bundle trips it immediately).
         self._sample_bytes: int = 0
         self._sample_bundles: int = 0
-        # Per-input-sequence sample totals. The two sides of a join (or any
-        # multi-input shuffle) can have very different per-bundle byte sizes and
-        # stream in at different rates, so extrapolating a single *global*
-        # average against the *summed* output count of all inputs skews the
-        # estimate whenever the early window is dominated by one input. We
-        # therefore extrapolate each input against its own output count and sum
-        # the contributions (see ``_estimate_dataset_bytes_from_sample``).
+
         self._sample_bytes_by_input: DefaultDict[int, int] = defaultdict(int)
         self._sample_bundles_by_input: DefaultDict[int, int] = defaultdict(int)
         self._sample_byte_limit: int = (
@@ -854,10 +857,6 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
-        # Fallback: the sampling window never tripped (dataset smaller than the
-        # window, or the upstream output count never materialized). We now have
-        # every input buffered, so ``_extrapolate_dataset_bytes`` returns the
-        # exact buffered size (``_inputs_complete`` is set above).
         if not self._shuffle_started:
             self._start_shuffle(
                 estimated_dataset_bytes=self._extrapolate_dataset_bytes()
