@@ -3,10 +3,6 @@
 A :class:`Catalog` resolves a table name into a readable source (location +
 credentials) for a reader such as :func:`ray.data.read_delta`,
 :func:`ray.data.read_parquet`, or :func:`ray.data.read_iceberg`.
-
-This inverts the previous design (``read_unity_catalog``), where the
-authentication layer owned the readers. Now the reader is primary and a catalog
-is passed in only when authentication is required.
 """
 
 import atexit
