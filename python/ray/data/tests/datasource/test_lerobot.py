@@ -680,6 +680,35 @@ def test_resolve_filesystem_video_credentials(
         assert video_opts.get("key") == expect_key
 
 
+def test_lerobot_compat_creds_cache_closes_handles(tmp_path):
+    """The credentialed decoder cache (used when storage_options are supplied)
+    decodes through fsspec and closes every file handle it opened on clear() --
+    lerobot's base cache leaks a file descriptor per video file. Exercised on a
+    local mp4; no S3 needed."""
+    from ray.data._internal.datasource._lerobot_compat import (
+        decode_frames,
+        new_decoder_cache,
+    )
+
+    video = str(tmp_path / "videos" / "v.mp4")
+    _create_video(video, num_frames=5)
+
+    # Non-empty storage_options selects the credentialed (handle-closing) cache.
+    cache = new_decoder_cache({"anon": True})
+    frames = decode_frames(
+        video, [0.0, 1.0 / FPS], tolerance_s=1.0 / FPS, decoder_cache=cache
+    )
+    assert frames.shape[0] == 2  # decoded two frames through the creds cache
+
+    handles = [entry[1] for entry in cache._cache.values()]
+    assert handles, "creds cache should have cached an open file handle"
+    assert all(not h.closed for h in handles)
+
+    cache.clear()
+    assert all(h.closed for h in handles), "clear() must close the fsspec handles"
+    assert cache._cache == {}
+
+
 if __name__ == "__main__":
     import sys
 
