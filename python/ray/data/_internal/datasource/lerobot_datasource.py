@@ -210,15 +210,17 @@ def _estimated_row_size_bytes(features: dict, root_for_logging: str) -> int:
 
 
 def _stats_to_json(stats: Optional[dict]) -> str:
-    """Serialize lerobot's per-feature stats dict.
+    """Serialize lerobot's per-feature stats dict to a JSON string.
 
-    Converts numpy arrays / scalars to plain lists / numbers.
-    Returns ``"{}"`` when *stats* is missing or empty.  Emitted verbatim on every
-    row as the ``stats`` column so downstream tasks.
+    Converts numpy arrays / scalars to plain lists / numbers.  Returns ``"{}"``
+    when *stats* is missing or empty.  Emitted verbatim on every row as the
+    ``stats`` column so downstream tasks (e.g. normalizing state/action for
+    policy training) can recover mean/std without a second metadata read.
 
-    We serialize stats such that we can work with multiple datasets
-    with possibly different nestings of stats. Ray Data requires us to
-    have the same schema accross the datasets.
+    Serialized to a string rather than a struct column so a single read can span
+    multiple datasets whose stats have different feature sets / nesting: Ray Data
+    requires one schema across all blocks, and a ``string`` column stays uniform
+    where per-dataset struct types would clash.
     """
     if not stats:
         return "{}"
