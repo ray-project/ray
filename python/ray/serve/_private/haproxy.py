@@ -834,7 +834,7 @@ class HAProxyApi(ProxyApi):
             for backend_name, backend_config in self.backend_configs.items()
             for server in backend_config.servers
         }
-        stats = await self._haproxy_api.get_all_stats()
+        stats = await self.get_all_stats()
         reported = {
             (backend_name, server_name)
             for backend_name, servers in stats.items()

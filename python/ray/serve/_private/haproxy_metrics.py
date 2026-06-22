@@ -92,8 +92,7 @@ class HAProxyMetricsCollector:
         self._transport: Optional[asyncio.DatagramTransport] = None
         self._socket_path: Optional[str] = None
 
-        # Used by the node-level poll loop; optional so unit tests can drive
-        # the push-based parsing/recording without an HAProxyApi.
+        # Source for the node-level poll loop (process count + target mismatch).
         self._haproxy_api = haproxy_api
         self._node_id = node_id
         self._node_metrics_task: Optional[asyncio.Task] = None
