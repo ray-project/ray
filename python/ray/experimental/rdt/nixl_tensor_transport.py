@@ -28,9 +28,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Supported NIXL backends that can be requested through ``RAY_NIXL_BACKEND``.
-_SUPPORTED_BACKENDS = ("UCX", "LIBFABRIC")
-
 # Probe buffer size for the LIBFABRIC/EFA registration check. Must exceed EFA's
 # ~32 MiB host bounce pool so the probe hits a real ``fi_mr_reg`` registration.
 _LIBFABRIC_PROBE_SIZE_BYTES = 64 * 1024 * 1024
@@ -60,26 +57,6 @@ def _is_efa_available() -> bool:
         if os.path.basename(driver) == "efa":
             return True
     return False
-
-
-def _backend_override() -> Optional[str]:
-    """Returns the explicit NIXL backend requested via ``RAY_NIXL_BACKEND``, if any.
-
-    An explicit override is the deterministic safety net for pinning both transfer
-    endpoints onto the same backend, since per-process auto-detection can otherwise
-    diverge (for example one side picks UCX and the other LIBFABRIC) and fail every
-    transfer with ``NIXL_ERR_BACKEND``.
-    """
-    val = os.environ.get("RAY_NIXL_BACKEND")
-    if not val:
-        return None
-    backend = val.strip().upper()
-    if backend not in _SUPPORTED_BACKENDS:
-        raise ValueError(
-            f"RAY_NIXL_BACKEND must be one of {list(_SUPPORTED_BACKENDS)}, "
-            f"got {val!r}."
-        )
-    return backend
 
 
 @functools.lru_cache(maxsize=1)
@@ -276,27 +253,15 @@ class NixlTensorTransport(TensorTransportManager):
         """
         self._remove_tensor_descs([tensor])
 
-    def _resolve_backend(self) -> "tuple[str, bool]":
-        """Returns ``(backend, is_override)`` for the backend to attempt.
-
-        Honors an explicit ``RAY_NIXL_BACKEND`` override, otherwise prefers
-        LIBFABRIC when EFA devices are present and UCX everywhere else.
-        """
-        override = _backend_override()
-        if override is not None:
-            return override, True
-        return ("LIBFABRIC" if _is_efa_available() else "UCX"), False
-
     def select_backend(self) -> str:
         """Returns the NIXL backend to attempt.
 
-        Honors an explicit ``RAY_NIXL_BACKEND`` override, otherwise prefers
-        LIBFABRIC when EFA devices are present and UCX everywhere else. When the
-        choice is LIBFABRIC by auto-detection (not an override), ``get_nixl_agent``
-        validates that a realistic CUDA registration succeeds before committing,
-        and raises otherwise (a failure signals a misconfigured instance).
+        Prefers LIBFABRIC when EFA devices are present and UCX everywhere else.
+        When the choice is LIBFABRIC, ``get_nixl_agent`` validates that a
+        realistic CUDA registration succeeds before committing, and raises
+        otherwise (a failure signals a misconfigured instance).
         """
-        return self._resolve_backend()[0]
+        return "LIBFABRIC" if _is_efa_available() else "UCX"
 
     def _make_nixl_agent(self, backend: str):
         """Creates a NIXL agent configured with the given backend."""
@@ -364,25 +329,21 @@ class NixlTensorTransport(TensorTransportManager):
 
     def _init_nixl_agent(self):
         """Builds the NIXL agent for the selected backend, validating LIBFABRIC."""
-        backend, is_override = self._resolve_backend()
+        backend = self.select_backend()
         agent = self._make_nixl_agent(backend)
 
-        # Auto-selected LIBFABRIC: EFA presence doesn't guarantee GPUDirect works,
-        # so validate before committing and fail loudly instead of hitting a
-        # cryptic NIXL_ERR_BACKEND at transfer time. An override skips this.
-        if (
-            backend == "LIBFABRIC"
-            and not is_override
-            and not self._libfabric_registration_works(agent)
-        ):
+        # LIBFABRIC: EFA presence doesn't guarantee GPUDirect works, so validate
+        # before committing and fail loudly instead of hitting a cryptic
+        # NIXL_ERR_BACKEND at transfer time.
+        if backend == "LIBFABRIC" and not self._libfabric_registration_works(agent):
             del agent  # release the unusable agent's libfabric resources
             self._agent_init_error = (
                 "EFA devices were detected, but a realistic-size CUDA memory "
                 "registration failed under the LIBFABRIC backend. This usually "
-                "means GPUDirect isn't available (missing nvidia-peermem/dmabuf) "
-                "or the probe ran against VMM memory "
-                "(PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True). Fix the "
-                "instance setup, or set RAY_NIXL_BACKEND=UCX to use UCX instead."
+                "means GPUDirect isn't available (missing nvidia-peermem/dmabuf). "
+                "Fix the instance setup. See "
+                "https://github.com/ai-dynamo/nixl/blob/main/src/plugins/libfabric/README.md "
+                "for LIBFABRIC troubleshooting."
             )
             raise RuntimeError(self._agent_init_error)
 
@@ -395,7 +356,6 @@ class NixlTensorTransport(TensorTransportManager):
         def __ray_actor_has_tensor_transport__(
             self: "ray.actor.ActorHandle",
         ) -> bool:
-            # Check if nixl is installed
             try:
                 from ray.experimental.rdt.util import (
                     get_tensor_transport_manager,
@@ -403,11 +363,7 @@ class NixlTensorTransport(TensorTransportManager):
 
                 get_tensor_transport_manager("NIXL").get_nixl_agent()
                 return True
-            except ValueError:
-                # A misconfigured RAY_NIXL_BACKEND is a user error, not a sign
-                # that NIXL is unavailable; surface it instead of masking it.
-                raise
-            except Exception:
+            except ImportError:
                 return False
 
         return ray.get(
@@ -815,34 +771,30 @@ class NixlTensorTransport(TensorTransportManager):
                     )
                 except Exception as e:
                     if self._backend == "LIBFABRIC":
-                        backend_hint = (
-                            "Set FI_LOG_LEVEL=Debug for detailed libfabric diagnostics."
+                        troubleshooting = (
+                            "See https://github.com/ai-dynamo/nixl/blob/main/src/plugins/libfabric/README.md "
+                            "for LIBFABRIC troubleshooting. "
+                            "Set FI_LOG_LEVEL=Debug for libfabric diagnostics."
                         )
                     else:
-                        backend_hint = (
-                            "Set UCX_LOG_LEVEL=debug for detailed UCX diagnostics."
+                        troubleshooting = (
+                            "See https://docs.ray.io/en/latest/ray-core/direct-transport/direct-transport.html "
+                            "for NIXL/UCX configuration. "
+                            "Set UCX_LOG_LEVEL=debug for UCX diagnostics."
                         )
                     vmm_hint = ""
                     alloc_conf = os.environ.get("PYTORCH_CUDA_ALLOC_CONF", "").lower()
                     if mem_type == "cuda" and "expandable_segments:true" in alloc_conf:
                         vmm_hint = (
-                            "  - VMM memory can't be RDMA-registered: "
-                            "PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True is set, "
-                            "which makes PyTorch back tensors with CUDA VMM. Allocate "
-                            "the transferred tensors without expandable_segments.\n"
+                            " PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True is set; "
+                            "CUDA VMM memory can't be RDMA-registered — allocate "
+                            "transferred tensors without expandable_segments."
                         )
                     raise RuntimeError(
                         f"Failed to register {mem_type} memory with NIXL "
-                        f"(size={tensor.untyped_storage().nbytes()} bytes, "
-                        f"gpu_id={gpu_id}). "
-                        f"Common causes:\n"
-                        f"  - Locked memory limit too low: check 'ulimit -l' (should be 'unlimited')\n"
-                        f"  - nvidia-peermem kernel module not loaded: check 'lsmod | grep nvidia_peermem'\n"
-                        f"  - gdrcopy not installed: check 'lsmod | grep gdrdrv'\n"
-                        f"  - IOMMU enabled without passthrough mode\n"
-                        f"  - Container cgroup memory restrictions\n"
-                        f"{vmm_hint}"
-                        f"{backend_hint}"
+                        f"(backend={self._backend}, "
+                        f"size={tensor.untyped_storage().nbytes()} bytes, "
+                        f"gpu_id={gpu_id}).{vmm_hint} {troubleshooting}"
                     ) from e
                 self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1)
 

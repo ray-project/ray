@@ -222,7 +222,7 @@ When Ray selects the ``UCX`` backend (see :ref:`NIXL backend selection <nixl-bac
    $ export UCX_TLS=all  # or specify specific transports like "rc,ud,sm,^cuda_ipc" ..etc
    $ export UCX_NET_DEVICES=all  # or specify network devices like "mlx5_0:1,mlx5_1:1"
 
-On the ``LIBFABRIC`` backend, use libfabric environment variables instead, such as ``FI_PROVIDER=efa`` to pin the provider and ``FI_LOG_LEVEL=Debug`` for diagnostics.
+On the ``LIBFABRIC`` backend, use libfabric environment variables instead, such as ``FI_PROVIDER=efa`` to pin the provider and ``FI_LOG_LEVEL=Debug`` for diagnostics. See the `NIXL libfabric plugin documentation <https://github.com/ai-dynamo/nixl/blob/main/src/plugins/libfabric/README.md>`__ for additional configuration and troubleshooting.
 
 .. _nixl-backend-selection:
 
@@ -231,14 +231,10 @@ NIXL backend selection
 
 Ray automatically selects the NIXL transport backend based on the available hardware:
 
-- **AWS instances with EFA**: Ray detects EFA devices and validates that a realistic-size CUDA memory registration succeeds before it selects the ``LIBFABRIC`` backend. To detect EFA both on bare hosts and inside containers, Ray checks for the EFA network device (``/sys/class/net/efa*``) and for rdma-verbs devices bound to the kernel ``efa`` driver (under ``/sys/class/infiniband``). The host network device isn't visible inside a pod, so the verbs check is what makes detection work under Kubernetes. Ordinary InfiniBand or RoCE NICs also expose verbs devices, so Ray confirms the ``efa`` driver binding to avoid treating them as EFA.
+- **AWS instances with EFA**: Ray detects EFA devices and validates that a realistic-size CUDA memory registration succeeds before it selects the ``LIBFABRIC`` backend. If validation fails, GPUDirect is usually misconfigured (for example, missing ``nvidia-peermem`` or dmabuf support). To detect EFA both on bare hosts and inside containers, Ray checks for the EFA network device (``/sys/class/net/efa*``) and for rdma-verbs devices bound to the kernel ``efa`` driver (under ``/sys/class/infiniband``). The host network device isn't visible inside a pod, so the verbs check is what makes detection work under Kubernetes. Ordinary InfiniBand or RoCE NICs also expose verbs devices, so Ray confirms the ``efa`` driver binding to avoid treating them as EFA.
 - **All other environments**: Ray uses the ``UCX`` backend.
 
-If Ray detects EFA but the validation registration fails, Ray raises an error instead of selecting a backend, because the failure usually signals a misconfigured instance. This happens, for example, when the node lacks GPUDirect (no ``nvidia-peermem`` or dmabuf), so EFA can register only small buffers through its host bounce pool, or when the tensors use CUDA VMM memory (``PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True``), which can't be RDMA-registered. To use ``UCX`` on such a node, set ``RAY_NIXL_BACKEND=UCX``.
-
-To pin the backend explicitly, set the ``RAY_NIXL_BACKEND`` environment variable to either ``UCX`` or ``LIBFABRIC``. An explicit override skips both the EFA probe and the GPUDirect validation. Because the two endpoints of a transfer must agree on a backend, set ``RAY_NIXL_BACKEND`` consistently on every actor that participates in a transfer. Otherwise per-process auto-detection can diverge — for example, one node has EFA and selects ``LIBFABRIC`` while another doesn't and selects ``UCX`` — and every transfer fails with ``NIXL_ERR_BACKEND``.
-
-No configuration is required for the automatic path. On AWS EFA instances, make sure the `EFA installer <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-start.html>`__ has been run, which installs both the EFA driver and libfabric.
+No configuration is required. On AWS EFA instances, make sure the `EFA installer <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-start.html>`__ has been run, which installs both the EFA driver and libfabric. If LIBFABRIC validation fails at startup, see the `NIXL libfabric plugin documentation <https://github.com/ai-dynamo/nixl/blob/main/src/plugins/libfabric/README.md>`__ for troubleshooting.
 
 Walkthrough
 ^^^^^^^^^^^
