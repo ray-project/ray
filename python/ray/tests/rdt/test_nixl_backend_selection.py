@@ -3,7 +3,7 @@
 These tests cover the backend-selection logic in
 ``ray.experimental.rdt.nixl_tensor_transport`` without requiring a GPU, NIXL, or
 EFA hardware. They exercise the hardware-to-backend mapping (host vs. container
-EFA layouts and non-EFA RDMA) and the LIBFABRIC GPUDirect validation.
+EFA layouts and non-EFA RDMA).
 """
 
 import sys
@@ -85,14 +85,10 @@ def _capture_created_backends(monkeypatch):
     return created
 
 
-def test_autodetected_libfabric_commits_when_probe_passes(monkeypatch):
+def test_autodetected_efa_builds_libfabric_agent(monkeypatch):
+    """When EFA is detected, the agent is built with the LIBFABRIC backend."""
     _patch_globs(monkeypatch, {"/sys/class/net/efa*"})
     created = _capture_created_backends(monkeypatch)
-    monkeypatch.setattr(
-        NixlTensorTransport,
-        "_libfabric_registration_works",
-        lambda self, agent: True,
-    )
 
     transport = NixlTensorTransport()
     transport.get_nixl_agent()
@@ -101,25 +97,16 @@ def test_autodetected_libfabric_commits_when_probe_passes(monkeypatch):
     assert transport._backend == "LIBFABRIC"
 
 
-def test_autodetected_libfabric_raises_when_probe_fails(monkeypatch):
-    """A failed validation probe signals a misconfigured instance, so fail loudly."""
-    _patch_globs(monkeypatch, {"/sys/class/net/efa*"})
+def test_non_efa_builds_ucx_agent(monkeypatch):
+    """Without EFA, the agent is built with the UCX backend."""
+    _patch_globs(monkeypatch, set())
     created = _capture_created_backends(monkeypatch)
-    monkeypatch.setattr(
-        NixlTensorTransport,
-        "_libfabric_registration_works",
-        lambda self, agent: False,
-    )
 
     transport = NixlTensorTransport()
-    with pytest.raises(RuntimeError, match="LIBFABRIC"):
-        transport.get_nixl_agent()
+    transport.get_nixl_agent()
 
-    # The deterministic failure is cached: a second call fails fast without
-    # rebuilding and re-probing another agent.
-    with pytest.raises(RuntimeError, match="LIBFABRIC"):
-        transport.get_nixl_agent()
-    assert created == ["LIBFABRIC"]
+    assert created == ["UCX"]
+    assert transport._backend == "UCX"
 
 
 if __name__ == "__main__":

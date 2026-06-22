@@ -1,5 +1,3 @@
-import ctypes
-import ctypes.util
 import functools
 import glob
 import logging
@@ -28,10 +26,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Probe buffer size for the LIBFABRIC/EFA registration check. Must exceed EFA's
-# ~32 MiB host bounce pool so the probe hits a real ``fi_mr_reg`` registration.
-_LIBFABRIC_PROBE_SIZE_BYTES = 64 * 1024 * 1024
-
 
 @functools.lru_cache(maxsize=1)
 def _is_efa_available() -> bool:
@@ -57,63 +51,6 @@ def _is_efa_available() -> bool:
         if os.path.basename(driver) == "efa":
             return True
     return False
-
-
-@functools.lru_cache(maxsize=1)
-def _load_cudart() -> Optional["ctypes.CDLL"]:
-    """Best-effort load of the CUDA runtime for raw (non-VMM) device allocation."""
-    candidates = [
-        "libcudart.so",
-        "libcudart.so.12",
-        "libcudart.so.11.0",
-        "cudart64_12.dll",
-        "cudart64_110.dll",
-    ]
-    found = ctypes.util.find_library("cudart")
-    if found:
-        candidates.insert(0, found)
-    for name in candidates:
-        try:
-            return ctypes.CDLL(name)
-        except OSError:
-            continue
-    return None
-
-
-def _alloc_non_vmm_cuda_buffer(nbytes: int):
-    """Allocates a raw, non-VMM CUDA buffer for backend probing.
-
-    PyTorch's caching allocator uses CUDA VMM (``cuMemCreate``) when
-    ``PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`` (standard for Megatron).
-    VMM memory can't be RDMA-registered, so probing with a VMM buffer yields a
-    false negative. We deliberately allocate with ``cudaMalloc`` (non-VMM) so the
-    probe reflects the backend's capability for ordinary, registerable buffers.
-
-    Returns a ``(ptr, nbytes, gpu_id, free_fn)`` tuple, or ``None`` if CUDA isn't
-    available (for example a CPU-only actor) or the allocation fails.
-    """
-    try:
-        import torch
-    except ImportError:
-        return None
-    if not torch.cuda.is_available():
-        return None
-    cudart = _load_cudart()
-    if cudart is None:
-        return None
-
-    gpu_id = torch.cuda.current_device()
-    if cudart.cudaSetDevice(ctypes.c_int(gpu_id)) != 0:
-        return None
-    ptr = ctypes.c_void_p()
-    rc = cudart.cudaMalloc(ctypes.byref(ptr), ctypes.c_size_t(nbytes))
-    if rc != 0 or not ptr.value:
-        return None
-
-    def free_fn():
-        cudart.cudaFree(ptr)
-
-    return ptr.value, nbytes, gpu_id, free_fn
 
 
 @dataclass
@@ -207,10 +144,6 @@ class NixlTensorTransport(TensorTransportManager):
         self._memory_pool: Optional[MemoryPoolManager] = None
         # The NIXL backend the agent was actually created with ("UCX" or "LIBFABRIC").
         self._backend: Optional[str] = None
-        # Cached agent-init failure message. Set when backend selection fails
-        # deterministically (e.g. the LIBFABRIC GPUDirect probe) so repeated
-        # calls fail fast instead of rebuilding and re-probing an agent.
-        self._agent_init_error: Optional[str] = None
 
     def tensor_transport_backend(self) -> str:
         return "NIXL"
@@ -257,9 +190,9 @@ class NixlTensorTransport(TensorTransportManager):
         """Returns the NIXL backend to attempt.
 
         Prefers LIBFABRIC when EFA devices are present and UCX everywhere else.
-        When the choice is LIBFABRIC, ``get_nixl_agent`` validates that a
-        realistic CUDA registration succeeds before committing, and raises
-        otherwise (a failure signals a misconfigured instance).
+        LIBFABRIC requires GPUDirect (GDR) for CUDA registration; if it isn't
+        available, ``_add_tensor_descs`` surfaces a clear error at registration
+        time with backend-specific troubleshooting guidance.
         """
         return "LIBFABRIC" if _is_efa_available() else "UCX"
 
@@ -277,76 +210,16 @@ class NixlTensorTransport(TensorTransportManager):
             actor_id = f"RAY-DRIVER-{uuid.uuid4()}"
         return nixl_agent(actor_id, agent_config)
 
-    def _libfabric_registration_works(self, agent) -> bool:
-        """Validates that LIBFABRIC/EFA can register a realistic GPU buffer.
-
-        EFA presence doesn't guarantee GPUDirect works. Without nvidia-peermem or
-        dmabuf, small CUDA buffers still register via EFA's ~32 MiB host bounce
-        pool, so the real failure only surfaces as ``NIXL_ERR_BACKEND`` at
-        transfer time. Probing with a buffer larger than that pool surfaces it
-        here instead.
-
-        Returns True if registration succeeds, or if there's no CUDA device to
-        probe (a CPU-only actor can't test GPUDirect, so it selects LIBFABRIC).
-        """
-        buf = _alloc_non_vmm_cuda_buffer(_LIBFABRIC_PROBE_SIZE_BYTES)
-        if buf is None:
-            return True
-        ptr, nbytes, gpu_id, free_fn = buf
-        reg_desc = None
-        try:
-            reg_desc = agent.register_memory(
-                [(ptr, nbytes, gpu_id, "")], mem_type="cuda"
-            )
-            return True
-        except Exception as e:
-            logger.debug(
-                "LIBFABRIC CUDA registration probe failed (size=%d bytes): %s",
-                nbytes,
-                e,
-            )
-            return False
-        finally:
-            try:
-                if reg_desc is not None:
-                    agent.deregister_memory(reg_desc)
-            except Exception:
-                pass
-            free_fn()
-
     def get_nixl_agent(self):
-        """Returns the NIXL agent, building it once on first use.
-
-        A deterministic init failure (e.g. the LIBFABRIC GPUDirect probe) is
-        cached and re-raised on later calls, so we don't rebuild and re-probe an
-        agent every time (which would orphan libfabric resources).
-        """
-        if self._agent_init_error is not None:
-            raise RuntimeError(self._agent_init_error)
+        """Returns the NIXL agent, building it once on first use."""
         if self._nixl_agent is None:
             self._nixl_agent = self._init_nixl_agent()
         return self._nixl_agent
 
     def _init_nixl_agent(self):
-        """Builds the NIXL agent for the selected backend, validating LIBFABRIC."""
+        """Builds the NIXL agent for the selected backend."""
         backend = self.select_backend()
         agent = self._make_nixl_agent(backend)
-
-        # LIBFABRIC: EFA presence doesn't guarantee GPUDirect works, so validate
-        # before committing and fail loudly instead of hitting a cryptic
-        # NIXL_ERR_BACKEND at transfer time.
-        if backend == "LIBFABRIC" and not self._libfabric_registration_works(agent):
-            del agent  # release the unusable agent's libfabric resources
-            self._agent_init_error = (
-                "EFA devices were detected, but a realistic-size CUDA memory "
-                "registration failed under the LIBFABRIC backend. This usually "
-                "means GPUDirect isn't available (missing nvidia-peermem/dmabuf). "
-                "Fix the instance setup. See "
-                "https://github.com/ai-dynamo/nixl/blob/main/src/plugins/libfabric/README.md "
-                "for LIBFABRIC troubleshooting."
-            )
-            raise RuntimeError(self._agent_init_error)
-
         self._backend = backend
         logger.info("Using NIXL backend: %s", backend)
         return agent
