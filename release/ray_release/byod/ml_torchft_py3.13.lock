@@ -6231,7 +6231,7 @@ torchft-nightly==2026.5.15 \
     --hash=sha256:582df58a50799f81cf68f8f62e1714cc8c69c31778f59209ec9abb6f142fbfdf \
     --hash=sha256:7e5cef10d5ff6f6347d056eb172f8f3448a984d12e5950f1ce13e22f12303cb6 \
     --hash=sha256:8e461fe3fd08393795a2a18a65dcd407462aed783d8d824d2c11b4860b04f351
-    # via -r python/requirements/ml/py313/torchft.txt
+    # via -r python/requirements/ml/torchft.txt
 torchmetrics==0.10.3 \
     --hash=sha256:9e6ab66175f2dc13e246c37485b2c27c77931dfe47fc2b81c76217b8efdc1e57 \
     --hash=sha256:b12cf92897545e24a825b0d168888c0f3052700c2901e2d4f7d90b252bc4a343
