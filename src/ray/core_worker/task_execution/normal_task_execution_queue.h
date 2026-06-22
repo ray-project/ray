@@ -59,10 +59,6 @@ class NormalTaskExecutionQueue {
   ExecuteTaskCallback execute_task_;
   CancelTaskCallback cancel_task_;
 
-  /// Callbacks used to execute a queued task or reply that it's canceled.
-  ExecuteTaskCallback execute_task_;
-  CancelTaskCallback cancel_task_;
-
   /// Protects access to the dequeue below.
   mutable absl::Mutex mu_;
 
