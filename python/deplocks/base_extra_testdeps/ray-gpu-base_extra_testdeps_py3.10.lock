@@ -290,7 +290,9 @@ arrow==1.4.0 \
     #   isoduration
 asciitree==0.3.3 \
     --hash=sha256:4aa4b9b649f85e3fcb343363d97564aa1fb62e249677f2e18a96765145cc0f6e
-    # via zarr
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   zarr
 asttokens==3.0.1 \
     --hash=sha256:15a3ebc0f43c2d0a50eeafea25e19046c68398e487b9f1f5b517f7c0f40f976a \
     --hash=sha256:71a4ee5de0bde6a31d64f6b13f2293ac190344478f081c3d1bccfcf5eacb0cb7
