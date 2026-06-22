@@ -340,7 +340,6 @@ py_test_module_list(
         "test_placement_group_4.py",
         "test_placement_group_failover.py",
         "test_ray_debugger.py",
-        "test_ray_init.py",
         "test_ray_shutdown.py",
         "test_resize_raylet.py",
         "test_resource_metrics.py",
@@ -656,6 +655,7 @@ py_test_module_list(
         "rdt/test_rdt_ipc.py",
         "rdt/test_rdt_nccl.py",
         "rdt/test_rdt_nixl.py",
+        "test_gpu_provider_on_gpu.py",
         "test_gpu_tensor_zero_copy_serialization.py",
     ],
     tags = [
@@ -894,6 +894,7 @@ py_test_module_list(
         "test_object_manager_fault_tolerance.py",
         "test_placement_group_3.py",
         "test_placement_group_5.py",
+        "test_ray_init.py",
         "test_ray_init_2.py",
         "test_raylet_fault_tolerance.py",
         "test_reconstruction.py",
