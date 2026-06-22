@@ -264,6 +264,37 @@ class BatchIterator:
     def _report_batch_timings(
         self, batch: Batch, blocked_start_s: float, blocked_end_s: float
     ) -> None:
+        """Attribute per-stage blocked time via overlap with the training window.
+
+        For each pipeline stage we know when it ran ``[stage.start_s,
+        stage.end_s]`` (recorded by background threads onto
+        ``batch.metadata.timings``).  We also know when the training thread
+        was blocked ``[blocked_start_s, blocked_end_s]`` (captured in
+        ``_iter_batches`` around ``next()``).
+
+        The attribution for a stage is the length of the intersection::
+
+            overlap = min(stage.end, blocked_end) - max(stage.start, blocked_start)
+
+        This correctly handles all prefetch configurations:
+
+        * Stage finished before training blocked → overlap ≤ 0 → zero credit.
+        * Stage fully inside blocked window → full stage duration credited.
+        * Partial overlap → partial credit.
+
+        **Invariant**: ``sum(iter_blocked_*) ≤ iter_total_blocked_s``.
+
+        Runs in the training thread; no locks needed because background
+        threads finished writing ``batch.metadata.timings`` before the batch
+        was enqueued.
+
+        Args:
+            batch: The batch whose per-stage timings should be attributed.
+            blocked_start_s: ``perf_counter()`` value just before the
+                training thread called ``next(batch_iter)``.
+            blocked_end_s: ``perf_counter()`` value just after ``next()``
+                returned.
+        """
         if self._stats is None:
             return
         timings = batch.metadata.timings

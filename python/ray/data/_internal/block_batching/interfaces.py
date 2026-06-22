@@ -42,6 +42,23 @@ class StageTiming:
 
 @dataclass
 class BatchTimings:
+    """Per-batch pipeline-stage timing windows for overlap-based attribution.
+
+    Each field records the ``(start_s, end_s)`` wall-clock window during which
+    a particular pipeline stage was active for this batch.  The training thread
+    later compares these windows against its own blocked window to determine
+    how much each stage contributed to training-thread stall (see
+    :meth:`BatchIterator._report_batch_timings`).
+
+    Attributes:
+        fetch: Waiting for upstream data production + ``ray.get()`` transfer.
+        batching: Assembling blocks into a batch via ``_batcher.next_batch()``.
+        format: Converting the batch to the requested format (numpy, pandas…).
+        collate: Running the user-provided ``collate_fn``.
+        finalize: Running the user-provided ``finalize_fn`` (e.g. host→device).
+        num_rows: Number of rows in this batch (for ``iter_rows_total``).
+    """
+
     fetch: StageTiming = field(default_factory=StageTiming)
     batching: StageTiming = field(default_factory=StageTiming)
     format: StageTiming = field(default_factory=StageTiming)
@@ -50,6 +67,7 @@ class BatchTimings:
     num_rows: int = 0
 
     def stages(self) -> Iterable[Tuple[str, StageTiming]]:
+        """Iterate over ``(name, timing)`` pairs for all pipeline stages."""
         return (
             ("fetch", self.fetch),
             ("batching", self.batching),
@@ -59,6 +77,12 @@ class BatchTimings:
         )
 
     def merge_fetch(self, other: "BatchTimings") -> None:
+        """Expand this batch's fetch window to encompass another's.
+
+        Used when a single batch is assembled from multiple blocks, each
+        fetched independently.  The merged window spans from the earliest
+        fetch start to the latest fetch end.
+        """
         self._merge_stage(self.fetch, other.fetch)
 
     @staticmethod
@@ -73,6 +97,12 @@ class BatchTimings:
 
 @dataclass
 class BlockWithTiming:
+    """A resolved block paired with its fetch timing window.
+
+    Produced by :func:`resolve_block_refs` so that downstream pipeline stages
+    can track how long each block took to fetch (upstream wait + ``ray.get()``).
+    """
+
     block: Block
     timings: BatchTimings = field(default_factory=BatchTimings)
 
