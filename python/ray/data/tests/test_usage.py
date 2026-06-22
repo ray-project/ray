@@ -6,6 +6,7 @@ import sys
 import pytest
 
 import ray
+from ray.data._internal.issue_detection.issue_detector import IssueType
 from ray.data._internal.usage import collector
 
 
@@ -44,8 +45,8 @@ def test_round_trip_payload_shape(reset_collector, mock_record):
     payload = json.loads(payload_json)
     entry = payload["executions"][0]
     assert entry["id"] == "exec-1"
-    read_usage_uuid = collector._make_usage_uuid(0, "ReadRange")
-    map_batches_usage_uuid = collector._make_usage_uuid(1, "MapBatches")
+    read_usage_uuid = collector._make_usage_op_uuid(0, "ReadRange")
+    map_batches_usage_uuid = collector._make_usage_op_uuid(1, "MapBatches")
     assert entry["workload"]["plan"] == {
         "usage_uuid": map_batches_usage_uuid,
         "op": "MapBatches",
@@ -72,7 +73,10 @@ def test_detected_issues_in_payload(reset_collector, mock_record):
     collector.record_workload("exec-1", ds._logical_plan)
     collector.record_execution_result(
         "exec-1",
-        detected_issues=[("hanging", "MapBatches"), ("high memory", "ReadRange")],
+        detected_issues=[
+            (IssueType.HANGING, "MapBatches"),
+            (IssueType.HIGH_MEMORY, "ReadRange"),
+        ],
     )
 
     _, payload_json = mock_record[-1]
@@ -89,10 +93,10 @@ def test_record_workload_returns_usage_uuid_map(reset_collector, mock_record):
 
     map_batches_op = ds._logical_plan.dag
     read_op = map_batches_op.input_dependencies[0]
-    assert usage_uuid_map[id(read_op)] == collector._make_usage_uuid(
+    assert usage_uuid_map[id(read_op)] == collector._make_usage_op_uuid(
         0, "ReadRange"
     )
-    assert usage_uuid_map[id(map_batches_op)] == collector._make_usage_uuid(
+    assert usage_uuid_map[id(map_batches_op)] == collector._make_usage_op_uuid(
         1, "MapBatches"
     )
 
