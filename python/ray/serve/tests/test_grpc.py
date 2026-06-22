@@ -192,10 +192,6 @@ def test_grpc_request_with_request_id(ray_cluster):
     the trailing metadata. When request id is passed, gRPC proxy will respond with the
     original request id.
     """
-    # Custom request id is not yet supported for direct ingress
-    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip()
-
     cluster = ray_cluster
     cluster.add_node(num_cpus=2)
     cluster.connect(namespace=SERVE_NAMESPACE)
