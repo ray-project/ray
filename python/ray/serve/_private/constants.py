@@ -763,6 +763,17 @@ RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S = get_env_float_non_negative(
 # from the first coalesced controller broadcast to the HAProxy reload finishing.
 RAY_SERVE_HAPROXY_UPDATE_LATENCY_BUCKETS_S = [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30]
 
+# Controls whether HAProxy system metrics are reported. On by default.
+RAY_SERVE_HAPROXY_METRICS_ENABLED = get_env_bool(
+    "RAY_SERVE_HAPROXY_METRICS_ENABLED", "1"
+)
+
+# How often (seconds) each HAProxyManager samples and emits node-level HAProxy
+# observability gauges (process count and broadcasted-vs-reported target mismatch).
+RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S = get_env_float_non_negative(
+    "RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S", 10.0
+)
+
 # HAProxy metrics export port
 RAY_SERVE_HAPROXY_METRICS_PORT = int(
     os.environ.get("RAY_SERVE_HAPROXY_METRICS_PORT", "9101")

@@ -34,6 +34,24 @@ def _line(sd_body: str) -> bytes:
     return f"{_SAMPLE_PREFIX}[serve@1 {sd_body}] - normal log message".encode()
 
 
+class _FakeHAProxyApi:
+    """Minimal HAProxyApi stand-in. Required by the collector constructor; the
+    push-metric tests pass it as an inert dummy, while the node-metrics tests
+    drive its backend_configs / stats."""
+
+    def __init__(
+        self, backend_configs: Optional[dict] = None, stats: Optional[dict] = None
+    ):
+        self.backend_configs = backend_configs or {}
+        self._stats = stats or {}
+
+    async def get_all_stats(self) -> dict:
+        return self._stats
+
+    def count_haproxy_processes(self) -> int:
+        return 0
+
+
 # ---------------------------------------------------------------------------
 # parse_line: pure parser tests
 # ---------------------------------------------------------------------------
@@ -185,7 +203,7 @@ def collector() -> HAProxyMetricsCollector:
     The collector's metric attributes are replaced post-init with
     `_RecordingMetric` so tests can assert against captured calls.
     """
-    c = HAProxyMetricsCollector()
+    c = HAProxyMetricsCollector(haproxy_api=_FakeHAProxyApi())
     c.truncated_bodies_counter = _RecordingMetric()
     c.latency_histogram = _RecordingMetric()
     c.replica_mismatches_counter = _RecordingMetric()
@@ -455,7 +473,7 @@ async def test_bind_and_attach_receives_datagram_then_close_unlinks(
     """End-to-end on the asyncio path: bind a dgram socket, send a real
     syslog line to it from another socket, assert the metric was recorded,
     then close and verify the socket file is gone."""
-    collector = HAProxyMetricsCollector()
+    collector = HAProxyMetricsCollector(haproxy_api=_FakeHAProxyApi())
     # Replace the metric objects so we can assert on them without depending
     # on Ray's Prometheus registry.
     collector.latency_histogram = _RecordingMetric()
@@ -498,7 +516,7 @@ async def test_bind_and_attach_receives_datagram_then_close_unlinks(
 @pytest.mark.asyncio
 async def test_close_is_idempotent_and_safe_without_bind() -> None:
     """close() should never raise -- pre-bind, post-bind, or called twice."""
-    collector = HAProxyMetricsCollector()
+    collector = HAProxyMetricsCollector(haproxy_api=_FakeHAProxyApi())
     # never bound
     collector.close()
     collector.close()
@@ -511,12 +529,84 @@ async def test_bind_replaces_existing_socket_file(tmp_path) -> None:
     sock_path.write_bytes(b"")  # touch a stale file
     assert sock_path.exists()
 
-    collector = HAProxyMetricsCollector()
+    collector = HAProxyMetricsCollector(haproxy_api=_FakeHAProxyApi())
     try:
         await collector.bind_and_attach(str(sock_path), loop=asyncio.get_event_loop())
         assert sock_path.exists()
     finally:
         collector.close()
+
+
+# ---------------------------------------------------------------------------
+# Node-level poll metrics: target mismatch
+# ---------------------------------------------------------------------------
+
+
+def _backend(name: str, server_names):
+    from ray.serve._private.haproxy import BackendConfig, ServerConfig
+
+    return BackendConfig(
+        name=name,
+        path_prefix="/",
+        servers=[
+            ServerConfig(name=s, host="127.0.0.1", port=9000 + i)
+            for i, s in enumerate(server_names)
+        ],
+    )
+
+
+@pytest.mark.parametrize(
+    "broadcasted, reported, expected_mismatch",
+    [
+        # Fully converged: every broadcasted server is reported, nothing extra.
+        ({"s1", "s2"}, {"s1", "s2"}, 0),
+        # A broadcasted server hasn't been applied to HAProxy yet.
+        ({"s1", "s2", "s3"}, {"s1", "s2"}, 1),
+        # HAProxy still reports a stale server we no longer broadcast.
+        ({"s1", "s2"}, {"s1", "s2", "stale"}, 1),
+        # Divergence in both directions counts each side.
+        ({"s1", "s2"}, {"s1", "stale"}, 2),
+    ],
+)
+def test_compute_target_mismatch(broadcasted, reported, expected_mismatch) -> None:
+    api = _FakeHAProxyApi(
+        backend_configs={"http-app": _backend("http-app", broadcasted)},
+        stats={"http-app": {name: object() for name in reported}},
+    )
+    collector = HAProxyMetricsCollector(haproxy_api=api)
+    assert asyncio.run(collector._compute_target_mismatch()) == expected_mismatch
+
+
+@pytest.mark.asyncio
+async def test_start_polls_always_and_binds_only_when_enabled(tmp_path) -> None:
+    """start() always begins node polling; the dgram reader (and its task) is
+    only created when ingress-router metrics are enabled."""
+    api = _FakeHAProxyApi(backend_configs={}, stats={})
+    loop = asyncio.get_event_loop()
+
+    disabled = HAProxyMetricsCollector(haproxy_api=api)
+    attach_task = disabled.start(
+        loop, poll_interval_s=10.0, enable_ingress_router_metrics=False
+    )
+    assert attach_task is None
+    assert disabled._node_metrics_task is not None
+    disabled.close()
+
+    sock_path = tmp_path / "subdir" / "metrics.sock"
+    enabled = HAProxyMetricsCollector(haproxy_api=api)
+    attach_task = enabled.start(
+        loop,
+        poll_interval_s=10.0,
+        enable_ingress_router_metrics=True,
+        metrics_socket_path=str(sock_path),
+    )
+    try:
+        assert attach_task is not None
+        await attach_task  # bind completes; makedirs created the parent dir
+        assert sock_path.exists()
+        assert enabled._node_metrics_task is not None
+    finally:
+        enabled.close()
 
 
 # ---------------------------------------------------------------------------
