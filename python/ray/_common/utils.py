@@ -545,15 +545,15 @@ def get_cgroup_aware_swap_memory() -> Tuple[int, int]:
 def _get_host_swap_memory() -> Tuple[int, int]:
     """Return (host_swap_total, host_swap_used) from psutil.
 
-    Guards against psutil itself raising on stripped containers / unsupported
-    kernels — callers shouldn't have to know which exception types psutil may
-    throw (RuntimeError, NotImplementedError, OSError, …).
+    Lets psutil's native exception (RuntimeError / NotImplementedError /
+    OSError on stripped containers or unsupported kernels) propagate.
+    Callers on the startup path want this to fail loudly so a misconfigured
+    `RAY_count_swap_in_memory_monitor=1` doesn't silently degrade to
+    "no swap"; periodic callers (e.g. the dashboard reporter) should wrap
+    this with their own log-and-continue policy.
     """
-    try:
-        host = psutil.swap_memory()
-        return host.total, host.used
-    except Exception:
-        return 0, 0
+    host = psutil.swap_memory()
+    return host.total, host.used
 
 
 def binary_to_hex(identifier):

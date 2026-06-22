@@ -1,5 +1,4 @@
 import json
-import logging
 import sys
 from unittest.mock import patch
 
@@ -290,16 +289,42 @@ def test_resolve_memory_skips_swap_when_memory_explicitly_set(monkeypatch) -> No
     assert spec.memory == user_memory
 
 
-def test_resolve_memory_handles_swap_lookup_failure(
-    monkeypatch, caplog, propagate_logs
-) -> None:
-    """If the cgroup-aware swap lookup raises (e.g. restricted env), the swap
-    addition is skipped and a warning is logged — memory falls back to the
-    no-swap value rather than raising."""
+def test_resolve_memory_raises_on_swap_lookup_failure(monkeypatch) -> None:
+    """If the operator opted into swap accounting and the lookup raises (e.g.
+    psutil unsupported on the platform), startup must fail fast rather than
+    silently degrade to "swap disabled". Swallowing here masks a real
+    misconfiguration."""
     _enable_count_swap_flag(monkeypatch, True)
 
     def _raise(*_args, **_kwargs):
         raise OSError("swap unavailable")
+
+    monkeypatch.setattr(
+        "ray._private.resource_and_label_spec.get_cgroup_aware_swap_memory", _raise
+    )
+    monkeypatch.setattr("ray._common.utils.get_system_memory", lambda: 8 * 1024**3)
+    monkeypatch.setattr(
+        "ray._private.utils.estimate_available_memory", lambda: 4 * 1024**3
+    )
+    monkeypatch.setattr(
+        "ray._private.utils.get_shared_memory_bytes", lambda: 1 * 1024**3
+    )
+
+    spec = ResourceAndLabelSpec()
+    with pytest.raises(OSError, match="swap unavailable"):
+        spec.resolve(is_head=False)
+
+
+def test_resolve_memory_does_not_call_swap_when_flag_disabled(monkeypatch) -> None:
+    """Even if get_cgroup_aware_swap_memory would raise, it must not be called
+    when the flag is off — otherwise the default-off path could regress to a
+    crash on any platform where psutil swap support is missing."""
+    _enable_count_swap_flag(monkeypatch, False)
+    called = []
+
+    def _raise(*_args, **_kwargs):
+        called.append(True)
+        raise OSError("should not be called")
 
     monkeypatch.setattr(
         "ray._private.resource_and_label_spec.get_cgroup_aware_swap_memory", _raise
@@ -314,17 +339,10 @@ def test_resolve_memory_handles_swap_lookup_failure(
     )
 
     spec = ResourceAndLabelSpec()
-    with caplog.at_level(
-        logging.WARNING, logger="ray._private.resource_and_label_spec"
-    ):
-        spec.resolve(is_head=False)
+    spec.resolve(is_head=False)
 
+    assert not called
     assert spec.memory == available - spec.object_store_memory
-    assert any(
-        "Failed to retrieve swap memory info" in record.message
-        for record in caplog.records
-        if record.levelno == logging.WARNING
-    )
 
 
 def test_resolve_raises_on_reserved_head_resource():

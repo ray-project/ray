@@ -424,16 +424,14 @@ class ResourceAndLabelSpec:
             # resource so scheduling and ray status reflect the kernel's
             # effective working set. Off by default; flip via
             # RAY_count_swap_in_memory_monitor=1 (matches the C++ flag).
+            #
+            # Failures here propagate. This is the raylet startup path — if the
+            # operator opted into swap accounting but the lookup fails (e.g.
+            # psutil unsupported on the platform), startup should crash with the
+            # native exception rather than silently behave as if swap is off.
             swap_total = 0
             if _COUNT_SWAP_IN_MEMORY_MONITOR:
-                try:
-                    swap_total, _ = get_cgroup_aware_swap_memory()
-                except (OSError, NotImplementedError):
-                    logger.warning(
-                        "Failed to retrieve swap memory info; swap will "
-                        "not be counted toward node memory capacity.",
-                        exc_info=True,
-                    )
+                swap_total, _ = get_cgroup_aware_swap_memory()
             memory = available_memory_bytes + swap_total - self.object_store_memory
             if memory < 100e6 and memory < 0.05 * system_memory:
                 raise ValueError(
