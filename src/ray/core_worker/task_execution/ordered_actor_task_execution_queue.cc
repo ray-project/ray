@@ -23,12 +23,14 @@ namespace ray {
 namespace core {
 
 OrderedActorTaskExecutionQueue::OrderedActorTaskExecutionQueue(
-    instrumented_io_context &task_execution_service,
+    instrumented_io_context &io_service,
+    std::shared_ptr<Postable> default_postable,
     ActorTaskExecutionArgWaiterInterface &waiter,
     worker::TaskEventBuffer &task_event_buffer,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
     int64_t reorder_wait_seconds)
-    : task_execution_service_(task_execution_service),
+    : io_service_(io_service),
+      default_postable_(std::move(default_postable)),
       reorder_wait_seconds_(reorder_wait_seconds),
       main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),
@@ -76,8 +78,8 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
   // Make a copy of the task spec because `task` is moved below.
   TaskSpecification task_spec = task.TaskSpec();
   const std::string &group = task_spec.ConcurrencyGroupName();
-  auto [iter, _] = group_states_.try_emplace(
-      group, ConcurrencyGroupOrderingState(task_execution_service_));
+  auto [iter, _] =
+      group_states_.try_emplace(group, ConcurrencyGroupOrderingState(io_service_));
   auto &group_state = iter->second;
 
   if (client_processed_up_to >= group_state.next_seq_no) {
@@ -290,17 +292,20 @@ void OrderedActorTaskExecutionQueue::ExecuteRequest(TaskToExecute &&request) {
   auto task_id = request.TaskID();
   auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                          request.FunctionDescriptor());
-  if (pool == nullptr) {
-    AcceptRequestOrRejectIfCanceled(task_id, request);
-  } else {
-    pool->Post([this, request = std::move(request), task_id]() mutable {
-      AcceptRequestOrRejectIfCanceled(task_id, request);
-    });
+  std::shared_ptr<Postable> post_execute = default_postable_;
+  if (pool) {
+    post_execute = std::move(pool);
   }
+  // This runs on io_service_ for two reasons:
+  // 1. all operations except for task execution happen on io_service_
+  // 2. This serializes the is_canceled check with CancelTaskIfFound (also on
+  // io_service_), eliminating the race where a cancel arriving mid-Execute would report
+  // success but the task would still run.
+  AcceptRequestOrRejectIfCanceled(task_id, std::move(request), std::move(post_execute));
 }
 
 void OrderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
-    TaskID task_id, TaskToExecute &request) {
+    TaskID task_id, TaskToExecute request, std::shared_ptr<Postable> post_execute) {
   bool is_canceled = false;
   {
     absl::MutexLock lock(&mu_);
@@ -310,16 +315,21 @@ void OrderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
     }
   }
 
-  // Accept can be very long, and we shouldn't hold a lock.
   if (is_canceled) {
     request.Cancel(
         Status::SchedulingCancelled("Task is canceled before it is scheduled."));
-  } else {
-    request.Execute();
+    absl::MutexLock lock(&mu_);
+    pending_task_id_to_is_canceled.erase(task_id);
+    return;
   }
 
-  absl::MutexLock lock(&mu_);
-  pending_task_id_to_is_canceled.erase(task_id);
+  // Execute can be very long, and we shouldn't hold a lock.
+  auto execute_handler = [this, task_id, request = std::move(request)]() mutable {
+    request.Execute();
+    absl::MutexLock lock(&mu_);
+    pending_task_id_to_is_canceled.erase(task_id);
+  };
+  post_execute->Post(std::move(execute_handler));
 }
 
 }  // namespace core

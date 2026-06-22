@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
@@ -27,6 +28,28 @@
 
 namespace ray {
 namespace core {
+
+/// Handle for posting a piece of work onto an execution context
+/// (an io_context, a thread pool, an asyncio fiber, etc.). Lets callers
+/// dispatch a task body without knowing the underlying executor.
+class Postable {
+ public:
+  virtual ~Postable() = default;
+  virtual void Post(std::function<void()> fn) = 0;
+};
+
+/// Adapts an `instrumented_io_context` to the `Postable` interface.
+class IoContextPostable : public Postable {
+ public:
+  IoContextPostable(instrumented_io_context &io_context, std::string name)
+      : io_context_(io_context), name_(std::move(name)) {}
+
+  void Post(std::function<void()> fn) override { io_context_.post(std::move(fn), name_); }
+
+ private:
+  instrumented_io_context &io_context_;
+  std::string name_;
+};
 
 /// Wraps the state and callbacks associated with a task queued for execution on this
 /// worker.

@@ -214,13 +214,16 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
   } else if (task_spec.IsActorTask()) {
     auto it = actor_task_execution_queues_.find(task_spec.CallerWorkerId());
     if (it == actor_task_execution_queues_.end()) {
+      auto default_postable = std::make_shared<IoContextPostable>(
+          task_execution_service_, "ActorTaskExecutionQueue.Execute");
       it = actor_task_execution_queues_
                .emplace(
                    task_spec.CallerWorkerId(),
                    allow_out_of_order_execution_
                        ? std::unique_ptr<ActorTaskExecutionQueueInterface>(
                              std::make_unique<UnorderedActorTaskExecutionQueue>(
-                                 task_execution_service_,
+                                 io_service_,
+                                 std::move(default_postable),
                                  waiter_,
                                  task_event_buffer_,
                                  pool_manager_,
@@ -230,7 +233,8 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                                  concurrency_groups_))
                        : std::unique_ptr<ActorTaskExecutionQueueInterface>(
                              std::make_unique<OrderedActorTaskExecutionQueue>(
-                                 task_execution_service_,
+                                 io_service_,
+                                 std::move(default_postable),
                                  waiter_,
                                  task_event_buffer_,
                                  pool_manager_,

@@ -26,7 +26,8 @@ namespace ray {
 namespace core {
 
 UnorderedActorTaskExecutionQueue::UnorderedActorTaskExecutionQueue(
-    instrumented_io_context &task_execution_service,
+    instrumented_io_context &io_service,
+    std::shared_ptr<Postable> default_postable,
     ActorTaskExecutionArgWaiterInterface &waiter,
     worker::TaskEventBuffer &task_event_buffer,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
@@ -34,7 +35,8 @@ UnorderedActorTaskExecutionQueue::UnorderedActorTaskExecutionQueue(
     bool is_asyncio,
     int fiber_max_concurrency,
     const std::vector<ConcurrencyGroup> &concurrency_groups)
-    : task_execution_service_(task_execution_service),
+    : io_service_(io_service),
+      default_postable_(std::move(default_postable)),
       main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),
       task_event_buffer_(task_event_buffer),
@@ -145,26 +147,20 @@ void UnorderedActorTaskExecutionQueue::RunRequestWithResolvedDependencies(
     TaskToExecute request) {
   RAY_CHECK(request.DependenciesResolved());
   const auto task_id = request.TaskID();
+
+  // Pick where to run the user task body: fiber, concurrency-group pool,
+  // or the default postable.
+  std::shared_ptr<Postable> post_execute;
   if (is_asyncio_) {
-    // Process async actor task.
-    auto fiber = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
-                                                   request.FunctionDescriptor());
-    fiber->EnqueueFiber([this, request = std::move(request), task_id]() mutable {
-      AcceptRequestOrRejectIfCanceled(task_id, request);
-    });
+    post_execute = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
+                                                     request.FunctionDescriptor());
   } else {
-    // Process actor tasks.
     RAY_CHECK(pool_manager_ != nullptr);
     auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                            request.FunctionDescriptor());
-    if (pool == nullptr) {
-      AcceptRequestOrRejectIfCanceled(task_id, request);
-    } else {
-      pool->Post([this, request = std::move(request), task_id]() mutable {
-        AcceptRequestOrRejectIfCanceled(task_id, request);
-      });
-    }
+    post_execute = pool ? std::shared_ptr<Postable>(std::move(pool)) : default_postable_;
   }
+  AcceptRequestOrRejectIfCanceled(task_id, std::move(request), std::move(post_execute));
 }
 
 void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
@@ -208,7 +204,7 @@ void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
 }
 
 void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
-    TaskID task_id, TaskToExecute &request) {
+    TaskID task_id, TaskToExecute request, std::shared_ptr<Postable> post_execute) {
   bool is_canceled = false;
   {
     absl::MutexLock lock(&mu_);
@@ -218,32 +214,52 @@ void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
     }
   }
 
-  // Accept can be very long, and we shouldn't hold a lock.
+  auto post_task_cleanup = [this, task_id]() {
+    std::optional<TaskToExecute> request_to_run;
+    {
+      absl::MutexLock lock(&mu_);
+      auto it = queued_actor_tasks_.find(task_id);
+      if (it != queued_actor_tasks_.end()) {
+        request_to_run = std::move(it->second);
+        queued_actor_tasks_.erase(it);
+      } else {
+        pending_task_id_to_is_canceled.erase(task_id);
+      }
+    }
+    if (request_to_run.has_value()) {
+      io_service_.post(
+          [this, request = std::move(*request_to_run)]() mutable {
+            RunRequest(std::move(request));
+          },
+          "UnorderedActorTaskExecutionQueue.RunRequest");
+    }
+  };
+
   if (is_canceled) {
     request.Cancel(
         Status::SchedulingCancelled("Task is canceled before it is scheduled."));
-  } else {
+    post_task_cleanup();
+    return;
+  }
+
+  // Execute can be very long, and we shouldn't hold a lock.
+  auto execute_handler = [request = std::move(request), post_task_cleanup]() mutable {
     request.Execute();
-  }
-
-  std::optional<TaskToExecute> request_to_run;
-  {
-    absl::MutexLock lock(&mu_);
-    auto it = queued_actor_tasks_.find(task_id);
-    if (it != queued_actor_tasks_.end()) {
-      request_to_run = std::move(it->second);
-      queued_actor_tasks_.erase(it);
-    } else {
-      pending_task_id_to_is_canceled.erase(task_id);
-    }
-  }
-
-  if (request_to_run.has_value()) {
-    task_execution_service_.post(
-        [this, request = std::move(*request_to_run)]() mutable {
-          RunRequest(std::move(request));
-        },
-        "UnorderedActorTaskExecutionQueue.RunRequest");
+    post_task_cleanup();
+  };
+  if (is_asyncio_) {
+    // For asyncio actors post_execute is a FiberState, whose Post() blocks the
+    // caller until the fiber runner picks the task up (unbuffered fiber-channel
+    // rendezvous, see fiber.h). This code runs on io_service_, the single thread
+    // that also services health-check and other RPCs, so blocking here can stall
+    // the whole worker. Hand the blocking dispatch to task_execution_service_
+    // instead; arg fetching still runs on io_service_, so pipelining is unaffected.
+    default_postable_->Post([post_execute = std::move(post_execute),
+                             execute_handler = std::move(execute_handler)]() mutable {
+      post_execute->Post(std::move(execute_handler));
+    });
+  } else {
+    post_execute->Post(std::move(execute_handler));
   }
 }
 

@@ -54,12 +54,14 @@ class TaskReceiver {
       std::string *actor_repr_name,
       std::string *application_error)>;
 
-  TaskReceiver(instrumented_io_context &task_execution_service,
+  TaskReceiver(instrumented_io_context &io_service,
+               instrumented_io_context &task_execution_service,
                worker::TaskEventBuffer &task_event_buffer,
                TaskHandler task_handler,
                ActorTaskExecutionArgWaiter &actor_task_execution_arg_waiter,
                std::function<std::function<void()>()> initialize_thread_callback)
       : task_handler_(std::move(task_handler)),
+        io_service_(io_service),
         task_execution_service_(task_execution_service),
         task_event_buffer_(task_event_buffer),
         waiter_(actor_task_execution_arg_waiter),
@@ -116,6 +118,8 @@ class TaskReceiver {
 
   /// The callback function to process a task.
   TaskHandler task_handler_;
+
+  instrumented_io_context &io_service_;
 
   /// The event loop for running tasks on.
   instrumented_io_context &task_execution_service_;

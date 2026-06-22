@@ -39,8 +39,12 @@ namespace core {
 /// Does not guarantee that tasks are executed in submission order.
 class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
  public:
+  /// \param io_service The io_context this queue's bookkeeping runs on.
+  /// \param default_postable Where to dispatch user task bodies when no
+  ///   concurrency-group thread pool or fiber applies.
   UnorderedActorTaskExecutionQueue(
-      instrumented_io_context &task_execution_service,
+      instrumented_io_context &io_service,
+      std::shared_ptr<Postable> default_postable,
       ActorTaskExecutionArgWaiterInterface &waiter,
       worker::TaskEventBuffer &task_event_buffer,
       std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
@@ -70,9 +74,12 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
 
   /// Accept the given TaskToExecute or reject it if a task id is canceled via
   /// CancelTaskIfFound.
-  void AcceptRequestOrRejectIfCanceled(TaskID task_id, TaskToExecute &request);
+  void AcceptRequestOrRejectIfCanceled(TaskID task_id,
+                                       TaskToExecute request,
+                                       std::shared_ptr<Postable> post_execute);
 
-  instrumented_io_context &task_execution_service_;
+  instrumented_io_context &io_service_;
+  std::shared_ptr<Postable> default_postable_;
   /// The id of the thread that constructed this scheduling queue.
   std::thread::id main_thread_id_;
   ActorTaskExecutionArgWaiterInterface &waiter_;

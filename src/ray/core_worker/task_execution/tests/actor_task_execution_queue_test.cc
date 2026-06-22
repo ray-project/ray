@@ -33,6 +33,12 @@ using std::chrono_literals::operator""s;
 namespace ray {
 namespace core {
 
+// Tests run the queue's user-task-body dispatch on the same io_context as the
+// queue's bookkeeping for simplicity.
+std::shared_ptr<Postable> IoServicePostable(instrumented_io_context &io_service) {
+  return std::make_shared<IoContextPostable>(io_service, "TestPostable");
+}
+
 class MockWaiter : public ActorTaskExecutionArgWaiterInterface {
  public:
   MockWaiter() {}
@@ -104,8 +110,12 @@ TEST(OrderedActorTaskExecutionQueueTest, TestTaskEvents) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       IoServicePostable(io_service),
+                                       waiter,
+                                       task_event_buffer,
+                                       pool_manager,
+                                       1);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec) { n_ok++; };
@@ -175,8 +185,12 @@ TEST(OrderedActorTaskExecutionQueueTest, TestInOrder) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       IoServicePostable(io_service),
+                                       waiter,
+                                       task_event_buffer,
+                                       pool_manager,
+                                       1);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec) { n_ok++; };
@@ -210,8 +224,12 @@ TEST(OrderedActorTaskExecutionQueueTest, ShutdownCancelsQueuedAndWaitsForRunning
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       IoServicePostable(io_service),
+                                       waiter,
+                                       task_event_buffer,
+                                       pool_manager,
+                                       1);
   // One running task that blocks until we signal.
   std::promise<void> running_started;
   std::promise<void> allow_finish;
@@ -260,8 +278,12 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjects) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       IoServicePostable(io_service),
+                                       waiter,
+                                       task_event_buffer,
+                                       pool_manager,
+                                       1);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
 
@@ -311,8 +333,12 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjectsNotSubjectToSeqTimeou
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       IoServicePostable(io_service),
+                                       waiter,
+                                       task_event_buffer,
+                                       pool_manager,
+                                       1);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
 
@@ -354,8 +380,12 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimeout) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       IoServicePostable(io_service),
+                                       waiter,
+                                       task_event_buffer,
+                                       pool_manager,
+                                       1);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
 
@@ -395,8 +425,12 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSkipAlreadyProcessedByClient) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       IoServicePostable(io_service),
+                                       waiter,
+                                       task_event_buffer,
+                                       pool_manager,
+                                       1);
   std::atomic<int> n_ok(0);
   std::atomic<int> n_rej(0);
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec) { n_ok++; };
@@ -449,8 +483,12 @@ TEST(OrderedActorTaskExecutionQueueTest, TestRetryInOrderOrderedActorTaskExecuti
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 2);
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       IoServicePostable(io_service),
+                                       waiter,
+                                       task_event_buffer,
+                                       pool_manager,
+                                       2);
   std::vector<int64_t> accept_seq_nos;
   std::vector<int64_t> reject_seq_nos;
   std::atomic<int> n_accept = 0;
@@ -506,8 +544,12 @@ TEST(OrderedActorTaskExecutionQueueTest, TestPerConcurrencyGroupOrdering) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 2);
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       IoServicePostable(io_service),
+                                       waiter,
+                                       task_event_buffer,
+                                       pool_manager,
+                                       2);
 
   // Track accepted tasks as (group_name, seq_no) pairs.
   std::vector<std::pair<std::string, int64_t>> accepted;
@@ -569,6 +611,7 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestTaskEvents) {
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
   UnorderedActorTaskExecutionQueue queue(io_service,
+                                         IoServicePostable(io_service),
                                          waiter,
                                          task_event_buffer,
                                          pool_manager,
@@ -644,6 +687,7 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttempts) {
   MockTaskEventBuffer task_event_buffer;
   UnorderedActorTaskExecutionQueue queue(
       io_service,
+      IoServicePostable(io_service),
       waiter,
       task_event_buffer,
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
@@ -711,6 +755,7 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttemptsCancellat
   MockTaskEventBuffer task_event_buffer;
   UnorderedActorTaskExecutionQueue queue(
       io_service,
+      IoServicePostable(io_service),
       waiter,
       task_event_buffer,
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(

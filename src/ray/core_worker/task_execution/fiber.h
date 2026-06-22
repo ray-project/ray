@@ -19,6 +19,7 @@
 #include <memory>
 #include <utility>
 
+#include "ray/core_worker/task_execution/common.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
 
@@ -91,7 +92,7 @@ class FiberRateLimiter {
 
 using FiberChannel = boost::fibers::unbuffered_channel<std::function<void()>>;
 
-class FiberState {
+class FiberState : public Postable {
  public:
   static bool NeedDefaultExecutor(int32_t max_concurrency_in_default_group,
                                   bool has_other_concurrency_groups) {
@@ -160,6 +161,8 @@ class FiberState {
     });
     RAY_CHECK(op_status == boost::fibers::channel_op_status::success);
   }
+
+  void Post(std::function<void()> fn) override { EnqueueFiber(std::move(fn)); }
 
   void Stop() { channel_.close(); }
 

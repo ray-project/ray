@@ -393,7 +393,8 @@ CoreWorker::CoreWorker(
           RAY_CHECK_OK(raylet_ipc_client_->WaitForActorCallArgs(args, tag))
               << "WaitForActorCallArgs IPC failed unexpectedly";
         });
-    task_receiver_ = std::make_unique<TaskReceiver>(task_execution_service_,
+    task_receiver_ = std::make_unique<TaskReceiver>(io_service_,
+                                                    task_execution_service_,
                                                     *task_event_buffer_,
                                                     execute_task,
                                                     *actor_task_execution_arg_waiter_,
@@ -3353,26 +3354,16 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   std::string func_name = request.task_spec().name();
   task_counter_.IncPending(func_name, request.task_spec().attempt_number() > 0);
 
-  // For actor tasks, we just need to post a HandleActorTask instance to the task
-  // execution service.
+  // For actor tasks, we just need to enqueue them onto the actor queue.
   if (request.task_spec().type() == TaskType::ACTOR_TASK) {
-    task_execution_service_.post(
-        [this,
-         request = std::move(request),
-         reply,
-         send_reply_callback = std::move(send_reply_callback),
-         func_name]() mutable {
-          // We have posted an exit task onto the main event loop,
-          // so shouldn't bother executing any further work.
-          if (IsExiting()) {
-            RAY_LOG(INFO) << "Queued task " << func_name
-                          << " won't be executed because the worker already exited.";
-            return;
-          }
-          task_receiver_->QueueTaskForExecution(
-              std::move(request), reply, send_reply_callback);
-        },
-        "CoreWorker.HandlePushTaskActor");
+    // We have posted an exit task onto the main event loop,
+    // so shouldn't bother executing any further work.
+    if (IsExiting()) {
+      RAY_LOG(INFO) << "Queued task " << func_name
+                    << " won't be executed because the worker already exited.";
+      return;
+    }
+    task_receiver_->QueueTaskForExecution(std::move(request), reply, send_reply_callback);
   } else {
     // Normal tasks are enqueued here, and we post a ExecuteQueuedNormalTasks instance to
     // the task execution service.
@@ -3401,14 +3392,8 @@ void CoreWorker::HandleActorCallArgWaitComplete(
     return;
   }
 
-  // Post on the task execution event loop since this may trigger the
-  // execution of a task that is now ready to run.
-  task_execution_service_.post(
-      [this, tag = request.tag()] {
-        RAY_LOG(DEBUG) << "Actor task args are ready for tag: " << tag;
-        actor_task_execution_arg_waiter_->MarkReady(tag);
-      },
-      "CoreWorker.MarkActorTaskArgsReady");
+  RAY_LOG(DEBUG) << "Actor task args are ready for tag: " << request.tag();
+  actor_task_execution_arg_waiter_->MarkReady(request.tag());
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -4004,21 +3989,7 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
     on_canceled(success, is_running);
   };
 
-  if (is_async_actor) {
-    // If it is an async actor, post it to an execution service
-    // to avoid thread issues. Note that when it is an async actor
-    // task_execution_service_ won't actually run a task but it will
-    // just create coroutines.
-    task_execution_service_.post([cancel = std::move(cancel)]() { cancel(); },
-                                 "CoreWorker.CancelActorTaskOnExecutor");
-  } else {
-    // For regular actor, we cannot post it to task_execution_service because
-    // main thread is blocked. Threaded actor can do both (dispatching to
-    // task execution service, or just directly call it in io_service).
-    // There's no special reason why we don't dispatch
-    // cancel to task_execution_service_ for threaded actors.
-    cancel();
-  }
+  cancel();
 
   if (recursive) {
     auto recursive_cancel = CancelChildren(task_id, force_kill);

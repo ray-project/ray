@@ -19,6 +19,7 @@ from ray._private.test_utils import (
     make_global_state_accessor,
     wait_for_pid_to_exit,
 )
+from ray.experimental import get_object_locations
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 from ray.util.state import list_actors
 
@@ -51,6 +52,99 @@ def test_actor_load_balancing(ray_start_cluster):
     # Schedule a group of actors, ensure that the actors are spread between all nodes.
     node_ids = ray.get([Actor.remote().get_node_id.remote() for _ in range(10)])
     assert set(node_ids) == worker_node_ids
+
+
+def test_actor_arg_fetch_is_pipelined_with_task_execution(ray_start_cluster):
+    """Args for queued actor tasks are pulled while an earlier task body is running.
+
+    The test sets up a producer and consumer on different nodes.
+    Producer produces N objects. Consumer first calls a `block()` task
+    that takes no remote args and hangs until signaled. Then driver submits
+    N consumer tasks that require fetching args from producer. With correct
+    pipelining, the consumers would be able to pull exactly N args even
+    when block() is running on the consumer. Without it, it won't be
+    able to pull any args.
+    """
+    cluster = ray_start_cluster
+
+    OBJECT_BYTES = 100 * 1024 * 1024
+    N = 5
+
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+    cluster.add_node(
+        num_cpus=1,
+        resources={"producer": 1},
+        object_store_memory=900 * 1024 * 1024,
+    )
+    cluster.add_node(
+        num_cpus=1,
+        resources={"consumer": 1},
+        object_store_memory=900 * 1024 * 1024,
+    )
+    cluster.wait_for_nodes()
+
+    @ray.remote(resources={"producer": 0.01})
+    class Producer:
+        def produce(self):
+            return b"\x00" * OBJECT_BYTES
+
+    @ray.remote(resources={"consumer": 0.01})
+    class Consumer:
+        def __init__(self, started, release):
+            self.started = started
+            self.release = release
+
+        def block(self):
+            ray.get(self.started.send.remote())
+            ray.get(self.release.wait.remote())
+
+        def consume(self, x):
+            return len(x)
+
+    started = SignalActor.remote()
+    release = SignalActor.remote()
+    producer = Producer.remote()
+    consumer = Consumer.remote(started, release)
+
+    prod_refs = [producer.produce.remote() for _ in range(N)]
+    ray.wait(prod_refs, num_returns=N, timeout=30)
+
+    # block() occupies the consumer before any consume gets submitted, so the
+    # only way the queued consumes' args can land is via parallel arg-fetch.
+    block_ref = consumer.block.remote()
+    ray.get(started.wait.remote())
+
+    consume_refs = [consumer.consume.remote(p) for p in prod_refs]
+
+    consumer_node_id = next(
+        n["NodeID"]
+        for n in ray.nodes()
+        if n["Alive"] and n.get("Resources", {}).get("consumer", 0) > 0
+    )
+
+    def num_pulled_to_consumer():
+        locs = get_object_locations(prod_refs)
+        return sum(
+            1
+            for ref in prod_refs
+            if consumer_node_id in locs.get(ref, {}).get("node_ids", [])
+        )
+
+    try:
+        wait_for_condition(
+            lambda: num_pulled_to_consumer() == N,
+            timeout=30,
+            retry_interval_ms=200,
+        )
+    except RuntimeError:
+        observed = num_pulled_to_consumer()
+        raise AssertionError(
+            f"Consumer has {observed} of {N} producer objects in its plasma."
+        )
+    finally:
+        release.send.remote()
+        ray.get([block_ref] + consume_refs)
 
 
 @pytest.mark.parametrize(

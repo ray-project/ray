@@ -139,6 +139,8 @@ class TaskReceiverTest : public ::testing::Test {
     RayConfig::instance().initialize(
         R"({"actor_scheduling_queue_max_reorder_wait_seconds": 1})");
     receiver_ = std::make_unique<TaskReceiver>(
+        // Test uses one io_context for both io_service and task_execution_service.
+        task_execution_service_,
         task_execution_service_,
         task_event_buffer_,
         execute_task,
@@ -186,19 +188,24 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
 
   int callback_count = 0;
 
+  // Replies must outlive StartIOService() below since posted handlers reference them.
+  rpc::PushTaskReply reply0;
+  rpc::PushTaskReply reply1;
+  rpc::PushTaskReply reply2;
+  rpc::PushTaskReply reply3;
+
   // Push a task request with actor counter 0. This should succeed
   // on the receiver.
   {
     auto request =
         CreatePushTaskRequestHelper(actor_id, 0, worker_id, caller_id, curr_timestamp);
-    rpc::PushTaskReply reply;
     auto reply_callback = [&callback_count](Status status,
                                             std::function<void()> success,
                                             std::function<void()> failure) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
     };
-    receiver_->QueueTaskForExecution(request, &reply, reply_callback);
+    receiver_->QueueTaskForExecution(request, &reply0, reply_callback);
   }
 
   // Push a task request with actor counter 1. This should succeed
@@ -206,14 +213,13 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
   {
     auto request =
         CreatePushTaskRequestHelper(actor_id, 1, worker_id, caller_id, curr_timestamp);
-    rpc::PushTaskReply reply;
     auto reply_callback = [&callback_count](Status status,
                                             std::function<void()> success,
                                             std::function<void()> failure) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
     };
-    receiver_->QueueTaskForExecution(request, &reply, reply_callback);
+    receiver_->QueueTaskForExecution(request, &reply1, reply_callback);
   }
 
   // Create another request with the same caller id, but a different worker id,
@@ -225,14 +231,13 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
     worker_id = WorkerID::FromRandom();
     auto request =
         CreatePushTaskRequestHelper(actor_id, 0, worker_id, caller_id, new_timestamp);
-    rpc::PushTaskReply reply;
     auto reply_callback = [&callback_count](Status status,
                                             std::function<void()> success,
                                             std::function<void()> failure) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
     };
-    receiver_->QueueTaskForExecution(request, &reply, reply_callback);
+    receiver_->QueueTaskForExecution(request, &reply2, reply_callback);
   }
 
   // Push a task request with actor counter 1, but with a different worker id,
@@ -241,14 +246,13 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
     worker_id = WorkerID::FromRandom();
     auto request =
         CreatePushTaskRequestHelper(actor_id, 1, worker_id, caller_id, old_timestamp);
-    rpc::PushTaskReply reply;
     auto reply_callback = [&callback_count](Status status,
                                             std::function<void()> success,
                                             std::function<void()> failure) {
       ++callback_count;
       ASSERT_TRUE(!status.ok());
     };
-    receiver_->QueueTaskForExecution(request, &reply, reply_callback);
+    receiver_->QueueTaskForExecution(request, &reply3, reply_callback);
   }
 
   StartIOService();
