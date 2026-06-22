@@ -1,4 +1,3 @@
-import html
 import io
 import json
 import logging
@@ -274,37 +273,6 @@ _TEMPLATE_COLLECTIONS = {
     },
 }
 
-_DEPLOYMENT_SERVE_LLM_COLLECTION = (
-    "_collections/serve/tutorials/deployment-serve-llm"
-)
-_DEPLOYMENT_SERVE_LLM_TUTORIALS = (
-    "small-size-llm",
-    "medium-size-llm",
-    "large-size-llm",
-    "vision-llm",
-    "reasoning-llm",
-    "hybrid-reasoning-llm",
-    "gpt-oss",
-)
-_DEPLOYMENT_SERVE_LLM_TUTORIAL_RE = "|".join(
-    re.escape(name) for name in _DEPLOYMENT_SERVE_LLM_TUTORIALS
-)
-_DEPLOYMENT_SERVE_LLM_DOC_URL_RE = re.compile(
-    "https://docs\\.ray\\.io/en/[^/]+/"
-    "serve/tutorials/deployment-serve-llm/"
-    f"(?:content/)?(?P<tutorial>{_DEPLOYMENT_SERVE_LLM_TUTORIAL_RE})"
-    "(?:/content)?/README\\.html"
-)
-_DEPLOYMENT_SERVE_LLM_LEGACY_REDIRECTS = {
-    legacy: f"{_DEPLOYMENT_SERVE_LLM_COLLECTION}/{tutorial}/README.html"
-    for tutorial in _DEPLOYMENT_SERVE_LLM_TUTORIALS
-    for legacy in (
-        f"serve/tutorials/deployment-serve-llm/{tutorial}/README.html",
-        f"serve/tutorials/deployment-serve-llm/content/{tutorial}/README.html",
-        f"serve/tutorials/deployment-serve-llm/content/{tutorial}/content/README.html",
-    )
-}
-
 
 def _resolve_template_url(name):
     """Fetch the build zip URL for a template from the channel API."""
@@ -361,56 +329,6 @@ def _fetch_and_extract_zip(config):
         # passes don't trip over a half-extracted archive.
         if target.is_dir():
             shutil.rmtree(target, ignore_errors=True)
-
-
-def _rewrite_deployment_serve_llm_links(source: str, docname: str) -> str:
-    relative_docname = docname.removeprefix(
-        f"{_DEPLOYMENT_SERVE_LLM_COLLECTION}/"
-    )
-    parent_depth = len(pathlib.PurePosixPath(relative_docname).parent.parts)
-    relative_prefix = "../" * parent_depth
-    return _DEPLOYMENT_SERVE_LLM_DOC_URL_RE.sub(
-        lambda match: f"{relative_prefix}{match.group('tutorial')}/README.md",
-        source,
-    )
-
-
-def _redirect_html(target_url: str) -> str:
-    escaped_target = html.escape(target_url, quote=True)
-    js_target = json.dumps(target_url)
-    return f"""<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Redirecting...</title>
-  <link rel="canonical" href="{escaped_target}">
-  <meta http-equiv="refresh" content="0; url={escaped_target}">
-  <script>
-    window.location.replace({js_target} + window.location.hash);
-  </script>
-</head>
-<body>
-  <p>Redirecting to <a href="{escaped_target}">{escaped_target}</a>.</p>
-</body>
-</html>
-"""
-
-
-def write_legacy_template_redirects(app, exception):
-    if exception is not None or app.builder.format != "html":
-        return
-
-    outdir = pathlib.Path(app.outdir)
-    for legacy_path, target_path in _DEPLOYMENT_SERVE_LLM_LEGACY_REDIRECTS.items():
-        target_file = outdir / target_path
-        if not target_file.exists():
-            continue
-
-        redirect_file = outdir / legacy_path
-        redirect_file.parent.mkdir(parents=True, exist_ok=True)
-        relative_target = os.path.relpath(target_file, redirect_file.parent)
-        relative_target = relative_target.replace(os.sep, "/")
-        redirect_file.write_text(_redirect_html(relative_target), encoding="utf-8")
 
 
 collections = {
@@ -1050,17 +968,11 @@ def setup(app):
     # lines render as shell.
     _MAGIC_CODE_BLOCK_RE = re.compile(r"```python\n((?:#[^\n]*\n)*)([!%]\S)")
 
-    def fix_collections_markdown(app, docname, source):
+    def fix_collections_code_blocks(app, docname, source):
         if docname.startswith("_collections/"):
             source[0] = _MAGIC_CODE_BLOCK_RE.sub(r"```ipython3\n\1\2", source[0])
-        if (
-            docname.startswith(f"{_DEPLOYMENT_SERVE_LLM_COLLECTION}/")
-            and docname.endswith("/README")
-        ):
-            source[0] = _rewrite_deployment_serve_llm_links(source[0], docname)
 
-    app.connect('source-read', fix_collections_markdown)
-    app.connect("build-finished", write_legacy_template_redirects)
+    app.connect('source-read', fix_collections_code_blocks)
 
     app.add_config_value("ipython3_lexer_patterns", [], "env")
     app.add_config_value("ipython3_lexer_exclude_patterns", [], "env")

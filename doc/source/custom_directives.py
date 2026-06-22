@@ -67,29 +67,28 @@ TRACKED_FILES = (
     .split("\n")
 )
 
-_LEGACY_COLLECTION_HREF_REWRITES = (
-    (
-        "serve/tutorials/deployment-serve-llm/content/",
-        "_collections/serve/tutorials/deployment-serve-llm/",
-    ),
-    (
-        "serve/tutorials/deployment-serve-llm/",
-        "_collections/serve/tutorials/deployment-serve-llm/",
-    ),
-)
-_DEPLOYMENT_SERVE_LLM_COLLECTION_PREFIX = (
-    "_collections/serve/tutorials/deployment-serve-llm/"
-)
+_EXTERNAL_HREF_RE = re.compile(r"^[a-z][a-z0-9+.-]*:|^//", re.IGNORECASE)
 
 
-def canonicalize_collection_href(href: str) -> str:
-    """Map legacy in-tree template links to fetched _collections pages."""
-    for old_prefix, new_prefix in _LEGACY_COLLECTION_HREF_REWRITES:
-        if href.startswith(old_prefix):
-            href = new_prefix + href[len(old_prefix) :]
-            break
-    if href.startswith(_DEPLOYMENT_SERVE_LLM_COLLECTION_PREFIX):
-        href = href.replace("/content/README.html", "/README.html")
+def canonicalize_collection_href(
+    href: str, known_docs: Optional[Iterable[str]] = None
+) -> str:
+    """Map moved collection doc links to their generated _collections pages."""
+    if not known_docs or _EXTERNAL_HREF_RE.match(href) or href.startswith("#"):
+        return href
+
+    path, sep, fragment = href.partition("#")
+    if not path.endswith(".html"):
+        return href
+
+    docname = path[: -len(".html")]
+    if docname in known_docs or docname.startswith("_collections/"):
+        return href
+
+    collection_docname = f"_collections/{docname}"
+    if collection_docname in known_docs:
+        return f"{collection_docname}.html{sep}{fragment}"
+
     return href
 
 
@@ -275,6 +274,7 @@ def preload_sidebar_nav(
     pathto: Callable[[str], str],
     root_doc: str,
     pagename: str,
+    known_docs: Optional[Iterable[str]] = None,
 ) -> bs4.BeautifulSoup:
     """Return the navigation link structure in HTML.
 
@@ -303,6 +303,8 @@ def preload_sidebar_nav(
     ----------
     get_toctree : Callable[[Any], str]
         The function defined in context["toctree"] when html-page-context is triggered
+    known_docs : Optional[Iterable[str]]
+        Sphinx docnames known to the build environment.
 
     Returns
     -------
@@ -374,8 +376,12 @@ def preload_sidebar_nav(
         to_root_prefix = re.sub(f"{root_doc}.html", "", pathto(root_doc))
 
     for a in soup.select("a"):
-        absolute_href = re.sub(r"^(\.\.\/)*", "", a["href"])
-        absolute_href = canonicalize_collection_href(absolute_href)
+        href = a["href"]
+        if _EXTERNAL_HREF_RE.match(href):
+            continue
+
+        absolute_href = re.sub(r"^(\.\.\/)*", "", href)
+        absolute_href = canonicalize_collection_href(absolute_href, known_docs)
         a["href"] = to_root_prefix + absolute_href
 
         if absolute_href == f"{pagename}.html":
@@ -1157,6 +1163,7 @@ def setup_context(app, pagename, templatename, context, doctree):
         context["pathto"],
         context["root_doc"],
         pagename,
+        getattr(app.env, "found_docs", None),
     )
     context["render_header_nav_links"] = render_header_nav_links
     context["render_library_examples"] = render_library_examples
