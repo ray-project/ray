@@ -537,6 +537,32 @@ def test_filter_expr_rejects_actor_pool(ray_start_regular_shared):
         ds.filter(expr=col("id") > 5, compute=ActorPoolStrategy(size=2))
 
 
+def test_filter_udf_preserves_dictionary_schema(ray_start_regular_shared, tmp_path):
+    """Row-based filter must not change the schema of a dictionary column (#51217)."""
+    table = pa.table(
+        {
+            "plain": pa.array(["x", "y", "z", "w"]),
+            "encoded": pa.array(["a", "b", "a", "c"]).dictionary_encode(),
+        }
+    )
+    parquet_file = tmp_path / "dict.parquet"
+    pq.write_table(table, parquet_file)
+
+    ds = ray.data.read_parquet(str(parquet_file))
+    original_schema = ds.schema()
+
+    # Keep-all, selective, and empty predicates must all leave the schema intact.
+    assert ds.filter(lambda row: True).schema() == original_schema
+
+    selective = ds.filter(lambda row: row["plain"] in ("x", "z"))
+    assert selective.schema() == original_schema
+    assert sorted(r["plain"] for r in selective.take_all()) == ["x", "z"]
+
+    empty = ds.filter(lambda row: False)
+    assert empty.schema() == original_schema
+    assert empty.count() == 0
+
+
 if __name__ == "__main__":
     import sys
 
