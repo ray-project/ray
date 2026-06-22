@@ -252,7 +252,7 @@ def _build_plan(
         child_plans.append(_build_plan(child, ordered_logical_ops))
 
     name = anonymize_op_name(op)
-    usage_uuid = _make_usage_uuid(len(ordered_logical_ops), name)
+    usage_uuid = _make_usage_op_uuid(len(ordered_logical_ops), name)
     ordered_logical_ops.append((op, usage_uuid))
     return _PlanNode(usage_uuid=usage_uuid, op=name, inputs=child_plans)
 
@@ -288,8 +288,8 @@ def _get_op_config(op: LogicalOperator) -> Optional[_OpConfig]:
     return config
 
 
-def _make_usage_uuid(index: int, name: str) -> str:
-    return hashlib.sha256(f"{index}:{name}".encode()).hexdigest()[:8]
+def _make_usage_op_uuid(index: int, name: str) -> str:
+    return hashlib.sha256(f"{index}:{name}".encode()).hexdigest()[:4]
 
 
 def _format_plan_str(op: LogicalOperator, depth: int = 0) -> str:
