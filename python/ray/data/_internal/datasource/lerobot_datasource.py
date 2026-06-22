@@ -1056,7 +1056,9 @@ class LeRobotDatasource(Datasource):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _slices_by_episode(episodes: pa.Table, video_keys: List[str]) -> List[tuple]:
+    def _slices_by_episode(episodes: pa.Table, _video_keys: List[str]) -> List[tuple]:
+        # _video_keys is unused here but kept so this and _slices_by_file_group
+        # share one signature for the dispatch in _slice().
         from_indices = episodes.column("_global_from_index").to_pylist()
         to_indices = episodes.column("_global_to_index").to_pylist()
         return list(zip(from_indices, to_indices))
