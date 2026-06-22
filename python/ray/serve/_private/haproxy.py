@@ -1473,6 +1473,19 @@ class HAProxyApi(ProxyApi):
         else:
             self.grpc_fallback_backend = None
 
+    async def is_grpc_fallback_ready(self) -> bool:
+        """True iff the running HAProxy has an UP server in grpc_fallback_backend."""
+        if self.grpc_fallback_backend is None:
+            return False
+        try:
+            stats = self._parse_haproxy_csv_stats(
+                await self._send_socket_command("show stat")
+            )
+        except Exception:
+            return False
+        servers = stats.get("grpc_fallback_backend", {})
+        return any(server.is_up for server in servers.values())
+
     async def _get_running_pid(self) -> Optional[int]:
         """Pid of the HAProxy process currently answering the admin socket,
         or None if the socket is unavailable or the response is unparseable.
@@ -1710,11 +1723,11 @@ class HAProxyManager(ProxyActorInterface):
                 continue
 
             # When gRPC is used, haproxy relies on the fallback serve proxy to
-            # handle ListApplications requests, so we block until the fallback
-            # grpc proxy is known.
+            # handle ListApplications requests, so we block until HAProxy reprots
+            # an UP server in grpc_fallback_backend.
             if (
                 is_grpc_enabled(self._grpc_options)
-                and self._haproxy.grpc_fallback_backend is None
+                and not await self._haproxy.is_grpc_fallback_ready()
             ):
                 await asyncio.sleep(0.2)
                 continue
