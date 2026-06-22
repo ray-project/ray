@@ -37,7 +37,7 @@ namespace raylet {
  *    the largest memory footprint is selected as tie-breaker
  *
  * Workers with lease Policy:
- * 1. For workers with lease, retriable tasks are first prioritized
+ * 1. For workers with lease, retriable workers are first prioritized
  *    (to maximize retry opportunities)
  * 2. Among workers with the same retriability, tasks are prioritized over actors.
  * 3. Finally, most recent workers (newest granted lease time) are selected over
