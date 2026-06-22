@@ -561,6 +561,64 @@ def test_read_lerobot_batches_sized_per_root(ray_start_regular_shared, tmp_path)
     assert max(batch_rows[0]) > max(batch_rows[1])
 
 
+def test_read_lerobot_get_read_tasks_parallelism_zero(
+    ray_start_regular_shared, lerobot_dataset
+):
+    """parallelism <= 0 falls back to the base (per-file-group) grouping and
+    still covers every row exactly once."""
+    from ray.data.datasource import LeRobotDatasource
+
+    source = LeRobotDatasource(lerobot_dataset)
+    tasks = source.get_read_tasks(0)
+    assert len(tasks) == 3  # 3 episodes -> 3 video file groups
+    indices = [
+        i for t in tasks for block in t() for i in block.column("index").to_pylist()
+    ]
+    assert sorted(indices) == list(range(15))
+
+
+def test_read_lerobot_estimate_inmemory_data_size(
+    ray_start_regular_shared, lerobot_dataset_no_video
+):
+    """estimate_inmemory_data_size is total_frames * the estimated per-row size."""
+    from ray.data.datasource import LeRobotDatasource
+
+    source = LeRobotDatasource(lerobot_dataset_no_video)
+    root = source._roots[0]
+    assert (
+        source.estimate_inmemory_data_size() == root.total_frames * root.row_size_bytes
+    )
+
+
+def test_read_lerobot_per_task_row_limit_bounds_decode(
+    ray_start_regular_shared, lerobot_dataset, monkeypatch
+):
+    """per_task_row_limit caps emitted rows AND stops the read early -- the task
+    decodes only ~one batch past the limit, not the whole segment."""
+    from ray.data._internal.datasource import lerobot_datasource as mod
+
+    decoded = [0]
+    real = mod.decode_frames
+
+    def counting_decode(video_path, timestamps, *args, **kwargs):
+        decoded[0] += len(timestamps)
+        return real(video_path, timestamps, *args, **kwargs)
+
+    monkeypatch.setattr(mod, "decode_frames", counting_decode)
+
+    source = mod.LeRobotDatasource(lerobot_dataset)
+    # Force ~2 rows per batch so the early stop is observable.
+    rsz = source._roots[0].row_size_bytes
+    monkeypatch.setattr(source, "_max_block_bytes", lambda data_context=None: rsz * 2)
+
+    tasks = source.get_read_tasks(1, per_task_row_limit=2)
+    rows = sum(block.num_rows for t in tasks for block in t())
+
+    assert rows == 2  # output capped at the limit
+    # Early stop: only ~one batch decoded, not all 15 frames.
+    assert decoded[0] <= 4, f"decoded {decoded[0]} rows; the read did not stop early"
+
+
 def test_read_lerobot_inconsistent_task_index_raises(
     ray_start_regular_shared, lerobot_dataset
 ):
