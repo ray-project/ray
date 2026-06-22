@@ -738,7 +738,7 @@ class DataContext:
     hash_shuffle_reduce_batch_size: int = DEFAULT_HASH_SHUFFLE_REDUCE_BATCH_SIZE
 
     # Timeout (seconds) for each reduce-task shard ray.get(); a stalled fetch is
-    # logged and fails with GetTimeoutError rather than blocking. <= 0 disables.
+    # logged and fails with GetTimeoutError. <= 0 disables.
     hash_shuffle_reduce_get_timeout_s: float = DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S
 
     # Max number of aggregators (actors) that could be provisioned
