@@ -921,6 +921,36 @@ TEST_F(TaskEventBufferTestLimitProfileEvents, TestBufferSizeLimitProfileEvents) 
             0);
 }
 
+TEST_F(TaskEventBufferTestLimitProfileEvents,
+       TestDroppedProfileEventDoesNotLeakMapEntry) {
+  size_t num_profile_events_per_task = 10;  // Sync with constructor.
+  size_t max_profile_events_stored = 20;    // Sync with constructor.
+
+  // Fill the global profile event buffer with two task attempts.
+  auto task_id_1 = RandomTaskId();
+  auto task_id_2 = RandomTaskId();
+  for (size_t i = 0; i < num_profile_events_per_task; ++i) {
+    task_event_buffer_->AddTaskEvent(GenProfileTaskEvent(task_id_1, 0));
+    task_event_buffer_->AddTaskEvent(GenProfileTaskEvent(task_id_2, 0));
+  }
+  ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
+                TaskEventBufferCounter::kNumTaskProfileEventsStored),
+            max_profile_events_stored);
+
+  // Events for a new task attempt are dropped at the buffer limit. The drop
+  // must not leave behind an empty `profile_events_` entry for the attempt,
+  // otherwise a saturated worker leaks one map entry per new task attempt.
+  auto task_id_3 = RandomTaskId();
+  task_event_buffer_->AddTaskEvent(GenProfileTaskEvent(task_id_3, 0));
+
+  {
+    absl::MutexLock lock(&task_event_buffer_->profile_mutex_);
+    ASSERT_EQ(task_event_buffer_->profile_events_.size(), 2);
+    ASSERT_FALSE(
+        task_event_buffer_->profile_events_.contains(std::make_pair(task_id_3, 0)));
+  }
+}
+
 TEST_F(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask) {
   size_t num_profile_events_per_task = 10;
   size_t num_total_profile_events = 1000;
@@ -944,6 +974,85 @@ TEST_F(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask) {
             num_total_profile_events - num_profile_events_per_task);
   ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
                 TaskEventBufferCounter::kTotalNumTaskStatusEventDropped),
+            0);
+}
+
+class TaskEventBufferTestLimitStatusEventBytes : public TaskEventBufferTest {
+ public:
+  TaskEventBufferTestLimitStatusEventBytes() : TaskEventBufferTest() {
+    RayConfig::instance().initialize(
+        R"(
+{
+  "task_events_report_interval_ms": 1000,
+  "task_events_max_num_status_events_buffer_on_worker": 100000,
+  "task_events_max_num_status_events_buffer_size_bytes": 4096,
+  "task_events_send_batch_size": 100000,
+  "task_events_shutdown_flush_timeout_ms": 100
+}
+  )");
+  }
+};
+
+TEST_F(TaskEventBufferTestLimitStatusEventBytes, TestStatusEventBufferBoundedByBytes) {
+  const int64_t byte_limit = 4096;  // Sync with fixture.
+  // Each full status event carries a TaskSpecification, so it is far larger than a
+  // few bytes. Adding many of them must keep the buffer bounded by bytes, evicting
+  // the oldest, even though the event-count limit (100000) is nowhere near reached.
+  const size_t num_events = 500;
+  for (size_t i = 0; i < num_events; ++i) {
+    task_event_buffer_->AddTaskEvent(GenFullStatusTaskEvent(RandomTaskId(), 0));
+  }
+
+  // Buffer stays within the byte budget.
+  int64_t stored_bytes = task_event_buffer_->stats_counter_.Get(
+      TaskEventBufferCounter::kNumTaskStatusEventBytesStored);
+  EXPECT_GT(stored_bytes, 0);
+  EXPECT_LE(stored_bytes, byte_limit);
+
+  // The byte limit, not the count limit, bound the buffer: far fewer than the added
+  // events remain, and the rest were recorded as dropped attempts.
+  size_t stored_count = task_event_buffer_->GetNumTaskEventsStored();
+  EXPECT_GT(stored_count, 0u);
+  EXPECT_LT(stored_count, num_events);
+  EXPECT_GT(task_event_buffer_->stats_counter_.Get(
+                TaskEventBufferCounter::kNumDroppedTaskAttemptsStored),
+            0);
+
+  // The byte counter matches the bytes actually held in the buffer.
+  int64_t actual_bytes = 0;
+  {
+    absl::MutexLock lock(&task_event_buffer_->mutex_);
+    for (const auto &event : task_event_buffer_->status_events_) {
+      actual_bytes += event->GetEventDataSizeBytes();
+    }
+  }
+  EXPECT_EQ(stored_bytes, actual_bytes);
+}
+
+TEST_F(TaskEventBufferTestLimitStatusEventBytes, TestOversizedStatusEventStillStored) {
+  // A byte limit smaller than a single event must not deadlock or drop everything:
+  // the incoming event is always stored (after evicting all older events).
+  RayConfig::instance().initialize(
+      R"(
+{
+  "task_events_report_interval_ms": 1000,
+  "task_events_max_num_status_events_buffer_on_worker": 100000,
+  "task_events_max_num_status_events_buffer_size_bytes": 8,
+  "task_events_shutdown_flush_timeout_ms": 100
+}
+  )");
+
+  auto first = GenFullStatusTaskEvent(RandomTaskId(), 0);
+  ASSERT_GT(first->GetEventDataSizeBytes(), 8);
+  task_event_buffer_->AddTaskEvent(std::move(first));
+  // Stored despite exceeding the limit (always keep room for the incoming event).
+  EXPECT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 1u);
+
+  task_event_buffer_->AddTaskEvent(GenFullStatusTaskEvent(RandomTaskId(), 0));
+  // The older event is evicted; the newest one is retained.
+  EXPECT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 1u);
+  EXPECT_GT(task_event_buffer_->stats_counter_.Get(
+                TaskEventBufferCounter::kNumDroppedTaskAttemptsStored),
             0);
 }
 

@@ -540,6 +540,17 @@ RAY_CONFIG(int64_t,
 /// workers. Events will be evicted based on a FIFO order.
 RAY_CONFIG(uint64_t, task_events_max_num_status_events_buffer_on_worker, 100 * 1000)
 
+/// Max total size in bytes of task status events buffered on a worker. The status
+/// event buffer is bounded by both this byte limit and the count limit above
+/// (task_events_max_num_status_events_buffer_on_worker); whichever is reached first
+/// triggers FIFO eviction. The byte limit matters because a single status event can
+/// be large (a caller-side event pins the TaskSpecification, which includes the
+/// serialized runtime env), so a count-only limit does not bound memory. Set to -1
+/// to disable the byte limit.
+RAY_CONFIG(int64_t,
+           task_events_max_num_status_events_buffer_size_bytes,
+           256 * 1024 * 1024)
+
 /// Max number of task status events that will be stored to export
 /// for the export API. Events will be evicted based on a FIFO order.
 RAY_CONFIG(uint64_t,

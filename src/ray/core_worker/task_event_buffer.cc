@@ -385,6 +385,25 @@ void TaskStatusEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
   PopulateRpcRayTaskLifecycleEvent(*task_lifecycle_event, timestamp);
 }
 
+int64_t TaskStatusEvent::GetEventDataSizeBytes() const {
+  // The dominant term is the retained TaskSpecification (e.g. the serialized runtime
+  // env on a caller-side / actor-creation event); the rest is small bookkeeping.
+  int64_t size = static_cast<int64_t>(sizeof(TaskStatusEvent) + session_name_.size());
+  if (task_spec_ != nullptr) {
+    size += static_cast<int64_t>(task_spec_->GetMessage().ByteSizeLong());
+  }
+  if (state_update_.has_value()) {
+    size += static_cast<int64_t>(state_update_->actor_repr_name_.size());
+    if (state_update_->task_log_info_.has_value()) {
+      size += static_cast<int64_t>(state_update_->task_log_info_->ByteSizeLong());
+    }
+    if (state_update_->error_info_.has_value()) {
+      size += static_cast<int64_t>(state_update_->error_info_->ByteSizeLong());
+    }
+  }
+  return size;
+}
+
 void TaskProfileEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
   // Rate limit on the number of profiling events from the task. This is especially the
   // case if a driver has many profiling events when submitting tasks
@@ -464,6 +483,13 @@ void TaskProfileEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
   event_entry->set_start_time(start_time_);
   event_entry->set_end_time(end_time_);
   event_entry->set_extra_data(std::move(extra_data_));
+}
+
+int64_t TaskProfileEvent::GetEventDataSizeBytes() const {
+  return static_cast<int64_t>(sizeof(TaskProfileEvent) + component_type_.size() +
+                              component_id_.size() + node_ip_address_.size() +
+                              event_name_.size() + extra_data_.size() +
+                              session_name_.size());
 }
 
 bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
@@ -682,6 +708,12 @@ void TaskEventBufferImpl::GetTaskStatusEventsToSend(
   size_t num_to_send =
       std::min(static_cast<size_t>(RayConfig::instance().task_events_send_batch_size()),
                static_cast<size_t>(status_events_.size()));
+  // Account for the bytes leaving the buffer before the events are moved out.
+  int64_t bytes_to_send = 0;
+  for (auto it = status_events_.begin(); it != status_events_.begin() + num_to_send;
+       ++it) {
+    bytes_to_send += (*it)->GetEventDataSizeBytes();
+  }
   status_events_to_send->insert(
       status_events_to_send->end(),
       std::make_move_iterator(status_events_.begin()),
@@ -690,6 +722,8 @@ void TaskEventBufferImpl::GetTaskStatusEventsToSend(
 
   stats_counter_.Decrement(TaskEventBufferCounter::kNumTaskStatusEventsStored,
                            status_events_to_send->size());
+  stats_counter_.Decrement(TaskEventBufferCounter::kNumTaskStatusEventBytesStored,
+                           bytes_to_send);
   stats_counter_.Decrement(TaskEventBufferCounter::kNumDroppedTaskAttemptsStored,
                            num_dropped_task_attempts_to_send);
 }
@@ -1061,6 +1095,7 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
     return;
   }
   std::shared_ptr<TaskEvent> status_event_shared_ptr = std::move(status_event);
+  const int64_t event_bytes = status_event_shared_ptr->GetEventDataSizeBytes();
 
   if (export_event_write_enabled_) {
     // If status_events_for_export_ is full, the oldest event will be
@@ -1079,8 +1114,30 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
     return;
   }
 
+  // Enforce the byte limit: evict oldest events until the incoming event fits. The
+  // count limit alone does not bound memory because a single status event can be
+  // large (it can pin a TaskSpecification). We always keep room for the incoming
+  // event, storing it even if it alone exceeds the limit, to guarantee progress.
+  const int64_t byte_limit =
+      RayConfig::instance().task_events_max_num_status_events_buffer_size_bytes();
+  if (byte_limit >= 0) {
+    while (!status_events_.empty() &&
+           stats_counter_.Get(TaskEventBufferCounter::kNumTaskStatusEventBytesStored) +
+                   event_bytes >
+               byte_limit) {
+      RAY_LOG_EVERY_N(WARNING, 100000)
+          << "Dropping task status events because the worker status event buffer "
+             "reached its byte limit. Set a higher value for "
+             "RAY_task_events_max_num_status_events_buffer_size_bytes("
+          << byte_limit << ") to avoid this.";
+      EvictOldestStatusEvent();
+    }
+  }
+
   if (status_events_.full()) {
     const auto &to_evict = status_events_.front();
+    stats_counter_.Decrement(TaskEventBufferCounter::kNumTaskStatusEventBytesStored,
+                             to_evict->GetEventDataSizeBytes());
     auto inserted = dropped_task_attempts_unreported_.insert(to_evict->GetTaskAttempt());
     stats_counter_.Increment(
         TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush);
@@ -1100,6 +1157,22 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
     stats_counter_.Increment(TaskEventBufferCounter::kNumTaskStatusEventsStored);
   }
   status_events_.push_back(status_event_shared_ptr);
+  stats_counter_.Increment(TaskEventBufferCounter::kNumTaskStatusEventBytesStored,
+                           event_bytes);
+}
+
+void TaskEventBufferImpl::EvictOldestStatusEvent() {
+  const auto &to_evict = status_events_.front();
+  stats_counter_.Decrement(TaskEventBufferCounter::kNumTaskStatusEventBytesStored,
+                           to_evict->GetEventDataSizeBytes());
+  auto inserted = dropped_task_attempts_unreported_.insert(to_evict->GetTaskAttempt());
+  stats_counter_.Increment(
+      TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush);
+  if (inserted.second) {
+    stats_counter_.Increment(TaskEventBufferCounter::kNumDroppedTaskAttemptsStored);
+  }
+  stats_counter_.Decrement(TaskEventBufferCounter::kNumTaskStatusEventsStored);
+  status_events_.pop_front();
 }
 
 void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile_event) {
@@ -1110,12 +1183,8 @@ void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile
   std::shared_ptr<TaskEvent> profile_event_shared_ptr = std::move(profile_event);
   auto profile_events_itr =
       profile_events_.find(profile_event_shared_ptr->GetTaskAttempt());
-  if (profile_events_itr == profile_events_.end()) {
-    auto inserted = profile_events_.insert({profile_event_shared_ptr->GetTaskAttempt(),
-                                            std::vector<std::shared_ptr<TaskEvent>>()});
-    RAY_CHECK(inserted.second);
-    profile_events_itr = inserted.first;
-  }
+  const size_t num_events_for_attempt =
+      profile_events_itr == profile_events_.end() ? 0 : profile_events_itr->second.size();
 
   auto max_num_profile_event_per_task =
       RayConfig::instance().task_events_max_num_profile_events_per_task();
@@ -1125,9 +1194,10 @@ void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile
       stats_counter_.Get(TaskEventBufferCounter::kNumTaskProfileEventsStored));
 
   // If we store too many per task or too many per kind of event, we drop the new event.
+  // This is checked before inserting a map entry for the task attempt so that a
+  // dropped event doesn't strand an empty entry in `profile_events_`.
   if ((max_num_profile_event_per_task >= 0 &&
-       profile_events_itr->second.size() >=
-           static_cast<size_t>(max_num_profile_event_per_task)) ||
+       num_events_for_attempt >= static_cast<size_t>(max_num_profile_event_per_task)) ||
       profile_event_stored >= max_profile_events_stored) {
     stats_counter_.Increment(
         TaskEventBufferCounter::kNumTaskProfileEventDroppedSinceLastFlush);
@@ -1143,6 +1213,13 @@ void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile
         << "), or RAY_task_events_max_num_profile_events_buffer_on_worker ("
         << max_profile_events_stored << ") to avoid this.";
     return;
+  }
+
+  if (profile_events_itr == profile_events_.end()) {
+    auto inserted = profile_events_.insert({profile_event_shared_ptr->GetTaskAttempt(),
+                                            std::vector<std::shared_ptr<TaskEvent>>()});
+    RAY_CHECK(inserted.second);
+    profile_events_itr = inserted.first;
   }
 
   stats_counter_.Increment(TaskEventBufferCounter::kNumTaskProfileEventsStored);
@@ -1168,6 +1245,8 @@ std::string TaskEventBufferImpl::DebugString() {
      << stats[TaskEventBufferCounter::kNumTaskStatusEventsStored]
      << "\n\tcurrent number of profile events in buffer: "
      << stats[TaskEventBufferCounter::kNumTaskProfileEventsStored]
+     << "\n\tcurrent status event buffer size (bytes): "
+     << stats[TaskEventBufferCounter::kNumTaskStatusEventBytesStored]
      << "\n\tcurrent number of dropped task attempts tracked: "
      << stats[TaskEventBufferCounter::kNumDroppedTaskAttemptsStored]
      << "\n\ttotal task events sent: "

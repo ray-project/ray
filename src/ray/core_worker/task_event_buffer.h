@@ -100,6 +100,11 @@ class TaskEvent {
   /// If it is a profile event.
   virtual bool IsProfileEvent() const = 0;
 
+  /// An approximate size in bytes of the data retained by this event while it is
+  /// buffered on the worker. Used to bound the status event buffer's memory. The
+  /// dominant term for a status event is the retained TaskSpecification (if any).
+  virtual int64_t GetEventDataSizeBytes() const = 0;
+
   virtual TaskAttempt GetTaskAttempt() const {
     return std::make_pair(task_id_, attempt_number_);
   }
@@ -189,6 +194,8 @@ class TaskStatusEvent : public TaskEvent {
 
   bool IsProfileEvent() const override { return false; }
 
+  int64_t GetEventDataSizeBytes() const override;
+
  private:
   // Helper functions to populate the task definition event of rpc::events::RayEvent
   // This function assumes task_spec_ is not null.
@@ -243,6 +250,8 @@ class TaskProfileEvent : public TaskEvent {
 
   bool IsProfileEvent() const override { return true; }
 
+  int64_t GetEventDataSizeBytes() const override;
+
   void SetEndTime(int64_t end_time) { end_time_ = end_time; }
 
   void SetExtraData(const std::string &extra_data) { extra_data_ = extra_data; }
@@ -269,6 +278,7 @@ enum TaskEventBufferCounter {
   kNumTaskStatusEventDroppedSinceLastFlush,
   kNumTaskProfileEventsStored,
   kNumTaskStatusEventsStored,
+  kNumTaskStatusEventBytesStored,
   kNumDroppedTaskAttemptsStored,
   kNumTaskStatusEventsForExportAPIStored,
   kTotalNumTaskProfileEventDropped,
@@ -438,6 +448,11 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param status_event Task status event.
   void AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_event)
       ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /// Evict the oldest (front) buffered status event: record its task attempt as a
+  /// dropped attempt and decrement the stored count and byte counters. Used to
+  /// enforce the status event buffer's byte limit.
+  void EvictOldestStatusEvent() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Add a task profile event to be reported.
   ///
@@ -646,6 +661,12 @@ class TaskEventBufferImpl : public TaskEventBuffer {
               TestStopWaitsForInflightThenFlushes);
   FRIEND_TEST(TaskEventBufferTestDroppedAttemptsOnly,
               TestFlushSendsDroppedAttemptsWithoutEvents);
+  FRIEND_TEST(TaskEventBufferTestLimitProfileEvents,
+              TestDroppedProfileEventDoesNotLeakMapEntry);
+  FRIEND_TEST(TaskEventBufferTestLimitStatusEventBytes,
+              TestStatusEventBufferBoundedByBytes);
+  FRIEND_TEST(TaskEventBufferTestLimitStatusEventBytes,
+              TestOversizedStatusEventStillStored);
 };
 
 }  // namespace worker
