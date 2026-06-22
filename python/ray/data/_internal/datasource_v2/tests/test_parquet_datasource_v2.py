@@ -610,3 +610,35 @@ def test_parquet_file_reader_handles_out_of_range_chunks(tmp_path):
     reader = ParquetFileReader()
     tables = list(reader.read(manifest))
     assert sum(t.num_rows for t in tables) == 0
+
+
+class _StubFragment:
+    def __init__(self, path: str):
+        self.path = path
+
+
+def test_resolve_num_read_workers_caps_at_distinct_files():
+    """Per-task fragment-read concurrency keys on DISTINCT files, not fragment
+    count: same-file sub-scans (file-affinity) stay sequential; cross-file
+    partitions (round-robin) parallelize one worker per file, capped at the
+    thread budget."""
+    from ray.data._internal.datasource_v2.readers.file_reader import (
+        _resolve_num_read_workers,
+    )
+
+    # File-affinity: many sub-fragments of ONE file -> sequential (1 worker).
+    same_file = [(_StubFragment("a.parquet"), off) for off in (0, 2, 4, 6)]
+    assert _resolve_num_read_workers(same_file, num_threads=4) == 1
+
+    # Round-robin: 3 distinct files (one repeated) under a 4-thread budget -> 3.
+    mixed = [
+        (_StubFragment("a.parquet"), 0),
+        (_StubFragment("b.parquet"), 0),
+        (_StubFragment("c.parquet"), 0),
+        (_StubFragment("a.parquet"), 5),
+    ]
+    assert _resolve_num_read_workers(mixed, num_threads=4) == 3
+
+    # More distinct files than threads -> capped at the thread budget.
+    many = [(_StubFragment(f"{c}.parquet"), 0) for c in "abcdef"]
+    assert _resolve_num_read_workers(many, num_threads=4) == 4

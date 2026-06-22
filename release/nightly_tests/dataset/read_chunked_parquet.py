@@ -840,6 +840,8 @@ def _apply_read_knobs(args) -> None:
         "parquet_reader_target_batch_size_bytes": args.batch_target_bytes,
         "parquet_reader_max_coalesced_scan_bytes": args.max_coalesced_scan_bytes,
         "parquet_chunker_target_chunk_size": args.chunker_target_chunk_size,
+        "read_files_num_threads": args.read_threads,
+        "arrow_scanner_batch_readahead": args.batch_readahead,
     }
     if all(value is None for value in knobs.values()):
         return
@@ -1017,6 +1019,22 @@ def main():
         default=None,
         help="Override DataContext.parquet_chunker_target_chunk_size (on-disk "
         "bytes per chunk, e.g. 256MiB). Default: target_min_block_size.",
+    )
+    p.add_argument(
+        "--read-threads",
+        type=int,
+        default=None,
+        help="Override DataContext.read_files_num_threads (per-task fragment-read "
+        "concurrency; the reader caps it at the partition's distinct file count). "
+        "Set 1 to read one scan at a time per task. Default: build default (4).",
+    )
+    p.add_argument(
+        "--batch-readahead",
+        type=int,
+        default=None,
+        help="Override DataContext.arrow_scanner_batch_readahead (batches the "
+        "scanner reads ahead per fragment; × batch target ≈ per-scan decoded "
+        "peak). Lower it (e.g. 1-2) to shrink per-task memory. Default: 8.",
     )
     args = p.parse_args()
 

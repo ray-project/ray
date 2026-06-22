@@ -124,6 +124,21 @@ DEFAULT_PARQUET_READER_TARGET_BATCH_SIZE_BYTES: Optional[int] = None
 # larger than the cap still scans alone (the atomic floor).
 DEFAULT_PARQUET_READER_MAX_COALESCED_SCAN_BYTES: Optional[int] = None
 
+# Per-task fragment-read concurrency in the V2 ``FileReader``. Threads overlap
+# I/O across DISTINCT files within a read task; the reader caps the worker count
+# at the number of distinct files in the partition, so consecutive sub-scans of
+# the SAME file stay sequential (one decode pipeline at a time) -- which bounds
+# the per-task decoded working set. Env-overridable.
+DEFAULT_READ_FILES_NUM_THREADS = env_integer("RAY_DATA_READ_FILES_NUM_THREADS", 4)
+
+# Batches the pyarrow scanner reads ahead per fragment scan. Each batch is
+# ~the reader's target block size DECODED, so per-scan peak decoded memory
+# ≈ batch_readahead × batch target. Lower it (e.g. 1-2) for jumbo / low-
+# compression columns to shrink the in-flight decoded set. Env-overridable.
+DEFAULT_ARROW_SCANNER_BATCH_READAHEAD = env_integer(
+    "RAY_DATA_ARROW_SCANNER_BATCH_READAHEAD", 8
+)
+
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -840,6 +855,12 @@ class DataContext:
     parquet_reader_max_coalesced_scan_bytes: Optional[
         int
     ] = DEFAULT_PARQUET_READER_MAX_COALESCED_SCAN_BYTES
+    # Per-task fragment-read concurrency, capped at the partition's distinct
+    # file count by the reader (same-file sub-scans stay sequential).
+    read_files_num_threads: int = DEFAULT_READ_FILES_NUM_THREADS
+    # Batches the pyarrow scanner reads ahead per fragment scan (× batch target
+    # ≈ per-scan decoded peak).
+    arrow_scanner_batch_readahead: int = DEFAULT_ARROW_SCANNER_BATCH_READAHEAD
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format
