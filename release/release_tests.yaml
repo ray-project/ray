@@ -4736,6 +4736,31 @@
     timeout: 3600
     script: pytest -vs test_llm_serve_sglang.py
 
+- name: llm_serve_kv_router
+  frequency: manual
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/kv_router_test
+
+  cluster:
+    byod:
+      type: llm-cu130
+      runtime_env:
+        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
+        - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
+      post_build_script: byod_llm_kv_router_test.sh
+    anyscale_sdk_2026: true
+    # Single-node 4xL4 head-node config (matching the sglang serve test) — the
+    # GPU shape the KV-events e2e test needs. Kept in this working_dir rather
+    # than referenced across dirs so it ships in the test's runfiles.
+    cluster_compute: llm_four_L4_gpu_head_node.yaml
+
+  run:
+    timeout: 3600
+    script: pytest -vs .
+
 ##############
 # LLM Batch
 ##############
