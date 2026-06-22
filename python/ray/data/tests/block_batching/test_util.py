@@ -561,54 +561,52 @@ class TestIterThreaded:
             )
 
     def test_num_workers_validation(self):
-        with pytest.raises(ValueError, match="at least 1"):
+        with pytest.raises(ValueError, match="num_workers must be at least 1"):
             list(iter_threaded(iter([1]), _identity, num_workers=0))
+
+    def test_output_buffer_size_validation(self):
+        with pytest.raises(ValueError, match="output_buffer_size must be at least 1"):
+            list(iter_threaded(iter([1]), _identity, output_buffer_size=0))
 
     def test_empty_base_iterator(self):
         output = list(iter_threaded(iter([]), _identity, num_workers=4))
         assert output == []
 
-    @pytest.mark.parametrize("num_workers,output_buffer_size", [(1, 1), (4, 4)])
+    @pytest.mark.parametrize("num_workers,output_buffer_size", [(1, 1), (2, 2), (4, 2)])
     def test_in_flight_items_bounded_by_output_buffer_size(
         self, num_workers: int, output_buffer_size: int
     ):
-        """Total in-flight items (queue + workers mid-processing) is
-        bounded by ``output_buffer_size``. Verify by instrumenting ``fn``
-        with a counter incremented on entry and decremented after the
-        queue takes ownership, then sampling it while a slow consumer
-        holds the queue near full."""
+        """Without consumption, workers must not pull more than
+        ``output_buffer_size`` items from the base iterator. Pulled-but-not-
+        consumed items are 'in flight', and the bound caps them."""
+        pulled = 0
+        pulled_lock = threading.Lock()
 
-        in_flight = 0
-        in_flight_lock = threading.Lock()
-        max_observed = 0
+        def counting_iter() -> Iterator[int]:
+            nonlocal pulled
+            for i in range(1_000_000):
+                with pulled_lock:
+                    pulled += 1
+                yield i
 
-        def instrumented_fn(it: Iterator[int]) -> Iterator[int]:
-            nonlocal in_flight, max_observed
-            for item in it:
-                with in_flight_lock:
-                    in_flight += 1
-                    max_observed = max(max_observed, in_flight)
-                # Hold the slot for a beat so the queue accumulates.
-                time.sleep(0.01)
-                yield item
-
-        consumed = []
-        for item in iter_threaded(
-            iter(range(100)),
-            instrumented_fn,
+        it = iter_threaded(
+            counting_iter(),
+            _identity,
             num_workers=num_workers,
             output_buffer_size=output_buffer_size,
-        ):
-            with in_flight_lock:
-                in_flight -= 1  # consumer took ownership
-            time.sleep(0.005)  # slow consumer keeps queue partially full
-            consumed.append(item)
-
-        assert sorted(consumed) == list(range(100))
-        assert max_observed <= output_buffer_size, (
-            f"Observed {max_observed} in-flight items, "
-            f"expected ≤ {output_buffer_size}"
         )
+
+        # Trigger the generator body (which starts the workers), then stop
+        # consuming. Workers fill in-flight up to the bound and then block
+        # on _acquire_slot.
+        next(it)
+        time.sleep(0.3)
+
+        with pulled_lock:
+            # Consumer took 1 → in-flight ≤ K. Plus the 1 already consumed.
+            assert (
+                pulled <= 1 + output_buffer_size
+            ), f"Pulled {pulled}, expected <= {1 + output_buffer_size}"
 
 
 if __name__ == "__main__":

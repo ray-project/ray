@@ -73,6 +73,8 @@ def iter_threaded(
     """
     if num_workers < 1:
         raise ValueError("num_workers must be at least 1.")
+    if output_buffer_size < 1:
+        raise ValueError("output_buffer_size must be at least 1.")
 
     stopped = threading.Event()
     result_queue: queue.Queue = queue.Queue()
