@@ -1178,5 +1178,125 @@ def test_merge_rejects_route_prefix_conflict(serve_instance):
     assert "app3" not in details["applications"]
 
 
+def test_merge_rejects_route_prefix_claimed_via_omission(serve_instance):
+    """Reject a merge where a submitted app omits its prefix and another claims it."""
+    client = serve_instance
+
+    pizza = "ray.serve.tests.test_config_files.pizza.serve_dag"
+
+    # Deploy app1 (/app1) and app2 (/app2) in default mode.
+    config = ServeDeploySchema.model_validate(get_test_deploy_config())
+    client.deploy_apps(config)
+    check_multi_app()
+
+    # Merge: app1 omits route_prefix (keeps /app1); app2 claims /app1.
+    merge_config = ServeDeploySchema.model_validate(
+        get_merge_deploy_config(
+            [
+                {"name": "app1", "import_path": pizza},
+                {"name": "app2", "route_prefix": "/app1", "import_path": pizza},
+            ]
+        )
+    )
+    with pytest.raises(RayServeException, match="is being used by application"):
+        client.deploy_apps(merge_config)
+
+    # The deploy was rejected before any state changed.
+    check_multi_app()
+
+
+def test_merge_allows_route_prefix_swap(serve_instance):
+    """A merge that swaps two submitted apps' explicit prefixes is allowed."""
+    client = serve_instance
+
+    pizza = "ray.serve.tests.test_config_files.pizza.serve_dag"
+
+    # Deploy app1 (/app1) and app2 (/app2)
+    config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {"name": "app1", "route_prefix": "/app1", "import_path": pizza},
+                {"name": "app2", "route_prefix": "/app2", "import_path": pizza},
+            ],
+        }
+    )
+    client.deploy_apps(config)
+    wait_for_condition(
+        check_endpoint, json=["ADD", 2], expected="4 pizzas please!", app_name="app1"
+    )
+    wait_for_condition(
+        check_endpoint, json=["ADD", 2], expected="4 pizzas please!", app_name="app2"
+    )
+
+    # Swap the prefixes
+    merge_config = ServeDeploySchema.model_validate(
+        get_merge_deploy_config(
+            [
+                {"name": "app1", "route_prefix": "/app2", "import_path": pizza},
+                {"name": "app2", "route_prefix": "/app1", "import_path": pizza},
+            ]
+        )
+    )
+    client.deploy_apps(merge_config)
+
+    def routes_swapped():
+        details = ray.get(client._controller.get_serve_instance_details.remote())
+        apps = details["applications"]
+        return (
+            apps["app1"]["route_prefix"] == "/app2"
+            and apps["app2"]["route_prefix"] == "/app1"
+        )
+
+    wait_for_condition(routes_swapped)
+    wait_for_condition(
+        check_endpoint, json=["ADD", 2], expected="4 pizzas please!", app_name="app1"
+    )
+    wait_for_condition(
+        check_endpoint, json=["ADD", 2], expected="4 pizzas please!", app_name="app2"
+    )
+
+
+def test_merge_rejects_new_app_claiming_root_prefix(serve_instance):
+    """A merge can't add a new app on "/" when a live app owns it."""
+    client = serve_instance
+
+    pizza = "ray.serve.tests.test_config_files.pizza.serve_dag"
+
+    # Deploy a single app at the default "/" route.
+    config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {"name": "root_app", "route_prefix": "/", "import_path": pizza},
+            ],
+        }
+    )
+    client.deploy_apps(config)
+    wait_for_condition(
+        check_endpoint,
+        json=["ADD", 2],
+        expected="4 pizzas please!",
+        app_name="root_app",
+    )
+
+    # A new app explicitly claims "/"
+    merge_config = ServeDeploySchema.model_validate(
+        get_merge_deploy_config(
+            [{"name": "new_app", "route_prefix": "/", "import_path": pizza}]
+        )
+    )
+    with pytest.raises(RayServeException, match="is being used by application"):
+        client.deploy_apps(merge_config)
+
+    # root_app still serves "/" and new app was never created.
+    wait_for_condition(
+        check_endpoint,
+        json=["ADD", 2],
+        expected="4 pizzas please!",
+        app_name="root_app",
+    )
+    details = ray.get(client._controller.get_serve_instance_details.remote())
+    assert "new_app" not in details["applications"]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
