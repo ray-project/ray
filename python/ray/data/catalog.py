@@ -28,6 +28,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Keys returned by the Unity Catalog REST API (table metadata + credential vending).
+_UNIFORM_FORMATS_PROPERTY = "delta.universalFormat.enabledFormats"
+_AWS_CREDS_KEY = "aws_temp_credentials"
+_AZURE_SAS_URI_KEY = "azuresasuri"
+_AZURE_USER_DELEGATION_SAS_KEY = "azure_user_delegation_sas"
+_GCP_SERVICE_ACCOUNT_KEY = "gcp_service_account"
+
 
 def _normalize_host(host: str) -> str:
     host = host.rstrip("/")
@@ -163,8 +170,8 @@ class UnityCatalog(Catalog):
         # vended session token isn't reliably propagated through
         # `DeltaTable.to_pyarrow_dataset`'s auto-built filesystem.
         filesystem = None
-        if "aws_temp_credentials" in creds and reader is ReaderFormat.DELTA:
-            filesystem = self._build_s3_filesystem(creds["aws_temp_credentials"])
+        if _AWS_CREDS_KEY in creds and reader is ReaderFormat.DELTA:
+            filesystem = self._build_s3_filesystem(creds[_AWS_CREDS_KEY])
 
         return ResolvedSource(
             path=table_url,
@@ -227,7 +234,7 @@ class UnityCatalog(Catalog):
             # deltalake's pyarrow reader can't read, so the Delta path would fail.
             if fmt == ReaderFormat.DELTA.value:
                 uniform = (table_info.get("properties") or {}).get(
-                    "delta.universalFormat.enabledFormats", ""
+                    _UNIFORM_FORMATS_PROPERTY, ""
                 )
                 if "iceberg" in uniform.lower():
                     return ReaderFormat.ICEBERG
@@ -251,8 +258,8 @@ class UnityCatalog(Catalog):
 
     def _creds_to_env(self, creds: dict) -> Dict[str, str]:
         """Translate vended credentials into environment variables."""
-        if "aws_temp_credentials" in creds:
-            aws = creds["aws_temp_credentials"]
+        if _AWS_CREDS_KEY in creds:
+            aws = creds[_AWS_CREDS_KEY]
             env = {
                 "AWS_ACCESS_KEY_ID": aws["access_key_id"],
                 "AWS_SECRET_ACCESS_KEY": aws["secret_access_key"],
@@ -263,13 +270,13 @@ class UnityCatalog(Catalog):
                 env["AWS_DEFAULT_REGION"] = self._region
             return env
 
-        if "azuresasuri" in creds or "azure_user_delegation_sas" in creds:
+        if _AZURE_SAS_URI_KEY in creds or _AZURE_USER_DELEGATION_SAS_KEY in creds:
             return self._parse_azure_creds(creds)
 
-        if "gcp_service_account" in creds:
+        if _GCP_SERVICE_ACCOUNT_KEY in creds:
             return {
                 "GOOGLE_APPLICATION_CREDENTIALS": self._write_gcp_creds(
-                    creds["gcp_service_account"]
+                    creds[_GCP_SERVICE_ACCOUNT_KEY]
                 )
             }
 
@@ -314,12 +321,12 @@ class UnityCatalog(Catalog):
 
     @staticmethod
     def _parse_azure_creds(creds: dict) -> Dict[str, str]:
-        if "azuresasuri" in creds:
-            return {"AZURE_STORAGE_SAS_TOKEN": creds["azuresasuri"]}
+        if _AZURE_SAS_URI_KEY in creds:
+            return {"AZURE_STORAGE_SAS_TOKEN": creds[_AZURE_SAS_URI_KEY]}
 
         # Azure UC returns a user delegation SAS; see
         # https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html
-        azure = creds["azure_user_delegation_sas"] or {}
+        azure = creds[_AZURE_USER_DELEGATION_SAS_KEY] or {}
         sas_token = (
             azure.get("sas_token")
             or azure.get("sas")
@@ -331,7 +338,7 @@ class UnityCatalog(Catalog):
         if not sas_token:
             raise ValueError(
                 "Azure UC credentials missing SAS token in "
-                "azure_user_delegation_sas. "
+                f"{_AZURE_USER_DELEGATION_SAS_KEY}. "
                 f"Available keys: {', '.join(azure.keys())}"
             )
         env: Dict[str, str] = {"AZURE_STORAGE_SAS_TOKEN": sas_token}
