@@ -839,6 +839,12 @@ class HAProxyApi(ProxyApi):
             # to zero for backends that have a fallback.
             if backend_config.fallback_server is not None:
                 expected.add((backend_name, backend_config.fallback_server.name))
+
+        # Note that if an entire backend scaled down (when an app is removed),
+        # get_all_stats will filter out that entire backend, so there could be
+        # stale servers in that haproxy backend but not reported by this metric.
+        # This case is rare and not really something we worry about since requests
+        # shouldn't be hitting that backend or should return errors anyways.
         stats = await self.get_all_stats()
         reported = {
             (backend_name, server_name)
