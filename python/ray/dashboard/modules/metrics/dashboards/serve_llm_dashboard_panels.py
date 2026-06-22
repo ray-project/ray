@@ -16,10 +16,12 @@ from ray.dashboard.modules.metrics.dashboards.common import (
 # The `* 0 + 1` trick turns the counter into a constant-1 lookup table keyed
 # by WorkerId so the join resolves deployment + replica labels without
 # affecting the numeric value of the left-hand side.
+# Keep `{global_filters}` trailing so an empty substitution leaves a tolerated
+# trailing comma instead of a leading/double comma that Prometheus rejects.
 _WORKER_JOIN = (
     "\n* on(WorkerId) group_left(deployment, replica)"
     "\nmax by(WorkerId, deployment, replica) ("
-    'ray_serve_deployment_request_counter_total{{{global_filters}, deployment=~"$deployment"}} * 0 + 1)'
+    'ray_serve_deployment_request_counter_total{{deployment=~"$deployment", {global_filters}}} * 0 + 1)'
 )
 
 # Standard vLLM metric filter
@@ -27,7 +29,7 @@ _VLLM_FILTER = 'model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_f
 
 # vLLM filter scoped to a specific deployment (used for ray_serve_* metrics
 # that also carry model_name / WorkerId labels).
-_VLLM_DEPLOYMENT_FILTER = 'model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}, deployment=~"$deployment"'
+_VLLM_DEPLOYMENT_FILTER = 'model_name=~"$vllm_model_name", WorkerId=~"$workerid", deployment=~"$deployment", {global_filters}'
 
 # Legend used by most per-worker panels
 _DEP_REPLICA = "{{deployment}}: {{replica}}"

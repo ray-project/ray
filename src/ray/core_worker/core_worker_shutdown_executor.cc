@@ -330,7 +330,7 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
         core_worker->worker_context_->GetCurrentJobID(),
         /* attempt_number */ 0,
         rpc::TaskStatus::FINISHED,
-        /* timestamp */ absl::GetCurrentTimeNanos(),
+        /* timestamp */ core_worker->clock_.NowUnixNanos(),
         /*is_actor_task_event=*/
         core_worker->worker_context_->GetCurrentActorID().IsNil(),
         core_worker->options_.session_name,
