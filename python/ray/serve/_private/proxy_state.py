@@ -826,9 +826,7 @@ class ProxyStateManager:
         """Helper to start or reuse existing proxy and wrap in the proxy actor wrapper.
 
         Pass all the required variables into the proxy actor wrapper class and return
-        the proxy actor wrapper. A node can override its proxy's HTTP/gRPC bind ports
-        via RAY_SERVE_PROXY_HTTP_PORT / RAY_SERVE_PROXY_GRPC_PORT, read per node in the
-        proxy actor itself.
+        the proxy actor wrapper.
         """
         http_options = http_options or self._http_options
         grpc_options = grpc_options or self._grpc_options

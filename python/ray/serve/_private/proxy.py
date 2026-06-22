@@ -1401,6 +1401,22 @@ class HTTPProxy(GenericProxy):
         yield status
 
 
+def apply_per_node_port_overrides(
+    http_options: HTTPOptions, grpc_options: gRPCOptions, is_head: bool
+) -> None:
+    """Override this proxy's HTTP and gRPC bind ports from the per-node env knobs.
+
+    Worker proxies bind RAY_SERVE_PROXY_HTTP_PORT and RAY_SERVE_PROXY_GRPC_PORT when set.
+    The head node is exempt so its configured ports and the fallback proxy stay intact.
+    """
+    if is_head:
+        return
+    if RAY_SERVE_PROXY_HTTP_PORT is not None:
+        http_options.port = RAY_SERVE_PROXY_HTTP_PORT
+    if RAY_SERVE_PROXY_GRPC_PORT is not None:
+        grpc_options.port = RAY_SERVE_PROXY_GRPC_PORT
+
+
 class ProxyActorInterface(ABC):
     """Abstract interface for proxy actors in Ray Serve.
 
@@ -1568,13 +1584,8 @@ class ProxyActor(ProxyActorInterface):
             logging_config=logging_config,
         )
 
-        # A node may override its proxy's HTTP/gRPC bind ports via
-        # RAY_SERVE_PROXY_HTTP_PORT / RAY_SERVE_PROXY_GRPC_PORT (see constant
-        # docstring). The head node leaves them unset to keep the configured ports.
-        if RAY_SERVE_PROXY_HTTP_PORT is not None:
-            http_options.port = RAY_SERVE_PROXY_HTTP_PORT
-        if RAY_SERVE_PROXY_GRPC_PORT is not None:
-            grpc_options.port = RAY_SERVE_PROXY_GRPC_PORT
+        is_head = self._node_id == get_head_node_id()
+        apply_per_node_port_overrides(http_options, grpc_options, is_head)
 
         self._grpc_options = grpc_options
         self._http_options = configure_http_middlewares(http_options)
@@ -1643,7 +1654,6 @@ class ProxyActor(ProxyActorInterface):
                 "serve_access_log": True,
             }
 
-        is_head = self._node_id == get_head_node_id()
         self.proxy_router = ProxyRouter(get_proxy_handle)
         self.http_proxy = HTTPProxy(
             node_id=self._node_id,
