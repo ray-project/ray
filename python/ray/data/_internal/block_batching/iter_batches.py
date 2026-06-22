@@ -248,13 +248,13 @@ class BatchIterator:
         self.before_epoch_start()
 
         while True:
-            blocked_start_s = time.perf_counter()
             with self.get_next_batch_context():
+                blocked_start_s = time.perf_counter()
                 try:
                     batch = next(batch_iter)
                 except StopIteration:
                     break
-            blocked_end_s = time.perf_counter()
+                blocked_end_s = time.perf_counter()
             self._report_batch_timings(batch, blocked_start_s, blocked_end_s)
             with self.yield_batch_context(batch):
                 yield batch.data

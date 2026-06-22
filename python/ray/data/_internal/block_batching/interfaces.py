@@ -77,13 +77,21 @@ class BatchTimings:
         )
 
     def merge_fetch(self, other: "BatchTimings") -> None:
-        """Expand this batch's fetch window to encompass another's.
+        """Merge fetch timings from another batch into this one.
 
-        Used when a single batch is assembled from multiple blocks, each
-        fetched independently.  The merged window spans from the earliest
-        fetch start to the latest fetch end.
+        Sums the fetch durations rather than taking the span, to avoid
+        counting idle gaps between consecutive block fetches as fetch time.
         """
-        self._merge_stage(self.fetch, other.fetch)
+        if other.fetch.start_s == 0.0:
+            return
+        if self.fetch.start_s == 0.0:
+            # First block: copy the timing
+            self.fetch.start_s = other.fetch.start_s
+            self.fetch.end_s = other.fetch.end_s
+        else:
+            # Subsequent blocks: add duration to existing span
+            duration = other.fetch.end_s - other.fetch.start_s
+            self.fetch.end_s += duration
 
     @staticmethod
     def _merge_stage(dst: StageTiming, src: StageTiming) -> None:
