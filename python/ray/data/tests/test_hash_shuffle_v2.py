@@ -175,14 +175,14 @@ def test_repartition_with_sort_produces_sorted_partitions(
 
 
 def test_get_shard_batch_no_timeout(ray_start_regular_shared_2_cpus):
-    """timeout_s=None fetches in a single blocking ray.get."""
+    """timeout_s <= 0 fetches in a single blocking ray.get."""
     refs = [ray.put(i) for i in range(4)]
     out = _get_shard_batch(
         refs,
         partition_id=0,
         batch_index=0,
         num_batches=1,
-        timeout_s=None,
+        timeout_s=0,
     )
     assert out == [0, 1, 2, 3]
 

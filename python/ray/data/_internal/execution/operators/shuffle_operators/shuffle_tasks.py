@@ -159,7 +159,7 @@ def _get_shard_batch(
     partition_id: int,
     batch_index: int,
     num_batches: int,
-    timeout_s: Optional[float],
+    timeout_s: float,
 ) -> List[Optional[pa.Buffer]]:
     """``ray.get`` a batch of shard refs, failing loudly if the fetch stalls.
 
@@ -168,8 +168,8 @@ def _get_shard_batch(
         partition_id: Partition this reducer owns (for logging).
         batch_index: 0-based index of this batch within the partition.
         num_batches: Total number of batches for the partition (for logging).
-        timeout_s: ``ray.get`` timeout in seconds.  ``None`` or a non-positive
-            value disables the timeout (single blocking fetch).
+        timeout_s: ``ray.get`` timeout in seconds.  A non-positive value disables
+            the timeout (single blocking fetch).
 
     Returns:
         The dereferenced shard buffers (some entries may be ``None``).
@@ -177,7 +177,7 @@ def _get_shard_batch(
     Raises:
         GetTimeoutError: If the shards are not available within ``timeout_s``.
     """
-    if timeout_s is None or timeout_s <= 0:
+    if timeout_s <= 0:
         return ray.get(batch)
 
     wait_start_s = time.perf_counter()
@@ -200,7 +200,7 @@ def _shuffle_reduce_task(
     target_max_block_size: Optional[int],
     streaming: bool,
     batch_size: int,
-    get_timeout_s: Optional[float],
+    get_timeout_s: float,
 ) -> Generator[Union[Block, bytes], None, None]:
     """Reduce stage: fetch one partition's shards and run reduce_fn over them.
 
