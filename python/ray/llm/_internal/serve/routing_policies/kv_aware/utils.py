@@ -1,5 +1,6 @@
 """Helpers for wiring KV-aware routing into an LLM deployment."""
 
+import ray
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     KV_ROUTER_ACTOR_NAME,
     KVRouterActor,
@@ -30,7 +31,7 @@ def _maybe_setup_kv_aware_routing(deployment_options: dict) -> None:
         *deployment_options.get("deployment_actors", []),
         DeploymentActorConfig(
             name=KV_ROUTER_ACTOR_NAME,
-            actor_class=KVRouterActor,
+            actor_class=ray.remote(KVRouterActor),
             actor_options={"num_cpus": 0},
         ),
     ]
