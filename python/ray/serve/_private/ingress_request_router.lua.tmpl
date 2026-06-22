@@ -159,12 +159,9 @@ local function _route_via_ingress_request_router(txn, router, replica_map)
 
     local server_name = replica_map[replica_id]
     if not server_name then
-        -- Pin-miss: the router named a replica HAProxy has not loaded into its
-        -- server map yet (the brief membership gap after an app becomes
-        -- RUNNING, where the router's in-process view runs ahead of HAProxy's
-        -- config reload). Arm `failed` so the failures metric counts it by
-        -- reason; the frontend routes this specific reason to the fallback
-        -- Serve proxy instead of 503ing.
+        -- Pin-miss: router named a replica not in HAProxy's server map, a
+        -- transient gap between the router view and HAProxy's config snapshot.
+        -- Arm `failed`. The frontend recovers it via the fallback proxy.
         txn:set_var("txn.ingress_request_router_failed", "unknown_replica_id")
         return
     end
@@ -178,10 +175,9 @@ end
 -- rule fires instead of letting the request silently fall through to the
 -- primary backend. The product invariant is: requests to a router-bearing app
 -- are served via the router or fail; there is no quiet alternative path.
--- Exception: `unknown_replica_id` (the router pinned a real replica HAProxy
--- has not loaded yet) is recovered by the frontend through the fallback Serve
--- proxy rather than 503ed, because that path re-pins via the same router and
--- so does not bypass the routing policy. It is still counted as a failure.
+-- Exception: `unknown_replica_id` is recovered via the fallback proxy when the
+-- app has one, otherwise 503ed. The fallback re-pins via its own router so the
+-- policy is not bypassed. Still counted as a failure.
 -- Two silent returns are correct: (1) the request didn't target a
 -- router-bearing app (no txn var set, no app entry in our maps), and
 -- (2) the controller hasn't pushed router/replica state for this app yet.
