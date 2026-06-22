@@ -247,20 +247,7 @@ void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
     request.Execute();
     post_task_cleanup();
   };
-  if (is_asyncio_) {
-    // For asyncio actors post_execute is a FiberState, whose Post() blocks the
-    // caller until the fiber runner picks the task up (unbuffered fiber-channel
-    // rendezvous, see fiber.h). This code runs on io_service_, the single thread
-    // that also services health-check and other RPCs, so blocking here can stall
-    // the whole worker. Hand the blocking dispatch to task_execution_service_
-    // instead; arg fetching still runs on io_service_, so pipelining is unaffected.
-    default_postable_->Post([post_execute = std::move(post_execute),
-                             execute_handler = std::move(execute_handler)]() mutable {
-      post_execute->Post(std::move(execute_handler));
-    });
-  } else {
-    post_execute->Post(std::move(execute_handler));
-  }
+  post_execute->Post(std::move(execute_handler));
 }
 
 }  // namespace core

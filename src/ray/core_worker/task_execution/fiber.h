@@ -90,7 +90,12 @@ class FiberRateLimiter {
   int num_ = 1;
 };
 
-using FiberChannel = boost::fibers::unbuffered_channel<std::function<void()>>;
+// Buffered so that pushing a task does not block the submitter. The submitter is
+// the worker's io_service_ (the single RPC thread); an unbuffered channel's push
+// blocks until the fiber runner pops it, which would stall RPC handling (e.g.
+// health checks) under load. The buffer only queues closures (not fibers), so it
+// does not change the concurrency bound — that is still the FiberRateLimiter.
+using FiberChannel = boost::fibers::buffered_channel<std::function<void()>>;
 
 class FiberState : public Postable {
  public:
@@ -170,12 +175,15 @@ class FiberState : public Postable {
 
  private:
   static constexpr size_t kStackSize = 1024 * 256;
+  // Channel capacity (power of two). Far above the number of in-flight actor
+  // tasks in practice; if it ever filled, push would block again.
+  static constexpr size_t kFiberChannelCapacity = 1 << 14;
 
   // The fiber stack allocator.
   boost::fibers::fixedsize_stack allocator_;
-  /// The fiber channel used to send task between the submitter thread
-  /// (main direct_actor_trasnport thread) and the fiber_runner_thread
-  FiberChannel channel_;
+  /// The fiber channel used to send tasks from the submitter (io_service_) to the
+  /// fiber_runner_thread.
+  FiberChannel channel_{kFiberChannelCapacity};
   /// The fiber semaphore used to limit the number of concurrent fibers
   /// running at once.
   FiberRateLimiter rate_limiter_;
