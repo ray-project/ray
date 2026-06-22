@@ -56,9 +56,8 @@ class KVRouterActor:
     2. Owns an in-process Dynamo ``SelectionService``.
     3. Tracks live replicas via a ``LongPollClient`` on ``DEPLOYMENT_TARGETS``,
        mapping each running replica to a Dynamo worker id.
-    4. The ``SelectionService`` maintains a global KV index
-       radix tree, fed by every replica's KV events; each node records which
-       workers hold that KV block.
+    4. The ``SelectionService`` maintains a global KV index radix tree, fed by
+       every replica's KV events; each node records which workers hold that KV block.
     5. TODO (jeffreywang): Scoring ranks candidate workers by KV-cache overlap
        (queried from the KV index) plus prefill/decode load to pick the best
        worker.
@@ -66,6 +65,10 @@ class KVRouterActor:
 
     def __init__(self, block_size: int):
         self._block_size = block_size
+        # _replica_id_by_worker maps a Dynamo worker id to the running replica's full
+        # id string, kept in sync with the deployment's live replicas over LongPoll.
+        # NOTE (jeffreywang): _replica_id_by_worker is later used by select_worker
+        # to get candidate workers to route among.
         self._replica_id_by_worker: Dict[int, str] = {}
         self._pending_tasks: Set[asyncio.Task] = set()
         self._long_poll_client: Optional[LongPollClient] = None
@@ -81,8 +84,7 @@ class KVRouterActor:
         except ImportError:
             self._svc = None
             logger.warning(
-                "ai-dynamo is not installed; KVRouterActor will track replica "
-                "membership but KV indexing/scoring is disabled."
+                "ai-dynamo is not installed; KV-aware routing requires ai-dynamo."
             )
             return
 

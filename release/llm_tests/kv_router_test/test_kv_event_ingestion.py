@@ -190,7 +190,7 @@ async def wait_for_overlap(actor, token_ids, predicate, publish=None, timeout=30
     await async_wait_for_condition(condition, timeout=timeout, retry_interval_ms=500)
 
 
-class TestSelectionServiceEventFlow:
+class TestKvEventIngestion:
     """Validates that a replica advertises its vLLM ZMQ PUB endpoint on the
     LongPoll snapshot -> the KVRouterActor registers it -> the selection
     service's connect-out listener -> the global KV indexer."""

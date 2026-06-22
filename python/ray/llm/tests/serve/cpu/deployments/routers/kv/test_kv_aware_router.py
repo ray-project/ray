@@ -152,7 +152,7 @@ class _TestKVRouterActor(KVRouterActor):
     """KVRouterActor augmented with test-only introspection."""
 
     async def get_candidate_worker_ids(self) -> List[int]:
-        """(Test only) The workers currently tracked from running replicas.
+        """The workers currently tracked from running replicas.
 
         Async so it runs on the actor's event loop, serialized with
         ``_on_deployment_targets`` which mutates the same map on that loop.
@@ -172,7 +172,7 @@ class _TestKVRouterActor(KVRouterActor):
     ],
 )
 class ReplicaTrackingDeployment:
-    """Stand-in deployment with a KVRouterActor deployment actor.
+    """Dummy deployment with a KVRouterActor deployment actor.
 
     Advertises a per-replica KV-events endpoint via ``record_routing_stats`` as a
     real engine would, so the selection service tracks each replica as a worker.
