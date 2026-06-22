@@ -102,19 +102,17 @@ def iter_threaded(
 
     def _worker():
         nonlocal remaining_workers
-        fn_iter = None
         slot_acquired = False
         try:
+            # Construct `fn_iter` inside the try so any exception during
+            # construction propagates to the consumer via the outer except
+            # (rather than killing the worker thread and hanging the consumer
+            # on result_queue.get()).
+            fn_iter = fn(_locked_iter())
             while True:
                 slot_acquired = _acquire_slot()
                 if not slot_acquired:
                     break
-                # Construct `fn_iter` lazily inside the slot-held window so any
-                # exception during construction propagates to the consumer via
-                # the outer except (rather than killing the worker thread and
-                # hanging the consumer on result_queue.get()).
-                if fn_iter is None:
-                    fn_iter = fn(_locked_iter())
                 item = next(fn_iter)
                 result_queue.put(item)
         except StopIteration:
