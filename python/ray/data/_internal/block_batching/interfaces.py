@@ -93,15 +93,6 @@ class BatchTimings:
             duration = other.fetch.end_s - other.fetch.start_s
             self.fetch.end_s += duration
 
-    @staticmethod
-    def _merge_stage(dst: StageTiming, src: StageTiming) -> None:
-        if src.start_s == 0.0:
-            return
-        if dst.start_s == 0.0 or src.start_s < dst.start_s:
-            dst.start_s = src.start_s
-        if src.end_s > dst.end_s:
-            dst.end_s = src.end_s
-
 
 @dataclass
 class BlockWithTiming:
