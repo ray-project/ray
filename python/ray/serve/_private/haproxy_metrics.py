@@ -12,10 +12,12 @@ import os
 import re
 import socket
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-from ray.serve._private.haproxy import HAProxyApi
 from ray.util import metrics
+
+if TYPE_CHECKING:
+    from ray.serve._private.haproxy import HAProxyApi
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +88,7 @@ class HAProxyMetricsCollector:
 
     def __init__(
         self,
-        haproxy_api: HAProxyApi,
+        haproxy_api: "HAProxyApi",
         node_id: str,
     ) -> None:
         self._transport: Optional[asyncio.DatagramTransport] = None

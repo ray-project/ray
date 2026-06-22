@@ -801,6 +801,21 @@ class HAProxyApi(ProxyApi):
         except OSError:
             return False
 
+    @staticmethod
+    def _comm_is_haproxy(pid: int) -> bool:
+        """Whether `pid`'s process name is `haproxy`, read from /proc/<pid>/comm.
+
+        `comm` is a single short line (kernel-truncated to 15 chars, so the
+        7-char "haproxy" is never clipped), making it far cheaper to read than
+        the full cmdline. Used to skip the cmdline check for the many PIDs that
+        obviously aren't HAProxy. Returns False on any /proc read error.
+        """
+        try:
+            with open(f"/proc/{pid}/comm", "rb") as f:
+                return f.read().strip() == b"haproxy"
+        except OSError:
+            return False
+
     def count_haproxy_processes(self) -> int:
         """Number of HAProxy processes on the node belonging to this manager.
 
@@ -808,6 +823,10 @@ class HAProxyApi(ProxyApi):
         the count spans the live worker, draining workers from prior reloads,
         and any leaked/orphaned workers — making it a signal for process leaks.
         Returns 0 on non-Linux / no-/proc platforms where /proc is unavailable.
+
+        Pre-filters on the cheap /proc/<pid>/comm name so the more expensive
+        cmdline match in `_is_our_haproxy` runs only for the handful of PIDs
+        actually named "haproxy", not for every process on the node.
         """
         try:
             entries = os.listdir("/proc")
@@ -816,7 +835,9 @@ class HAProxyApi(ProxyApi):
         return sum(
             1
             for entry in entries
-            if entry.isdigit() and self._is_our_haproxy(int(entry))
+            if entry.isdigit()
+            and self._comm_is_haproxy(int(entry))
+            and self._is_our_haproxy(int(entry))
         )
 
     async def compute_target_mismatch(self) -> int:
