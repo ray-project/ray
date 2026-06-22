@@ -383,12 +383,25 @@ def _expand_glob(
     needs_recursive = "**" in pattern or any(
         _has_glob_chars(seg) for seg in pat_segs[:-1]
     )
-    selector = pyarrow.fs.FileSelector(base_stripped, recursive=needs_recursive)
-    file_infos = filesystem.get_file_info(selector)
+    try:
+        selector = pyarrow.fs.FileSelector(base_stripped, recursive=needs_recursive)
+        file_infos = filesystem.get_file_info(selector)
+    except Exception:
+        if ignore_missing_paths:
+            return []
+        raise
 
     matched = []
     for fi in file_infos:
         if fi.type == FileType.File:
+            # Ensure the file is actually under the base directory,
+            # not just a string-prefix match (e.g. "bucket/data" should
+            # not match "bucket/dataextra.parquet").
+            if not (
+                fi.path == base_stripped
+                or fi.path.startswith(base_stripped + "/")
+            ):
+                continue
             # S3, GCS, HDFS, and ABFS all use "/" as path separator.
             relative = fi.path[len(base_stripped) :].lstrip("/")
             if _glob_match_path(pattern, relative):
