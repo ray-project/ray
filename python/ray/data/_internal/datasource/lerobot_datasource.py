@@ -79,11 +79,6 @@ class _LeRobotRoot(NamedTuple):
     """Feature keys with ``dtype == 'image'`` (camera streams stored as encoded
     image bytes — HF ``struct<bytes, path>`` — in the parquet rows, not as mp4)."""
 
-    episodes_table: pa.Table
-    """Episode metadata as a pyarrow Table, augmented with
-    ``_global_from_index`` / ``_global_to_index`` columns derived from
-    cumulative episode lengths."""
-
     tasks_dict: Dict[int, str]
     """``{task_index: task_name}`` mapping."""
 
@@ -127,22 +122,23 @@ class _LeRobotRoot(NamedTuple):
 def _build_episodes_table(hf_episodes: "datasets.Dataset") -> pa.Table:
     """Convert lerobot's HF ``Dataset`` of episodes to a pyarrow ``Table``
     with cumulative ``_global_from_index`` / ``_global_to_index`` columns
-    derived from per-episode lengths."""
+    derived from per-episode lengths.
+
+    Vectorized (no per-row Python) so the driver-side build stays cheap at
+    PB scale (millions of episodes)."""
     episodes = hf_episodes.with_format("arrow")[:]
-    ep_indices = episodes.column("episode_index").to_pylist()
-    if ep_indices != list(range(len(ep_indices))):
+    ep_indices = episodes.column("episode_index").to_numpy(zero_copy_only=False)
+    n = len(ep_indices)
+    if not np.array_equal(ep_indices, np.arange(n)):
         raise ValueError(
             f"Episodes are not 0-indexed and contiguous: "
-            f"first={ep_indices[0]}, last={ep_indices[-1]}, "
-            f"count={len(ep_indices)}"
+            f"first={ep_indices[0] if n else None}, "
+            f"last={ep_indices[-1] if n else None}, count={n}"
         )
-    lengths = episodes.column("length").to_pylist()
-    global_from: list = []
-    running = 0
-    for ln in lengths:
-        global_from.append(running)
-        running += ln
-    global_to = global_from[1:] + [running]
+    # Cast to int64 before cumsum: PB-scale cumulative frame counts overflow int32.
+    lengths = episodes.column("length").to_numpy(zero_copy_only=False).astype(np.int64)
+    global_to = np.cumsum(lengths)
+    global_from = global_to - lengths
     return episodes.append_column(
         "_global_from_index", pa.array(global_from, type=pa.int64())
     ).append_column("_global_to_index", pa.array(global_to, type=pa.int64()))
@@ -405,7 +401,7 @@ def _build_root(
     video_storage_options: Dict[str, Any],
     video_creds_unavailable: bool = False,
     frame_tolerance_s: Optional[float] = None,
-) -> _LeRobotRoot:
+) -> Tuple[_LeRobotRoot, pa.Table]:
     """Compute the per-root derived state bundle for a (pristine) lerobot
     ``LeRobotDatasetMetadata`` instance.  Does not mutate *meta*.
 
@@ -445,6 +441,22 @@ def _build_root(
 
     image_keys = list(getattr(meta, "image_keys", []) or [])
     episodes_table = _build_episodes_table(meta.episodes)
+    # Project to only the columns the planner (slicing) and worker decode use,
+    # so each per-task episode slice shipped to workers stays small at PB scale.
+    keep = [
+        "episode_index",
+        "_global_from_index",
+        "_global_to_index",
+        "data/chunk_index",
+        "data/file_index",
+    ]
+    for vk in meta.video_keys:
+        keep += [
+            f"videos/{vk}/chunk_index",
+            f"videos/{vk}/file_index",
+            f"videos/{vk}/from_timestamp",
+        ]
+    episodes_table = episodes_table.select(keep)
     tasks_dict = _build_tasks_dict(meta.tasks)
     schema = _build_schema(
         episodes_table, meta.data_path, meta.video_keys, image_keys, fs, fs_root
@@ -452,7 +464,7 @@ def _build_root(
     row_size_bytes = _estimated_row_size_bytes(meta.features, root_uri)
     stats_json = _stats_to_json(getattr(meta, "stats", None))
 
-    return _LeRobotRoot(
+    root_bundle = _LeRobotRoot(
         root=video_root_uri,
         fs=fs,
         fs_root=fs_root,
@@ -460,7 +472,6 @@ def _build_root(
         video_path=video_path,
         video_keys=list(meta.video_keys),
         image_keys=image_keys,
-        episodes_table=episodes_table,
         tasks_dict=tasks_dict,
         schema=schema,
         row_size_bytes=row_size_bytes,
@@ -470,6 +481,9 @@ def _build_root(
         stats_json=stats_json,
         frame_tolerance_s=frame_tolerance_s,
     )
+    # The projected episodes table is kept driver-side (in LeRobotDatasource),
+    # not stored on the shipped-to-workers root.
+    return root_bundle, episodes_table
 
 
 class _LeRobotReadTask(ReadTask):
@@ -484,28 +498,32 @@ class _LeRobotReadTask(ReadTask):
         segments: List[tuple],
         roots: List[_LeRobotRoot],
         roots_ref: "ray.ObjectRef",
+        episodes: List[pa.Table],
         rows_per_batch: int,
         per_task_row_limit: Optional[int] = None,
     ) -> None:
-        # ``roots`` is the driver-side list (already in memory) used to compute
-        # this task's BlockMetadata; ``roots_ref`` carries the same state to
-        # workers, where ``_read`` fetches it once from the object store. Do not
-        # ``ray.get(roots_ref)`` here — that re-deserializes the full state
-        # (including episodes_table) once per task on the driver.
+        # ``roots`` (slim per-root constants) is the driver-side list used to
+        # compute this task's BlockMetadata; ``roots_ref`` carries it to workers,
+        # where ``_read`` fetches it once. ``episodes`` is the driver-side list of
+        # projected episode tables, used here only to cut each segment's slice --
+        # it is NOT stored on the task; only the per-segment slice is shipped.
         total_rows = 0
         size_bytes = 0
         all_input_files: List[str] = []
         resolved: List[tuple] = []
         for root_idx, start, end in segments:
             root = roots[root_idx]
-            parquet_segs, video_segs = _LeRobotReadTask._resolve_paths(root, start, end)
+            eps = episodes[root_idx]
+            start_ep, end_ep = _LeRobotReadTask._episodes_for_row_range(eps, start, end)
+            # combine_chunks() materializes a standalone copy of just this slice,
+            # so pyarrow ships only it -- not a view into the whole table buffer.
+            ep_slice = eps.slice(start_ep, end_ep - start_ep).combine_chunks()
+            parquet_segs, video_segs = _LeRobotReadTask._resolve_paths(root, ep_slice)
             all_input_files.extend(parquet_segs)
             all_input_files.extend(video_segs)
             total_rows += end - start
             size_bytes += (end - start) * root.row_size_bytes
-            # Workers only need parquet_segs; video paths are derived from
-            # episodes_table inside _decode_video_frames.
-            resolved.append((root_idx, start, end, parquet_segs))
+            resolved.append((root_idx, start, end, parquet_segs, ep_slice))
 
         schema = roots[segments[0][0]].schema
         block_metadata = BlockMetadata(
@@ -522,9 +540,9 @@ class _LeRobotReadTask(ReadTask):
     def _read(self) -> Iterator[pa.Table]:
         """Stream decoded rows as Arrow tables, iterating over all segments."""
         roots: List[_LeRobotRoot] = ray.get(self._roots_ref)
-        for root_idx, start, end, parquet_segs in self._segments_resolved:
+        for root_idx, start, end, parquet_segs, ep_slice in self._segments_resolved:
             yield from self._read_segment(
-                roots[root_idx], start, end, root_idx, parquet_segs
+                roots[root_idx], start, end, root_idx, parquet_segs, ep_slice
             )
 
     def _read_segment(
@@ -534,6 +552,7 @@ class _LeRobotReadTask(ReadTask):
         end: int,
         dataset_index: int,
         parquet_segs: List[str],
+        ep_slice: pa.Table,
     ) -> Iterator[pa.Table]:
         """Stream decoded rows for one ``[start, end)`` range within a single root.
 
@@ -560,7 +579,11 @@ class _LeRobotReadTask(ReadTask):
 
         # Per-segment video state: an episode->file lookup scanned once, and a
         # decoder cache reused across batches so each video file is opened once.
-        video_meta = self._video_episode_meta(root) if root.video_keys else {}
+        video_meta = (
+            self._video_episode_meta(ep_slice, root.video_keys)
+            if root.video_keys
+            else {}
+        )
         tolerance_s = (
             root.frame_tolerance_s
             if root.frame_tolerance_s is not None
@@ -609,14 +632,14 @@ class _LeRobotReadTask(ReadTask):
                 cache.clear()
 
     @staticmethod
-    def _video_episode_meta(root: _LeRobotRoot) -> dict:
-        """Per-video-camera ``{episode_index: (chunk, file, from_timestamp)}``,
-        scanned once from the episodes table so per-batch decoding can resolve a
-        row's video file in O(1)."""
-        eps = root.episodes_table
+    def _video_episode_meta(episodes: pa.Table, video_keys: List[str]) -> dict:
+        """Per-video-camera ``{episode_index: (chunk, file, from_timestamp)}``
+        for this task's episode slice -- O(episodes-per-task), not the whole
+        dataset -- so per-batch decoding can resolve a row's video file in O(1)."""
+        eps = episodes
         ep_idx = eps.column("episode_index").to_pylist()
         meta: dict = {}
-        for vk in root.video_keys:
+        for vk in video_keys:
             chunks = eps.column(f"videos/{vk}/chunk_index").to_pylist()
             files = eps.column(f"videos/{vk}/file_index").to_pylist()
             from_ts = eps.column(f"videos/{vk}/from_timestamp").to_pylist()
@@ -716,19 +739,14 @@ class _LeRobotReadTask(ReadTask):
         return decoded
 
     @staticmethod
-    def _resolve_paths(root: _LeRobotRoot, start: int, end: int) -> tuple:
-        """Resolve all file paths touched by row range ``[start, end)``.
+    def _resolve_paths(root: _LeRobotRoot, ep_slice: pa.Table) -> tuple:
+        """Resolve the file paths touched by an episode slice.
 
         Returns ``(parquet_segs, video_segs)`` — flat lists of unique file
-        paths used for the ``BlockMetadata.input_files`` attribution.  The
-        worker-side decode logic re-derives video paths per row from
-        :attr:`_LeRobotRoot.episodes_table`, so we don't need to retain
+        paths used for the ``BlockMetadata.input_files`` attribution. The
+        per-row video paths are re-derived at decode time, so we don't retain
         per-camera grouping here.
         """
-        eps = root.episodes_table
-        start_ep, end_ep = _LeRobotReadTask._episodes_for_row_range(eps, start, end)
-        ep_slice = eps.slice(start_ep, end_ep - start_ep)
-
         pq_chunks = ep_slice.column("data/chunk_index").combine_chunks()
         pq_files = ep_slice.column("data/file_index").combine_chunks()
         pq_new = _LeRobotReadTask._segment_boundaries(pq_chunks, pq_files)
@@ -1006,9 +1024,11 @@ class LeRobotDatasource(Datasource):
                         f"{sorted(m_feats)}"
                     )
 
-        # Derived state used by slicing + read tasks.  Computed once on the
-        # driver and shipped to workers via ray.put.
-        self._roots: List[_LeRobotRoot] = [
+        # Derived state, computed once on the driver. The slim roots are
+        # shipped to workers via ray.put; the projected episode tables stay
+        # here for planning (slicing) -- each read task embeds only its own
+        # episode slice rather than broadcasting the whole table.
+        built = [
             _build_root(
                 m,
                 r,
@@ -1023,6 +1043,8 @@ class LeRobotDatasource(Datasource):
                 self.metas, roots, self._resolved
             )
         ]
+        self._roots: List[_LeRobotRoot] = [root for root, _ in built]
+        self._episodes: List[pa.Table] = [episodes for _, episodes in built]
 
         self._group_by_episode: bool = group_by_episode
 
@@ -1036,18 +1058,18 @@ class LeRobotDatasource(Datasource):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _slices_by_episode(ds_root: _LeRobotRoot) -> List[tuple]:
-        from_indices = ds_root.episodes_table.column("_global_from_index").to_pylist()
-        to_indices = ds_root.episodes_table.column("_global_to_index").to_pylist()
+    def _slices_by_episode(episodes: pa.Table, video_keys: List[str]) -> List[tuple]:
+        from_indices = episodes.column("_global_from_index").to_pylist()
+        to_indices = episodes.column("_global_to_index").to_pylist()
         return list(zip(from_indices, to_indices))
 
     @staticmethod
-    def _slices_by_file_group(ds_root: _LeRobotRoot) -> List[tuple]:
-        eps = ds_root.episodes_table
+    def _slices_by_file_group(episodes: pa.Table, video_keys: List[str]) -> List[tuple]:
+        eps = episodes
 
         key_columns: List[list] = []
-        if ds_root.video_keys:
-            for vk in ds_root.video_keys:
+        if video_keys:
+            for vk in video_keys:
                 key_columns.append(eps.column(f"videos/{vk}/chunk_index").to_pylist())
                 key_columns.append(eps.column(f"videos/{vk}/file_index").to_pylist())
         else:
@@ -1087,7 +1109,7 @@ class LeRobotDatasource(Datasource):
         )
         all_ranges: List[tuple] = []
         for root_idx, ds_root in enumerate(self._roots):
-            ranges = sorted(slice_fn(ds_root))
+            ranges = sorted(slice_fn(self._episodes[root_idx], ds_root.video_keys))
             for i in range(1, len(ranges)):
                 if ranges[i - 1][1] != ranges[i][0]:
                     raise ValueError(
@@ -1215,6 +1237,7 @@ class LeRobotDatasource(Datasource):
                 segments=entry["segments"],
                 roots=self._roots,
                 roots_ref=roots_ref,
+                episodes=self._episodes,
                 rows_per_batch=rows_per_batch,
                 per_task_row_limit=per_task_row_limit,
             )
