@@ -1,9 +1,8 @@
 import threading
 from collections import defaultdict
-from typing import Dict
+from typing import Callable, Dict, Optional
 
 import ray
-import ray._private.worker
 
 
 class BlockRefCounter:
@@ -14,9 +13,15 @@ class BlockRefCounter:
     - All Ray tasks that received the block as an argument have completed.
     """
 
-    def __init__(self):
-        # Object ID binaries of currently live blocks; used by _on_object_freed
-        # to distinguish a racing clear() from a real callback.
+    def __init__(
+        self,
+        add_object_out_of_scope_callback: Optional[
+            Callable[["ray.ObjectRef", Callable[[bytes], None]], bool]
+        ] = None,
+    ):
+        self._add_callback_fn = add_object_out_of_scope_callback
+        # IDs of live blocks. Stale callbacks (fired after clear()) check
+        # membership here and no-op, preventing negative _bytes_by_producer.
         self._registered_ids: set[bytes] = set()
         # (producer_id -> total live bytes); maintained incrementally for O(1) reads.
         self._bytes_by_producer: Dict[str, int] = defaultdict(int)
@@ -33,6 +38,8 @@ class BlockRefCounter:
         Registers a Ray Core out-of-scope callback so that when all references
         to block_ref are gone the bytes are automatically removed from the
         producer's usage.
+
+        Not idempotent: calling twice with the same block_ref double-counts.
         """
         id_binary = block_ref.binary()
         with self._lock:
@@ -46,13 +53,15 @@ class BlockRefCounter:
                     return
                 self._registered_ids.discard(id_bytes)
                 self._bytes_by_producer[producer_id] -= size_bytes
-                if self._bytes_by_producer[producer_id] == 0:
-                    del self._bytes_by_producer[producer_id]
 
-        core_worker = ray._private.worker.global_worker.core_worker  # type: ignore[attr-defined]
-        registered = core_worker.add_object_out_of_scope_callback(
-            block_ref, _on_object_freed
-        )
+        add_callback = self._add_callback_fn
+        if add_callback is None:
+            import ray._private.worker
+
+            core_worker = ray._private.worker.global_worker.core_worker  # type: ignore[attr-defined]
+            add_callback = core_worker.add_object_out_of_scope_callback
+
+        registered = add_callback(block_ref, _on_object_freed)
         if not registered:
             _on_object_freed(id_binary)
 
