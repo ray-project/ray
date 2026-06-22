@@ -194,10 +194,17 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV2SwapIgnoredWhenFlagDisabled) {
   ASSERT_EQ(used_bytes, cgroup_current_bytes);
 }
 
-TEST_F(MemoryMonitorUtilsTest, TestCgroupV2UnlimitedSwapNotAddedToTotal) {
+TEST_F(MemoryMonitorUtilsTest, TestCgroupV2UnlimitedSwapFallsBackToHostSwap) {
+  // swap.max == "max" means the cgroup imposes no swap cap, so the practical
+  // limit is whatever the host has. Mirrors the Python helper in
+  // ray._common.utils.get_cgroup_aware_swap_memory.
   SetCountSwapFlag(true);
-  int64_t cgroup_total_bytes = 4LL * 1024 * 1024 * 1024;
-  int64_t cgroup_current_bytes = 2LL * 1024 * 1024 * 1024;
+  int64_t cgroup_total_bytes = 4LL * 1024 * 1024 * 1024;    // 4 GiB
+  int64_t cgroup_current_bytes = 2LL * 1024 * 1024 * 1024;  // 2 GiB
+  int64_t mem_total_kb = 16 * 1024 * 1024;                  // unused but required
+  int64_t mem_available_kb = 4 * 1024 * 1024;               // unused but required
+  int64_t swap_total_kb = 8 * 1024 * 1024;                  // 8 GiB host swap
+  int64_t swap_free_kb = 6 * 1024 * 1024;                   // 2 GiB host swap used
 
   std::string cgroup_dir = MockCgroupv2MemoryUsage(cgroup_total_bytes,
                                                    cgroup_current_bytes,
@@ -205,16 +212,54 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV2UnlimitedSwapNotAddedToTotal) {
                                                    /*shmem_memory_bytes=*/0,
                                                    /*inactive_file_bytes=*/0,
                                                    /*active_file_bytes=*/0);
-  // swap.max == "max" — kernel sentinel for "unlimited". We must not treat it
-  // as a number; that would push the total to a garbage sentinel value.
   MockCgroupv2Swap(cgroup_dir,
-                   /*swap_max_bytes=*/std::nullopt,
+                   /*swap_max_bytes=*/std::nullopt,  // writes "max"
                    /*swap_current_bytes=*/0);
+  std::string proc_dir =
+      MockProcMeminfo(mem_total_kb, mem_available_kb, swap_total_kb, swap_free_kb);
 
-  auto [used_bytes, total_bytes] = MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir);
+  auto [used_bytes, total_bytes] =
+      MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir,
+                                               /*include_swap=*/true,
+                                               proc_dir);
 
-  ASSERT_EQ(total_bytes, cgroup_total_bytes);
-  ASSERT_EQ(used_bytes, cgroup_current_bytes);
+  ASSERT_EQ(total_bytes, cgroup_total_bytes + swap_total_kb * 1024);
+  ASSERT_EQ(used_bytes, cgroup_current_bytes + (swap_total_kb - swap_free_kb) * 1024);
+}
+
+TEST_F(MemoryMonitorUtilsTest, TestCgroupV2OverflowSwapFallsBackToHostSwap) {
+  // Numeric swap.max that overflows int64 (e.g. ULLONG_MAX written by the
+  // kernel as the "unlimited" sentinel on some configs) — same semantics as
+  // the literal "max": fall back to host swap.
+  SetCountSwapFlag(true);
+  int64_t cgroup_total_bytes = 4LL * 1024 * 1024 * 1024;
+  int64_t cgroup_current_bytes = 2LL * 1024 * 1024 * 1024;
+  int64_t mem_total_kb = 16 * 1024 * 1024;
+  int64_t mem_available_kb = 4 * 1024 * 1024;
+  int64_t swap_total_kb = 8 * 1024 * 1024;
+  int64_t swap_free_kb = 8 * 1024 * 1024;
+
+  std::string cgroup_dir = MockCgroupv2MemoryUsage(cgroup_total_bytes,
+                                                   cgroup_current_bytes,
+                                                   /*anon_memory_bytes=*/0,
+                                                   /*shmem_memory_bytes=*/0,
+                                                   /*inactive_file_bytes=*/0,
+                                                   /*active_file_bytes=*/0);
+  // ULLONG_MAX overflows int64 — triggers std::stoll's out_of_range path,
+  // which we treat the same as the literal "max".
+  MockCgroupv2Swap(cgroup_dir,
+                   /*swap_max_str=*/"18446744073709551615",
+                   /*swap_current_bytes=*/0);
+  std::string proc_dir =
+      MockProcMeminfo(mem_total_kb, mem_available_kb, swap_total_kb, swap_free_kb);
+
+  auto [used_bytes, total_bytes] =
+      MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir,
+                                               /*include_swap=*/true,
+                                               proc_dir);
+
+  ASSERT_EQ(total_bytes, cgroup_total_bytes + swap_total_kb * 1024);
+  ASSERT_EQ(used_bytes, cgroup_current_bytes);  // host swap fully free
 }
 
 TEST_F(MemoryMonitorUtilsTest, TestCgroupV1MemswAddedToTotalAndUsed) {

@@ -34,7 +34,7 @@ namespace ray {
 const MemoryUsageSnapshot MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
     const std::string &root_cgroup_path, const std::string &proc_dir, bool include_swap) {
   auto [cgroup_used_bytes, cgroup_total_bytes] =
-      GetCGroupMemoryBytes(root_cgroup_path, include_swap);
+      GetCGroupMemoryBytes(root_cgroup_path, include_swap, proc_dir);
   auto [system_used_bytes, system_total_bytes] =
       GetLinuxMemoryBytes(proc_dir, include_swap);
   /// cgroup memory limit can be higher than system memory limit when it is
@@ -235,7 +235,7 @@ int64_t MemoryMonitorUtils::GetCGroupMemoryUsedBytes(const char *stat_path,
 }
 
 std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetCGroupMemoryBytes(
-    const std::string root_cgroup_path, bool include_swap) {
+    const std::string root_cgroup_path, bool include_swap, const std::string &proc_dir) {
   std::string cgroupV1MemoryMaxPath = root_cgroup_path + "/" + kCgroupsV1MemoryMaxPath;
   std::string cgroupV1MemoryUsagePath =
       root_cgroup_path + "/" + kCgroupsV1MemoryUsagePath;
@@ -303,18 +303,20 @@ std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetCGroupMemoryBytes(
   }
 
   // cgroup v2: add swap-only counters on top of memory.* values. swap.max can
-  // be the literal string "max" (unlimited) — only honor a numeric limit so we
-  // don't inflate the total to an unrelated sentinel.
+  // be the literal string "max" (unlimited) or an int64-overflowing number —
+  // both mean the cgroup imposes no swap cap, so the practical limit is the
+  // host's swap (matches the Python helper in ray._common.utils).
   if (count_swap && total_bytes != MemoryMonitorInterface::kNull && total_bytes != 0 &&
       std::filesystem::exists(cgroupV2MemorySwapMaxPath)) {
     std::ifstream swap_max_ifs(cgroupV2MemorySwapMaxPath,
                                std::ios::in | std::ios::binary);
     std::string swap_max_str;
     swap_max_ifs >> swap_max_str;
-    if (!swap_max_str.empty() &&
-        std::all_of(swap_max_str.begin(), swap_max_str.end(), [](unsigned char c) {
-          return std::isdigit(c);
-        })) {
+    bool unlimited = swap_max_str.empty() ||
+                     !std::all_of(swap_max_str.begin(),
+                                  swap_max_str.end(),
+                                  [](unsigned char c) { return std::isdigit(c); });
+    if (!unlimited) {
       try {
         int64_t swap_max_bytes = std::stoll(swap_max_str);
         total_bytes += swap_max_bytes;
@@ -329,9 +331,21 @@ std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetCGroupMemoryBytes(
           }
         }
       } catch (const std::out_of_range &) {
-        // swap.max value overflows int64 (e.g. ULLONG_MAX sentinel) — treat as unlimited.
+        // Numeric but overflows int64 — kernel's "unlimited" sentinel.
+        unlimited = true;
       } catch (const std::invalid_argument &) {
-        // Unexpected non-numeric content; ignore.
+        // Unexpected non-numeric content; treat conservatively as unlimited
+        // so we don't silently zero-out swap when the kernel format changes.
+        unlimited = true;
+      }
+    }
+    if (unlimited) {
+      auto [host_swap_total, host_swap_used] = GetHostSwapBytes(proc_dir);
+      if (host_swap_total > 0) {
+        total_bytes += host_swap_total;
+        if (used_bytes != MemoryMonitorInterface::kNull && host_swap_used > 0) {
+          used_bytes += host_swap_used;
+        }
       }
     }
   }
@@ -361,6 +375,39 @@ std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetCGroupMemoryBytes(
   }
 
   return {used_bytes, total_bytes};
+}
+
+std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetHostSwapBytes(
+    const std::string &proc_dir) {
+  std::string meminfo_path = proc_dir + "/meminfo";
+  std::ifstream meminfo_ifs(meminfo_path, std::ios::in | std::ios::binary);
+  if (!meminfo_ifs) {
+    return {0, 0};
+  }
+  // Absent SwapTotal means a system without swap — return zero, not kNull,
+  // so the caller can unconditionally add the result without a sentinel check.
+  int64_t swap_total_bytes = 0;
+  int64_t swap_free_bytes = 0;
+  bool saw_swap_total = false;
+  std::string line;
+  std::string title;
+  uint64_t value;
+  std::string unit;
+  while (std::getline(meminfo_ifs, line)) {
+    std::istringstream iss(line);
+    iss >> title >> value >> unit;
+    if (title == "SwapTotal:") {
+      swap_total_bytes = static_cast<int64_t>(value * 1024);
+      saw_swap_total = true;
+    } else if (title == "SwapFree:") {
+      swap_free_bytes = static_cast<int64_t>(value * 1024);
+    }
+  }
+  if (!saw_swap_total) {
+    return {0, 0};
+  }
+  int64_t swap_used_bytes = std::max<int64_t>(0, swap_total_bytes - swap_free_bytes);
+  return {swap_total_bytes, swap_used_bytes};
 }
 
 std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetLinuxMemoryBytes(

@@ -386,28 +386,41 @@ class TestGetCgroupAwareSwapMemory:
             "garbage",
             "",
             # Numeric but overflows int64 — kernel's "unlimited" sentinel.
-            # C++ catches std::out_of_range from std::stoll and adds no swap;
-            # Python's int() has arbitrary precision so we must guard explicitly.
+            # C++ catches std::out_of_range from std::stoll; Python's int()
+            # has arbitrary precision so we guard explicitly against _INT64_MAX.
             "18446744073709551615",
-            # Swap disabled. C++ guards the swap.current read on
-            # swap_max_bytes > 0 — Python must match so we don't report
-            # used > total during kernel state transitions.
-            "0",
         ],
     )
-    def test_cgroup_v2_swap_max_returns_zero_when_unusable(
+    def test_cgroup_v2_unlimited_swap_max_falls_back_to_host_swap(
         self, monkeypatch, tmp_path, swap_max_value
     ):
-        """Regression: when cgroup v2 swap.max is non-numeric (e.g. 'max'),
-        unparseable, numeric-but-overflows-int64, or 0 (swap disabled), the
-        helper must NOT fall back to host swap and must NOT leak swap.current
-        into the used bytes. C++ adds no swap in all these cases."""
+        """When cgroup v2 swap.max is the kernel's "unlimited" sentinel
+        ("max", non-numeric, or overflowing int64), the cgroup imposes no
+        cap, so the practical swap budget is the host's swap. C++ mirrors
+        this. swap.current must NOT be read — used comes from psutil only."""
         self._patch_paths(
             monkeypatch,
             tmp_path,
             _CGROUP_V2_SWAP_MAX=self._write(tmp_path, "swap.max", swap_max_value),
-            # Sentinel: if the helper ever reads swap.current in any of these
-            # cases, the assertion below will catch it.
+            # Sentinel: if the helper ever reads swap.current in these cases,
+            # used would equal 12345 and the assertion below would catch it.
+            _CGROUP_V2_SWAP_CURRENT=self._write(tmp_path, "swap.current", "12345"),
+        )
+        self._patch_host_swap(monkeypatch, total=100 * 1024**3, used=50 * 1024**3)
+
+        total, used = get_cgroup_aware_swap_memory()
+
+        assert total == 100 * 1024**3
+        assert used == 50 * 1024**3
+
+    def test_cgroup_v2_swap_disabled_returns_zero(self, monkeypatch, tmp_path):
+        """Regression: when swap.max is explicitly 0, the kernel is saying
+        "no swap for this cgroup" — different from "unlimited". Helper must
+        return (0, 0) and must NOT read swap.current (C++ guards on > 0)."""
+        self._patch_paths(
+            monkeypatch,
+            tmp_path,
+            _CGROUP_V2_SWAP_MAX=self._write(tmp_path, "swap.max", "0"),
             _CGROUP_V2_SWAP_CURRENT=self._write(tmp_path, "swap.current", "12345"),
         )
         self._patch_host_swap(monkeypatch, total=100 * 1024**3, used=50 * 1024**3)

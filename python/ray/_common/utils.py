@@ -452,12 +452,13 @@ def get_cgroup_aware_swap_memory() -> Tuple[int, int]:
       - cgroup v2 with numeric memory.swap.max
             -> (swap.max, swap.current if present else 0); matches C++ which
                does not clamp by host swap
-      - cgroup v2 with non-numeric memory.swap.max (e.g. "max")
-            -> (0, 0); C++ adds no swap in this case
-      - cgroup v2 with numeric memory.swap.max that overflows int64
-            -> (0, 0); matches C++'s std::stoll out_of_range path
+      - cgroup v2 with non-numeric memory.swap.max (e.g. "max") or numeric
+        value that overflows int64
+            -> host psutil swap (total, used); "unlimited" means the practical
+               cap is whatever the host actually has. C++ mirrors this.
       - cgroup v2 with memory.swap.max == 0 (swap disabled)
-            -> (0, 0); C++ guards swap.current read on swap_max_bytes > 0
+            -> (0, 0); kernel says "no swap for this cgroup", distinct from
+               "unlimited". C++ guards swap.current read on swap_max_bytes > 0.
       - cgroup v1 memsw with RAM limit and usage readable
             -> (memsw_limit - mem_limit, max(0, memsw_usage - mem_usage))
       - cgroup v1 memsw without a readable RAM limit
@@ -475,14 +476,13 @@ def get_cgroup_aware_swap_memory() -> Tuple[int, int]:
             # accept Unicode numeric characters (e.g. Arabic-Indic digits) that
             # the C++ parser rejects, causing the two layers to disagree.
             if not (val and val.isascii() and val.isdigit()):
-                # "max" (unlimited) or unparseable: cgroup v2 is in effect, so
-                # mirror the C++ monitor which adds no swap rather than falling
-                # back to host-level values.
-                return 0, 0
+                # "max" (unlimited) or unparseable: the cgroup imposes no swap
+                # cap, so the practical limit is the host's swap.
+                return _get_host_swap_memory()
             cgroup_swap_max = int(val)
             if cgroup_swap_max > _INT64_MAX:
-                # Overflows int64; C++ treats this as unlimited and adds no swap.
-                return 0, 0
+                # Overflows int64; kernel's "unlimited" sentinel — same as "max".
+                return _get_host_swap_memory()
             if cgroup_swap_max == 0:
                 # Swap disabled. Mirror C++, which guards the swap.current
                 # read on swap_max_bytes > 0 — don't leak a stale or
@@ -538,10 +538,17 @@ def get_cgroup_aware_swap_memory() -> Tuple[int, int]:
             # Committed to cgroup v1; do not leak host swap on read/parse error.
             return 0, 0
 
-    # No cgroup swap files. Fall back to host-level psutil swap, but guard
-    # against psutil itself raising on stripped containers / unsupported
-    # kernels — callers shouldn't have to know which exception types psutil
-    # may throw (RuntimeError, NotImplementedError, OSError, …).
+    # No cgroup swap files. Fall back to host-level psutil swap.
+    return _get_host_swap_memory()
+
+
+def _get_host_swap_memory() -> Tuple[int, int]:
+    """Return (host_swap_total, host_swap_used) from psutil.
+
+    Guards against psutil itself raising on stripped containers / unsupported
+    kernels — callers shouldn't have to know which exception types psutil may
+    throw (RuntimeError, NotImplementedError, OSError, …).
+    """
     try:
         host = psutil.swap_memory()
         return host.total, host.used

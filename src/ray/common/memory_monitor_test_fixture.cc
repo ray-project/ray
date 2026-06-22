@@ -119,13 +119,17 @@ std::string MemoryMonitorTestFixture::MockProcMeminfo(
 void MemoryMonitorTestFixture::MockCgroupv2Swap(const std::string &cgroup_path,
                                                 std::optional<int64_t> swap_max_bytes,
                                                 int64_t swap_current_bytes) {
+  const std::string swap_max_str =
+      swap_max_bytes.has_value() ? std::to_string(*swap_max_bytes) : "max";
+  MockCgroupv2Swap(cgroup_path, swap_max_str, swap_current_bytes);
+}
+
+void MemoryMonitorTestFixture::MockCgroupv2Swap(const std::string &cgroup_path,
+                                                const std::string &swap_max_str,
+                                                int64_t swap_current_bytes) {
   mock_cgroup_files_.push_back(std::make_unique<TempFile>(
       cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV2MemorySwapMaxPath));
-  if (swap_max_bytes.has_value()) {
-    mock_cgroup_files_.back()->AppendLine(std::to_string(*swap_max_bytes));
-  } else {
-    mock_cgroup_files_.back()->AppendLine("max");
-  }
+  mock_cgroup_files_.back()->AppendLine(swap_max_str);
 
   mock_cgroup_files_.push_back(std::make_unique<TempFile>(
       cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV2MemorySwapCurrentPath));

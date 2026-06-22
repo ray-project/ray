@@ -175,10 +175,15 @@ class MemoryMonitorUtils {
    * @param include_swap When true (default), add cgroup `memory.swap.*` /
    *        memsw counters to total/used iff `count_swap_in_memory_monitor` is
    *        on. Set to false when the caller needs the RAM-only view.
+   * @param proc_dir The /proc directory; used to fall back to host
+   *        SwapTotal/SwapFree when cgroup v2 `memory.swap.max` is the kernel's
+   *        "unlimited" sentinel ("max" or an int64-overflowing number).
    * @return The used and total memory in bytes from the cgroup.
    */
   static std::tuple<int64_t, int64_t> GetCGroupMemoryBytes(
-      const std::string root_cgroup_path, bool include_swap = true);
+      const std::string root_cgroup_path,
+      bool include_swap = true,
+      const std::string &proc_dir = kProcDirectory);
 
   /**
    * @brief Gets the current memory usage for the cgroup
@@ -208,6 +213,20 @@ class MemoryMonitorUtils {
    */
   static std::tuple<int64_t, int64_t> GetLinuxMemoryBytes(const std::string proc_dir,
                                                           bool include_swap = true);
+
+  /**
+   * @brief Returns (swap_total_bytes, swap_used_bytes) from /proc/meminfo.
+   *
+   * Used as the fallback when cgroup v2 `memory.swap.max` is the kernel's
+   * "unlimited" sentinel — the cgroup imposes no swap cap, so the practical
+   * limit is whatever the host actually has. Returns (0, 0) when SwapTotal is
+   * missing (system without swap) or /proc/meminfo cannot be read.
+   *
+   * @param proc_dir The /proc directory path.
+   * @return Host swap total and used in bytes; (0, 0) if unavailable.
+   */
+  static std::tuple<int64_t, int64_t> GetHostSwapBytes(
+      const std::string &proc_dir = kProcDirectory);
 
   /**
    * @brief Gets the used memory from the smap file.

@@ -129,6 +129,16 @@ class MemoryMonitorTestFixture : public ::testing::Test {
                         int64_t swap_current_bytes);
 
   /**
+   * @brief String-valued overload for memory.swap.max. Use when the test needs
+   * to inject content that std::stoll rejects (overflow sentinels like
+   * "18446744073709551615", garbage, empty) — std::optional<int64_t> can't
+   * express those.
+   */
+  void MockCgroupv2Swap(const std::string &cgroup_path,
+                        const std::string &swap_max_str,
+                        int64_t swap_current_bytes);
+
+  /**
    * @brief Adds cgroup v1 memsw files inside an existing cgroup mock directory
    * created by MockCgroupv1MemoryUsage. Mirrors MockCgroupv2Swap for cgroup v1.
    *
