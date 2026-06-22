@@ -65,11 +65,11 @@
       num_files: [50]
       row_group_size: [64MiB]
       compression_ratio: [5.0]
-      read_memory: [4294967296]
+      read_memory: [4294967296, 8589934592]
       max_bucket_size: [5GiB]
-      batch_target_bytes: [256MiB]
-      use_version: [v1]
-      trial: [1, 2]
+      batch_target_bytes: [64MiB, 128MiB, 256MiB, 512MiB]
+      use_version: [v3]
+      trial: [1]
   run:
     timeout: 10800
     script: >
