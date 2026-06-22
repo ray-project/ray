@@ -359,6 +359,9 @@ RAY_CONFIG(int, worker_niceness, 15)
 RAY_CONFIG(int64_t, redis_db_connect_retries, 120)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 500)
 
+/// Timeout for synchronous Redis probe commands issued while initializing GCS storage.
+RAY_CONFIG(int64_t, redis_db_probe_timeout_milliseconds, 30000)
+
 /// Number of retries for a redis request failure.
 RAY_CONFIG(size_t, num_redis_request_retries, 5)
 
@@ -408,13 +411,13 @@ RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 /// requests and copy from the socket buffer to create the proto request object.
 RAY_CONFIG(uint32_t,
            gcs_server_rpc_server_thread_num,
-           std::max(1U, std::thread::hardware_concurrency() / 4U))
+           std::max(1U, static_cast<uint32_t>(ray::CpuMonitorUtils::GetCpuLimit()) / 4U));
 
 /// Number of polling threads for raylet + worker clients on the GCS. These threads poll
 /// for replies and copy from the socket buffer to create the proto Reply object.
 RAY_CONFIG(uint32_t,
            gcs_server_rpc_client_thread_num,
-           std::max(1U, std::thread::hardware_concurrency() / 4U))
+           std::max(1U, static_cast<uint32_t>(ray::CpuMonitorUtils::GetCpuLimit()) / 4U));
 
 /// The interval at which the gcs server will health check the connection to the
 /// external Redis server. If a health check fails, the GCS will crash itself.
@@ -629,6 +632,11 @@ RAY_CONFIG(int64_t, io_context_monitor_probe_interval_ms, 1000)
 /// If a probe has been outstanding longer than this, the io_context is marked
 /// unhealthy.
 RAY_CONFIG(int64_t, io_context_monitor_healthy_deadline_ms, 5000)
+
+/// Sliding window over which the max probe latency is tracked and exported. The
+/// Prometheus metrics scrape interval is usually 15s; we exceed it so that the
+/// windowed max is not missed between scrapes.
+RAY_CONFIG(int64_t, io_context_monitor_latency_window_ms, 20000)
 
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
@@ -875,14 +883,15 @@ RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000)
 /// grpc keepalive timeout.
 RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000)
 
-/// NOTE: we set a loose client keep alive because
-/// they have a failure model that considers network failures as component failures
-/// and this configuration break that assumption. We should apply to every other component
-/// after we change this failure assumption from code.
-/// grpc keepalive timeout for client.
+/// gRPC client keepalive ping interval: how often a client pings the server to
+/// detect a dead connection. We keep it loose because the failure model treats
+/// network failures as component failures, which an aggressive value would break.
+/// NOTE: the GCS server derives its minimum accepted ping interval from this value
+/// (see grpc_server.cc), so it must be set consistently across the head and all nodes.
 RAY_CONFIG(int64_t, grpc_client_keepalive_time_ms, 300000)
 
-/// grpc keepalive timeout for client.
+/// gRPC client keepalive timeout: how long to wait for a ping ack before treating
+/// the connection as dead.
 RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)
 
 RAY_CONFIG(int64_t, grpc_client_idle_timeout_ms, 1800000)
@@ -984,14 +993,14 @@ RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
 /// Thread pool size for sending replies in grpc server (system components: raylet, GCS).
 RAY_CONFIG(int64_t,
            num_server_call_thread,
-           std::max((int64_t)1, (int64_t)(std::thread::hardware_concurrency() / 4U)))
+           std::max<int64_t>(1, ray::CpuMonitorUtils::GetCpuLimit() / 4));
 
 /// Thread pool size for sending replies in grpc server (CoreWorkers).
 /// https://github.com/ray-project/ray/issues/58351 shows the
 /// reply path is light enough that 2 threads is sufficient.
 RAY_CONFIG(int64_t,
            core_worker_num_server_call_thread,
-           std::thread::hardware_concurrency() >= 8 ? 2 : 1);
+           ray::CpuMonitorUtils::GetCpuLimit() >= 8 ? 2 : 1);
 
 /// Use madvise to prevent worker/raylet coredumps from including
 /// the mapped plasma pages.

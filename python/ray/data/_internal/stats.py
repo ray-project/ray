@@ -241,6 +241,43 @@ class Timer:
         q = self._distribution._quantile(p)
         return q if q is not None else 0
 
+    def as_dict(self) -> Dict[str, Optional[float]]:
+        """Return a JSON-serializable snapshot of the accumulated stats.
+
+        Only the scalar fields are included. ``_distribution`` (a
+        :class:`DistributionTracker`) is intentionally omitted because it
+        is not JSON-serializable and its sketch is not meant to be
+        persisted across checkpoints. ``_min`` / ``_max`` are reported as
+        ``None`` when no samples have been added (rather than the ``inf``
+        sentinel, which JSON cannot represent).
+        """
+        return {
+            "_total": self._total,
+            "_min": self._min if self._total_count > 0 else None,
+            "_max": self._max if self._total_count > 0 else None,
+            "_total_count": self._total_count,
+        }
+
+    def from_dict(self, state: Optional[Dict[str, Optional[float]]]) -> None:
+        """Restore the scalar stats from a dict produced by :meth:`as_dict`.
+
+        ``_distribution`` is left untouched (it keeps the empty tracker
+        created in ``__init__``), mirroring that the sketch is not
+        persisted. A non-dict ``state`` is ignored, and a ``None`` value
+        for any field falls back to its empty-Timer default (``.get``'s
+        default only fires on a missing key, not a present ``None``).
+        """
+        if not isinstance(state, dict):
+            return
+        _total = state.get("_total")
+        self._total = _total if _total is not None else 0.0
+        _total_count = state.get("_total_count")
+        self._total_count = _total_count if _total_count is not None else 0.0
+        _min = state.get("_min")
+        self._min = _min if _min is not None else float("inf")
+        _max = state.get("_max")
+        self._max = _max if _max is not None else 0.0
+
 
 class _DatasetStatsBuilder:
     """Helper class for building dataset stats.
@@ -911,14 +948,16 @@ def get_or_create_stats_actor() -> ActorHandle[_StatsActor]:
     does not exist in the connected cluster. The _StatsActor is pinned on
     on driver process' node.
     """
-    if ray._private.worker._global_node is None:
+    if not ray.is_initialized():
         raise RuntimeError(
-            "Global node is not initialized. Driver might be not connected to Ray."
+            "Ray is not initialized. Driver might be not connected to Ray."
         )
 
-    current_cluster_id = ray._private.worker._global_node.cluster_id
-
-    logger.debug(f"Stats Actor located on cluster_id={current_cluster_id}")
+    # `_global_node` is None under Ray Client (the driver is not a cluster
+    # worker), so only log the cluster_id when it is available.
+    global_node = ray._private.worker._global_node
+    if global_node is not None:
+        logger.debug(f"Stats Actor located on cluster_id={global_node.cluster_id}")
 
     # so it fate-shares with the driver.
     label_selector = {
@@ -1280,7 +1319,7 @@ class DatasetStatsSummary:
         self,
         already_printed: Optional[Set[str]] = None,
         include_parent: bool = True,
-        add_global_stats=True,
+        add_global_stats: bool = True,
     ) -> str:
         """Return a human-readable summary of this Dataset's stats.
 
@@ -1555,8 +1594,8 @@ class OperatorStatsSummary:
         and generates a `OperatorStatsSummary` object with the results.
 
         Args:
-            block_stats: List of `BlockStats` to calculate stats of
             operator_name: Name of operator associated with `blocks`
+            block_stats: List of `BlockStats` to calculate stats of
             is_sub_operator: Whether this set of blocks belongs to a sub operator.
         Returns:
             A `OperatorStatsSummary` object initialized with the calculated statistics
@@ -1759,10 +1798,13 @@ class OperatorStatsSummary:
             )
         return out
 
-    def __repr__(self, level=0) -> str:
+    def __repr__(self, level: int = 0) -> str:
         """For a given (pre-calculated) `OperatorStatsSummary` object (e.g. generated from
         `OperatorStatsSummary.from_block_metadata()`), returns a human-friendly string
         that summarizes operator execution statistics.
+
+        Args:
+            level: The indentation level to use when formatting nested summaries.
 
         Returns:
             String with summary statistics for executing the given operator.

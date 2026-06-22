@@ -131,4 +131,5 @@ def plan_read_op(
         name=op.name,
         compute_strategy=op.compute,
         ray_remote_args=op.ray_remote_args,
+        isolate_workers=data_context.isolate_read_workers,
     )

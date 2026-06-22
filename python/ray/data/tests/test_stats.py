@@ -206,7 +206,7 @@ def gen_expected_metrics(
             "'average_rows_inputs_per_task': N",
             "'average_bytes_outputs_per_task': N",
             "'average_rows_outputs_per_task': N",
-            "'op_task_duration_stats': {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
+            "'op_task_duration_stats': {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
             "'max_uss_bytes': H",
             "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
@@ -296,7 +296,7 @@ def gen_expected_metrics(
             "'average_rows_inputs_per_task': None",
             "'average_bytes_outputs_per_task': None",
             "'average_rows_outputs_per_task': None",
-            "'op_task_duration_stats': {'num_samples': Z, 'mean': Z, 'variance': Z, 'min': None, 'max': None, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
+            "'op_task_duration_stats': {'num_samples': Z, 'mean': Z, 'variance': Z, 'min': None, 'max': None, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
             "'max_uss_bytes': H",
             "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
@@ -748,7 +748,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
         "      average_rows_outputs_per_task: N,\n"
-        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "      max_uss_bytes: H,\n"
         "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
@@ -913,7 +913,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
         "      average_rows_outputs_per_task: N,\n"
-        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "      max_uss_bytes: H,\n"
         "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
@@ -1031,7 +1031,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            average_rows_inputs_per_task: N,\n"
         "            average_bytes_outputs_per_task: N,\n"
         "            average_rows_outputs_per_task: N,\n"
-        "            op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "            op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "            max_uss_bytes: H,\n"
         "            average_max_uss_per_task: H,\n"
         "            num_inputs_received: N,\n"
@@ -2435,6 +2435,67 @@ class TestTimerPercentile:
         # Percentiles must survive the round-trip.
         assert t2.percentile(0.5) == pytest.approx(t.percentile(0.5))
         assert t2.percentile(0.9) == pytest.approx(t.percentile(0.9))
+
+    def test_as_dict_is_json_serializable(self):
+        # Regression: Timer.__dict__ holds a DistributionTracker (not
+        # JSON-serializable) since percentile tracking was added. Code
+        # that persists Timer stats to JSON (e.g. the training-ingest
+        # benchmark checkpointing metrics.json) must use as_dict(), which
+        # exposes only the scalar fields.
+        import json
+
+        t = Timer()
+        for v in [0.001, 0.01, 0.1, 1.0]:
+            t.add(v)
+        d = t.as_dict()
+        assert "_distribution" not in d
+        # Must not raise ``Object of type DistributionTracker is not JSON
+        # serializable``.
+        json.loads(json.dumps(d))
+
+    def test_as_dict_from_dict_roundtrip(self):
+        t = Timer()
+        for v in [0.001, 0.01, 0.1, 1.0]:
+            t.add(v)
+
+        restored = Timer()
+        restored.from_dict(t.as_dict())
+        assert restored.get() == pytest.approx(t.get())
+        assert restored.min() == pytest.approx(t.min())
+        assert restored.max() == pytest.approx(t.max())
+        assert restored.avg() == pytest.approx(t.avg())
+
+    def test_as_dict_from_dict_empty(self):
+        # An untouched Timer reports min/max as None (inf is not
+        # JSON-representable) and restores back to the empty sentinels.
+        t = Timer()
+        d = t.as_dict()
+        assert d["_min"] is None and d["_max"] is None
+        assert d["_total"] == 0 and d["_total_count"] == 0
+
+        restored = Timer()
+        restored.from_dict(d)
+        assert restored.min() == float("inf")
+        assert restored.get() == 0
+
+    @pytest.mark.parametrize("bad_state", [None, [], "x", 42])
+    def test_from_dict_ignores_non_dict(self, bad_state):
+        # A malformed/missing checkpoint payload must not crash restore;
+        # the Timer keeps its empty-state defaults.
+        t = Timer()
+        t.from_dict(bad_state)
+        assert t.get() == 0
+        assert t.min() == float("inf")
+
+    def test_from_dict_handles_none_values(self):
+        # Explicit None values must fall back to defaults — .get(k, 0)
+        # would wrongly keep None since the key is present.
+        t = Timer()
+        t.from_dict({"_total": None, "_min": None, "_max": None, "_total_count": None})
+        assert t.get() == 0.0
+        assert t._total_count == 0.0
+        assert t.min() == float("inf")
+        assert t.max() == 0.0
 
 
 def test_streaming_exec_schedule_percentiles_populated(ray_start_regular_shared):

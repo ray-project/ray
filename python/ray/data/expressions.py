@@ -251,6 +251,70 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
         raise TypeError("UUID expressions cannot be converted to PyArrow expressions")
 
 
+class _PyArrowConvertibilityVisitor(_ExprVisitor[bool]):
+    """Visitor that reports whether an expression can be lowered to PyArrow.
+
+    This mirrors the node/operation support of :class:`_PyArrowExpressionVisitor`
+    but only inspects the expression structure, it never builds PyArrow objects.
+    """
+
+    def visit_column(self, expr: "ColumnExpr") -> bool:
+        return True
+
+    def visit_literal(self, expr: "LiteralExpr") -> bool:
+        return True
+
+    def visit_alias(self, expr: "AliasExpr") -> bool:
+        return self.visit(expr.expr)
+
+    def visit_binary(self, expr: "BinaryExpr") -> bool:
+        # ``is_in``/``not_in`` are convertible only when the right operand is a
+        # literal (the converter reads ``expr.right.value`` directly).
+        if expr.op in (Operation.IN, Operation.NOT_IN):
+            return isinstance(expr.right, LiteralExpr) and self.visit(expr.left)
+
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            _ARROW_EXPR_OPS_MAP,
+        )
+
+        return (
+            expr.op in _ARROW_EXPR_OPS_MAP
+            and self.visit(expr.left)
+            and self.visit(expr.right)
+        )
+
+    def visit_unary(self, expr: "UnaryExpr") -> bool:
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            _ARROW_EXPR_OPS_MAP,
+        )
+
+        return expr.op in _ARROW_EXPR_OPS_MAP and self.visit(expr.operand)
+
+    def visit_udf(self, expr: "UDFExpr") -> bool:
+        # Only PyArrow compute UDFs have a PyArrow equivalent. Generic Python
+        # UDFs do not.
+        return isinstance(expr, PyArrowComputeUDFExpr) and all(
+            self.visit(a) for a in expr.args
+        )
+
+    def visit_download(self, expr: "DownloadExpr") -> bool:
+        return False
+
+    def visit_star(self, expr: "StarExpr") -> bool:
+        return False
+
+    def visit_monotonically_increasing_id(
+        self, expr: "MonotonicallyIncreasingIdExpr"
+    ) -> bool:
+        return False
+
+    def visit_random(self, expr: "RandomExpr") -> bool:
+        return False
+
+    def visit_uuid(self, expr: "UUIDExpr") -> bool:
+        return False
+
+
 def _eval_kernel_type(
     op: "Operation", operand_types: List["pyarrow.DataType"]
 ) -> Optional["pyarrow.DataType"]:
@@ -332,6 +396,24 @@ class Expr(ABC):
             TypeError: If the expression type cannot be converted to PyArrow.
         """
         return _PyArrowExpressionVisitor().visit(self)
+
+    def _is_pyarrow_convertible(self) -> bool:
+        """Return whether this expression can be lowered to PyArrow.
+
+        Used by predicate pushdown to decide whether a filter can be pushed into
+        a datasource (which evaluates the predicate via PyArrow). UDFs and other
+        Python only expressions are not convertible and must stay as a
+        ``Filter`` operator that is evaluated in Python.
+
+        Unlike :meth:`to_pyarrow`, this inspects the expression structure only.
+        It does not build any PyArrow objects (see
+        :class:`_PyArrowConvertibilityVisitor`).
+
+        Returns:
+            Whether this expression can be lowered to a PyArrow compute
+            expression.
+        """
+        return _PyArrowConvertibilityVisitor().visit(self)
 
     def __repr__(self) -> str:
         """Return a tree-structured string representation of the expression.
@@ -784,7 +866,9 @@ class Expr(ABC):
             ...         pa.field("age", pa.int32())
             ...     ]))
             ... }))
-            >>> ds = ds.with_column("age", col("user").struct["age"])  # doctest: +SKIP
+            >>> ds = ds.with_column("age", col("user").struct["age"])  # by name
+            >>> ds = ds.with_column("name", col("user").struct.field_by_index(0))  # by index
+            >>> ds = ds.with_column("name2", col("user").struct[0])  # bracket by index
         """
         from ray.data.namespace_expressions.struct_namespace import _StructNamespace
 
@@ -1809,16 +1893,64 @@ class UUIDExpr(Expr):
 
 
 @DeveloperAPI(stability="alpha")
+def expand_star_exprs(exprs: List[Expr], input_schema: "pyarrow.Schema") -> List[Expr]:
+    """Replace any ``StarExpr`` in ``exprs`` with explicit ``col(name)``
+    references for each input schema column, substituting any rename
+    ``AliasExpr`` (``_is_rename=True`` wrapping a ``ColumnExpr``) in place
+    of its source column.
+
+    Mirrors the runtime expansion in
+    ``ray.data._internal.planner.plan_expression.expression_evaluator.eval_projection``
+    and the schema resolution in ``exprlist_to_fields``, so plan-time and
+    runtime semantics — including the position of renamed columns — agree
+    by construction. Called eagerly from ``Project.__post_init__`` when the
+    input schema is known, so downstream optimizer rules can treat
+    projection lists uniformly without ``StarExpr`` special cases.
+
+    A rename whose source column is not in ``input_schema`` is left in its
+    original (trailing) position so it still evaluates — and raises a
+    "column not found" error — at runtime, matching ``eval_projection``.
+
+    When ``input_schema`` is ``None`` or the projection has no
+    ``StarExpr``, the input list is returned unchanged.
+    """
+    if input_schema is None or not any(isinstance(e, StarExpr) for e in exprs):
+        return exprs
+
+    input_names = set(input_schema.names)
+    rename_by_source: Dict[str, AliasExpr] = {}
+    for expr in exprs:
+        if is_rename_expr(expr) and expr.expr.name in input_names:
+            rename_by_source[expr.expr.name] = expr
+
+    expanded: List[Expr] = []
+    for expr in exprs:
+        if isinstance(expr, StarExpr):
+            for name in input_schema.names:
+                rename = rename_by_source.get(name)
+                expanded.append(rename if rename is not None else ColumnExpr(name))
+        elif is_rename_expr(expr) and expr.expr.name in input_names:
+            # Substituted in place during star expansion above; drop the
+            # trailing copy so the renamed column keeps its source position.
+            continue
+        else:
+            expanded.append(expr)
+    return expanded
+
+
+@DeveloperAPI(stability="alpha")
 def exprlist_to_fields(
     exprs: List[Expr], input_schema: "pyarrow.Schema"
 ) -> Optional[List["pyarrow.Field"]]:
     """Resolve a list of expressions against the input schema into PyArrow fields.
 
-    Handles ``StarExpr`` inline: when encountered, splices in the input
-    schema's fields, with each rename ``AliasExpr`` (``_is_rename=True``
-    wrapping a ``ColumnExpr``) substituted in place of its source field.
-    This preserves the source column's position in the output, matching
-    runtime ``eval_projection``.
+    Any ``StarExpr`` is first expanded in place via ``expand_star_exprs``
+    (each rename ``AliasExpr`` substituted at its source column's position),
+    yielding a fully ordered, star-free projection list. The expanded list
+    is then resolved positionally. Sharing ``expand_star_exprs`` with the
+    runtime ``eval_projection`` (which expands the star the same way) keeps
+    plan-time schema order and runtime output order identical by
+    construction, including the position of renamed columns.
 
     Deduplicates on field name with last-wins semantics, matching the
     runtime ``eval_projection`` (which uses ``fill_column``/upsert when
@@ -1827,9 +1959,9 @@ def exprlist_to_fields(
     produce a single ``a`` field equal to the new expression's output type
     even if ``a`` was already in the input schema.
 
-    Returns ``None`` if any non-star expression cannot be resolved
-    (e.g., a UDFExpr without a declared ``return_dtype`` or a column
-    not present in ``input_schema``). Callers (typically
+    Returns ``None`` if any expression cannot be resolved (e.g., a
+    UDFExpr without a declared ``return_dtype``, or a column — including
+    a rename source — not present in ``input_schema``). Callers (typically
     ``Project.infer_schema``) propagate that ``None`` upward so that
     ``Dataset.schema()`` falls back to a ``limit(1)`` execution.
 
@@ -1843,21 +1975,6 @@ def exprlist_to_fields(
         A list of ``pa.Field`` in projection order, or ``None`` if
         any expression is unresolvable.
     """
-    # Bucket the projection list: rename AliasExprs substitute for their
-    # source column during StarExpr expansion (preserving on-disk column
-    # order, matching runtime ``eval_projection``); non-rename exprs are
-    # emitted afterwards in original order.
-    has_star = False
-    rename_by_source_name: Dict[str, AliasExpr] = {}
-    non_rename_exprs: List[Expr] = []
-    for expr in exprs:
-        if isinstance(expr, StarExpr):
-            has_star = True
-        elif is_rename_expr(expr):
-            rename_by_source_name[expr.expr.name] = expr
-        else:
-            non_rename_exprs.append(expr)
-
     # Output fields, deduped by name with last-wins semantics (matching
     # runtime ``eval_projection``'s ``fill_column``/upsert behavior).
     output_field_index: Dict[str, int] = {}
@@ -1871,27 +1988,16 @@ def exprlist_to_fields(
         else:
             output_fields[idx] = field_
 
-    def _resolve_and_upsert(expr: Expr) -> bool:
+    # ``expand_star_exprs`` substitutes renames in place and drops the
+    # ``StarExpr``; a rename whose source is missing stays in the list and
+    # fails ``to_field`` below -> ``None`` (matching the runtime's
+    # "column not found" error). ``ColumnExpr.to_field`` returns the input
+    # field verbatim, so star-expanded columns preserve type and metadata.
+    for expr in expand_star_exprs(exprs, input_schema):
         resolved = expr.to_field(input_schema)
         if resolved is None:
-            return False
-        _upsert_field(resolved)
-        return True
-
-    if has_star:
-        for input_field in input_schema:
-            rename_expr = rename_by_source_name.pop(input_field.name, None)
-            if rename_expr is None:
-                _upsert_field(input_field)
-            elif not _resolve_and_upsert(rename_expr):
-                return None
-
-    # Any rename whose source isn't in ``input_schema`` falls through
-    # here and will fail resolution -> None, matching the runtime's
-    # "column not found" error.
-    for expr in (*rename_by_source_name.values(), *non_rename_exprs):
-        if not _resolve_and_upsert(expr):
             return None
+        _upsert_field(resolved)
 
     return output_fields
 

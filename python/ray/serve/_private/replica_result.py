@@ -503,7 +503,15 @@ class gRPCReplicaResult(ReplicaResult):
                         num_ongoing_requests=int(num_ongoing_requests),
                     )
 
-            if e.code() == grpc.StatusCode.UNAVAILABLE:
+            # Peer-sent CANCELLED means the replica's gRPC server cancelled
+            # the call before the handler ran (graceful-shutdown window).
+            # Without `accepted` metadata (checked above) the request never
+            # executed, so it is safe to retry, same as UNAVAILABLE. A local
+            # cancellation raises asyncio.CancelledError, not AioRpcError.
+            if e.code() in (
+                grpc.StatusCode.UNAVAILABLE,
+                grpc.StatusCode.CANCELLED,
+            ):
                 raise ActorUnavailableError(
                     "Actor is unavailable.",
                     self._actor_id.binary(),
