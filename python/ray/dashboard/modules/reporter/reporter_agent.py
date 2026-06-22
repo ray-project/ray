@@ -182,6 +182,28 @@ METRICS_GAUGES = {
         "bytes",
         NODE_TAG_KEYS,
     ),
+    # Swap metrics — populated when RAY_count_swap_in_memory_monitor=1.
+    # Reported separately from node_mem_* because swap usage signals perf
+    # degradation (pages spilling to disk), which is hidden when folded into
+    # the Node Memory graph.
+    "node_swap_used": Gauge(
+        "node_swap_used",
+        "Swap usage on a ray node (cgroup-aware when in a container)",
+        "bytes",
+        NODE_TAG_KEYS,
+    ),
+    "node_swap_total": Gauge(
+        "node_swap_total",
+        "Total swap on a ray node (cgroup-aware when in a container)",
+        "bytes",
+        NODE_TAG_KEYS,
+    ),
+    "node_swap_utilization": Gauge(
+        "node_swap_utilization",
+        "Swap utilization on a ray node",
+        "percentage",
+        NODE_TAG_KEYS,
+    ),
     "node_cgroup_mem_used": Gauge(
         "node_cgroup_mem_used",
         "Container memory usage on a ray node",
@@ -950,24 +972,14 @@ class ReporterAgent(
 
     @staticmethod
     def _get_mem_usage() -> Tuple[int, int, float, int]:
-        # When RAY_count_swap_in_memory_monitor=1, mirror the C++ memory
-        # monitor's swap accounting so the dashboard "Node Memory" graph
-        # matches what the OOM killer sees. Off by default.
+        # RAM-only. Swap (when RAY_count_swap_in_memory_monitor=1) is reported
+        # via _get_swap_usage as a separate metric — folding swap into Node
+        # Memory hides the perf-degradation signal an operator needs to see
+        # once pages start spilling.
         total = get_system_memory()
         used = utils.get_used_memory()
-        if env_bool("RAY_count_swap_in_memory_monitor", False):
-            try:
-                swap_total, swap_used = get_cgroup_aware_swap_memory()
-                total += swap_total
-                used += swap_used
-            except (OSError, NotImplementedError):
-                logger.warning(
-                    "Failed to retrieve swap memory info for dashboard.",
-                    exc_info=True,
-                )
-        # Mirror C++ MemoryMonitorUtils::GetCGroupMemoryBytes clamping so the
-        # dashboard never reports impossible states (negative available,
-        # percent > 100%) and stays consistent with what the OOM killer sees.
+        # Clamp so the dashboard never reports impossible states (negative
+        # available, percent > 100%).
         used = max(0, min(used, total))
         available = total - used
         # Guard against a degenerate cgroup that reports total == 0 — the C++
@@ -975,6 +987,34 @@ class ReporterAgent(
         # raise ZeroDivisionError and kill the metrics path.
         percent = round(used / total, 3) * 100 if total > 0 else 0.0
         return total, available, percent, used
+
+    @staticmethod
+    def _get_swap_usage() -> Tuple[int, int, float]:
+        """Return (swap_total_bytes, swap_used_bytes, swap_percent).
+
+        Returns zeros when RAY_count_swap_in_memory_monitor is off. The OOM
+        killer and scheduler `memory` resource still account for swap when
+        the flag is on — only the dashboard graph is split out, so swap
+        activity (which signals perf degradation) is visible distinctly
+        from RAM pressure.
+        """
+        if not env_bool("RAY_count_swap_in_memory_monitor", False):
+            return 0, 0, 0.0
+        try:
+            swap_total, swap_used = get_cgroup_aware_swap_memory()
+        except Exception as e:
+            # Periodic loop, not startup — log and continue rather than take
+            # down the metrics path. `str(e)` goes into the message so it's
+            # visible in skim-style log review without expanding the traceback.
+            logger.warning(
+                "Failed to retrieve swap memory info for dashboard: %s",
+                e,
+                exc_info=True,
+            )
+            return 0, 0, 0.0
+        swap_used = max(0, min(swap_used, swap_total))
+        percent = round(swap_used / swap_total, 3) * 100 if swap_total > 0 else 0.0
+        return swap_total, swap_used, percent
 
     @staticmethod
     def _get_host_mem_usage():
@@ -1230,6 +1270,7 @@ class ReporterAgent(
             "cpu": self._get_cpu_percent(IN_KUBERNETES_POD),
             "cpus": self._cpu_counts,
             "mem": self._get_mem_usage(),
+            "swap": self._get_swap_usage(),
             # Unit is in bytes. None if
             "shm": self._get_shm_usage(),
             "host_mem": self._get_host_mem_usage(),
@@ -1652,6 +1693,30 @@ class ReporterAgent(
                 ),
             ]
         )
+
+        # Emit swap gauges only when the flag is on — otherwise they'd be
+        # constant zeros and add noise to dashboards / Prometheus storage.
+        swap_total, swap_used, swap_percent = stats["swap"]
+        if swap_total > 0:
+            records_reported.extend(
+                [
+                    Record(
+                        gauge=METRICS_GAUGES["node_swap_used"],
+                        value=swap_used,
+                        tags=node_tags,
+                    ),
+                    Record(
+                        gauge=METRICS_GAUGES["node_swap_total"],
+                        value=swap_total,
+                        tags=node_tags,
+                    ),
+                    Record(
+                        gauge=METRICS_GAUGES["node_swap_utilization"],
+                        value=swap_percent,
+                        tags=node_tags,
+                    ),
+                ]
+            )
 
         cgroup_stats = stats["cgroup_mem"]
         if cgroup_stats is not None:

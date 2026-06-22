@@ -53,6 +53,7 @@ STATS_TEMPLATE = {
     "cpu": 57.4,
     "cpus": (8, 4),
     "mem": (17179869184, 5723353088, 66.7, 9234341888),
+    "swap": (0, 0, 0.0),
     "shm": 456,
     "workers": [
         {
@@ -424,6 +425,25 @@ def test_report_stats(tmp_path):
     assert cgroup_used[0].value == 5368709120
     assert len(cgroup_total) == 1
     assert cgroup_total[0].value == 10737418240
+
+    # Swap gauges must NOT be emitted when swap_total == 0 (e.g. flag off, or
+    # no swap on the host). Otherwise dashboards see a constant-zero series.
+    assert not any(r.gauge.name == "node_swap_used" for r in records)
+    assert not any(r.gauge.name == "node_swap_total" for r in records)
+    assert not any(r.gauge.name == "node_swap_utilization" for r in records)
+
+    # When swap is reported (flag on + cgroup-aware lookup returned non-zero),
+    # all three swap gauges are emitted as a unit.
+    stats["swap"] = (2 * 1024**3, 512 * 1024**2, 25.0)
+    records = agent._to_records(stats, cluster_stats)
+    swap_used = [r for r in records if r.gauge.name == "node_swap_used"]
+    swap_total = [r for r in records if r.gauge.name == "node_swap_total"]
+    swap_util = [r for r in records if r.gauge.name == "node_swap_utilization"]
+    assert len(swap_used) == 1 and swap_used[0].value == 512 * 1024**2
+    assert len(swap_total) == 1 and swap_total[0].value == 2 * 1024**3
+    assert len(swap_util) == 1 and swap_util[0].value == 25.0
+    # Restore swap to zero so the downstream record-count assertions still hold.
+    stats["swap"] = (0, 0, 0.0)
 
     # Test stats without raylets
     stats["raylet"] = None
