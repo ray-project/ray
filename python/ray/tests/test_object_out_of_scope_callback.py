@@ -106,9 +106,10 @@ class TestAddObjectOutOfScopeCallback:
 
         refs = [ray.put(i) for i in range(n)]
         expected = {r.binary() for r in refs}
-        for ref in refs:
-            assert _core_worker().add_object_out_of_scope_callback(ref, on_freed)
-
+        assert all(
+            _core_worker().add_object_out_of_scope_callback(ref, on_freed)
+            for ref in refs
+        )
         del refs  # drop every last reference at once
         assert all_fired.wait(
             timeout=30
