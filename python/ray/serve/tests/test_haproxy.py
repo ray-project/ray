@@ -309,14 +309,14 @@ async def test_drain_and_undrain_haproxy_manager(
     monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "10")
 
     # No SO_REUSEPORT: each node's HAProxy binds its own port. The head keeps the
-    # default 8000; each worker gets a distinct HTTP port (TEST_WORKER_NODE_HTTP_PORT)
+    # default 8000; each worker gets a distinct HTTP port (RAY_SERVE_PROXY_HTTP_PORT)
     # and distinct stats/metrics ports so the three co-located HAProxies don't collide.
     cluster = Cluster()
     head_node = cluster.add_node(num_cpus=0)
     cluster.add_node(
         num_cpus=1,
         env_vars={
-            "TEST_WORKER_NODE_HTTP_PORT": "8001",
+            "RAY_SERVE_PROXY_HTTP_PORT": "8001",
             "RAY_SERVE_HAPROXY_STATS_PORT": "8405",
             "RAY_SERVE_HAPROXY_METRICS_PORT": "9102",
         },
@@ -324,7 +324,7 @@ async def test_drain_and_undrain_haproxy_manager(
     cluster.add_node(
         num_cpus=1,
         env_vars={
-            "TEST_WORKER_NODE_HTTP_PORT": "8002",
+            "RAY_SERVE_PROXY_HTTP_PORT": "8002",
             "RAY_SERVE_HAPROXY_STATS_PORT": "8406",
             "RAY_SERVE_HAPROXY_METRICS_PORT": "9103",
         },

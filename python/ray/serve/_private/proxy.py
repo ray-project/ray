@@ -31,6 +31,8 @@ from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
     RAY_SERVE_PROXY_GC_THRESHOLD,
+    RAY_SERVE_PROXY_GRPC_PORT,
+    RAY_SERVE_PROXY_HTTP_PORT,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     SERVE_CONTROLLER_NAME,
     SERVE_HTTP_REQUEST_ID_HEADER,
@@ -1566,14 +1568,13 @@ class ProxyActor(ProxyActorInterface):
             logging_config=logging_config,
         )
 
-        is_head = self._node_id == get_head_node_id()
-        # Test-only: a worker proxy binds a distinct HTTP port supplied via its
-        # own node env (Cluster.add_node(env_vars=...)), so multiple worker
-        # HAProxies coexist on one host without SO_REUSEPORT. The head keeps its
-        # configured port. Mirrors how the stats/metrics ports resolve per node.
-        test_http_port = os.getenv("TEST_WORKER_NODE_HTTP_PORT")
-        if test_http_port is not None and not is_head:
-            http_options.port = int(test_http_port)
+        # A node may override its proxy's HTTP/gRPC bind ports via
+        # RAY_SERVE_PROXY_HTTP_PORT / RAY_SERVE_PROXY_GRPC_PORT (see constant
+        # docstring). The head node leaves them unset to keep the configured ports.
+        if RAY_SERVE_PROXY_HTTP_PORT is not None:
+            http_options.port = RAY_SERVE_PROXY_HTTP_PORT
+        if RAY_SERVE_PROXY_GRPC_PORT is not None:
+            grpc_options.port = RAY_SERVE_PROXY_GRPC_PORT
 
         self._grpc_options = grpc_options
         self._http_options = configure_http_middlewares(http_options)
@@ -1642,6 +1643,7 @@ class ProxyActor(ProxyActorInterface):
                 "serve_access_log": True,
             }
 
+        is_head = self._node_id == get_head_node_id()
         self.proxy_router = ProxyRouter(get_proxy_handle)
         self.http_proxy = HTTPProxy(
             node_id=self._node_id,
