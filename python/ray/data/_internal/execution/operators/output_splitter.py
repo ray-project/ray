@@ -130,7 +130,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
     def start(
         self,
         options: ExecutionOptions,
-        block_ref_counter: Optional["BlockRefCounter"] = None,
+        block_ref_counter: "BlockRefCounter",
     ) -> None:
         if options.preserve_order:
             # If preserve_order is set, we need to ignore locality hints to ensure determinism.

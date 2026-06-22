@@ -65,7 +65,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
     def start(
         self,
         options: ExecutionOptions,
-        block_ref_counter: Optional["BlockRefCounter"] = None,
+        block_ref_counter: "BlockRefCounter",
     ):
         # Whether to preserve deterministic ordering of output blocks.
         # When True, blocks are emitted in round-robin order across inputs,

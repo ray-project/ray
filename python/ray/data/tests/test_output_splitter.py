@@ -5,6 +5,7 @@ import random
 import pytest
 
 import ray
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces import ExecutionOptions
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
@@ -35,7 +36,7 @@ def test_split_operator(ray_start_regular_shared, equal, chunk_size):
 
     # Feed data and implement streaming exec.
     output_splits = [[] for _ in range(num_splits)]
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), BlockRefCounter())
     while input_op.has_next():
         for _ in range(num_add_input_blocks):
             if not input_op.has_next():
@@ -79,7 +80,7 @@ def test_split_operator_random(ray_start_regular_shared, equal, random_seed):
 
     # Feed data and implement streaming exec.
     output_splits = collections.defaultdict(list)
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), BlockRefCounter())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
     op.all_inputs_done()
@@ -124,7 +125,7 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
 
     # Feed data and implement streaming exec.
     output_splits = collections.defaultdict(list)
-    op.start(ExecutionOptions(actor_locality_enabled=True))
+    op.start(ExecutionOptions(actor_locality_enabled=True), BlockRefCounter())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
     op.all_inputs_done()
@@ -192,7 +193,7 @@ def test_split_operator_with_locality(ray_start_regular_shared, equal, random_se
     output_splits = [[] for _ in range(3)]
     yielded_incrementally = 0
 
-    op.start(ExecutionOptions(actor_locality_enabled=True))
+    op.start(ExecutionOptions(actor_locality_enabled=True), BlockRefCounter())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
 

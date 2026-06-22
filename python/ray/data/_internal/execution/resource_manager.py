@@ -109,6 +109,7 @@ class ResourceManager:
         options: ExecutionOptions,
         get_total_resources: Callable[[], ExecutionResources],
         data_context: DataContext,
+        block_ref_counter: BlockRefCounter,
     ):
         self._topology = topology
         self._options = options
@@ -141,7 +142,7 @@ class ResourceManager:
         # operator's output usage.
         self._output_operator = terminal_operator_from_topology(topology)
 
-        self._block_ref_counter = BlockRefCounter()
+        self._block_ref_counter = block_ref_counter
 
         self._op_resource_allocator: Optional[
             "OpResourceAllocator"
@@ -173,11 +174,6 @@ class ResourceManager:
     def get_external_consumer_bytes(self) -> int:
         """Get the bytes buffered by external consumers."""
         return self._external_consumer_bytes
-
-    @property
-    def block_ref_counter(self) -> BlockRefCounter:
-        """The centralized block reference counter for this executor."""
-        return self._block_ref_counter
 
     def _estimate_object_store_memory_usage(
         self, op: "PhysicalOperator", state: "OpState"

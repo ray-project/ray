@@ -5,6 +5,7 @@ import pytest
 import ray
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces import ExecutionOptions, ExecutionResources
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
@@ -208,7 +209,7 @@ def test_task_pool_resource_reporting(ray_start_10_cpus_shared):
         name="TestMapper",
         compute_strategy=TaskPoolStrategy(),
     )
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), BlockRefCounter())
 
     assert op.current_logical_usage() == ExecutionResources(cpu=0, gpu=0, memory=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
@@ -253,7 +254,7 @@ def test_task_pool_resource_reporting_with_dynamic_remote_args(
         ray_remote_args={"num_cpus": 1},
         ray_remote_args_fn=lambda: {"memory": 500},
     )
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), BlockRefCounter())
 
     assert op.current_logical_usage() == ExecutionResources(cpu=0, gpu=0, memory=0)
 
@@ -280,7 +281,7 @@ def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
         compute_strategy=TaskPoolStrategy(),
         min_rows_per_bundle=3,
     )
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), BlockRefCounter())
 
     assert op.current_logical_usage() == ExecutionResources(cpu=0, gpu=0, memory=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
@@ -340,7 +341,7 @@ def test_actor_pool_scheduling(ray_start_10_cpus_shared, restore_data_context):
     )
 
     # NOTE: This is blocking, until actors are fully started up
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), BlockRefCounter())
 
     min_resource_usage, _ = op.min_max_resource_requirements()
     assert min_resource_usage == ExecutionResources(cpu=2, gpu=0, object_store_memory=0)
@@ -461,7 +462,7 @@ def test_actor_pool_resource_reporting_with_dynamic_remote_args(
     )
 
     # Blocking until actors are fully started
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), BlockRefCounter())
     run_op_tasks_sync(op, only_existing=True)
 
     # Should reflect dynamic resources: 2 actors * (1 cpu, 500 memory)
@@ -491,7 +492,7 @@ def test_actor_pool_scheduling_with_bundling(
     )
 
     # NOTE: This is blocking, until actor pool is fully started up
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), BlockRefCounter())
 
     min_resource_usage, _ = op.min_max_resource_requirements()
     assert min_resource_usage == ExecutionResources(cpu=2, gpu=0, object_store_memory=0)
@@ -641,7 +642,7 @@ def test_limit_resource_reporting(ray_start_10_cpus_shared):
         make_ref_bundles([[SMALL_STR, SMALL_STR] for i in range(2)]),
     )  # Two two-row bundles
     op = LimitOperator(3, input_op, DataContext.get_current())
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), BlockRefCounter())
 
     assert op.current_logical_usage() == ExecutionResources(
         cpu=0, gpu=0, object_store_memory=0, memory=0
@@ -674,7 +675,7 @@ def test_output_splitter_resource_reporting(ray_start_10_cpus_shared):
         data_context=DataContext.get_current(),
         locality_hints=["0", "1"],
     )
-    op.start(ExecutionOptions(actor_locality_enabled=True))
+    op.start(ExecutionOptions(actor_locality_enabled=True), BlockRefCounter())
 
     assert op.current_logical_usage() == ExecutionResources(
         cpu=0, gpu=0, object_store_memory=0, memory=0
