@@ -17,6 +17,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
+from urllib.parse import urljoin
 
 import requests
 
@@ -189,7 +190,7 @@ class UnityCatalog(Catalog):
             table_identifier=namespace_table,
             catalog_kwargs={
                 "type": "rest",
-                "uri": f"{self._base_url}/api/2.1/unity-catalog/iceberg-rest",
+                "uri": urljoin(self._base_url, "/api/2.1/unity-catalog/iceberg-rest"),
                 "warehouse": catalog_name,
                 "token": self._provider.get_token(),
                 "header.X-Iceberg-Access-Delegation": "vended-credentials",
@@ -203,7 +204,7 @@ class UnityCatalog(Catalog):
             request_with_401_retry,
         )
 
-        url = f"{self._base_url}/api/2.1/unity-catalog/tables/{table}"
+        url = urljoin(self._base_url, f"/api/2.1/unity-catalog/tables/{table}")
         resp = request_with_401_retry(requests.get, url, self._provider)
         return resp.json()
 
@@ -212,7 +213,9 @@ class UnityCatalog(Catalog):
             request_with_401_retry,
         )
 
-        url = f"{self._base_url}/api/2.1/unity-catalog/temporary-table-credentials"
+        url = urljoin(
+            self._base_url, "/api/2.1/unity-catalog/temporary-table-credentials"
+        )
         payload = {"table_id": table_id, "operation": "READ"}
         resp = request_with_401_retry(requests.post, url, self._provider, json=payload)
         creds = resp.json()
