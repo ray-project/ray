@@ -14,7 +14,6 @@ from typing import (
     Optional,
     Tuple,
     TypeVar,
-    Union,
 )
 
 import ray
@@ -229,7 +228,7 @@ def resolve_block_refs(
 
 
 def blocks_to_batches(
-    block_iter: Iterator[Union[Block, BlockWithTiming]],
+    block_iter: Iterator[BlockWithTiming],
     stats: Optional[DatasetStats] = None,
     batch_size: Optional[int] = None,
     drop_last: bool = False,
@@ -258,7 +257,7 @@ class _BatchingIterator(Iterator[Batch]):
 
     def __init__(
         self,
-        block_iter: Iterator[Union[Block, BlockWithTiming]],
+        block_iter: Iterator[BlockWithTiming],
         stats: Optional[DatasetStats] = None,
         batch_size: Optional[int] = None,
         drop_last: bool = False,
@@ -318,11 +317,9 @@ class _BatchingIterator(Iterator[Batch]):
                 # If can't yield try adding more blocks
                 try:
                     # NOTE: Block ref is released immediately
-                    block = next(self._block_iter)
-                    if isinstance(block, BlockWithTiming):
-                        self._pending_timings.merge_fetch(block.timings)
-                        block = block.block
-                    self._batcher.add(block)
+                    block_with_timing = next(self._block_iter)
+                    self._pending_timings.merge_fetch(block_with_timing.timings)
+                    self._batcher.add(block_with_timing.block)
                 except StopIteration:
                     self._batcher.done_adding()
                     self._done_adding = True
