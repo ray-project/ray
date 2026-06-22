@@ -293,6 +293,48 @@ def test_read_lerobot_camera_kinds(
             assert "observation.image" not in row
 
 
+def test_read_lerobot_image_camera_pixel_values(
+    ray_start_regular_shared, lerobot_dataset_image
+):
+    """Image-camera frames (lossless PNG in the parquet) decode to the exact
+    fill the fixture wrote: row ``index`` i was encoded as a solid ``i % 256``."""
+    rows = ray.data.read_lerobot(lerobot_dataset_image).take_all()
+    assert rows
+    for row in rows:
+        frame = np.asarray(row["observation.image"])
+        expected = row["index"] % 256
+        assert frame.shape == (FRAME_H, FRAME_W, FRAME_C)
+        assert frame.dtype == np.uint8
+        assert (frame == expected).all(), (
+            f"row {row['index']}: expected solid {expected}, "
+            f"got min={int(frame.min())} max={int(frame.max())}"
+        )
+
+
+def test_read_lerobot_video_pixel_values(ray_start_regular_shared, lerobot_dataset):
+    """Video-camera frames decode (within mpeg4 tolerance) to the solid fill the
+    fixture wrote: within each episode, local frame ``fr`` was filled
+    ``(fr * 25) % 256``. This also guards the float[0,1] -> uint8 rescale -- a
+    regression there would zero or mangle the frames rather than just reshape
+    them."""
+    rows = ray.data.read_lerobot(lerobot_dataset).take_all()
+    assert rows
+    for row in rows:
+        frame = np.asarray(row["observation.image"])
+        expected = (row["frame_index"] * 25) % 256
+        assert frame.shape == (FRAME_H, FRAME_W, FRAME_C)
+        assert frame.dtype == np.uint8
+        # Fixture frames are solid, so the decode should be ~uniform and centered
+        # on the fill (mpeg4 is lossy; observed error is only a few levels).
+        assert (
+            float(frame.std()) <= 8
+        ), f"row {row['index']}: frame not ~uniform (std={frame.std():.1f})"
+        assert abs(float(frame.mean()) - expected) <= 12, (
+            f"row {row['index']} (frame {row['frame_index']}): "
+            f"expected ~{expected}, got mean {frame.mean():.1f}"
+        )
+
+
 def test_read_lerobot_stats_column(ray_start_regular_shared, lerobot_dataset_no_video):
     """The ``stats`` column exposes per-feature normalization stats as JSON."""
     ds = ray.data.read_lerobot(lerobot_dataset_no_video)
