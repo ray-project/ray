@@ -148,6 +148,28 @@ def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
     return any(parsed_path.lower().endswith(ext) for ext in extensions)
 
 
+def _is_local_filesystem(filesystem: Optional["pyarrow.fs.FileSystem"]) -> bool:
+    """Check if *filesystem* is a local filesystem.
+
+    Unwraps ``RetryingPyFileSystem`` (and similar wrappers) before
+    checking, so that a wrapped ``LocalFileSystem`` is correctly
+    identified as local.
+    """
+    import pyarrow.fs
+
+    if filesystem is None:
+        return True
+    # Unwrap RetryingPyFileSystem to get the underlying filesystem.
+    try:
+        from ray.data._internal.util import RetryingPyFileSystem
+
+        if isinstance(filesystem, RetryingPyFileSystem):
+            filesystem = filesystem.unwrap()
+    except ImportError:
+        pass
+    return isinstance(filesystem, pyarrow.fs.LocalFileSystem)
+
+
 def _has_glob_chars(path: str) -> bool:
     """Check if ``path`` contains glob metacharacters.
 
@@ -317,7 +339,7 @@ def _expand_glob(
     from pyarrow.fs import FileType
 
     base, pattern = _split_glob_base(path)
-    is_local = filesystem is None or isinstance(filesystem, pyarrow.fs.LocalFileSystem)
+    is_local = _is_local_filesystem(filesystem)
 
     if is_local:
         # Strip scheme (e.g. local://, file://) so pathlib can parse the path.
@@ -611,8 +633,6 @@ def _resolve_paths_and_filesystem(
     # Validate/wrap filesystem upfront so we return a proper PyArrow filesystem
     filesystem = _validate_and_wrap_filesystem(filesystem)
 
-    from pyarrow.fs import LocalFileSystem
-
     # Track the inferred filesystem separately from the input parameter so
     # that resolving one glob path does not overwrite the shared ``filesystem``
     # variable for subsequent iterations.
@@ -630,9 +650,7 @@ def _resolve_paths_and_filesystem(
             # Only for local paths — cloud URIs (s3://, gs://, etc.) are
             # already absolute; os.path.isabs misidentifies them as relative.
             parsed = urlparse(path)
-            is_cloud_fs = resolved_filesystem is not None and not isinstance(
-                resolved_filesystem, LocalFileSystem
-            )
+            is_cloud_fs = not _is_local_filesystem(resolved_filesystem)
             if not parsed.scheme and not os.path.isabs(path) and not is_cloud_fs:
                 path = os.path.abspath(path)
 
