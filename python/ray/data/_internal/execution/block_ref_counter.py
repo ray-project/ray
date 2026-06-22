@@ -39,10 +39,12 @@ class BlockRefCounter:
         to block_ref are gone the bytes are automatically removed from the
         producer's usage.
 
-        Not idempotent: calling twice with the same block_ref double-counts.
+        Idempotent: calling twice with the same block_ref is a no-op.
         """
         id_binary = block_ref.binary()
         with self._lock:
+            if id_binary in self._registered_ids:
+                return
             self._registered_ids.add(id_binary)
             self._bytes_by_producer[producer_id] += size_bytes
 
