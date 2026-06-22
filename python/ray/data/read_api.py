@@ -4737,6 +4737,12 @@ def read_unity_catalog(
     fmt = ReaderFormat(data_format.lower()) if data_format else None
     if fmt is None:
         fmt = catalog.infer_format(table)
+        if fmt is None:
+            raise ValueError(
+                f"Could not infer the data format for table {table!r}. Pass "
+                f"`data_format` explicitly (one of: "
+                f"{', '.join(f.value for f in ReaderFormat)})."
+            )
 
     if fmt is ReaderFormat.DELTA:
         return read_delta(table, catalog=catalog, **reader_kwargs)

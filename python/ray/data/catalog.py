@@ -141,14 +141,14 @@ class UnityCatalog(Catalog):
         self._base_url = _normalize_host(self._provider.get_host())
 
     # ---- Catalog interface -------------------------------------------------
-    def resolve(self, table: str, *, reader: ReaderFormat) -> ResolvedSource:
-        assert isinstance(reader, ReaderFormat)
-        if reader is ReaderFormat.ICEBERG:
+    def resolve(self, table: str, *, fmt: ReaderFormat) -> ResolvedSource:
+        assert fmt is not None and isinstance(fmt, ReaderFormat)
+        if fmt is ReaderFormat.ICEBERG:
             return self._resolve_iceberg(table)
-        if reader in (ReaderFormat.DELTA, ReaderFormat.PARQUET):
-            return self._resolve_storage(table, reader)
+        if fmt in (ReaderFormat.DELTA, ReaderFormat.PARQUET):
+            return self._resolve_storage(table, fmt)
         # Reached only if a new ReaderFormat is added without handling here.
-        raise ValueError(f"UnityCatalog does not support reader={reader!r}")
+        raise ValueError(f"UnityCatalog does not support format={fmt!r}")
 
     # ---- storage-credential vending (delta / parquet) ----------------------
     def _resolve_storage(self, table: str, reader: ReaderFormat) -> ResolvedSource:
