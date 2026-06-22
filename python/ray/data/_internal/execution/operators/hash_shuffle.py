@@ -8,7 +8,6 @@ import queue
 import random
 import threading
 import time
-import typing
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import (
@@ -55,9 +54,10 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     TaskExecDriverStats,
     estimate_total_num_of_blocks,
 )
-from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data._internal.execution.operators.sub_progress import SubProgressMixin
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
+from ray.data._internal.progress.base_progress import ProgressMetrics
 from ray.data._internal.stats import OpRuntimeMetrics
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data._internal.util import GiB, MiB
@@ -77,9 +77,6 @@ from ray.data.context import (
     DEFAULT_TARGET_MAX_BLOCK_SIZE,
     DataContext,
 )
-
-if typing.TYPE_CHECKING:
-    from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
 
@@ -472,7 +469,7 @@ def _derive_max_shuffle_aggregators(
     )
 
 
-class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
+class HashShufflingOperatorBase(PhysicalOperator, SubProgressMixin):
     """Physical operator base-class for any operators requiring hash-based
     shuffling.
 
@@ -651,10 +648,11 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         self._health_monitoring_start_time: float = 0.0
         self._pending_aggregators_refs: Optional[List[ObjectRef[ActorHandle]]] = None
 
-        # sub-progress bar initializations
-        self._shuffle_bar = None
+        (
+            self._sub_progress_metrics,
+            self._sub_progress_updaters,
+        ) = self._create_sub_progress_state([self.shuffle_name, self.reduce_name])
         self._shuffle_metrics = OpRuntimeMetrics(self)
-        self._reduce_bar = None
         self._reduce_metrics = OpRuntimeMetrics(self)
 
     def start(self, options: ExecutionOptions) -> None:
@@ -778,7 +776,9 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 )
 
                 # Update Shuffle progress bar
-                self._shuffle_bar.update(increment=input_block_metadata.num_rows or 0)
+                self._sub_progress_updaters[self.shuffle_name].update(
+                    increment=input_block_metadata.num_rows or 0
+                )
 
             # TODO update metrics
             task = self._shuffling_tasks[input_index][
@@ -816,7 +816,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 self._shuffle_metrics,
                 total_num_tasks=None,
             )
-            self._shuffle_bar.update(total=num_rows)
+            self._sub_progress_updaters[self.shuffle_name].update(total=num_rows)
 
     def has_next(self) -> bool:
         self._try_finalize()
@@ -890,7 +890,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             self._estimated_output_num_rows = num_rows
 
             # Update Finalize progress bar
-            self._reduce_bar.update(
+            self._sub_progress_updaters[self.reduce_name].update(
                 increment=bundle.num_rows() or 0, total=self.num_output_rows_total()
             )
 
@@ -1316,14 +1316,11 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
     ) -> Optional[Tuple[int, int]]:
         return None
 
-    def get_sub_progress_bar_names(self) -> Optional[List[str]]:
-        return [self.shuffle_name, self.reduce_name]
+    def get_sub_progress_metrics(self) -> Optional[Dict[str, ProgressMetrics]]:
+        return self._sub_progress_metrics
 
-    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar"):
-        if self.shuffle_name == name:
-            self._shuffle_bar = pg
-        elif self.reduce_name == name:
-            self._reduce_bar = pg
+    def get_sub_progress_updaters(self):
+        return self._sub_progress_updaters
 
 
 class HashShuffleOperator(HashShufflingOperatorBase):

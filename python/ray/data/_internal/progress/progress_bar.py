@@ -1,7 +1,10 @@
 from typing import Optional
 
 from ray.data._internal.progress.base_progress import BaseProgressBar
-from ray.data._internal.progress.utils import truncate_operator_name
+from ray.data._internal.progress.utils import (
+    DEFAULT_PROGRESS_BAR_MAX_NAME_LENGTH,
+    truncate_operator_name,
+)
 from ray.experimental import tqdm_ray
 
 try:
@@ -22,7 +25,7 @@ class ProgressBar(BaseProgressBar):
 
     # If the name/description of the progress bar exceeds this length,
     # it will be truncated.
-    MAX_NAME_LENGTH = 100
+    MAX_NAME_LENGTH = DEFAULT_PROGRESS_BAR_MAX_NAME_LENGTH
 
     def __init__(
         self,

@@ -46,7 +46,7 @@ def generate_sort_fn(
         label_selector = data_context.execution_options.label_selector
         # Sample boundaries for sort key.
         if not sort_key.boundaries:
-            sample_bar = ctx.sub_progress_bar_dict[
+            sample_bar = ctx.sub_progress_updaters[
                 SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME
             ]
             boundaries = SortTaskSpec.sample_boundaries(

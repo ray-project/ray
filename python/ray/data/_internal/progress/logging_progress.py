@@ -7,15 +7,11 @@ from typing import Callable, Dict, List, Optional
 
 from ray._common.utils import env_integer
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data._internal.execution.operators.sub_progress import SubProgressMixin
 from ray.data._internal.execution.streaming_executor_state import (
     format_op_state_summary,
 )
-from ray.data._internal.progress.base_progress import (
-    BaseExecutionProgressManager,
-    BaseProgressBar,
-    NoopSubProgressBar,
-)
+from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
 from ray.data._internal.progress.utils import truncate_operator_name
 
 if typing.TYPE_CHECKING:
@@ -32,54 +28,6 @@ class _LoggingMetrics:
     desc: Optional[str]
     completed: int
     total: Optional[int]
-
-
-class LoggingSubProgressBar(BaseProgressBar):
-    """Thin wrapper to provide identical interface to the ProgressBar.
-
-    Internally passes relevant logging metrics to `LoggingExecutionProgressManager`.
-    Sub-progress is actually handled by Ray through operators, while operator-level
-    and total progress is handled by the `StreamingExecutor`. To ensure log-order,
-    this class helps to pass metric data to the progress manager so progress metrics
-    are logged centrally.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        total: Optional[int] = None,
-        max_name_length: int = 100,
-    ):
-        """Initialize sub-progress bar
-
-        Args:
-            name: name of sub-progress bar
-            total: total number of output rows. None for unknown.
-            max_name_length: maximum operator name length (unused).
-        """
-        del max_name_length  # unused
-        self._total = total
-        self._completed = 0
-        self._name = name
-
-    def set_description(self, name: str) -> None:
-        pass  # unused
-
-    def get_description(self) -> str:
-        return ""  # unused
-
-    def update(self, increment: int = 0, total: Optional[int] = None):
-        if total is not None:
-            self._total = total
-        self._completed += increment
-
-    def get_logging_metrics(self) -> _LoggingMetrics:
-        return _LoggingMetrics(
-            name=f"    - {self._name}",
-            desc=None,
-            completed=self._completed,
-            total=self._total,
-        )
 
 
 class LoggingExecutionProgressManager(BaseExecutionProgressManager):
@@ -116,9 +64,7 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
             name="Total Progress", desc=None, completed=0, total=None
         )
         self._op_progress_metrics: Dict["OpState", _LoggingMetrics] = {}
-        self._sub_progress_metrics: Dict[
-            "OpState", List[LoggingSubProgressBar]
-        ] = defaultdict(list)
+        self._sub_progress_names: Dict["OpState", List[str]] = defaultdict(list)
 
         for state in self._topology.values():
             op = state.op
@@ -126,7 +72,7 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
                 continue
             total = op.num_output_rows_total() or 1
 
-            contains_sub_progress_bars = isinstance(op, SubProgressBarMixin)
+            contains_sub_progress_bars = isinstance(op, SubProgressMixin)
             sub_progress_bar_enabled = show_op_progress and (
                 contains_sub_progress_bars or verbose_progress
             )
@@ -142,20 +88,12 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
             if not contains_sub_progress_bars:
                 continue
 
-            sub_pg_names = op.get_sub_progress_bar_names()
-            if sub_pg_names is None:
+            sub_progress_metrics = op.get_sub_progress_metrics()
+            if sub_progress_metrics is None:
                 continue
-            for name in sub_pg_names:
+            for name in sub_progress_metrics:
                 if sub_progress_bar_enabled:
-                    pg = LoggingSubProgressBar(
-                        name=name, total=total, max_name_length=self.MAX_NAME_LENGTH
-                    )
-                    self._sub_progress_metrics[state].append(pg)
-                else:
-                    pg = NoopSubProgressBar(
-                        name=name, max_name_length=self.MAX_NAME_LENGTH
-                    )
-                op.set_sub_progress_bar(name, pg)
+                    self._sub_progress_names[state].append(name)
 
     # Management
     def start(self):
@@ -185,8 +123,22 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
             if metrics is None:
                 continue
             _log_op_or_sub_progress(metrics)
-            for pg in self._sub_progress_metrics[opstate]:
-                _log_op_or_sub_progress(pg.get_logging_metrics())
+            if isinstance(opstate.op, SubProgressMixin):
+                sub_progress_metrics = opstate.op.get_sub_progress_metrics()
+                if sub_progress_metrics is None:
+                    continue
+                for name in self._sub_progress_names[opstate]:
+                    sub_metrics = sub_progress_metrics.get(name)
+                    if sub_metrics is None:
+                        continue
+                    _log_op_or_sub_progress(
+                        _LoggingMetrics(
+                            name=f"    - {sub_metrics.name}",
+                            desc=None,
+                            completed=sub_metrics.completed,
+                            total=sub_metrics.total,
+                        )
+                    )
 
         # finish logging
         logger.info(lastline)

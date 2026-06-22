@@ -5,7 +5,10 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.operators.map_transformer import MapTransformer
-    from ray.data._internal.progress.base_progress import BaseProgressBar
+    from ray.data._internal.progress.base_progress import (
+        ProgressMetrics,
+        SubProgressUpdater,
+    )
 
 
 _thread_local = threading.local()
@@ -22,10 +25,13 @@ class TaskContext:
     # Name of the operator that this task belongs to.
     op_name: str
 
-    # The dictionary of sub progress bar to update. The key is name of sub progress
-    # bar. Note this is only used on driver side.
+    # Immutable sub-progress snapshots keyed by sub-progress name.
+    # Note this is only used on the driver side.
     # TODO(chengsu): clean it up from TaskContext with new optimizer framework.
-    sub_progress_bar_dict: Optional[Dict[str, "BaseProgressBar"]] = None
+    sub_progress_metrics: Optional[Dict[str, "ProgressMetrics"]] = None
+
+    # Driver-side helpers for mutating the immutable sub-progress snapshots.
+    sub_progress_updaters: Optional[Dict[str, "SubProgressUpdater"]] = None
 
     # NOTE(hchen): `upstream_map_transformer` and `upstream_map_ray_remote_args`
     # are only used for `RandomShuffle`. DO NOT use them for other operators.

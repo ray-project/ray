@@ -6,7 +6,17 @@ import pytest
 from pytest import fixture
 
 import ray
+from ray.data._internal.progress.base_progress import (
+    ProgressMetrics,
+    SubProgressUpdater,
+)
 from ray.data._internal.progress.progress_bar import ProgressBar
+from ray.data._internal.progress.rich_progress import RichSubProgressBar
+
+
+class _FakeRichProgress:
+    def update(self, *args, **kwargs):
+        pass
 
 
 @fixture(params=[True, False])
@@ -81,6 +91,32 @@ def test_progress_bar(enable_tqdm_ray):
     pb.update(total + 1, total)
     assert pb._bar.total == total + 1
     pb.close()
+
+
+def test_sub_progress_updater_updates_metrics_and_notifies_callback():
+    metrics_by_name = {
+        "Shuffle": ProgressMetrics(name="Shuffle", total=None, completed=0)
+    }
+    updater = SubProgressUpdater(metrics_by_name, "Shuffle", max_name_length=100)
+    snapshots = []
+
+    updater.add_update_callback(snapshots.append)
+    updater.update(increment=3, total=10)
+
+    assert metrics_by_name["Shuffle"] == ProgressMetrics(
+        name="Shuffle", total=10, completed=3
+    )
+    assert snapshots == [ProgressMetrics(name="Shuffle", total=10, completed=3)]
+
+
+def test_rich_sub_progress_bar_starts_timer_on_first_progress_update():
+    progress_bar = RichSubProgressBar("Shuffle", progress=_FakeRichProgress(), tid=0)
+
+    progress_bar.update_absolute(0, None)
+    assert progress_bar._start_time is None
+
+    progress_bar.update_absolute(1, 10)
+    assert progress_bar._start_time is not None
 
 
 @pytest.mark.parametrize(
