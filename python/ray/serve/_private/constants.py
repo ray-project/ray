@@ -698,22 +698,15 @@ RAY_SERVE_ENABLE_DIRECT_INGRESS = (
 # Feature flag to use HAProxy.
 RAY_SERVE_ENABLE_HA_PROXY = os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1"
 
-# Experimental: use HAProxy binary from the ray-haproxy PyPI package instead
-# of a system-installed binary. When enabled, get_haproxy_binary() resolves
-# the binary from the ray_haproxy package (pip install ray-haproxy).
-RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY = (
-    os.environ.get("RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY", "0") == "1"
-)
-
 # Feature flag to include client IP address in HTTP access logs.
 # Off by default for privacy; set to "1" to enable.
 RAY_SERVE_LOG_CLIENT_ADDRESS = (
     os.environ.get("RAY_SERVE_LOG_CLIENT_ADDRESS", "0") == "1"
 )
 
-# Absolute path to the HAProxy binary. Defaults to bare "haproxy" (PATH lookup).
-# Set in Docker images to avoid PATH-resolution failures (e.g. broken mounts).
-RAY_SERVE_HAPROXY_BINARY_PATH = get_env_str("RAY_SERVE_HAPROXY_BINARY_PATH", "haproxy")
+# Absolute path to an HAProxy binary. When set, it takes precedence over the
+# bundled ray-haproxy package.
+RAY_SERVE_HAPROXY_BINARY_PATH = get_env_str("RAY_SERVE_HAPROXY_BINARY_PATH", "")
 
 # HAProxy configuration defaults
 # Maximum number of concurrent connections
@@ -751,6 +744,12 @@ RAY_SERVE_HAPROXY_SERVER_STATE_FILE = os.environ.get(
 # HAProxy hard stop after timeout
 RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S", "120")
+)
+
+# Timeout for a spawned HAProxy to take over the admin socket (pid-verified).
+# Generous: a reload under load transfers listener FDs from a busy predecessor.
+RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S = int(
+    os.environ.get("RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S", "30")
 )
 
 # Minimum spacing between HAProxy reloads. Broadcasts arriving inside
