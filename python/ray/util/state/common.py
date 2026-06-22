@@ -918,7 +918,7 @@ class RuntimeEnvState(StateSchema):
     #: The latency of creating the runtime environment.
     #: Available if the runtime env is successfully created.
     creation_time_ms: Optional[float] = state_column(
-        filterable=False, format_fn=Humanify.timestamp
+        filterable=False, format_fn=Humanify.duration
     )
     #: The node id of this runtime environment.
     node_id: str = state_column(filterable=True)

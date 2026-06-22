@@ -23,17 +23,13 @@ class InputData(LogicalOperator, SourceOperator):
     _input_dependencies: list[LogicalOperator] = field(
         init=False, repr=False, default_factory=list
     )
-    _num_outputs: Optional[int] = field(init=False, repr=False)
-
-    def __post_init__(self):
-        object.__setattr__(self, "_num_outputs", len(self.input_data))
 
     def output_data(self) -> Optional[List[RefBundle]]:
         return self.input_data
 
     @property
     def num_outputs(self) -> Optional[int]:
-        return self._num_outputs
+        return len(self.input_data)
 
     def infer_metadata(self) -> BlockMetadata:
         return self._cached_output_metadata
