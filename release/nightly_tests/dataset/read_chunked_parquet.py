@@ -354,6 +354,7 @@ def _read_back(
     memory: int,
     use_version: str,
     write_output: Optional[str] = None,
+    max_calls: Optional[int] = None,
 ) -> None:
     """Post-generation read benchmark. Reads the just-written parquet with Ray
     Data and drains it through internal ref bundles -- the iter_bundles consume
@@ -414,11 +415,17 @@ def _read_back(
         flush=True,
     )
 
+    # Only attach ``ray_remote_args`` when ``--max-calls`` is set, so the default
+    # run passes no ``max_calls`` at all. ``max_calls=1`` makes Ray retire each
+    # read worker after one task (a fresh process per read task) -- it releases
+    # heap / allocator high-water between tasks, useful for the memory probes.
+    ray_remote_args = {"max_calls": max_calls} if max_calls is not None else None
     print(
-        f"[read] ray.data.read_parquet(memory={human(memory)}) <- {path}",
+        f"[read] ray.data.read_parquet(memory={human(memory)}"
+        f"{f', max_calls={max_calls}' if max_calls is not None else ''}) <- {path}",
         flush=True,
     )
-    ds = ray.data.read_parquet(path, memory=memory)
+    ds = ray.data.read_parquet(path, memory=memory, ray_remote_args=ray_remote_args)
 
     # Persist the read-back dataset instead of draining it: write_parquet streams
     # the same ReadFiles pipeline (so the partitioner / chunker knobs above still
@@ -475,6 +482,7 @@ def generate(
     use_version: str,
     seed: int = 0,
     write_output: Optional[str] = None,
+    max_calls: Optional[int] = None,
 ) -> None:
     backend = _make_backend(output)
 
@@ -488,6 +496,7 @@ def generate(
                 read_memory,
                 use_version,
                 write_output=write_output,
+                max_calls=max_calls,
             )
         return
 
@@ -543,6 +552,7 @@ def generate(
             read_memory,
             use_version,
             write_output=write_output,
+            max_calls=max_calls,
         )
 
 
@@ -632,6 +642,7 @@ def generate_mixed(
     use_version: str,
     seed: int,
     write_output: Optional[str] = None,
+    max_calls: Optional[int] = None,
 ) -> None:
     """Generate a heterogeneous mix: codec sampled PER FILE, and on-disk size +
     compression ratio sampled PER ROW GROUP from discrete buckets. Files differ
@@ -649,6 +660,7 @@ def generate_mixed(
                 read_memory,
                 use_version,
                 write_output=write_output,
+                max_calls=max_calls,
             )
         return
 
@@ -740,6 +752,7 @@ def generate_mixed(
             read_memory,
             use_version,
             write_output=write_output,
+            max_calls=max_calls,
         )
 
 
@@ -952,6 +965,14 @@ def main():
         "for read-only throughput. Takes effect only when read-back is enabled.",
     )
     p.add_argument(
+        "--max-calls",
+        type=int,
+        default=None,
+        help="If set, pass ray_remote_args={'max_calls': N} to read_parquet so "
+        "each read worker is retired after N tasks (max_calls=1 = a fresh process "
+        "per read task, releasing heap between tasks). Omitted entirely when unset.",
+    )
+    p.add_argument(
         "--use-version",
         default="v2",
         choices=["v1", "v2", "v3"],
@@ -1047,6 +1068,7 @@ def main():
             use_version=args.use_version,
             seed=args.seed,
             write_output=args.write_output,
+            max_calls=args.max_calls,
         )
         return
 
@@ -1073,6 +1095,7 @@ def main():
         use_version=args.use_version,
         seed=args.seed,
         write_output=args.write_output,
+        max_calls=args.max_calls,
     )
 
 
