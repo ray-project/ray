@@ -497,7 +497,7 @@ class _LeRobotReadTask(ReadTask):
         roots: List[_LeRobotRoot],
         roots_ref: "ray.ObjectRef",
         episodes: List[pa.Table],
-        rows_per_batch: int,
+        max_block_bytes: int,
         per_task_row_limit: Optional[int] = None,
     ) -> None:
         # ``roots`` (slim per-root constants) is the driver-side list used to
@@ -533,7 +533,7 @@ class _LeRobotReadTask(ReadTask):
         super().__init__(self._read, block_metadata, schema, per_task_row_limit)
         self._roots_ref = roots_ref
         self._segments_resolved = resolved
-        self._rows_per_batch = rows_per_batch
+        self._max_block_bytes = max_block_bytes
 
     def _read(self) -> Iterator[pa.Table]:
         """Stream decoded rows as Arrow tables, iterating over all segments."""
@@ -554,8 +554,9 @@ class _LeRobotReadTask(ReadTask):
     ) -> Iterator[pa.Table]:
         """Stream decoded rows for one ``[start, end)`` range within a single root.
 
-        Reads the segment's parquet rows, then emits ``self._rows_per_batch``-row
-        Arrow batches, decoding each batch's camera frames on demand. Video
+        Reads the segment's parquet rows, then emits Arrow batches sized from
+        this root's estimated row size (so each batch targets one output block),
+        decoding each batch's camera frames on demand. Video
         decoders are opened once per segment and reused across batches (a
         per-segment cache), so peak memory is bounded to one batch's frames
         rather than the whole segment's. Image cameras (encoded bytes in the
@@ -600,9 +601,13 @@ class _LeRobotReadTask(ReadTask):
                 f"dataset's tasks metadata (meta/tasks.parquet); the data and "
                 f"tasks metadata are inconsistent."
             )
+        # Size batches from THIS root's row size: roots in a multi-root read can
+        # differ a lot (video vs scalar-only), so a single global batch size
+        # would blow past the target block size for the heavier root.
+        rows_per_batch = max(1, self._max_block_bytes // (root.row_size_bytes or 1))
         try:
-            for batch_start in range(0, n_rows, self._rows_per_batch):
-                batch_end = min(batch_start + self._rows_per_batch, n_rows)
+            for batch_start in range(0, n_rows, rows_per_batch):
+                batch_end = min(batch_start + rows_per_batch, n_rows)
                 batch = full.slice(batch_start, batch_end - batch_start)
                 frame_buffers: dict = {}
                 if root.video_keys:
@@ -1126,14 +1131,17 @@ class LeRobotDatasource(Datasource):
             all_ranges.extend((root_idx, s, e) for s, e in ranges)
         return all_ranges
 
-    def _rows_per_batch(self, data_context: Optional[DataContext] = None) -> int:
+    def _max_block_bytes(self, data_context: Optional[DataContext] = None) -> int:
+        """Target output block size in bytes. Each segment turns this into a
+        per-root ``rows_per_batch`` (in ``_LeRobotReadTask._read_segment``) using
+        that root's estimated row size -- roots in a multi-root read can differ
+        a lot in row size (e.g. video vs scalar-only), so batch sizing must be
+        per-root, not a single global value."""
         try:
             ctx = data_context or DataContext.get_current()
-            max_block_bytes = ctx.target_max_block_size or 128 * 1024 * 1024
+            return ctx.target_max_block_size or 128 * 1024 * 1024
         except (AttributeError, RuntimeError):
-            max_block_bytes = 128 * 1024 * 1024
-        row_size_bytes = self._roots[0].row_size_bytes or 1
-        return max(1, max_block_bytes // row_size_bytes)
+            return 128 * 1024 * 1024
 
     @staticmethod
     def _merge_segments(group: List[tuple]) -> List[tuple]:
@@ -1236,14 +1244,14 @@ class LeRobotDatasource(Datasource):
         )
 
         roots_ref = ray.put(self._roots)
-        rows_per_batch = self._rows_per_batch(data_context)
+        max_block_bytes = self._max_block_bytes(data_context)
         return [
             _LeRobotReadTask(
                 segments=entry["segments"],
                 roots=self._roots,
                 roots_ref=roots_ref,
                 episodes=self._episodes,
-                rows_per_batch=rows_per_batch,
+                max_block_bytes=max_block_bytes,
                 per_task_row_limit=per_task_row_limit,
             )
             for entry in task_plan

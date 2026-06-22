@@ -479,6 +479,46 @@ def test_read_lerobot_override_num_blocks_splits_and_merges(
     assert ds.count() == 15
 
 
+def test_read_lerobot_batches_sized_per_root(ray_start_regular_shared, tmp_path):
+    """Batches must be sized from each segment's OWN root, not one global value.
+
+    Regression test: a multi-root read mixing small (scalar-only) and large
+    (video) rows must size each root's batches by that root's row size. The old
+    code sized every batch from ``_roots[0]``, so a large root following a small
+    one would over-fill its batches and blow past the target block size.
+    """
+    from ray.data.datasource import LeRobotDatasource
+
+    root_a = create_lerobot_dataset(
+        str(tmp_path / "ds_a"), num_episodes=1, frames_per_episode=10, has_video=False
+    )
+    root_b = create_lerobot_dataset(
+        str(tmp_path / "ds_b"), num_episodes=1, frames_per_episode=10, has_video=False
+    )
+    source = LeRobotDatasource([root_a, root_b])
+
+    # Give the roots very different estimated row sizes and a block budget that
+    # yields a tiny batch for the big root but a huge one for the small root.
+    small, big = 100, 10_000
+    source._roots[0] = source._roots[0]._replace(row_size_bytes=small)
+    source._roots[1] = source._roots[1]._replace(row_size_bytes=big)
+    source._max_block_bytes = lambda data_context=None: big * 2  # 2 big rows/batch
+
+    batch_rows = {0: [], 1: []}
+    for task in source.get_read_tasks(2):
+        for block in task():
+            di = block.column("dataset_index")[0].as_py()
+            batch_rows[di].append(block.num_rows)
+
+    # Big-row root (dataset_index 1): budget // big == 2 rows/batch.
+    assert batch_rows[1] and max(batch_rows[1]) <= 2
+    # Small-row root (dataset_index 0): budget // small == 200 >> 10 rows -> one
+    # batch. If batches were sized globally from _roots[0], the big root would
+    # also use 200 and land all 10 rows in a single batch (max would be 10).
+    assert max(batch_rows[0]) == 10
+    assert max(batch_rows[0]) > max(batch_rows[1])
+
+
 def test_read_lerobot_inconsistent_task_index_raises(
     ray_start_regular_shared, lerobot_dataset
 ):
