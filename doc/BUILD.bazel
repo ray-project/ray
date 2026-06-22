@@ -570,7 +570,7 @@ doctest(
             "source/**/*.rst",
         ],
         exclude = [
-            "source/ray-contribute/getting-involved.rst",
+            "source/ray-contribute/getting-involved.md",
             "source/ray-contribute/testing-tips.md",
             "source/ray-contribute/writing-code-snippets.md",
             "source/ray-observability/user-guides/ray-tracing.rst",
