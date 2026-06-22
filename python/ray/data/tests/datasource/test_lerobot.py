@@ -322,19 +322,22 @@ def test_read_lerobot_frame_tolerance_invalid(
         LeRobotDatasource(lerobot_dataset_no_video, frame_tolerance_s=0)
 
 
-def test_lerobot_compat_warns_when_lerobot_supports_storage_options(monkeypatch):
-    """When lerobot gains native storage_options support, the compat shim warns
-    (so it gets removed) rather than silently switching to the native path."""
-    from ray.data._internal.datasource import _lerobot_compat as compat
+def test_lerobot_compat_shim_still_needed():
+    """Tripwire: fails once lerobot's ``decode_video_frames_torchcodec`` accepts
+    ``storage_options`` natively (huggingface/lerobot#3669). When this fails,
+    delete the ``_lerobot_compat`` shim and decode directly via the native
+    parameter."""
+    import inspect
 
-    monkeypatch.setattr(compat, "_native_storage_options", lambda: True)
-    # Clear the once-per-process log_once gate (key matches the one used in
-    # _warn_if_native_available) so the warning fires here.
-    from ray.util.debug import _logged
+    from lerobot.datasets.video_utils import decode_video_frames_torchcodec
 
-    _logged.discard("lerobot_storage_options_native")
-    with pytest.warns(RuntimeWarning, match="no longer necessary"):
-        compat._warn_if_native_available()
+    params = inspect.signature(decode_video_frames_torchcodec).parameters
+    assert "storage_options" not in params, (
+        "lerobot now threads storage_options through "
+        "decode_video_frames_torchcodec natively (huggingface/lerobot#3669). "
+        "Remove ray.data's _lerobot_compat shim and decode directly via "
+        "decode_video_frames_torchcodec(..., storage_options=...)."
+    )
 
 
 def test_read_lerobot_row_values(ray_start_regular_shared, lerobot_dataset):

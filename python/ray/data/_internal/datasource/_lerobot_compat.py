@@ -8,56 +8,20 @@ files without credentials, so explicit ``storage_options`` never reach
 (:func:`_creds_cache_cls`).
 
 When lerobot threads ``storage_options`` through natively
-(huggingface/lerobot#3669), we deliberately keep using this shim rather than
-silently switching to the native parameter — a silent switch would let this
-now-obsolete code linger unnoticed. Instead :func:`decode_frames` emits a
-one-time ``RuntimeWarning`` the moment it detects native support, flagging that
-the shim is no longer needed.
+(huggingface/lerobot#3669) this shim is obsolete. We do not auto-switch to the
+native parameter -- that would let dead code linger unnoticed. Instead a
+tripwire test (``test_lerobot_compat_shim_still_needed`` in test_lerobot.py)
+fails the moment lerobot gains native support, forcing this module's removal.
 
-NOTE(Artur): Once lerobot threads ``storage_options`` natively, we can remove this.
+NOTE(Artur): Once lerobot threads ``storage_options`` natively, remove this.
 """
 
 from __future__ import annotations
 
-import warnings
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     import torch
-
-
-def _native_storage_options() -> bool:
-    """True if lerobot's ``decode_video_frames_torchcodec`` accepts
-    ``storage_options`` directly (huggingface/lerobot#3669)."""
-    import inspect
-
-    from lerobot.datasets.video_utils import decode_video_frames_torchcodec
-
-    return (
-        "storage_options"
-        in inspect.signature(decode_video_frames_torchcodec).parameters
-    )
-
-
-def _warn_if_native_available() -> None:
-    from ray.util import log_once
-
-    # Native support is fixed for the life of the process, so gate on log_once
-    # first: the signature-inspecting check then runs at most once, and later
-    # calls short-circuit on the spent gate instead of re-inspecting.
-    if not (log_once("lerobot_storage_options_native") and _native_storage_options()):
-        return
-    warnings.warn(
-        "lerobot's `decode_video_frames_torchcodec` now accepts `storage_options` "
-        "natively (huggingface/lerobot#3669), but ray.data.read_lerobot is still "
-        "routing video decoding through its bundled credentialed-decoder-cache "
-        "compatibility shim and is not using the native parameter. The shim is no "
-        "longer necessary and should be removed from Ray Data: decode directly "
-        "via `decode_video_frames_torchcodec(..., storage_options=...)` and delete "
-        "`ray.data._internal.datasource._lerobot_compat`.",
-        RuntimeWarning,
-        stacklevel=3,
-    )
 
 
 def _creds_cache_cls():
@@ -142,9 +106,6 @@ def decode_frames(
     """
     from lerobot.datasets.video_utils import decode_video_frames_torchcodec
 
-    # We intentionally do not switch to the native path automatically: a silent
-    # switch would bypass the bundled workaround and let it linger unmaintained.
-    _warn_if_native_available()
     if decoder_cache is not None:
         # Caller-owned cache (credentials, if any, are baked into the cache).
         return decode_video_frames_torchcodec(
