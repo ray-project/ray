@@ -14,6 +14,7 @@ Getting Involved / Contributing
 
     development
     ci
+    dependency-management
     docs
     writing-code-snippets
     fake-autoscaler
