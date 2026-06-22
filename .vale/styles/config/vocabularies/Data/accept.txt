@@ -5,6 +5,7 @@ autoscaler
 conda
 Dask
 [Dd]ata('s)?
+[Dd]ataset('s)?
 [Dd]atasource(s)?
 [Dd]eserializable
 [Dd]iscretizer(s)?
@@ -22,6 +23,8 @@ LLM(s)?
 MCAP
 Modin
 [Mm]ultiget(s)?
+[Mm]ultitenancy
+[Ss]ubcluster(s)?
 ndarray(s)?
 NLP
 [Oo]mni
