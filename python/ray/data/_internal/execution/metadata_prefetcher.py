@@ -29,13 +29,15 @@ import queue as queue_module
 import threading
 from collections import defaultdict, deque
 from collections.abc import Hashable
-from typing import Any, Dict, List, Optional, Set, Tuple
+from enum import Enum
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     DeferredEmit,
 )
+from ray.exceptions import GetTimeoutError
 
 logger = logging.getLogger(__name__)
 
@@ -47,18 +49,29 @@ _FETCH_THREAD_JOIN_TIMEOUT_S = 5.0
 _FETCH_WAIT_TIMEOUT_S = 0.1
 
 
+class _Stop(Enum):
+    """Sentinel enqueued on the request queue to tell the fetch thread to exit.
+
+    A single-member enum so the queue element type stays precise
+    (``list[ObjectRef]`` or ``_Stop``) and ``item is _STOP`` narrows cleanly.
+    """
+
+    TOKEN = "stop"
+
+
+# A request-queue item: a batch of meta_refs to fetch, or the stop sentinel.
+_Request = Union[List["ray.ObjectRef"], _Stop]
+
+
 class MetadataPrefetcher:
     # Sentinel for "ref not yet fetched" in the result store. A fetched result
     # is either the metadata bytes or an ``Exception`` captured during fetch.
     _NOT_READY = object()
 
-    # Sentinel enqueued on ``_request_q`` to tell the fetch thread to exit.
-    _STOP = object()
+    _STOP = _Stop.TOKEN
 
     def __init__(self):
-        self._request_q: "queue_module.Queue[List[ray.ObjectRef]]" = (
-            queue_module.Queue()
-        )
+        self._request_q: "queue_module.Queue[_Request]" = queue_module.Queue()
         # fetch thread -> executor: meta_ref -> bytes (or captured Exception).
         self._results: Dict["ray.ObjectRef", Any] = {}
         self._results_lock = threading.Lock()
@@ -219,7 +232,7 @@ class MetadataPrefetcher:
                 item = None
             # Drain whatever else is already queued into a single fetch batch.
             while item is not None:
-                if item is self._STOP:
+                if isinstance(item, _Stop):
                     # Fast teardown: drop any in-flight refs and exit. ``stop``
                     # runs after the scheduling loop (which feeds us) is joined,
                     # so there's nothing left to emit.
@@ -272,7 +285,7 @@ class MetadataPrefetcher:
             for ref in ready:
                 try:
                     results[ref] = ray.get(ref, timeout=0)
-                except ray.exceptions.GetTimeoutError:
+                except GetTimeoutError:
                     # Not local anymore despite ray.wait — re-queue, don't
                     # treat as a block-level error.
                     retry.append(ref)
