@@ -164,6 +164,8 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         data_task = DataOpTask(
             task_index=partition_id,
             streaming_gen=block_gen,
+            block_ref_counter=self._block_ref_counter,
+            producer_id=self.id,
             output_ready_callback=functools.partial(
                 self._handle_reduce_output_ready, partition_id
             ),

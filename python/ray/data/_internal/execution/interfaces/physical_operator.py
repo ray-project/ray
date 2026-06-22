@@ -135,7 +135,7 @@ class DataOpTask(OpTask):
         self,
         task_index: int,
         streaming_gen: ObjectRefGenerator,
-        block_ref_counter: Optional[BlockRefCounter],
+        block_ref_counter: BlockRefCounter,
         producer_id: str,
         output_ready_callback: Callable[[RefBundle], None] = lambda bundle: None,
         task_done_callback: TaskDoneCallbackType = lambda exc, worker_stats, driver_stats: None,
@@ -177,7 +177,7 @@ class DataOpTask(OpTask):
         self._block_ready_callback = block_ready_callback
         self._metadata_ready_callback = metadata_ready_callback
         self._operator_name = operator_name
-        self._block_ref_counter: Optional[BlockRefCounter] = block_ref_counter
+        self._block_ref_counter: BlockRefCounter = block_ref_counter
         self._producer_id: str = producer_id
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
@@ -300,10 +300,9 @@ class DataOpTask(OpTask):
                 meta_with_schema_bytes
             )
             meta = meta_with_schema.metadata
-            if self._block_ref_counter is not None:
-                self._block_ref_counter.on_block_produced(
-                    self._pending_block_ref, meta.size_bytes or 0, self._producer_id
-                )
+            self._block_ref_counter.on_block_produced(
+                self._pending_block_ref, meta.size_bytes or 0, self._producer_id
+            )
             self._output_ready_callback(
                 RefBundle(
                     [BlockEntry(self._pending_block_ref, meta)],
@@ -759,7 +758,7 @@ class PhysicalOperator(Operator):
     def start(
         self,
         options: ExecutionOptions,
-        block_ref_counter: Optional[BlockRefCounter] = None,
+        block_ref_counter: BlockRefCounter,
     ) -> None:
         """Called by the executor when execution starts for an operator.
 

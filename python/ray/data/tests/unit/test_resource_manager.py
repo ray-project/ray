@@ -1,6 +1,7 @@
 import pytest
 
 import ray
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     PhysicalOperator,
@@ -133,6 +134,7 @@ def test_does_not_double_count_usage_from_union():
         ExecutionOptions(),
         lambda: total_resources,
         DataContext.get_current(),
+        BlockRefCounter(),
     )
 
     # Create two 1-byte `RefBundle`s.
@@ -195,6 +197,7 @@ def test_per_input_inqueue_attribution_for_union():
         options,
         lambda: total_resources,
         DataContext.get_current(),
+        BlockRefCounter(),
     )
 
     # Create two 10-byte RefBundles with distinct block refs (simulates real execution

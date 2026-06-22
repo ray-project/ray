@@ -534,6 +534,7 @@ def test_process_completed_tasks_unblocks_when_non_resource_budget_policy_zeros_
         ExecutionOptions(),
         MagicMock(),
         DataContext.get_current(),
+        BlockRefCounter(),
     )
     guard = OutputBackpressureGuard(topo, resource_manager)
 
@@ -754,6 +755,7 @@ def test_debug_dump_topology(ray_start_regular_shared):
         ExecutionOptions(),
         MagicMock(return_value=ExecutionResources.zero()),
         DataContext.get_current(),
+        BlockRefCounter(),
     )
     resource_manager.update_usages()
     # Just a sanity check to ensure it doesn't crash.
@@ -1392,13 +1394,6 @@ def ensure_block_metadata_stored_in_plasma(monkeypatch):
     monkeypatch.setenv("RAY_max_direct_call_object_size", 0)
 
 
-def _make_data_op_task(task_index, streaming_gen, **kwargs):
-    """Create a DataOpTask with a default BlockRefCounter and producer_id for tests."""
-    kwargs.setdefault("block_ref_counter", BlockRefCounter())
-    kwargs.setdefault("producer_id", "test_op")
-    return DataOpTask(task_index, streaming_gen, **kwargs)
-
-
 class TestDataOpTask:
     def test_on_data_ready_single_output(self, ray_start_regular_shared):
         streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB])
@@ -1406,8 +1401,12 @@ class TestDataOpTask:
         def verify_output(bundle):
             assert bundle.size_bytes() == pytest.approx(128 * MiB), bundle.size_bytes()
 
-        data_op_task = _make_data_op_task(
-            0, streaming_gen, output_ready_callback=verify_output
+        data_op_task = DataOpTask(
+            0,
+            streaming_gen,
+            BlockRefCounter(),
+            "test_op",
+            output_ready_callback=verify_output,
         )
 
         bytes_read = 0
@@ -1424,8 +1423,12 @@ class TestDataOpTask:
         def verify_output(bundle):
             assert bundle.size_bytes() == pytest.approx(128 * MiB), bundle.size_bytes()
 
-        data_op_task = _make_data_op_task(
-            0, streaming_gen, output_ready_callback=verify_output
+        data_op_task = DataOpTask(
+            0,
+            streaming_gen,
+            BlockRefCounter(),
+            "test_op",
+            output_ready_callback=verify_output,
         )
 
         bytes_read = 0
@@ -1447,9 +1450,11 @@ class TestDataOpTask:
             assert task_exec_stats is None
             assert task_exec_driver_stats is None
 
-        data_op_task = _make_data_op_task(
+        data_op_task = DataOpTask(
             0,
             streaming_gen,
+            BlockRefCounter(),
+            "test_op",
             task_done_callback=verify_exception,
         )
 
@@ -1460,11 +1465,17 @@ class TestDataOpTask:
 
     def test_operator_name_parameter(self, ray_start_regular_shared):
         streaming_gen = create_stub_streaming_gen(block_nbytes=[1])
-        task = _make_data_op_task(0, streaming_gen, operator_name="MapBatches(fn)")
+        task = DataOpTask(
+            0,
+            streaming_gen,
+            BlockRefCounter(),
+            "test_op",
+            operator_name="MapBatches(fn)",
+        )
         assert task._operator_name == "MapBatches(fn)"
 
         streaming_gen2 = create_stub_streaming_gen(block_nbytes=[1])
-        task_default = _make_data_op_task(1, streaming_gen2)
+        task_default = DataOpTask(1, streaming_gen2, BlockRefCounter(), "test_op")
         assert task_default._operator_name == "Unknown"
 
     @pytest.mark.parametrize(
@@ -1501,8 +1512,12 @@ class TestDataOpTask:
             new_worker_node = cluster.add_node(num_cpus=1)  # noqa: F841
             cluster.wait_for_nodes()
 
-        data_op_task = _make_data_op_task(
-            0, streaming_gen, **{preempt_on: remove_and_add_back_worker_node}
+        data_op_task = DataOpTask(
+            0,
+            streaming_gen,
+            BlockRefCounter(),
+            "test_op",
+            **{preempt_on: remove_and_add_back_worker_node},
         )
 
         # Run the task to completion.
@@ -1532,7 +1547,7 @@ class TestDataOpTask:
 
         # Create a streaming generator that produces a single 128 MiB output block.
         streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB])
-        data_op_task = _make_data_op_task(0, streaming_gen)
+        data_op_task = DataOpTask(0, streaming_gen, BlockRefCounter(), "test_op")
 
         # Wait for the block to be ready, then remove the worker node.
         ray.wait([streaming_gen], fetch_local=False)
@@ -1572,9 +1587,11 @@ class TestDataOpTask:
             captured_stats["task_exec_stats"] = task_exec_stats
             captured_stats["task_exec_driver_stats"] = task_exec_driver_stats
 
-        data_op_task = _make_data_op_task(
+        data_op_task = DataOpTask(
             0,
             streaming_gen,
+            BlockRefCounter(),
+            "test_op",
             task_done_callback=capture_done,
         )
 

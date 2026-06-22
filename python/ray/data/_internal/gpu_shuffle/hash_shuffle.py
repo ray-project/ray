@@ -493,7 +493,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     def start(
         self,
         options: ExecutionOptions,
-        block_ref_counter: Optional["BlockRefCounter"] = None,
+        block_ref_counter: "BlockRefCounter",
     ) -> None:
         super().start(options, block_ref_counter)
         self._rank_pool.start()

@@ -270,7 +270,7 @@ class ActorPoolMapOperator(MapOperator):
     def start(
         self,
         options: ExecutionOptions,
-        block_ref_counter: Optional["BlockRefCounter"] = None,
+        block_ref_counter: "BlockRefCounter",
     ):
         self._actor_locality_enabled = options.actor_locality_enabled
         super().start(options, block_ref_counter)

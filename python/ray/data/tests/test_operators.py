@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 import ray
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     ExecutionOptions,
@@ -99,7 +100,7 @@ def test_all_to_all_operator():
         op.set_sub_progress_bar(name, pg)
 
     # Feed data.
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), BlockRefCounter())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
     op.all_inputs_done()
@@ -145,7 +146,7 @@ def test_num_outputs_total():
 
     # Feed data and implement streaming exec.
     output = []
-    op1.start(ExecutionOptions(actor_locality_enabled=True))
+    op1.start(ExecutionOptions(actor_locality_enabled=True), BlockRefCounter())
     while input_op.has_next():
         op1.add_input(input_op.get_next(), 0)
         while not op1.has_next():
@@ -182,8 +183,8 @@ def test_all_to_all_estimated_num_output_bundles():
         DataContext.get_current().target_max_block_size,
     )
 
-    op1.start(ExecutionOptions())
-    op2.start(ExecutionOptions())
+    op1.start(ExecutionOptions(), BlockRefCounter())
+    op2.start(ExecutionOptions(), BlockRefCounter())
     while input_op.has_next():
         op1.add_input(input_op.get_next(), 0)
     op1.all_inputs_done()

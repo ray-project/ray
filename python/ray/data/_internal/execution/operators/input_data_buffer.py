@@ -51,7 +51,7 @@ class InputDataBuffer(PhysicalOperator):
     def start(
         self,
         options: ExecutionOptions,
-        block_ref_counter: Optional["BlockRefCounter"] = None,
+        block_ref_counter: "BlockRefCounter",
     ) -> None:
         if not self._is_input_initialized:
             self._input_data = self._input_data_factory(

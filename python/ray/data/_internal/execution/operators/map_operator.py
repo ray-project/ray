@@ -490,7 +490,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def start(
         self,
         options: "ExecutionOptions",
-        block_ref_counter: Optional["BlockRefCounter"] = None,
+        block_ref_counter: "BlockRefCounter",
     ):
         super().start(options, block_ref_counter)
         # Create output queue with desired ordering semantics.
