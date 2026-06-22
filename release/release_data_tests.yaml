@@ -65,7 +65,7 @@
       num_files: [50]
       row_group_size: [64MiB]
       compression_ratio: [5.0]
-      read_memory: [2147483648, 4294967296]
+      read_memory: [8589934592]
       max_bucket_size: [5GiB, 15GiB, 30GiB]
       max_coalesced_scan_bytes: [128MiB, 256MiB, 512MiB, 1GiB]
       batch_target_bytes: [64MiB, 128MiB, 256MiB]
