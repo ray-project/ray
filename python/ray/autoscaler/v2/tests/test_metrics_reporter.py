@@ -128,6 +128,78 @@ def test_report_nodes_resources():
     ) == [2]
 
 
+def test_report_skips_unknown_instance_types():
+    """Instances whose type is no longer in the active config (e.g. after a
+    RayWorkerGroup CR is dynamically removed) should be skipped silently
+    instead of raising KeyError.
+    """
+    reporter = AutoscalerMetricsReporter(
+        AutoscalerPrometheusMetrics(session_name="test_unknown")
+    )
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            max_worker_nodes=10,
+            min_worker_nodes=1,
+            resources={"CPU": 1},
+        ),
+    }
+
+    _i = 0
+
+    def id():
+        nonlocal _i
+        _i += 1
+        return f"i-{_i}"
+
+    instances = [
+        create_instance(id(), status=Instance.RAY_RUNNING, instance_type="type_1"),
+        # An instance whose type has been removed from the active config.
+        create_instance(
+            id(), status=Instance.RAY_RUNNING, instance_type="removed_type"
+        ),
+        create_instance(id(), status=Instance.QUEUED, instance_type="type_1"),
+    ]
+
+    # Both calls must not raise even though "removed_type" is unknown.
+    reporter.report_instances(instances, node_type_configs)
+    reporter.report_resources(instances, node_type_configs)
+
+    def _get_metrics(metrics, name) -> List[float]:
+        sample_values = []
+        for x in metrics:
+            for sample in x.samples:
+                if sample.name == name:
+                    sample_values.append(sample.value)
+        return sample_values
+
+    # Only the type_1 instances are counted.
+    assert _get_metrics(
+        reporter._prom_metrics.active_nodes.labels(
+            SessionName="test_unknown", NodeType="type_1"
+        ).collect(),
+        "autoscaler_active_nodes",
+    ) == [1]
+    assert _get_metrics(
+        reporter._prom_metrics.pending_nodes.labels(
+            SessionName="test_unknown", NodeType="type_1"
+        ).collect(),
+        "autoscaler_pending_nodes",
+    ) == [1]
+    assert _get_metrics(
+        reporter._prom_metrics.cluster_resources.labels(
+            SessionName="test_unknown", resource="CPU"
+        ).collect(),
+        "autoscaler_cluster_resources",
+    ) == [1]
+    assert _get_metrics(
+        reporter._prom_metrics.pending_resources.labels(
+            SessionName="test_unknown", resource="CPU"
+        ).collect(),
+        "autoscaler_pending_resources",
+    ) == [1]
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

@@ -1,3 +1,4 @@
+import logging
 from collections import defaultdict
 from typing import Dict, List
 
@@ -7,10 +8,35 @@ from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
 from ray.autoscaler.v2.schema import NodeType
 from ray.core.generated.instance_manager_pb2 import Instance as IMInstance
 
+logger = logging.getLogger(__name__)
+
 
 class AutoscalerMetricsReporter:
     def __init__(self, prom_metrics: AutoscalerPrometheusMetrics) -> None:
         self._prom_metrics = prom_metrics
+
+    @staticmethod
+    def _filter_active_instances(
+        instances: List[IMInstance],
+        active_types: Dict[NodeType, NodeTypeConfig],
+    ) -> List[IMInstance]:
+        """Filter instances whose type is still in the active config.
+
+        This is needed because instances may linger after their
+        RayWorkerGroup CR is dynamically removed.
+        """
+        filtered = []
+        for instance in instances:
+            if instance.instance_type not in active_types:
+                logger.info(
+                    "Skipping instance %s with unknown type %r, active types: %s",
+                    instance.instance_id,
+                    instance.instance_type,
+                    list(active_types.keys()),
+                )
+                continue
+            filtered.append(instance)
+        return filtered
 
     def inc_stopped_nodes(self, count: int) -> None:
         self._prom_metrics.stopped_nodes.inc(count)
@@ -36,6 +62,8 @@ class AutoscalerMetricsReporter:
                 "terminating": 0,
                 "terminated": 0,
             }
+
+        instances = self._filter_active_instances(instances, node_type_configs)
 
         for instance in instances:
             if InstanceUtil.is_ray_pending(instance.status):
@@ -78,6 +106,8 @@ class AutoscalerMetricsReporter:
             node_resources = node_type_configs[node_type].resources
             for resource_name, resource_value in node_resources.items():
                 resource_map[resource_name] += resource_value * count
+
+        instances = self._filter_active_instances(instances, node_type_configs)
 
         for instance in instances:
             if InstanceUtil.is_ray_pending(instance.status):
