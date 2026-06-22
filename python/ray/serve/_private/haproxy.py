@@ -829,11 +829,16 @@ class HAProxyApi(ProxyApi):
         so it counts both targets not yet applied to HAProxy and stale targets
         HAProxy still reports.
         """
-        expected = {
-            (backend_name, server.name)
-            for backend_name, backend_config in self.backend_configs.items()
-            for server in backend_config.servers
-        }
+        expected = set()
+        for backend_name, backend_config in self.backend_configs.items():
+            for server in backend_config.servers:
+                expected.add((backend_name, server.name))
+            # The generated config also renders the fallback server as a real
+            # `server ... backup` line in the same backend, so it appears in
+            # get_all_stats; count it as expected or the gauge never converges
+            # to zero for backends that have a fallback.
+            if backend_config.fallback_server is not None:
+                expected.add((backend_name, backend_config.fallback_server.name))
         stats = await self.get_all_stats()
         reported = {
             (backend_name, server_name)

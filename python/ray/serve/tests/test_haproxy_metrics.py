@@ -547,7 +547,7 @@ async def test_bind_replaces_existing_socket_file(tmp_path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _backend(name: str, server_names):
+def _backend(name: str, server_names, fallback: Optional[str] = None):
     from ray.serve._private.haproxy import BackendConfig, ServerConfig
 
     return BackendConfig(
@@ -557,6 +557,11 @@ def _backend(name: str, server_names):
             ServerConfig(name=s, host="127.0.0.1", port=9000 + i)
             for i, s in enumerate(server_names)
         ],
+        fallback_server=(
+            ServerConfig(name=fallback, host="127.0.0.1", port=8999)
+            if fallback is not None
+            else None
+        ),
     )
 
 
@@ -590,6 +595,29 @@ def test_compute_target_mismatch(broadcasted, reported, expected_mismatch) -> No
 
         api.get_all_stats = fake_get_all_stats
         assert asyncio.run(api._compute_target_mismatch()) == expected_mismatch
+
+
+def test_compute_target_mismatch_treats_fallback_server_as_expected() -> None:
+    """The generated config renders the fallback server as a real backup
+    `server` line, so HAProxy reports it in stats. It must count as expected,
+    or the gauge would never converge to zero for backends with a fallback."""
+    from ray.serve._private.haproxy import HAProxyApi, HAProxyConfig
+
+    with tempfile.TemporaryDirectory() as td:
+        api = HAProxyApi(
+            cfg=HAProxyConfig(socket_path=os.path.join(td, "admin.sock")),
+            backend_configs={
+                "http-app": _backend("http-app", {"s1", "s2"}, fallback="fb")
+            },
+            config_file_path=os.path.join(td, "haproxy.cfg"),
+        )
+
+        async def fake_get_all_stats():
+            # HAProxy reports the two servers plus the fallback backup server.
+            return {"http-app": {"s1": object(), "s2": object(), "fb": object()}}
+
+        api.get_all_stats = fake_get_all_stats
+        assert asyncio.run(api._compute_target_mismatch()) == 0
 
 
 @pytest.mark.asyncio
