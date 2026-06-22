@@ -642,14 +642,10 @@ class DataContext:
             intermediate shards: "none", "lz4", or "zstd" (default "zstd").
         hash_shuffle_reduce_batch_size: Number of shard object references each
             hash-shuffle reduce task dereferences per ``ray.get()`` call.
-        hash_shuffle_reduce_get_timeout_s: Timeout, in seconds, for the
-            ``ray.get()`` each hash-shuffle reduce task issues to fetch a batch of
-            its input shards. Bounds how long a stalled fetch (e.g. while an
-            upstream map output is reconstructed via lineage) blocks before the
-            reduce task logs a warning and fails with ``GetTimeoutError`` instead
-            of blocking forever. Should be generous enough to only trip on genuine
-            pathology, not healthy slow reconstruction. Values ``<= 0`` disable
-            the timeout, fetching each batch in a single blocking call.
+        hash_shuffle_reduce_get_timeout_s: Timeout in seconds, for the
+            ``ray.get()`` each hash-shuffle reduce task to fetch a batch of
+            its input shards. Values ``<= 0`` or None disable the timeout, fetching each batch
+            in a single blocking call.
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
