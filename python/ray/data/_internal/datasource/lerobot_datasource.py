@@ -44,7 +44,6 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     import datasets
     import fsspec
-    import pandas as pd
     import pyarrow.fs
     from lerobot.datasets.dataset_metadata import LeRobotDatasetMetadata
 
@@ -123,9 +122,7 @@ def _build_episodes_table(hf_episodes: "datasets.Dataset") -> pa.Table:
     """Convert lerobot's HF ``Dataset`` of episodes to a pyarrow ``Table``
     with cumulative ``_global_from_index`` / ``_global_to_index`` columns
     derived from per-episode lengths.
-
-    Vectorized (no per-row Python) so the driver-side build stays cheap at
-    PB scale (millions of episodes)."""
+    """
     episodes = hf_episodes.with_format("arrow")[:]
     ep_indices = episodes.column("episode_index").to_numpy(zero_copy_only=False)
     n = len(ep_indices)
@@ -135,21 +132,13 @@ def _build_episodes_table(hf_episodes: "datasets.Dataset") -> pa.Table:
             f"first={ep_indices[0] if n else None}, "
             f"last={ep_indices[-1] if n else None}, count={n}"
         )
-    # Cast to int64 before cumsum: PB-scale cumulative frame counts overflow int32.
+    # Cast to int64 before cumsum: PB-scale cumulative frame counts may overflow int32.
     lengths = episodes.column("length").to_numpy(zero_copy_only=False).astype(np.int64)
     global_to = np.cumsum(lengths)
     global_from = global_to - lengths
     return episodes.append_column(
         "_global_from_index", pa.array(global_from, type=pa.int64())
     ).append_column("_global_to_index", pa.array(global_to, type=pa.int64()))
-
-
-def _build_tasks_dict(tasks_df: "pd.DataFrame") -> Dict[int, str]:
-    """Convert lerobot's ``tasks`` DataFrame (indexed by task name, with a
-    ``task_index`` column) into a ``{task_index: task_name}`` dict."""
-    return dict(
-        zip(tasks_df["task_index"].astype(int).tolist(), tasks_df.index.tolist())
-    )
 
 
 def _build_schema(
@@ -208,7 +197,7 @@ def _estimated_row_size_bytes(features: dict, root_for_logging: str) -> int:
             except (TypeError, KeyError):
                 logger.warning(
                     "Could not estimate size for feature %r in dataset %r, "
-                    "skipping.",
+                    "skipping. Continuing without this estimate.",
                     feat_name,
                     root_for_logging,
                 )
@@ -221,12 +210,15 @@ def _estimated_row_size_bytes(features: dict, root_for_logging: str) -> int:
 
 
 def _stats_to_json(stats: Optional[dict]) -> str:
-    """Serialize lerobot's per-feature stats dict (``{feature: {stat: ndarray}}``)
-    to a JSON string, converting numpy arrays / scalars to plain lists / numbers.
+    """Serialize lerobot's per-feature stats dict.
 
+    Converts numpy arrays / scalars to plain lists / numbers.
     Returns ``"{}"`` when *stats* is missing or empty.  Emitted verbatim on every
-    row as the ``stats`` column so downstream tasks (e.g. normalizing state/action
-    for policy training) can recover mean/std without a second metadata read.
+    row as the ``stats`` column so downstream tasks.
+
+    We serialize stats such that we can work with multiple datasets
+    with possibly different nestings of stats. Ray Data requires us to
+    have the same schema accross the datasets.
     """
     if not stats:
         return "{}"
@@ -457,7 +449,11 @@ def _build_root(
             f"videos/{vk}/from_timestamp",
         ]
     episodes_table = episodes_table.select(keep)
-    tasks_dict = _build_tasks_dict(meta.tasks)
+    # lerobot's tasks DataFrame is indexed by task name with a task_index
+    # column; invert it to {task_index: task_name}.
+    tasks_dict = dict(
+        zip(meta.tasks["task_index"].astype(int).tolist(), meta.tasks.index.tolist())
+    )
     schema = _build_schema(
         episodes_table, meta.data_path, meta.video_keys, image_keys, fs, fs_root
     )
