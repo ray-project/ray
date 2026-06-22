@@ -329,31 +329,23 @@ class TestReportBatchTimingsEdgeCases:
 class TestStageTimingRecord:
     """Tests for StageTiming.record() behavior."""
 
-    def test_record_sets_start_and_end(self):
-        """First record() sets both start_s and end_s."""
+    def test_context_manager_captures_window(self):
+        """Using as context manager captures start_s and end_s."""
         t = StageTiming()
-        t.record(1.0, 2.0)
-        assert t.start_s == 1.0
-        assert t.end_s == 2.0
+        with t:
+            pass
+        assert t.start_s > 0
+        assert t.end_s >= t.start_s
 
-    def test_record_keeps_first_start(self):
-        """Subsequent record() calls keep the first start_s."""
+    def test_timer_context_manager(self):
+        """The timer() method works as a context manager too."""
         t = StageTiming()
-        t.record(1.0, 2.0)
-        t.record(3.0, 4.0)
-        assert t.start_s == 1.0  # kept first start
-        assert t.end_s == 4.0  # updated to latest end
+        with t.timer():
+            pass
+        assert t.start_s > 0
+        assert t.end_s >= t.start_s
 
-    def test_record_multiple_expands_window(self):
-        """Multiple record() calls expand the end_s window."""
-        t = StageTiming()
-        t.record(5.0, 6.0)
-        t.record(7.0, 8.0)
-        t.record(9.0, 10.0)
-        assert t.start_s == 5.0
-        assert t.end_s == 10.0
-
-    def test_record_default_values(self):
+    def test_default_values(self):
         """Unrecorded StageTiming has start_s=0 and end_s=0."""
         t = StageTiming()
         assert t.start_s == 0.0

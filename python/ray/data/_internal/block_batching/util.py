@@ -3,7 +3,6 @@ import functools
 import logging
 import queue
 import threading
-import time
 from contextlib import nullcontext
 from typing import (
     Any,
@@ -15,7 +14,6 @@ from typing import (
     Optional,
     Tuple,
     TypeVar,
-    Union,
 )
 
 import ray
@@ -28,7 +26,6 @@ from ray.data._internal.block_batching.interfaces import (
     BlockPrefetcher,
     BlockWithTiming,
     CollatedBatch,
-    StageTiming,
 )
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockAccessor, DataBatch
@@ -175,27 +172,24 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
     return 0, 0, 0
 
 
-def _record_stage_window(stage: StageTiming, start_s: float, end_s: float) -> None:
-    stage.record(start_s, end_s)
-
-
 def resolve_block_refs(
     block_ref_iter: Iterator[ObjectRef[Block]],
     stats: Optional[DatasetStats] = None,
-    record_timings: bool = False,
-) -> Iterator[Union[Block, BlockWithTiming]]:
+) -> Iterator[BlockWithTiming]:
     """Resolves the block references for each logical batch.
+
+    Each resolved block is wrapped in a :class:`BlockWithTiming` that carries
+    the per-block fetch window (``start_s``/``end_s`` around ``ray.get()``).
+    When *stats* is provided, the cumulative fetch time is also recorded in
+    ``stats.iter_get_s``.
 
     Args:
         block_ref_iter: An iterator over block object references.
-        stats: An optional stats object to recording block hits and misses.
-        record_timings: If True, wrap each resolved block in a
-            ``BlockWithTiming`` carrying the per-block fetch window.
+        stats: An optional stats object to record block hits, misses, and
+            cumulative fetch time.
 
     Yields:
-        Union[Block, BlockWithTiming]: The resolved blocks.  When
-        *record_timings* is ``True`` each block is wrapped in a
-        ``BlockWithTiming``; otherwise raw ``Block`` instances are yielded.
+        BlockWithTiming: Each resolved block with its fetch timing window.
     """
     hits = 0
     misses = 0
@@ -209,16 +203,11 @@ def resolve_block_refs(
 
         # TODO(amogkam): Optimized further by batching multiple references in a single
         # `ray.get()` call.
-        start_s = time.perf_counter()
-        with stats.iter_get_s.timer() if stats else nullcontext():
-            block = ray.get(block_ref)
-        end_s = time.perf_counter()
-        if record_timings:
-            timings = BatchTimings()
-            _record_stage_window(timings.fetch, start_s, end_s)
-            yield BlockWithTiming(block=block, timings=timings)
-        else:
-            yield block
+        timings = BatchTimings()
+        with timings.fetch:
+            with stats.iter_get_s.timer() if stats else nullcontext():
+                block = ray.get(block_ref)
+        yield BlockWithTiming(block=block, timings=timings)
 
     if stats:
         stats.iter_blocks_local = hits
@@ -227,7 +216,7 @@ def resolve_block_refs(
 
 
 def blocks_to_batches(
-    block_iter: Iterator[Union[Block, BlockWithTiming]],
+    block_iter: Iterator[BlockWithTiming],
     stats: Optional[DatasetStats] = None,
     batch_size: Optional[int] = None,
     drop_last: bool = False,
@@ -256,7 +245,7 @@ class _BatchingIterator(Iterator[Batch]):
 
     def __init__(
         self,
-        block_iter: Iterator[Union[Block, BlockWithTiming]],
+        block_iter: Iterator[BlockWithTiming],
         stats: Optional[DatasetStats] = None,
         batch_size: Optional[int] = None,
         drop_last: bool = False,
@@ -294,9 +283,8 @@ class _BatchingIterator(Iterator[Batch]):
 
             if can_yield:
                 with timer:
-                    start_s = time.perf_counter()
-                    next_batch = self._batcher.next_batch()
-                    end_s = time.perf_counter()
+                    with self._pending_timings.batching:
+                        next_batch = self._batcher.next_batch()
 
                 res = Batch(
                     metadata=BatchMetadata(
@@ -305,7 +293,6 @@ class _BatchingIterator(Iterator[Batch]):
                     ),
                     data=next_batch,
                 )
-                _record_stage_window(res.metadata.timings.batching, start_s, end_s)
                 res.metadata.timings.num_rows = BlockAccessor.for_block(
                     next_batch
                 ).num_rows()
@@ -318,11 +305,9 @@ class _BatchingIterator(Iterator[Batch]):
                 # If can't yield try adding more blocks
                 try:
                     # NOTE: Block ref is released immediately
-                    block = next(self._block_iter)
-                    if isinstance(block, BlockWithTiming):
-                        self._pending_timings.merge_fetch(block.timings)
-                        block = block.block
-                    self._batcher.add(block)
+                    block_with_timing = next(self._block_iter)
+                    self._pending_timings.merge_fetch(block_with_timing.timings)
+                    self._batcher.add(block_with_timing.block)
                 except StopIteration:
                     self._batcher.done_adding()
                     self._done_adding = True
@@ -341,14 +326,13 @@ def _format_batch(
     stats: Optional[DatasetStats],
     ensure_copy: bool = False,
 ) -> Batch:
-    start_s = time.perf_counter()
-    with stats.iter_format_batch_s.timer() if stats else nullcontext():
-        formatted_data = BlockAccessor.for_block(batch.data).to_batch_format(
-            batch_format
-        )
-        if ensure_copy:
-            formatted_data = _copy_batch(formatted_data)
-    _record_stage_window(batch.metadata.timings.format, start_s, time.perf_counter())
+    with batch.metadata.timings.format:
+        with stats.iter_format_batch_s.timer() if stats else nullcontext():
+            formatted_data = BlockAccessor.for_block(batch.data).to_batch_format(
+                batch_format
+            )
+            if ensure_copy:
+                formatted_data = _copy_batch(formatted_data)
     return dataclasses.replace(batch, data=formatted_data)
 
 
@@ -396,10 +380,9 @@ def _collate_batch(
     collate_fn: Callable[[DataBatch], Any],
     stats: Optional[DatasetStats],
 ) -> CollatedBatch:
-    start_s = time.perf_counter()
-    with stats.iter_collate_batch_s.timer() if stats else nullcontext():
-        collated_data = collate_fn(batch.data)
-    _record_stage_window(batch.metadata.timings.collate, start_s, time.perf_counter())
+    with batch.metadata.timings.collate:
+        with stats.iter_collate_batch_s.timer() if stats else nullcontext():
+            collated_data = collate_fn(batch.data)
     return CollatedBatch(metadata=batch.metadata, data=collated_data)
 
 
@@ -423,10 +406,9 @@ def _finalize_batch(
     finalize_fn: Callable[[Any], Any],
     stats: Optional[DatasetStats],
 ) -> CollatedBatch:
-    start_s = time.perf_counter()
-    with stats.iter_finalize_batch_s.timer() if stats else nullcontext():
-        finalized_data = finalize_fn(batch.data)
-    _record_stage_window(batch.metadata.timings.finalize, start_s, time.perf_counter())
+    with batch.metadata.timings.finalize:
+        with stats.iter_finalize_batch_s.timer() if stats else nullcontext():
+            finalized_data = finalize_fn(batch.data)
     return dataclasses.replace(batch, data=finalized_data)
 
 

@@ -195,17 +195,22 @@ class Timer:
         self._min: float = float("inf")
         self._max: float = 0
         self._total_count: float = 0
+        # Wall-clock window of the most recent timer() invocation.
+        # Used by overlap-based blocked attribution in iter_batches.
+        self.start_s: float = 0.0
+        self.end_s: float = 0.0
         # Bounded-memory percentile backend. add() forwards every value
         # to ``add_sample`` and ``percentile`` reads from it.
         self._distribution: DistributionTracker = DistributionTracker()
 
     @contextmanager
     def timer(self) -> None:
-        time_start = time.perf_counter()
+        self.start_s = time.perf_counter()
         try:
             yield
         finally:
-            self.add(time.perf_counter() - time_start)
+            self.end_s = time.perf_counter()
+            self.add(self.end_s - self.start_s)
 
     def add(self, value: float) -> None:
         self._total += value

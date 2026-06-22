@@ -1,4 +1,6 @@
 import abc
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Iterable, List, Tuple
 
@@ -8,15 +10,34 @@ from ray.types import ObjectRef
 
 @dataclass
 class StageTiming:
-    """Wall-clock window for a batch-processing stage."""
+    """Wall-clock window for a single batch-processing stage.
+
+    Can be used as a context manager to automatically capture the start and
+    end timestamps of a pipeline operation::
+
+        with stage_timing:
+            do_work()
+        # stage_timing.start_s and stage_timing.end_s are now set
+    """
 
     start_s: float = 0.0
     end_s: float = 0.0
 
-    def record(self, start_s: float, end_s: float) -> None:
-        if self.start_s == 0.0:
-            self.start_s = start_s
-        self.end_s = end_s
+    def __enter__(self):
+        self.start_s = time.perf_counter()
+        return self
+
+    def __exit__(self, *args):
+        self.end_s = time.perf_counter()
+
+    @contextmanager
+    def timer(self):
+        """Alias for using as a context manager, matching Timer.timer() API."""
+        self.start_s = time.perf_counter()
+        try:
+            yield
+        finally:
+            self.end_s = time.perf_counter()
 
 
 @dataclass

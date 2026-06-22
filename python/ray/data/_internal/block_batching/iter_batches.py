@@ -176,9 +176,7 @@ class BatchIterator:
     def _resolve_block_refs(
         self, block_refs: Iterator[ObjectRef[Block]]
     ) -> Iterator[Any]:
-        return resolve_block_refs(
-            block_ref_iter=block_refs, stats=self._stats, record_timings=True
-        )
+        return resolve_block_refs(block_ref_iter=block_refs, stats=self._stats)
 
     def _blocks_to_batches(self, blocks: Iterator[Block]) -> Iterator[Batch]:
         return blocks_to_batches(
