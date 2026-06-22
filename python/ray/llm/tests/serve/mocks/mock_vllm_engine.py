@@ -60,6 +60,10 @@ class MockVLLMEngine(LLMEngine):
         """Start the mock engine."""
         self.started = True
 
+    def routing_stats(self) -> Dict[str, Any]:
+        """Mock engine advertises no routing stats (no KV-cache events)."""
+        return {}
+
     async def resolve_lora(self, lora_model: DiskMultiplexConfig):
         """Resolve/load a LoRA model."""
         self._current_lora_model[lora_model.model_id] = lora_model

@@ -131,6 +131,7 @@ def test_build_openai_app_attaches_kv_actor():
     actor_cfg = configs[0]
     assert actor_cfg.get_actor_class().__ray_actor_class__ is KVRouterActor
     assert actor_cfg.actor_options["num_cpus"] == 0
+    assert actor_cfg.init_kwargs == {"block_size": 16}
 
 
 def test_yaml_config_attaches_kv_actor(serve_instance):
@@ -151,7 +152,7 @@ class _TestKVRouterActor(KVRouterActor):
     """KVRouterActor augmented with test-only introspection."""
 
     async def get_candidate_worker_ids(self) -> List[int]:
-        """The workers currently tracked from running replicas.
+        """(Test only) The workers currently tracked from running replicas.
 
         Async so it runs on the actor's event loop, serialized with
         ``_on_deployment_targets`` which mutates the same map on that loop.
@@ -166,14 +167,29 @@ class _TestKVRouterActor(KVRouterActor):
             name=KV_ROUTER_ACTOR_NAME,
             actor_class=ray.remote(_TestKVRouterActor),
             actor_options={"num_cpus": 0},
+            init_kwargs={"block_size": 16},
         ),
     ],
 )
 class ReplicaTrackingDeployment:
-    """Dummy deployment with a KVRouterActor deployment actor."""
+    """Stand-in deployment with a KVRouterActor deployment actor.
+
+    Advertises a per-replica KV-events endpoint via ``record_routing_stats`` as a
+    real engine would, so the selection service tracks each replica as a worker.
+    """
 
     async def __call__(self) -> str:
         return "ok"
+
+    async def record_routing_stats(self) -> dict:
+        rank = serve.get_replica_context().rank.local_rank
+        return {
+            "kv_event_metadata": {
+                "endpoint": f"tcp://{ray.util.get_node_ip_address()}:{25000 + rank}",
+                "max_num_batched_tokens": 8192,
+                "dp_rank": 0,
+            }
+        }
 
 
 class TestReplicaTrackingIntegration:
@@ -230,17 +246,23 @@ class TestReplicaTrackingIntegration:
 
 
 class _LocalKVRouterActor(_TestKVRouterActor):
-    """In-process KVRouterActor with LongPoll disabled, to drive
-    ``_on_deployment_targets`` directly with synthetic snapshots.
+    """In-process KVRouterActor with the selection service and LongPoll disabled,
+    to drive ``_on_deployment_targets`` directly with synthetic snapshots.
     """
+
+    def _create_selection_service(self) -> None:
+        self._svc = None  # reconcile membership without dynamo
 
     def _start_replica_tracking(self) -> None:
         pass
 
+    def _schedule(self, coro) -> None:
+        coro.close()  # _svc is None, so the scheduled upsert is a no-op
+
 
 def make_target_info(unique_ids):
-    """A DeploymentTargetInfo with one running replica per id, exactly as the
-    controller broadcasts it over LongPoll."""
+    """A DeploymentTargetInfo whose replicas advertise a KV-events endpoint via
+    routing_stats, exactly as the controller broadcasts it over LongPoll."""
     deployment_id = DeploymentID(name="d", app_name="app")
     running_replicas = [
         RunningReplicaInfo(
@@ -250,6 +272,13 @@ def make_target_info(unique_ids):
             availability_zone="az",
             actor_name=f"actor-{uid}",
             max_ongoing_requests=1,
+            routing_stats={
+                "kv_event_metadata": {
+                    "endpoint": "tcp://10.0.0.1:25000",
+                    "max_num_batched_tokens": 8192,
+                    "dp_rank": 0,
+                }
+            },
         )
         for uid in unique_ids
     ]
@@ -258,7 +287,7 @@ def make_target_info(unique_ids):
 
 class TestOnDeploymentTargets:
     async def test_reconciles_added_and_removed_workers(self):
-        actor = _LocalKVRouterActor()
+        actor = _LocalKVRouterActor(block_size=16)
         actor._on_deployment_targets(make_target_info(["a", "b"]))
         assert set(await actor.get_candidate_worker_ids()) == {
             get_worker_id("a"),
