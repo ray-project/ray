@@ -14,10 +14,8 @@ from ray._common.tls_utils import generate_self_signed_tls_certs
 from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY
 from ray.serve.config import HTTPOptions
 
-# HAProxy ingress serves plain HTTP and does not terminate TLS. TLS is handled
-# by direct-ingress mode, where the replicas terminate it, or by an upstream
-# TLS-terminating proxy. These tests drive HTTPS/wss through HAProxy, which is
-# not a path it serves, so skip them when HAProxy is enabled.
+# HAProxy ingress is HTTP-only and does not terminate TLS, so HTTPS and wss
+# requests can't pass through it. Skip these tests when HAProxy is enabled.
 skip_https_under_haproxy = pytest.mark.skipif(
     RAY_SERVE_ENABLE_HA_PROXY,
     reason="HAProxy ingress serves HTTP only; TLS is handled by direct ingress "
