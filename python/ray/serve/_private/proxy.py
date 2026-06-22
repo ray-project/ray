@@ -1566,6 +1566,15 @@ class ProxyActor(ProxyActorInterface):
             logging_config=logging_config,
         )
 
+        is_head = self._node_id == get_head_node_id()
+        # Test-only: a worker proxy binds a distinct HTTP port supplied via its
+        # own node env (Cluster.add_node(env_vars=...)), so multiple worker
+        # HAProxies coexist on one host without SO_REUSEPORT. The head keeps its
+        # configured port. Mirrors how the stats/metrics ports resolve per node.
+        test_http_port = os.getenv("TEST_WORKER_NODE_HTTP_PORT")
+        if test_http_port is not None and not is_head:
+            http_options.port = int(test_http_port)
+
         self._grpc_options = grpc_options
         self._http_options = configure_http_middlewares(http_options)
         grpc_enabled = is_grpc_enabled(self._grpc_options)
@@ -1633,7 +1642,6 @@ class ProxyActor(ProxyActorInterface):
                 "serve_access_log": True,
             }
 
-        is_head = self._node_id == get_head_node_id()
         self.proxy_router = ProxyRouter(get_proxy_handle)
         self.http_proxy = HTTPProxy(
             node_id=self._node_id,
