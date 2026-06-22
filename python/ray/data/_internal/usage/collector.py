@@ -4,8 +4,8 @@ Accumulates per-execution usage data (environment, workload description,
 performance) and flushes it to GCS via ``record_extra_usage_tag``.
 """
 
-import importlib.metadata
 import hashlib
+import importlib.metadata
 import json
 import logging
 import os

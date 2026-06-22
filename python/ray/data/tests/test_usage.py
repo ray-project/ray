@@ -50,13 +50,9 @@ def test_round_trip_payload_shape(reset_collector, mock_record):
     assert entry["workload"]["plan"] == {
         "usage_uuid": map_batches_usage_uuid,
         "op": "MapBatches",
-        "inputs": [
-            {"usage_uuid": read_usage_uuid, "op": "ReadRange", "inputs": []}
-        ],
+        "inputs": [{"usage_uuid": read_usage_uuid, "op": "ReadRange", "inputs": []}],
     }
-    assert [
-        (op["usage_uuid"], op["name"]) for op in entry["workload"]["ops"]
-    ] == [
+    assert [(op["usage_uuid"], op["name"]) for op in entry["workload"]["ops"]] == [
         (read_usage_uuid, "ReadRange"),
         (map_batches_usage_uuid, "MapBatches"),
     ]
@@ -93,9 +89,7 @@ def test_record_workload_returns_usage_uuid_map(reset_collector, mock_record):
 
     map_batches_op = ds._logical_plan.dag
     read_op = map_batches_op.input_dependencies[0]
-    assert usage_uuid_map[id(read_op)] == collector._make_usage_op_uuid(
-        0, "ReadRange"
-    )
+    assert usage_uuid_map[id(read_op)] == collector._make_usage_op_uuid(0, "ReadRange")
     assert usage_uuid_map[id(map_batches_op)] == collector._make_usage_op_uuid(
         1, "MapBatches"
     )
