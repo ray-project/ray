@@ -82,6 +82,7 @@ from ray.data.read_api import (  # noqa: F401
     read_unity_catalog,
     read_videos,
     read_webdataset,
+    read_zarr,
 )
 from ray.data.catalog import (
     Catalog,
@@ -197,6 +198,7 @@ __all__ = [
     "read_tfrecords",
     "read_unity_catalog",
     "read_videos",
+    "read_zarr",
     "read_webdataset",
     "Catalog",
     "ReaderFormat",

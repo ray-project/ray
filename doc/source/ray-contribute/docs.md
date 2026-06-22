@@ -526,4 +526,4 @@ If you run into a problem building the docs, following these steps can help isol
 ## Where to go from here?
 
 There are many other ways to contribute to Ray other than documentation.
-See [our contributor guide](./getting-involved.rst) for more information.
+See {doc}`our contributor guide <getting-involved>` for more information.
