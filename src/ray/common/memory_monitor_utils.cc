@@ -54,9 +54,9 @@ MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
     const std::string &system_cgroup_path,
     const std::string &proc_dir) {
   StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound> user_cgroup_memory_snapshot_or =
-      TakeCgroupMemorySnapshot(user_cgroup_path);
+      TakeCgroupMemorySnapshot(user_cgroup_path, proc_dir);
   StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound> system_cgroup_memory_snapshot_or =
-      TakeCgroupMemorySnapshot(system_cgroup_path);
+      TakeCgroupMemorySnapshot(system_cgroup_path, proc_dir);
   if (!user_cgroup_memory_snapshot_or.has_value() ||
       !system_cgroup_memory_snapshot_or.has_value()) {
     std::vector<std::string> error_reasons;
@@ -108,7 +108,8 @@ MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
 }
 
 const StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound>
-MemoryMonitorUtils::TakeCgroupMemorySnapshot(const std::string &root_cgroup_path) {
+MemoryMonitorUtils::TakeCgroupMemorySnapshot(const std::string &root_cgroup_path,
+                                             const std::string &proc_dir) {
   std::string v2_stat_path = root_cgroup_path + "/" + kCgroupsV2MemoryStatPath;
   std::ifstream v2_stat_f(v2_stat_path, std::ios::in | std::ios::binary);
   if (v2_stat_f) {
@@ -137,34 +138,53 @@ MemoryMonitorUtils::TakeCgroupMemorySnapshot(const std::string &root_cgroup_path
                           root_cgroup_path));
     }
 
-    // Mirror GetCGroupMemoryBytes's v2 swap handling: gated by the same flag,
-    // only honor an all-digit memory.swap.max (treat "max" / overflow as 0),
-    // and only consult memory.swap.current when swap.max > 0.
+    // Mirror GetCGroupMemoryBytes / GetMemoryThreshold: when swap.max is the
+    // "unlimited" sentinel ("max", empty, garbage, or int64-overflowing), the
+    // cgroup imposes no cap and the practical budget is host swap. swap.current
+    // is read regardless of the cap — the kernel publishes it and it gives the
+    // per-cgroup actual usage, which is what the OOM monitor wants. Without
+    // this, GetMemoryThreshold inflates the trigger by host swap while the
+    // per-tick snapshot stays at zero, so kills fire late or not at all.
     if (RayConfig::instance().count_swap_in_memory_monitor()) {
       std::string swap_max_path = root_cgroup_path + "/" + kCgroupsV2MemorySwapMaxPath;
       std::ifstream swap_max_ifs(swap_max_path, std::ios::in | std::ios::binary);
       std::string swap_max_str;
-      if (swap_max_ifs && (swap_max_ifs >> swap_max_str) && !swap_max_str.empty() &&
-          std::all_of(swap_max_str.begin(), swap_max_str.end(), [](unsigned char c) {
-            return std::isdigit(c);
-          })) {
-        try {
-          int64_t swap_max_bytes = std::stoll(swap_max_str);
-          snapshot.swap_max_bytes = swap_max_bytes;
-          if (swap_max_bytes > 0) {
-            std::string swap_cur_path =
-                root_cgroup_path + "/" + kCgroupsV2MemorySwapCurrentPath;
-            std::ifstream swap_cur_ifs(swap_cur_path, std::ios::in | std::ios::binary);
-            int64_t swap_used_bytes = 0;
-            if (swap_cur_ifs && (swap_cur_ifs >> swap_used_bytes) &&
-                swap_used_bytes > 0) {
-              snapshot.swap_used_bytes = swap_used_bytes;
-            }
+      bool swap_max_present = bool(swap_max_ifs && (swap_max_ifs >> swap_max_str));
+      if (swap_max_present) {
+        bool unlimited = swap_max_str.empty() ||
+                         !std::all_of(swap_max_str.begin(),
+                                      swap_max_str.end(),
+                                      [](unsigned char c) { return std::isdigit(c); });
+        bool zero = false;
+        if (!unlimited) {
+          try {
+            int64_t swap_max_bytes = std::stoll(swap_max_str);
+            snapshot.swap_max_bytes = swap_max_bytes;
+            zero = (swap_max_bytes == 0);
+          } catch (const std::out_of_range &) {
+            // ULLONG_MAX sentinel — treat as unlimited.
+            unlimited = true;
+          } catch (const std::invalid_argument &) {
+            // Defensive; pre-filtered by std::all_of.
+            unlimited = true;
           }
-        } catch (const std::out_of_range &) {
-          // swap.max overflows int64 (e.g. ULLONG_MAX sentinel) — treat as unlimited.
-        } catch (const std::invalid_argument &) {
-          // Unexpected non-numeric content; ignore.
+        }
+        if (unlimited) {
+          auto [host_swap_total, _host_swap_used] = GetHostSwapBytes(proc_dir);
+          snapshot.swap_max_bytes = host_swap_total;
+        }
+        // Read swap.current whenever the cgroup has any swap budget (numeric
+        // non-zero OR unlimited). When swap.max == 0 the kernel is saying
+        // "no swap" — skip the read so a stale/transitioning swap.current
+        // doesn't surface as used > total.
+        if (!zero && snapshot.swap_max_bytes > 0) {
+          std::string swap_cur_path =
+              root_cgroup_path + "/" + kCgroupsV2MemorySwapCurrentPath;
+          std::ifstream swap_cur_ifs(swap_cur_path, std::ios::in | std::ios::binary);
+          int64_t swap_used_bytes = 0;
+          if (swap_cur_ifs && (swap_cur_ifs >> swap_used_bytes) && swap_used_bytes > 0) {
+            snapshot.swap_used_bytes = swap_used_bytes;
+          }
         }
       }
     }

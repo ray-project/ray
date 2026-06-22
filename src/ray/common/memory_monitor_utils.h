@@ -115,12 +115,18 @@ class MemoryMonitorUtils {
    * @brief Takes a snapshot of the memory usage for the given cgroupv2 path.
    *
    * @param root_cgroup_path The path to the cgroup to take the snapshot of.
+   * @param proc_dir Used to read /proc/meminfo SwapTotal when memory.swap.max
+   *        is the kernel's "unlimited" sentinel — the cgroup imposes no cap,
+   *        so the practical budget is host swap. Same fallback as
+   *        GetCGroupMemoryBytes; keeps the OOM threshold and per-tick
+   *        used/total in the same units.
    * @return The cgroup memory snapshot.
    *         Returns StatusT::NotFound if the memory values could not be found,
    *         or if the path is a cgroupv1 path.
    */
   static const StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound>
-  TakeCgroupMemorySnapshot(const std::string &root_cgroup_path);
+  TakeCgroupMemorySnapshot(const std::string &root_cgroup_path,
+                           const std::string &proc_dir = kProcDirectory);
 
   /**
    * @brief Takes a snapshot of per-process memory usage.
