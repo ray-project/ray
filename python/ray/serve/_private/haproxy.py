@@ -819,7 +819,7 @@ class HAProxyApi(ProxyApi):
             if entry.isdigit() and self._is_our_haproxy(int(entry))
         )
 
-    async def _compute_target_mismatch(self) -> int:
+    async def compute_target_mismatch(self) -> int:
         """Cardinality of the mismatch between the controller's broadcasted
         targets and the targets HAProxy actually reports in its stats.
 

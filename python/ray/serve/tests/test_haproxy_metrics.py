@@ -51,7 +51,7 @@ class _FakeHAProxyApi:
     def count_haproxy_processes(self) -> int:
         return 0
 
-    async def _compute_target_mismatch(self) -> int:
+    async def compute_target_mismatch(self) -> int:
         # Inert: the real symmetric-difference logic is covered by
         # test_compute_target_mismatch against a real HAProxyApi.
         return 0
@@ -585,7 +585,7 @@ def _backend(name: str, server_names, fallback: Optional[str] = None):
     ],
 )
 def test_compute_target_mismatch(broadcasted, reported, expected_mismatch) -> None:
-    # _compute_target_mismatch lives on HAProxyApi (it reads backend_configs and
+    # compute_target_mismatch lives on HAProxyApi (it reads backend_configs and
     # get_all_stats), so exercise the real method with a stubbed stats source.
     from ray.serve._private.haproxy import HAProxyApi, HAProxyConfig
 
@@ -600,7 +600,7 @@ def test_compute_target_mismatch(broadcasted, reported, expected_mismatch) -> No
             return {"http-app": {name: object() for name in reported}}
 
         api.get_all_stats = fake_get_all_stats
-        assert asyncio.run(api._compute_target_mismatch()) == expected_mismatch
+        assert asyncio.run(api.compute_target_mismatch()) == expected_mismatch
 
 
 def test_compute_target_mismatch_treats_fallback_server_as_expected() -> None:
@@ -623,7 +623,7 @@ def test_compute_target_mismatch_treats_fallback_server_as_expected() -> None:
             return {"http-app": {"s1": object(), "s2": object(), "fb": object()}}
 
         api.get_all_stats = fake_get_all_stats
-        assert asyncio.run(api._compute_target_mismatch()) == 0
+        assert asyncio.run(api.compute_target_mismatch()) == 0
 
 
 @pytest.mark.asyncio

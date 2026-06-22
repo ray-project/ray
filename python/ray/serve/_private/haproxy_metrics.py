@@ -278,7 +278,7 @@ class HAProxyMetricsCollector:
                     self._haproxy_api.count_haproxy_processes()
                 )
                 self.target_mismatch_gauge.set(
-                    await self._haproxy_api._compute_target_mismatch()
+                    await self._haproxy_api.compute_target_mismatch()
                 )
                 consecutive_errors = 0
             except Exception:
