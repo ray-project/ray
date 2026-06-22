@@ -14,15 +14,15 @@ from ray._common.tls_utils import generate_self_signed_tls_certs
 from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY
 from ray.serve.config import HTTPOptions
 
-# HAProxy ingress does not terminate TLS: the HAProxy frontend binds plain HTTP
-# and health-checks replicas over plain HTTP, while direct-ingress replicas serve
-# HTTPS. The backends never pass the health check, the proxy never becomes ready,
-# and serve.run() blocks until timeout. Supporting HTTPS through HAProxy requires
-# plumbing TLS into the frontend bind and backend health checks (a feature, not a
-# test fix), so the HTTPS-serving tests are skipped under HAProxy.
+# HAProxy ingress intentionally does not terminate TLS (won't-do): the HAProxy
+# frontend serves plain HTTP only. HTTPS is served by direct-ingress mode, where
+# the replicas terminate TLS themselves, or by terminating TLS at a proxy in
+# front of HAProxy. So HTTPS/wss is not supported under HAProxy ingress, and
+# these HTTPS-serving tests are skipped there by design, not pending a feature.
 skip_https_under_haproxy = pytest.mark.skipif(
     RAY_SERVE_ENABLE_HA_PROXY,
-    reason="HAProxy ingress does not terminate TLS; HTTPS/wss is unsupported.",
+    reason="HTTPS/wss is not supported under HAProxy ingress by design "
+    "(HAProxy serves plain HTTP only; use direct-ingress mode for TLS).",
 )
 
 
