@@ -268,6 +268,69 @@ def deployment_info(
     return deploy_args_to_deployment_info(**params, app_name="test_app")
 
 
+class TestGracefulShutdownTimeoutFloor:
+    """deploy_args_to_deployment_info floors graceful_shutdown_timeout_s to the
+    direct-ingress min draining period (plus buffer) for ingress deployments, so
+    the controller's force-kill deadline can't cut the replica's drain short."""
+
+    @staticmethod
+    def _params(*, graceful_shutdown_timeout_s, ingress):
+        return {
+            "deployment_name": "d",
+            "deployment_config_proto_bytes": DeploymentConfig(
+                graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
+                version=get_random_string(),
+            ).to_proto_bytes(),
+            "replica_config_proto_bytes": ReplicaConfig.create(
+                lambda x: x
+            ).to_proto_bytes(),
+            "deployer_job_id": "random",
+            "route_prefix": "/" if ingress else None,
+            "ingress": ingress,
+        }
+
+    def _timeout(self, **kwargs):
+        info = deploy_args_to_deployment_info(**self._params(**kwargs), app_name="app")
+        return info.deployment_config.graceful_shutdown_timeout_s
+
+    @patch.multiple(
+        "ray.serve._private.deploy_utils",
+        RAY_SERVE_ENABLE_DIRECT_INGRESS=True,
+        RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=30,
+        RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S=5,
+    )
+    def test_ingress_below_floor_is_raised(self):
+        # max(10, 30 + 5) == 35
+        assert self._timeout(graceful_shutdown_timeout_s=10, ingress=True) == 35
+
+    @patch.multiple(
+        "ray.serve._private.deploy_utils",
+        RAY_SERVE_ENABLE_DIRECT_INGRESS=True,
+        RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=30,
+        RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S=5,
+    )
+    def test_ingress_above_floor_is_unchanged(self):
+        assert self._timeout(graceful_shutdown_timeout_s=60, ingress=True) == 60
+
+    @patch.multiple(
+        "ray.serve._private.deploy_utils",
+        RAY_SERVE_ENABLE_DIRECT_INGRESS=True,
+        RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=30,
+        RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S=5,
+    )
+    def test_non_ingress_is_not_floored(self):
+        assert self._timeout(graceful_shutdown_timeout_s=10, ingress=False) == 10
+
+    @patch.multiple(
+        "ray.serve._private.deploy_utils",
+        RAY_SERVE_ENABLE_DIRECT_INGRESS=False,
+        RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=30,
+        RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S=5,
+    )
+    def test_not_floored_when_direct_ingress_disabled(self):
+        assert self._timeout(graceful_shutdown_timeout_s=10, ingress=True) == 10
+
+
 def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
     ingress_api = FastAPI()
     router_api = FastAPI()
