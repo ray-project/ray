@@ -444,6 +444,8 @@ class ParquetDatasource(Datasource):
         # build an empty datasource state through _init_state so that all
         # required attributes are properly set.
         if ignore_missing_paths and len(paths) == 0:
+            import pyarrow as pa
+
             self._init_state(
                 supports_distributed_reads=supports_distributed_reads,
                 local_scheduling=local_scheduling,
@@ -451,8 +453,8 @@ class ParquetDatasource(Datasource):
                 filesystem=filesystem,
                 fragments=[],
                 file_sizes=[],
-                file_schema=schema,
-                read_schema=schema,
+                file_schema=schema if schema is not None else pa.schema([]),
+                read_schema=schema if schema is not None else pa.schema([]),
                 partition_columns=[],
                 partition_columns_selected=False,
                 partition_schema=None,

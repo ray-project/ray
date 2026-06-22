@@ -398,8 +398,7 @@ def _expand_glob(
             # not just a string-prefix match (e.g. "bucket/data" should
             # not match "bucket/dataextra.parquet").
             if not (
-                fi.path == base_stripped
-                or fi.path.startswith(base_stripped + "/")
+                fi.path == base_stripped or fi.path.startswith(base_stripped + "/")
             ):
                 continue
             # S3, GCS, HDFS, and ABFS all use "/" as path separator.
@@ -681,6 +680,13 @@ def _resolve_paths_and_filesystem(
                         expanded = _expand_glob(path, None, ignore_missing_paths)
                         if expanded:
                             resolved_paths.extend(expanded)
+                            # pathlib fallback succeeded — ensure a
+                            # filesystem is set so downstream metadata
+                            # expansion does not receive None.
+                            if resolved_filesystem is None:
+                                import pyarrow.fs
+
+                                resolved_filesystem = pyarrow.fs.LocalFileSystem()
                             continue
                     if ignore_missing_paths:
                         logger.debug(
