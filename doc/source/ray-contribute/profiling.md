@@ -12,10 +12,7 @@ This guide helps contributors to the Ray project analyze Ray performance.
 
 ## Getting a stack trace of Ray C++ processes
 
-You can use the following GDB command to view the current stack trace of any
-running Ray process (e.g., raylet). This can be useful for debugging 100% CPU
-utilization or infinite loops (simply run the command a few times to see what
-the process is stuck on).
+You can use the following GDB command to view the current stack trace of any running Ray process (e.g., raylet). This can be useful for debugging 100% CPU utilization or infinite loops (simply run the command a few times to see what the process is stuck on).
 
 ```shell
 sudo gdb -batch -ex "thread apply all bt" -p <pid>
@@ -25,8 +22,7 @@ Note that you can find the pid of the raylet with `pgrep raylet`.
 
 ## Installation
 
-These instructions are for Ubuntu only. Attempts to get `pprof` to correctly
-symbolize on Mac OS have failed.
+These instructions are for Ubuntu only. Attempts to get `pprof` to correctly symbolize on Mac OS have failed.
 
 ```bash
 sudo apt-get install google-perftools libgoogle-perftools-dev
@@ -48,18 +44,13 @@ export PERFTOOLS_LOGFILE=/tmp/pprof.out
 export RAY_RAYLET_PERFTOOLS_PROFILER=1
 ```
 
-The file `/tmp/pprof.out` is empty until you let the binary run the
-target workload for a while and then `kill` it via `ray stop` or by
-letting the driver exit.
+The file `/tmp/pprof.out` is empty until you let the binary run the target workload for a while and then `kill` it via `ray stop` or by letting the driver exit.
 
-Note: Enabling `RAY_RAYLET_PERFTOOLS_PROFILER` allows profiling of the Raylet component.
-To profile other modules, use `RAY_{MODULE}_PERFTOOLS_PROFILER`,
-where `MODULE` represents the uppercase form of the process type, such as `GCS_SERVER`.
+Note: Enabling `RAY_RAYLET_PERFTOOLS_PROFILER` allows profiling of the Raylet component. To profile other modules, use `RAY_{MODULE}_PERFTOOLS_PROFILER`, where `MODULE` represents the uppercase form of the process type, such as `GCS_SERVER`.
 
 ### Visualizing the CPU profile
 
-You can visualize the output of `pprof` in different ways. Below, the output is a
-zoomable `.svg` image displaying the call graph annotated with hot paths.
+You can visualize the output of `pprof` in different ways. Below, the output is a zoomable `.svg` image displaying the call graph annotated with hot paths.
 
 ```bash
 # Use the appropriate path.
@@ -73,18 +64,15 @@ google-pprof -svg $RAYLET /tmp/pprof.out > /tmp/pprof.svg
 google-pprof -focus=epoll_wait -svg $RAYLET /tmp/pprof.out > /tmp/pprof.svg
 ```
 
-Below is a snapshot of an example SVG output, from the official
-documentation:
+Below is a snapshot of an example SVG output, from the official documentation:
 
 ![](http://goog-perftools.sourceforge.net/doc/pprof-test-big.gif)
 
 ## Memory profiling
 
-To run memory profiling on Ray core components, use [jemalloc](https://github.com/jemalloc/jemalloc).
-Ray supports environment variables that override `LD_PRELOAD` on core components.
+To run memory profiling on Ray core components, use [jemalloc](https://github.com/jemalloc/jemalloc). Ray supports environment variables that override `LD_PRELOAD` on core components.
 
-You can find the component name from `ray_constants.py`. For example, if you'd like to profile gcs_server,
-search `PROCESS_TYPE_GCS_SERVER` in `ray_constants.py`. You can see the value is `gcs_server`.
+You can find the component name from `ray_constants.py`. For example, if you'd like to profile gcs_server, search `PROCESS_TYPE_GCS_SERVER` in `ray_constants.py`. You can see the value is `gcs_server`.
 
 Users are supposed to provide 4 env vars for memory profiling.
 

@@ -30,8 +30,7 @@ Depending on your goal, you may not need all sections on this page:
 
 ### Fork the Ray repository
 
-Forking an open source repository is a best practice when looking to contribute, as it allows you to make and test changes without affecting the original project, ensuring a clean and organized collaboration process.
-You can propose changes to the main project by submitting a pull request to the main project's repository.
+Forking an open source repository is a best practice when looking to contribute, as it allows you to make and test changes without affecting the original project, ensuring a clean and organized collaboration process. You can propose changes to the main project by submitting a pull request to the main project's repository.
 
 1. Navigate to the [Ray GitHub repository](https://github.com/ray-project/ray).
 2. Follow these [GitHub instructions](https://docs.github.com/en/get-started/quickstart/fork-a-repo), and do the following:
@@ -154,8 +153,7 @@ Before you begin, make sure you have:
 - [Docker](https://docs.docker.com/get-docker/) installed
 :::
 
-To build a distributable manylinux `.whl`, use the `build-wheel.sh`
-script at the repository root.
+To build a distributable manylinux `.whl`, use the `build-wheel.sh` script at the repository root.
 
 ```bash
 # Build a manylinux wheel for the host architecture:
@@ -165,12 +163,9 @@ script at the repository root.
 ./build-wheel.sh 3.12 ./dist
 ```
 
-Run `./build-wheel.sh` without arguments to see supported Python versions and options.
-Regardless of host OS, the output is always a manylinux wheel (the same format used by CI
-and PyPI). Supported build hosts are Linux x86_64, Linux aarch64, and macOS ARM64.
+Run `./build-wheel.sh` without arguments to see supported Python versions and options. Regardless of host OS, the output is always a manylinux wheel (the same format used by CI and PyPI). Supported build hosts are Linux x86_64, Linux aarch64, and macOS ARM64.
 
-See `python/README-building-wheels.md` for additional options, including building
-manylinux wheels directly with Docker.
+See `python/README-building-wheels.md` for additional options, including building manylinux wheels directly with Docker.
 
 (build-ray-image)=
 
@@ -206,8 +201,7 @@ Run `./build-image.sh --help` to see available image types, Python versions, and
 ## Full source build
 
 :::{tip}
-If you already followed the instructions in {ref}`python-develop` and want to switch
-to the Full build, you need to first uninstall Ray (see {ref}`uninstallation steps <python-develop-uninstall>`).
+If you already followed the instructions in {ref}`python-develop` and want to switch to the Full build, you need to first uninstall Ray (see {ref}`uninstallation steps <python-develop-uninstall>`).
 :::
 
 ### Preparing to build Ray on Linux
@@ -292,8 +286,7 @@ pip install -r requirements.txt
 pip install -e . --verbose  # Add --user if you see a permission denied error.
 ```
 
-The `-e` means "editable", so changes you make to files in the Ray
-directory take effect without reinstalling the package.
+The `-e` means "editable", so changes you make to files in the Ray directory take effect without reinstalling the package.
 
 :::{warning}
 Don't run `python setup.py install` — Python copies files from the Ray directory to a packages directory (`/lib/python3.6/site-packages/ray`), so changes you make to files in the Ray directory won't have any effect.
@@ -347,11 +340,7 @@ ray/ci/env/install-bazel.sh
 
 3. Define an environment variable `BAZEL_SH` to point to `bash.exe`. If git for Windows was installed for all users, bash's path should be `C:\Program Files\Git\bin\bash.exe`. If git was installed for a single user, adjust the path accordingly.
 
-4. Install Bazel 7.5.0. Go to the Bazel 7.5.0 release page and download
-   `bazel-7.5.0-windows-x86_64.exe`. Copy the exe into the directory of your choice.
-   Define an environment variable `BAZEL_PATH` to the full exe path (example:
-   `set BAZEL_PATH=C:\bazel\bazel.exe`). Also add the Bazel directory to
-   `PATH` (example: `set PATH=%PATH%;C:\bazel`)
+4. Install Bazel 7.5.0. Go to the Bazel 7.5.0 release page and download `bazel-7.5.0-windows-x86_64.exe`. Copy the exe into the directory of your choice. Define an environment variable `BAZEL_PATH` to the full exe path (example: `set BAZEL_PATH=C:\bazel\bazel.exe`). Also add the Bazel directory to `PATH` (example: `set PATH=%PATH%;C:\bazel`)
 
 5. Download ray source code and build it.
 
@@ -369,61 +358,43 @@ pip install -e . --verbose
 You can tweak the build with the following environment variables (when running `pip install -e .` or `python setup.py install`):
 
 - `RAY_BUILD_CORE`: If set and equal to `1`, Ray builds the core parts. Defaults to `1`.
-- `RAY_INSTALL_JAVA`: If set and equal to `1`, Ray runs extra build steps
-  to build Java portions of the codebase
+- `RAY_INSTALL_JAVA`: If set and equal to `1`, Ray runs extra build steps to build Java portions of the codebase
 - `RAY_INSTALL_CPP`: If set and equal to `1`, Ray installs `ray-cpp`
-- `RAY_BUILD_REDIS`: If set and equal to `1`, Ray builds or fetches Redis binaries.
-  These binaries are only used for testing. Defaults to `1`.
-- `RAY_DISABLE_EXTRA_CPP`: If set and equal to `1`, a regular (non-`cpp`)
-  build won't provide some `cpp` interfaces
+- `RAY_BUILD_REDIS`: If set and equal to `1`, Ray builds or fetches Redis binaries. These binaries are only used for testing. Defaults to `1`.
+- `RAY_DISABLE_EXTRA_CPP`: If set and equal to `1`, a regular (non-`cpp`) build won't provide some `cpp` interfaces
 - `SKIP_BAZEL_BUILD`: If set and equal to `1`, Ray skips all Bazel build steps
-- `SKIP_THIRDPARTY_INSTALL_CONDA_FORGE`: If set, setup skips installation of
-  third-party packages required for build. This is active on conda-forge where
-  pip isn't used to create a build environment.
-- `RAY_DEBUG_BUILD`: Can be set to `debug`, `asan`, or `tsan`. Ray ignores
-  any other value
-- `BAZEL_ARGS`: If set, pass a space-separated set of arguments to Bazel. This can be useful
-  for restricting resource usage during builds, for example. See https://bazel.build/docs/user-manual
-  for more information about valid arguments.
+- `SKIP_THIRDPARTY_INSTALL_CONDA_FORGE`: If set, setup skips installation of third-party packages required for build. This is active on conda-forge where pip isn't used to create a build environment.
+- `RAY_DEBUG_BUILD`: Can be set to `debug`, `asan`, or `tsan`. Ray ignores any other value
+- `BAZEL_ARGS`: If set, pass a space-separated set of arguments to Bazel. This can be useful for restricting resource usage during builds, for example. See https://bazel.build/docs/user-manual for more information about valid arguments.
 - `IS_AUTOMATED_BUILD`: Used in conda-forge CI to tweak the build for the managed CI machines
-- `SRC_DIR`: Can be set to the root of the source checkout, defaults to
-  `None` which is `cwd()`
+- `SRC_DIR`: Can be set to the root of the source checkout, defaults to `None` which is `cwd()`
 - `BAZEL_SH`: used on Windows to find a `bash.exe`, see below
 - `BAZEL_PATH`: used on Windows to find `bazel.exe`, see below
 - `MINGW_DIR`: used on Windows to find `bazel.exe` if not found in `BAZEL_PATH`
 
 ### Fast, debug, and optimized builds
 
-By default, Ray builds with optimizations, which can take a long time and
-interfere with debugging. To perform fast, debug, or optimized builds,
-run the following (via `-c` `fastbuild`/`dbg`/`opt`, respectively):
+By default, Ray builds with optimizations, which can take a long time and interfere with debugging. To perform fast, debug, or optimized builds, run the following (via `-c` `fastbuild`/`dbg`/`opt`, respectively):
 
 ```shell
 bazel run -c fastbuild //:gen_ray_pkg
 ```
 
-This rebuilds Ray with the appropriate options (which might take a while).
-If you need to build all targets, use `bazel build //:all` instead of
-`bazel run //:gen_ray_pkg`.
+This rebuilds Ray with the appropriate options (which might take a while). If you need to build all targets, use `bazel build //:all` instead of `bazel run //:gen_ray_pkg`.
 
-To make this change permanent, you can add an option such as the following
-line to your user-level `~/.bazelrc` file (not to be confused with the
-workspace-level `.bazelrc` file):
+To make this change permanent, you can add an option such as the following line to your user-level `~/.bazelrc` file (not to be confused with the workspace-level `.bazelrc` file):
 
 ```shell
 build --compilation_mode=fastbuild
 ```
 
-If you do so, remember to revert this change, unless you want it to affect
-all of your development in the future.
+If you do so, remember to revert this change, unless you want it to affect all of your development in the future.
 
-Using `dbg` instead of `fastbuild` generates more debug information,
-which can make it easier to debug with a debugger like `gdb`.
+Using `dbg` instead of `fastbuild` generates more debug information, which can make it easier to debug with a debugger like `gdb`.
 
 ### Using a local repository for dependencies
 
-If you'd like to build Ray with custom dependencies (for example, with a
-different version of Cython), you can modify your `.bzl` file as follows:
+If you'd like to build Ray with custom dependencies (for example, with a different version of Cython), you can modify your `.bzl` file as follows:
 
 ```python
 http_archive(
@@ -436,11 +407,7 @@ http_archive(
 )
 ```
 
-This replaces the existing `http_archive` rule with one that references a
-sibling of your Ray directory (named `cython`) using the build file
-provided in the Ray repository (`bazel/BUILD.cython`).
-If the dependency already has a Bazel build file in it, you can use
-`native.local_repository` instead, and omit `build_file`.
+This replaces the existing `http_archive` rule with one that references a sibling of your Ray directory (named `cython`) using the build file provided in the Ray repository (`bazel/BUILD.cython`). If the dependency already has a Bazel build file in it, you can use `native.local_repository` instead, and omit `build_file`.
 
 To test switching back to the original rule, change `False` to `True`.
 
@@ -465,18 +432,14 @@ Requirement files for running Ray Data / ML library tests are under `python/requ
 
 ### Pre-commit hooks
 
-Ray uses pre-commit hooks with [the pre-commit python package](https://pre-commit.com/).
-The `.pre-commit-config.yaml` file configures all the linting and formatting checks.
-To start using `pre-commit`:
+Ray uses pre-commit hooks with [the pre-commit python package](https://pre-commit.com/). The `.pre-commit-config.yaml` file configures all the linting and formatting checks. To start using `pre-commit`:
 
 ```shell
 pip install pre-commit
 pre-commit install
 ```
 
-This installs pre-commit into the current environment and enables pre-commit checks every time
-you commit new code changes with git. To temporarily skip pre-commit checks, use the `-n` or
-`--no-verify` flag when committing:
+This installs pre-commit into the current environment and enables pre-commit checks every time you commit new code changes with git. To temporarily skip pre-commit checks, use the `-n` or `--no-verify` flag when committing:
 
 ```shell
 git commit -n
@@ -490,8 +453,7 @@ To learn more about building the docs refer to [Contributing to the Ray Document
 
 ## Troubleshooting
 
-If importing Ray (`python3 -c "import ray"`) in your development clone results
-in this error:
+If importing Ray (`python3 -c "import ray"`) in your development clone results in this error:
 
 ```python
 Traceback (most recent call last):

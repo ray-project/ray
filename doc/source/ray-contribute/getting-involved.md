@@ -26,13 +26,10 @@ profiling
 agent-development
 ```
 
-Ray is more than a framework for distributed applications but also an active community of developers,
-researchers, and folks that love machine learning.
+Ray is more than a framework for distributed applications but also an active community of developers, researchers, and folks that love machine learning.
 
 :::{tip}
-Ask questions on [our forum](https://discuss.ray.io/)! The
-community is extremely active in helping people succeed in building their
-Ray applications.
+Ask questions on [our forum](https://discuss.ray.io/)! The community is extremely active in helping people succeed in building their Ray applications.
 :::
 
 You can join (and Star!) us [on GitHub](https://github.com/ray-project/ray).
@@ -97,18 +94,11 @@ There are a couple steps to merge a contribution.
    git pull . upstream/master
    ```
 
-2. Make sure all existing [tests](#testing) and [linters](#lint-and-formatting) pass.
-   Run `setup_hooks.sh` to create a git hook that will run the linter before you push your changes.
-3. If introducing a new feature or patching a bug, be sure to add new test cases
-   in the relevant file in `ray/python/ray/tests/`.
-4. Document the code. Public functions need to be documented, and remember to provide an usage
-   example if applicable. See `doc/README.md` for instructions on editing and building public documentation.
-5. Address comments on your PR. During the review
-   process you may need to address merge conflicts with other changes. To resolve merge conflicts,
-   run `git pull . upstream/master` on your branch (please do not use rebase, as it is less
-   friendly to the GitHub review tool. All commits will be squashed on merge.)
-6. Reviewers will merge and approve the pull request; be sure to ping them if
-   the pull request is getting stale.
+2. Make sure all existing [tests](#testing) and [linters](#lint-and-formatting) pass. Run `setup_hooks.sh` to create a git hook that will run the linter before you push your changes.
+3. If introducing a new feature or patching a bug, be sure to add new test cases in the relevant file in `ray/python/ray/tests/`.
+4. Document the code. Public functions need to be documented, and remember to provide an usage example if applicable. See `doc/README.md` for instructions on editing and building public documentation.
+5. Address comments on your PR. During the review process you may need to address merge conflicts with other changes. To resolve merge conflicts, run `git pull . upstream/master` on your branch (please do not use rebase, as it is less friendly to the GitHub review tool. All commits will be squashed on merge.)
+6. Reviewers will merge and approve the pull request; be sure to ping them if the pull request is getting stale.
 
 ## PR Review Process
 
@@ -128,9 +118,7 @@ There are a couple steps to merge a contribution.
 
 ## Testing
 
-Even though we have hooks to run unit tests automatically for each pull request,
-we recommend you to run unit tests locally beforehand to reduce reviewers’
-burden and speedup review process.
+Even though we have hooks to run unit tests automatically for each pull request, we recommend you to run unit tests locally beforehand to reduce reviewers’ burden and speedup review process.
 
 If you are running tests for the first time, you can install the required dependencies with:
 
@@ -311,13 +299,9 @@ python setup.py check --restructuredtext --strict --metadata
 
 ## Understanding CI test jobs
 
-The Ray project automatically runs continuous integration (CI) tests once a PR
-is opened using [Buildkite](https://buildkite.com/ray-project/) with
-multiple CI test jobs.
+The Ray project automatically runs continuous integration (CI) tests once a PR is opened using [Buildkite](https://buildkite.com/ray-project/) with multiple CI test jobs.
 
-The [CI](https://github.com/ray-project/ray/tree/master/ci) test folder contains all integration test scripts and they
-invoke other test scripts via `pytest`, `bazel`-based test or other bash
-scripts. Some of the examples include:
+The [CI](https://github.com/ray-project/ray/tree/master/ci) test folder contains all integration test scripts and they invoke other test scripts via `pytest`, `bazel`-based test or other bash scripts. Some of the examples include:
 
 * Bazel test command:
     * `bazel test --build_tests_only //:all`
@@ -326,9 +310,7 @@ scripts. Some of the examples include:
     * `pytest python/ray/serve/tests`
     * `python python/ray/serve/examples/echo_full.py`
 
-If a CI build exception doesn't appear to be related to your change,
-please visit [this link](https://flakey-tests.ray.io/) to
-check recent tests known to be flaky.
+If a CI build exception doesn't appear to be related to your change, please visit [this link](https://flakey-tests.ray.io/) to check recent tests known to be flaky.
 
 ## API compatibility style guide
 
@@ -354,8 +336,7 @@ def tune_user_callback(model, score, **future_kwargs):
 
 ## Community Examples
 
-We're always looking for new example contributions! When contributing an example for a Ray library,
-include a link to your example in the `examples.yml` file for that library:
+We're always looking for new example contributions! When contributing an example for a Ray library, include a link to your example in the `examples.yml` file for that library:
 
 ```yaml
  - title: Serve a Java App
@@ -364,16 +345,11 @@ include a link to your example in the `examples.yml` file for that library:
    contributor: community
 ```
 
-Give your example a title, a skill level (`beginner`, `intermediate`, or `advanced`), and a
-link (relative links point to other documentation pages, but direct links starting with `http://`
-also work). Include the `contributor: community` metadata to ensure that the example is correctly
-labeled as a community example in the example gallery.
+Give your example a title, a skill level (`beginner`, `intermediate`, or `advanced`), and a link (relative links point to other documentation pages, but direct links starting with `http://` also work). Include the `contributor: community` metadata to ensure that the example is correctly labeled as a community example in the example gallery.
 
 ## Becoming a Committer
 
-Committers are experienced contributors who have demonstrated significant contributions
-to the Ray project over an extended period. Committers have additional responsibilities
-and privileges within the project.
+Committers are experienced contributors who have demonstrated significant contributions to the Ray project over an extended period. Committers have additional responsibilities and privileges within the project.
 
 **Eligibility Criteria**
 
