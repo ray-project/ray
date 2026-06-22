@@ -3244,6 +3244,15 @@ def from_daft(df: "daft.DataFrame") -> Dataset:
     Returns:
         A :class:`~ray.data.Dataset` holding rows read from the DataFrame.
     """
+    import daft
+    from packaging.version import parse as parse_version
+
+    if parse_version(daft.__version__) < parse_version("0.7.0"):
+        raise ImportError(
+            f"ray.data.from_daft requires daft >= 0.7.0, but found {daft.__version__}. "
+            "Please upgrade daft via 'pip install -U daft'."
+        )
+
     # NOTE: Today this returns a MaterializedDataset. We should also integrate Daft such
     # that we can stream object references into a Ray dataset. Unfortunately this is
     # very tricky today because of the way Ray Datasources are implemented with a fully-
