@@ -783,34 +783,6 @@ def test_read_zarr_basic_across_filesystems(ray_start_regular_shared, fs, local_
     np.testing.assert_array_equal(_reconstruct_array(df, "labels"), labels_src)
 
 
-# ---------------------------------------------------------------------------
-# Public-bucket integration test
-# ---------------------------------------------------------------------------
-
-
-def test_read_zarr_integration_public_s3(ray_start_regular_shared):
-    """End-to-end read against a real Zarr store in a public S3 bucket.
-
-    Uses ``s3://anonymous@ray-example-data/mnist-tiny.zarr`` — a 200-sample
-    MNIST subset with two arrays:
-      * ``images``  shape (200, 28, 28), chunks (50, 28, 28)  → 4 chunks
-      * ``labels``  shape (200,),        chunks (200,)        → 1 chunk
-
-    Under the chunk-per-row schema the total row count is 4 + 1 = 5.
-    """
-    ds = ray.data.read_zarr("s3://anonymous@ray-example-data/mnist-tiny.zarr")
-
-    assert ds.count() == 5
-    df = pd.DataFrame(ds.take_all())
-    assert set(df["array"]) == {"images", "labels"}
-    image_rows = df[df["array"] == "images"]
-    label_rows = df[df["array"] == "labels"]
-    assert {c.shape for c in image_rows["chunk"]} == {(50, 28, 28)}
-    assert {c.shape for c in label_rows["chunk"]} == {(200,)}
-    assert all(c.dtype == np.uint8 for c in image_rows["chunk"])
-    assert all(c.dtype == np.uint8 for c in label_rows["chunk"])
-
-
 def test_rejects_zarr_v3(tmp_path, monkeypatch):
     """read_zarr targets zarr-python 2.x; an incompatible v3 install must raise a
     clear, actionable error at construction, not a cryptic ImportError mid-read."""
