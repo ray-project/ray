@@ -114,11 +114,11 @@ class TaskReceiver {
 
   /// Execute a task that was queued for execution. Invoked by the execution queues via
   /// `execute_task_callback_`. Reads all per-request state from `task`.
-  void ExecuteTask(TaskToExecute &task);
+  void ExecuteTask(TaskExecutionMetadata &task);
 
   /// Reply that a queued task was canceled before it started executing. Invoked by the
   /// execution queues via `cancel_task_callback_`. Reads per-request state from `task`.
-  void CancelTask(const TaskToExecute &task, const Status &status);
+  void CancelTask(const TaskExecutionMetadata &task, const Status &status);
 
   // True once shutdown begins. Requests to execute new tasks will be rejected.
   std::atomic<bool> stopping_ = false;
