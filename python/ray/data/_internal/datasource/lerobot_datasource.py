@@ -689,8 +689,9 @@ class _LeRobotReadTask(ReadTask):
                 frames = decode_frames(
                     vpath, timestamps, tolerance_s, decoder_cache=cache
                 )
-                # .cpu() so GPU-decoded frames (num_gpus>0) move to host before
-                # the numpy conversion (CUDA tensors can't convert directly).
+                # .cpu() before the numpy conversion (a CUDA tensor can't
+                # convert directly). Decode is CPU-only today, so this is a
+                # no-op guard, not an active GPU->host move.
                 arr = frames.permute(0, 2, 3, 1).contiguous().cpu().numpy()
                 if arr.dtype != np.uint8:
                     if arr.dtype.kind == "f":

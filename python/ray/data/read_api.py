@@ -2641,8 +2641,9 @@ def read_lerobot(
         num_cpus: The number of CPUs to reserve for each parallel read worker.
             Video decoding is CPU-intensive, so raising this (and lowering
             ``concurrency``) can prevent oversubscription.
-        num_gpus: The number of GPUs to reserve for each parallel read worker,
-            e.g. for GPU-accelerated video decoding.
+        num_gpus: The number of GPUs to reserve for each parallel read worker.
+            Video frames are decoded on CPU (torchcodec), so this does not
+            accelerate decoding -- it only reserves GPUs for the read tasks.
         memory: The heap memory in bytes to reserve for each parallel read
             worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
