@@ -32,6 +32,8 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
+    SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER,
+    SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.test_utils import (
@@ -2070,6 +2072,71 @@ def test_disconnect(_skip_if_ff_not_enabled, serve_instance):
 
     ray.get(running_signal.send.remote(clear=True))
     ray.get(cancelled_signal.send.remote(clear=True))
+
+
+def _get_replica_actor_handle(deployment_name: str, app_name: str) -> ActorHandle:
+    """Return the actor handle for the (single) replica of a deployment."""
+    for actor in ray.util.list_named_actors(all_namespaces=True):
+        if actor["namespace"] != SERVE_NAMESPACE:
+            continue
+        if f"{app_name}#{deployment_name}#" in actor["name"]:
+            return ray.get_actor(actor["name"], namespace=SERVE_NAMESPACE)
+    raise AssertionError(
+        f"No replica actor found for deployment '{deployment_name}' in app "
+        f"'{app_name}'."
+    )
+
+
+def test_tasks_cancelled_on_timeout(_skip_if_ff_not_enabled, serve_instance):
+    """Test that the async tasks are cancelled and cleaned up on timeout.
+
+    Beyond the 408 status code, this asserts that the per-request asyncio tasks
+    created by ``_direct_ingress_asgi`` (the request task and the disconnect-watcher
+    receive task) are actually cancelled and removed from the replica's event loop
+    after the timeout, rather than leaking (e.g. a receive task left parked on the
+    async queue).
+    """
+    name = "tasks-cancelled-on-timeout-deployment"
+
+    @serve.deployment(name=name)
+    class TasksCancelledOnTimeoutTest:
+        async def __call__(self):
+            await asyncio.sleep(10)
+            return "ok"
+
+    serve.run(TasksCancelledOnTimeoutTest.bind(), name=name)
+    http_url = get_application_url("HTTP", app_name=name)
+    headers = {SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER: "1"}
+
+    replica = _get_replica_actor_handle(name, name)
+
+    def inflight_counts():
+        return ray.get(
+            replica._get_inflight_direct_ingress_task_counts_for_testing.remote()
+        )
+
+    # No direct-ingress request/receive tasks before we send anything.
+    assert inflight_counts() == {"request_tasks": 0, "receive_tasks": 0}
+
+    with ThreadPoolExecutor() as executor:
+        future = executor.submit(httpx.get, http_url, headers=headers)
+
+        # While the (slow) request is in flight, both the request task and the
+        # disconnect-watcher receive task should be present on the event loop.
+        wait_for_condition(
+            lambda: inflight_counts() == {"request_tasks": 1, "receive_tasks": 1},
+            timeout=10,
+        )
+
+        response = future.result()
+        assert response.status_code == 408
+
+    # After the timeout, both tasks must be cancelled and removed from the loop
+    # (not left pending / parked on the async queue).
+    wait_for_condition(
+        lambda: inflight_counts() == {"request_tasks": 0, "receive_tasks": 0},
+        timeout=10,
+    )
 
 
 def test_context_propagation(_skip_if_ff_not_enabled, serve_instance):
