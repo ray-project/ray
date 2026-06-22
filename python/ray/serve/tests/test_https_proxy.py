@@ -11,7 +11,19 @@ import websockets
 import ray
 from ray import serve
 from ray._common.tls_utils import generate_self_signed_tls_certs
+from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY
 from ray.serve.config import HTTPOptions
+
+# HAProxy ingress does not terminate TLS: the HAProxy frontend binds plain HTTP
+# and health-checks replicas over plain HTTP, while direct-ingress replicas serve
+# HTTPS. The backends never pass the health check, the proxy never becomes ready,
+# and serve.run() blocks until timeout. Supporting HTTPS through HAProxy requires
+# plumbing TLS into the frontend bind and backend health checks (a feature, not a
+# test fix), so the HTTPS-serving tests are skipped under HAProxy.
+skip_https_under_haproxy = pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY,
+    reason="HAProxy ingress does not terminate TLS; HTTPS/wss is unsupported.",
+)
 
 
 @pytest.fixture(scope="session")
@@ -69,6 +81,7 @@ def https_serve_instance(ssl_cert_and_key):
     ray.shutdown()
 
 
+@skip_https_under_haproxy
 class TestHTTPSProxy:
     def test_https_basic_deployment(self, https_serve_instance):
         """Test basic HTTPS deployment functionality."""
@@ -424,6 +437,7 @@ class TestHTTPSErrorHandling:
         assert options.ssl_certfile is None
 
 
+@skip_https_under_haproxy
 class TestHTTPSIntegration:
     def test_https_with_custom_port(self, ssl_cert_and_key):
         """Test HTTPS on custom port."""
