@@ -208,7 +208,7 @@ def collector() -> HAProxyMetricsCollector:
     The collector's metric attributes are replaced post-init with
     `_RecordingMetric` so tests can assert against captured calls.
     """
-    c = HAProxyMetricsCollector(haproxy_api=_FakeHAProxyApi())
+    c = HAProxyMetricsCollector(haproxy_api=_FakeHAProxyApi(), node_id="test-node")
     c.truncated_bodies_counter = _RecordingMetric()
     c.latency_histogram = _RecordingMetric()
     c.replica_mismatches_counter = _RecordingMetric()
@@ -478,7 +478,9 @@ async def test_bind_and_attach_receives_datagram_then_close_unlinks(
     """End-to-end on the asyncio path: bind a dgram socket, send a real
     syslog line to it from another socket, assert the metric was recorded,
     then close and verify the socket file is gone."""
-    collector = HAProxyMetricsCollector(haproxy_api=_FakeHAProxyApi())
+    collector = HAProxyMetricsCollector(
+        haproxy_api=_FakeHAProxyApi(), node_id="test-node"
+    )
     # Replace the metric objects so we can assert on them without depending
     # on Ray's Prometheus registry.
     collector.latency_histogram = _RecordingMetric()
@@ -521,7 +523,9 @@ async def test_bind_and_attach_receives_datagram_then_close_unlinks(
 @pytest.mark.asyncio
 async def test_close_is_idempotent_and_safe_without_bind() -> None:
     """close() should never raise -- pre-bind, post-bind, or called twice."""
-    collector = HAProxyMetricsCollector(haproxy_api=_FakeHAProxyApi())
+    collector = HAProxyMetricsCollector(
+        haproxy_api=_FakeHAProxyApi(), node_id="test-node"
+    )
     # never bound
     collector.close()
     collector.close()
@@ -534,7 +538,9 @@ async def test_bind_replaces_existing_socket_file(tmp_path) -> None:
     sock_path.write_bytes(b"")  # touch a stale file
     assert sock_path.exists()
 
-    collector = HAProxyMetricsCollector(haproxy_api=_FakeHAProxyApi())
+    collector = HAProxyMetricsCollector(
+        haproxy_api=_FakeHAProxyApi(), node_id="test-node"
+    )
     try:
         await collector.bind_and_attach(str(sock_path), loop=asyncio.get_event_loop())
         assert sock_path.exists()
@@ -627,7 +633,7 @@ async def test_start_polls_always_and_binds_only_when_enabled(tmp_path) -> None:
     api = _FakeHAProxyApi(backend_configs={}, stats={})
     loop = asyncio.get_event_loop()
 
-    disabled = HAProxyMetricsCollector(haproxy_api=api)
+    disabled = HAProxyMetricsCollector(haproxy_api=api, node_id="test-node")
     attach_task = disabled.start(
         loop, poll_interval_s=10.0, enable_ingress_router_metrics=False
     )
@@ -636,7 +642,7 @@ async def test_start_polls_always_and_binds_only_when_enabled(tmp_path) -> None:
     disabled.close()
 
     sock_path = tmp_path / "subdir" / "metrics.sock"
-    enabled = HAProxyMetricsCollector(haproxy_api=api)
+    enabled = HAProxyMetricsCollector(haproxy_api=api, node_id="test-node")
     attach_task = enabled.start(
         loop,
         poll_interval_s=10.0,

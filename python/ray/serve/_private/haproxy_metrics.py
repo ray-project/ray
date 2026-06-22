@@ -87,7 +87,7 @@ class HAProxyMetricsCollector:
     def __init__(
         self,
         haproxy_api: HAProxyApi,
-        node_id: Optional[str] = None,
+        node_id: str,
     ) -> None:
         self._transport: Optional[asyncio.DatagramTransport] = None
         self._socket_path: Optional[str] = None
@@ -173,9 +173,8 @@ class HAProxyMetricsCollector:
             ),
             tag_keys=("node_id",),
         )
-        if node_id is not None:
-            self.process_count_gauge.set_default_tags({"node_id": node_id})
-            self.target_mismatch_gauge.set_default_tags({"node_id": node_id})
+        self.process_count_gauge.set_default_tags({"node_id": node_id})
+        self.target_mismatch_gauge.set_default_tags({"node_id": node_id})
 
     @staticmethod
     def parse_line(line: bytes) -> Optional[ParsedMetrics]:
