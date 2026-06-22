@@ -68,13 +68,6 @@ def plan_list_files_op(
     indexer = op.file_indexer
     partitioner = op.file_partitioner
 
-    # Projection-aware sizing (v2c): when the read projects a subset of columns
-    # (recorded on ``ListFiles.projected_columns`` by ``ProjectionPushdown``),
-    # tell the Parquet chunker so its footer-derived in-memory size hint counts
-    # only those columns. Otherwise size-balanced bucketing would over-size
-    # partitions by the columns the read drops.
-    _apply_projected_columns_to_chunker(indexer, op.projected_columns)
-
     shuffle_config = op.shuffle_config_factory()
 
     transform_fns: List[MapTransformFn] = [
@@ -134,23 +127,6 @@ def plan_list_files_op(
     )
     map_op.throttling_disabled = lambda: True
     return map_op
-
-
-def _apply_projected_columns_to_chunker(indexer, projected_columns) -> None:
-    """Propagate the read's projected column set to the indexer's Parquet
-    chunker so its footer-derived in-memory size hint counts only those columns
-    (v2c projection-aware sizing). No-op for non-Parquet chunkers or when no
-    projection was pushed down (``projected_columns is None``).
-    """
-    if projected_columns is None:
-        return
-    from ray.data._internal.datasource_v2.chunkers.file_chunker import (
-        ParquetFileChunker,
-    )
-
-    chunker = getattr(indexer, "file_chunker", None)
-    if isinstance(chunker, ParquetFileChunker):
-        chunker.projected_columns = projected_columns
 
 
 def _create_input_data_buffer(

@@ -59,6 +59,7 @@ def test_parquet_partitioner_and_sizing_knob_defaults():
     # The dedicated sizing knobs default to None (fall back to block sizes).
     assert ctx.parquet_partitioner_max_bucket_size_bytes is None
     assert ctx.parquet_reader_target_batch_size_bytes is None
+    assert ctx.parquet_reader_max_coalesced_scan_bytes is None
 
 
 if __name__ == "__main__":

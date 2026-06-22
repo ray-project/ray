@@ -91,19 +91,6 @@ DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE: Optional[int] = None
 # same way as ``use_datasource_v2``.
 DEFAULT_PARQUET_CHUNKER_ROW_GROUP_AWARE = True
 
-# When True (and the row-group-aware chunker is in use), V2 Parquet partition
-# sizing uses the footer-derived, type-aware in-memory estimate carried per
-# chunk (``FooterDerivedInMemorySizeEstimator``) instead of a single global
-# on-disk × encoding-ratio guess. This absorbs cross-file compression and
-# (for fixed-width columns) encoding variance. Runtime-toggleable for A/B.
-DEFAULT_PARQUET_USE_FOOTER_SIZE_ESTIMATE = True
-
-# Multiplier applied to a variable-width column's uncompressed page bytes when
-# estimating its Arrow in-memory size (fixed-width columns are sized exactly
-# from row count × type width, so this only affects string / binary / nested
-# columns). Conservative constant; tune up if string-heavy reads under-size.
-DEFAULT_PARQUET_IN_MEMORY_VAR_WIDTH_FACTOR = 2.0
-
 # V2 read partitioning strategy. ``"file_affinity"`` (default) keeps each file's
 # chunks in that file's own size-bounded partitions -- one file per read task
 # (locality: one open + footer + sequential I/O) with sub-file parallelism for
@@ -123,6 +110,19 @@ DEFAULT_PARQUET_PARTITIONER_MAX_BUCKET_SIZE_BYTES: Optional[int] = None
 # falls back to ``target_max_block_size``. Lower it to decode in finer batches
 # (smaller per-task transient memory) independent of the output-block size.
 DEFAULT_PARQUET_READER_TARGET_BATCH_SIZE_BYTES: Optional[int] = None
+
+# Max ON-DISK (compressed) bytes coalesced into a single Parquet read scan. With
+# the row-group-aware chunker + file-affinity partitioner, a partition's
+# consecutive row groups are read in one scan; ``pre_buffer`` then holds that
+# whole scan's compressed column data in memory at once, so per-task memory
+# grows with the partition (``parquet_partitioner_max_bucket_size_bytes``).
+# Capping the scan splits a partition's row groups into multiple sequential
+# sub-scans -- bounding the ``pre_buffer`` footprint -- while still reading the
+# footer only once per file (the sub-scans share the file's fragment metadata).
+# This decouples partition size (parallelism / locality) from per-task scan
+# memory. ``None`` falls back to ``target_max_block_size``; a single row group
+# larger than the cap still scans alone (the atomic floor).
+DEFAULT_PARQUET_READER_MAX_COALESCED_SCAN_BYTES: Optional[int] = None
 
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
@@ -825,16 +825,6 @@ class DataContext:
     # byte-estimate chunker. Runtime toggle for A/B experiments (read at
     # ``read_parquet`` time, like ``use_datasource_v2``).
     parquet_chunker_row_group_aware: bool = DEFAULT_PARQUET_CHUNKER_ROW_GROUP_AWARE
-    # When True (with the row-group-aware chunker), size V2 Parquet partitions
-    # from the per-chunk footer-derived in-memory estimate instead of a global
-    # on-disk × encoding-ratio guess. See ``FooterDerivedInMemorySizeEstimator``.
-    parquet_use_footer_size_estimate: bool = DEFAULT_PARQUET_USE_FOOTER_SIZE_ESTIMATE
-    # Multiplier for a variable-width column's uncompressed bytes -> Arrow
-    # in-memory bytes (fixed-width columns are sized exactly). Only affects the
-    # footer-derived estimate above.
-    parquet_in_memory_var_width_factor: float = (
-        DEFAULT_PARQUET_IN_MEMORY_VAR_WIDTH_FACTOR
-    )
     # V2 read partitioning strategy: "file_affinity" (default) or "round_robin".
     parquet_partitioner_strategy: str = DEFAULT_PARQUET_PARTITIONER_STRATEGY
     # Max in-memory bytes per read partition; None -> target_max_block_size.
@@ -845,6 +835,11 @@ class DataContext:
     parquet_reader_target_batch_size_bytes: Optional[
         int
     ] = DEFAULT_PARQUET_READER_TARGET_BATCH_SIZE_BYTES
+    # Max on-disk bytes coalesced into one Parquet read scan (bounds the
+    # pre_buffer footprint per read task); None -> target_max_block_size.
+    parquet_reader_max_coalesced_scan_bytes: Optional[
+        int
+    ] = DEFAULT_PARQUET_READER_MAX_COALESCED_SCAN_BYTES
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format

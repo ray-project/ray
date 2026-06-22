@@ -131,6 +131,52 @@ def _contiguous_runs(sorted_ids: List[int]) -> List[List[int]]:
     return runs
 
 
+def _row_group_on_disk_size(metadata, rg_idx: int) -> int:
+    """On-disk (compressed) byte size of one row group.
+
+    ``RowGroupMetaData`` exposes only the *uncompressed* ``total_byte_size``;
+    the on-disk size lives on each ``ColumnChunkMetaData``, so sum the per-column
+    compressed sizes (the same convention the chunker uses for chunk sizes).
+    """
+    rg = metadata.row_group(rg_idx)
+    return sum(rg.column(c).total_compressed_size for c in range(rg.num_columns))
+
+
+def _split_run_by_scan_bytes(
+    metadata, run: List[int], max_scan_bytes: Optional[int]
+) -> List[List[int]]:
+    """Split a contiguous row-group run into sub-runs bounded by on-disk bytes.
+
+    Each sub-run's summed on-disk (compressed) size stays ``<= max_scan_bytes``,
+    so a single coalesced scan -- and its ``pre_buffer`` I/O burst -- never holds
+    more than that many compressed bytes at once. This decouples partition size
+    (``max_bucket_size`` / parallelism / locality) from per-scan memory.
+
+    Always emits at least one row group per sub-run: a lone row group larger than
+    the cap scans by itself (the atomic Parquet read floor). Returns ``[run]``
+    unchanged when capping is off (``max_scan_bytes is None``) or the run is a
+    single row group, avoiding the per-column metadata walk in the common case.
+    """
+    if max_scan_bytes is None or len(run) <= 1:
+        return [run]
+    sub_runs: List[List[int]] = []
+    current: List[int] = []
+    current_bytes = 0
+    for rg in run:
+        rg_bytes = _row_group_on_disk_size(metadata, rg)
+        # Close the current sub-run before this row group would push it over the
+        # cap, but never emit an empty sub-run (a lone oversized row group stays).
+        if current and current_bytes + rg_bytes > max_scan_bytes:
+            sub_runs.append(current)
+            current = []
+            current_bytes = 0
+        current.append(rg)
+        current_bytes += rg_bytes
+    if current:
+        sub_runs.append(current)
+    return sub_runs
+
+
 def _fragments_from_chunk_metadata(
     fragment: pds.ParquetFileFragment,
     chunk_metadata: _ChunkMetadata,
@@ -154,6 +200,7 @@ def fragments_to_read_for_manifest(
     path_to_fragment: Dict[str, pds.ParquetFileFragment],
     paths,
     chunk_metadatas,
+    max_coalesced_scan_bytes: Optional[int] = None,
 ) -> List[Tuple[pds.ParquetFileFragment, int]]:
     """Map a partition's chunks to ``(sub_fragment, file_row_offset)`` scans,
     coalescing each file's row groups into **contiguous runs**.
@@ -163,6 +210,12 @@ def fragments_to_read_for_manifest(
     the reader opens the file once and streams those row groups sequentially
     (the fragment — and thus the footer — is shared per path by the caller).
     Whole-file chunks (``None`` metadata) pass through as the full fragment.
+
+    ``max_coalesced_scan_bytes`` caps the on-disk (compressed) bytes per emitted
+    sub-fragment: a run whose row groups exceed it is split into multiple
+    sequential sub-scans (each still on this one file's shared fragment, so the
+    footer is read once). This bounds the per-scan ``pre_buffer`` footprint
+    independently of partition size. ``None`` coalesces each run whole.
     """
     whole_file_paths: List[str] = []
     path_to_row_groups: Dict[str, Set[int]] = defaultdict(set)
@@ -181,6 +234,9 @@ def fragments_to_read_for_manifest(
         fragment = path_to_fragment[path]
         metadata = fragment.metadata
         for run in _contiguous_runs(sorted(row_groups)):
-            offset = _row_offset_before(metadata, run[0])
-            fragments.append((fragment.subset(row_group_ids=run), offset))
+            for sub_run in _split_run_by_scan_bytes(
+                metadata, run, max_coalesced_scan_bytes
+            ):
+                offset = _row_offset_before(metadata, sub_run[0])
+                fragments.append((fragment.subset(row_group_ids=sub_run), offset))
     return fragments

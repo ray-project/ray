@@ -46,9 +46,8 @@ Generates a HETEROGENEOUS dataset from just --num-files and --file-size: the
 codec is sampled per file, and each row group's on-disk size + compression
 ratio are sampled from discrete buckets (--mixed-rg-sizes / --mixed-codecs /
 --mixed-compression-ratios), so files differ from one another AND row groups
-vary within a file. This stresses the V2 row-group-aware chunker (size
-variance) and the footer-derived in-memory size estimator (compression
-variance). Reads are unchanged (--use-version v1/v2/v3).
+vary within a file. This stresses the V2 row-group-aware chunker across size
+and compression variance. Reads are unchanged (--use-version v1/v2/v3).
 
     python parquet_dataset_gen.py --mode mixed \\
         --file-size 256MiB --num-files 40 \\
@@ -354,17 +353,15 @@ def _read_back(
     total_disk_bytes: Optional[int],
     memory: int,
     use_version: str,
-    footer_size_estimate: str = "default",
-    var_width_factor: Optional[float] = None,
     write_output: Optional[str] = None,
 ) -> None:
     """Post-generation read benchmark. Reads the just-written parquet with Ray
     Data and drains it through internal ref bundles -- the iter_bundles consume
     mode: blocks are materialised by the read tasks but never shipped to the
     driver, so this measures read+decode throughput rather than transfer. Read
-    config is fixed except for `memory` (logical bytes passed to read_parquet)
-    and the orthogonal v2a/v2b sizing knobs (`footer_size_estimate`,
-    `var_width_factor`): format=parquet, iter_bundles.
+    config is fixed except for `memory` (logical bytes passed to read_parquet);
+    partitioning / sizing knobs are applied process-globally by
+    ``_apply_read_knobs``: format=parquet, iter_bundles.
 
     When `write_output` is given, the read-back dataset is instead persisted as
     parquet to that local dir or s3:// prefix via `write_parquet` -- a single
@@ -411,36 +408,6 @@ def _read_back(
                 f"the flag name for your Ray build.",
                 flush=True,
             )
-
-    # v2a/v2b sizing knobs, orthogonal to the version. The footer-derived,
-    # type-aware in-memory size estimator (parquet_use_footer_size_estimate)
-    # only engages on the V2 row-group-aware path (v3) and is ON by default,
-    # so v3 already exercises it. Toggle it here to A/B the new estimator
-    # against the legacy constant-ratio one, and to sweep the var-width factor
-    # (parquet_in_memory_var_width_factor). "default" leaves the build default
-    # untouched.
-    extra = {}
-    if footer_size_estimate != "default":
-        extra["parquet_use_footer_size_estimate"] = footer_size_estimate == "on"
-    if var_width_factor is not None:
-        extra["parquet_in_memory_var_width_factor"] = var_width_factor
-    for flag, value in extra.items():
-        if hasattr(ctx, flag):
-            setattr(ctx, flag, value)
-            applied[flag] = value
-        else:
-            print(
-                f"[read][warn] this Ray build ({ray.__version__}) has no "
-                f"DataContext.{flag}; ignoring (needs the footer-size-estimate "
-                f"work).",
-                flush=True,
-            )
-    if footer_size_estimate != "default" and use_version != "v3":
-        print(
-            f"[read][warn] --footer-size-estimate only affects v3 (V2 + "
-            f"row-group-aware chunker); it is inert for {use_version}.",
-            flush=True,
-        )
 
     print(
         f"[read] datasource {use_version} ({applied if applied else 'build default'})",
@@ -507,8 +474,6 @@ def generate(
     read_memory: int,
     use_version: str,
     seed: int = 0,
-    footer_size_estimate: str = "default",
-    var_width_factor: Optional[float] = None,
     write_output: Optional[str] = None,
 ) -> None:
     backend = _make_backend(output)
@@ -522,8 +487,6 @@ def generate(
                 None,
                 read_memory,
                 use_version,
-                footer_size_estimate,
-                var_width_factor,
                 write_output=write_output,
             )
         return
@@ -579,8 +542,6 @@ def generate(
             file_disk * num_files,
             read_memory,
             use_version,
-            footer_size_estimate,
-            var_width_factor,
             write_output=write_output,
         )
 
@@ -670,15 +631,13 @@ def generate_mixed(
     read_memory: int,
     use_version: str,
     seed: int,
-    footer_size_estimate: str = "default",
-    var_width_factor: Optional[float] = None,
     write_output: Optional[str] = None,
 ) -> None:
     """Generate a heterogeneous mix: codec sampled PER FILE, and on-disk size +
     compression ratio sampled PER ROW GROUP from discrete buckets. Files differ
     from one another AND row groups vary within a file -- stressing the v3
-    row-group-aware chunker (size variance) and the v2a/v2b footer estimator
-    (compression variance). Reads are unchanged (v1/v2/v3)."""
+    row-group-aware chunker across size and compression variance. Reads are
+    unchanged (v1/v2/v3)."""
     backend = _make_backend(output)
 
     if not force and backend.exists_nonempty(""):
@@ -689,8 +648,6 @@ def generate_mixed(
                 None,
                 read_memory,
                 use_version,
-                footer_size_estimate,
-                var_width_factor,
                 write_output=write_output,
             )
         return
@@ -782,8 +739,6 @@ def generate_mixed(
             total_disk,
             read_memory,
             use_version,
-            footer_size_estimate,
-            var_width_factor,
             write_output=write_output,
         )
 
@@ -870,6 +825,7 @@ def _apply_read_knobs(args) -> None:
         "parquet_partitioner_strategy": args.partitioner_strategy,
         "parquet_partitioner_max_bucket_size_bytes": args.max_bucket_size,
         "parquet_reader_target_batch_size_bytes": args.batch_target_bytes,
+        "parquet_reader_max_coalesced_scan_bytes": args.max_coalesced_scan_bytes,
         "parquet_chunker_target_chunk_size": args.chunker_target_chunk_size,
     }
     if all(value is None for value in knobs.values()):
@@ -1003,24 +959,6 @@ def main():
         "chunker; v3=V2 + row-group-aware chunker.",
     )
     p.add_argument(
-        "--footer-size-estimate",
-        default="default",
-        choices=["default", "on", "off"],
-        help="Toggle DataContext.parquet_use_footer_size_estimate during read-"
-        "back (the footer-derived, type-aware in-memory size estimator). Only "
-        "affects v3 (V2 + row-group-aware chunker), where it is ON by default. "
-        "Use on/off to A/B the new estimator vs the legacy constant-ratio one; "
-        "'default' leaves the build default untouched.",
-    )
-    p.add_argument(
-        "--var-width-factor",
-        type=float,
-        default=None,
-        help="Override DataContext.parquet_in_memory_var_width_factor during "
-        "read-back (uncompressed->Arrow multiplier for variable-width columns "
-        "in the footer estimator). Default: leave the build default.",
-    )
-    p.add_argument(
         "--partitioner-strategy",
         choices=["file_affinity", "round_robin"],
         default=None,
@@ -1041,6 +979,16 @@ def main():
         default=None,
         help="Override DataContext.parquet_reader_target_batch_size_bytes "
         "(per-decode-batch target, e.g. 8MiB). Default: target_max_block_size.",
+    )
+    p.add_argument(
+        "--max-coalesced-scan-bytes",
+        type=parse_size,
+        default=None,
+        help="Override DataContext.parquet_reader_max_coalesced_scan_bytes "
+        "(max on-disk bytes coalesced into one Parquet scan, e.g. 128MiB). "
+        "Splits a partition's row groups into sequential sub-scans to bound the "
+        "per-task pre_buffer memory independently of --max-bucket-size. "
+        "Default: target_max_block_size.",
     )
     p.add_argument(
         "--chunker-target-chunk-size",
@@ -1098,8 +1046,6 @@ def main():
             read_memory=args.read_memory,
             use_version=args.use_version,
             seed=args.seed,
-            footer_size_estimate=args.footer_size_estimate,
-            var_width_factor=args.var_width_factor,
             write_output=args.write_output,
         )
         return
@@ -1126,8 +1072,6 @@ def main():
         read_memory=args.read_memory,
         use_version=args.use_version,
         seed=args.seed,
-        footer_size_estimate=args.footer_size_estimate,
-        var_width_factor=args.var_width_factor,
         write_output=args.write_output,
     )
 

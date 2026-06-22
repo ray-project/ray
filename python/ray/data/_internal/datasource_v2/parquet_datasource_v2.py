@@ -36,7 +36,6 @@ from ray.data._internal.datasource_v2.readers.file_reader import (
     INCLUDE_PATHS_COLUMN_NAME,
 )
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
-    FooterDerivedInMemorySizeEstimator,
     InMemorySizeEstimator,
     ParquetInMemorySizeEstimator,
 )
@@ -163,16 +162,9 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         )
 
     def get_size_estimator(self) -> InMemorySizeEstimator:
-        # When the row-group-aware chunker is in use it stamps a footer-derived,
-        # type-aware in-memory estimate on each chunk; prefer that over the flat
-        # encoding-ratio guess so partition sizing tracks per-file compression /
-        # encoding. Falls back to the constant-ratio estimator otherwise (legacy
-        # byte-estimate chunker, or the flag turned off for A/B).
-        ctx = DataContext.get_current()
-        if ctx.parquet_use_footer_size_estimate and isinstance(
-            self._file_chunker, ParquetFileChunker
-        ):
-            return FooterDerivedInMemorySizeEstimator()
+        # Constant-ratio in-memory estimate (in-memory ≈ ratio × on-disk). The
+        # estimate is I/O-free and pickle-safe so it can run inside the listing
+        # worker that drives the partitioner.
         return ParquetInMemorySizeEstimator()
 
     @override
@@ -328,6 +320,14 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
             # changing the output-block size.
             target_block_size=(
                 DataContext.get_current().parquet_reader_target_batch_size_bytes
+                or DataContext.get_current().target_max_block_size
+            ),
+            # On-disk bytes coalesced into a single scan. Defaults to
+            # ``target_max_block_size`` so per-task ``pre_buffer`` memory stays
+            # bounded even when ``parquet_partitioner_max_bucket_size_bytes`` is
+            # raised to bundle many row groups per partition.
+            max_coalesced_scan_bytes=(
+                DataContext.get_current().parquet_reader_max_coalesced_scan_bytes
                 or DataContext.get_current().target_max_block_size
             ),
             parquet_format_kwargs=dict(self._parquet_format_kwargs),

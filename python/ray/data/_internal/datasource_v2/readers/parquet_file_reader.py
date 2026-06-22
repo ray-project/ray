@@ -163,6 +163,7 @@ class ParquetFileReader(FileReader):
         include_row_hash: bool = False,
         schema: Optional[pa.Schema] = None,
         parquet_format_kwargs: Optional[Dict[str, Any]] = None,
+        max_coalesced_scan_bytes: Optional[int] = None,
     ):
         """Initialize the Parquet reader.
 
@@ -190,6 +191,12 @@ class ParquetFileReader(FileReader):
                 ``coerce_int96_timestamp_unit``, ``pre_buffer``,
                 ``dictionary_columns``). Used to forward the deprecated
                 ``dataset_kwargs`` arg on the V2 path.
+            max_coalesced_scan_bytes: Cap on the on-disk (compressed) bytes
+                coalesced into a single Parquet scan. A partition's contiguous
+                row groups are split into sequential sub-scans so each stays
+                under this size, bounding the per-scan ``pre_buffer`` footprint
+                independently of partition size. ``None`` coalesces each
+                contiguous run whole (the prior behavior).
         """
         super().__init__(
             format=FileFormat.PARQUET,
@@ -209,6 +216,7 @@ class ParquetFileReader(FileReader):
             AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False
         )
         self._target_block_size = target_block_size
+        self._max_coalesced_scan_bytes = max_coalesced_scan_bytes
         self._parquet_format_kwargs: Dict[str, Any] = parquet_format_kwargs or {}
         self._sampled_batch_size: int | object = (
             _UNSET  # pyrefly: ignore[bad-assignment]
@@ -297,8 +305,14 @@ class ParquetFileReader(FileReader):
         # Coalesce a partition's sister chunks per file into contiguous
         # row-group runs, so each file is read in a single scan (one open +
         # cached footer + sequential I/O) rather than one scan per row group.
+        # ``max_coalesced_scan_bytes`` then splits an over-large run into
+        # sequential sub-scans (still one footer read per file) to bound the
+        # per-scan ``pre_buffer`` footprint independently of partition size.
         return fragments_to_read_for_manifest(
-            path_to_fragment, manifest.paths, manifest.file_chunk_metadatas
+            path_to_fragment,
+            manifest.paths,
+            manifest.file_chunk_metadatas,
+            max_coalesced_scan_bytes=self._max_coalesced_scan_bytes,
         )
 
     @override

@@ -421,16 +421,6 @@ class ProjectionPushdown(Rule):
             )
             projected_input_op = input_op.apply_projection(projection_map)
 
-            # Also record the projected column set on the upstream
-            # ``ListFiles`` source so size-balanced bucketing (which runs
-            # during listing, before the read) sizes each chunk by only the
-            # columns the read keeps -- not the full row group. Only when the
-            # exact set is known (``required_columns is not None``); a star
-            # projection leaves it unset so sizing covers the full row group.
-            projected_input_op = cls._record_projection_on_list_files(
-                projected_input_op, required_columns
-            )
-
             # If the ``Project`` is a pure-prune (only ``col()`` refs,
             # no renames, no computed expressions), the projection
             # pushdown into the read op fully subsumes it — discard it.
@@ -455,33 +445,6 @@ class ProjectionPushdown(Rule):
             )
 
         return current_project
-
-    @classmethod
-    def _record_projection_on_list_files(
-        cls,
-        read_op: LogicalOperator,
-        required_columns: Optional[List[str]],
-    ) -> LogicalOperator:
-        """Stamp the projected column set onto a ``ReadFiles``' upstream
-        ``ListFiles`` (sizing-only). Returns ``read_op`` unchanged when there's
-        nothing to record, and is idempotent so the optimizer reaches a fixed
-        point (no new object when the column set is already current).
-        """
-        from dataclasses import replace
-
-        from ray.data._internal.logical.operators.read_operator import ListFiles
-
-        if required_columns is None:
-            return read_op
-        deps = read_op.input_dependencies
-        if not deps or not isinstance(deps[0], ListFiles):
-            return read_op
-        list_files = deps[0]
-        new_cols = sorted(required_columns)
-        if list_files.projected_columns == new_cols:
-            return read_op
-        new_list_files = replace(list_files, projected_columns=new_cols)
-        return replace(read_op, input_dependencies=[new_list_files])
 
 
 def _extract_input_columns_renaming_mapping(
