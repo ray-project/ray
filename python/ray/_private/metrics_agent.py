@@ -784,7 +784,13 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         ray._private.state.state._initialize_global_state(gcs_client_options)
         self.temp_dir = temp_dir
         self.session_dir = session_dir if session_dir else temp_dir
+        # Tracks whether the backward-compatible symlink has been successfully created.
+        # This prevents recreating the symlink on every periodic write, avoiding
+        # unnecessary disk I/O, race conditions, and log flooding.
         self._symlink_created = False
+        # If symlink creation fails (e.g., due to lack of permissions on Windows
+        # without developer mode, or restricted filesystems), this fallback flag is set
+        # to True. When True, the writer copies the file directly instead of symlinking.
         self._use_fallback_copy = False
         self.default_service_discovery_flush_period = 5
 
