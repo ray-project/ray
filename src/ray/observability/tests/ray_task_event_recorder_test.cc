@@ -23,6 +23,7 @@
 #include "gtest/gtest.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/asio/periodical_runner.h"
+#include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/task_ray_event_interface.h"
@@ -65,14 +66,26 @@ class FakeAggregatorClient : public rpc::EventAggregatorClient {
   absl::Mutex mutex_;
 };
 
-// Minimal task event: carries a task attempt + event type, and serializes to a RayEvent
-// whose `message` encodes "task_id:attempt" so tests can identify exported events.
+// A valid 24-byte TaskID binary derived from a human label. The recorder's drop-warning
+// path calls TaskID::FromBinary(attempt.first), which CHECK-fails unless the id is
+// exactly TaskID::Size() (24) bytes — so test task ids must be full size, not short
+// strings.
+std::string Tid(const std::string &label) {
+  std::string binary = label;
+  binary.resize(TaskID::Size(), '_');
+  return binary;
+}
+
+// Minimal task event: carries a task attempt + event type. The task attempt uses a valid
+// 24-byte task-id binary (derived from `label` via Tid); the serialized RayEvent's
+// `message` uses the human `label` ("label:attempt") so tests can identify exported
+// events.
 class FakeTaskRayEvent : public RayEventInterface, public TaskRayEventInterface {
  public:
-  FakeTaskRayEvent(std::string task_id,
+  FakeTaskRayEvent(const std::string &label,
                    int32_t attempt,
                    rpc::events::RayEvent::EventType type)
-      : task_id_(std::move(task_id)), attempt_(attempt), type_(type) {}
+      : task_id_(Tid(label)), label_(label), attempt_(attempt), type_(type) {}
 
   std::string GetEntityId() const override { return task_id_ + std::to_string(attempt_); }
 
@@ -82,7 +95,7 @@ class FakeTaskRayEvent : public RayEventInterface, public TaskRayEventInterface 
       override {
     rpc::events::RayEvent event;
     event.set_event_type(type_);
-    event.set_message(task_id_ + ":" + std::to_string(attempt_));
+    event.set_message(label_ + ":" + std::to_string(attempt_));
     return event;
   }
 
@@ -94,6 +107,7 @@ class FakeTaskRayEvent : public RayEventInterface, public TaskRayEventInterface 
 
  private:
   std::string task_id_;
+  std::string label_;
   int32_t attempt_;
   rpc::events::RayEvent::EventType type_;
 };
@@ -201,8 +215,8 @@ TEST_F(RayTaskEventRecorderTest, TestStatusRingOverflowReportsDroppedAttempts) {
     dropped_ids.push_back(attempt.task_id());
     EXPECT_EQ(attempt.attempt_number(), 0);
   }
-  EXPECT_EQ(std::count(dropped_ids.begin(), dropped_ids.end(), "task1"), 1);
-  EXPECT_EQ(std::count(dropped_ids.begin(), dropped_ids.end(), "task2"), 1);
+  EXPECT_EQ(std::count(dropped_ids.begin(), dropped_ids.end(), Tid("task1")), 1);
+  EXPECT_EQ(std::count(dropped_ids.begin(), dropped_ids.end(), Tid("task2")), 1);
 }
 
 // Once an attempt is dropped, later events for it are dropped on add (sticky).
@@ -227,7 +241,7 @@ TEST_F(RayTaskEventRecorderTest, TestStickyDropForDroppedAttempt) {
   }
   auto dropped = fake_client_->GetDroppedAttempts();
   ASSERT_EQ(dropped.size(), 1);
-  EXPECT_EQ(dropped[0].task_id(), "task1");
+  EXPECT_EQ(dropped[0].task_id(), Tid("task1"));
 }
 
 // All-or-none per attempt: a buffered event whose attempt was dropped (via eviction of an
@@ -252,7 +266,7 @@ TEST_F(RayTaskEventRecorderTest, TestAllOrNoneSkipsBufferedEventForDroppedAttemp
   }
   auto dropped = fake_client_->GetDroppedAttempts();
   ASSERT_EQ(dropped.size(), 1);
-  EXPECT_EQ(dropped[0].task_id(), "task1");
+  EXPECT_EQ(dropped[0].task_id(), Tid("task1"));
 }
 
 // A flush with only dropped attempts and no surviving events still sends the metadata
@@ -279,7 +293,7 @@ TEST_F(RayTaskEventRecorderTest, TestMetadataOnlySendForFullyDroppedAttempt) {
   EXPECT_TRUE(client.GetRecordedEvents().empty());
   auto dropped = client.GetDroppedAttempts();
   ASSERT_EQ(dropped.size(), 1);
-  EXPECT_EQ(dropped[0].task_id(), "task1");
+  EXPECT_EQ(dropped[0].task_id(), Tid("task1"));
 }
 
 // Profile events beyond the per-task cap are dropped (newest), and not reported in-band.
