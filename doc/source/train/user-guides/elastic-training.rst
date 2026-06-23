@@ -7,29 +7,73 @@ Ray Train supports elastic training, enabling jobs to seamlessly adapt to change
 
 To enable elastic training, use :attr:`~ray.train.ScalingConfig.num_workers` to specify ``(min_workers, max_workers)`` as a tuple instead of a fixed worker group size. You should also set :attr:`~ray.train.FailureConfig.max_failures` so that training can recover from worker failures instead of exiting immediately.
 
-The following example shows how to configure elastic training with a range of 1–8 workers:
+The following examples show how to configure elastic training with GPUs and TPUs:
 
-.. code-block:: python
+.. tab-set::
 
-    from ray.train import RunConfig, FailureConfig
-    from ray.train.torch import TorchTrainer, ScalingConfig
+    .. tab-item:: GPU
+        :sync: GPU
 
-    def train_func():
-        # Your training code here
-        ...
+        The following example configures elastic training with a range of 1-8 GPU workers:
 
-    # Elastic training with 1-8 workers
-    scaling_config = ScalingConfig(num_workers=(1, 8), use_gpu=True)
+        .. code-block:: python
 
-    # Allow retries so training survives worker failures
-    run_config = RunConfig(failure_config=FailureConfig(max_failures=3))
+            from ray.train import FailureConfig, RunConfig, ScalingConfig
+            from ray.train.torch import TorchTrainer
 
-    trainer = TorchTrainer(
-        train_func,
-        scaling_config=scaling_config,
-        run_config=run_config,
-    )
-    trainer.fit()
+            def train_func():
+                # Your training code here.
+                ...
+
+            scaling_config = ScalingConfig(
+                num_workers=(1, 8),
+                use_gpu=True,
+            )
+
+            # Allow retries so training survives worker failures.
+            run_config = RunConfig(failure_config=FailureConfig(max_failures=3))
+
+            trainer = TorchTrainer(
+                train_func,
+                scaling_config=scaling_config,
+                run_config=run_config,
+            )
+            trainer.fit()
+
+    .. tab-item:: TPU
+        :sync: TPU
+
+        The following example configures elastic training with a range of 1-2 ``v6e`` TPU slices.
+        Each ``num_workers`` value maps to the total number of TPU VM hosts across all slices.
+        In this example.. we use a ``4x4`` TPU topology, one slice has 4 hosts, so we set both ``min_workers`` and ``max_workers`` to multiples of 4.
+
+        .. code-block:: python
+
+            from ray.train import FailureConfig, RunConfig, ScalingConfig
+            from ray.train.v2.jax import JaxTrainer
+
+            def train_func():
+                # Your JAX training code here.
+                ...
+
+            scaling_config = ScalingConfig(
+                num_workers=(4, 8),
+                use_tpu=True,
+                topology="4x4",
+                accelerator_type="TPU-V6E",
+            )
+
+            # Allow retries so training survives worker failures.
+            run_config = RunConfig(failure_config=FailureConfig(max_failures=3))
+
+            trainer = JaxTrainer(
+                train_func,
+                scaling_config=scaling_config,
+                run_config=run_config,
+            )
+            trainer.fit()
+
+For TPU elastic training, set ``min_workers`` and ``max_workers`` to multiples of the number of hosts in one TPU slice. Ray Train resizes TPU jobs by complete slices so that workers are placed on intact TPU topologies. For more details, see :ref:`train_scaling_config`.
 
 How it works
 ------------
@@ -117,7 +161,3 @@ For elastic training to scale up when more resources become available, the clust
 
         See :ref:`vms-autoscaling` for more details.
 
-Limitations
------------
-
-Elastic training is supported for CPU and GPU backends only. It isn't supported yet for TPU training.
