@@ -117,6 +117,11 @@ def iter_threaded(
                     break
                 item = next(fn_iter)
                 result_queue.put(item)
+                # Slot ownership has transferred to the queued item; the
+                # consumer releases it. Resetting here prevents the worker's
+                # finally from double-releasing if a future addition after
+                # this point raises.
+                slot_acquired = False
         except StopIteration:
             pass
         except Exception as e:
