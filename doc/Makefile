@@ -11,6 +11,9 @@ SPHINXBUILD   = sphinx-build
 SPHINXAUTOBUILD = sphinx-autobuild --port 0 --open-browser --ignore "*.log" --ignore "*data/examples*" --ignore "*train/examples*" --ignore "*serve/examples*"
 PAPER         =
 BUILDDIR      = _build
+# Output directory for the html builder. Overridable so Read the Docs can point
+# it at $READTHEDOCS_OUTPUT/html; defaults to the local _build/html.
+HTMLDIR      ?= $(BUILDDIR)/html
 
 # User-friendly check for sphinx-build
 ifeq ($(shell which $(SPHINXBUILD) >/dev/null 2>&1; echo $$?), 1)
@@ -26,7 +29,7 @@ ALLLINKCHECKOPTS = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(LINKCHECKOPTS)
 # the i18n builder cannot share the environment and doctrees with the others
 I18NSPHINXOPTS  = $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) source
 
-.PHONY: help clean html dirhtml singlehtml pickle json htmlhelp qthelp devhelp epub latex latexpdf text man changes linkcheck doctest coverage gettext show
+.PHONY: help clean html rtd dirhtml singlehtml pickle json htmlhelp qthelp devhelp epub latex latexpdf text man changes linkcheck doctest coverage gettext show
 
 help:
 	@echo "Please use \`make <target>' where <target> is one of"
@@ -76,10 +79,10 @@ clean:
 html:
 	@# Remove cached serve API stubs so autosummary regenerates them with correct templates
 	find source/serve/api/doc/ -name "ray.serve.*.rst" -delete 2>/dev/null || true
-	$(SPHINXBUILD) -W --keep-going -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
+	$(SPHINXBUILD) -W --keep-going -b html $(ALLSPHINXOPTS) $(HTMLDIR)
 	@echo
-	@echo "Build finished. The HTML pages are in $(BUILDDIR)/html."
-	@echo "View the documentation by opening a browser and going to $(BUILDDIR)/html/index.html."
+	@echo "Build finished. The HTML pages are in $(HTMLDIR)."
+	@echo "View the documentation by opening a browser and going to $(HTMLDIR)/index.html."
 
 develop: html
 
@@ -93,6 +96,18 @@ local:
 	find source/serve/api/doc/ -name "ray.serve.*.rst" -delete 2>/dev/null || true
 	python update_cache_env.py --ray-dir=$(RAY_DIR)
 	$(SPHINXAUTOBUILD) -W --keep-going -b html $(ALLLOCALSPHINXOPTS) $(BUILDDIR)/html
+
+# Incremental one-shot build for Read the Docs PR previews: restore the latest
+# master build cache, mark only the PR-changed files dirty (load_doc_cache.py +
+# update_cache_env.py), then build once WITHOUT -a/-E so Sphinx reuses the cached
+# environment and rebuilds only those files. Mirrors `local`, but writes to
+# $(HTMLDIR) once instead of running sphinx-autobuild.
+rtd:
+	python load_doc_cache.py --ray-dir=$(RAY_DIR)
+	@# Remove cached serve API stubs so autosummary regenerates them with correct templates
+	find source/serve/api/doc/ -name "ray.serve.*.rst" -delete 2>/dev/null || true
+	python update_cache_env.py --ray-dir=$(RAY_DIR)
+	$(SPHINXBUILD) -W --keep-going -b html $(ALLLOCALSPHINXOPTS) $(HTMLDIR)
 
 dirhtml:
 	$(SPHINXBUILD) -b dirhtml $(ALLSPHINXOPTS) $(BUILDDIR)/dirhtml

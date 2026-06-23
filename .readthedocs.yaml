@@ -41,6 +41,21 @@ build:
         fi
         echo "Doc-affecting files changed; building docs. Changed doc-relevant paths:"
         git diff --name-only origin/master...HEAD -- doc/ python/ray/ rllib/ .readthedocs.yaml
+    # Override the html build step. On PR (external) builds, restore the latest
+    # master build cache and build incrementally so only PR-changed files are
+    # rebuilt; fall back to a full build if no cache is available. On branch/tag
+    # builds (master, stable, release tags) always do a full clean build so the
+    # published output is never stale. Targets live in doc/Makefile (rtd, html).
+    build:
+      html:
+        - |
+          if [ "${READTHEDOCS_VERSION_TYPE:-}" = "external" ]; then
+            echo "PR build; attempting incremental build from the master doc cache."
+            make -C doc rtd HTMLDIR="$READTHEDOCS_OUTPUT/html" || make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html"
+          else
+            echo "Branch/tag build; running a full clean build."
+            make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html"
+          fi
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
