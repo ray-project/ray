@@ -63,8 +63,8 @@ clean:
 	rm -rf ./source/*/api/doc/*
 	rm -rf ./source/ray-core/compiled-graph/doc/*
 	rm -rf ./source/ray-references/api/*/doc/*
-	rm -rf ./source/cluster/running_applications/doc/*
-	rm -rf ./source/cluster/running_applications/job-submission/doc/*
+	rm -rf ./source/cluster/running-applications/doc/*
+	rm -rf ./source/cluster/running-applications/job-submission/doc/*
 	rm -rf ./source/ray-observability/api/state/doc*
 	rm -rf ./source/rllib/package_ref/doc*
 	rm -rf ./source/ray-more-libs/doc/*
