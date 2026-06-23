@@ -4,6 +4,7 @@
 import fnmatch
 import io
 import json
+import logging
 import re
 import tarfile
 from functools import partial
@@ -17,6 +18,9 @@ from ray.data.datasource.file_based_datasource import FileBasedDatasource
 ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR = (
     "RAY_DATA_WEBDATASET_ALLOW_UNSAFE_DESERIALIZATION"
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 if TYPE_CHECKING:
@@ -135,7 +139,7 @@ def _tar_file_iterator(
     meta = meta or {}
     stream = tarfile.open(fileobj=fileobj, mode="r|*")
     if verbose_open:
-        print(f"start {meta}")
+        logger.info(f"start {meta}")
     for tarinfo in stream:
         fname = tarinfo.name
         if not tarinfo.isreg() or fname is None:
@@ -148,7 +152,7 @@ def _tar_file_iterator(
         result = dict(fname=fname, data=data)
         yield result
     if verbose_open:
-        print(f"done {meta}")
+        logger.info(f"done {meta}")
 
 
 def _group_by_keys(
