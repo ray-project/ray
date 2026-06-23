@@ -39,10 +39,8 @@ class WorkerSelection(TypedDict):
     worker_id: int
     # Data-parallel rank within the worker.
     dp_rank: int
-    # KV blocks already cached on that worker.
-    overlap_blocks: int
-    # The worker's routing score.
-    score: float
+    # Matched prompt tokens available on the selected worker.
+    overlap_tokens: int
 
 
 class KVRouterActor:
@@ -231,9 +229,8 @@ class KVRouterActor:
             raise ValueError("KV aware routing requires non-empty token_ids.")
 
         if self._svc is None:
-            # ai-dynamo is not installed, so this deployment cannot score
-            # requests. Fail loudly rather than silently degrading; the ingress
-            # router surfaces RuntimeError to the client as a 503.
+            # ai-dynamo is not installed, so this deployment cannot score requests.
+            # Fail fast and surface RuntimeError to the client as a 503 via LLMRouter.
             raise RuntimeError(
                 "KV-aware routing is unavailable because ai-dynamo is not "
                 "installed in the deployment's environment."
@@ -250,8 +247,7 @@ class KVRouterActor:
         return {
             "worker_id": selection["worker_id"],
             "dp_rank": selection["dp_rank"],
-            "overlap_blocks": selection["overlap"]["longest_matched"],
-            "score": float(selection["effective_prefill_tokens"]),
+            "overlap_tokens": selection["overlap"]["longest_matched"],
         }
 
     async def on_request_added(

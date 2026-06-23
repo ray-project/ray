@@ -353,7 +353,7 @@ class TestKvEventIngestion:
                 "req-1", token_ids, [worker_a, worker_b]
             )
             assert selection["worker_id"] == worker_a
-            assert selection["overlap_blocks"] >= 1
+            assert selection["overlap_tokens"] >= BLOCK_SIZE
         finally:
             await a.close.remote()
             await b.close.remote()
