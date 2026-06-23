@@ -37,21 +37,8 @@ class LeaderGatedNodeInfoHandler : public rpc::NodeInfoGcsServiceHandler {
       : handler_(handler), is_leader_fn_(std::move(is_leader_fn)) {}
 
   // =========================================================================
-  // Gated Mutating RPCs (Blocked on passive GCS, returns Status::GcsPassive)
+  // Gated RPCs (Blocked on passive GCS, returns Status::GcsPassive)
   // =========================================================================
-
-  void HandleRegisterNode(rpc::RegisterNodeRequest request,
-                          rpc::RegisterNodeReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override {
-    // Passive GCS blocks remote worker node registrations, but allows the colocated local
-    // head node Raylet to register so that dashboard/health check services can start.
-    if (!is_leader_fn_() && !request.node_info().is_head_node()) {
-      GCS_PROXY_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());
-      return;
-    }
-    handler_.HandleRegisterNode(
-        std::move(request), reply, std::move(send_reply_callback));
-  }
 
   void HandleUnregisterNode(rpc::UnregisterNodeRequest request,
                             rpc::UnregisterNodeReply *reply,
@@ -76,7 +63,7 @@ class LeaderGatedNodeInfoHandler : public rpc::NodeInfoGcsServiceHandler {
   }
 
   // =========================================================================
-  // Pass-Through Read-Only RPCs (Allowed on passive GCS)
+  // Bootstrap Allowlist RPCs (Allowed on passive GCS)
   // =========================================================================
 
   void HandleGetClusterId(rpc::GetClusterIdRequest request,
@@ -107,6 +94,19 @@ class LeaderGatedNodeInfoHandler : public rpc::NodeInfoGcsServiceHandler {
         std::move(request), reply, std::move(send_reply_callback));
   }
 
+  void HandleRegisterNode(rpc::RegisterNodeRequest request,
+                          rpc::RegisterNodeReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override {
+    // Passive GCS blocks remote worker node registrations, but allows the colocated local
+    // head node Raylet to register so that dashboard/health check services can start.
+    if (!is_leader_fn_() && !request.node_info().is_head_node()) {
+      GCS_PROXY_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());
+      return;
+    }
+    handler_.HandleRegisterNode(
+        std::move(request), reply, std::move(send_reply_callback));
+  }
+
  private:
   rpc::NodeInfoGcsServiceHandler &handler_;
   const std::function<bool()> is_leader_fn_;
@@ -119,7 +119,7 @@ class LeaderGatedActorInfoHandler : public rpc::ActorInfoGcsServiceHandler {
       : handler_(handler), is_leader_fn_(std::move(is_leader_fn)) {}
 
   // =========================================================================
-  // Gated Mutating RPCs (Blocked on passive GCS, returns Status::GcsPassive)
+  // Gated RPCs (Blocked on passive GCS, returns Status::GcsPassive)
   // =========================================================================
 
   void HandleRegisterActor(rpc::RegisterActorRequest request,
@@ -177,13 +177,13 @@ class LeaderGatedActorInfoHandler : public rpc::ActorInfoGcsServiceHandler {
         std::move(request), reply, std::move(send_reply_callback));
   }
 
-  // =========================================================================
-  // Pass-Through Read-Only RPCs (Allowed on passive GCS)
-  // =========================================================================
-
   void HandleGetActorInfo(rpc::GetActorInfoRequest request,
                           rpc::GetActorInfoReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override {
+    if (!is_leader_fn_()) {
+      GCS_PROXY_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());
+      return;
+    }
     handler_.HandleGetActorInfo(
         std::move(request), reply, std::move(send_reply_callback));
   }
@@ -191,6 +191,10 @@ class LeaderGatedActorInfoHandler : public rpc::ActorInfoGcsServiceHandler {
   void HandleGetNamedActorInfo(rpc::GetNamedActorInfoRequest request,
                                rpc::GetNamedActorInfoReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override {
+    if (!is_leader_fn_()) {
+      GCS_PROXY_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());
+      return;
+    }
     handler_.HandleGetNamedActorInfo(
         std::move(request), reply, std::move(send_reply_callback));
   }
@@ -198,6 +202,10 @@ class LeaderGatedActorInfoHandler : public rpc::ActorInfoGcsServiceHandler {
   void HandleListNamedActors(rpc::ListNamedActorsRequest request,
                              rpc::ListNamedActorsReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override {
+    if (!is_leader_fn_()) {
+      GCS_PROXY_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());
+      return;
+    }
     handler_.HandleListNamedActors(
         std::move(request), reply, std::move(send_reply_callback));
   }
@@ -205,6 +213,10 @@ class LeaderGatedActorInfoHandler : public rpc::ActorInfoGcsServiceHandler {
   void HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
                              rpc::GetAllActorInfoReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override {
+    if (!is_leader_fn_()) {
+      GCS_PROXY_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());
+      return;
+    }
     handler_.HandleGetAllActorInfo(
         std::move(request), reply, std::move(send_reply_callback));
   }
@@ -221,7 +233,7 @@ class LeaderGatedJobInfoHandler : public rpc::JobInfoGcsServiceHandler {
       : handler_(handler), is_leader_fn_(std::move(is_leader_fn)) {}
 
   // =========================================================================
-  // Gated Mutating RPCs (Blocked on passive GCS, returns Status::GcsPassive)
+  // Gated RPCs (Blocked on passive GCS, returns Status::GcsPassive)
   // =========================================================================
 
   void HandleAddJob(rpc::AddJobRequest request,
@@ -256,13 +268,13 @@ class LeaderGatedJobInfoHandler : public rpc::JobInfoGcsServiceHandler {
         std::move(request), reply, std::move(send_reply_callback));
   }
 
-  // =========================================================================
-  // Pass-Through Read-Only RPCs (Allowed on passive GCS)
-  // =========================================================================
-
   void HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                            rpc::GetAllJobInfoReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override {
+    if (!is_leader_fn_()) {
+      GCS_PROXY_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());
+      return;
+    }
     handler_.HandleGetAllJobInfo(
         std::move(request), reply, std::move(send_reply_callback));
   }
@@ -284,7 +296,7 @@ class LeaderGatedPlacementGroupInfoHandler
       : handler_(handler), is_leader_fn_(std::move(is_leader_fn)) {}
 
   // =========================================================================
-  // Gated Mutating RPCs (Blocked on passive GCS, returns Status::GcsPassive)
+  // Gated RPCs (Blocked on passive GCS, returns Status::GcsPassive)
   // =========================================================================
 
   void HandleCreatePlacementGroup(rpc::CreatePlacementGroupRequest request,
@@ -309,13 +321,13 @@ class LeaderGatedPlacementGroupInfoHandler
         std::move(request), reply, std::move(send_reply_callback));
   }
 
-  // =========================================================================
-  // Pass-Through Read-Only RPCs (Allowed on passive GCS)
-  // =========================================================================
-
   void HandleGetPlacementGroup(rpc::GetPlacementGroupRequest request,
                                rpc::GetPlacementGroupReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override {
+    if (!is_leader_fn_()) {
+      GCS_PROXY_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());
+      return;
+    }
     handler_.HandleGetPlacementGroup(
         std::move(request), reply, std::move(send_reply_callback));
   }
@@ -323,6 +335,10 @@ class LeaderGatedPlacementGroupInfoHandler
   void HandleGetAllPlacementGroup(rpc::GetAllPlacementGroupRequest request,
                                   rpc::GetAllPlacementGroupReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override {
+    if (!is_leader_fn_()) {
+      GCS_PROXY_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());
+      return;
+    }
     handler_.HandleGetAllPlacementGroup(
         std::move(request), reply, std::move(send_reply_callback));
   }
@@ -331,6 +347,10 @@ class LeaderGatedPlacementGroupInfoHandler
       rpc::WaitPlacementGroupUntilReadyRequest request,
       rpc::WaitPlacementGroupUntilReadyReply *reply,
       rpc::SendReplyCallback send_reply_callback) override {
+    if (!is_leader_fn_()) {
+      GCS_PROXY_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());
+      return;
+    }
     handler_.HandleWaitPlacementGroupUntilReady(
         std::move(request), reply, std::move(send_reply_callback));
   }
@@ -338,6 +358,10 @@ class LeaderGatedPlacementGroupInfoHandler
   void HandleGetNamedPlacementGroup(rpc::GetNamedPlacementGroupRequest request,
                                     rpc::GetNamedPlacementGroupReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override {
+    if (!is_leader_fn_()) {
+      GCS_PROXY_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());
+      return;
+    }
     handler_.HandleGetNamedPlacementGroup(
         std::move(request), reply, std::move(send_reply_callback));
   }
@@ -354,7 +378,7 @@ class LeaderGatedInternalKVHandler : public rpc::InternalKVGcsServiceHandler {
       : handler_(handler), is_leader_fn_(std::move(is_leader_fn)) {}
 
   // =========================================================================
-  // Gated Mutating RPCs (Blocked on passive GCS, returns Status::GcsPassive)
+  // Gated RPCs (Blocked on passive GCS, returns Status::GcsPassive)
   // =========================================================================
 
   void HandleInternalKVPut(rpc::InternalKVPutRequest request,
@@ -379,27 +403,24 @@ class LeaderGatedInternalKVHandler : public rpc::InternalKVGcsServiceHandler {
         std::move(request), reply, std::move(send_reply_callback));
   }
 
-  // =========================================================================
-  // Pass-Through Read-Only RPCs (Allowed on passive GCS)
-  // =========================================================================
-
   void HandleInternalKVKeys(rpc::InternalKVKeysRequest request,
                             rpc::InternalKVKeysReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override {
+    if (!is_leader_fn_()) {
+      GCS_PROXY_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());
+      return;
+    }
     handler_.HandleInternalKVKeys(
-        std::move(request), reply, std::move(send_reply_callback));
-  }
-
-  void HandleInternalKVGet(rpc::InternalKVGetRequest request,
-                           rpc::InternalKVGetReply *reply,
-                           rpc::SendReplyCallback send_reply_callback) override {
-    handler_.HandleInternalKVGet(
         std::move(request), reply, std::move(send_reply_callback));
   }
 
   void HandleInternalKVMultiGet(rpc::InternalKVMultiGetRequest request,
                                 rpc::InternalKVMultiGetReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override {
+    if (!is_leader_fn_()) {
+      GCS_PROXY_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());
+      return;
+    }
     handler_.HandleInternalKVMultiGet(
         std::move(request), reply, std::move(send_reply_callback));
   }
@@ -407,7 +428,22 @@ class LeaderGatedInternalKVHandler : public rpc::InternalKVGcsServiceHandler {
   void HandleInternalKVExists(rpc::InternalKVExistsRequest request,
                               rpc::InternalKVExistsReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override {
+    if (!is_leader_fn_()) {
+      GCS_PROXY_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());
+      return;
+    }
     handler_.HandleInternalKVExists(
+        std::move(request), reply, std::move(send_reply_callback));
+  }
+
+  // =========================================================================
+  // Bootstrap Allowlist RPCs (Allowed on passive GCS)
+  // =========================================================================
+
+  void HandleInternalKVGet(rpc::InternalKVGetRequest request,
+                           rpc::InternalKVGetReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override {
+    handler_.HandleInternalKVGet(
         std::move(request), reply, std::move(send_reply_callback));
   }
 
@@ -432,7 +468,7 @@ class LeaderGatedAutoscalerStateHandler
       : handler_(handler), is_leader_fn_(std::move(is_leader_fn)) {}
 
   // =========================================================================
-  // Gated Mutating RPCs (Blocked on passive GCS, returns Status::GcsPassive)
+  // Gated RPCs (Blocked on passive GCS, returns Status::GcsPassive)
   // =========================================================================
 
   void HandleReportAutoscalingState(
@@ -494,14 +530,14 @@ class LeaderGatedAutoscalerStateHandler
         std::move(request), reply, std::move(send_reply_callback));
   }
 
-  // =========================================================================
-  // Pass-Through Read-Only RPCs (Allowed on passive GCS)
-  // =========================================================================
-
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,
       rpc::autoscaler::GetClusterResourceStateReply *reply,
       rpc::SendReplyCallback send_reply_callback) override {
+    if (!is_leader_fn_()) {
+      send_reply_callback(Status::GcsPassive(), nullptr, nullptr);
+      return;
+    }
     handler_.HandleGetClusterResourceState(
         std::move(request), reply, std::move(send_reply_callback));
   }
@@ -509,6 +545,10 @@ class LeaderGatedAutoscalerStateHandler
   void HandleGetClusterStatus(rpc::autoscaler::GetClusterStatusRequest request,
                               rpc::autoscaler::GetClusterStatusReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override {
+    if (!is_leader_fn_()) {
+      send_reply_callback(Status::GcsPassive(), nullptr, nullptr);
+      return;
+    }
     handler_.HandleGetClusterStatus(
         std::move(request), reply, std::move(send_reply_callback));
   }

@@ -756,6 +756,113 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
   }
 }
 
+TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLivenessPassiveNode) {
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_,
+                                   []() { return false; });  // Passive GCS
+
+  // Register head node (this should be cached in passive_local_node_)
+  auto head_node = GenNodeInfo();
+  head_node->set_is_head_node(true);
+
+  rpc::RegisterNodeRequest register_request;
+  register_request.mutable_node_info()->CopyFrom(*head_node);
+  rpc::RegisterNodeReply register_reply;
+  auto send_register_reply_callback =
+      [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {
+        EXPECT_TRUE(status.ok());
+      };
+  node_manager.HandleRegisterNode(
+      register_request, &register_reply, send_register_reply_callback);
+
+  // Test 1: Get all nodes without filter. Should return the passive local node.
+  {
+    absl::flat_hash_set<NodeID> node_ids;
+    std::vector<rpc::GcsNodeAddressAndLiveness> result;
+    node_manager.GetAllNodeAddressAndLiveness(
+        node_ids,
+        std::nullopt,
+        std::numeric_limits<int64_t>::max(),
+        [&result](rpc::GcsNodeAddressAndLiveness &&node) {
+          result.push_back(std::move(node));
+        });
+
+    EXPECT_EQ(result.size(), 1);
+    EXPECT_EQ(result[0].node_id(), head_node->node_id());
+    EXPECT_EQ(result[0].state(), rpc::GcsNodeInfo::ALIVE);
+  }
+
+  // Test 2: Filter by specific node ID
+  {
+    absl::flat_hash_set<NodeID> node_ids;
+    node_ids.insert(NodeID::FromBinary(head_node->node_id()));
+    std::vector<rpc::GcsNodeAddressAndLiveness> result;
+    node_manager.GetAllNodeAddressAndLiveness(
+        node_ids,
+        std::nullopt,
+        std::numeric_limits<int64_t>::max(),
+        [&result](rpc::GcsNodeAddressAndLiveness &&node) {
+          result.push_back(std::move(node));
+        });
+
+    EXPECT_EQ(result.size(), 1);
+    EXPECT_EQ(result[0].node_id(), head_node->node_id());
+  }
+
+  // Test 3: Filter by different node ID (should be empty)
+  {
+    absl::flat_hash_set<NodeID> node_ids;
+    node_ids.insert(NodeID::FromRandom());
+    std::vector<rpc::GcsNodeAddressAndLiveness> result;
+    node_manager.GetAllNodeAddressAndLiveness(
+        node_ids,
+        std::nullopt,
+        std::numeric_limits<int64_t>::max(),
+        [&result](rpc::GcsNodeAddressAndLiveness &&node) {
+          result.push_back(std::move(node));
+        });
+
+    EXPECT_EQ(result.size(), 0);
+  }
+
+  // Test 4: Get only alive nodes
+  {
+    absl::flat_hash_set<NodeID> node_ids;
+    std::vector<rpc::GcsNodeAddressAndLiveness> result;
+    node_manager.GetAllNodeAddressAndLiveness(
+        node_ids,
+        rpc::GcsNodeInfo::ALIVE,
+        std::numeric_limits<int64_t>::max(),
+        [&result](rpc::GcsNodeAddressAndLiveness &&node) {
+          result.push_back(std::move(node));
+        });
+
+    EXPECT_EQ(result.size(), 1);
+  }
+
+  // Test 5: Get only dead nodes (should be empty)
+  {
+    absl::flat_hash_set<NodeID> node_ids;
+    std::vector<rpc::GcsNodeAddressAndLiveness> result;
+    node_manager.GetAllNodeAddressAndLiveness(
+        node_ids,
+        rpc::GcsNodeInfo::DEAD,
+        std::numeric_limits<int64_t>::max(),
+        [&result](rpc::GcsNodeAddressAndLiveness &&node) {
+          result.push_back(std::move(node));
+        });
+
+    EXPECT_EQ(result.size(), 0);
+  }
+}
+
 TEST_F(GcsNodeManagerTest, TestCheckAliveLeadership) {
   // 1. When constructed without is_leader_fn (or default), it must return is_leader =
   // true.
@@ -856,8 +963,8 @@ TEST_F(GcsNodeManagerTest, TestPassiveBypassAndPromotion) {
   node_manager.HandleRegisterNode(request, &reply, send_reply_callback);
   EXPECT_TRUE(wait_ready(promise.get_future()));
 
-  // Verify node is NOT in cache during passive mode
-  EXPECT_FALSE(node_manager.IsNodeAlive(node_id));
+  // Verify node is in cache during passive mode
+  EXPECT_TRUE(node_manager.IsNodeAlive(node_id));
 
   // Verify node is NOT in Redis NodeTable!
   {
@@ -1014,8 +1121,8 @@ TEST_F(GcsNodeManagerTest, TestPassiveBypassAndPromotionStaleHeadCleanup) {
   EXPECT_TRUE(node_manager.IsNodeAlive(worker_node_id));
   // - Dead node D is loaded as DEAD
   EXPECT_TRUE(node_manager.IsNodeDead(dead_node_id));
-  // - New head node B is NOT in cache yet (kept in passive cache)
-  EXPECT_FALSE(node_manager.IsNodeAlive(new_node_id));
+  // - New head node B is in cache (kept in passive cache)
+  EXPECT_TRUE(node_manager.IsNodeAlive(new_node_id));
 
   // 5. Trigger PromoteNodeManager().
   RAY_LOG(INFO) << "TEST: Triggering PromoteNodeManager()";
@@ -1104,6 +1211,92 @@ TEST_F(GcsNodeManagerTest, TestPassiveBypassAndPromotionStaleHeadCleanup) {
     EXPECT_TRUE(wait_ready(redis_promise.get_future()));
   }
   EXPECT_TRUE(node_manager.IsNodeDead(dead_node_id));
+}
+
+TEST_F(GcsNodeManagerTest, TestPassiveHandleGetAllNodeInfoAndCheckAlive) {
+  bool is_leader = false;
+  auto is_leader_fn = [&is_leader]() { return is_leader; };
+
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::FromRandom(),
+                                   *fake_ray_event_recorder_,
+                                   "session_name",
+                                   observability_publisher_.get(),
+                                   clock_,
+                                   is_leader_fn);
+
+  auto wait_ready = [this](std::future<bool> future) {
+    while (future.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready) {
+      io_context_->poll();
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return future.get();
+  };
+
+  // 1. Register a local head node in passive mode (cached in-memory).
+  NodeID passive_node_id = NodeID::FromRandom();
+  auto node_info = GenNodeInfo(10, "127.0.0.1", "passive_node");
+  node_info->set_node_id(passive_node_id.Binary());
+  node_info->set_is_head_node(true);
+
+  rpc::RegisterNodeRequest reg_request;
+  reg_request.mutable_node_info()->CopyFrom(*node_info);
+  rpc::RegisterNodeReply reg_reply;
+  std::promise<bool> reg_promise;
+  auto send_reg_reply_callback =
+      [&reg_promise](Status status, std::function<void()> f1, std::function<void()> f2) {
+        EXPECT_TRUE(status.ok());
+        reg_promise.set_value(true);
+      };
+  node_manager.HandleRegisterNode(reg_request, &reg_reply, send_reg_reply_callback);
+  EXPECT_TRUE(wait_ready(reg_promise.get_future()));
+
+  // 2. Test HandleCheckAlive for passive node.
+  {
+    rpc::CheckAliveRequest check_request;
+    check_request.add_node_ids(passive_node_id.Binary());
+    NodeID random_node_id = NodeID::FromRandom();
+    check_request.add_node_ids(random_node_id.Binary());
+
+    rpc::CheckAliveReply check_reply;
+    std::promise<bool> check_promise;
+    auto send_check_reply_callback = [&check_promise](Status status,
+                                                      std::function<void()> f1,
+                                                      std::function<void()> f2) {
+      EXPECT_TRUE(status.ok());
+      check_promise.set_value(true);
+    };
+    node_manager.HandleCheckAlive(check_request, &check_reply, send_check_reply_callback);
+    EXPECT_TRUE(wait_ready(check_promise.get_future()));
+
+    EXPECT_FALSE(check_reply.is_leader());
+    ASSERT_EQ(check_reply.raylet_alive_size(), 2);
+    EXPECT_TRUE(check_reply.raylet_alive(0));   // passive node is alive
+    EXPECT_FALSE(check_reply.raylet_alive(1));  // random node is not alive
+  }
+
+  // 3. Test HandleGetAllNodeInfo for passive node.
+  {
+    rpc::GetAllNodeInfoRequest get_request;
+    get_request.set_state_filter(rpc::GcsNodeInfo::ALIVE);
+
+    rpc::GetAllNodeInfoReply get_reply;
+    std::promise<bool> get_promise;
+    auto send_get_reply_callback = [&get_promise](Status status,
+                                                  std::function<void()> f1,
+                                                  std::function<void()> f2) {
+      EXPECT_TRUE(status.ok());
+      get_promise.set_value(true);
+    };
+    node_manager.HandleGetAllNodeInfo(get_request, &get_reply, send_get_reply_callback);
+    EXPECT_TRUE(wait_ready(get_promise.get_future()));
+
+    ASSERT_EQ(get_reply.node_info_list_size(), 1);
+    EXPECT_EQ(NodeID::FromBinary(get_reply.node_info_list(0).node_id()), passive_node_id);
+  }
 }
 
 }  // namespace ray

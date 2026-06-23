@@ -386,6 +386,8 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::DoStartLoadingDeferred() {
+  // TODO: the function is unused. To be updated once we integrate the leader election
+  // client with GCS server.
   if (!is_started_.load()) {
     RAY_LOG(INFO)
         << "GCS Server is not yet started. Deferring promotion load to DoStart.";
