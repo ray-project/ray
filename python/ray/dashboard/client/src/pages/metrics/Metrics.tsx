@@ -75,7 +75,7 @@ export const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
 type DashboardTab = "core" | "data";
 
 export const isGrafanaCloudHost = (grafanaHost: string | undefined) => {
-  if (grafanaHost === undefined) {
+  if (!grafanaHost) {
     return false;
   }
 

@@ -74,6 +74,8 @@ describe("Metrics", () => {
     expect(isGrafanaCloudHost("https://grafana.net")).toBe(true);
     expect(isGrafanaCloudHost("https://grafana.example.com")).toBe(false);
     expect(isGrafanaCloudHost(undefined)).toBe(false);
+    expect(isGrafanaCloudHost("")).toBe(false);
+    expect(isGrafanaCloudHost("not a valid url")).toBe(false);
   });
 
   it("renders", async () => {
