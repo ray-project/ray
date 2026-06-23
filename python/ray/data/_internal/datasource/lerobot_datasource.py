@@ -373,19 +373,15 @@ def _build_root(
     root_uri = str(root).rstrip("/")
     fs_root = fs_root.rstrip("/")
 
-    # In lerobot 0.5.x, meta.info is a dict; accessing meta.video_path
-    # raises KeyError when the key is absent.  Use dict-aware lookup.
-    video_path = (
-        meta.info.get("video_path")
-        if isinstance(meta.info, dict)
-        else getattr(meta.info, "video_path", None)
-    )
+    # meta.video_path raises KeyError when the dataset has no video; read the
+    # info dict directly so a missing key resolves to None instead.
+    video_path = meta.info.get("video_path")
     if meta.video_keys and not video_path:
         raise ValueError(
             f"{root_uri!r}: dataset has video keys {meta.video_keys} "
             "but meta/info.json has no 'video_path' template"
         )
-    image_keys = list(getattr(meta, "image_keys", []) or [])
+    image_keys = list(meta.image_keys)
     # Episode metadata as an Arrow table, with _global_from/to_index giving each
     # episode's [from, to) span in the global frame index. lerobot v3 records this
     # authoritatively as dataset_from_index / dataset_to_index -- the same running
@@ -423,7 +419,7 @@ def _build_root(
         episodes_table, meta.data_path, meta.video_keys, image_keys, fs, fs_root
     )
     row_size_bytes = _estimated_row_size_bytes(meta.features, root_uri)
-    stats_json = _stats_to_json(getattr(meta, "stats", None))
+    stats_json = _stats_to_json(meta.stats)
 
     root_bundle = _LeRobotRoot(
         root=video_root_uri,
@@ -1122,14 +1118,6 @@ class LeRobotDatasource(Datasource):
         all_ranges: List[tuple] = []
         for root_idx, ds_root in enumerate(self._roots):
             ranges = sorted(slice_fn(self._episodes[root_idx], ds_root.video_keys))
-            for i in range(1, len(ranges)):
-                if ranges[i - 1][1] != ranges[i][0]:
-                    raise ValueError(
-                        f"Non-contiguous slices in root {root_idx} "
-                        f"({ds_root.root!r}): slice {i - 1} ends at row "
-                        f"{ranges[i - 1][1]} but slice {i} starts at "
-                        f"row {ranges[i][0]}."
-                    )
             all_ranges.extend((root_idx, s, e) for s, e in ranges)
         return all_ranges
 
