@@ -265,9 +265,7 @@ class TestWriteBigQuery:
             dataset=_TEST_BQ_DATASET,
         )
         # Create an empty block with schema but no rows
-        block = pa.Table.from_arrays(
-            [pa.array([], type=pa.int64())], names=["data"]
-        )
+        block = pa.Table.from_arrays([pa.array([], type=pa.int64())], names=["data"])
         ctx = TaskContext(1, "")
         # This should not raise an error - empty blocks should be skipped
         bq_datasink.write(
@@ -275,7 +273,9 @@ class TestWriteBigQuery:
             ctx=ctx,
         )
 
-        ray_get_mock.assert_not_called()
+        # write() always calls ray.get(), but with an empty list since the
+        # zero-row block is filtered out (no remote write tasks launched).
+        ray_get_mock.assert_called_once_with([])
 
 
 if __name__ == "__main__":
