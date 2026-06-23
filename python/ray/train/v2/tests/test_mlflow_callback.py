@@ -260,7 +260,7 @@ class TestMLflowLoggerCallbackLifecycle:
         mock_util.end_run.assert_called_once_with("run-456", status="FAILED")
 
     @patch("ray.train.v2.api.mlflow._MLflowTrackerUtil")
-    def test_after_exception_marks_failed(self, MockUtil):
+    def test_after_exception_sets_failed_flag(self, MockUtil):
         mock_util = MagicMock()
         MockUtil.return_value = mock_util
 
@@ -269,11 +269,12 @@ class TestMLflowLoggerCallbackLifecycle:
         cb._run_id = "run-456"
 
         cb.after_exception(_make_run_context(), {0: RuntimeError("boom")})
-        mock_util.end_run.assert_called_once_with("run-456", status="FAILED")
+        # after_exception only sets the flag; closing is deferred to after_run
+        mock_util.end_run.assert_not_called()
         assert cb._failed is True
 
     @patch("ray.train.v2.api.mlflow._MLflowTrackerUtil")
-    def test_after_run_does_not_override_failed(self, MockUtil):
+    def test_after_run_closes_failed_run(self, MockUtil):
         mock_util = MagicMock()
         MockUtil.return_value = mock_util
 
@@ -283,7 +284,7 @@ class TestMLflowLoggerCallbackLifecycle:
         cb._failed = True  # already marked by after_exception
 
         cb.after_run(_make_run_context(), _make_result(error=True))
-        mock_util.end_run.assert_not_called()
+        mock_util.end_run.assert_called_once_with("run-456", status="FAILED")
 
 
 @_skip_no_mlflow

@@ -181,37 +181,45 @@ class MLflowLoggerCallback(UserCallback):
         run_context: TrainRunContext,
         worker_exceptions: Dict[int, Exception],
     ) -> None:
-        """Mark run as FAILED."""
+        """Mark the run as failed.
+
+        This is called when worker errors are detected, *before* the controller
+        decides whether to retry or raise.  We only set a flag here so that
+        ``after_run`` can close the run with the correct terminal status.
+        Closing the run prematurely would break retry scenarios where the
+        controller schedules a new worker group and continues training.
+        """
         if self._util is None or self._run_id is None:
             return
 
-        try:
-            self._util.end_run(self._run_id, status="FAILED")
-            self._failed = True
-            logger.error("MLflow run %s marked FAILED", self._run_id)
-        except Exception as e:
-            logger.warning("MLflow after_exception failed: %s", e)
-            if self._raise_on_error:
-                raise
+        self._failed = True
+        logger.error("MLflow run %s marked FAILED", self._run_id)
 
     def after_run(self, run_context: TrainRunContext, result: "Result") -> None:
         """Finalize MLflow run: upload last checkpoint if needed, end run."""
         if self._util is None or self._run_id is None:
             return
 
-        try:
-            # Upload last checkpoint if strategy is "last"
-            if self._save_checkpoints == "last" and self._last_checkpoint is not None:
+        # Upload last checkpoint if strategy is "last" — in its own try-except
+        # so that a checkpoint failure does not prevent the run from being closed.
+        if self._save_checkpoints == "last" and self._last_checkpoint is not None:
+            try:
                 self._upload_checkpoint(self._last_checkpoint, "last")
+            except Exception as e:
+                logger.warning("MLflow checkpoint upload failed: %s", e)
+                if self._raise_on_error:
+                    raise
 
-            # End run (don't override FAILED status from after_exception)
-            if not self._failed:
+        # End run with the appropriate terminal status.
+        try:
+            if self._failed:
+                status = "FAILED"
+            else:
                 status = "FINISHED" if result.error is None else "FAILED"
-                self._util.end_run(self._run_id, status=status)
-
-            logger.info("MLflow run %s completed", self._run_id)
+            self._util.end_run(self._run_id, status=status)
+            logger.info("MLflow run %s completed with status %s", self._run_id, status)
         except Exception as e:
-            logger.warning("MLflow after_run failed: %s", e)
+            logger.warning("MLflow end_run failed: %s", e)
             if self._raise_on_error:
                 raise
 
