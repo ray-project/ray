@@ -195,7 +195,12 @@ def _has_glob_chars(path: str) -> bool:
         return True
     # Bracket expression: [ followed by ], not preceded by a space.
     # Require at least one character between brackets to avoid matching empty [].
-    return bool(re.search(r"(?<! )\[[^\]]+\]", check_target))
+    # Only treat as glob for cloud paths (with a scheme).  Local directory
+    # names may contain literal brackets (e.g. "data[backup]/") and prior
+    # to expand_globs these paths worked unchanged.
+    if parsed.scheme:
+        return bool(re.search(r"(?<! )\[[^\]]+\]", parsed.path))
+    return False
 
 
 def _split_glob_base(pattern: str) -> Tuple[str, str]:

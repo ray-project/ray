@@ -32,8 +32,13 @@ class TestHasGlobChars:
         # because '?' in S3/GCS keys is uncommon and users can use '*' instead.
         assert not _has_glob_chars("s3://bucket/file?.parquet")
 
-    def test_bracket_expression(self):
-        assert _has_glob_chars("sub[12]/file.parquet")
+    def test_bracket_expression_local(self):
+        # '[...]' in local paths is treated as literal (not a glob char)
+        assert not _has_glob_chars("sub[12]/file.parquet")
+
+    def test_bracket_expression_cloud(self):
+        # '[...]' in cloud paths IS treated as a glob char
+        assert _has_glob_chars("s3://bucket/sub[12]/file.parquet")
 
     def test_no_glob(self):
         assert not _has_glob_chars("/data/file.parquet")
