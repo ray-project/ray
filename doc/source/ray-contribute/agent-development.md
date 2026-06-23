@@ -6,7 +6,7 @@ myst:
 
 (agent-development)=
 
-# Using Agents for Development
+# Using agents for development
 
 AI coding agents can accelerate development on the Ray codebase. This guide covers how the Ray project is configured for agent-assisted development and how to set up your local environment.
 
@@ -25,16 +25,16 @@ AI coding agents can accelerate development on the Ray codebase. This guide cove
 
 The Ray repository includes shared Claude Code configuration that is version-controlled:
 
-- `.claude/CLAUDE.md` — root instructions loaded in every session
-- `<library>/.claude/CLAUDE.md` — library-specific instructions loaded on-demand (e.g., `python/ray/data/.claude/CLAUDE.md`)
-- `.claude/rules/` — coding rules scoped by file type
-- `.claude/skills/` — reusable workflows (rebuild, lint, fetch CI logs)
-- `.claude/agents/` — project-specific subagents
+- `.claude/CLAUDE.md`: root instructions loaded in every session
+- `<library>/.claude/CLAUDE.md`: library-specific instructions loaded on-demand (for example, `python/ray/data/.claude/CLAUDE.md`)
+- `.claude/rules/`: coding rules scoped by file type
+- `.claude/skills/`: reusable workflows (rebuild, lint, fetch CI logs)
+- `.claude/agents/`: project-specific subagents
 
 Personal configuration lives in files that are **not** version-controlled:
 
-- `CLAUDE.local.md` — your environment-specific instructions
-- `.claude/settings.local.json` — your personal permission overrides
+- `CLAUDE.local.md`: your environment-specific instructions
+- `.claude/settings.local.json`: your personal permission overrides
 
 ### Personal setup
 
@@ -53,7 +53,7 @@ After installing Claude Code, create a `CLAUDE.local.md` file in the repository 
 - Add any personal preferences here
 ```
 
-This file is gitignored and will not be committed.
+This file is gitignored and isn't committed.
 
 ### Cross-worktree setup
 
@@ -106,15 +106,15 @@ The `/fetch-buildkite-logs` skill requires a Buildkite API token to fetch CI log
 
 Shared skills available in every session:
 
-- `/rebuild` — guided Ray rebuild based on what files changed
-- `/lint` — run linting and formatting checks
-- `/fetch-buildkite-logs` — fetch and analyze Buildkite CI logs
+- `/rebuild`: guided Ray rebuild based on what files changed
+- `/lint`: run linting and formatting checks
+- `/fetch-buildkite-logs`: fetch and analyze Buildkite CI logs
 
 ### Adding team rules
 
 Each Ray library has a `.claude/rules/` directory where teams can add coding rules that apply when working on their files. To add a new rule:
 
-1. Create a `.md` file in your library's rules directory, e.g., `python/ray/data/.claude/rules/data-conventions.md`
+1. Create a `.md` file in your library's rules directory, for example, `python/ray/data/.claude/rules/data-conventions.md`
 
 2. Add a `paths` frontmatter to scope it to your files:
 
@@ -133,7 +133,7 @@ Rules without `paths` frontmatter load unconditionally in every session. See the
 
 Skills are reusable workflows that load on-demand when invoked with `/<skill-name>`. To add a new skill:
 
-1. Create a directory under your library's `.claude/skills/`, e.g., `python/ray/data/.claude/skills/debug-data/`
+1. Create a directory under your library's `.claude/skills/`, for example, `python/ray/data/.claude/skills/debug-data/`
 
 2. Add a `SKILL.md` file with frontmatter:
 
