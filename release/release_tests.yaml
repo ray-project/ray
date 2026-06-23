@@ -1563,7 +1563,7 @@
   group: Serve tests
   working_dir: serve_tests
 
-  frequency: nightly
+  frequency: weekly
   team: serve
 
   cluster:
@@ -1632,7 +1632,7 @@
   group: Serve tests
   working_dir: serve_tests
 
-  frequency: nightly
+  frequency: weekly
   team: serve
 
   cluster:
@@ -1757,7 +1757,7 @@
   group: Serve tests
   working_dir: serve_tests
 
-  frequency: nightly
+  frequency: weekly
   team: serve
 
   cluster:
