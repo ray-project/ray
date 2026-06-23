@@ -847,7 +847,6 @@ Ray Data interoperates with PyTorch and TensorFlow datasets.
             function with small datasets like MNIST or CIFAR.
 
         .. testcode::
-            :skipif: True
 
             import ray
             import tensorflow_datasets as tfds
