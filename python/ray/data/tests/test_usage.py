@@ -96,6 +96,26 @@ def test_build_usage_uuid_map(reset_collector, mock_record):
     )
 
 
+def test_self_zip_one_uuid_per_operator(reset_collector, mock_record):
+    """``ds.zip(ds)`` reuses the same logical operator instances across both zip
+    branches (a shared-node DAG). Each discrete operator must be assigned
+    exactly one usage_uuid."""
+    ds = ray.data.range(1).map_batches(lambda b: b)
+    zipped = ds.zip(ds)
+
+    collector.record_workload("exec-1", zipped._logical_plan)
+    usage_uuid_map = collector.build_usage_uuid_map(zipped._logical_plan)
+
+    _, payload_json = mock_record[-1]
+    entry = json.loads(payload_json)["executions"][0]
+
+    recorded_uuids = [op["usage_uuid"] for op in entry["workload"]["ops"]]
+    # build_usage_uuid_map is keyed by operator id, so its length is the number
+    # of discrete operators. Each should map to exactly one recorded uuid.
+    num_discrete_ops = len(usage_uuid_map)
+    assert len(recorded_uuids) == len(set(recorded_uuids)) == num_discrete_ops
+
+
 def test_detected_issues_enum_serialized_to_value(reset_collector, mock_record):
     """An ``IssueType`` enum member is serialized by its string value, not its
     ``repr`` (``IssueType.HANGING``)."""
