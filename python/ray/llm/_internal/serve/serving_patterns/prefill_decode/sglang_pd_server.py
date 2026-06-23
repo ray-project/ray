@@ -79,6 +79,8 @@ class SGLangPDDecodeServer(LLMServer):
     The proxy is not involved in the bootstrap handshake or KV transfer.
     """
 
+    # _default_engine_cls is set so that LLMServer._get_default_engine_class()
+    # returns SGLangServer without falling through to the vLLM import path.
     _default_engine_cls = SGLangServer
 
     async def __init__(
@@ -130,6 +132,15 @@ class SGLangPDDecodeServer(LLMServer):
             self._decode_tp_size,
         )
 
+    @classmethod
+    def get_deployment_options(cls, llm_config: "LLMConfig"):
+        # LLMServer.get_deployment_options calls get_engine_config(), which
+        # unconditionally imports vLLM. The SGLang byod image uninstalls vLLM,
+        # so that path fails. SGLangServer.get_deployment_options reads GPU
+        # resource requirements directly from engine_kwargs (tp_size, pp_size)
+        # without touching vLLM, so we delegate to it instead.
+        return SGLangServer.get_deployment_options(llm_config)
+
     def _prepare_prefill_request(
         self, request: RequestType, bootstrap_room: int
     ) -> RequestType:
@@ -149,14 +160,17 @@ class SGLangPDDecodeServer(LLMServer):
         object.__setattr__(decode_request, "bootstrap_room", bootstrap_room)
         return decode_request
 
-    async def _pd_handle_request(
+    async def _run_pd_request(
         self,
         request: RequestType,
-        raw_request_info: Optional[RawRequestInfo] = None,
-    ) -> AsyncGenerator[
-        Union[str, ChatCompletionResponse, CompletionResponse, ErrorResponse], None
-    ]:
+        raw_request_info: Optional[RawRequestInfo],
+        method: str,
+    ):
         """Orchestrate SGLang prefill (remote) then decode (local engine).
+
+        Follows the same coroutine-returns-generator pattern as
+        LLMServer._run_request: this is an async function (not a generator)
+        that returns the async generator from the parent's chat/completions.
 
         Unlike the vLLM flow, we do not wait for a prefill response before
         starting decode — the bootstrap_room is established upfront and both
@@ -165,13 +179,6 @@ class SGLangPDDecodeServer(LLMServer):
         request_id = get_serve_request_id()
         if request_id:
             object.__setattr__(request, "request_id", request_id)
-
-        if isinstance(request, ChatCompletionRequest):
-            method = "chat"
-        elif isinstance(request, CompletionRequest):
-            method = "completions"
-        else:
-            raise ValueError(f"Unsupported request type: {type(request)}")
 
         # Generate a unique rendezvous ID for this request.
         # Both prefill and decode engines use bootstrap_room % dp_size to
@@ -204,26 +211,21 @@ class SGLangPDDecodeServer(LLMServer):
 
         asyncio.ensure_future(_drain_prefill(prefill_gen))
 
-        # Run decode on the local engine. This blocks internally until the KV
-        # cache arrives from prefill via the bootstrap server, then streams tokens.
-        local_gen = await getattr(super(), method)(decode_request, raw_request_info)
-        async for chunk in local_gen:
-            yield chunk
+        # Run decode on the local engine via the parent LLMServer method.
+        # super().chat / super().completions is a coroutine that returns an
+        # async generator — await it to get the generator, then return it.
+        return await getattr(super(), method)(decode_request, raw_request_info)
 
     async def chat(
         self,
         request: ChatCompletionRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
-        return self._pd_handle_request(request, raw_request_info)
+        return await self._run_pd_request(request, raw_request_info, "chat")
 
     async def completions(
         self,
         request: CompletionRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
-        return self._pd_handle_request(request, raw_request_info)
-
-    @classmethod
-    def get_deployment_options(cls, llm_config: "LLMConfig"):
-        return SGLangServer.get_deployment_options(llm_config)
+        return await self._run_pd_request(request, raw_request_info, "completions")
