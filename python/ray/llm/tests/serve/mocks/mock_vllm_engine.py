@@ -31,6 +31,9 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
+from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+    DefaultConnectorBackend,
+)
 from ray.llm._internal.serve.utils.lora_serve_utils import LoraModelLoader
 from ray.serve.context import (
     _get_internal_replica_context,
@@ -51,14 +54,8 @@ class MockVLLMEngine(LLMEngine):
             llm_config: The llm configuration for this engine
         """
         self.llm_config = llm_config
-        # Mirror the real engine's setup_engine_backend() so the P/D orchestrator
-        # finds a KV-connector backend. Install the default backend since the real
-        # Nixl/LMCache setup() needs hardware the mock lacks.
+        # The mock skips engine init, where setup_engine_backend attaches this.
         if llm_config.engine_kwargs.get("kv_transfer_config"):
-            from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
-                DefaultConnectorBackend,
-            )
-
             llm_config._kv_connector_backend = DefaultConnectorBackend(llm_config)
         self.started = False
         self._current_lora_model: Dict[str, DiskMultiplexConfig] = {}
