@@ -1751,10 +1751,6 @@ class HAProxyManager(ProxyActorInterface):
                 stats = await self._haproxy.get_all_stats()
                 ready_backends = set()
                 for backend, servers in stats.items():
-                    logger.info(
-                        f"Backend: {backend} with servers: {servers}.",
-                        extra={"log_to_stderr": True},
-                    )
                     desired_servers = desired_backend_servers.get(backend, set())
                     desired_servers.update(fallback_servers)
                     for server_name, server in servers.items():
@@ -1766,10 +1762,6 @@ class HAProxyManager(ProxyActorInterface):
                             break
 
                 ready_to_serve = set(desired_backend_servers) == ready_backends
-                logger.info(
-                    f"Ready to serve: {ready_to_serve} with desired_backend_servers: {desired_backend_servers} and ready_backends: {ready_backends}.",
-                    extra={"log_to_stderr": True},
-                )
             except Exception:
                 pass
             if not ready_to_serve:
