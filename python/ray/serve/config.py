@@ -396,11 +396,10 @@ class RequestRouterConfig(BaseModel):
         self.request_router_class = request_router_path
 
     def is_default_request_router(self) -> bool:
-        """Whether `request_router_class` is Serve's default request router.
+        """Whether request_router_class resolves to Serve's default router.
 
-        Compares against the default's package and defining-module import paths
-        so an equivalent spelling is not treated as custom. Does not import the
-        configured class, which may be unavailable in the controller.
+        Compares import paths instead of importing, so a custom class missing on
+        the controller does not raise.
         """
         request_router_class = self.request_router_class
         if not isinstance(request_router_class, str):

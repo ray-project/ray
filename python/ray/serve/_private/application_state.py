@@ -1951,10 +1951,8 @@ def override_deployment_info(
         ):
             deployment.route_prefix = app_route_prefix
 
-    # `build_app` rejects a custom ingress request router under HAProxy, but it
-    # only sees the code-defined config. A config override can introduce one
-    # here, so re-check the final ingress config. The check is skipped when an
-    # `ingress_request_router` is attached (HAProxy delegates routing back to it).
+    # build_app cannot see config overrides, so re-check the post-override
+    # ingress router here.
     if RAY_SERVE_ENABLE_HA_PROXY and not any(
         info.ingress_request_router for info in deployment_infos.values()
     ):

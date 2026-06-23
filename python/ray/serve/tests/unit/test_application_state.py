@@ -1534,9 +1534,8 @@ class TestOverrideDeploymentInfo:
     def test_override_custom_ingress_request_router_under_haproxy(
         self, monkeypatch, haproxy_enabled
     ):
-        """A config override that sets a custom router on the ingress deployment
-        is rejected only under HAProxy. build_app validates the code-defined
-        config; this override path is where build_app cannot see the router."""
+        """A custom router added by config override is rejected only under
+        HAProxy, since build_app cannot see the override."""
         monkeypatch.setattr(
             "ray.serve._private.application_state.RAY_SERVE_ENABLE_HA_PROXY",
             haproxy_enabled,

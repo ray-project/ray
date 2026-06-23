@@ -775,8 +775,8 @@ def test_build_app_allows_custom_ingress_request_router_without_haproxy(monkeypa
 
 
 def test_build_app_haproxy_allows_default_request_router_passed_as_class(monkeypatch):
-    """The default router supplied as a class object (e.g. to set
-    `request_router_kwargs`) is not custom and must build under HAProxy."""
+    """The default router passed as a class object is not custom and must build
+    under HAProxy."""
     monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
 
     @serve.deployment(
