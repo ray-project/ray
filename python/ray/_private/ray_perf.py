@@ -194,8 +194,9 @@ def main(results=None):
                     done.set()
 
         refs = [ray.put(0) for _ in range(n)]
-        for ref in refs:
-            core_worker.add_object_out_of_scope_callback(ref, on_freed)
+        assert all(
+            core_worker.add_object_out_of_scope_callback(ref, on_freed) for ref in refs
+        )
         # Drop the last references; every callback must then fire on the
         # dedicated background thread.
         del refs
