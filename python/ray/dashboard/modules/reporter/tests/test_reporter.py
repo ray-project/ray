@@ -467,6 +467,10 @@ def test_report_stats(tmp_path):
 
 
 def test_generate_stats_payload_normalizes_none_process_cmdline(tmp_path):
+    from ray._common.pydantic_compat import PYDANTIC_INSTALLED
+    if not PYDANTIC_INSTALLED:
+        pytest.skip("Pydantic is not installed")
+
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     dashboard_agent.session_dir = str(tmp_path)
