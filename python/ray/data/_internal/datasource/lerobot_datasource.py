@@ -42,7 +42,6 @@ from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
-    import datasets
     import fsspec
     import pyarrow.fs
     from lerobot.datasets.dataset_metadata import LeRobotDatasetMetadata
@@ -115,40 +114,6 @@ class _LeRobotRoot(NamedTuple):
 # ---------------------------------------------------------------------------
 # Driver-side derived-state builders.
 # ---------------------------------------------------------------------------
-
-
-def _build_episodes_table(hf_episodes: "datasets.Dataset") -> pa.Table:
-    """Convert lerobot's HF ``Dataset`` of episodes to a pyarrow ``Table`` with
-    ``_global_from_index`` / ``_global_to_index`` columns giving each episode's
-    ``[from, to)`` span in the dataset's global frame index (matching the
-    ``index`` column the data parquet is read by).
-
-    Uses lerobot v3's ``dataset_from_index`` / ``dataset_to_index`` columns
-    verbatim: they are the same running frame counter the data ``index`` column
-    is derived from, so the range needs no assumption about episode ordering or
-    per-episode ``length``.
-    """
-    episodes = hf_episodes.with_format("arrow")[:]
-    missing = {"dataset_from_index", "dataset_to_index"} - set(episodes.column_names)
-    if missing:
-        raise ValueError(
-            f"Episode metadata is missing {sorted(missing)}, required to locate "
-            f"each episode's frames in the global index. This does not look like a "
-            f"LeRobot v3 dataset."
-        )
-    global_from = (
-        episodes.column("dataset_from_index")
-        .to_numpy(zero_copy_only=False)
-        .astype(np.int64)
-    )
-    global_to = (
-        episodes.column("dataset_to_index")
-        .to_numpy(zero_copy_only=False)
-        .astype(np.int64)
-    )
-    return episodes.append_column(
-        "_global_from_index", pa.array(global_from, type=pa.int64())
-    ).append_column("_global_to_index", pa.array(global_to, type=pa.int64()))
 
 
 def _build_schema(
@@ -444,7 +409,18 @@ def _build_root(
         )
 
     image_keys = list(getattr(meta, "image_keys", []) or [])
-    episodes_table = _build_episodes_table(meta.episodes)
+    # Episode metadata as an Arrow table, with _global_from/to_index giving each
+    # episode's [from, to) span in the global frame index. lerobot v3 records this
+    # authoritatively as dataset_from_index / dataset_to_index -- the same running
+    # counter the data `index` column is derived from.
+    episodes_table = meta.episodes.with_format("arrow")[:]
+    episodes_table = episodes_table.append_column(
+        "_global_from_index",
+        episodes_table.column("dataset_from_index").cast(pa.int64()),
+    ).append_column(
+        "_global_to_index",
+        episodes_table.column("dataset_to_index").cast(pa.int64()),
+    )
     # Project to only the columns the planner (slicing) and worker decode use,
     # so each per-task episode slice shipped to workers stays small at PB scale.
     keep = [
