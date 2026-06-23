@@ -427,26 +427,53 @@ def test_read_lerobot_missing_dataset(ray_start_regular_shared):
         ray.data.read_lerobot("/nonexistent/dataset")
 
 
-def test_read_lerobot_incompatible_fps_raises(ray_start_regular_shared, tmp_path):
-    """Test that mismatched fps raises ValueError."""
+@pytest.mark.parametrize(
+    "kind, match",
+    [
+        ("video_keys", "video_keys mismatch"),
+        ("image_keys", "image_keys mismatch"),
+        ("fps", "fps mismatch"),
+        ("feature", "Feature mismatch"),
+    ],
+)
+def test_read_lerobot_multi_root_mismatch_raises(
+    ray_start_regular_shared, tmp_path, kind, match
+):
+    """Combining roots with incompatible schemas must fail fast in __init__ with
+    a clear error naming the mismatched dimension. The dimensions are checked in
+    order -- video_keys, image_keys, fps, then non-camera features -- so each
+    case below matches the earlier dimensions and differs only in its own.
+    """
     from ray.data.datasource import LeRobotDatasource
 
-    root_a = create_lerobot_dataset(
-        str(tmp_path / "ds_a"), num_episodes=1, has_video=False
-    )
-    root_b = create_lerobot_dataset(
-        str(tmp_path / "ds_b"), num_episodes=1, has_video=False
-    )
+    a, b = str(tmp_path / "ds_a"), str(tmp_path / "ds_b")
+    if kind == "video_keys":
+        # mp4-video camera vs no camera -> different video_keys.
+        root_a = create_lerobot_dataset(a, num_episodes=1, has_video=True)
+        root_b = create_lerobot_dataset(b, num_episodes=1, has_video=False)
+    elif kind == "image_keys":
+        # in-parquet image camera vs no camera -> video_keys both empty (match),
+        # image_keys differ.
+        root_a = create_lerobot_dataset(
+            a, num_episodes=1, has_video=False, image_camera=True
+        )
+        root_b = create_lerobot_dataset(b, num_episodes=1, has_video=False)
+    else:
+        # fps / feature: identical scalar datasets, then perturb root_b's
+        # info.json so only the dimension under test differs.
+        root_a = create_lerobot_dataset(a, num_episodes=1, has_video=False)
+        root_b = create_lerobot_dataset(b, num_episodes=1, has_video=False)
+        info_path = os.path.join(root_b, "meta", "info.json")
+        with open(info_path) as f:
+            info = json.load(f)
+        if kind == "fps":
+            info["fps"] = 30
+        else:  # feature: add a scalar feature root_a does not have
+            info["features"]["extra_signal"] = {"dtype": "float32", "shape": [2]}
+        with open(info_path, "w") as f:
+            json.dump(info, f)
 
-    # Modify fps in root_b
-    info_path = os.path.join(root_b, "meta", "info.json")
-    with open(info_path, "r") as f:
-        info = json.load(f)
-    info["fps"] = 30
-    with open(info_path, "w") as f:
-        json.dump(info, f)
-
-    with pytest.raises(ValueError, match="fps mismatch"):
+    with pytest.raises(ValueError, match=match):
         LeRobotDatasource([root_a, root_b])
 
 
