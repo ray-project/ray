@@ -142,6 +142,87 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   ASSERT_FALSE(workers_to_kill[2].second);
 }
 
+TEST_F(WorkerKillingPolicyByTimeTest, TestPolicyPrioritizesNewerActorWhenBothAreActors) {
+  TaskID owner_id = TaskID::ForDriverTask(job_id_);
+  std::shared_ptr<WorkerInterface> older_actor =
+      CreateActorWorker(owner_id, has_retry_, port_, clock_, 1);
+  clock_.AdvanceTime(absl::Milliseconds(1));
+  std::shared_ptr<WorkerInterface> newer_actor =
+      CreateActorWorker(owner_id, has_retry_, port_, clock_, 2);
+
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+  workers.push_back(older_actor);
+  workers.push_back(newer_actor);
+
+  // Memory to free is calulated as current memory usage - threshold + buffer.
+  // In this case, the memory to free is 1200 - 1000 + 100 = 300 bytes, so the
+  // newer actor is selected.
+  MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(1200);
+  ProcessesMemorySnapshot process_snapshot =
+      CreateProcessSnapshot({{older_actor, 300}, {newer_actor, 300}});
+
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill =
+      policy_.SelectWorkersToKill(workers, process_snapshot, system_snapshot);
+
+  ASSERT_EQ(workers_to_kill.size(), 1);
+  ASSERT_EQ(workers_to_kill[0].first->WorkerId(), newer_actor->WorkerId());
+}
+
+TEST_F(WorkerKillingPolicyByTimeTest, TestPolicyPrioritizesTaskOverActor) {
+  TaskID owner_id = TaskID::ForDriverTask(job_id_);
+  std::shared_ptr<WorkerInterface> task_worker = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1);
+  clock_.AdvanceTime(absl::Milliseconds(1));
+  std::shared_ptr<WorkerInterface> actor_worker =
+      CreateActorWorker(owner_id, has_retry_, port_, clock_, 2);
+
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+  workers.push_back(task_worker);
+  workers.push_back(actor_worker);
+
+  // Memory to free is calulated as current memory usage - threshold + buffer.
+  // In this case, the memory to free is 1200 - 1000 + 100 = 300 bytes, so the
+  // task worker is selected.
+  MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(1200);
+  ProcessesMemorySnapshot process_snapshot =
+      CreateProcessSnapshot({{task_worker, 300}, {actor_worker, 300}});
+
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill =
+      policy_.SelectWorkersToKill(workers, process_snapshot, system_snapshot);
+
+  ASSERT_EQ(workers_to_kill.size(), 1);
+  ASSERT_EQ(workers_to_kill[0].first->WorkerId(), task_worker->WorkerId());
+}
+
+TEST_F(WorkerKillingPolicyByTimeTest,
+       TestPolicyPrioritizesRetriableActorOverNonRetriableTask) {
+  TaskID owner_id = TaskID::ForDriverTask(job_id_);
+  // Retriability dominates the worker type: even though tasks are normally
+  // prioritized over actors, a retriable actor is killed before a non-retriable
+  // task.
+  std::shared_ptr<WorkerInterface> retriable_actor =
+      CreateActorWorker(owner_id, has_retry_, port_, clock_, 1);
+  std::shared_ptr<WorkerInterface> non_retriable_task =
+      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 2);
+
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+  workers.push_back(non_retriable_task);
+  workers.push_back(retriable_actor);
+
+  // Memory to free is calulated as current memory usage - threshold + buffer.
+  // In this case, the memory to free is 1200 - 1000 + 100 = 300 bytes.
+  MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(1200);
+  ProcessesMemorySnapshot process_snapshot =
+      CreateProcessSnapshot({{non_retriable_task, 500}, {retriable_actor, 500}});
+
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill =
+      policy_.SelectWorkersToKill(workers, process_snapshot, system_snapshot);
+
+  ASSERT_EQ(workers_to_kill.size(), 1);
+  ASSERT_EQ(workers_to_kill[0].first->WorkerId(), retriable_actor->WorkerId());
+  ASSERT_TRUE(workers_to_kill[0].second);
+}
+
 TEST_F(WorkerKillingPolicyByTimeTest, TestPolicyFreesEnoughWorkersToGetUnderThreshold) {
   TaskID owner_id = TaskID::ForDriverTask(job_id_);
   std::shared_ptr<WorkerInterface> worker1 = CreateTaskWorker(
@@ -191,10 +272,10 @@ TEST_F(WorkerKillingPolicyByTimeTest, TestPolicyRetriableFlagSetCorrectly) {
       owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1);
   std::shared_ptr<WorkerInterface> non_retriable_task =
       CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 2);
-  std::shared_ptr<WorkerInterface> retriable_actor = CreateTaskWorker(
-      owner_id, has_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK, clock_, 3);
-  std::shared_ptr<WorkerInterface> non_retriable_actor = CreateTaskWorker(
-      owner_id, no_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK, clock_, 4);
+  std::shared_ptr<WorkerInterface> retriable_actor =
+      CreateActorWorker(owner_id, has_retry_, port_, clock_, 3);
+  std::shared_ptr<WorkerInterface> non_retriable_actor =
+      CreateActorWorker(owner_id, no_retry_, port_, clock_, 4);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(retriable_task);

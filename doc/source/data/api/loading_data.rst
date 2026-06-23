@@ -352,6 +352,15 @@ WebDataset
 
    read_webdataset
 
+Zarr
+^^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_zarr
+
 Partitioning API
 ^^^^^^^^^^^^^^^^
 

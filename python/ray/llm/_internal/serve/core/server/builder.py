@@ -16,6 +16,9 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 )
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.utils import (
+    _maybe_setup_kv_aware_routing,
+)
 from ray.serve.deployment import Application
 
 logger = get_logger(__name__)
@@ -75,6 +78,8 @@ def build_llm_deployment(
     deployment_options = maybe_apply_llm_deployment_config_defaults(
         DEFAULT_DEPLOYMENT_OPTIONS, deployment_options
     )
+
+    _maybe_setup_kv_aware_routing(deployment_options)
 
     logger.info("============== Deployment Options ==============")
     logger.info(pprint.pformat(deployment_options))
