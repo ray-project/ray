@@ -66,11 +66,11 @@
       row_group_size: [64MiB]
       compression_ratio: [5.0]
       read_memory: [2147483648, 4294967296, 8589934592]
-      max_bucket_size: [5GiB]
-      max_coalesced_scan_bytes: [128MiB]
-      batch_target_bytes: [64MiB]
-      use_version: [v1]
-      trial: [1, 2, 3]
+      max_bucket_size: [5GiB, 15GiB, 30GiB]
+      max_coalesced_scan_bytes: [128MiB, 256MiB, 512MiB, 1GiB]
+      batch_target_bytes: [64MiB, 128MiB, 256MiB]
+      use_version: [v3]
+      trial: [1]
   run:
     timeout: 10800
     script: >
@@ -87,9 +87,9 @@
       --max-bucket-size {{max_bucket_size}}
       --batch-target-bytes {{batch_target_bytes}}
       --max-coalesced-scan-bytes {{max_coalesced_scan_bytes}}
+      --read-threads 1
+      --batch-readahead 1
 #      --max-calls 1
-#      --read-threads 1
-#      --batch-readahead 1
 #      --footer-size-estimate off
 #      --write-output s3://runtime-release-test-artifacts/read_path_optimisation/chunked_parquet_write_output/{{file_size}}_{{num_files}}_{{row_group_size}}_{{compression_ratio}}_{{max_bucket_size}}_{{batch_target_bytes}}_{{use_version}}_{{trial}}
 
