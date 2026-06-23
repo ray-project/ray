@@ -45,7 +45,7 @@ The following examples show how to configure elastic training with GPUs and TPUs
 
         The following example configures elastic training with a range of 1-2 ``v6e`` TPU slices.
         Each ``num_workers`` value maps to the total number of TPU VM hosts across all slices.
-        In this example.. we use a ``4x4`` TPU topology, one slice has 4 hosts, so we set both ``min_workers`` and ``max_workers`` to multiples of 4.
+        In this example, we use a ``4x4`` TPU topology, one slice has 4 hosts, so we set both ``min_workers`` and ``max_workers`` to multiples of 4.
 
         .. code-block:: python
 
