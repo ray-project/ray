@@ -203,6 +203,8 @@ def test_get_shard_batch_returns_ready_values(ray_start_regular_shared_2_cpus):
 def test_get_shard_batch_warns_then_raises_on_stall(
     ray_start_regular_shared_2_cpus, propagate_logs, caplog
 ):
+    """A stalled fetch warns partway through, then raises at the timeout."""
+
     @ray.remote
     def _never_ready():
         import time
@@ -220,11 +222,11 @@ def test_get_shard_batch_warns_then_raises_on_stall(
                 partition_id=7,
                 batch_index=0,
                 num_batches=1,
-                timeout_s=0.1,
+                timeout_s=0.3,
             )
-    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
-    assert len(warnings) == 1
-    assert "partition 7" in warnings[0].message
+    assert [r.levelname for r in caplog.records].count("WARNING") == 1
+    assert [r.levelname for r in caplog.records].count("ERROR") == 1
+    assert "partition 7" in caplog.records[0].message
     ray.cancel(ref, force=True)
 
 

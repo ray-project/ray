@@ -154,6 +154,10 @@ def _read_partition_ipc(buf: pa.Buffer) -> Optional[pa.Table]:
     return pa.Table.from_batches(batches, schema=schema)
 
 
+# Warn once a shard fetch has stalled for this fraction of the fail timeout
+_REDUCE_GET_WARN_AT_FRACTION = 1 / 3
+
+
 def _get_shard_batch(
     batch: List[ObjectRef],
     partition_id: int,
@@ -161,7 +165,7 @@ def _get_shard_batch(
     num_batches: int,
     timeout_s: float,
 ) -> List[Optional[pa.Buffer]]:
-    """``ray.get`` a batch of shard refs, failing loudly if the fetch stalls.
+    """``ray.get`` a batch of shard refs, warning then failing if the fetch stalls.
 
     Args:
         batch: Shard ObjectRefs to fetch (a slice of one partition's shards).
@@ -181,10 +185,20 @@ def _get_shard_batch(
         return ray.get(batch)
 
     wait_start_s = time.perf_counter()
+    warn_timeout_s = timeout_s * _REDUCE_GET_WARN_AT_FRACTION
     try:
-        return ray.get(batch, timeout=timeout_s)
+        return ray.get(batch, timeout=warn_timeout_s)
     except GetTimeoutError:
         logger.warning(
+            f"Shuffle reduce task for partition {partition_id} has waited "
+            f"{time.perf_counter() - wait_start_s:.0f}s for {len(batch)} "
+            f"shard(s) in batch {batch_index + 1}/{num_batches}."
+        )
+
+    try:
+        return ray.get(batch, timeout=timeout_s - warn_timeout_s)
+    except GetTimeoutError:
+        logger.error(
             f"Shuffle reduce task for partition {partition_id} timed out after "
             f"{time.perf_counter() - wait_start_s:.0f}s waiting for {len(batch)} "
             f"shard(s) in batch {batch_index + 1}/{num_batches}."
@@ -221,7 +235,7 @@ def _shuffle_reduce_task(
             flush) -- the "partition = block" contract.
         streaming: Flush incrementally (True) or accumulate then reduce (False).
         batch_size: Number of shard refs to ray.get() at a time.
-        get_timeout_s: Timeout for each batch ray.get().
+        get_timeout_s: Timeout for batch ray.get().
     """
     start_time_s = time.perf_counter()
 
