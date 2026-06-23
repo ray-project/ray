@@ -53,6 +53,24 @@ def _is_efa_available() -> bool:
     return False
 
 
+def _nixl_transport_available_in_process() -> bool:
+    """Returns whether the NIXL tensor transport can be initialized in this process.
+
+    Returns:
+        True if the NIXL agent initializes successfully, False on any failure
+        (e.g. nixl not installed, LIBFABRIC/EFA probe failure, or other backend
+        init errors).
+    """
+    try:
+        from ray.experimental.rdt.util import get_tensor_transport_manager
+
+        get_tensor_transport_manager("NIXL").get_nixl_agent()
+        return True
+    except Exception:
+        logger.debug("NIXL tensor transport unavailable on actor.", exc_info=True)
+        return False
+
+
 @dataclass
 class NixlCommunicatorMetadata(CommunicatorMetadata):
     """Metadata for the NIXL communicator."""
@@ -229,15 +247,7 @@ class NixlTensorTransport(TensorTransportManager):
         def __ray_actor_has_tensor_transport__(
             self: "ray.actor.ActorHandle",
         ) -> bool:
-            try:
-                from ray.experimental.rdt.util import (
-                    get_tensor_transport_manager,
-                )
-
-                get_tensor_transport_manager("NIXL").get_nixl_agent()
-                return True
-            except ImportError:
-                return False
+            return _nixl_transport_available_in_process()
 
         return ray.get(
             actor.__ray_call__.options(concurrency_group="_ray_system").remote(
@@ -643,6 +653,7 @@ class NixlTensorTransport(TensorTransportManager):
                         mem_type=mem_type,
                     )
                 except Exception as e:
+                    # TODO(xyuzh): Remove the warning after nixl surfaces the error message
                     if self._backend == "LIBFABRIC":
                         troubleshooting = (
                             "See https://github.com/ai-dynamo/nixl/blob/main/src/plugins/libfabric/README.md "

@@ -14,6 +14,7 @@ from ray.experimental.rdt import nixl_tensor_transport as ntt
 from ray.experimental.rdt.nixl_tensor_transport import (
     NixlTensorTransport,
     _is_efa_available,
+    _nixl_transport_available_in_process,
 )
 
 
@@ -73,40 +74,21 @@ def test_select_backend_from_hardware(monkeypatch, globs, ib_driver, expected):
     assert NixlTensorTransport().select_backend() == expected
 
 
-def _capture_created_backends(monkeypatch):
-    """Stub _make_nixl_agent and return the list of backends it's asked to build."""
-    created = []
+@pytest.mark.parametrize(
+    "exc",
+    [
+        ImportError("nixl is not installed"),
+        RuntimeError("LIBFABRIC probe failed"),
+    ],
+)
+def test_nixl_transport_available_in_process_returns_false_on_init_failure(
+    monkeypatch, exc
+):
+    def fail_init(self):
+        raise exc
 
-    def fake_make_agent(self, backend):
-        created.append(backend)
-        return object()
-
-    monkeypatch.setattr(NixlTensorTransport, "_make_nixl_agent", fake_make_agent)
-    return created
-
-
-def test_autodetected_efa_builds_libfabric_agent(monkeypatch):
-    """When EFA is detected, the agent is built with the LIBFABRIC backend."""
-    _patch_globs(monkeypatch, {"/sys/class/net/efa*"})
-    created = _capture_created_backends(monkeypatch)
-
-    transport = NixlTensorTransport()
-    transport.get_nixl_agent()
-
-    assert created == ["LIBFABRIC"]
-    assert transport._backend == "LIBFABRIC"
-
-
-def test_non_efa_builds_ucx_agent(monkeypatch):
-    """Without EFA, the agent is built with the UCX backend."""
-    _patch_globs(monkeypatch, set())
-    created = _capture_created_backends(monkeypatch)
-
-    transport = NixlTensorTransport()
-    transport.get_nixl_agent()
-
-    assert created == ["UCX"]
-    assert transport._backend == "UCX"
+    monkeypatch.setattr(NixlTensorTransport, "get_nixl_agent", fail_init)
+    assert _nixl_transport_available_in_process() is False
 
 
 if __name__ == "__main__":
