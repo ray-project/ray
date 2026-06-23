@@ -107,7 +107,16 @@ rtd:
 	@# Remove cached serve API stubs so autosummary regenerates them with correct templates
 	find source/serve/api/doc/ -name "ray.serve.*.rst" -delete 2>/dev/null || true
 	python update_cache_env.py --ray-dir=$(RAY_DIR)
-	$(SPHINXBUILD) -W --keep-going -b html $(ALLLOCALSPHINXOPTS) $(HTMLDIR)
+	@# Build into $(BUILDDIR)/html, where load_doc_cache.py extracted the full prior
+	@# site and update_cache_env.py refreshed the output timestamps, so Sphinx rewrites
+	@# only the PR-changed pages. Then publish the whole tree to $(HTMLDIR): building
+	@# straight into an empty $(HTMLDIR) (RTD's output dir) would emit only the changed
+	@# pages and drop the rest of the site.
+	$(SPHINXBUILD) -W --keep-going -b html $(ALLLOCALSPHINXOPTS) $(BUILDDIR)/html
+	@if [ "$(HTMLDIR)" != "$(BUILDDIR)/html" ]; then \
+		echo "Publishing $(BUILDDIR)/html -> $(HTMLDIR)"; \
+		mkdir -p $(HTMLDIR) && cp -a $(BUILDDIR)/html/. $(HTMLDIR)/; \
+	fi
 
 dirhtml:
 	$(SPHINXBUILD) -b dirhtml $(ALLSPHINXOPTS) $(BUILDDIR)/dirhtml
