@@ -154,6 +154,10 @@ def create_lerobot_dataset(
     ep_data = {
         "episode_index": list(range(num_episodes)),
         "length": [frames_per_episode] * num_episodes,
+        # lerobot v3's authoritative per-episode global frame range -- a running
+        # counter aligned with the data `index` column (0..total_frames).
+        "dataset_from_index": [i * frames_per_episode for i in range(num_episodes)],
+        "dataset_to_index": [(i + 1) * frames_per_episode for i in range(num_episodes)],
         "data/chunk_index": [0] * num_episodes,
         "data/file_index": [0] * num_episodes,
     }
@@ -734,6 +738,30 @@ def test_lerobot_compat_creds_cache_closes_handles(tmp_path):
     cache.clear()
     assert all(h.closed for h in handles), "clear() must close the fsspec handles"
     assert cache._cache == {}
+
+
+@pytest.mark.parametrize("with_global_index_cols", [True, False])
+def test_build_episodes_table_global_index(with_global_index_cols):
+    """_build_episodes_table prefers lerobot's authoritative dataset_from_index /
+    dataset_to_index columns, and only falls back to cumsum(length) when they
+    are absent."""
+    import datasets
+
+    from ray.data._internal.datasource.lerobot_datasource import _build_episodes_table
+
+    data = {"episode_index": [0, 1, 2], "length": [1, 1, 1]}
+    if with_global_index_cols:
+        # Deliberately inconsistent with `length` so the assertion proves the
+        # function read these columns instead of recomputing from `length`.
+        data["dataset_from_index"] = [0, 3, 5]
+        data["dataset_to_index"] = [3, 5, 9]
+        expected_from, expected_to = [0, 3, 5], [3, 5, 9]
+    else:
+        expected_from, expected_to = [0, 1, 2], [1, 2, 3]  # cumsum of length
+
+    table = _build_episodes_table(datasets.Dataset.from_dict(data))
+    assert table.column("_global_from_index").to_pylist() == expected_from
+    assert table.column("_global_to_index").to_pylist() == expected_to
 
 
 if __name__ == "__main__":

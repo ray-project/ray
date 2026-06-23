@@ -119,23 +119,45 @@ class _LeRobotRoot(NamedTuple):
 
 
 def _build_episodes_table(hf_episodes: "datasets.Dataset") -> pa.Table:
-    """Convert lerobot's HF ``Dataset`` of episodes to a pyarrow ``Table``
-    with cumulative ``_global_from_index`` / ``_global_to_index`` columns
-    derived from per-episode lengths.
+    """Convert lerobot's HF ``Dataset`` of episodes to a pyarrow ``Table`` with
+    ``_global_from_index`` / ``_global_to_index`` columns giving each episode's
+    ``[from, to)`` span in the dataset's global frame index (matching the
+    ``index`` column the data parquet is read by).
+
+    Prefers lerobot v3's authoritative ``dataset_from_index`` /
+    ``dataset_to_index`` columns -- they are the same running frame counter the
+    ``index`` column is derived from, so no assumption about episode ordering is
+    needed. Episode metadata lacking them (older / non-standard writers) falls
+    back to a cumulative sum of per-episode ``length``, which does assume the
+    episodes are 0-indexed and stored in order.
     """
     episodes = hf_episodes.with_format("arrow")[:]
-    ep_indices = episodes.column("episode_index").to_numpy(zero_copy_only=False)
-    n = len(ep_indices)
-    if not np.array_equal(ep_indices, np.arange(n)):
-        raise ValueError(
-            f"Episodes are not 0-indexed and contiguous: "
-            f"first={ep_indices[0] if n else None}, "
-            f"last={ep_indices[-1] if n else None}, count={n}"
+    if {"dataset_from_index", "dataset_to_index"} <= set(episodes.column_names):
+        global_from = (
+            episodes.column("dataset_from_index")
+            .to_numpy(zero_copy_only=False)
+            .astype(np.int64)
         )
-    # Cast to int64 before cumsum: PB-scale cumulative frame counts may overflow int32.
-    lengths = episodes.column("length").to_numpy(zero_copy_only=False).astype(np.int64)
-    global_to = np.cumsum(lengths)
-    global_from = global_to - lengths
+        global_to = (
+            episodes.column("dataset_to_index")
+            .to_numpy(zero_copy_only=False)
+            .astype(np.int64)
+        )
+    else:
+        ep_indices = episodes.column("episode_index").to_numpy(zero_copy_only=False)
+        n = len(ep_indices)
+        if not np.array_equal(ep_indices, np.arange(n)):
+            raise ValueError(
+                f"Episodes are not 0-indexed and contiguous: "
+                f"first={ep_indices[0] if n else None}, "
+                f"last={ep_indices[-1] if n else None}, count={n}"
+            )
+        # int64 before cumsum: PB-scale cumulative frame counts may overflow int32.
+        lengths = (
+            episodes.column("length").to_numpy(zero_copy_only=False).astype(np.int64)
+        )
+        global_to = np.cumsum(lengths)
+        global_from = global_to - lengths
     return episodes.append_column(
         "_global_from_index", pa.array(global_from, type=pa.int64())
     ).append_column("_global_to_index", pa.array(global_to, type=pa.int64()))
@@ -1075,8 +1097,48 @@ class LeRobotDatasource(Datasource):
 
     @staticmethod
     def _slices_by_file_group(episodes: pa.Table, video_keys: List[str]) -> List[tuple]:
+        """Group episodes into one row range per physical file.
+
+        Episodes whose frames live in the same file are coalesced into a single
+        contiguous range, so a read task opens each file once instead of
+        re-opening it per episode.
+
+        Args:
+            episodes: The projected per-root episodes table -- one row per
+                episode, ordered by episode index. Columns read here:
+                ``_global_from_index`` / ``_global_to_index`` (the episode's
+                ``[from, to)`` span in the root's global frame index), plus a
+                per-episode file locator: ``videos/<vk>/chunk_index`` and
+                ``videos/<vk>/file_index`` for each video key, or
+                ``data/chunk_index`` / ``data/file_index`` when there are no
+                videos (image / no-camera datasets keep frames in the data
+                parquet).
+            video_keys: The root's video camera keys; empty for image-only or
+                camera-less datasets, where grouping falls back to the data
+                parquet file.
+
+        Returns:
+            A list of ``(global_from_index, global_to_index)`` tuples, one per
+            file group, in first-seen order (``_slice`` sorts them afterward).
+            Same ``(from, to)`` shape that :meth:`_slices_by_episode` returns one
+            per episode -- this just merges the episodes that share a file.
+
+        Raises:
+            ValueError: if two episodes map to the same file group but are not
+                contiguous in the global index (a non-standard layout); use
+                ``group_by_episode=True`` for those datasets.
+
+        Example:
+            Episodes spanning ``[0,30) [30,60) [60,90)`` in
+            ``videos/cam/file-000.mp4`` and ``[90,120)`` in ``file-001.mp4``
+            group to ``[(0, 90), (90, 120)]`` -- two ranges, one per mp4.
+        """
         eps = episodes
 
+        # key_columns holds one per-episode value list per locator field --
+        # (chunk_index, file_index) for each video key, or for the data parquet
+        # when there are no videos. Episode i's group key is the tuple of these
+        # columns at index i, so episodes whose frames share a file share a key.
         key_columns: List[list] = []
         if video_keys:
             for vk in video_keys:
