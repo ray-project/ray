@@ -2625,19 +2625,22 @@ def read_lerobot(
             :class:`~fsspec.implementations.arrow.ArrowFSWrapper`) or an fsspec
             ``AbstractFileSystem``. By default it is selected from the URI
             scheme, including the ``s3://anonymous@bucket/…`` convention for
-            public buckets. An fsspec filesystem's credentials also cover the
-            by-URI video decode path; a pyarrow filesystem's cannot, so for
-            credentialed cloud *video* pass ``storage_options`` (see below) or an
-            fsspec filesystem instead.
+            public buckets. For credentialed cloud datasets the recommended setup
+            is a pyarrow ``filesystem`` together with ``storage_options`` (see
+            below): the filesystem covers metadata and parquet, and
+            ``storage_options`` supplies the credentials for the by-URI video
+            decode path.
         frame_tolerance_s: Max seconds a decoded video frame's timestamp may
             differ from a row's timestamp before it is rejected. ``None`` (the
             default) uses ``0.5 / fps`` — half a frame interval, e.g. ~0.05s at
             10fps. Increase to tolerate timestamp jitter; decrease for stricter
             alignment.
-        storage_options: fsspec storage options for cloud reads (e.g.
-            credentials or a custom ``endpoint_url``). Used when ``filesystem``
-            is not given; with a pyarrow ``filesystem`` it still supplies the
-            credentials for the by-URI video decode path.
+        storage_options: fsspec storage options (e.g. credentials or a custom
+            ``endpoint_url``). They supply the credentials for the by-URI video
+            decode path -- videos are streamed directly through torchcodec /
+            fsspec, not through ``filesystem`` -- so pass them alongside a pyarrow
+            ``filesystem`` for credentialed cloud video. When ``filesystem`` is
+            not given, they also resolve the metadata / parquet filesystem.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
             Video decoding is CPU-intensive, so raising this (and lowering
             ``concurrency``) can prevent oversubscription.

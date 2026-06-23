@@ -687,28 +687,26 @@ def _pyarrow_local_fs():
 
 
 @pytest.mark.parametrize(
-    "uri,fs_factory,expect_unavailable,expect_key",
+    "uri,fs_factory,expect_key",
     [
         # An fsspec filesystem's credentials reach the by-URI video path.
-        ("/tmp/ds", _fsspec_fs_with_creds, False, "SECRET"),
-        # A pyarrow filesystem can't expose creds: a remote root is flagged...
-        ("s3://bucket/ds", _pyarrow_local_fs, True, None),
-        # ...but a local pyarrow root needs none, so it isn't flagged.
-        ("/local/ds", _pyarrow_local_fs, False, None),
+        ("/tmp/ds", _fsspec_fs_with_creds, "SECRET"),
+        # A pyarrow filesystem can't expose creds; video credentials come from
+        # storage_options instead, so none are threaded in here.
+        ("s3://bucket/ds", _pyarrow_local_fs, None),
     ],
 )
-def test_resolve_filesystem_video_credentials(
-    uri, fs_factory, expect_unavailable, expect_key
-):
-    """``filesystem=`` must extend to the by-URI video decode path: fsspec
-    credentials are threaded through, while the unbridgeable pyarrow-remote
-    case is flagged so the datasource can fail loudly when video is present."""
+def test_resolve_filesystem_video_credentials(uri, fs_factory, expect_key):
+    """``filesystem=`` extends to the by-URI video decode path: an fsspec
+    filesystem's credentials are threaded into the video options; a pyarrow
+    filesystem's are not (those credentials come from storage_options)."""
     from ray.data._internal.datasource.lerobot_datasource import _resolve_filesystem
 
-    _, _, _, video_opts, unavailable = _resolve_filesystem(uri, filesystem=fs_factory())
-    assert unavailable is expect_unavailable
+    _, _, _, video_opts = _resolve_filesystem(uri, filesystem=fs_factory())
     if expect_key is not None:
         assert video_opts.get("key") == expect_key
+    else:
+        assert "key" not in video_opts
 
 
 def test_lerobot_compat_creds_cache_closes_handles(tmp_path):

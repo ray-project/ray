@@ -225,23 +225,16 @@ def _resolve_filesystem(
       those itself via ``fsspec.open``, not through ``fs`` — so they get the URI
       ``video_root_uri`` and options ``video_storage_options`` instead.
 
-    Precedence for ``fs`` (matching every other ``read_*`` API):
-
-    1. an explicit *filesystem* — a pyarrow ``FileSystem`` (wrapped with
-       :class:`~fsspec.implementations.arrow.ArrowFSWrapper`) or an fsspec
-       ``AbstractFileSystem``;
-    2. otherwise, when *storage_options* is given, ``fsspec.url_to_fs`` so one
-       set of options covers metadata, parquet, and video;
-    3. otherwise Ray Data's standard :func:`_resolve_paths_and_filesystem`
-       (scheme detection plus conventions such as ``s3://anonymous@bucket/…``).
-
     The ``s3://anonymous@…`` convention is also mapped onto the by-URI video
     path: the marker is stripped from ``video_root_uri`` and ``anon=True`` is
     threaded into ``video_storage_options`` (s3fs spells anonymous ``anon=True``).
 
-    Returns ``(fs, fs_root, video_root_uri, video_storage_options,
-    video_creds_unavailable)`` — the last flag is True when an explicit pyarrow
-    *filesystem* cannot supply credentials to the by-URI video path (see below).
+    Returns ``(fs, fs_root, video_root_uri, video_storage_options)``. Video files
+    are streamed by URI (torchcodec opens them via ``fsspec.open``), so their
+    credentials come from ``video_storage_options`` — i.e. from *storage_options*
+    and from an fsspec *filesystem*'s own options. A pyarrow *filesystem* cannot
+    expose credentials, so pass *storage_options* alongside it for credentialed
+    cloud video.
     """
     import fsspec
     from fsspec.core import split_protocol
@@ -261,7 +254,6 @@ def _resolve_filesystem(
         video_root_uri = f"{protocol}://{rest[len('anonymous@') :]}"
         video_storage_options.setdefault("anon", True)
 
-    video_creds_unavailable = False
     if filesystem is not None:
         from pyarrow.fs import FileSystem as _PaFileSystem
 
@@ -279,14 +271,9 @@ def _resolve_filesystem(
             from fsspec.implementations.arrow import ArrowFSWrapper
 
             fs = ArrowFSWrapper(filesystem)
-            # pyarrow filesystems do not expose their credentials, so we cannot
-            # thread them into the by-URI video path. For a remote root that
-            # would leave video decode without credentials; flag it so we can
-            # fail loudly later, but only if the dataset actually has video.
-            video_creds_unavailable = bool(protocol) and protocol not in (
-                "file",
-                "local",
-            )
+            # A pyarrow filesystem does not expose its credentials, so it can't
+            # supply them to the by-URI video path; video credentials come from
+            # storage_options instead (see the docstring).
         else:
             raise TypeError(
                 f"filesystem must be a pyarrow.fs.FileSystem or an "
@@ -310,7 +297,7 @@ def _resolve_filesystem(
         fs = ArrowFSWrapper(pa_fs)
         fs_root = resolved_paths[0].rstrip("/")
 
-    return fs, fs_root, video_root_uri, video_storage_options, video_creds_unavailable
+    return fs, fs_root, video_root_uri, video_storage_options
 
 
 def _load_lerobot_metadata(
@@ -368,7 +355,6 @@ def _build_root(
     fs_root: str,
     video_root_uri: str,
     video_storage_options: Dict[str, Any],
-    video_creds_unavailable: bool = False,
     frame_tolerance_s: Optional[float] = None,
 ) -> Tuple[_LeRobotRoot, pa.Table]:
     """Compute the per-root derived state bundle for a (pristine) lerobot
@@ -399,15 +385,6 @@ def _build_root(
             f"{root_uri!r}: dataset has video keys {meta.video_keys} "
             "but meta/info.json has no 'video_path' template"
         )
-    if meta.video_keys and video_creds_unavailable:
-        raise ValueError(
-            f"{root_uri!r}: an explicit pyarrow `filesystem=` cannot supply "
-            f"credentials to the video decode path (videos are streamed by URI "
-            f"through torchcodec/fsspec, not through the filesystem object). For "
-            f"credentialed cloud video, pass `storage_options=` (e.g. "
-            f"{{'key': ..., 'secret': ...}}) or an fsspec filesystem instead."
-        )
-
     image_keys = list(getattr(meta, "image_keys", []) or [])
     # Episode metadata as an Arrow table, with _global_from/to_index giving each
     # episode's [from, to) span in the global frame index. lerobot v3 records this
@@ -969,7 +946,7 @@ class LeRobotDatasource(Datasource):
         # self.meta for callers that want full lerobot API access.
         self.metas = [
             _load_lerobot_metadata(r, fs, fs_root)
-            for r, (fs, fs_root, _, _, _) in zip(roots, self._resolved)
+            for r, (fs, fs_root, _, _) in zip(roots, self._resolved)
         ]
 
         # The video/image deps are needed only for the camera kinds actually
@@ -1030,10 +1007,9 @@ class LeRobotDatasource(Datasource):
                 fs_root,
                 video_uri,
                 video_opts,
-                video_creds_unavailable=creds_unavail,
                 frame_tolerance_s=self._frame_tolerance_s,
             )
-            for m, r, (fs, fs_root, video_uri, video_opts, creds_unavail) in zip(
+            for m, r, (fs, fs_root, video_uri, video_opts) in zip(
                 self.metas, roots, self._resolved
             )
         ]
