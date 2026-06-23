@@ -1906,16 +1906,10 @@ def _shape_blocks(
 
     for block in blocks:
         output_buffer.add_block(block)
-
-        while output_buffer.has_next():
-            block = output_buffer.next()
-            yield block
+        yield from output_buffer.iter_ready_blocks()
 
     output_buffer.finalize()
-
-    while output_buffer.has_next():
-        block = output_buffer.next()
-        yield block
+    yield from output_buffer.iter_ready_blocks()
 
 
 def _get_total_cluster_resources() -> ExecutionResources:

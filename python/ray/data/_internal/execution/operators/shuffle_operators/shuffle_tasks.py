@@ -212,8 +212,8 @@ def _shuffle_reduce_task(
             )
         for block in reduce_fn(partition_id, tables):
             output_buffer.add_block(block)
-            while output_buffer.has_next():
-                yield from _yield_with_stats(output_buffer.next())
+            for ready_block in output_buffer.iter_ready_blocks():
+                yield from _yield_with_stats(ready_block)
 
     # Step 1: fetch shard refs in batches, decompress, accumulate.  In
     # streaming mode, when the accumulator reaches target_max_block_size,
@@ -247,5 +247,5 @@ def _shuffle_reduce_task(
     # any partial block.
     if output_buffer is not None:
         output_buffer.finalize()
-        while output_buffer.has_next():
-            yield from _yield_with_stats(output_buffer.next())
+        for ready_block in output_buffer.iter_ready_blocks():
+            yield from _yield_with_stats(ready_block)
