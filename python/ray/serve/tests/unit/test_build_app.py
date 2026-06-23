@@ -761,5 +761,33 @@ def test_build_app_allows_custom_ingress_request_router_in_direct_streaming(
     assert built_app.ingress_request_router_deployment is not None
 
 
+def test_build_app_haproxy_allows_custom_router_on_non_ingress_deployment(monkeypatch):
+    """The guard targets only the ingress, so a custom router on a downstream
+    deployment is honored under HAProxy."""
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+
+    @serve.deployment(
+        request_router_config=RequestRouterConfig(request_router_class=RoundRobinRouter)
+    )
+    class Downstream:
+        pass
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, child):
+            pass
+
+    built_app: BuiltApplication = build_app(
+        Ingress.bind(Downstream.bind()),
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    assert {deployment.name for deployment in built_app.deployments} == {
+        "Ingress",
+        "Downstream",
+    }
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

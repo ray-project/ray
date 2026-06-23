@@ -1434,6 +1434,19 @@ class TestOverrideDeploymentInfo:
             deployer_job_id="",
         )
 
+    @staticmethod
+    def _make_info(ingress=False, ingress_request_router=False):
+        return DeploymentInfo(
+            route_prefix="/" if ingress else None,
+            version="123",
+            deployment_config=DeploymentConfig(num_replicas=1),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+            ingress=ingress,
+            ingress_request_router=ingress_request_router,
+        )
+
     def test_override_deployment_config(self, info):
         config = ServeApplicationSchema(
             name="default",
@@ -1550,21 +1563,9 @@ class TestOverrideDeploymentInfo:
             haproxy_enabled,
         )
 
-        def make_info(ingress=False, ingress_request_router=False):
-            return DeploymentInfo(
-                route_prefix="/" if ingress else None,
-                version="123",
-                deployment_config=DeploymentConfig(num_replicas=1),
-                replica_config=ReplicaConfig.create(lambda x: x),
-                start_time_ms=0,
-                deployer_job_id="",
-                ingress=ingress,
-                ingress_request_router=ingress_request_router,
-            )
-
-        infos = {"Ingress": make_info(ingress=True)}
+        infos = {"Ingress": self._make_info(ingress=True)}
         if attach_ingress_request_router:
-            infos["Router"] = make_info(ingress_request_router=True)
+            infos["Router"] = self._make_info(ingress_request_router=True)
         config = ServeApplicationSchema(
             name="default",
             import_path="test.import.path",
@@ -1588,6 +1589,36 @@ class TestOverrideDeploymentInfo:
                 "Ingress"
             ].deployment_config.request_router_config
             assert not router_config.is_default_request_router()
+
+    def test_override_allows_custom_router_on_non_ingress_under_haproxy(
+        self, monkeypatch
+    ):
+        """The guard targets only the ingress, so a custom router on a downstream
+        deployment is honored under HAProxy."""
+        monkeypatch.setattr(
+            "ray.serve._private.application_state.RAY_SERVE_ENABLE_HA_PROXY", True
+        )
+        infos = {
+            "Ingress": self._make_info(ingress=True),
+            "Downstream": self._make_info(ingress=False),
+        }
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="Downstream",
+                    request_router_config=RequestRouterConfig(
+                        request_router_class=RoundRobinRouter
+                    ),
+                )
+            ],
+        )
+
+        router_config = override_deployment_info(infos, config)[
+            "Downstream"
+        ].deployment_config.request_router_config
+        assert not router_config.is_default_request_router()
 
     def test_override_ray_actor_options_1(self, info):
         """Test runtime env specified in config at deployment level."""
