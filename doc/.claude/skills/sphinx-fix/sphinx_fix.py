@@ -183,6 +183,11 @@ def _yaml_fallback(text: str):
             continue
         indent = len(content) - len(content.lstrip(" "))
         items.append([indent, content.strip()])
+    if not items:
+        # Empty / comment-only / whitespace-only input. Match PyYAML's
+        # safe_load("") -> None so load_rules raises a clean RulesError and
+        # _crosscheck_yaml stays in agreement with PyYAML.
+        return None
     pos = [0]
 
     def peek():
