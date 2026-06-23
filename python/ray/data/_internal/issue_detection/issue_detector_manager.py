@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 from typing import TYPE_CHECKING, Dict, List, Set, Tuple
 
@@ -36,8 +37,11 @@ class IssueDetectorManager:
         }
         self.executor = executor
         self._operator_event_exporter = get_operator_event_exporter()
-        # Cumulative (issue_type, operator) pairs for usage collection.
+        # Set of detected (issue_type, operator) pairs for usage collection.
         self._detected_issues: Set[Tuple[IssueType, "PhysicalOperator"]] = set()
+        # We protect the above set with a lock to avoid race conditions between the executor thread, that invokes the detectors (adding to the set of detected issues), and the
+        # consumer thread that checks the set of detected issues on shutdown (in the usage callback).
+        self._detected_issues_lock = threading.Lock()
 
     def invoke_detectors(self) -> None:
         curr_time = time.perf_counter()
@@ -73,7 +77,8 @@ class IssueDetectorManager:
             if not operator:
                 continue
 
-            self._detected_issues.add((issue.issue_type, operator))
+            with self._detected_issues_lock:
+                self._detected_issues.add((issue.issue_type, operator))
 
             issue_event_type = format_export_issue_event_name(issue.issue_type)
             if (
@@ -103,4 +108,5 @@ class IssueDetectorManager:
 
     def get_detected_issues(self) -> Set[Tuple[IssueType, "PhysicalOperator"]]:
         """Return a copy of the detected (issue_type, operator) pairs."""
-        return set(self._detected_issues)
+        with self._detected_issues_lock:
+            return set(self._detected_issues)
