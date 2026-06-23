@@ -2272,7 +2272,9 @@ tblib==3.2.2
     #   -r python/requirements/ml/train-test-requirements.txt
     #   distributed
 tenacity==9.1.4
-    # via pyiceberg
+    # via
+    #   -r python/requirements/ml/train-test-requirements.txt
+    #   pyiceberg
 tensorboard==2.20.0
     # via
     #   -r python/requirements/test-requirements.txt
