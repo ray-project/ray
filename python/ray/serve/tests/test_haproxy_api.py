@@ -1227,8 +1227,26 @@ async def test_pin_miss_falls_back_to_fallback_server(haproxy_api_cleanup):
                 timeout=10,
             )
 
-            # The router pins an unknown replica, so every POST must land on the
-            # fallback proxy: 200, served by "FALLBACK", never 503.
+            # The fallback is a `backup` server, so the /-/healthz wait above
+            # (satisfied by the primary replica alone) does not gate it. Poll a
+            # pin-miss POST until the fallback's health check marks it UP;
+            # before that, use-server is skipped and the request load-balances
+            # onto the primary replica.
+            def _pin_miss_reaches_fallback():
+                resp = requests.post(
+                    f"http://127.0.0.1:{haproxy_port}/predict",
+                    json={"prompt": "hi"},
+                    timeout=5,
+                )
+                return (
+                    resp.status_code == 200
+                    and resp.headers.get("x-replica-id") == "FALLBACK"
+                )
+
+            await async_wait_for_condition(_pin_miss_reaches_fallback, timeout=10)
+
+            # Once the fallback is UP, pin-miss routing is deterministic: every
+            # POST lands on the fallback proxy, served by "FALLBACK", never 503.
             for _ in range(3):
                 resp = requests.post(
                     f"http://127.0.0.1:{haproxy_port}/predict",
@@ -1238,7 +1256,8 @@ async def test_pin_miss_falls_back_to_fallback_server(haproxy_api_cleanup):
                 assert resp.status_code == 200, resp.text
                 assert resp.headers.get("x-replica-id") == "FALLBACK", resp.headers
 
-            # The affinity-breaking primary backend must never be selected.
+            # A pin-miss must never fall through to the plain primary backend
+            # (a silent router bypass); it always routes via the router backend.
             stats_csv = requests.get(
                 f"http://127.0.0.1:{stats_port}/stats;csv", timeout=5
             ).text
