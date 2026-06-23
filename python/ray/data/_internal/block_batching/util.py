@@ -107,9 +107,7 @@ def iter_threaded(
         slot_acquired = False
         try:
             # Construct `fn_iter` inside the try so any exception during
-            # construction propagates to the consumer via the outer except
-            # (rather than killing the worker thread and hanging the consumer
-            # on result_queue.get()).
+            # construction propagates to the consumer via the outer except.
             fn_iter = fn(_locked_iter())
             while True:
                 slot_acquired = _acquire_slot()
@@ -117,10 +115,8 @@ def iter_threaded(
                     break
                 item = next(fn_iter)
                 result_queue.put(item)
-                # Slot ownership has transferred to the queued item; the
-                # consumer releases it. Resetting here prevents the worker's
-                # finally from double-releasing if a future addition after
-                # this point raises.
+                # The consumer pulling from the result_queue will release the slot.
+                # Resetting here prevents the finally block from double-releasing.
                 slot_acquired = False
         except StopIteration:
             pass
