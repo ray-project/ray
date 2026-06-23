@@ -1,7 +1,6 @@
 import pytest
 
 import ray
-from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     PhysicalOperator,
@@ -22,6 +21,7 @@ from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import noop_counter
+from ray.data.tests.test_resource_manager import StubBlockRefCounter
 
 
 def test_physical_operator_tracks_output_dependencies():
@@ -130,12 +130,13 @@ def test_does_not_double_count_usage_from_union():
 
     # Create a resource manager.
     total_resources = ExecutionResources(cpu=0, object_store_memory=2)
+    counter = StubBlockRefCounter()
     resource_manager = ResourceManager(
         topology,
         ExecutionOptions(),
         lambda: total_resources,
         DataContext.get_current(),
-        BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+        counter,
     )
 
     # Create two 1-byte `RefBundle`s.
@@ -154,13 +155,9 @@ def test_does_not_double_count_usage_from_union():
     # Add two 1-byte `RefBundle` to the union operator.
     topology[union_op].add_output(bundle1)
     topology[union_op].add_output(bundle2)
-    # With BlockRefCounter, blocks are attributed to their original producer, not to
-    # union_op (which is a pass-through and produces no new ObjectRefs). Simulate
-    # real execution: bundle1 came from input1, bundle2 from input2.
-    # Bypass the Ray core-worker callback since these are fake ObjectRefs.
-    counter = resource_manager.block_ref_counter
-    counter._bytes_by_producer[input1.id] = 1
-    counter._bytes_by_producer[input2.id] = 1
+    # Blocks are attributed to their original producer, not union_op.
+    counter.set_usage(input1.id, 1)
+    counter.set_usage(input2.id, 1)
     resource_manager.update_usages()
 
     # The total object store memory usage should be 2. If the resource manager double-
@@ -200,12 +197,13 @@ def test_per_input_inqueue_attribution_for_union():
 
     # Create a resource manager.
     total_resources = ExecutionResources(cpu=0, object_store_memory=200)
+    counter = StubBlockRefCounter()
     resource_manager = ResourceManager(
         topology,
         options,
         lambda: total_resources,
         DataContext.get_current(),
-        BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+        counter,
     )
 
     # Create two 10-byte RefBundles with distinct block refs (simulates real execution
@@ -226,9 +224,8 @@ def test_per_input_inqueue_attribution_for_union():
     # With preserve_order=True, _add_input_inner routes to _input_buffers[input_index].
     union_op.add_input(bundle1, input_index=1)
     union_op.add_input(bundle2, input_index=1)
-    # With BlockRefCounter, blocks in union's input buffer are attributed to the
-    # operator that produced them (input2, not input1 or union_op).
-    resource_manager.block_ref_counter._bytes_by_producer[input2.id] = 20
+    # Blocks in union's input buffer are attributed to their producer (input2).
+    counter.set_usage(input2.id, 20)
 
     resource_manager.update_usages()
 
