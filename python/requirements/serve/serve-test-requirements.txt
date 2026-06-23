@@ -19,4 +19,4 @@ aioboto3
 tf_keras
 numexpr
 taskiq-redis
-ray-haproxy==2.8.20
+ray-haproxy>=2.8.20,<2.9.0
