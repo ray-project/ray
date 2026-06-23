@@ -1,5 +1,7 @@
 """Shared remote tasks + helpers for ShuffleMapOp / ShuffleReduceOp."""
 
+import logging
+import math
 import time
 from dataclasses import replace
 from typing import Callable, Dict, Generator, Iterable, List, Optional, Tuple, Union
@@ -20,6 +22,9 @@ from ray.data.block import (
     BlockType,
     TaskExecWorkerStats,
 )
+from ray.exceptions import GetTimeoutError
+
+logger = logging.getLogger(__name__)
 
 PartitionFn = Callable[[pa.Table], Dict[int, pa.Table]]
 ReduceFn = Callable[[int, List[pa.Table]], Iterable[Block]]
@@ -146,6 +151,58 @@ def _read_partition_ipc(buf: pa.Buffer) -> Optional[pa.Table]:
     return pa.Table.from_batches(batches, schema=schema)
 
 
+# Warn once a shard fetch has stalled for this fraction of the fail timeout
+_REDUCE_GET_WARN_AT_FRACTION = 1 / 3
+
+
+def _get_shard_batch(
+    batch: List[ObjectRef],
+    partition_id: int,
+    batch_index: int,
+    num_batches: int,
+    timeout_s: float,
+) -> List[Optional[pa.Buffer]]:
+    """``ray.get`` a batch of shard refs, warning then failing if the fetch stalls.
+
+    Args:
+        batch: Shard ObjectRefs to fetch (a slice of one partition's shards).
+        partition_id: Partition this reducer owns (for logging).
+        batch_index: 0-based index of this batch within the partition.
+        num_batches: Total number of batches for the partition (for logging).
+        timeout_s: ``ray.get`` timeout in seconds.  A non-positive value disables
+            the timeout (single blocking fetch).
+
+    Returns:
+        The dereferenced shard buffers (some entries may be ``None``).
+
+    Raises:
+        GetTimeoutError: If the shards are not available within ``timeout_s``.
+    """
+    if timeout_s <= 0:
+        return ray.get(batch)
+
+    wait_start_s = time.perf_counter()
+    warn_timeout_s = timeout_s * _REDUCE_GET_WARN_AT_FRACTION
+    try:
+        return ray.get(batch, timeout=warn_timeout_s)
+    except GetTimeoutError:
+        logger.warning(
+            f"Shuffle reduce task for partition {partition_id} has waited "
+            f"{time.perf_counter() - wait_start_s:.0f}s for {len(batch)} "
+            f"shard(s) in batch {batch_index + 1}/{num_batches}."
+        )
+
+    try:
+        return ray.get(batch, timeout=timeout_s - warn_timeout_s)
+    except GetTimeoutError:
+        logger.error(
+            f"Shuffle reduce task for partition {partition_id} timed out after "
+            f"{time.perf_counter() - wait_start_s:.0f}s waiting for {len(batch)} "
+            f"shard(s) in batch {batch_index + 1}/{num_batches}."
+        )
+        raise
+
+
 @ray.remote(max_calls=1)
 def _shuffle_reduce_task(
     shard_refs: List[ObjectRef],
@@ -154,6 +211,7 @@ def _shuffle_reduce_task(
     target_max_block_size: Optional[int],
     streaming: bool,
     batch_size: int,
+    get_timeout_s: float,
 ) -> Generator[Union[Block, bytes], None, None]:
     """Reduce stage: fetch one partition's shards and run reduce_fn over them.
 
@@ -174,6 +232,7 @@ def _shuffle_reduce_task(
             flush) -- the "partition = block" contract.
         streaming: Flush incrementally (True) or accumulate then reduce (False).
         batch_size: Number of shard refs to ray.get() at a time.
+        get_timeout_s: Timeout for batch ray.get().
     """
     start_time_s = time.perf_counter()
 
@@ -213,9 +272,16 @@ def _shuffle_reduce_task(
     # Step 1: fetch shard refs in batches, decompress, accumulate.  In
     # streaming mode, when the accumulator reaches target_max_block_size,
     # flush through reduce_fn and yield any ready output blocks.
-    for batch_start in range(0, len(shard_refs), batch_size):
+    num_batches = math.ceil(len(shard_refs) / batch_size) if batch_size else 0
+    for batch_index, batch_start in enumerate(range(0, len(shard_refs), batch_size)):
         batch = shard_refs[batch_start : batch_start + batch_size]
-        for buf in ray.get(batch):
+        for buf in _get_shard_batch(
+            batch,
+            partition_id,
+            batch_index,
+            num_batches,
+            get_timeout_s,
+        ):
             if buf is None:
                 continue
             table = _read_partition_ipc(buf)
