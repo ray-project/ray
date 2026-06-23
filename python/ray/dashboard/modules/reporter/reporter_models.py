@@ -123,7 +123,6 @@ if PYDANTIC_INSTALLED:
         def _normalize_cmdline(cls, value):
             return [] if value is None else value
 
-
     # Note: The actual data structure uses tuples for some fields, not structured objects
     # These are type aliases to document the tuple structure
     MemoryUsage = Tuple[
