@@ -150,6 +150,10 @@ class DummyWorkerGroup(WorkerGroup):
         status = self._worker_statuses[worker_index]
         status.running = False
 
+    def preempt_worker(self, worker_index, preemption_info):
+        status = self._worker_statuses[worker_index]
+        status.preemption_info = preemption_info
+
     @classmethod
     def set_start_failure(cls, start_failure):
         cls._start_failure = start_failure

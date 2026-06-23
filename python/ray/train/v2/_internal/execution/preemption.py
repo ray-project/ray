@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Set
 import ray
 from ray.actor import ActorHandle
 from ray.train.v2._internal.constants import DEFAULT_PREEMPTION_POLL_INTERVAL_S
+from ray.util.annotations import PublicAPI
 from ray.util.tpu import get_tpu_slice_name_from_node
 
 if TYPE_CHECKING:
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="alpha")
 @dataclass(frozen=True)
 class PreemptionInfo:
     """Information about an imminent preemption event.

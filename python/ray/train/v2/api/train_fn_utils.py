@@ -15,6 +15,7 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     from ray.data import DataIterator
     from ray.train import Checkpoint
+    from ray.train.v2._internal.execution.preemption import PreemptionInfo
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 
@@ -142,6 +143,46 @@ def get_context() -> TrainContext:
     See the :class:`~ray.train.TrainContext` API reference to see available methods.
     """
     return get_train_fn_utils().get_context()
+
+
+@PublicAPI(stability="alpha")
+@requires_train_worker(raise_in_tune_session=True)
+def preemption_status() -> Optional["PreemptionInfo"]:
+    """Return the preemption signal for the current worker, or ``None``.
+
+    Ray Train surfaces the cloud's advance preemption notice (e.g. a spot/TPU
+    node drain) here so the training loop can react before the node is
+    reclaimed — for example, save a just-in-time checkpoint or run cleanup, then
+    exit cleanly. Returns ``None`` until a preemption affecting this worker
+    group is detected.
+
+    Example:
+
+        .. testcode::
+            :skipif: True
+
+            import ray.train
+
+            def train_func(config):
+                rank = ray.train.get_context().get_world_rank()
+                for step in range(config["total_steps"]):
+                    info = ray.train.preemption_status()
+                    if info is not None:
+                        if rank in info.preempted_ranks:
+                            # This worker's node is being reclaimed: clean up.
+                            ...
+                        else:
+                            # Survivor: save a just-in-time checkpoint.
+                            ray.train.report(metrics, checkpoint=checkpoint)
+                        return
+                    # ... normal training step ...
+
+    Returns:
+        A :class:`PreemptionInfo` describing the imminent preemption (which
+        node IDs / ranks are affected and the reclaim deadline), or ``None`` if
+        no preemption has been signaled.
+    """
+    return get_train_fn_utils().preemption_status()
 
 
 @PublicAPI(stability="stable")

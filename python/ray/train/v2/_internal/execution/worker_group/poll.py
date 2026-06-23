@@ -85,6 +85,17 @@ class WorkerGroupPollStatus:
             worker_failures=self.errors,
         )
 
+    def get_preemption_info(self) -> Optional[PreemptionInfo]:
+        """Return the preemption signal echoed by any worker, or None.
+
+        The PreemptionWatcher fans the same PreemptionInfo out to every worker,
+        so any non-None echo reflects the current preemption; return the first.
+        """
+        for status in self.worker_statuses.values():
+            if status.preemption_info is not None:
+                return status.preemption_info
+        return None
+
     @property
     def finished(self) -> bool:
         return self.worker_statuses and all(
