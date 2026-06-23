@@ -217,16 +217,35 @@ class UnityCatalog(Catalog):
 
         return WorkspaceClient(host=self._base_url, token=self._provider.get_token())
 
+    def _call_with_token_refresh(self, call):
+        """Run ``call(workspace_client)``, retrying once on 401.
+
+        Mirrors the previous ``request_with_401_retry`` behavior: on an
+        authentication failure, invalidate the credential provider (so the next
+        ``get_token()`` returns a fresh token) and retry once with a new client.
+        Matters for refreshable providers; a no-op for static PATs.
+        """
+        from databricks.sdk.errors import Unauthenticated
+
+        try:
+            return call(self._workspace_client())
+        except Unauthenticated:
+            logger.info("Received 401 from Unity Catalog; refreshing credentials.")
+            self._provider.invalidate()
+            return call(self._workspace_client())
+
     def _get_table_info(self, table: str) -> "TableInfo":
-        return self._workspace_client().tables.get(full_name=table)
+        return self._call_with_token_refresh(lambda w: w.tables.get(full_name=table))
 
     def _get_creds(
         self, table_id: str
     ) -> Tuple["GenerateTemporaryTableCredentialResponse", str]:
         from databricks.sdk.service.catalog import TableOperation
 
-        creds = self._workspace_client().temporary_table_credentials.generate_temporary_table_credentials(
-            table_id=table_id, operation=TableOperation.READ
+        creds = self._call_with_token_refresh(
+            lambda w: w.temporary_table_credentials.generate_temporary_table_credentials(
+                table_id=table_id, operation=TableOperation.READ
+            )
         )
         return creds, creds.url
 

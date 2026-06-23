@@ -135,6 +135,33 @@ def test_resolve_initializes_ray_with_runtime_env(uc_catalog, monkeypatch):
     assert env_vars["AWS_SESSION_TOKEN"] == "token"
 
 
+def test_resolve_retries_once_on_401(uc_catalog, isolated_env):
+    # On a 401, the provider is invalidated and the SDK call is retried once
+    # (mirrors the old request_with_401_retry behavior).
+    from databricks.sdk.errors import Unauthenticated
+
+    client = mock.MagicMock()
+    client.tables.get.side_effect = [
+        Unauthenticated("expired"),
+        TableInfo(
+            table_id="tid-123",
+            data_source_format=DataSourceFormat("DELTA"),
+            storage_location="s3://bucket/path",
+        ),
+    ]
+    gen = client.temporary_table_credentials.generate_temporary_table_credentials
+    gen.return_value = AWS_RESP
+
+    with mock.patch.object(
+        UnityCatalog, "_workspace_client", return_value=client
+    ), mock.patch.object(uc_catalog._provider, "invalidate") as invalidate:
+        resolved = uc_catalog.resolve("main.sales.txns", reader=ReaderFormat.PARQUET)
+
+    invalidate.assert_called_once()
+    assert client.tables.get.call_count == 2
+    assert resolved.path == "s3://bucket/path"
+
+
 def test_resolve_iceberg(uc_catalog):
     # Iceberg resolution does not hit the credential-vending REST endpoints.
     resolved = uc_catalog.resolve("main.sales.txns", reader=ReaderFormat.ICEBERG)
