@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Tuple
 from ray._common.pydantic_compat import PYDANTIC_INSTALLED, BaseModel
 
 if PYDANTIC_INSTALLED:
+    from pydantic import field_validator
 
     # TODO(aguo): Use these pydantic models in the dashboard API as well.
     class ProcessGPUInfo(BaseModel):
@@ -117,6 +118,12 @@ if PYDANTIC_INSTALLED:
         gpuMemoryUsage: Optional[int] = None  # in MB, added by _get_workers
         gpuUtilization: Optional[int] = None  # percentage, added by _get_workers
 
+        @field_validator("cmdline", mode="before")
+        @classmethod
+        def _normalize_cmdline(cls, value):
+            return [] if value is None else value
+
+
     # Note: The actual data structure uses tuples for some fields, not structured objects
     # These are type aliases to document the tuple structure
     MemoryUsage = Tuple[
@@ -182,6 +189,11 @@ if PYDANTIC_INSTALLED:
         networkSpeed: NetworkSpeed  # (sendSpeed, receiveSpeed) in bytes/sec
         cmdline: List[str]  # deprecated field from raylet
         gcs: Optional[ProcessInfo] = None  # only present on head node
+
+        @field_validator("cmdline", mode="before")
+        @classmethod
+        def _normalize_cmdline(cls, value):
+            return [] if value is None else value
 
 else:
     StatsPayload = None
