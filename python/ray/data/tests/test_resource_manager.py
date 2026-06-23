@@ -9,7 +9,7 @@ from freezegun import freeze_time
 
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.execution.block_ref_counter import BlockRefCounter
-from ray.data._internal.execution.interfaces import BlockEntry, PhysicalOperator
+from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -34,6 +34,22 @@ from ray.data._internal.execution.streaming_executor_state import (
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import noop_counter
+
+
+class StubBlockRefCounter:
+    """Test double for BlockRefCounter with directly settable per-operator usage."""
+
+    def __init__(self):
+        self._usage = {}
+
+    def set_usage(self, producer_id: str, bytes: int) -> None:
+        self._usage[producer_id] = bytes
+
+    def get_object_store_memory_usage(self, producer_id: str) -> int:
+        return self._usage.get(producer_id, 0)
+
+    def clear(self) -> None:
+        self._usage.clear()
 
 
 def mock_map_op(
@@ -209,13 +225,7 @@ class TestResourceManager:
             assert get_total_resources.call_count == 2
 
     def test_update_usage(self):
-        """Test calculating op_usage.
-
-        Object-store memory is now tracked via BlockRefCounter (one counter shared
-        across the whole execution), NOT via queue-size metrics.  Each operator's
-        object-store usage = pending_task_outputs (in-flight generator buffer) +
-        block_ref_counter bytes attributed to that operator.
-        """
+        """Test calculating op_usage."""
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
@@ -226,14 +236,11 @@ class TestResourceManager:
             o2: 5,
             o3: 8,
         }
-        # Bytes in the streaming-generator buffer (not yet yielded as ObjectRefs).
         mock_pending_task_outputs = {
             o1: 0,
             o2: 100,
             o3: 200,
         }
-        # Bytes attributed to each operator in the BlockRefCounter (produced ObjectRefs
-        # that are still live somewhere in the pipeline).
         mock_counter_bytes = {
             o1: 0,
             o2: 300,
@@ -253,21 +260,19 @@ class TestResourceManager:
                 obj_store_mem_pending_task_outputs=mock_pending_task_outputs[op],
             )
 
+        counter = StubBlockRefCounter(add_object_out_of_scope_callback=lambda *_: True)
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+            counter,
         )
         resource_manager._op_resource_allocator = None
 
-        # Seed the counter so each eligible op reports its expected counter bytes.
         for op in [o2, o3]:
             if mock_counter_bytes[op]:
-                resource_manager.block_ref_counter._bytes_by_producer[
-                    op.id
-                ] = mock_counter_bytes[op]
+                counter.set_usage(op.id, mock_counter_bytes[op])
 
         resource_manager.update_usages()
 
@@ -297,63 +302,42 @@ class TestResourceManager:
         )
 
     def test_object_store_usage(self, restore_data_context):
-        """Object-store usage is tracked via BlockRefCounter, not queue metrics.
-
-        Memory is attributed to the operator that called on_block_produced and
-        released automatically via the Ray Core out-of-scope callback.  This test
-        drives the counter directly (bypassing Ray Core) to verify the integration
-        between ResourceManager._estimate_object_store_memory_usage and the counter.
-        """
+        """ResourceManager reads per-operator memory from BlockRefCounter."""
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
 
         topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
+        counter = StubBlockRefCounter()
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
             MagicMock(return_value=ExecutionResources.zero()),
             DataContext.get_current(),
-            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+            counter,
         )
-
-        counter = resource_manager.block_ref_counter
 
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 0
         assert resource_manager.get_op_usage(o3).object_store_memory == 0
 
-        # InputDataBuffer blocks are not registered — its usage stays 0.
-        assert counter.get_object_store_memory_usage(o1.id) == 0
-
         # Simulate o2 producing a 100-byte block.
-        fake_id1 = (1).to_bytes(28, "big")
-        with counter._lock:
-            counter._registered_ids.add(fake_id1)
-            counter._bytes_by_producer[o2.id] += 100
-
+        counter.set_usage(o2.id, 100)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 100
         assert resource_manager.get_op_usage(o3).object_store_memory == 0
 
         # Simulate o3 producing a 200-byte block.
-        fake_id2 = (2).to_bytes(28, "big")
-        with counter._lock:
-            counter._registered_ids.add(fake_id2)
-            counter._bytes_by_producer[o3.id] += 200
-
+        counter.set_usage(o3.id, 200)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o2).object_store_memory == 100
         assert resource_manager.get_op_usage(o3).object_store_memory == 200
 
-        # Simulate Ray Core callback firing for o2's block (all refs dropped).
-        with counter._lock:
-            counter._registered_ids.discard(fake_id1)
-            counter._bytes_by_producer[o2.id] -= 100
-
+        # Simulate o2's block being freed.
+        counter.set_usage(o2.id, 0)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o2).object_store_memory == 0
         assert resource_manager.get_op_usage(o3).object_store_memory == 200
@@ -365,14 +349,7 @@ class TestResourceManager:
         assert resource_manager.get_op_usage(o3).object_store_memory == 0
 
     def test_union_no_double_counting(self, restore_data_context):
-        """Blocks passing through UnionOperator are attributed to their original
-        producer, not double-counted.
-
-        UnionOperator is a passthrough — it never calls on_block_produced, so its
-        block_ref_counter usage is always 0.  Blocks in Union's output queue are
-        already captured by the upstream MapOperator's counter entry.  Global usage
-        = sum of upstream producers only, without any inflation from Union.
-        """
+        """UnionOperator passthrough does not inflate global memory usage."""
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
         map_a = mock_map_op(o1, name="MapA")
@@ -382,35 +359,24 @@ class TestResourceManager:
         downstream = mock_map_op(union_op, name="Downstream")
 
         topo = build_streaming_topology(downstream, ExecutionOptions(), noop_counter())
+        counter = StubBlockRefCounter()
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
             MagicMock(return_value=ExecutionResources(object_store_memory=10_000)),
             DataContext.get_current(),
-            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+            counter,
         )
-        counter = resource_manager.block_ref_counter
 
-        # Simulate map_a producing a 100-byte block and map_b producing 200 bytes.
-        fake_a = (10).to_bytes(28, "big")
-        fake_b = (20).to_bytes(28, "big")
-        with counter._lock:
-            counter._registered_ids.add(fake_a)
-            counter._bytes_by_producer[map_a.id] += 100
-            counter._registered_ids.add(fake_b)
-            counter._bytes_by_producer[map_b.id] += 200
+        counter.set_usage(map_a.id, 100)
+        counter.set_usage(map_b.id, 200)
 
         resource_manager.update_usages()
 
-        # map_a and map_b see their own bytes.
         assert resource_manager.get_op_usage(map_a).object_store_memory == 100
         assert resource_manager.get_op_usage(map_b).object_store_memory == 200
-
-        # union_op itself has 0 bytes (it never calls on_block_produced).
         assert resource_manager.get_op_usage(union_op).object_store_memory == 0
 
-        # Global usage = map_a (100) + map_b (200) only, not inflated by Union.
-        # InputDataBuffer and downstream (no blocks yet) contribute 0.
         total_obj_store = resource_manager.get_global_usage().object_store_memory
         assert total_obj_store == 300
 
@@ -795,9 +761,7 @@ class TestResourceManager:
             options=options,
             get_total_resources=lambda: cluster_resources,
             data_context=DataContext.get_current(),
-            block_ref_counter=BlockRefCounter(
-                add_object_out_of_scope_callback=lambda *_: True
-            ),
+            block_ref_counter=BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         resource_manager.update_usages()
 
