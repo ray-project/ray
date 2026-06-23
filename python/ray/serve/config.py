@@ -395,6 +395,24 @@ class RequestRouterConfig(BaseModel):
         # Update the request_router_class field to be the string path
         self.request_router_class = request_router_path
 
+    def is_default_request_router(self) -> bool:
+        """Whether `request_router_class` is Serve's default request router.
+
+        Compares against the default's package and defining-module import paths
+        so an equivalent spelling is not treated as custom. Does not import the
+        configured class, which may be unavailable in the controller.
+        """
+        request_router_class = self.request_router_class
+        if not isinstance(request_router_class, str):
+            request_router_class = (
+                f"{request_router_class.__module__}.{request_router_class.__name__}"
+            )
+        default_cls = import_attr(DEFAULT_REQUEST_ROUTER_PATH)
+        return request_router_class in (
+            DEFAULT_REQUEST_ROUTER_PATH,
+            f"{default_cls.__module__}.{default_cls.__name__}",
+        )
+
     def get_request_router_class(self) -> Callable:
         """Deserialize the request router from cloudpickled bytes."""
         try:

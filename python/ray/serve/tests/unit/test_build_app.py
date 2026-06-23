@@ -12,6 +12,7 @@ from ray.serve._private.build_app import (
 )
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID
+from ray.serve._private.request_router import PowerOfTwoChoicesRequestRouter
 from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
@@ -753,12 +754,35 @@ def test_build_app_allows_custom_ingress_request_router_in_direct_streaming(
     assert built_app.ingress_request_router_deployment is not None
 
 
-def test_build_app_allows_custom_ingress_request_router_without_haproxy():
+def test_build_app_allows_custom_ingress_request_router_without_haproxy(monkeypatch):
     """Without HAProxy the Serve proxy routes through the ingress deployment's
     request router, so a custom router is honored and must be allowed."""
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", False)
 
     @serve.deployment(
         request_router_config=RequestRouterConfig(request_router_class=RoundRobinRouter)
+    )
+    class Ingress:
+        pass
+
+    built_app: BuiltApplication = build_app(
+        Ingress.bind(),
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    assert [deployment.name for deployment in built_app.deployments] == ["Ingress"]
+
+
+def test_build_app_haproxy_allows_default_request_router_passed_as_class(monkeypatch):
+    """The default router supplied as a class object (e.g. to set
+    `request_router_kwargs`) is not custom and must build under HAProxy."""
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+
+    @serve.deployment(
+        request_router_config=RequestRouterConfig(
+            request_router_class=PowerOfTwoChoicesRequestRouter
+        )
     )
     class Ingress:
         pass

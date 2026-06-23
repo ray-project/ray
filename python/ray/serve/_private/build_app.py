@@ -5,11 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union
 
 from ray.dag.py_obj_scanner import _PyObjScanner
-from ray.serve._private.constants import (
-    DEFAULT_REQUEST_ROUTER_PATH,
-    RAY_SERVE_ENABLE_HA_PROXY,
-    SERVE_LOGGER_NAME,
-)
+from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY, SERVE_LOGGER_NAME
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
@@ -101,16 +97,7 @@ class BuiltApplication:
 def _has_custom_request_router(deployment: Deployment) -> bool:
     """Whether the deployment configures a non-default request router class."""
     request_router_config = deployment._deployment_config.request_router_config
-    if request_router_config is None:
-        return False
-    request_router_class = request_router_config.request_router_class
-    # `RequestRouterConfig` normalizes a class to its import path on init, but
-    # fall back to normalizing here so a class object is compared correctly.
-    if not isinstance(request_router_class, str):
-        request_router_class = (
-            f"{request_router_class.__module__}.{request_router_class.__name__}"
-        )
-    return request_router_class != DEFAULT_REQUEST_ROUTER_PATH
+    return not request_router_config.is_default_request_router()
 
 
 def _make_deployment_handle_default(
