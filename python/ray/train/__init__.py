@@ -36,6 +36,11 @@ if is_v2_enabled():
             "Run the following command to fix this: `pip install pydantic`"
         ) from exc
     from ray.train.v2.api.callback import UserCallback  # noqa: F811
+
+    try:
+        from ray.train.v2.api.mlflow import MLflowLoggerCallback  # noqa: F811
+    except ImportError:
+        pass  # mlflow is optional
     from ray.train.v2.api.config import (  # noqa: F811
         CheckpointConfig,
         FailureConfig,
@@ -109,22 +114,27 @@ TrainingFailedError.__module__ = "ray.train"
 
 # TODO: consider implementing these in v1 and raising ImportError instead.
 if is_v2_enabled():
-    __all__.extend(
-        [
-            "CheckpointUploadMode",
-            "CheckpointConsistencyMode",
-            "ControllerError",
-            "LoggingConfig",
-            "ReportedCheckpoint",
-            "ReportedCheckpointStatus",
-            "UserCallback",
-            "WorkerGroupError",
-            "ValidationConfig",
-            "ValidationFn",
-            "ValidationTaskConfig",
-            "get_all_reported_checkpoints",
-        ]
-    )
+    _v2_exports = [
+        "CheckpointUploadMode",
+        "CheckpointConsistencyMode",
+        "ControllerError",
+        "LoggingConfig",
+        "ReportedCheckpoint",
+        "ReportedCheckpointStatus",
+        "UserCallback",
+        "WorkerGroupError",
+        "ValidationConfig",
+        "ValidationFn",
+        "ValidationTaskConfig",
+        "get_all_reported_checkpoints",
+    ]
+
+    # MLflowLoggerCallback is optional (requires mlflow package)
+    if "MLflowLoggerCallback" in locals():
+        _v2_exports.append("MLflowLoggerCallback")
+        MLflowLoggerCallback.__module__ = "ray.train"
+
+    __all__.extend(_v2_exports)
 
     CheckpointUploadMode.__module__ = "ray.train"
     CheckpointConsistencyMode.__module__ = "ray.train"

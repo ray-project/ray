@@ -254,3 +254,4 @@ CLAUDE.local.md
 # Worktrees
 .worktrees/
 .claude/worktrees/
+mlflow.db
