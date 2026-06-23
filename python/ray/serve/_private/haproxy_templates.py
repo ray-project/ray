@@ -98,8 +98,10 @@ frontend http_frontend
     # Strip the configured global root_path so the health/routes endpoints, the
     # per-backend path ACLs, and the path forwarded to replicas are all
     # root_path-agnostic. Mirrors the native Serve proxy, which mounts the app
-    # under root_path. Paths outside root_path are left unchanged.
-    http-request set-path %[path,regsub(^{{ config.root_path }}(/.*)?$,\\1)]
+    # under root_path. An exact root_path match becomes "/", and paths outside
+    # root_path are left unchanged.
+    http-request set-path / if { path {{ config.root_path }} }
+    http-request set-path %[path,regsub(^{{ config.root_path }}/,/)] if { path_beg {{ config.root_path }}/ }
     {%- endif %}
 {{ healthz_rules|safe }}
     # Routes endpoint
