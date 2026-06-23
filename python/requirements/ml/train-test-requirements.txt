@@ -4,6 +4,7 @@ freezegun==1.1.0
 mosaicml; python_version < "3.12"
 sentencepiece==0.2.1
 s3torchconnector==1.4.3
+tenacity==9.1.4
 jupytext
 tblib
 xmltodict
