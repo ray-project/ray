@@ -303,8 +303,8 @@ void CoreWorkerShutdownExecutor::DrainRunningTasksThen(
     return;
   }
 
-  RAY_LOG(INFO) << "Waiting for " << num_running_tasks
-                << " in-flight task(s) to finish before shutting down.";
+  RAY_LOG_EVERY_MS(INFO, 1000) << "Waiting for " << num_running_tasks
+                               << " in-flight task(s) to finish before shutting down.";
   // Re-post to the task execution io_context so it keeps running while we wait.
   // This is required for async actors, whose `await` results are delivered via
   // callbacks posted to this same io_context.
@@ -313,7 +313,7 @@ void CoreWorkerShutdownExecutor::DrainRunningTasksThen(
         DrainRunningTasksThen(std::move(continuation), deadline);
       },
       "CoreWorkerShutdownExecutor.DrainRunningTasks",
-      /*delay_us=*/1000);
+      /*delay_us=*/10 * 1000);
 }
 
 void CoreWorkerShutdownExecutor::ExecuteExitIfIdle(std::string_view exit_type,
