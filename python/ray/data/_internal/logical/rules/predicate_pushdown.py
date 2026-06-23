@@ -416,7 +416,7 @@ class PredicatePushdown(Rule):
                 aggregator_ray_remote_args=op.aggregator_ray_remote_args,
             )
         if isinstance(op, Union) and is_dataclass(op):
-            return Union(*new_inputs)
+            return Union(new_inputs)
         new_op = copy.copy(op)
         new_op.input_dependencies = new_inputs
         return new_op

@@ -38,6 +38,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
+#include "ray/util/clock.h"
 #include "ray/util/event.h"
 
 using ::testing::_;
@@ -97,7 +98,8 @@ class TaskEventBufferTest : public ::testing::Test {
         std::make_unique<ray::gcs::MockGcsClient>(),
         std::make_unique<MockEventAggregatorClient>(),
         "test_session_name",
-        NodeID::Nil());
+        NodeID::Nil(),
+        clock_);
   }
 
   virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false)); }
@@ -278,6 +280,7 @@ class TaskEventBufferTest : public ::testing::Test {
     }
   }
 
+  Clock clock_;
   std::unique_ptr<TaskEventBufferImpl> task_event_buffer_ = nullptr;
 };
 
