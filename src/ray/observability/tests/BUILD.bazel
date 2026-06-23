@@ -46,6 +46,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/asio:periodical_runner",
+        "//src/ray/common:id",
         "//src/ray/observability:fake_metric",
         "//src/ray/observability:ray_task_event_recorder",
         "//src/ray/observability:task_ray_event_interface",
