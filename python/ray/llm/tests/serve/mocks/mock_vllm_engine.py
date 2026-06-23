@@ -51,6 +51,15 @@ class MockVLLMEngine(LLMEngine):
             llm_config: The llm configuration for this engine
         """
         self.llm_config = llm_config
+        # Mirror the real engine's setup_engine_backend() so the P/D orchestrator
+        # finds a KV-connector backend. Install the default backend since the real
+        # Nixl/LMCache setup() needs hardware the mock lacks.
+        if llm_config.engine_kwargs.get("kv_transfer_config"):
+            from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+                DefaultConnectorBackend,
+            )
+
+            llm_config._kv_connector_backend = DefaultConnectorBackend(llm_config)
         self.started = False
         self._current_lora_model: Dict[str, DiskMultiplexConfig] = {}
         self._is_sleeping = False
