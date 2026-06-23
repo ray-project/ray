@@ -31,6 +31,7 @@
 //python/ray/serve/tests:test_http_cancellation
 //python/ray/serve/tests:test_http_headers
 //python/ray/serve/tests:test_http_routes
+//python/ray/serve/tests:test_https_proxy
 //python/ray/serve/tests:test_list_outbound_deployments
 //python/ray/serve/tests:test_logging
 //python/ray/serve/tests:test_long_poll
