@@ -34,8 +34,12 @@ def batch_blocks(
     function doesn't support block prefetching.
     """
     # Wrap raw blocks in BlockWithTiming with zero timing so that
-    # _BatchingIterator receives a uniform type.
-    wrapped_blocks = (BlockWithTiming(block=b, timings=BatchTimings()) for b in blocks)
+    # _BatchingIterator receives a uniform type. Use map() instead of a
+    # generator expression to avoid holding references to blocks.
+    def _wrap_block(b):
+        return BlockWithTiming(block=b, timings=BatchTimings())
+
+    wrapped_blocks = map(_wrap_block, blocks)
 
     # Build the processing pipeline
     batch_iter = format_batches(
