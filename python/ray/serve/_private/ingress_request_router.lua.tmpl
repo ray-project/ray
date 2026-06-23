@@ -177,7 +177,9 @@ end
 -- are served via the router or fail; there is no quiet alternative path.
 -- Exception: `unknown_replica_id` is recovered via the fallback proxy when the
 -- app has one, otherwise 503ed. The fallback re-pins via its own router so the
--- policy is not bypassed. Still counted as a failure.
+-- policy is not bypassed. While the fallback is DOWN the request load-balances
+-- onto a primary replica in the router backend instead of 503ing, so affinity
+-- lapses for that window. Still counted as a failure.
 -- Two silent returns are correct: (1) the request didn't target a
 -- router-bearing app (no txn var set, no app entry in our maps), and
 -- (2) the controller hasn't pushed router/replica state for this app yet.

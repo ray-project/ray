@@ -220,7 +220,11 @@ backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     {%- endfor %}
     {%- if backend.fallback_server %}
     # Pin-miss: route to the fallback Serve proxy, which re-pins via its own
-    # router. If it is DOWN, redispatch picks a primary replica instead.
+    # router. If the fallback is DOWN this use-server is skipped and the request
+    # load-balances onto a primary replica in this backend, so affinity lapses
+    # until the fallback's health check passes. That is plain selection-time
+    # fallthrough, not `option redispatch` (which only re-picks after a
+    # connection failure to an already-selected server).
     use-server {{ backend.fallback_server.name }} if { var(txn.ingress_request_router_failed) -m str "unknown_replica_id" }
     {%- endif %}
     # `track` allows us to mirror primary-backend health and avoid double-checking.
