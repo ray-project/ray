@@ -66,12 +66,12 @@ because the validation task always runs on cpu; for a more realistic example, se
     access them from shared storage later as explained in :ref:`train-checkpointing`.
 
 Next, register your ``validation_fn`` with your trainer by settings its ``validation_config`` argument to a
-:class:`ray.train.v2.api.report_config.ValidationConfig` object that contains your ``validation_fn``
+:class:`~ray.train.v2.api.report_config.ValidationConfig` object that contains your ``validation_fn``
 and any default keyword arguments you want to pass to your ``validation_fn``.
 
 Next, within your rank 0 worker's training loop, call :func:`ray.train.report` with ``validation``
 set to True, which will call your ``validation_fn`` with the default keyword arguments you passed to the trainer.
-Alternatively, you can set ``validation`` to a :class:`ray.train.v2.api.report_config.ValidationTaskConfig` object
+Alternatively, you can set ``validation`` to a :class:`~ray.train.v2.api.report_config.ValidationTaskConfig` object
 that contains keyword arguments that will override matching keyword arguments you passed to the trainer. If
 ``validation`` is False, Ray Train will not run validation.
 
@@ -92,7 +92,7 @@ The ``validation_fn`` above runs in a single Ray task, but you can improve its p
 even more Ray tasks or actors. The Ray team recommends doing this with one of the following approaches:
 
 * Creating a :class:`ray.train.torch.TorchTrainer` that only does validation, not training.
-* (Experimental) Using :func:`ray.data.Dataset.map_batches` to calculate metrics on a validation set.
+* Using :func:`ray.data.Dataset.map_batches` to calculate metrics on a validation set.
 
 Choose an approach
 ~~~~~~~~~~~~~~~~~~
@@ -134,8 +134,8 @@ loss on a validation set. Note the following about this example:
     :start-after: __validation_fn_torch_trainer_start__
     :end-before: __validation_fn_torch_trainer_end__
 
-(Experimental) Example: validation with Ray Data map_batches
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Example: validation with Ray Data map_batches
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The following is a ``validation_fn`` that uses :func:`ray.data.Dataset.map_batches` to
 calculate average accuracy on a validation set. To learn more about how to use
@@ -145,6 +145,121 @@ calculate average accuracy on a validation set. To learn more about how to use
     :language: python
     :start-after: __validation_fn_map_batches_start__
     :end-before: __validation_fn_map_batches_end__
+
+Isolating training and validation with subclusters
+---------------------------------------------------
+
+When training and validation run concurrently on the same Ray cluster,
+they compete for the same nodes by default. To give each phase its own
+slice of the cluster — for example, A100s for training and A10Gs for
+validation — label your worker pools with a ``ray-subcluster`` value and
+pin each Dataset to its subcluster. See :ref:`data_concurrent_execution`
+for the background and compute-config setup.
+
+The pattern differs slightly between the ``TorchTrainer`` validation_fn
+and the ``map_batches`` validation_fn, because only the former goes
+through ``ray.train.DataConfig``.
+
+**TorchTrainer validation_fn.** Set the validation Dataset's selector
+through the sub-trainer's ``dataset_config``:
+
+.. code-block:: python
+
+    from ray.data import ExecutionOptions
+
+    def validation_fn(checkpoint, ...) -> dict:
+        trainer = ray.train.torch.TorchTrainer(
+            ...,
+            datasets={"validation": validation_dataset},
+            dataset_config=ray.train.DataConfig(
+                execution_options={
+                    "validation": ExecutionOptions(
+                        label_selector={"ray-subcluster": "validation"}
+                    ),
+                },
+            ),
+        )
+        ...
+
+**map_batches validation_fn.** The ``map_batches`` path doesn't take a
+``DataConfig``. Construct ``validation_dataset`` under a
+``DataContext.current()`` block so the selector is baked into the
+Dataset at construction — every downstream operator inherits it:
+
+.. code-block:: python
+
+    ctx = ray.data.DataContext.get_current().copy()
+    ctx.execution_options.label_selector = {"ray-subcluster": "validation"}
+    with ray.data.DataContext.current(ctx):
+        validation_dataset = ray.data.read_parquet(...)
+
+    def validation_fn(checkpoint) -> dict:
+        eval_res = validation_dataset.map_batches(...)
+        ...
+
+**Training-side configuration.** A Train pipeline needs the selector
+specified in two places — they cover different phases and are not
+redundant:
+
+1. **At Dataset construction**, via the ``DataContext.current()`` context
+   manager, so construction-time tasks (parquet schema inference, file
+   listing) land on training nodes.
+2. **In the trainer's** ``dataset_config``, because Train wholesale
+   replaces ``ds.context.execution_options`` with ``DataConfig``'s
+   per-dataset entry at training start. Anything not restated in
+   ``DataConfig.execution_options`` — ``label_selector`` included — is
+   dropped, so per-worker ingest would lose its pinning.
+
+.. code-block:: python
+
+    from ray.data import ExecutionOptions
+
+    def run_trainer() -> ray.train.Result:
+        # (1) Pin construction-time tasks.
+        ctx = ray.data.DataContext.get_current().copy()
+        ctx.execution_options.label_selector = {"ray-subcluster": "training"}
+        with ray.data.DataContext.current(ctx):
+            train_dataset = ray.data.read_parquet(...)
+
+        # (2) Pin per-worker ingest — Train replaces ds.context options
+        # wholesale, so the selector must be restated here.
+        trainer = ray.train.torch.TorchTrainer(
+            ...,
+            datasets={"train": train_dataset},
+            dataset_config=ray.train.DataConfig(
+                datasets_to_split=["train"],
+                execution_options={
+                    "train": ExecutionOptions(
+                        label_selector={"ray-subcluster": "training"}
+                    ),
+                },
+            ),
+        )
+        ...
+
+.. note::
+
+    For *interleaved* validation — where you reuse the training workers
+    to validate on a separate "validation" Dataset inside the same
+    ``TorchTrainer`` — pass both Datasets to ``datasets={...}`` and give
+    both an entry in ``DataConfig.execution_options`` so they're each
+    scoped to their own subcluster:
+
+    .. code-block:: python
+
+        from ray.data import ExecutionOptions
+
+        dataset_config = ray.train.DataConfig(
+            datasets_to_split=["train", "validation"],
+            execution_options={
+                "train": ExecutionOptions(
+                    label_selector={"ray-subcluster": "training"}
+                ),
+                "validation": ExecutionOptions(
+                    label_selector={"ray-subcluster": "validation"}
+                ),
+            },
+        )
 
 Tuning asynchronous validation
 ------------------------------
@@ -179,7 +294,7 @@ Checkpoint metrics lifecycle
 During the training loop the following happens to your checkpoints and metrics :
 
 1. You report a checkpoint with some initial metrics, such as training loss, as well as a
-   :class:`ray.train.v2.api.report_config.ValidationTaskConfig` object that contains the keyword
+   :class:`~ray.train.v2.api.report_config.ValidationTaskConfig` object that contains the keyword
    arguments to pass to the ``validation_fn``.
 2. Ray Train asynchronously runs your ``validation_fn`` with that checkpoint and configuration.
 3. When that validation task completes, Ray Train associates the metrics returned by your ``validation_fn``

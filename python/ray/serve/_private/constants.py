@@ -958,6 +958,10 @@ RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S = float(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S", "30")
 )
 
+# Grace added on top of the min draining period when flooring an ingress
+# deployment's graceful_shutdown_timeout_s.
+RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S = 5
+
 # HTTP request timeout
 SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER = "x-request-timeout-seconds"
 
