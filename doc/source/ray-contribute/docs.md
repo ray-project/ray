@@ -99,7 +99,7 @@ make develop
 
 Find the documentation build in the `_build` directory. After the build finishes, open the `_build/html/index.html` file in your browser. It's good practice to check the output of your build to make sure everything works as expected.
 
-Before committing any changes, run the [linter](https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#lint-and-formatting) with `pre-commit run` from the `doc` folder to make sure your changes are formatted correctly.
+Before committing any changes, run the [linter](getting-involved.md#lint-and-formatting) with `pre-commit run` from the `doc` folder to make sure your changes are formatted correctly.
 
 ### Code completion and other developer tooling
 
