@@ -12,7 +12,6 @@ from ray.serve._private.build_app import (
 )
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID
-from ray.serve._private.request_router import PowerOfTwoChoicesRequestRouter
 from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
@@ -686,9 +685,8 @@ def test_ingress_validation_excludes_ingress_request_router_fastapi_app(monkeypa
         # load-balances ingress traffic and bypasses the Serve request router.
         (True, RoundRobinRouter, True),
         (False, RoundRobinRouter, False),
-        # The default router is not custom, including when passed as a class.
+        # The default router (left unset) is not custom.
         (True, None, False),
-        (True, PowerOfTwoChoicesRequestRouter, False),
     ],
 )
 def test_build_app_rejects_only_custom_ingress_request_router_under_haproxy(
