@@ -133,6 +133,13 @@ TimeBasedWorkerKillingPolicy::Policy(
             return false;
           }
 
+          if (left->GetActorId().IsNil() && !right->GetActorId().IsNil()) {
+            return true;
+          }
+          if (!left->GetActorId().IsNil() && right->GetActorId().IsNil()) {
+            return false;
+          }
+
           absl::Time left_granted_lease_time = left->GetLastGrantedLeaseTime().value();
           absl::Time right_granted_lease_time = right->GetLastGrantedLeaseTime().value();
           return left_granted_lease_time > right_granted_lease_time;
