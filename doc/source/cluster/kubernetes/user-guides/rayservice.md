@@ -108,15 +108,13 @@ kubectl get services
 # rayservice-sample-serve-svc                   ClusterIP   10.96.161.84    <none>        8000/TCP                                                  4m58s
 ```
 
-KubeRay creates a RayCluster based on `spec.rayClusterConfig` defined in the RayService YAML for a RayService custom resource.
-Next, once the head Pod is running and ready, KubeRay submits a request to the head's dashboard port to create the Ray Serve applications defined in `spec.serveConfigV2`.
+KubeRay creates a RayCluster based on `spec.rayClusterConfig` defined in the RayService YAML for a RayService custom resource. Next, once the head Pod is running and ready, KubeRay submits a request to the head's dashboard port to create the Ray Serve applications defined in `spec.serveConfigV2`.
 
 Users can access the head Pod through both RayService’s head service `rayservice-sample-head-svc` and RayCluster’s head service `rayservice-sample-raycluster-xxxxx-head-svc`.
 
 However, during a zero downtime upgrade, KubeRay creates a new RayCluster and a new head service `rayservice-sample-raycluster-yyyyy-head-svc` for the new RayCluster.
 
-If you don't use `rayservice-sample-head-svc`, you need to update the ingress configuration to point to the new head service.
-However, if you use `rayservice-sample-head-svc`, KubeRay automatically updates the selector to point to the new head Pod, eliminating the need to update the ingress configuration.
+If you don't use `rayservice-sample-head-svc`, you need to update the ingress configuration to point to the new head service. However, if you use `rayservice-sample-head-svc`, KubeRay automatically updates the selector to point to the new head Pod, eliminating the need to update the ingress configuration.
 
 
 > Note: Default ports and their definitions.
@@ -173,9 +171,7 @@ kubectl describe rayservices rayservice-sample
 kubectl port-forward svc/rayservice-sample-head-svc 8265:8265
 ```
 
-* See [rayservice-troubleshooting.md](kuberay-raysvc-troubleshoot) for more details on RayService observability.
-Below is a screenshot example of the Serve page in the Ray dashboard.
-  ![Ray Serve Dashboard](../images/dashboard_serve.png)
+* See [rayservice-troubleshooting.md](kuberay-raysvc-troubleshoot) for more details on RayService observability. Below is a screenshot example of the Serve page in the Ray dashboard. ![Ray Serve Dashboard](../images/dashboard_serve.png)
 
 ## Step 6: Send requests to the Serve applications by the Kubernetes serve service
 
@@ -200,8 +196,7 @@ curl -X POST -H 'Content-Type: application/json' rayservice-sample-serve-svc:800
 
 You can update the configurations for the applications by modifying `serveConfigV2` in the RayService configuration file. Reapplying the modified configuration with `kubectl apply` reapplies the new configurations to the existing RayCluster instead of creating a new RayCluster.
 
-Update the price of Mango from `3` to `4` for the fruit stand app in [ray-service.sample.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-service.sample.yaml).
-This change reconfigures the existing MangoStand deployment, and future requests are going to use the updated mango price.
+Update the price of Mango from `3` to `4` for the fruit stand app in [ray-service.sample.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-service.sample.yaml). This change reconfigures the existing MangoStand deployment, and future requests are going to use the updated mango price.
 
 ```sh
 # Step 7.1: Update the price of mangos from 3 to 4.
@@ -233,18 +228,11 @@ curl -X POST -H 'Content-Type: application/json' rayservice-sample-serve-svc:800
 
 This section describes the default `NewCluster` upgrade strategy. For large-scale deployments where duplicating resources isn't feasible, see [RayService incremental upgrade](kuberay-rayservice-incremental-upgrade) for the `NewClusterWithIncrementalUpgrade` strategy, which uses fewer resources during upgrades.
 
-In Step 7, modifying `serveConfigV2` doesn't trigger a zero downtime upgrade for Ray clusters.
-Instead, it reapplies the new configurations to the existing RayCluster.
-However, if you modify `spec.rayClusterConfig` in the RayService YAML file, it triggers a zero downtime upgrade for Ray clusters.
-RayService temporarily creates a new RayCluster and waits for it to be ready, then switches traffic to the new RayCluster by updating the selector of the head service managed by RayService `rayservice-sample-head-svc` and terminates the old one.
+In Step 7, modifying `serveConfigV2` doesn't trigger a zero downtime upgrade for Ray clusters. Instead, it reapplies the new configurations to the existing RayCluster. However, if you modify `spec.rayClusterConfig` in the RayService YAML file, it triggers a zero downtime upgrade for Ray clusters. RayService temporarily creates a new RayCluster and waits for it to be ready, then switches traffic to the new RayCluster by updating the selector of the head service managed by RayService `rayservice-sample-head-svc` and terminates the old one.
 
-During the zero downtime upgrade process, RayService creates a new RayCluster temporarily and waits for it to become ready.
-Once the new RayCluster is ready, RayService updates the selector of the head service managed by RayService `rayservice-sample-head-svc` to point to the new RayCluster to switch the traffic to the new RayCluster.
-Finally, KubeRay deletes the old RayCluster.
+During the zero downtime upgrade process, RayService creates a new RayCluster temporarily and waits for it to become ready. Once the new RayCluster is ready, RayService updates the selector of the head service managed by RayService `rayservice-sample-head-svc` to point to the new RayCluster to switch the traffic to the new RayCluster. Finally, KubeRay deletes the old RayCluster.
 
-Certain exceptions don't trigger a zero downtime upgrade.
-Only the fields managed by Ray autoscaler—`replicas`, `minReplicas`, `maxReplicas`, and `scaleStrategy.workersToDelete`—don't trigger a zero downtime upgrade.
-When you update these fields, KubeRay doesn't propagate the update from RayService to RayCluster custom resources, so nothing happens.
+Certain exceptions don't trigger a zero downtime upgrade. Only the fields managed by Ray autoscaler—`replicas`, `minReplicas`, `maxReplicas`, and `scaleStrategy.workersToDelete`—don't trigger a zero downtime upgrade. When you update these fields, KubeRay doesn't propagate the update from RayService to RayCluster custom resources, so nothing happens.
 
 ```sh
 # Step 8.1: Update `spec.rayClusterConfig.workerGroupSpecs[0].replicas` in the RayService YAML file from 1 to 2.
@@ -300,5 +288,4 @@ kubectl delete pod curl
 
 * See [RayService high availability](kuberay-rayservice-ha) for more details on RayService HA.
 * See [RayService troubleshooting guide](kuberay-raysvc-troubleshoot) if you encounter any issues.
-* See [Examples](kuberay-examples) for more RayService examples.
-The [MobileNet example](kuberay-mobilenet-rayservice-example) is a good example to start with because it doesn't require GPUs and is easy to run on a local machine.
+* See [Examples](kuberay-examples) for more RayService examples. The [MobileNet example](kuberay-mobilenet-rayservice-example) is a good example to start with because it doesn't require GPUs and is easy to run on a local machine.

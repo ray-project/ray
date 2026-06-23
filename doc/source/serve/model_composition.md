@@ -13,15 +13,9 @@ The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully re
 
 ## Compose deployments using DeploymentHandles
 
-When building an application, you can `.bind()` multiple deployments and pass them to each other's constructors.
-At runtime, inside the deployment code Ray Serve substitutes the bound deployments with 
-{ref}`DeploymentHandles <serve-key-concepts-deployment-handle>` that you can use to call methods of other deployments.
-This capability lets you divide your application's steps, such as preprocessing, model inference, and post-processing, into independent deployments that you can independently scale and configure.
+When building an application, you can `.bind()` multiple deployments and pass them to each other's constructors. At runtime, inside the deployment code Ray Serve substitutes the bound deployments with {ref}`DeploymentHandles <serve-key-concepts-deployment-handle>` that you can use to call methods of other deployments. This capability lets you divide your application's steps, such as preprocessing, model inference, and post-processing, into independent deployments that you can independently scale and configure.
 
-Use {mod}`handle.remote <ray.serve.handle.DeploymentHandle.remote>` to send requests to a deployment.
-These requests can contain ordinary Python args and kwargs, which DeploymentHandles can pass  directly to the method.
-The method call returns a {mod}`DeploymentResponse <ray.serve.handle.DeploymentResponse>` that represents a future to the output.
-You can `await` the response to retrieve its result or pass it to another downstream {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` call.
+Use {mod}`handle.remote <ray.serve.handle.DeploymentHandle.remote>` to send requests to a deployment. These requests can contain ordinary Python args and kwargs, which DeploymentHandles can pass  directly to the method. The method call returns a {mod}`DeploymentResponse <ray.serve.handle.DeploymentResponse>` that represents a future to the output. You can `await` the response to retrieve its result or pass it to another downstream {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` call.
 
 (serve-model-composition-deployment-handles)=
 ## Basic DeploymentHandle example
@@ -49,18 +43,11 @@ This call has a few parts:
 * `remote` indicates that this is a `DeploymentHandle` call to another deployment.
 * `name` is the argument for `say_hello`. You can pass any number of arguments or keyword arguments here.
 
-This call returns a `DeploymentResponse` object, which is a reference to the result, rather than the result itself.
-This pattern allows the call to execute asynchronously.
-To get the actual result, `await` the response.
-`await` blocks until the asynchronous call executes and then returns the result.
-In this example, line 25 calls `await response` and returns the resulting string.
+This call returns a `DeploymentResponse` object, which is a reference to the result, rather than the result itself. This pattern allows the call to execute asynchronously. To get the actual result, `await` the response. `await` blocks until the asynchronous call executes and then returns the result. In this example, line 25 calls `await response` and returns the resulting string.
 
 (serve-model-composition-await-warning)=
 :::{warning}
-You can use the `response.result()` method to get the return value of remote `DeploymentHandle` calls.
-However, avoid calling `.result()` from inside a deployment because it blocks the deployment from executing any other code until the remote method call finishes.
-Using `await` lets the deployment process other requests while waiting for the remote method call to finish.
-You should use `await` instead of `.result()` inside deployments.
+You can use the `response.result()` method to get the return value of remote `DeploymentHandle` calls. However, avoid calling `.result()` from inside a deployment because it blocks the deployment from executing any other code until the remote method call finishes. Using `await` lets the deployment process other requests while waiting for the remote method call to finish. You should use `await` instead of `.result()` inside deployments.
 :::
 
 You can copy the preceding `hello.py` script and run it with `serve run`. Make sure to run the command from a directory containing `hello.py`, so it can locate the script:
@@ -93,9 +80,7 @@ With composition, you can avoid application-level bottlenecks when serving model
 
 ## Chaining DeploymentHandle calls
 
-Ray Serve can directly pass the `DeploymentResponse` object that a `DeploymentHandle` returns, to another `DeploymentHandle` call to chain together multiple stages of a pipeline.
-You don't need to `await` the first response, Ray Serve
-manages the `await` behavior under the hood. When the first call finishes, Ray Serve passes the output of the first call, instead of the `DeploymentResponse` object, directly to the second call.
+Ray Serve can directly pass the `DeploymentResponse` object that a `DeploymentHandle` returns, to another `DeploymentHandle` call to chain together multiple stages of a pipeline. You don't need to `await` the first response, Ray Serve manages the `await` behavior under the hood. When the first call finishes, Ray Serve passes the output of the first call, instead of the `DeploymentResponse` object, directly to the second call.
 
 For example, the code sample below defines three deployments in an application:
 
@@ -113,12 +98,7 @@ Note how the response from the `Adder` handle passes directly to the `Multiplier
 
 ## Streaming DeploymentHandle calls
 
-You can also use `DeploymentHandles` to make streaming method calls that return multiple outputs.
-To make a streaming call, the method must be a generator and you must set `handle.options(stream=True)`.
-Then, the handle call returns a {mod}`DeploymentResponseGenerator <ray.serve.handle.DeploymentResponseGenerator>` instead of a unary `DeploymentResponse`.
-You can use `DeploymentResponseGenerators` as a sync or async generator, like in an `async for` code block.
-Similar to `DeploymentResponse.result()`, avoid using a `DeploymentResponseGenerator` as a sync generator within a deployment, as that blocks other requests from executing concurrently on that replica.
-Note that you can't pass `DeploymentResponseGenerators` to other handle calls.
+You can also use `DeploymentHandles` to make streaming method calls that return multiple outputs. To make a streaming call, the method must be a generator and you must set `handle.options(stream=True)`. Then, the handle call returns a {mod}`DeploymentResponseGenerator <ray.serve.handle.DeploymentResponseGenerator>` instead of a unary `DeploymentResponse`. You can use `DeploymentResponseGenerators` as a sync or async generator, like in an `async for` code block. Similar to `DeploymentResponse.result()`, avoid using a `DeploymentResponseGenerator` as a sync generator within a deployment, as that blocks other requests from executing concurrently on that replica. Note that you can't pass `DeploymentResponseGenerators` to other handle calls.
 
 Example:
 
@@ -131,17 +111,14 @@ Example:
 ## Advanced: Pass a DeploymentResponse in a nested object [FULLY DEPRECATED]
 
 :::{warning}
-Passing a `DeploymentResponse` to downstream handle calls in nested objects is fully deprecated and no longer supported.
-Please manually use `DeploymentResponse._to_object_ref()` instead to pass the corresponding object reference in nested objects.
+Passing a `DeploymentResponse` to downstream handle calls in nested objects is fully deprecated and no longer supported. Please manually use `DeploymentResponse._to_object_ref()` instead to pass the corresponding object reference in nested objects.
 
 Passing a `DeploymentResponse` object as a top-level argument or keyword argument is still supported.
 :::
 
 ## Advanced: Convert a DeploymentResponse to a Ray ObjectRef
 
-Under the hood, each `DeploymentResponse` corresponds to a Ray `ObjectRef`, or an `ObjectRefGenerator` for streaming calls.
-To compose `DeploymentHandle` calls with Ray Actors or Tasks, you may want to resolve the response to its `ObjectRef`.
-For this purpose, you can use the {mod}`DeploymentResponse._to_object_ref <ray.serve.handle.DeploymentResponse>` and {mod}`DeploymentResponse._to_object_ref_sync <ray.serve.handle.DeploymentResponse>` developer APIs.
+Under the hood, each `DeploymentResponse` corresponds to a Ray `ObjectRef`, or an `ObjectRefGenerator` for streaming calls. To compose `DeploymentHandle` calls with Ray Actors or Tasks, you may want to resolve the response to its `ObjectRef`. For this purpose, you can use the {mod}`DeploymentResponse._to_object_ref <ray.serve.handle.DeploymentResponse>` and {mod}`DeploymentResponse._to_object_ref_sync <ray.serve.handle.DeploymentResponse>` developer APIs.
 
 Example:
 

@@ -86,8 +86,7 @@ Users who install Ray and vLLM directly may encounter NIXL EP incompatibility er
 ImportError: libcudart.so.12: cannot open shared object file: No such file or directory
 ```
 
-Remove the incompatible package or ensure the installed ``nixl_ep`` package is compatible with the CUDA runtime
-and vLLM build in your environment.
+Remove the incompatible package or ensure the installed ``nixl_ep`` package is compatible with the CUDA runtime and vLLM build in your environment.
 
 :::
 

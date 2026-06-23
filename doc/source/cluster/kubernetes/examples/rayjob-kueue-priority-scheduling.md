@@ -6,25 +6,20 @@ This guide shows how to run [Fine-tune a PyTorch Lightning Text Classifier with 
 
 ## What's Kueue?
 
-[Kueue](https://kueue.sigs.k8s.io/) is a Kubernetes-native job queueing system that manages quotas
-and how jobs consume them. Kueue decides when:
+[Kueue](https://kueue.sigs.k8s.io/) is a Kubernetes-native job queueing system that manages quotas and how jobs consume them. Kueue decides when:
 * To make a job wait
 * To admit a job to start, meaning that Kubernetes creates pods.
 * To preempt a job, meaning that Kubernetes deletes active pods.
 
-Kueue has native support for some KubeRay APIs. Specifically, you can use Kueue
-to manage resources consumed by RayJob and RayCluster. See the
-[Kueue documentation](https://kueue.sigs.k8s.io/docs/overview/) to learn more.
+Kueue has native support for some KubeRay APIs. Specifically, you can use Kueue to manage resources consumed by RayJob and RayCluster. See the [Kueue documentation](https://kueue.sigs.k8s.io/docs/overview/) to learn more.
 
 ## Step 0: Create a Kubernetes cluster on GKE (Optional)
 
-If you already have a Kubernetes cluster with GPUs, you can skip this step.
-Otherwise, follow [Start Google Cloud GKE Cluster with GPUs for KubeRay](kuberay-gke-gpu-cluster-setup) to set up a Kubernetes cluster on GKE.
+If you already have a Kubernetes cluster with GPUs, you can skip this step. Otherwise, follow [Start Google Cloud GKE Cluster with GPUs for KubeRay](kuberay-gke-gpu-cluster-setup) to set up a Kubernetes cluster on GKE.
 
 ## Step 1: Install the KubeRay operator
 
-Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository.
-The KubeRay operator Pod must be on the CPU node if you set up the taint for the GPU node pool correctly.
+Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository. The KubeRay operator Pod must be on the CPU node if you set up the taint for the GPU node pool correctly.
 
 ## Step 2: Install Kueue
 
@@ -181,8 +176,7 @@ $ kubectl create -f ray-job.pytorch-distributed-training.yaml
 rayjob.ray.io/dev-pytorch-text-classifier-ftcs9 created
 ```
 
-Because each RayJob requests 1 GPU and the ClusterQueue has quotas for only 1 GPU,
-Kueue automatically suspends new RayJob resources until GPU quotas become available.
+Because each RayJob requests 1 GPU and the ClusterQueue has quotas for only 1 GPU, Kueue automatically suspends new RayJob resources until GPU quotas become available.
 
 You can also inspect the `ClusterQueue` to see available and used quotas:
 ```bash
@@ -227,9 +221,7 @@ status:
 
 ## Step 6: Deploy a RayJob with higher priority
 
-At this point there are multiple RayJob custom resources queued up but only enough quota to run a single RayJob.
-Now you can create a new RayJob with higher priority to preempt the already queued RayJob resources.
-Modify the RayJob with:
+At this point there are multiple RayJob custom resources queued up but only enough quota to run a single RayJob. Now you can create a new RayJob with higher priority to preempt the already queued RayJob resources. Modify the RayJob with:
 
 ```yaml
 metadata:

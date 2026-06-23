@@ -12,9 +12,7 @@ This guide demonstrates how to use KAI Scheduler for setting up hierarchical que
 - **Workload autoscaling**: Scale Ray replicas or workers within min/max while respecting gang constraints
 - **Cluster autoscaling**: Compatible with dynamic cloud infrastructures (including auto-scalers like Karpenter)
 - **Workload priorities**: Prioritize Ray workloads effectively within queues
-- **Hierarchical queues and fairness**: Two-level queues with quotas, over-quota weights, limits, and equitable resource distribution between queues using DRF
-and many more.
-For more details and key features, see [the documentation](https://github.com/NVIDIA/KAI-Scheduler?tab=readme-ov-file#key-features).
+- **Hierarchical queues and fairness**: Two-level queues with quotas, over-quota weights, limits, and equitable resource distribution between queues using DRF and many more. For more details and key features, see [the documentation](https://github.com/NVIDIA/KAI-Scheduler?tab=readme-ov-file#key-features).
 
 ### Core components
 
@@ -151,8 +149,7 @@ kubectl get pods -w
 # raycluster-sample-worker-worker-rcb54   1/1     Running             0          71s
 # raycluster-sample-worker-worker-mlvtz   1/1     Running             0          71s
 ```
-Note: Starting from KubeRay v1.6, KAI Scheduler supports **RayCluster**, **RayService**, and **RayJob with SidecarMode, HTTPMode, or InteractiveMode**.
-The following mode is not supported:
+Note: Starting from KubeRay v1.6, KAI Scheduler supports **RayCluster**, **RayService**, and **RayJob with SidecarMode, HTTPMode, or InteractiveMode**. The following mode is not supported:
    
 - **K8sJobMode**: The submitter pod is created after RayCluster is ready, preventing proper gang scheduling.
 

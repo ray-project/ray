@@ -87,8 +87,7 @@ You can also pass in an existing FastAPI app to a deployment to serve it as-is:
 :language: python
 ```
 
-This is useful for scaling out an existing FastAPI app with no modifications necessary.
-Existing middlewares, **automatic OpenAPI documentation generation**, and other advanced FastAPI features should work as-is.
+This is useful for scaling out an existing FastAPI app with no modifications necessary. Existing middlewares, **automatic OpenAPI documentation generation**, and other advanced FastAPI features should work as-is.
 
 ### WebSockets
 
@@ -123,16 +122,11 @@ Ray Serve's object-based pattern, shown previously, requires FastAPI objects to 
 (serve-http-streaming-response)=
 ## Streaming Responses
 
-Some applications must stream incremental results back to the caller.
-This is common for text generation using large language models (LLMs) or video processing applications.
-The full forward pass may take multiple seconds, so providing incremental results as they're available provides a much better user experience.
+Some applications must stream incremental results back to the caller. This is common for text generation using large language models (LLMs) or video processing applications. The full forward pass may take multiple seconds, so providing incremental results as they're available provides a much better user experience.
 
-To use HTTP response streaming, return a [StreamingResponse](https://www.starlette.io/responses/#streamingresponse) that wraps a generator from your HTTP handler.
-This is supported for basic HTTP ingress deployments using a `__call__` method and when using the [FastAPI integration](serve-fastapi-http).
+To use HTTP response streaming, return a [StreamingResponse](https://www.starlette.io/responses/#streamingresponse) that wraps a generator from your HTTP handler. This is supported for basic HTTP ingress deployments using a `__call__` method and when using the [FastAPI integration](serve-fastapi-http).
 
-The code below defines a Serve application that incrementally streams numbers up to a provided `max`.
-The client-side code is also updated to handle the streaming outputs.
-This code uses the `stream=True` option to the [requests](https://requests.readthedocs.io/en/latest/user/advanced.html#streaming-requests) library.
+The code below defines a Serve application that incrementally streams numbers up to a provided `max`. The client-side code is also updated to handle the streaming outputs. This code uses the `stream=True` option to the [requests](https://requests.readthedocs.io/en/latest/user/advanced.html#streaming-requests) library.
 
 ```{literalinclude} doc_code/http_guide/streaming_example.py
 :start-after: __begin_example__
@@ -163,9 +157,7 @@ Got result 0.9s after start: '9'
 
 ### Terminating the stream when a client disconnects
 
-In some cases, you may want to cease processing a request when the client disconnects before the full stream has been returned.
-If you pass an async generator to `StreamingResponse`, it is cancelled and raises an `asyncio.CancelledError` when the client disconnects.
-Note that you must `await` at some point in the generator for the cancellation to occur.
+In some cases, you may want to cease processing a request when the client disconnects before the full stream has been returned. If you pass an async generator to `StreamingResponse`, it is cancelled and raises an `asyncio.CancelledError` when the client disconnects. Note that you must `await` at some point in the generator for the cancellation to occur.
 
 In the example below, the generator streams responses forever until the client disconnects, then it prints that it was cancelled and exits. Save this code in `stream.py` and run it:
 
@@ -202,8 +194,4 @@ Client disconnecting
 (serve-http-guide-keep-alive-timeout)=
 ## Set keep alive timeout
 
-Serve uses a Uvicorn HTTP server internally to serve HTTP requests. By default, Uvicorn
-keeps HTTP connections alive for 5 seconds between requests. Modify the keep-alive
-timeout by setting the `keep_alive_timeout_s` in the `http_options` field of the Serve
-config files. This config is global to your Ray cluster, and you can't update it during
-runtime. See Uvicorn's keep alive timeout [guide](https://www.uvicorn.org/server-behavior/#timeouts) for more information.
+Serve uses a Uvicorn HTTP server internally to serve HTTP requests. By default, Uvicorn keeps HTTP connections alive for 5 seconds between requests. Modify the keep-alive timeout by setting the `keep_alive_timeout_s` in the `http_options` field of the Serve config files. This config is global to your Ray cluster, and you can't update it during runtime. See Uvicorn's keep alive timeout [guide](https://www.uvicorn.org/server-behavior/#timeouts) for more information.

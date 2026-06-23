@@ -4,15 +4,11 @@
 
 This guide explores a specific scenario in KubeRay's RayService API where a Ray worker Pod remains in an unready state due to the absence of a Ray Serve replica.
 
-To better understand this section, you should be familiar with the following Ray Serve components: 
-the [Ray Serve replica and ProxyActor](https://docs.ray.io/en/latest/serve/architecture.html#high-level-view).
+To better understand this section, you should be familiar with the following Ray Serve components: the [Ray Serve replica and ProxyActor](https://docs.ray.io/en/latest/serve/architecture.html#high-level-view).
 
-ProxyActor is responsible for forwarding incoming requests to the corresponding Ray Serve replicas. 
-Hence, if a Ray Pod without a running ProxyActor receives requests, those requests will fail.
-KubeRay's readiness probe fails, rendering the Pods unready and preventing ProxyActor from sending requests to them.
+ProxyActor is responsible for forwarding incoming requests to the corresponding Ray Serve replicas. Hence, if a Ray Pod without a running ProxyActor receives requests, those requests will fail. KubeRay's readiness probe fails, rendering the Pods unready and preventing ProxyActor from sending requests to them.
 
-The default behavior of Ray Serve only creates ProxyActor on Ray Pods with running Ray Serve replicas.
-To illustrate, the following example serves one simple Ray Serve app using RayService.
+The default behavior of Ray Serve only creates ProxyActor on Ray Pods with running Ray Serve replicas. To illustrate, the following example serves one simple Ray Serve app using RayService.
 
 
 ## Step 1: Create a Kubernetes cluster with Kind
@@ -115,9 +111,7 @@ Starting from Ray 2.8, a Ray worker Pod that doesn't have any Ray Serve replica 
 Starting from KubeRay v1.1.0, KubeRay adds a readiness probe to every worker Pod's Ray container to check if the worker Pod has a Proxy actor or not.  
 If the worker Pod lacks a Proxy actor, the readiness probe fails, rendering the worker Pod unready, and thus, it doesn't receive any traffic.  
 
-With `spec.serveConfigV2`, KubeRay only creates one Ray Serve replica and schedules it to one of the worker Pods.
-KubeRay sets up the worker Pod with a Ray Serve replica with a Proxy actor and marks it as ready.
-KubeRay marks the other worker Pod, which doesn't have any Ray Serve replica and a Proxy actor, as unready.
+With `spec.serveConfigV2`, KubeRay only creates one Ray Serve replica and schedules it to one of the worker Pods. KubeRay sets up the worker Pod with a Ray Serve replica with a Proxy actor and marks it as ready. KubeRay marks the other worker Pod, which doesn't have any Ray Serve replica and a Proxy actor, as unready.
 
 ## Step 5: Verify the status of the Serve apps
 
@@ -133,8 +127,7 @@ Note that a `ray::ServeReplica::simple_app::BaseService` and a `ray::ProxyActor`
 
 ## Step 6: Send requests to the Serve apps by the Kubernetes serve service
 
-`rayservice-no-ray-serve-serve-svc` does traffic routing among all the workers that have Ray Serve replicas.
-Although one worker Pod is unready, Ray Serve can still route the traffic to the ready worker Pod with a Ray Serve replica running. Therefore, users can still send requests to the app and receive responses from it.
+`rayservice-no-ray-serve-serve-svc` does traffic routing among all the workers that have Ray Serve replicas. Although one worker Pod is unready, Ray Serve can still route the traffic to the ready worker Pod with a Ray Serve replica running. Therefore, users can still send requests to the app and receive responses from it.
 
 ```sh
 # Step 6.1: Run a curl Pod.

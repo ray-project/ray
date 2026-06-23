@@ -14,12 +14,9 @@ best-practices
 ```
 
 
-The recommended way to run Ray Serve in production is on Kubernetes using the [KubeRay](kuberay-quickstart) [RayService](kuberay-rayservice-quickstart) custom resource.
-The RayService custom resource automatically handles important production requirements such as health checking, status reporting, failure recovery, and upgrades.
-If you're not running on Kubernetes, you can also run Ray Serve on a Ray cluster directly using the Serve CLI.
+The recommended way to run Ray Serve in production is on Kubernetes using the [KubeRay](kuberay-quickstart) [RayService](kuberay-rayservice-quickstart) custom resource. The RayService custom resource automatically handles important production requirements such as health checking, status reporting, failure recovery, and upgrades. If you're not running on Kubernetes, you can also run Ray Serve on a Ray cluster directly using the Serve CLI.
 
-This section will walk you through a quickstart of how to generate a Serve config file and deploy it using the Serve CLI.
-For more details, you can check out the other pages in the production guide:
+This section will walk you through a quickstart of how to generate a Serve config file and deploy it using the Serve CLI. For more details, you can check out the other pages in the production guide:
 - Understand the [Serve config file format](serve-in-production-config-file).
 - Understand how to [deploy on Kubernetes using KubeRay](serve-in-production-kubernetes).
 - Understand how to [monitor running Serve applications](serve-monitoring).
@@ -30,8 +27,7 @@ For deploying on VMs instead of Kubernetes, see [Deploy on VM](serve-in-producti
 
 ## Working example: Text summarization and translation application
 
-Throughout the production guide, we will use the following Serve application as a working example.
-The application takes in a string of text in English, then summarizes and translates it into French (default), German, or Romanian.
+Throughout the production guide, we will use the following Serve application as a working example. The application takes in a string of text in English, then summarizes and translates it into French (default), German, or Romanian.
 
 ```{literalinclude} ../doc_code/production_guide/text_ml.py
 :language: python
@@ -39,17 +35,14 @@ The application takes in a string of text in English, then summarizes and transl
 :end-before: __example_end__
 ```
 
-Save this code locally in `text_ml.py`.
-In development, we would likely use the `serve run` command to iteratively run, develop, and repeat (see the [Development Workflow](serve-dev-workflow) for more information).
-When we're ready to go to production, we will generate a structured [config file](serve-in-production-config-file) that acts as the single source of truth for the application.
+Save this code locally in `text_ml.py`. In development, we would likely use the `serve run` command to iteratively run, develop, and repeat (see the [Development Workflow](serve-dev-workflow) for more information). When we're ready to go to production, we will generate a structured [config file](serve-in-production-config-file) that acts as the single source of truth for the application.
 
 This config file can be generated using `serve build`:
 ```
 $ serve build text_ml:app -o serve_config.yaml
 ```
 
-The generated version of this file contains an `import_path`, `runtime_env`, and configuration options for each deployment in the application.
-The application needs the `torch` and `transformers` packages, so modify the `runtime_env` field of the generated config to include these two pip packages. Save this config locally in `serve_config.yaml`.
+The generated version of this file contains an `import_path`, `runtime_env`, and configuration options for each deployment in the application. The application needs the `torch` and `transformers` packages, so modify the `runtime_env` field of the generated config to include these two pip packages. Save this config locally in `serve_config.yaml`.
 
 ```yaml
 proxy_location: EveryNode

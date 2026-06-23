@@ -2,34 +2,24 @@
 
 # Gang Scheduling with RayJob and Kueue
 
-This guide demonstrates how to use Kueue for gang scheduling RayJob resources, taking advantage of dynamic resource provisioning and queueing on Kubernetes.
- To illustrate the concepts, this guide uses the [Fine-tune a PyTorch Lightning Text Classifier with Ray Data](https://docs.ray.io/en/master/train/examples/lightning/lightning_cola_advanced.html) example.
+This guide demonstrates how to use Kueue for gang scheduling RayJob resources, taking advantage of dynamic resource provisioning and queueing on Kubernetes. To illustrate the concepts, this guide uses the [Fine-tune a PyTorch Lightning Text Classifier with Ray Data](https://docs.ray.io/en/master/train/examples/lightning/lightning_cola_advanced.html) example.
 
 ## Gang scheduling
 
-Gang scheduling in Kubernetes ensures that a group of related Pods, such as those in a Ray cluster,
-only start when all required resources are available. Having this requirement is crucial when working with expensive,
-limited resources like GPUs.
+Gang scheduling in Kubernetes ensures that a group of related Pods, such as those in a Ray cluster, only start when all required resources are available. Having this requirement is crucial when working with expensive, limited resources like GPUs.
 
 ## Kueue
 
-[Kueue](https://kueue.sigs.k8s.io/) is a Kubernetes-native system that manages quotas
-and how jobs consume them. Kueue decides when:
+[Kueue](https://kueue.sigs.k8s.io/) is a Kubernetes-native system that manages quotas and how jobs consume them. Kueue decides when:
 * To make a job wait.
 * To admit a job to start, which triggers Kubernetes to create Pods.
 * To preempt a job, which triggers Kubernetes to delete active Pods.
 
-Kueue has native support for some KubeRay APIs. Specifically, you can use Kueue
-to manage resources that RayJob, RayCluster, and RayService consume. See the
-[Kueue documentation](https://kueue.sigs.k8s.io/docs/overview/) to learn more.
+Kueue has native support for some KubeRay APIs. Specifically, you can use Kueue to manage resources that RayJob, RayCluster, and RayService consume. See the [Kueue documentation](https://kueue.sigs.k8s.io/docs/overview/) to learn more.
 
 ## Why use gang scheduling
 
-Gang scheduling is essential when working with expensive, limited hardware accelerators like GPUs.
-It prevents RayJobs from partially provisioning Ray clusters and claiming but not using the GPUs.
-Kueue suspends a RayJob until the Kubernetes cluster and the underlying cloud provider can guarantee
-the capacity that the RayJob needs to execute. This approach greatly improves GPU utilization and
-cost, especially when GPU availability is limited.
+Gang scheduling is essential when working with expensive, limited hardware accelerators like GPUs. It prevents RayJobs from partially provisioning Ray clusters and claiming but not using the GPUs. Kueue suspends a RayJob until the Kubernetes cluster and the underlying cloud provider can guarantee the capacity that the RayJob needs to execute. This approach greatly improves GPU utilization and cost, especially when GPU availability is limited.
 
 ## Create a Kubernetes cluster on GKE
 
@@ -55,15 +45,12 @@ gcloud container node-pools create gpu-node-pool \
   --machine-type g2-standard-4
 ```
 
-This command creates a node pool, which initially has zero nodes.
-The `--enable-queued-provisioning` flag enables "queued provisioning" in the Kubernetes node autoscaler using the ProvisioningRequest API. More details are below.
-You need to use the `--reservation-affinity=none` flag because GKE doesn't support Node Reservations with ProvisioningRequest.
+This command creates a node pool, which initially has zero nodes. The `--enable-queued-provisioning` flag enables "queued provisioning" in the Kubernetes node autoscaler using the ProvisioningRequest API. More details are below. You need to use the `--reservation-affinity=none` flag because GKE doesn't support Node Reservations with ProvisioningRequest.
 
 
 ## Install the KubeRay operator
 
-Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository.
-The KubeRay operator Pod must be on the CPU node if you set up the taint for the GPU node pool correctly.
+Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository. The KubeRay operator Pod must be on the CPU node if you set up the taint for the GPU node pool correctly.
 
 ## Install Kueue
 
@@ -163,8 +150,7 @@ Download the RayJob that executes all the steps documented in [Fine-tune a PyTor
 curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/pytorch-text-classifier/ray-job.pytorch-distributed-training.yaml
 ```
 
-Before creating the RayJob, modify the RayJob metadata with a label
-to assign the RayJob to the LocalQueue that you created earlier:
+Before creating the RayJob, modify the RayJob metadata with a label to assign the RayJob to the LocalQueue that you created earlier:
 ```yaml
 metadata:
   generateName: pytorch-text-classifier-
@@ -187,8 +173,7 @@ Following is the expected behavior when you deploy a GPU-requiring RayJob to a c
 * Once the required GPU nodes are available, the ProvisioningRequest is satisfied.
 * Kueue admits the RayJob, allowing Kubernetes to schedule the Ray nodes on the newly provisioned nodes, and the RayJob execution begins.
 
-If GPUs are unavailable, Kueue keeps suspending the RayJob. In addition, the node autoscaler avoids
-provisioning new nodes until it can fully satisfy the RayJob's GPU requirements.
+If GPUs are unavailable, Kueue keeps suspending the RayJob. In addition, the node autoscaler avoids provisioning new nodes until it can fully satisfy the RayJob's GPU requirements.
 
 Upon creating a RayJob, notice that the RayJob status is immediately `suspended` despite the ClusterQueue having GPU quotas available.
 ```bash
@@ -208,26 +193,21 @@ status:
   jobStatus: PENDING
 ```
 
-Kueue keeps suspending this RayJob until its corresponding ProvisioningRequest is satisfied.
-List ProvisioningRequest resources and their status with this command:
+Kueue keeps suspending this RayJob until its corresponding ProvisioningRequest is satisfied. List ProvisioningRequest resources and their status with this command:
 ```bash
 $ kubectl get provisioningrequest
 NAME                                                      ACCEPTED   PROVISIONED   FAILED   AGE
 rayjob-pytorch-text-classifier-nv77q-e95ec-rayjob-gpu-1   True       False         False    22s
 ```
 
-Note the two columns in the output: `ACCEPTED` and `PROVISIONED`.
-`ACCEPTED=True` means that Kueue and the Kubernetes node autoscaler have acknowledged the request.
-`PROVISIONED=True` means that the Kubernetes node autoscaler has completed provisioning nodes.
-Once both of these conditions are true, the ProvisioningRequest is satisfied.
+Note the two columns in the output: `ACCEPTED` and `PROVISIONED`. `ACCEPTED=True` means that Kueue and the Kubernetes node autoscaler have acknowledged the request. `PROVISIONED=True` means that the Kubernetes node autoscaler has completed provisioning nodes. Once both of these conditions are true, the ProvisioningRequest is satisfied.
 ```bash
 $ kubectl get provisioningrequest
 NAME                                                      ACCEPTED   PROVISIONED   FAILED   AGE
 rayjob-pytorch-text-classifier-nv77q-e95ec-rayjob-gpu-1   True       True          False    57s
 ```
 
-Because the example RayJob requires 1 GPU for fine-tuning, the ProvisioningRequest is satisfied
-by the addition of a single GPU node in the `gpu-node-pool` Node Pool.
+Because the example RayJob requires 1 GPU for fine-tuning, the ProvisioningRequest is satisfied by the addition of a single GPU node in the `gpu-node-pool` Node Pool.
 ```bash
 $ kubectl get nodes
 NAME                                                  STATUS   ROLES    AGE   VERSION
@@ -235,9 +215,7 @@ gke-kuberay-gpu-cluster-default-pool-8d883840-fd6d    Ready    <none>   14m   v1
 gke-kuberay-gpu-cluster-gpu-node-pool-b176212e-g3db   Ready    <none>   46s   v1.29.0-gke.1381000  # new node with GPUs
 ```
 
-Once the ProvisioningRequest is satisfied, Kueue admits the RayJob.
-The Kubernetes scheduler then immediately places the head and worker nodes onto the newly provisioned resources.
-The ProvisioningRequest ensures a seamless Ray cluster start up, with no scheduling delays for any Pods.
+Once the ProvisioningRequest is satisfied, Kueue admits the RayJob. The Kubernetes scheduler then immediately places the head and worker nodes onto the newly provisioned resources. The ProvisioningRequest ensures a seamless Ray cluster start up, with no scheduling delays for any Pods.
 
 ```bash
 $ kubectl get pods

@@ -14,11 +14,9 @@ Ray Dashboard runs on port `8265` of the head node. Follow the instructions belo
 ::::{tab-set}
 
 :::{tab-item} Single-node local cluster
-**Start the cluster explicitly with CLI** <br/>
-Pass the ``--dashboard-port`` argument with ``ray start`` in the command line.
+**Start the cluster explicitly with CLI** <br/> Pass the ``--dashboard-port`` argument with ``ray start`` in the command line.
 
-**Start the cluster implicitly with `ray.init`** <br/>
-Pass the keyword argument ``dashboard_port`` in your call to ``ray.init()``.
+**Start the cluster implicitly with `ray.init`** <br/> Pass the keyword argument ``dashboard_port`` in your call to ``ray.init()``.
 :::
 
 :::{tab-item} VM Cluster Launcher
@@ -52,9 +50,7 @@ For security purposes, do not expose Ray Dashboard publicly without proper authe
 ::::{tab-set}
 
 :::{tab-item} VM Cluster Launcher
-**Port forwarding** <br/>
-You can securely port-forward local traffic to the dashboard with the ``ray
-dashboard`` command.
+**Port forwarding** <br/> You can securely port-forward local traffic to the dashboard with the ``ray dashboard`` command.
 
 ```shell
 $ ray dashboard [-p <port, 8265 by default>] <cluster config file>
@@ -65,16 +61,13 @@ The dashboard is now visible at ``http://localhost:8265``.
 
 :::{tab-item} KubeRay
 
-The KubeRay operator makes Dashboard available via a Service targeting the Ray head pod, named ``<RayCluster name>-head-svc``. Access
-Dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-svc:8265``.
+The KubeRay operator makes Dashboard available via a Service targeting the Ray head pod, named ``<RayCluster name>-head-svc``. Access Dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-svc:8265``.
 
 There are two ways to expose Dashboard outside the Cluster:
 
-**1. Setting up ingress** <br/>
-Follow the [instructions](kuberay-ingress) to set up ingress to access Ray Dashboard. **The Ingress must only allows access from trusted sources.**
+**1. Setting up ingress** <br/> Follow the [instructions](kuberay-ingress) to set up ingress to access Ray Dashboard. **The Ingress must only allows access from trusted sources.**
 
-**2. Port forwarding** <br/>
-You can also view the dashboard from outside the Kubernetes cluster by using port-forwarding:
+**2. Port forwarding** <br/> You can also view the dashboard from outside the Kubernetes cluster by using port-forwarding:
 
 ```shell
 $ kubectl port-forward service/${RAYCLUSTER_NAME}-head-svc 8265:8265
@@ -96,8 +89,7 @@ For more information about configuring network access to a Ray cluster on Kubern
 
 Ray Dashboard should work out-of-the-box when accessed via a reverse proxy. API requests don't need to be proxied individually.
 
-Always access the dashboard with a trailing ``/`` at the end of the URL.
-For example, if your proxy is set up to handle requests to ``/ray/dashboard``, view the dashboard at ``www.my-website.com/ray/dashboard/``.
+Always access the dashboard with a trailing ``/`` at the end of the URL. For example, if your proxy is set up to handle requests to ``/ray/dashboard``, view the dashboard at ``www.my-website.com/ray/dashboard/``.
 
 The dashboard sends HTTP requests with relative URL paths. Browsers handle these requests as expected when the ``window.location.href`` ends in a trailing ``/``.
 
@@ -164,8 +156,7 @@ ray.init(include_dashboard=False)
 :::
 
 :::{tab-item} VM Cluster Launcher
-Include the `ray start --head --include-dashboard=False` argument
-in the `head_start_ray_commands` section of the [Cluster Launcher's YAML file](https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172).
+Include the `ray start --head --include-dashboard=False` argument in the `head_start_ray_commands` section of the [Cluster Launcher's YAML file](https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172).
 :::
 
 :::{tab-item} KubeRay
@@ -277,8 +268,7 @@ You may see a CA error if your Grafana instance is hosted behind HTTPS. Contact 
 
 ## Viewing built-in Dashboard API metrics
 
-Dashboard is powered by a server that serves both the UI code and the data about the cluster via API endpoints.
-Ray emits basic Prometheus metrics for each API endpoint:
+Dashboard is powered by a server that serves both the UI code and the data about the cluster via API endpoints. Ray emits basic Prometheus metrics for each API endpoint:
 
 `ray_dashboard_api_requests_count_requests_total`: Collects the total count of requests. This is tagged by endpoint, method, and http_status.
 

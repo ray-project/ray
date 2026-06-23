@@ -46,18 +46,11 @@ This pattern is useful for prototyping, but it isn't sufficient for production. 
 
 ## Load shedding
 
-When a request is sent to a cluster, it's first received by the Serve proxy, which then forwards it to a replica for handling using a {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>`.
-Replicas can handle up to a configurable number of requests at a time. Configure the number using the `max_ongoing_requests` option.
-If all replicas are busy and cannot accept more requests, the request is queued in the {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` until one becomes available.
+When a request is sent to a cluster, it's first received by the Serve proxy, which then forwards it to a replica for handling using a {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>`. Replicas can handle up to a configurable number of requests at a time. Configure the number using the `max_ongoing_requests` option. If all replicas are busy and cannot accept more requests, the request is queued in the {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` until one becomes available.
 
-Under heavy load, {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` queues can grow and cause high tail latency and excessive load on the system.
-To avoid instability, it's often preferable to intentionally reject some requests to avoid these queues growing indefinitely.
-This technique is called "load shedding," and it allows the system to gracefully handle excessive load without spiking tail latencies or overloading components to the point of failure.
+Under heavy load, {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` queues can grow and cause high tail latency and excessive load on the system. To avoid instability, it's often preferable to intentionally reject some requests to avoid these queues growing indefinitely. This technique is called "load shedding," and it allows the system to gracefully handle excessive load without spiking tail latencies or overloading components to the point of failure.
 
-You can configure load shedding for your Serve deployments using the `max_queued_requests` parameter to the {mod}`@serve.deployment <ray.serve.deployment>` decorator.
-This controls the maximum number of requests that each {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>`, including the Serve proxy, will queue.
-Once the limit is reached, enqueueing any new requests immediately raises a {mod}`BackPressureError <ray.serve.exceptions.BackPressureError>`.
-HTTP requests will return a `503` status code (service unavailable).
+You can configure load shedding for your Serve deployments using the `max_queued_requests` parameter to the {mod}`@serve.deployment <ray.serve.deployment>` decorator. This controls the maximum number of requests that each {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>`, including the Serve proxy, will queue. Once the limit is reached, enqueueing any new requests immediately raises a {mod}`BackPressureError <ray.serve.exceptions.BackPressureError>`. HTTP requests will return a `503` status code (service unavailable).
 
 The following example defines a deployment that emulates slow request handling and has `max_ongoing_requests` and `max_queued_requests` configured.
 
@@ -67,8 +60,7 @@ The following example defines a deployment that emulates slow request handling a
 :language: python
 ```
 
-To test the behavior, send HTTP requests in parallel to emulate multiple clients.
-Serve accepts `max_ongoing_requests` and `max_queued_requests` requests, and rejects further requests with a `503`, or service unavailable, status.
+To test the behavior, send HTTP requests in parallel to emulate multiple clients. Serve accepts `max_ongoing_requests` and `max_queued_requests` requests, and rejects further requests with a `503`, or service unavailable, status.
 
 ```{literalinclude} ../doc_code/load_shedding.py
 :start-after: __client_test_start__

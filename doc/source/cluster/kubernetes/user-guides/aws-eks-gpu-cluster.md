@@ -2,23 +2,19 @@
 
 # Start Amazon EKS Cluster with GPUs for KubeRay
 
-This guide walks you through the steps to create an Amazon EKS cluster with GPU nodes specifically for KubeRay.
-The configuration outlined here can be applied to most KubeRay examples found in the documentation.
+This guide walks you through the steps to create an Amazon EKS cluster with GPU nodes specifically for KubeRay. The configuration outlined here can be applied to most KubeRay examples found in the documentation.
 
 ## Step 1: Create a Kubernetes cluster on Amazon EKS
 
-Follow the first two steps in [this AWS documentation](https://docs.aws.amazon.com/eks/latest/userguide/getting-started-console.html#) to:
-(1) create your Amazon EKS cluster and (2) configure your computer to communicate with your cluster.
+Follow the first two steps in [this AWS documentation](https://docs.aws.amazon.com/eks/latest/userguide/getting-started-console.html#) to: (1) create your Amazon EKS cluster and (2) configure your computer to communicate with your cluster.
 
 ## Step 2: Create node groups for the Amazon EKS cluster
 
-Follow "Step 3: Create nodes" in [this AWS documentation](https://docs.aws.amazon.com/eks/latest/userguide/getting-started-console.html#) to create node groups.
-The following section provides more detailed information.
+Follow "Step 3: Create nodes" in [this AWS documentation](https://docs.aws.amazon.com/eks/latest/userguide/getting-started-console.html#) to create node groups. The following section provides more detailed information.
 
 ### Create a CPU node group
 
-Typically, avoid running GPU workloads on the Ray head. Create a CPU node group for all Pods except Ray GPU
-workers, such as the KubeRay operator, Ray head, and CoreDNS Pods.
+Typically, avoid running GPU workloads on the Ray head. Create a CPU node group for all Pods except Ray GPU workers, such as the KubeRay operator, Ray head, and CoreDNS Pods.
 
 Here's a common configuration that works for most KubeRay examples in the docs:
   * Instance type: [**m5.xlarge**](https://aws.amazon.com/ec2/instance-types/m5/) (4 vCPU; 16 GB RAM)
@@ -36,8 +32,7 @@ Create a GPU node group for Ray GPU workers.
    * Desired size: 1, Min size: 0, Max size: 1
 
 2. Please install the NVIDIA device plugin. (Note: You can skip this step if you used the `BOTTLEROCKET_x86_64_NVIDIA` AMI in the step above.)
-   * Install the DaemonSet for NVIDIA device plugin to run GPU enabled containers in your Amazon EKS cluster. You can refer to the [Amazon EKS optimized accelerated Amazon Linux AMIs](https://docs.aws.amazon.com/eks/latest/userguide/eks-optimized-ami.html#gpu-ami)
-   or [NVIDIA/k8s-device-plugin](https://github.com/NVIDIA/k8s-device-plugin) repository for more details.
+   * Install the DaemonSet for NVIDIA device plugin to run GPU enabled containers in your Amazon EKS cluster. You can refer to the [Amazon EKS optimized accelerated Amazon Linux AMIs](https://docs.aws.amazon.com/eks/latest/userguide/eks-optimized-ami.html#gpu-ami) or [NVIDIA/k8s-device-plugin](https://github.com/NVIDIA/k8s-device-plugin) repository for more details.
    * If the GPU nodes have taints, add `tolerations` to `nvidia-device-plugin.yml` to enable the DaemonSet to schedule Pods on the GPU nodes.
 
    > **Note:** If you encounter permission issues with `kubectl`, follow "Step 2: Configure your computer to communicate with your cluster"
@@ -64,8 +59,7 @@ Create a GPU node group for Ray GPU workers.
 ## Step 3: Verify the node groups
 
 > **Note:** If you encounter permission issues with `eksctl`, navigate to your AWS account's webpage and copy the
-credential environment variables, including `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN`,
-from the "Command line or programmatic access" page.
+credential environment variables, including `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN`, from the "Command line or programmatic access" page.
 
 ```sh
 eksctl get nodegroup --cluster ${YOUR_EKS_NAME}

@@ -68,8 +68,7 @@ Finally, deploy your Gradio Server. Run the following in your terminal, assuming
 $ serve run demo:app
 ```
 
-Access your Gradio app at `http://localhost:8000` The output should look like the following image:
-![Gradio Result](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/gradio_result.png)
+Access your Gradio app at `http://localhost:8000` The output should look like the following image: ![Gradio Result](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/gradio_result.png)
 
 See the [Production Guide](serve-in-production) for more information on how to deploy your app in production.
 
@@ -133,14 +132,12 @@ Lastly, link everything together:
 This step binds the two text generation models, which you wrapped in Serve deployments, to `MyGradioServer._d1` and `MyGradioServer._d2`, forming a [model composition](serve-model-composition). In the example, the Gradio Interface `io` calls `MyGradioServer.fanout()`, which sends requests to the two text generation models that you deployed on Ray Serve.
 :::
 
-Now, you can run your scalable app, to serve the two text generation models in parallel on Ray Serve.
-Run your Gradio app with the following command:
+Now, you can run your scalable app, to serve the two text generation models in parallel on Ray Serve. Run your Gradio app with the following command:
 
 ```console
 $ serve run demo:app
 ```
 
-Access your Gradio app at `http://localhost:8000`, and you should see the following interactive interface:
-![Gradio Result](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/gradio_result_parallel.png)
+Access your Gradio app at `http://localhost:8000`, and you should see the following interactive interface: ![Gradio Result](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/gradio_result_parallel.png)
 
 See the [Production Guide](serve-in-production) for more information on how to deploy your app in production.

@@ -3,8 +3,7 @@ orphan: true
 ---
 
 # Serve an Inference with Stable Diffusion Model on AWS NeuronCores Using FastAPI
-This example uses a precompiled Stable Diffusion XL model and deploys on an AWS Inferentia2 (Inf2)
-instance using Ray Serve and FastAPI.
+This example uses a precompiled Stable Diffusion XL model and deploys on an AWS Inferentia2 (Inf2) instance using Ray Serve and FastAPI.
 
 
 :::{note}
@@ -19,9 +18,7 @@ pip install "optimum-neuron==0.0.13" "diffusers==0.21.4"
 pip install "ray[serve]" requests transformers
 ```
 
-This example uses the [Stable Diffusion-XL](https://huggingface.co/aws-neuron/stable-diffusion-xl-base-1-0-1024x1024) model and [FastAPI](https://fastapi.tiangolo.com/).
-This model is compiled with AWS Neuron and is ready to run inference. However, you can choose a different Stable Diffusion model and compile it to be compatible for running inference on AWS Inferentia2
-instances.
+This example uses the [Stable Diffusion-XL](https://huggingface.co/aws-neuron/stable-diffusion-xl-base-1-0-1024x1024) model and [FastAPI](https://fastapi.tiangolo.com/). This model is compiled with AWS Neuron and is ready to run inference. However, you can choose a different Stable Diffusion model and compile it to be compatible for running inference on AWS Inferentia2 instances.
 
 The model in this example is ready for deployment. Save the following code to a file named aws_neuron_core_inference_serve_stable_diffusion.py.
 
@@ -121,5 +118,4 @@ You should see the following log messages when a request is sent to the endpoint
 ```
 
 
-The app saves the `output.png` file locally. The following is an example of an output image.
-![image](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/stable_diffusion_inferentia2_output.png)
+The app saves the `output.png` file locally. The following is an example of an output image. ![image](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/stable_diffusion_inferentia2_output.png)
