@@ -4,7 +4,7 @@
 setuptools==80.9.0
 
 # Syntax highlighting
-Pygments==2.16.1
+Pygments==2.20.0
 
 # Sphinx
 sphinx==7.3.7
