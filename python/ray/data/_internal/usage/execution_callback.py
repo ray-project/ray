@@ -67,7 +67,9 @@ class UsageCallback(ExecutionCallback):
         manager = executor.issue_detector_manager
         if manager is None:
             return []
-        return sorted(
+        issues = (
             (issue_type, physical_op_name_with_uuid(operator, self._usage_uuid_map))
             for issue_type, operator in manager.get_detected_issues()
         )
+        # Sort by the issue type's string value, then by the operator name.
+        return sorted(issues, key=lambda issue: (issue[0].value, issue[1]))
