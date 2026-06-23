@@ -19,6 +19,7 @@ from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
@@ -255,6 +256,12 @@ def test_multiple_routers(ray_cluster):
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY,
+    reason="HAProxy ingress: user HTTP middleware runs on the replica, but the "
+    "/-/routes endpoint is served by HAProxy, so middleware-injected headers "
+    "are absent there.",
+)
 def test_middleware(ray_shutdown):
     from starlette.middleware import Middleware
     from starlette.middleware.cors import CORSMiddleware
@@ -363,10 +370,22 @@ def test_http_head_only(ray_cluster):
 
     serve.start(http_options={"port": _get_random_port(), "location": "HeadOnly"})
 
-    # Only the controller and head node proxy should be started, both on the head node.
-    actors = list_actors(address=head_node.address)
-    assert len(actors) == 2
-    assert all([actor.node_id == head_node.node_id for actor in actors])
+    # The controller and head-node proxy should be started, all on the head node.
+    # Under HAProxy the head node also runs the HAProxyManager alongside the
+    # fallback ProxyActor, so three actors instead of two. The fallback proxy
+    # registers asynchronously, so wait for the expected set rather than
+    # asserting an immediate count.
+    expected_num_actors = 3 if RAY_SERVE_ENABLE_HA_PROXY else 2
+
+    def check_head_only_actors():
+        actors = list_actors(
+            address=head_node.address, filters=[("state", "=", "ALIVE")]
+        )
+        assert len(actors) == expected_num_actors
+        assert all(actor.node_id == head_node.node_id for actor in actors)
+        return True
+
+    wait_for_condition(check_head_only_actors)
 
 
 def test_instance_in_non_anonymous_namespace(ray_shutdown):

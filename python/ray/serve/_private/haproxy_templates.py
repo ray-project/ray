@@ -94,6 +94,13 @@ frontend http_frontend
     log {{ metrics_socket_path }} len 8192 format rfc5424 local1 info
     log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.ingress_request_router_app)] intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)]]"
     {%- endif %}
+    {%- if config.root_path %}
+    # Strip the configured global root_path so the health/routes endpoints, the
+    # per-backend path ACLs, and the path forwarded to replicas are all
+    # root_path-agnostic. Mirrors the native Serve proxy, which mounts the app
+    # under root_path. Paths outside root_path are left unchanged.
+    http-request set-path %[path,regsub(^{{ config.root_path }}(/.*)?$,\\1)]
+    {%- endif %}
 {{ healthz_rules|safe }}
     # Routes endpoint
     acl routes path -i /-/routes
