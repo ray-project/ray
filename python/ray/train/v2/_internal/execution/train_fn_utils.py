@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from ray.data import DataIterator
     from ray.train import Checkpoint
+    from ray.train.v2._internal.execution.preemption import PreemptionInfo
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 
@@ -121,6 +122,16 @@ class TrainFnUtils(ABC):
         pass
 
     @abstractmethod
+    def preemption_status(self) -> Optional["PreemptionInfo"]:
+        """Return the latest preemption signal for this worker, or None.
+
+        Returns:
+            A PreemptionInfo if a preemption affecting this worker group has
+            been detected, otherwise None.
+        """
+        pass
+
+    @abstractmethod
     def is_distributed(self) -> bool:
         pass
 
@@ -176,6 +187,9 @@ class DistributedTrainFnUtils(TrainFnUtils):
 
     def get_context(self) -> DistributedTrainContext:
         return DistributedTrainContext()
+
+    def preemption_status(self) -> Optional["PreemptionInfo"]:
+        return get_internal_train_context().preemption_context.get()
 
     def is_distributed(self) -> bool:
         return True
@@ -247,6 +261,10 @@ class LocalTrainFnUtils(TrainFnUtils):
 
     def get_context(self) -> LocalTrainContext:
         return self._context
+
+    def preemption_status(self) -> Optional["PreemptionInfo"]:
+        # Local mode runs in a single process with no preemption watcher.
+        return None
 
     def is_distributed(self) -> bool:
         return False

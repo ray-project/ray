@@ -149,6 +149,16 @@ def time_monotonic():
     return time.monotonic()
 
 
+def time_seconds():
+    """Wall-clock time in seconds since the epoch.
+
+    Separate from `time_monotonic` because preemption deadlines from Ray Core
+    are epoch-based timestamps, not monotonic. Wrapped here so it can be mocked
+    in tests.
+    """
+    return time.time()
+
+
 def _copy_doc(copy_func):
     def wrapped(func):
         func.__doc__ = copy_func.__doc__

@@ -15,6 +15,7 @@ from ray.train.v2._internal.execution.controller.state import (
     AbortedState,
     ErroredState,
     FinishedState,
+    PreemptingState,
     ReschedulingState,
     ResizingState,
     RestartingState,
@@ -160,6 +161,11 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
 
         elif isinstance(current_state, ShuttingDownState):
             # substate of RunningState
+            pass
+
+        elif isinstance(current_state, PreemptingState):
+            # Draining substate of RunningState; the run keeps reporting as
+            # running until it transitions to RestartingState.
             pass
 
     def before_worker_group_start(self, worker_group_context: WorkerGroupContext):
