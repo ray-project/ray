@@ -877,14 +877,24 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         if self._sample_bytes >= self._sample_byte_limit:
             return True
 
-        expected_total_bundles = self.upstream_op_num_outputs()
-        if expected_total_bundles <= 0:
-            # The upstream output count hasn't materialized yet (e.g. DataSource
-            # V2, whose count only appears once upstream read tasks finish). Wait
-            # until the bundle cap to give it a chance to appear before falling
-            # back to a worse estimate, but stay bounded.
+        # Gate on per-input counts, not their sum: the memory estimate
+        # (``_estimate_dataset_bytes_from_sample``) drops inputs whose count
+        # hasn't materialized, so opening the window with one side still at 0
+        # (e.g. a join with a DataSource V2 side that hasn't finished a task)
+        # would size memory off the visible side(s) and risk OOM. Use the
+        # ratio window only once every input reports a count; until then keep
+        # sampling, bounded by the bundle cap.
+        per_input_num_outputs = [
+            input_op.num_outputs_total() or 0 for input_op in self.input_dependencies
+        ]
+        if any(num_outputs <= 0 for num_outputs in per_input_num_outputs):
+            # At least one input's output count hasn't materialized yet (e.g.
+            # DataSource V2, whose count only appears once upstream read tasks
+            # finish). Wait until the bundle cap to give it a chance to appear
+            # before falling back to a worse estimate, but stay bounded.
             return self._sample_bundles >= self._MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES
 
+        expected_total_bundles = sum(per_input_num_outputs)
         target_bundles = int(
             self._MEMORY_ESTIMATION_SAMPLE_RATIO * expected_total_bundles
         )
