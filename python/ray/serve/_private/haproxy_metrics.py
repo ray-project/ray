@@ -12,7 +12,7 @@ import os
 import re
 import socket
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 from ray.serve._private.haproxy import HAProxyApi
 from ray.util import metrics
