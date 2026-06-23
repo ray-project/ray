@@ -76,7 +76,7 @@ class _LeRobotRoot(NamedTuple):
 
     image_keys: List[str]
     """Feature keys with ``dtype == 'image'`` (camera streams stored as encoded
-    image bytes — HF ``struct<bytes, path>`` — in the parquet rows, not as mp4)."""
+    image bytes in the parquet rows, not as mp4)."""
 
     tasks_dict: Dict[int, str]
     """``{task_index: task_name}`` mapping."""
@@ -105,12 +105,11 @@ class _LeRobotRoot(NamedTuple):
     stats_json: str
     """Per-feature normalization statistics (mean/std/min/max/…) from
     ``meta/stats.json``, serialized to a JSON string.  Emitted verbatim on
-    every row as the ``stats`` column; ``"{}"`` when the dataset has none."""
+    every row as the ``stats`` column"""
 
     frame_tolerance_s: Optional[float]
     """Max seconds a decoded video frame's timestamp may differ from a row's
-    timestamp before it is rejected (passed to lerobot's ``decode_video_frames``).
-    ``None`` means use the default ``0.5 / fps`` (half a frame interval)."""
+    timestamp before it is rejected (passed to lerobot's ``decode_video_frames``)."""
 
 
 # ---------------------------------------------------------------------------
@@ -124,40 +123,29 @@ def _build_episodes_table(hf_episodes: "datasets.Dataset") -> pa.Table:
     ``[from, to)`` span in the dataset's global frame index (matching the
     ``index`` column the data parquet is read by).
 
-    Prefers lerobot v3's authoritative ``dataset_from_index`` /
-    ``dataset_to_index`` columns -- they are the same running frame counter the
-    ``index`` column is derived from, so no assumption about episode ordering is
-    needed. Episode metadata lacking them (older / non-standard writers) falls
-    back to a cumulative sum of per-episode ``length``, which does assume the
-    episodes are 0-indexed and stored in order.
+    Uses lerobot v3's ``dataset_from_index`` / ``dataset_to_index`` columns
+    verbatim: they are the same running frame counter the data ``index`` column
+    is derived from, so the range needs no assumption about episode ordering or
+    per-episode ``length``.
     """
     episodes = hf_episodes.with_format("arrow")[:]
-    if {"dataset_from_index", "dataset_to_index"} <= set(episodes.column_names):
-        global_from = (
-            episodes.column("dataset_from_index")
-            .to_numpy(zero_copy_only=False)
-            .astype(np.int64)
+    missing = {"dataset_from_index", "dataset_to_index"} - set(episodes.column_names)
+    if missing:
+        raise ValueError(
+            f"Episode metadata is missing {sorted(missing)}, required to locate "
+            f"each episode's frames in the global index. This does not look like a "
+            f"LeRobot v3 dataset."
         )
-        global_to = (
-            episodes.column("dataset_to_index")
-            .to_numpy(zero_copy_only=False)
-            .astype(np.int64)
-        )
-    else:
-        ep_indices = episodes.column("episode_index").to_numpy(zero_copy_only=False)
-        n = len(ep_indices)
-        if not np.array_equal(ep_indices, np.arange(n)):
-            raise ValueError(
-                f"Episodes are not 0-indexed and contiguous: "
-                f"first={ep_indices[0] if n else None}, "
-                f"last={ep_indices[-1] if n else None}, count={n}"
-            )
-        # int64 before cumsum: PB-scale cumulative frame counts may overflow int32.
-        lengths = (
-            episodes.column("length").to_numpy(zero_copy_only=False).astype(np.int64)
-        )
-        global_to = np.cumsum(lengths)
-        global_from = global_to - lengths
+    global_from = (
+        episodes.column("dataset_from_index")
+        .to_numpy(zero_copy_only=False)
+        .astype(np.int64)
+    )
+    global_to = (
+        episodes.column("dataset_to_index")
+        .to_numpy(zero_copy_only=False)
+        .astype(np.int64)
+    )
     return episodes.append_column(
         "_global_from_index", pa.array(global_from, type=pa.int64())
     ).append_column("_global_to_index", pa.array(global_to, type=pa.int64()))

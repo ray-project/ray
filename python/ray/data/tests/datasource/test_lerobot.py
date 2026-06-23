@@ -740,28 +740,37 @@ def test_lerobot_compat_creds_cache_closes_handles(tmp_path):
     assert cache._cache == {}
 
 
-@pytest.mark.parametrize("with_global_index_cols", [True, False])
-def test_build_episodes_table_global_index(with_global_index_cols):
-    """_build_episodes_table prefers lerobot's authoritative dataset_from_index /
-    dataset_to_index columns, and only falls back to cumsum(length) when they
-    are absent."""
+def test_build_episodes_table_reads_lerobot_global_index():
+    """_build_episodes_table reads lerobot's authoritative dataset_from_index /
+    dataset_to_index verbatim (not recomputed from ``length``)."""
     import datasets
 
     from ray.data._internal.datasource.lerobot_datasource import _build_episodes_table
 
-    data = {"episode_index": [0, 1, 2], "length": [1, 1, 1]}
-    if with_global_index_cols:
-        # Deliberately inconsistent with `length` so the assertion proves the
-        # function read these columns instead of recomputing from `length`.
-        data["dataset_from_index"] = [0, 3, 5]
-        data["dataset_to_index"] = [3, 5, 9]
-        expected_from, expected_to = [0, 3, 5], [3, 5, 9]
-    else:
-        expected_from, expected_to = [0, 1, 2], [1, 2, 3]  # cumsum of length
+    # dataset_from/to are deliberately != cumsum(length) to prove they are read.
+    ds = datasets.Dataset.from_dict(
+        {
+            "episode_index": [0, 1, 2],
+            "length": [1, 1, 1],
+            "dataset_from_index": [0, 3, 5],
+            "dataset_to_index": [3, 5, 9],
+        }
+    )
+    table = _build_episodes_table(ds)
+    assert table.column("_global_from_index").to_pylist() == [0, 3, 5]
+    assert table.column("_global_to_index").to_pylist() == [3, 5, 9]
 
-    table = _build_episodes_table(datasets.Dataset.from_dict(data))
-    assert table.column("_global_from_index").to_pylist() == expected_from
-    assert table.column("_global_to_index").to_pylist() == expected_to
+
+def test_build_episodes_table_requires_global_index_columns():
+    """Episode metadata without dataset_from_index / dataset_to_index is rejected
+    with a clear error -- we rely on lerobot v3 providing them."""
+    import datasets
+
+    from ray.data._internal.datasource.lerobot_datasource import _build_episodes_table
+
+    ds = datasets.Dataset.from_dict({"episode_index": [0, 1], "length": [3, 2]})
+    with pytest.raises(ValueError, match="dataset_from_index"):
+        _build_episodes_table(ds)
 
 
 if __name__ == "__main__":
