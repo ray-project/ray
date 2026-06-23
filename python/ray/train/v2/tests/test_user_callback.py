@@ -1,9 +1,3 @@
-"""Tests for UserCallback lifecycle hooks (before_run / after_run).
-
-Validates backward compatibility and correct bridging via UserCallbackHandler.
-"""
-
-import sys
 from typing import List
 from unittest.mock import MagicMock
 
@@ -200,4 +194,6 @@ class TestLegacyCallbackThroughHandler:
 
 
 if __name__ == "__main__":
+    import sys
+
     sys.exit(pytest.main(["-sv", __file__]))

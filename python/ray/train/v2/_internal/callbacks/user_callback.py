@@ -33,7 +33,7 @@ class UserCallbackHandler(WorkerGroupCallback, ReportCallback, ControllerCallbac
 
     def after_controller_start(self, train_run_context: TrainRunContext):
         for user_callback in self._user_callbacks:
-            user_callback.before_run(run_context=train_run_context)
+            user_callback.before_run(run_context=self._train_run_context)
 
     def after_controller_finish(self, result: Result):
         for user_callback in self._user_callbacks:
