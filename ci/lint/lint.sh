@@ -129,11 +129,9 @@ api_policy_check() {
   _install_ray_no_deps
 
   echo "--- Check API/doc consistency"
-  # Run with the docbuild image's interpreter rather than `bazel run`, mirroring the
-  # api_annotations check above. The bazel target resolves its deps from @py_deps_py310
-  # (cp310 wheels); under a Python 3.11+ docbuild image those compiled extensions (e.g.
-  # rpds) can't import. Using the image interpreter keeps the check's deps aligned with
-  # the Python the docs build under. See ci/ray_ci/doc/BUILD.bazel.
+  # Run via the image interpreter, not `bazel run`: the bazel target's @py_deps_py310
+  # (cp310) wheels can't import under the py3.11 docbuild image (e.g. rpds).
+  # TODO(elliot-barn): #64070 switch back to bazel once hermetic python 3.11 is setup
   PYTHONPATH="$(pwd)${PYTHONPATH:+:$PYTHONPATH}" python ci/ray_ci/doc/cmd_check_api_discrepancy.py /ray "$@"
 }
 
