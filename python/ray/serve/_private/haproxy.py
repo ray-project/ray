@@ -79,7 +79,10 @@ from ray.serve._private.haproxy_templates import (
 )
 from ray.serve._private.logging_utils import get_component_logger_file_path
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
-from ray.serve._private.proxy import ProxyActorInterface
+from ray.serve._private.proxy import (
+    ProxyActorInterface,
+    apply_per_node_port_overrides,
+)
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.schema import (
@@ -1397,6 +1400,7 @@ class HAProxyManager(ProxyActorInterface):
         )
 
         is_head = self._node_id == get_head_node_id()
+        apply_per_node_port_overrides(self._http_options, self._grpc_options, is_head)
 
         startup_msg = f"HAProxy starting on node {self._node_id} (HTTP port: {self._http_options.port})."
         logger.info(startup_msg)
