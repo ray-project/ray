@@ -209,6 +209,10 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         )
         refs.destroy_if_owned()
 
+        for entry in out_bundle.blocks:
+            self._block_ref_counter.on_block_produced(
+                entry.ref, entry.metadata.size_bytes or 0, self.id
+            )
         self._num_reduce_tasks_submitted += 1
         self._output_queue.append(out_bundle)
         self._metrics.on_output_queued(out_bundle)
