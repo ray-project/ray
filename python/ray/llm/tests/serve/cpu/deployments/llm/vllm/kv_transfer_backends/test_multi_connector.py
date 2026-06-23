@@ -46,6 +46,21 @@ class TestMultiConnectorBackend:
         assert isinstance(multi_backend, MultiConnectorBackend)
         assert isinstance(multi_backend, BaseConnectorBackend)
 
+    def test_setup_rejects_empty_connectors(self):
+        """An empty `connectors` list is a misconfig: setup() fails fast rather
+        than crash later when the orchestrator delegates to a missing primary."""
+        llm_config = LLMConfig(
+            model_loading_config=dict(model_id="test-model"),
+            engine_kwargs=dict(
+                kv_transfer_config=dict(
+                    kv_connector="MultiConnector",
+                    kv_connector_extra_config=dict(connectors=[]),
+                )
+            ),
+        )
+        with pytest.raises(ValueError, match="at least one sub-connector"):
+            MultiConnectorBackend(llm_config).setup()
+
     def test_setup_calls_all_connectors(self, multi_backend):
         """Test that setup calls setup on all configured connectors."""
         mock_backend1 = MagicMock(spec=BaseConnectorBackend)

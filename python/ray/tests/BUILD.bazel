@@ -57,6 +57,7 @@ py_test_module_list(
         "test_exit_observability.py",
         "test_experimental_collective.py",
         "test_failure_3.py",
+        "test_gcs_pubsub.py",
         "test_gcs_utils.py",
         "test_get_locations.py",
         "test_get_or_create_actor.py",
@@ -339,7 +340,6 @@ py_test_module_list(
         "test_placement_group_4.py",
         "test_placement_group_failover.py",
         "test_ray_debugger.py",
-        "test_ray_init.py",
         "test_ray_shutdown.py",
         "test_resize_raylet.py",
         "test_resource_metrics.py",
@@ -543,7 +543,6 @@ py_test_module_list(
         "test_environ.py",
         "test_error_ray_not_initialized.py",
         "test_exceptions.py",
-        "test_gcs_pubsub.py",
         "test_grpc_client_credentials.py",
         "test_ids.py",
         "test_kill_raylet_signal_log.py",
@@ -632,6 +631,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
+        "rdt/test_nixl_backend_selection.py",
         "rdt/test_nixl_memory_pool.py",
         "rdt/test_rdt_custom.py",
         "rdt/test_rdt_gloo.py",
@@ -655,6 +655,7 @@ py_test_module_list(
         "rdt/test_rdt_ipc.py",
         "rdt/test_rdt_nccl.py",
         "rdt/test_rdt_nixl.py",
+        "test_gpu_provider_on_gpu.py",
         "test_gpu_tensor_zero_copy_serialization.py",
     ],
     tags = [
@@ -893,6 +894,7 @@ py_test_module_list(
         "test_object_manager_fault_tolerance.py",
         "test_placement_group_3.py",
         "test_placement_group_5.py",
+        "test_ray_init.py",
         "test_ray_init_2.py",
         "test_raylet_fault_tolerance.py",
         "test_reconstruction.py",

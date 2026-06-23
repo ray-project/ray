@@ -135,6 +135,7 @@ py_test_module_list(
         "test_proxy_response_generator.py",
         "test_queue_monitor.py",
         "test_ray_client.py",
+        "test_record_replica_metadata.py",
         "test_record_routing_stats.py",
         "test_regression.py",
         "test_replica_placement_group.py",
@@ -809,11 +810,8 @@ py_test_module_list(
     ],
 )
 
-# HAProxy tests (require RAY_SERVE_ENABLE_HA_PROXY=1).
-# Two variants:
-#   - system: uses the system-installed HAProxy binary (/usr/local/sbin/haproxy)
-#   - pip_haproxy: uses the ray-haproxy PyPI package (vendored binary).
-#     Requires ray-haproxy to be installed in CI (see ci/docker/serve.build.Dockerfile).
+# HAProxy tests need RAY_SERVE_ENABLE_HA_PROXY=1. The HAProxy binary comes from
+# the ray-haproxy package in the serve test dependencies.
 py_test_module_list_with_env_variants(
     size = "large",
     env_variants = {
@@ -824,15 +822,6 @@ py_test_module_list_with_env_variants(
                 "RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S": "0.1",
             },
             "name_suffix": "",
-        },
-        "pip_haproxy": {
-            "env": {
-                "RAY_SERVE_ENABLE_HA_PROXY": "1",
-                "RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY": "1",
-                "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
-                "RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S": "0.1",
-            },
-            "name_suffix": "_pip_haproxy",
         },
     },
     files = [
