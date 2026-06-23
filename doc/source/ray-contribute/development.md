@@ -449,7 +449,7 @@ If you encounter any issues with `pre-commit`, [report an issue](https://github.
 
 ## Building the docs
 
-To learn more about building the docs, see [Contributing to the Ray documentation](https://docs.ray.io/en/master/ray-contribute/docs.html).
+To learn more about building the docs, see {doc}`Contributing to the Ray documentation <docs>`.
 
 ## Troubleshooting
 

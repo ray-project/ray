@@ -31,8 +31,8 @@ Follow these instructions to build the documentation:
 
 ### Fork Ray
 
-1. [Fork the Ray repository](https://docs.ray.io/en/master/ray-contribute/development.html#fork-the-ray-repository).
-2. [Clone the forked repository](https://docs.ray.io/en/master/ray-contribute/development.html#fork-the-ray-repository) to your local machine.
+1. {ref}`Fork the Ray repository <fork-ray-repo>`.
+2. {ref}`Clone the forked repository <fork-ray-repo>` to your local machine.
 
 Next, go to the `ray/doc` directory:
 
