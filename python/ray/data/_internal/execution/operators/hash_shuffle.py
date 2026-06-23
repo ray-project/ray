@@ -908,8 +908,11 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         - The logical (planning-time) estimate. Accurate for the legacy
           datasource path; ``None`` for DataSource V2 (empty ``infer_metadata``).
 
-        Returns ``None`` when neither is available, in which case
-        ``_get_default_aggregator_ray_remote_args`` uses a modest default.
+        When neither signal is available but we've already buffered a sample,
+        fall back to the observed ``_sample_bytes`` as a floor, which beats the
+        modest default. Returns ``None`` only when nothing has been observed yet,
+        in which case ``_get_default_aggregator_ray_remote_args`` uses a modest
+        default.
         """
         if self._partition_size_hint is not None:
             return self._partition_size_hint * self._num_partitions
@@ -926,9 +929,13 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             for estimate in (sampled_estimate, logical_estimate)
             if estimate is not None
         ]
-        if not candidates:
-            return None
-        return max(candidates)
+        if candidates:
+            return max(candidates)
+        # No extrapolated estimate, but the bytes we've physically buffered are a
+        # better floor than the modest default when the sample is non-empty.
+        if self._sample_bytes > 0:
+            return self._sample_bytes
+        return None
 
     def _estimate_dataset_bytes_from_sample(self) -> Optional[int]:
         """Bundle-ratio estimate of total dataset bytes from the online sample,

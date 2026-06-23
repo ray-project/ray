@@ -926,8 +926,30 @@ def test_hash_shuffle_extrapolation_falls_back_to_logical_estimate(
 def test_hash_shuffle_extrapolation_modest_default_when_no_signal(
     ray_start_regular,
 ):
-    # Upstream count unknown AND logical estimate unavailable -> None, so the
-    # remote-args builder falls back to its modest default.
+    # Upstream count unknown AND logical estimate unavailable, and nothing has
+    # been buffered yet -> None, so the remote-args builder falls back to its
+    # modest default.
+    op, logical_op_mock = _make_shuffle_op(upstream_num_outputs=0)
+    logical_op_mock.infer_metadata.return_value = BlockMetadata(
+        num_rows=None,
+        size_bytes=None,
+        exec_stats=None,
+        input_files=None,
+    )
+    op._sample_bytes = 0
+    op._sample_bundles = 0
+    assert not op._inputs_complete
+
+    assert op._extrapolate_dataset_bytes() is None
+
+
+def test_hash_shuffle_extrapolation_floors_at_observed_bytes_without_count(
+    ray_start_regular,
+):
+    # Regression: the bounded sample window can trip before any upstream output
+    # count materializes (e.g. DataSource V2), so neither the sampled-ratio nor
+    # the logical estimate is available. We must still size off the bytes already
+    # buffered rather than collapsing to the modest default.
     op, logical_op_mock = _make_shuffle_op(upstream_num_outputs=0)
     logical_op_mock.infer_metadata.return_value = BlockMetadata(
         num_rows=None,
@@ -939,7 +961,7 @@ def test_hash_shuffle_extrapolation_modest_default_when_no_signal(
     op._sample_bundles = 4
     assert not op._inputs_complete
 
-    assert op._extrapolate_dataset_bytes() is None
+    assert op._extrapolate_dataset_bytes() == 500
 
 
 def test_hash_shuffle_prefers_logical_estimate_when_sample_underestimates(
