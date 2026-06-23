@@ -69,7 +69,6 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
-from ray.serve._private.proxy_metrics import ProxyMetrics
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
     HandlerMetadata,
@@ -82,6 +81,7 @@ from ray.serve._private.proxy_request_response import (
 )
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
+from ray.serve._private.request_ingress_metrics import RequestIngressMetrics
 from ray.serve._private.tracing_utils import (
     is_span_recording,
     set_http_span_attributes,
@@ -161,7 +161,7 @@ class GenericProxy(ABC):
 
         self.proxy_router = proxy_router
 
-        self._proxy_metrics = ProxyMetrics(
+        self._proxy_metrics = RequestIngressMetrics(
             self.protocol,
             source="proxy",
             node_id=node_id,
@@ -459,6 +459,11 @@ class GenericProxy(ABC):
                 self._ongoing_requests_end()
 
         latency_ms = (time.time() - start_time) * 1000.0
+        status_code = (
+            status.code.name
+            if self.protocol == RequestProtocol.GRPC
+            else str(status.code)
+        )
         if response_handler_info.should_record_access_log:
             request_context = ray.serve.context._get_serve_request_context()
             self._access_log_context[SERVE_LOG_ROUTE] = request_context.route
@@ -467,7 +472,7 @@ class GenericProxy(ABC):
                 access_log_msg(
                     method=proxy_request.method,
                     route=request_context.route,
-                    status=str(status.code),
+                    status=status_code,
                     latency_ms=latency_ms,
                     client=format_client_address(proxy_request.client),
                 ),
@@ -478,7 +483,7 @@ class GenericProxy(ABC):
             route=response_handler_info.metadata.route,
             method=proxy_request.method,
             application=response_handler_info.metadata.application_name,
-            status_code=str(status.code),
+            status_code=status_code,
             latency_ms=latency_ms,
             is_error=status.is_error,
             deployment_name=response_handler_info.metadata.deployment_name,

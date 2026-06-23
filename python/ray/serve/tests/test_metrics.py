@@ -27,6 +27,7 @@ from ray._common.test_utils import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
 )
 from ray.serve._private.test_utils import (
     PROMETHEUS_METRICS_TIMEOUT_S,
@@ -117,7 +118,7 @@ def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
     [handle.remote(http_url) for _ in range(10)]
 
     # Ping gPRC proxy
-    grpc_url = "localhost:9000"
+    grpc_url = get_application_url("gRPC", app_name=app_name)
     channel = grpc.insecure_channel(grpc_url)
     wait_for_condition(
         ping_grpc_list_applications, channel=channel, app_names=[app_name]
@@ -230,12 +231,23 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
                 return False
         return True
 
+    # Create a dummy app so that there is a replica to hit for direct ingress tests.
+    @serve.deployment()
+    def f(*args):
+        return "Hi"
+
+    app_name = "app"
+    serve.run(f.bind(), name=app_name, route_prefix="/app")
+    serve.run(f.bind(), name="app2", route_prefix="/app2")
+
     # Trigger HTTP 404 error
-    httpx.get("http://127.0.0.1:8000/B/")
-    httpx.get("http://127.0.0.1:8000/B/")
+    http_url = get_application_url("HTTP", app_name=app_name, exclude_route_prefix=True)
+    httpx.get(f"{http_url}/B/")
+    httpx.get(f"{http_url}/B/")
 
     # Ping gPRC proxy
-    channel = grpc.insecure_channel("localhost:9000")
+    grpc_url = get_application_url("gRPC", app_name=app_name)
+    channel = grpc.insecure_channel(grpc_url)
     ping_grpc_call_method(channel=channel, app_name="foo", test_not_found=True)
 
     # Ensure all expected metrics are present.
@@ -276,14 +288,8 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
             elif "serve_num_deployment_grpc_error_requests" in metrics:
                 # gRPC pinged "B" once
                 if do_assert:
-                    assert (
-                        'error_code="StatusCode.NOT_FOUND"' in metrics
-                        and "1.0" in metrics
-                    )
-                if (
-                    'error_code="StatusCode.NOT_FOUND"' not in metrics
-                    or "1.0" not in metrics
-                ):
+                    assert 'error_code="NOT_FOUND"' in metrics and "1.0" in metrics
+                if 'error_code="NOT_FOUND"' not in metrics or "1.0" not in metrics:
                     return False
         return True
 
@@ -295,6 +301,10 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
 
 
 def test_proxy_metrics_internal_error(metrics_start_shutdown):
+    # This test kills the replica process so metrics are not emitted.
+    if RAY_SERVE_ENABLE_DIRECT_INGRESS and not RAY_SERVE_ENABLE_HA_PROXY:
+        pytest.skip()
+
     # NOTE: These metrics should be documented at
     # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
     # Any updates here should be reflected there too.
@@ -334,9 +344,11 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
     app_name = "app"
     serve.run(A.bind(), name=app_name)
 
-    httpx.get("http://localhost:8000", timeout=None)
-    httpx.get("http://localhost:8000", timeout=None)
-    channel = grpc.insecure_channel("localhost:9000")
+    http_url = get_application_url("HTTP", app_name=app_name)
+    _ = httpx.get(http_url, timeout=None)
+    _ = httpx.get(http_url, timeout=None)
+    grpc_url = get_application_url("gRPC", app_name=app_name)
+    channel = grpc.insecure_channel(grpc_url)
     with pytest.raises(grpc.RpcError):
         ping_grpc_call_method(channel=channel, app_name=app_name)
 
@@ -392,13 +404,25 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
 
 def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for not found."""
+
+    # Create dummy apps so that there is a replica to hit for direct ingress tests.
+    @serve.deployment()
+    def f(*args):
+        return "Hi"
+
+    app_name = "app"
+    serve.run(f.bind(), name=app_name, route_prefix="/app")
+    serve.run(f.bind(), name="app2", route_prefix="/app2")
+
     # Should generate 404 responses
-    broken_url = "http://127.0.0.1:8000/fake_route"
+    app_url = get_application_url("HTTP", app_name=app_name, exclude_route_prefix=True)
+    broken_url = f"{app_url}/fake_route"
     _ = httpx.get(broken_url).text
     print("Sent requests to broken URL.")
 
     # Ping gRPC proxy for not existing application.
-    channel = grpc.insecure_channel("127.0.0.1:9000")
+    grpc_url = get_application_url("gRPC", app_name=app_name)
+    channel = grpc.insecure_channel(grpc_url)
     fake_app_name = "fake-app"
     ping_grpc_call_method(channel=channel, app_name=fake_app_name, test_not_found=True)
 
@@ -415,7 +439,7 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     assert num_requests[0]["route"] == ""
     assert num_requests[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     assert num_requests[0]["application"] == ""
-    assert num_requests[0]["status_code"] == str(grpc.StatusCode.NOT_FOUND)
+    assert num_requests[0]["status_code"] == grpc.StatusCode.NOT_FOUND.name
     print("serve_num_grpc_requests working as expected.")
 
     num_errors = get_metric_dictionaries("ray_serve_num_http_error_requests_total")
@@ -428,7 +452,7 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     num_errors = get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == ""
-    assert num_errors[0]["error_code"] == str(grpc.StatusCode.NOT_FOUND)
+    assert num_errors[0]["error_code"] == grpc.StatusCode.NOT_FOUND.name
     assert num_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     print("serve_num_grpc_error_requests working as expected.")
 
@@ -462,7 +486,8 @@ def test_proxy_timeout_metrics(metrics_start_shutdown):
     ray.get(signal.send.remote(clear=True))
 
     # make grpc call
-    channel = grpc.insecure_channel("localhost:9000")
+    grpc_url = get_application_url("gRPC", app_name="status_code_timeout")
+    channel = grpc.insecure_channel(grpc_url)
     with pytest.raises(grpc.RpcError):
         ping_grpc_call_method(channel=channel, app_name="status_code_timeout")
 
@@ -476,7 +501,7 @@ def test_proxy_timeout_metrics(metrics_start_shutdown):
     num_errors = get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "status_code_timeout"
-    assert num_errors[0]["error_code"] == str(grpc.StatusCode.DEADLINE_EXCEEDED)
+    assert num_errors[0]["error_code"] == grpc.StatusCode.DEADLINE_EXCEEDED.name
     assert num_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     assert num_errors[0]["application"] == "status_code_timeout"
 
@@ -535,7 +560,8 @@ def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     )
 
     # make grpc call
-    channel = grpc.insecure_channel("localhost:9000")
+    grpc_url = get_application_url("gRPC", app_name="disconnect")
+    channel = grpc.insecure_channel(grpc_url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
     metadata = (("application", "disconnect"),)
@@ -563,7 +589,7 @@ def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     num_errors = get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "disconnect"
-    assert num_errors[0]["error_code"] == str(grpc.StatusCode.CANCELLED)
+    assert num_errors[0]["error_code"] == grpc.StatusCode.CANCELLED.name
     assert num_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     assert num_errors[0]["application"] == "disconnect"
 
@@ -586,7 +612,8 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     print("Sent requests to correct URL.")
 
     # Ping gPRC proxy for broken app
-    channel = grpc.insecure_channel("localhost:9000")
+    grpc_url = get_application_url("gRPC", app_name=real_app_name)
+    channel = grpc.insecure_channel(grpc_url)
     with pytest.raises(grpc.RpcError):
         ping_grpc_call_method(channel=channel, app_name=real_app_name)
 
@@ -605,7 +632,7 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     )
     assert len(num_deployment_errors) == 1
     assert num_deployment_errors[0]["deployment"] == "f"
-    assert num_deployment_errors[0]["error_code"] == str(grpc.StatusCode.INTERNAL)
+    assert num_deployment_errors[0]["error_code"] == grpc.StatusCode.INTERNAL.name
     assert (
         num_deployment_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     )
@@ -625,7 +652,7 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     assert latency_metrics[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     assert latency_metrics[0]["route"] == real_app_name
     assert latency_metrics[0]["application"] == real_app_name
-    assert latency_metrics[0]["status_code"] == str(grpc.StatusCode.INTERNAL)
+    assert latency_metrics[0]["status_code"] == grpc.StatusCode.INTERNAL.name
     print("serve_grpc_request_latency_ms_sum working as expected.")
 
 
@@ -633,7 +660,7 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
 def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
     """Verify that 2xx and 3xx status codes aren't errors, others are."""
     # TODO(eicherseiji): Remove skip when HAProxy is open-sourced.
-    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
+    if RAY_SERVE_ENABLE_HA_PROXY:
         pytest.skip()
 
     def check_request_count_metrics(
@@ -1177,7 +1204,7 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
     serve.run(APIServer.bind(), name="api_app", route_prefix="/api")
 
     # Make requests to different route patterns with various parameter values
-    base_url = "http://localhost:8000/api"
+    base_url = get_application_url("HTTP", app_name="api_app")
     assert httpx.get(f"{base_url}/").status_code == 200
     assert httpx.get(f"{base_url}/users/123").status_code == 200
     assert httpx.get(f"{base_url}/users/456").status_code == 200
@@ -1537,10 +1564,12 @@ def test_max_processing_latency_metric(metrics_start_shutdown):
 
     stop_sending = threading.Event()
 
+    http_url = get_application_url("HTTP", app_name=app_name)
+
     def _send_requests_forever(route: str):
         while not stop_sending.is_set():
             try:
-                httpx.get(f"http://localhost:8000/api{route}", timeout=5)
+                httpx.get(f"{http_url}{route}", timeout=5)
             except Exception:
                 pass
 
