@@ -271,7 +271,7 @@ def test_finalize_fn_runs_after_restore_original_order(ray_start_regular_shared)
 
     def collate_fn(batch):
         # Variable per-batch cost so worker-completion order is arbitrary.
-        idx = int(batch["foo"][0])
+        idx = int(batch["foo"].iloc[0])
         time.sleep(0.05 * (idx % 4))
         return batch
 
@@ -279,7 +279,7 @@ def test_finalize_fn_runs_after_restore_original_order(ray_start_regular_shared)
     seen_lock = threading.Lock()
 
     def finalize_fn(batch):
-        idx = int(batch["foo"][0])
+        idx = int(batch["foo"].iloc[0])
         with seen_lock:
             seen_by_finalize.append(idx)
         return batch
