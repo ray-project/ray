@@ -1023,6 +1023,33 @@ class ReportHead(SubprocessModule):
 
         return aiohttp.web.HTTPServiceUnavailable(reason="Health check failed")
 
+    @routes.get("/api/node_schedulable_healthz")
+    async def node_schedulable_health_check(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        try:
+            head_node_id_hex = await dashboard_utils.get_head_node_id(self.gcs_client)
+            if head_node_id_hex is None:
+                return aiohttp.web.HTTPServiceUnavailable(
+                    reason="Head node id is not yet registered in GCS"
+                )
+            schedulable = await self._health_checker.check_head_node_schedulable(
+                NodeID.from_hex(head_node_id_hex)
+            )
+            if schedulable is True:
+                return aiohttp.web.Response(
+                    text="success",
+                    content_type="application/text",
+                )
+        except Exception as e:
+            return aiohttp.web.HTTPServiceUnavailable(
+                reason=f"Health check failed: {e}"
+            )
+
+        return aiohttp.web.HTTPServiceUnavailable(
+            reason="Head node not yet schedulable"
+        )
+
     @routes.get("/api/prometheus/sd")
     async def prometheus_service_discovery(self, req) -> aiohttp.web.Response:
         """

@@ -522,6 +522,10 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             int64_t timeout_ms,
             CGetAllResourceUsageReply &serialized_reply)
 
+        CRayStatus GetAllTotalResources(
+            int64_t timeout_ms,
+            CGetAllTotalResourcesReply &serialized_reply)
+
     cdef cppclass CInternalKVAccessor "ray::gcs::InternalKVAccessor":
         CRayStatus Keys(
             const c_string &ns,
@@ -752,6 +756,10 @@ cdef extern from "ray/pubsub/python_gcs_subscriber.h" namespace "ray::pubsub" no
 cdef extern from "ray/gcs_rpc_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, c_string] PythonGetNodeLabels(
         const CGcsNodeInfo& node_info)
+
+cdef extern from "src/ray/protobuf/gcs_service.pb.h" nogil:
+    cdef cppclass CGetAllTotalResourcesReply "ray::rpc::GetAllTotalResourcesReply":
+        const c_string& SerializeAsString() const
 
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef enum CChannelType "ray::rpc::ChannelType":

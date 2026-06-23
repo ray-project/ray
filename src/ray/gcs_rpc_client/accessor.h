@@ -343,6 +343,14 @@ class NodeResourceInfoAccessor {
   virtual Status GetAllResourceUsage(int64_t timeout_ms,
                                      rpc::GetAllResourceUsageReply &reply);
 
+  /// Get total resources of all nodes from GCS synchronously.
+  ///
+  /// \param timeout_ms -1 means infinite.
+  /// \param reply The total resources of all nodes in the resource view.
+  /// \return Status
+  virtual Status GetAllTotalResources(int64_t timeout_ms,
+                                      rpc::GetAllTotalResourcesReply &reply);
+
  private:
   GcsClient *client_impl_;
 

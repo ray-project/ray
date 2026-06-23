@@ -20,10 +20,14 @@ from ray._common.utils import get_or_create_event_loop
 from typing import Dict, List, Sequence, Tuple
 from libcpp.utility cimport move
 import concurrent.futures
-from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
+from ray.core.generated.gcs_service_pb2 import (
+    GetAllResourceUsageReply,
+    GetAllTotalResourcesReply,
+)
 from ray.includes.common cimport (
     CGcsClient,
     CGetAllResourceUsageReply,
+    CGetAllTotalResourcesReply,
     ConnectOnSingletonIoContext,
     MultiItemPyCallback,
     OptionalItemPyCallback,
@@ -447,6 +451,23 @@ cdef class InnerGcsClient:
                 )
             serialized_reply = c_reply.SerializeAsString()
         ret = GetAllResourceUsageReply()
+        ret.ParseFromString(serialized_reply)
+        return ret
+
+    def get_all_total_resources(
+        self, timeout: Optional[int | float] = None
+    ) -> GetAllTotalResourcesReply:
+        cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        cdef CGetAllTotalResourcesReply c_reply
+        cdef c_string serialized_reply
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                    self.inner.get()
+                    .NodeResources()
+                    .GetAllTotalResources(timeout_ms, c_reply)
+                )
+            serialized_reply = c_reply.SerializeAsString()
+        ret = GetAllTotalResourcesReply()
         ret.ParseFromString(serialized_reply)
         return ret
 
