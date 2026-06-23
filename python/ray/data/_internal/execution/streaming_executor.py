@@ -134,7 +134,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._op_schema: Dict[PhysicalOperator, Schema] = {}
 
         self._dataset_id = dataset_id
-        self._usage_uuid_map: Dict[int, str] = {}
         # Stores if an operator is completed,
         # used for marking when an op has just completed.
         self._has_op_completed: Optional[Dict[PhysicalOperator, bool]] = None

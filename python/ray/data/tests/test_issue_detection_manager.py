@@ -14,7 +14,6 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
     MapOperator,
 )
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
-from ray.data._internal.issue_detection import issue_detector_manager as idm
 from ray.data._internal.issue_detection.issue_detector import (
     Issue,
     IssueType,
@@ -97,10 +96,10 @@ def test_report_issues():
     )
     assert data[1]["event_data"]["message"] == "High memory usage detected"
 
-    # These operators have no logical operators (built directly), so "Unknown".
+    # The manager stores raw (issue_type, operator) pairs
     expected_issues = {
-        (IssueType.HANGING, "Unknown"),
-        (IssueType.HIGH_MEMORY, "Unknown"),
+        (IssueType.HANGING, input_operator),
+        (IssueType.HIGH_MEMORY, map_operator),
     }
     assert detector.get_detected_issues() == expected_issues
 
@@ -116,37 +115,6 @@ def test_report_issues():
         ]
     )
     assert detector.get_detected_issues() == expected_issues
-
-
-def test_anonymized_operator_name_joins_fused_logical_ops(monkeypatch):
-    """A fused physical op maps to multiple logical ops; their anonymized names
-    are joined with "->", matching operator fusion's naming."""
-    monkeypatch.setattr(idm, "anonymize_op_name", lambda op: op)
-    operator = MagicMock()
-    operator._logical_operators = ["ReadParquet", "MapBatches", "Filter"]
-    assert idm._anonymized_operator_name(operator) == "ReadParquet->MapBatches->Filter"
-
-
-def test_anonymized_operator_name_includes_usage_uuids(monkeypatch):
-    monkeypatch.setattr(idm, "anonymize_op_name", lambda op: op)
-    operator = MagicMock()
-    operator._logical_operators = ["ReadParquet", "MapBatches", "Filter"]
-    usage_uuid_map = {
-        id(operator._logical_operators[0]): "aaaaaaaa",
-        id(operator._logical_operators[1]): "bbbbbbbb",
-        id(operator._logical_operators[2]): "cccccccc",
-    }
-    assert (
-        idm._anonymized_operator_name(operator, usage_uuid_map)
-        == "ReadParquet-aaaaaaaa->MapBatches-bbbbbbbb->Filter-cccccccc"
-    )
-
-
-def test_anonymized_operator_name_without_logical_ops():
-    """An operator with no logical source collapses to "Unknown"."""
-    operator = MagicMock()
-    operator._logical_operators = []
-    assert idm._anonymized_operator_name(operator) == "Unknown"
 
 
 if __name__ == "__main__":

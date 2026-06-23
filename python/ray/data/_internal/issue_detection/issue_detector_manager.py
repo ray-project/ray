@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Dict, List, Set, Tuple
 
 from ray.core.generated.export_dataset_operator_event_pb2 import (
     ExportDatasetOperatorEventData as ProtoOperatorEventData,
@@ -10,7 +10,6 @@ from ray.data._internal.issue_detection.issue_detector import (
     IssueDetector,
     IssueType,
 )
-from ray.data._internal.logical.util import anonymize_op_name
 from ray.data._internal.operator_event_exporter import (
     OperatorEvent,
     format_export_issue_event_name,
@@ -37,8 +36,8 @@ class IssueDetectorManager:
         }
         self.executor = executor
         self._operator_event_exporter = get_operator_event_exporter()
-        # Cumulative (issue_type, anonymized_operator_name) pairs for usage collection
-        self._detected_issues: Set[Tuple[IssueType, str]] = set()
+        # Cumulative (issue_type, operator) pairs for usage collection.
+        self._detected_issues: Set[Tuple[IssueType, "PhysicalOperator"]] = set()
 
     def invoke_detectors(self) -> None:
         curr_time = time.perf_counter()
@@ -58,7 +57,6 @@ class IssueDetectorManager:
         self._report_issues(issues)
 
     def _report_issues(self, issues: List[Issue]) -> None:
-        usage_uuid_map = self.executor._usage_uuid_map
         operators: Dict[str, "PhysicalOperator"] = {}
         op_to_id: Dict["PhysicalOperator", str] = {}
         for i, operator in enumerate(self.executor._topology.keys()):
@@ -75,12 +73,7 @@ class IssueDetectorManager:
             if not operator:
                 continue
 
-            self._detected_issues.add(
-                (
-                    issue.issue_type,
-                    _anonymized_operator_name(operator, usage_uuid_map),
-                )
-            )
+            self._detected_issues.add((issue.issue_type, operator))
 
             issue_event_type = format_export_issue_event_name(issue.issue_type)
             if (
@@ -108,33 +101,6 @@ class IssueDetectorManager:
                 f"Found {len(issues)} issues. To disable issue detection, run DataContext.get_current().issue_detectors_config.detectors = []."
             )
 
-    def get_detected_issues(self) -> Set[Tuple[IssueType, str]]:
-        """Return a copy of the detected (issue_type, operator_name) pairs."""
+    def get_detected_issues(self) -> Set[Tuple[IssueType, "PhysicalOperator"]]:
+        """Return a copy of the detected (issue_type, operator) pairs."""
         return set(self._detected_issues)
-
-
-def _anonymized_operator_name(
-    operator: "PhysicalOperator",
-    usage_uuid_map: Optional[Dict[int, str]] = None,
-) -> str:
-    """Anonymized name for a physical op; fused ops join their logical ops with
-    "->" (matching operator fusion's naming). When logical op IDs are available,
-    each logical op is formatted as ``<name>-<usage_uuid>``. ``"Unknown"`` if it has none."""
-    logical_ops = operator._logical_operators
-    if not logical_ops:
-        return "Unknown"
-    return "->".join(
-        _anonymized_logical_op_name(op, usage_uuid_map) for op in logical_ops
-    )
-
-
-def _anonymized_logical_op_name(
-    logical_op,
-    usage_uuid_map: Optional[Dict[int, str]] = None,
-) -> str:
-    name = anonymize_op_name(logical_op)
-    if usage_uuid_map:
-        usage_uuid = usage_uuid_map.get(id(logical_op))
-        if usage_uuid is not None:
-            return f"{name}-{usage_uuid}"
-    return name

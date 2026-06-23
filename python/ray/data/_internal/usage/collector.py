@@ -28,6 +28,9 @@ from ray.data._internal.logical.util import anonymize_op_name
 from ray.data.block import VALID_BATCH_FORMATS, _apply_batch_format
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        PhysicalOperator,
+    )
     from ray.data._internal.issue_detection.issue_detector import IssueType
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 
@@ -158,7 +161,7 @@ def build_usage_uuid_map(logical_plan: "LogicalPlan") -> Dict[int, str]:
     """Build the ``id(logical_op) -> usage_uuid`` map for a plan.
 
     The issue detector uses this to label operators with the same usage UUIDs
-    embedded in the recorded workload payload, so detected issues cross-reference
+    embedded in the recorded workload payload, so detected issues reference
     the operators in that payload. The UUIDs are computed based on the hash of the (post-order index, anonymized name) tuple.
 
     Short-circuits to an empty map when the user has opted out of usage stats:
@@ -173,6 +176,36 @@ def build_usage_uuid_map(logical_plan: "LogicalPlan") -> Dict[int, str]:
     except Exception:
         logger.debug("Failed to build usage uuid map", exc_info=True)
         return {}
+
+
+def physical_op_name_with_uuid(
+    operator: "PhysicalOperator",
+    usage_uuid_map: Optional[Dict[int, str]] = None,
+) -> str:
+    """Anonymized name for a physical op, used to label detected issues so they
+    correlate with the recorded workload payload. Fused ops join their logical
+    ops with "->" (matching operator fusion's naming); each logical op is
+    formatted as ``<name>-<usage_uuid>`` when a UUID is available, else just
+    ``<name>``. ``"Unknown"`` when the op has no logical operators."""
+    logical_ops = operator._logical_operators
+    if not logical_ops:
+        return "Unknown"
+    return "->".join(
+        _logical_op_name_with_uuid(op, usage_uuid_map) for op in logical_ops
+    )
+
+
+def _logical_op_name_with_uuid(
+    logical_op,
+    usage_uuid_map: Optional[Dict[int, str]] = None,
+) -> str:
+    name = anonymize_op_name(logical_op)
+    if usage_uuid_map:
+        # Correlate with the UUIDs assigned to the logical ops in the workload plan.
+        usage_uuid = usage_uuid_map.get(id(logical_op))
+        if usage_uuid is not None:
+            return f"{name}-{usage_uuid}"
+    return name
 
 
 def record_execution_result(

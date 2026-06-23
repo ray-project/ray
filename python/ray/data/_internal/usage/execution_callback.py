@@ -7,11 +7,12 @@ before execution starts, and also records performance info after execution finis
 
 import logging
 import uuid
-from typing import TYPE_CHECKING, List, Tuple
+from typing import TYPE_CHECKING, Dict, List, Tuple
 
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.usage.collector import (
     build_usage_uuid_map,
+    physical_op_name_with_uuid,
     record_execution_result,
     record_workload,
 )
@@ -31,11 +32,14 @@ class UsageCallback(ExecutionCallback):
         self._logical_plan = logical_plan
         # Globally unique per-execution id, used for deduplicating executions for usage collection
         self._execution_id = uuid.uuid4().hex
+        # id(logical_op) -> usage_uuid, built at execution start and used to label
+        # operators so they reference the workload payload.
+        self._usage_uuid_map: Dict[int, str] = {}
 
     def before_execution_starts(self, executor: "StreamingExecutor") -> None:
         try:
             record_workload(self._execution_id, self._logical_plan)
-            executor._usage_uuid_map = build_usage_uuid_map(self._logical_plan)
+            self._usage_uuid_map = build_usage_uuid_map(self._logical_plan)
         except Exception:
             logger.debug("Usage record_workload failed", exc_info=True)
 
@@ -63,4 +67,7 @@ class UsageCallback(ExecutionCallback):
         manager = getattr(executor, "_issue_detector_manager", None)
         if manager is None:
             return []
-        return sorted(manager.get_detected_issues())
+        return sorted(
+            (issue_type, physical_op_name_with_uuid(operator, self._usage_uuid_map))
+            for issue_type, operator in manager.get_detected_issues()
+        )

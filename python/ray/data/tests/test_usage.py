@@ -2,6 +2,7 @@
 
 import json
 import sys
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -210,6 +211,40 @@ def test_does_not_raise_on_internal_errors(reset_collector, mock_record, monkeyp
     ds = ray.data.range(10)
     collector.record_workload("exec-1", ds._logical_plan)  # must not raise
     assert mock_record == []
+
+
+def test_physical_op_name_joins_fused_logical_ops(monkeypatch):
+    """A fused physical op maps to multiple logical ops; their anonymized names
+    are joined with "->", matching operator fusion's naming."""
+    monkeypatch.setattr(collector, "anonymize_op_name", lambda op: op)
+    operator = MagicMock()
+    operator._logical_operators = ["ReadParquet", "MapBatches", "Filter"]
+    assert (
+        collector.physical_op_name_with_uuid(operator)
+        == "ReadParquet->MapBatches->Filter"
+    )
+
+
+def test_physical_op_name_includes_usage_uuids(monkeypatch):
+    monkeypatch.setattr(collector, "anonymize_op_name", lambda op: op)
+    operator = MagicMock()
+    operator._logical_operators = ["ReadParquet", "MapBatches", "Filter"]
+    usage_uuid_map = {
+        id(operator._logical_operators[0]): "aaaaaaaa",
+        id(operator._logical_operators[1]): "bbbbbbbb",
+        id(operator._logical_operators[2]): "cccccccc",
+    }
+    assert (
+        collector.physical_op_name_with_uuid(operator, usage_uuid_map)
+        == "ReadParquet-aaaaaaaa->MapBatches-bbbbbbbb->Filter-cccccccc"
+    )
+
+
+def test_physical_op_name_without_logical_ops():
+    """An operator with no logical source collapses to "Unknown"."""
+    operator = MagicMock()
+    operator._logical_operators = []
+    assert collector.physical_op_name_with_uuid(operator) == "Unknown"
 
 
 if __name__ == "__main__":
