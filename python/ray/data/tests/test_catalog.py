@@ -15,30 +15,51 @@ from ray.data.catalog import Catalog, ReaderFormat, ResolvedSource, UnityCatalog
 
 # conftest provides ray_start_regular_shared
 from ray.data.tests.conftest import *  # noqa: F401,F403
-from ray.data.tests.datasource.databricks_test_utils import MockResponse
 
-AWS_CREDS = {
-    "url": "s3://bucket/path",
-    "aws_temp_credentials": {
-        "access_key_id": "AKIA",
-        "secret_access_key": "secret",
-        "session_token": "token",
-    },
-}
+pytest.importorskip("databricks.sdk")
+from databricks.sdk.service.catalog import (  # noqa: E402
+    AwsCredentials,
+    AzureUserDelegationSas,
+    DataSourceFormat,
+    GcpOauthToken,
+    GenerateTemporaryTableCredentialResponse,
+    TableInfo,
+)
+
+_UNSET = object()
+
+AWS_RESP = GenerateTemporaryTableCredentialResponse(
+    url="s3://bucket/path",
+    aws_temp_credentials=AwsCredentials(
+        access_key_id="AKIA",
+        secret_access_key="secret",
+        session_token="token",
+    ),
+)
 
 
-def _mock_uc_rest(data_source_format="DELTA", creds=None):
-    """Patch ray.data.catalog.requests so UC REST calls return canned data."""
-    creds = creds if creds is not None else AWS_CREDS
-    table_info = {
-        "table_id": "tid-123",
-        "data_source_format": data_source_format,
-        "storage_location": creds["url"],
-    }
-    patcher = mock.patch("ray.data.catalog.requests")
-    m = patcher.start()
-    m.get.return_value = MockResponse(_json_data=table_info)
-    m.post.return_value = MockResponse(_json_data=creds)
+def _mock_uc_sdk(*, data_source_format="DELTA", storage_location=_UNSET, creds=None):
+    """Patch UnityCatalog._workspace_client to return canned SDK responses.
+
+    Replaces the catalog's two SDK calls (``tables.get`` /
+    ``generate_temporary_table_credentials``) so no Databricks workspace is hit.
+    Returns an already-started patcher; the caller is responsible for ``stop()``.
+    """
+    creds = creds if creds is not None else AWS_RESP
+    table_info = TableInfo(
+        table_id="tid-123",
+        data_source_format=(
+            DataSourceFormat(data_source_format) if data_source_format else None
+        ),
+        storage_location=creds.url if storage_location is _UNSET else storage_location,
+    )
+    client = mock.MagicMock()
+    client.tables.get.return_value = table_info
+    gen = client.temporary_table_credentials.generate_temporary_table_credentials
+    gen.return_value = creds
+
+    patcher = mock.patch.object(UnityCatalog, "_workspace_client", return_value=client)
+    patcher.start()
     return patcher
 
 
@@ -67,7 +88,7 @@ def isolated_env(monkeypatch):
 
 @pytest.mark.parametrize("reader", [ReaderFormat.DELTA, ReaderFormat.PARQUET])
 def test_resolve_storage_aws(uc_catalog, isolated_env, reader):
-    patcher = _mock_uc_rest()
+    patcher = _mock_uc_sdk()
     try:
         resolved = uc_catalog.resolve("main.sales.txns", reader=reader)
     finally:
@@ -88,7 +109,7 @@ def test_resolve_storage_aws(uc_catalog, isolated_env, reader):
 
 def test_resolve_aws_requires_region(isolated_env):
     catalog = UnityCatalog(url="https://h.databricks.com", token="t")  # no region
-    patcher = _mock_uc_rest()
+    patcher = _mock_uc_sdk()
     try:
         with pytest.raises(ValueError, match="region"):
             catalog.resolve("main.sales.txns", reader=ReaderFormat.DELTA)
@@ -103,7 +124,7 @@ def test_resolve_initializes_ray_with_runtime_env(uc_catalog, monkeypatch):
     init_kwargs = {}
     monkeypatch.setattr("ray.init", lambda **kw: init_kwargs.update(kw))
 
-    patcher = _mock_uc_rest()
+    patcher = _mock_uc_sdk()
     try:
         uc_catalog.resolve("main.sales.txns", reader=ReaderFormat.PARQUET)
     finally:
@@ -132,11 +153,11 @@ def test_resolve_iceberg(uc_catalog):
 
 def test_resolve_azure_sets_env(isolated_env):
     catalog = UnityCatalog(url="https://h.databricks.com", token="t")
-    azure_creds = {
-        "url": "abfss://c@acct.dfs.core.windows.net/path",
-        "azuresasuri": "sv=2021&sig=abc",
-    }
-    patcher = _mock_uc_rest(data_source_format="DELTA", creds=azure_creds)
+    azure_resp = GenerateTemporaryTableCredentialResponse(
+        url="abfss://c@acct.dfs.core.windows.net/path",
+        azure_user_delegation_sas=AzureUserDelegationSas(sas_token="sv=2021&sig=abc"),
+    )
+    patcher = _mock_uc_sdk(creds=azure_resp)
     try:
         resolved = catalog.resolve("main.sales.txns", reader=ReaderFormat.DELTA)
     finally:
@@ -149,21 +170,41 @@ def test_resolve_azure_sets_env(isolated_env):
     assert isolated_env["AZURE_STORAGE_SAS_TOKEN"] == "sv=2021&sig=abc"
 
 
-def test_gcp_creds_to_env_writes_file_and_registers_cleanup():
+def test_resolve_azure_strips_leading_question_mark(isolated_env):
+    # UC may return the SAS as a full query string ("?sv=..."); the leading "?"
+    # must be stripped for AZURE_STORAGE_SAS_TOKEN.
     catalog = UnityCatalog(url="https://h.databricks.com", token="t")
+    azure_resp = GenerateTemporaryTableCredentialResponse(
+        url="abfss://c@acct.dfs.core.windows.net/path",
+        azure_user_delegation_sas=AzureUserDelegationSas(sas_token="?sv=2021&sig=abc"),
+    )
+    patcher = _mock_uc_sdk(creds=azure_resp)
+    try:
+        catalog.resolve("main.sales.txns", reader=ReaderFormat.DELTA)
+    finally:
+        patcher.stop()
 
-    with mock.patch("ray.data.catalog.atexit.register") as register:
-        env = catalog._creds_to_env({"gcp_service_account": '{"sa": 1}'})
+    assert isolated_env["AZURE_STORAGE_SAS_TOKEN"] == "sv=2021&sig=abc"
 
-    path = env["GOOGLE_APPLICATION_CREDENTIALS"]
-    assert os.path.exists(path)
-    with open(path) as f:
-        assert f.read() == '{"sa": 1}'
-    # An atexit handler is registered to remove the file on exit.
-    register.assert_called_once_with(UnityCatalog._cleanup_gcp_temp_file, path)
-    # The cleanup handler removes the file.
-    UnityCatalog._cleanup_gcp_temp_file(path)
-    assert not os.path.exists(path)
+
+def test_resolve_gcp_builds_filesystem_and_storage_options(uc_catalog, isolated_env):
+    # GCP vends an OAuth token (not a service-account JSON), so it rides on an
+    # explicit GcsFileSystem (data scan) and on storage_options (deltalake log
+    # read) -- never an env var.
+    gcp_resp = GenerateTemporaryTableCredentialResponse(
+        url="gs://bucket/path",
+        gcp_oauth_token=GcpOauthToken(oauth_token="ya29.tok"),
+        expiration_time=4102444800000,  # far-future epoch ms
+    )
+    patcher = _mock_uc_sdk(creds=gcp_resp, storage_location="gs://bucket/path")
+    try:
+        resolved = uc_catalog.resolve("main.sales.txns", reader=ReaderFormat.DELTA)
+    finally:
+        patcher.stop()
+
+    assert isinstance(resolved.filesystem, pafs.GcsFileSystem)
+    assert resolved.storage_options == {"bearer_token": "ya29.tok"}
+    assert "GOOGLE_APPLICATION_CREDENTIALS" not in isolated_env
 
 
 # ---------------------------------------------------------------------------
@@ -304,10 +345,8 @@ def test_read_unity_catalog_deprecation_delegates():
 def test_read_unity_catalog_infers_format_from_cred_url():
     # Metadata omits both data_source_format and storage_location; the vended
     # credential URL extension must still identify the format.
-    patcher = mock.patch("ray.data.catalog.requests")
-    m = patcher.start()
-    m.get.return_value = MockResponse(_json_data={"table_id": "tid"})
-    m.post.return_value = MockResponse(_json_data={"url": "s3://bucket/data.parquet"})
+    creds = GenerateTemporaryTableCredentialResponse(url="s3://bucket/data.parquet")
+    patcher = _mock_uc_sdk(data_source_format=None, storage_location=None, creds=creds)
     try:
         with mock.patch("ray.data.read_api.read_parquet") as read_parquet, pytest.warns(
             DeprecationWarning
