@@ -150,6 +150,16 @@ To view the full list of supported file formats, see the
             petal.width   float
             sepal.length  float
 
+    .. tab-item:: Zarr
+
+        To read a Zarr v2 store, call :func:`~ray.data.read_zarr`.
+
+        .. code-block:: python
+
+            import ray
+
+            ds = ray.data.read_zarr("s3://anonymous@ray-example-data/mnist-tiny.zarr")
+
 
 Reading files from local disk
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -814,7 +824,10 @@ Ray Data interoperates with PyTorch and TensorFlow datasets.
 
         To convert a PyTorch dataset to a Ray Dataset, call :func:`~ray.data.from_torch`.
 
+        .. The mirror for CIFAR10 has historically been unreliable, so we skip the test.
+
         .. testcode::
+            :skipif: True
 
             import ray
             from torch.utils.data import Dataset
@@ -844,6 +857,7 @@ Ray Data interoperates with PyTorch and TensorFlow datasets.
             function with small datasets like MNIST or CIFAR.
 
         .. testcode::
+            :skipif: True
 
             import ray
             import tensorflow_datasets as tfds
