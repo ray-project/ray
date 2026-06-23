@@ -583,7 +583,7 @@ class _LeRobotReadTask(ReadTask):
                 ]
                 yield self._build_batch(
                     camera_keys,
-                    [batch],
+                    batch,
                     frame_buffers,
                     task_list,
                     dataset_index,
@@ -788,20 +788,19 @@ class _LeRobotReadTask(ReadTask):
     @staticmethod
     def _build_batch(
         camera_keys: List[str],
-        pq_buffer: List[pa.Table],
+        table: pa.Table,
         frame_buffers: dict,
         task_list: List[str],
         dataset_index: int,
         stats_json: str,
     ) -> pa.Table:
-        """Assemble one Arrow batch from buffered parquet rows, decoded camera
+        """Assemble one Arrow batch from a parquet-row table, decoded camera
         frames, tasks, and per-dataset stats.  *camera_keys* covers both video
         and image cameras: image columns already exist in the parquet rows as
         encoded-byte structs and are overwritten in place by their decoded
         tensors, while video columns are added."""
         from ray.data.extensions import ArrowVariableShapedTensorArray
 
-        table = pa.concat_tables(pq_buffer)
         columns: dict = {
             table.schema.field(i).name: table.column(i)
             for i in range(table.num_columns)
