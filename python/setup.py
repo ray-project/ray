@@ -852,6 +852,7 @@ if __name__ == "__main__":
         },
         package_data={
             "ray": [
+                "serve/_private/*.so",
                 "includes/*.pxd",
                 "*.pxd",
                 "llm/_internal/serve/config_generator/base_configs/templates/*.yaml",

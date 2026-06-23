@@ -44,6 +44,8 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig, GangSchedulingConfig
 from ray.serve._private.constants import (
+    CONTROL_LOOP_INTERVAL_S,
+    DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_LATENCY_BUCKET_MS,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_PERIOD_S,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_TIMEOUT_S,
@@ -58,6 +60,10 @@ from ray.serve._private.constants import (
     RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
+    RAY_SERVE_RECON_COUNTS,
+    RAY_SERVE_RECON_DIRTYSET,
+    RAY_SERVE_RECON_DIRTYSET_MIN,
+    RAY_SERVE_RECON_OPT,
     RAY_SERVE_RETAINED_DEAD_REPLICAS,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
@@ -697,6 +703,14 @@ def print_verbose_scaling_log():
         "autoscaler_logs": autoscaler_log_last_n_lines,
     }
     logger.error(f"Scaling information\n{json.dumps(debug_info, indent=2)}")
+
+
+def _ref_ready(obj_ref, ready_set):
+    """Readiness via a pre-batched ready-set when provided, else per-ref ray.wait
+    (ready_set=None -> backwards-compatible fallback)."""
+    if ready_set is not None:
+        return obj_ref in ready_set
+    return check_obj_ref_ready_nowait(obj_ref)
 
 
 class ActorReplicaWrapper:
@@ -1540,12 +1554,20 @@ class ActorReplicaWrapper:
 
         return stopped
 
-    def _check_active_health_check(self) -> ReplicaHealthCheckResponse:
+    def _check_active_health_check(
+        self, ready_set: Optional[Set[ObjectRef]] = None
+    ) -> ReplicaHealthCheckResponse:
         """Check the active health check (if any).
 
         self._health_check_ref will be reset to `None` when the active health
         check is deemed to have succeeded or failed. This method *does not*
         start a new health check, that's up to the caller.
+
+        Args:
+            ready_set: Optional set of ObjectRefs already known to be ready (from
+                a batched ray.wait). When provided, readiness is checked against
+                it instead of a per-ref ray.wait; None falls back to the per-ref
+                check.
 
         Returns:
             - NONE if there's no active health check, or it hasn't returned
@@ -1565,7 +1587,7 @@ class ActorReplicaWrapper:
         if self._health_check_ref is None:
             # There is no outstanding health check.
             response = ReplicaHealthCheckResponse.NONE
-        elif check_obj_ref_ready_nowait(self._health_check_ref):
+        elif _ref_ready(self._health_check_ref, ready_set):
             # Object ref is ready, ray.get it to check for exceptions.
             try:
                 ray.get(self._health_check_ref)
@@ -1664,7 +1686,15 @@ class ActorReplicaWrapper:
         )
         return time_since_last > randomized_period
 
-    def check_health(self) -> bool:
+    def outstanding_check_refs(self):
+        """Outstanding health-check + routing-stats refs (for batched readiness)."""
+        return [
+            r
+            for r in (self._health_check_ref, self._record_routing_stats_ref)
+            if r is not None
+        ]
+
+    def check_health(self, ready_set=None) -> bool:
         """Check if the actor is healthy.
 
         self._healthy should *only* be modified in this method.
@@ -1674,7 +1704,9 @@ class ActorReplicaWrapper:
             2) Determining the replica health based on the health check results.
             3) Kicking off a new health check if needed.
         """
-        response: ReplicaHealthCheckResponse = self._check_active_health_check()
+        response: ReplicaHealthCheckResponse = self._check_active_health_check(
+            ready_set
+        )
         if response is ReplicaHealthCheckResponse.NONE:
             # No info; don't update replica health.
             pass
@@ -1718,12 +1750,12 @@ class ActorReplicaWrapper:
 
         return self._healthy
 
-    def get_routing_stats(self) -> Dict[str, Any]:
+    def get_routing_stats(self, ready_set=None) -> Dict[str, Any]:
         """Get the routing stats for the replica."""
         if self._record_routing_stats_ref is None:
             # There's no active record routing stats.
             pass
-        elif check_obj_ref_ready_nowait(self._record_routing_stats_ref):
+        elif _ref_ready(self._record_routing_stats_ref, ready_set):
             # Object ref is ready, ray.get it to check for exceptions.
             try:
                 self._routing_stats = ray.get(self._record_routing_stats_ref)
@@ -2062,19 +2094,31 @@ class DeploymentReplica:
             self._actor.force_stop()
         return False
 
-    def check_health(self) -> bool:
+    def outstanding_check_refs(self):
+        return self._actor.outstanding_check_refs()
+
+    @property
+    def has_outstanding_check(self) -> bool:
+        """True if a health-check or routing-stats ref is in flight (dirty-set poll set)."""
+        a = self._actor
+        return (
+            getattr(a, "_health_check_ref", None) is not None
+            or getattr(a, "_record_routing_stats_ref", None) is not None
+        )
+
+    def check_health(self, ready_set=None) -> bool:
         """Check if the replica is healthy.
 
         Returns `True` if the replica is healthy, else `False`.
         """
-        return self._actor.check_health()
+        return self._actor.check_health(ready_set)
 
-    def pull_routing_stats(self) -> Optional[Dict[str, Any]]:
+    def pull_routing_stats(self, ready_set=None) -> Optional[Dict[str, Any]]:
         """Get the latest response from the routing stats on the replica.
 
         Returns None if the replica is still calculating the stats.
         """
-        return self._actor.get_routing_stats()
+        return self._actor.get_routing_stats(ready_set)
 
     def update_state(self, state: ReplicaState) -> None:
         """Updates state in actor details."""
@@ -2137,6 +2181,8 @@ class ReplicaStateContainer:
         self._replicas: Dict[ReplicaState, List[DeploymentReplica]] = defaultdict(list)
         self._replica_id_index: Dict[ReplicaID, DeploymentReplica] = {}
         self._on_replica_state_change = on_replica_state_change
+        # Incremental (state, version) counts -> O(1) version-filtered count().
+        self._sv_counts: Dict[tuple, int] = defaultdict(int)
 
     def __getstate__(self):
         # Exclude the callback to keep the container picklable (the callback
@@ -2159,6 +2205,8 @@ class ReplicaStateContainer:
         replica.update_state(state)
         self._replicas[state].append(replica)
         self._replica_id_index[replica.replica_id] = replica
+        if RAY_SERVE_RECON_COUNTS:
+            self._sv_counts[(state, replica.version)] += 1
         if self._on_replica_state_change and state != old_state:
             self._on_replica_state_change(old_state, state)
 
@@ -2196,6 +2244,16 @@ class ReplicaStateContainer:
             The DeploymentReplica if found, else None.
         """
         return self._replica_id_index.get(replica_id)
+
+    def count_state(self, state: ReplicaState) -> int:
+        """O(1) count of replicas in a single state (dirty-set slice sizing)."""
+        return len(self._replicas[state])
+
+    def slice_state(
+        self, state: ReplicaState, start: int, count: int
+    ) -> List[DeploymentReplica]:
+        """replicas[start:start+count] from one bucket, no full-bucket copy."""
+        return self._replicas[state][start : start + count]
 
     def pop(
         self,
@@ -2240,6 +2298,9 @@ class ReplicaStateContainer:
 
             self._replicas[state] = remaining
             replicas.extend(popped)
+            if RAY_SERVE_RECON_COUNTS:
+                for _r in popped:
+                    self._sv_counts[(state, _r.version)] -= 1
 
         for replica in replicas:
             self._replica_id_index.pop(replica.replica_id, None)
@@ -2273,11 +2334,19 @@ class ReplicaStateContainer:
         if exclude_version is None and version is None:
             return sum(len(self._replicas[state]) for state in states)
         elif exclude_version is None and version is not None:
+            if RAY_SERVE_RECON_COUNTS:
+                return sum(self._sv_counts.get((state, version), 0) for state in states)
             return sum(
                 sum(1 for r in self._replicas[state] if r.version == version)
                 for state in states
             )
         elif exclude_version is not None and version is None:
+            if RAY_SERVE_RECON_COUNTS:
+                return sum(
+                    len(self._replicas[state])
+                    - self._sv_counts.get((state, exclude_version), 0)
+                    for state in states
+                )
             return sum(
                 sum(1 for r in self._replicas[state] if r.version != exclude_version)
                 for state in states
@@ -2311,6 +2380,8 @@ class ReplicaStateContainer:
             for replica in self._replicas[state]:
                 if remaining_to_find > 0 and replica.replica_id in replica_ids:
                     removed.append(replica)
+                    if RAY_SERVE_RECON_COUNTS:
+                        self._sv_counts[(state, replica.version)] -= 1
                     remaining_to_find -= 1
                     found_any = True
                 else:
@@ -2839,6 +2910,10 @@ class DeploymentState:
         # Each time we set a new deployment goal, we're trying to save new
         # DeploymentInfo and bring current deployment to meet new status.
         self._target_state: DeploymentTargetState = DeploymentTargetState.default()
+        # Lever-1 dirty-set (RAY_SERVE_RECON_DIRTYSET): replica IDs with an in-flight
+        # health/routing ref to poll, and a round-robin cursor over RUNNING.
+        self._ds_outstanding: Set[ReplicaID] = set()
+        self._ds_rr_cursor: int = 0
 
         self._prev_startup_warning: float = time.time()
         self._replica_constructor_error_msg: Optional[str] = None
@@ -4409,6 +4484,9 @@ class DeploymentState:
         logger.debug(f"Adding STOPPING to replica: {replica.replica_id}.")
         replica.stop(graceful=graceful_stop)
         self._replicas.add(ReplicaState.STOPPING, replica)
+        # Lever-1 dirty-set: a stopping replica is no longer a live health-check
+        # target -- drop it so it isn't re-polled while it lingers in STOPPING.
+        self._ds_outstanding.discard(replica.replica_id)
         self._deployment_scheduler.on_replica_stopping(replica.replica_id)
         self._set_health_gauge(replica.replica_id.unique_id, 0)
 
@@ -4518,6 +4596,45 @@ class DeploymentState:
 
         return remaining_healthy, remaining_unhealthy
 
+    def _dirtyset_active_pairs(self):
+        """Lever-1: only replicas needing attention this tick -- in-flight refs
+        (poll), a round-robin RUNNING slice sized to sweep within ~0.5x the health
+        period (dispatch on time), and all PENDING_MIGRATION (transient). Idle
+        replicas omitted (check_health would be a no-op for them)."""
+        container = self._replicas
+        pairs = []
+        seen = set()
+        for replica in container.get([ReplicaState.PENDING_MIGRATION]):
+            pairs.append((replica, ReplicaState.PENDING_MIGRATION))
+            seen.add(replica.replica_id)
+        still = set()
+        for rid in self._ds_outstanding:
+            rep = container.get_by_id(rid)
+            if rep is not None and rid not in seen:
+                pairs.append((rep, ReplicaState.RUNNING))
+                seen.add(rid)
+                still.add(rid)
+        self._ds_outstanding = still
+        n = container.count_state(ReplicaState.RUNNING)
+        if n:
+            try:
+                period = self._target_state.info.deployment_config.health_check_period_s
+            except Exception:
+                period = DEFAULT_HEALTH_CHECK_PERIOD_S
+            ticks = max(1, int(0.5 * period / max(CONTROL_LOOP_INTERVAL_S, 1e-3)))
+            slice_n = max(1, math.ceil(n / ticks))
+            start = self._ds_rr_cursor % n
+            sl = container.slice_state(ReplicaState.RUNNING, start, slice_n)
+            overflow = start + slice_n - n
+            if overflow > 0:
+                sl = sl + container.slice_state(ReplicaState.RUNNING, 0, overflow)
+            self._ds_rr_cursor = (start + slice_n) % n
+            for replica in sl:
+                if replica.replica_id not in seen:
+                    pairs.append((replica, ReplicaState.RUNNING))
+                    seen.add(replica.replica_id)
+        return pairs
+
     def check_and_update_replicas(self):
         """
         Check current state of all DeploymentReplica being tracked, and compare
@@ -4528,53 +4645,106 @@ class DeploymentState:
         healthy_replicas: List[DeploymentReplica] = []
         unhealthy_replicas: List[DeploymentReplica] = []
 
-        for replica in self._replicas.pop(
-            states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
-        ):
-            is_healthy = replica.check_health()
-
-            # Record health check latency and failure metrics.
-            if replica.last_health_check_latency_ms is not None:
-                self.health_check_latency_histogram.observe(
-                    replica.last_health_check_latency_ms
-                )
-            if replica.last_health_check_failed:
-                self.health_check_failures_counter.inc(
-                    tags={"replica": replica.replica_id.unique_id}
-                )
-
-            if is_healthy:
-                healthy_replicas.append(replica)
+        # Profile-guided (RAY_SERVE_RECON_OPT): for the common non-gang case, iterate
+        # RUNNING/PENDING_MIGRATION IN PLACE. Healthy replicas that stay in their state
+        # bucket are never popped+re-added -> eliminates the O(num_replicas) container
+        # churn (~17-20% of the control loop at scale). Gang deployments fall back to the
+        # original pop/re-add path (their force-stop reshuffles the lists).
+        if RAY_SERVE_RECON_OPT and not self._is_gang_deployment:
+            _origin: List[ReplicaState] = []
+            if (
+                RAY_SERVE_RECON_DIRTYSET
+                and self._replicas.count_state(ReplicaState.RUNNING)
+                > RAY_SERVE_RECON_DIRTYSET_MIN
+            ):
+                _pairs = self._dirtyset_active_pairs()
             else:
-                unhealthy_replicas.append(replica)
+                _pairs = [
+                    (replica, _st)
+                    for _st in (ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION)
+                    for replica in list(self._replicas.get([_st]))
+                ]
+            _healths = [_replica.check_health() for _replica, _ in _pairs]
+            for (replica, _st), is_healthy in zip(_pairs, _healths):
+                if replica.last_health_check_latency_ms is not None:
+                    self.health_check_latency_histogram.observe(
+                        replica.last_health_check_latency_ms
+                    )
+                if replica.last_health_check_failed:
+                    self.health_check_failures_counter.inc(
+                        tags={"replica": replica.replica_id.unique_id}
+                    )
+                if is_healthy:
+                    healthy_replicas.append(replica)
+                    _origin.append(_st)
+                else:
+                    unhealthy_replicas.append(replica)
+            for replica, _st in zip(healthy_replicas, _origin):
+                self._set_health_gauge(replica.replica_id.unique_id, 1)
+                routing_stats = replica.pull_routing_stats()
+                if routing_stats is not None and routing_stats != replica.routing_stats:
+                    self._broadcasted_replicas_set_changed = True
+                replica.record_routing_stats(routing_stats)
+                if RAY_SERVE_RECON_DIRTYSET:
+                    if replica.has_outstanding_check:
+                        self._ds_outstanding.add(replica.replica_id)
+                    else:
+                        self._ds_outstanding.discard(replica.replica_id)
+                # Re-bucket only if the lifecycle state changed during the check.
+                if replica.actor_details.state != _st:
+                    self._replicas.remove({replica.replica_id})
+                    self._replicas.add(replica.actor_details.state, replica)
+            for replica in unhealthy_replicas:
+                logger.warning(
+                    f"Replica {replica.replica_id} failed health check, stopping it."
+                )
+                self._replicas.remove({replica.replica_id})
+                graceful = not self.FORCE_STOP_UNHEALTHY_REPLICAS
+                self._stop_replica_mark_unhealthy_if_target_version(replica, graceful)
+        else:
+            for replica in self._replicas.pop(
+                states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
+            ):
+                is_healthy = replica.check_health()
+                if replica.last_health_check_latency_ms is not None:
+                    self.health_check_latency_histogram.observe(
+                        replica.last_health_check_latency_ms
+                    )
+                if replica.last_health_check_failed:
+                    self.health_check_failures_counter.inc(
+                        tags={"replica": replica.replica_id.unique_id}
+                    )
+                if is_healthy:
+                    healthy_replicas.append(replica)
+                else:
+                    unhealthy_replicas.append(replica)
 
-        # Under the RESTART_GANG policy, force-stop all members of any gang that has at
-        # least one unhealthy replica. Replicas handled here are removed from the lists;
-        # remaining replicas continue to respect FORCE_STOP_UNHEALTHY_REPLICAS.
-        if (
-            self._is_gang_deployment
-            and self.get_gang_config().runtime_failure_policy
-            == GangRuntimeFailurePolicy.RESTART_GANG
-        ):
-            healthy_replicas, unhealthy_replicas = self._forcefully_stop_gang_replicas(
-                healthy_replicas, unhealthy_replicas
-            )
+            if (
+                self._is_gang_deployment
+                and self.get_gang_config().runtime_failure_policy
+                == GangRuntimeFailurePolicy.RESTART_GANG
+            ):
+                (
+                    healthy_replicas,
+                    unhealthy_replicas,
+                ) = self._forcefully_stop_gang_replicas(
+                    healthy_replicas, unhealthy_replicas
+                )
 
-        for replica in healthy_replicas:
-            self._replicas.add(replica.actor_details.state, replica)
-            self._set_health_gauge(replica.replica_id.unique_id, 1)
-            routing_stats = replica.pull_routing_stats()
-            if routing_stats is not None and routing_stats != replica.routing_stats:
-                self._broadcasted_replicas_set_changed = True
-            replica.record_routing_stats(routing_stats)
+            for replica in healthy_replicas:
+                self._replicas.add(replica.actor_details.state, replica)
+                self._set_health_gauge(replica.replica_id.unique_id, 1)
+                routing_stats = replica.pull_routing_stats()
+                if routing_stats is not None and routing_stats != replica.routing_stats:
+                    self._broadcasted_replicas_set_changed = True
+                replica.record_routing_stats(routing_stats)
 
-        # Only single-replica scheduling replicas remain.
-        for replica in unhealthy_replicas:
-            logger.warning(
-                f"Replica {replica.replica_id} failed health check, stopping it."
-            )
-            graceful = not self.FORCE_STOP_UNHEALTHY_REPLICAS
-            self._stop_replica_mark_unhealthy_if_target_version(replica, graceful)
+            for replica in unhealthy_replicas:
+                logger.warning(
+                    f"Replica {replica.replica_id} failed health check, stopping it."
+                )
+                graceful = not self.FORCE_STOP_UNHEALTHY_REPLICAS
+                self._stop_replica_mark_unhealthy_if_target_version(replica, graceful)
 
         # In steady state there are no STARTING/UPDATING/RECOVERING/STOPPING
         # replicas, so skip startup/stopping checks.  The rank consistency

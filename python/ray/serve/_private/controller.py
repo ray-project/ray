@@ -19,6 +19,7 @@ from ray._common.network_utils import build_address, get_all_interfaces_ip
 from ray._common.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
+from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
@@ -35,6 +36,7 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
+    RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
@@ -359,8 +361,50 @@ class ServeController:
     def record_autoscaling_metrics_from_replica(
         self, replica_metric_report: Union[ReplicaMetricReport, bytes]
     ):
+        _ingest_start = time.time()
         if isinstance(replica_metric_report, bytes):
-            replica_metric_report = decompress_metric_report(replica_metric_report)
+            if autoscaling_metrics_codec.is_columnar(replica_metric_report):
+                if (
+                    RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER
+                    or RAY_SERVE_ENABLE_DIRECT_INGRESS
+                ):
+                    _decode_start = time.time()
+                    (
+                        replica_id,
+                        ts_arr,
+                        val_arr,
+                        report_ts,
+                    ) = autoscaling_metrics_codec.decode_replica_running_requests(
+                        replica_metric_report
+                    )
+                    self._health_metrics_tracker.record_decompress(
+                        (time.time() - _decode_start) * 1000
+                    )
+                    self._health_metrics_tracker.record_replica_metrics_delay(
+                        (time.time() - report_ts) * 1000
+                    )
+                    self.autoscaling_state_manager.record_columnar_metrics_for_replica(
+                        replica_id, ts_arr, val_arr, report_ts
+                    )
+                    self._health_metrics_tracker.record_replica_ingest(
+                        (time.time() - _ingest_start) * 1000
+                    )
+                    return
+                # Columnar arrays feed only the aggregate-mode running-requests
+                # path. Outside aggregate mode (simple mode is the default) that
+                # store is never read, so reconstruct the report and use the
+                # object path -- keeps simple-mode scalars and custom-metric
+                # timeseries correct regardless of the producer's wire format.
+                _decompress_start = time.time()
+                replica_metric_report = autoscaling_metrics_codec.reconstruct(
+                    replica_metric_report
+                )
+            else:
+                _decompress_start = time.time()
+                replica_metric_report = decompress_metric_report(replica_metric_report)
+            self._health_metrics_tracker.record_decompress(
+                (time.time() - _decompress_start) * 1000
+            )
         latency = time.time() - replica_metric_report.timestamp
         latency_ms = latency * 1000
         # Record the metrics delay for observability
@@ -377,12 +421,50 @@ class ServeController:
         self.autoscaling_state_manager.record_request_metrics_for_replica(
             replica_metric_report
         )
+        self._health_metrics_tracker.record_replica_ingest(
+            (time.time() - _ingest_start) * 1000
+        )
 
     def record_autoscaling_metrics_from_handle(
         self, handle_metric_report: Union[HandleMetricReport, bytes]
     ):
+        _ingest_start = time.time()
         if isinstance(handle_metric_report, bytes):
-            handle_metric_report = decompress_metric_report(handle_metric_report)
+            if autoscaling_metrics_codec.is_columnar(handle_metric_report):
+                if (
+                    RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER
+                    or RAY_SERVE_ENABLE_DIRECT_INGRESS
+                ):
+                    _decode_start = time.time()
+                    d = autoscaling_metrics_codec.decode_handle_flat(
+                        handle_metric_report
+                    )
+                    self._health_metrics_tracker.record_decompress(
+                        (time.time() - _decode_start) * 1000
+                    )
+                    self._health_metrics_tracker.record_handle_metrics_delay(
+                        (time.time() - d["timestamp"]) * 1000
+                    )
+                    self.autoscaling_state_manager.record_columnar_metrics_for_handle(d)
+                    self._health_metrics_tracker.record_handle_ingest(
+                        (time.time() - _ingest_start) * 1000
+                    )
+                    return
+                # Columnar arrays feed only the aggregate-mode running-requests
+                # path. Outside aggregate mode (simple mode is the default) that
+                # store is never read, so reconstruct the report and use the
+                # object path -- keeps simple-mode scalars and custom-metric
+                # timeseries correct regardless of the producer's wire format.
+                _decompress_start = time.time()
+                handle_metric_report = autoscaling_metrics_codec.reconstruct(
+                    handle_metric_report
+                )
+            else:
+                _decompress_start = time.time()
+                handle_metric_report = decompress_metric_report(handle_metric_report)
+            self._health_metrics_tracker.record_decompress(
+                (time.time() - _decompress_start) * 1000
+            )
         latency = time.time() - handle_metric_report.timestamp
         latency_ms = latency * 1000
         # Record the metrics delay for observability
@@ -398,6 +480,9 @@ class ServeController:
         self._health_metrics_tracker.record_handle_metrics_delay(latency_ms)
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             handle_metric_report
+        )
+        self._health_metrics_tracker.record_handle_ingest(
+            (time.time() - _ingest_start) * 1000
         )
 
     def record_autoscaling_metrics_from_async_inference_task_queue(
