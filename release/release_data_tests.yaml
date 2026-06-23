@@ -87,7 +87,7 @@
       --max-bucket-size {{max_bucket_size}}
       --batch-target-bytes {{batch_target_bytes}}
       --max-coalesced-scan-bytes {{max_coalesced_scan_bytes}}
-      --read-threads 1
+      --read-threads 4
       --batch-readahead 1
 #      --max-calls 1
 #      --footer-size-estimate off
