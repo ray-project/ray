@@ -160,9 +160,8 @@ def record_workload(
 def build_usage_uuid_map(logical_plan: "LogicalPlan") -> Dict[int, str]:
     """Build the ``id(logical_op) -> usage_uuid`` map for a plan.
 
-    The issue detector uses this to label operators with the same usage UUIDs
-    embedded in the recorded workload payload, so detected issues reference
-    the operators in that payload. The UUIDs are computed based on the hash of the (post-order index, anonymized name) tuple.
+    The UUIDs are computed based on the hash of the (post-order index, anonymized name) tuple. These are
+    used to identify logical ops after anonymization (i.e. MapBatches-<uuid1>, MapBatches-<uuid2>, etc.).
 
     Short-circuits to an empty map when the user has opted out of usage stats:
     without a recorded payload there is nothing for the UUIDs to reference.
@@ -182,11 +181,9 @@ def physical_op_name_with_uuid(
     operator: "PhysicalOperator",
     usage_uuid_map: Optional[Dict[int, str]] = None,
 ) -> str:
-    """Anonymized name for a physical op, used to label detected issues so they
-    correlate with the recorded workload payload. Fused ops join their logical
-    ops with "->" (matching operator fusion's naming); each logical op is
-    formatted as ``<name>-<usage_uuid>`` when a UUID is available, else just
-    ``<name>``. ``"Unknown"`` when the op has no logical operators."""
+    """Anonymized name for a physical op. Fused ops join their constituent logical
+    ops with '->' to signal operator fusion. We need physical op name as
+    issues from the issue detector reference physical ops."""
     logical_ops = operator._logical_operators
     if not logical_ops:
         return "Unknown"
@@ -199,6 +196,7 @@ def _logical_op_name_with_uuid(
     logical_op,
     usage_uuid_map: Optional[Dict[int, str]] = None,
 ) -> str:
+    """Logical op is formatted as ``<anonymized_name>-<usage_uuid>``. The usage UUID map is populated before execution starts in the usage callback."""
     name = anonymize_op_name(logical_op)
     if usage_uuid_map:
         # Correlate with the UUIDs assigned to the logical ops in the workload plan.
