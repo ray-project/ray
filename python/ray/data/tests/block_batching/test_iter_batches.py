@@ -262,6 +262,45 @@ def test_iter_batches_preserve_order_flag(
         assert indices == list(range(num_blocks)), indices
 
 
+def test_finalize_fn_runs_after_restore_original_order(ray_start_regular_shared):
+    """When preserve_order=True, finalize_fn must run after the reorder
+    buffer so that the buffer holds CPU batches rather than finalize_fn
+    outputs (e.g., GPU tensors). Asserts finalize_fn sees batches in
+    monotonically increasing order even when the format/collate threadpool
+    completes them out of order."""
+
+    def collate_fn(batch):
+        # Variable per-batch cost so worker-completion order is arbitrary.
+        idx = int(batch["foo"][0])
+        time.sleep(0.05 * (idx % 4))
+        return batch
+
+    seen_by_finalize = []
+    seen_lock = threading.Lock()
+
+    def finalize_fn(batch):
+        idx = int(batch["foo"][0])
+        with seen_lock:
+            seen_by_finalize.append(idx)
+        return batch
+
+    num_blocks = 16
+    ref_bundles = ref_bundle_generator(num_blocks=num_blocks, num_rows=1)
+    list(
+        BatchIterator(
+            ref_bundles,
+            batch_size=1,
+            collate_fn=collate_fn,
+            finalize_fn=finalize_fn,
+            batch_format="pandas",
+            prefetch_batches=4,
+            preserve_order=True,
+        )
+    )
+
+    assert seen_by_finalize == list(range(num_blocks)), seen_by_finalize
+
+
 def _ref_bundles_with_size(
     num_blocks: int, num_rows: int, size_bytes_per_block: int
 ) -> Iterator[RefBundle]:
