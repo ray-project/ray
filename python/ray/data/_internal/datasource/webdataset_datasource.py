@@ -7,11 +7,11 @@ import json
 import re
 import tarfile
 from functools import partial
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Union
 
 from ray._common.utils import env_bool
 from ray.data._internal.util import iterate_with_retry
-from ray.data.block import BlockAccessor
+from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
 ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR = (
@@ -45,6 +45,9 @@ def _valid_sample(sample: Dict[str, Any]):
 
     Args:
         sample: sample to be checked
+
+    Returns:
+        ``True`` if the sample is a non-empty dict without the ``__bad__`` flag.
     """
     return (
         sample is not None
@@ -89,6 +92,9 @@ def _check_suffix(suffix: str, suffixes: Union[list, callable]):
     Args:
         suffix: suffix to be checked
         suffixes: list of valid suffixes
+
+    Returns:
+        ``True`` if the suffix matches the allowed patterns.
     """
     if suffixes is None:
         return True
@@ -109,14 +115,22 @@ def _tar_file_iterator(
     filerename: Optional[Union[bool, callable, list]] = None,
     verbose_open: bool = False,
     meta: dict = None,
-):
+) -> Iterator[Dict[str, Any]]:
     """Iterate over tar file, yielding filename, content pairs for the given tar stream.
 
     Args:
         fileobj: file object
         fileselect: patterns or function selecting
             files to be selected
+        filerename: patterns or function used to rename selected files
+            before yielding them.
+        verbose_open: if ``True``, print progress messages when starting
+            and finishing iteration over the tar stream.
         meta: metadata to be added to each sample
+
+    Yields:
+        Dict[str, Any]: Dictionaries with ``fname`` and ``data`` keys for each
+        selected file in the tar stream.
     """
     meta = meta or {}
     stream = tarfile.open(fileobj=fileobj, mode="r|*")
@@ -142,7 +156,7 @@ def _group_by_keys(
     keys: callable = _base_plus_ext,
     suffixes: Optional[Union[list, callable]] = None,
     meta: dict = None,
-):
+) -> Iterator[Dict[str, Any]]:
     """Return function over iterator that groups key, value pairs into samples.
 
     Args:
@@ -150,6 +164,10 @@ def _group_by_keys(
         keys: function that returns key, suffix for a given key
         suffixes: list of suffixes to be included in the sample
         meta: metadata to be added to each sample
+
+    Yields:
+        Dict[str, Any]: Grouped samples, where files sharing the same key prefix are
+        combined into a single dictionary.
     """
     meta = meta or {}
     current_sample = None
@@ -192,7 +210,12 @@ def _default_decoder(
 
     Args:
         sample: sample, modified in place
+        format: optional image format hint (e.g. ``"PIL"`` to return PIL
+            images instead of numpy arrays).
         allow_unsafe: if True, allow pickle/torch deserialization
+
+    Returns:
+        The sample with values decoded according to their key extension.
     """
     sample = dict(sample)
     for key, value in sample.items():
@@ -260,7 +283,12 @@ def _default_encoder(sample: Dict[str, Any], format: Optional[Union[str, bool]] 
     For other extensions, users can provide their own encoder.
 
     Args:
-        sample (Dict[str, Any]): sample
+        sample: sample to encode.
+        format: optional image format hint forwarded to the underlying
+            image encoder.
+
+    Returns:
+        The sample with values encoded according to their key extension.
     """
     sample = dict(sample)
     for key, value in sample.items():
@@ -353,7 +381,7 @@ class WebDatasetDatasource(FileBasedDatasource):
             ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR, False
         )
 
-    def _read_stream(self, stream: "pyarrow.NativeFile", path: str):
+    def _read_stream(self, stream: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         """Read and decode samples from a stream.
 
         Note that fileselect selects files during reading, while suffixes
@@ -362,14 +390,9 @@ class WebDatasetDatasource(FileBasedDatasource):
         Args:
             stream: File descriptor to read from.
             path: Path to the data.
-            decoder: decoder or list of decoders to be applied to samples
-            fileselect: Predicate for skipping files in tar decoder.
-                Defaults to lambda_:False.
-            suffixes: List of suffixes to be extracted. Defaults to None.
-            verbose_open: Print message when opening files. Defaults to False.
 
         Yields:
-            List[Dict[str, Any]]: List of sample (list of length 1).
+            Block: Single-row blocks (one per WebDataset sample).
         """
 
         import pandas as pd

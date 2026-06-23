@@ -88,9 +88,12 @@ def _with_environment_variables(cmd: str, environment_variables: Dict[str, objec
 
     Args:
         cmd: The base command.
-        environment_variables (Dict[str, object]): The set of environment
-            variables. If an environment variable value is a dict, it will
-            automatically be converted to a one line yaml string.
+        environment_variables: The set of environment variables. If an
+            environment variable value is a dict, it will automatically be
+            converted to a one line yaml string.
+
+    Returns:
+        The base command prefixed with `export` statements for each variable.
     """
 
     as_strings = []
@@ -263,16 +266,17 @@ class SSHCommandRunner(CommandRunnerInterface):
         """Run a command that was already setup with SSH and `bash` settings.
 
         Args:
-            final_cmd (List[str]):
-                Full command to run. Should include SSH options and other
-                processing that we do.
-            with_output (bool):
-                If `with_output` is `True`, command stdout will be captured and
-                returned.
-            exit_on_fail (bool):
-                If `exit_on_fail` is `True`, the process will exit
+            final_cmd: Full command to run. Should include SSH options and
+                other processing that we do.
+            with_output: If `with_output` is `True`, command stdout will be
+                captured and returned.
+            exit_on_fail: If `exit_on_fail` is `True`, the process will exit
                 if the command fails (exits with a code other than 0).
             silent: If true, the command output will be silenced.
+
+        Returns:
+            Captured stdout bytes when `with_output` is True, otherwise the
+            return value of ``run_cmd_redirected`` (typically the return code).
 
         Raises:
             ProcessRunnerError: If using new log style and disabled

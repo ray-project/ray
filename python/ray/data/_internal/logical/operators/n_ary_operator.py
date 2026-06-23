@@ -68,26 +68,19 @@ class NAry(LogicalOperator):
 
     def __init__(
         self,
-        *input_ops: LogicalOperator,
-        num_outputs: Optional[int] = None,
+        input_dependencies: List[LogicalOperator],
     ):
-        """
-        Args:
-            input_ops: The input operators.
-        """
-        super().__init__(
-            _num_outputs=num_outputs,
-        )
-        object.__setattr__(self, "_input_dependencies", list(input_ops))
+        """Initialize the n-ary operator.
 
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return self._num_outputs
+        Args:
+            input_dependencies: The input operators.
+        """
+        object.__setattr__(self, "_input_dependencies", list(input_dependencies))
 
     def _with_new_input_dependencies(
         self, input_dependencies: List[LogicalOperator]
     ) -> LogicalOperator:
-        return self.__class__(*input_dependencies)
+        return self.__class__(input_dependencies)
 
 
 @dataclass(frozen=True, repr=False, eq=False, init=False)
@@ -95,16 +88,14 @@ class Zip(NAry):
     """Logical operator for zip."""
 
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __init__(
         self,
-        *input_ops: LogicalOperator,
+        input_dependencies: List[LogicalOperator],
     ):
-        for input_op in input_ops:
+        for input_op in input_dependencies:
             assert isinstance(input_op, LogicalOperator), input_op
-        object.__setattr__(self, "_input_dependencies", list(input_ops))
-        object.__setattr__(self, "_num_outputs", None)
+        object.__setattr__(self, "_input_dependencies", list(input_dependencies))
 
     def estimated_num_outputs(self):
         total_num_outputs = 0
@@ -143,29 +134,28 @@ class Mix(NAry, LogicalOperatorUnifiesInputSchemas):
 
     _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
     weights: List[float] = field(init=False, repr=False)
     stopping_condition: MixStoppingCondition = field(init=False, repr=False)
 
     def __init__(
         self,
-        *input_ops: LogicalOperator,
+        input_dependencies: List[LogicalOperator],
+        *,
         weights: List[float],
         stopping_condition: MixStoppingCondition = MixStoppingCondition.STOP_ON_SHORTEST,
     ):
-        if len(input_ops) != len(weights):
+        if len(input_dependencies) != len(weights):
             raise ValueError(
-                f"Number of input operators ({len(input_ops)}) must match "
+                f"Number of input operators ({len(input_dependencies)}) must match "
                 f"number of weights ({len(weights)})."
             )
         if any(weight <= 0 for weight in weights):
             raise ValueError(f"Weights must be positive. Got weights: {weights}")
 
-        for input_op in input_ops:
+        for input_op in input_dependencies:
             assert isinstance(input_op, LogicalOperator), input_op
         object.__setattr__(self, "_name", self.__class__.__name__)
-        object.__setattr__(self, "_input_dependencies", list(input_ops))
-        object.__setattr__(self, "_num_outputs", None)
+        object.__setattr__(self, "_input_dependencies", list(input_dependencies))
         object.__setattr__(self, "weights", weights)
         object.__setattr__(self, "stopping_condition", stopping_condition)
 
@@ -183,7 +173,7 @@ class Mix(NAry, LogicalOperatorUnifiesInputSchemas):
         self, input_dependencies: List[LogicalOperator]
     ) -> LogicalOperator:
         return self.__class__(
-            *input_dependencies,
+            input_dependencies,
             weights=self.weights,
             stopping_condition=self.stopping_condition,
         )
@@ -198,16 +188,14 @@ class Union(
     """Logical operator for union."""
 
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __init__(
         self,
-        *input_ops: LogicalOperator,
+        input_dependencies: List[LogicalOperator],
     ):
-        for input_op in input_ops:
+        for input_op in input_dependencies:
             assert isinstance(input_op, LogicalOperator), input_op
-        object.__setattr__(self, "_input_dependencies", list(input_ops))
-        object.__setattr__(self, "_num_outputs", None)
+        object.__setattr__(self, "_input_dependencies", list(input_dependencies))
 
     def estimated_num_outputs(self):
         total_num_outputs = 0

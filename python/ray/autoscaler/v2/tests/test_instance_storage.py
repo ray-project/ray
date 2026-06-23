@@ -98,12 +98,12 @@ def test_update():
     # failed because storage version is not correct
     assert (False, 2) == storage.upsert_instance(
         instance=instance1,
-        expected_storage_verison=0,
+        expected_storage_version=0,
     )
 
     assert (True, 3) == storage.upsert_instance(
         instance=instance2,
-        expected_storage_verison=2,
+        expected_storage_version=2,
     )
 
     assert (

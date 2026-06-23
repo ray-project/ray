@@ -87,7 +87,7 @@ Ray Data LLM uses a **multi-stage processor pipeline** to transform your data th
 **Stage descriptions:**
 
 - **Preprocess**: Your custom function that transforms input rows into the format expected by downstream stages (typically OpenAI chat format with ``messages``).
-- **PrepareMultimodal**: Extracts and prepares multimodal inputs. Enable with ``prepare_multimodal_stage={"enabled": True}``.
+- **PrepareMultimodal**: Extracts and prepares multimodal inputs. Enable with ``prepare_multimodal_stage=True``.
 - **ChatTemplate**: Applies the model's chat template to convert messages into a prompt string.
 - **Tokenize**: Converts the prompt string into token IDs for the model.
 - **LLM Engine**: The accelerated (GPU/TPU) inference stage running vLLM or SGLang.
@@ -151,7 +151,7 @@ Ray Data LLM also supports running batch inference with vision language
 and omni-modal models on multimodal data. To enable multimodal batch inference,
 apply the following 2 adjustments on top of the previous example:
 
-- Set `prepare_multimodal_stage={"enabled": True}` in the `vLLMEngineProcessorConfig`
+- Set `prepare_multimodal_stage=True` in the `vLLMEngineProcessorConfig`
 - Prepare multimodal data inside the preprocessor.
 
 Image batch inference with vision language model (VLM)
@@ -618,6 +618,8 @@ Each Ray release is fully tested with a compatible vLLM version.
 
    * - Ray release
      - vLLM version
+   * - nightly
+     - 0.23.0
    * - 2.56.0
      - 0.22.0
    * - 2.55.0
