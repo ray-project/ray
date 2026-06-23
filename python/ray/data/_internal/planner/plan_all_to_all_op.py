@@ -1,3 +1,4 @@
+import logging
 from typing import List
 
 from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -30,6 +31,8 @@ from ray.data._internal.planner.randomize_blocks import generate_randomize_block
 from ray.data._internal.planner.repartition import generate_repartition_fn
 from ray.data._internal.planner.sort import generate_sort_fn
 from ray.data.context import DataContext, ShuffleStrategy
+
+logger = logging.getLogger(__name__)
 
 
 def _plan_gpu_shuffle_repartition(
@@ -131,6 +134,53 @@ def _plan_hash_shuffle_aggregate(
     )
 
 
+def _plan_gpu_shuffle_aggregate(
+    data_context: DataContext,
+    logical_op: Aggregate,
+    input_physical_op: PhysicalOperator,
+) -> PhysicalOperator:
+    from ray.data._internal.gpu_shuffle.hash_aggregate import (
+        GPUAggregateFn,
+        GPUHashAggregateOperator,
+        build_gpu_aggregation_plan,
+    )
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+
+    normalized_key_columns = SortKey(logical_op.key).get_columns()
+    key_columns = tuple(normalized_key_columns)
+    aggregation_fns = tuple(logical_op.aggs)
+    input_schema = logical_op.input_dependencies[0].infer_schema()
+
+    aggregation_plan = build_gpu_aggregation_plan(
+        key_columns, aggregation_fns, input_schema=input_schema
+    )
+    if isinstance(aggregation_plan, str):
+        # Fall back to CPU hash aggregate if GPU aggregation plan is not supported.
+        fallback_reason = aggregation_plan
+        if any(isinstance(agg, GPUAggregateFn) for agg in aggregation_fns):
+            raise ValueError(
+                "GPU aggregation plan is not supported for a GPUAggregateFn "
+                f"aggregate list with key={logical_op.key}, aggs={logical_op.aggs}: "
+                f"{fallback_reason}."
+            )
+        logger.warning(
+            "GPU aggregation plan is not supported for key=%s, aggs=%s: %s; "
+            "falling back to CPU hash aggregate.",
+            logical_op.key,
+            logical_op.aggs,
+            fallback_reason,
+        )
+        return _plan_hash_shuffle_aggregate(data_context, logical_op, input_physical_op)
+
+    return GPUHashAggregateOperator(
+        data_context,
+        input_physical_op,
+        key_columns=key_columns,  # noqa: type
+        aggregation_plan=aggregation_plan,
+        num_partitions=logical_op.num_partitions,
+    )
+
+
 def plan_all_to_all_op(
     op: AbstractAllToAll,
     physical_children: List[PhysicalOperator],
@@ -204,10 +254,9 @@ def plan_all_to_all_op(
         )
 
     elif isinstance(op, Aggregate):
-        if data_context.shuffle_strategy in (
-            ShuffleStrategy.HASH_SHUFFLE,
-            ShuffleStrategy.GPU_SHUFFLE,
-        ):
+        if data_context.shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
+            return _plan_gpu_shuffle_aggregate(data_context, op, input_physical_dag)
+        elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
             return _plan_hash_shuffle_aggregate(data_context, op, input_physical_dag)
 
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(

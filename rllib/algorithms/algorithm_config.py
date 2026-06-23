@@ -680,6 +680,10 @@ class AlgorithmConfig(_Config):
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
 
+        Note: If using the new API stack (enable_rl_module_and_learner=True), the
+        returned dictionary will dynamically overwrite the legacy `train_batch_size` key
+        with the calculated `total_train_batch_size`.
+
         Returns:
             A complete AlgorithmConfigDict, usable in backward-compatible Tune/RLlib
             use cases.
@@ -741,6 +745,14 @@ class AlgorithmConfig(_Config):
         ]:
             if config.get(dep_k) == DEPRECATED_VALUE:
                 config.pop(dep_k, None)
+
+        # If using the New API Stack, overwrite the stale legacy train_batch_size
+        # with the true computed total so to_dict() is not misleading.
+        if self.enable_rl_module_and_learner:
+            try:
+                config["train_batch_size"] = self.total_train_batch_size
+            except ValueError:
+                config["train_batch_size"] = None
 
         return config
 
@@ -4285,6 +4297,11 @@ class AlgorithmConfig(_Config):
     def train_batch_size_per_learner(self) -> int:
         # If not set explicitly, try to infer the value.
         if self._train_batch_size_per_learner is None:
+            if self.train_batch_size is None:
+                raise ValueError(
+                    "Both `train_batch_size` and `train_batch_size_per_learner` "
+                    "are None! You must specify at least one of them in your config."
+                )
             return self.train_batch_size // (self.num_learners or 1)
         return self._train_batch_size_per_learner
 
@@ -4763,7 +4780,6 @@ class AlgorithmConfig(_Config):
         # Fill in the missing values from the specs that we already have. By combining
         # PolicySpecs and the default RLModuleSpec.
         for module_id in policy_dict | multi_rl_module_spec.rl_module_specs:
-
             # Remove/skip `learner_only=True` RLModules if `inference_only` is True.
             module_spec = multi_rl_module_spec.rl_module_specs[module_id]
             if inference_only and module_spec.learner_only:
