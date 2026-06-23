@@ -23,7 +23,7 @@ from ray._common.usage.usage_lib import (
 )
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.logical.operators import AbstractUDFMap
+from ray.data._internal.logical.operators import MapBatches
 from ray.data._internal.logical.util import anonymize_op_name
 from ray.data.block import VALID_BATCH_FORMATS, _apply_batch_format
 
@@ -111,10 +111,18 @@ _spillage_dict: Dict[str, Optional[int]] = {}
 _lock = threading.Lock()
 
 
+def _usage_collection_disabled() -> bool:
+    """True when the user has opted out of usage stats (via
+    ``RAY_USAGE_STATS_ENABLED=0``, ``ray disable-usage-stats``, or
+    ``~/.ray/config.json``) or when ``RAY_DATA_USAGE_DISABLED=1`` is set.
+    """
+    return not usage_stats_enabled() or os.environ.get("RAY_DATA_USAGE_DISABLED") == "1"
+
+
 def record_workload(
     execution_id: str,
     logical_plan: "LogicalPlan",
-) -> Dict[int, str]:
+) -> None:
     """Record the planning-time workload entry for an execution.
     This consists of the DAG, env, and configs for each operator.
     Flushes eagerly so that attempted executions are captured even if
@@ -124,15 +132,14 @@ def record_workload(
     ``RAY_USAGE_STATS_ENABLED=0``, ``ray disable-usage-stats``, or
     ``~/.ray/config.json``) or when ``RAY_DATA_USAGE_DISABLED=1`` is set.
     """
-    if not usage_stats_enabled() or os.environ.get("RAY_DATA_USAGE_DISABLED") == "1":
-        return {}
+    if _usage_collection_disabled():
+        return
     try:
-        workload, usage_uuid_map = _collect_workload_and_usage_uuid_map(logical_plan)
         entry = _Entry(
             id=execution_id,
             started_at=time.time(),
             env=_collect_env(),
-            workload=workload,
+            workload=_collect_workload(logical_plan),
         )
         spilled_at_start = _cluster_spilled_bytes()
         with _lock:
@@ -143,9 +150,28 @@ def record_workload(
             _spillage_dict[execution_id] = spilled_at_start
             payload = _serialize_locked()
         record_extra_usage_tag(TagKey.DATA_USAGE, payload)
-        return usage_uuid_map
     except Exception:
         logger.debug("Failed to record workload usage", exc_info=True)
+
+
+def build_usage_uuid_map(logical_plan: "LogicalPlan") -> Dict[int, str]:
+    """Build the ``id(logical_op) -> usage_uuid`` map for a plan.
+
+    The issue detector uses this to label operators with the same usage UUIDs
+    embedded in the recorded workload payload, so detected issues cross-reference
+    the operators in that payload. The UUIDs are computed based on the hash of the (post-order index, anonymized name) tuple.
+
+    Short-circuits to an empty map when the user has opted out of usage stats:
+    without a recorded payload there is nothing for the UUIDs to reference.
+    """
+    if _usage_collection_disabled():
+        return {}
+    try:
+        ordered_logical_ops: List[Tuple[LogicalOperator, str]] = []
+        _build_plan(logical_plan.dag, ordered_logical_ops)
+        return {id(op): usage_uuid for op, usage_uuid in ordered_logical_ops}
+    except Exception:
+        logger.debug("Failed to build usage uuid map", exc_info=True)
         return {}
 
 
@@ -163,7 +189,7 @@ def record_execution_result(
     ``RAY_USAGE_STATS_ENABLED=0``, ``ray disable-usage-stats``, or
     ``~/.ray/config.json``) or when ``RAY_DATA_USAGE_DISABLED=1`` is set.
     """
-    if not usage_stats_enabled() or os.environ.get("RAY_DATA_USAGE_DISABLED") == "1":
+    if _usage_collection_disabled():
         return
     try:
         spilled_now = _cluster_spilled_bytes()
@@ -189,7 +215,7 @@ def _collect_issues(
     if not detected_issues:
         return []
     return [
-        _Issue(issue_type=getattr(issue_type, "value", issue_type), operator=operator)
+        _Issue(issue_type=issue_type.value, operator=operator)
         for issue_type, operator in detected_issues
     ]
 
@@ -212,34 +238,16 @@ def _safe_version(pkg: str) -> Optional[str]:
 
 
 def _collect_workload(logical_plan: "LogicalPlan") -> _Workload:
-    """Collect anonymized plan tree, indented text rendering, and per-op
-    config list."""
-    workload, _ = _collect_workload_and_usage_uuid_map(logical_plan)
-    return workload
-
-
-def _collect_workload_and_usage_uuid_map(
-    logical_plan: "LogicalPlan",
-) -> Tuple[_Workload, Dict[int, str]]:
-    """Collect workload data and per-logical-op usage UUIDs in one DAG walk."""
+    """Collect the anonymized plan tree, indented text rendering, and per-op
+    config list in a single DAG walk."""
     dag = logical_plan.dag
     ordered_logical_ops: List[Tuple[LogicalOperator, str]] = []
     plan = _build_plan(dag, ordered_logical_ops)
-    return (
-        _Workload(
-            plan=plan,
-            plan_str=_format_plan_str(dag),
-            ops=_build_ops(ordered_logical_ops),
-        ),
-        {id(op): usage_uuid for op, usage_uuid in ordered_logical_ops},
+    return _Workload(
+        plan=plan,
+        plan_str=_format_plan_str(dag),
+        ops=_build_ops(ordered_logical_ops),
     )
-
-
-def _build_plan_and_ops(op: LogicalOperator) -> Tuple[_PlanNode, List[_LogicalOp]]:
-    """Build plan tree and flat op list in one post-order walk."""
-    ordered_logical_ops: List[Tuple[LogicalOperator, str]] = []
-    plan = _build_plan(op, ordered_logical_ops)
-    return plan, _build_ops(ordered_logical_ops)
 
 
 def _build_plan(
@@ -275,17 +283,16 @@ def _build_ops(
 
 
 def _get_op_config(op: LogicalOperator) -> Optional[_OpConfig]:
-    config: Optional[_OpConfig] = None
-    if isinstance(op, AbstractUDFMap):
-        batch_format = getattr(op, "batch_format", None)
-        if batch_format == "default":
-            batch_format = _apply_batch_format(batch_format)
-        if batch_format in VALID_BATCH_FORMATS:
-            config = _OpConfig(batch_format=batch_format)
-        else:
-            logger.debug(f"Unexpected batch format: {batch_format!r}")
-            config = _OpConfig(batch_format="unknown")
-    return config
+    # MapBatches is the only operator with a user-facing batch_format.
+    if not isinstance(op, MapBatches):
+        return None
+    batch_format = op.batch_format
+    if batch_format == "default":
+        batch_format = _apply_batch_format(batch_format)
+    if batch_format in VALID_BATCH_FORMATS:
+        return _OpConfig(batch_format=batch_format)
+    logger.debug(f"Unexpected batch format: {batch_format!r}")
+    return _OpConfig(batch_format="unknown")
 
 
 def _make_usage_op_uuid(index: int, name: str) -> str:

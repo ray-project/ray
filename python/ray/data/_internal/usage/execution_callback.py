@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, List, Tuple
 
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.usage.collector import (
+    build_usage_uuid_map,
     record_execution_result,
     record_workload,
 )
@@ -33,10 +34,8 @@ class UsageCallback(ExecutionCallback):
 
     def before_execution_starts(self, executor: "StreamingExecutor") -> None:
         try:
-            executor._usage_uuid_map = record_workload(
-                self._execution_id,
-                self._logical_plan,
-            )
+            record_workload(self._execution_id, self._logical_plan)
+            executor._usage_uuid_map = build_usage_uuid_map(self._logical_plan)
         except Exception:
             logger.debug("Usage record_workload failed", exc_info=True)
 

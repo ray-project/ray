@@ -83,9 +83,9 @@ def test_detected_issues_in_payload(reset_collector, mock_record):
     ]
 
 
-def test_record_workload_returns_usage_uuid_map(reset_collector, mock_record):
+def test_build_usage_uuid_map(reset_collector, mock_record):
     ds = ray.data.range(1).map_batches(lambda b: b)
-    usage_uuid_map = collector.record_workload("exec-1", ds._logical_plan)
+    usage_uuid_map = collector.build_usage_uuid_map(ds._logical_plan)
 
     map_batches_op = ds._logical_plan.dag
     read_op = map_batches_op.input_dependencies[0]
@@ -204,7 +204,7 @@ def test_does_not_raise_on_internal_errors(reset_collector, mock_record, monkeyp
     """Safety: a bug in collection must never break user execution."""
     monkeypatch.setattr(
         collector,
-        "_collect_workload_and_usage_uuid_map",
+        "_collect_workload",
         lambda *_: (_ for _ in ()).throw(RuntimeError("boom")),
     )
     ds = ray.data.range(10)

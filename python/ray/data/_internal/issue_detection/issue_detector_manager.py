@@ -58,6 +58,7 @@ class IssueDetectorManager:
         self._report_issues(issues)
 
     def _report_issues(self, issues: List[Issue]) -> None:
+        usage_uuid_map = self.executor._usage_uuid_map
         operators: Dict[str, "PhysicalOperator"] = {}
         op_to_id: Dict["PhysicalOperator", str] = {}
         for i, operator in enumerate(self.executor._topology.keys()):
@@ -74,11 +75,6 @@ class IssueDetectorManager:
             if not operator:
                 continue
 
-            usage_uuid_map = getattr(
-                self.executor,
-                "_usage_uuid_map",
-                None,
-            )
             self._detected_issues.add(
                 (
                     issue.issue_type,
@@ -124,7 +120,7 @@ def _anonymized_operator_name(
     """Anonymized name for a physical op; fused ops join their logical ops with
     "->" (matching operator fusion's naming). When logical op IDs are available,
     each logical op is formatted as ``<name>-<usage_uuid>``. ``"Unknown"`` if it has none."""
-    logical_ops = getattr(operator, "_logical_operators", None)
+    logical_ops = operator._logical_operators
     if not logical_ops:
         return "Unknown"
     return "->".join(
