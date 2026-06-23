@@ -90,7 +90,8 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=0)
     cluster.add_node(
-        num_cpus=2, env_vars={"RAY_SERVE_PROXY_GRPC_PORT": str(worker_node_grpc_port)}
+        num_cpus=2,
+        env_vars={"RAY_SERVE_WORKER_PROXY_GRPC_PORT": str(worker_node_grpc_port)},
     )
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)

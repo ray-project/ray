@@ -31,9 +31,9 @@ from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
     RAY_SERVE_PROXY_GC_THRESHOLD,
-    RAY_SERVE_PROXY_GRPC_PORT,
-    RAY_SERVE_PROXY_HTTP_PORT,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
+    RAY_SERVE_WORKER_PROXY_GRPC_PORT,
+    RAY_SERVE_WORKER_PROXY_HTTP_PORT,
     SERVE_CONTROLLER_NAME,
     SERVE_HTTP_REQUEST_ID_HEADER,
     SERVE_LOG_COMPONENT,
@@ -1406,15 +1406,16 @@ def apply_per_node_port_overrides(
 ) -> None:
     """Override this proxy's HTTP and gRPC bind ports from the per-node env knobs.
 
-    Worker proxies bind RAY_SERVE_PROXY_HTTP_PORT and RAY_SERVE_PROXY_GRPC_PORT when set.
-    The head node is exempt so its configured ports and the fallback proxy stay intact.
+    Worker proxies bind RAY_SERVE_WORKER_PROXY_HTTP_PORT and
+    RAY_SERVE_WORKER_PROXY_GRPC_PORT when set. The head node is exempt so its
+    configured ports and the fallback proxy stay intact.
     """
     if is_head:
         return
-    if RAY_SERVE_PROXY_HTTP_PORT is not None:
-        http_options.port = RAY_SERVE_PROXY_HTTP_PORT
-    if RAY_SERVE_PROXY_GRPC_PORT is not None:
-        grpc_options.port = RAY_SERVE_PROXY_GRPC_PORT
+    if RAY_SERVE_WORKER_PROXY_HTTP_PORT is not None:
+        http_options.port = RAY_SERVE_WORKER_PROXY_HTTP_PORT
+    if RAY_SERVE_WORKER_PROXY_GRPC_PORT is not None:
+        grpc_options.port = RAY_SERVE_WORKER_PROXY_GRPC_PORT
 
 
 class ProxyActorInterface(ABC):

@@ -599,7 +599,9 @@ class TestHealthzAndRoutes:
         # continue to be pointing to the default port 8000.
         cluster = ray_cluster
         cluster.add_node(num_cpus=0)
-        cluster.add_node(num_cpus=2, env_vars={"RAY_SERVE_PROXY_HTTP_PORT": "8001"})
+        cluster.add_node(
+            num_cpus=2, env_vars={"RAY_SERVE_WORKER_PROXY_HTTP_PORT": "8001"}
+        )
         cluster.wait_for_nodes()
         ray.init(address=cluster.address)
         serve.start(http_options={"location": "EveryNode"})
