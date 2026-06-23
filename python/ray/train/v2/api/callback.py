@@ -87,7 +87,7 @@ class UserCallback(RayTrainCallback):
 
         Args:
             run_context: The ``TrainRunContext`` for the current training run.
-            result: The final ``Result`` containing metrics, checkpoint, and
-                error (if any).
+            result: The final :class:`ray.train.Result` containing metrics,
+                checkpoint, and error (if any).
         """
         pass
