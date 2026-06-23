@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -71,9 +72,9 @@ class _MLflowTrackerUtil:
         try:
             return fn(*args, **kwargs)
         except Exception as e:
-            logger.warning("MLflow API call failed: %s", e)
             if self._raise_on_error:
                 raise
+            logger.warning("MLflow API call failed: %s", e, exc_info=True)
             return None
 
     # ------------------------------------------------------------------
@@ -218,7 +219,7 @@ class _MLflowTrackerUtil:
                     value,
                 )
                 continue
-            if float_value != float_value:  # NaN
+            if math.isnan(float_value):
                 logger.debug("Skipping NaN metric '%s'.", key)
                 continue
             if float_value in (float("inf"), float("-inf")):

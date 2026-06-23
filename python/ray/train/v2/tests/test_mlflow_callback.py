@@ -5,6 +5,7 @@ use a local SQLite-backed MLflow tracking URI.
 """
 
 import importlib.util
+import os
 import sys
 from typing import Dict, Optional
 from unittest.mock import MagicMock, patch
@@ -397,28 +398,34 @@ class TestMLflowLoggerCallbackGracefulDegradation:
 class TestMLflowNotInstalled:
     """Test behavior when mlflow is not installed."""
 
-    def test_init_raises_import_error(self):
-        """MLflowLoggerCallback.__init__ should raise ImportError
-        when mlflow is not installed."""
+    def test_before_run_raises_import_error(self):
+        """before_run should raise ImportError when mlflow is not installed."""
         import sys
 
-        original = sys.modules.get("mlflow")
+        # Save and remove all mlflow-related modules to simulate mlflow
+        # not being installed. Setting only sys.modules["mlflow"] = None
+        # is insufficient because submodules (e.g. mlflow.tracking) may
+        # already be cached.
+        originals = {
+            k: v
+            for k, v in sys.modules.items()
+            if k == "mlflow" or k.startswith("mlflow.")
+        }
         try:
-            sys.modules["mlflow"] = None  # type: ignore[assignment]
+            for k in originals:
+                sys.modules[k] = None  # type: ignore[assignment]
+            cb = MLflowLoggerCallback(experiment_name="exp1", raise_on_error=True)
             with pytest.raises(ImportError, match="mlflow is required"):
-                MLflowLoggerCallback(experiment_name="exp1")
+                cb.before_run(_make_run_context())
         finally:
-            if original is not None:
-                sys.modules["mlflow"] = original
-            else:
-                sys.modules.pop("mlflow", None)
+            sys.modules.update(originals)
 
 
 # ===========================================================================
 # Integration tests (require running MLflow server at localhost:8050)
 # ===========================================================================
 
-MLFLOW_TRACKING_URI = "http://localhost:8050"
+MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:8050")
 
 
 def _mlflow_available() -> bool:

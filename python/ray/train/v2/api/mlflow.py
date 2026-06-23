@@ -83,14 +83,7 @@ class MLflowLoggerCallback(UserCallback):
         log_params: bool = True,
         raise_on_error: bool = False,
     ):
-        try:
-            import mlflow  # noqa: F401
-        except ImportError as e:
-            raise ImportError(
-                "mlflow is required for MLflowLoggerCallback. "
-                "Install with: pip install mlflow"
-            ) from e
-
+        # mlflow import is deferred to _MLflowTrackerUtil; no need to check here.
         self._experiment_name = experiment_name
         self._tracking_uri = tracking_uri
         self._run_name = run_name
@@ -121,35 +114,50 @@ class MLflowLoggerCallback(UserCallback):
 
     def before_run(self, run_context: TrainRunContext) -> None:
         """Create MLflow experiment and run, log parameters."""
+        # Close any previous run (e.g. from a prior retry attempt) to
+        # avoid leaving it in RUNNING state on the MLflow server.
+        if self._util is not None and self._run_id is not None:
+            self._util.end_run(self._run_id, status="FAILED")
+
+        # Reset state so retries after a failure start with a clean slate.
+        self._failed = False
+        self._best_metric_value = None
+        self._last_checkpoint = None
+        self._run_id = None
+
+        # Only the constructor can raise outside of _safe_call;
+        # setup_experiment / start_run / log_params are all protected.
         try:
             self._util = _MLflowTrackerUtil(
                 tracking_uri=self._tracking_uri,
                 raise_on_error=self._raise_on_error,
             )
-            self._experiment_id = self._util.setup_experiment(self._experiment_name)
-            if self._experiment_id is None:
-                return
-
-            self._run_id = self._util.start_run(
-                experiment_id=self._experiment_id,
-                run_name=self._run_name or run_context.run_id,
-                tags=self._tags,
-            )
-
-            if self._log_params and self._run_id:
-                train_loop_config = getattr(run_context, "train_loop_config", None)
-                if train_loop_config:
-                    self._util.log_params(self._run_id, train_loop_config)
-
-            logger.info(
-                "MLflow run started: experiment=%s, run=%s",
-                self._experiment_name,
-                self._run_id,
-            )
         except Exception as e:
-            logger.warning("MLflow before_run failed: %s", e)
+            logger.warning("MLflow init failed: %s", e, exc_info=True)
             if self._raise_on_error:
                 raise
+            return
+
+        self._experiment_id = self._util.setup_experiment(self._experiment_name)
+        if self._experiment_id is None:
+            return
+
+        self._run_id = self._util.start_run(
+            experiment_id=self._experiment_id,
+            run_name=self._run_name or run_context.run_id,
+            tags=self._tags,
+        )
+
+        if self._log_params and self._run_id:
+            train_loop_config = getattr(run_context, "train_loop_config", None)
+            if train_loop_config:
+                self._util.log_params(self._run_id, train_loop_config)
+
+        logger.info(
+            "MLflow run started: experiment=%s, run=%s",
+            self._experiment_name,
+            self._run_id,
+        )
 
     def after_report(
         self,
