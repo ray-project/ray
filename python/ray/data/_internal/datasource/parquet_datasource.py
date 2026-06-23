@@ -450,7 +450,7 @@ class ParquetDatasource(Datasource):
                 supports_distributed_reads=supports_distributed_reads,
                 local_scheduling=local_scheduling,
                 source_paths_ref=source_paths_ref,
-                filesystem=filesystem,
+                filesystem=resolved_filesystem,
                 fragments=[],
                 file_sizes=[],
                 file_schema=schema if schema is not None else pa.schema([]),
