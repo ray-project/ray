@@ -1736,14 +1736,16 @@ class ProxyActor(ProxyActorInterface):
         Raises any exceptions that occur setting up the HTTP or gRPC server.
         """
         try:
-            self._running_http_server_task = await self._start_http_server_task
+            # The proxy has its own draining; the returned server object is
+            # unused.
+            self._running_http_server_task, _ = await self._start_http_server_task
         except Exception as e:
             logger.exception("Failed to start proxy HTTP server.")
             raise e from None
 
         try:
             if self._start_grpc_server_task is not None:
-                self._running_grpc_server_task = await self._start_grpc_server_task
+                self._running_grpc_server_task, _ = await self._start_grpc_server_task
         except Exception as e:
             logger.exception("Failed to start proxy gRPC server.")
             raise e from None
