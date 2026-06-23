@@ -54,14 +54,27 @@ To understand the following content better, you should understand the difference
     * `K8sJobMode`: The KubeRay operator creates a submitter Kubernetes Job to submit the Ray job.
     * `HTTPMode`: The KubeRay operator sends a request to the RayCluster to create a Ray job.
     * `InteractiveMode`: The KubeRay operator waits for the user to submit a job to the RayCluster. This mode is currently in alpha and the [KubeRay kubectl plugin](kubectl-plugin) relies on it.
-    * `SidecarMode`: The KubeRay operator injects a container into the Ray head Pod to submit the Ray job. This mode does not support `clusterSelector`, `submitterPodTemplate`, and `submitterConfig`, and requires the head Pod's restart policy to be `Never`.
+    * `SidecarMode`: The KubeRay operator injects a container into the Ray head Pod to submit the Ray job. This mode does not support `clusterSelector`, `submitterPodTemplate`, and requires the head Pod's restart policy to be `Never`. When the `SidecarSubmitterRestart` feature gate is enabled, `submitterConfig.backoffLimit` is used to cap the submitter sidecar's restart count.
   * `submitterPodTemplate` (Optional): Defines the Pod template for the submitter Kubernetes Job. This field is only effective when `submissionMode` is "K8sJobMode".
     * `RAY_DASHBOARD_ADDRESS` - The KubeRay operator injects this environment variable to the submitter Pod. The value is `$HEAD_SERVICE:$DASHBOARD_PORT`.
     * `RAY_JOB_SUBMISSION_ID` - The KubeRay operator injects this environment variable to the submitter Pod. The value is the `RayJob.Status.JobId` of the RayJob.
     * Example: `ray job submit --address=http://$RAY_DASHBOARD_ADDRESS --submission-id=$RAY_JOB_SUBMISSION_ID ...`
     * See [ray-job.sample.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-job.sample.yaml) for more details.
-  * `submitterConfig` (Optional): Additional configurations for the submitter Kubernetes Job.
-    * `backoffLimit` (Optional, added in version 1.2.0): The number of retries before marking the submitter Job as failed. The default value is 2.
+  * `submitterConfig` (Optional): Additional configurations for the submitter. Used in `K8sJobMode` and `SidecarMode` when `SidecarSubmitterRestart` is enabled.
+    * `backoffLimit` (Optional, added in version 1.2.0): The number of retries before marking the submitter as failed. The default value is 2.
+  * `SidecarSubmitterRestart` (alpha in v1.7): This feature gate (disabled by default), when set, allows the submitter container to restart on transient submitter failures.
+    * The submitter container's `restartPolicy` is set to `OnFailure` at the container level. It is independent of the head Pod's pod-level `RestartPolicy: Never`, so a non-zero exit restarts only the submitter container in place without touching the `ray-head` container. Note that a failure of the Ray job's own code does not make the submitter exit non-zero, so it won't trigger a restart by itself.
+    * On restart, the submitter checks Ray job status first. If the Ray job is still running, the submitter reattaches to the log stream instead of resubmitting, so KubeRay doesn't force-kill a job that's still running just because the log-follow connection dropped.
+    * Requires Kubernetes v1.35+ (`ContainerRestartRules` supported by default) and Ray v2.54.0+.
+    * The KubeRay operator only validates the API server version. Per the Kubernetes version skew policy, worker node kubelets can be up to 3 minor versions older, so make sure the node running the Ray head Pod is also on v1.35+. If that kubelet doesn't support `ContainerRestartRules`, the per-container restart policy is silently ignored, and the operator's default 30-second submitter-finished timeout can mark the RayJob `Failed` even though the Ray job is still running.
+    * Exceeding `backoffLimit` still fails the RayJob even if the Ray job itself is still running.
+    * To enable the feature gate, set it when installing or upgrading the KubeRay operator with Helm:
+
+      ```sh
+      helm upgrade kuberay-operator kuberay/kuberay-operator \
+        --set "featureGates[0].name=SidecarSubmitterRestart" \
+        --set "featureGates[0].enabled=true"
+      ```
 * Automatic resource cleanup
   * `preRunningDeadlineSeconds` (Optional): If the RayJob doesn't transition the `JobDeploymentStatus` to `Running` within `preRunningDeadlineSeconds` seconds, the KubeRay operator transitions the `JobDeploymentStatus` to `Failed` with reason `PreRunningDeadlineExceeded`. The default value is 0 (no pre-running deadline is enforced).
   * `shutdownAfterJobFinishes` (Optional): Determines whether to recycle the RayCluster after the Ray job finishes. The default value is false.
