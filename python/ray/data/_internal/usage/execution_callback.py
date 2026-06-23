@@ -63,8 +63,8 @@ class UsageCallback(ExecutionCallback):
     def _collect_detected_issues(
         self, executor: "StreamingExecutor"
     ) -> List[Tuple["IssueType", str]]:
-        # The manager is absent when issue detection isn't registered.
-        manager = getattr(executor, "_issue_detector_manager", None)
+        # The manager is None when issue detection isn't registered.
+        manager = executor.issue_detector_manager
         if manager is None:
             return []
         return sorted(
