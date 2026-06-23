@@ -707,37 +707,38 @@ class _LeRobotReadTask(ReadTask):
 
     @staticmethod
     def _resolve_paths(root: _LeRobotRoot, ep_slice: pa.Table) -> tuple:
-        """Resolve the file paths touched by an episode slice.
+        """Resolve the unique file paths touched by an episode slice.
 
-        Returns ``(parquet_segs, video_segs)`` — flat lists of unique file
-        paths used for the ``BlockMetadata.input_files`` attribution. The
-        per-row video paths are re-derived at decode time, so we don't retain
-        per-camera grouping here.
+        Returns ``(parquet_segs, video_segs)`` — the unique parquet + video files
+        used for the ``BlockMetadata.input_files`` attribution. The per-row video
+        paths are re-derived at decode time, so we don't retain per-camera
+        grouping here.
         """
-        pq_chunks = ep_slice.column("data/chunk_index").combine_chunks()
-        pq_files = ep_slice.column("data/file_index").combine_chunks()
-        pq_new = _LeRobotReadTask._segment_boundaries(pq_chunks, pq_files)
+
+        def _unique_files(chunk_col: str, file_col: str) -> set:
+            return set(
+                zip(
+                    ep_slice.column(chunk_col).to_pylist(),
+                    ep_slice.column(file_col).to_pylist(),
+                )
+            )
+
         parquet_segs: List[str] = [
             f"{root.fs_root}/{root.data_path.format(chunk_index=c, file_index=f)}"
-            for c, f in zip(
-                pc.filter(pq_chunks, pq_new).to_pylist(),
-                pc.filter(pq_files, pq_new).to_pylist(),
-            )
+            for c, f in sorted(_unique_files("data/chunk_index", "data/file_index"))
         ]
 
         video_segs: List[str] = []
         if root.video_keys:
             assert root.video_path is not None
-            video_path_template = root.video_path
             for k in root.video_keys:
-                chunks = ep_slice.column(f"videos/{k}/chunk_index").combine_chunks()
-                files = ep_slice.column(f"videos/{k}/file_index").combine_chunks()
-                is_new = _LeRobotReadTask._segment_boundaries(chunks, files)
                 video_segs.extend(
-                    f"{root.fs_root}/{video_path_template.format(video_key=k, chunk_index=c, file_index=f)}"
-                    for c, f in zip(
-                        pc.filter(chunks, is_new).to_pylist(),
-                        pc.filter(files, is_new).to_pylist(),
+                    f"{root.fs_root}/"
+                    f"{root.video_path.format(video_key=k, chunk_index=c, file_index=f)}"
+                    for c, f in sorted(
+                        _unique_files(
+                            f"videos/{k}/chunk_index", f"videos/{k}/file_index"
+                        )
                     )
                 )
 
@@ -766,24 +767,6 @@ class _LeRobotReadTask(ReadTask):
                 f"across {len(episodes)} episodes."
             )
         return (indices[0], indices[-1] + 1)
-
-    @staticmethod
-    def _segment_boundaries(
-        col_a: pa.ChunkedArray, col_b: pa.ChunkedArray
-    ) -> pa.BooleanArray:
-        """Boolean mask: True at index 0 and wherever the pair changes."""
-        n = len(col_a)
-        if n == 0:
-            return pa.array([], type=pa.bool_())
-        return pa.concat_arrays(
-            [
-                pa.array([True]),
-                pc.or_(
-                    pc.not_equal(col_a.slice(1), col_a.slice(0, n - 1)),
-                    pc.not_equal(col_b.slice(1), col_b.slice(0, n - 1)),
-                ),
-            ]
-        )
 
     @staticmethod
     def _build_batch(
