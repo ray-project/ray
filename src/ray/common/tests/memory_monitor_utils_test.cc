@@ -465,8 +465,7 @@ TEST_F(MemoryMonitorUtilsTest, TestTakeCgroupSnapshotNonexistentPathReturnsNotFo
   ASSERT_TRUE(std::holds_alternative<StatusT::NotFound>(result.error()));
 }
 
-TEST_F(MemoryMonitorUtilsTest,
-       TestTakeCgroupv2SnapshotReturnsCorrectAnonShmemAndCurrent) {
+TEST_F(MemoryMonitorUtilsTest, TestTakeCgroupv2SnapshotReturnsCorrectAnonAndShmem) {
   int64_t total_bytes = 1LL * 1024 * 1024 * 1024;  // 1 GB
   int64_t current_bytes = 500 * 1024 * 1024;       // 500 MB
   int64_t anon_bytes = 200 * 1024 * 1024;          // 200 MB
@@ -486,7 +485,6 @@ TEST_F(MemoryMonitorUtilsTest,
   ASSERT_TRUE(result.has_value());
   ASSERT_EQ(result.value().anon_memory_bytes, anon_bytes);
   ASSERT_EQ(result.value().shmem_memory_bytes, shmem_bytes);
-  ASSERT_EQ(result.value().current_memory_bytes, current_bytes);
 }
 
 TEST_F(MemoryMonitorUtilsTest, TestTakeCgroupv1SnapshotReturnsNotFound) {
@@ -499,25 +497,6 @@ TEST_F(MemoryMonitorUtilsTest, TestTakeCgroupv1SnapshotReturnsNotFound) {
       total_bytes, current_bytes, inactive_file_bytes, active_file_bytes);
   StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound> result =
       MemoryMonitorUtils::TakeCgroupMemorySnapshot(cgroup_dir);
-
-  ASSERT_TRUE(result.has_error());
-  ASSERT_TRUE(std::holds_alternative<StatusT::NotFound>(result.error()));
-}
-
-TEST_F(MemoryMonitorUtilsTest, TestTakeCgroupv2SnapshotMissingUsageFileReturnsNotFound) {
-  auto cgroup_dir_or = TempDirectory::Create();
-  ASSERT_TRUE(cgroup_dir_or.ok()) << cgroup_dir_or.status().message();
-  std::unique_ptr<TempDirectory> cgroup_dir = std::move(cgroup_dir_or.value());
-
-  TempFile stat_file(cgroup_dir->GetPath() + "/" +
-                     MemoryMonitorUtils::kCgroupsV2MemoryStatPath);
-  stat_file.AppendLine(std::string(MemoryMonitorUtils::kCgroupsV2MemoryAnonKey) + " " +
-                       std::to_string(200 * 1024 * 1024));
-  stat_file.AppendLine(std::string(MemoryMonitorUtils::kCgroupsV2MemoryShmemKey) + " " +
-                       std::to_string(100 * 1024 * 1024));
-
-  StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound> result =
-      MemoryMonitorUtils::TakeCgroupMemorySnapshot(cgroup_dir->GetPath());
 
   ASSERT_TRUE(result.has_error());
   ASSERT_TRUE(std::holds_alternative<StatusT::NotFound>(result.error()));

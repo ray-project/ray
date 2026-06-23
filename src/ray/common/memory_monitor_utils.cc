@@ -95,7 +95,7 @@ MemoryMonitorUtils::TakeUserAndSystemSliceMemoryUsageSnapshot(
   // system usage. This way, we can account for the memory usage of processes outside
   // ray's userspace and the kernel.
   int64_t total_system_slice_used_bytes =
-      host_level_used_bytes - total_user_slice_used_bytes;
+      std::max<int64_t>(0, host_level_used_bytes - total_user_slice_used_bytes);
   return std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>{
       MemoryUsageSnapshot{total_user_slice_used_bytes, host_level_total_bytes},
       MemoryUsageSnapshot{total_system_slice_used_bytes, host_level_total_bytes}};
@@ -130,19 +130,6 @@ MemoryMonitorUtils::TakeCgroupMemorySnapshot(const std::string &root_cgroup_path
                           "and cgroupv2 active?",
                           root_cgroup_path));
     }
-
-    // Read the total current memory usage of the cgroup from memory.current.
-    std::string v2_usage_path = root_cgroup_path + "/" + kCgroupsV2MemoryUsagePath;
-    std::ifstream usage_f(v2_usage_path, std::ios::in | std::ios::binary);
-    int64_t current_memory_bytes = MemoryMonitorInterface::kNull;
-    if (!usage_f || !(usage_f >> current_memory_bytes)) {
-      return StatusT::NotFound(
-          absl::StrFormat("Failed to read current memory usage from %s. "
-                          "Is the provided cgroupv2 path valid "
-                          "and cgroupv2 active?",
-                          v2_usage_path));
-    }
-    snapshot.current_memory_bytes = current_memory_bytes;
 
     return snapshot;
   }

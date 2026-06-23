@@ -162,7 +162,7 @@ ThresholdMemoryMonitor::IsResourceIsolationThresholdExceeded() {
                "and can lead to node deaths and significant loss of progress. "
                "Please consider passing a system reserved memory value that is higher "
                "than the current system slice memory usage "
-               "via the --system_reserved_memory flag when starting the raylet.",
+               "via the --system-reserved-memory flag when starting the raylet.",
                system_slice_memory_snapshot.used_bytes,
                system_slice_memory_snapshot.total_bytes - memory_usage_threshold_bytes_);
   }
