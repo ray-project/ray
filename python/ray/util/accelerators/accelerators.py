@@ -11,6 +11,7 @@ NVIDIA_H100 = "H100"
 NVIDIA_H200 = "H200"
 NVIDIA_H20 = "H20"
 NVIDIA_B200 = "B200"
+NVIDIA_B300 = "B300"
 INTEL_MAX_1550 = "Intel-GPU-Max-1550"
 INTEL_MAX_1100 = "Intel-GPU-Max-1100"
 INTEL_GAUDI = "Intel-GAUDI"
@@ -39,6 +40,7 @@ HUAWEI_NPU_910B = "Ascend910B"
 HUAWEI_NPU_910B4 = "Ascend910B4"
 METAX_C500 = "MXC500"
 METAX_C550 = "MXC550"
+FURIOSA_RNGD = "FURIOSA_RNGD"
 
 # Use these instead of NVIDIA_A100 if you need a specific accelerator size. Note that
 # these labels are not auto-added to nodes, you'll have to add them manually in

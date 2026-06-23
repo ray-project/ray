@@ -7,7 +7,8 @@ supporting static tokens with extensibility for future credential sources.
 import logging
 import os
 from abc import ABC, abstractmethod
-from typing import Callable, Optional
+from dataclasses import dataclass
+from typing import Callable, Optional, Union
 
 import requests
 
@@ -203,23 +204,40 @@ class EnvironmentCredentialProvider(DatabricksCredentialProvider):
             self._token = token
 
 
+@dataclass
+class BaseCredentialConfig:
+    credential_provider: Optional[DatabricksCredentialProvider] = None
+
+
+@dataclass
+class DatabricksTableCredentialConfig(BaseCredentialConfig):
+    pass
+
+
+@dataclass
+class UnityCatalogCredentialConfig(BaseCredentialConfig):
+    url: Optional[str] = None
+    token: Optional[str] = None
+
+
+CredentialConfig = Union[DatabricksTableCredentialConfig, UnityCatalogCredentialConfig]
+
+
 def resolve_credential_provider(
-    credential_provider: Optional[DatabricksCredentialProvider] = None,
+    config: CredentialConfig,
 ) -> DatabricksCredentialProvider:
-    """Resolve credential provider.
+    if config.credential_provider is not None:
+        return config.credential_provider
 
-    Args:
-        credential_provider: An explicit credential provider instance.
-            If None, falls back to EnvironmentCredentialProvider.
+    match config:
+        case DatabricksTableCredentialConfig():
+            return EnvironmentCredentialProvider()
+        case UnityCatalogCredentialConfig(url=str(url), token=str(token)):
+            return StaticCredentialProvider(token=token, host=url)
 
-    Returns:
-        A DatabricksCredentialProvider instance.
-    """
-    if credential_provider is not None:
-        return credential_provider
-
-    # Fall back to environment variables
-    return EnvironmentCredentialProvider()
+    raise ValueError(
+        "Either 'credential_provider' or both 'url' and 'token' must be provided."
+    )
 
 
 def build_headers(

@@ -28,8 +28,10 @@
 /doc/source/cluster/ @ray-project/ray-core
 /doc/source/ray-core/ @ray-project/ray-core
 
+/doc/source/cluster/kubernetes/ @andrewsykim @ray-project/ray-core
+
 # Public protobuf files.
-/src/ray/protobuf/public/ @edoakes @jjyao
+/src/ray/protobuf/public/ @edoakes @dayshah @MengjinYan
 
 # Azure autoscaler
 /python/ray/autoscaler/azure/ @ray-project/ray-core @marosset @jackfrancis @alimaazamat
@@ -38,11 +40,11 @@
 # ==== Libraries and frameworks ====
 
 # Dependencies
-/python/setup.py @richardliaw @edoakes @aslonnie
+/python/setup.py @richardliaw @edoakes @ray-project/ray-ci
 
 # Common directory shared by core and the libraries.
-# @edoakes is the czar for now because the pattern is new.
-/python/ray/_common/ @edoakes @jjyao
+# Stricter enforcement because this defines the public boundary supported by core.
+/python/ray/_common/ @edoakes @dayshah @MengjinYan
 
 # Ray data.
 /python/ray/data/ @ray-project/ray-data
@@ -79,7 +81,12 @@
 /python/ray/dashboard/modules/metrics/dashboards/serve_llm_grafana_dashboard_base.json @ray-project/ray-llm
 /python/ray/serve/llm/ @ray-project/ray-llm
 /doc/source/serve/llm/ @ray-project/ray-llm
+/doc/source/data/working-with-llms.rst @ray-project/ray-llm
 /doc/source/data/doc_code/working-with-llms/ @ray-project/ray-llm
+
+# LLM dependencies
+/python/requirements/llm/llm-requirements.txt @ray-project/ray-llm
+/python/deplocks/llm/ @ray-project/ray-llm
 
 # ML Docker Dependencies
 /python/requirements/ml/dl-cpu-requirements.txt @richardliaw @matthewdeng
@@ -90,8 +97,8 @@
 /src/ray/ray_exported_symbols.lds @ray-project/ray-core
 
 # Ray usage stats
-/python/ray/_private/usage/ @edoakes @richardliaw @jjyao
-/python/ray/dashboard/modules/usage_stats/ @edoakes @richardliaw @jjyao
+/python/ray/_private/usage/ @edoakes @richardliaw
+/python/ray/dashboard/modules/usage_stats/ @edoakes @richardliaw
 /src/ray/protobuf/usage.proto @pcmoritz @thomasdesr
 
 
@@ -109,6 +116,7 @@
 /ci/docker @ray-project/ray-ci
 /ci/ray_ci @ray-project/ray-ci
 /ci/ray_ci/serve_di_test_names.txt @ray-project/ray-serve
+/ci/ray_ci/serve_hap_test_names.txt @ray-project/ray-serve
 
 /.rayciversion @ray-project/ray-ci
 
@@ -129,3 +137,9 @@
 /.github/workflows/ @ray-project/ray-ci
 
 /.gemini/ @edoakes @ray-project/ray-ci
+
+# TPU
+/python/ray/util/tpu.py @andrewsykim @edoakes @ryanaoleary
+/python/ray/tests/test_tpu.py @andrewsykim @edoakes @ryanaoleary
+/python/ray/tests/accelerators/test_tpu.py @andrewsykim @edoakes @ryanaoleary
+/python/ray/_private/accelerators/tpu.py @andrewsykim @edoakes @ryanaoleary

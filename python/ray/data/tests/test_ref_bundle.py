@@ -1,10 +1,15 @@
+from dataclasses import replace
 from unittest.mock import patch
 
+import pyarrow as pa
 import pytest
 
 from ray import ObjectRef
 from ray.data._internal.execution.interfaces import BlockSlice, RefBundle
+from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry
 from ray.data.block import BlockMetadata
+
+_TEST_SCHEMA = pa.schema([("col", pa.int64())])
 
 
 def test_get_preferred_locations():
@@ -17,9 +22,9 @@ def test_get_preferred_locations():
 
     bundle = RefBundle(
         blocks=[
-            (first_block_ref, meta),
-            (second_block_ref, meta),
-            (third_block_ref, meta),
+            BlockEntry(first_block_ref, meta),
+            BlockEntry(second_block_ref, meta),
+            BlockEntry(third_block_ref, meta),
         ],
         owns_blocks=True,
         schema=None,
@@ -70,8 +75,8 @@ def test_ref_bundle_num_rows_size_bytes():
     # Before slice
     bundle = RefBundle(
         blocks=[
-            (block_ref_one, meta_one),
-            (block_ref_two, meta_two),
+            BlockEntry(block_ref_one, meta_one),
+            BlockEntry(block_ref_two, meta_two),
         ],
         owns_blocks=True,
         schema=None,
@@ -79,13 +84,16 @@ def test_ref_bundle_num_rows_size_bytes():
     assert bundle.num_rows() == 15
     assert bundle.size_bytes() == 150
     # After slice
-    bundle.slices = [
-        BlockSlice(start_offset=2, end_offset=6),  # 4 rows
-        BlockSlice(start_offset=0, end_offset=2),  # 2 rows
-    ]
+    sliced = replace(
+        bundle,
+        slices=(
+            BlockSlice(start_offset=2, end_offset=6),  # 4 rows
+            BlockSlice(start_offset=0, end_offset=2),  # 2 rows
+        ),
+    )
 
-    assert bundle.num_rows() == 6
-    assert bundle.size_bytes() == 60
+    assert sliced.num_rows() == 6
+    assert sliced.size_bytes() == 60
 
 
 @pytest.mark.parametrize(
@@ -103,7 +111,7 @@ def test_ref_bundle_with_invalid_slices(start_offset, end_offset):
     )
     with pytest.raises(AssertionError):
         RefBundle(
-            blocks=[(block_ref, metadata)],
+            blocks=[BlockEntry(block_ref, metadata)],
             owns_blocks=True,
             schema=None,
             slices=[
@@ -126,11 +134,11 @@ def test_slice_ref_bundle_basic():
 
     bundle = RefBundle(
         blocks=[
-            (block_ref_one, meta_one),
-            (block_ref_two, meta_two),
+            BlockEntry(block_ref_one, meta_one),
+            BlockEntry(block_ref_two, meta_two),
         ],
         owns_blocks=True,
-        schema="schema",
+        schema=_TEST_SCHEMA,
     )
 
     consumed, remaining = bundle.slice(8)
@@ -138,13 +146,11 @@ def test_slice_ref_bundle_basic():
     assert consumed.num_rows() == 8
     assert remaining.num_rows() == 2
 
-    assert consumed.slices == [
+    assert consumed.slices == (
         BlockSlice(start_offset=0, end_offset=6),
         BlockSlice(start_offset=0, end_offset=2),
-    ]
-    assert remaining.slices == [
-        BlockSlice(start_offset=2, end_offset=4),
-    ]
+    )
+    assert remaining.slices == (BlockSlice(start_offset=2, end_offset=4),)
 
 
 def test_slice_ref_bundle_should_raise_error_if_needed_rows_is_not_less_than_num_rows():
@@ -155,7 +161,7 @@ def test_slice_ref_bundle_should_raise_error_if_needed_rows_is_not_less_than_num
     )
 
     bundle = RefBundle(
-        blocks=[(block_ref, metadata)],
+        blocks=[BlockEntry(block_ref, metadata)],
         owns_blocks=True,
         schema=None,
     )
@@ -178,11 +184,11 @@ def test_slice_ref_bundle_with_existing_slices():
 
     bundle = RefBundle(
         blocks=[
-            (block_ref_one, meta_one),
-            (block_ref_two, meta_two),
+            BlockEntry(block_ref_one, meta_one),
+            BlockEntry(block_ref_two, meta_two),
         ],
         owns_blocks=True,
-        schema="schema",
+        schema=_TEST_SCHEMA,
         slices=[
             BlockSlice(start_offset=2, end_offset=10),
             BlockSlice(start_offset=0, end_offset=3),
@@ -192,15 +198,13 @@ def test_slice_ref_bundle_with_existing_slices():
     consumed, remaining = bundle.slice(7)
 
     assert consumed.num_rows() == 7
-    assert consumed.slices == [
-        BlockSlice(start_offset=2, end_offset=9),
-    ]
+    assert consumed.slices == (BlockSlice(start_offset=2, end_offset=9),)
     assert consumed.size_bytes() == 70
     assert remaining.num_rows() == 4
-    assert remaining.slices == [
+    assert remaining.slices == (
         BlockSlice(start_offset=9, end_offset=10),
         BlockSlice(start_offset=0, end_offset=3),
-    ]
+    )
     assert remaining.size_bytes() == 40
 
 
@@ -220,7 +224,7 @@ def test_slice_ref_bundle_invalid_rows(num_rows, slice_rows):
     )
 
     bundle = RefBundle(
-        blocks=[(block_ref, metadata)],
+        blocks=[BlockEntry(block_ref, metadata)],
         owns_blocks=True,
         schema=None,
     )
@@ -245,8 +249,8 @@ def test_ref_bundle_with_none_slices():
     # Test with all None slices (representing full blocks)
     bundle = RefBundle(
         blocks=[
-            (block_ref_one, meta_one),
-            (block_ref_two, meta_two),
+            BlockEntry(block_ref_one, meta_one),
+            BlockEntry(block_ref_two, meta_two),
         ],
         owns_blocks=True,
         schema=None,
@@ -277,9 +281,9 @@ def test_ref_bundle_with_mixed_none_and_explicit_slices():
     # Mix None (full block) with explicit slices
     bundle = RefBundle(
         blocks=[
-            (block_ref_one, meta_one),
-            (block_ref_two, meta_two),
-            (block_ref_three, meta_three),
+            BlockEntry(block_ref_one, meta_one),
+            BlockEntry(block_ref_two, meta_two),
+            BlockEntry(block_ref_three, meta_three),
         ],
         owns_blocks=True,
         schema=None,
@@ -310,11 +314,11 @@ def test_slice_ref_bundle_with_none_slices():
     # Start with None slices (full blocks)
     bundle = RefBundle(
         blocks=[
-            (block_ref_one, meta_one),
-            (block_ref_two, meta_two),
+            BlockEntry(block_ref_one, meta_one),
+            BlockEntry(block_ref_two, meta_two),
         ],
         owns_blocks=True,
-        schema="schema",
+        schema=_TEST_SCHEMA,
         slices=[None, None],
     )
 
@@ -325,13 +329,11 @@ def test_slice_ref_bundle_with_none_slices():
     assert remaining.num_rows() == 2
 
     # The None slices should be converted to explicit BlockSlice objects
-    assert consumed.slices == [
+    assert consumed.slices == (
         BlockSlice(start_offset=0, end_offset=6),
         BlockSlice(start_offset=0, end_offset=2),
-    ]
-    assert remaining.slices == [
-        BlockSlice(start_offset=2, end_offset=4),
-    ]
+    )
+    assert remaining.slices == (BlockSlice(start_offset=2, end_offset=4),)
 
 
 def test_ref_bundle_str():
@@ -353,18 +355,18 @@ def test_ref_bundle_str():
 
     bundle = RefBundle(
         blocks=[
-            (block_ref_one, meta_one),
-            (block_ref_two, meta_two),
-            (block_ref_three, meta_three),
+            BlockEntry(block_ref_one, meta_one),
+            BlockEntry(block_ref_two, meta_two),
+            BlockEntry(block_ref_three, meta_three),
         ],
         owns_blocks=True,
-        schema="test_schema",
+        schema=_TEST_SCHEMA,
         slices=[None, None, slice_three],
     )
 
-    expected = """RefBundle(3 blocks,
+    expected = f"""RefBundle(3 blocks,
   18 rows,
-  schema=test_schema,
+  schema={_TEST_SCHEMA},
   owns_blocks=True,
   blocks=(
     0: 10 rows, 100 bytes, slice=None (full block)
@@ -389,18 +391,24 @@ def test_merge_ref_bundles():
     )
 
     bundle_one = RefBundle(
-        blocks=[(block_ref_one, metadata_one), (block_ref_one, metadata_one)],
-        owns_blocks=False,
-        schema="schema",
+        blocks=[
+            BlockEntry(block_ref_one, metadata_one),
+            BlockEntry(block_ref_one, metadata_one),
+        ],
+        owns_blocks=True,
+        schema=_TEST_SCHEMA,
         slices=[
             BlockSlice(start_offset=0, end_offset=1),
             BlockSlice(start_offset=1, end_offset=2),
         ],
     )
     bundle_two = RefBundle(
-        blocks=[(block_ref_two, metadata_two), (block_ref_two, metadata_two)],
+        blocks=[
+            BlockEntry(block_ref_two, metadata_two),
+            BlockEntry(block_ref_two, metadata_two),
+        ],
         owns_blocks=False,
-        schema="schema",
+        schema=_TEST_SCHEMA,
         slices=[
             BlockSlice(start_offset=2, end_offset=3),
             BlockSlice(start_offset=3, end_offset=4),
@@ -409,15 +417,141 @@ def test_merge_ref_bundles():
 
     merged = RefBundle.merge_ref_bundles([bundle_one, bundle_two])
 
-    assert merged.schema == "schema"
+    assert merged.schema == _TEST_SCHEMA
+    # The merged bundle should own the blocks if all input bundles own their blocks.
+    # Since bundle_two doesn't own its blocks, the merged bundle should not own its
+    # blocks.
     assert merged.owns_blocks is False
     assert len(merged.blocks) == 4
-    assert merged.slices == [
+    assert merged.slices == (
         BlockSlice(start_offset=0, end_offset=1),
         BlockSlice(start_offset=1, end_offset=2),
         BlockSlice(start_offset=2, end_offset=3),
         BlockSlice(start_offset=3, end_offset=4),
-    ]
+    )
+
+
+def test_ref_bundle_eq_and_hash():
+    """Tests that `__eq__` and `__hash__` use field-based comparison, so that
+    copies (e.g. from dataclasses.replace) are equal to the original and
+    usable as dict keys."""
+
+    ref_a = ObjectRef(b"1" * 28)
+    ref_b = ObjectRef(b"2" * 28)
+    meta = BlockMetadata(num_rows=10, size_bytes=100, exec_stats=None, input_files=None)
+
+    bundle = RefBundle(
+        blocks=[BlockEntry(ref_a, meta)],
+        owns_blocks=True,
+        schema=_TEST_SCHEMA,
+        slices=[BlockSlice(start_offset=0, end_offset=5)],
+        output_split_idx=1,
+    )
+
+    # Identity: same object is always equal
+    assert bundle == bundle
+
+    # A dataclasses.replace copy should be equal and have the same hash
+    copy = replace(bundle)
+    assert copy is not bundle
+    assert copy == bundle
+    assert hash(copy) == hash(bundle)
+
+    # Equal bundles work as dict keys
+    d = {bundle: "value"}
+    assert d[copy] == "value"
+
+    # Non-RefBundle comparison returns False (not TypeError)
+    assert bundle != "not a bundle"
+    assert bundle != 42
+    assert bundle != None  # noqa: E711
+
+    # Differing any field should break equality and hash
+    diff_bundle_1 = replace(bundle, owns_blocks=False)
+    assert bundle != diff_bundle_1 and hash(bundle) != hash(diff_bundle_1)
+
+    diff_bundle_2 = replace(bundle, output_split_idx=2)
+    assert bundle != diff_bundle_2 and hash(bundle) != hash(diff_bundle_2)
+
+    diff_bundle_3 = replace(bundle, schema=pa.schema([("other", pa.string())]))
+    assert bundle != diff_bundle_3 and hash(bundle) != hash(diff_bundle_3)
+
+    diff_bundle_4 = replace(bundle, slices=(None,))
+    assert bundle != diff_bundle_4 and hash(bundle) != hash(diff_bundle_4)
+
+    # Differing block ref
+    diff_ref_bundle = replace(bundle, blocks=[BlockEntry(ref_b, meta)])
+    assert bundle != diff_ref_bundle
+
+    # Differing block metadata
+    diff_meta_bundle = replace(
+        bundle, blocks=[BlockEntry(ref_a, replace(meta, num_rows=11))]
+    )
+    assert bundle != diff_meta_bundle
+
+
+class TestBlockEntryAndSchedulingHints:
+    """BlockEntry construction, legacy 2-tuple normalization, hints accessor."""
+
+    def _meta(self, num_rows=1, size_bytes=10):
+        return BlockMetadata(
+            num_rows=num_rows, size_bytes=size_bytes, exec_stats=None, input_files=None
+        )
+
+    def test_blockentry_direct_construction(self):
+        ref = ObjectRef(b"1" * 28)
+        meta = self._meta()
+
+        bundle = RefBundle(
+            blocks=[BlockEntry(ref=ref, metadata=meta)],
+            owns_blocks=True,
+            schema=None,
+        )
+
+        assert bundle.blocks[0].ref is ref
+        assert bundle.blocks[0].metadata is meta
+
+    def test_rejects_legacy_two_tuple_construction(self):
+        # Strict construction: RefBundle no longer accepts 2-tuples. Callers
+        # must wrap each entry in BlockEntry explicitly. This makes the
+        # data shape visible at every call site instead of relying on
+        # post-init magic.
+        ref = ObjectRef(b"1" * 28)
+        meta = self._meta()
+
+        with pytest.raises(AssertionError, match="BlockEntry"):
+            RefBundle(blocks=[(ref, meta)], owns_blocks=True, schema=None)
+
+    def test_accessors_return_parallel_lists(self):
+        ref_a = ObjectRef(b"1" * 28)
+        ref_b = ObjectRef(b"2" * 28)
+        meta = self._meta()
+
+        bundle = RefBundle(
+            blocks=[
+                BlockEntry(ref=ref_a, metadata=meta),
+                BlockEntry(ref=ref_b, metadata=meta),
+            ],
+            owns_blocks=True,
+            schema=None,
+        )
+
+        assert bundle.block_refs == [ref_a, ref_b]
+        assert bundle.metadata == [meta, meta]
+
+    def test_size_bytes_still_works_with_blockentry(self):
+        # Regression guard: BlockEntry refactor must not break size_bytes
+        # / num_rows aggregation.
+        bundle = RefBundle(
+            blocks=[
+                BlockEntry(ObjectRef(b"1" * 28), self._meta(num_rows=3, size_bytes=30)),
+                BlockEntry(ObjectRef(b"2" * 28), self._meta(num_rows=5, size_bytes=50)),
+            ],
+            owns_blocks=False,
+            schema=None,
+        )
+        assert bundle.num_rows() == 8
+        assert bundle.size_bytes() == 80
 
 
 if __name__ == "__main__":

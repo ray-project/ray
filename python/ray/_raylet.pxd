@@ -132,7 +132,6 @@ cdef class CoreWorker:
         object async_event_loop
         object job_config
         object current_runtime_env
-        c_bool is_local_mode
 
         object cgname_to_eventloop_dict
         object eventloop_for_default_cg
@@ -149,7 +148,6 @@ cdef class CoreWorker:
         serialized_object,
         optional[c_string] c_tensor_transport,
         c_bool pin_object=*,
-        owner_address=*,
         c_bool inline_small_object=*,
         c_bool _is_experimental_channel=*,
     )

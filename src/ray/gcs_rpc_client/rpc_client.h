@@ -172,8 +172,9 @@ class GcsRpcClient {
             channel_, client_call_manager, address);
     internal_kv_grpc_client_ = std::make_shared<GrpcClient<InternalKVGcsService>>(
         channel_, client_call_manager, address);
-    internal_pubsub_grpc_client_ = std::make_shared<GrpcClient<InternalPubSubGcsService>>(
-        channel_, client_call_manager, address);
+    control_plane_pubsub_grpc_client_ =
+        std::make_shared<GrpcClient<ControlPlanePubSubGcsService>>(
+            channel_, client_call_manager, address);
     task_info_grpc_client_ = std::make_shared<GrpcClient<TaskInfoGcsService>>(
         channel_, client_call_manager, address);
     ray_event_export_grpc_client_ =
@@ -264,12 +265,6 @@ class GcsRpcClient {
   /// Get information of all jobs from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService,
                              GetAllJobInfo,
-                             job_info_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
-
-  /// Report job error to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService,
-                             ReportJobError,
                              job_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
@@ -519,17 +514,17 @@ class GcsRpcClient {
                              /*method_timeout_ms*/ -1, )
 
   /// Operations for pubsub
-  VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService,
+  VOID_GCS_RPC_CLIENT_METHOD(ControlPlanePubSubGcsService,
                              GcsPublish,
-                             internal_pubsub_grpc_client_,
+                             control_plane_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
-  VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService,
+  VOID_GCS_RPC_CLIENT_METHOD(ControlPlanePubSubGcsService,
                              GcsSubscriberPoll,
-                             internal_pubsub_grpc_client_,
+                             control_plane_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
-  VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService,
+  VOID_GCS_RPC_CLIENT_METHOD(ControlPlanePubSubGcsService,
                              GcsSubscriberCommandBatch,
-                             internal_pubsub_grpc_client_,
+                             control_plane_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Operations for autoscaler
@@ -581,6 +576,14 @@ class GcsRpcClient {
                                   /*method_timeout_ms*/ -1,
                                   /*handle_payload_status=*/false, )
 
+  VOID_GCS_RPC_CLIENT_METHOD_FULL(ray::rpc::autoscaler,
+                                  ray::rpc::autoscaler,
+                                  AutoscalerStateService,
+                                  ResizeRayletResourceInstances,
+                                  autoscaler_state_grpc_client_,
+                                  /*method_timeout_ms*/ -1,
+                                  /*handle_payload_status=*/false, )
+
   /// Runtime Env GCS Service
   VOID_GCS_RPC_CLIENT_METHOD(RuntimeEnvGcsService,
                              PinRuntimeEnvURI,
@@ -608,7 +611,8 @@ class GcsRpcClient {
   std::shared_ptr<GrpcClient<PlacementGroupInfoGcsService>>
       placement_group_info_grpc_client_;
   std::shared_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
-  std::shared_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
+  std::shared_ptr<GrpcClient<ControlPlanePubSubGcsService>>
+      control_plane_pubsub_grpc_client_;
   std::shared_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
   std::shared_ptr<GrpcClient<RayEventExportGcsService>> ray_event_export_grpc_client_;
   std::shared_ptr<GrpcClient<RuntimeEnvGcsService>> runtime_env_grpc_client_;
@@ -618,6 +622,111 @@ class GcsRpcClient {
   friend class GcsClientReconnectionTest;
   FRIEND_TEST(GcsClientReconnectionTest, ReconnectionBackoff);
 };
+
+/// Standalone gRPC client for `ObservabilityPubSubService`: its own channel and
+/// `RetryableGrpcClient`, independent from `GcsRpcClient`.
+class ObservabilityPubSubRpcClient {
+ public:
+  ObservabilityPubSubRpcClient(const std::string &gcs_address,
+                               int gcs_port,
+                               ClientCallManager &client_call_manager) {
+    channel_ = GcsRpcClient::CreateGcsChannel(gcs_address, gcs_port);
+    auto deadline =
+        std::chrono::system_clock::now() +
+        std::chrono::seconds(::RayConfig::instance().gcs_rpc_server_connect_timeout_s());
+    if (!channel_->WaitForConnected(deadline)) {
+      RAY_LOG(WARNING) << "Failed to connect to the observability pubsub at address "
+                       << BuildAddress(gcs_address, gcs_port) << " within "
+                       << ::RayConfig::instance().gcs_rpc_server_connect_timeout_s()
+                       << " seconds.";
+    }
+    observability_pubsub_grpc_client_ =
+        std::make_shared<GrpcClient<ObservabilityPubSubService>>(
+            channel_, client_call_manager, gcs_address);
+    retryable_grpc_client_ = RetryableGrpcClient::Create(
+        channel_,
+        client_call_manager.GetMainService(),
+        /*max_pending_requests_bytes=*/
+        ::RayConfig::instance().gcs_grpc_max_request_queued_max_bytes(),
+        /*check_channel_status_interval_milliseconds=*/
+        ::RayConfig::instance()
+            .grpc_client_check_connection_status_interval_milliseconds(),
+        /*server_reconnect_timeout_base_seconds=*/
+        ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s(),
+        /*server_reconnect_timeout_max_seconds=*/
+        ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s(),
+        /*server_unavailable_timeout_callback=*/
+        []() {
+          RAY_LOG(WARNING)
+              << "Observability pubsub is still unreachable after "
+              << ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()
+              << " seconds (this check repeats with backoff). "
+              << "If GCS was stopped intentionally, ignore this. Otherwise see "
+                 "gcs_server.out: "
+              << "https://docs.ray.io/en/master/ray-observability/user-guides/"
+                 "configure-logging.html#logging-directory-structure";
+        },
+        /*server_name=*/"ObservabilityPubSub");
+  }
+
+  template <typename Service,
+            typename Request,
+            typename Reply,
+            bool handle_payload_status>
+  void invoke_async_method(
+      PrepareAsyncFunction<Service, Request, Reply> prepare_async_function,
+      std::shared_ptr<GrpcClient<Service>> grpc_client,
+      const std::string &call_name,
+      Request &&request,
+      const ClientCallback<Reply> &callback,
+      const int64_t timeout_ms) {
+    retryable_grpc_client_->template CallMethod<Service, Request, Reply>(
+        prepare_async_function,
+        std::move(grpc_client),
+        call_name,
+        std::forward<Request>(request),
+        [callback](const Status &status, Reply &&reply) {
+          if (status.ok()) {
+            if constexpr (handle_payload_status) {
+              Status st = (reply.status().code() == static_cast<int>(StatusCode::OK))
+                              ? Status()
+                              : Status(StatusCode(reply.status().code()),
+                                       reply.status().message());
+              callback(st, std::move(reply));
+            } else {
+              callback(status, std::move(reply));
+            }
+          } else {
+            callback(status, std::move(reply));
+          }
+        },
+        timeout_ms);
+  }
+
+  VOID_GCS_RPC_CLIENT_METHOD(ObservabilityPubSubService,
+                             GcsPublish,
+                             observability_pubsub_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(ObservabilityPubSubService,
+                             ReportJobError,
+                             observability_pubsub_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(ObservabilityPubSubService,
+                             GcsSubscriberPoll,
+                             observability_pubsub_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(ObservabilityPubSubService,
+                             GcsSubscriberCommandBatch,
+                             observability_pubsub_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+ private:
+  std::shared_ptr<grpc::Channel> channel_;
+  std::shared_ptr<RetryableGrpcClient> retryable_grpc_client_;
+  std::shared_ptr<GrpcClient<ObservabilityPubSubService>>
+      observability_pubsub_grpc_client_;
+};
+
 inline int64_t GetGcsTimeoutMs() {
   return absl::ToInt64Milliseconds(
       absl::Seconds(::RayConfig::instance().gcs_server_request_timeout_seconds()));

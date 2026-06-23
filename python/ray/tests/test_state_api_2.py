@@ -379,23 +379,30 @@ def test_state_api_scale_smoke(shutdown_only, monkeypatch):
 
 
 def test_ray_timeline(shutdown_only):
-    ray.init(num_cpus=8)
+    context = ray.init(num_cpus=8)
+    wait_for_aggregator_agent_if_enabled(context["gcs_address"], context["node_id"])
 
     @ray.remote
     def f():
-        pass
+        import time
+
+        time.sleep(0.1)
 
     ray.get(f.remote())
 
     with tempfile.TemporaryDirectory() as tmpdirname:
         filename = os.path.join(tmpdirname, "timeline.json")
-        ray.timeline(filename)
 
-        with open(filename, "r") as f:
-            dumped = json.load(f)
-        # TODO(swang): Check actual content. It doesn't seem to match the
-        # return value of chrome_tracing_dump in above tests?
-        assert len(dumped) > 0
+        def verify():
+            ray.timeline(filename)
+            with open(filename, "r") as timeline_file:
+                dumped = json.load(timeline_file)
+            # TODO(swang): Check actual content. It doesn't seem to match the
+            # return value of chrome_tracing_dump in above tests?
+            assert len(dumped) > 0
+            return True
+
+        wait_for_condition(verify, timeout=20, retry_interval_ms=1000)
 
 
 def test_state_init_multiple_threads(shutdown_only):

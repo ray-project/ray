@@ -1,4 +1,3 @@
-import logging
 import warnings
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -9,14 +8,15 @@ from ray.serve._private.config import (
     RequestRouterConfig,
     handle_num_replicas_auto,
 )
-from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import (
+    AutoscalingConfig,
+    DeploymentActorConfig,
+    GangSchedulingConfig,
+)
 from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema
 from ray.util.annotations import PublicAPI
-
-logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI(stability="stable")
@@ -59,6 +59,16 @@ class Application:
     def __init__(self, bound_deployment: "Deployment"):
         # This is used by `build_app`, but made private so users don't use it.
         self._bound_deployment = bound_deployment
+        # Optional peer ingress request router for ingress bypass mode.
+        self._ingress_request_router: Optional["Application"] = None
+
+    def _with_ingress_request_router(
+        self, ingress_request_router: "Application"
+    ) -> "Application":
+        # Internal-only, unstable hook for the Serve LLM direct-ingress stack.
+        # This is not a stable public Serve API.
+        self._ingress_request_router = ingress_request_router
+        return self
 
 
 @PublicAPI(stability="stable")
@@ -95,8 +105,22 @@ class Deployment:
         deployment_config: DeploymentConfig,
         replica_config: ReplicaConfig,
         version: Optional[str] = None,
-        _internal=False,
+        _internal: bool = False,
     ) -> None:
+        """Construct a Deployment. Should only be called by Serve internals.
+
+        Args:
+            name: Unique name of this deployment.
+            deployment_config: Serve-level configuration (number of replicas,
+                user config, autoscaling, etc.).
+            replica_config: Replica-level configuration (actor options, init
+                args/kwargs, etc.).
+            version: Optional opaque deployment version used to determine
+                whether replicas need to be restarted on update.
+            _internal: Internal flag; ``Deployment`` instances must be created
+                via the ``@serve.deployment`` decorator, which sets this to
+                ``True``.
+        """
         if not _internal:
             raise RuntimeError(
                 "The Deployment constructor should not be called "
@@ -157,13 +181,6 @@ class Deployment:
         return self._deployment_config.max_queued_requests
 
     @property
-    def route_prefix(self):
-        raise ValueError(
-            "`route_prefix` can no longer be specified at the deployment level. "
-            "Pass it to `serve.run` or in the application config instead."
-        )
-
-    @property
     def ray_actor_options(self) -> Optional[Dict]:
         """Actor options such as resources required for each replica."""
         return self._replica_config.ray_actor_options
@@ -175,14 +192,6 @@ class Deployment:
     @property
     def init_kwargs(self) -> Tuple[Any]:
         return self._replica_config.init_kwargs
-
-    @property
-    def url(self) -> Optional[str]:
-        logger.warning(
-            "DeprecationWarning: `Deployment.url` is deprecated "
-            "and will be removed in the future."
-        )
-        return None
 
     @property
     def logging_config(self) -> Dict:
@@ -211,7 +220,6 @@ class Deployment:
         name: Default[str] = DEFAULT.VALUE,
         version: Default[str] = DEFAULT.VALUE,
         num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
-        route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
         placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
         placement_group_strategy: Default[str] = DEFAULT.VALUE,
@@ -237,6 +245,12 @@ class Deployment:
         _init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         _internal: bool = False,
         max_constructor_retry_count: Default[int] = DEFAULT.VALUE,
+        gang_scheduling_config: Default[
+            Union[Dict, GangSchedulingConfig, None]
+        ] = DEFAULT.VALUE,
+        deployment_actors: Default[
+            Optional[List[Union[Dict, DeploymentActorConfig]]]
+        ] = DEFAULT.VALUE,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -245,18 +259,18 @@ class Deployment:
 
         Refer to the `@serve.deployment` decorator docs for available arguments.
         """
-        if route_prefix is not DEFAULT.VALUE:
+        if not _internal and version is not DEFAULT.VALUE:
             raise ValueError(
-                "`route_prefix` can no longer be specified at the deployment level. "
-                "Pass it to `serve.run` or in the application config instead."
+                "`version` in `Deployment.options()` has been removed. "
+                "Serve manages deployment versions internally."
             )
 
         # Modify max_ongoing_requests and autoscaling_config if
         # `num_replicas="auto"`
         if max_ongoing_requests is None:
             raise ValueError("`max_ongoing_requests` must be non-null, got None.")
+
         if num_replicas == "auto":
-            num_replicas = None
             max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
                 max_ongoing_requests, autoscaling_config
             )
@@ -296,14 +310,7 @@ class Deployment:
         if num_replicas == 0:
             raise ValueError("num_replicas is expected to larger than 0")
 
-        if not _internal and version is not DEFAULT.VALUE:
-            logger.warning(
-                "DeprecationWarning: `version` in `Deployment.options()` has been "
-                "deprecated. Explicitly specifying version will raise an error in the "
-                "future!"
-            )
-
-        elif num_replicas not in [DEFAULT.VALUE, None]:
+        if num_replicas not in [DEFAULT.VALUE, None, "auto"]:
             new_deployment_config.num_replicas = num_replicas
 
         if user_config is not DEFAULT.VALUE:
@@ -382,8 +389,40 @@ class Deployment:
 
         if logging_config is not DEFAULT.VALUE:
             if isinstance(logging_config, LoggingConfig):
-                logging_config = logging_config.dict()
+                logging_config = logging_config.model_dump()
             new_deployment_config.logging_config = logging_config
+
+        if gang_scheduling_config is not DEFAULT.VALUE:
+            new_deployment_config.gang_scheduling_config = gang_scheduling_config
+
+        if deployment_actors is not DEFAULT.VALUE:
+            new_deployment_config.deployment_actors = deployment_actors
+
+        gc = new_deployment_config.gang_scheduling_config
+        if (
+            gc is not None
+            and isinstance(new_deployment_config.num_replicas, int)
+            and new_deployment_config.autoscaling_config is None
+        ):
+            # When autoscaling is enabled, num_replicas defaults to 1
+            if new_deployment_config.num_replicas % gc.gang_size != 0:
+                raise ValueError(
+                    f"num_replicas ({new_deployment_config.num_replicas}) must "
+                    f"be a multiple of gang_size ({gc.gang_size})."
+                )
+
+        if gc is not None and max_replicas_per_node is not None:
+            raise ValueError(
+                "Setting max_replicas_per_node is not allowed when "
+                "gang_scheduling_config is provided."
+            )
+
+        if gc is not None and placement_group_strategy is not None:
+            raise ValueError(
+                "Setting placement_group_strategy is not allowed when "
+                "gang_scheduling_config is provided. Use "
+                "gang_scheduling_config.gang_placement_strategy instead."
+            )
 
         new_replica_config = ReplicaConfig.create(
             func_or_class,
@@ -430,10 +469,15 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
     Args:
         d: Deployment object to convert
+
+    Returns:
+        The structured ``DeploymentSchema`` representing ``d``.
     """
 
     if d.ray_actor_options is not None:
-        ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
+        ray_actor_options_schema = RayActorOptionsSchema.model_validate(
+            d.ray_actor_options
+        )
     else:
         ray_actor_options_schema = None
 
@@ -456,6 +500,9 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "max_replicas_per_node": d._replica_config.max_replicas_per_node,
         "logging_config": d._deployment_config.logging_config,
         "request_router_config": d._deployment_config.request_router_config,
+        "gang_scheduling_config": d._deployment_config.gang_scheduling_config,
+        "deployment_actors": d._deployment_config.deployment_actors,
+        "rolling_update_percentage": d._deployment_config.rolling_update_percentage,
     }
 
     # Let non-user-configured options be set to defaults. If the schema
@@ -488,7 +535,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     if s.ray_actor_options is DEFAULT.VALUE:
         ray_actor_options = None
     else:
-        ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
+        ray_actor_options = s.ray_actor_options.model_dump(exclude_unset=True)
 
     if s.placement_group_bundles is DEFAULT.VALUE:
         placement_group_bundles = None
@@ -517,6 +564,9 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         health_check_timeout_s=s.health_check_timeout_s,
         logging_config=s.logging_config,
         request_router_config=s.request_router_config,
+        gang_scheduling_config=s.gang_scheduling_config,
+        deployment_actors=s.deployment_actors,
+        rolling_update_percentage=s.rolling_update_percentage,
     )
     deployment_config.user_configured_option_names = (
         s._get_user_configured_option_names()

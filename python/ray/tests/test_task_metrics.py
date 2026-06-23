@@ -6,12 +6,14 @@ from collections import defaultdict
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    PrometheusTimeseries,
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private.metrics_agent import RAY_WORKER_TIMEOUT_S
 from ray._private.test_utils import (
-    PrometheusTimeseries,
     raw_metric_timeseries,
-    run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_assertion,
     wait_for_dashboard_agent_available,
@@ -71,8 +73,10 @@ def test_task_basic(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
     driver = """
-import ray
 import time
+
+import ray
+from ray._common.test_utils import wait_for_condition
 
 ray.init("auto")
 
@@ -84,11 +88,16 @@ def a():
 def b():
     time.sleep(999)
 
-@ray.remote
+@ray.remote(num_cpus=3)
 def c():
     time.sleep(999)
 
-ray.get([a.remote(), b.remote()] + [c.remote() for _ in range(8)])
+refs = [a.remote(), b.remote()]
+wait_for_condition(
+    lambda: ray.available_resources().get("CPU", 0) == 0,
+)
+
+ray.get(refs + [c.remote() for _ in range(8)])
 """
     proc = run_string_as_driver_nonblocking(driver)
     timeseries = PrometheusTimeseries()
@@ -729,10 +738,22 @@ ray.get([a.remote(buf[0]), b.remote(buf[1])] + [c.remote(x) for x in buf[2:]])
     # This test is non-deterministic since pull bundles can sometimes end up fallback
     # allocated. This leads to slightly more objects pulled than you'd expect.
     def close_to_expected(stats):
-        assert len(stats) == 3, stats
-        assert stats["RUNNING"] == 2, stats
+        # A scheduled task can momentarily sit in SUBMITTED_TO_WORKER (lease granted,
+        # waiting on the worker to fetch its spilled arg) before it reports RUNNING.
+        # Under the object store pressure this test creates, that transition can be
+        # slow, so count SUBMITTED_TO_WORKER as running to avoid flakiness.
+        running = stats.get("RUNNING", 0) + stats.get("SUBMITTED_TO_WORKER", 0)
+        assert running == 2, stats
         assert 7 <= stats["PENDING_NODE_ASSIGNMENT"] <= 17, stats
         assert 81 <= stats["PENDING_OBJ_STORE_MEM_AVAIL"] <= 91, stats
+        assert set(stats.keys()).issubset(
+            {
+                "RUNNING",
+                "SUBMITTED_TO_WORKER",
+                "PENDING_NODE_ASSIGNMENT",
+                "PENDING_OBJ_STORE_MEM_AVAIL",
+            }
+        ), stats
         assert sum(stats.values()) == 100, stats
         return True
 

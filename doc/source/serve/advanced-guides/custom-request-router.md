@@ -20,6 +20,9 @@ cover the following:
 - Utility mixins for request routing
 - Define a complex throughput-aware request router
 - Deploy an app with the throughput-aware request router
+- Experimental: Use the round-robin request router
+- Experimental: Use the consistent-hash request router for session stickiness
+- Experimental: Define a centralized capacity queue request router
 
 
 (simple-uniform-request-router)=
@@ -157,6 +160,210 @@ in the definition of the deployment class. The custom request router can then ge
 updated routing stats by looking up the `routing_stats` attribute of the running
 replicas and use it in the routing policy.
 
+
+(round-robin-request-router)=
+## Experimental: Use the round-robin request router
+
+`RoundRobinRouter` cycles through replicas in round-robin fashion, starting
+at an arbitrary replica so routers spun up together don't synchronize on the
+same first replica. If the chosen replica is at capacity, the router falls back
+to the next replica in order and wraps around the candidate list. Each
+router instance keeps its own cursor, so with multiple routers (for example,
+one per Ray Serve proxy) the fan-out is round-robin per router and approximately
+uniform across replicas in aggregate. The router mixes in
+[`FIFOMixin`](../api/doc/ray.serve.request_router.FIFOMixin.rst) so queued
+requests are routed in arrival order.
+
+### When to use
+Use the round-robin router when you want a predictable, even distribution
+across replicas and don't need load-aware or locality-aware decisions. It
+fits stateless workloads with roughly uniform per-request latency. Unlike
+the default power-of-two-choices router, the round-robin router doesn't compare
+replicas by their number of ongoing requests. It only skips a replica once it reaches
+`max_ongoing_requests`. Therefore, requests can pile up behind a slow replica
+before it falls back to the next one.
+
+### Example
+Reference the router by import path through
+[`RequestRouterConfig`](../api/doc/ray.serve.config.RequestRouterConfig.rst):
+
+```{literalinclude} ../doc_code/custom_request_router_app.py
+:start-after: __begin_deploy_app_with_round_robin_router__
+:end-before: __end_deploy_app_with_round_robin_router__
+:language: python
+```
+
+
+(consistent-hash-request-router)=
+## Experimental: Use the consistent-hash request router for session stickiness
+
+`ConsistentHashRouter` pins each session to a specific replica using a
+consistent-hash ring with virtual nodes. The routing key is the session ID
+read from the HTTP header named by `RAY_SERVE_SESSION_ID_HEADER_KEY` (default
+`x-session-id`), so the same session ID consistently maps to the same
+replica. Requests without that header fall back to a per-request internal ID
+and spread uniformly across replicas. If the chosen replica rejects (for
+example, due to backpressure from the number of ongoing request), the router
+walks up to `num_fallback_replicas` clockwise successors on the ring. If
+those are also at capacity, the router sleeps with exponential backoff and
+retries the same primary and fallbacks until one accepts. When the replica
+set changes, the ring is rebuilt and only keys owned by added or removed
+replicas are reshuffled.
+
+Two parameters are configurable through
+[`request_router_kwargs`](../api/doc/ray.serve.config.RequestRouterConfig.rst):
+
+* `num_virtual_nodes` (default `100`): vnodes per replica on the ring.
+  Higher values spread sessions more evenly across replicas.
+* `num_fallback_replicas` (default `2`): clockwise successors tried after
+  the primary rejects. Set to `0` for strict affinity with no fallback.
+
+### When to use
+Use the consistent-hash router when requests carry session-scoped state
+worth keeping warm on a single replica, for example in-memory caches keyed
+by user or KV-cache reuse for LLM chat sessions. Skip it for stateless
+workloads, since affinity sacrifices queue-aware balancing and a hot session
+can saturate its assigned replica while others are idle. The router does not
+combine with queue-depth, locality, or multiplexed-model signals, since
+mixing them in would break determinism and therefore break affinity.
+
+### Example
+Configure the router via
+[`RequestRouterConfig`](../api/doc/ray.serve.config.RequestRouterConfig.rst)
+and pass tuning parameters through `request_router_kwargs`:
+
+```{literalinclude} ../doc_code/custom_request_router_app.py
+:start-after: __begin_deploy_app_with_consistent_hash_router__
+:end-before: __end_deploy_app_with_consistent_hash_router__
+:language: python
+```
+
+If your clients send the session identifier under a different header (for
+example, `x-correlation-id`), point Ray Serve at it before the cluster
+starts:
+
+```bash
+export RAY_SERVE_SESSION_ID_HEADER_KEY=x-correlation-id
+```
+
+
+(capacity-queue-request-router)=
+## Experimental: Define a centralized capacity queue request router
+
+In the previous examples, the routing decisions are based on the locally visible state of the target replicas from the perspective of the router
+replica. This view is **eventually consistent** not strongly because the serve controller frequently broadcasts the replica information to the router.
+Under high concurrency with multiple routers, this information can drift from reality and can cause several routers to simultaneously pick the same
+replica, causing transient load imbalance or triggering rejections and retries. For some applications this can result in lower throughput. A
+**centralized** approach avoids this: a single actor tracks per-replica in-flight counts, and every router acquires a *capacity token*
+before forwarding a request. This way, each token guarantees the target replica has room, eliminating the rejection protocol entirely.
+
+This example demonstrates how we can implement such routing policy. The example has three pieces:
+
+1. An importable **`CapacityQueue`** actor that tracks per-replica capacity and hands out
+   tokens using a least-loaded selection strategy.
+2. An importable **`CapacityQueueRouter`** custom request router that acquires a token before
+   routing and releases it when the request completes. In a real application, we can have multiple
+   replicas of `CapacityQueueRouter` each one keeping tracking their own view of state of replicas.
+   The centralized `CapacityQueue` actor is meant to keep their local information synchronized with
+   reality.
+3. A **deployment** that ties them together using a
+   [deployment actor](../api/doc/ray.serve.config.DeploymentActorConfig.rst) for the queue and a
+   [`RequestRouterConfig`](../api/doc/ray.serve.config.RequestRouterConfig.rst) for the router.
+
+(deploy-app-with-capacity-queue-router)=
+### Deploy an app with the capacity queue router
+
+The deployment wires the pieces together: a `DeploymentActorConfig` for the capacity queue
+and a `RequestRouterConfig` pointing at the custom router:
+
+```{literalinclude} ../doc_code/capacity_queue_request_router_app.py
+:start-after: __begin_deploy_app_with_capacity_queue_router__
+:end-before: __end_deploy_app_with_capacity_queue_router__
+:language: python
+```
+
+When the app starts:
+
+1. The Serve controller creates the `CapacityQueue` deployment actor **before**
+   any replicas start. `CapacityQueue` subscribes to replica updates via long poll.
+2. As the controller starts replicas, it sends deployment-target updates. The
+   queue's long-poll callback automatically registers each replica with its
+   `max_ongoing_requests` capacity and unregisters replicas that are removed
+   during scale-down or crash recovery.
+3. The `CapacityQueueRouter` running in each proxy discovers the singleton `CapacityQueue`
+   deployment actor, acquires a token for every incoming request, and routes to the replica
+   identified by the token.
+4. When the request completes, `CapacityQueueRouter.on_request_completed` fires and the token is
+   released back to the queue.
+
+Because the queue is a deployment actor, the controller handles its lifecycle
+automatically — health checks, cleanup on app deletion, and versioning during
+rolling updates.
+
+### Fault tolerance
+
+The `CapacityQueueRouter` handles failures gracefully:
+
+- **Queue unavailable** — if the queue actor is dead, not yet discovered, or
+  errors, the router retries with exponential backoff and falls back to
+  power-of-two-choices after `MAX_FAULT_RETRIES` consecutive failures.
+  Requests never raise exceptions due to queue issues.
+- **Capacity exhausted** — when all replicas are at capacity, the router
+  backs off and retries until capacity frees up.
+- **Queue restart** — a restarted queue has no knowledge of pre-crash
+  in-flight counts and may temporarily over-provision. This self-heals:
+  replicas reject excess requests, and the router does not release rejected
+  tokens intentionally, ratcheting up `in_flight` on the queue until it
+  matches reality. `token_ttl_s` (if configured) auto-reclaims any
+  remaining leaked tokens.
+- **Replica death** — the controller sends a long-poll update, the queue
+  unregisters the dead replica, and tokens are only issued for live replicas.
+
+### Usage
+The centralized capacity queue request router could bring performance benefits particularly in a constrained supply deployment, i.e. `max_ongoing_request=1` or `2`.
+
+### Benchmark
+
+#### Benchmark Setup
+- Deployment topology: Client -> `ParentDeployment` -> `ChildDeployment`. Request router selection is applied to both deployments,
+  controlling how parent replicas are selected by the HTTP proxy and how child replicas are selected by parent's `DeploymentHandle`.
+- Scale: small (8 replicas), medium (32 replicas), large (128 replicas), xlarge (512 replicas).
+- Workload: Replica processing latency is drawn from an exponential distribution with mean 1s and capped at 10s.
+- `max_ongoing_request` is set to `2`.
+- Load generation: Applies closed-loop load generation where the load consistently keeps replicas saturated at `max_ongoing_request` concurrency.
+- Warmup: 10s; metrics within the warmup window are discarded entirely.
+
+#### Benchmark Metrics
+- Throughput: Requests per second, i.e. `num_requests / duration`.
+- Utilization: Measures what fraction of a replica's total processing capacity was consumed by actual work during the experiment.
+  Concretely, `sum(replica_processing_latency_s) / (duration_s * max_ongoing_requests)`. For GPU deployments, utilization serves as
+  an assessment proxy for GPU utilization.
+- Latency: Measures the client-side end-to-end latency, covering the full round-trip --
+  client -> `ParentDeployment` -> `ChildDeployment` -> `ParentDeployment` -> client.
+
+#### Normal Situation
+Under normal (success) situations, `CapacityQueueRouter` yields higher throughput and utilization and lower latency.
+
+```{image} ../images/capacity-queue-router-normal.png
+:align: center
+:width: 800px
+```
+
+#### Fault Situation
+A fault is simulated by killing the `CapacityQueue` router, and upon recovery, `CapacityQueue` converges towards its pre-fault performance.
+
+```{image} ../images/capacity-queue-router-fault.png
+:align: center
+:width: 800px
+```
+
+:::{note}
+If you experience the following error when the `CapacityQueue` actor experiences faults and routing decisions fall back to the power-of-two-choices router,
+set `RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S` to a higher value.
+
+> Failed to get queue length from Replica(id='...', deployment='ParentDeployment', app='...') within 0.1s.
+
+:::
 
 :::{warning}
 ## Gotchas and limitations

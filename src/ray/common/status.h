@@ -147,7 +147,6 @@ STATUS_TYPE(PermissionDenied);
 STATUS_TYPE(InvalidArgument);
 STATUS_TYPE(AlreadyExists);
 STATUS_TYPE(TimedOut);
-
 };  // namespace StatusT
 
 template <typename... StatusTypes>

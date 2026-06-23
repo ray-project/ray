@@ -92,6 +92,7 @@ class ActorManagerTest : public ::testing::Test {
             publisher_.get(),
             subscriber_.get(),
             [](const NodeID &node_id) { return true; },
+            [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
             fake_owned_object_count_gauge_,
             fake_owned_object_size_gauge_,
             /*lineage_pinning_enabled=*/true)) {
@@ -395,8 +396,3 @@ TEST_F(ActorManagerTest, TestNamedActorIsKilledBeforeSubscribeFinished) {
 
 }  // namespace core
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

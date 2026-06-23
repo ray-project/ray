@@ -1,0 +1,38 @@
+build_arg_sets:
+  py310:
+    PYTHON_VERSION: "3.10"
+    PYTHON_SHORT: "310"
+  py312:
+    PYTHON_VERSION: "3.12"
+    PYTHON_SHORT: "312"
+
+
+depsets:
+  - name: ci_docgpu_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/py313/test-requirements.txt
+      - python/requirements/ml/core-requirements.txt
+      - python/requirements/ml/py313/dl-gpu-requirements.txt
+      - python/requirements/ml/py313/train-requirements.txt
+      - python/requirements/ml/py313/train-test-requirements.txt
+      - python/requirements/ml/py313/tune-requirements.txt
+      - python/requirements/ml/py313/tune-test-requirements.txt
+      - python/requirements/ml/py313/data-requirements.txt
+      - python/requirements/ml/py313/rllib-requirements.txt
+      - python/requirements/ml/py313/rllib-test-requirements.txt
+    output: python/deplocks/ci/docgpu_depset_py${PYTHON_VERSION}.lock
+    constraints:
+      - /tmp/ray-deps/requirements_compiled_py3.13.txt
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+      - --unsafe-package pip
+    build_arg_sets:
+      - py310
+      - py312
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13

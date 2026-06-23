@@ -10,8 +10,6 @@ set -x
 PYTHON_VERSIONS=("3.10" "3.11" "3.12")
 BAZELISK_VERSION="v1.16.0"
 
-export USE_BAZEL_VERSION="${USE_BAZEL_VERSION:-6.5.0}"
-
 # Sets RAY_VERSION and RAY_COMMIT
 source .buildkite/release-automation/set-ray-version.sh
 

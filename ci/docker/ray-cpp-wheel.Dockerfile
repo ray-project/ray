@@ -86,4 +86,4 @@ fi
 EOF
 
 FROM scratch
-COPY --from=builder /home/forge/ray/.whl/*.whl /
+COPY --from=builder /home/forge/ray/.whl/*.whl /opt/artifacts/

@@ -35,7 +35,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ## Step 3: Install a RayService
 
 ```sh
-curl -O https://raw.githubusercontent.com/ray-project/kuberay/v1.5.1/ray-operator/config/samples/ray-service.sample.yaml
+curl -O https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-service.sample.yaml
 kubectl apply -f ray-service.sample.yaml
 ```
 
@@ -182,7 +182,7 @@ Below is a screenshot example of the Serve page in the Ray dashboard.
 ```sh
 # Step 6.1: Run a curl Pod.
 # If you already have a curl Pod, you can use `kubectl exec -it <curl-pod> -- sh` to access the Pod.
-kubectl run curl --image=radial/busyboxplus:curl -i --tty
+kubectl run curl --image=curlimages/curl:latest -i --tty -- sh
 
 # Step 6.2: Send a request to the fruit stand app.
 curl -X POST -H 'Content-Type: application/json' rayservice-sample-serve-svc:8000/fruit/ -d '["MANGO", 2]'
@@ -200,7 +200,7 @@ curl -X POST -H 'Content-Type: application/json' rayservice-sample-serve-svc:800
 
 You can update the configurations for the applications by modifying `serveConfigV2` in the RayService configuration file. Reapplying the modified configuration with `kubectl apply` reapplies the new configurations to the existing RayCluster instead of creating a new RayCluster.
 
-Update the price of Mango from `3` to `4` for the fruit stand app in [ray-service.sample.yaml](https://github.com/ray-project/kuberay/blob/v1.5.1/ray-operator/config/samples/ray-service.sample.yaml).
+Update the price of Mango from `3` to `4` for the fruit stand app in [ray-service.sample.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-service.sample.yaml).
 This change reconfigures the existing MangoStand deployment, and future requests are going to use the updated mango price.
 
 ```sh

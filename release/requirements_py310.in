@@ -13,9 +13,9 @@ jinja2
 msal
 protobuf >= 3.15.3, != 3.19.5
 pytest
+responses
 pyyaml
 pybuildkite
-PyGithub
 requests >= 2.31.0
 twine == 6.2.0
 docker >= 7.1.0
@@ -25,6 +25,7 @@ aws_requests_auth
 tzdata
 tqdm
 networkx
+pip_requirements_parser
 -r requirements-doc.txt
 
 # Upgrades

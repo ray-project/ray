@@ -4,6 +4,7 @@
 import glob
 import io
 import os
+import pickle
 import tarfile
 
 import pytest
@@ -49,7 +50,14 @@ def test_webdataset_read(ray_start_2_cpus, tmp_path):
         assert sample["b"].decode("utf-8") == str(i**2)
 
 
-def test_webdataset_expand_json(ray_start_2_cpus, tmp_path):
+@pytest.fixture
+def allow_unsafe_deserialization(monkeypatch):
+    monkeypatch.setenv("RAY_DATA_WEBDATASET_ALLOW_UNSAFE_DESERIALIZATION", "1")
+
+
+def test_webdataset_expand_json(
+    ray_start_2_cpus, tmp_path, allow_unsafe_deserialization
+):
     import numpy as np
     import torch
 
@@ -159,7 +167,7 @@ def custom_decoder(sample):
     return sample
 
 
-def test_webdataset_coding(ray_start_2_cpus, tmp_path):
+def test_webdataset_coding(ray_start_2_cpus, tmp_path, allow_unsafe_deserialization):
     import numpy as np
     import PIL.Image
     import torch
@@ -262,7 +270,7 @@ def test_webdataset_decoding(ray_start_2_cpus, tmp_path):
 
 
 @pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
-def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
+def test_write_min_rows_per_file(tmp_path, ray_start_2_cpus, min_rows_per_file):
     ray.data.from_items(
         [{"id": str(i)} for i in range(100)], override_num_blocks=20
     ).write_webdataset(tmp_path, min_rows_per_file=min_rows_per_file)
@@ -270,6 +278,55 @@ def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_pe
     for filename in os.listdir(tmp_path):
         dataset = wds.WebDataset(os.path.join(tmp_path, filename))
         assert len(list(dataset)) == min_rows_per_file
+
+
+@pytest.mark.parametrize(
+    "filename",
+    ["000000.pkl", "000000.pickle", "000000.pt", "000000.pth"],
+)
+def test_default_decoder_rejects_unsafe_extensions(
+    ray_start_2_cpus, tmp_path, filename
+):
+    path = os.path.join(tmp_path, "unsafe.tar")
+    with TarWriter(path) as tf:
+        tf.write(filename, b"fake-payload")
+
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)])
+    with pytest.raises(Exception, match="Refusing to"):
+        ds.take_all()
+
+
+def test_default_decoder_allows_unsafe_with_env_var(
+    ray_start_2_cpus, tmp_path, allow_unsafe_deserialization
+):
+    path = os.path.join(tmp_path, "trusted.tar")
+    with TarWriter(path) as tf:
+        tf.write("000000.pkl", pickle.dumps({"key": "value"}))
+
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)])
+    rows = ds.take_all()
+
+    assert len(rows) == 1
+    assert rows[0]["pkl"] == {"key": "value"}
+
+
+def test_custom_decoder_bypasses_unsafe_guard(ray_start_2_cpus, tmp_path):
+    path = os.path.join(tmp_path, "custom.tar")
+    with TarWriter(path) as tf:
+        tf.write("000000.pkl", pickle.dumps({"key": "value"}))
+
+    def safe_pkl_decoder(sample):
+        sample = dict(sample)
+        for key, value in sample.items():
+            if key == "pkl":
+                sample[key] = pickle.loads(value)
+        return sample
+
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)], decoder=safe_pkl_decoder)
+    rows = ds.take_all()
+
+    assert len(rows) == 1
+    assert rows[0]["pkl"] == {"key": "value"}
 
 
 if __name__ == "__main__":

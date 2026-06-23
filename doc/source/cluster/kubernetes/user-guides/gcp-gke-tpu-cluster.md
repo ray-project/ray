@@ -9,7 +9,7 @@ See the [GKE documentation](<https://cloud.google.com/kubernetes-engine/docs/how
 First, set the following environment variables to be used for GKE cluster creation:
 ```sh
 export CLUSTER_NAME=CLUSTER_NAME
-export COMPUTE_ZONE=ZONE
+export ZONE=ZONE
 export CLUSTER_VERSION=CLUSTER_VERSION
 ```
 Replace the following:
@@ -59,6 +59,7 @@ gcloud container node-pools create v4-8 \
   --tpu-topology 2x2x2
 ```
 - For v4 TPUs, ZONE must be `us-central2-b`.
+- For other TPU types, see [TPU locations on Google Cloud documentation](https://docs.cloud.google.com/compute/docs/regions-zones/tpu-regions-zones).
 
 The `--tpu-topology` flag specifies the physical topology of the TPU Pod slice. This example uses a v4 TPU slice with either a 2x2x1 or 2x2x2 topology. v4 TPUs have 4 chips per VM host, so a 2x2x2 v4 slice has 8 chips total and 2 TPU hosts, each scheduled on their own node. GKE treats multi-host TPU slices as atomic units, and scales them using node pools rather than singular nodes. Therefore, the number of TPU hosts should always equal the number of nodes in the TPU node pool. For more information about selecting a TPU topology and accelerator, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/concepts/tpus).
 
@@ -83,8 +84,8 @@ In a cluster without the Ray Operator Addon enabled, KubeRay can be manually ins
 ```sh
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 
-# Install both CRDs and KubeRay operator v1.5.1.
-helm install kuberay-operator kuberay/kuberay-operator --version 1.5.1
+# Install both CRDs and KubeRay operator v1.6.0.
+helm install kuberay-operator kuberay/kuberay-operator --version 1.6.0
 ```
 
 GKE provides a [validating and mutating webhook](https://github.com/ai-on-gke/kuberay-tpu-webhook) to handle TPU Pod scheduling and bootstrap certain environment variables used for [JAX](https://github.com/google/jax) initialization. The Ray TPU webhook requires a KubeRay operator version of at least v1.1.0. GKE automatically installs the Ray TPU webhook through the [Ray Operator Addon](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/enable-ray-on-gke) with GKE versions 1.30.0-gke.1747000 or later.

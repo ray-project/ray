@@ -221,6 +221,16 @@ _task_only_options = {
             "whenever `next` is called). Use -1 to disable this feature. "
         ),
     ),
+    "_num_objects_per_yield": Option(
+        (int, type(None)),
+        lambda x: None
+        if (x is None or x > 0)
+        else (
+            "_num_objects_per_yield is a private streaming generator option "
+            "that must be set to a positive integer."
+        ),
+        default_value=1,
+    ),
 }
 
 _actor_only_options = {
@@ -316,13 +326,20 @@ def _warn_if_using_deprecated_placement_group(
         )
 
 
-def validate_task_options(options: Dict[str, Any], in_options: bool):
+def validate_task_options(
+    options: Dict[str, Any],
+    in_options: bool,
+    is_generator_callable: Optional[bool] = None,
+):
     """Options check for Ray tasks.
 
     Args:
         options: Options for Ray tasks.
         in_options: If True, we are checking the options under the context of
             ".options()".
+        is_generator_callable: Optional bool indicating whether the callable is a
+            generator function. If provided and num_returns is 'streaming' or
+            'dynamic', validates that the callable is a generator.
     """
     for k, v in options.items():
         if k not in task_options:
@@ -334,6 +351,11 @@ def validate_task_options(options: Dict[str, Any], in_options: bool):
     if in_options and "max_calls" in options:
         raise ValueError("Setting 'max_calls' is not supported in '.options()'.")
     _check_deprecate_placement_group(options)
+
+    if is_generator_callable is not None:
+        num_returns = options.get("num_returns")
+        if num_returns is not None:
+            validate_num_returns(is_generator_callable, num_returns)
 
 
 def validate_actor_options(options: Dict[str, Any], in_options: bool):
@@ -372,6 +394,39 @@ def validate_actor_options(options: Dict[str, Any], in_options: bool):
         )
 
     _check_deprecate_placement_group(options)
+
+
+def validate_num_returns(is_generator_callable: bool, num_returns: Any) -> None:
+    """Validate num_returns for @ray.remote and @ray.method decorators.
+
+    This function validates:
+    1. If num_returns is an integer < 0, it should fail fast.
+    2. If num_returns='streaming' or 'dynamic' is used with a non-generator
+       function, it should fail fast.
+
+    Args:
+        is_generator_callable: Whether the callable is a generator function or
+            async generator function.
+        num_returns: The num_returns value to validate.
+
+    Raises:
+        ValueError: If num_returns < 0, or if num_returns is 'streaming' or 'dynamic'
+            but the callable is not a generator function or async generator function.
+    """
+    if num_returns is None:
+        return
+
+    # Validate num_returns < 0
+    if isinstance(num_returns, int) and num_returns < 0:
+        raise ValueError(f"num_returns must be >= 0, but got {num_returns}.")
+
+    # Validate num_returns='streaming' or 'dynamic' for generator functions
+    if num_returns in ("streaming", "dynamic") and not is_generator_callable:
+        raise ValueError(
+            f"num_returns='{num_returns}' can only be used with generator functions "
+            f"(functions that use 'yield'). "
+            f"The decorated function is not a generator function."
+        )
 
 
 def update_options(

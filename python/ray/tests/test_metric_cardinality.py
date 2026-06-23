@@ -7,10 +7,10 @@ import os
 import pytest
 
 import ray
-from ray._private.test_utils import (
-    PrometheusTimeseries,
+from ray._private.test_utils import wait_for_assertion
+from ray._common.test_utils import (
     fetch_prometheus_metric_timeseries,
-    wait_for_assertion,
+    PrometheusTimeseries,
 )
 from ray._common.network_utils import build_address
 from ray._private.telemetry.metric_cardinality import (

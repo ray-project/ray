@@ -34,7 +34,7 @@ TEST_F(RayNodeDefinitionEventTest, TestSerialize) {
   (*node_info.mutable_labels())["env"] = "prod";
 
   auto event = std::make_unique<RayNodeDefinitionEvent>(node_info, "test_session");
-  auto serialized_event = std::move(*event).Serialize();
+  auto serialized_event = std::move(*event).Serialize().value();
 
   ASSERT_EQ(serialized_event.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(serialized_event.session_name(), "test_session");

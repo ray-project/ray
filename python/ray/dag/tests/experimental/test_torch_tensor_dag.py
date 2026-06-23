@@ -77,12 +77,16 @@ class TorchTensorWorker:
         assert tensor.device.type == "cuda"
         return (tensor[0].item(), tensor.shape, tensor.dtype)
 
-    def recv_and_matmul(self, two_d_tensor):
+    def recv_and_matmul(self, two_d_tensor: "torch.Tensor"):
         """
         Receive the tensor and do some expensive computation (matmul).
 
         Args:
             two_d_tensor: a 2D tensor that has the same size for its dimensions
+
+        Returns:
+            A tuple of (first element value, tensor shape, tensor dtype) for
+            verification by the caller.
         """
         # Check that tensor got loaded to the correct device.
         assert two_d_tensor.dim() == 2
@@ -268,6 +272,10 @@ def test_torch_tensor_nccl(
         assert ray.get(ref) == (i, shape, dtype)
 
 
+@pytest.mark.skipif(
+    torch.version.cuda is not None and torch.version.cuda >= "13.0",
+    reason="Flaky: worker hangs on shared memory channel read on cu130",
+)
 @pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_shm(ray_start_regular):
@@ -314,6 +322,10 @@ def test_torch_tensor_shm(ray_start_regular):
     compiled_dag.teardown()
 
 
+@pytest.mark.skipif(
+    torch.version.cuda is not None and torch.version.cuda >= "13.0",
+    reason="Flaky: worker hangs on shared memory channel read on cu130",
+)
 @pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 @pytest.mark.parametrize("num_gpus", [[0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0.5]])

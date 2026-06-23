@@ -1,8 +1,11 @@
 import logging
 import random
 import sys
+import threading
 import time
+from collections import Counter
 from os import urandom
+from typing import Callable, Iterator
 
 import numpy as np
 import pandas as pd
@@ -17,6 +20,7 @@ from ray.data._internal.block_batching.util import (
     collate,
     finalize_batches,
     format_batches,
+    iter_threaded,
     resolve_block_refs,
 )
 from ray.data._internal.util import make_async_gen
@@ -432,6 +436,121 @@ def test_calculate_ref_hits(ray_start_regular_shared):
         ctx.enable_get_object_locations_for_metrics = (
             prev_enable_get_object_locations_for_metrics
         )
+
+
+def _identity(it: Iterator[int]) -> Iterator[int]:
+    return it
+
+
+def _duplicate_each(it: Iterator[int]) -> Iterator[int]:
+    for item in it:
+        yield item
+        yield item
+
+
+class TestIterThreaded:
+    """Unit tests for ``iter_threaded``."""
+
+    @pytest.mark.parametrize("num_workers", [1, 2, 4])
+    @pytest.mark.parametrize("output_buffer_size", [1, 2, 4])
+    @pytest.mark.parametrize(
+        "fn,multiplier",
+        [(_identity, 1), (_duplicate_each, 2)],
+        ids=["identity", "duplicate"],
+    )
+    def test_processes_all_exactly_once(
+        self,
+        num_workers: int,
+        output_buffer_size: int,
+        fn: Callable[[Iterator[int]], Iterator[int]],
+        multiplier: int,
+    ):
+        """Every input item is consumed and produced exactly the expected
+        number of times across the worker pool (no losses, no duplicates).
+        Output ordering is not required."""
+        items = list(range(50))
+        output = list(
+            iter_threaded(
+                iter(items),
+                fn,
+                num_workers=num_workers,
+                output_buffer_size=output_buffer_size,
+            )
+        )
+        assert len(output) == len(items) * multiplier
+        assert Counter(output) == Counter(items * multiplier)
+
+    def test_stateful_base_iterator_thread_safe(self):
+        """Python generators are not thread-safe; concurrent ``next()``
+        calls raise ``ValueError: generator already executing`` without
+        a lock. This test passes only if ``iter_threaded`` serializes
+        the underlying ``next()`` properly."""
+
+        def stateful_gen():
+            for i in range(200):
+                # Encourage interleaving across workers.
+                time.sleep(0.001)
+                yield i
+
+        output = list(iter_threaded(stateful_gen(), _identity, num_workers=4))
+        assert sorted(output) == list(range(200))
+
+    @pytest.mark.parametrize("num_workers", [1, 4])
+    def test_fn_exception_propagates(self, num_workers: int):
+        """An exception raised inside ``fn`` is surfaced to the consumer
+        rather than silently swallowed or hanging the iterator."""
+
+        def fn(it: Iterator[int]) -> Iterator[int]:
+            for i, item in enumerate(it):
+                if i >= 3:
+                    raise ValueError("boom")
+                yield item
+
+        it = iter_threaded(iter(range(100)), fn, num_workers=num_workers)
+        with pytest.raises(ValueError, match="boom"):
+            list(it)
+
+    @pytest.mark.parametrize("num_workers", [1, 4])
+    def test_consumer_break_stops_workers(self, num_workers: int):
+        """When the consumer breaks early and the iterator is no longer
+        referenced, CPython GCs the generator immediately, which runs the
+        ``finally: stopped.set()`` cleanup path. Worker threads should
+        terminate within the ``_put`` poll interval (~100ms) rather than
+        leak."""
+
+        def slow_fn(it: Iterator[int]) -> Iterator[int]:
+            for item in it:
+                time.sleep(0.05)
+                yield item
+
+        # Inline so `break` drops the last reference → GC → finally.
+        for i, _ in enumerate(
+            iter_threaded(iter(range(10_000)), slow_fn, num_workers=num_workers)
+        ):
+            if i >= 5:
+                break
+
+        # Workers poll `stopped` every 100ms inside `_put`; give a generous
+        # margin for CI under load.
+        deadline = time.time() + 5.0
+        while time.time() < deadline:
+            alive = [t for t in threading.enumerate() if t.name == "iter_threaded"]
+            if not alive:
+                break
+            time.sleep(0.05)
+        else:
+            pytest.fail(
+                f"iter_threaded workers did not exit within 5s: "
+                f"{[t.name for t in threading.enumerate() if t.name == 'iter_threaded']}"
+            )
+
+    def test_num_workers_validation(self):
+        with pytest.raises(ValueError, match="at least 1"):
+            list(iter_threaded(iter([1]), _identity, num_workers=0))
+
+    def test_empty_base_iterator(self):
+        output = list(iter_threaded(iter([]), _identity, num_workers=4))
+        assert output == []
 
 
 if __name__ == "__main__":

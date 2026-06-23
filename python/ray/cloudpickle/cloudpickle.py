@@ -63,7 +63,7 @@ import itertools
 import logging
 import opcode
 import pickle
-from pickle import _getattribute
+from pickle import _getattribute as _pickle_getattribute
 import platform
 import struct
 import sys
@@ -126,7 +126,7 @@ def _lookup_class_or_track(class_tracker_id, class_def):
 
 
 def register_pickle_by_value(module):
-    """Register a module to make it functions and classes picklable by value.
+    """Register a module to make its functions and classes picklable by value.
 
     By default, functions and classes that are attributes of an importable
     module are to be pickled by reference, that is relying on re-importing
@@ -192,6 +192,14 @@ def _is_registered_pickle_by_value(module):
     return False
 
 
+if sys.version_info >= (3, 14):
+    def _getattribute(obj, name):
+        return _pickle_getattribute(obj, name.split('.'))
+else:
+    def _getattribute(obj, name):
+        return _pickle_getattribute(obj, name)[0]
+
+
 def _whichmodule(obj, name):
     """Find the module an object belongs to.
 
@@ -213,12 +221,13 @@ def _whichmodule(obj, name):
         # sys.modules
         if (
             module_name == "__main__"
+            or module_name == "__mp_main__"
             or module is None
             or not isinstance(module, types.ModuleType)
         ):
             continue
         try:
-            if _getattribute(module, name)[0] is obj:
+            if _getattribute(module, name) is obj:
                 return module_name
         except Exception:
             pass
@@ -292,7 +301,7 @@ def _lookup_module_and_qualname(obj, name=None):
         return None
 
     try:
-        obj2, parent = _getattribute(module, name)
+        obj2 = _getattribute(module, name)
     except AttributeError:
         # obj was not found inside the module it points to
         return None
@@ -409,7 +418,10 @@ def _walk_global_ops(code):
 
 def _extract_class_dict(cls):
     """Retrieve a copy of the dict of a class without the inherited method."""
-    clsdict = dict(cls.__dict__)  # copy dict proxy to a dict
+    # Hack to circumvent non-predictable memoization caused by string interning.
+    # See the inline comment in _class_setstate for details.
+    clsdict = {"".join(k): cls.__dict__[k] for k in sorted(cls.__dict__)}
+
     if len(cls.__bases__) == 1:
         inherited_dict = cls.__bases__[0].__dict__
     else:
@@ -533,9 +545,15 @@ def _make_skeleton_class(
     The "extra" variable is meant to be a dict (or None) that can be used for
     forward compatibility shall the need arise.
     """
+    # We need to intern the keys of the type_kwargs dict to avoid having
+    # different pickles for the same dynamic class depending on whether it was
+    # dynamically created or reconstructed from a pickled stream.
+    type_kwargs = {sys.intern(k): v for k, v in type_kwargs.items()}
+
     skeleton_class = types.new_class(
         name, bases, {"metaclass": type_constructor}, lambda ns: ns.update(type_kwargs)
     )
+
     return _lookup_class_or_track(class_tracker_id, skeleton_class)
 
 
@@ -694,8 +712,10 @@ def _function_getstate(func):
     #   unpickling time by iterating over slotstate and calling setattr(func,
     #   slotname, slotvalue)
     slotstate = {
-        "__name__": func.__name__,
-        "__qualname__": func.__qualname__,
+        # Hack to circumvent non-predictable memoization caused by string interning.
+        # See the inline comment in _class_setstate for details.
+        "__name__": "".join(func.__name__),
+        "__qualname__": "".join(func.__qualname__),
         "__annotations__": func.__annotations__,
         "__kwdefaults__": func.__kwdefaults__,
         "__defaults__": func.__defaults__,
@@ -721,7 +741,9 @@ def _function_getstate(func):
     )
     slotstate["__globals__"] = f_globals
 
-    state = func.__dict__
+    # Hack to circumvent non-predictable memoization caused by string interning.
+    # See the inline comment in _class_setstate for details.
+    state = {"".join(k): v for k, v in func.__dict__.items()}
     return state, slotstate
 
 
@@ -760,6 +782,12 @@ def _class_getstate(obj):
                 clsdict.pop(k, None)
 
     clsdict.pop("__dict__", None)  # unpicklable property object
+
+    if sys.version_info >= (3, 14):
+        # PEP-649/749: __annotate_func__ contains a closure that references the class
+        # dict. We need to exclude it from pickling. Python will recreate it when
+        # __annotations__ is accessed at unpickling time.
+        clsdict.pop("__annotate_func__", None)
 
     return (clsdict, {})
 
@@ -802,6 +830,19 @@ def _code_reduce(obj):
     # of the specific type from types, for example:
     # >>> from types import CodeType
     # >>> help(CodeType)
+
+    # Hack to circumvent non-predictable memoization caused by string interning.
+    # See the inline comment in _class_setstate for details.
+    co_name = "".join(obj.co_name)
+
+    # Create shallow copies of these tuple to make cloudpickle payload deterministic.
+    # When creating a code object during load, copies of these four tuples are
+    # created, while in the main process, these tuples can be shared.
+    # By always creating copies, we make sure the resulting payload is deterministic.
+    co_names = tuple(name for name in obj.co_names)
+    co_varnames = tuple(name for name in obj.co_varnames)
+    co_freevars = tuple(name for name in obj.co_freevars)
+    co_cellvars = tuple(name for name in obj.co_cellvars)
     if hasattr(obj, "co_exceptiontable"):
         # Python 3.11 and later: there are some new attributes
         # related to the enhanced exceptions.
@@ -814,16 +855,16 @@ def _code_reduce(obj):
             obj.co_flags,
             obj.co_code,
             obj.co_consts,
-            obj.co_names,
-            obj.co_varnames,
+            co_names,
+            co_varnames,
             obj.co_filename,
-            obj.co_name,
+            co_name,
             obj.co_qualname,
             obj.co_firstlineno,
             obj.co_linetable,
             obj.co_exceptiontable,
-            obj.co_freevars,
-            obj.co_cellvars,
+            co_freevars,
+            co_cellvars,
         )
     elif hasattr(obj, "co_linetable"):
         # Python 3.10 and later: obj.co_lnotab is deprecated and constructor
@@ -837,14 +878,14 @@ def _code_reduce(obj):
             obj.co_flags,
             obj.co_code,
             obj.co_consts,
-            obj.co_names,
-            obj.co_varnames,
+            co_names,
+            co_varnames,
             obj.co_filename,
-            obj.co_name,
+            co_name,
             obj.co_firstlineno,
             obj.co_linetable,
-            obj.co_freevars,
-            obj.co_cellvars,
+            co_freevars,
+            co_cellvars,
         )
     elif hasattr(obj, "co_nmeta"):  # pragma: no cover
         # "nogil" Python: modified attributes from 3.9
@@ -859,15 +900,15 @@ def _code_reduce(obj):
             obj.co_flags,
             obj.co_code,
             obj.co_consts,
-            obj.co_varnames,
+            co_varnames,
             obj.co_filename,
-            obj.co_name,
+            co_name,
             obj.co_firstlineno,
             obj.co_lnotab,
             obj.co_exc_handlers,
             obj.co_jump_table,
-            obj.co_freevars,
-            obj.co_cellvars,
+            co_freevars,
+            co_cellvars,
             obj.co_free2reg,
             obj.co_cell2reg,
         )
@@ -882,14 +923,14 @@ def _code_reduce(obj):
             obj.co_flags,
             obj.co_code,
             obj.co_consts,
-            obj.co_names,
-            obj.co_varnames,
+            co_names,
+            co_varnames,
             obj.co_filename,
-            obj.co_name,
+            co_name,
             obj.co_firstlineno,
             obj.co_lnotab,
-            obj.co_freevars,
-            obj.co_cellvars,
+            co_freevars,
+            co_cellvars,
         )
     return types.CodeType, args
 
@@ -1127,10 +1168,37 @@ def _class_setstate(obj, state):
         if attrname == "_abc_impl":
             registry = attr
         else:
+            # Note: setting attribute names on a class automatically triggers their
+            # interning in CPython:
+            # https://github.com/python/cpython/blob/v3.12.0/Objects/object.c#L957
+            #
+            # This means that to get deterministic pickling for a dynamic class that
+            # was initially defined in a different Python process, the pickler
+            # needs to ensure that dynamic class and function attribute names are
+            # systematically copied into a non-interned version to avoid
+            # unpredictable pickle payloads.
+            #
+            # Indeed the Pickler's memoizer relies on physical object identity to break
+            # cycles in the reference graph of the object being serialized.
             setattr(obj, attrname, attr)
+
+    if sys.version_info >= (3, 13) and "__firstlineno__" in state:
+        # Set the Python 3.13+ only __firstlineno__  attribute one more time, as it
+        # will be automatically deleted by the `setattr(obj, attrname, attr)` call
+        # above when `attrname` is "__firstlineno__". We assume that preserving this
+        # information might be important for some users and that it not stale in the
+        # context of cloudpickle usage, hence legitimate to propagate. Furthermore it
+        # is necessary to do so to keep deterministic chained pickling as tested in
+        # test_deterministic_str_interning_for_chained_dynamic_class_pickling.
+        obj.__firstlineno__ = state["__firstlineno__"]
+
     if registry is not None:
         for subclass in registry:
             obj.register(subclass)
+
+    # PEP-649/749: During pickling, we excluded the __annotate_func__ attribute but it
+    # will be created by Python. Subsequently, annotations will be recreated when
+    # __annotations__ is accessed.
 
     return obj
 
@@ -1243,12 +1311,9 @@ class Pickler(pickle.Pickler):
     def dump(self, obj):
         try:
             return super().dump(obj)
-        except RuntimeError as e:
-            if len(e.args) > 0 and "recursion" in e.args[0]:
-                msg = "Could not pickle object as excessively deep recursion required."
-                raise pickle.PicklingError(msg) from e
-            else:
-                raise
+        except RecursionError as e:
+            msg = "Could not pickle object as excessively deep recursion required."
+            raise pickle.PicklingError(msg) from e
 
     def __init__(self, file, protocol=None, buffer_callback=None):
         if protocol is None:

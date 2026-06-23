@@ -65,12 +65,14 @@ def check_internal_kv_gced():
 @pytest.mark.parametrize("cookies", [None, {"test_cookie_key": "test_cookie_val"}])
 @pytest.mark.parametrize("metadata", [None, {"test_metadata_key": "test_metadata_val"}])
 @pytest.mark.parametrize("headers", [None, {"test_headers_key": "test_headers_val"}])
+@pytest.mark.parametrize("extra_kwargs", [{}, {"cloud": "my-cloud"}])
 def test_parse_cluster_info(
     address_param: Tuple[str, str, str],
     create_cluster_if_needed: bool,
     cookies: Optional[Dict[str, str]],
     metadata: Optional[Dict[str, str]],
     headers: Optional[Dict[str, str]],
+    extra_kwargs: Dict[str, str],
 ):
     """
     Test ray.dashboard.modules.dashboard_sdk.parse_cluster_info for different
@@ -100,6 +102,7 @@ def test_parse_cluster_info(
                     cookies=cookies,
                     metadata=metadata,
                     headers=headers,
+                    **extra_kwargs,
                 )
         elif module_string == "other_module":
             assert (
@@ -109,6 +112,7 @@ def test_parse_cluster_info(
                     cookies=cookies,
                     metadata=metadata,
                     headers=headers,
+                    **extra_kwargs,
                 )
                 == "Other module ClusterInfo"
             )
@@ -119,6 +123,7 @@ def test_parse_cluster_info(
                 cookies=cookies,
                 metadata=metadata,
                 headers=headers,
+                **extra_kwargs,
             )
 
 
@@ -126,6 +131,36 @@ def test_parse_cluster_info_default_address():
     assert parse_cluster_info(
         address=None,
     ) == ClusterInfo(address=DEFAULT_DASHBOARD_ADDRESS)
+
+
+def test_submit_job_does_not_mutate_runtime_env():
+    class TestClient(JobSubmissionClient):
+        def __init__(self):
+            self._default_metadata = {}
+
+        def _upload_working_dir_if_needed(self, runtime_env):
+            runtime_env["working_dir"] = "gcs://test.zip"
+
+        def _upload_py_modules_if_needed(self, runtime_env):
+            runtime_env["py_modules"] = ["gcs://test_module.zip"]
+
+        def _do_request(self, method, endpoint, **kwargs):
+            return MagicMock(
+                status_code=200,
+                json=lambda: {"job_id": "test_job", "submission_id": "test_job"},
+            )
+
+    runtime_env = {"working_dir": "/tmp/test", "py_modules": ["/tmp/test_module"]}
+    original_runtime_env = {
+        "working_dir": runtime_env["working_dir"],
+        "py_modules": list(runtime_env["py_modules"]),
+    }
+
+    assert (
+        TestClient().submit_job(entrypoint="echo hi", runtime_env=runtime_env)
+        == "test_job"
+    )
+    assert runtime_env == original_runtime_env
 
 
 @pytest.mark.parametrize("expiration_s", [0, 10])
@@ -150,8 +185,11 @@ def test_temporary_uri_reference(monkeypatch, expiration_s):
 
             start = time.time()
 
-            client.submit_job(
-                entrypoint="echo hi", runtime_env={"working_dir": tmp_dir}
+            runtime_env = {"working_dir": tmp_dir}
+            job_id = client.submit_job(entrypoint="echo hi", runtime_env=runtime_env)
+            assert runtime_env == {"working_dir": tmp_dir}
+            wait_for_condition(
+                _check_job_succeeded, client=client, job_id=job_id, timeout=30
             )
 
             # Give time for deletion to occur if expiration_s is 0.
@@ -168,6 +206,15 @@ def test_temporary_uri_reference(monkeypatch, expiration_s):
             else:
                 wait_for_condition(check_internal_kv_gced)
                 print("Internal KV was GC'ed at time ", time.time() - start)
+
+                # Regression test for #46625: reusing the same runtime_env after
+                # the package has been GC'ed should re-upload the local working_dir.
+                job_id = client.submit_job(
+                    entrypoint="echo hi", runtime_env=runtime_env
+                )
+                wait_for_condition(
+                    _check_job_succeeded, client=client, job_id=job_id, timeout=30
+                )
 
 
 def get_register_agents_number(gcs_client):

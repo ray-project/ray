@@ -8,7 +8,7 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.spaces.space_utils import batch as batch_fn
+from ray.rllib.utils.spaces.space_utils import BatchedNdArray, batch as batch_fn
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 
@@ -170,11 +170,18 @@ class BatchIndividualItems(ConnectorV2):
                 memorized_map_structure = []
                 list_to_be_batched = []
                 for (eps_id,) in column_data.keys():
-                    for item in column_data[(eps_id,)]:
-                        # Only record structure for OBS column.
-                        if column == Columns.OBS:
-                            memorized_map_structure.append(eps_id)
-                        list_to_be_batched.append(item)
+                    items = column_data[(eps_id,)]
+                    # Use extend instead of per-item append for better performance.
+                    list_to_be_batched.extend(items)
+                    # Only record structure for OBS column.
+                    if column == Columns.OBS:
+                        # Count total samples: BatchedNdArray items contribute
+                        # len(item) samples, regular items contribute 1 each.
+                        num_samples = sum(
+                            len(item) if isinstance(item, BatchedNdArray) else 1
+                            for item in items
+                        )
+                        memorized_map_structure.extend([eps_id] * num_samples)
                 # INFOS should not be batched (remain a list).
                 batch[column] = (
                     list_to_be_batched

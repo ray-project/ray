@@ -11,13 +11,15 @@ from typing import List, Optional
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import (
     get_load_metrics_report,
     get_resource_usage,
-    run_string_as_driver,
     run_string_as_driver_nonblocking,
 )
 from ray._private.utils import get_num_cpus
@@ -344,7 +346,9 @@ def test_worker_prestart_on_node_manager_start(call_ray_start, shutdown_only):
 
     with ray.init():
         for _ in range(5):
-            workers = list_workers(filters=[("worker_type", "=", "WORKER")])
+            workers = list_workers(
+                filters=[("worker_type", "=", "WORKER")], raise_on_missing_output=False
+            )
             assert len(workers) == get_num_cpus(), workers
             time.sleep(1)
 
@@ -356,11 +360,15 @@ def test_worker_prestart_on_node_manager_start(call_ray_start, shutdown_only):
 )
 def test_jobs_prestart_worker_once(call_ray_start, shutdown_only):
     with ray.init():
-        workers = list_workers(filters=[("worker_type", "=", "WORKER")])
+        workers = list_workers(
+            filters=[("worker_type", "=", "WORKER")], raise_on_missing_output=False
+        )
         assert len(workers) == get_num_cpus(), workers
     with ray.init():
         for _ in range(5):
-            workers = list_workers(filters=[("worker_type", "=", "WORKER")])
+            workers = list_workers(
+                filters=[("worker_type", "=", "WORKER")], raise_on_missing_output=False
+            )
             assert len(workers) == get_num_cpus(), workers
             time.sleep(1)
 
@@ -374,11 +382,20 @@ def test_can_use_prestart_idle_workers(ray_start_cluster):
     ray.init(address=cluster.address)
 
     wait_for_condition(
-        lambda: len(list_workers(filters=[("worker_type", "=", "WORKER")])) == NUM_CPUS
+        lambda: len(
+            list_workers(
+                filters=[("worker_type", "=", "WORKER")], raise_on_missing_output=False
+            )
+        )
+        == NUM_CPUS
     )
 
     # These workers don't have job_id or is_actor_worker.
-    workers = list_workers(filters=[("worker_type", "=", "WORKER")], detail=True)
+    workers = list_workers(
+        filters=[("worker_type", "=", "WORKER")],
+        detail=True,
+        raise_on_missing_output=False,
+    )
     worker_pids = {worker.pid for worker in workers}
     assert len(worker_pids) == NUM_CPUS
 

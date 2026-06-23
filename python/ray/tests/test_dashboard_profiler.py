@@ -13,6 +13,13 @@ from ray._private.test_utils import (
 )
 
 
+@pytest.fixture(autouse=True)
+def enable_profiling():
+    os.environ["RAY_DASHBOARD_ENABLE_PROFILING"] = "1"
+    yield
+    os.environ.pop("RAY_DASHBOARD_ENABLE_PROFILING", None)
+
+
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
@@ -26,6 +33,13 @@ from ray._private.test_utils import (
 @pytest.mark.parametrize("native", ["0", "1"])
 @pytest.mark.parametrize("node_info", ["node_id", "ip"])
 def test_profiler_endpoints(ray_start_with_dashboard, native, node_info):
+    if native == "1" and sys.platform == "linux":
+        pytest.skip(
+            "py-spy --native 'failed to get os threadid' "
+            "(https://github.com/ray-project/ray/issues/30566); "
+            "see also https://github.com/benfred/py-spy/issues/490; "
+            "disabled as part of Ubuntu 22.04 upgrade"
+        )
     # Sanity check py-spy are installed.
     subprocess.check_call(["py-spy", "--version"])
 

@@ -11,10 +11,10 @@ import pyarrow.compute as pc
 
 from ray.data._internal.arrow_utils import _combine_as_list_array, _counts_to_offsets
 from ray.data.datatype import DataType
-from ray.data.expressions import pyarrow_udf
+from ray.data.expressions import _create_pyarrow_compute_udf, pyarrow_udf
 
 if TYPE_CHECKING:
-    from ray.data.expressions import Expr, UDFExpr
+    from ray.data.expressions import Expr, PyArrowComputeUDFExpr, UDFExpr
 
 
 def _ensure_array(arr: pyarrow.Array) -> pyarrow.Array:
@@ -94,23 +94,20 @@ class _ListNamespace:
 
     _expr: Expr
 
-    def len(self) -> "UDFExpr":
+    def len(self) -> "PyArrowComputeUDFExpr":
         """Get the length of each list."""
+        return _create_pyarrow_compute_udf(pc.list_value_length, DataType.int32())(
+            self._expr
+        )
 
-        @pyarrow_udf(return_dtype=DataType.int32())
-        def _list_len(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.list_value_length(arr)
-
-        return _list_len(self._expr)
-
-    def __getitem__(self, key: Union[int, slice]) -> "UDFExpr":
+    def __getitem__(self, key: Union[int, slice]) -> "PyArrowComputeUDFExpr":
         """Get element or slice using bracket notation.
 
         Args:
             key: An integer for element access or slice for list slicing.
 
         Returns:
-            UDFExpr that extracts the element or slice.
+            Expression that extracts the element or slice.
 
         Example:
             >>> col("items").list[0]      # Get first item  # doctest: +SKIP
@@ -126,35 +123,32 @@ class _ListNamespace:
                 f"List indices must be integers or slices, not {type(key).__name__}"
             )
 
-    def get(self, index: int) -> "UDFExpr":
+    def get(self, index: int) -> "PyArrowComputeUDFExpr":
         """Get element at the specified index from each list.
 
         Args:
             index: The index of the element to retrieve. Negative indices are supported.
 
         Returns:
-            UDFExpr that extracts the element at the given index.
+            Expression that extracts the element at the given index.
         """
-        # Infer return type from the list's value type
-        return_dtype = DataType(object)  # fallback
+        return_dtype = DataType(object)
         if self._expr.data_type.is_arrow_type():
             arrow_type = self._expr.data_type.to_arrow_dtype()
-            if pyarrow.types.is_list(arrow_type) or pyarrow.types.is_large_list(
-                arrow_type
+            if (
+                pyarrow.types.is_list(arrow_type)
+                or pyarrow.types.is_large_list(arrow_type)
+                or pyarrow.types.is_fixed_size_list(arrow_type)
             ):
                 return_dtype = DataType.from_arrow(arrow_type.value_type)
-            elif pyarrow.types.is_fixed_size_list(arrow_type):
-                return_dtype = DataType.from_arrow(arrow_type.value_type)
 
-        @pyarrow_udf(return_dtype=return_dtype)
-        def _list_get(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.list_element(arr, index)
-
-        return _list_get(self._expr)
+        return _create_pyarrow_compute_udf(pc.list_element, return_dtype)(
+            self._expr, index
+        )
 
     def slice(
         self, start: int | None = None, stop: int | None = None, step: int | None = None
-    ) -> "UDFExpr":
+    ) -> "PyArrowComputeUDFExpr":
         """Slice each list.
 
         Args:
@@ -163,21 +157,14 @@ class _ListNamespace:
             step: Step size. Defaults to 1.
 
         Returns:
-            UDFExpr that extracts a slice from each list.
+            Expression that extracts a slice from each list.
         """
-        # Return type is the same as the input list type
-        return_dtype = self._expr.data_type
-
-        @pyarrow_udf(return_dtype=return_dtype)
-        def _list_slice(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.list_slice(
-                arr,
-                start=0 if start is None else start,
-                stop=stop,
-                step=1 if step is None else step,
-            )
-
-        return _list_slice(self._expr)
+        return _create_pyarrow_compute_udf(pc.list_slice, self._expr.data_type)(
+            self._expr,
+            start=0 if start is None else start,
+            stop=stop,
+            step=1 if step is None else step,
+        )
 
     def sort(
         self,

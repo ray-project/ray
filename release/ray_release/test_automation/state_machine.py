@@ -2,11 +2,10 @@ import abc
 from datetime import datetime, timedelta
 from typing import List
 
-import github
-from github import Github
 from pybuildkite.buildkite import Buildkite
 
 from ray_release.aws import get_secret_token
+from ray_release.github_client import GitHubClient, GitHubIssue
 from ray_release.logger import logger
 from ray_release.test import (
     Test,
@@ -63,7 +62,7 @@ class TestStateMachine(abc.ABC):
 
     @classmethod
     def get_github(cls):
-        return Github(get_secret_token(AWS_SECRET_GITHUB))
+        return GitHubClient(get_secret_token(AWS_SECRET_GITHUB))
 
     @classmethod
     def get_ray_repo(cls):
@@ -78,13 +77,13 @@ class TestStateMachine(abc.ABC):
             cls.ray_buildkite.set_access_token(buildkite_token)
 
     @classmethod
-    def get_release_blockers(cls) -> List[github.Issue.Issue]:
+    def get_release_blockers(cls) -> List[GitHubIssue]:
         repo = cls.get_ray_repo()
         blocker_label = repo.get_label(WEEKLY_RELEASE_BLOCKER_TAG)
         return list(repo.get_issues(state="open", labels=[blocker_label]))
 
     @classmethod
-    def get_issue_owner(cls, issue: github.Issue.Issue) -> str:
+    def get_issue_owner(cls, issue: GitHubIssue) -> str:
         labels = issue.get_labels()
         for label in labels:
             if label.name in TEAM:

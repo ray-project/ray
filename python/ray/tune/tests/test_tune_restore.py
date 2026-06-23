@@ -17,7 +17,7 @@ import pytest
 
 import ray
 from ray import tune
-from ray._private.test_utils import run_string_as_driver
+from ray._common.test_utils import run_string_as_driver
 from ray.exceptions import RayTaskError
 from ray.train._internal.session import _TrainingResult
 from ray.tune import Checkpoint, TuneError
@@ -56,8 +56,6 @@ def _run(local_dir, driver_semaphore, trainer_semaphore):
 
 
 class TuneInterruptionTest(unittest.TestCase):
-    # Todo(krfricke): Investigate and fix on CI
-    @unittest.skip("Spawn seems to have a malfunction on Python 3.8 CI")
     def testExperimentInterrupted(self):
         local_dir = tempfile.mkdtemp()
         # Unix platforms may default to "fork", which is problematic with
@@ -197,9 +195,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
         # We do this by failing after a delay of 0.3s > TUNE_GLOBAL_CHECKPOINT_S
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0.1"
 
-        # Change back to local_mode=True after this is resolved:
-        # https://github.com/ray-project/ray/issues/13932
-        ray.init(local_mode=False, num_cpus=2)
+        ray.init(num_cpus=2)
 
         from ray.tune import register_trainable
 

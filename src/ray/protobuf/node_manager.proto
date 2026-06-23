@@ -22,9 +22,9 @@ import "src/ray/protobuf/autoscaler.proto";
 import "src/ray/protobuf/public/runtime_environment.proto";
 
 message WorkerBacklogReport {
-  // LeaseSpec indicating the scheduling class.
-  // Cannot send scheduling class directly
-  // since it's local to each process.
+  // LeaseSpec with which the raylet will derive the scheduling class.
+  // Cannot send scheduling class directly since it's local
+  // to each worker process.
   LeaseSpec lease_spec = 1;
   // Size of the backlog for the above scheduling class.
   int64 backlog_size = 2;
@@ -69,6 +69,9 @@ message RequestWorkerLeaseReply {
     SCHEDULING_CANCELLED_INTENDED = 4;
     // Scheduling is cancelled because the task/actor is no longer schedulable.
     SCHEDULING_CANCELLED_UNSCHEDULABLE = 5;
+    // Scheduling is cancelled because worker startup repeatedly failed after max
+    // retries.
+    SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED = 6;
   }
 
   // Address of the leased worker. If this is empty, then the request should be
@@ -125,12 +128,16 @@ message CommitBundleResourcesRequest {
 
 message CommitBundleResourcesReply {}
 
-message CancelResourceReserveRequest {
-  // Bundle containing the requested resources.
-  Bundle bundle_spec = 1;
+message RemovePlacementGroupBundlesRequest {
+  // The placement group whose bundles are being removed. All bundles in
+  // bundle_specs must belong to this placement group.
+  bytes placement_group_id = 1;
+  // Bundles to remove on this node. GCS batches per (placement group, node)
+  // so a single RPC handles all of a PG's bundles that landed on the same node.
+  repeated Bundle bundle_specs = 2;
 }
 
-message CancelResourceReserveReply {}
+message RemovePlacementGroupBundlesReply {}
 
 message ResizeLocalResourceInstancesRequest {
   // Map of resource names to their desired total quantities
@@ -447,6 +454,12 @@ message CancelLocalTaskReply {
   bool attempt_succeeded = 2;
 }
 
+message FreeLocalObjectsRequest {
+  repeated bytes object_ids = 1;
+}
+
+message FreeLocalObjectsReply {}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Handle the case when GCS restarted.
@@ -471,9 +484,11 @@ service NodeManagerService {
   // Failure: Shouldn't fail because always sends to local raylet. Has a log on failure to
   // send.
   rpc PrestartWorkers(PrestartWorkersRequest) returns (PrestartWorkersReply);
-  // Report task backlog information from a worker to the raylet
-  // Failure: Doesn't need to be retried since it will keep getting periodically called,
-  // and is not critical.
+  // Report task backlog information from a worker to the raylet. This is used to tell the
+  // GCS + Autoscaler about resources needed by tasks who haven't had their dependencies
+  // resolved yet.
+  // Failure: Doesn't need to be retried since it will keep getting
+  // periodically called, and is not critical.
   rpc ReportWorkerBacklog(ReportWorkerBacklogRequest) returns (ReportWorkerBacklogReply);
   // Return a worker lease back to its raylet.
   // Failure: Retries, it's idempotent.
@@ -503,10 +518,13 @@ service NodeManagerService {
   // creation. Same as above for failure behavior.
   rpc CommitBundleResources(CommitBundleResourcesRequest)
       returns (CommitBundleResourcesReply);
-  // Return resource for the raylet.
+  // Remove placement-group bundles' resources from the raylet (called when a
+  // placement group is being destroyed). All bundles in the request belong to
+  // a single placement group; GCS batches per (placement group, node) so the
+  // raylet handles all of a PG's bundles on this node in one RPC.
   // Failure: Has retry behavior, could be improved to just use retriable grpc client.
-  rpc CancelResourceReserve(CancelResourceReserveRequest)
-      returns (CancelResourceReserveReply);
+  rpc RemovePlacementGroupBundles(RemovePlacementGroupBundlesRequest)
+      returns (RemovePlacementGroupBundlesReply);
   // Adjust the total number of local resource instances on the raylet to match the
   // specified values.
   // Success: Returns the updated total resources for the node. If downsizing would make
@@ -581,4 +599,7 @@ service NodeManagerService {
   // If force_kill is false, the worker remains alive for subsequent tasks.
   // Failure: Retries, it's idempotent.
   rpc CancelLocalTask(CancelLocalTaskRequest) returns (CancelLocalTaskReply);
+  // Request the raylet to free plasma objects corresponding to the object ID
+  // Failure: Retries, it's idempotent.
+  rpc FreeLocalObjects(FreeLocalObjectsRequest) returns (FreeLocalObjectsReply);
 }

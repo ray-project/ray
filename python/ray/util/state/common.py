@@ -232,16 +232,26 @@ class SummaryApiOptions:
     summary_by: Optional[str] = None
 
 
-def state_column(*, filterable: bool, detail: bool = False, format_fn=None, **kwargs):
+def state_column(
+    *,
+    filterable: bool,
+    detail: bool = False,
+    format_fn: Optional[Any] = None,
+    **kwargs: Any,
+):
     """A wrapper around dataclass.field to add additional metadata.
 
     The metadata is used to define detail / filterable option of
     each column.
 
     Args:
-        detail: If True, the column is used when detail == True
         filterable: If True, the column can be used for filtering.
-        kwargs: The same kwargs for the `dataclasses.field` function.
+        detail: If True, the column is used when detail == True
+        format_fn: An optional callable used to humanify the column value.
+        **kwargs: The same kwargs for the `dataclasses.field` function.
+
+    Returns:
+        A ``dataclasses.field`` configured with the state column metadata.
     """
     m = {"detail": detail, "filterable": filterable, "format_fn": format_fn}
     # Default for detail field is None since it could be missing.
@@ -371,6 +381,9 @@ def filter_fields(data: dict, state_dataclass: StateSchema, detail: bool) -> dic
         data: A single data entry to filter columns.
         state_dataclass: The schema to filter data.
         detail: Whether or not it should include columns for detail output.
+
+    Returns:
+        A new dictionary containing only the columns allowed by the schema.
     """
     filtered_data = {}
     columns = state_dataclass.columns() if detail else state_dataclass.base_columns()
@@ -520,6 +533,8 @@ class ActorState(StateSchema):
     call_site: Optional[str] = state_column(detail=True, filterable=False)
     #: The label selector for the actor.
     label_selector: Optional[dict] = state_column(detail=True, filterable=False)
+    #: The fallback options for the label selector.
+    fallback_strategy: Optional[dict] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -549,6 +564,20 @@ class PlacementGroupState(StateSchema):
     is_detached: Optional[bool] = state_column(filterable=True, detail=True)
     #: The scheduling stats of the placement group.
     stats: Optional[dict] = state_column(filterable=False, detail=True)
+    #: The node label key used for label-domain scheduling
+    #: (e.g. "ray.io/gpu-domain"). Empty string if the placement group
+    #: does not use label-domain scheduling.
+    #:
+    #: NOTE: This field is experimental and may change in the future.
+    label_domain_key: Optional[str] = state_column(filterable=False, detail=True)
+    #: The selected label domain values for label-domain-aware scheduling.
+    #: Maps the domain label key to the chosen value
+    #: (e.g. {"ray.io/gpu-domain": "rack-1"}).
+    #:
+    #: NOTE: This field is experimental and may change in the future.
+    label_domain_assignments: Optional[dict] = state_column(
+        filterable=False, detail=True
+    )
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -817,6 +846,7 @@ class TaskState(StateSchema):
     call_site: Optional[str] = state_column(detail=True, filterable=False)
     #: The label selector for the task.
     label_selector: Optional[dict] = state_column(detail=True, filterable=False)
+    fallback_strategy: Optional[dict] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -888,7 +918,7 @@ class RuntimeEnvState(StateSchema):
     #: The latency of creating the runtime environment.
     #: Available if the runtime env is successfully created.
     creation_time_ms: Optional[float] = state_column(
-        filterable=False, format_fn=Humanify.timestamp
+        filterable=False, format_fn=Humanify.duration
     )
     #: The node id of this runtime environment.
     node_id: str = state_column(filterable=True)
@@ -949,7 +979,7 @@ class ListApiResponse:
     #      v
     # - num_filtered
     #      |  With limiting,
-    #      |  set by min(`RAY_MAX_LIMIT_FROM_API_SERER`, <user-supplied limit>)
+    #      |  set by min(`RAY_MAX_LIMIT_FROM_API_SERVER`, <user-supplied limit>)
     #      v
     # - len(result)
 
@@ -1042,10 +1072,10 @@ class TaskSummaries:
         total_actor_scheduled = 0
 
         for task in tasks:
-            key = task["func_or_class_name"]
+            key = task.get("name") or task.get("func_or_class_name")
             if key not in summary:
                 summary[key] = TaskSummaryPerFuncOrClassName(
-                    func_or_class_name=task["func_or_class_name"],
+                    func_or_class_name=key,
                     type=task["type"],
                 )
             task_summary = summary[key]
@@ -1142,7 +1172,7 @@ class TaskSummaries:
 
             # Use name first which allows users to customize the name of
             # their remote function call using the name option.
-            func_name = task["name"] or task["func_or_class_name"]
+            func_name = task.get("name") or task.get("func_or_class_name")
             task_id = task["task_id"]
             type_enum = TaskType.DESCRIPTOR.values_by_name[task["type"]].number
 
@@ -1268,9 +1298,9 @@ class TaskSummaries:
             Args:
                 siblings: A list of NestedTaskSummary's to merge together
 
-            Returns
-                Index 0: A list of NestedTaskSummary's which have been merged
-                Index 1: The smallest timestamp amongst the siblings
+            Returns:
+                A tuple where index 0 is a list of merged NestedTaskSummary's and
+                index 1 is the smallest timestamp amongst the siblings.
             """
             if not len(siblings):
                 return siblings, None
@@ -1569,18 +1599,19 @@ def resource_to_schema(resource: StateResource) -> StateSchema:
 
 
 def protobuf_message_to_dict(
-    message,
+    message: Any,
     fields_to_decode: List[str],
     preserving_proto_field_name: bool = True,
 ) -> dict:
     """Convert a protobuf message to dict
 
     Args:
+        message: The protobuf message to convert.
         fields_to_decode: field names which will be decoded from binary to hex.
         preserving_proto_field_name: a pass-through option for protobuf message
             method. See google.protobuf MessageToDict
 
-    Return:
+    Returns:
         Dictionary of the converted rpc protobuf.
     """
     return dashboard_utils.message_to_dict(
@@ -1638,6 +1669,7 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
                 "placement_group_id",
                 "call_site",
                 "label_selector",
+                "fallback_strategy",
             ],
         ),
         (task_attempt, ["task_id", "attempt_number", "job_id"]),

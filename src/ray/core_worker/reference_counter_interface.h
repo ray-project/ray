@@ -40,8 +40,6 @@ enum class LineageReconstructionEligibility {
   INELIGIBLE_PUT,
   /// Task created with max_retries=0.
   INELIGIBLE_NO_RETRIES,
-  /// Local mode does not support object reconstruction.
-  INELIGIBLE_LOCAL_MODE,
   /// Lineage evicted due to memory pressure.
   INELIGIBLE_LINEAGE_EVICTED,
   /// Lineage pinning is disabled system-wide, reconstruction not supported.
@@ -64,8 +62,6 @@ inline std::optional<rpc::ErrorType> ToErrorType(
     return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_RETRIES_DISABLED;
   case LineageReconstructionEligibility::INELIGIBLE_LINEAGE_EVICTED:
     return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED;
-  case LineageReconstructionEligibility::INELIGIBLE_LOCAL_MODE:
-    return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE;
   case LineageReconstructionEligibility::INELIGIBLE_LINEAGE_DISABLED:
     return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED;
   case LineageReconstructionEligibility::INELIGIBLE_REF_NOT_FOUND:
@@ -268,8 +264,7 @@ class ReferenceCounterInterface {
   /// \param[in] owner_address The owner's address.
   virtual bool AddBorrowedObject(const ObjectID &object_id,
                                  const ObjectID &outer_id,
-                                 const rpc::Address &owner_address,
-                                 bool foreign_owner_already_monitoring = false) = 0;
+                                 const rpc::Address &owner_address) = 0;
 
   /// Get the owner address of the given object.
   ///
@@ -378,8 +373,8 @@ class ReferenceCounterInterface {
   /// Returns the total number of actors owned by this worker.
   virtual size_t NumActorsOwnedByUs() const = 0;
 
-  /// Reports observability metrics to underlying monitoring system
-  virtual void RecordMetrics() = 0;
+  /// Reports owner-side observability metrics to underlying monitoring system.
+  virtual void RecordOwnerMetrics() = 0;
 
   /// Returns a set of all ObjectIDs currently in scope (i.e., nonzero reference count).
   virtual std::unordered_set<ObjectID> GetAllInScopeObjectIDs() const = 0;

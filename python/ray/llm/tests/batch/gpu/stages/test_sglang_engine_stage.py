@@ -197,8 +197,8 @@ async def test_sglang_engine_udf_basic(mock_sglang_wrapper, model_llama_3_2_216M
     )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("max_pending_requests,batch_size", [(2, 10), (-1, 5)])
+@pytest.mark.asyncio
 async def test_sglang_wrapper(
     mock_sgl_engine, model_llama_3_2_216M, max_pending_requests, batch_size
 ):

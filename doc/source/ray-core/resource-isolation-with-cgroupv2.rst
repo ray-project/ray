@@ -8,7 +8,13 @@ This page describes how to use Ray's native cgroup v2 based resource isolation t
 
 .. note::
 
-   This feature is only available in Ray version 2.51.0 and above on Linux.
+   This feature is only available in Ray version 2.51.0 and above on Linux. The complete memory monitoring system that uses cgroup v2 to
+   improve system stability is available in Ray version 2.56.0 and above. See :ref:`Out-Of-Memory Prevention <ray-oom-prevention>` for
+   more details.
+
+.. note::
+
+   See :ref:`Debugging Out of Memory <troubleshooting-out-of-memory>` for more details on using resource isolation to debug out-of-memory issues.
 
 Background
 ==========
@@ -67,7 +73,7 @@ To enable privileged pods in Kubernetes, you need to `set the securityContext <h
 Running in Google Kubernetes Engine (GKE) with Writable Cgroups
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Running pods in a privileged security context may not be acceptable for your use case. To avoid this, GKE allows you to use writable cgroups instead. See the `GKE documentation on writable cgroups <https://cloud.google.com/kubernetes-engine/docs/how-to/writable-cgroups>`_.
+Running pods in a privileged security context may not be acceptable for your use case. To avoid this, GKE allows you to use writable cgroups instead. See the :ref:`Resource Isolation with Writable Cgroups on GKE <resource-isolation-with-writable-cgroups>` guide for step-by-step instructions and the `GKE documentation on writable cgroups <https://cloud.google.com/kubernetes-engine/docs/how-to/writable-cgroups>`_ for more details.
 
 Running in a Bare Container
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~

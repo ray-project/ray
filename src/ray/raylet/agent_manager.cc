@@ -23,6 +23,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
+#include "ray/util/process_utils.h"
 #include "ray/util/thread_utils.h"
 
 namespace ray {
@@ -61,16 +62,15 @@ void AgentManager::StartAgent(AddProcessToCgroupHook add_to_cgroup) {
   // NOTE: we pipe to stdin so that agent can read stdin to detect when
   // the parent dies. See
   // https://stackoverflow.com/questions/12193581/detect-death-of-parent-process
-  process_ =
-      Process(argv.data(),
-              nullptr,
-              ec,
-              false,
-              env,
-              /*pipe_to_stdin*/
-              RayConfig::instance().enable_pipe_based_agent_to_parent_health_check(),
-              std::move(add_to_cgroup));
-  if (!process_.IsValid() || ec) {
+  process_ = std::make_unique<Process>(
+      argv.data(),
+      ec,
+      /*decouple=*/false,
+      env,
+      /*pipe_to_stdin=*/
+      RayConfig::instance().enable_pipe_based_agent_to_parent_health_check(),
+      std::move(add_to_cgroup));
+  if (!process_->IsValid() || ec) {
     // The worker failed to start. This is a fatal error.
     RAY_LOG(FATAL) << "Failed to start agent " << options_.agent_name
                    << " with return value " << ec << ": " << ec.message();
@@ -79,7 +79,7 @@ void AgentManager::StartAgent(AddProcessToCgroupHook add_to_cgroup) {
   monitor_thread_ = std::make_unique<std::thread>([this]() mutable {
     SetThreadName("agent.monitor." + options_.agent_name);
     RAY_LOG(INFO) << "Monitor agent process with name " << options_.agent_name;
-    int exit_code = process_.Wait();
+    int exit_code = process_->Wait();
     RAY_LOG(INFO) << "Agent process with name " << options_.agent_name
                   << " exited, exit code " << exit_code << ".";
 
@@ -114,15 +114,15 @@ void AgentManager::StartAgent(AddProcessToCgroupHook add_to_cgroup) {
 AgentManager::~AgentManager() {
   if (monitor_thread_) {
     RAY_LOG(INFO) << "Killing agent " << options_.agent_name << ", pid "
-                  << process_.GetId() << ".";
+                  << process_->GetId() << ".";
     // Stop fate sharing because we gracefully kill the agent.
     fate_shares_ = false;
-    process_.Kill();
+    process_->Kill();
     monitor_thread_->join();
   }
 }
 
-pid_t AgentManager::GetPid() { return process_.GetId(); }
+pid_t AgentManager::GetPid() { return process_->GetId(); }
 
 }  // namespace raylet
 }  // namespace ray

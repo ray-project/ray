@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/gcs_client/gcs_client.h"
@@ -33,6 +34,7 @@
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/pubsub/fake_subscriber.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace core {
@@ -87,7 +89,7 @@ rpc::ReportGeneratorItemReturnsRequest GetIntermediateTaskReturn(
   request.mutable_worker_addr()->CopyFrom(addr);
   request.set_item_index(idx);
   request.set_generator_id(generator_id.Binary());
-  rpc::ReturnObject *returned_object = request.mutable_returned_object();
+  rpc::ReturnObject *returned_object = request.add_returned_objects();
   returned_object->set_object_id(dynamic_return_id.Binary());
   returned_object->set_data(data->Data(), data->Size());
   returned_object->set_in_plasma(set_in_plasma);
@@ -153,11 +155,14 @@ class TaskManagerTest : public ::testing::Test {
             publisher_.get(),
             subscriber_.get(),
             /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+            /*free_object_on_nodes_async=*/
+            [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
             *std::make_shared<ray::observability::FakeGauge>(),
             *std::make_shared<ray::observability::FakeGauge>(),
             lineage_pinning_enabled)),
         io_context_("TaskManagerTest"),
-        store_(std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService())),
+        store_(
+            std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_)),
         manager_(
             *store_,
             *reference_counter_,
@@ -187,7 +192,8 @@ class TaskManagerTest : public ::testing::Test {
             fake_total_lineage_bytes_gauge_,
             /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
             /*set_direct_transport_metadata=*/
-            [](const ObjectID &, const std::string &) {}) {}
+            [](const ObjectID &, const std::string &) {},
+            /*clock=*/clock_) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
 
@@ -227,6 +233,7 @@ class TaskManagerTest : public ::testing::Test {
   std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   InstrumentedIOContextWithThread io_context_;
+  Clock clock_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   bool node_died_ = false;
   TaskManager manager_;
@@ -603,6 +610,79 @@ TEST_F(TaskManagerTest, TestTaskOomAndNonOomKillReturnsLastError) {
   ASSERT_EQ(stored_error, rpc::ErrorType::WORKER_DIED);
 }
 
+TEST(GetTaskRetryDelayMsTest, TestRetryDelayByErrorType) {
+  RayConfig::instance().initialize(
+      R"({"task_retry_delay_ms": 0,
+          "task_oom_retry_delay_base_ms": 1000,
+          "task_actor_unavailable_retry_delay_base_ms": 100,
+          "task_actor_unavailable_retry_max_delay_ms": 5000})");
+
+  // ACTOR_UNAVAILABLE: exponential backoff with base 100ms, cap 5000ms.
+  ASSERT_EQ(GetTaskRetryDelayMs(0, rpc::ErrorType::ACTOR_UNAVAILABLE), 100);
+  ASSERT_EQ(GetTaskRetryDelayMs(1, rpc::ErrorType::ACTOR_UNAVAILABLE), 200);
+  ASSERT_EQ(GetTaskRetryDelayMs(2, rpc::ErrorType::ACTOR_UNAVAILABLE), 400);
+  ASSERT_EQ(GetTaskRetryDelayMs(3, rpc::ErrorType::ACTOR_UNAVAILABLE), 800);
+  ASSERT_EQ(GetTaskRetryDelayMs(4, rpc::ErrorType::ACTOR_UNAVAILABLE), 1600);
+  ASSERT_EQ(GetTaskRetryDelayMs(5, rpc::ErrorType::ACTOR_UNAVAILABLE), 3200);
+  ASSERT_EQ(GetTaskRetryDelayMs(6, rpc::ErrorType::ACTOR_UNAVAILABLE), 5000);
+  ASSERT_EQ(GetTaskRetryDelayMs(7, rpc::ErrorType::ACTOR_UNAVAILABLE), 5000);
+  ASSERT_EQ(GetTaskRetryDelayMs(100, rpc::ErrorType::ACTOR_UNAVAILABLE), 5000);
+
+  // OOM: exponential backoff with base 1000ms, default cap (60s).
+  ASSERT_EQ(GetTaskRetryDelayMs(0, rpc::ErrorType::OUT_OF_MEMORY), 1000);
+  ASSERT_EQ(GetTaskRetryDelayMs(1, rpc::ErrorType::OUT_OF_MEMORY), 2000);
+  ASSERT_EQ(GetTaskRetryDelayMs(2, rpc::ErrorType::OUT_OF_MEMORY), 4000);
+
+  // Other errors: flat delay.
+  ASSERT_EQ(GetTaskRetryDelayMs(0, rpc::ErrorType::WORKER_DIED), 0);
+  ASSERT_EQ(GetTaskRetryDelayMs(5, rpc::ErrorType::WORKER_DIED), 0);
+  ASSERT_EQ(GetTaskRetryDelayMs(0, rpc::ErrorType::NODE_DIED), 0);
+}
+
+TEST_F(TaskManagerTest, TestActorUnavailableRetryWithBackoff) {
+  RayConfig::instance().initialize(
+      R"({"task_actor_unavailable_retry_delay_base_ms": 100,
+          "task_actor_unavailable_retry_max_delay_ms": 5000})");
+  int num_retries = -1;  // Infinite retries.
+
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  spec.GetMutableMessage().set_max_retries(num_retries);
+  manager_.AddPendingTask(caller_address, spec, "", num_retries);
+
+  ASSERT_EQ(num_retries_, 0);
+
+  // ACTOR_UNAVAILABLE should use exponential backoff with base 100ms.
+  rpc::RayErrorInfo error_info;
+  error_info.set_error_type(rpc::ErrorType::ACTOR_UNAVAILABLE);
+  error_info.set_error_message("The actor is temporarily unavailable");
+  manager_.FailOrRetryPendingTask(spec.TaskId(),
+                                  error_info.error_type(),
+                                  /*status=*/nullptr,
+                                  &error_info,
+                                  /*mark_task_object_failed=*/false,
+                                  /*fail_immediately=*/false);
+  ASSERT_EQ(num_retries_, 1);
+  ASSERT_EQ(last_delay_ms_,
+            RayConfig::instance().task_actor_unavailable_retry_delay_base_ms());
+
+  // A WORKER_DIED error on the same task should use the default (non-backoff) delay.
+  rpc::RayErrorInfo worker_died_error;
+  worker_died_error.set_error_type(rpc::ErrorType::WORKER_DIED);
+  worker_died_error.set_error_message("Worker died");
+  manager_.FailOrRetryPendingTask(spec.TaskId(),
+                                  worker_died_error.error_type(),
+                                  /*status=*/nullptr,
+                                  &worker_died_error,
+                                  /*mark_task_object_failed=*/false,
+                                  /*fail_immediately=*/false);
+  ASSERT_EQ(num_retries_, 2);
+  ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_retry_delay_ms());
+
+  // Cleanup.
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
+}
+
 TEST_F(TaskManagerTest, TestTaskOomInfiniteRetry) {
   RayConfig::instance().initialize(R"({"task_oom_retries": -1})");
 
@@ -618,6 +698,36 @@ TEST_F(TaskManagerTest, TestTaskOomInfiniteRetry) {
 
   manager_.MarkTaskCanceled(spec.TaskId());
   manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::TASK_CANCELLED);
+}
+
+TEST_F(TaskManagerTest, TestTaskOomKillWithFiniteOomRetryDecrementsCounter) {
+  const int kOomRetries = 3;
+  RayConfig::instance().initialize(
+      absl::StrFormat(R"({"task_oom_retries": %d})", kOomRetries));
+
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/10);
+  auto return_id = spec.ReturnId(0);
+
+  for (int i = 0; i < kOomRetries; i++) {
+    ASSERT_EQ(num_retries_, i);
+    manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::OUT_OF_MEMORY);
+    ASSERT_EQ(num_retries_, i + 1);
+    ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_oom_retry_delay_base_ms());
+  }
+
+  ASSERT_EQ(num_retries_, kOomRetries);
+  manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::OUT_OF_MEMORY);
+  ASSERT_EQ(num_retries_, kOomRetries);
+
+  std::vector<std::shared_ptr<RayObject>> results;
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
+  ASSERT_EQ(results.size(), 1);
+  rpc::ErrorType stored_error;
+  ASSERT_TRUE(results[0]->IsException(&stored_error));
+  ASSERT_EQ(stored_error, rpc::ErrorType::OUT_OF_MEMORY);
 }
 
 TEST_F(TaskManagerTest, TestTaskNotRetriableOomFailsImmediatelyEvenWithOomRetryCounter) {
@@ -793,8 +903,14 @@ TEST_F(TaskManagerLineageTest, TestActorLineagePinned) {
       0,
       TaskID::Nil(),
       "");
-  builder.SetActorTaskSpec(
-      actor_id, actor_creation_dummy_object_id, num_retries, false, "", 0, std::nullopt);
+  builder.SetActorTaskSpec(actor_id,
+                           actor_creation_dummy_object_id,
+                           num_retries,
+                           false,
+                           "",
+                           0,
+                           std::nullopt,
+                           /*is_detached_actor=*/false);
   TaskSpecification spec = std::move(builder).ConsumeAndBuild();
 
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
@@ -1381,10 +1497,13 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      /*free_object_on_nodes_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
       lineage_pinning_enabled_);
-  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
+  auto local_store =
+      std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_);
 
   TaskManager failing_mgr(
       *local_store,
@@ -1412,7 +1531,8 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
-      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
+      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
+      /*clock=*/clock_);
 
   rpc::Address caller_address;
   auto spec = CreateTaskHelper(1, {});
@@ -1444,10 +1564,13 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      /*free_object_on_nodes_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
       lineage_pinning_enabled_);
-  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
+  auto local_store =
+      std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_);
   TaskManager retry_mgr(
       *local_store,
       *local_ref_counter,
@@ -1478,7 +1601,8 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
-      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
+      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
+      /*clock=*/clock_);
 
   rpc::Address caller_address;
   auto spec = CreateTaskHelper(1, {});
@@ -1508,10 +1632,13 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      /*free_object_on_nodes_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
       lineage_pinning_enabled_);
-  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
+  auto local_store =
+      std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_);
   TaskManager dyn_mgr(
       *local_store,
       *local_ref_counter,
@@ -1542,7 +1669,8 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
-      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
+      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
+      /*clock=*/clock_);
 
   auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
   dyn_mgr.AddPendingTask(addr_, spec, "", /*num_retries=*/0);
@@ -3005,10 +3133,13 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      /*free_object_on_nodes_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
       false);
-  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
+  auto local_store =
+      std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_);
 
   TaskManager test_manager(
       *local_store,
@@ -3033,7 +3164,8 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
-      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
+      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
+      /*clock=*/clock_);
 
   // Create a task with retries enabled
   rpc::Address caller_address;
@@ -3088,10 +3220,13 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      /*free_object_on_nodes_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
       false);
-  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
+  auto local_store =
+      std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_);
 
   TaskManager test_manager(
       *local_store,
@@ -3116,7 +3251,8 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
-      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
+      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
+      /*clock=*/clock_);
 
   // Create a task that will be retried
   rpc::Address caller_address;
@@ -3158,8 +3294,3 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
 
 }  // namespace core
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

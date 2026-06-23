@@ -68,7 +68,7 @@ class TestDeploy:
                 import_path="my_module:my_app",
                 args={},
                 runtime_env={},
-            ).dict(exclude_unset=True)
+            ).model_dump(exclude_unset=True)
         ]
 
     def test_deploy_with_name(self, fake_serve_client):
@@ -82,7 +82,7 @@ class TestDeploy:
                 name="test-name",
                 args={},
                 runtime_env={},
-            ).dict(exclude_unset=True)
+            ).model_dump(exclude_unset=True)
         ]
 
     def test_deploy_with_args(self, fake_serve_client):
@@ -95,7 +95,7 @@ class TestDeploy:
                 import_path="my_module:my_app",
                 args={"arg1": "val1", "arg2": "val2"},
                 runtime_env={},
-            ).dict(exclude_unset=True)
+            ).model_dump(exclude_unset=True)
         ]
 
     @pytest.mark.skipif(sys.platform == "win32", reason="Tempfile not working.")
@@ -130,7 +130,7 @@ class TestDeploy:
                 import_path="my_module:my_app",
                 args={},
                 runtime_env=runtime_env,
-            ).dict(exclude_unset=True)
+            ).model_dump(exclude_unset=True)
         ]
 
 

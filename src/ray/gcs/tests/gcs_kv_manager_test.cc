@@ -25,6 +25,7 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/gcs/store_client_kv.h"
+#include "ray/util/clock.h"
 
 class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
  public:
@@ -40,7 +41,7 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
                                          ray::TEST_REDIS_SERVER_PORTS.front()};
     if (GetParam() == "redis") {
       kv_instance = std::make_unique<ray::gcs::StoreClientInternalKV>(
-          std::make_unique<ray::gcs::RedisStoreClient>(io_service, options));
+          std::make_unique<ray::gcs::RedisStoreClient>(io_service, options, clock_));
     } else if (GetParam() == "memory") {
       kv_instance = std::make_unique<ray::gcs::StoreClientInternalKV>(
           std::make_unique<ray::gcs::InMemoryStoreClient>());
@@ -55,6 +56,7 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
 
   std::unique_ptr<std::thread> thread_io_service;
   instrumented_io_context io_service;
+  ray::Clock clock_;
   std::unique_ptr<ray::gcs::InternalKVInterface> kv_instance;
 
   /// Synchronous version of Get
@@ -155,11 +157,3 @@ TEST_P(GcsKVManagerTest, TestInternalKV) {
 INSTANTIATE_TEST_SUITE_P(GcsKVManagerTestFixture,
                          GcsKVManagerTest,
                          ::testing::Values("redis", "memory"));
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 3);
-  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
-  return RUN_ALL_TESTS();
-}

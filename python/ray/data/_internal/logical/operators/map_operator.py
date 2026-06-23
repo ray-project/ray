@@ -1,18 +1,38 @@
 import functools
 import inspect
 import logging
-from typing import Any, Callable, Dict, Iterable, Optional
+from dataclasses import dataclass, field
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Literal,
+    Optional,
+    Union,
+)
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
+    LogicalOperatorPreservesSchema,
     LogicalOperatorSupportsPredicatePassThrough,
     PredicatePassThroughBehavior,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
-from ray.data.expressions import Expr, StarExpr
+from ray.data.expressions import (
+    Expr,
+    StarExpr,
+    expand_star_exprs,
+    exprlist_to_fields,
+)
 from ray.data.preprocessor import Preprocessor
+
+if TYPE_CHECKING:
+    from ray.data.block import Schema
 
 __all__ = [
     "AbstractMap",
@@ -23,12 +43,16 @@ __all__ = [
     "MapRows",
     "Project",
     "StreamingRepartition",
+    "CSE_TEMP_COLUMN_PREFIX",
 ]
 
 
 logger = logging.getLogger(__name__)
 
+CSE_TEMP_COLUMN_PREFIX = "__ray_data_cse_"
 
+
+@dataclass(frozen=True, repr=False, eq=False, init=False)
 class AbstractMap(AbstractOneToOne):
     """Abstract class for logical operators that should be converted to physical
     MapOperator.
@@ -36,9 +60,8 @@ class AbstractMap(AbstractOneToOne):
 
     def __init__(
         self,
-        name: str,
-        input_op: Optional[LogicalOperator] = None,
-        num_outputs: Optional[int] = None,
+        name: Optional[str] = None,
+        input_dependencies: Optional[List[LogicalOperator]] = None,
         *,
         can_modify_num_rows: bool,
         min_rows_per_bundled_input: Optional[int] = None,
@@ -52,9 +75,9 @@ class AbstractMap(AbstractOneToOne):
         Args:
             name: Name for this operator. This is the name that will appear when
                 inspecting the logical plan of a Dataset.
-            input_op: The operator preceding this operator in the plan DAG. The
-                outputs of ``input_op`` will be the inputs to this operator.
-            num_outputs: Number of outputs for this operator.
+            input_dependencies: The operators preceding this operator in the plan
+                DAG. The outputs of these operators will be the inputs to this
+                operator.
             can_modify_num_rows: Whether the operator can change the row count. False if
                 # of input rows = # of output rows. True otherwise.
             min_rows_per_bundled_input: Minimum number of rows a single bundle of
@@ -71,26 +94,53 @@ class AbstractMap(AbstractOneToOne):
                 to use Ray tasks, or ``ActorPoolStrategy`` to use an
                 autoscaling actor pool.
         """
-        super().__init__(name, input_op, can_modify_num_rows, num_outputs)
-        self.min_rows_per_bundled_input = min_rows_per_bundled_input
-        self.ray_remote_args = ray_remote_args or {}
-        self.ray_remote_args_fn = ray_remote_args_fn
-        self.compute = compute or TaskPoolStrategy()
-        self.per_block_limit = None
+        super().__init__(
+            input_dependencies=input_dependencies,
+            can_modify_num_rows=can_modify_num_rows,
+            name=name,
+        )
+        object.__setattr__(
+            self, "min_rows_per_bundled_input", min_rows_per_bundled_input
+        )
+        object.__setattr__(self, "ray_remote_args", ray_remote_args or {})
+        object.__setattr__(self, "ray_remote_args_fn", ray_remote_args_fn)
+        object.__setattr__(self, "compute", compute or TaskPoolStrategy())
+        object.__setattr__(self, "per_block_limit", None)
 
     def set_per_block_limit(self, per_block_limit: int):
-        self.per_block_limit = per_block_limit
+        object.__setattr__(self, "per_block_limit", per_block_limit)
+
+    def _get_args(self) -> Dict[str, Any]:
+        args = super()._get_args()
+        for key in [
+            "can_modify_num_rows",
+            "min_rows_per_bundled_input",
+            "ray_remote_args",
+            "ray_remote_args_fn",
+            "compute",
+            "per_block_limit",
+        ]:
+            args[f"_{key}"] = getattr(self, key)
+        return args
 
 
+@dataclass(frozen=True, repr=False, eq=False, init=False)
 class AbstractUDFMap(AbstractMap):
     """Abstract class for logical operators performing a UDF that should be converted
     to physical MapOperator.
     """
 
+    fn: UserDefinedFunction
+    fn_args: Optional[Iterable[Any]] = None
+    fn_kwargs: Optional[Dict[str, Any]] = None
+    fn_constructor_args: Optional[Iterable[Any]] = None
+    fn_constructor_kwargs: Optional[Dict[str, Any]] = None
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
+
     def __init__(
         self,
         name: str,
-        input_op: LogicalOperator,
+        input_dependencies: List[LogicalOperator],
         fn: UserDefinedFunction,
         *,
         can_modify_num_rows: bool,
@@ -108,8 +158,8 @@ class AbstractUDFMap(AbstractMap):
         Args:
             name: Name for this operator. This is the name that will appear when
                 inspecting the logical plan of a Dataset.
-            input_op: The operator preceding this operator in the plan DAG. The outputs
-                of `input_op` will be the inputs to this operator.
+            input_dependencies: The operators preceding this operator in the plan DAG.
+                The outputs of these operators will be the inputs to this operator.
             fn: User-defined function to be called.
             can_modify_num_rows: Whether the UDF can change the row count. False if
                 # of input rows = # of output rows. True otherwise.
@@ -134,18 +184,18 @@ class AbstractUDFMap(AbstractMap):
         name = self._get_operator_name(name, fn)
         super().__init__(
             name,
-            input_op,
+            input_dependencies,
             can_modify_num_rows=can_modify_num_rows,
             min_rows_per_bundled_input=min_rows_per_bundled_input,
             ray_remote_args=ray_remote_args,
             compute=compute,
         )
-        self.fn = fn
-        self.fn_args = fn_args
-        self.fn_kwargs = fn_kwargs
-        self.fn_constructor_args = fn_constructor_args
-        self.fn_constructor_kwargs = fn_constructor_kwargs
-        self.ray_remote_args_fn = ray_remote_args_fn
+        object.__setattr__(self, "fn", fn)
+        object.__setattr__(self, "fn_args", fn_args)
+        object.__setattr__(self, "fn_kwargs", fn_kwargs)
+        object.__setattr__(self, "fn_constructor_args", fn_constructor_args)
+        object.__setattr__(self, "fn_constructor_kwargs", fn_constructor_kwargs)
+        object.__setattr__(self, "ray_remote_args_fn", ray_remote_args_fn)
 
     def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
         """Gets the Operator name including the map `fn` UDF name."""
@@ -177,112 +227,93 @@ class AbstractUDFMap(AbstractMap):
             return "<unknown>"
 
 
+@dataclass(frozen=True, repr=False, eq=False)
 class MapBatches(AbstractUDFMap):
     """Logical operator for map_batches."""
 
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        fn: UserDefinedFunction,
-        can_modify_num_rows: bool = False,
-        batch_size: Optional[int] = None,
-        batch_format: Optional[str] = "default",
-        zero_copy_batch: bool = True,
-        fn_args: Optional[Iterable[Any]] = None,
-        fn_kwargs: Optional[Dict[str, Any]] = None,
-        fn_constructor_args: Optional[Iterable[Any]] = None,
-        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
-        min_rows_per_bundled_input: Optional[int] = None,
-        compute: Optional[ComputeStrategy] = None,
-        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-    ):
-        super().__init__(
-            "MapBatches",
-            input_op,
-            fn,
-            can_modify_num_rows=can_modify_num_rows,
-            fn_args=fn_args,
-            fn_kwargs=fn_kwargs,
-            fn_constructor_args=fn_constructor_args,
-            fn_constructor_kwargs=fn_constructor_kwargs,
-            min_rows_per_bundled_input=min_rows_per_bundled_input,
-            compute=compute,
-            ray_remote_args_fn=ray_remote_args_fn,
-            ray_remote_args=ray_remote_args,
+    fn: UserDefinedFunction
+    input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
+    can_modify_num_rows: bool = False
+    batch_size: Union[Optional[int], Literal["auto"]] = None
+    batch_format: Optional[str] = "default"
+    zero_copy_batch: bool = True
+    fn_args: Optional[Iterable[Any]] = None
+    fn_kwargs: Optional[Dict[str, Any]] = None
+    fn_constructor_args: Optional[Iterable[Any]] = None
+    fn_constructor_kwargs: Optional[Dict[str, Any]] = None
+    min_rows_per_bundled_input: Optional[int] = None
+    compute: Optional[ComputeStrategy] = None
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
+    per_block_limit: Optional[int] = None
+
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        if self.compute is None:
+            object.__setattr__(self, "compute", TaskPoolStrategy())
+        object.__setattr__(
+            self,
+            "_name",
+            self._get_operator_name(self.__class__.__name__, self.fn),
         )
-        self.batch_size = batch_size
-        self.batch_format = batch_format
-        self.zero_copy_batch = zero_copy_batch
 
 
+@dataclass(frozen=True, repr=False, eq=False)
 class MapRows(AbstractUDFMap):
     """Logical operator for map."""
 
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        fn: UserDefinedFunction,
-        fn_args: Optional[Iterable[Any]] = None,
-        fn_kwargs: Optional[Dict[str, Any]] = None,
-        fn_constructor_args: Optional[Iterable[Any]] = None,
-        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
-        compute: Optional[ComputeStrategy] = None,
-        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-    ):
-        super().__init__(
-            "Map",
-            input_op,
-            fn,
-            can_modify_num_rows=False,
-            fn_args=fn_args,
-            fn_kwargs=fn_kwargs,
-            fn_constructor_args=fn_constructor_args,
-            fn_constructor_kwargs=fn_constructor_kwargs,
-            compute=compute,
-            ray_remote_args_fn=ray_remote_args_fn,
-            ray_remote_args=ray_remote_args,
-        )
+    fn: UserDefinedFunction
+    input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
+    fn_args: Optional[Iterable[Any]] = None
+    fn_kwargs: Optional[Dict[str, Any]] = None
+    fn_constructor_args: Optional[Iterable[Any]] = None
+    fn_constructor_kwargs: Optional[Dict[str, Any]] = None
+    compute: Optional[ComputeStrategy] = None
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
+    can_modify_num_rows: bool = field(init=False, default=False)
+    min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
+    per_block_limit: Optional[int] = None
+
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        if self.compute is None:
+            object.__setattr__(self, "compute", TaskPoolStrategy())
+        object.__setattr__(self, "_name", self._get_operator_name("Map", self.fn))
 
 
-class Filter(AbstractUDFMap):
+@dataclass(frozen=True, repr=False, eq=False)
+class Filter(AbstractUDFMap, LogicalOperatorPreservesSchema):
     """Logical operator for filter."""
 
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        predicate_expr: Optional[Expr] = None,
-        fn: Optional[UserDefinedFunction] = None,
-        fn_args: Optional[Iterable[Any]] = None,
-        fn_kwargs: Optional[Dict[str, Any]] = None,
-        fn_constructor_args: Optional[Iterable[Any]] = None,
-        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
-        compute: Optional[ComputeStrategy] = None,
-        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-    ):
-        # Ensure exactly one of fn, or predicate_expr is provided
-        provided_params = sum([fn is not None, predicate_expr is not None])
+    predicate_expr: Optional[Expr] = None
+    fn: Optional[UserDefinedFunction] = None
+    input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
+    fn_args: Optional[Iterable[Any]] = None
+    fn_kwargs: Optional[Dict[str, Any]] = None
+    fn_constructor_args: Optional[Iterable[Any]] = None
+    fn_constructor_kwargs: Optional[Dict[str, Any]] = None
+    compute: Optional[ComputeStrategy] = None
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
+    can_modify_num_rows: bool = field(init=False, default=True)
+    min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
+    per_block_limit: Optional[int] = None
+
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        provided_params = sum([self.fn is not None, self.predicate_expr is not None])
         if provided_params != 1:
             raise ValueError(
-                f"Exactly one of 'fn', or 'predicate_expr' must be provided (received fn={fn}, predicate_expr={predicate_expr})"
+                "Exactly one of 'fn', or 'predicate_expr' must be provided "
+                f"(received fn={self.fn}, predicate_expr={self.predicate_expr})"
             )
-
-        self.predicate_expr = predicate_expr
-
-        super().__init__(
-            "Filter",
-            input_op,
-            can_modify_num_rows=True,
-            fn=fn,
-            fn_args=fn_args,
-            fn_kwargs=fn_kwargs,
-            fn_constructor_args=fn_constructor_args,
-            fn_constructor_kwargs=fn_constructor_kwargs,
-            compute=compute,
-            ray_remote_args_fn=ray_remote_args_fn,
-            ray_remote_args=ray_remote_args,
+        if self.compute is None:
+            object.__setattr__(self, "compute", TaskPoolStrategy())
+        object.__setattr__(
+            self,
+            "_name",
+            self._get_operator_name(self.__class__.__name__, self.fn),
         )
 
     def is_expression_based(self) -> bool:
@@ -306,32 +337,48 @@ class Filter(AbstractUDFMap):
         return super()._get_operator_name(op_name, fn)
 
 
+@dataclass(frozen=True, repr=False, eq=False)
 class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for all Projection Operations."""
 
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        exprs: list["Expr"],
-        compute: Optional[ComputeStrategy] = None,
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-    ):
-        # Auto-select compute strategy based on whether expressions contain callable class UDFs
-        if compute is None:
-            compute = self._detect_and_get_compute_strategy(exprs)
+    exprs: list["Expr"]
+    _common_sub_exprs: list["Expr"] = field(
+        default_factory=list,
+        repr=False,
+        kw_only=True,
+    )
+    input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
+    compute: Optional[ComputeStrategy] = None
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
+    can_modify_num_rows: bool = field(init=False, default=False)
+    min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
+    batch_size: Optional[int] = field(init=False, default=None)
+    batch_format: str = field(init=False, default="pyarrow")
+    zero_copy_batch: bool = field(init=False, default=True)
+    per_block_limit: Optional[int] = None
 
-        super().__init__(
-            "Project",
-            input_op=input_op,
-            can_modify_num_rows=False,
-            ray_remote_args=ray_remote_args,
-            compute=compute,
-        )
-        self.batch_size = None
-        self.exprs = exprs
-        self.batch_format = "pyarrow"
-        self.zero_copy_batch = True
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        # Eagerly expand ``StarExpr`` when the input schema is known. By the time
+        # optimizer rules see this op, the projection list contains only
+        # explicit ``col()`` and computed expressions, no ``StarExpr``.
+        # When the input schema is opaque (e.g., upstream UDF map), the
+        # ``StarExpr`` is preserved and runtime ``eval_projection``
+        # expands it on a per-block basis.
+        import pyarrow as pa
 
+        input_schema = self.input_dependencies[0].infer_schema()
+        if isinstance(input_schema, pa.Schema):
+            object.__setattr__(
+                self, "exprs", expand_star_exprs(self.exprs, input_schema)
+            )
+        if self.compute is None:
+            object.__setattr__(
+                self,
+                "compute",
+                self._detect_and_get_compute_strategy(self.get_all_exprs()),
+            )
         for expr in self.exprs:
             if expr.name is None and not isinstance(expr, StarExpr):
                 raise TypeError(
@@ -375,6 +422,13 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
 
         return None
 
+    def get_common_sub_exprs(self) -> list["Expr"]:
+        return self._common_sub_exprs
+
+    def get_all_exprs(self) -> list["Expr"]:
+        """Both projection expressions and common expressions"""
+        return [*self._common_sub_exprs, *self.exprs]
+
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         return PredicatePassThroughBehavior.PASSTHROUGH_WITH_SUBSTITUTION
 
@@ -392,52 +446,103 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
         rename_map = _extract_input_columns_renaming_mapping(self.exprs)
         return rename_map if rename_map else None
 
+    def infer_schema(self) -> Optional["Schema"]:
+        import pyarrow as pa
 
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        input_schema = self.input_dependencies[0].infer_schema()
+        # Only Arrow schemas are supported for static expression resolution.
+        # (``PandasBlockSchema`` chains fall back to ``limit(1)`` execution.)
+        if not isinstance(input_schema, pa.Schema):
+            return None
+        working_schema = input_schema
+        for common_expr in self.get_common_sub_exprs():
+            field = common_expr.to_field(working_schema)
+            if field is None:
+                return None
+            working_schema = working_schema.append(field)
+        fields = exprlist_to_fields(self.exprs, working_schema)
+        if fields is None:
+            return None
+        if self.get_common_sub_exprs():
+            temp_names = {expr.name for expr in self.get_common_sub_exprs()}
+            fields = [field for field in fields if field.name not in temp_names]
+        return pa.schema(fields)
+
+
+@dataclass(frozen=True, repr=False, eq=False)
 class FlatMap(AbstractUDFMap):
     """Logical operator for flat_map."""
 
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        fn: UserDefinedFunction,
-        fn_args: Optional[Iterable[Any]] = None,
-        fn_kwargs: Optional[Dict[str, Any]] = None,
-        fn_constructor_args: Optional[Iterable[Any]] = None,
-        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
-        compute: Optional[ComputeStrategy] = None,
-        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-    ):
-        super().__init__(
-            "FlatMap",
-            input_op,
-            fn,
-            can_modify_num_rows=True,
-            fn_args=fn_args,
-            fn_kwargs=fn_kwargs,
-            fn_constructor_args=fn_constructor_args,
-            fn_constructor_kwargs=fn_constructor_kwargs,
-            compute=compute,
-            ray_remote_args_fn=ray_remote_args_fn,
-            ray_remote_args=ray_remote_args,
+    fn: UserDefinedFunction
+    input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
+    fn_args: Optional[Iterable[Any]] = None
+    fn_kwargs: Optional[Dict[str, Any]] = None
+    fn_constructor_args: Optional[Iterable[Any]] = None
+    fn_constructor_kwargs: Optional[Dict[str, Any]] = None
+    compute: Optional[ComputeStrategy] = None
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
+    can_modify_num_rows: bool = field(init=False, default=True)
+    min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
+    per_block_limit: Optional[int] = None
+
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        if self.compute is None:
+            object.__setattr__(self, "compute", TaskPoolStrategy())
+        object.__setattr__(
+            self,
+            "_name",
+            self._get_operator_name(self.__class__.__name__, self.fn),
         )
 
 
-class StreamingRepartition(AbstractMap):
+@dataclass(frozen=True, repr=False, eq=False)
+class StreamingRepartition(
+    AbstractMap,
+    LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorPreservesSchema,
+):
     """Logical operator for streaming repartition operation.
+
     Args:
+        input_dependencies: The operators preceding this operator in the plan DAG.
         target_num_rows_per_block: The target number of rows per block granularity for
-           streaming repartition.
+            streaming repartition.
+        strict: If True, guarantees that all output blocks, except for the last one,
+            will have exactly target_num_rows_per_block rows. If False, uses best-effort
+            bundling and may produce at most one block smaller than target_num_rows_per_block
+            per input block without forcing exact sizes through block splitting.
+            Defaults to False.
     """
 
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        target_num_rows_per_block: int,
-    ):
-        super().__init__(
-            f"StreamingRepartition[num_rows_per_block={target_num_rows_per_block}]",
-            input_op,
-            can_modify_num_rows=False,
+    target_num_rows_per_block: int
+    input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
+    strict: bool = False
+    can_modify_num_rows: bool = field(init=False, default=False)
+    min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
+    compute: Optional[ComputeStrategy] = None
+    per_block_limit: Optional[int] = None
+
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        if self.target_num_rows_per_block <= 0:
+            raise ValueError(
+                "target_num_rows_per_block must be positive for streaming repartition, "
+                f"got {self.target_num_rows_per_block}"
+            )
+        if self.compute is None:
+            object.__setattr__(self, "compute", TaskPoolStrategy())
+        object.__setattr__(
+            self,
+            "_name",
+            f"StreamingRepartition[num_rows_per_block={self.target_num_rows_per_block},strict={self.strict}]",
         )
-        self.target_num_rows_per_block = target_num_rows_per_block
+
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        # StreamingRepartition only re-bundles rows into different block sizes.
+        # It doesn't modify schema or filter rows, so filters can safely pass through.
+        return PredicatePassThroughBehavior.PASSTHROUGH

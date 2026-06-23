@@ -18,7 +18,11 @@ from opencensus.stats.view_manager import ViewManager
 from prometheus_client.core import REGISTRY
 
 import ray._private.prometheus_exporter as prometheus_exporter
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    fetch_prometheus_metrics,
+    fetch_raw_prometheus,
+    wait_for_condition,
+)
 from ray._private.metrics_agent import (
     RAY_WORKER_TIMEOUT_S,
     Gauge,
@@ -28,10 +32,6 @@ from ray._private.metrics_agent import (
     Record,
 )
 from ray._private.telemetry.metric_cardinality import WORKER_ID_TAG_KEY
-from ray._private.test_utils import (
-    fetch_prometheus_metrics,
-    fetch_raw_prometheus,
-)
 from ray._raylet import WorkerID
 from ray.core.generated.metrics_pb2 import (
     LabelKey,

@@ -297,7 +297,6 @@ TFRecords
    :toctree: doc/
 
    read_tfrecords
-   TFXReadOptions
 
 TensorFlow
 ^^^^^^^^^^
@@ -352,6 +351,15 @@ WebDataset
    :toctree: doc/
 
    read_webdataset
+
+Zarr
+^^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_zarr
 
 Partitioning API
 ^^^^^^^^^^^^^^^^

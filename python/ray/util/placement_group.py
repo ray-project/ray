@@ -9,9 +9,6 @@ from ray._private.label_utils import validate_label_selector
 from ray._private.utils import get_ray_doc_version
 from ray._raylet import PlacementGroupID
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
-bundle_reservation_check = None
 
 VALID_PLACEMENT_GROUP_STRATEGIES = {
     "PACK",
@@ -19,23 +16,6 @@ VALID_PLACEMENT_GROUP_STRATEGIES = {
     "STRICT_PACK",
     "STRICT_SPREAD",
 }
-
-
-# We need to import this method to use for ready API.
-# But ray.remote is only available in runtime, and
-# if we define this method inside ready method, this function is
-# exported whenever ready is called, which can impact performance,
-# https://github.com/ray-project/ray/issues/6240.
-def _export_bundle_reservation_check_method_if_needed():
-    global bundle_reservation_check
-    if bundle_reservation_check:
-        return
-
-    @ray.remote(num_cpus=0)
-    def bundle_reservation_check_func(placement_group):
-        return placement_group
-
-    bundle_reservation_check = bundle_reservation_check_func
 
 
 @PublicAPI
@@ -61,8 +41,9 @@ class PlacementGroup:
     def ready(self) -> "ray._raylet.ObjectRef":
         """Returns an ObjectRef to check ready status.
 
-        This API runs a small dummy task to wait for placement group creation.
-        It is compatible to ray.get and ray.wait.
+        Returns:
+            An ``ObjectRef`` that resolves once the placement group has been
+            created and all bundles are scheduled.
 
         Example:
             .. testcode::
@@ -76,25 +57,18 @@ class PlacementGroup:
                 ray.wait([pg.ready()])
 
         """
-        self._fill_bundle_cache_if_needed()
+        if self.is_empty:
+            return ray.put(self)
 
-        _export_bundle_reservation_check_method_if_needed()
-
-        assert len(self.bundle_cache) != 0, (
-            "ready() cannot be called on placement group object with a "
-            "bundle length == 0, current bundle length: "
-            f"{len(self.bundle_cache)}"
-        )
-
-        return bundle_reservation_check.options(
-            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=self),
-        ).remote(self)
+        return _call_placement_group_ready_async(self)
 
     def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
         """Wait for the placement group to be ready within the specified time.
+
         Args:
-             timeout_seconds(float|int): Timeout in seconds.
-        Return:
+             timeout_seconds: Timeout in seconds.
+
+        Returns:
              True if the placement group is created. False otherwise.
         """
         return _call_placement_group_ready(self.id, timeout_seconds)
@@ -121,6 +95,15 @@ class PlacementGroup:
 
     def __hash__(self):
         return hash(self.id)
+
+
+@client_mode_wrap
+def _call_placement_group_ready_async(pg: PlacementGroup) -> "ray._raylet.ObjectRef":
+    worker = ray._private.worker.global_worker
+    worker.check_connected()
+    # Serialize pg so that ray.get() returns the PlacementGroup
+    serialized = worker.get_serialization_context().serialize(pg)
+    return worker.core_worker.async_wait_placement_group_ready(pg.id, serialized)
 
 
 @client_mode_wrap
@@ -183,7 +166,7 @@ def placement_group(
         ValueError: if empty bundle or empty resource bundles are given.
         ValueError: if the wrong lifetime arguments are given.
 
-    Return:
+    Returns:
         PlacementGroup: Placement group object.
     """
     worker = ray._private.worker.global_worker
@@ -237,6 +220,9 @@ def remove_placement_group(placement_group: PlacementGroup) -> None:
 def get_placement_group(placement_group_name: str) -> PlacementGroup:
     """Get a placement group object with a global name.
 
+    Args:
+        placement_group_name: Global name of the placement group to look up.
+
     Returns:
         None if can't find a placement group with the given name.
         The placement group object otherwise.
@@ -266,6 +252,10 @@ def placement_group_table(placement_group: PlacementGroup = None) -> dict:
     Args:
         placement_group: placement group to see
             states.
+
+    Returns:
+        A dictionary describing the state of the given placement group, or
+        the table of all placement groups if ``placement_group`` is None.
     """
     worker = ray._private.worker.global_worker
     worker.check_connected()
@@ -303,7 +293,7 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
             # so it returns None.
             assert get_current_placement_group() is None
 
-    Return:
+    Returns:
         PlacementGroup: Placement group object.
             None if the current task or actor wasn't
             created with any placement group.
@@ -461,6 +451,23 @@ def _validate_bundle_label_selector(bundle_label_selector: List[Dict[str, str]])
                 f"Invalid label selector provided in bundle_label_selector list."
                 f" Detailed error: '{error_message}'"
             )
+
+    gpu_domain_accelerator = None
+    for label_selector in bundle_label_selector:
+        accel = label_selector.get("ray.io/accelerator-type")
+        if accel in {"GB200", "GB300"}:
+            gpu_domain_accelerator = accel
+            break
+
+    if gpu_domain_accelerator is not None:
+        for label_selector in bundle_label_selector:
+            if label_selector.get("ray.io/accelerator-type") != gpu_domain_accelerator:
+                raise ValueError(
+                    f"Invalid bundle label selector {label_selector}. "
+                    "GPU-domain scheduling requires all bundles to have "
+                    f"'ray.io/accelerator-type: {gpu_domain_accelerator}'"
+                    " in their label selector."
+                )
 
 
 def _valid_resource_shape(resources, bundle_specs):

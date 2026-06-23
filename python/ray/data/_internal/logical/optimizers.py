@@ -1,18 +1,22 @@
-from typing import Callable, List
+from typing import TYPE_CHECKING, List, Tuple
+
+from ray.data._internal.planner import create_planner
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.execution_callback import ExecutionCallback
 
 from .ruleset import Ruleset
 from ray.data._internal.logical.interfaces import (
     LogicalPlan,
     Optimizer,
     PhysicalPlan,
-    Plan,
     Rule,
 )
 from ray.data._internal.logical.rules import (
     CombineShuffles,
+    CommonSubExprElimination,
     ConfigureMapTaskMemoryUsingOutputSize,
     FuseOperators,
-    InheritBatchFormatRule,
     InheritTargetMaxBlockSizeRule,
     LimitPushdownRule,
     PredicatePushdown,
@@ -23,14 +27,12 @@ from ray.util.annotations import DeveloperAPI
 
 _LOGICAL_RULESET = Ruleset(
     [
-        InheritBatchFormatRule,
         LimitPushdownRule,
         ProjectionPushdown,
         PredicatePushdown,
         CombineShuffles,
     ]
 )
-
 
 _PHYSICAL_RULESET = Ruleset(
     [
@@ -59,6 +61,12 @@ class LogicalOptimizer(Optimizer):
     def rules(self) -> List[Rule]:
         return [rule_cls() for rule_cls in get_logical_ruleset()]
 
+    def _post_optimize(self, plan: LogicalPlan) -> LogicalPlan:
+        # CommonSubExprElimination is only supposed to run once
+        # isolated from the optimizer rule loop as it applies to
+        # a single Projection operator not a chain of operators.
+        return CommonSubExprElimination().apply(plan)
+
 
 class PhysicalOptimizer(Optimizer):
     """The optimizer for physical operators."""
@@ -68,28 +76,9 @@ class PhysicalOptimizer(Optimizer):
         return [rule_cls() for rule_cls in get_physical_ruleset()]
 
 
-def get_plan_conversion_fns() -> List[Callable[[Plan], Plan]]:
-    """Get the list of transformation functions to convert a logical plan
-    to an optimized physical plan.
-
-    This returns the 3 transformation steps:
-    1. Logical optimization
-    2. Planning (logical -> physical operators)
-    3. Physical optimization
-
-    Returns:
-        A list of transformation functions, each taking a Plan and returning a Plan.
-    """
-    from ray.data._internal.planner import create_planner
-
-    return [
-        LogicalOptimizer().optimize,  # Logical optimization
-        create_planner().plan,  # Planning
-        PhysicalOptimizer().optimize,  # Physical optimization
-    ]
-
-
-def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
+def get_execution_plan(
+    logical_plan: LogicalPlan,
+) -> Tuple[PhysicalPlan, List["ExecutionCallback"]]:
     """Get the physical execution plan for the provided logical plan.
 
     This process has 3 steps:
@@ -97,18 +86,14 @@ def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
     (2) planning: convert logical to physical operators.
     (3) physical optimization: optimize physical operators.
     """
+    # 1. Logical -> Logical (Optimized)
+    optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
 
-    # 1. Get planning functions
-    optimize_logical, plan, optimize_physical = get_plan_conversion_fns()
-
-    # 2. Logical -> Logical (Optimized)
-    optimized_logical_plan = optimize_logical(logical_plan)
-
-    # 3. Rewire Logical -> Logical (Optimized)
+    # 2. Rewire Logical -> Logical (Optimized)
     logical_plan._dag = optimized_logical_plan.dag
 
-    # 4. Logical (Optimized) -> Physical
-    physical_plan = plan(optimized_logical_plan)
+    # 3. Logical (Optimized) -> Physical
+    physical_plan, callbacks = create_planner().plan(optimized_logical_plan)
 
-    # 5. Physical (Optimized) -> Physical
-    return optimize_physical(physical_plan)
+    # 4. Physical (Optimized) -> Physical
+    return PhysicalOptimizer().optimize(physical_plan), callbacks

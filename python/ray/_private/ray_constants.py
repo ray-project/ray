@@ -5,47 +5,9 @@ import logging
 import os
 import sys
 
+from ray._common.utils import env_bool, env_float, env_integer  # noqa: F401
+
 logger = logging.getLogger(__name__)
-
-
-def env_integer(key, default):
-    if key in os.environ:
-        value = os.environ[key]
-        if value.isdigit():
-            return int(os.environ[key])
-
-        logger.debug(
-            f"Found {key} in environment, but value must "
-            f"be an integer. Got: {value}. Returning "
-            f"provided default {default}."
-        )
-        return default
-    return default
-
-
-def env_float(key, default):
-    if key in os.environ:
-        value = os.environ[key]
-        try:
-            return float(value)
-        except ValueError:
-            logger.debug(
-                f"Found {key} in environment, but value must "
-                f"be a float. Got: {value}. Returning "
-                f"provided default {default}."
-            )
-            return default
-    return default
-
-
-def env_bool(key, default):
-    if key in os.environ:
-        return (
-            True
-            if os.environ[key].lower() == "true" or os.environ[key] == "1"
-            else False
-        )
-    return default
 
 
 def env_set_by_user(key):
@@ -101,12 +63,20 @@ DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION = env_float(
 # The default minimum number of bytes to reserve for ray system processes.
 # This value is used if the available_memory * DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION < this value.
 DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
-    "RAY_DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES", (500) * (1024**2)
+    "RAY_DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES", 500 * (1024**2)  # 500MB
 )
 # The default maximum number of bytes to reserve for ray system processes.
 # This value is used if the available_memory * DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION > this value.
 DEFAULT_MAX_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
     "RAY_DEFAULT_MAX_SYSTEM_RESERVED_MEMORY_BYTES", (10) * (1024**3)
+)
+# The default buffer size between the physical memory limit enforced by resource isolation
+# and the logical memory limit available for scheduling user tasks. This buffer can be tuned
+# to allocate more or less memory room for tolerating passing in the wrong logical memory
+# estimate at the cost of lower memory utilization.
+DEFAULT_USER_PHYSICAL_LOGICAL_MEMORY_LIMIT_BUFFER_BYTES = env_integer(
+    "RAY_DEFAULT_USER_PHYSICAL_LOGICAL_MEMORY_LIMIT_BUFFER_BYTES",
+    500 * (1024**2),  # 500MiB
 )
 
 # The default maximum number of bytes to allocate to the object store unless
@@ -188,7 +158,9 @@ RAY_JOB_HEADERS = "RAY_JOB_HEADERS"
 # Timeout waiting for the dashboard to come alive during node startup.
 RAY_DASHBOARD_STARTUP_TIMEOUT_S = env_integer("RAY_DASHBOARD_STARTUP_TIMEOUT_S", 60)
 
-DEFAULT_DASHBOARD_IP = "127.0.0.1"
+# Enable profiling endpoints in the dashboard.
+RAY_DASHBOARD_ENABLE_PROFILING = env_bool("RAY_DASHBOARD_ENABLE_PROFILING", False)
+
 DEFAULT_DASHBOARD_PORT = 8265
 DASHBOARD_ADDRESS = "dashboard"
 DASHBOARD_CLIENT_MAX_SIZE = 100 * 1024**2
@@ -307,7 +279,7 @@ LOG_MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_LOG_MONITOR}.log"
 
 # Enable log deduplication.
 RAY_DEDUP_LOGS = env_bool("RAY_DEDUP_LOGS", True)
-
+RAY_FLUSH_DRIVER_LOGS = env_bool("RAY_FLUSH_DRIVER_LOGS", False)
 # How many seconds of messages to buffer for log deduplication.
 RAY_DEDUP_LOGS_AGG_WINDOW_S = env_integer("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
 
@@ -569,6 +541,22 @@ RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES = env_bool(
 
 RAY_EXPORT_EVENT_MAX_BACKUP_COUNT = env_bool("RAY_EXPORT_EVENT_MAX_BACKUP_COUNT", 20)
 
+# Comma-separated list of event types that are emitted through the Python
+# EventRecorder (One-Event Framework) to the AggregatorAgent.
+# Valid values are the names of EventType entries defined in
+# src/ray/protobuf/public/events_base_event.proto
+# Defaults to PLATFORM_EVENTS if not set.
+RAY_ENABLE_PYTHON_RAY_EVENT_TYPES = frozenset(
+    {
+        t.strip()
+        for t in os.environ.get(
+            "RAY_ENABLE_PYTHON_RAY_EVENT_TYPES", "PLATFORM_EVENT"
+        ).split(",")
+        if t.strip()
+    }
+)
+
+
 # If this flag is set and you run the driver with `uv run`, Ray propagates the `uv run`
 # environment to all workers. Ray does this by setting the `py_executable` to the
 # `uv run`` command line and by propagating the working directory
@@ -629,3 +617,12 @@ RDT_FETCH_FAIL_TIMEOUT_SECONDS = (
 RAY_ENABLE_ZERO_COPY_TORCH_TENSORS = env_bool(
     "RAY_ENABLE_ZERO_COPY_TORCH_TENSORS", False
 )
+
+# Max number of cached NIXL remote agents. When exceeded, the least recently used
+# remote agent is evicted. When set to 0, there will be no remote agent reuse.
+NIXL_REMOTE_AGENT_CACHE_MAXSIZE = env_integer(
+    "RAY_NIXL_REMOTE_AGENT_CACHE_MAXSIZE", 1000
+)
+
+# Name of the environment variable for the Redis password.
+RAY_REDIS_PASSWORD_ENV = "RAY_REDIS_PASSWORD"

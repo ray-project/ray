@@ -1,12 +1,8 @@
 import logging
-import math
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Iterator, List
-from urllib.parse import urlparse
+from typing import Iterator, List, Optional
 
 import pyarrow as pa
 
-import ray
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
@@ -19,14 +15,30 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.logical.operators import Download
 from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data._internal.util import RetryingPyFileSystem, make_async_gen
+from ray.data._internal.planner._obstore_download import (
+    OBSTORE_AVAILABLE,
+    _log_fallback_warning,
+    _plan_obstore_routing,
+    download_bytes_async,
+)
+from ray.data._internal.planner.download_partition_actor import (
+    URI_DOWNLOAD_MAX_WORKERS,
+    AsyncPartitionActor,
+    PartitionActor,
+)
+from ray.data._internal.util import (
+    RetryingPyFileSystem,
+    _iter_arrow_table_for_target_max_block_size,
+    make_async_gen,
+)
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource.path_util import _resolve_paths_and_filesystem
+from ray.data.datasource.path_util import (
+    _resolve_paths_and_filesystem,
+    _validate_and_wrap_filesystem,
+)
 
 logger = logging.getLogger(__name__)
-
-URI_DOWNLOAD_MAX_WORKERS = 16
 
 
 def plan_download_op(
@@ -48,6 +60,7 @@ def plan_download_op(
     uri_column_names_str = ", ".join(uri_column_names)
     output_bytes_column_names = op.output_bytes_column_names
     ray_remote_args = op.ray_remote_args
+    filesystem = op.filesystem
 
     # Import _get_udf from the main planner file
     from ray.data._internal.planner.plan_udf_map_op import (
@@ -59,18 +72,29 @@ def plan_download_op(
     # at the start of the chain. This is primarily done to prevent partition actors from bottlenecking
     # the chain becuase the interleaved operators would be a single actor. As a result, the
     # URIDownloader physical operator is responsible for outputting appropriately sized blocks.
+    # Decide obstore vs threaded upfront. For fsspec-S3 filesystems backed by
+    # a session we can't statically introspect (Okta / STS / profile-based),
+    # _plan_obstore_routing emits a warning and returns use_obstore=False so
+    # we fall back to the threaded PyArrow path — which uses the user's
+    # filesystem directly and resolves credentials correctly.
+    use_obstore_path = False
+    if OBSTORE_AVAILABLE:
+        use_obstore_path, _ = _plan_obstore_routing(filesystem)
+
     partition_map_operator = None
     if not upstream_op_is_download:
-        # PartitionActor is a callable class, so we need ActorPoolStrategy
+        partition_cls = AsyncPartitionActor if use_obstore_path else PartitionActor
+        # PartitionActor / AsyncPartitionActor are callable classes, so we need
+        # ActorPoolStrategy.
         partition_compute = ActorPoolStrategy(
             size=1, enable_true_multi_threading=True
         )  # Use single actor for partitioning
 
         fn, init_fn = _get_udf(
-            PartitionActor,
+            partition_cls,
             (),
             {},
-            (uri_column_names, data_context),
+            (uri_column_names, data_context, filesystem),
             {},
             compute=partition_compute,
         )
@@ -106,9 +130,21 @@ def plan_download_op(
             ray_actor_task_remote_args={"_generator_backpressure_num_objects": -1},
         )
 
+    if use_obstore_path:
+        download_fn = download_bytes_async
+        logger.debug("Using obstore async download path.")
+    else:
+        download_fn = download_bytes_threaded
+        # The "obstore not installed" warning is only relevant when obstore is
+        # missing entirely. When obstore is available but the filesystem can't
+        # be routed through it, _plan_obstore_routing already logged the reason
+        # (a WARNING for fsspec-S3-unextractable, DEBUG otherwise).
+        if not OBSTORE_AVAILABLE:
+            _log_fallback_warning()
+
     fn, init_fn = _get_udf(
-        download_bytes_threaded,
-        (uri_column_names, output_bytes_column_names, data_context),
+        download_fn,
+        (uri_column_names, output_bytes_column_names, data_context, filesystem),
         {},
         None,
         None,
@@ -143,34 +179,27 @@ def plan_download_op(
     return download_map_operator
 
 
-def uri_to_path(uri: str) -> str:
-    """Convert a URI to a filesystem path."""
-    # TODO(mowen): urlparse might be slow. in the future we could use a faster alternative.
-    parsed = urlparse(uri)
-    if parsed.scheme == "file":
-        return parsed.path
-    return parsed.netloc + parsed.path
-
-
-def _arrow_batcher(table: pa.Table, output_batch_size: int):
-    """Batch a PyArrow table into smaller tables of size n using zero-copy slicing."""
-    num_rows = table.num_rows
-    for i in range(0, num_rows, output_batch_size):
-        end_idx = min(i + output_batch_size, num_rows)
-        # Use PyArrow's zero-copy slice operation
-        batch_table = table.slice(i, end_idx - i)
-        yield batch_table
-
-
 def download_bytes_threaded(
     block: pa.Table,
     uri_column_names: List[str],
     output_bytes_column_names: List[str],
     data_context: DataContext,
+    filesystem: Optional["pa.fs.FileSystem"] = None,
 ) -> Iterator[pa.Table]:
     """Optimized version that uses make_async_gen for concurrent downloads.
 
     Supports downloading from multiple URI columns in a single operation.
+
+    Args:
+        block: Input PyArrow table containing URI columns.
+        uri_column_names: Names of columns containing URIs to download.
+        output_bytes_column_names: Names for the output columns containing downloaded bytes.
+        data_context: Ray Data context for configuration.
+        filesystem: PyArrow filesystem to use for reading remote files.
+            If None, the filesystem is auto-detected from the path scheme.
+
+    Yields:
+        pa.Table: PyArrow table with the downloaded bytes added as new columns.
     """
     if not isinstance(block, pa.Table):
         block = BlockAccessor.for_block(block).to_arrow()
@@ -187,35 +216,64 @@ def download_bytes_threaded(
         if len(uris) == 0:
             continue
 
-        def load_uri_bytes(uri_iterator):
-            """Resolve filesystem and download bytes for each URI.
+        # Resolve the filesystem once before spawning workers; otherwise each
+        # worker infers its own S3FileSystem and fires a duplicate IMDS
+        # credential fetch. Normalize fsspec inputs so RetryingPyFileSystem.wrap
+        # can forward open_input_stream.
+        resolved_fs = _validate_and_wrap_filesystem(filesystem)
+        if resolved_fs is None:
+            for probe_uri in uris:
+                if probe_uri is None:
+                    continue
+                try:
+                    paths, candidate_fs = _resolve_paths_and_filesystem(probe_uri, None)
+                except Exception as e:
+                    logger.debug(f"Could not infer filesystem from '{probe_uri}': {e}")
+                    continue
+                # Skip results that drop the URI (([], ...)) or yield no FS.
+                if paths and candidate_fs is not None:
+                    resolved_fs = candidate_fs
+                    break
 
-            Takes an iterator of URIs and yields bytes for each.
-            Uses lazy filesystem resolution - resolves once and reuses for subsequent URIs.
-            """
-            cached_fs = None
+        if resolved_fs is None:
+            # No URI resolved a filesystem; workers would only repeat the same
+            # failed inference. Yield None for every row and skip the pool.
+            logger.warning(
+                "Could not resolve a filesystem from any URI in column "
+                f"{uri_column_name!r} ({len(uris)} URIs). Yielding None for "
+                "all rows."
+            )
+            output_block = output_block.add_column(
+                len(output_block.column_names),
+                output_bytes_column_name,
+                pa.array([None] * len(uris), type=pa.binary()),
+            )
+            continue
+
+        wrapped_fs = RetryingPyFileSystem.wrap(
+            resolved_fs, retryable_errors=data_context.retried_io_errors
+        )
+
+        def load_uri_bytes(
+            uri_iterator,
+            wrapped_fs=wrapped_fs,
+            resolved_fs=resolved_fs,
+            uri_column_name=uri_column_name,
+        ):
+            """Download bytes for each URI using the pre-resolved filesystem."""
             for uri in uri_iterator:
                 read_bytes = None
                 try:
-                    # Use cached FS if available, otherwise resolve the filesystem for the uri.
-                    resolved_paths, resolved_fs = _resolve_paths_and_filesystem(
-                        uri, filesystem=cached_fs
+                    if uri is None:
+                        continue
+                    # Normalize the path only; FS is supplied so no network I/O.
+                    resolved_paths, _ = _resolve_paths_and_filesystem(
+                        uri, filesystem=resolved_fs
                     )
-                    cached_fs = resolved_fs
-
-                    # Wrap with retrying filesystem
-                    fs = RetryingPyFileSystem.wrap(
-                        resolved_fs, retryable_errors=data_context.retried_io_errors
-                    )
-                    # We only pass one uri to resolve and unwrap it from the list of resolved paths,
-                    # if fails, we will catch the index error and log it.
-                    resolved_path = resolved_paths[0]
+                    resolved_path = resolved_paths[0] if resolved_paths else None
                     if resolved_path is None:
                         continue
-
-                    # Download bytes
-                    # Use open_input_stream to handle the rare scenario where the data source is not seekable.
-                    with fs.open_input_stream(resolved_path) as f:
+                    with wrapped_fs.open_input_stream(resolved_path) as f:
                         read_bytes = f.read()
                 except OSError as e:
                     logger.debug(
@@ -248,132 +306,6 @@ def download_bytes_threaded(
             pa.array(uri_bytes),
         )
 
-    output_block_size = output_block.nbytes
-    ctx = ray.data.context.DatasetContext.get_current()
-    max_bytes = ctx.target_max_block_size
-    if max_bytes is not None and output_block_size > max_bytes:
-        num_blocks = math.ceil(output_block_size / max_bytes)
-        num_rows = output_block.num_rows
-        yield from _arrow_batcher(output_block, int(math.ceil(num_rows / num_blocks)))
-    else:
-        yield output_block
-
-
-class PartitionActor:
-    """Actor that partitions download operations based on estimated file sizes.
-
-    For multiple URI columns, estimates the combined size across all columns.
-    """
-
-    INIT_SAMPLE_BATCH_SIZE = 25
-
-    def __init__(self, uri_column_names: List[str], data_context: DataContext):
-        self._uri_column_names = uri_column_names
-        self._data_context = data_context
-        self._batch_size_estimate = None
-
-    def __call__(self, block: pa.Table) -> Iterator[pa.Table]:
-        if not isinstance(block, pa.Table):
-            block = BlockAccessor.for_block(block).to_arrow()
-
-        # Validate all URI columns exist
-        for uri_column_name in self._uri_column_names:
-            if uri_column_name not in block.column_names:
-                raise ValueError(
-                    "Ray Data tried to download URIs from a column named "
-                    f"{uri_column_name!r}, but a column with that name doesn't "
-                    "exist. Is the specified download column correct?"
-                )
-
-        if self._batch_size_estimate is None:
-            self._batch_size_estimate = self._estimate_nrows_per_partition(block)
-
-        yield from _arrow_batcher(block, self._batch_size_estimate)
-
-    def _estimate_nrows_per_partition(self, block: pa.Table) -> int:
-        sampled_file_sizes_by_column = {}
-        for uri_column_name in self._uri_column_names:
-            # Extract URIs from PyArrow table for sampling
-            uris = block.column(uri_column_name).to_pylist()
-            sample_uris = uris[: self.INIT_SAMPLE_BATCH_SIZE]
-            sampled_file_sizes = self._sample_sizes(sample_uris)
-            sampled_file_sizes_by_column[uri_column_name] = sampled_file_sizes
-
-        # If we sample HTTP URIs, or if an error occurs during sampling, then the file
-        # sizes might be `None`. In these cases, we replace the `file_size` with 0.
-        sampled_file_sizes_by_column = {
-            uri_column_name: [
-                file_size if file_size is not None else 0
-                for file_size in sampled_file_sizes
-            ]
-            for uri_column_name, sampled_file_sizes in sampled_file_sizes_by_column.items()
-        }
-
-        # This is some fancy Python code to compute the file size of each row.
-        row_sizes = [
-            sum(file_sizes_in_row)
-            for file_sizes_in_row in zip(*sampled_file_sizes_by_column.values())
-        ]
-
-        target_nbytes_per_partition = self._data_context.target_max_block_size
-        avg_nbytes_per_row = sum(row_sizes) / len(row_sizes)
-        if avg_nbytes_per_row == 0:
-            logger.warning(
-                "Estimated average row size is 0. Falling back to using the number of "
-                "rows in the block as the partition size."
-            )
-            return len(block)
-
-        nrows_per_partition = math.floor(
-            target_nbytes_per_partition / avg_nbytes_per_row
-        )
-        return nrows_per_partition
-
-    def _sample_sizes(self, uris: List[str]) -> List[int]:
-        """Fetch file sizes in parallel using ThreadPoolExecutor."""
-
-        def get_file_size(uri_path, fs):
-            try:
-                return fs.get_file_info(uri_path).size
-            except Exception:
-                return None
-
-        # If no URIs, return empty list
-        if not uris:
-            return []
-
-        # Get the filesystem from the URIs (assumes all URIs use same filesystem for sampling)
-        # This is for sampling the file sizes which doesn't require a full resolution of the paths.
-        try:
-            paths, fs = _resolve_paths_and_filesystem(uris)
-            fs = RetryingPyFileSystem.wrap(
-                fs, retryable_errors=self._data_context.retried_io_errors
-            )
-        except Exception as e:
-            logger.warning(f"Failed to resolve URIs for size sampling: {e}")
-            # Return zeros for all URIs if resolution fails
-            return [0] * len(uris)
-
-        # Use ThreadPoolExecutor for concurrent size fetching
-        file_sizes = [None] * len(paths)
-        with ThreadPoolExecutor(max_workers=URI_DOWNLOAD_MAX_WORKERS) as executor:
-            # Submit all size fetch tasks
-            future_to_file_index = {
-                executor.submit(get_file_size, uri_path, fs): file_index
-                for file_index, uri_path in enumerate(paths)
-            }
-
-            # Collect results as they complete (order doesn't matter)
-            for future in as_completed(future_to_file_index):
-                file_index = future_to_file_index[future]
-                try:
-                    size = future.result()
-                    file_sizes[file_index] = size if size is not None else 0
-                except Exception as e:
-                    logger.warning(f"Error fetching file size for download: {e}")
-                    file_sizes[file_index] = 0
-
-        assert all(
-            fs is not None for fs in file_sizes
-        ), "File size sampling did not complete for all paths"
-        return file_sizes
+    yield from _iter_arrow_table_for_target_max_block_size(
+        output_block, data_context.target_max_block_size
+    )

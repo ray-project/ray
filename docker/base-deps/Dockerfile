@@ -4,6 +4,7 @@
 
 # The GPU options are NVIDIA CUDA developer images.
 ARG BASE_IMAGE="ubuntu:22.04"
+
 FROM ${BASE_IMAGE}
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
 ENV TZ=America/Los_Angeles
@@ -69,8 +70,8 @@ USER $RAY_UID
 ENV HOME=/home/ray
 WORKDIR /home/ray
 
-COPY "$CONSTRAINTS_FILE" /home/ray/requirements_compiled.txt
-COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
+COPY --chown=ray "$CONSTRAINTS_FILE" /home/ray/requirements_compiled.txt
+COPY --chown=ray "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 SHELL ["/bin/bash", "-c"]
 
@@ -100,7 +101,7 @@ $HOME/anaconda3/bin/conda init
 echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> $HOME/.bashrc
 rm /tmp/miniforge.sh
 $HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION
-$HOME/anaconda3/bin/conda install -y -c conda-forge libffi=3.4.2
+$HOME/anaconda3/bin/conda install -y -c conda-forge libffi=3.4.6
 $HOME/anaconda3/bin/conda clean -y --all
 
 # Install uv

@@ -1,10 +1,12 @@
 from enum import Enum
-from typing import Callable, Dict, List, Tuple, Union
+from typing import Callable, Dict, Tuple, Union
 
 import ray
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.usage.usage_lib import record_extra_usage_tag
 from ray.llm._internal.batch.observability.logging import get_logger
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 LLM_BATCH_TELEMETRY_NAMESPACE = "llm_batch_telemetry"
 LLM_BATCH_TELEMETRY_ACTOR_NAME = "llm_batch_telemetry"
@@ -13,6 +15,10 @@ logger = get_logger(__name__)
 
 
 class BatchModelTelemetry(BaseModelExtended):
+    # Dedup identity only; never recorded as a tag value. A hash of model_source
+    # so distinct models that share an architecture stay separate in the dedup
+    # key while the cleartext model name never reaches the head-node actor.
+    model_id_hash: str = ""
     processor_config_name: str = ""
     model_architecture: str = ""
     batch_size: int = 0
@@ -50,51 +56,67 @@ class _TelemetryAgent:
     """Named Actor to keep the state of all deployed models and record telemetry."""
 
     def __init__(self):
-        self._tracking_telemetries: List[BatchModelTelemetry] = []
+        # Keyed by full telemetry identity (incl. model_id_hash) so repeated
+        # identical processor builds overwrite while distinct models/configs
+        # remain separate.
+        self._tracking_telemetries: Dict[str, BatchModelTelemetry] = {}
         self._record_tag_func = record_extra_usage_tag
 
     def _update_record_tag_func(self, record_tag_func: Callable) -> None:
         self._record_tag_func = record_tag_func
 
+    def _reset(self) -> None:
+        """Only used in tests to clear accumulated telemetries."""
+        self._tracking_telemetries = {}
+
     def generate_report(self) -> Dict[str, str]:
         return {
             BatchTelemetryTags.LLM_BATCH_PROCESSOR_CONFIG_NAME: ",".join(
-                [t.processor_config_name for t in self._tracking_telemetries]
+                [t.processor_config_name for t in self._tracking_telemetries.values()]
             ),
             BatchTelemetryTags.LLM_BATCH_MODEL_ARCHITECTURE: ",".join(
-                [t.model_architecture for t in self._tracking_telemetries]
+                [t.model_architecture for t in self._tracking_telemetries.values()]
             ),
             BatchTelemetryTags.LLM_BATCH_SIZE: ",".join(
-                [str(t.batch_size) for t in self._tracking_telemetries]
+                [str(t.batch_size) for t in self._tracking_telemetries.values()]
             ),
             BatchTelemetryTags.LLM_BATCH_ACCELERATOR_TYPE: ",".join(
-                [t.accelerator_type for t in self._tracking_telemetries]
+                [t.accelerator_type for t in self._tracking_telemetries.values()]
             ),
             BatchTelemetryTags.LLM_BATCH_CONCURRENCY: ",".join(
-                [str(t.concurrency) for t in self._tracking_telemetries]
+                [str(t.concurrency) for t in self._tracking_telemetries.values()]
             ),
             BatchTelemetryTags.LLM_BATCH_TASK_TYPE: ",".join(
-                [t.task_type for t in self._tracking_telemetries]
+                [t.task_type for t in self._tracking_telemetries.values()]
             ),
             BatchTelemetryTags.LLM_BATCH_PIPELINE_PARALLEL_SIZE: ",".join(
-                [str(t.pipeline_parallel_size) for t in self._tracking_telemetries]
+                [
+                    str(t.pipeline_parallel_size)
+                    for t in self._tracking_telemetries.values()
+                ]
             ),
             BatchTelemetryTags.LLM_BATCH_TENSOR_PARALLEL_SIZE: ",".join(
-                [str(t.tensor_parallel_size) for t in self._tracking_telemetries]
+                [
+                    str(t.tensor_parallel_size)
+                    for t in self._tracking_telemetries.values()
+                ]
             ),
             BatchTelemetryTags.LLM_BATCH_DATA_PARALLEL_SIZE: ",".join(
-                [str(t.data_parallel_size) for t in self._tracking_telemetries]
+                [str(t.data_parallel_size) for t in self._tracking_telemetries.values()]
             ),
         }
 
     def record(self, telemetry: BatchModelTelemetry) -> None:
-        """Append and record telemetries."""
+        """Upsert by identity and record telemetries."""
         from ray._common.usage.usage_lib import TagKey
 
-        self._tracking_telemetries.append(telemetry)
-        telemetry_dict = self.generate_report()
-        for key, value in telemetry_dict.items():
-            self._record_tag_func(TagKey.Value(key), value)
+        self._tracking_telemetries[telemetry.model_dump_json()] = telemetry
+        for key, value in self.generate_report().items():
+            try:
+                self._record_tag_func(TagKey.Value(key), value)
+            except ValueError:
+                # Tag not in the installed usage proto; skip rather than fail.
+                continue
 
 
 class TelemetryAgent:
@@ -102,15 +124,14 @@ class TelemetryAgent:
     push_telemetry_report is called."""
 
     def __init__(self):
+        # Creation must never break processor construction, so swallow failures
+        # (e.g. Ray not initialized, transient GCS issues) and degrade to a no-op.
         try:
-            self.remote_telemetry_agent = ray.get_actor(
-                LLM_BATCH_TELEMETRY_ACTOR_NAME, namespace=LLM_BATCH_TELEMETRY_NAMESPACE
-            )
-        except ValueError:
-            from ray._common.constants import HEAD_NODE_RESOURCE_NAME
-            from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
+            # get_if_exists makes creation atomic across concurrent drivers.
             self.remote_telemetry_agent = _TelemetryAgent.options(
+                name=LLM_BATCH_TELEMETRY_ACTOR_NAME,
+                namespace=LLM_BATCH_TELEMETRY_NAMESPACE,
+                get_if_exists=True,
                 # Ensure the actor is created on the head node.
                 resources={HEAD_NODE_RESOURCE_NAME: 0.001},
                 # Ensure the actor is not scheduled with the existing placement group.
@@ -118,12 +139,22 @@ class TelemetryAgent:
                     placement_group=None
                 ),
             ).remote()
+        except Exception:
+            self.remote_telemetry_agent = None
+            logger.exception("Failed to initialize LLM batch telemetry agent")
 
     def _update_record_tag_func(self, record_tag_func: Callable):
-        self.remote_telemetry_agent._update_record_tag_func.remote(record_tag_func)
+        if self.remote_telemetry_agent is not None:
+            self.remote_telemetry_agent._update_record_tag_func.remote(record_tag_func)
 
     def push_telemetry_report(self, telemetry: BatchModelTelemetry):
-        ray.get(self.remote_telemetry_agent.record.remote(telemetry))
+        # Telemetry must never break processor construction.
+        if self.remote_telemetry_agent is None:
+            return
+        try:
+            ray.get(self.remote_telemetry_agent.record.remote(telemetry))
+        except Exception:
+            logger.exception("Failed to push LLM batch telemetry")
 
 
 def get_or_create_telemetry_agent() -> TelemetryAgent:

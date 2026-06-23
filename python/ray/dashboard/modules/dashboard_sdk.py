@@ -97,6 +97,7 @@ def get_job_submission_client_cluster_info(
     metadata: Optional[Dict[str, Any]] = None,
     headers: Optional[Dict[str, Any]] = None,
     _use_tls: Optional[bool] = False,
+    **kwargs,
 ) -> ClusterInfo:
     """Get address, cookies, and metadata used for SubmissionClient.
 
@@ -110,6 +111,13 @@ def get_job_submission_client_cluster_info(
             of the address returned needs to be running. Ray doesn't
             start a cluster before interacting with jobs, but other
             implementations may do so.
+        cookies: Optional cookies forwarded to ``SubmissionClient``.
+        metadata: Optional metadata forwarded to ``SubmissionClient``.
+        headers: Optional HTTP headers forwarded to ``SubmissionClient``.
+        _use_tls: When True, use ``https`` instead of ``http`` for the
+            constructed address.
+        **kwargs: Reserved for forward-compatibility with other client
+            implementations; unused here.
 
     Returns:
         ClusterInfo object consisting of address, cookies, and metadata
@@ -131,6 +139,7 @@ def parse_cluster_info(
     cookies: Optional[Dict[str, Any]] = None,
     metadata: Optional[Dict[str, Any]] = None,
     headers: Optional[Dict[str, Any]] = None,
+    **kwargs,
 ) -> ClusterInfo:
     """Create a cluster if needed and return its address, cookies, and metadata."""
     if address is None:
@@ -176,6 +185,7 @@ def parse_cluster_info(
             metadata=metadata,
             headers=headers,
             _use_tls=(module_string == "https"),
+            **kwargs,
         )
     # Try to dynamically import the function to get cluster info.
     else:
@@ -198,6 +208,7 @@ def parse_cluster_info(
             cookies=cookies,
             metadata=metadata,
             headers=headers,
+            **kwargs,
         )
 
 
@@ -210,6 +221,7 @@ class SubmissionClient:
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
         verify: Optional[Union[str, bool]] = True,
+        **kwargs,
     ):
         # Remove any trailing slashes
         if address is not None and address.endswith("/"):
@@ -220,7 +232,7 @@ class SubmissionClient:
             )
 
         cluster_info = parse_cluster_info(
-            address, create_cluster_if_needed, cookies, metadata, headers
+            address, create_cluster_if_needed, cookies, metadata, headers, **kwargs
         )
         self._address = cluster_info.address
         self._cookies = cluster_info.cookies

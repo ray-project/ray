@@ -14,11 +14,11 @@ examples/rayjob-batch-inference-example
 examples/rayjob-kueue-priority-scheduling
 examples/rayjob-kueue-gang-scheduling
 examples/distributed-checkpointing-with-gcsfuse
-examples/modin-example
 examples/rayserve-llm-example
 examples/rayserve-deepseek-example
 examples/verl-post-training
 examples/argocd
+examples/rayjob-agent-sandbox
 ```
 
 
@@ -33,7 +33,7 @@ This section presents example Ray workloads to try out on your Kubernetes cluste
 - {ref}`kuberay-kueue-priority-scheduling-example`
 - {ref}`kuberay-kueue-gang-scheduling-example`
 - {ref}`kuberay-distributed-checkpointing-gcsfuse`
-- {ref}`kuberay-modin-example`
 - {ref}`kuberay-rayservice-llm-example`
 - {ref}`kuberay-rayservice-deepseek-example`
 - {ref}`kuberay-verl`
+- {ref}`kuberay-agent-sandbox`

@@ -47,13 +47,21 @@ Components: main
 Architectures: $(dpkg --print-architecture)
 Signed-by: /etc/apt/keyrings/microsoft.gpg" | tee /etc/apt/sources.list.d/azure-cli.sources
 
+# Add Google Cloud CLI repository
+curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg |
+  gpg --dearmor -o /etc/apt/keyrings/cloud.google.gpg
+echo "deb [signed-by=/etc/apt/keyrings/cloud.google.gpg] \
+  https://packages.cloud.google.com/apt cloud-sdk main" |
+  tee /etc/apt/sources.list.d/google-cloud-sdk.list
+
 # Install packages
 
 apt-get update
 apt-get install -y \
   awscli nodejs build-essential python-is-python3 \
   python3-pip openjdk-8-jre wget jq \
-  docker-ce-cli azure-cli="${AZ_VER}"-1~"${AZ_DIST}"
+  docker-ce-cli azure-cli="${AZ_VER}"-1~"${AZ_DIST}" \
+  google-cloud-cli
 
 # Install uv
 curl -fsSL https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
@@ -140,4 +148,4 @@ ENV DOCKER_API_VERSION=1.43
 CMD ["echo", "ray forge"]
 
 
-# last update: 2026-01-13
+# last update: 2026-02-10

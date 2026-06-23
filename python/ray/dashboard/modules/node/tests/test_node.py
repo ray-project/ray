@@ -132,6 +132,101 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
 
 
 @pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "include_dashboard": True,
+            "env_vars": {
+                "RAY_maximum_gcs_dead_node_cached_count": "1",
+            },
+            "_system_config": {
+                "health_check_initial_delay_ms": 0,
+                "health_check_timeout_ms": 100,
+                "health_check_failure_threshold": 3,
+                "health_check_period_ms": 100,
+            },
+        }
+    ],
+    indirect=True,
+)
+def test_dead_node_cache_contains_latest_dead_node_if_cache_overflows(
+    enable_test_module, disable_aiohttp_cache, ray_start_cluster_head_with_env_vars
+):
+    cluster: Cluster = ray_start_cluster_head_with_env_vars
+    assert wait_until_server_available(
+        cluster.webui_url
+    ), "Failed to connect to the Dashboard Server"
+    webui_url = format_web_url(cluster.webui_url)
+
+    def _compare_dead_node_set(expected_alive_nodes, expected_dead_nodes):
+        try:
+            response = requests.get(webui_url + "/nodes?view=summary")
+            response.raise_for_status()
+            summary = response.json()
+            assert summary["result"] is True, summary["msg"]
+            summary = summary["data"]["summary"]
+            dead_nodes = set()
+            alive_nodes = set()
+            for node_info in summary:
+                node_id = node_info["raylet"]["nodeId"]
+                response = requests.get(webui_url + f"/nodes/{node_id}")
+                response.raise_for_status()
+                if node_info["raylet"]["state"] == "DEAD":
+                    dead_nodes.add(node_id)
+                if node_info["raylet"]["state"] == "ALIVE":
+                    alive_nodes.add(node_id)
+            assert alive_nodes == expected_alive_nodes
+            assert dead_nodes == expected_dead_nodes
+            return True
+        except Exception as ex:
+            logger.info(ex)
+            return False
+
+    node_1 = cluster.add_node()
+    head_node_id = ray.get_runtime_context().get_node_id()
+    node_1_id = node_1.node_id
+    curr_alive_nodes = {head_node_id, node_1_id}
+    curr_dead_nodes = set()
+    wait_for_condition(
+        _compare_dead_node_set,
+        10,
+        expected_alive_nodes=curr_alive_nodes,
+        expected_dead_nodes=curr_dead_nodes,
+    )
+
+    node_2 = cluster.add_node()
+    node_2_id = node_2.node_id
+    curr_alive_nodes.add(node_2_id)
+    wait_for_condition(
+        _compare_dead_node_set,
+        10,
+        expected_alive_nodes=curr_alive_nodes,
+        expected_dead_nodes=curr_dead_nodes,
+    )
+
+    cluster.remove_node(node_1, allow_graceful=False)
+    curr_alive_nodes.remove(node_1_id)
+    curr_dead_nodes.add(node_1_id)
+    wait_for_condition(
+        _compare_dead_node_set,
+        10,
+        expected_alive_nodes=curr_alive_nodes,
+        expected_dead_nodes=curr_dead_nodes,
+    )
+
+    cluster.remove_node(node_2, allow_graceful=False)
+    curr_alive_nodes.remove(node_2_id)
+    curr_dead_nodes.remove(node_1_id)
+    curr_dead_nodes.add(node_2_id)
+    wait_for_condition(
+        _compare_dead_node_set,
+        10,
+        expected_alive_nodes=curr_alive_nodes,
+        expected_dead_nodes=curr_dead_nodes,
+    )
+
+
+@pytest.mark.parametrize(
     "ray_start_cluster_head",
     [
         {

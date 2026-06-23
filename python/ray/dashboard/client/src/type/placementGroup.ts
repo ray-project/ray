@@ -26,4 +26,8 @@ export type PlacementGroup = {
     [key: string]: number | string;
   } | null;
   bundles: Bundle[];
+  label_domain_key?: string | null;
+  label_domain_assignments?: {
+    [key: string]: string;
+  } | null;
 };

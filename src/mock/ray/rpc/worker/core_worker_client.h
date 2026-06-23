@@ -126,11 +126,6 @@ class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
               (const ExitRequest &request, const ClientCallback<ExitReply> &callback),
               (override));
   MOCK_METHOD(void,
-              AssignObjectOwner,
-              (const AssignObjectOwnerRequest &request,
-               const ClientCallback<AssignObjectOwnerReply> &callback),
-              (override));
-  MOCK_METHOD(void,
               ReportGeneratorItemReturns,
               (ReportGeneratorItemReturnsRequest && request,
                const ClientCallback<ReportGeneratorItemReturnsReply> &callback),

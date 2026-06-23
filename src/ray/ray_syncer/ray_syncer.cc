@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/ray_syncer/node_state.h"
 #include "ray/ray_syncer/ray_syncer_client.h"
@@ -29,6 +29,7 @@
 namespace ray::syncer {
 
 RaySyncer::RaySyncer(instrumented_io_context &io_context,
+                     std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
                      const std::string &local_node_id,
                      size_t max_batch_size,
                      uint64_t max_batch_delay_ms,
@@ -36,7 +37,7 @@ RaySyncer::RaySyncer(instrumented_io_context &io_context,
     : io_context_(io_context),
       local_node_id_(local_node_id),
       node_state_(std::make_unique<NodeState>()),
-      timer_(PeriodicalRunner::Create(io_context)),
+      periodical_runner_(std::move(periodical_runner)),
       max_batch_size_(max_batch_size),
       max_batch_delay_ms_(max_batch_delay_ms),
       on_rpc_completion_(std::move(on_rpc_completion)) {
@@ -177,15 +178,15 @@ void RaySyncer::Register(MessageType message_type,
 
         // Set job to pull from reporter periodically
         if (reporter != nullptr && pull_from_reporter_interval_ms > 0) {
-          timer_->RunFnPeriodically(
+          periodical_runner_->RunFnPeriodically(
               [this, stopped = stopped_, message_type]() {
                 if (*stopped) {
                   return;
                 }
-                OnDemandBroadcasting(message_type);
+                BroadcastMessageIfNewVersion(message_type);
               },
               pull_from_reporter_interval_ms,
-              "RaySyncer.OnDemandBroadcasting");
+              "RaySyncer.BroadcastMessageIfNewVersion");
         }
 
         RAY_LOG(DEBUG) << "Registered components: "
@@ -196,7 +197,7 @@ void RaySyncer::Register(MessageType message_type,
       "RaySyncerRegister");
 }
 
-bool RaySyncer::OnDemandBroadcasting(MessageType message_type) {
+bool RaySyncer::BroadcastMessageIfNewVersion(MessageType message_type) {
   auto msg = node_state_->CreateSyncMessage(message_type);
   if (msg) {
     RAY_CHECK(msg->node_id() == GetLocalNodeID());
@@ -254,6 +255,7 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
         syncer_.node_state_->RemoveNode(node_id);
       },
       /*auth_token=*/auth_token_,
+      /*auth_token_validator=*/auth_token_validator_,
       /*max_batch_size=*/syncer_.max_batch_size_,
       /*max_batch_delay_ms=*/syncer_.max_batch_delay_ms_);
   RAY_LOG(DEBUG).WithField(NodeID::FromBinary(reactor->GetRemoteNodeID()))

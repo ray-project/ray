@@ -7,9 +7,6 @@ import ray
 import ray.cluster_utils
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{"local_mode": True}, {"local_mode": False}], indirect=True
-)
 def test_args_force_positional(ray_start_regular):
     def force_positional(*, a="hello", b="helxo", **kwargs):
         return a, b, kwargs
@@ -38,9 +35,6 @@ def test_args_force_positional(ray_start_regular):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{"local_mode": False}, {"local_mode": True}], indirect=True
-)
 def test_args_intertwined(ray_start_regular):
     def args_intertwined(a, *args, x="hello", **kwargs):
         return a, args, x, kwargs

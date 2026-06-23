@@ -76,7 +76,11 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
             # Step 2: Map the Predictor over the Dataset to get predictions.
             # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
-            predictions = ds.map_batches(HuggingFacePredictor, compute=ray.data.ActorPoolStrategy(size=2))
+            predictions = ds.map_batches(
+                HuggingFacePredictor, 
+                compute=ray.data.ActorPoolStrategy(size=2), 
+                batch_size="auto"
+            )
             # Step 3: Show one prediction output.
             predictions.show(limit=1)
 
@@ -126,7 +130,7 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
             # Step 2: Map the Predictor over the Dataset to get predictions.
             # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
-            predictions = ds.map_batches(TorchPredictor, compute=ray.data.ActorPoolStrategy(size=2))
+            predictions = ds.map_batches(TorchPredictor, compute=ray.data.ActorPoolStrategy(size=2), batch_size="auto")
             # Step 3: Show one prediction output.
             predictions.show(limit=1)
 
@@ -171,7 +175,7 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
             # Step 2: Map the Predictor over the Dataset to get predictions.
             # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
-            predictions = ds.map_batches(TFPredictor, compute=ray.data.ActorPoolStrategy(size=2))
+            predictions = ds.map_batches(TFPredictor, compute=ray.data.ActorPoolStrategy(size=2), batch_size="auto")
              # Step 3: Show one prediction output.
             predictions.show(limit=1)
 
@@ -235,6 +239,25 @@ Configuration and troubleshooting
 ---------------------------------
 
 .. _batch_inference_gpu:
+
+Job-level Checkpointing
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Use job-level checkpointing to make offline batch inference jobs resilient to failures
+like node restarts or transient execution errors.
+
+When enabled, Ray Data records progress during execution. If a batch inference
+job fails partway through processing, rerunning the same pipeline with the same
+checkpoint configuration resumes by skipping already-processed records instead
+of reprocessing the entire dataset.
+
+This is especially useful for large batch inference workloads where restarting
+from the beginning would be expensive.
+
+To enable job-level checkpointing, configure a
+:class:`~ray.data.checkpoint.CheckpointConfig` on the current
+:class:`~ray.data.DataContext`. See the
+:ref:`Execution Configurations <execution_configurations>` guide for details.
 
 Using GPUs for inference
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -389,9 +412,11 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 Configuring Batch Size
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Configure the size of the input batch that's passed to ``__call__`` by setting the ``batch_size`` argument for :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
+Configure the size of the input batch that's passed to ``__call__`` by setting the ``batch_size`` argument for :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`.
 
-Increasing batch size results in faster execution because inference is a vectorized operation. For GPU inference, increasing batch size increases GPU utilization. Set the batch size to as large possible without running out of memory. If you encounter out-of-memory errors, decreasing ``batch_size`` may help.
+Increasing batch size results in faster execution because inference is a vectorized operation. For GPU inference, increasing batch size increases GPU utilization.
+
+For **CPU inference**, use ``batch_size="auto"`` to let Ray Data automatically determine an appropriate batch size based on your data. For **GPU inference**, specify an explicit integer ``batch_size`` as large as possible without running out of GPU memory. If you encounter out-of-memory errors, decrease ``batch_size``.
 
 .. testcode::
 
@@ -407,10 +432,6 @@ Increasing batch size results in faster execution because inference is a vectori
 
     # Specify that each input batch should be of size 2.
     ds.map_batches(assert_batch, batch_size=2)
-
-.. caution::
-  The default ``batch_size`` of ``4096`` may be too large for datasets with large rows
-  (for example, tables with many columns or a collection of large images).
 
 Handling GPU out-of-memory failures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

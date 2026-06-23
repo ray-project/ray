@@ -6,6 +6,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data.exceptions import UserCodeException
 from ray.data.preprocessor import (
     PreprocessorNotFittedException,
@@ -78,8 +79,8 @@ def test_ordinal_encoder_strings():
     assert (
         "sex" in encoded_ds_pd.columns
     ), "The 'sex' column is missing in the encoded DataFrame"
-    assert (
-        encoded_ds_pd["sex"].dtype == "int64"
+    assert pd.api.types.is_integer_dtype(
+        encoded_ds_pd["sex"].dtype
     ), "The 'sex' column is not encoded as integers"
 
     # Verify that the encoding worked as expected.
@@ -503,14 +504,16 @@ def test_ordinal_encoder():
     processed_col_b = [2, 0, 1, 0]
     processed_col_c = [0, 2, 1, 2]
     processed_col_d = [[2], [], [1, 2, 0], [0, 0]]
-    expected_df = pd.DataFrame.from_dict(
-        {
-            "A": processed_col_a,
-            "B": processed_col_b,
-            "C": processed_col_c,
-            "D": processed_col_d,
-        }
-    )
+    expected_df = ArrowBlockAccessor(
+        pa.Table.from_pydict(
+            {
+                "A": processed_col_a,
+                "B": processed_col_b,
+                "C": processed_col_c,
+                "D": processed_col_d,
+            }
+        )
+    ).to_pandas()
 
     pd.testing.assert_frame_equal(out_df, expected_df)
 
@@ -627,9 +630,14 @@ def test_ordinal_encoder_no_encode_list():
     transformed = encoder.transform(ds)
     out_df = transformed.to_pandas()
 
-    assert out_df["A"].equals(pd.Series(in_df["A"]))
-    assert out_df["B"].equals(pd.Series([2, 0, 1, 0]))
-    assert out_df["C"].equals(pd.Series([0, 2, 1, 2]))
+    arrow_in_df = ArrowBlockAccessor(pa.Table.from_pandas(in_df)).to_pandas()
+    assert out_df["A"].equals(arrow_in_df["A"])
+    assert out_df["B"].equals(
+        ArrowBlockAccessor(pa.table({"B": [2, 0, 1, 0]})).to_pandas()["B"]
+    )
+    assert out_df["C"].equals(
+        ArrowBlockAccessor(pa.table({"C": [0, 2, 1, 2]})).to_pandas()["C"]
+    )
     assert set(out_df["D"].to_list()) == {3, 0, 2, 1}
 
     # Transform batch.
@@ -888,7 +896,8 @@ def test_one_hot_encoder():
     transformed = encoder.transform(ds)
     out_df = transformed.to_pandas()
 
-    assert out_df["A"].equals(in_df["A"])
+    arrow_in_df = ArrowBlockAccessor(pa.Table.from_pandas(in_df)).to_pandas()
+    assert out_df["A"].equals(arrow_in_df["A"])
     _assert_one_hot_equal(out_df["B"], [[0, 0, 1], [1, 0, 0], [0, 1, 0], [1, 0, 0]])
     _assert_one_hot_equal(out_df["C"], [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1]])
     assert {tuple(row) for row in out_df["D"]} == {
@@ -988,14 +997,63 @@ def test_one_hot_encoder_with_max_categories():
     df_out = ds_out.to_pandas()
     assert len(ds_out.to_pandas().columns) == 3
 
-    expected_df = pd.DataFrame(
-        {
-            "A": col_a,
-            "B": [[0, 0], [1, 0], [0, 1], [1, 0], [0, 1]],
-            "C": [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1], [0, 0, 1]],
-        }
-    )
+    expected_df = ArrowBlockAccessor(
+        pa.table(
+            {
+                "A": pa.array(col_a),
+                "B": pa.array(
+                    [[0, 0], [1, 0], [0, 1], [1, 0], [0, 1]],
+                    type=pa.list_(pa.uint8(), 2),
+                ),
+                "C": pa.array(
+                    [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1], [0, 0, 1]],
+                    type=pa.list_(pa.uint8(), 3),
+                ),
+            }
+        )
+    ).to_pandas()
     pd.testing.assert_frame_equal(df_out, expected_df, check_like=True)
+
+
+def test_one_hot_encoder_max_categories_global_sum_across_partitions():
+    """Tests that max_categories sums counts across partitions before picking top-k.
+
+    Edge case: a category that is NOT in the per-partition top-k of ANY single
+    partition can still become a global top-k category once counts are summed.
+
+    Setup: 2 partitions with column "X" having these value counts:
+      Partition 1: {A: 5, B: 4, C: 3}  → per-partition top-2: {A, B}
+      Partition 2: {D: 5, E: 4, C: 3}  → per-partition top-2: {D, E}
+
+    Global counts: {A: 5, B: 4, C: 6, D: 5, E: 4}
+    Global top-2:  {C, A} or {C, D} (C=6 is highest, then A=5 and D=5 tie)
+
+    If top-k were applied per-partition first, C would be excluded from both
+    partitions' top-2, and the union {A, B, D, E} would never include C.
+    """
+    part1 = pd.DataFrame({"X": ["A"] * 5 + ["B"] * 4 + ["C"] * 3})
+    part2 = pd.DataFrame({"X": ["D"] * 5 + ["E"] * 4 + ["C"] * 3})
+    ds = ray.data.from_pandas([part1, part2])
+
+    encoder = OneHotEncoder(["X"], max_categories={"X": 2})
+    encoder.fit(ds)
+
+    stats = encoder.stats_
+    encoded_categories = set(stats["unique_values(X)"].keys())
+    assert len(encoded_categories) == 2, (
+        f"Expected 2 categories from global top-k, got {len(encoded_categories)}: "
+        f"{encoded_categories}"
+    )
+    # C must be included since it has the highest global count (6).
+    assert (
+        "C" in encoded_categories
+    ), f"Expected C (global count=6) to be in top-2, got {encoded_categories}"
+    # The second category should be one of A or D (both have count=5).
+    remaining = encoded_categories - {"C"}
+    assert remaining <= {
+        "A",
+        "D",
+    }, f"Expected second category to be A or D (count=5), got {remaining}"
 
 
 def test_multi_hot_encoder():
@@ -1029,14 +1087,16 @@ def test_multi_hot_encoder():
     processed_col_b = [[0, 0, 1], [1, 0, 0], [0, 1, 0], [1, 0, 0]]
     processed_col_c = [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1]]
     processed_col_d = [[0, 0, 1], [0, 0, 0], [1, 1, 1], [2, 0, 0]]
-    expected_df = pd.DataFrame.from_dict(
-        {
-            "A": processed_col_a,
-            "B": processed_col_b,
-            "C": processed_col_c,
-            "D": processed_col_d,
-        }
-    )
+    expected_df = ArrowBlockAccessor(
+        pa.Table.from_pydict(
+            {
+                "A": processed_col_a,
+                "B": processed_col_b,
+                "C": processed_col_c,
+                "D": processed_col_d,
+            }
+        )
+    ).to_pandas()
 
     pd.testing.assert_frame_equal(out_df, expected_df)
 
@@ -1167,9 +1227,11 @@ def test_label_encoder():
     processed_col_a = [2, 1, 0, 2]
     processed_col_b = col_b
     processed_col_c = col_c
-    expected_df = pd.DataFrame.from_dict(
-        {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
-    )
+    expected_df = ArrowBlockAccessor(
+        pa.Table.from_pydict(
+            {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
+        )
+    ).to_pandas()
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # append mode
@@ -1178,22 +1240,27 @@ def test_label_encoder():
     append_transformed = append_encoder.transform(ds)
     out_df = append_transformed.to_pandas()
 
-    expected_df = pd.DataFrame.from_dict(
-        {"A": col_a, "B": col_b, "C": col_c, "A_encoded": processed_col_a}
-    )
+    expected_df = ArrowBlockAccessor(
+        pa.Table.from_pydict(
+            {"A": col_a, "B": col_b, "C": col_c, "A_encoded": processed_col_a}
+        )
+    ).to_pandas()
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # Inverse transform data.
     inverse_transformed = encoder.inverse_transform(transformed)
     inverse_df = inverse_transformed.to_pandas()
 
-    pd.testing.assert_frame_equal(inverse_df, in_df, check_like=True)
+    arrow_in_df = ArrowBlockAccessor(pa.Table.from_pandas(in_df)).to_pandas()
+    pd.testing.assert_frame_equal(inverse_df, arrow_in_df, check_like=True)
 
     inverse_append_transformed = append_encoder.inverse_transform(append_transformed)
     inverse_append_df = inverse_append_transformed.to_pandas()
-    expected_df = pd.DataFrame.from_dict(
-        {"A": col_a, "B": col_b, "C": col_c, "A_encoded": processed_col_a}
-    )
+    expected_df = ArrowBlockAccessor(
+        pa.Table.from_pydict(
+            {"A": col_a, "B": col_b, "C": col_c, "A_encoded": processed_col_a}
+        )
+    ).to_pandas()
     pd.testing.assert_frame_equal(inverse_append_df, expected_df, check_like=True)
 
     # Inverse transform without fitting.
@@ -1207,7 +1274,7 @@ def test_label_encoder():
     inv_non_fitted = new_encoder.inverse_transform(transformed)
     inv_non_fitted_df = inv_non_fitted.to_pandas()
 
-    assert inv_non_fitted_df.equals(in_df)
+    assert inv_non_fitted_df.equals(arrow_in_df)
 
     # Transform batch.
     pred_col_a = ["blue", "red", "yellow"]
@@ -1294,7 +1361,10 @@ def test_categorizer(predefined_dtypes):
     transformed = encoder.transform(ds)
     out_df = transformed.to_pandas()
 
-    assert out_df.dtypes["A"] == np.object_
+    arrow_passthrough_dtype = (
+        ArrowBlockAccessor(pa.Table.from_pandas(in_df[["A"]])).to_pandas().dtypes["A"]
+    )
+    assert out_df.dtypes["A"] == arrow_passthrough_dtype
     assert out_df.dtypes["B"] == expected_dtypes["B"]
     assert out_df.dtypes["C"] == expected_dtypes["C"]
 

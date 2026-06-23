@@ -271,7 +271,7 @@ class CloudFileSystem:
 
             # Download files
             tokenizer_file_substrings = (
-                ["tokenizer", "config.json"] if tokenizer_only else []
+                ["tokenizer", "config.json", "chat_template"] if tokenizer_only else []
             )
 
             safetensors_to_exclude = [".safetensors"] if exclude_safetensors else None
@@ -375,6 +375,7 @@ class CloudObjectCache:
             fetch_fn: Function to fetch values (can be sync or async)
             missing_expire_seconds: How long to cache missing objects (None for no expiration)
             exists_expire_seconds: How long to cache existing objects (None for no expiration)
+            missing_object_value: Sentinel value used to represent a missing object in the cache.
         """
         self._cache: Dict[str, _CacheEntry] = {}
         self._max_size = max_size
@@ -422,6 +423,9 @@ class CloudObjectCache:
 
     def _check_cache(self, key: str) -> tuple[Any, bool]:
         """Check if key exists in cache and is valid.
+
+        Args:
+            key: The cache key to check.
 
         Returns:
             Tuple of (value, should_fetch)
@@ -494,10 +498,10 @@ class CloudModelAccessor:
         if Path(self.model_id).exists():
             return Path(self.model_id)
         # Delayed import to avoid circular dependencies
-        from transformers.utils.hub import TRANSFORMERS_CACHE
+        from huggingface_hub.constants import HF_HUB_CACHE
 
         return Path(
-            TRANSFORMERS_CACHE, f"models--{self.model_id.replace('/', '--')}"
+            HF_HUB_CACHE, f"models--{self.model_id.replace('/', '--')}"
         ).expanduser()
 
 
@@ -517,6 +521,9 @@ def remote_object_cache(
         missing_expire_seconds: How long to cache missing objects
         exists_expire_seconds: How long to cache existing objects
         missing_object_value: Value to use for missing objects
+
+    Returns:
+        A decorator that wraps an async function with cache lookup.
     """
 
     def decorator(func: Callable[..., T]) -> Callable[..., T]:

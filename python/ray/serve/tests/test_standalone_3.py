@@ -15,6 +15,7 @@ from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import get_serve_logs_dir
+from ray.serve._private.test_utils import SharedCounter
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ProxyStatus, ServeInstanceDetails
@@ -75,19 +76,8 @@ def test_long_poll_timeout_with_max_ongoing_requests(ray_instance):
     Issue: https://github.com/ray-project/ray/issues/32652
     """
 
-    @ray.remote(num_cpus=0)
-    class CounterActor:
-        def __init__(self):
-            self._count = 0
-
-        def inc(self):
-            self._count += 1
-
-        def get(self):
-            return self._count
-
     signal_actor = SignalActor.remote()
-    counter_actor = CounterActor.remote()
+    counter_actor = SharedCounter.remote()
 
     @serve.deployment(max_ongoing_requests=1)
     async def f():

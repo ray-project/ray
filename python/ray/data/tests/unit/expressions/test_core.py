@@ -259,6 +259,16 @@ class TestAliasExpr:
         """Test structural equality for alias expressions."""
         assert expr1.structurally_equals(expr2) is expected
 
+    def test_alias_structural_equality_respects_rename_flag(self):
+        expr = col("a")
+        aliased = expr.alias("b")
+        renamed = expr._rename("b")
+
+        assert aliased.structurally_equals(aliased)
+        assert renamed.structurally_equals(renamed)
+        assert not aliased.structurally_equals(renamed)
+        assert not aliased.structurally_equals(expr.alias("c"))
+
     def test_alias_evaluation_equivalence(self):
         """Test that alias evaluation produces same result as original."""
         import pandas as pd

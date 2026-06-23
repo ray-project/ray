@@ -21,10 +21,13 @@ from ray.data.expressions import (
     ColumnExpr,
     DownloadExpr,
     LiteralExpr,
+    MonotonicallyIncreasingIdExpr,
     Operation,
+    RandomExpr,
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    UUIDExpr,
 )
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
@@ -83,7 +86,7 @@ logger = logging.getLogger(__name__)
 
 
 class _IcebergExpressionVisitor(
-    _ExprVisitor["BooleanExpression | UnboundTerm[Any] | Literal[Any]"]
+    _ExprVisitor["BooleanExpression | UnboundTerm | Literal"]
 ):
     """
     Visitor that converts Ray Data expressions to PyIceberg expressions.
@@ -98,11 +101,11 @@ class _IcebergExpressionVisitor(
         >>> # iceberg_expr can now be used with PyIceberg's filter APIs
     """
 
-    def visit_column(self, expr: "ColumnExpr") -> "UnboundTerm[Any]":
+    def visit_column(self, expr: "ColumnExpr") -> "UnboundTerm":
         """Convert a column reference to an Iceberg reference."""
         return Reference(expr.name)
 
-    def visit_literal(self, expr: "LiteralExpr") -> "Literal[Any]":
+    def visit_literal(self, expr: "LiteralExpr") -> "Literal":
         """Convert a literal value to an Iceberg literal."""
         return literal(expr.value)
 
@@ -147,13 +150,11 @@ class _IcebergExpressionVisitor(
 
     def visit_alias(
         self, expr: "AliasExpr"
-    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+    ) -> "BooleanExpression | UnboundTerm | Literal":
         """Convert an aliased expression (just unwrap the alias)."""
         return self.visit(expr.expr)
 
-    def visit_udf(
-        self, expr: "UDFExpr"
-    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+    def visit_udf(self, expr: "UDFExpr") -> "BooleanExpression | UnboundTerm | Literal":
         """UDF expressions cannot be converted to Iceberg expressions."""
         raise TypeError(
             "UDF expressions cannot be converted to Iceberg expressions. "
@@ -162,7 +163,7 @@ class _IcebergExpressionVisitor(
 
     def visit_download(
         self, expr: "DownloadExpr"
-    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+    ) -> "BooleanExpression | UnboundTerm | Literal":
         """Download expressions cannot be converted to Iceberg expressions."""
         raise TypeError(
             "Download expressions cannot be converted to Iceberg expressions."
@@ -170,10 +171,34 @@ class _IcebergExpressionVisitor(
 
     def visit_star(
         self, expr: "StarExpr"
-    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+    ) -> "BooleanExpression | UnboundTerm | Literal":
         """Star expressions cannot be converted to Iceberg expressions."""
         raise TypeError(
             "Star expressions cannot be converted to Iceberg filter expressions."
+        )
+
+    def visit_monotonically_increasing_id(
+        self, expr: "MonotonicallyIncreasingIdExpr"
+    ) -> "BooleanExpression | UnboundTerm | Literal":
+        """Monotonically increasing ID expressions cannot be converted to Iceberg expressions."""
+        raise TypeError(
+            "monotonically_increasing_id expressions cannot be converted to Iceberg filter expressions."
+        )
+
+    def visit_random(
+        self, expr: "RandomExpr"
+    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+        """Random expressions cannot be converted to Iceberg expressions."""
+        raise TypeError(
+            "Random expressions cannot be converted to Iceberg filter expressions."
+        )
+
+    def visit_uuid(
+        self, expr: "UUIDExpr"
+    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+        """UUID expressions cannot be converted to Iceberg expressions."""
+        raise TypeError(
+            "UUID expressions cannot be converted to Iceberg filter expressions."
         )
 
 
@@ -185,15 +210,11 @@ def _get_read_task(
     case_sensitive: bool,
     limit: Optional[int],
     schema: "Schema",
-    column_rename_map: Optional[Dict[str, str]],
 ) -> Iterable[Block]:
     # Determine the PyIceberg version to handle backward compatibility
     import pyiceberg
 
-    from ray.data.datasource.datasource import _DatasourceProjectionPushdownMixin
-
     def _generate_tables() -> Iterable[pa.Table]:
-        """Inner generator that yields tables without renaming."""
         if version.parse(pyiceberg.__version__) >= version.parse("0.9.0"):
             # Modern implementation using ArrowScan (PyIceberg 0.9.0+)
             from pyiceberg.io.pyarrow import ArrowScan
@@ -234,10 +255,7 @@ def _get_read_task(
             )
             yield table
 
-    # Apply renames to all tables from the generator
-    yield from _DatasourceProjectionPushdownMixin._apply_rename_to_tables(
-        _generate_tables(), column_rename_map
-    )
+    yield from _generate_tables()
 
 
 @DeveloperAPI
@@ -457,7 +475,6 @@ class IcebergDatasource(Datasource):
             case_sensitive=case_sensitive,
             limit=limit,
             schema=projected_schema,
-            column_rename_map=self.get_column_renames(),
         )
 
         read_tasks = []
@@ -481,7 +498,7 @@ class IcebergDatasource(Datasource):
             metadata = BlockMetadata(
                 num_rows=sum(task.file.record_count for task in chunk_tasks)
                 - position_delete_count,
-                size_bytes=sum(task.length for task in chunk_tasks),
+                size_bytes=sum(task.file.file_size_in_bytes for task in chunk_tasks),
                 input_files=[task.file.file_path for task in chunk_tasks],
                 exec_stats=None,
             )

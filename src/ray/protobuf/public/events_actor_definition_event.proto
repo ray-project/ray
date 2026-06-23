@@ -44,4 +44,6 @@ message ActorDefinitionEvent {
   string call_site = 12;
   // The ID of the caller of the actor creation task (parent actor/driver).
   bytes parent_id = 13;
+  // The ids that can be used to correlate the actor with other events.
+  map<string, bytes> ref_ids = 14;
 }

@@ -249,6 +249,11 @@ int64_t TaskSpecification::GeneratorBackpressureNumObjects() const {
   return result;
 }
 
+int64_t TaskSpecification::NumObjectsPerYield() const {
+  auto result = message_->num_objects_per_yield();
+  return result == 0 ? 1 : result;
+}
+
 std::vector<ObjectID> TaskSpecification::DynamicReturnIds() const {
   RAY_CHECK(message_->returns_dynamic());
   std::vector<ObjectID> dynamic_return_ids;
@@ -474,9 +479,9 @@ ActorID TaskSpecification::ActorId() const {
   return ActorID::FromBinary(message_->actor_task_spec().actor_id());
 }
 
-uint64_t TaskSpecification::SequenceNumber() const {
+uint64_t TaskSpecification::ConcurrencyGroupSequenceNumber() const {
   RAY_CHECK(IsActorTask());
-  return message_->actor_task_spec().sequence_number();
+  return message_->actor_task_spec().concurrency_group_sequence_number();
 }
 
 ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
@@ -513,7 +518,13 @@ bool TaskSpecification::IsAsyncioActor() const {
 }
 
 bool TaskSpecification::IsDetachedActor() const {
-  return IsActorCreationTask() && message_->actor_creation_task_spec().is_detached();
+  if (IsActorCreationTask()) {
+    return message_->actor_creation_task_spec().is_detached();
+  }
+  if (IsActorTask()) {
+    return message_->actor_task_spec().is_detached_actor();
+  }
+  return false;
 }
 
 std::string TaskSpecification::DebugString() const {
@@ -551,7 +562,8 @@ std::string TaskSpecification::DebugString() const {
   } else if (IsActorTask()) {
     // Print actor task spec.
     stream << ", actor_task_spec={actor_id=" << ActorId()
-           << ", actor_caller_id=" << CallerId() << ", seq_no=" << SequenceNumber()
+           << ", actor_caller_id=" << CallerId()
+           << ", seq_no=" << ConcurrencyGroupSequenceNumber()
            << ", retry_exceptions=" << ShouldRetryExceptions() << "}";
   }
 
@@ -566,6 +578,16 @@ std::string TaskSpecification::DebugString() const {
              << runtime_env_info.runtime_env_config().setup_timeout_seconds();
     }
   }
+
+  stream << ", dependencies={";
+  const auto dependencies = GetDependencyIds();
+  for (size_t i = 0; i < dependencies.size(); ++i) {
+    if (i > 0) {
+      stream << ", ";
+    }
+    stream << dependencies[i];
+  }
+  stream << "}";
 
   return stream.str();
 }

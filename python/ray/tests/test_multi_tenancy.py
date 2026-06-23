@@ -10,11 +10,11 @@ import numpy as np
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     run_string_as_driver,
-    run_string_as_driver_nonblocking,
+    wait_for_condition,
 )
+from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.util.state import list_workers
 from ray.util.state.common import WorkerState
 
@@ -22,7 +22,8 @@ from ray.util.state.common import WorkerState
 def get_workers() -> List[WorkerState]:
     """Return non-driver workers."""
     return list_workers(
-        filters=[("worker_type", "=", "WORKER"), ("is_alive", "=", "True")]
+        filters=[("worker_type", "=", "WORKER"), ("is_alive", "=", "True")],
+        raise_on_missing_output=False,
     )
 
 

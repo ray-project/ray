@@ -26,7 +26,7 @@ class PauseRequest(BaseModel):
     model: str
     options: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Engine-specific pause options (e.g., wait_for_inflight_requests, clear_cache)",
+        description="Engine-specific pause options (e.g., mode, clear_cache)",
     )
 
 
@@ -73,8 +73,7 @@ class PausableIngressMixin(ReplicaBroadcastable):
         Args:
             body: Request containing the model ID and engine-specific options.
                 Options may include:
-                - wait_for_inflight_requests (bool): Wait for in-flight requests
-                  to finish before pausing. Default False (abort immediately).
+                - mode (str): "abort" (default), "wait", or "keep".
                 - clear_cache (bool): Clear KV cache after draining. Default True.
 
         Returns:

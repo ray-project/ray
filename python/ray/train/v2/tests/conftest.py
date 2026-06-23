@@ -69,7 +69,7 @@ def disable_state_actor_polling(monkeypatch):
 
 @pytest.fixture
 def mock_runtime_context(monkeypatch):
-    @ray.remote
+    @ray.remote(num_cpus=0)
     class DummyActor:
         pass
 

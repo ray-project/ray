@@ -2,6 +2,7 @@ import copy
 import json
 import math
 import os
+import re
 from dataclasses import asdict
 from typing import List, Tuple
 
@@ -13,6 +14,9 @@ from ray.dashboard.modules.metrics.dashboards.common import (
 )
 from ray.dashboard.modules.metrics.dashboards.data_dashboard_panels import (
     data_dashboard_config,
+)
+from ray.dashboard.modules.metrics.dashboards.data_llm_dashboard_panels import (
+    data_llm_dashboard_config,
 )
 from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
     default_dashboard_config,
@@ -32,6 +36,7 @@ GRAFANA_DASHBOARD_UID_OVERRIDE_ENV_VAR_TEMPLATE = "RAY_GRAFANA_{name}_DASHBOARD_
 GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE = (
     "RAY_GRAFANA_{name}_DASHBOARD_GLOBAL_FILTERS"
 )
+GRAFANA_DASHBOARD_LOG_LINK_URL_ENV_VAR_TEMPLATE = "RAY_GRAFANA_{name}_LOG_LINK_URL"
 
 # Grafana dashboard layout constants
 # Dashboard uses a 24-column grid with 2-column panels
@@ -44,13 +49,16 @@ ROW_HEIGHT = 1  # Height of row container
 
 def _read_configs_for_dashboard(
     dashboard_config: DashboardConfig,
-) -> Tuple[str, List[str]]:
-    """
-    Reads environment variable configs for overriding uid or global_filters for a given
-    dashboard.
+) -> Tuple[str, List[str], str]:
+    """Reads environment variable configs for overriding uid, global_filters, and the log link URL for a given dashboard.
+
+    Args:
+        dashboard_config: The dashboard whose env-var overrides are read.
+            ``dashboard_config.name`` selects the env-var suffix and
+            ``default_uid`` is used as a fallback.
 
     Returns:
-      Tuple with format uid, global_filters
+      Tuple with format uid, global_filters, log_link_url
     """
     uid = (
         os.environ.get(
@@ -73,7 +81,16 @@ def _read_configs_for_dashboard(
     else:
         global_filters = global_filters_str.split(",")
 
-    return uid, global_filters
+    log_link_url = (
+        os.environ.get(
+            GRAFANA_DASHBOARD_LOG_LINK_URL_ENV_VAR_TEMPLATE.format(
+                name=dashboard_config.name
+            )
+        )
+        or ""
+    )
+
+    return uid, global_filters, log_link_url
 
 
 def generate_default_grafana_dashboard() -> Tuple[str, str]:
@@ -131,6 +148,21 @@ def generate_data_grafana_dashboard() -> Tuple[str, str]:
     return _generate_grafana_dashboard(data_dashboard_config)
 
 
+def generate_data_llm_grafana_dashboard() -> Tuple[str, str]:
+    """
+    Generates the dashboard output for the Data LLM dashboard and returns
+    both the content and the uid.
+
+    This dashboard provides vLLM metrics visibility for Ray Data LLM workloads,
+    including latency (TTFT, TPOT), throughput, cache utilization, and
+    prefix cache hit rate.
+
+    Returns:
+      Tuple with format content, uid
+    """
+    return _generate_grafana_dashboard(data_llm_dashboard_config)
+
+
 def generate_train_grafana_dashboard() -> Tuple[str, str]:
     """
     Generates the dashboard output for the train dashboard and returns
@@ -143,12 +175,17 @@ def generate_train_grafana_dashboard() -> Tuple[str, str]:
 
 
 def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
-    """
+    """Render the Grafana dashboard JSON for the given config.
+
+    Args:
+        dashboard_config: Configuration describing the panels and base
+            template JSON file to use for rendering.
+
     Returns:
       Tuple with format dashboard_content, uid
     """
-    uid, global_filters = _read_configs_for_dashboard(dashboard_config)
-    panels = _generate_grafana_panels(dashboard_config, global_filters)
+    uid, global_filters, log_link_url = _read_configs_for_dashboard(dashboard_config)
+    panels = _generate_grafana_panels(dashboard_config, global_filters, log_link_url)
     base_file_name = dashboard_config.base_json_file_name
 
     base_json = json.load(
@@ -161,12 +198,13 @@ def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
     for variable in variables:
         if "definition" not in variable:
             continue
-        variable["definition"] = variable["definition"].format(
-            global_filters=global_filters_str
-        )
-        variable["query"]["query"] = variable["query"]["query"].format(
-            global_filters=global_filters_str
-        )
+        definition = variable["definition"].format(global_filters=global_filters_str)
+        query = variable["query"]["query"].format(global_filters=global_filters_str)
+        if not global_filters_str:
+            definition = _clean_empty_filters(definition)
+            query = _clean_empty_filters(query)
+        variable["definition"] = definition
+        variable["query"]["query"] = query
 
     tags = base_json.get("tags", []) or []
     tags.append(f"rayVersion:{ray.__version__}")
@@ -184,6 +222,7 @@ def _generate_panel_template(
     panel_global_filters: List[str],
     panel_index: int,
     base_y_position: int,
+    log_link_url: str,
 ) -> dict:
     """
     Helper method to generate a panel template with common configuration.
@@ -193,6 +232,7 @@ def _generate_panel_template(
         panel_global_filters: List of global filters to apply
         panel_index: The index of the panel within its row (0-based)
         base_y_position: The base y-coordinate for the row in the dashboard grid
+        log_link_url: The URL to the log link for the panel
 
     Returns:
         dict: The configured panel template
@@ -335,6 +375,16 @@ def _generate_panel_template(
         ):
             template["yaxes"][0]["label"] = panel.heatmap_yaxis_label
 
+    # Add log link if URL is provided via environment variable.
+    if log_link_url:
+        template["links"] = [
+            {
+                "targetBlank": True,
+                "title": "View Logs",
+                "url": log_link_url,
+            }
+        ]
+
     return template
 
 
@@ -375,7 +425,7 @@ def _calculate_panel_heights(num_panels: int) -> int:
 
 
 def _generate_grafana_panels(
-    config: DashboardConfig, global_filters: List[str]
+    config: DashboardConfig, global_filters: List[str], log_link_url: str
 ) -> List[dict]:
     """
     Generates Grafana panel configurations for a dashboard.
@@ -390,6 +440,8 @@ def _generate_grafana_panels(
     Args:
         config: Dashboard configuration containing panels and rows
         global_filters: List of filters to apply to all panels
+        log_link_url: Optional URL for panel log links. When set, each panel
+            gets a "View Logs" link pointing to this URL.
 
     Returns:
         List of Grafana panel configurations for the dashboard
@@ -401,7 +453,7 @@ def _generate_grafana_panels(
     # Add top-level panels in 2-column grid
     for panel_index, panel in enumerate(config.panels):
         panel_template = _generate_panel_template(
-            panel, panel_global_filters, panel_index, current_y_position
+            panel, panel_global_filters, panel_index, current_y_position, log_link_url
         )
         panels.append(panel_template)
 
@@ -421,7 +473,11 @@ def _generate_grafana_panels(
         # Add panels within row using 2-column grid
         for panel_index, panel in enumerate(row.panels):
             panel_template = _generate_panel_template(
-                panel, panel_global_filters, panel_index, current_y_position
+                panel,
+                panel_global_filters,
+                panel_index,
+                current_y_position,
+                log_link_url,
             )
 
             # Add panel to row if collapsed, otherwise to main dashboard
@@ -430,10 +486,32 @@ def _generate_grafana_panels(
             else:
                 panels.append(panel_template)
 
-        # Update y position for next row
-        current_y_position += _calculate_panel_heights(len(row.panels))
+        # Update y position for next row based on actual panel positions
+        # when explicit grid_pos is used, or fallback to calculated height.
+        if any(p.grid_pos for p in row.panels):
+            max_y_bottom = max(
+                (p.grid_pos.y + p.grid_pos.h for p in row.panels if p.grid_pos),
+                default=current_y_position,
+            )
+            current_y_position = max_y_bottom
+        else:
+            current_y_position += _calculate_panel_heights(len(row.panels))
 
     return panels
+
+
+def _clean_empty_filters(expr: str) -> str:
+    """Clean up malformed PromQL when global_filters is empty.
+
+    Removes artifacts like trailing/leading commas in label matchers:
+      ", ," → ","
+      ", }" → "}"
+      "{ ," → "{"
+    """
+    expr = re.sub(r",\s*,", ",", expr)
+    expr = re.sub(r",\s*}", "}", expr)
+    expr = re.sub(r"{\s*,", "{", expr)
+    return expr
 
 
 def gen_incrementing_alphabets(length):
@@ -448,11 +526,13 @@ def _generate_targets(panel: Panel, panel_global_filters: List[str]) -> List[dic
         panel.targets, gen_incrementing_alphabets(len(panel.targets))
     ):
         template = copy.deepcopy(target.template.value)
+        global_filters_str = ",".join(panel_global_filters)
+        expr = target.expr.format(global_filters=global_filters_str)
+        if not global_filters_str:
+            expr = _clean_empty_filters(expr)
         template.update(
             {
-                "expr": target.expr.format(
-                    global_filters=",".join(panel_global_filters)
-                ),
+                "expr": expr,
                 "legendFormat": target.legend,
                 "refId": ref_id,
             }

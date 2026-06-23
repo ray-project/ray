@@ -59,7 +59,7 @@ class NoFilter(Filter):
         try:
             return np.asarray(x)
         except Exception:
-            raise ValueError("Failed to convert to array", x)
+            raise ValueError(f"Failed to convert to array: {x!r}")
 
     def apply_changes(self, other: "NoFilter", *args, **kwargs) -> None:
         pass

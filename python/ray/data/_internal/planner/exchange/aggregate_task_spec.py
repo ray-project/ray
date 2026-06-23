@@ -34,11 +34,10 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         boundaries: List[KeyType],
         key: SortKey,
         aggs: List[AggregateFn],
-        batch_format: str,
     ):
         super().__init__(
             map_args=[boundaries, key, aggs],
-            reduce_args=[key, aggs, batch_format],
+            reduce_args=[key, aggs],
         )
 
     @staticmethod
@@ -66,7 +65,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         from ray.data.block import BlockMetadataWithSchema
 
         meta_with_schema = BlockMetadataWithSchema.from_block(
-            block, stats=stats.build()
+            block, block_exec_stats=stats.build()
         )
         return parts + [meta_with_schema]
 
@@ -74,13 +73,12 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
     def reduce(
         key: SortKey,
         aggs: List[AggregateFn],
-        batch_format: str,
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
     ) -> Tuple[Block, "BlockMetadataWithSchema"]:
         normalized_blocks = TableBlockAccessor.normalize_block_types(
             mapper_outputs,
-            target_block_type=ExchangeTaskSpec._derive_target_block_type(batch_format),
+            target_block_type=None,
         )
         blocks, meta_with_schema = BlockAccessor.for_block(
             normalized_blocks[0]

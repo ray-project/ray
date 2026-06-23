@@ -280,20 +280,37 @@ void NodeInfoAccessor::AsyncGetAllNodeAddressAndLiveness(
 }
 
 void NodeInfoAccessor::AsyncGetAll(
-    const rpc::MultiItemCallback<rpc::GcsNodeInfo> &callback,
+    const rpc::OptionalItemCallback<std::pair<std::vector<rpc::GcsNodeInfo>, int64_t>>
+        &callback,
     int64_t timeout_ms,
-    const std::vector<NodeID> &node_ids) {
+    const std::optional<rpc::GcsNodeInfo::GcsNodeState> &state_filter,
+    const std::vector<rpc::GetAllNodeInfoRequest::NodeSelector> &node_selectors,
+    const std::optional<int64_t> &limit) const {
   RAY_LOG(DEBUG) << "Getting information of all nodes.";
   rpc::GetAllNodeInfoRequest request;
-  for (const auto &node_id : node_ids) {
-    request.add_node_selectors()->set_node_id(node_id.Binary());
+  if (state_filter.has_value()) {
+    request.set_state_filter(state_filter.value());
   }
+  for (const auto &node_selector : node_selectors) {
+    *request.add_node_selectors() = node_selector;
+  }
+  if (limit.has_value()) {
+    request.set_limit(limit.value());
+  }
+
   client_impl_->GetGcsRpcClient().GetAllNodeInfo(
       std::move(request),
       [callback](const Status &status, rpc::GetAllNodeInfoReply &&reply) {
-        callback(status, VectorFromProtobuf(std::move(*reply.mutable_node_info_list())));
         RAY_LOG(DEBUG) << "Finished getting information of all nodes, status = "
                        << status;
+        if (!status.ok()) {
+          callback(status, std::nullopt);
+          return;
+        }
+        callback(
+            status,
+            std::make_pair(VectorFromProtobuf(std::move(*reply.mutable_node_info_list())),
+                           reply.num_filtered()));
       },
       timeout_ms);
 }
@@ -584,7 +601,7 @@ void ErrorInfoAccessor::AsyncReportJobError(rpc::ErrorTableData data) {
   RAY_LOG(DEBUG) << "Publishing job error, job id = " << job_id;
   rpc::ReportJobErrorRequest request;
   *request.mutable_job_error() = std::move(data);
-  client_impl_->GetGcsRpcClient().ReportJobError(
+  client_impl_->GetObservabilityPubSubRpcClient().ReportJobError(
       std::move(request),
       [job_id](const Status &status, rpc::ReportJobErrorReply &&reply) {
         RAY_LOG(DEBUG) << "Finished publishing job error, job id = " << job_id;
@@ -1216,6 +1233,22 @@ Status AutoscalerStateAccessor::DrainNode(const std::string &node_id,
   return Status::OK();
 }
 
+Status AutoscalerStateAccessor::ResizeRayletResourceInstances(
+    const std::string &node_id,
+    const std::unordered_map<std::string, double> &resources,
+    int64_t timeout_ms,
+    std::unordered_map<std::string, double> &total_resources) {
+  rpc::autoscaler::ResizeRayletResourceInstancesRequest request;
+  request.set_node_id(NodeID::FromHex(node_id).Binary());
+  request.mutable_resources()->insert(resources.begin(), resources.end());
+
+  rpc::autoscaler::ResizeRayletResourceInstancesReply reply;
+  RAY_RETURN_NOT_OK(client_impl_->GetGcsRpcClient().SyncResizeRayletResourceInstances(
+      std::move(request), &reply, timeout_ms));
+  total_resources.insert(reply.total_resources().begin(), reply.total_resources().end());
+  return Status::OK();
+}
+
 PublisherAccessor::PublisherAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 
@@ -1228,7 +1261,7 @@ Status PublisherAccessor::PublishError(std::string key_id,
   pub_message->set_key_id(std::move(key_id));
   *(pub_message->mutable_error_info_message()) = std::move(data);
   rpc::GcsPublishReply reply;
-  return client_impl_->GetGcsRpcClient().SyncGcsPublish(
+  return client_impl_->GetObservabilityPubSubRpcClient().SyncGcsPublish(
       std::move(request), &reply, timeout_ms);
 }
 
@@ -1241,7 +1274,7 @@ Status PublisherAccessor::PublishLogs(std::string key_id,
   pub_message->set_key_id(std::move(key_id));
   *(pub_message->mutable_log_batch_message()) = std::move(data);
   rpc::GcsPublishReply reply;
-  return client_impl_->GetGcsRpcClient().SyncGcsPublish(
+  return client_impl_->GetObservabilityPubSubRpcClient().SyncGcsPublish(
       std::move(request), &reply, timeout_ms);
 }
 
@@ -1255,7 +1288,7 @@ void PublisherAccessor::AsyncPublishNodeResourceUsage(
   pub_message->set_key_id(std::move(key_id));
   pub_message->mutable_node_resource_usage_message()->set_json(
       std::move(node_resource_usage_json));
-  client_impl_->GetGcsRpcClient().GcsPublish(
+  client_impl_->GetObservabilityPubSubRpcClient().GcsPublish(
       std::move(request),
       [done](const Status &status, rpc::GcsPublishReply &&reply) { done(status); });
 }

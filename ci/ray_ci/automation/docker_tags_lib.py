@@ -26,6 +26,7 @@ from ci.ray_ci.docker_container import (
     PYTHON_VERSIONS_RAY_ML,
     RayType,
 )
+from ci.ray_ci.supported_images import get_exceptions
 from ci.ray_ci.utils import logger
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
@@ -64,6 +65,8 @@ def _get_python_version_tag(python_version: str) -> str:
 def _get_platform_tag(platform: str) -> str:
     if platform == "cpu":
         return "-cpu"
+    if platform == "tpu":
+        return "-tpu"
     versions = platform.split(".")
     return f"-{versions[0]}{versions[1]}"  # cu11.8.0-cudnn8 -> cu118
 
@@ -194,10 +197,18 @@ def list_image_tags(
     if ray_type not in RayType.__members__.values():
         raise ValueError(f"Ray type {ray_type} not supported.")
 
+    exceptions = get_exceptions(ray_type)
     tag_suffixes = []
     for python_version in python_versions:
         for platf in platforms:
             for architecture in architectures:
+                if any(
+                    ("architectures" not in e or architecture in e["architectures"])
+                    and ("platforms" not in e or platf in e["platforms"])
+                    and ("python" not in e or python_version in e["python"])
+                    for e in exceptions
+                ):
+                    continue
                 tag_suffixes += list_image_tag_suffixes(
                     ray_type, python_version, platf, architecture
                 )

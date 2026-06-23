@@ -129,10 +129,10 @@ class TestPow2FallbackBehavior:
             chosen = await prefix_request_router._choose_replica_for_request(req)
             assert chosen == r1
 
-    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "prefix_request_router", [{"imbalanced_threshold": 2}], indirect=True
     )
+    @pytest.mark.asyncio
     async def test_fallback_when_imbalanced(self, prefix_request_router):
         """If load is imbalanced beyond threshold, prefix matching is skipped."""
         r1 = FakeRunningReplica("r1")
@@ -257,7 +257,6 @@ class TestPrefixAwareLogic:
 class TestEvictionBehavior:
     """Tests for prefix tree eviction behavior."""
 
-    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "prefix_request_router",
         [
@@ -270,6 +269,7 @@ class TestEvictionBehavior:
         ],
         indirect=True,
     )
+    @pytest.mark.asyncio
     async def test_eviction_task_creation(self, prefix_request_router):
         """Test that eviction task is only created after update_replicas."""
         # Before update_replicas
@@ -352,7 +352,6 @@ class TestPromptNormalization:
         with pytest.raises(ValueError):
             _ = prefix_request_router._extract_text_from_request(fake_pending_request())
 
-    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "prefix_request_router",
         [
@@ -365,6 +364,7 @@ class TestPromptNormalization:
         ],
         indirect=True,
     )
+    @pytest.mark.asyncio
     async def test_eviction_threshold_behavior(self, prefix_request_router):
         """Test that eviction reduces tree size below threshold after interval."""
         r1 = FakeRunningReplica("r1")

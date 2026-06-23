@@ -37,21 +37,53 @@ class PrometheusClient:
         url = f"{self.prometheus_host}/api/v1/{query_type}?" + "&".join(
             [f"{k}={quote(str(v), safe='')}" for k, v in kwargs.items()]
         )
+        query_str = kwargs.get("query", url)
         logger.debug(f"Running Prometheus query {url}")
-        async with self.http_session.get(url) as resp:
-            for _ in range(RETRIES):
-                if resp.status == 200:
-                    prom_data = await resp.json()
-                    return prom_data["data"]["result"]
-                time.sleep(1)
-            return None
+        last_error = None
+        for attempt in range(RETRIES):
+            try:
+                async with self.http_session.get(url) as resp:
+                    if resp.status == 200:
+                        prom_data = await resp.json()
+                        return prom_data["data"]["result"]
+                    body = (await resp.text())[:500]
+                    last_error = f"non-200 status {resp.status}: {body}"
+                    logger.warning(
+                        f"Prometheus query returned non-200 status {resp.status} "
+                        f"(attempt {attempt + 1}/{RETRIES}). Query: {query_str!r}. "
+                        f"Body: {body}"
+                    )
+            except asyncio.TimeoutError:
+                last_error = "request timed out"
+                logger.warning(
+                    f"Prometheus query timed out "
+                    f"(attempt {attempt + 1}/{RETRIES}). Query: {query_str!r}."
+                )
+            except aiohttp.ClientError as e:
+                last_error = f"connection error: {e}"
+                logger.warning(
+                    f"Prometheus query connection error "
+                    f"(attempt {attempt + 1}/{RETRIES}). Query: {query_str!r}. "
+                    f"Error: {e}"
+                )
+            if attempt < RETRIES - 1:
+                await asyncio.sleep(1)
+        logger.error(
+            f"Prometheus query failed after {RETRIES} attempts and returned no data. "
+            f"Query: {query_str!r}. Last error: {last_error}. "
+            "This is a metrics-collection failure (Prometheus unreachable/erroring), "
+            "NOT an empty result for a healthy metric."
+        )
+        return None
 
     async def close(self):
         await self.http_session.close()
 
 
 # Metrics here mirror what we have in Grafana.
-async def _get_prometheus_metrics(start_time: float, end_time: float) -> dict:
+async def _get_prometheus_metrics(
+    start_time: float, end_time: float, session_name: Optional[str] = None
+) -> dict:
     client = PrometheusClient()
     kwargs = {
         "query_type": "query_range",
@@ -59,54 +91,131 @@ async def _get_prometheus_metrics(start_time: float, end_time: float) -> dict:
         "end": int(end_time),
         "step": 15,
     }
+    sf = f'{{SessionName="{session_name}"}}' if session_name else ""
+    sf_spilled = (
+        f'{{SessionName="{session_name}",State="Spilled"}}'
+        if session_name
+        else '{State="Spilled"}'
+    )
     metrics = {
         "cpu_utilization": client.query_prometheus(
-            query="ray_node_cpu_utilization * ray_node_cpu_count / 100", **kwargs
+            query=f"ray_node_cpu_utilization{sf} * ray_node_cpu_count{sf} / 100",
+            **kwargs,
         ),
-        "cpu_count": client.query_prometheus(query="ray_node_cpu_count", **kwargs),
+        "cpu_count": client.query_prometheus(query=f"ray_node_cpu_count{sf}", **kwargs),
         "gpu_utilization": client.query_prometheus(
-            query="ray_node_gpus_utilization / 100", **kwargs
+            query=f"ray_node_gpus_utilization{sf} / 100", **kwargs
         ),
-        "gpu_count": client.query_prometheus(query="ray_node_gpus_available", **kwargs),
-        "disk_usage": client.query_prometheus(query="ray_node_disk_usage", **kwargs),
+        "gpu_count": client.query_prometheus(
+            query=f"ray_node_gpus_available{sf}", **kwargs
+        ),
+        "disk_usage": client.query_prometheus(
+            query=f"ray_node_disk_usage{sf}", **kwargs
+        ),
         "disk_space": client.query_prometheus(
-            query="sum(ray_node_disk_free) + sum(ray_node_disk_usage)", **kwargs
+            query=f"sum(ray_node_disk_free{sf}) + sum(ray_node_disk_usage{sf})",
+            **kwargs,
         ),
-        "memory_usage": client.query_prometheus(query="ray_node_mem_used", **kwargs),
-        "total_memory": client.query_prometheus(query="ray_node_mem_total", **kwargs),
+        "memory_usage": client.query_prometheus(
+            query=f"ray_node_mem_used{sf}", **kwargs
+        ),
+        "total_memory": client.query_prometheus(
+            query=f"ray_node_mem_total{sf}", **kwargs
+        ),
+        "memory_usage_host": client.query_prometheus(
+            query=f"ray_node_mem_used_host{sf}", **kwargs
+        ),
+        "total_memory_host": client.query_prometheus(
+            query=f"ray_node_mem_total_host{sf}", **kwargs
+        ),
+        "memory_usage_cgroup": client.query_prometheus(
+            query=f"ray_node_cgroup_mem_used{sf}", **kwargs
+        ),
+        "total_memory_cgroup": client.query_prometheus(
+            query=f"ray_node_cgroup_mem_total{sf}", **kwargs
+        ),
         "gpu_memory_usage": client.query_prometheus(
-            query="ray_node_gram_used * 1024 * 1024", **kwargs
+            query=f"ray_node_gram_used{sf} * 1024 * 1024", **kwargs
         ),
         "gpu_total_memory": client.query_prometheus(
             query=(
-                "(sum(ray_node_gram_available) + sum(ray_node_gram_used)) * 1024 * 1024"
+                f"(sum(ray_node_gram_available{sf}) + sum(ray_node_gram_used{sf}))"
+                " * 1024 * 1024"
             ),
             **kwargs,
         ),
         "network_receive_speed": client.query_prometheus(
-            query="ray_node_network_receive_speed", **kwargs
+            query=f"ray_node_network_receive_speed{sf}", **kwargs
         ),
         "network_send_speed": client.query_prometheus(
-            query="ray_node_network_send_speed", **kwargs
+            query=f"ray_node_network_send_speed{sf}", **kwargs
         ),
         "cluster_active_nodes": client.query_prometheus(
-            query="ray_cluster_active_nodes", **kwargs
+            query=f"ray_cluster_active_nodes{sf}", **kwargs
         ),
         "cluster_failed_nodes": client.query_prometheus(
-            query="ray_cluster_failed_nodes", **kwargs
+            query=f"ray_cluster_failed_nodes{sf}", **kwargs
         ),
         "cluster_pending_nodes": client.query_prometheus(
-            query="ray_cluster_pending_nodes", **kwargs
+            query=f"ray_cluster_pending_nodes{sf}", **kwargs
+        ),
+        "worker_oom_kills": client.query_prometheus(
+            query=(
+                f"sum(ray_memory_manager_worker_eviction_total{sf}) by (Type, Name)"
+            ),
+            **kwargs,
+        ),
+        "unexpected_worker_failures": client.query_prometheus(
+            query=f"sum(ray_node_manager_unexpected_worker_failure_total{sf}) by (Type, Name)",
+            **kwargs,
+        ),
+        # `State="Spilled"` is the cumulative-bytes counter (the other States
+        # are point-in-time / transient); `> 0` drops always-emitted 0 points.
+        "spilled_bytes": client.query_prometheus(
+            query=f"sum(ray_spill_manager_objects_bytes{sf_spilled}) > 0",
+            **kwargs,
         ),
     }
     metrics = {k: await v for k, v in metrics.items()}
     await client.close()
+
+    # Summarise the outcome so a glance at the logs tells whether the metrics
+    # are trustworthy. `None` => the query failed to collect (infra/timeout);
+    # `[]` => collected fine but no matching series (e.g. no OOMs happened);
+    # truthy => collected data.
+    failed = sorted(k for k, v in metrics.items() if v is None)
+    empty = sorted(k for k, v in metrics.items() if v == [])
+    with_data = sorted(k for k, v in metrics.items() if v)
+    logger.info(
+        f"Prometheus collection summary: {len(with_data)} metric(s) with data, "
+        f"{len(empty)} empty, {len(failed)} failed to collect "
+        f"(out of {len(metrics)} total)."
+    )
+    if failed:
+        logger.error(
+            f"{len(failed)} metric(s) FAILED to collect and will be null in the "
+            f"output: {failed}. See the per-query warnings above for the cause "
+            "(timeout / connection error / non-200). This indicates a "
+            "metrics-collection/infra problem, not a real metric signal."
+        )
     return metrics
 
 
 def get_prometheus_metrics(start_time: float, end_time: float) -> dict:
+    session_name = None
     try:
-        return asyncio.run(_get_prometheus_metrics(start_time, end_time))
+        import ray
+
+        if not ray.is_initialized():
+            ray.init("auto")
+        session_name = ray.get_runtime_context().get_session_name()
+    except Exception:
+        logger.warning(
+            "Couldn't obtain Ray session name for Prometheus query filtering. "
+            f"Exception below:\n{traceback.format_exc()}"
+        )
+    try:
+        return asyncio.run(_get_prometheus_metrics(start_time, end_time, session_name))
     except Exception:
         logger.error(
             "Couldn't obtain Prometheus metrics. "
@@ -149,6 +258,10 @@ def save_prometheus_metrics(
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[%(levelname)s %(asctime)s] %(filename)s: %(lineno)d  %(message)s",
+    )
     parser = argparse.ArgumentParser()
     parser.add_argument("start_time", type=float, help="Start time")
     parser.add_argument(

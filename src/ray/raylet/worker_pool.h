@@ -31,9 +31,10 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/time/time.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
@@ -42,6 +43,9 @@
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/stats/metric.h"
+#include "ray/util/clock.h"
+#include "ray/util/process.h"
+#include "ray/util/process_interface.h"
 
 namespace ray {
 
@@ -188,8 +192,8 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
   virtual std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const = 0;
 
-  /// Checks if any registered worker is available for scheduling.
-  virtual bool IsWorkerAvailableForScheduling() const = 0;
+  /// Returns true if this node's workers are solely actors.
+  virtual bool AllAliveWorkersAreActors() const = 0;
 
   /// Get registered worker process by id or nullptr if not found.
   virtual std::shared_ptr<WorkerInterface> GetRegisteredWorker(
@@ -306,12 +310,13 @@ class WorkerPool : public WorkerPoolInterface {
   /// it times out to start a worker.
   /// \param ray_debugger_external Ray debugger in workers will be started in a way
   /// that they are accessible from outside the node.
-  /// \param get_time A callback to get the current time in milliseconds.
+  /// \param clock Clock for time operations.
   /// \param add_to_cgroup_hook A lifecycle hook that the forked worker process will
   /// execute becoming a worker process. The hook adds a newly forked process into
   /// the appropriate cgroup.
   WorkerPool(
       instrumented_io_context &io_service,
+      std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
       const NodeID &node_id,
       std::string node_address,
       std::function<int64_t()> get_num_cpus_available,
@@ -325,7 +330,7 @@ class WorkerPool : public WorkerPoolInterface {
       std::string native_library_path,
       std::function<void()> starting_worker_timeout_callback,
       int ray_debugger_external,
-      std::function<absl::Time()> get_time,
+      ClockInterface &clock,
       WorkerPoolMetrics &worker_pool_metrics,
       AddProcessToCgroupHook add_to_cgroup_hook = [](const std::string &) {});
 
@@ -511,7 +516,7 @@ class WorkerPool : public WorkerPoolInterface {
   std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const override;
 
-  bool IsWorkerAvailableForScheduling() const override;
+  bool AllAliveWorkersAreActors() const override;
 
   /// Get all the registered drivers.
   ///
@@ -557,6 +562,9 @@ class WorkerPool : public WorkerPoolInterface {
       const std::shared_ptr<PopWorkerRequest> &pop_worker_request) override;
 
  protected:
+  /// Clock for getting current time.
+  ClockInterface &clock_;
+
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
   /// register N workers, then add them to the pool.
@@ -579,7 +587,7 @@ class WorkerPool : public WorkerPoolInterface {
   ///   assigned to the worker.
   /// \return The process that we started and the worker ID assigned to it. If the worker
   /// ID is nil, we didn't start a process.
-  std::tuple<Process, WorkerID> StartWorkerProcess(
+  std::tuple<const ProcessInterface &, WorkerID> StartWorkerProcess(
       const Language &language,
       rpc::WorkerType worker_type,
       const JobID &job_id,
@@ -599,11 +607,12 @@ class WorkerPool : public WorkerPoolInterface {
   /// the environment variables of the parent process.
   /// \param[in] worker_id The WorkerID assigned to this worker process.
   /// \return An object representing the started worker process.
-  virtual Process StartProcess(const std::vector<std::string> &worker_command_args,
-                               const ProcessEnvironment &env,
-                               const WorkerID &worker_id);
+  virtual std::unique_ptr<ProcessInterface> StartProcess(
+      const std::vector<std::string> &worker_command_args,
+      const ProcessEnvironment &env,
+      const WorkerID &worker_id);
 
-  /// Push an warning message to user if worker pool is getting to big.
+  /// Push a warning message to user if worker pool is getting too big.
   virtual void WarnAboutSize();
 
   /// Make this synchronized function for unit test.
@@ -635,9 +644,9 @@ class WorkerPool : public WorkerPoolInterface {
     /// The type of the worker.
     rpc::WorkerType worker_type;
     /// The worker process instance.
-    Process proc;
-    /// The worker process start time.
-    std::chrono::high_resolution_clock::time_point start_time;
+    std::unique_ptr<ProcessInterface> proc;
+    /// The worker process start time (monotonic, for measuring startup latency).
+    SteadyTimePoint start_time;
     /// The runtime env Info.
     rpc::RuntimeEnvInfo runtime_env_info;
     /// The dynamic_options.
@@ -816,14 +825,15 @@ class WorkerPool : public WorkerPoolInterface {
   /// Delete runtime env asynchronously by runtime env agent.
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);
 
-  void AddWorkerProcess(State &state,
-                        const WorkerID &worker_id,
-                        rpc::WorkerType worker_type,
-                        const Process &proc,
-                        const std::chrono::high_resolution_clock::time_point &start,
-                        const rpc::RuntimeEnvInfo &runtime_env_info,
-                        const std::vector<std::string> &dynamic_options,
-                        std::optional<absl::Duration> worker_startup_keep_alive_duration);
+  const ProcessInterface &AddWorkerProcess(
+      State &state,
+      const WorkerID &worker_id,
+      rpc::WorkerType worker_type,
+      std::unique_ptr<ProcessInterface> proc,
+      SteadyTimePoint start,
+      const rpc::RuntimeEnvInfo &runtime_env_info,
+      const std::vector<std::string> &dynamic_options,
+      std::optional<absl::Duration> worker_startup_keep_alive_duration);
 
   void RemoveWorkerProcess(State &state, const WorkerID &worker_id);
 
@@ -907,10 +917,8 @@ class WorkerPool : public WorkerPoolInterface {
       pending_exit_idle_workers_;
 
   /// The runner to run function periodically.
-  std::shared_ptr<PeriodicalRunner> periodical_runner_;
+  std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
 
-  /// A callback to get the current time.
-  const std::function<absl::Time()> get_time_;
   /// Runtime env manager client.
   std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client_;
   /// Stats
@@ -923,6 +931,9 @@ class WorkerPool : public WorkerPoolInterface {
 
   /// Ray metrics
   WorkerPoolMetrics worker_pool_metrics_;
+
+  /// A static null process used for returning references in error cases.
+  static inline const ProcessInterface &kNullProcess = Process();
 
   friend class WorkerPoolTest;
   friend class WorkerPoolDriverRegisteredTest;

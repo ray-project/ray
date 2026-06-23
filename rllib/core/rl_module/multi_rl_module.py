@@ -192,7 +192,7 @@ class MultiRLModule(RLModule):
         By default, this calls the generic `self._forward()` method.
         """
         return {
-            mid: self._rl_modules[mid]._forward_inference(batch[mid], **kwargs)
+            mid: self._rl_modules[mid].forward_inference(batch[mid], **kwargs)
             for mid in batch.keys()
             if mid in self
         }
@@ -210,7 +210,7 @@ class MultiRLModule(RLModule):
         By default, this calls the generic `self._forward()` method.
         """
         return {
-            mid: self._rl_modules[mid]._forward_exploration(batch[mid], **kwargs)
+            mid: self._rl_modules[mid].forward_exploration(batch[mid], **kwargs)
             for mid in batch.keys()
             if mid in self
         }
@@ -228,7 +228,7 @@ class MultiRLModule(RLModule):
         By default, this calls the generic `self._forward()` method.
         """
         return {
-            mid: self._rl_modules[mid]._forward_train(batch[mid], **kwargs)
+            mid: self._rl_modules[mid].forward_train(batch[mid], **kwargs)
             for mid in batch.keys()
             if mid in self
         }

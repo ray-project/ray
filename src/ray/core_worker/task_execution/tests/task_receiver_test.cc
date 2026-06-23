@@ -19,7 +19,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker_rpc_client/core_worker_client_interface.h"
@@ -43,7 +43,9 @@ TaskSpecification CreateActorTaskHelper(ActorID actor_id,
   task.GetMutableMessage().mutable_caller_address()->set_worker_id(
       caller_worker_id.Binary());
   task.GetMutableMessage().mutable_actor_task_spec()->set_actor_id(actor_id.Binary());
-  task.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(counter);
+  task.GetMutableMessage()
+      .mutable_actor_task_spec()
+      ->set_concurrency_group_sequence_number(counter);
   task.GetMutableMessage().set_num_returns(0);
   return task;
 }
@@ -57,7 +59,8 @@ rpc::PushTaskRequest CreatePushTaskRequestHelper(ActorID actor_id,
 
   rpc::PushTaskRequest request;
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
-  request.set_sequence_number(request.task_spec().actor_task_spec().sequence_number());
+  request.set_sequence_number(
+      request.task_spec().actor_task_spec().concurrency_group_sequence_number());
   request.set_client_processed_up_to(-1);
   return request;
 }

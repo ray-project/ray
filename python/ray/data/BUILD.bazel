@@ -42,6 +42,32 @@ py_test_module_list(
 
 py_test_module_list(
     size = "medium",
+    files = glob(["_internal/datasource_v2/tests/test_*.py"]),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "small",
+    files = glob(["_internal/logical/operators/tests/test_*.py"]),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "medium",
     files = glob(["tests/block_batching/test_*.py"]),
     tags = [
         "exclusive",
@@ -80,10 +106,9 @@ py_test_module_list(
 )
 
 py_test(
-    name = "test_formats",
-    size = "medium",
-    srcs = ["tests/datasource/test_formats.py"],
-    data = glob(["tests/image-folder/**/*"]),
+    name = "test_arrow",
+    size = "small",
+    srcs = ["tests/datasource/test_arrow.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -181,7 +206,7 @@ py_test(
 
 py_test(
     name = "test_mongo",
-    size = "large",
+    size = "medium",
     srcs = ["tests/datasource/test_mongo.py"],
     tags = [
         "data_integration",
@@ -196,7 +221,7 @@ py_test(
 
 py_test(
     name = "test_bigquery",
-    size = "large",
+    size = "small",
     srcs = ["tests/datasource/test_bigquery.py"],
     tags = [
         "data_integration",
@@ -239,7 +264,7 @@ py_test(
 
 py_test(
     name = "test_arrow_block",
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_arrow_block.py"],
     tags = [
         "data_non_parallel",
@@ -296,9 +321,38 @@ py_test(
 )
 
 py_test(
-    name = "test_block_batching",
+    name = "test_cudf_batch_format",
     size = "medium",
+    srcs = ["tests/test_cudf_batch_format.py"],
+    tags = [
+        "cudf",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_block_batching",
+    size = "small",
     srcs = ["tests/block_batching/test_block_batching.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_block_metadata_schema_cache",
+    size = "small",
+    srcs = ["tests/unit/test_block_metadata_schema_cache.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -325,7 +379,7 @@ py_test(
 
 py_test(
     name = "test_context_propagation",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_context_propagation.py"],
     tags = [
         "exclusive",
@@ -367,7 +421,7 @@ py_test(
 
 py_test(
     name = "test_agg_e2e",
-    size = "enormous",
+    size = "medium",
     srcs = ["tests/test_agg_e2e.py"],
     tags = [
         "exclusive",
@@ -396,7 +450,7 @@ py_test(
 
 py_test(
     name = "test_random_e2e",
-    size = "enormous",
+    size = "large",
     srcs = ["tests/test_random_e2e.py"],
     tags = [
         "exclusive",
@@ -410,7 +464,7 @@ py_test(
 
 py_test(
     name = "test_repartition_e2e",
-    size = "enormous",
+    size = "medium",
     srcs = ["tests/test_repartition_e2e.py"],
     tags = [
         "exclusive",
@@ -424,7 +478,7 @@ py_test(
 
 py_test(
     name = "test_unique_e2e",
-    size = "enormous",
+    size = "small",
     srcs = ["tests/test_unique_e2e.py"],
     tags = [
         "exclusive",
@@ -438,7 +492,7 @@ py_test(
 
 py_test(
     name = "test_join",
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_join.py"],
     tags = [
         "data_non_parallel",
@@ -467,7 +521,7 @@ py_test(
 
 py_test(
     name = "test_consumption",
-    size = "enormous",
+    size = "large",
     srcs = ["tests/test_consumption.py"],
     tags = [
         "exclusive",
@@ -481,7 +535,7 @@ py_test(
 
 py_test(
     name = "test_dataset_limits",
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_dataset_limits.py"],
     tags = [
         "exclusive",
@@ -495,7 +549,7 @@ py_test(
 
 py_test(
     name = "test_dataset_creation",
-    size = "large",
+    size = "small",
     srcs = ["tests/test_dataset_creation.py"],
     tags = [
         "exclusive",
@@ -509,7 +563,7 @@ py_test(
 
 py_test(
     name = "test_dataset_validation",
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_dataset_validation.py"],
     tags = [
         "exclusive",
@@ -537,7 +591,7 @@ py_test(
 
 py_test(
     name = "test_dataset_iter",
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_dataset_iter.py"],
     tags = [
         "exclusive",
@@ -551,7 +605,7 @@ py_test(
 
 py_test(
     name = "test_csv",
-    size = "medium",
+    size = "small",
     srcs = ["tests/datasource/test_csv.py"],
     tags = [
         "exclusive",
@@ -636,6 +690,50 @@ py_test(
 )
 
 py_test(
+    name = "test_turbopuffer_datasink",
+    size = "small",
+    srcs = ["tests/datasource/test_turbopuffer_datasink.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_gpu_shuffle",
+    size = "medium",
+    srcs = ["tests/test_gpu_shuffle.py"],
+    tags = [
+        "exclusive",
+        "gpu",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_gpu_aggregate",
+    size = "medium",
+    srcs = ["tests/test_gpu_aggregate.py"],
+    tags = [
+        "exclusive",
+        "gpu",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_hash_shuffle",
     size = "medium",
     srcs = ["tests/test_hash_shuffle.py"],
@@ -651,7 +749,7 @@ py_test(
 
 py_test(
     name = "test_hash_shuffle_aggregator",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_hash_shuffle_aggregator.py"],
     tags = [
         "exclusive",
@@ -664,8 +762,22 @@ py_test(
 )
 
 py_test(
-    name = "test_hudi",
+    name = "test_hash_shuffle_v2",
     size = "medium",
+    srcs = ["tests/test_hash_shuffle_v2.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hudi",
+    size = "small",
     srcs = ["tests/datasource/test_hudi.py"],
     tags = [
         "exclusive",
@@ -707,7 +819,7 @@ py_test(
 
 py_test(
     name = "test_json",
-    size = "medium",
+    size = "small",
     srcs = ["tests/datasource/test_json.py"],
     tags = [
         "data_non_parallel",
@@ -736,7 +848,7 @@ py_test(
 
 py_test(
     name = "test_logging",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_logging.py"],
     tags = [
         "exclusive",
@@ -764,7 +876,7 @@ py_test(
 
 py_test(
     name = "test_map_batches",
-    size = "enormous",
+    size = "large",
     srcs = ["tests/test_map_batches.py"],
     tags = [
         "exclusive",
@@ -777,8 +889,22 @@ py_test(
 )
 
 py_test(
+    name = "test_auto_batch_size",
+    size = "medium",
+    srcs = ["tests/test_auto_batch_size.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_with_column",
-    size = "enormous",
+    size = "medium",
     srcs = ["tests/test_with_column.py"],
     tags = [
         "exclusive",
@@ -792,7 +918,7 @@ py_test(
 
 py_test(
     name = "test_filter",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_filter.py"],
     tags = [
         "exclusive",
@@ -806,7 +932,7 @@ py_test(
 
 py_test(
     name = "test_numpy",
-    size = "medium",
+    size = "small",
     srcs = ["tests/datasource/test_numpy.py"],
     tags = [
         "exclusive",
@@ -848,8 +974,22 @@ py_test(
 
 py_test(
     name = "test_parquet",
-    size = "medium",
+    size = "large",
     srcs = ["tests/datasource/test_parquet.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_read_parquet_v2",
+    size = "small",
+    srcs = ["tests/datasource/test_read_parquet_v2.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -878,6 +1018,34 @@ py_test(
     name = "test_predicate_pushdown",
     size = "small",
     srcs = ["tests/test_predicate_pushdown.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_common_subexpr_elimination",
+    size = "small",
+    srcs = ["tests/test_common_subexpr_elimination.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_infer_schema",
+    size = "small",
+    srcs = ["tests/test_infer_schema.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -932,7 +1100,7 @@ py_test(
 
 py_test(
     name = "test_text",
-    size = "small",
+    size = "medium",
     srcs = ["tests/datasource/test_text.py"],
     tags = [
         "exclusive",
@@ -948,6 +1116,8 @@ py_test(
     name = "test_tf",
     size = "medium",
     srcs = ["tests/datasource/test_tf.py"],
+    # Adding to use keras 2 & tensorflow >= 2.16 (https://keras.io/getting_started)
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     tags = [
         "exclusive",
         "team:data",
@@ -962,10 +1132,11 @@ py_test(
     name = "test_tfrecords",
     size = "small",
     srcs = ["tests/datasource/test_tfrecords.py"],
+    # Adding to use keras 2 & tensorflow >= 2.16 (https://keras.io/getting_started)
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     tags = [
         "exclusive",
         "team:data",
-        "tfxbsl",
     ],
     deps = [
         ":conftest",
@@ -1074,7 +1245,7 @@ py_test(
 
 py_test(
     name = "test_execution_optimizer_basic",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_execution_optimizer_basic.py"],
     tags = [
         "exclusive",
@@ -1159,7 +1330,7 @@ py_test(
 
 py_test(
     name = "test_huggingface",
-    size = "medium",
+    size = "small",
     srcs = ["tests/datasource/test_huggingface.py"],
     tags = [
         "exclusive",
@@ -1173,7 +1344,7 @@ py_test(
 
 py_test(
     name = "test_iceberg",
-    size = "medium",
+    size = "small",
     srcs = ["tests/datasource/test_iceberg.py"],
     tags = [
         "exclusive",
@@ -1256,9 +1427,9 @@ py_test(
 )
 
 py_test(
-    name = "test_limit_operator",
+    name = "test_map_transformer",
     size = "small",
-    srcs = ["tests/test_limit_operator.py"],
+    srcs = ["tests/test_map_transformer.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1270,9 +1441,9 @@ py_test(
 )
 
 py_test(
-    name = "test_block_ref_bundler",
+    name = "test_limit_operator",
     size = "small",
-    srcs = ["tests/test_block_ref_bundler.py"],
+    srcs = ["tests/test_limit_operator.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1299,7 +1470,7 @@ py_test(
 
 py_test(
     name = "test_op_runtime_metrics",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_op_runtime_metrics.py"],
     tags = [
         "exclusive",
@@ -1327,7 +1498,7 @@ py_test(
 
 py_test(
     name = "test_partitioning",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_partitioning.py"],
     tags = [
         "exclusive",
@@ -1471,7 +1642,7 @@ py_test(
 
 py_test(
     name = "test_shuffle_diagnostics",
-    size = "enormous",
+    size = "large",
     srcs = ["tests/test_shuffle_diagnostics.py"],
     tags = [
         "data_non_parallel",
@@ -1542,7 +1713,7 @@ py_test(
 
 py_test(
     name = "test_reservation_based_resource_allocator",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_reservation_based_resource_allocator.py"],
     tags = [
         "exclusive",
@@ -1556,7 +1727,7 @@ py_test(
 
 py_test(
     name = "test_resource_manager",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_resource_manager.py"],
     tags = [
         "exclusive",
@@ -1570,7 +1741,7 @@ py_test(
 
 py_test(
     name = "test_streaming_executor_errored_blocks",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_streaming_executor_errored_blocks.py"],
     tags = [
         "exclusive",
@@ -1614,6 +1785,20 @@ py_test(
     name = "test_unify_schemas_performance",
     size = "small",
     srcs = ["tests/test_unify_schemas_performance.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_usage",
+    size = "small",
+    srcs = ["tests/test_usage.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1681,6 +1866,20 @@ py_test(
 )
 
 py_test(
+    name = "test_zarrv2",
+    size = "medium",
+    srcs = ["tests/datasource/test_zarrv2.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_zip",
     size = "small",
     srcs = ["tests/test_zip.py"],
@@ -1696,7 +1895,7 @@ py_test(
 
 py_test(
     name = "test_backpressure_policies",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_backpressure_policies.py"],
     tags = [
         "exclusive",
@@ -1710,7 +1909,7 @@ py_test(
 
 py_test(
     name = "test_downstream_capacity_backpressure_policy",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_downstream_capacity_backpressure_policy.py"],
     tags = [
         "exclusive",
@@ -1808,7 +2007,7 @@ py_test(
 
 py_test(
     name = "test_mcap",
-    size = "medium",
+    size = "small",
     srcs = ["tests/datasource/test_mcap.py"],
     tags = [
         "exclusive",
@@ -1849,8 +2048,22 @@ py_test(
 )
 
 py_test(
+    name = "test_monotonically_increasing_id",
+    size = "small",
+    srcs = ["tests/test_monotonically_increasing_id.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_download_expression",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_download_expression.py"],
     tags = [
         "exclusive",
@@ -1976,7 +2189,7 @@ py_test(
 
 py_test(
     name = "test_dataset_stats",
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_dataset_stats.py"],
     tags = [
         "exclusive",
@@ -2004,8 +2217,78 @@ py_test(
 
 py_test(
     name = "test_checkpoint",
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_checkpoint.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_read_datasource",
+    size = "small",
+    srcs = ["tests/test_read_datasource.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_iter_jax",
+    size = "small",
+    srcs = ["tests/test_iter_jax.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_random_api",
+    size = "small",
+    srcs = ["tests/test_random_api.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_synthetic_expression",
+    size = "small",
+    srcs = ["tests/test_synthetic_expression.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_mix",
+    size = "small",
+    srcs = ["tests/test_mix.py"],
     tags = [
         "exclusive",
         "team:data",

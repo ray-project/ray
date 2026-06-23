@@ -20,7 +20,7 @@
 #include <string>
 #include <utility>
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/object_manager/plasma/common.h"
 
 namespace plasma {

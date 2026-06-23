@@ -18,6 +18,8 @@ from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 from ray.rllib.utils.typing import AgentID, ModuleID
 from ray.util.annotations import PublicAPI
 
+_REWARDS_BOX_SPACE = gym.spaces.Box(float("-inf"), float("inf"), (), np.float32)
+
 
 @PublicAPI(stability="alpha")
 class SingleAgentEpisode:
@@ -312,7 +314,7 @@ class SingleAgentEpisode:
             self.rewards = InfiniteLookbackBuffer(
                 data=rewards,
                 lookback=len_lookback_buffer,
-                space=gym.spaces.Box(float("-inf"), float("inf"), (), np.float32),
+                space=_REWARDS_BOX_SPACE,
             )
 
         # obs[-1] is the final observation in the episode.
@@ -456,9 +458,6 @@ class SingleAgentEpisode:
                     f"action_space: {self.action_space}!"
                 )
 
-        # Validate our data.
-        self.validate()
-
         # Step time stats.
         self._last_step_time = time.perf_counter()
         if self._start_time is None:
@@ -583,6 +582,8 @@ class SingleAgentEpisode:
         Returns:
              This `SingleAgentEpisode` object with the converted numpy data.
         """
+        # Check that the episode data is correct
+        self.validate()
 
         self.observations.finalize()
         if len(self) > 0:
@@ -616,7 +617,8 @@ class SingleAgentEpisode:
         assert not self.is_done
         # Make sure the timesteps match.
         assert self.t == other.t_started, f"{self.t=}, {other.t_started=}"
-        # Validate `other`.
+        # Validate both this and the other episode
+        self.validate()
         other.validate()
 
         # Make sure, end matches other episode chunk's beginning.
@@ -1358,14 +1360,13 @@ class SingleAgentEpisode:
         current `extra_model_output` values are added to the episode either by calling
         `self.add_env_step` or more directly (and manually) via
         `self.extra_model_outputs[key].append|extend()`. However, for certain
-        postprocessing steps, the entirety (or a slice) of an episode's
-        `extra_model_outputs` might have to be rewritten or a new key (a new type of
-        `extra_model_outputs`) must be inserted, which is when
+        postprocessing steps, an existing `extra_model_outputs` entry might have
+        to be overwritten fully or in slices, which is when
         `self.set_extra_model_outputs()` should be used.
 
         Args:
-            key: The `key` within `self.extra_model_outputs` to override data on or
-                to insert as a new key into `self.extra_model_outputs`.
+            key: Existing key in `self.extra_model_outputs` whose buffer should
+                be overwritten.
             new_data: The new data to overwrite existing data with.
                 This may be a list of individual reward(s) in case this episode
                 is still not numpy'ized yet. In case this episode has already been

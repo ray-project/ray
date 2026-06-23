@@ -20,6 +20,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data.block import Block
+from ray.data.expressions import Expr
 
 
 @ray.remote
@@ -83,6 +84,22 @@ def extract_values(col_name, tuples):
     return [t[col_name] for t in tuples]
 
 
+def assert_exprs_equal(actual: List[Expr], expected: List[Expr]):
+    """Assert two expression lists match element-wise.
+
+    ``Expr`` overloads ``==`` to build a comparison expression (e.g.
+    ``col("a") == 5``), so it can't be used to compare exprs for equality;
+    use ``structurally_equals`` instead.
+    """
+    actual_names = [e.name for e in actual]
+    expected_names = [e.name for e in expected]
+    assert len(actual) == len(expected), (actual_names, expected_names)
+    assert all(a.structurally_equals(b) for a, b in zip(actual, expected)), (
+        actual_names,
+        expected_names,
+    )
+
+
 def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
     """Run tasks of a PhysicalOperator synchronously.
 
@@ -98,31 +115,52 @@ def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
             fetch_local=False,
             timeout=0.1,
         )
+
         for ref in ready:
             task = ref_to_task[ref]
             if isinstance(task, DataOpTask):
-                task.on_data_ready(None)
+                # Read all currently available output from the streaming generator
+                task.on_data_ready(max_bytes_to_read=None)
+                # Only remove the task when the generator has been fully exhausted
+                if task.has_finished:
+                    tasks.remove(task)
             else:
                 assert isinstance(task, MetadataOpTask)
                 task.on_task_finished()
+                tasks.remove(task)
+
+        # NOTE: If only existing tasks need to be handled skip refreshing list
+        #       of outstanding tasks
         if only_existing:
-            return
-        tasks = op.get_active_tasks()
+            pass
+        else:
+            tasks = op.get_active_tasks()
 
 
 def run_one_op_task(op):
     """Run one task of a PhysicalOperator."""
     tasks = op.get_active_tasks()
-    waitable_to_tasks = {task.get_waitable(): task for task in tasks}
-    ready, _ = ray.wait(
-        list(waitable_to_tasks.keys()), num_returns=1, fetch_local=False
-    )
-    task = waitable_to_tasks[ready[0]]
-    if isinstance(task, DataOpTask):
-        task.on_data_ready(None)
-    else:
-        assert isinstance(task, MetadataOpTask)
-        task.on_task_finished()
+
+    while tasks:
+        waitable_to_tasks = {task.get_waitable(): task for task in tasks}
+
+        # Block, until 1 task is ready
+        ready, _ = ray.wait(
+            list(waitable_to_tasks.keys()), num_returns=1, fetch_local=False
+        )
+
+        task = waitable_to_tasks[ready[0]]
+        # Reset tasks to track just 1 task
+        tasks = [task]
+
+        if isinstance(task, DataOpTask):
+            task.on_data_ready(None)
+            if task.has_finished:
+                tasks.remove(task)
+        else:
+            assert isinstance(task, MetadataOpTask)
+            task.on_task_finished()
+            tasks.remove(task)
 
 
 def _get_blocks(bundle: RefBundle, output_list: List[Block]):

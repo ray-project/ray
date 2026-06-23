@@ -36,6 +36,7 @@ DEFAULT_HTTP_EXPOSABLE_EVENT_TYPES = (
     "DRIVER_JOB_DEFINITION_EVENT,DRIVER_JOB_LIFECYCLE_EVENT,"
     "ACTOR_DEFINITION_EVENT,ACTOR_LIFECYCLE_EVENT,"
     "NODE_DEFINITION_EVENT,NODE_LIFECYCLE_EVENT,"
+    "PLATFORM_EVENT,"
 )
 HTTP_EXPOSABLE_EVENT_TYPES = os.environ.get(
     "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES",
@@ -43,7 +44,7 @@ HTTP_EXPOSABLE_EVENT_TYPES = os.environ.get(
 )
 
 # GCS Publisher specific configurations
-# List of event types that are allowed to be exposed to GCS, not overriden by environment variable
+# List of event types that are allowed to be exposed to GCS, not overridden by environment variable
 # as GCS only supports Task event types
 GCS_EXPOSABLE_EVENT_TYPES = [
     "TASK_DEFINITION_EVENT",

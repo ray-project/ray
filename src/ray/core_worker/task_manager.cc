@@ -25,8 +25,6 @@
 #include "ray/common/buffer.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/actor_management/actor_manager.h"
-#include "ray/util/exponential_backoff.h"
-#include "ray/util/time.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -819,13 +817,14 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   }
   size_t num_objects_written = 0;
 
-  if (request.has_returned_object()) {
-    const rpc::ReturnObject &returned_object = request.returned_object();
+  for (int64_t i = 0; i < request.returned_objects_size(); i++) {
+    const rpc::ReturnObject &returned_object = request.returned_objects(i);
     const auto object_id = ObjectID::FromBinary(returned_object.object_id());
+    const auto object_index = item_index + i;
 
     RAY_LOG(DEBUG) << "Write an object " << object_id
                    << " to the object ref stream of id " << generator_id;
-    auto index_not_used_yet = stream_it->second.InsertToStream(object_id, item_index);
+    auto index_not_used_yet = stream_it->second.InsertToStream(object_id, object_index);
 
     // If the ref was written to a stream, we should also
     // own the dynamically generated task return.
@@ -850,18 +849,22 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   // Handle backpressure if needed.
   auto total_generated = stream_it->second.TotalNumObjectWritten();
   auto total_consumed = stream_it->second.TotalNumObjectConsumed();
+  auto last_item_index = request.returned_objects_size() == 0
+                             ? item_index
+                             : item_index + request.returned_objects_size() - 1;
 
-  if (stream_it->second.IsObjectConsumed(item_index)) {
+  if (stream_it->second.IsObjectConsumed(last_item_index)) {
     execution_signal_callback(Status::OK(), total_consumed);
     return false;
   }
 
   // Otherwise, follow the regular backpressure logic.
-  // NOTE, here we check `item_index - last_consumed_index >= backpressure_threshold`,
-  // instead of the number of unconsumed items, because we may receive the
-  // `HandleReportGeneratorItemReturns` requests out of order.
+  // NOTE, here we check `last_item_index - last_consumed_index >=
+  // backpressure_threshold`, instead of the number of unconsumed items, because we may
+  // receive the `HandleReportGeneratorItemReturns` requests out of order.
   if (backpressure_threshold != -1 &&
-      (item_index - stream_it->second.LastConsumedIndex()) >= backpressure_threshold) {
+      (last_item_index - stream_it->second.LastConsumedIndex()) >=
+          backpressure_threshold) {
     RAY_LOG(DEBUG) << "Stream " << generator_id
                    << " is backpressured. total_generated: " << total_generated
                    << ". total_consumed: " << total_consumed
@@ -1220,7 +1223,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
             push_error_callback_(task_entry.spec_.JobId(),
                                  rpc::ErrorType_Name(error_info.error_type()),
                                  error_message,
-                                 current_time_ms());
+                                 clock_.NowUnixMillis());
         if (!push_error_status.ok()) {
           RAY_LOG(ERROR) << "Failed to push error to driver for task " << spec.TaskId();
         }
@@ -1244,11 +1247,8 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   if (will_retry) {
     RAY_LOG(INFO) << "Attempting to resubmit task " << spec.TaskId()
                   << " for attempt number: " << spec.AttemptNumber();
-    int32_t delay_ms = task_failed_due_to_oom
-                           ? ExponentialBackoff::GetBackoffMs(
-                                 spec.AttemptNumber(),
-                                 RayConfig::instance().task_oom_retry_delay_base_ms())
-                           : RayConfig::instance().task_retry_delay_ms();
+    uint32_t delay_ms =
+        GetTaskRetryDelayMs(spec.AttemptNumber(), error_info.error_type());
     async_retry_task_callback_(spec, delay_ms);
     return true;
   } else {
@@ -1321,12 +1321,13 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     auto debug_str = spec.DebugString();
     if (!absl::StrContains(debug_str, "__ray_terminate__") &&
         (num_failure_logs_ < kTaskFailureThrottlingThreshold ||
-         (current_time_ms() - last_log_time_ms_) > kTaskFailureLoggingFrequencyMillis)) {
+         (clock_.SteadyNowMillis() - last_log_time_ms_) >
+             kTaskFailureLoggingFrequencyMillis)) {
       if (num_failure_logs_++ == kTaskFailureThrottlingThreshold) {
         RAY_LOG(WARNING) << "Too many failure logs, throttling to once every "
                          << kTaskFailureLoggingFrequencyMillis << " millis.";
       }
-      last_log_time_ms_ = current_time_ms();
+      last_log_time_ms_ = clock_.SteadyNowMillis();
       if (status != nullptr) {
         RAY_LOG(INFO) << "Task failed: " << *status << ": " << spec.DebugString();
       } else {

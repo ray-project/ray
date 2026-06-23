@@ -34,7 +34,7 @@
 //python/ray/serve/tests:test_replica_sync_methods_with_run_sync_in_threadpool
 //python/ray/serve/tests:test_replica_request_context
 //python/ray/serve/tests:test_direct_ingress
-//python/ray/serve/tests:test_direct_ingress_standalone
+//python/ray/serve/tests:test_per_request_headers
 //python/ray/serve/tests:test_direct_ingress_with_grpc
-//python/ray/serve/tests:test_direct_ingress_standalone_with_grpc
+//python/ray/serve/tests:test_per_request_headers_with_grpc
 //python/ray/serve/tests:test_handle

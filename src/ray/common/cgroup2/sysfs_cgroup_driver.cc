@@ -456,4 +456,27 @@ Status SysFsCgroupDriver::AddProcessToCgroup(const std::string &cgroup,
   return Status::OK();
 }
 
+StatusOr<std::string> SysFsCgroupDriver::GetConstraintValue(
+    const std::string &cgroup_path, const std::string &constraint_name) {
+  std::filesystem::path constraint_file_path =
+      std::filesystem::path(cgroup_path) / constraint_name;
+  if (!std::filesystem::exists(constraint_file_path)) {
+    return Status::InvalidArgument(absl::StrFormat(
+        "Cgroup or constraint does not exist: %s/%s.", cgroup_path, constraint_name));
+  }
+  std::ifstream constraint_file(constraint_file_path);
+  if (!constraint_file.is_open()) {
+    return Status::IOError(absl::StrFormat(
+        "Failed to open %s from cgroup %s.", constraint_name, cgroup_path));
+  }
+
+  std::string value;
+  constraint_file >> value;
+  if (value.empty()) {
+    return Status::IOError(absl::StrFormat(
+        "Failed to read %s from cgroup %s.", constraint_name, cgroup_path));
+  }
+  return value;
+}
+
 }  // namespace ray

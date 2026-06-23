@@ -4,7 +4,6 @@ import math
 from time import sleep, perf_counter
 import json
 import ray
-import psutil
 
 from dashboard_test import DashboardTestAtScale
 
@@ -49,8 +48,16 @@ def scale_cluster_up(num_cpus):
         sleep(10)
 
 
+def get_head_node_cpus():
+    head_ip = ray.util.get_node_ip_address()
+    for node in ray.nodes():
+        if node["Alive"] and node["NodeManagerAddress"] == head_ip:
+            return int(node.get("Resources", {}).get("CPU", 0))
+    return 0
+
+
 def run_one(total_actors, cpus_per_actor, no_wait):
-    total_cpus = cpus_per_actor * total_actors + psutil.cpu_count()
+    total_cpus = cpus_per_actor * total_actors + get_head_node_cpus()
     total_cpus = int(math.ceil(total_cpus))
     scale_cluster_up(total_cpus)
 

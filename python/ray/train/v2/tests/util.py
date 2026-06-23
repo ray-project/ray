@@ -2,10 +2,13 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 from unittest.mock import MagicMock
 
-from ray.train import Checkpoint
+import ray
+from ray.train import BackendConfig, Checkpoint
+from ray.train._internal.data_config import DataConfig
+from ray.train.backend import Backend
 from ray.train.context import TrainContext
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
@@ -29,18 +32,51 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupState,
     WorkerStatus,
 )
+from ray.train.v2._internal.execution.worker_group.execution_group import ReplicaGroup
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
+    BackendConfig as BackendConfigSchema,
+    CheckpointConfig as CheckpointConfigSchema,
+    DataConfig as DataConfigSchema,
+    DataExecutionOptions,
+    FailureConfig as FailureConfigSchema,
     RunAttemptStatus,
+    RunConfig as RunConfigSchema,
+    RunSettings,
     RunStatus,
+    ScalingConfig as ScalingConfigSchema,
     TrainResources,
     TrainRun,
     TrainRunAttempt,
     TrainWorker,
 )
+from ray.train.v2._internal.state.util import execution_options_to_model
 from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
 from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.train.v2.api.validation_config import ValidationTaskConfig
+
+
+class MockReplicaGroupBackend(Backend):
+    has_replica_groups = True
+
+
+class MockReplicaGroupBackendConfig(BackendConfig):
+    @property
+    def backend_cls(self):
+        return MockReplicaGroupBackend
+
+
+@ray.remote
+class Counter:
+    def __init__(self):
+        self.count = 0
+
+    def increment(self):
+        self.count += 1
+        return self.count
+
+    def get_count(self):
+        return self.count
 
 
 class DummyWorkerGroup(WorkerGroup):
@@ -58,6 +94,9 @@ class DummyWorkerGroup(WorkerGroup):
         self._num_workers = worker_group_context.num_workers
         self._worker_group_state = None
         self._worker_statuses = {}
+        self._replaced_replica_groups: List[int] = []
+        self._replica_groups = None
+        self._latest_poll_status: Optional[WorkerGroupPollStatus] = None
 
     def poll_status(self, *args, **kwargs) -> WorkerGroupPollStatus:
         if self._poll_failure:
@@ -71,9 +110,10 @@ class DummyWorkerGroup(WorkerGroup):
         if self._start_failure:
             raise self._start_failure
 
+        workers = [MagicMock() for i in range(num_workers)]
         self._worker_group_state = WorkerGroupState(
             start_time=time_monotonic(),
-            workers=[MagicMock() for i in range(num_workers)],
+            workers=workers,
             placement_group_handle=MagicMock(),
             sync_actor=None,
         )
@@ -82,13 +122,26 @@ class DummyWorkerGroup(WorkerGroup):
             i: WorkerStatus(running=True, error=None) for i in range(num_workers)
         }
 
+        self._replica_groups = [
+            ReplicaGroup([workers[i]], resources_per_worker={})
+            for i in range(num_workers)
+        ]
+
     def shutdown(self):
         self._worker_group_state = None
 
     def abort(self):
         pass
 
+    def replace_replica_group(self, replica_group_index: int):
+        self._replaced_replica_groups.append(replica_group_index)
+
     # === Test methods ===
+    def clear_worker(self):
+        for worker_status in self._worker_statuses.values():
+            worker_status.error = None
+            worker_status.running = True
+
     def error_worker(self, worker_index):
         status = self._worker_statuses[worker_index]
         status.error = RuntimeError(f"Worker {worker_index} failed")
@@ -112,6 +165,9 @@ class MockScalingPolicy(ScalingPolicy):
         self._monitor_decision_queue = []
 
         super().__init__(scaling_config)
+
+    def _get_num_workers_for_resource_request(self) -> int:
+        return self.scaling_config.num_workers
 
     def make_decision_for_non_running_worker_group(self) -> ScalingDecision:
         if self._recovery_decision_queue:
@@ -172,6 +228,7 @@ def create_mock_train_run(
     end_time_ns: Optional[int] = None,
     id: Optional[str] = None,
     status_detail: Optional[str] = None,
+    train_loop_config: Optional[Dict] = None,
 ):
     return TrainRun(
         schema_version=0,
@@ -184,6 +241,45 @@ def create_mock_train_run(
         start_time_ns=time.time_ns(),
         end_time_ns=end_time_ns,
         controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
+        framework_versions={"ray": ray.__version__},
+        run_settings=RunSettings(
+            train_loop_config=train_loop_config,
+            backend_config=BackendConfigSchema(framework=None, config={}),
+            scaling_config=ScalingConfigSchema(
+                num_workers=1,
+                use_gpu=False,
+                resources_per_worker=None,
+                placement_strategy="PACK",
+                accelerator_type=None,
+                use_tpu=False,
+                topology=None,
+                bundle_label_selector=None,
+            ),
+            datasets=["dataset_1"],
+            data_config=DataConfigSchema(
+                datasets_to_split="all",
+                data_execution_options=DataExecutionOptions(
+                    default=execution_options_to_model(
+                        DataConfig.default_ingest_options()
+                    ),
+                ),
+                enable_shard_locality=True,
+            ),
+            run_config=RunConfigSchema(
+                name="test_run",
+                failure_config=FailureConfigSchema(
+                    max_failures=0, controller_failure_limit=-1
+                ),
+                worker_runtime_env={"type": "conda"},
+                checkpoint_config=CheckpointConfigSchema(
+                    num_to_keep=None,
+                    checkpoint_score_attribute=None,
+                    checkpoint_score_order="max",
+                ),
+                storage_path="s3://bucket/path",
+                storage_filesystem=None,
+            ),
+        ),
     )
 
 
@@ -240,7 +336,6 @@ def create_dummy_run_context(**kwargs: dict) -> TrainRunContext:
         train_loop_config={},
         scaling_config=ScalingConfig(num_workers=1),
         backend_config=BackendConfig(),
-        datasets={},
         dataset_config=DataConfig(),
     )
     config.update(kwargs)

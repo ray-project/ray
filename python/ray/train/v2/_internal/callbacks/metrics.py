@@ -34,7 +34,7 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
             TrainControllerStateType.INITIALIZING
         )
 
-    def before_controller_shutdown(self):
+    async def before_controller_shutdown(self):
         """Shutdown metrics before controller shuts down."""
         for metric in self._metrics.values():
             metric.reset()
@@ -102,3 +102,22 @@ class WorkerMetricsCallback(WorkerCallback, TrainContextCallback):
         yield
         elapsed_time_s = time_monotonic() - start_time_s
         self._metrics[WorkerMetrics.REPORT_TOTAL_BLOCKED_TIME_S].record(elapsed_time_s)
+
+    @contextmanager
+    def on_checkpoint_sync(self):
+        """Measure time spent in the cross-rank barrier that synchronizes the
+        checkpoint directory name across all workers."""
+        start_time_s = time_monotonic()
+        yield
+        elapsed_time_s = time_monotonic() - start_time_s
+        self._metrics[WorkerMetrics.CHECKPOINT_SYNC_TOTAL_TIME_S].record(elapsed_time_s)
+
+    @contextmanager
+    def on_checkpoint_transfer(self):
+        """Measure time spent transferring checkpoint files to storage."""
+        start_time_s = time_monotonic()
+        yield
+        elapsed_time_s = time_monotonic() - start_time_s
+        self._metrics[WorkerMetrics.CHECKPOINT_TRANSFER_TOTAL_TIME_S].record(
+            elapsed_time_s
+        )

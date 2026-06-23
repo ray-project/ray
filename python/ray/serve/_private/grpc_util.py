@@ -13,7 +13,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
-from ray.serve._private.proxy_request_response import ResponseStatus
+from ray.serve._private.proxy_request_response import ResponseStatus, gRPCStreamingType
 from ray.serve.config import gRPCOptions
 from ray.serve.exceptions import (
     BackPressureError,
@@ -65,6 +65,8 @@ class gRPCGenericServer(Server):
             `self.service_handler_factory`
             3. `unary_stream` is always calling the streaming function generated via
             `self.service_handler_factory`
+            4. `stream_unary` for client streaming requests
+            5. `stream_stream` for bidirectional streaming requests
         """
         serve_rpc_handlers = {}
         rpc_handler = generic_rpc_handlers[0]
@@ -73,11 +75,19 @@ class gRPCGenericServer(Server):
                 response_serializer=None,
                 unary_unary=self.service_handler_factory(
                     service_method=service_method,
-                    stream=False,
+                    streaming_type=gRPCStreamingType.UNARY_UNARY,
                 ),
                 unary_stream=self.service_handler_factory(
                     service_method=service_method,
-                    stream=True,
+                    streaming_type=gRPCStreamingType.UNARY_STREAM,
+                ),
+                stream_unary=self.service_handler_factory(
+                    service_method=service_method,
+                    streaming_type=gRPCStreamingType.STREAM_UNARY,
+                ),
+                stream_stream=self.service_handler_factory(
+                    service_method=service_method,
+                    streaming_type=gRPCStreamingType.STREAM_STREAM,
                 ),
             )
             serve_rpc_handlers[service_method] = serve_method_handler
@@ -92,10 +102,11 @@ async def start_grpc_server(
     *,
     event_loop: asyncio.AbstractEventLoop,
     enable_so_reuseport: bool = False,
-) -> asyncio.Task:
+) -> Tuple[asyncio.Task, gRPCGenericServer]:
     """Start a gRPC server that handles requests with the service handler factory.
 
-    Returns a task that blocks until the server exits (e.g., due to error).
+    Returns a task that blocks until the server exits (e.g., due to error) and
+    the server object itself (so callers can shut it down gracefully).
     """
     from ray.serve._private.default_impl import add_grpc_address
 
@@ -115,7 +126,7 @@ async def start_grpc_server(
         servicer_fn(mock_servicer, server)
 
     await server.start()
-    return event_loop.create_task(server.wait_for_termination())
+    return event_loop.create_task(server.wait_for_termination()), server
 
 
 def _truncate_message(

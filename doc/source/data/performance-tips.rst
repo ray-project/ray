@@ -15,6 +15,23 @@ faster.
 
 If your transformation isn't vectorized, there's no performance benefit.
 
+Enabling Polars for sort operations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can speed up :meth:`~ray.data.Dataset.sort` and operations that sort internally,
+such as :meth:`~ray.data.grouped_data.GroupedData.map_groups`, by enabling Polars:
+
+.. testcode::
+
+    import ray
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.use_polars_sort = True
+
+When you enable this flag, Ray Data uses Polars instead of PyArrow for the internal
+sorting step, which can improve performance for large tabular datasets.
+This flag doesn't affect other operations such as :meth:`~ray.data.Dataset.map_batches`.
+
 Optimizing reads
 ----------------
 
@@ -209,8 +226,7 @@ calling :func:`~ray.data.Dataset.select_columns`, since column selection is push
     # Read just two of the five columns of the Iris dataset.
     ds = ray.data.read_parquet(
         "s3://anonymous@ray-example-data/iris.parquet",
-        columns=["sepal.length", "variety"],
-    )
+    ).select_columns(["sepal.length", "variety"])
     
     print(ds.schema())
 
@@ -226,101 +242,6 @@ calling :func:`~ray.data.Dataset.select_columns`, since column selection is push
 
 Reducing memory usage
 ---------------------
-
-.. _data_out_of_memory:
-
-Troubleshooting out-of-memory errors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-During execution, a task can read multiple input blocks, and write multiple output blocks. Input and output blocks consume both worker heap memory and shared memory through Ray's object store.
-Ray caps object store memory usage by spilling to disk, but excessive worker heap memory usage can cause out-of-memory situations.
-
-Ray Data attempts to bound its heap memory usage to ``num_execution_slots * max_block_size``. The number of execution slots is by default equal to the number of CPUs, unless custom resources are specified.
-The maximum block size is set by the configuration parameter :class:`DataContext.target_max_block_size <ray.data.context.DataContext>` and is set to 128MiB by default.
-If the Dataset includes an :ref:`all-to-all shuffle operation <optimizing_shuffles>` (such as :func:`~ray.data.Dataset.random_shuffle`), then the default maximum block size is controlled by :class:`DataContext.target_shuffle_max_block_size <ray.data.context.DataContext>`, set to 1GiB by default to avoid creating too many tiny blocks.
-
-.. note::
-    It's **not** recommended to modify :class:`DataContext.target_max_block_size <ray.data.context.DataContext>`. The default is already chosen to balance between high overheads from too many tiny blocks vs. excessive heap memory usage from too-large blocks.
-
-When a task's output is larger than the maximum block size, the worker automatically splits the output into multiple smaller blocks to avoid running out of heap memory.
-However, too-large blocks are still possible, and they can lead to out-of-memory situations.
-To avoid these issues:
-
-1. Make sure no single item in your dataset is too large. Aim for rows that are <10 MB each.
-2. Always call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with a batch size small enough such that the output batch can comfortably fit into heap memory. Or, if vectorized execution is not necessary, use :meth:`ds.map() <ray.data.Dataset.map>`.
-3. If neither of these is sufficient, manually increase the :ref:`read output blocks <read_output_blocks>` or modify your application code to ensure that each task reads a smaller amount of data.
-
-As an example of tuning batch size, the following code uses one task to load a 1 GB :class:`~ray.data.Dataset` with 1000 1 MB rows and applies an identity function using :func:`~ray.data.Dataset.map_batches`.
-Because the default ``batch_size`` for :func:`~ray.data.Dataset.map_batches` is 1024 rows, this code produces only one very large batch, causing the heap memory usage to increase to 4 GB.
-
-.. testcode::
-    :hide:
-
-    import ray
-    ray.shutdown()
-
-.. testcode::
-
-    import ray
-    # Pretend there are two CPUs.
-    ray.init(num_cpus=2)
-
-    # Force Ray Data to use one task to show the memory issue.
-    ds = ray.data.range_tensor(1000, shape=(125_000, ), override_num_blocks=1)
-    # The default batch size is 1024 rows.
-    ds = ds.map_batches(lambda batch: batch)
-    print(ds.materialize().stats())
-
-.. testoutput::
-    :options: +MOCK
-
-    Operator 1 ReadRange->MapBatches(<lambda>): 1 tasks executed, 7 blocks produced in 1.33s
-      ...
-    * Peak heap memory usage (MiB): 3302.17 min, 4233.51 max, 4100 mean
-    * Output num rows: 125 min, 125 max, 125 mean, 1000 total
-    * Output size bytes: 134000536 min, 196000784 max, 142857714 mean, 1000004000 total
-      ...
-
-Setting a lower batch size produces lower peak heap memory usage:
-
-.. testcode::
-    :hide:
-
-    import ray
-    ray.shutdown()
-
-.. testcode::
-
-    import ray
-    # Pretend there are two CPUs.
-    ray.init(num_cpus=2)
-
-    ds = ray.data.range_tensor(1000, shape=(125_000, ), override_num_blocks=1)
-    ds = ds.map_batches(lambda batch: batch, batch_size=32)
-    print(ds.materialize().stats())
-
-.. testoutput::
-    :options: +MOCK
-
-    Operator 1 ReadRange->MapBatches(<lambda>): 1 tasks executed, 7 blocks produced in 0.51s
-    ...
-    * Peak heap memory usage (MiB): 587.09 min, 1569.57 max, 1207 mean
-    * Output num rows: 40 min, 160 max, 142 mean, 1000 total
-    * Output size bytes: 40000160 min, 160000640 max, 142857714 mean, 1000004000 total
-    ...
-
-Improving heap memory usage in Ray Data is an active area of development.
-Here are the current known cases in which heap memory usage may be very high:
-
-1. Reading large (1 GiB or more) binary files.
-2. Transforming a Dataset where individual rows are large (100 MiB or more).
-
-In these cases, the last resort is to reduce the number of concurrent execution slots.
-This can be done with custom resources.
-For example, use :meth:`ds.map_batches(fn, num_cpus=2) <ray.data.Dataset.map_batches>` to halve the number of execution slots for the ``map_batches`` tasks.
-
-If these strategies are still insufficient, `file a Ray Data issue on GitHub`_.
-
 
 Avoiding object spilling
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -352,7 +273,7 @@ There are two ways to do this:
 2. If you don't need control over the exact number of output blocks and just want to produce larger blocks, use :meth:`ds.map_batches(lambda batch: batch, batch_size=batch_size) <ray.data.Dataset.map_batches>` and set ``batch_size`` to the desired number of rows per block. This is executed in a streaming fashion and avoids materialization.
 
 When :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` is used, Ray Data coalesces blocks so that each map task can process at least this many rows.
-Note that the chosen ``batch_size`` is a lower bound on the task's input block size but it does not necessarily determine the task's final *output* block size; see :ref:`the section <data_out_of_memory>` on block memory usage for more information on how block size is determined.
+Note that the chosen ``batch_size`` is a lower bound on the task's input block size but it doesn't necessarily determine the task's final *output* block size.
 
 To illustrate these, the following code uses both strategies to coalesce the 10 tiny blocks with 1 row each into 1 larger block with 10 rows:
 
@@ -424,18 +345,6 @@ You can configure execution options with the global DataContext. The options are
         gpu=5,
         object_store_memory=10e9,
     )
-
-.. note::
-    Be mindful that by default Ray reserves only 30% of the memory for its Object Store. This is recommended to be set at least to ***50%*** for all Ray Data workloads.
-
-Locality with output (ML ingest use case)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block::
-
-   ctx.execution_options.locality_with_output = True
-
-Setting this parameter to True tells Ray Data to prefer placing operator tasks onto the consumer node in the cluster, rather than spreading them evenly across the cluster. This setting can be useful if you know you are consuming the output data directly on the consumer node (such as, for ML training ingest). However, other use cases may incur a performance penalty with this setting.
 
 Reproducibility
 ---------------

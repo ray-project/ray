@@ -6,7 +6,6 @@ import pyarrow as pa
 import pytest
 from clickhouse_connect.driver.summary import QuerySummary
 
-import ray
 from ray.data._internal.datasource.clickhouse_datasink import (
     ClickHouseDatasink,
     ClickHouseTableSettings,
@@ -373,13 +372,6 @@ class TestClickHouseDatasource:
         assert ds._filter is None
 
 
-@pytest.fixture(scope="session")
-def ray_local_mode():
-    ray.init(local_mode=True, num_cpus=1)
-    yield
-    ray.shutdown()
-
-
 @pytest.fixture
 def mock_clickhouse_sink_client():
     client = MagicMock()
@@ -395,7 +387,7 @@ def patch_global_get_client(mock_clickhouse_sink_client):
         yield
 
 
-@pytest.mark.usefixtures("ray_local_mode")
+@pytest.mark.usefixtures("ray_start_2_cpus_shared")
 class TestClickHouseDatasink:
     @pytest.fixture
     def datasink(self, mock_clickhouse_sink_client):
@@ -792,14 +784,14 @@ class TestClickHouseDatasink:
                 SinkMode.CREATE,
                 pa.schema([("id", pa.int32())]),
                 [("id", pa.int32()), ("extra_col", pa.int32())],
-                r"(ArrowInvalid|Could not convert|field names are not matching.*)",
+                r"(ArrowInvalid|Could not convert|field names are not matching|columns not in target schema.*)",
             ),
             (
                 True,
                 SinkMode.OVERWRITE,
                 pa.schema([("id", pa.timestamp("ns"))]),
                 [("id", pa.int32())],
-                r"(ArrowInvalid|Could not convert|field names are not matching|Unsupported cast.*)",
+                r"(ArrowInvalid|Could not convert|field names are not matching|columns not in target schema|Unsupported cast.*)",
             ),
         ],
     )

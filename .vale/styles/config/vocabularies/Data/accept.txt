@@ -2,9 +2,12 @@ assess_quality
 autoscaler
 [Aa]vro
 [Bb]ackpressure
+conda
 Dask
 [Dd]ata('s)?
+[Dd]ataset('s)?
 [Dd]atasource(s)?
+[Dd]eserializable
 [Dd]iscretizer(s)?
 docstrings
 dtype
@@ -20,6 +23,8 @@ LLM(s)?
 MCAP
 Modin
 [Mm]ultiget(s)?
+[Mm]ultitenancy
+[Ss]ubcluster(s)?
 ndarray(s)?
 NLP
 [Oo]mni
@@ -27,6 +32,7 @@ NLP
 PDFs
 PIL
 [Pp]ipelined
+[Pp]olars
 Predibase('s)?
 [Pp]refetch
 [Pp]refetching
@@ -54,3 +60,6 @@ YOLO
 [Ss]harded
 [Pp]arameterization(s)?
 repr
+Zarr
+[Uu]psample(d|s)?
+[Rr]ebatch(ing|ed|es)?

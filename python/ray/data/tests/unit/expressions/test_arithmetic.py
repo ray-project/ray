@@ -12,6 +12,7 @@ This module tests:
 import math
 
 import pandas as pd
+import pyarrow as pa
 import pytest
 from pkg_resources import parse_version
 
@@ -75,6 +76,13 @@ class TestBasicArithmetic:
         pd.testing.assert_series_equal(
             result.reset_index(drop=True), expected, check_names=False
         )
+
+    def test_string_concat_invalid_input_type(self):
+        """Reject non-string-like inputs in string concatenation."""
+        table = pa.table({"name": ["a", "b"], "age": [1, 2]})
+        expr = col("name") + col("age")
+        with pytest.raises(TypeError, match="string-like pyarrow.*int64"):
+            eval_expr(expr, table)
 
     # ── Subtraction ──
 

@@ -1,10 +1,12 @@
 import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
 import ray
 from ray.core.generated import autoscaler_pb2
+from ray.data._internal import cluster_autoscaler as ca_pkg
+from ray.data._internal.cluster_autoscaler import create_cluster_autoscaler
 from ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2 import (
     DefaultClusterAutoscalerV2,
     _get_node_resource_spec_and_count,
@@ -17,6 +19,7 @@ from ray.data._internal.cluster_autoscaler.resource_utilization_gauge import (
     ResourceUtilizationGauge,
 )
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
+from ray.data._internal.util import GiB
 
 
 class StubUtilizationGauge(ResourceUtilizationGauge):
@@ -28,6 +31,12 @@ class StubUtilizationGauge(ResourceUtilizationGauge):
 
     def get(self):
         return self._utilization
+
+
+_IS_AUTOSCALING_ENABLED_PATH = (
+    "ray.data._internal.cluster_autoscaler."
+    "default_cluster_autoscaler_v2.is_autoscaling_enabled"
+)
 
 
 class TestClusterAutoscaling:
@@ -118,6 +127,48 @@ class TestClusterAutoscaling:
             ),
         ):
             assert _get_node_resource_spec_and_count() == expected
+
+    def test_get_node_resource_spec_and_count_filters_by_subcluster(self):
+        """Only nodes whose ``subcluster`` label matches contribute to
+        the counts. Prevents ``try_trigger_scaling`` from pulling shapes
+        and counts from foreign subclusters into a labeled requester's
+        active / pending bundles."""
+        node_table = [
+            {
+                "Resources": self._node_type1,
+                "Labels": {"ray-subcluster": "training"},
+                "Alive": True,
+            },
+            {
+                "Resources": self._node_type1,
+                "Labels": {"ray-subcluster": "training"},
+                "Alive": True,
+            },
+            {
+                "Resources": self._node_type2,
+                "Labels": {"ray-subcluster": "validation"},
+                "Alive": True,
+            },
+            {
+                "Resources": self._node_type3,
+                "Labels": {},
+                "Alive": True,
+            },
+        ]
+        with (
+            patch("ray.nodes", return_value=node_table),
+            patch(
+                "ray._private.state.state.get_cluster_config",
+                return_value=None,
+            ),
+        ):
+            assert _get_node_resource_spec_and_count(subcluster="training") == {
+                _NodeResourceSpec.of(
+                    cpu=self._node_type1["CPU"],
+                    gpu=self._node_type1.get("GPU", 0),
+                    mem=self._node_type1["memory"],
+                ): 2,
+            }
 
     @pytest.mark.parametrize("cpu_util", [0.5, 0.75])
     @pytest.mark.parametrize("gpu_util", [0.5, 0.75])
@@ -300,6 +351,99 @@ class TestClusterAutoscaling:
         autoscaler.try_trigger_scaling()
         assert autoscaler.get_total_resources() == ExecutionResources(cpu=1)
 
+    def test_low_utilization_grace_period_keeps_explicit_request(self):
+        """Below the scale-up threshold, the last explicit request is resent briefly.
+
+        This avoids immediately dropping explicit autoscaler demand (and avoids
+        re-submitting ``get_allocated_resources()`` shapes as explicit demand).
+        """
+        current_time = {"t": 0.0}
+
+        def get_time() -> float:
+            return current_time["t"]
+
+        node_resource_spec = _NodeResourceSpec.of(cpu=1, gpu=0, mem=0)
+        fake_coordinator = FakeAutoscalingCoordinator(get_time=get_time)
+        utilization_holder = {
+            "u": ExecutionResources(
+                cpu=0.9, gpu=0.9, object_store_memory=0.9, memory=0.9
+            )
+        }
+
+        class MutableUtilGauge(ResourceUtilizationGauge):
+            def observe(self):
+                pass
+
+            def get(self):
+                return utilization_holder["u"]
+
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            resource_limits=ExecutionResources.inf(),
+            execution_id="test_low_util_grace",
+            resource_utilization_calculator=MutableUtilGauge(),
+            min_gap_between_autoscaling_requests_s=0,
+            low_util_request_release_delay_s=100,
+            autoscaling_coordinator=fake_coordinator,
+            get_node_counts=lambda: {node_resource_spec: 0},
+            get_time=get_time,
+        )
+        autoscaler.AUTOSCALING_REQUEST_EXPIRE_TIME_S = 3600
+
+        current_time["t"] = 10.0
+        autoscaler.try_trigger_scaling()
+        expected = ExecutionResources(cpu=1.0)
+        assert autoscaler.get_total_resources() == expected
+
+        utilization_holder["u"] = ExecutionResources.zero()
+        current_time["t"] = 20.0
+        autoscaler.try_trigger_scaling()
+        assert autoscaler.get_total_resources() == expected
+
+    def test_low_utilization_after_grace_sends_empty_request(self):
+        """After the grace window, low utilization renews with an empty request."""
+        current_time = {"t": 0.0}
+
+        def get_time() -> float:
+            return current_time["t"]
+
+        node_resource_spec = _NodeResourceSpec.of(cpu=1, gpu=0, mem=0)
+        fake_coordinator = FakeAutoscalingCoordinator(get_time=get_time)
+        utilization_holder = {
+            "u": ExecutionResources(
+                cpu=0.9, gpu=0.9, object_store_memory=0.9, memory=0.9
+            )
+        }
+
+        class MutableUtilGauge(ResourceUtilizationGauge):
+            def observe(self):
+                pass
+
+            def get(self):
+                return utilization_holder["u"]
+
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            resource_limits=ExecutionResources.inf(),
+            execution_id="test_low_util_release",
+            resource_utilization_calculator=MutableUtilGauge(),
+            min_gap_between_autoscaling_requests_s=0,
+            low_util_request_release_delay_s=100,
+            autoscaling_coordinator=fake_coordinator,
+            get_node_counts=lambda: {node_resource_spec: 0},
+            get_time=get_time,
+        )
+        autoscaler.AUTOSCALING_REQUEST_EXPIRE_TIME_S = 3600
+
+        current_time["t"] = 10.0
+        autoscaler.try_trigger_scaling()
+        assert autoscaler.get_total_resources() == ExecutionResources(cpu=1.0)
+
+        utilization_holder["u"] = ExecutionResources.zero()
+        current_time["t"] = 200.0
+        autoscaler.try_trigger_scaling()
+        assert autoscaler.get_total_resources() == ExecutionResources.zero()
+
     def test_get_node_resource_spec_and_count_skips_max_count_zero(self):
         """Test that node types with max_count=0 are skipped."""
         # Simulate a cluster with only head node (no worker nodes)
@@ -339,6 +483,135 @@ class TestClusterAutoscaling:
                 return_value=cluster_config,
             ):
                 result = _get_node_resource_spec_and_count()
+                assert result == expected
+
+    @pytest.mark.parametrize(
+        "nodes,node_groups,subcluster,expected",
+        [
+            pytest.param(
+                # Head node with CPU zeroed out (as configured to avoid
+                # scheduling tasks on the head), plus 2 worker nodes.
+                [
+                    {"resources": {"memory": 32 * GiB, "node:__internal_head__": 1.0}},
+                    {"resources": {"CPU": 8, "memory": 32 * GiB}},
+                    {"resources": {"CPU": 8, "memory": 32 * GiB}},
+                ],
+                [
+                    # Worker group: can scale up to 10 nodes.
+                    {"resources": {"CPU": 8, "memory": 32 * GiB}, "max_count": 10},
+                    # Dedicated head group: matches the head node, max_count == 1.
+                    {"resources": {"memory": 32 * GiB}, "max_count": 1},
+                ],
+                None,
+                # Only the worker shape is present (with the 2 running workers);
+                # the dedicated head group is excluded entirely.
+                {_NodeResourceSpec.of(cpu=8, gpu=0, mem=32 * GiB): 2},
+                id="dedicated_head_group_excluded",
+            ),
+            pytest.param(
+                # Head node group that can also host workers (max_count > 1):
+                # scaling its shape adds a worker, so it must be kept.
+                [
+                    {
+                        "resources": {
+                            "CPU": 4,
+                            "memory": 1000,
+                            "node:__internal_head__": 1.0,
+                        }
+                    }
+                ],
+                [{"resources": {"CPU": 4, "memory": 1000}, "max_count": 3}],
+                None,
+                {_NodeResourceSpec.of(cpu=4, gpu=0, mem=1000): 0},
+                id="head_group_with_workers_kept",
+            ),
+            pytest.param(
+                # Worker group limited to a single node with a shape that does
+                # NOT match the head node: must not be over-excluded.
+                [
+                    {
+                        "resources": {
+                            "CPU": 4,
+                            "memory": 1000,
+                            "node:__internal_head__": 1.0,
+                        }
+                    }
+                ],
+                [
+                    {
+                        "resources": {"CPU": 8, "GPU": 2, "memory": 2000},
+                        "max_count": 1,
+                    }
+                ],
+                None,
+                {_NodeResourceSpec.of(cpu=8, gpu=2, mem=2000): 0},
+                id="single_worker_group_kept",
+            ),
+            pytest.param(
+                # Head + subcluster interaction: the head node has no subcluster
+                # label, and there are workers in two subclusters. Computing for
+                # "training" must drop the dedicated head group (head detection
+                # is global, not subcluster-scoped) and count only the training
+                # workers, ignoring the validation worker.
+                [
+                    {"resources": {"memory": 32 * GiB, "node:__internal_head__": 1.0}},
+                    {
+                        "resources": {"CPU": 8, "memory": 32 * GiB},
+                        "labels": {"ray-subcluster": "training"},
+                    },
+                    {
+                        "resources": {"CPU": 8, "memory": 32 * GiB},
+                        "labels": {"ray-subcluster": "training"},
+                    },
+                    {
+                        "resources": {"CPU": 4, "memory": 16 * GiB},
+                        "labels": {"ray-subcluster": "validation"},
+                    },
+                ],
+                [
+                    {"resources": {"CPU": 8, "memory": 32 * GiB}, "max_count": 10},
+                    {"resources": {"memory": 32 * GiB}, "max_count": 1},
+                ],
+                "training",
+                {_NodeResourceSpec.of(cpu=8, gpu=0, mem=32 * GiB): 2},
+                id="dedicated_head_excluded_and_subcluster_scoped",
+            ),
+        ],
+    )
+    def test_get_node_resource_spec_and_count_head_node_group(
+        self, nodes, node_groups, subcluster, expected
+    ):
+        """The head node must not be scaled up, but worker-capable groups are.
+
+        A node group is only excluded when it's dedicated to the head node
+        (``max_count == 1`` and a shape matching the running head node). Groups
+        that can host workers (``max_count > 1``) or that have a non-head shape
+        are kept so scale-from-zero still works. Head detection spans the whole
+        cluster, while worker counting is scoped to ``subcluster``.
+        """
+        node_table = [
+            {
+                "Resources": node["resources"],
+                "Labels": node.get("labels", {}),
+                "Alive": True,
+            }
+            for node in nodes
+        ]
+
+        cluster_config = autoscaler_pb2.ClusterConfig()
+        for group in node_groups:
+            node_group_config = autoscaler_pb2.NodeGroupConfig()
+            for name, value in group["resources"].items():
+                node_group_config.resources[name] = value
+            node_group_config.max_count = group["max_count"]
+            cluster_config.node_group_configs.append(node_group_config)
+
+        with patch("ray.nodes", return_value=node_table):
+            with patch(
+                "ray._private.state.state.get_cluster_config",
+                return_value=cluster_config,
+            ):
+                result = _get_node_resource_spec_and_count(subcluster=subcluster)
                 assert result == expected
 
     def test_get_node_resource_spec_and_count_missing_all_resources(self):
@@ -392,10 +665,10 @@ class TestClusterAutoscaling:
                 1,
                 2,
             ),
-            # Memory limit: 4000 allows 2 nodes (4000 mem), not 3 (6000 mem)
+            # Memory limit: 4 GiB allows 2 nodes (4 GiB), not 3 (6 GiB)
             (
-                ExecutionResources.for_limits(memory=4000),
-                _NodeResourceSpec.of(cpu=4, gpu=0, mem=2000),
+                ExecutionResources.for_limits(memory=4 * GiB),
+                _NodeResourceSpec.of(cpu=4, gpu=0, mem=2 * GiB),
                 2,
                 1,
                 2,
@@ -455,8 +728,8 @@ class TestClusterAutoscaling:
         # CPU limit of 10 allows the initial state (4 CPUs) plus room for growth
         resource_limits = ExecutionResources.for_limits(cpu=10)
 
-        large_node_spec = _NodeResourceSpec.of(cpu=8, gpu=1, mem=4000)
-        small_node_spec = _NodeResourceSpec.of(cpu=4, gpu=0, mem=2000)
+        large_node_spec = _NodeResourceSpec.of(cpu=8, gpu=1, mem=4 * GiB)
+        small_node_spec = _NodeResourceSpec.of(cpu=4, gpu=0, mem=2 * GiB)
 
         scale_up_threshold = 0.75
         utilization = ExecutionResources(cpu=0.9, gpu=0.9, object_store_memory=0.9)
@@ -500,7 +773,7 @@ class TestClusterAutoscaling:
             "Smaller bundles should be included even when larger ones exceed limits."
         )
         assert resources_allocated.gpu == 0
-        assert resources_allocated.memory == 4000
+        assert resources_allocated.memory == 4 * GiB
 
     def test_try_scale_up_existing_nodes_prioritized_over_delta(self):
         """Test that existing node bundles are prioritized over scale-up delta bundles.
@@ -569,24 +842,25 @@ class TestClusterAutoscaling:
 
     def test_try_scale_up_logs_info_message(self, propagate_logs, caplog):
         fake_coordinator = FakeAutoscalingCoordinator()
-        node_spec = _NodeResourceSpec.of(cpu=1, gpu=0, mem=8 * 1024**3)
+        node_spec = _NodeResourceSpec.of(cpu=1, gpu=0, mem=8 * GiB)
         utilization = ExecutionResources(cpu=1, gpu=1, object_store_memory=1)
-        autoscaler = DefaultClusterAutoscalerV2(
-            resource_manager=MagicMock(),
-            execution_id="test_execution_id",
-            resource_utilization_calculator=StubUtilizationGauge(utilization),
-            min_gap_between_autoscaling_requests_s=0,
-            autoscaling_coordinator=fake_coordinator,
-            get_node_counts=lambda: {node_spec: 1},
-        )
+        with patch(_IS_AUTOSCALING_ENABLED_PATH, return_value=True):
+            autoscaler = DefaultClusterAutoscalerV2(
+                resource_manager=MagicMock(),
+                execution_id="test_execution_id",
+                resource_utilization_calculator=StubUtilizationGauge(utilization),
+                min_gap_between_autoscaling_requests_s=0,
+                autoscaling_coordinator=fake_coordinator,
+                get_node_counts=lambda: {node_spec: 1},
+            )
 
         with caplog.at_level(logging.INFO):
             autoscaler.try_trigger_scaling()
 
         expected_message = (
             "The utilization of one or more logical resource is higher than the "
-            "specified threshold of 75%: CPU=100%, GPU=100%, object_store_memory=100%. "
-            "Requesting 1 node(s) of each shape: "
+            "specified threshold of 75%: CPU=100%, GPU=100%, memory=0%, "
+            "object_store_memory=100%. Requesting 1 node(s) of each shape: "
             "[{CPU: 1, GPU: 0, memory: 8.0GiB}: 1 -> 2]"
         )
         log_messages = [record.message for record in caplog.records]
@@ -595,6 +869,91 @@ class TestClusterAutoscaling:
             f"Expected: {expected_message}\n"
             f"Actual logs: {log_messages}"
         )
+
+    def test_nodes_with_similar_memory_grouped(self):
+        """Test that nodes with slightly different memory are grouped together.
+
+        Nodes of the same type can report slightly different physical memory
+        (e.g. 14.85 GiB vs 14.94 GiB) due to non-deterministic physical memory
+        availability at Ray init time. They should produce the same spec.
+        """
+        spec_a = _NodeResourceSpec.of(cpu=8, gpu=0, mem=int(14.87 * GiB))
+        spec_b = _NodeResourceSpec.of(cpu=8, gpu=0, mem=int(14.93 * GiB))
+        assert spec_a == spec_b
+
+    def test_debug_log_when_autoscaling_disabled(self, propagate_logs, caplog):
+        """Test that autoscaling log is at DEBUG level when autoscaling is disabled."""
+        fake_coordinator = FakeAutoscalingCoordinator()
+        node_spec = _NodeResourceSpec.of(cpu=8, gpu=0, mem=1000)
+        utilization = ExecutionResources(cpu=1, gpu=0, object_store_memory=1)
+
+        with patch(_IS_AUTOSCALING_ENABLED_PATH, return_value=False):
+            autoscaler = DefaultClusterAutoscalerV2(
+                resource_manager=MagicMock(),
+                execution_id="test_execution_id",
+                resource_utilization_calculator=StubUtilizationGauge(utilization),
+                min_gap_between_autoscaling_requests_s=0,
+                autoscaling_coordinator=fake_coordinator,
+                get_node_counts=lambda: {node_spec: 2},
+            )
+
+        with caplog.at_level(logging.DEBUG):
+            autoscaler.try_trigger_scaling()
+
+        scaling_records = [r for r in caplog.records if "Requesting" in r.message]
+        assert len(scaling_records) == 1
+        assert scaling_records[0].levelno == logging.DEBUG
+
+
+def test_v2_autoscaler_passes_label_selector_to_coordinator(monkeypatch):
+    """``DefaultClusterAutoscalerV2`` forwards the DataContext's
+    ``label_selector`` to the ``DefaultAutoscalingCoordinator`` it
+    constructs."""
+    from ray.data._internal.cluster_autoscaler import default_cluster_autoscaler_v2
+
+    captured = {}
+
+    class _StubProxy:
+        def __init__(self, *args, **kwargs):
+            captured.update(kwargs)
+
+        def request_resources(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr(
+        default_cluster_autoscaler_v2, "DefaultAutoscalingCoordinator", _StubProxy
+    )
+    with patch(_IS_AUTOSCALING_ENABLED_PATH, return_value=False):
+        DefaultClusterAutoscalerV2(
+            resource_manager=Mock(),
+            execution_id="exec-1",
+            label_selector={"ray-subcluster": "training"},
+        )
+    assert captured["subcluster_selector"] == {"ray-subcluster": "training"}
+
+
+def test_create_cluster_autoscaler_forwards_label_selector(monkeypatch):
+    """The factory reads ``label_selector`` from ``execution_options`` and
+    forwards it to ``DefaultClusterAutoscalerV2``."""
+    captured = {}
+
+    class _StubV2:
+        def __init__(self, *args, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(ca_pkg, "DefaultClusterAutoscalerV2", _StubV2)
+
+    data_context = Mock()
+    data_context.execution_options.resource_limits = Mock()
+    data_context.execution_options.label_selector = {"ray-subcluster": "training"}
+
+    create_cluster_autoscaler(
+        topology=Mock(),
+        resource_manager=Mock(),
+        data_context=data_context,
+        execution_id="exec-1",
+    )
+    assert captured["label_selector"] == {"ray-subcluster": "training"}
 
 
 if __name__ == "__main__":

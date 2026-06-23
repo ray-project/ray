@@ -907,6 +907,33 @@ def test_options_num_returns(ray_start_regular_shared):
     assert ray.get([obj1, obj2]) == [1, 2]
 
 
+def test_options_no_ref_cycle(ray_start_regular_shared):
+    """ActorMethod.options() must not prevent the ActorHandle from being freed
+    by reference counting alone. Regression test for #61922."""
+    import gc
+    import weakref
+
+    @ray.remote
+    class MyActor:
+        def task(self, x):
+            return x
+
+    actor = MyActor.remote()
+    weak = weakref.ref(actor)
+
+    ref = actor.task.options(num_returns=1).remote(42)
+    assert ray.get(ref) == 42
+    del ref
+
+    # With gc disabled, only reference counting can free the handle.
+    gc.disable()
+    try:
+        del actor
+        assert weak() is None, "ActorHandle leaked via reference cycle"
+    finally:
+        gc.enable()
+
+
 @pytest.mark.skipif(
     sys.platform == "win32", reason="Windows doesn't support changing process title."
 )
@@ -1543,6 +1570,27 @@ def test_actor_equal(ray_start_regular_shared):
 
     remote = ray.get(get_actor.remote(origin))
     assert origin == remote
+
+
+@pytest.mark.parametrize("cross_language", [False, True], ids=["python", "cross_lang"])
+def test_actor_handle_hash_eq(ray_start_regular_shared, cross_language):
+    """hash()/eq/set/dict ops must work for both Python and cross-language handles."""
+
+    @ray.remote
+    class Actor:
+        pass
+
+    handle = Actor.remote()
+    if cross_language:
+        handle._ray_is_cross_language = True
+
+    h = hash(handle)
+    assert isinstance(h, int)
+    assert hash(handle) == h
+
+    assert handle == handle
+    assert handle in {handle}
+    assert {handle: "v"}[handle] == "v"
 
 
 def test_actor_handle_weak_ref_counting(ray_start_regular_shared):

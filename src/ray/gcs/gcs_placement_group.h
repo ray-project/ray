@@ -24,8 +24,8 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
 #include "ray/common/metrics.h"
+#include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
-#include "ray/util/time.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
@@ -42,9 +42,11 @@ class GcsPlacementGroup {
   explicit GcsPlacementGroup(
       rpc::PlacementGroupTableData placement_group_table_data,
       std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>>
-          counter)
+          counter,
+      ClockInterface &clock)
       : placement_group_table_data_(std::move(placement_group_table_data)),
-        counter_(counter) {
+        counter_(counter),
+        clock_(clock) {
     SetupStates();
   }
 
@@ -55,8 +57,9 @@ class GcsPlacementGroup {
       const ray::rpc::CreatePlacementGroupRequest &request,
       std::string ray_namespace,
       std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>>
-          counter)
-      : counter_(counter) {
+          counter,
+      ClockInterface &clock)
+      : counter_(counter), clock_(clock) {
     const auto &placement_group_spec = request.placement_group_spec();
     placement_group_table_data_.set_placement_group_id(
         placement_group_spec.placement_group_id());
@@ -77,7 +80,8 @@ class GcsPlacementGroup {
         placement_group_spec.soft_target_node_id());
     placement_group_table_data_.set_ray_namespace(ray_namespace);
     placement_group_table_data_.set_placement_group_creation_timestamp_ms(
-        current_sys_time_ms());
+        clock_.NowUnixMillis());
+    ComputeLabelDomainKey();
     SetupStates();
   }
 
@@ -122,6 +126,9 @@ class GcsPlacementGroup {
   /// Check if there are unplaced bundles.
   bool HasUnplacedBundles() const;
 
+  /// Check if all bundles are unplaced.
+  bool AllUnplacedBundles() const;
+
   /// Get the Strategy
   rpc::PlacementStrategy GetStrategy() const;
 
@@ -156,6 +163,21 @@ class GcsPlacementGroup {
 
   rpc::PlacementGroupStats *GetMutableStats();
 
+  /// Get the node label key used for label-domain-aware scheduling (e.g.
+  /// "ray.io/gpu-domain"), or std::nullopt if this PG doesn't use it.
+  std::optional<std::string> GetLabelDomainKey() const;
+
+  /// Get the label domain assignment for the given label key.
+  std::optional<std::string> GetLabelDomainAssignment(const std::string &label_key) const;
+
+  /// Set the label domain assignment for the given label key.
+  void SetLabelDomainAssignment(const std::string &label_key,
+                                const std::string &label_value);
+
+  /// Clear all label domain assignments (used when all bundles for label-domain PGs are
+  /// unplaced).
+  void ClearLabelDomainAssignments();
+
  private:
   // XXX.
   FRIEND_TEST(GcsPlacementGroupManagerTest, TestPlacementGroupBundleCache);
@@ -165,7 +187,7 @@ class GcsPlacementGroup {
     auto stats = placement_group_table_data_.mutable_stats();
     // The default value for the field is 0
     if (stats->creation_request_received_ns() == 0) {
-      auto now = absl::GetCurrentTimeNanos();
+      auto now = clock_.NowUnixNanos();
       stats->set_creation_request_received_ns(now);
     }
     // The default value for the field is 0
@@ -194,6 +216,10 @@ class GcsPlacementGroup {
     last_metric_state_ = cur_state;
   }
 
+  /// Inspects bundle label selectors to determine if this PG requires
+  /// label-domain-aware scheduling and persists the result in the proto.
+  void ComputeLabelDomainKey();
+
   /// The placement_group meta data which contains the task specification as well as the
   /// state of the gcs placement_group and so on (see gcs.proto).
   rpc::PlacementGroupTableData placement_group_table_data_;
@@ -204,6 +230,7 @@ class GcsPlacementGroup {
 
   /// Reference to the counter to use for placement group state metrics tracking.
   std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>> counter_;
+  ClockInterface &clock_;
 
   /// The last recorded metric state.
   std::optional<rpc::PlacementGroupTableData::PlacementGroupState> last_metric_state_;

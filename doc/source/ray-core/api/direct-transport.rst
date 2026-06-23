@@ -34,6 +34,10 @@ Advanced APIs
     :nosignatures:
     :toctree: doc/
 
+    ray.experimental.register_nixl_memory
+    ray.experimental.deregister_nixl_memory
+    ray.experimental.register_nixl_memory_pool
+    ray.experimental.set_target_for_ref
     ray.experimental.wait_tensor_freed
     ray.experimental.register_tensor_transport
     ray.experimental.TensorTransportManager

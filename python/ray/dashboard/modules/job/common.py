@@ -412,7 +412,10 @@ class JobInfoStorageClient:
             job_info = await self.get_info(job_id, timeout)
             return job_id, job_info
 
-        return dict(await asyncio.gather(*[get_job_info(job_id) for job_id in job_ids]))
+        results = await asyncio.gather(*[get_job_info(job_id) for job_id in job_ids])
+        return {
+            job_id: job_info for job_id, job_info in results if job_info is not None
+        }
 
 
 def uri_to_http_components(package_uri: str) -> Tuple[str, str]:

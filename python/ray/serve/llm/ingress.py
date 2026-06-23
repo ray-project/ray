@@ -5,7 +5,7 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 from ray.util.annotations import PublicAPI
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class OpenAiIngress(_OpenAiIngress):
 
     """The implementation of the OpenAI compatible model router.
@@ -26,6 +26,9 @@ class OpenAiIngress(_OpenAiIngress):
 
 
             from ray import serve
+            from ray.llm._internal.serve.core.configs.openai_api_models import (
+                to_model_metadata,
+            )
             from ray.serve.llm import LLMConfig
             from ray.serve.llm.deployment import LLMServer
             from ray.serve.llm.ingress import OpenAiIngress, make_fastapi_ingress
@@ -66,12 +69,28 @@ class OpenAiIngress(_OpenAiIngress):
             server_deployment2 = serve.deployment(LLMServer).options(
                 **server_options2).bind(llm_config2)
 
-            # ingress
+            # ingress: pass dicts keyed by model_id; no remote llm_config fetch.
             ingress_options = OpenAiIngress.get_deployment_options(
                 llm_configs=[llm_config1, llm_config2])
             ingress_cls = make_fastapi_ingress(OpenAiIngress)
-            ingress_deployment = serve.deployment(ingress_cls).options(
-                **ingress_options).bind([server_deployment1, server_deployment2])
+            ingress_deployment = (
+                serve.deployment(ingress_cls)
+                .options(**ingress_options)
+                .bind(
+                    llm_deployments={
+                        llm_config1.model_id: server_deployment1,
+                        llm_config2.model_id: server_deployment2,
+                    },
+                    model_cards={
+                        llm_config1.model_id: to_model_metadata(
+                            llm_config1.model_id, llm_config1
+                        ),
+                        llm_config2.model_id: to_model_metadata(
+                            llm_config2.model_id, llm_config2
+                        ),
+                    },
+                )
+            )
 
             # run
             serve.run(ingress_deployment, blocking=True)

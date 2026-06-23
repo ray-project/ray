@@ -131,6 +131,7 @@ class Topology:
 
         Args:
             dag: The operator DAG to analyze.
+            op_to_id: Mapping from each physical operator to its stable string ID.
 
         Returns:
             A Topology object representing the operator DAG structure.

@@ -26,7 +26,8 @@
 #include "absl/strings/str_format.h"
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/cgroup2/cgroup_manager_factory.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/constants.h"
@@ -50,14 +51,15 @@
 #include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/stats/tag_defs.h"
+#include "ray/util/clock.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
+#include "ray/util/network_util.h"
 #include "ray/util/process.h"
 #include "ray/util/raii.h"
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
 #include "ray/util/subreaper.h"
-#include "ray/util/time.h"
 #include "scheduling/cluster_lease_manager.h"
 #if !defined(_WIN32)
 #include <unistd.h>
@@ -255,6 +257,7 @@ int main(int argc, char *argv[]) {
   const std::string runtime_env_agent_command = FLAGS_runtime_env_agent_command;
   const std::string cpp_worker_command = FLAGS_cpp_worker_command;
   const std::string native_library_path = FLAGS_native_library_path;
+  const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
   const std::string log_dir = FLAGS_log_dir;
   const std::string resource_dir = FLAGS_resource_dir;
@@ -355,6 +358,8 @@ int main(int argc, char *argv[]) {
       spill_manager_throughput_mb_gauge};
   ray::stats::Count memory_manager_worker_eviction_total_count =
       ray::raylet::GetMemoryManagerWorkerEvictionTotalCountMetric();
+  ray::stats::Count node_manager_unexpected_worker_failure_total_count =
+      ray::raylet::GetNodeManagerUnexpectedWorkerFailureTotalCountMetric();
   ray::stats::Gauge scheduler_tasks_gauge = ray::raylet::GetSchedulerTasksGaugeMetric();
   ray::stats::Gauge scheduler_unscheduleable_tasks_gauge =
       ray::raylet::GetSchedulerUnscheduleableTasksGaugeMetric();
@@ -404,6 +409,7 @@ int main(int argc, char *argv[]) {
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterLeaseManager is responsible for queuing, spilling back, and
   /// granting leases.
+  ray::Clock clock;
   std::unique_ptr<ray::ClusterResourceScheduler> cluster_resource_scheduler;
   std::unique_ptr<ray::raylet::LocalLeaseManagerInterface> local_lease_manager;
   std::unique_ptr<ray::raylet::ClusterLeaseManagerInterface> cluster_lease_manager;
@@ -501,6 +507,35 @@ int main(int argc, char *argv[]) {
     RAY_CHECK_OK(status);
     RAY_CHECK(stored_raylet_config.has_value());
     RayConfig::instance().initialize(*stored_raylet_config);
+
+    // Each node should have its own object spilling directory individually
+    // specified. Overwrite head node's object spilling directory with the one
+    // specified on this node.
+    std::string object_spilling_config = RayConfig::instance().object_spilling_config();
+    if (!object_spilling_config.empty()) {
+      try {
+        nlohmann::json config = nlohmann::json::parse(object_spilling_config);
+        if (config.contains("type") && config["type"] == "filesystem") {
+          if (config.contains("params") && config["params"].contains("directory_path")) {
+            // Override with local fallback directory as it has been resolved to the
+            // correct spilling directory already.
+            config["params"]["directory_path"] = fallback_directory;
+            std::string modified_config = config.dump();
+
+            // Re-parse the entire stored config and update object_spilling_config
+            nlohmann::json full_config = nlohmann::json::parse(*stored_raylet_config);
+            full_config["object_spilling_config"] = modified_config;
+            std::string updated_raylet_config = full_config.dump();
+
+            // Re-initialize with the updated config
+            RayConfig::instance().initialize(updated_raylet_config);
+          }
+        }
+      } catch (const std::exception &e) {
+        RAY_LOG(WARNING) << "Failed to parse object_spilling_config: " << e.what();
+      }
+    }
+
     ray::asio::testing::Init();
     ray::rpc::testing::Init();
 
@@ -616,6 +651,7 @@ int main(int argc, char *argv[]) {
     node_manager_config.resource_dir = resource_dir;
     node_manager_config.ray_debugger_external = ray_debugger_external;
     node_manager_config.max_io_workers = RayConfig::instance().max_io_workers();
+    node_manager_config.enable_resource_isolation = enable_resource_isolation;
 
     // Configuration for the object manager.
     ray::ObjectManagerConfig object_manager_config;
@@ -663,6 +699,7 @@ int main(int argc, char *argv[]) {
 
     worker_pool = std::make_unique<ray::raylet::WorkerPool>(
         main_service,
+        ray::PeriodicalRunner::Create(main_service),
         raylet_node_id,
         node_manager_config.node_manager_address,
         [&]() {
@@ -694,7 +731,7 @@ int main(int argc, char *argv[]) {
         /*starting_worker_timeout_callback=*/
         [&] { cluster_lease_manager->ScheduleAndGrantLeases(); },
         node_manager_config.ray_debugger_external,
-        /*get_time=*/[]() { return absl::Now(); },
+        /*clock=*/clock,
         worker_pool_metrics,
         std::move(add_process_to_workers_cgroup_hook));
 
@@ -742,9 +779,7 @@ int main(int argc, char *argv[]) {
         core_worker_subscriber.get(),
         worker_rpc_pool.get(),
         [&](const ray::ObjectID &obj_id, const ray::rpc::ErrorType &error_type) {
-          ray::rpc::ObjectReference ref;
-          ref.set_object_id(obj_id.Binary());
-          node_manager->MarkObjectsAsFailed(error_type, {ref}, ray::JobID::Nil());
+          object_manager->MarkObjectFailed(obj_id, error_type);
         });
 
     auto object_store_runner = std::make_unique<ray::ObjectStoreRunner>(
@@ -822,12 +857,6 @@ int main(int argc, char *argv[]) {
           }
           return result;
         },
-        /*fail_pull_request=*/
-        [&](const ray::ObjectID &object_id, ray::rpc::ErrorType error_type) {
-          ray::rpc::ObjectReference ref;
-          ref.set_object_id(object_id.Binary());
-          node_manager->MarkObjectsAsFailed(error_type, {ref}, ray::JobID::Nil());
-        },
         std::make_shared<plasma::PlasmaClient>(),
         std::move(object_store_runner),
         [&](const std::string &address,
@@ -854,7 +883,7 @@ int main(int argc, char *argv[]) {
         /*on_objects_freed*/
         [&](const std::vector<ray::ObjectID> &object_ids) {
           object_manager->FreeObjects(object_ids,
-                                      /*local_only=*/false);
+                                      /*local_only=*/true);
         },
         /*is_plasma_object_spillable*/
         [&](const ray::ObjectID &object_id) {
@@ -863,13 +892,14 @@ int main(int argc, char *argv[]) {
         /*core_worker_subscriber_=*/core_worker_subscriber.get(),
         object_directory.get(),
         object_store_memory_gauge,
-        spill_manager_metrics);
+        spill_manager_metrics,
+        clock);
 
     lease_dependency_manager = std::make_unique<ray::raylet::LeaseDependencyManager>(
         *object_manager, task_by_state_counter);
 
     cluster_resource_scheduler = std::make_unique<ray::ClusterResourceScheduler>(
-        main_service,
+        ray::PeriodicalRunner::Create(main_service),
         ray::scheduling::NodeID(raylet_node_id.Binary()),
         node_manager_config.resource_config.GetResourceMap(),
         /*is_node_available_fn*/
@@ -877,6 +907,7 @@ int main(int argc, char *argv[]) {
           return gcs_client->Nodes().IsNodeAlive(ray::NodeID::FromBinary(id.Binary()));
         },
         resource_usage_gauge,
+        clock,
         /*get_used_object_store_memory*/
         [&]() {
           if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
@@ -961,7 +992,8 @@ int main(int argc, char *argv[]) {
           return node_manager->GetObjectsFromPlasma(object_ids, results);
         },
         max_task_args_memory,
-        scheduler_metrics);
+        scheduler_metrics,
+        clock);
 
     cluster_lease_manager =
         std::make_unique<ray::raylet::ClusterLeaseManager>(raylet_node_id,
@@ -990,6 +1022,7 @@ int main(int argc, char *argv[]) {
 
     node_manager = std::make_unique<ray::raylet::NodeManager>(
         main_service,
+        ray::PeriodicalRunner::Create(main_service),
         raylet_node_id,
         node_name,
         node_manager_config,
@@ -1019,7 +1052,9 @@ int main(int argc, char *argv[]) {
         *placement_group_resource_manager,
         std::move(acceptor),
         std::move(socket),
-        memory_manager_worker_eviction_total_count);
+        memory_manager_worker_eviction_total_count,
+        node_manager_unexpected_worker_failure_total_count,
+        clock);
 
     // Initializing stats should be done after the node manager is initialized because
     // <explain why>. Metrics exported before this call will be buffered until `Init` is
@@ -1036,8 +1071,11 @@ int main(int argc, char *argv[]) {
     // -1 means metrics agent is not available (minimal install).
     int actual_metrics_agent_port = node_manager->GetMetricsAgentPort();
     if (actual_metrics_agent_port > 0) {
-      metrics_agent_client = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
-          "127.0.0.1", actual_metrics_agent_port, main_service, *client_call_manager);
+      metrics_agent_client =
+          std::make_unique<ray::rpc::MetricsAgentClientImpl>(ray::GetLocalhostIP(),
+                                                             actual_metrics_agent_port,
+                                                             main_service,
+                                                             *client_call_manager);
       metrics_agent_client->WaitForServerReady(
           [actual_metrics_agent_port](const ray::Status &server_status) {
             if (server_status.ok()) {
@@ -1073,6 +1111,8 @@ int main(int argc, char *argv[]) {
     self_node_info.set_node_manager_address(node_ip_address);
     self_node_info.set_node_name(node_name);
     self_node_info.set_raylet_socket_name(raylet_socket_name);
+    self_node_info.set_temp_dir(temp_dir);
+    self_node_info.set_session_dir(session_dir);
     self_node_info.set_object_store_socket_name(object_manager_config.store_socket_name);
     self_node_info.set_object_manager_port(object_manager->GetServerPort());
     self_node_info.set_node_manager_port(node_manager->GetServerPort());
@@ -1086,7 +1126,7 @@ int main(int argc, char *argv[]) {
     auto resource_map = node_manager_config.resource_config.GetResourceMap();
     self_node_info.mutable_resources_total()->insert(resource_map.begin(),
                                                      resource_map.end());
-    self_node_info.set_start_time_ms(ray::current_sys_time_ms());
+    self_node_info.set_start_time_ms(clock.NowUnixMillis());
     self_node_info.set_is_head_node(is_head_node);
     self_node_info.mutable_labels()->insert(node_manager_config.labels.begin(),
                                             node_manager_config.labels.end());
@@ -1098,10 +1138,12 @@ int main(int argc, char *argv[]) {
     auto instance_type_name = std::getenv(kNodeCloudInstanceTypeNameEnv);
     self_node_info.set_instance_type_name(instance_type_name ? instance_type_name : "");
 
+    RAY_LOG(INFO) << "Setting temp dir to: " << temp_dir;
+
     node_manager->Start(std::move(self_node_info));
   });
 
-  auto signal_handler = [&node_manager, shutdown_raylet_gracefully](
+  auto signal_handler = [&node_manager, shutdown_raylet_gracefully, &clock](
                             const boost::system::error_code &error, int signal_number) {
     ray::rpc::NodeDeathInfo node_death_info;
     std::optional<ray::rpc::DrainRayletRequest> drain_request =
@@ -1112,7 +1154,7 @@ int main(int argc, char *argv[]) {
         drain_request->reason() ==
             ray::rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION &&
         drain_request->deadline_timestamp_ms() != 0 &&
-        drain_request->deadline_timestamp_ms() < ray::current_sys_time_ms()) {
+        drain_request->deadline_timestamp_ms() < clock.NowUnixMillis()) {
       node_death_info.set_reason(ray::rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
       node_death_info.set_reason_message(drain_request->reason_message());
     } else {

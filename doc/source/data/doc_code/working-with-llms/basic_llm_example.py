@@ -147,6 +147,11 @@ config = vLLMEngineProcessorConfig(
 )
 # __row_level_fault_tolerance_config_example_end__
 
+# Seed the input directory because Ray Data V2's `read_parquet` errors on empty dirs
+ray.data.from_items(
+    [{"id": i, "message": f"Question {i}: What is 2 + 2?"} for i in range(4)]
+).write_parquet(input_path)
+
 # __checkpoint_config_setup_example_start__
 from ray.data.checkpoint import CheckpointConfig
 
@@ -161,6 +166,10 @@ ctx.checkpoint_config = CheckpointConfig(
 # __checkpoint_usage_example_start__
 processor_config = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
+    engine_kwargs={
+        "max_num_batched_tokens": 4096,
+        "max_model_len": 4096,
+    },
     concurrency=1,
     batch_size=16,
 )
@@ -169,7 +178,7 @@ processor = build_processor(
     processor_config,
     preprocess=lambda row: dict(
         id=row["id"], # Preserve the ID column for checkpointing
-        prompt=row["prompt"],
+        messages=[{"role": "user", "content": row["message"]}],
         sampling_params=dict(
             temperature=0.3,
             max_tokens=10,
@@ -383,6 +392,8 @@ config = vLLMEngineProcessorConfig(
 # __cross_node_parallelism_config_example_end__
 
 # __custom_placement_group_strategy_config_example_start__
+# Simple: specify resources per worker, auto-replicated by TP*PP (4 workers here)
+# Alternative: use "bundles": [{"GPU": 1}] * 4 for explicit bundle control
 config = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
     engine_kwargs={
@@ -396,7 +407,7 @@ config = vLLMEngineProcessorConfig(
     batch_size=32,
     concurrency=1,
     placement_group_config={
-        "bundles": [{"GPU": 1}] * 4,
+        "bundle_per_worker": {"GPU": 1},
         "strategy": "STRICT_PACK",
     },
 )
@@ -414,4 +425,38 @@ config = vLLMEngineProcessorConfig(
     batch_size=64,
 )
 # __concurrent_config_example_end__
+
+
+# __concurrent_config_fixed_pool_example_start__
+config = vLLMEngineProcessorConfig(
+    model_source="unsloth/Llama-3.1-8B-Instruct",
+    engine_kwargs={
+        "enable_chunked_prefill": True,
+        "max_num_batched_tokens": 4096,
+        "max_model_len": 16384,
+    },
+    concurrency=(10, 10),
+    batch_size=64,
+)
+# __concurrent_config_fixed_pool_example_end__
+
+# __concurrent_batches_tuning_example_start__
+# Tuning concurrent batch processing
+# Configure both parameters together for optimal throughput
+config = vLLMEngineProcessorConfig(
+    model_source="unsloth/Llama-3.1-8B-Instruct",
+    engine_kwargs={
+        "enable_chunked_prefill": True,
+        "max_num_batched_tokens": 4096,
+    },
+    batch_size=64,
+    # Dataset-level concurrency (number of actor replicas)
+    concurrency=1,
+    # Number of batches that can run concurrently per actor (default: 8)
+    max_concurrent_batches=8,
+    # Number of tasks Ray Data queues per actor (default: 16)
+    # Increase to keep actor task queue saturated
+    experimental={"max_tasks_in_flight_per_actor": 16},
+)
+# __concurrent_batches_tuning_example_end__
 # __basic_llm_example_end__

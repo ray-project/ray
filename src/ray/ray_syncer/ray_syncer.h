@@ -25,11 +25,12 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "boost/functional/hash.hpp"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/id.h"
 #include "ray/ray_syncer/common.h"
 #include "ray/rpc/authentication/authentication_token.h"
+#include "ray/rpc/authentication/authentication_token_validator.h"
 #include "src/ray/protobuf/ray_syncer.grpc.pb.h"
 
 namespace ray::syncer {
@@ -98,6 +99,7 @@ class RaySyncer {
   /// \param max_batch_delay_ms The max delay in milliseconds to wait before sending a
   /// batch.
   RaySyncer(instrumented_io_context &io_context,
+            std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
             const std::string &node_id,
             size_t max_batch_size,
             uint64_t max_batch_delay_ms,
@@ -143,13 +145,12 @@ class RaySyncer {
   /// Get the current node id.
   const std::string &GetLocalNodeID() const { return local_node_id_; }
 
-  /// Request trigger a broadcasting for a specific component immediately instead of
-  /// waiting for ray syncer to poll the message.
+  /// Immediately trigger a broadcast for the specified message type if a new version
+  /// is available.
   ///
-  /// \param message_type The component to check.
-  /// \return true if a message is generated. If the component doesn't have a new
-  /// version of message, false will be returned.
-  bool OnDemandBroadcasting(MessageType message_type);
+  /// \param message_type The message type.
+  /// \return true if a new version of the message was available and broadcasted.
+  bool BroadcastMessageIfNewVersion(MessageType message_type);
 
   /// Function to broadcast the messages to other nodes.
   /// A message will be sent to a node if that node doesn't have this message.
@@ -181,7 +182,7 @@ class RaySyncer {
   std::unique_ptr<NodeState> node_state_;
 
   /// Timer is used to do broadcasting.
-  std::shared_ptr<PeriodicalRunner> timer_;
+  std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
 
   /// The max number of messages to be sent in a batch.
   const size_t max_batch_size_;
@@ -213,8 +214,12 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
  public:
   explicit RaySyncerService(
       RaySyncer &syncer,
-      std::shared_ptr<const ray::rpc::AuthenticationToken> auth_token = nullptr)
-      : syncer_(syncer), auth_token_(std::move(auth_token)) {}
+      std::shared_ptr<const ray::rpc::AuthenticationToken> auth_token = nullptr,
+      ray::rpc::AuthenticationTokenValidator &auth_token_validator =
+          ray::rpc::AuthenticationTokenValidator::instance())
+      : syncer_(syncer),
+        auth_token_(std::move(auth_token)),
+        auth_token_validator_(auth_token_validator) {}
 
   grpc::ServerBidiReactor<RaySyncMessageBatch, RaySyncMessageBatch> *StartSync(
       grpc::CallbackServerContext *context) override;
@@ -225,6 +230,9 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
   // Authentication token for validation, will be nullptr if token authentication is
   // disabled
   std::shared_ptr<const ray::rpc::AuthenticationToken> auth_token_;
+
+  // Validator for authentication token
+  ray::rpc::AuthenticationTokenValidator &auth_token_validator_;
 };
 
 }  // namespace ray::syncer

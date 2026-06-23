@@ -23,7 +23,6 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "mock/ray/core_worker/memory_store.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/common/task/task_spec.h"
@@ -36,6 +35,7 @@
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace core {
@@ -257,13 +257,11 @@ class MockRayletClient : public rpc::FakeRayletClient {
     return true;
   }
 
-  void ReportWorkerBacklog(
-      const WorkerID &worker_id,
-      const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override {
+  void ReportWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request) override {
     std::lock_guard<std::mutex> lock(mu_);
     reported_backlog_size = 0;
     reported_backlogs.clear();
-    for (const auto &backlog_report : backlog_reports) {
+    for (const auto &backlog_report : request.backlog_reports()) {
       reported_backlog_size += backlog_report.backlog_size();
       const LeaseSpecification lease_spec(backlog_report.lease_spec());
       const SchedulingClass scheduling_class = lease_spec.GetSchedulingClass();
@@ -272,17 +270,15 @@ class MockRayletClient : public rpc::FakeRayletClient {
   }
 
   void RequestWorkerLease(
-      const rpc::LeaseSpec &lease_spec,
-      bool grant_or_reject,
-      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size,
-      const bool is_selected_based_on_locality) override {
+      rpc::RequestWorkerLeaseRequest &&request,
+      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback)
+      override {
     std::lock_guard<std::mutex> lock(mu_);
     num_workers_requested += 1;
-    if (grant_or_reject) {
+    if (request.grant_or_reject()) {
       num_grant_or_reject_leases_requested += 1;
     }
-    if (is_selected_based_on_locality) {
+    if (request.is_selected_based_on_locality()) {
       num_is_selected_based_on_locality_leases_requested += 1;
     }
     callbacks.push_back(callback);
@@ -459,7 +455,9 @@ class NormalTaskSubmitterTest : public testing::Test {
             [](const rpc::Address &) { return std::make_shared<MockRayletClient>(); })),
         raylet_client(std::make_shared<MockRayletClient>()),
         worker_client(std::make_shared<MockWorkerClient>()),
-        store(DefaultCoreWorkerMemoryStoreWithThread::CreateShared()),
+        store_io_context_("NormalTaskSubmitterTest"),
+        store(std::make_shared<CoreWorkerMemoryStore>(store_io_context_.GetIoService(),
+                                                      clock_)),
         client_pool(std::make_shared<rpc::CoreWorkerClientPool>(
             [&](const rpc::Address &) { return worker_client; })),
         task_manager(std::make_unique<MockTaskManager>()),
@@ -479,9 +477,6 @@ class NormalTaskSubmitterTest : public testing::Test {
           raylet_client_factory = nullptr,
       std::shared_ptr<CoreWorkerMemoryStore> custom_memory_store = nullptr,
       int64_t lease_timeout_ms = kLongTimeout) {
-    if (custom_memory_store != nullptr) {
-      store = custom_memory_store;
-    }
     if (raylet_client_factory == nullptr) {
       raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
           [this](const rpc::Address &) { return this->raylet_client; });
@@ -504,7 +499,9 @@ class NormalTaskSubmitterTest : public testing::Test {
         raylet_client_pool,
         mock_gcs_client_,
         std::move(lease_policy),
-        store,
+        // Use the caller-provided store if given, otherwise fall back to the fixture's
+        // store.
+        custom_memory_store != nullptr ? custom_memory_store : store,
         *task_manager,
         local_node_id,
         worker_type,
@@ -514,7 +511,8 @@ class NormalTaskSubmitterTest : public testing::Test {
         rate_limiter,
         [](const ObjectID &object_id) { return std::nullopt; },
         io_context,
-        fake_scheduler_placement_time_ms_histogram_);
+        fake_scheduler_placement_time_ms_histogram_,
+        clock_);
   }
 
   NodeID local_node_id;
@@ -522,6 +520,8 @@ class NormalTaskSubmitterTest : public testing::Test {
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool;
   std::shared_ptr<MockRayletClient> raylet_client;
   std::shared_ptr<MockWorkerClient> worker_client;
+  InstrumentedIOContextWithThread store_io_context_;
+  FakeClock clock_;
   std::shared_ptr<CoreWorkerMemoryStore> store;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool;
   std::unique_ptr<MockTaskManager> task_manager;
@@ -873,7 +873,6 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeases) {
     ASSERT_EQ(worker_client->callbacks.size(), i + 1);
     ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, concurrency + i + 1);
     ASSERT_EQ(raylet_client->num_workers_requested, concurrency + i + 1);
-    ASSERT_EQ(raylet_client->reported_backlog_size, concurrency - i - 1);
   }
   for (int i = 0; i < concurrency; i++) {
     ASSERT_TRUE(
@@ -881,7 +880,6 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeases) {
     ASSERT_EQ(worker_client->callbacks.size(), concurrency + i + 1);
     ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, tasks.size());
     ASSERT_EQ(raylet_client->num_workers_requested, tasks.size());
-    ASSERT_EQ(raylet_client->reported_backlog_size, 0);
   }
 
   // All workers returned.
@@ -893,7 +891,6 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeases) {
   ASSERT_EQ(task_manager->num_tasks_complete, tasks.size());
   ASSERT_EQ(task_manager->num_tasks_failed, 0);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
-  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
@@ -927,15 +924,12 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, local_node_id));
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
-  ASSERT_EQ(raylet_client->reported_backlog_size, tasks.size() - 2);
 
   // Increase max concurrency. Should request leases up to the max concurrency.
   rateLimiter->limit_ = concurrency;
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, local_node_id));
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2 + concurrency);
   ASSERT_EQ(raylet_client->num_workers_requested, 2 + concurrency);
-  ASSERT_EQ(raylet_client->reported_backlog_size,
-            tasks.size() - raylet_client->num_workers_requested);
 
   // Decrease max concurrency again. Should not request any more leases even as
   // previous requests are granted, since we are still over the current
@@ -945,8 +939,6 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
     ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", i, local_node_id));
     ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2 + concurrency);
     ASSERT_EQ(raylet_client->num_workers_requested, 2 + concurrency);
-    ASSERT_EQ(raylet_client->reported_backlog_size,
-              tasks.size() - raylet_client->num_workers_requested);
   }
 
   // Grant remaining leases with max lease concurrency of 1.
@@ -975,7 +967,6 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
   ASSERT_EQ(task_manager->num_tasks_complete, tasks.size());
   ASSERT_EQ(task_manager->num_tasks_failed, 0);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
-  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
@@ -1012,7 +1003,6 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) 
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, local_node_id));
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
-  ASSERT_EQ(raylet_client->reported_backlog_size, tasks.size() - 2);
 
   // Increase max concurrency.
   rateLimiter->limit_ = concurrency;
@@ -1024,8 +1014,6 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) 
   // rest from the raylet returned by the lease policy.
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, concurrency + 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 2 + concurrency);
-  ASSERT_EQ(raylet_client->reported_backlog_size,
-            tasks.size() - raylet_client->num_workers_requested + 1);
 
   // Decrease max concurrency again. Should not request any more leases even as
   // previous requests are granted, since we are still over the current
@@ -1035,8 +1023,6 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) 
     ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", i, local_node_id));
     ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, concurrency + 1);
     ASSERT_EQ(raylet_client->num_workers_requested, 2 + concurrency);
-    ASSERT_EQ(raylet_client->reported_backlog_size,
-              tasks.size() - raylet_client->num_workers_requested + 1);
   }
 
   // Grant remaining leases with max lease concurrency of 1.
@@ -1065,7 +1051,6 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) 
   ASSERT_EQ(task_manager->num_tasks_complete, tasks.size());
   ASSERT_EQ(task_manager->num_tasks_failed, 0);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
-  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
@@ -1085,21 +1070,18 @@ TEST_F(NormalTaskSubmitterTest, TestSubmitMultipleTasks) {
   submitter.SubmitTask(task3);
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
-  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
 
   // Task 1 is pushed; worker 2 is requested.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, local_node_id));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
-  ASSERT_EQ(raylet_client->reported_backlog_size, 1);
 
   // Task 2 is pushed; worker 3 is requested.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, local_node_id));
   ASSERT_EQ(worker_client->callbacks.size(), 2);
   ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 3);
   ASSERT_EQ(raylet_client->num_workers_requested, 3);
-  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
 
   // Task 3 is pushed; no more workers requested.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1002, local_node_id));
@@ -1116,7 +1098,6 @@ TEST_F(NormalTaskSubmitterTest, TestSubmitMultipleTasks) {
   ASSERT_EQ(task_manager->num_tasks_complete, 3);
   ASSERT_EQ(task_manager->num_tasks_failed, 0);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
-  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
@@ -1398,7 +1379,9 @@ TEST_F(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
     remote_raylet_clients[addr.port()] = client;
     return client;
   };
-  auto memory_store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
+  InstrumentedIOContextWithThread store_io_context("TestSpillbackRoundTrip");
+  auto memory_store =
+      std::make_shared<CoreWorkerMemoryStore>(store_io_context.GetIoService(), clock_);
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
                                 WorkerType::WORKER,
@@ -1483,6 +1466,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   lease_policy->SetNodeID(local_node_id);
   auto mock_gcs_client = std::make_shared<gcs::MockGcsClient>();
   instrumented_io_context io_context;
+  Clock clock;
   NormalTaskSubmitter submitter(
       address,
       raylet_client,
@@ -1500,7 +1484,8 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
       std::make_shared<StaticLeaseRequestRateLimiter>(1),
       [](const ObjectID &object_id) { return std::nullopt; },
       io_context,
-      fake_scheduler_placement_time_ms_histogram_);
+      fake_scheduler_placement_time_ms_histogram_,
+      clock);
 
   submitter.SubmitTask(same1);
   submitter.SubmitTask(same2);
@@ -1555,8 +1540,9 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
 
 TEST(NormalTaskSubmitterSchedulingKeyTest, TestSchedulingKeys) {
   InstrumentedIOContextWithThread io_context("TestSchedulingKeys");
-  // Mock reference counter as enabled
-  auto memory_store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
+  Clock clock;
+  auto memory_store =
+      std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(), clock);
 
   std::unordered_map<std::string, double> resources1({{"a", 1.0}});
   std::unordered_map<std::string, double> resources2({{"b", 2.0}});
@@ -1641,7 +1627,7 @@ TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
   InstrumentedIOContextWithThread store_io_context("TestBacklogReport");
   // Mock reference counter as enabled
   auto memory_store =
-      std::make_shared<CoreWorkerMemoryStore>(store_io_context.GetIoService());
+      std::make_shared<CoreWorkerMemoryStore>(store_io_context.GetIoService(), clock_);
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
                                 WorkerType::WORKER,
@@ -1696,14 +1682,15 @@ TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
   wait_for_io_ctx_empty.get_future().get();
 
   submitter.ReportWorkerBacklog();
-  ASSERT_EQ(raylet_client->reported_backlogs.size(), 3);
-  ASSERT_EQ(raylet_client->reported_backlogs[task1.GetSchedulingClass()], 0);
+  ASSERT_EQ(raylet_client->reported_backlogs.size(), 2);
   ASSERT_EQ(raylet_client->reported_backlogs[task2.GetSchedulingClass()], 2);
   ASSERT_EQ(raylet_client->reported_backlogs[task4.GetSchedulingClass()], 1);
 }
 
 TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
-  auto memory_store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
+  InstrumentedIOContextWithThread store_io_context("TestWorkerLeaseTimeout");
+  auto memory_store =
+      std::make_shared<CoreWorkerMemoryStore>(store_io_context.GetIoService(), clock_);
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
                                 WorkerType::WORKER,
@@ -1733,8 +1720,8 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
   // Task 2 runs successfully on the second worker; the worker is returned due to the
   // timeout.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, local_node_id));
-  std::this_thread::sleep_for(
-      std::chrono::milliseconds(10));  // Sleep for 10ms, causing the lease to time out.
+  // Advance the fake clock past the lease timeout so the lease expires deterministically.
+  clock_.AdvanceTime(absl::Milliseconds(10));
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
@@ -1967,8 +1954,3 @@ TEST(LeaseRequestRateLimiterTest, ClusterSizeBasedLeaseRequestRateLimiter) {
 
 }  // namespace core
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

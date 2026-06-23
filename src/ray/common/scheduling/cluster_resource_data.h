@@ -314,8 +314,6 @@ class NodeResources {
   NodeResourceSet available;
   /// Only used by light resource report.
   ResourceSet load;
-  /// Resources owned by normal tasks.
-  ResourceSet normal_task_resources;
 
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
@@ -335,10 +333,6 @@ class NodeResources {
   // The timestamp of the last resource update if there was a resource report.
   std::optional<absl::Time> last_resource_update_time = absl::nullopt;
 
-  /// Normal task resources could be uploaded by 1) Raylets' periodical reporters; 2)
-  /// Rejected RequestWorkerLeaseReply. So we need the timestamps to decide whether an
-  /// upload is latest.
-  int64_t latest_resources_normal_task_timestamp = 0;
   bool object_pulls_queued = false;
 
   /// Amongst CPU, memory, and object store memory, calculate the utilization percentage
@@ -405,7 +399,13 @@ struct Node {
   std::optional<absl::Time> local_view_modified_ts_;
 };
 
-/// \request Conversion result to a ResourceRequest data structure.
+/// Convert a map of resources to a NodeResources data structure.
+///
+/// \param resource_map_total: Total capacities of resources we want to convert.
+/// \param resource_map_available: Available capacities of resources we want to convert.
+/// \param node_labels: Labels for the node.
+///
+/// \return Conversion result to a NodeResources data structure.
 NodeResources ResourceMapToNodeResources(
     const absl::flat_hash_map<std::string, double> &resource_map_total,
     const absl::flat_hash_map<std::string, double> &resource_map_available,

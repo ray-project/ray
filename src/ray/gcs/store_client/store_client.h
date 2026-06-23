@@ -18,7 +18,7 @@
 #include <string>
 #include <vector>
 
-#include "ray/common/asio/io_service_pool.h"
+#include "ray/asio/io_service_pool.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/postable/postable.h"

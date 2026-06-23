@@ -226,6 +226,19 @@ class CgroupDriverInterface {
    */
   virtual Status AddProcessToCgroup(const std::string &cgroup,
                                     const std::string &pid) = 0;
+
+  /**
+    Gets the constraint value within a specific cgroup for a given constraint name.
+
+    @param cgroup_path the path to the cgroup to get the constraint value from.
+    @param constraint_name the name of the constraint (e.g., "cpu.weight", "memory.min").
+
+    @return StatusOr with the constraint value as a string if successful.
+    @return Status::IOError if the constraint cannot be fetched.
+    @return Status::InvalidArgument if the cgroup or constraint does not exist.
+  */
+  virtual StatusOr<std::string> GetConstraintValue(
+      const std::string &cgroup_path, const std::string &constraint_name) = 0;
 };
 
 }  // namespace ray

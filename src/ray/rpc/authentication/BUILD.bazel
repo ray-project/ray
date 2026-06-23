@@ -52,6 +52,8 @@ ray_cc_library(
         ":authentication_token",
         ":k8s_constants",
         "//src/ray/util:logging",
+        "@com_google_absl//absl/strings",
+        "@nlohmann_json",
     ],
 )
 

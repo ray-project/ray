@@ -36,20 +36,24 @@ def test_gradio_ingress_correctness(serve_start_shutdown, use_user_defined_class
         class UserDefinedGradioServer(GradioIngress):
             def __init__(self):
                 super().__init__(
-                    lambda: gr.Interface(fn=greet, inputs="text", outputs="text")
+                    lambda: gr.Interface(
+                        fn=greet, inputs="text", outputs="text", api_name="predict"
+                    )
                 )
 
         app = UserDefinedGradioServer.bind()
     else:
         app = GradioServer.bind(
-            lambda: gr.Interface(fn=greet, inputs="text", outputs="text")
+            lambda: gr.Interface(
+                fn=greet, inputs="text", outputs="text", api_name="predict"
+            )
         )
 
     serve.run(app)
 
     test_input = "Alice"
     response = httpx.post(
-        "http://127.0.0.1:8000/api/predict/", json={"data": [test_input]}
+        "http://127.0.0.1:8000/gradio_api/run/predict/", json={"data": [test_input]}
     )
     assert response.status_code == 200 and response.json()["data"][0] == greet(
         test_input
@@ -67,7 +71,7 @@ def test_gradio_ingress_scaling(serve_start_shutdown):
         return os.getpid()
 
     app = GradioServer.options(num_replicas=2).bind(
-        lambda: gr.Interface(fn=f, inputs="text", outputs="text")
+        lambda: gr.Interface(fn=f, inputs="text", outputs="text", api_name="predict")
     )
     serve.run(app)
 
@@ -75,7 +79,8 @@ def test_gradio_ingress_scaling(serve_start_shutdown):
         @ray.remote
         def get_pid_from_request():
             r = httpx.post(
-                "http://127.0.0.1:8000/api/predict/", json={"data": ["input"]}
+                "http://127.0.0.1:8000/gradio_api/run/predict/",
+                json={"data": ["input"]},
             )
             r.raise_for_status()
             return r.json()["data"][0]

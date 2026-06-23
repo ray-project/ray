@@ -1,10 +1,11 @@
 import asyncio
 import json
 import os
+import socket
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, Tuple
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from typing import Iterable, Optional, Tuple
 from uuid import UUID
 
 import grpc
@@ -16,8 +17,7 @@ from starlette.responses import PlainTextResponse
 
 import ray
 from ray import serve
-from ray._common.test_utils import Semaphore, SignalActor
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import Semaphore, SignalActor, wait_for_condition
 from ray.actor import ActorHandle
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private.common import DeploymentID
@@ -30,7 +30,10 @@ from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
     RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
+    SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER,
+    SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.test_utils import (
@@ -79,9 +82,9 @@ def _skip_if_ff_not_enabled():
 
 @pytest.fixture
 def _skip_if_haproxy_enabled():
-    if False:
+    if RAY_SERVE_ENABLE_HA_PROXY:
         pytest.skip(
-            reason="HAProxy is enabled.",
+            reason="RAY_SERVE_ENABLE_HA_PROXY is set.",
         )
 
 
@@ -92,13 +95,20 @@ def _shared_serve_instance():
     env_var_name = "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S"
     original_value = os.environ.get(env_var_name)
 
-    if False:
+    if RAY_SERVE_ENABLE_HA_PROXY:
         # Setting a longer minimum draining period ensures that the client connecting
         # to the uvicorn server closes the connection first. This prevents the socket
         # used by the uvicorn server from entering the TIME_WAIT tcp state, which blocks
         # the port from being immediately reused and causes failures in subsequent tests
         # that condition on specific ports assignments.
         os.environ[env_var_name] = "6"
+
+    # These tests assert specific, immediately-reused port assignments. Disable
+    # the freed-port quarantine so reuse is deterministic; the quarantine itself
+    # is covered by test_node_port_manager.py.
+    quarantine_env_var = "RAY_SERVE_PORT_QUARANTINE_S"
+    quarantine_original = os.environ.get(quarantine_env_var)
+    os.environ[quarantine_env_var] = "0"
 
     ray.init(
         num_cpus=36,
@@ -124,6 +134,12 @@ def _shared_serve_instance():
         os.environ[env_var_name] = original_value
     elif env_var_name in os.environ:
         del os.environ[env_var_name]
+
+    # Restore the quarantine env var.
+    if quarantine_original is not None:
+        os.environ[quarantine_env_var] = quarantine_original
+    elif quarantine_env_var in os.environ:
+        del os.environ[quarantine_env_var]
 
 
 @pytest.fixture
@@ -196,7 +212,7 @@ def get_target_groups(
     app_name: str = SERVE_DEFAULT_APP_NAME,
     from_proxy_manager: bool = False,
 ):
-    client = _get_global_client(_health_check_controller=True)
+    client = _get_global_client()
     target_groups = ray.get(
         client._controller.get_target_groups.remote(app_name, from_proxy_manager)
     )
@@ -253,6 +269,28 @@ def get_grpc_ports(route_prefix=None, first_only=True):
             ):
                 grpc_ports.extend([target.port for target in target_group.targets])
         return grpc_ports
+
+
+def _can_bind_to_port(port):
+    """Check if we can bind to the port (not just if nothing is listening)."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.bind(("0.0.0.0", port))
+        sock.close()
+        return True
+    except OSError:
+        sock.close()
+        return False
+
+
+# Wait until all ports can be bound (not just until nothing is listening).
+# This ensures the ports are fully released from TIME_WAIT state.
+def all_ports_can_be_bound(ports: Iterable[int]) -> bool:
+    for port in ports:
+        if not _can_bind_to_port(port):
+            return False
+    return True
 
 
 def test_basic(_skip_if_ff_not_enabled, serve_instance):
@@ -371,15 +409,23 @@ def test_http_request_id(_skip_if_ff_not_enabled, serve_instance, use_fastapi: b
     assert r.text == "TEST-HEADER" and r.text == r.headers["x-request-id"]
 
 
-def test_grpc_request_id(_skip_if_ff_not_enabled, serve_instance):
-    pytest.skip("TODO: duplicate HTTP tests for gRPC")
-
-
 def test_multiplexed_model_id(_skip_if_ff_not_enabled, serve_instance):
     pytest.skip("TODO: test that sends a MM ID and checks that it's set correctly")
 
 
 def test_health_check(_skip_if_ff_not_enabled, serve_instance):
+
+    http_port = RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT
+    grpc_port = RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT
+
+    # Previous test's replica may still be releasing its port (app status
+    # transitions to NOT_STARTED before the OS fully releases the socket).
+    # Wait for the ports to be free so the new replica actually binds to them.
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=[http_port, grpc_port],
+        timeout=120,
+    )
 
     wait_signal = SignalActor.remote()
     fail_hc_signal = SignalActor.remote()
@@ -398,123 +444,158 @@ def test_health_check(_skip_if_ff_not_enabled, serve_instance):
         ),
         _blocking=False,
     )
-    # Here I am assuming that min port will always be available. But that may be true
-    # since that port maybe occupied by some other parallel test. But we have no way of
-    # knowing which port will be used ahead of replica initialization. May need to revisit
-    # this in the future.
-    http_port = RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT
-    grpc_port = RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT
+
+    # Reuse persistent HTTP client and gRPC channel across retries to avoid
+    # ephemeral port exhaustion from rapid socket churn in wait_for_condition
+    # loops (each short-lived connection enters TIME_WAIT for 60s).
+    http_client = httpx.Client()
+    grpc_channel = grpc.insecure_channel(f"localhost:{grpc_port}")
+    grpc_stub = serve_pb2_grpc.RayServeAPIServiceStub(grpc_channel)
 
     def _do_grpc_hc() -> Tuple[grpc.StatusCode, str]:
-        channel = grpc.insecure_channel(f"localhost:{grpc_port}")
-        stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
         try:
-            response, call = stub.Healthz.with_call(serve_pb2.HealthzRequest())
+            response, call = grpc_stub.Healthz.with_call(serve_pb2.HealthzRequest())
             return call.code(), response.message
         except grpc.RpcError as e:
             return e.code(), ""
-        finally:
-            channel.close()
 
-    # Wait for replica constructor to start. The direct ingress server should not be
-    # listening on the port at all yet.
-    wait_for_condition(lambda: ray.get(initialize_signal.cur_num_waiters.remote()) == 1)
-    for _ in range(10):
-        with pytest.raises(httpx.ConnectError):
-            httpx.get(f"http://localhost:{http_port}/-/healthz")
+    try:
+        # Wait for replica constructor to start. The direct ingress server should not
+        # be listening on the port at all yet.
+        wait_for_condition(
+            lambda: ray.get(initialize_signal.cur_num_waiters.remote()) == 1
+        )
+        for _ in range(10):
+            with pytest.raises(httpx.ConnectError):
+                http_client.get(f"http://localhost:{http_port}/-/healthz")
 
-        code, _ = _do_grpc_hc()
-        assert code == grpc.StatusCode.UNAVAILABLE
+            code, _ = _do_grpc_hc()
+            assert code == grpc.StatusCode.UNAVAILABLE
 
-    def _verify_health_check(
-        *,
-        passing: bool,
-        message: str,
-    ) -> bool:
-        # Check HTTP health check.
-        expected_status = 200 if passing else 503
-        r = httpx.get(f"http://localhost:{http_port}/-/healthz")
-        assert r.status_code == expected_status
-        assert r.text == message
+        def _verify_health_check(
+            *,
+            passing: bool,
+            message: str,
+        ) -> bool:
+            # Check HTTP health check.
+            expected_status = 200 if passing else 503
+            r = http_client.get(f"http://localhost:{http_port}/-/healthz")
+            assert r.status_code == expected_status
+            assert r.text == message
 
-        # Check gRPC health check.
-        expected_code = grpc.StatusCode.OK if passing else grpc.StatusCode.UNAVAILABLE
-        code, response_message = _do_grpc_hc()
-        assert code == expected_code
-        # NOTE(edoakes): we can't access the response message if the gRPC call fails
-        # due to StatusCode.UNAVAILABLE.
-        if passing:
-            assert response_message == message
+            # Check gRPC health check.
+            expected_code = (
+                grpc.StatusCode.OK if passing else grpc.StatusCode.UNAVAILABLE
+            )
+            code, response_message = _do_grpc_hc()
+            assert code == expected_code
+            # NOTE(edoakes): we can't access the response message if the gRPC call
+            # fails due to StatusCode.UNAVAILABLE.
+            if passing:
+                assert response_message == message
 
-        return True
+            return True
 
-    # Signal the constructor to finish and verify that health checks start to pass.
-    ray.get(initialize_signal.send.remote())
-    wait_for_condition(
-        lambda: _verify_health_check(passing=True, message=HEALTHY_MESSAGE),
-    )
+        # Signal the constructor to finish and verify that health checks start to pass.
+        ray.get(initialize_signal.send.remote())
+        wait_for_condition(
+            lambda: _verify_health_check(passing=True, message=HEALTHY_MESSAGE),
+        )
 
-    # Signal the health check method to fail and verify that health checks fail.
-    ray.get(fail_hc_signal.send.remote())
-    wait_for_condition(
-        lambda: _verify_health_check(passing=False, message="UNHEALTHY"),
-    )
+        # Signal the health check method to fail and verify that health checks fail.
+        ray.get(fail_hc_signal.send.remote())
+        wait_for_condition(
+            lambda: _verify_health_check(passing=False, message="UNHEALTHY"),
+        )
 
-    # Signal the health check method to pass and verify that health checks pass.
-    ray.get(fail_hc_signal.send.remote(clear=True))
-    wait_for_condition(
-        lambda: _verify_health_check(passing=True, message=HEALTHY_MESSAGE),
-    )
+        # Signal the health check method to pass and verify that health checks pass.
+        ray.get(fail_hc_signal.send.remote(clear=True))
+        wait_for_condition(
+            lambda: _verify_health_check(passing=True, message=HEALTHY_MESSAGE),
+        )
 
-    # Initiate graceful shutdown and verify that health checks fail.
-    serve.delete("default", _blocking=False)
-    wait_for_condition(
-        lambda: ray.get(shutdown_signal.cur_num_waiters.remote()) == 1,
-    )
-    for _ in range(10):
-        assert _verify_health_check(passing=False, message="DRAINING")
+        # Initiate graceful shutdown while a request is in flight: the drain
+        # waits for it, and during the entire draining phase the direct
+        # ingress servers must keep answering health checks with 503/DRAINING
+        # so load balancers can deregister the replica.
+        with ThreadPoolExecutor() as executor:
+            in_flight = executor.submit(
+                httpx.get, f"http://localhost:{http_port}/", timeout=60
+            )
+            wait_for_condition(
+                lambda: ray.get(wait_signal.cur_num_waiters.remote()) == 1
+            )
 
-    ray.get(shutdown_signal.send.remote())
-    wait_for_condition(
-        lambda: len(serve.status().applications) == 0,
-    )
+            serve.delete("default", _blocking=False)
+            wait_for_condition(
+                lambda: _verify_health_check(passing=False, message="DRAINING"),
+            )
+            for _ in range(10):
+                assert _verify_health_check(passing=False, message="DRAINING")
+
+            # Unblock the in-flight request so the drain can complete.
+            ray.get(wait_signal.send.remote())
+            assert in_flight.result(timeout=30).status_code == 200
+
+        # Once the drain completes, the replica quiesces: the direct ingress
+        # servers are shut down gracefully BEFORE the replica reports
+        # shutdown complete, so by the time the destructor runs (blocked on
+        # `shutdown_signal` below) the health endpoints must be unreachable
+        # rather than still serving 503s.
+        wait_for_condition(
+            lambda: ray.get(shutdown_signal.cur_num_waiters.remote()) == 1,
+        )
+        for _ in range(10):
+            with pytest.raises(
+                (httpx.ConnectError, httpx.ReadError, httpx.RemoteProtocolError)
+            ):
+                http_client.get(f"http://localhost:{http_port}/-/healthz")
+
+            code, _ = _do_grpc_hc()
+            assert code == grpc.StatusCode.UNAVAILABLE
+
+        ray.get(shutdown_signal.send.remote())
+        wait_for_condition(
+            lambda: len(serve.status().applications) == 0,
+        )
+    finally:
+        http_client.close()
+        grpc_channel.close()
+
+
+def _occupy_ports(ports: list) -> list:
+    """
+    Waits up to 120s for all ports to become bindable (previous replicas may
+    still be shutting down). If some ports remain occupied (e.g. by Ray
+    internal services that were assigned random ephemeral ports), we proceed
+    anyway and bind what we can — those ports are equally blocked for replicas.
+    """
+    deadline = time.monotonic() + 120
+    while True:
+        sockets = []
+        for port in ports:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind(("localhost", port))
+                sock.listen(1)
+                sockets.append(sock)
+            except OSError:
+                sock.close()
+        if len(sockets) == len(ports) or time.monotonic() >= deadline:
+            return sockets
+        for s in sockets:
+            s.close()
+        time.sleep(1)
 
 
 def test_port_retry_logic(_skip_if_ff_not_enabled, serve_instance):
     """Test that replicas retry port allocation when ports are in use."""
-    import socket
-
-    # Create a function to occupy a port
-    def occupy_port(port: int, max_attempts: int = 10):
-        import errno
-
-        attempts = 0
-        while attempts < max_attempts:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-            try:
-                sock.bind(("localhost", port))
-                sock.listen(1)
-                return sock
-            except OSError as exc:
-                sock.close()
-                # If the port is already in use, try the next one; otherwise
-                # re-raise unexpected errors.
-                if exc.errno != errno.EADDRINUSE:
-                    raise
-
-                attempts += 1
-                # backoff to wait for the port to be released
-                time.sleep(0.5)
-
-        raise RuntimeError(
-            f"Unable to bind a socket after {max_attempts} attempts at port {port}."
-        )
 
     # Start occupying the min HTTP and gRPC ports
-    http_sock = occupy_port(RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT)
-    grpc_sock = occupy_port(RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT)
+    sockets = _occupy_ports(
+        [RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT, RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT]
+    )
 
     try:
         # Deploy an app - it should retry port allocation and eventually fall back
@@ -547,29 +628,24 @@ def test_port_retry_logic(_skip_if_ff_not_enabled, serve_instance):
         assert r.text == "Hello world!"
 
     finally:
-        # Clean up the sockets
-        http_sock.close()
-        grpc_sock.close()
+        for s in sockets:
+            s.close()
 
 
 def test_replica_gives_up_after_max_port_retries_for_http(
     _skip_if_ff_not_enabled, serve_instance
 ):
     """Test that replicas give up after max port retries."""
-    import socket
 
-    occupied_ports = []
     # TODO(sheikh): Control env variables
-    for port in range(
-        RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
-        RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT
-        + RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
-    ):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(("localhost", port))
-        sock.listen(1)
-        occupied_ports.append(sock)
+    ports = list(
+        range(
+            RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
+            RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT
+            + RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
+        )
+    )
+    _ = _occupy_ports(ports)
 
     serve._run(Hybrid.bind(message="Hello world!"), _blocking=False)
 
@@ -595,23 +671,15 @@ def test_replica_gives_up_after_max_port_retries_for_grpc(
     _skip_if_ff_not_enabled, serve_instance
 ):
     """Test that replicas give up after max port retries."""
-    import socket
 
-    occupied_ports = []
-    for port in range(
-        RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT,
-        RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT
-        + RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
-    ):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            sock.bind(("localhost", port))
-            sock.listen(1)
-        except socket.error:
-            # Port may already be in use, continue to next port
-            pass
-        occupied_ports.append(sock)
+    ports = list(
+        range(
+            RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT,
+            RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT
+            + RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
+        )
+    )
+    _ = _occupy_ports(ports)
 
     serve._run(Hybrid.bind(message="Hello world!"), _blocking=False)
 
@@ -635,16 +703,14 @@ def test_replica_gives_up_after_max_port_retries_for_grpc(
 
 def test_no_port_available(_skip_if_ff_not_enabled, serve_instance):
     """Test that replicas give up after max port retries."""
-    import socket
 
-    occupied_ports = []
-    for port in range(
-        RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT, RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT
-    ):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(("localhost", port))
-        sock.listen(1)
-        occupied_ports.append(sock)
+    ports = list(
+        range(
+            RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
+            RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
+        )
+    )
+    _ = _occupy_ports(ports)
 
     """Test that multiple replicas on the same node occupy unique ports."""
     serve._run(
@@ -674,12 +740,23 @@ def test_no_port_available(_skip_if_ff_not_enabled, serve_instance):
 
 def test_replica_releases_ports_on_shutdown(_skip_if_ff_not_enabled, serve_instance):
     """Test that replicas release ports on shutdown."""
+
+    expected_http_ports = {30000, 30001, 30002, 30003}
+    expected_grpc_ports = {40000, 40001, 40002, 40003}
+
+    # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=list(expected_http_ports) + list(expected_grpc_ports),
+        timeout=120,
+    )
+
     serve.run(Hybrid.options(num_replicas=4).bind(message="Hello world!"))
 
     http_ports = get_http_ports()
     grpc_ports = get_grpc_ports()
-    assert set(http_ports) == {30000, 30001, 30002, 30003}
-    assert set(grpc_ports) == {40000, 40001, 40002, 40003}
+    assert set(http_ports) == expected_http_ports
+    assert set(grpc_ports) == expected_grpc_ports
 
     assert len(http_ports) == 4
     assert len(grpc_ports) == 4
@@ -706,22 +783,26 @@ def test_replica_releases_ports_on_shutdown(_skip_if_ff_not_enabled, serve_insta
         stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
         assert stub.Method1(serve_pb2.UserDefinedMessage()).greeting == "Hello world!"
         channel.close()
+
     # Shutdown the replica
     serve.delete("default", _blocking=True)
 
-    # Check that the ports are released
-    for http_port in http_ports:
-        assert not _is_port_in_use(http_port)
-    for grpc_port in grpc_ports:
-        assert not _is_port_in_use(grpc_port)
+    # Wait until ports are fully out of TIME_WAIT before redeploying, otherwise
+    # the port allocator may skip a port that is still in TIME_WAIT and the
+    # expected port set won't match on the second deployment.
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=list(expected_http_ports) + list(expected_grpc_ports),
+        timeout=120,
+    )
 
     # redeploy the application
     serve.run(Hybrid.options(num_replicas=4).bind(message="Hello world!"))
 
     http_ports = get_http_ports()
     grpc_ports = get_grpc_ports()
-    assert set(http_ports) == {30000, 30001, 30002, 30003}
-    assert set(grpc_ports) == {40000, 40001, 40002, 40003}
+    assert set(http_ports) == expected_http_ports
+    assert set(grpc_ports) == expected_grpc_ports
 
     assert len(http_ports) == 4
     assert len(grpc_ports) == 4
@@ -802,15 +883,33 @@ def test_crashed_replica_port_is_released_and_reused(
     _skip_if_ff_not_enabled, serve_instance
 ):
     """Test that crashed replica port is released and reused."""
+    expected_http_ports = {30000, 30001, 30002, 30003}
+    expected_grpc_ports = {40000, 40001, 40002, 40003}
+
+    # Wait until all ports can be bound (not just until nothing is listening).
+    # This ensures the ports are fully released from TIME_WAIT state.
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=list(expected_http_ports) + list(expected_grpc_ports),
+        timeout=120,
+    )
+
     serve.run(Hybrid.options(num_replicas=4).bind(message="Hello world!"))
 
     http_ports = get_http_ports()
     grpc_ports = get_grpc_ports()
-    assert set(http_ports) == {30000, 30001, 30002, 30003}
-    assert set(grpc_ports) == {40000, 40001, 40002, 40003}
+    assert set(http_ports) == expected_http_ports
+    assert set(grpc_ports) == expected_grpc_ports
 
     # delete the application
     serve.delete("default", _blocking=True)
+
+    # Wait until ports are fully out of TIME_WAIT before redeploying.
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=list(expected_http_ports) + list(expected_grpc_ports),
+        timeout=120,
+    )
 
     # run the deployment again
     serve.run(Hybrid.options(num_replicas=4).bind(message="Hello world!"))
@@ -878,16 +977,28 @@ def test_crashed_replica_port_is_released_and_reused(
     assert len(after_crash_http_ports) == 4
     assert len(after_crash_grpc_ports) == 4
 
-    # show that smart port selection is working even with crashed ports
-    assert set(after_crash_http_ports) == set(http_ports)
-    assert set(after_crash_grpc_ports) == set(grpc_ports)
+    # Show that smart port selection is working even with crashed ports.
+    # We expect the used ports to be within 4 ports of the original ports since
+    # we have 4 replicas and they can all be in TIME_WAIT state after deletion.
+    assert set(after_crash_http_ports).issubset(
+        range(
+            RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
+            RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT + 8,
+        )
+    )
+    assert set(after_crash_grpc_ports).issubset(
+        range(
+            RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT,
+            RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT + 8,
+        )
+    )
 
     # make requests to the application
-    for http_port in http_ports:
+    for http_port in after_crash_http_ports:
         req = httpx.get(f"http://localhost:{http_port}/")
         assert req.status_code == 200
         assert req.text == "Hello world!"
-    for grpc_port in grpc_ports:
+    for grpc_port in after_crash_grpc_ports:
         channel = grpc.insecure_channel(f"localhost:{grpc_port}")
         stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
         assert stub.Method1(serve_pb2.UserDefinedMessage()).greeting == "Hello world!"
@@ -896,6 +1007,16 @@ def test_crashed_replica_port_is_released_and_reused(
 
 def test_multiple_applications_on_same_node(_skip_if_ff_not_enabled, serve_instance):
     """Test that multiple applications, such that each app has a ingress deployment"""
+
+    expected_http_ports = {30000, 30001, 30002, 30003}
+    expected_grpc_ports = {40000, 40001, 40002, 40003}
+
+    # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=list(expected_http_ports) + list(expected_grpc_ports),
+        timeout=120,
+    )
 
     @serve.deployment(num_replicas=2)
     def deployment_1():
@@ -944,6 +1065,16 @@ def test_app_with_composite_deployments(_skip_if_ff_not_enabled, serve_instance)
     that ports are occupied by all deployments in the app but only the ingress
     deployment is used for the target groups"""
 
+    expected_http_ports = {30000, 30001}
+    expected_grpc_ports = {40000, 40001}
+
+    # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=list(expected_http_ports) + list(expected_grpc_ports),
+        timeout=120,
+    )
+
     @serve.deployment(num_replicas=3)
     class ChildDeployment:
         def __call__(self):
@@ -975,8 +1106,8 @@ def test_app_with_composite_deployments(_skip_if_ff_not_enabled, serve_instance)
     http_ports = get_http_ports()
     grpc_ports = get_grpc_ports()
     # difficult to say which ports are used for the target groups
-    assert len(set(http_ports) & {30000, 30001, 30002, 30003, 30004}) == 2
-    assert len(set(grpc_ports) & {40000, 40001, 40002, 40003, 40004}) == 2
+    assert set(http_ports) == expected_http_ports
+    assert set(grpc_ports) == expected_grpc_ports
 
     http_urls = get_application_urls("HTTP", app_name="app-1")
     grpc_urls = get_application_urls("gRPC", app_name="app-1", from_proxy_manager=True)
@@ -1021,6 +1152,16 @@ def test_only_running_apps_are_used_for_target_groups(
 
     signal_actor = SignalActor.remote()
 
+    expected_http_ports = {30000, 30001, 30002, 30003}
+    expected_grpc_ports = {40000, 40001, 40002, 40003}
+
+    # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=list(expected_http_ports) + list(expected_grpc_ports),
+        timeout=120,
+    )
+
     @serve.deployment(num_replicas=2)
     def deployment_1():
         return "deployment-1"
@@ -1062,8 +1203,12 @@ def test_only_running_apps_are_used_for_target_groups(
     grpc_ports = get_grpc_ports(first_only=False)
     # In HAProxy mode, we don't return itself or the Serve proxy as a target yet.
     # This will change when we support scale to/from zero.
-    assert set(http_ports) == {30000, 30001} if False else {30000, 30001, 8000}
-    assert set(grpc_ports) == {40000, 40001} if False else {40000, 40001, 9000}
+    assert set(http_ports) == (
+        {30000, 30001} if RAY_SERVE_ENABLE_HA_PROXY else {30000, 30001, 8000}
+    )
+    assert set(grpc_ports) == (
+        {40000, 40001} if RAY_SERVE_ENABLE_HA_PROXY else {40000, 40001, 9000}
+    )
 
     ray.get(signal_actor.send.remote())
 
@@ -1104,6 +1249,15 @@ def test_only_running_apps_are_used_for_target_groups(
 
 
 def test_some_replicas_not_running(_skip_if_ff_not_enabled, serve_instance):
+    expected_http_ports = {30000, 30001}
+    expected_grpc_ports = {40000, 40001}
+
+    # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=list(expected_http_ports) + list(expected_grpc_ports),
+        timeout=120,
+    )
     signal_actor = Semaphore.remote(2)
 
     @serve.deployment(num_replicas=4)
@@ -1124,8 +1278,8 @@ def test_some_replicas_not_running(_skip_if_ff_not_enabled, serve_instance):
     def _func():
         http_ports = get_http_ports("/app-1", first_only=False)
         grpc_ports = get_grpc_ports("/app-1", first_only=False)
-        assert set(http_ports) == {30000, 30001}
-        assert set(grpc_ports) == {40000, 40001}
+        assert set(http_ports) == expected_http_ports
+        assert set(grpc_ports) == expected_grpc_ports
         return True
 
     wait_for_condition(_func, timeout=10)
@@ -1605,23 +1759,22 @@ class TestDirectIngressBackpressure:
                 wait_for_condition(
                     lambda: ray.get(signal.cur_num_waiters.remote()) == 1
                 )
-                futures.extend(
-                    [tpe.submit(do_request, url) for _ in range(num_requests - 1)]
-                )
 
-                def _func():
-                    rejected = sum(
-                        [f.done() and f.result(timeout=0) is False for f in futures]
-                    )
-                    assert rejected == num_requests - 3
-                    return True
+                futures.append(tpe.submit(do_request, url))
+                done, _ = wait(futures, timeout=0.1, return_when=FIRST_COMPLETED)
+                assert len(done) == 0
 
-                wait_for_condition(_func, timeout=5)
+                futures.append(tpe.submit(do_request, url))
+                done, _ = wait(futures, timeout=0.1, return_when=FIRST_COMPLETED)
+                assert len(done) == 0
+
+                for _ in range(num_requests - 3):
+                    rejected_fut = tpe.submit(do_request, url)
+                    assert rejected_fut.result() is False
 
                 ray.get(signal.send.remote())
-
-                successful = sum(1 for f in futures if f.result() is True)
-                assert successful == 3
+                for future in futures:
+                    assert future.result() is True
 
             ray.get(signal.send.remote(clear=True))
 
@@ -1953,6 +2106,71 @@ def test_disconnect(_skip_if_ff_not_enabled, serve_instance):
     ray.get(cancelled_signal.send.remote(clear=True))
 
 
+def _get_replica_actor_handle(deployment_name: str, app_name: str) -> ActorHandle:
+    """Return the actor handle for the (single) replica of a deployment."""
+    for actor in ray.util.list_named_actors(all_namespaces=True):
+        if actor["namespace"] != SERVE_NAMESPACE:
+            continue
+        if f"{app_name}#{deployment_name}#" in actor["name"]:
+            return ray.get_actor(actor["name"], namespace=SERVE_NAMESPACE)
+    raise AssertionError(
+        f"No replica actor found for deployment '{deployment_name}' in app "
+        f"'{app_name}'."
+    )
+
+
+def test_tasks_cancelled_on_timeout(_skip_if_ff_not_enabled, serve_instance):
+    """Test that the async tasks are cancelled and cleaned up on timeout.
+
+    Beyond the 408 status code, this asserts that the per-request asyncio tasks
+    created by ``_direct_ingress_asgi`` (the request task and the disconnect-watcher
+    receive task) are actually cancelled and removed from the replica's event loop
+    after the timeout, rather than leaking (e.g. a receive task left parked on the
+    async queue).
+    """
+    name = "tasks-cancelled-on-timeout-deployment"
+
+    @serve.deployment(name=name)
+    class TasksCancelledOnTimeoutTest:
+        async def __call__(self):
+            await asyncio.sleep(10)
+            return "ok"
+
+    serve.run(TasksCancelledOnTimeoutTest.bind(), name=name)
+    http_url = get_application_url("HTTP", app_name=name)
+    headers = {SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER: "1"}
+
+    replica = _get_replica_actor_handle(name, name)
+
+    def inflight_counts():
+        return ray.get(
+            replica._get_inflight_direct_ingress_task_counts_for_testing.remote()
+        )
+
+    # No direct-ingress request/receive tasks before we send anything.
+    assert inflight_counts() == {"request_tasks": 0, "receive_tasks": 0}
+
+    with ThreadPoolExecutor() as executor:
+        future = executor.submit(httpx.get, http_url, headers=headers)
+
+        # While the (slow) request is in flight, both the request task and the
+        # disconnect-watcher receive task should be present on the event loop.
+        wait_for_condition(
+            lambda: inflight_counts() == {"request_tasks": 1, "receive_tasks": 1},
+            timeout=10,
+        )
+
+        response = future.result()
+        assert response.status_code == 408
+
+    # After the timeout, both tasks must be cancelled and removed from the loop
+    # (not left pending / parked on the async queue).
+    wait_for_condition(
+        lambda: inflight_counts() == {"request_tasks": 0, "receive_tasks": 0},
+        timeout=10,
+    )
+
+
 def test_context_propagation(_skip_if_ff_not_enabled, serve_instance):
     """Test that the context is propagated to the deployment"""
 
@@ -2037,8 +2255,9 @@ def test_shutdown_replica_only_after_draining_requests(
     """Test that the replica is shutdown correctly when the deployment is shutdown."""
     signal = SignalActor.remote()
 
-    # Increase graceful_shutdown_timeout_s to ensure replicas aren't force-killed
-    # before requests complete when RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY=0
+    # In direct ingress mode, graceful_shutdown_timeout_s is automatically bumped to
+    # max(graceful_shutdown_timeout_s, RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S)
+    # to give external load balancers time to deregister the replica.
     @serve.deployment(name="replica-shutdown-deployment", graceful_shutdown_timeout_s=5)
     class ReplicaShutdownTest:
         async def __call__(self):
@@ -2071,10 +2290,7 @@ def test_shutdown_replica_only_after_draining_requests(
     )
 
 
-# TODO: haproxy doesn't support /-/routes yet so skipping this test
-def test_http_routes_endpoint(
-    _skip_if_ff_not_enabled, _skip_if_haproxy_enabled, serve_instance
-):
+def test_http_routes_endpoint(_skip_if_ff_not_enabled, serve_instance):
     """Test that the routes endpoint returns pair of routes_prefix and
     app_name of which the replica is serving for.
     """
@@ -2093,12 +2309,20 @@ def test_http_routes_endpoint(
     serve.run(D2.bind(), name="app2", route_prefix="/hello/world")
 
     # Test routes endpoint on the replica running for app1 directly
-    url = get_application_url(app_name="app1", exclude_route_prefix=True)
+    url = get_application_url(
+        app_name="app1",
+        exclude_route_prefix=True,
+        from_proxy_manager=True,
+    )
     routes = httpx.get(f"{url}/-/routes").json()
     assert routes == {"/D1": "app1"}, routes
 
     # Test routes endpoint on the replica running for app2 directly
-    url = get_application_url(app_name="app2", exclude_route_prefix=True)
+    url = get_application_url(
+        app_name="app2",
+        exclude_route_prefix=True,
+        from_proxy_manager=True,
+    )
     routes = httpx.get(f"{url}/-/routes").json()
     assert routes == {"/hello/world": "app2"}, routes
 
@@ -2202,7 +2426,9 @@ def test_deploy_app_custom_exception(_skip_if_ff_not_enabled, serve_instance):
         ]
     }
 
-    ray.get(controller.apply_config.remote(config=ServeDeploySchema.parse_obj(config)))
+    ray.get(
+        controller.apply_config.remote(config=ServeDeploySchema.model_validate(config))
+    )
 
     def check_custom_exception() -> bool:
         status = serve.status().applications["broken_app"]
@@ -2232,7 +2458,12 @@ def test_get_serve_instance_details_json_serializable(
     if policy_name is None:
         autoscaling_config.pop("_policy")
 
-    @serve.deployment(autoscaling_config=autoscaling_config)
+    # Pin graceful_shutdown_timeout_s above any direct-ingress shutdown floor
+    # (MIN_DRAINING_PERIOD_S + buffer) so the asserted value is deterministic
+    # regardless of the MIN_DRAINING setting in this lane.
+    @serve.deployment(
+        autoscaling_config=autoscaling_config, graceful_shutdown_timeout_s=60
+    )
     def autoscaling_app():
         return "1"
 
@@ -2319,11 +2550,13 @@ def test_get_serve_instance_details_json_serializable(
                                     "upscale_delay_s": 30.0,
                                     "aggregation_function": "mean",
                                     "policy": {
-                                        "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+                                        "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
+                                        "policy_kwargs": {},
                                     },
                                 },
                                 "graceful_shutdown_wait_loop_s": 2.0,
-                                "graceful_shutdown_timeout_s": 20.0,
+                                # Set to 60 above (max(60, floor) == 60).
+                                "graceful_shutdown_timeout_s": 60.0,
                                 "health_check_period_s": 10.0,
                                 "health_check_timeout_s": 30.0,
                                 "ray_actor_options": {
@@ -2334,7 +2567,11 @@ def test_get_serve_instance_details_json_serializable(
                                     "request_router_kwargs": {},
                                     "request_routing_stats_period_s": 10.0,
                                     "request_routing_stats_timeout_s": 30.0,
+                                    "initial_backoff_s": 0.025,
+                                    "backoff_multiplier": 2.0,
+                                    "max_backoff_s": 0.5,
                                 },
+                                "rolling_update_percentage": 0.2,
                             },
                             "target_num_replicas": 1,
                             "required_resources": {"CPU": 1},
@@ -2353,6 +2590,7 @@ def test_get_serve_instance_details_json_serializable(
                                     "start_time_s": replica.start_time_s,
                                 }
                             ],
+                            "recent_dead_replicas": [],
                         }
                     },
                     "external_scaler_enabled": False,
@@ -2376,36 +2614,47 @@ def test_get_serve_instance_details_json_serializable(
                     "targets": [
                         {
                             "ip": node_ip,
-                            "port": 8000 if False else 30000,
+                            "port": 8000 if RAY_SERVE_ENABLE_HA_PROXY else 30000,
                             "instance_id": node_instance_id,
                             "name": proxy_details.actor_name
-                            if False
+                            if RAY_SERVE_ENABLE_HA_PROXY
                             else replica.actor_name,
                         },
                     ],
                     "route_prefix": "/",
                     "protocol": "HTTP",
-                    "app_name": "" if False else "default",
+                    "app_name": "" if RAY_SERVE_ENABLE_HA_PROXY else "default",
+                    "ingress_request_router_targets": [],
                 },
                 {
                     "targets": [
                         {
                             "ip": node_ip,
-                            "port": 9000 if False else 40000,
+                            "port": 9000 if RAY_SERVE_ENABLE_HA_PROXY else 40000,
                             "instance_id": node_instance_id,
                             "name": proxy_details.actor_name
-                            if False
+                            if RAY_SERVE_ENABLE_HA_PROXY
                             else replica.actor_name,
                         },
                     ],
                     "route_prefix": "/",
                     "protocol": "gRPC",
-                    "app_name": "" if False else "default",
+                    "app_name": "" if RAY_SERVE_ENABLE_HA_PROXY else "default",
+                    "ingress_request_router_targets": [],
                 },
             ],
         }
     )
-    assert details_json == expected_json
+
+    # Health metrics contain timestamps that change between calls, so verify
+    # the keys match what get_health_metrics returns rather than exact values.
+    details_dict = json.loads(details_json)
+    actual_health_metrics = details_dict.pop("controller_health_metrics")
+    expected_dict = json.loads(expected_json)
+    assert details_dict == expected_dict
+
+    controller_health_metrics = ray.get(controller.get_health_metrics.remote())
+    assert set(actual_health_metrics.keys()) == set(controller_health_metrics.keys())
 
     # ensure internal field, serialized_policy_def, is not exposed
     application = details["applications"]["default"]
@@ -2437,6 +2686,75 @@ def test_get_deployment_config(_skip_if_ff_not_enabled, serve_instance):
     )
     # After the deployment is created, the config should be DeploymentConfig.
     assert isinstance(deployment_config, DeploymentConfig)
+
+
+def test_stuck_requests_are_force_killed(_skip_if_ff_not_enabled, serve_instance):
+    """This test is really slow, because it waits for the ports to be released from TIME_WAIT state.
+    The ports are in TIME_WAIT state because the replicas are force-killed and the ports are not
+    released immediately."""
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        name="stuck-requests-deployment",
+        graceful_shutdown_timeout_s=1,
+    )
+    class StuckRequestsTest:
+        async def __call__(self):
+            # This request will never complete - it waits forever
+            await signal.wait.remote()
+            return "ok"
+
+    serve.run(
+        StuckRequestsTest.bind(),
+        name="stuck-requests-deployment",
+        route_prefix="/stuck-requests-deployment",
+    )
+
+    # Collect all ports used by the application before deleting it
+    http_ports = get_http_ports(route_prefix="/stuck-requests-deployment")
+    grpc_ports = get_grpc_ports(route_prefix="/stuck-requests-deployment")
+
+    http_url = get_application_url("HTTP", app_name="stuck-requests-deployment")
+
+    with ThreadPoolExecutor() as executor:
+        # Send requests that will hang forever (signal is never sent)
+        futures = [executor.submit(httpx.get, http_url, timeout=60) for _ in range(2)]
+
+        # Wait for requests to be received by the replica
+        wait_for_condition(
+            lambda: ray.get(signal.cur_num_waiters.remote()) == 2, timeout=10
+        )
+
+        # Delete the deployment - requests are still stuck
+        serve.delete("stuck-requests-deployment", _blocking=False)
+
+        # Verify the application is eventually deleted (replica was force-killed).
+        # For an ingress deployment in direct ingress mode, graceful_shutdown_timeout_s
+        # is floored to RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S +
+        # RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S (about 35s by default), so the
+        # controller force-kills after that floor rather than the configured 1s. Wait
+        # well past it.
+        wait_for_condition(
+            lambda: "stuck-requests-deployment" not in serve.status().applications,
+            timeout=60,
+        )
+
+        # The stuck requests should fail (connection closed or similar)
+        for future in futures:
+            try:
+                result = future.result(timeout=5)
+                # If we get a response, it should be an error (not 200)
+                assert result.status_code != 200
+            except Exception:
+                # Expected - request failed due to force-kill
+                pass
+
+    # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=http_ports + grpc_ports,
+        timeout=120,
+    )
 
 
 if __name__ == "__main__":

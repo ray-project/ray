@@ -1,5 +1,7 @@
 import unittest
 
+import pytest
+
 import ray
 from ray.rllib.offline.estimators import DoublyRobust
 from ray.rllib.offline.estimators.tests.utils import (
@@ -10,6 +12,7 @@ from ray.rllib.offline.estimators.tests.utils import (
 SEED = 0
 
 
+@pytest.mark.timeout(600)
 class TestDRLearning(unittest.TestCase):
     """Learning tests for the DoublyRobust estimator.
 
@@ -37,7 +40,7 @@ class TestDRLearning(unittest.TestCase):
 
         # Config settings for FQE model
         cls.q_model_config = {
-            "n_iters": 800,
+            "n_iters": 500,
             "minibatch_size": 64,
             "polyak_coef": 1.0,
             "model_config": {

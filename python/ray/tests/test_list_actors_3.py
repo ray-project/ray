@@ -3,7 +3,7 @@ import sys
 import pytest
 
 import ray
-from ray._private.test_utils import run_string_as_driver
+from ray._common.test_utils import run_string_as_driver
 
 
 def test_list_named_actors_ray_kill(ray_start_regular):

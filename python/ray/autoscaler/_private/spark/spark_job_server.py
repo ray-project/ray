@@ -238,8 +238,7 @@ def _start_spark_job_server(host, port, spark, ray_node_custom_env):
     def run_server():
         server.serve_forever()
 
-    server_thread = threading.Thread(target=run_server)
-    server_thread.setDaemon(True)
+    server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
 
     return server

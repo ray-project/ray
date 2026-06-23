@@ -1,6 +1,6 @@
 import ray
 from ray import serve
-from ray._private.test_utils import run_string_as_driver
+from ray._common.test_utils import run_string_as_driver
 
 
 def test_new_driver(serve_instance):

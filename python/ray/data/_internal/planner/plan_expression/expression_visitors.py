@@ -1,5 +1,5 @@
-from dataclasses import replace
-from typing import Dict, List, TypeVar
+from dataclasses import dataclass, replace
+from typing import Dict, Hashable, List, TypeVar
 
 from ray.data.expressions import (
     AliasExpr,
@@ -8,12 +8,28 @@ from ray.data.expressions import (
     DownloadExpr,
     Expr,
     LiteralExpr,
+    MonotonicallyIncreasingIdExpr,
     Operation,
+    RandomExpr,
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    UUIDExpr,
     _CallableClassUDF,
     _ExprVisitor,
+)
+from ray.data.util.expression_utils import (
+    _alias_fingerprint_key,
+    _binary_fingerprint_key,
+    _column_fingerprint_key,
+    _download_fingerprint_key,
+    _literal_fingerprint_key,
+    _monotonically_increasing_id_fingerprint_key,
+    _random_fingerprint_key,
+    _star_fingerprint_key,
+    _udf_fingerprint_key,
+    _unary_fingerprint_key,
+    _uuid_fingerprint_key,
 )
 
 T = TypeVar("T")
@@ -76,6 +92,20 @@ class _ExprVisitorBase(_ExprVisitor[None]):
 
     def visit_download(self, expr: "Expr") -> None:
         """Visit a download expression (no columns to collect)."""
+        pass
+
+    def visit_monotonically_increasing_id(
+        self, expr: "MonotonicallyIncreasingIdExpr"
+    ) -> None:
+        """Visit a monotonically_increasing_id expression (no columns to collect)."""
+        pass
+
+    def visit_random(self, expr: "RandomExpr") -> None:
+        """Visit a synthetic expression (no columns to collect)."""
+        pass
+
+    def visit_uuid(self, expr: "UUIDExpr") -> None:
+        """Visit a uuid expression (no columns to collect)."""
         pass
 
 
@@ -234,12 +264,7 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         """
         new_args = [self.visit(arg) for arg in expr.args]
         new_kwargs = {key: self.visit(value) for key, value in expr.kwargs.items()}
-        return UDFExpr(
-            fn=expr.fn,
-            data_type=expr.data_type,
-            args=new_args,
-            kwargs=new_kwargs,
-        )
+        return replace(expr, args=new_args, kwargs=new_kwargs)
 
     def visit_alias(self, expr: AliasExpr) -> Expr:
         """Visit an alias expression and rewrite its inner expression.
@@ -283,6 +308,41 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
 
         Returns:
             The original star expression.
+        """
+        return expr
+
+    def visit_monotonically_increasing_id(
+        self, expr: MonotonicallyIncreasingIdExpr
+    ) -> Expr:
+        """Visit a monotonically_increasing_id expression (no rewriting needed).
+
+        Args:
+            expr: The monotonically_increasing_id expression.
+
+        Returns:
+            The original expression.
+        """
+        return expr
+
+    def visit_random(self, expr: "RandomExpr") -> Expr:
+        """Visit a random expression (no rewriting needed).
+
+        Args:
+            expr: The random expression.
+
+        Returns:
+            The original random expression.
+        """
+        return expr
+
+    def visit_uuid(self, expr: "UUIDExpr") -> Expr:
+        """Visit a uuid expression (no rewriting needed).
+
+        Args:
+            expr: The uuid expression.
+
+        Returns:
+            The original uuid expression.
         """
         return expr
 
@@ -413,6 +473,21 @@ class _TreeReprVisitor(_ExprVisitor[str]):
     def visit_star(self, expr: "StarExpr") -> str:
         return self._make_tree_lines("COL(*)", expr=expr)
 
+    def visit_monotonically_increasing_id(
+        self, expr: "MonotonicallyIncreasingIdExpr"
+    ) -> str:
+        return self._make_tree_lines("MONOTONICALLY_INCREASING_ID()", expr=expr)
+
+    def visit_random(self, expr: "RandomExpr") -> str:
+        if expr.seed is None:
+            label = "RANDOM()"
+        else:
+            label = f"RANDOM(seed={expr.seed}, reseed_after_execution={expr.reseed_after_execution})"
+        return self._make_tree_lines(label, expr=expr)
+
+    def visit_uuid(self, expr: "UUIDExpr") -> str:
+        return self._make_tree_lines("UUID()", expr=expr)
+
 
 class _InlineExprReprVisitor(_ExprVisitor[str]):
     """Visitor that generates concise inline string representations of expressions.
@@ -501,6 +576,169 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
     def visit_star(self, expr: "StarExpr") -> str:
         """Visit a star expression and return its inline representation."""
         return "col(*)"
+
+    def visit_monotonically_increasing_id(
+        self, expr: "MonotonicallyIncreasingIdExpr"
+    ) -> str:
+        """Visit a monotonically_increasing_id expression and return its inline representation."""
+        return "monotonically_increasing_id()"
+
+    def visit_random(self, expr: "RandomExpr") -> str:
+        """Visit a random expression and return its inline representation."""
+        return "random()"
+
+    def visit_uuid(self, expr: "UUIDExpr") -> str:
+        """Visit a uuid expression and return its inline representation."""
+        return "uuid()"
+
+
+class _StructuralFingerprintVisitor(_ExprVisitor[Hashable]):
+    """Visitor that computes a hashable structural fingerprint for an expression.
+
+    Two expressions that are structurally equivalent produce equal fingerprints,
+    so the fingerprint can be used as a cheap bucketing key before falling back to
+    full ``structurally_equals`` comparison (e.g. for common sub-expression
+    elimination).
+    """
+
+    def visit_column(self, expr: ColumnExpr) -> Hashable:
+        return _column_fingerprint_key(expr)
+
+    def visit_literal(self, expr: LiteralExpr) -> Hashable:
+        return _literal_fingerprint_key(expr)
+
+    def visit_binary(self, expr: BinaryExpr) -> Hashable:
+        return _binary_fingerprint_key(
+            expr,
+            self.visit(expr.left),
+            self.visit(expr.right),
+        )
+
+    def visit_unary(self, expr: UnaryExpr) -> Hashable:
+        return _unary_fingerprint_key(expr, self.visit(expr.operand))
+
+    def visit_udf(self, expr: UDFExpr) -> Hashable:
+        return _udf_fingerprint_key(
+            expr,
+            tuple(self.visit(arg) for arg in expr.args),
+            tuple(
+                (k, self.visit(v))
+                for k, v in sorted(expr.kwargs.items(), key=lambda item: item[0])
+            ),
+        )
+
+    def visit_alias(self, expr: AliasExpr) -> Hashable:
+        return _alias_fingerprint_key(expr, self.visit(expr.expr))
+
+    def visit_download(self, expr: DownloadExpr) -> Hashable:
+        return _download_fingerprint_key(expr)
+
+    def visit_star(self, expr: StarExpr) -> Hashable:
+        return _star_fingerprint_key()
+
+    def visit_monotonically_increasing_id(
+        self, expr: MonotonicallyIncreasingIdExpr
+    ) -> Hashable:
+        return _monotonically_increasing_id_fingerprint_key(expr)
+
+    def visit_random(self, expr: RandomExpr) -> Hashable:
+        return _random_fingerprint_key(expr)
+
+    def visit_uuid(self, expr: UUIDExpr) -> Hashable:
+        return _uuid_fingerprint_key(expr)
+
+
+@dataclass(frozen=True)
+class _ExpressionOccurrence:
+    expr: Expr
+    key: Hashable
+    depth: int
+
+
+class _StructuralFingerprintOccurrenceCollector(_ExprVisitor[Hashable]):
+    """Collect expression occurrences while computing structural keys bottom-up."""
+
+    def __init__(self):
+        self._occurrences: List[_ExpressionOccurrence] = []
+        self._depth = 0
+
+    def get_occurrences(self) -> List[_ExpressionOccurrence]:
+        return self._occurrences
+
+    def _visit_child(self, expr: Expr) -> Hashable:
+        self._depth += 1
+        try:
+            return self.visit(expr)
+        finally:
+            self._depth -= 1
+
+    def _record(self, expr: Expr, key: Hashable) -> Hashable:
+        self._occurrences.append(
+            _ExpressionOccurrence(
+                expr=expr,
+                key=key,
+                depth=self._depth,
+            )
+        )
+        return key
+
+    def visit_column(self, expr: ColumnExpr) -> Hashable:
+        return self._record(expr, _column_fingerprint_key(expr))
+
+    def visit_literal(self, expr: LiteralExpr) -> Hashable:
+        return self._record(expr, _literal_fingerprint_key(expr))
+
+    def visit_binary(self, expr: BinaryExpr) -> Hashable:
+        return self._record(
+            expr,
+            _binary_fingerprint_key(
+                expr,
+                self._visit_child(expr.left),
+                self._visit_child(expr.right),
+            ),
+        )
+
+    def visit_unary(self, expr: UnaryExpr) -> Hashable:
+        return self._record(
+            expr,
+            _unary_fingerprint_key(expr, self._visit_child(expr.operand)),
+        )
+
+    def visit_udf(self, expr: UDFExpr) -> Hashable:
+        return self._record(
+            expr,
+            _udf_fingerprint_key(
+                expr,
+                tuple(self._visit_child(arg) for arg in expr.args),
+                tuple(
+                    (k, self._visit_child(v))
+                    for k, v in sorted(expr.kwargs.items(), key=lambda item: item[0])
+                ),
+            ),
+        )
+
+    def visit_alias(self, expr: AliasExpr) -> Hashable:
+        return self._record(
+            expr,
+            _alias_fingerprint_key(expr, self._visit_child(expr.expr)),
+        )
+
+    def visit_download(self, expr: DownloadExpr) -> Hashable:
+        return self._record(expr, _download_fingerprint_key(expr))
+
+    def visit_star(self, expr: StarExpr) -> Hashable:
+        return self._record(expr, _star_fingerprint_key())
+
+    def visit_monotonically_increasing_id(
+        self, expr: MonotonicallyIncreasingIdExpr
+    ) -> Hashable:
+        return self._record(expr, _monotonically_increasing_id_fingerprint_key(expr))
+
+    def visit_random(self, expr: RandomExpr) -> Hashable:
+        return self._record(expr, _random_fingerprint_key(expr))
+
+    def visit_uuid(self, expr: UUIDExpr) -> Hashable:
+        return self._record(expr, _uuid_fingerprint_key(expr))
 
 
 def get_column_references(expr: Expr) -> List[str]:

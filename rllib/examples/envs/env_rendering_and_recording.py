@@ -62,7 +62,6 @@ from typing import Optional, Sequence
 import gymnasium as gym
 import numpy as np
 
-from ray import tune
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.vector.vector_multi_agent_env import VectorMultiAgentEnv
@@ -269,9 +268,6 @@ if __name__ == "__main__":
         # and worst per sampling cycle per EnvRunner) and then logged via the
         # `MetricsLogger` API.
         .callbacks(EnvRenderCallback)
-        # Switch off RLlib's logging to avoid having the large videos show up in any log
-        # files.
-        .debugging(logger_config={"type": tune.logger.NoopLogger})
         # The following settings are beneficial for Atari-type environments. Feel free
         # to adjust these when providing a non-Atari `--env` option.
         .training(

@@ -8,14 +8,14 @@ import torch
 
 import ray
 import ray.train.torch
-from ray.air._internal.torch_utils import (
-    arrow_batch_to_tensors,
-    convert_ndarray_batch_to_torch_tensor_batch,
-)
 from ray.data.iterator import (
     ArrowBatchCollateFn,
     NumpyBatchCollateFn,
     PandasBatchCollateFn,
+)
+from ray.data.util.torch_utils import (
+    arrow_batch_to_tensors,
+    convert_ndarray_batch_to_torch_tensor_batch,
 )
 
 
@@ -132,7 +132,7 @@ class BasePandasBatchCollateFn(PandasBatchCollateFn):
     This class provides common functionality for processing Pandas DataFrames and converting
     them to PyTorch tensors. It handles device placement and dtype conversion.
 
-    Attributes:
+    Args:
         device: Optional device to place tensors on. Can be a string (e.g. "cpu", "cuda:0")
             or a torch.device object.
     """

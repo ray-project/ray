@@ -5,11 +5,12 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import numpy as np
+import pandas as pd
+import pyarrow as pa
 import pytest
 from pandas.api.types import is_float_dtype, is_int64_dtype, is_object_dtype
 
 import ray
-from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
 from ray.data.dataset import Dataset
 from ray.tests.conftest import *  # noqa: F401,F403
 
@@ -19,6 +20,41 @@ if TYPE_CHECKING:
 if sys.version_info <= (3, 12):
     # Skip this test for Python 3.12+ due to to incompatibility tensorflow
     import tensorflow as tf
+
+
+def _is_object_like(dtype):
+    """Match the pre-Arrow-dtype semantics of ``is_object_dtype``: pandas used
+    object dtype for lists, bytes, and strings; ArrowBlockAccessor.to_pandas()
+    now preserves these as ``pd.ArrowDtype`` via a ``types_mapper``."""
+    if is_object_dtype(dtype):
+        return True
+    if isinstance(dtype, pd.ArrowDtype):
+        pa_type = dtype.pyarrow_dtype
+        return (
+            pa.types.is_list(pa_type)
+            or pa.types.is_large_list(pa_type)
+            or pa.types.is_binary(pa_type)
+            or pa.types.is_large_binary(pa_type)
+            or pa.types.is_string(pa_type)
+            or pa.types.is_large_string(pa_type)
+        )
+    return False
+
+
+def _is_int64_like(dtype):
+    if is_int64_dtype(dtype):
+        return True
+    if isinstance(dtype, pd.ArrowDtype):
+        return dtype.pyarrow_dtype == pa.int64()
+    return False
+
+
+def _is_float_like(dtype):
+    if is_float_dtype(dtype):
+        return True
+    if isinstance(dtype, pd.ArrowDtype):
+        return pa.types.is_floating(dtype.pyarrow_dtype)
+    return False
 
 
 def tf_records_partial():
@@ -346,21 +382,16 @@ def _ds_eq_streaming(ds_expected, ds_actual) -> bool:
 
 
 @pytest.mark.parametrize(
-    "with_tf_schema,tfx_read,compression",
+    "with_tf_schema,compression",
     [
-        (True, True, None),
-        (True, True, "GZIP"),
-        (True, False, None),
-        (False, True, None),
-        (False, True, "GZIP"),
-        (False, False, None),
+        (True, None),
+        (False, None),
     ],
 )
 def test_read_tfrecords(
     with_tf_schema,
-    tfx_read,
     compression,
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
     tmp_path,
 ):
     import pandas as pd
@@ -382,43 +413,40 @@ def test_read_tfrecords(
     if compression:
         arrow_open_stream_args = {"compression": compression}
 
-    ds = read_tfrecords_with_tfx_read_override(
+    ds = ray.data.read_tfrecords(
         path,
         tf_schema=tf_schema,
-        tfx_read=tfx_read,
         arrow_open_stream_args=arrow_open_stream_args,
     )
 
     df = ds.to_pandas()
     # Protobuf serializes features in a non-deterministic order.
     if with_tf_schema:
-        assert is_object_dtype(dict(df.dtypes)["int_item"])
+        assert _is_object_like(dict(df.dtypes)["int_item"])
     else:
-        assert is_int64_dtype(dict(df.dtypes)["int_item"])
-    assert is_object_dtype(dict(df.dtypes)["int_list"])
-    assert is_object_dtype(dict(df.dtypes)["int_partial"])
-    assert is_object_dtype(dict(df.dtypes)["int_empty"])
+        assert _is_int64_like(dict(df.dtypes)["int_item"])
+    assert _is_object_like(dict(df.dtypes)["int_list"])
+    assert _is_object_like(dict(df.dtypes)["int_partial"])
+    assert _is_object_like(dict(df.dtypes)["int_empty"])
 
     if with_tf_schema:
-        assert is_object_dtype(dict(df.dtypes)["float_item"])
-        assert is_object_dtype(dict(df.dtypes)["float_partial"])
+        assert _is_object_like(dict(df.dtypes)["float_item"])
+        assert _is_object_like(dict(df.dtypes)["float_partial"])
     else:
-        assert is_float_dtype(dict(df.dtypes)["float_item"])
-        assert is_float_dtype(dict(df.dtypes)["float_partial"])
-    assert is_object_dtype(dict(df.dtypes)["float_list"])
-    assert is_object_dtype(dict(df.dtypes)["float_empty"])
+        assert _is_float_like(dict(df.dtypes)["float_item"])
+        assert _is_float_like(dict(df.dtypes)["float_partial"])
+    assert _is_object_like(dict(df.dtypes)["float_list"])
+    assert _is_object_like(dict(df.dtypes)["float_empty"])
 
-    # In both cases, bytes are of `object` dtype in pandas
-    assert is_object_dtype(dict(df.dtypes)["bytes_item"])
-    assert is_object_dtype(dict(df.dtypes)["bytes_partial"])
-    assert is_object_dtype(dict(df.dtypes)["bytes_list"])
-    assert is_object_dtype(dict(df.dtypes)["bytes_empty"])
+    assert _is_object_like(dict(df.dtypes)["bytes_item"])
+    assert _is_object_like(dict(df.dtypes)["bytes_partial"])
+    assert _is_object_like(dict(df.dtypes)["bytes_list"])
+    assert _is_object_like(dict(df.dtypes)["bytes_empty"])
 
-    # strings are of `object` dtype in pandas
-    assert is_object_dtype(dict(df.dtypes)["string_item"])
-    assert is_object_dtype(dict(df.dtypes)["string_partial"])
-    assert is_object_dtype(dict(df.dtypes)["string_list"])
-    assert is_object_dtype(dict(df.dtypes)["string_empty"])
+    assert _is_object_like(dict(df.dtypes)["string_item"])
+    assert _is_object_like(dict(df.dtypes)["string_partial"])
+    assert _is_object_like(dict(df.dtypes)["string_list"])
+    assert _is_object_like(dict(df.dtypes)["string_empty"])
 
     # If the schema is specified, we should not perform the
     # automatic unwrapping of single-element lists.
@@ -434,10 +462,11 @@ def test_read_tfrecords(
     if with_tf_schema:
         assert isinstance(df["float_item"], pd.Series)
         assert df["float_item"].tolist() == [[1.0]]
+        assert df["float_partial"].tolist() == [[1.0]]
     else:
         assert list(df["float_item"]) == [1.0]
+        assert list(df["float_partial"]) == [1.0]
     assert np.array_equal(df["float_list"][0], np.array([2.0, 3.0, 4.0]))
-    assert list(df["float_partial"]) == [1.0]
     assert np.array_equal(df["float_empty"][0], np.array([], dtype=np.float32))
 
     if with_tf_schema:
@@ -466,7 +495,7 @@ def mock_ray_data_read_tfrecords(mocker):
 
 @pytest.mark.parametrize("num_cpus", [1, 2, 4])
 def test_read_tfrecords_ray_remote_args(
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
     mock_ray_data_read_tfrecords,
     tmp_path,
     num_cpus,
@@ -478,7 +507,7 @@ def test_read_tfrecords_ray_remote_args(
     with tf.io.TFRecordWriter(path=path) as writer:
         writer.write(example.SerializeToString())
     ray_remote_args = {"num_cpus": num_cpus}
-    ds = read_tfrecords_with_tfx_read_override(
+    ds = ray.data.read_tfrecords(
         paths=[path],
         ray_remote_args=ray_remote_args,
     )
@@ -492,7 +521,7 @@ def test_read_tfrecords_ray_remote_args(
 @pytest.mark.parametrize("with_tf_schema", (True, False))
 def test_write_tfrecords(
     with_tf_schema,
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
     tmp_path,
 ):
     """Test that write_tfrecords writes TFRecords correctly.
@@ -546,7 +575,7 @@ def test_write_tfrecords(
 @pytest.mark.parametrize("with_tf_schema", (True, False))
 def test_write_tfrecords_empty_features(
     with_tf_schema,
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
     tmp_path,
 ):
     """Test that write_tfrecords writes TFRecords with completely empty features
@@ -600,7 +629,7 @@ def test_write_tfrecords_empty_features(
 
 @pytest.mark.parametrize("with_tf_schema", (True, False))
 def test_readback_tfrecords(
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
     tmp_path,
     with_tf_schema,
 ):
@@ -624,7 +653,7 @@ def test_readback_tfrecords(
     # Write the TFRecords.
     ds.write_tfrecords(tmp_path, tf_schema=tf_schema)
     # Read the TFRecords.
-    readback_ds = read_tfrecords_with_tfx_read_override(
+    readback_ds = ray.data.read_tfrecords(
         tmp_path, tf_schema=tf_schema, override_num_blocks=1
     )
     _ds_eq_streaming(ds, readback_ds)
@@ -632,7 +661,7 @@ def test_readback_tfrecords(
 
 @pytest.mark.parametrize("with_tf_schema", (True, False))
 def test_readback_tfrecords_empty_features(
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
     tmp_path,
     with_tf_schema,
 ):
@@ -659,7 +688,7 @@ def test_readback_tfrecords_empty_features(
         ds.write_tfrecords(tmp_path, tf_schema=tf_schema)
 
         # Read the TFRecords.
-        readback_ds = read_tfrecords_with_tfx_read_override(
+        readback_ds = ray.data.read_tfrecords(
             tmp_path,
             tf_schema=tf_schema,
             override_num_blocks=1,
@@ -667,7 +696,38 @@ def test_readback_tfrecords_empty_features(
         _ds_eq_streaming(ds, readback_ds)
 
 
-def test_write_invalid_tfrecords(ray_start_regular_shared, tmp_path):
+def test_write_tfrecords_tensor(
+    ray_start_regular_shared_2_cpus, tmp_path, tensor_format_context
+):
+    """Test that write_tfrecords handles tensor data by serializing
+    tensors to bytes via tf.io.serialize_tensor, preserving shape and dtype."""
+    import tensorflow as tf
+
+    ds = ray.data.range_tensor(3, shape=(2, 2))
+
+    ds.write_tfrecords(tmp_path)
+
+    # Read back the raw TFRecord examples and deserialize tensors.
+    filenames = sorted(os.listdir(tmp_path))
+    filepaths = [os.path.join(tmp_path, filename) for filename in filenames]
+    raw_dataset = tf.data.TFRecordDataset(filepaths)
+
+    results = []
+    for raw_record in raw_dataset:
+        example = tf.train.Example()
+        example.ParseFromString(raw_record.numpy())
+        serialized = example.features.feature["data"].bytes_list.value[0]
+        tensor = tf.io.parse_tensor(serialized, out_type=tf.int64)
+        results.append(tensor.numpy())
+
+    assert len(results) == 3
+    for i, result in enumerate(results):
+        assert result.shape == (2, 2)
+        expected = np.full((2, 2), i)
+        np.testing.assert_array_equal(result, expected)
+
+
+def test_write_invalid_tfrecords(ray_start_regular_shared_2_cpus, tmp_path):
     """
     If we try to write a dataset with invalid TFRecord datatypes,
     ValueError should be raised.
@@ -679,21 +739,18 @@ def test_write_invalid_tfrecords(ray_start_regular_shared, tmp_path):
         ds.write_tfrecords(tmp_path)
 
 
-@pytest.mark.parametrize("tfx_read", (True, False))
-def test_read_invalid_tfrecords(ray_start_regular_shared, tfx_read, tmp_path):
+def test_read_invalid_tfrecords(ray_start_regular_shared_2_cpus, tmp_path):
     file_path = os.path.join(tmp_path, "file.json")
     with open(file_path, "w") as file:
         json.dump({"number": 0, "string": "foo"}, file)
 
     # Expect RuntimeError raised when reading JSON as TFRecord file.
     with pytest.raises(RuntimeError, match="Failed to read TFRecord file"):
-        read_tfrecords_with_tfx_read_override(
-            file_path, tfx_read=tfx_read, tfx_read_auto_infer_schema=False
-        ).schema()
+        ray.data.read_tfrecords(file_path).schema()
 
 
 def test_read_with_invalid_schema(
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
     tmp_path,
 ):
     from tensorflow_metadata.proto.v0 import schema_pb2
@@ -731,15 +788,11 @@ def test_read_with_invalid_schema(
     # which should raise a `ValueError`.
     ds.write_tfrecords(tmp_path)
     with pytest.raises(ValueError) as e:
-        read_tfrecords_with_tfx_read_override(
-            tmp_path, tf_schema=tf_schema_wrong_name
-        ).materialize()
+        ray.data.read_tfrecords(tmp_path, tf_schema=tf_schema_wrong_name).materialize()
     assert "Found extra unexpected feature" in str(e.value.args[0])
 
     with pytest.raises(ValueError) as e:
-        read_tfrecords_with_tfx_read_override(
-            tmp_path, tf_schema=tf_schema_wrong_type
-        ).materialize()
+        ray.data.read_tfrecords(tmp_path, tf_schema=tf_schema_wrong_type).materialize()
     assert str(e.value.args[0]) == (
         "Schema field type mismatch during read: "
         "specified type is int, but underlying type is bytes"
@@ -747,7 +800,9 @@ def test_read_with_invalid_schema(
 
 
 @pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
-def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
+def test_write_min_rows_per_file(
+    tmp_path, ray_start_regular_shared_2_cpus, min_rows_per_file
+):
     ray.data.range(100, override_num_blocks=20).write_tfrecords(
         tmp_path, min_rows_per_file=min_rows_per_file
     )
@@ -755,18 +810,6 @@ def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_pe
     for filename in os.listdir(tmp_path):
         dataset = tf.data.TFRecordDataset(os.path.join(tmp_path, filename))
         assert len(list(dataset)) == min_rows_per_file
-
-
-def read_tfrecords_with_tfx_read_override(paths, tfx_read=False, **read_opts):
-    infer_schema = read_opts.pop("tfx_read_auto_infer_schema", tfx_read)
-
-    tfx_read_options = None
-    if tfx_read:
-        tfx_read_options = TFXReadOptions(auto_infer_schema=infer_schema)
-
-    return ray.data.read_tfrecords(
-        paths=paths, tfx_read_options=tfx_read_options, **read_opts
-    )
 
 
 if __name__ == "__main__":

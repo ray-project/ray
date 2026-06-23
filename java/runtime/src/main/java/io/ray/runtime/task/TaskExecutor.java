@@ -33,8 +33,6 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
   protected final AbstractRayRuntime runtime;
 
-  private T actorContext = null;
-
   private final ThreadLocal<RayFunction> localRayFunction = new ThreadLocal<>();
 
   static class ActorContext {
@@ -48,17 +46,25 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
   protected abstract T createActorContext();
 
-  T getActorContext() {
-    return actorContext;
-  }
+  /**
+   * Retrieve the actor context for the current execution.
+   *
+   * <p>Subclasses implement this to match their threading model:
+   *
+   * <ul>
+   *   <li>Cluster mode: a single actor per worker process, context is shared across threads.
+   *   <li>Local mode: multiple actors may share one TaskExecutor, context is thread-isolated.
+   * </ul>
+   */
+  protected abstract T getActorContext();
 
-  void setActorContext(UniqueId workerId, T actorContext) {
-    if (actorContext == null) {
-      // ConcurrentHashMap doesn't allow null values. So just return here.
-      return;
-    }
-    this.actorContext = actorContext;
-  }
+  /**
+   * Store the actor context after creation.
+   *
+   * @param workerId the worker that owns this actor
+   * @param actorContext the context to store, or {@code null} to clear
+   */
+  protected abstract void setActorContext(UniqueId workerId, T actorContext);
 
   private RayFunction getRayFunction(List<String> rayFunctionInfo) {
     JobId jobId = runtime.getWorkerContext().getCurrentJobId();

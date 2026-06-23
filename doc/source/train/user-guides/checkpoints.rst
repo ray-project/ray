@@ -295,7 +295,7 @@ you have the following options:
     .. tab-item:: Synchronous
 
         If you want to upload the checkpoint synchronously, you can first upload the checkpoint
-        to the ``storage_path``and then report a reference to the uploaded checkpoint with
+        to the ``storage_path`` and then report a reference to the uploaded checkpoint with
         ``ray.train.CheckpointUploadMode.NO_UPLOAD``.
 
         .. literalinclude:: ../doc_code/checkpoints.py
@@ -319,7 +319,9 @@ you have the following options:
 
             In your ``checkpoint_upload_fn``, you should not call ``ray.train.report``, which may
             lead to unexpected behavior. You should also avoid collective operations, such as
-            :func:`~ray.train.report` or ``model.state_dict()``, which can cause deadlocks.
+            :func:`~ray.train.report` or ``model.state_dict()``, which can cause deadlocks. Finally,
+            the upload function should only the return a checkpoint object once all checkpoint data
+            has been saved.
 
         .. note::
 
@@ -373,7 +375,6 @@ This function supports two consistency modes:
     :language: python
     :start-after: __get_all_reported_checkpoints_example_start__
     :end-before: __get_all_reported_checkpoints_example_end__
-
 
 Using checkpoints after training
 --------------------------------

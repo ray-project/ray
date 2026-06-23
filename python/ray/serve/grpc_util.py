@@ -1,8 +1,101 @@
-from typing import Any, Dict, List, Optional, Tuple
+import asyncio
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, TypeVar
 
 import grpc
 
 from ray.util.annotations import PublicAPI
+
+T = TypeVar("T")
+
+
+@PublicAPI(stability="beta")
+class gRPCInputStream(AsyncIterator[T]):
+    """Async iterator wrapping an incoming gRPC request stream.
+
+    This class is used for client streaming and bidirectional streaming RPCs.
+    It allows deployment methods to iterate over incoming request messages
+    from the client.
+
+    Example usage in a deployment:
+
+    .. code-block:: python
+
+        @serve.deployment
+        class BidiService:
+            # Client streaming (stream-unary)
+            async def ClientStreaming(self, request_stream: gRPCInputStream):
+                total = 0
+                async for request in request_stream:
+                    total += request.value
+                return Response(result=total)
+
+            # Bidirectional streaming (stream-stream)
+            async def BidiStreaming(self, request_stream: gRPCInputStream):
+                async for request in request_stream:
+                    yield Response(greeting=f"Hello {request.name}")
+    """
+
+    def __init__(
+        self,
+        request_iterator: AsyncIterator[T],
+        *,
+        cancel_event: Optional[asyncio.Event] = None,
+    ):
+        """Initialize the gRPCInputStream.
+
+        Args:
+            request_iterator: The underlying async iterator of request messages.
+            cancel_event: Optional event that signals cancellation from the client.
+        """
+        self._request_iterator = request_iterator
+        self._cancel_event = cancel_event or asyncio.Event()
+        self._exhausted = False
+
+    def __aiter__(self) -> "gRPCInputStream[T]":
+        return self
+
+    async def __anext__(self) -> T:
+        """Get the next request message from the stream.
+
+        Returns:
+            The next request message from the stream.
+
+        Raises:
+            StopAsyncIteration: When the stream is exhausted or cancelled.
+        """
+        if self._exhausted:
+            raise StopAsyncIteration
+        try:
+            if self._cancel_event.is_set():
+                raise StopAsyncIteration
+            return await self._request_iterator.__anext__()
+        except StopAsyncIteration:
+            self._exhausted = True
+            raise
+
+    def is_cancelled(self) -> bool:
+        """Check if the client has cancelled the stream.
+
+        Returns:
+            True if the stream has been cancelled, False otherwise.
+        """
+        return self._cancel_event.is_set()
+
+    def cancel(self) -> None:
+        """Mark the stream as cancelled.
+
+        This will cause subsequent iteration to stop.
+        """
+        self._cancel_event.set()
+
+    @property
+    def is_exhausted(self) -> bool:
+        """Check if the stream has been fully consumed.
+
+        Returns:
+            True if all messages have been consumed, False otherwise.
+        """
+        return self._exhausted
 
 
 @PublicAPI(stability="beta")
@@ -18,9 +111,11 @@ class RayServegRPCContext:
         self._auth_context = grpc_context.auth_context()
         self._code = grpc_context.code()
         self._details = grpc_context.details()
-        self._invocation_metadata = [  # noqa: C416
-            (key, value) for key, value in grpc_context.invocation_metadata()
-        ]
+        self._invocation_metadata = []
+        self._invocation_metadata_dict = {}
+        for key, value in grpc_context.invocation_metadata():
+            self._invocation_metadata.append((key, value))
+            self._invocation_metadata_dict[key] = value
         self._peer = grpc_context.peer()
         self._peer_identities = grpc_context.peer_identities()
         self._peer_identity_key = grpc_context.peer_identity_key()
@@ -52,6 +147,30 @@ class RayServegRPCContext:
           The details string of the RPC.
         """
         return self._details
+
+    def request_id(self) -> Optional[str]:
+        """Accesses the request ID for the RPC.
+
+        Returns:
+          The request ID for the RPC.
+        """
+        return self._invocation_metadata_dict.get("request_id")
+
+    def traceparent(self) -> Optional[str]:
+        """Accesses the traceparent for the RPC.
+
+        Returns:
+          The traceparent for the RPC.
+        """
+        return self._invocation_metadata_dict.get("traceparent")
+
+    def tracestate(self) -> Optional[str]:
+        """Accesses the tracestate for the RPC.
+
+        Returns:
+          The tracestate for the RPC.
+        """
+        return self._invocation_metadata_dict.get("tracestate")
 
     def invocation_metadata(self) -> List[Tuple[str, str]]:
         """Accesses the metadata sent by the client.

@@ -3,14 +3,25 @@ import os
 import lance
 import pyarrow as pa
 import pytest
-from pkg_resources import parse_version
+from packaging.version import Version
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray.data import Schema
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.datasource.lance_datasink import (
+    _WRITE_LANCE_FRAGMENTS_DESCRIPTION,
+    LanceDatasink,
+    _write_fragment,
+)
+from ray.data.datasource import SaveMode
 from ray.data.datasource.path_util import _unwrap_protocol
+
+# Skip tests for older pylance versions (<=0.3.19) due to incompatible lance API changes with pyarrow v9.0.0
+pytestmark = pytest.mark.skipif(
+    Version(lance.__version__) <= Version("0.3.19"),
+    reason=f"pylance {lance.__version__} <= 0.3.19; API incompatible",
+)
 
 
 @pytest.mark.parametrize(
@@ -34,17 +45,13 @@ from ray.data.datasource.path_util import _unwrap_protocol
     [None, 100],
 )
 def test_lance_read_basic(fs, data_path, batch_size):
-    # NOTE: Lance only works with PyArrow 12 or above.
-    pyarrow_version = get_pyarrow_version()
-    if pyarrow_version is not None and pyarrow_version < parse_version("12.0.0"):
-        return
-
     df1 = pa.table({"one": [2, 1, 3, 4, 6, 5], "two": ["b", "a", "c", "e", "g", "f"]})
     setup_data_path = _unwrap_protocol(data_path)
     path = os.path.join(setup_data_path, "test.lance")
     lance.write_dataset(df1, path)
 
     ds_lance = lance.dataset(path)
+    assert ds_lance is not None
     df2 = pa.table(
         {
             "one": [1, 2, 3, 4, 5, 6],
@@ -87,7 +94,7 @@ def test_lance_read_basic(fs, data_path, batch_size):
     ds = ray.data.read_lance(path, columns=["one"])
     values = [s["one"] for s in ds.take_all()]
     assert sorted(values) == [1, 2, 3, 4, 5, 6]
-    assert ds.schema().names == ["one", "two", "three", "four"]
+    assert ds.schema().names == ["one"]
 
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
@@ -96,6 +103,7 @@ def test_lance_read_with_scanner_fragments(data_path):
     setup_data_path = _unwrap_protocol(data_path)
     path = os.path.join(setup_data_path, "test.lance")
     dataset = lance.write_dataset(table, path, max_rows_per_file=2)
+    assert dataset is not None
 
     fragments = dataset.get_fragments()
     ds = ray.data.read_lance(path, scanner_options={"fragments": fragments[:1]})
@@ -108,11 +116,6 @@ def test_lance_read_with_scanner_fragments(data_path):
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
 def test_lance_read_many_files(data_path):
-    # NOTE: Lance only works with PyArrow 12 or above.
-    pyarrow_version = get_pyarrow_version()
-    if pyarrow_version is not None and pyarrow_version < parse_version("12.0.0"):
-        return
-
     setup_data_path = _unwrap_protocol(data_path)
     path = os.path.join(setup_data_path, "test.lance")
     num_rows = 1024
@@ -135,6 +138,7 @@ def test_lance_write(data_path):
     ).write_lance(data_path, schema=schema)
 
     ds = lance.dataset(data_path)
+    assert ds is not None
     ds.count_rows() == 10
     assert ds.schema.names == schema.names
     # The schema is platform-dependent, because numpy uses int32 on Windows.
@@ -147,9 +151,10 @@ def test_lance_write(data_path):
 
     ray.data.range(10).map(
         lambda x: {"id": x["id"] + 10, "str": f"str-{x['id'] + 10}"}
-    ).write_lance(data_path, mode="append")
+    ).write_lance(data_path, mode=SaveMode.APPEND)
 
     ds = lance.dataset(data_path)
+    assert ds is not None
     ds.count_rows() == 20
     tbl = ds.to_table()
     assert sorted(tbl["id"].to_pylist()) == list(range(20))
@@ -157,9 +162,10 @@ def test_lance_write(data_path):
 
     ray.data.range(10).map(
         lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
-    ).write_lance(data_path, schema=schema, mode="overwrite")
+    ).write_lance(data_path, schema=schema, mode=SaveMode.OVERWRITE)
 
     ds = lance.dataset(data_path)
+    assert ds is not None
     ds.count_rows() == 10
     assert ds.schema == schema
 
@@ -173,6 +179,7 @@ def test_lance_write_min_rows_per_file(data_path):
     ).write_lance(data_path, schema=schema, min_rows_per_file=100)
 
     ds = lance.dataset(data_path)
+    assert ds is not None
     assert ds.count_rows() == 10
     assert ds.schema == schema
 
@@ -188,6 +195,7 @@ def test_lance_write_max_rows_per_file(data_path):
     ).write_lance(data_path, schema=schema, max_rows_per_file=1)
 
     ds = lance.dataset(data_path)
+    assert ds is not None
     assert ds.count_rows() == 10
     assert ds.schema == schema
 
@@ -196,11 +204,6 @@ def test_lance_write_max_rows_per_file(data_path):
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
 def test_lance_read_with_version(data_path):
-    # NOTE: Lance only works with PyArrow 12 or above.
-    pyarrow_version = get_pyarrow_version()
-    if pyarrow_version is not None and pyarrow_version < parse_version("12.0.0"):
-        return
-
     # Write an initial dataset (version 1)
     df1 = pa.table({"one": [2, 1, 3, 4, 6, 5], "two": ["b", "a", "c", "e", "g", "f"]})
     setup_data_path = _unwrap_protocol(data_path)
@@ -209,6 +212,7 @@ def test_lance_read_with_version(data_path):
 
     # Merge new data to create a later version (latest)
     ds_lance = lance.dataset(path)
+    assert ds_lance is not None
     # Get the initial version
     initial_version = ds_lance.version
 
@@ -242,6 +246,101 @@ def test_lance_read_with_version(data_path):
         [5, "f"],
         [6, "g"],
     ]
+
+
+@pytest.fixture
+def mock_lance_write(monkeypatch):
+    captured = {}
+
+    class _FakeLanceDatasink:
+        def __init__(self, path, **kwargs):
+            captured["path"] = path
+            captured["kwargs"] = kwargs
+
+    def _fake_write_datasink(self, datasink, **kwargs):
+        captured["datasink"] = datasink
+        captured["write_kwargs"] = kwargs
+
+    monkeypatch.setattr(ray.data.dataset, "LanceDatasink", _FakeLanceDatasink)
+    monkeypatch.setattr(ray.data.Dataset, "write_datasink", _fake_write_datasink)
+
+    return captured, _FakeLanceDatasink
+
+
+def test_write_lance_passes_namespace_args(mock_lance_write):
+    captured, fake_lance_datasink_cls = mock_lance_write
+    table_id = ["db", "table"]
+    namespace_impl = "dir"
+    namespace_properties = {"path": "/tmp/ns"}
+
+    ds = ray.data.range(1)
+    ds.write_lance(
+        "/tmp/lance-namespace-test",
+        table_id=table_id,
+        namespace_impl=namespace_impl,
+        namespace_properties=namespace_properties,
+    )
+
+    assert captured["path"] == "/tmp/lance-namespace-test"
+    assert captured["kwargs"]["table_id"] == table_id
+    assert captured["kwargs"]["namespace_impl"] == namespace_impl
+    assert captured["kwargs"]["namespace_properties"] == namespace_properties
+    assert isinstance(captured["datasink"], fake_lance_datasink_cls)
+
+
+@pytest.mark.parametrize("mode", [SaveMode.APPEND, SaveMode.OVERWRITE])
+def test_lance_namespace_write_rejects_non_create_mode(monkeypatch, mode):
+    class _FakeNamespace:
+        pass
+
+    monkeypatch.setattr(
+        "ray.data._internal.datasource.lance_datasink.get_or_create_namespace",
+        lambda namespace_impl, namespace_properties: _FakeNamespace(),
+    )
+
+    with pytest.raises(ValueError, match="Namespace writes currently only support"):
+        LanceDatasink(
+            uri="/tmp/lance-namespace-test",
+            mode=mode,
+            table_id=["db", "table"],
+            namespace_impl="dir",
+            namespace_properties={"path": "/tmp/ns"},
+        )
+
+
+@pytest.mark.parametrize(
+    "max_attempts,expected_blocks_consumed_before_write",
+    [(1, 1), (2, 3)],
+)
+def test_write_fragment_only_materializes_stream_when_retrying(
+    monkeypatch, max_attempts, expected_blocks_consumed_before_write
+):
+    import lance.fragment
+
+    consumed = {"count": 0}
+    blocks = [pa.table({"id": [i]}) for i in range(3)]
+
+    def block_stream():
+        for block in blocks:
+            consumed["count"] += 1
+            yield block
+
+    def fake_write_fragments(reader, uri, **kwargs):
+        assert consumed["count"] == expected_blocks_consumed_before_write
+        return []
+
+    monkeypatch.setattr(lance.fragment, "write_fragments", fake_write_fragments)
+
+    _write_fragment(
+        block_stream(),
+        "/tmp/lance-materialization-test",
+        retry_params={
+            "description": _WRITE_LANCE_FRAGMENTS_DESCRIPTION,
+            "match": [],
+            "max_attempts": max_attempts,
+            "max_backoff_s": 0,
+        },
+    )
 
 
 if __name__ == "__main__":

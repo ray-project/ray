@@ -560,7 +560,7 @@ Example: <br />
 2023-06-01 09:15:34,601	INFO job_manager.py:408 -- Submitting job with RAY_ADDRESS = 10.0.24.73:6379
 ```
 
-Logging format for c++ logs <br />
+Logging format for C++ logs <br />
 
 ```bash
 [year-month-day, time, pid, thread_id] (component) [file]:[line] [message]
@@ -570,6 +570,30 @@ Example: <br />
 
 ```bash
 [2023-06-01 08:47:47,457 I 31009 225171] (gcs_server) gcs_node_manager.cc:42: Registering node info, node id = 8cc65840f0a332f4f2d59c9814416db9c36f04ac1a29ac816ad8ca1e, address = 127.0.0.1, node name = 127.0.0.1
+```
+
+#### Enabling JSON format for system logs
+
+To output Ray's backend system logs in JSON format, set the ``RAY_BACKEND_LOG_JSON`` environment variable to ``1`` before starting Ray:
+
+```bash
+RAY_BACKEND_LOG_JSON=1 ray start --head
+```
+
+When enabled, the Job Supervisor Python logs output in the following JSON format:
+
+```json
+{"asctime": "2025-12-15 20:10:32,189", "levelname": "INFO", "message": "Submitting job with RAY_ADDRESS = 10.36.3.9:6379", "filename": "job_supervisor.py", "lineno": 365, "process": 1097, "job_id": "01000000", "worker_id": "f139ea85d60ab346eeb3d6fd4d80b4a39c877b44d035317ad36e558a", "node_id": "dcc7396b4fbd2c10740cbe9fe2c36acb9e560c45d770b2611b365629", "actor_id": "0aeeebe01a4be2a1ede54cb401000000", "task_id": "16310a0f0a45af5c0aeeebe01a4be2a1ede54cb401000000", "task_name": "JobSupervisor.run", "task_func_name": "ray.dashboard.modules.job.job_supervisor.JobSupervisor.run", "actor_name": "_ray_internal_job_actor_raysubmit_RKxecNZCNp4SET5g", "timestamp_ns": 1765858232189259719}
+```
+
+:::{note}
+Currently, only the Job Supervisor supports JSON format for Python system logs when ``RAY_BACKEND_LOG_JSON=1`` is set. Other Python system components such as the Dashboard, Dashboard Agent, Log Monitor, and Autoscaler Monitor do not yet support JSON format and continue to use the standard text format.
+:::
+
+C++ system logs (such as Raylet, GCS) output in the following JSON format:
+
+```json
+{"asctime":"2025-12-15 20:10:32,778","levelname":"I","message":"Initializing worker at address: 10.36.3.9:10006","filename":"core_worker_process.cc","lineno":261,"worker_id":"02000000ffffffffffffffffffffffffffffffffffffffffffffffff","node_id":"dcc7396b4fbd2c10740cbe9fe2c36acb9e560c45d770b2611b365629"}
 ```
 
 :::{note}

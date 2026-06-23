@@ -1,7 +1,11 @@
+from __future__ import annotations
+
 import copy
 import functools
-import itertools
 import logging
+import math
+import pickle
+import time
 from abc import ABC, abstractmethod
 from dataclasses import replace
 from typing import (
@@ -9,13 +13,19 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Final,
     Iterable,
     Iterator,
     List,
     Optional,
-    Tuple,
     Union,
 )
+
+from ray._private.ray_constants import (
+    DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
+    DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION,
+)
+from ray.data._internal.util import GiB
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -30,7 +40,9 @@ from ray.data._internal.compute import (
 )
 from ray.data._internal.execution.bundle_queue import (
     BaseBundleQueue,
+    EstimateSize,
     FIFOBundleQueue,
+    RebundleQueue,
     ReorderingBundleQueue,
 )
 from ray.data._internal.execution.interfaces import (
@@ -45,6 +57,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
     OpTask,
+    TaskExecDriverStats,
     estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import (
@@ -58,22 +71,65 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
-from ray.data._internal.execution.util import memory_string
+from ray.data._internal.execution.util import memory_string, merge_label_selector
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import MemoryProfiler
+from ray.data._internal.util import MemoryProfiler, iterate_with_retry
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
     BlockMetadataWithSchema,
     BlockStats,
-    _take_first_non_empty_schema,
+    TaskExecWorkerStats,
     to_stats,
 )
 from ray.data.context import DataContext
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
+
+SAFE_DEFAULT_LOGICAL_MEMORY_PER_CPU: Final[int] = int(
+    4
+    * GiB
+    * (
+        1
+        - DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION
+        - DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+    )
+)
+"""A safe default logical memory to request for map tasks and actors per logical CPU.
+
+Ray Data aims to guarantee that if you set each UDF's logical memory to at least
+the heap memory that UDF needs, the system won't oversubscribe tasks and actors.
+
+The problem is that if you set logical memory for some UDFs but not others, the
+unspecified ones fall back to 0 and the system oversubscribes anyway.
+
+To avoid that, we can default to ~2.57 GiB per CPU core. Here's where that magic number
+comes from: We want to pick the largest logical memory (so it's safe) that won't
+decrease concurrency (so we don't regress performance). Hyperscaler nodes usually
+have 4 GiB per CPU core, and Ray Core sets logical memory to physical memory minus
+30% for the object store and 10% for system-reserved memory. So, in the typical
+case, you end up with 4 GiB * 60% = ~2.57 GiB GiB of logical memory per core, and
+that's the highest you can go before you start decreasing concurrency.
+
+We use this heuristic over more sophisticated alternatives because a constant
+default is easy to reason about.
+"""
+
+
+def get_safe_default_logical_memory(ray_remote_args: Dict[str, Any]) -> int:
+    """Return a safe default logical memory (in bytes) for the given remote args."""
+    num_cpus = ray_remote_args.get("num_cpus")
+    if not num_cpus:
+        # If the map tasks or actors don't require logical CPUs, just assume it
+        # requires one logical CPU for the purpose of computing a default value.
+        default_memory = math.ceil(SAFE_DEFAULT_LOGICAL_MEMORY_PER_CPU)
+    else:
+        default_memory = math.ceil(SAFE_DEFAULT_LOGICAL_MEMORY_PER_CPU * num_cpus)
+
+    assert isinstance(default_memory, int), default_memory
+    assert default_memory > 0, default_memory
+    return default_memory
 
 
 @ray.remote(num_cpus=0)
@@ -93,7 +149,10 @@ def _get_arrow_schema_from_block(block: Block) -> "pa.Schema":
     return sample_accessor.to_arrow().schema
 
 
-def _get_schema_from_bundle(bundle: RefBundle) -> Optional["pa.Schema"]:
+def _get_schema_from_bundle(
+    bundle: RefBundle,
+    label_selector: Optional[Dict[str, str]] = None,
+) -> Optional["pa.Schema"]:
     """Extract PyArrow schema from a RefBundle.
 
     For Arrow schemas, returns directly. For Pandas blocks, runs a lightweight
@@ -124,47 +183,14 @@ def _get_schema_from_bundle(bundle: RefBundle) -> Optional["pa.Schema"]:
     if isinstance(schema, PandasBlockSchema):
         if not bundle.blocks:
             return None
-        block_ref, _ = bundle.blocks[0]
-        schema_ref = _get_arrow_schema_from_block.remote(block_ref)
+        block_ref = bundle.blocks[0].ref
+        task = _get_arrow_schema_from_block
+        if label_selector:
+            task = task.options(label_selector=label_selector)
+        schema_ref = task.remote(block_ref)
         return ray.get(schema_ref)
 
     return None
-
-
-class BaseRefBundler(ABC):
-    """Interface for the rebundling behavior of the MapOperator."""
-
-    @abstractmethod
-    def num_blocks(self) -> int:
-        """Return the total number of blocks buffered inside the bundler."""
-        pass
-
-    @abstractmethod
-    def add_bundle(self, bundle: RefBundle):
-        """Add a new input bundle to the bundler."""
-        pass
-
-    @abstractmethod
-    def has_bundle(self) -> bool:
-        """Return whether the bundler currently holds a full bundle ready to emit."""
-        pass
-
-    @abstractmethod
-    def size_bytes(self) -> int:
-        """Estimate the total size in bytes of buffered bundles."""
-        pass
-
-    @abstractmethod
-    def get_next_bundle(
-        self,
-    ) -> Tuple[List[RefBundle], RefBundle]:
-        """Pop and return the next bundled input ready for task submission."""
-        pass
-
-    @abstractmethod
-    def done_adding_bundles(self):
-        """Signal that no additional bundles will be added to the bundler so the bundler can be finalized."""
-        pass
 
 
 class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
@@ -187,12 +213,13 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         name: str,
         target_max_block_size_override: Optional[int],
         min_rows_per_bundle: Optional[int],
-        ref_bundler: Optional[BaseRefBundler],
+        ref_bundler: Optional[RebundleQueue],
         supports_fusion: bool,
         map_task_kwargs: Optional[Dict[str, Any]],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         ray_remote_args: Optional[Dict[str, Any]],
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
+        default_logical_memory_enabled: bool = False,
     ):
         # NOTE: This constructor should not be called directly; use MapOperator.create()
         # instead.
@@ -200,19 +227,34 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         if map_task_kwargs is None:
             map_task_kwargs = {}
 
+        if ray_remote_args is None:
+            ray_remote_args = {}
+
+        ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args)
+
+        # Configure a default logical memory to improve memory safety when the user has
+        # specified memory for some UDFs but not others.
+        if default_logical_memory_enabled:
+            default_memory = get_safe_default_logical_memory(ray_remote_args)
+            ray_remote_args.setdefault("memory", default_memory)
+            logger.debug(
+                f"Operator {name!r} set default logical memory to {default_memory}"
+            )
+
         self._map_transformer = map_transformer
         self._supports_fusion = supports_fusion
         self._map_task_kwargs = map_task_kwargs
-        self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
+        self._ray_remote_args = ray_remote_args
         self._ray_remote_args_fn = ray_remote_args_fn
-        self._ray_remote_args_factory_actor_locality = None
         self._remote_args_for_metrics = copy.deepcopy(self._ray_remote_args)
 
         # Bundles block references up to the min_rows_per_bundle target.
-        self._block_ref_bundler = ref_bundler or BlockRefBundler(min_rows_per_bundle)
+        self._block_ref_bundler = ref_bundler
+        if self._block_ref_bundler is None:
+            self._block_ref_bundler = RebundleQueue(EstimateSize(min_rows_per_bundle))
 
         # Queue for task outputs, either ordered or unordered (this is set by start()).
-        self._output_queue: Optional["BaseBundleQueue"] = None
+        self._output_queue: Optional[BaseBundleQueue] = None
         # Output metadata, added to on get_next().
         self._output_blocks_stats: List[BlockStats] = []
         # All active `DataOpTask`s.
@@ -237,23 +279,25 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # (e.g., schema evolution for Iceberg writes via on_write_start).
         self._on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = on_start
         self._on_start_called = False
-        # _map_transformer_ref is lazily initialized on first access.
-        # This ensures on_start callback (if registered) can modify the transformer
-        # before serialization (e.g., for Iceberg schema evolution).
-        self.__map_transformer_ref = None
 
-    @property
-    def _map_transformer_ref(self):
+    @functools.cached_property
+    def _map_transformer_ref(self) -> ObjectRef[MapTransformer]:
         """Lazily serialize _map_transformer to object store on first access.
 
         Deferred until first task submission so that on_start callbacks
         (e.g., on_write_start for Iceberg) can modify the transformer state
         before serialization.
         """
-        if self.__map_transformer_ref is None:
-            self.__map_transformer_ref = ray.put(self._map_transformer)
-            self._warn_large_udf()
-        return self.__map_transformer_ref
+        # _map_transformer_ref is lazily initialized on first access.
+        # This ensures on_start callback (if registered) can modify the transformer
+        # before serialization (e.g., for Iceberg schema evolution).
+        ref = ray.put(self._map_transformer)
+        self._warn_large_udf(ref)
+        return ref
+
+    @functools.cached_property
+    def _data_context_ref(self) -> ObjectRef[DataContext]:
+        return ray.put(self.data_context)
 
     def add_map_task_kwargs_fn(self, map_task_kwargs_fn: Callable[[], Dict[str, Any]]):
         """Add a callback function that generates additional kwargs for the map tasks.
@@ -268,7 +312,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         (e.g., schema evolution for Iceberg writes via on_write_start).
         """
         if not self._on_start_called and self._on_start is not None:
-            schema = _get_schema_from_bundle(bundled_input)
+            schema = _get_schema_from_bundle(
+                bundled_input,
+                label_selector=self.data_context.execution_options.label_selector,
+            )
             self._on_start(schema)
             self._on_start_called = True
             # Note: _map_transformer_ref is lazily initialized, so no need to
@@ -293,32 +340,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def set_additional_split_factor(self, k: int):
         self._additional_split_factor = k
 
-    def internal_input_queue_num_blocks(self) -> int:
-        return self._block_ref_bundler.num_blocks()
-
-    def internal_input_queue_num_bytes(self) -> int:
-        return self._block_ref_bundler.size_bytes()
-
-    def internal_output_queue_num_blocks(self) -> int:
-        return self._output_queue.num_blocks()
-
-    def internal_output_queue_num_bytes(self) -> int:
-        return self._output_queue.estimate_size_bytes()
-
-    def clear_internal_input_queue(self) -> None:
-        """Clear internal input queue (block ref bundler)."""
-        self._block_ref_bundler.done_adding_bundles()
-        while self._block_ref_bundler.has_bundle():
-            (input_bundles, _) = self._block_ref_bundler.get_next_bundle()
-            for input_bundle in input_bundles:
-                self._metrics.on_input_dequeued(input_bundle)
-
-    def clear_internal_output_queue(self) -> None:
-        """Clear internal output queue."""
-        while self._output_queue.has_next():
-            bundle = self._output_queue.get_next()
-            self._metrics.on_output_dequeued(bundle)
-
     @property
     def name(self) -> str:
         name = super().name
@@ -338,13 +359,14 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # config and not contain implementation code.
         compute_strategy: Optional[ComputeStrategy] = None,
         min_rows_per_bundle: Optional[int] = None,
-        ref_bundler: Optional[BaseRefBundler] = None,
+        ref_bundler: Optional[RebundleQueue] = None,
         supports_fusion: bool = True,
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         per_block_limit: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
+        isolate_workers: bool = False,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -354,12 +376,13 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             - If ActorPoolStrategy -> ActorPoolMapOperator
 
         Args:
-            transform_fn: The function to apply to each ref bundle input.
+            map_transformer: The :class:`MapTransformer` to apply to each ref
+                bundle input.
             input_op: Operator generating input data for this op.
-            init_fn: The callable class to instantiate if using ActorPoolMapOperator.
+            data_context: The :class:`DataContext` to use for this operator.
+            target_max_block_size_override: Override for target max-block-size.
             name: The name of this operator.
             compute_strategy: Customize the compute strategy for this op.
-            target_max_block_size_override: Override for target max-block-size.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
@@ -380,6 +403,14 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 bundle before any tasks are submitted. Used for deferred initialization
                 that requires schema from actual data (e.g., schema evolution for
                 Iceberg writes).
+            isolate_workers: If ``True``, ensure that other operators' tasks don't get
+                scheduled on the same worker processes as this operator's. This flag
+                is useful to prevent side-effects from affecting other operators, like
+                large PyArrow memory allocations.
+
+        Returns:
+            A ``MapOperator`` instance whose concrete subclass depends on the
+            requested compute strategy.
         """
         if (ref_bundler is not None and min_rows_per_bundle is not None) or (
             min_rows_per_bundle is not None and ref_bundler is not None
@@ -396,12 +427,12 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             map_transformer = _wrap_transformer_with_limit(
                 map_transformer, per_block_limit
             )
-
         if isinstance(compute_strategy, TaskPoolStrategy):
-            from ray.data._internal.execution.operators.task_pool_map_operator import (
-                TaskPoolMapOperator,
+            from ray.data._internal.execution.operators import (
+                get_task_pool_map_operator_cls,
             )
 
+            TaskPoolMapOperator = get_task_pool_map_operator_cls()
             return TaskPoolMapOperator(
                 map_transformer,
                 input_op,
@@ -416,12 +447,21 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
                 on_start=on_start,
+                isolate_workers=isolate_workers,
+                default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):
-            from ray.data._internal.execution.operators.actor_pool_map_operator import (
-                ActorPoolMapOperator,
+            from ray.data._internal.execution.operators import (
+                get_actor_pool_map_operator_cls,
             )
 
+            if isolate_workers:
+                logger.debug(
+                    "`isolate_workers` is set but has no effect with "
+                    "`ActorPoolStrategy` because actors are already isolated."
+                )
+
+            ActorPoolMapOperator = get_actor_pool_map_operator_cls()
             return ActorPoolMapOperator(
                 map_transformer,
                 input_op,
@@ -436,6 +476,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
                 on_start=on_start,
+                default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
@@ -447,30 +488,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             self._output_queue = ReorderingBundleQueue()
         else:
             self._output_queue = FIFOBundleQueue()
-
-        if options.locality_with_output:
-            if isinstance(options.locality_with_output, list):
-                locs = options.locality_with_output
-            else:
-                locs = [ray.get_runtime_context().get_node_id()]
-
-            class RoundRobinAssign:
-                def __init__(self, locs):
-                    self.locs = locs
-                    self.i = 0
-
-                def __call__(self, args):
-                    args = copy.deepcopy(args)
-                    args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-                        self.locs[self.i],
-                        soft=True,
-                        _spill_on_unavailable=True,
-                    )
-                    self.i += 1
-                    self.i %= len(self.locs)
-                    return args
-
-            self._ray_remote_args_factory_actor_locality = RoundRobinAssign(locs)
 
         map_transformer = self._map_transformer
         # Apply additional block split if needed.
@@ -491,11 +508,11 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # Store the potentially modified map_transformer for later use
         self._map_transformer = map_transformer
 
-    def _warn_large_udf(self):
+    def _warn_large_udf(self, udf: ObjectRef[MapTransformer]):
         """Print a warning if the UDF is too large."""
-        udf_size = ray.experimental.get_local_object_locations(
-            [self.__map_transformer_ref]
-        )[self.__map_transformer_ref]["object_size"]
+        udf_size = ray.experimental.get_local_object_locations([udf])[udf][
+            "object_size"
+        ]
         if udf_size > self.MAP_UDF_WARN_SIZE_THRESHOLD:
             logger.warning(
                 f"The UDF of operator {self.name} is too large "
@@ -507,22 +524,27 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
     def _add_input_inner(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
-
         # Add RefBundle to the bundler.
-        self._block_ref_bundler.add_bundle(refs)
-        self._metrics.on_input_queued(refs)
+        self._block_ref_bundler.add(refs)
+        self._metrics.on_input_queued(refs, input_index=0)
 
-        if self._block_ref_bundler.has_bundle():
-            # The ref bundler combines one or more RefBundles into a new larger
-            # RefBundle. Rather than dequeuing the new RefBundle, which was never
-            # enqueued in the first place, we dequeue the original RefBundles.
-            (input_refs, bundled_input) = self._block_ref_bundler.get_next_bundle()
+        if self._block_ref_bundler.has_next():
+            # The ref bundler combines one or more `RefBundle`s into a new
+            # `RefBundle`. To update metrics appropriately, we need to deque
+            # original input bundles.
+            (
+                bundled_input,
+                input_refs,
+            ) = self._block_ref_bundler.get_next_with_original()
             for bundle in input_refs:
-                self._metrics.on_input_dequeued(bundle)
+                self._metrics.on_input_dequeued(bundle, input_index=0)
 
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue
-            self._add_bundled_input(bundled_input)
+            #
+            # NOTE: This is a strict path, hence operator is *required* to launch
+            #       at least 1 task
+            self._try_schedule_task(bundled_input, strict=True)
 
     def _get_dynamic_ray_remote_args(
         self, input_bundle: Optional[RefBundle] = None
@@ -554,26 +576,21 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 # Only save to metrics if we haven't already done so.
                 if "scheduling_strategy" not in self._remote_args_for_metrics:
                     self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
-        # This should take precedence over previously set scheduling strategy, as it
-        # implements actor-based locality overrides.
-        if self._ray_remote_args_factory_actor_locality:
-            return self._ray_remote_args_factory_actor_locality(ray_remote_args)
+        ray_remote_args = merge_label_selector(
+            ray_remote_args, self.data_context.execution_options.label_selector
+        )
         return ray_remote_args
 
     @abstractmethod
-    def _add_bundled_input(self, refs: RefBundle):
-        """Add a pre-bundled upstream output to this operator.
-
-        Unlike the add_input() arg, this RefBundle has already been further bundled by
-        _block_ref_bundler up to the target size, meaning that this bundle is ready for
-        task submission.
-
-        This must be implemented by subclasses.
+    def _try_schedule_task(self, refs: RefBundle, strict: bool):
+        """Method to try schedule task handling provided bundle
 
         Args:
             refs: The fully-bundled ref bundle that should be added as input.
+            strict: Controls whether operator has to strictly follow the input handling
+                    protocol and guarantee that at least 1 task is launched.
         """
-        raise NotImplementedError
+        pass
 
     def _submit_data_task(
         self,
@@ -597,11 +614,27 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
             self._metrics.on_task_output_generated(task_index, output)
+
+            # Notify output queue that the task has produced an new output.
             self._output_queue.add(output, key=task_index)
             self._metrics.on_output_queued(output)
 
-        def _task_done_callback(task_index: int, exception: Optional[Exception]):
-            self._metrics.on_task_finished(task_index, exception)
+        def _task_done_callback(
+            task_index: int,
+            exception: Optional[Exception],
+            task_exec_stats: Optional[TaskExecWorkerStats],
+            task_exec_driver_stats: Optional[TaskExecDriverStats],
+        ):
+            # NOTE: `TaskExecStats` could be null in case there's no blocks
+            #       emitted (current limitation, since it's emitted along with
+            #       `BlockMetadata`)
+            assert exception or (
+                task_exec_driver_stats
+            ), "Driver's task execution stats must be provided on task's successful completion"
+
+            self._metrics.on_task_finished(
+                task_index, exception, task_exec_stats, task_exec_driver_stats
+            )
 
             # Estimate number of tasks and rows from inputs received and tasks
             # submitted so far
@@ -624,6 +657,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             gen,
             lambda output: _output_ready_callback(task_index, output),
             functools.partial(_task_done_callback, task_index),
+            operator_name=self.name,
         )
         self._metrics.on_task_submitted(
             task_index, inputs, task_id=data_task.get_task_id()
@@ -650,17 +684,27 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         return list(self._metadata_tasks.values()) + list(self._data_tasks.values())
 
     def all_inputs_done(self):
-        self._block_ref_bundler.done_adding_bundles()
-        while self._block_ref_bundler.has_bundle():
-            # Handle any leftover bundles in the bundler.
+        self._block_ref_bundler.finalize()
+
+        # Handle any bundles still in the bundler
+        while self._block_ref_bundler.has_next():
+            # The ref bundler combines one or more `RefBundle`s into a new
+            # `RefBundle`. To update metrics appropriately, we need to deque
+            # original input bundles.
             (
-                _,
                 bundled_input,
-            ) = self._block_ref_bundler.get_next_bundle()
+                input_refs,
+            ) = self._block_ref_bundler.get_next_with_original()
+            for bundle in input_refs:
+                self._metrics.on_input_dequeued(bundle, input_index=0)
 
-            self._add_bundled_input(bundled_input)
+            # NOTE: When `all_inputs_done` is invoked we can't guarantee that the
+            #       task will be launched since all actors might be busy.
+            self._try_schedule_task(bundled_input, strict=False)
 
-        assert self._block_ref_bundler.num_blocks() == 0, "Bundler must be empty"
+        assert (
+            self._block_ref_bundler.estimate_size_bytes() == 0
+        ), f"Bundler in {self} must be empty (got {self._block_ref_bundler.num_blocks()} blocks)"
 
         super().all_inputs_done()
 
@@ -696,11 +740,11 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._metadata_tasks.clear()
 
     @abstractmethod
-    def current_processor_usage(self) -> ExecutionResources:
+    def current_logical_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
     @abstractmethod
-    def pending_processor_usage(self) -> ExecutionResources:
+    def pending_logical_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
     @abstractmethod
@@ -733,171 +777,103 @@ def _map_task(
     """Remote function for a single operator task.
 
     Args:
-        fn: The callable that takes Iterator[Block] as input and returns
-            Iterator[Block] as output.
-        blocks: The concrete block values from the task ref bundle.
+        map_transformer: The :class:`MapTransformer` to apply, taking
+            ``Iterator[Block]`` as input and yielding ``Iterator[Block]``.
+        data_context: The :class:`DataContext` to install for this task.
+        ctx: The :class:`TaskContext` for the task, used to look up
+            per-task settings and propagate context to the UDF.
+        *blocks: The concrete block values from the task ref bundle.
         slices: List of block slices for this task to process.
+        **kwargs: Additional keyword arguments stored on ``ctx.kwargs`` and
+            forwarded to the map transformer.
 
-    Returns:
-        A generator of blocks, followed by the list of BlockMetadata for the blocks
-        as the last generator return.
+    Yields:
+        Union[Block, BlockMetadataWithSchema]: A generator of blocks, followed by the
+        list of BlockMetadata for the blocks as the last generator return.
     """
+    task_start_s = time.perf_counter()
+
+    blk_exec_stats_builder = BlockExecStats.builder()
+
     logger.debug(
         "Executing map task of operator %s with task index %d",
         ctx.op_name,
         ctx.task_idx,
     )
-    DataContext._set_current(data_context)
+
     ctx.kwargs.update(kwargs)
 
-    TaskContext.set_current(ctx)
+    with DataContext.current(data_context), TaskContext.current(ctx):
+        map_transformer.override_target_max_block_size(
+            ctx.target_max_block_size_override
+        )
 
-    stats = BlockExecStats.builder()
-    map_transformer.override_target_max_block_size(ctx.target_max_block_size_override)
-    block_iter: Iterable[Block]
-    if slices:
-        block_iter = _iter_sliced_blocks(blocks, slices)
-    else:
-        block_iter = iter(blocks)
+        retry_on = data_context.retried_map_errors
 
-    with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
-        for block in map_transformer.apply_transform(block_iter, ctx):
-            block_meta = BlockAccessor.for_block(block).get_metadata()
-            block_schema = BlockAccessor.for_block(block).schema()
+        # NOTE: We avoid the cost of deduping schemas in the task because
+        # each yielded block should have the same schema, since each one
+        # is a slice of the UDF's single output block, and we know that
+        # slicing preserves the schema (so all yielded blocks will have
+        # the same schema)
+        yielded_schema: bool = False
 
-            # Derive block execution stats
-            exec_stats = stats.build()
-            # Yield block and retrieve its Ray object serialization timing
-            stats: StreamingGeneratorStats = yield block
-            if stats:
-                exec_stats.block_ser_time_s = stats.object_creation_dur_s
-
-            exec_stats.udf_time_s = map_transformer.udf_time_s(reset=True)
-            exec_stats.task_idx = ctx.task_idx
-            exec_stats.max_uss_bytes = profiler.estimate_max_uss()
-
-            yield BlockMetadataWithSchema(
-                metadata=replace(block_meta, exec_stats=exec_stats), schema=block_schema
+        def transform_iter_factory():
+            blocks_iter = (
+                _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
             )
+            return map_transformer.apply_transform(blocks_iter, ctx)
 
-            # Reset trackers
-            stats = BlockExecStats.builder()
-            profiler.reset()
+        if retry_on:
+            block_iter = iterate_with_retry(
+                transform_iter_factory,
+                description="apply UDF transform",
+                match=None if retry_on is True else retry_on,
+                max_attempts=data_context.max_map_retries + 1,
+                unwrap_cause=True,
+            )
+        else:
+            block_iter = transform_iter_factory()
 
-    TaskContext.reset_current()
+        with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
+            for block in block_iter:
+                block_meta = BlockAccessor.for_block(block).get_metadata()
+                block_schema = BlockAccessor.for_block(block).schema()
 
+                # Finish processing before yielding the block!
+                blk_exec_stats_builder.finish()
 
-class BlockRefBundler(BaseRefBundler):
-    """Rebundles RefBundles to get them close to a particular number of rows."""
+                # Yield block and retrieve its Ray object serialization timing
+                gen_stats: StreamingGeneratorStats = yield block
 
-    def __init__(self, min_rows_per_bundle: Optional[int]):
-        """Creates a BlockRefBundler.
+                exec_stats = blk_exec_stats_builder.build(
+                    block_ser_time_s=(
+                        gen_stats.object_creation_dur_s if gen_stats else None
+                    ),
+                    udf_time_s=map_transformer.udf_time_s(reset=True),
+                    task_idx=ctx.task_idx,
+                )
 
-        Args:
-            min_rows_per_bundle: The target number of rows per bundle. Note that we
-                bundle up to this target, but only exceed it if not doing so would
-                result in an empty bundle.
-        """
-        assert (
-            min_rows_per_bundle is None or min_rows_per_bundle >= 0
-        ), "Min rows per bundle has to be non-negative"
+                # NOTE: This tracks task duration up to this point, though we're primarily
+                #       interested in task total duration
+                # TODO figure out a better way to track task total duration
+                task_dur_s = time.perf_counter() - task_start_s
 
-        self._min_rows_per_bundle = min_rows_per_bundle
-        self._bundle_buffer: List[RefBundle] = []
-        self._bundle_buffer_size = 0
-        self._bundle_buffer_size_bytes = 0
-        self._finalized = False
+                bm = BlockMetadataWithSchema.from_metadata(
+                    replace(
+                        block_meta,
+                        exec_stats=exec_stats,
+                        task_exec_stats=TaskExecWorkerStats(
+                            task_wall_time_s=task_dur_s,
+                            max_uss_bytes=profiler.estimate_max_uss(),
+                        ),
+                    ),
+                    schema=block_schema if not yielded_schema else None,
+                )
+                yield pickle.dumps(bm)
 
-    def num_blocks(self):
-        return sum(len(b.block_refs) for b in self._bundle_buffer)
-
-    def add_bundle(self, bundle: RefBundle):
-        """Add a bundle to the bundler."""
-        self._bundle_buffer.append(bundle)
-        self._bundle_buffer_size += self._get_bundle_size(bundle)
-        self._bundle_buffer_size_bytes += bundle.size_bytes()
-
-    def has_bundle(self) -> bool:
-        """Returns whether the bundler has a bundle."""
-        return self._bundle_buffer and (
-            self._min_rows_per_bundle is None
-            or self._bundle_buffer_size >= self._min_rows_per_bundle
-            or (self._finalized and self._bundle_buffer_size >= 0)
-        )
-
-    def size_bytes(self) -> int:
-        return self._bundle_buffer_size_bytes
-
-    def get_next_bundle(
-        self,
-    ) -> Tuple[List[RefBundle], RefBundle]:
-        """Gets the next bundle.
-
-        Returns:
-            A two-tuple. The first element is a list of bundles that were combined into
-            the output bundle. The second element is the output bundle.
-        """
-        assert self.has_bundle()
-
-        if self._min_rows_per_bundle is None:
-            # Short-circuit if no bundle row target was defined.
-            assert len(self._bundle_buffer) == 1
-            bundle = self._bundle_buffer[0]
-            self._bundle_buffer = []
-            self._bundle_buffer_size = 0
-            self._bundle_buffer_size_bytes = 0
-            return [bundle], bundle
-
-        remainder = []
-        output_buffer = []
-        output_buffer_size = 0
-
-        for idx, bundle in enumerate(self._bundle_buffer):
-            bundle_size = self._get_bundle_size(bundle)
-
-            # Add bundle to the output buffer so long as either
-            #   - Output buffer size is still 0
-            #   - Output buffer doesn't exceed the `_min_rows_per_bundle` threshold
-            if (
-                output_buffer_size < self._min_rows_per_bundle
-                or output_buffer_size == 0
-            ):
-                output_buffer.append(bundle)
-                output_buffer_size += bundle_size
-            else:
-                remainder = self._bundle_buffer[idx:]
-                break
-
-        self._bundle_buffer = remainder
-        self._bundle_buffer_size = sum(
-            self._get_bundle_size(bundle) for bundle in remainder
-        )
-        self._bundle_buffer_size_bytes = sum(
-            bundle.size_bytes() for bundle in remainder
-        )
-
-        return list(output_buffer), _merge_ref_bundles(*output_buffer)
-
-    def done_adding_bundles(self):
-        """Indicate that no more RefBundles will be added to this bundler."""
-        self._finalized = True
-
-    @staticmethod
-    def _get_bundle_size(bundle: RefBundle):
-        return bundle.num_rows() if bundle.num_rows() is not None else float("inf")
-
-
-def _merge_ref_bundles(*bundles: RefBundle) -> RefBundle:
-    """Merge N ref bundles into a single bundle of multiple blocks."""
-    # Check that at least one bundle is non-null.
-    bundles = [bundle for bundle in bundles if bundle is not None]
-    assert len(bundles) > 0
-    blocks = list(
-        itertools.chain(block for bundle in bundles for block in bundle.blocks)
-    )
-    owns_blocks = all(bundle.owns_blocks for bundle in bundles)
-    schema = _take_first_non_empty_schema(bundle.schema for bundle in bundles)
-    return RefBundle(blocks, owns_blocks=owns_blocks, schema=schema)
+                # Reset trackers
+                yielded_schema = True
+                blk_exec_stats_builder = BlockExecStats.builder()
 
 
 def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
