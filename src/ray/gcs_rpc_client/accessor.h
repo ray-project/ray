@@ -122,7 +122,7 @@ class JobInfoAccessor {
 /// node information in the GCS.
 class NodeInfoAccessor {
  public:
-  NodeInfoAccessor() = default;
+  NodeInfoAccessor();
   explicit NodeInfoAccessor(GcsClient *client_impl);
   virtual ~NodeInfoAccessor() = default;
 
@@ -302,7 +302,7 @@ class NodeInfoAccessor {
           ABSL_GUARDED_BY(node_cache_address_and_liveness_mutex_);
 
   /// Cached GCS server leadership status
-  std::atomic<bool> is_gcs_leader_{true};
+  std::atomic<bool> is_gcs_leader_;
 
   // TODO(dayshah): Need to refactor gcs client / accessor to avoid this.
   // https://github.com/ray-project/ray/issues/54805

@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/ray_config.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/util/container_util.h"
@@ -161,7 +162,11 @@ void JobInfoAccessor::AsyncGetNextJobID(const rpc::ItemCallback<JobID> &callback
       });
 }
 
-NodeInfoAccessor::NodeInfoAccessor(GcsClient *client_impl) : client_impl_(client_impl) {}
+NodeInfoAccessor::NodeInfoAccessor()
+    : is_gcs_leader_(!RayConfig::instance().LEADER_ELECT()) {}
+
+NodeInfoAccessor::NodeInfoAccessor(GcsClient *client_impl)
+    : client_impl_(client_impl), is_gcs_leader_(!RayConfig::instance().LEADER_ELECT()) {}
 
 void NodeInfoAccessor::RegisterSelf(rpc::GcsNodeInfo &&local_node_info,
                                     const rpc::StatusCallback &callback) {
@@ -422,9 +427,7 @@ bool NodeInfoAccessor::IsNodeAlive(const NodeID &node_id) const {
          node_iter->second.state() == rpc::GcsNodeInfo::ALIVE;
 }
 
-bool NodeInfoAccessor::IsGcsLeader() const {
-  return is_gcs_leader_.load();
-}
+bool NodeInfoAccessor::IsGcsLeader() const { return is_gcs_leader_.load(); }
 
 void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_info) {
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
