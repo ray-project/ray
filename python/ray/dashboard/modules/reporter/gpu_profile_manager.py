@@ -110,6 +110,12 @@ class GpuProfilingManager:
                 timeout=10,
             )
             return True
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "[GpuProfilingManager] `nvidia-smi` command timed out after 10s. "
+                "GPU profiling may not function correctly."
+            )
+            return False
         except Exception:
             return False
 

@@ -50,19 +50,17 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
     join_type: Union[JoinType, str]
     left_key_columns: Tuple[str]
     right_key_columns: Tuple[str]
-    num_partitions: InitVar[int]
+    num_partitions: int
     left_columns_suffix: Optional[str] = None
     right_columns_suffix: Optional[str] = None
     partition_size_hint: Optional[int] = None
     aggregator_ray_remote_args: Optional[Dict[str, Any]] = None
     _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
-    _num_outputs: Optional[int] = field(init=False, repr=False)
 
     def __post_init__(
         self,
         left_input_op: LogicalOperator,
         right_input_op: LogicalOperator,
-        num_partitions: int,
     ):
         try:
             join_type_enum = JoinType(self.join_type)
@@ -78,7 +76,10 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             "_input_dependencies",
             [left_input_op, right_input_op],
         )
-        object.__setattr__(self, "_num_outputs", num_partitions)
+
+    @property
+    def num_outputs(self) -> Optional[int]:
+        return self.num_partitions
 
     def _with_new_input_dependencies(
         self, input_dependencies: List[LogicalOperator]
@@ -219,3 +220,39 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         visitor = _ColumnReferenceCollector()
         visitor.visit(expr)
         return set(visitor.get_column_refs())
+
+    def infer_schema(self) -> Optional["Schema"]:
+        """Infer the output schema by running the shared ``join_tables``
+        utility on empty tables built from the input schemas. The same
+        utility runs at execution time, so plan-time and runtime schemas
+        agree by construction.
+        """
+        import pyarrow as pa
+
+        from ray.data._internal.execution.operators.join import join_tables
+
+        left_schema = self.input_dependencies[0].infer_schema()
+        right_schema = self.input_dependencies[1].infer_schema()
+        if not isinstance(left_schema, pa.Schema) or not isinstance(
+            right_schema, pa.Schema
+        ):
+            return None
+
+        join_type_enum = (
+            self.join_type
+            if isinstance(self.join_type, JoinType)
+            else JoinType(self.join_type)
+        )
+        try:
+            joined = join_tables(
+                left_schema.empty_table(),
+                right_schema.empty_table(),
+                join_type=join_type_enum,
+                left_key_col_names=tuple(self.left_key_columns),
+                right_key_col_names=tuple(self.right_key_columns),
+                left_columns_suffix=self.left_columns_suffix,
+                right_columns_suffix=self.right_columns_suffix,
+            )
+        except (pa.ArrowTypeError, pa.ArrowInvalid, pa.ArrowKeyError, ValueError):
+            return None
+        return joined.schema

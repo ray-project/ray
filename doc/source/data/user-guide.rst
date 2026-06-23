@@ -24,10 +24,13 @@ shows you how to achieve several tasks.
     working-with-images
     working-with-text
     working-with-tensors
+    working-with-zarr
     working-with-pytorch
     working-with-llms
+    how-to-avoid-ooms
     monitoring-your-workload
     execution-configurations
+    concurrent-dataset-execution
     batch_inference
     performance-tips
     scaling-collation-functions

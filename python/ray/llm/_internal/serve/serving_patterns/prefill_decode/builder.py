@@ -175,6 +175,44 @@ class PDServingArgs(BaseModelExtended):
                 )
         return self
 
+    @model_validator(mode="after")
+    def _default_decode_nixl_port_base(self):
+        """Shift decode's NIXL base off prefill's default (20000) so colocated replicas don't collide."""
+        self.decode_config.experimental_configs.setdefault(
+            "NIXL_SIDE_CHANNEL_PORT_BASE", 22000
+        )
+        return self
+
+    @model_validator(mode="after")
+    def _default_decode_moriio_port_base(self):
+        """Shift decode's MoRIIO handshake/notify bases off prefill's defaults.
+
+        Mirrors ``_default_decode_nixl_port_base``: a colocated P+D pair on one
+        node would otherwise share MoRIIO's default handshake/notify ports. Only
+        applies when the decode config uses the MoRIIO connector. The +1000
+        stride is well above any realistic tp_size*pp_size offset added on top.
+        """
+        kv_transfer_config = (
+            self.decode_config.engine_kwargs.get("kv_transfer_config") or {}
+        )
+        if kv_transfer_config.get("kv_connector") != "MoRIIOConnector":
+            return self
+
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.moriio import (
+            DEFAULT_HANDSHAKE_PORT_BASE,
+            DEFAULT_NOTIFY_PORT_BASE,
+            HANDSHAKE_PORT_BASE_KEY,
+            NOTIFY_PORT_BASE_KEY,
+        )
+
+        self.decode_config.experimental_configs.setdefault(
+            HANDSHAKE_PORT_BASE_KEY, DEFAULT_HANDSHAKE_PORT_BASE + 1000
+        )
+        self.decode_config.experimental_configs.setdefault(
+            NOTIFY_PORT_BASE_KEY, DEFAULT_NOTIFY_PORT_BASE + 1000
+        )
+        return self
+
 
 # ---------------------------------------------------------------------------
 # Builder

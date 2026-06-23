@@ -726,6 +726,9 @@ class ProxyStateManager:
 
         Args:
             protocol: Either "http" or "grpc"
+
+        Returns:
+            One ``Target`` per healthy proxy reachable on the requested protocol.
         """
         targets = []
         if protocol == RequestProtocol.HTTP:

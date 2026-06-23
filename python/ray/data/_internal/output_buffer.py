@@ -80,6 +80,12 @@ class BlockOutputBuffer:
     """
 
     def __init__(self, output_block_size_option: Optional[OutputBlockSizeOption]):
+        """Initialize the output buffer.
+
+        Args:
+            output_block_size_option: Options controlling the target output block size,
+                or ``None`` to disable output block size enforcement.
+        """
         self._output_block_size_option = output_block_size_option
         self._buffer = DelegatingBlockBuilder()
         self._finalized = False

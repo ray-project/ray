@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/id.h"
@@ -57,6 +58,7 @@
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/rpc_callback_types.h"
+#include "ray/util/clock.h"
 
 namespace ray::raylet {
 
@@ -150,6 +152,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// allocation.
   NodeManager(
       instrumented_io_context &io_service,
+      std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
       const NodeID &self_node_id,
       std::string self_node_name,
       const NodeManagerConfig &config,
@@ -179,7 +182,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       local_stream_socket socket,
       ray::observability::MetricInterface &memory_manager_worker_eviction_total_count,
       ray::observability::MetricInterface
-          &node_manager_unexpected_worker_failure_total_count);
+          &node_manager_unexpected_worker_failure_total_count,
+      ClockInterface &clock);
 
   void Start(rpc::GcsNodeInfo &&self_node_info);
 
@@ -337,11 +341,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                              rpc::CancelLocalTaskReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleFreeLocalObjects(rpc::FreeLocalObjectsRequest request,
+                              rpc::FreeLocalObjectsReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
                                rpc::IsLocalWorkerDeadReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
  private:
+  /// Release pinned bookkeeping and delete plasma copies for `object_ids`.
+  void FreeLocalObjects(const std::vector<ObjectID> &object_ids);
+
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
 
   /// Handle an accepted client connection.
@@ -612,10 +623,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                    rpc::CommitBundleResourcesReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `ResourcesReturn` request.
-  void HandleCancelResourceReserve(rpc::CancelResourceReserveRequest request,
-                                   rpc::CancelResourceReserveReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle a `RemovePlacementGroupBundles` request.
+  void HandleRemovePlacementGroupBundles(
+      rpc::RemovePlacementGroupBundlesRequest request,
+      rpc::RemovePlacementGroupBundlesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   void HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
                              rpc::PrestartWorkersReply *reply,
@@ -709,9 +721,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// before detecing an EOF on the socket.
   void CheckForUnexpectedWorkerDisconnects();
 
-  /// Push an error to the driver if this node is full of actors and so we are
+  /// Warn and trigger a cluster wide GC if this node is full of actors and so we are
   /// unable to schedule new tasks or actors at all.
-  void WarnResourceDeadlock();
+  void WarnAndGCStuckActors();
 
   /// Dispatch tasks to available workers.
   void DispatchScheduledTasksToWorkers();
@@ -866,7 +878,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<core::experimental::MutableObjectProviderInterface>
       mutable_object_provider_;
   /// The runner to run function periodically.
-  std::shared_ptr<PeriodicalRunner> periodical_runner_;
+  std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
   /// The period used for the resources report timer.
   uint64_t report_resources_period_ms_;
   /// Incremented each time we encounter a potential resource deadlock condition.
@@ -969,8 +981,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// The period between debug state dumps.
   uint64_t record_metrics_period_ms_;
 
-  /// Last time metrics are recorded.
-  uint64_t last_metrics_recorded_at_ms_ = 0;
+  /// Last time metrics are recorded (monotonic).
+  SteadyTimePoint last_metrics_recorded_at_;
 
   /// The number of workers killed due to memory above threshold since last report.
   uint64_t number_workers_killed_by_oom_ = 0;
@@ -1008,6 +1020,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
 
   std::atomic_bool &shutting_down_;
+
+  /// Clock used for timing.
+  ClockInterface &clock_;
 
   /// An acceptor for new clients.
   boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor_;
