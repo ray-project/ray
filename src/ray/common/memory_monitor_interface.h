@@ -56,10 +56,14 @@ struct CgroupMemorySnapshot {
   /// size of shared memory mappings within the cgroup in bytes.
   int64_t shmem_memory_bytes;
 
+  /// total current memory usage of the cgroup in bytes.
+  int64_t current_memory_bytes;
+
   friend std::ostream &operator<<(std::ostream &os,
                                   const CgroupMemorySnapshot &memory_snapshot) {
     os << "Anon memory bytes: " << memory_snapshot.anon_memory_bytes
-       << ", Shmem memory bytes: " << memory_snapshot.shmem_memory_bytes;
+       << ", Shmem memory bytes: " << memory_snapshot.shmem_memory_bytes
+       << ", Current memory bytes: " << memory_snapshot.current_memory_bytes;
     return os;
   }
 };
@@ -106,6 +110,7 @@ class MemoryMonitorInterface {
   static constexpr int64_t kNull = -1;
   /// The logging frequency. Decoupled from how often the monitor runs.
   static constexpr uint32_t kLogIntervalMs = 5000;
+  static constexpr uint32_t kErrorLogIntervalMs = 60000;
 };
 
 }  // namespace ray

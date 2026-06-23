@@ -18,6 +18,7 @@
 #include <filesystem>
 #include <fstream>
 #include <tuple>
+#include <utility>
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -42,8 +43,8 @@ const MemoryUsageSnapshot MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
   return MemoryUsageSnapshot{system_used_bytes, system_total_bytes};
 }
 
-const StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound>
-MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
+const StatusSetOr<std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>, StatusT::NotFound>
+MemoryMonitorUtils::TakeUserAndSystemSliceMemoryUsageSnapshot(
     const std::string &user_cgroup_path,
     const std::string &system_cgroup_path,
     const std::string &proc_dir) {
@@ -62,16 +63,17 @@ MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
       error_reasons.push_back(absl::StrFormat(
           "system cgroup: %s", system_cgroup_memory_snapshot_or.message()));
     }
-    return StatusT::NotFound(
-        absl::StrFormat("Failed to take memory snapshot of user slice usage relative to "
-                        "the system due to: %s",
-                        absl::StrJoin(error_reasons, ", ")));
+    return StatusT::NotFound(absl::StrFormat(
+        "Failed to take memory snapshot of user and system slice usage relative to "
+        "the system due to: %s",
+        absl::StrJoin(error_reasons, ", ")));
   }
 
-  auto [_, host_level_total_bytes] = GetLinuxMemoryBytes(proc_dir);
-  if (host_level_total_bytes == MemoryMonitorInterface::kNull) {
+  auto [host_level_used_bytes, host_level_total_bytes] = GetLinuxMemoryBytes(proc_dir);
+  if (host_level_used_bytes == MemoryMonitorInterface::kNull ||
+      host_level_total_bytes == MemoryMonitorInterface::kNull) {
     return StatusT::NotFound(absl::StrFormat(
-        "Failed to take memory snapshot of user slice usage relative to "
+        "Failed to take memory snapshot of user and system slice usage relative to "
         "the system memory due to failure to get total memory bytes from host machine. "
         "Is %s/meminfo file accessible?",
         proc_dir));
@@ -86,10 +88,17 @@ MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
   // for approximating object store usage since shared memory accounting between
   // the system and user slice is in-determinant per:
   // https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-ownership
-  int64_t total_used_bytes = user_cgroup_memory_snapshot.anon_memory_bytes +
-                             user_cgroup_memory_snapshot.shmem_memory_bytes +
-                             system_cgroup_memory_snapshot.shmem_memory_bytes;
-  return MemoryUsageSnapshot{total_used_bytes, host_level_total_bytes};
+  int64_t total_user_slice_used_bytes = user_cgroup_memory_snapshot.anon_memory_bytes +
+                                        user_cgroup_memory_snapshot.shmem_memory_bytes +
+                                        system_cgroup_memory_snapshot.shmem_memory_bytes;
+  // We compute the system slice usage by subtracting the user slice usage from the total
+  // system usage. This way, we can account for the memory usage of processes outside
+  // ray's userspace and the kernel.
+  int64_t total_system_slice_used_bytes =
+      host_level_used_bytes - total_user_slice_used_bytes;
+  return std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>{
+      MemoryUsageSnapshot{total_user_slice_used_bytes, host_level_total_bytes},
+      MemoryUsageSnapshot{total_system_slice_used_bytes, host_level_total_bytes}};
 }
 
 const StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound>
@@ -121,6 +130,20 @@ MemoryMonitorUtils::TakeCgroupMemorySnapshot(const std::string &root_cgroup_path
                           "and cgroupv2 active?",
                           root_cgroup_path));
     }
+
+    // Read the total current memory usage of the cgroup from memory.current.
+    std::string v2_usage_path = root_cgroup_path + "/" + kCgroupsV2MemoryUsagePath;
+    std::ifstream usage_f(v2_usage_path, std::ios::in | std::ios::binary);
+    int64_t current_memory_bytes = MemoryMonitorInterface::kNull;
+    if (!usage_f || !(usage_f >> current_memory_bytes)) {
+      return StatusT::NotFound(
+          absl::StrFormat("Failed to read current memory usage from %s. "
+                          "Is the provided cgroupv2 path valid "
+                          "and cgroupv2 active?",
+                          v2_usage_path));
+    }
+    snapshot.current_memory_bytes = current_memory_bytes;
+
     return snapshot;
   }
 

@@ -70,11 +70,20 @@ You can also use the `dmesg <https://phoenixnap.com/kb/dmesg-linux#:~:text=The%2
     :align: center
 
 
-As mentioned above, having the Linux OOM killer trigger before the Ray OOM killer is undesirable.
-In Ray 2.56 and above, enable resource isolation mode by passing ``--enable-resource-isolation`` when starting Ray
-to ensure that the Ray OOM killer triggers before the Linux OOM killer. If resource isolation is already enabled but Linux OOM kills still occur,
-the system overhead is likely consuming the memory allocated for user processes. In that case, increase the
-memory reserved for system processes by setting a higher value for the ``--system-reserved-memory`` option when starting Ray in resource isolation mode.
+As mentioned above, having the Linux OOM killer trigger before the Ray OOM killer is undesirable. 
+In Ray 2.56 and above, enable resource isolation mode by passing ``--enable-resource-isolation`` when starting Ray 
+to ensure that the Ray OOM killer triggers before the Linux OOM killer. 
+
+It's still possible for Linux OOM kills to occur if the system overhead consumes more memory than 
+what's reserved for it (default to 10% with a minimum of 500MB and a maximum of 10GB). 
+Ray will log something similar to the following example if it detects this scenario.
+
+.. code-block:: bash
+
+  System slice memory usage 10869600256 bytes has exceeded the reserved system memory of 10737418240 bytes. This can prevent Ray from being able to provide the proper protection to critical system processes and can lead to node deaths and significant loss of progress. Please consider passing a system reserved memory value that is higherthan the current system slice memory usage via the --system_reserved_memory flag when starting the raylet.
+
+When you see kernel OOM or the log when resource isolation is enabled, please increase memory reserved for system processes 
+by setting a higher value than the reported system slice memory usage for the ``--system-reserved-memory`` flag when starting Ray in resource isolation mode.
 
 .. note::
 
