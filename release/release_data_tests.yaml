@@ -87,8 +87,8 @@
       --max-bucket-size {{max_bucket_size}}
       --batch-target-bytes {{batch_target_bytes}}
       --max-coalesced-scan-bytes {{max_coalesced_scan_bytes}}
-      --read-threads 4
-      --batch-readahead 1
+      --read-threads 1
+      --batch-readahead 8
 #      --max-calls 1
 #      --footer-size-estimate off
 #      --write-output s3://runtime-release-test-artifacts/read_path_optimisation/chunked_parquet_write_output/{{file_size}}_{{num_files}}_{{row_group_size}}_{{compression_ratio}}_{{max_bucket_size}}_{{batch_target_bytes}}_{{use_version}}_{{trial}}
