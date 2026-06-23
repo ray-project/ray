@@ -1129,6 +1129,14 @@ class Replica:
 
         self._direct_ingress_http_server_task: Optional[asyncio.Task] = None
         self._direct_ingress_grpc_server_task: Optional[asyncio.Task] = None
+        # Server objects backing the tasks above, used for graceful shutdown
+        # (uvicorn.Server and gRPCGenericServer, respectively).
+        self._direct_ingress_http_server = None
+        self._direct_ingress_grpc_server = None
+
+        # Set after the graceful shutdown drain completes; new handle-path
+        # requests are then rejected (the router retries them elsewhere).
+        self._quiescing = False
 
         self._num_queued_requests = 0
         self._reserved_slots: Set[str] = set()
@@ -1311,7 +1319,17 @@ class Replica:
                 "serve_access_log": True,
             }
 
+    def _is_replica_quiescing(self, request_metadata: RequestMetadata) -> bool:
+        # During graceful shutdown, reject new handle-path requests so the
+        # router retries them on another replica. Direct ingress requests are
+        # not rejected: their servers are shutting down gracefully and anything
+        # that still arrives is served to completion.
+        return self._quiescing and not request_metadata.is_direct_ingress
+
     def _can_accept_request(self, request_metadata: RequestMetadata) -> bool:
+        if self._is_replica_quiescing(request_metadata):
+            return False
+
         if request_metadata.is_direct_ingress:
             limit = self.max_queued_requests
             if limit != -1 and self._num_queued_requests >= limit:
@@ -1630,6 +1648,17 @@ class Replica:
     async def handle_request_with_rejection(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ):
+        # Reject new requests once quiescing so the router retries them on
+        # another replica.
+        if self._is_replica_quiescing(request_metadata):
+            logger.info(
+                "Replica is shutting down, rejecting request "
+                f"{request_metadata.request_id}.",
+                extra={"log_to_stderr": False},
+            )
+            yield ReplicaQueueLengthInfo(False, self.get_num_ongoing_requests())
+            return
+
         # Check if the replica has capacity for the request.
         if not self._can_accept_request(request_metadata):
             limit = self.max_ongoing_requests
@@ -1897,7 +1926,7 @@ class Replica:
                 )
             else:
                 logger.info(
-                    "Graceful shutdown complete; replica exiting.",
+                    "Drained ongoing requests; shutting down servers.",
                     extra={"log_to_stderr": False},
                 )
                 break
@@ -1922,6 +1951,15 @@ class Replica:
     async def perform_graceful_shutdown(self):
         self._shutting_down = True
 
+        # Shutdown budget, mirroring the controller's force-kill deadline (see
+        # `DeploymentReplica.stop`). Each step below consumes from it; once
+        # exhausted, steps degrade to an abrupt close.
+        shutdown_budget_s = self._deployment_config.graceful_shutdown_timeout_s
+        shutdown_deadline = time.monotonic() + shutdown_budget_s
+
+        def remaining_grace_s() -> float:
+            return max(0.0, shutdown_deadline - time.monotonic())
+
         # If the replica was never initialized it never served traffic, so we
         # can skip the drain entirely.
         if self._user_callable_initialized:
@@ -1935,14 +1973,61 @@ class Replica:
             )
             await self._drain_ongoing_requests(min_draining_period_s)
 
-        # Close listeners before tearing down user code so a late connection
-        # can't hit a mid-shutdown replica (the drain above ensured none remain).
+        # Requests can still arrive after the drain (stale routers, keep-alive
+        # connections). Quiesce before reporting shutdown complete: reject new
+        # handle-path requests and shut every server down gracefully, so the
+        # controller's subsequent `ray.kill` can't sever an in-flight request.
+        self._quiescing = True
+
+        if self._direct_ingress_http_server is not None:
+            # Stop accepting, close idle keep-alives, finish in-flight
+            # requests, then the serve task exits.
+            self._direct_ingress_http_server.should_exit = True
+            try:
+                # On timeout, `wait_for` cancels the server task (abrupt close).
+                await asyncio.wait_for(
+                    self._direct_ingress_http_server_task,
+                    timeout=remaining_grace_s(),
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Direct ingress HTTP server didn't shut down gracefully "
+                    "within the graceful shutdown budget; closing it abruptly."
+                )
+            except Exception:
+                logger.exception("Error shutting down the direct ingress HTTP server.")
+        # Always cancel the task so the listener is guaranteed to stop even if
+        # the graceful close above errored (mirrors the gRPC path below).
         if self._direct_ingress_http_server_task:
             self._direct_ingress_http_server_task.cancel()
+
+        if self._direct_ingress_grpc_server is not None:
+            # Stop accepting new RPCs; wait for in-flight ones up to the
+            # remaining grace.
+            try:
+                await self._direct_ingress_grpc_server.stop(remaining_grace_s())
+            except Exception:
+                logger.exception("Error shutting down the direct ingress gRPC server.")
         if self._direct_ingress_grpc_server_task:
             self._direct_ingress_grpc_server_task.cancel()
 
+        # Stop the inter-deployment gRPC server (handle-path traffic) so
+        # `ray.kill` can't sever an executing handle request. Gate on the
+        # port: `self._server` is constructed in `__init__` but only started
+        # in `_on_initialized`.
+        if self._internal_grpc_port is not None:
+            try:
+                await self._server.stop(remaining_grace_s())
+            except Exception:
+                logger.exception(
+                    "Error shutting down the inter-deployment gRPC server."
+                )
+
         await self.shutdown()
+        logger.info(
+            "Graceful shutdown complete; replica exiting.",
+            extra={"log_to_stderr": False},
+        )
 
     async def check_health(self):
         try:
@@ -1991,11 +2076,11 @@ class Replica:
                 logger.info(f"Allocated port {port} for {protocol}")
 
                 try:
-                    server_task = await start_server_fn(port)
+                    server_task_and_server = await start_server_fn(port)
                     logger.info(
                         f"Successfully started {protocol} server on port {port}"
                     )
-                    return port, server_task
+                    return port, server_task_and_server
                 except RuntimeError as e:
                     logger.warning(
                         f"Failed to start {protocol} server on port {port}: {e}. Retrying..."
@@ -2062,7 +2147,10 @@ class Replica:
 
         (
             self._http_port,
-            self._direct_ingress_http_server_task,
+            (
+                self._direct_ingress_http_server_task,
+                self._direct_ingress_http_server,
+            ),
         ) = await allocate_and_start_server(
             start_server_fn=start_http_server,
             protocol=RequestProtocol.HTTP,
@@ -2085,7 +2173,10 @@ class Replica:
 
             (
                 self._grpc_port,
-                self._direct_ingress_grpc_server_task,
+                (
+                    self._direct_ingress_grpc_server_task,
+                    self._direct_ingress_grpc_server,
+                ),
             ) = await allocate_and_start_server(
                 start_server_fn=start_grpc_server_fn,
                 protocol=RequestProtocol.GRPC,
