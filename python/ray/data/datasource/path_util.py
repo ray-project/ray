@@ -377,7 +377,10 @@ def _expand_glob(
     # bare bucket/key form that PyArrow returns internally (e.g.
     # "bucket/prefix" instead of "s3://bucket/prefix").
     base_stripped = _unwrap_protocol(base)
-    if _has_glob_chars(base_stripped):
+    # Check the original base (with scheme) so that '?' and '[...]' in the
+    # bucket/host name are detected — _has_glob_chars only treats these as
+    # metacharacters for paths with a URI scheme.
+    if _has_glob_chars(base):
         raise ValueError(
             f"Glob pattern {path!r} contains wildcards in the bucket/host "
             "name, which is not supported. Use wildcards in the path only."
@@ -391,8 +394,16 @@ def _expand_glob(
     # this would require iterative expansion (list matching dirs, then descend),
     # which adds complexity. Current approach favors simplicity over efficiency.
     pat_segs = pattern.split("/")
+    # Recursive listing is needed when the pattern traverses subdirectories:
+    # - '**' explicitly requests recursive matching
+    # - '*' in a non-terminal segment (e.g. sub*/file.parquet)
+    # - '[...]' or '?' in a non-terminal segment (e.g. sub[12]/file.parquet)
+    # We check segments directly (not via _has_glob_chars) because individual
+    # segments lack a URI scheme and _has_glob_chars only treats '?' and
+    # '[...]' as metacharacters for cloud URIs.
     needs_recursive = "**" in pattern or any(
-        _has_glob_chars(seg) for seg in pat_segs[:-1]
+        "*" in seg or "?" in seg or re.search(r"\[[^\]]+\]", seg)
+        for seg in pat_segs[:-1]
     )
     try:
         selector = pyarrow.fs.FileSelector(base_stripped, recursive=needs_recursive)
