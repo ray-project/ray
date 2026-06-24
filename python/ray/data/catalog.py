@@ -155,18 +155,7 @@ class DatabricksUnityCatalog(Catalog):
         table_info = self._get_table_info(table)
         creds, table_url = self._get_creds(table_info.table_id)
 
-        # Deliver vended credentials via environment variables. This is the
-        # mechanism the underlying libraries read uniformly: pyarrow (Parquet
-        # data, and S3/Azure/GCS auto-filesystems) and deltalake's object_store
-        # (the Delta transaction *log* read in `DeltaTable(...)`, which neither
-        # a pyarrow `filesystem` nor `storage_options` keyed for pyarrow would
-        # satisfy). See `_apply_env` for the worker-propagation note.
-        #
-        # TODO: remove the env-var + ray.init mechanism once credential vending
-        # is performed inside the read tasks themselves (worker-side).
-        self._apply_env(self._creds_to_env(creds))
-
-        # Some reads need an explicit pyarrow filesystem rather than env vars:
+        # Some reads need an explicit pyarrow filesystem:
         #  - AWS Delta: the vended session token isn't reliably propagated through
         #    `DeltaTable.to_pyarrow_dataset`'s auto-built filesystem.
         #  - GCP Parquet: a bare OAuth token has no env var pyarrow auto-reads,
@@ -189,6 +178,17 @@ class DatabricksUnityCatalog(Catalog):
             filesystem = self._build_gcs_filesystem(
                 creds.gcp_oauth_token, creds.expiration_time
             )
+
+        # Deliver vended credentials via environment variables. This is the
+        # mechanism the underlying libraries read uniformly: pyarrow (Parquet
+        # data, and S3/Azure/GCS auto-filesystems) and deltalake's object_store
+        # (the Delta transaction *log* read in `DeltaTable(...)`, which neither
+        # a pyarrow `filesystem` nor `storage_options` keyed for pyarrow would
+        # satisfy). See `_apply_env` for the worker-propagation note.
+        #
+        # TODO: remove the env-var + ray.init mechanism once credential vending
+        # is performed inside the read tasks themselves (worker-side).
+        self._apply_env(self._creds_to_env(creds))
 
         return ResolvedSource(
             path=table_url,
@@ -331,6 +331,9 @@ class DatabricksUnityCatalog(Catalog):
         TODO: remove once credential vending happens inside the read tasks.
         """
         import ray
+
+        if not env_vars:
+            return
 
         for k, v in env_vars.items():
             os.environ[k] = v
