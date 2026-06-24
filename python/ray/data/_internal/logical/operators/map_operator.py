@@ -43,10 +43,13 @@ __all__ = [
     "MapRows",
     "Project",
     "StreamingRepartition",
+    "CSE_TEMP_COLUMN_PREFIX",
 ]
 
 
 logger = logging.getLogger(__name__)
+
+CSE_TEMP_COLUMN_PREFIX = "__ray_data_cse_"
 
 
 @dataclass(frozen=True, repr=False, eq=False, init=False)
@@ -59,7 +62,6 @@ class AbstractMap(AbstractOneToOne):
         self,
         name: Optional[str] = None,
         input_dependencies: Optional[List[LogicalOperator]] = None,
-        num_outputs: Optional[int] = None,
         *,
         can_modify_num_rows: bool,
         min_rows_per_bundled_input: Optional[int] = None,
@@ -76,7 +78,6 @@ class AbstractMap(AbstractOneToOne):
             input_dependencies: The operators preceding this operator in the plan
                 DAG. The outputs of these operators will be the inputs to this
                 operator.
-            num_outputs: Number of outputs for this operator.
             can_modify_num_rows: Whether the operator can change the row count. False if
                 # of input rows = # of output rows. True otherwise.
             min_rows_per_bundled_input: Minimum number of rows a single bundle of
@@ -96,7 +97,6 @@ class AbstractMap(AbstractOneToOne):
         super().__init__(
             input_dependencies=input_dependencies,
             can_modify_num_rows=can_modify_num_rows,
-            num_outputs=num_outputs,
             name=name,
         )
         object.__setattr__(
@@ -246,7 +246,6 @@ class MapBatches(AbstractUDFMap):
     ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     per_block_limit: Optional[int] = None
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -257,7 +256,6 @@ class MapBatches(AbstractUDFMap):
             "_name",
             self._get_operator_name(self.__class__.__name__, self.fn),
         )
-        object.__setattr__(self, "_num_outputs", None)
 
 
 @dataclass(frozen=True, repr=False, eq=False)
@@ -276,14 +274,12 @@ class MapRows(AbstractUDFMap):
     can_modify_num_rows: bool = field(init=False, default=False)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     per_block_limit: Optional[int] = None
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         if self.compute is None:
             object.__setattr__(self, "compute", TaskPoolStrategy())
         object.__setattr__(self, "_name", self._get_operator_name("Map", self.fn))
-        object.__setattr__(self, "_num_outputs", None)
 
 
 @dataclass(frozen=True, repr=False, eq=False)
@@ -303,7 +299,6 @@ class Filter(AbstractUDFMap, LogicalOperatorPreservesSchema):
     can_modify_num_rows: bool = field(init=False, default=True)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     per_block_limit: Optional[int] = None
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -320,7 +315,6 @@ class Filter(AbstractUDFMap, LogicalOperatorPreservesSchema):
             "_name",
             self._get_operator_name(self.__class__.__name__, self.fn),
         )
-        object.__setattr__(self, "_num_outputs", None)
 
     def is_expression_based(self) -> bool:
         return self.predicate_expr is not None
@@ -348,6 +342,11 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for all Projection Operations."""
 
     exprs: list["Expr"]
+    _common_sub_exprs: list["Expr"] = field(
+        default_factory=list,
+        repr=False,
+        kw_only=True,
+    )
     input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
     compute: Optional[ComputeStrategy] = None
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
@@ -358,7 +357,6 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
     batch_format: str = field(init=False, default="pyarrow")
     zero_copy_batch: bool = field(init=False, default=True)
     per_block_limit: Optional[int] = None
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -377,7 +375,9 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
             )
         if self.compute is None:
             object.__setattr__(
-                self, "compute", self._detect_and_get_compute_strategy(self.exprs)
+                self,
+                "compute",
+                self._detect_and_get_compute_strategy(self.get_all_exprs()),
             )
         for expr in self.exprs:
             if expr.name is None and not isinstance(expr, StarExpr):
@@ -385,7 +385,6 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
                     "All Project expressions must be named (use .alias(name) or col(name)), "
                     "or be a star() expression."
                 )
-        object.__setattr__(self, "_num_outputs", None)
 
     def _detect_and_get_compute_strategy(self, exprs: list["Expr"]) -> ComputeStrategy:
         """Detect if expressions contain callable class UDFs and return appropriate compute strategy.
@@ -423,6 +422,13 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
 
         return None
 
+    def get_common_sub_exprs(self) -> list["Expr"]:
+        return self._common_sub_exprs
+
+    def get_all_exprs(self) -> list["Expr"]:
+        """Both projection expressions and common expressions"""
+        return [*self._common_sub_exprs, *self.exprs]
+
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         return PredicatePassThroughBehavior.PASSTHROUGH_WITH_SUBSTITUTION
 
@@ -449,9 +455,18 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
         # (``PandasBlockSchema`` chains fall back to ``limit(1)`` execution.)
         if not isinstance(input_schema, pa.Schema):
             return None
-        fields = exprlist_to_fields(self.exprs, input_schema)
+        working_schema = input_schema
+        for common_expr in self.get_common_sub_exprs():
+            field = common_expr.to_field(working_schema)
+            if field is None:
+                return None
+            working_schema = working_schema.append(field)
+        fields = exprlist_to_fields(self.exprs, working_schema)
         if fields is None:
             return None
+        if self.get_common_sub_exprs():
+            temp_names = {expr.name for expr in self.get_common_sub_exprs()}
+            fields = [field for field in fields if field.name not in temp_names]
         return pa.schema(fields)
 
 
@@ -471,7 +486,6 @@ class FlatMap(AbstractUDFMap):
     can_modify_num_rows: bool = field(init=False, default=True)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     per_block_limit: Optional[int] = None
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -482,7 +496,6 @@ class FlatMap(AbstractUDFMap):
             "_name",
             self._get_operator_name(self.__class__.__name__, self.fn),
         )
-        object.__setattr__(self, "_num_outputs", None)
 
 
 @dataclass(frozen=True, repr=False, eq=False)
@@ -513,7 +526,6 @@ class StreamingRepartition(
     ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
     compute: Optional[ComputeStrategy] = None
     per_block_limit: Optional[int] = None
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -529,7 +541,6 @@ class StreamingRepartition(
             "_name",
             f"StreamingRepartition[num_rows_per_block={self.target_num_rows_per_block},strict={self.strict}]",
         )
-        object.__setattr__(self, "_num_outputs", None)
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # StreamingRepartition only re-bundles rows into different block sizes.

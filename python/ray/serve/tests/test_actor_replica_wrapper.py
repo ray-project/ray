@@ -60,6 +60,9 @@ class SlotReservationActor:
         replica._reserved_slots = set()
         replica._semaphore = Semaphore(lambda: max_ongoing_requests)
         replica._metrics_manager = _IntMetricsManager()
+        # __init__ is bypassed; set the quiesce flag read by
+        # _can_accept_request (reservations are rejected once quiescing).
+        replica._quiescing = False
         self._replica = replica
 
     async def reserve_slot(self, request_metadata, slot_token: str):
