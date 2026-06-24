@@ -117,3 +117,13 @@ ray_cc_test(
         "//src/ray/util:raii",
     ],
 )
+
+ray_cc_test(
+    name = "redis_context_test",
+    size = "small",
+    srcs = ["redis_context_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/gcs/store_client:redis_store_client",
+    ],
+)
