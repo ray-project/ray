@@ -6,8 +6,8 @@
 # attention + gradient checkpointing and a modest batch. On A100-40GB you can
 # raise batch_size to 8 and drop gradient_checkpointing.
 #
-# Pair with the torchrun launcher for a parity baseline (same node):
-#   torchrun --nproc_per_node=8 -m core.runner \
+# Pair with the torchrun launcher for a parity baseline (run ON the GPU node):
+#   torchrun --standalone --nproc_per_node=8 -m core.runner \
 #       --experiment experiments/qwen3_06b_deepspeed.yaml --launcher torchrun
 name: qwen3_06b_deepspeed
 launcher: ray

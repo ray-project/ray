@@ -50,6 +50,7 @@ _COLUMNS = [
     ("MFU%", "train/mfu", lambda v: f"{v * 100:.1f}"),
     ("TFLOP/s/gpu", "train/model_tflops_per_sec_per_device", _g),
     ("util%", "gpu/utilization_mean_pct", _g),
+    ("mem_bw%", "gpu/memory_bw_util_mean_pct", _g),
     ("peak_alloc_GB", "gpu/peak_memory_allocated_gb", _g),
     ("peak_resv_GB", "gpu/peak_memory_reserved_gb", _g),
     ("static_GB", "gpu/static_memory_gb", _g),

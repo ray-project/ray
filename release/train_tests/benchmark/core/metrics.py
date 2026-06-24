@@ -6,6 +6,7 @@ tokens/sec, model FLOPs, MFU, and sampled GPU utilization/memory.
 """
 
 import logging
+import os
 import statistics
 import threading
 import time
@@ -53,6 +54,39 @@ def get_gpu_peak_flops(device_name: str, precision: str) -> Optional[float]:
     return None
 
 
+# Peak HBM/GDDR memory bandwidth in bytes/sec by GPU name substring (datasheet).
+# Used as the denominator for MBU (Memory Bandwidth Utilization), the bandwidth
+# analog of MFU — the metric that explains a high-utilization-but-low-MFU run
+# (memory-bound: large-vocab softmax, small batches, inference-style decode).
+# NOTE: matched by substring, first hit wins — keep more specific keys first
+# (e.g. "h100 pcie" before "h100"). The 80GB A100 (2039 GB/s) isn't separable
+# from the 40GB (1555) by substring — the SXM name is "A100-SXM4-{40,80}GB" —
+# so "a100" maps to the conservative 40GB value; override per-experiment if on
+# 80GB via a future config knob.
+GPU_PEAK_BANDWIDTH_GBPS: Dict[str, float] = {
+    "b200": 8000.0,
+    "h200": 4800.0,
+    "h100 pcie": 2000.0,
+    "h100": 3350.0,  # SXM HBM3
+    "a100": 1555.0,  # 40GB HBM2e
+    "a10g": 600.0,
+    "l40s": 864.0,
+    "l4": 300.0,
+    "v100": 900.0,
+    "t4": 320.0,
+}
+
+
+def get_gpu_peak_bandwidth_gbps(device_name: str) -> Optional[float]:
+    """Peak memory bandwidth (GB/s) for a device name, or None if unknown."""
+    name = device_name.lower()
+    for key, bw in GPU_PEAK_BANDWIDTH_GBPS.items():
+        if key in name:
+            return bw
+    logger.warning(f"Unknown device '{device_name}' for peak bandwidth lookup.")
+    return None
+
+
 def transformer_flops_per_token(
     num_params: int,
     num_layers: int,
@@ -93,9 +127,14 @@ class GpuMonitor:
     """
 
     def __init__(self, device_index: int = 0, interval_s: float = 1.0):
-        self._device_index = device_index
+        # NVML enumerates *physical* GPUs and ignores CUDA_VISIBLE_DEVICES, so a
+        # worker restricted to one GPU (Ray Train / torchrun set CVD) must map
+        # its logical device back to the physical NVML index, or it would sample
+        # the wrong GPU. Resolve CVD here.
+        self._device_index = _physical_gpu_index(device_index)
         self._interval_s = interval_s
         self._utilization: List[float] = []
+        self._memory_activity: List[float] = []
         self._memory_used_gb: List[float] = []
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -121,6 +160,11 @@ class GpuMonitor:
                 util = self._nvml.nvmlDeviceGetUtilizationRates(handle)
                 mem = self._nvml.nvmlDeviceGetMemoryInfo(handle)
                 self._utilization.append(float(util.gpu))
+                # util.memory = % of time the memory controller was reading or
+                # writing. A coarse MBU proxy (time-active, not %-of-peak-GB/s),
+                # but it cheaply flags memory-bound steps. True MBU needs DCGM
+                # (DCGM_FI_PROF_DRAM_ACTIVE) or CUPTI counters.
+                self._memory_activity.append(float(util.memory))
                 self._memory_used_gb.append(mem.used / 1e9)
             except Exception:
                 pass
@@ -141,9 +185,27 @@ class GpuMonitor:
         return {
             "gpu/utilization_mean_pct": statistics.fmean(self._utilization),
             "gpu/utilization_max_pct": max(self._utilization),
+            "gpu/memory_bw_util_mean_pct": statistics.fmean(self._memory_activity),
+            "gpu/memory_bw_util_max_pct": max(self._memory_activity),
             "gpu/memory_used_gb_max": max(self._memory_used_gb),
             "gpu/num_samples": len(self._utilization),
         }
+
+
+def _physical_gpu_index(logical_index: int) -> int:
+    """Map a logical device index to its physical NVML index via CUDA_VISIBLE_DEVICES.
+
+    With CVD="5,3", logical cuda:0 is physical GPU 5. NVML always speaks in
+    physical indices, so without this the monitor would sample the wrong GPU.
+    """
+    cvd = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if not cvd:
+        return logical_index
+    visible = [p for p in cvd.split(",") if p.strip() != ""]
+    try:
+        return int(visible[logical_index])
+    except (ValueError, IndexError):
+        return logical_index
 
 
 class StepTimer:

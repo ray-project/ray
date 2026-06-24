@@ -12,7 +12,10 @@ import os
 import pytest
 
 from core.experiment_config import load_experiment
+from core.launchers.torchrun_ray_launcher import assign_topology
 from core.metrics import (
+    _physical_gpu_index,
+    get_gpu_peak_bandwidth_gbps,
     get_gpu_peak_flops,
     transformer_flops_per_token,
 )
@@ -94,6 +97,42 @@ def test_mfu_sanity():
     achieved = 0.5 * peak
     assert abs(achieved / peak - 0.5) < 1e-9
     assert achieved == pytest.approx(156e12)
+
+
+def test_gpu_peak_bandwidth_lookup():
+    assert get_gpu_peak_bandwidth_gbps("NVIDIA A10G") == 600.0
+    # Both A100 variants map to the conservative 40GB value (substring can't
+    # separate 40/80GB from the SXM name).
+    assert get_gpu_peak_bandwidth_gbps("NVIDIA A100-SXM4-40GB") == 1555.0
+    assert get_gpu_peak_bandwidth_gbps("NVIDIA A100-SXM4-80GB") == 1555.0
+    assert get_gpu_peak_bandwidth_gbps("Some Future GPU") is None
+
+
+def test_assign_topology_single_node():
+    # 8 workers all on one node -> ranks 0-7, all node_rank 0, local 0-7.
+    topo = assign_topology(["10.0.0.1"] * 8)
+    assert [t["rank"] for t in topo] == list(range(8))
+    assert all(t["node_rank"] == 0 for t in topo)
+    assert [t["local_rank"] for t in topo] == list(range(8))
+    assert all(t["local_world_size"] == 8 for t in topo)
+
+
+def test_assign_topology_multi_node():
+    # 2 nodes x 2 GPUs, interleaved discovery order.
+    topo = assign_topology(["a", "b", "a", "b"])
+    assert [t["node_rank"] for t in topo] == [0, 1, 0, 1]
+    assert [t["local_rank"] for t in topo] == [0, 0, 1, 1]
+    assert all(t["local_world_size"] == 2 for t in topo)
+
+
+def test_physical_gpu_index_maps_via_cvd(monkeypatch):
+    # CVD="5,3": logical cuda:0 -> physical 5, cuda:1 -> physical 3.
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "5,3")
+    assert _physical_gpu_index(0) == 5
+    assert _physical_gpu_index(1) == 3
+    # No CVD: identity.
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    assert _physical_gpu_index(2) == 2
 
 
 if __name__ == "__main__":

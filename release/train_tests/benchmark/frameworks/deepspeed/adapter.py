@@ -20,6 +20,7 @@ import torch
 from core.experiment_config import ExperimentConfig
 from core.metrics import (
     TrainMetricsCollector,
+    get_gpu_peak_bandwidth_gbps,
     get_gpu_peak_flops,
     model_flops_per_token_from_hf_config,
 )
@@ -158,12 +159,17 @@ class DeepSpeedAdapter(FrameworkAdapter):
                 torch.cuda.get_device_name(device), self.cfg.model.precision
             )
 
+        # Logical CUDA index of this worker's device — 0 when CUDA_VISIBLE_DEVICES
+        # restricts the process to one GPU (Ray/torchrun); the monitor maps it
+        # back to the physical NVML index via CVD.
+        logical_gpu_index = getattr(device, "index", None) or 0
+
         collector = TrainMetricsCollector(
             world_size=self.ctx.world_size,
             warmup_steps=self.cfg.training.warmup_steps,
             flops_per_token=self.flops_per_token(),
             peak_flops_per_gpu=peak_flops,
-            gpu_index=self.ctx.local_rank,
+            gpu_index=logical_gpu_index,
             monitor_gpu=torch.cuda.is_available(),
             device=device if torch.cuda.is_available() else None,
         )
@@ -242,7 +248,11 @@ class DeepSpeedAdapter(FrameworkAdapter):
             * self.cfg.training.gradient_accumulation_steps
         )
         if torch.cuda.is_available():
-            metrics["config/gpu"] = torch.cuda.get_device_name(device)
+            gpu_name = torch.cuda.get_device_name(device)
+            metrics["config/gpu"] = gpu_name
+            peak_bw = get_gpu_peak_bandwidth_gbps(gpu_name)
+            if peak_bw is not None:
+                metrics["gpu/peak_memory_bandwidth_gbps"] = peak_bw
 
         self.ctx.report(metrics)
         if self.ctx.world_rank == 0:

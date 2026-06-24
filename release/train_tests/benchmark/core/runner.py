@@ -1,12 +1,13 @@
 """Benchmark entrypoint: load an experiment YAML, dispatch to a launcher.
 
 Usage:
-    # Ray Train (default launcher)
-    RAY_TRAIN_V2_ENABLED=1 python -m core.runner \
-        --experiment experiments/qwen3_06b_deepspeed.yaml
+    # Ray Train (default launcher) — single submission from the head node;
+    # Ray schedules the workers across the cluster's GPU nodes.
+    python -m core.runner --experiment experiments/qwen3_06b_deepspeed.yaml
 
-    # Torchrun parity baseline
-    torchrun --nproc_per_node=2 -m core.runner \
+    # Torchrun parity baseline — launched ON the GPU node(s), one process per
+    # GPU. Single node:
+    torchrun --standalone --nproc_per_node=8 -m core.runner \
         --experiment experiments/qwen3_06b_deepspeed.yaml --launcher torchrun
 
     # Override any config field inline
@@ -42,6 +43,12 @@ def run_experiment(cfg: ExperimentConfig) -> Dict[str, Any]:
         from core.launchers.torchrun_launcher import run_with_torchrun
 
         return run_with_torchrun(cfg)
+    elif cfg.launcher == "torchrun_ray":
+        # torch.distributed (env:// rendezvous) placed by Ray actors — the
+        # torchrun parity baseline without ssh-ing into GPU nodes.
+        from core.launchers.torchrun_ray_launcher import run_with_torchrun_ray
+
+        return run_with_torchrun_ray(cfg)
     raise ValueError(f"Unknown launcher: {cfg.launcher}")
 
 
@@ -99,6 +106,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    if os.environ.get("RAY_TRAIN_V2_ENABLED") is None:
-        os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
+    # Ray Train v2 is the default; no RAY_TRAIN_V2_ENABLED needed.
     main()
