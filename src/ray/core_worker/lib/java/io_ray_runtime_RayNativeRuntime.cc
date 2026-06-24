@@ -134,113 +134,112 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
     // errors for Java.
     *is_retryable_error = false;
 
-        JNIEnv *inner_env = GetJNIEnv();
-        RAY_CHECK(java_task_executor);
+    JNIEnv *inner_env = GetJNIEnv();
+    RAY_CHECK(java_task_executor);
 
-        // convert RayFunction
-        auto function_descriptor = ray_function.GetFunctionDescriptor();
-        size_t fd_hash = function_descriptor->Hash();
-        auto &fd_vector = executor_function_descriptor_cache[fd_hash];
-        jobject ray_function_array_list = nullptr;
-        for (auto &pair : fd_vector) {
-          if (pair.first == function_descriptor) {
-            ray_function_array_list = pair.second;
-            break;
-          }
+    // convert RayFunction
+    auto function_descriptor = ray_function.GetFunctionDescriptor();
+    size_t fd_hash = function_descriptor->Hash();
+    auto &fd_vector = executor_function_descriptor_cache[fd_hash];
+    jobject ray_function_array_list = nullptr;
+    for (auto &pair : fd_vector) {
+      if (pair.first == function_descriptor) {
+        ray_function_array_list = pair.second;
+        break;
+      }
+    }
+    if (!ray_function_array_list) {
+      ray_function_array_list =
+          NativeRayFunctionDescriptorToJavaStringList(inner_env, function_descriptor);
+      fd_vector.emplace_back(function_descriptor, ray_function_array_list);
+    }
+
+    // convert args
+    // TODO(kfstorm): Avoid copying binary data from Java to C++
+    jbooleanArray java_check_results = static_cast<jbooleanArray>(
+        inner_env->CallObjectMethod(java_task_executor,
+                                    java_task_executor_parse_function_arguments,
+                                    ray_function_array_list));
+    RAY_CHECK_JAVA_EXCEPTION(inner_env);
+    jobject args_array_list = ToJavaArgs(inner_env, java_check_results, args);
+
+    // invoke Java method
+    jobject java_return_objects = inner_env->CallObjectMethod(java_task_executor,
+                                                              java_task_executor_execute,
+                                                              ray_function_array_list,
+                                                              args_array_list);
+    // Check whether the exception is `IntentionalSystemExit`.
+    jthrowable throwable = inner_env->ExceptionOccurred();
+    if (throwable) {
+      Status status_to_return = Status::OK();
+      if (inner_env->IsInstanceOf(throwable,
+                                  java_ray_intentional_system_exit_exception_class)) {
+        status_to_return = Status::IntentionalSystemExit("");
+      } else if (inner_env->IsInstanceOf(throwable, java_ray_actor_exception_class)) {
+        creation_task_exception_pb =
+            SerializeActorCreationException(inner_env, throwable);
+        status_to_return = Status::CreationTaskError("");
+      } else {
+        RAY_LOG(ERROR) << "Unknown java exception was thrown while executing tasks.";
+      }
+      *application_error = status_to_return.ToString();
+      inner_env->ExceptionClear();
+      return status_to_return;
+    }
+    RAY_CHECK_JAVA_EXCEPTION(inner_env);
+
+    int64_t task_output_inlined_bytes = 0;
+    // Process return objects.
+    if (!returns->empty()) {
+      std::vector<std::shared_ptr<RayObject>> return_objects;
+      JavaListToNativeVector<std::shared_ptr<RayObject>>(
+          inner_env,
+          java_return_objects,
+          &return_objects,
+          [](JNIEnv *object_env, jobject java_native_ray_object) {
+            return JavaNativeRayObjectToNativeRayObject(object_env,
+                                                        java_native_ray_object);
+          });
+      for (size_t i = 0; i < return_objects.size(); i++) {
+        auto &result_id = (*returns)[i].first;
+        size_t data_size =
+            return_objects[i]->HasData() ? return_objects[i]->GetData()->Size() : 0;
+        auto &metadata = return_objects[i]->GetMetadata();
+        std::vector<ObjectID> contained_object_ids;
+        for (const auto &ref : return_objects[i]->GetNestedRefs()) {
+          contained_object_ids.push_back(ObjectID::FromBinary(ref.object_id()));
         }
-        if (!ray_function_array_list) {
-          ray_function_array_list =
-              NativeRayFunctionDescriptorToJavaStringList(inner_env, function_descriptor);
-          fd_vector.emplace_back(function_descriptor, ray_function_array_list);
-        }
+        auto result_ptr = &(*returns)[i].second;
 
-        // convert args
-        // TODO(kfstorm): Avoid copying binary data from Java to C++
-        jbooleanArray java_check_results = static_cast<jbooleanArray>(
-            inner_env->CallObjectMethod(java_task_executor,
-                                        java_task_executor_parse_function_arguments,
-                                        ray_function_array_list));
-        RAY_CHECK_JAVA_EXCEPTION(inner_env);
-        jobject args_array_list = ToJavaArgs(inner_env, java_check_results, args);
+        RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
+            result_id,
+            data_size,
+            metadata,
+            contained_object_ids,
+            owner_address,
+            &task_output_inlined_bytes,
+            result_ptr));
 
-        // invoke Java method
-        jobject java_return_objects =
-            inner_env->CallObjectMethod(java_task_executor,
-                                        java_task_executor_execute,
-                                        ray_function_array_list,
-                                        args_array_list);
-        // Check whether the exception is `IntentionalSystemExit`.
-        jthrowable throwable = inner_env->ExceptionOccurred();
-        if (throwable) {
-          Status status_to_return = Status::OK();
-          if (inner_env->IsInstanceOf(throwable,
-                                      java_ray_intentional_system_exit_exception_class)) {
-            status_to_return = Status::IntentionalSystemExit("");
-          } else if (inner_env->IsInstanceOf(throwable, java_ray_actor_exception_class)) {
-            creation_task_exception_pb =
-                SerializeActorCreationException(inner_env, throwable);
-            status_to_return = Status::CreationTaskError("");
-          } else {
-            RAY_LOG(ERROR) << "Unknown java exception was thrown while executing tasks.";
-          }
-          *application_error = status_to_return.ToString();
-          inner_env->ExceptionClear();
-          return status_to_return;
-        }
-        RAY_CHECK_JAVA_EXCEPTION(inner_env);
-
-        int64_t task_output_inlined_bytes = 0;
-        // Process return objects.
-        if (!returns->empty()) {
-          std::vector<std::shared_ptr<RayObject>> return_objects;
-          JavaListToNativeVector<std::shared_ptr<RayObject>>(
-              inner_env,
-              java_return_objects,
-              &return_objects,
-              [](JNIEnv *object_env, jobject java_native_ray_object) {
-                return JavaNativeRayObjectToNativeRayObject(object_env,
-                                                            java_native_ray_object);
-              });
-          for (size_t i = 0; i < return_objects.size(); i++) {
-            auto &result_id = (*returns)[i].first;
-            size_t data_size =
-                return_objects[i]->HasData() ? return_objects[i]->GetData()->Size() : 0;
-            auto &metadata = return_objects[i]->GetMetadata();
-            std::vector<ObjectID> contained_object_ids;
-            for (const auto &ref : return_objects[i]->GetNestedRefs()) {
-              contained_object_ids.push_back(ObjectID::FromBinary(ref.object_id()));
-            }
-            auto result_ptr = &(*returns)[i].second;
-
-            RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
-                result_id,
-                data_size,
-                metadata,
-                contained_object_ids,
-                owner_address,
-                &task_output_inlined_bytes,
-                result_ptr));
-
-            // A nullptr is returned if the object already exists.
-            auto result = *result_ptr;
-            if (result != nullptr) {
-              if (result->HasData()) {
-                memcpy(result->GetData()->Data(),
-                       return_objects[i]->GetData()->Data(),
-                       data_size);
-              }
-            }
-
-            RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(
-                result_id, result, ObjectID::Nil(), owner_address));
+        // A nullptr is returned if the object already exists.
+        auto result = *result_ptr;
+        if (result != nullptr) {
+          if (result->HasData()) {
+            memcpy(result->GetData()->Data(),
+                   return_objects[i]->GetData()->Data(),
+                   data_size);
           }
         }
 
-        inner_env->DeleteLocalRef(java_check_results);
-        inner_env->DeleteLocalRef(java_return_objects);
-        inner_env->DeleteLocalRef(args_array_list);
-        return Status::OK();
-      };
+        RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(
+            result_id, result, ObjectID::Nil(), owner_address));
+      }
+    }
+
+    inner_env->DeleteLocalRef(java_check_results);
+    inner_env->DeleteLocalRef(java_return_objects);
+    inner_env->DeleteLocalRef(args_array_list);
+    return Status::OK();
+  };
 
   auto gc_collect = []() {
     // A Java worker process usually contains more than one worker.
