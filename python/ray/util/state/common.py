@@ -9,13 +9,6 @@ from enum import Enum, unique
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray.dashboard.utils as dashboard_utils
-
-# TODO(aguo): Instead of a version check, modify the below models
-# to use pydantic BaseModel instead of dataclass.
-# In pydantic 2, dataclass no longer needs the `init=True` kwarg to
-# generate an __init__ method. Additionally, it will raise an error if
-# it detects `init=True` to be set.
-from ray._common.pydantic_compat import IS_PYDANTIC_2
 from ray._private.custom_types import (
     TypeActorStatus,
     TypeNodeStatus,
@@ -33,13 +26,18 @@ from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.state.exception import RayStateApiException
 
 try:
-    from pydantic.dataclasses import dataclass
-
-
+    from pydantic.dataclasses import dataclass as _pydantic_dataclass
 except ImportError:
     # pydantic is not available in the dashboard.
     # We will use the dataclass from the standard library.
     from dataclasses import dataclass
+else:
+
+    def dataclass(_cls=None, **kwargs):
+        kwargs.setdefault("init", False)
+        if _cls is None:
+            return lambda cls: _pydantic_dataclass(cls, **kwargs)
+        return _pydantic_dataclass(_cls, **kwargs)
 
 
 logger = logging.getLogger(__name__)
@@ -124,7 +122,7 @@ class Humanify:
         return resources
 
 
-@dataclass(init=not IS_PYDANTIC_2)
+@dataclass
 class ListApiOptions:
     # Maximum number of entries to return
     limit: int = DEFAULT_LIMIT
@@ -193,7 +191,7 @@ class ListApiOptions:
         return False
 
 
-@dataclass(init=not IS_PYDANTIC_2)
+@dataclass
 class GetApiOptions:
     # Timeout for the HTTP request
     timeout: int = DEFAULT_RPC_TIMEOUT
@@ -211,7 +209,7 @@ class GetApiOptions:
         assert self.timeout != 0, "0 second timeout is not supported."
 
 
-@dataclass(init=not IS_PYDANTIC_2)
+@dataclass
 class SummaryApiOptions:
     # Timeout for the HTTP request
     timeout: int = DEFAULT_RPC_TIMEOUT
@@ -395,7 +393,7 @@ def filter_fields(data: dict, state_dataclass: StateSchema, detail: bool) -> dic
     return filtered_data
 
 
-@dataclass(init=not IS_PYDANTIC_2)
+@dataclass
 class GetLogOptions:
     timeout: int
     node_id: Optional[str] = None
@@ -470,7 +468,7 @@ class GetLogOptions:
 
 # See the ActorTableData message in gcs.proto for all potential options that
 # can be included in this class.
-@dataclass(init=not IS_PYDANTIC_2)
+@dataclass
 class ActorState(StateSchema):
     """Actor State"""
 
@@ -537,7 +535,7 @@ class ActorState(StateSchema):
     fallback_strategy: Optional[dict] = state_column(detail=True, filterable=False)
 
 
-@dataclass(init=not IS_PYDANTIC_2)
+@dataclass
 class PlacementGroupState(StateSchema):
     """PlacementGroup State"""
 
@@ -580,7 +578,7 @@ class PlacementGroupState(StateSchema):
     )
 
 
-@dataclass(init=not IS_PYDANTIC_2)
+@dataclass
 class NodeState(StateSchema):
     """Node State"""
 
@@ -656,27 +654,21 @@ class JobState(StateSchema, JobDetails if JobDetails is not None else object):
             # check if the class is a pydantic model.
             return []
 
-        # TODO(aguo): Once we only support pydantic 2, we can remove this if check.
-        # In pydantic 2.0, `__fields__` has been renamed to `model_fields`.
-        return (
-            list(JobDetails.model_fields.keys())
-            if hasattr(JobDetails, "model_fields")
-            else list(JobDetails.__fields__.keys())
-        )
+        return list(JobDetails.model_fields.keys())
 
     def asdict(self):
-        return JobDetails.dict(self)
+        return self.model_dump()
 
     @classmethod
     def schema_dict(cls) -> Dict[str, Any]:
-        schema_types = cls.schema()["properties"]
+        schema_types = cls.model_json_schema()["properties"]
         # Get type name to actual type mapping.
         return {
             k: v["type"] for k, v in schema_types.items() if v.get("type") is not None
         }
 
 
-@dataclass(init=not IS_PYDANTIC_2)
+@dataclass
 class WorkerState(StateSchema):
     """Worker State"""
 
@@ -746,7 +738,7 @@ class WorkerState(StateSchema):
     num_paused_threads: Optional[int] = state_column(filterable=True, detail=True)
 
 
-@dataclass(init=not IS_PYDANTIC_2)
+@dataclass
 class ClusterEventState(StateSchema):
     severity: str = state_column(filterable=True)
     time: str = state_column(filterable=False)
@@ -756,7 +748,7 @@ class ClusterEventState(StateSchema):
     custom_fields: Optional[dict] = state_column(filterable=False, detail=True)
 
 
-@dataclass(init=not IS_PYDANTIC_2)
+@dataclass
 class TaskState(StateSchema):
     """Task State"""
 
@@ -849,7 +841,7 @@ class TaskState(StateSchema):
     fallback_strategy: Optional[dict] = state_column(detail=True, filterable=False)
 
 
-@dataclass(init=not IS_PYDANTIC_2)
+@dataclass
 class ObjectState(StateSchema):
     """Object State"""
 
@@ -907,7 +899,7 @@ class ObjectState(StateSchema):
     ip: str = state_column(filterable=True)
 
 
-@dataclass(init=not IS_PYDANTIC_2)
+@dataclass
 class RuntimeEnvState(StateSchema):
     """Runtime Environment State"""
 
@@ -963,7 +955,7 @@ for state in AVAILABLE_STATES:
 """
 
 
-@dataclass(init=not IS_PYDANTIC_2)
+@dataclass
 class ListApiResponse:
     # NOTE(rickyyx): We currently perform hard truncation when querying
     # resources which could have a large number (e.g. asking raylets for
@@ -1009,7 +1001,7 @@ Summary API schema
 DRIVER_TASK_ID_PREFIX = "ffffffffffffffffffffffffffffffffffffffff"
 
 
-@dataclass(init=not IS_PYDANTIC_2)
+@dataclass
 class TaskSummaryPerFuncOrClassName:
     #: The function or class name of this task.
     func_or_class_name: str
@@ -1028,7 +1020,7 @@ class Link:
     id: str
 
 
-@dataclass(init=not IS_PYDANTIC_2)
+@dataclass
 class NestedTaskSummary:
     #: The name of this task group
     name: str
@@ -1405,7 +1397,7 @@ class TaskSummaries:
         )
 
 
-@dataclass(init=not IS_PYDANTIC_2)
+@dataclass
 class ActorSummaryPerClass:
     #: The class name of the actor.
     class_name: str
@@ -1450,7 +1442,7 @@ class ActorSummaries:
         )
 
 
-@dataclass(init=not IS_PYDANTIC_2)
+@dataclass
 class ObjectSummaryPerKey:
     #: Total number of objects of the type.
     total_objects: int
@@ -1551,7 +1543,7 @@ class ObjectSummaries:
         )
 
 
-@dataclass(init=not IS_PYDANTIC_2)
+@dataclass
 class StateSummary:
     #: Node ID -> summary per node
     #: If the data is not required to be orgnized per node, it will contain
@@ -1559,7 +1551,7 @@ class StateSummary:
     node_id_to_summary: Dict[str, Union[TaskSummaries, ActorSummaries, ObjectSummaries]]
 
 
-@dataclass(init=not IS_PYDANTIC_2)
+@dataclass
 class SummaryApiResponse:
     # Carried over from ListApiResponse
     # We currently use list API for listing the resources
