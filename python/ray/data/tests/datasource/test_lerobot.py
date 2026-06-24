@@ -358,6 +358,31 @@ def test_read_lerobot_stats_column(ray_start_regular_shared, lerobot_dataset_no_
             )
 
 
+def test_stats_to_json_roundtrip():
+    """_stats_to_json serializes a lerobot stats dict (numpy arrays/scalars,
+    nested) to JSON that loads back to the same structure as plain Python
+    lists/numbers; empty / None serialize to "{}"."""
+    from ray.data._internal.datasource.lerobot_datasource import _stats_to_json
+
+    stats = {
+        "action": {
+            "mean": np.array([1.0, 2.0, 3.0], dtype=np.float32),
+            "std": np.array([0.5, 0.25, 0.125], dtype=np.float64),
+            "count": np.int64(1000),
+        },
+        "observation.images.cam": {
+            "min": np.array([[0.0], [0.0], [0.0]], dtype=np.float32),  # 2D / nested
+        },
+    }
+    assert json.loads(_stats_to_json(stats)) == {
+        "action": {"mean": [1.0, 2.0, 3.0], "std": [0.5, 0.25, 0.125], "count": 1000},
+        "observation.images.cam": {"min": [[0.0], [0.0], [0.0]]},
+    }
+
+    assert _stats_to_json({}) == "{}"
+    assert _stats_to_json(None) == "{}"
+
+
 def test_read_lerobot_frame_tolerance_invalid(
     ray_start_regular_shared, lerobot_dataset_no_video
 ):
@@ -608,12 +633,17 @@ def test_read_lerobot_get_read_tasks_parallelism_zero(
     assert sorted(indices) == list(range(15))
 
 
-def test_estimate_memory(
+def test_memory_estimate_and_schema_correctness(
     ray_start_regular_shared,
     lerobot_dataset,
     lerobot_dataset_no_video,
     lerobot_dataset_image,
 ):
+    """Test that our memory estimate and schema inference logic are correct.
+
+    The memory estimate is a lower bound on the real per-row size.
+    The schema is exactly what we declare up front and is exactly what we produce.
+    """
     from ray.data._internal.datasource.lerobot_datasource import (
         LeRobotDatasource,
         _estimated_row_size_bytes,
