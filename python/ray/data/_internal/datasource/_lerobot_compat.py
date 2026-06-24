@@ -79,25 +79,10 @@ def decode_frames(
     video_path: str,
     timestamps: List[float],
     tolerance_s: float,
-    storage_options: Optional[Dict[str, Any]] = None,
-    decoder_cache: Optional[Any] = None,
+    decoder_cache: Any,
 ) -> torch.Tensor:
     from lerobot.datasets.video_utils import decode_video_frames_torchcodec
 
-    if decoder_cache is not None:
-        # Caller-owned cache (credentials, if any, are baked into the cache).
-        return decode_video_frames_torchcodec(
-            video_path, timestamps, tolerance_s, decoder_cache=decoder_cache
-        )
-    if not storage_options:
-        # No explicit credentials: lerobot's default decoder cache (ambient
-        # fsspec resolution) is exactly what we want.
-        return decode_video_frames_torchcodec(video_path, timestamps, tolerance_s)
-    # Explicit credentials: stream via a credentialed decoder cache
-    cache = _creds_cache_cls()(storage_options)
-    try:
-        return decode_video_frames_torchcodec(
-            video_path, timestamps, tolerance_s, decoder_cache=cache
-        )
-    finally:
-        cache.clear()
+    return decode_video_frames_torchcodec(
+        video_path, timestamps, tolerance_s, decoder_cache=decoder_cache
+    )
