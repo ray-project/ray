@@ -8,26 +8,13 @@ myst:
 
 # API Policy
 
-Ray APIs refer to classes, class methods, or functions.
-When we declare an API, we promise our
-users that they can use these APIs to develop their
-apps without worrying about changes to these
-interfaces between different Ray releases. Declaring
-or deprecating an API has a significant impact on the
-community.  This document proposes simple policies to
-hold Ray contributors accountable to these promises
-and manage user expectations.
+Ray APIs refer to classes, class methods, or functions. When we declare an API, we promise our users that they can use these APIs to develop their apps without worrying about changes to these interfaces between different Ray releases. Declaring or deprecating an API has a significant impact on the community.  This document proposes simple policies to hold Ray contributors accountable to these promises and manage user expectations.
 
 For API exposure levels, see {ref}`API Stability <api-stability>`.
 
 ## API documentation policy
 
-Documentation is one of the main channels through which
-we expose our APIs to users. If we provide incorrect
-information, it can significantly impact the reliability
-and maintainability of our users' applications. Based on
-the API exposure level, here is the policy to ensure the
-accuracy of our information.
+Documentation is one of the main channels through which we expose our APIs to users. If we provide incorrect information, it can significantly impact the reliability and maintainability of our users' applications. Based on the API exposure level, here is the policy to ensure the accuracy of our information.
 
 ```{list-table} API Documentation Policy
 :widths: 20 16 16 16 16 16
@@ -61,9 +48,7 @@ accuracy of our information.
 
 ## API Lifecycle Policy
 
-Users have high expectations for certain exposure levels,
-so we need to be cautious when moving APIs between different
-levels. Here is the policy for managing the API exposure lifecycle.
+Users have high expectations for certain exposure levels, so we need to be cautious when moving APIs between different levels. Here is the policy for managing the API exposure lifecycle.
 
 ```{list-table} API Lifecycle Policy
 :widths: 20 16 16 16 16 16
