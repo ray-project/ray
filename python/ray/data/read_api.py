@@ -1377,8 +1377,8 @@ def read_parquet(
             For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
             used. If ``None``, this function uses a system-chosen implementation.
         catalog: An optional :class:`~ray.data.Catalog` (e.g.
-            :class:`~ray.data.UnityCatalog`) used to authenticate access. When
-            provided, ``paths`` is interpreted as a catalog table identifier
+            :class:`~ray.data.DatabricksUnityCatalog`) used to authenticate access.
+            When provided, ``paths`` is interpreted as a catalog table identifier
             (e.g. ``"catalog.schema.table"``) rather than a filesystem path, and
             the catalog resolves the physical location and credentials.
         columns: A list of column names to read. Only the specified columns are
@@ -4379,8 +4379,8 @@ def read_iceberg(
              <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
              #pyiceberg.catalog.load_catalog>`_.
         catalog: An optional :class:`~ray.data.Catalog` (e.g.
-            :class:`~ray.data.UnityCatalog`) used to authenticate access. When
-            provided, the catalog supplies ``catalog_kwargs`` pointing at its
+            :class:`~ray.data.DatabricksUnityCatalog`) used to authenticate access.
+            When provided, the catalog supplies ``catalog_kwargs`` pointing at its
             Iceberg REST endpoint. ``catalog`` will be ignored if ``catalog_kwargs``
             is specified.
         ray_remote_args: Optional arguments to pass to :func:`ray.remote` in the
@@ -4649,8 +4649,8 @@ def read_clickhouse(
     message=(
         "``read_unity_catalog`` is deprecated. Use ``read_delta``, "
         "``read_parquet``, or ``read_iceberg`` with a "
-        "``catalog=ray.data.UnityCatalog(...)`` instead. For example::\n\n"
-        "    catalog = ray.data.UnityCatalog(url=..., token=..., region=...)\n"
+        "``catalog=ray.data.DatabricksUnityCatalog(...)`` instead. For example::\n\n"
+        "    catalog = ray.data.DatabricksUnityCatalog(url=..., token=..., region=...)\n"
         "    ds = ray.data.read_delta('main.sales.transactions', catalog=catalog)"
     ),
     warning=True,
@@ -4724,9 +4724,9 @@ def read_unity_catalog(
     Returns:
         A :class:`~ray.data.Dataset` containing the data from Unity Catalog.
     """  # noqa: E501
-    from ray.data.catalog import ReaderFormat, UnityCatalog
+    from ray.data.catalog import DatabricksUnityCatalog, ReaderFormat
 
-    catalog = UnityCatalog(
+    catalog = DatabricksUnityCatalog(
         url=url,
         token=token,
         credential_provider=credential_provider,
@@ -4831,8 +4831,8 @@ def read_delta(
             For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
             used. If ``None``, this function uses a system-chosen implementation.
         catalog: An optional :class:`~ray.data.Catalog` (e.g.
-            :class:`~ray.data.UnityCatalog`) used to authenticate access. When
-            provided, ``path`` is interpreted as a catalog table identifier
+            :class:`~ray.data.DatabricksUnityCatalog`) used to authenticate access.
+            When provided, ``path`` is interpreted as a catalog table identifier
             (e.g. ``"catalog.schema.table"``) rather than a filesystem path, and
             the catalog resolves the physical location and credentials.
         columns: A list of column names to read. Only the specified columns are

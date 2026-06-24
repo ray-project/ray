@@ -87,7 +87,7 @@ class Catalog(ABC):
 
 
 @PublicAPI(stability="alpha")
-class UnityCatalog(Catalog):
+class DatabricksUnityCatalog(Catalog):
     """Databricks Unity Catalog connector.
 
     For Delta and Parquet tables this performs Unity Catalog credential vending
@@ -109,7 +109,7 @@ class UnityCatalog(Catalog):
 
     Example:
         >>> import ray
-        >>> catalog = ray.data.UnityCatalog(  # doctest: +SKIP
+        >>> catalog = ray.data.DatabricksUnityCatalog(  # doctest: +SKIP
         ...     url="https://dbc-XXXX.cloud.databricks.com",
         ...     token="dapi...",
         ...     region="us-west-2",
@@ -148,7 +148,7 @@ class UnityCatalog(Catalog):
         if reader in (ReaderFormat.DELTA, ReaderFormat.PARQUET):
             return self._resolve_storage(table, reader)
         # Reached only if a new ReaderFormat is added without handling here.
-        raise ValueError(f"UnityCatalog does not support format={reader!r}")
+        raise ValueError(f"DatabricksUnityCatalog does not support format={reader!r}")
 
     # ---- storage-credential vending (delta / parquet) ----------------------
     def _resolve_storage(self, table: str, reader: ReaderFormat) -> ResolvedSource:
@@ -169,23 +169,30 @@ class UnityCatalog(Catalog):
         # Some reads need an explicit pyarrow filesystem rather than env vars:
         #  - AWS Delta: the vended session token isn't reliably propagated through
         #    `DeltaTable.to_pyarrow_dataset`'s auto-built filesystem.
-        #  - GCP (any reader): a bare OAuth token has no env var pyarrow auto-reads,
-        #    so the data scan needs an explicit GcsFileSystem; the Delta log read
-        #    (deltalake's object_store) gets the same token via `storage_options`.
+        #  - GCP Parquet: a bare OAuth token has no env var pyarrow auto-reads,
+        #    so the data scan needs an explicit GcsFileSystem.
         filesystem = None
-        storage_options = None
         if creds.aws_temp_credentials is not None and reader is ReaderFormat.DELTA:
             filesystem = self._build_s3_filesystem(creds.aws_temp_credentials)
         elif creds.gcp_oauth_token is not None:
+            if reader is ReaderFormat.DELTA:
+                # Unity Catalog vends a GCP OAuth token, but deltalake's
+                # object_store (<=0.13.x, bundled in deltalake<=1.6.1) only
+                # accepts service-account-key auth for GCS -- it has no
+                # bearer/OAuth-token config key -- so the Delta transaction-log
+                # read can't use the vended token and silently falls back to GCE
+                # metadata-server auth.
+                raise RuntimeError(
+                    "Reading a GCP-backed Delta table via Unity Catalog "
+                    "credential vending is not supported."
+                )
             filesystem = self._build_gcs_filesystem(
                 creds.gcp_oauth_token, creds.expiration_time
             )
-            storage_options = {"bearer_token": creds.gcp_oauth_token.oauth_token}
 
         return ResolvedSource(
             path=table_url,
             filesystem=filesystem,
-            storage_options=storage_options,
             data_format=self._infer_format(table_info, table_url),
         )
 
@@ -278,8 +285,8 @@ class UnityCatalog(Catalog):
     def infer_format(self, table: str) -> Optional[ReaderFormat]:
         """Best-effort format hint from table metadata or file extension.
 
-        Calling this function will query UnityCatalog to get the relevant
-        information."""
+        Calling this function will query DatabricksUnityCatalog to get the
+        relevant information."""
         info = self._get_table_info(table)
         _, table_url = self._get_creds(info.table_id)
         return self._infer_format(info, table_url)

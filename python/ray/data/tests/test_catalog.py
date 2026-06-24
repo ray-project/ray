@@ -11,7 +11,12 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
-from ray.data.catalog import Catalog, ReaderFormat, ResolvedSource, UnityCatalog
+from ray.data.catalog import (
+    Catalog,
+    DatabricksUnityCatalog,
+    ReaderFormat,
+    ResolvedSource,
+)
 
 # conftest provides ray_start_regular_shared
 from ray.data.tests.conftest import *  # noqa: F401,F403
@@ -39,7 +44,7 @@ AWS_RESP = GenerateTemporaryTableCredentialResponse(
 
 
 def _mock_uc_sdk(*, data_source_format="DELTA", storage_location=_UNSET, creds=None):
-    """Patch UnityCatalog._workspace_client to return canned SDK responses.
+    """Patch DatabricksUnityCatalog._workspace_client to return canned SDK responses.
 
     Replaces the catalog's two SDK calls (``tables.get`` /
     ``generate_temporary_table_credentials``) so no Databricks workspace is hit.
@@ -58,14 +63,16 @@ def _mock_uc_sdk(*, data_source_format="DELTA", storage_location=_UNSET, creds=N
     gen = client.temporary_table_credentials.generate_temporary_table_credentials
     gen.return_value = creds
 
-    patcher = mock.patch.object(UnityCatalog, "_workspace_client", return_value=client)
+    patcher = mock.patch.object(
+        DatabricksUnityCatalog, "_workspace_client", return_value=client
+    )
     patcher.start()
     return patcher
 
 
 @pytest.fixture
 def uc_catalog():
-    return UnityCatalog(
+    return DatabricksUnityCatalog(
         url="https://dbc-test.cloud.databricks.com",
         token="dapi-test",
         region="us-west-2",
@@ -82,7 +89,7 @@ def isolated_env(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# UnityCatalog.resolve
+# DatabricksUnityCatalog.resolve
 # ---------------------------------------------------------------------------
 
 
@@ -108,7 +115,9 @@ def test_resolve_storage_aws(uc_catalog, isolated_env, reader):
 
 
 def test_resolve_aws_requires_region(isolated_env):
-    catalog = UnityCatalog(url="https://h.databricks.com", token="t")  # no region
+    catalog = DatabricksUnityCatalog(
+        url="https://h.databricks.com", token="t"
+    )  # no region
     patcher = _mock_uc_sdk()
     try:
         with pytest.raises(ValueError, match="region"):
@@ -153,7 +162,7 @@ def test_resolve_retries_once_on_401(uc_catalog, isolated_env):
     gen.return_value = AWS_RESP
 
     with mock.patch.object(
-        UnityCatalog, "_workspace_client", return_value=client
+        DatabricksUnityCatalog, "_workspace_client", return_value=client
     ), mock.patch.object(uc_catalog._provider, "invalidate") as invalidate:
         resolved = uc_catalog.resolve("main.sales.txns", reader=ReaderFormat.PARQUET)
 
@@ -179,7 +188,7 @@ def test_resolve_iceberg(uc_catalog):
 
 
 def test_resolve_azure_sets_env(isolated_env):
-    catalog = UnityCatalog(url="https://h.databricks.com", token="t")
+    catalog = DatabricksUnityCatalog(url="https://h.databricks.com", token="t")
     azure_resp = GenerateTemporaryTableCredentialResponse(
         url="abfss://c@acct.dfs.core.windows.net/path",
         azure_user_delegation_sas=AzureUserDelegationSas(sas_token="sv=2021&sig=abc"),
@@ -200,7 +209,7 @@ def test_resolve_azure_sets_env(isolated_env):
 def test_resolve_azure_strips_leading_question_mark(isolated_env):
     # UC may return the SAS as a full query string ("?sv=..."); the leading "?"
     # must be stripped for AZURE_STORAGE_SAS_TOKEN.
-    catalog = UnityCatalog(url="https://h.databricks.com", token="t")
+    catalog = DatabricksUnityCatalog(url="https://h.databricks.com", token="t")
     azure_resp = GenerateTemporaryTableCredentialResponse(
         url="abfss://c@acct.dfs.core.windows.net/path",
         azure_user_delegation_sas=AzureUserDelegationSas(sas_token="?sv=2021&sig=abc"),
@@ -214,24 +223,37 @@ def test_resolve_azure_strips_leading_question_mark(isolated_env):
     assert isolated_env["AZURE_STORAGE_SAS_TOKEN"] == "sv=2021&sig=abc"
 
 
-def test_resolve_gcp_builds_filesystem_and_storage_options(uc_catalog, isolated_env):
-    # GCP vends an OAuth token (not a service-account JSON), so it rides on an
-    # explicit GcsFileSystem (data scan) and on storage_options (deltalake log
-    # read) -- never an env var.
-    gcp_resp = GenerateTemporaryTableCredentialResponse(
+def _gcp_resp():
+    return GenerateTemporaryTableCredentialResponse(
         url="gs://bucket/path",
         gcp_oauth_token=GcpOauthToken(oauth_token="ya29.tok"),
         expiration_time=4102444800000,  # far-future epoch ms
     )
-    patcher = _mock_uc_sdk(creds=gcp_resp, storage_location="gs://bucket/path")
+
+
+def test_resolve_gcp_parquet_builds_filesystem(uc_catalog, isolated_env):
+    # GCP vends an OAuth token (not a service-account JSON); for Parquet it rides
+    # on an explicit GcsFileSystem (the data scan), never an env var.
+    patcher = _mock_uc_sdk(creds=_gcp_resp(), storage_location="gs://bucket/path")
     try:
-        resolved = uc_catalog.resolve("main.sales.txns", reader=ReaderFormat.DELTA)
+        resolved = uc_catalog.resolve("main.sales.txns", reader=ReaderFormat.PARQUET)
     finally:
         patcher.stop()
 
     assert isinstance(resolved.filesystem, pafs.GcsFileSystem)
-    assert resolved.storage_options == {"bearer_token": "ya29.tok"}
     assert "GOOGLE_APPLICATION_CREDENTIALS" not in isolated_env
+
+
+def test_resolve_gcp_delta_raises(uc_catalog, isolated_env):
+    # deltalake's object_store can't use a GCS OAuth token, so GCP + Delta is
+    # rejected up front with an actionable error instead of failing deep in the
+    # log read against the GCE metadata server.
+    patcher = _mock_uc_sdk(creds=_gcp_resp(), storage_location="gs://bucket/path")
+    try:
+        with pytest.raises(RuntimeError, match="GCP-backed Delta"):
+            uc_catalog.resolve("main.sales.txns", reader=ReaderFormat.DELTA)
+    finally:
+        patcher.stop()
 
 
 # ---------------------------------------------------------------------------
@@ -334,7 +356,7 @@ def test_read_iceberg_explicit_catalog_kwargs_take_precedence():
 
 def test_unity_catalog_is_picklable(uc_catalog):
     restored = pickle.loads(pickle.dumps(uc_catalog))
-    assert isinstance(restored, UnityCatalog)
+    assert isinstance(restored, DatabricksUnityCatalog)
     assert restored._region == "us-west-2"
 
 
@@ -366,7 +388,7 @@ def test_read_unity_catalog_deprecation_delegates():
 
     read_delta.assert_called_once()
     _, kwargs = read_delta.call_args
-    assert isinstance(kwargs["catalog"], UnityCatalog)
+    assert isinstance(kwargs["catalog"], DatabricksUnityCatalog)
 
 
 def test_read_unity_catalog_infers_format_from_cred_url():
