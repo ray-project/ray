@@ -14,7 +14,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 from urllib.parse import urljoin
 
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow.fs
@@ -52,6 +52,7 @@ class ReaderFormat(str, Enum):
     ICEBERG = "iceberg"
 
 
+@DeveloperAPI
 @dataclass
 class ResolvedSource:
     """The output of :meth:`Catalog.resolve` — location/credentials for a reader.
