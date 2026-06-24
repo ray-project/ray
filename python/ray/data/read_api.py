@@ -2621,9 +2621,8 @@ def read_lerobot(
             per task); ``True`` emits one task per episode. Use
             ``override_num_blocks`` to tune the final number of output blocks.
         filesystem: Filesystem for reading metadata and parquet. A pyarrow
-            ``FileSystem`` (wrapped internally with
-            :class:`~fsspec.implementations.arrow.ArrowFSWrapper`) or an fsspec
-            ``AbstractFileSystem``. By default it is selected from the URI
+            ``FileSystem`` (wrapped internally with ``ArrowFSWrapper``) or an
+            fsspec ``AbstractFileSystem``. By default it is selected from the URI
             scheme, including the ``s3://anonymous@bucket/…`` convention for
             public buckets. For credentialed cloud datasets the recommended setup
             is a pyarrow ``filesystem`` together with ``storage_options`` (see

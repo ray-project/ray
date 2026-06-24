@@ -789,8 +789,7 @@ class LeRobotDatasource(Datasource):
                 ``override_num_blocks`` then splits or merges these into the
                 requested number of output blocks.
             filesystem: Filesystem for reading metadata + parquet. A pyarrow
-                ``FileSystem`` (wrapped internally with
-                :class:`~fsspec.implementations.arrow.ArrowFSWrapper`) or an
+                ``FileSystem`` (wrapped internally with ``ArrowFSWrapper``) or an
                 fsspec ``AbstractFileSystem``. When omitted, it is selected from
                 the URI scheme — including the ``s3://anonymous@bucket/…``
                 convention for public buckets. Applied to every root.
