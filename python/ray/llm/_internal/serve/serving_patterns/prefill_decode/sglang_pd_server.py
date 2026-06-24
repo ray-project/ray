@@ -229,3 +229,13 @@ class SGLangPDDecodeServer(LLMServer):
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         return await self._run_pd_request(request, raw_request_info, "completions")
+
+    async def _maybe_add_request_id_to_request(self, request) -> None:
+        """Override LLMServer's version: SGLang's request models don't declare
+        a request_id field (unlike vLLM's), so the base implementation's direct
+        attribute assignment raises ValueError. Guard on field presence and use
+        object.__setattr__ in case the model is frozen.
+        """
+        request_id = get_serve_request_id()
+        if request_id and "request_id" in type(request).model_fields:
+            object.__setattr__(request, "request_id", request_id)
