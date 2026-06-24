@@ -131,9 +131,9 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
-from ray.serve._private.proxy_metrics import ProxyMetrics
 from ray.serve._private.proxy_request_response import ResponseStatus, gRPCStreamingType
 from ray.serve._private.replica_response_generator import ReplicaResponseGenerator
+from ray.serve._private.request_ingress_metrics import RequestIngressMetrics
 from ray.serve._private.rolling_window import (
     RollingWindowAccumulator,
     RollingWindowMax,
@@ -482,22 +482,24 @@ class ReplicaMetricsManager:
 
         self.set_autoscaling_config(autoscaling_config)
 
+        # Only populated if direct ingress is enabled.
+        self._ingress_metrics: Dict[RequestProtocol, RequestIngressMetrics] = {}
+        self._ingress_ongoing_requests: Dict[RequestProtocol, int] = {}
         if self._is_direct_ingress:
             # These ingress metrics share the same names, tag keys, and emission
-            # logic as those collected by the proxy (see ProxyMetrics). When
+            # logic as those collected by the proxy (see RequestIngressMetrics). When
             # direct ingress is enabled traffic bypasses the proxy, so a given
             # request is recorded by exactly one of the two.
-            node_id = ray.get_runtime_context().get_node_id()
-            node_ip_address = ray.util.get_node_ip_address()
-            self._ingress_http_metrics = ProxyMetrics(
-                RequestProtocol.HTTP,
-                source="ingress",
-                node_id=node_id,
-                node_ip_address=node_ip_address,
-            )
-            self._ingress_ongoing_http_requests = 0
+            self._ingress_node_id = ray.get_runtime_context().get_node_id()
+            self._ingress_node_ip_address = ray.util.get_node_ip_address()
+
+            # gRPC ingress metrics are allocated lazily via
+            # `enable_grpc_ingress_metrics()` once the gRPC config has been fetched from
+            # the controller, which is not available at construction time.
+            self._add_ingress_metrics(RequestProtocol.HTTP)
 
             if self._cached_metrics_enabled:
+                # Mapping from protocol -> {request_tags -> value}.
                 self._cached_ingress_request_counter = defaultdict(
                     lambda: defaultdict(int)
                 )
@@ -514,6 +516,29 @@ class ReplicaMetricsManager:
     @property
     def _is_direct_ingress(self) -> bool:
         return self._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS
+
+    def _add_ingress_metrics(self, protocol: RequestProtocol):
+        """Allocate metric objects and ongoing-request counter for a protocol."""
+        self._ingress_metrics[protocol] = RequestIngressMetrics(
+            protocol,
+            source="ingress",
+            node_id=self._ingress_node_id,
+            node_ip_address=self._ingress_node_ip_address,
+        )
+        self._ingress_ongoing_requests[protocol] = 0
+
+    def enable_grpc_ingress_metrics(self):
+        """Allocate gRPC ingress metrics for a direct-ingress replica.
+
+        gRPC config is fetched from the controller after this manager is
+        constructed, so gRPC ingress metrics are allocated here (from the replica's
+        server-start path) rather than in `__init__`.
+        """
+        if not self._is_direct_ingress:
+            return
+
+        if RequestProtocol.GRPC not in self._ingress_metrics:
+            self._add_ingress_metrics(RequestProtocol.GRPC)
 
     def _report_cached_metrics(self):
         for route, count in self._cached_request_counter.items():
@@ -538,45 +563,35 @@ class ReplicaMetricsManager:
         if not self._is_direct_ingress:
             return
 
-        for protocol in [RequestProtocol.HTTP]:
-            if protocol == RequestProtocol.HTTP:
-                ingress_request_counter = self._ingress_http_metrics.request_counter
-                ingress_request_error_counter = (
-                    self._ingress_http_metrics.request_error_counter
-                )
-                deployment_request_error_counter = (
-                    self._ingress_http_metrics.deployment_request_error_counter
-                )
-                ingress_processing_latencies = (
-                    self._ingress_http_metrics.processing_latency_tracker
-                )
-                self._ingress_http_metrics.set_num_ongoing_requests(
-                    self._ingress_ongoing_http_requests
-                )
-            else:
-                # TODO(alexyang): Add metrics for gRPC.
-                continue
-
+        for protocol in self._ingress_metrics:
+            protocol_metrics = self._ingress_metrics[protocol]
+            protocol_metrics.set_num_ongoing_requests(
+                self._ingress_ongoing_requests[protocol]
+            )
             for request_tags, count in self._cached_ingress_request_counter[
                 protocol
             ].items():
-                ingress_request_counter.inc(count, tags=dict(request_tags))
+                protocol_metrics.request_counter.inc(count, tags=dict(request_tags))
 
             for request_tags, count in self._cached_ingress_request_error_counter[
                 protocol
             ].items():
-                ingress_request_error_counter.inc(count, tags=dict(request_tags))
+                protocol_metrics.request_error_counter.inc(
+                    count, tags=dict(request_tags)
+                )
 
             for request_tags, count in self._cached_deployment_request_error_counter[
                 protocol
             ].items():
-                deployment_request_error_counter.inc(count, tags=dict(request_tags))
+                protocol_metrics.deployment_request_error_counter.inc(
+                    count, tags=dict(request_tags)
+                )
 
             for latency_tags, latencies in self._cached_ingress_processing_latencies[
                 protocol
             ].items():
                 for latency_ms in latencies:
-                    ingress_processing_latencies.observe(
+                    protocol_metrics.processing_latency_tracker.observe(
                         latency_ms, tags=dict(latency_tags)
                     )
 
@@ -691,35 +706,37 @@ class ReplicaMetricsManager:
             if self._autoscaling_config:
                 self.start_metrics_pusher()
 
-    def inc_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
-        self._num_ongoing_requests += 1
+    def _change_num_ongoing_requests(
+        self, request_metadata: RequestMetadata, delta: int
+    ) -> None:
+        self._num_ongoing_requests += delta
 
-        if self._is_direct_ingress and request_metadata.is_direct_ingress:
-            self._ingress_ongoing_http_requests += 1
+        protocol = request_metadata.protocol
 
-        if not self._cached_metrics_enabled:
-            self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
-
-            if self._is_direct_ingress and request_metadata.is_direct_ingress:
-                if request_metadata.is_http_request:
-                    self._ingress_http_metrics.set_num_ongoing_requests(
-                        self._ingress_ongoing_http_requests
-                    )
-
-    def dec_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
-        self._num_ongoing_requests -= 1
-
-        if self._is_direct_ingress and request_metadata.is_direct_ingress:
-            self._ingress_ongoing_http_requests -= 1
+        if (
+            self._is_direct_ingress
+            and request_metadata.is_direct_ingress
+            and protocol in self._ingress_metrics
+        ):
+            self._ingress_ongoing_requests[protocol] += delta
 
         if not self._cached_metrics_enabled:
             self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
 
-            if self._is_direct_ingress and request_metadata.is_direct_ingress:
-                if request_metadata.is_http_request:
-                    self._ingress_http_metrics.set_num_ongoing_requests(
-                        self._ingress_ongoing_http_requests
-                    )
+            if (
+                self._is_direct_ingress
+                and request_metadata.is_direct_ingress
+                and protocol in self._ingress_metrics
+            ):
+                self._ingress_metrics[protocol].set_num_ongoing_requests(
+                    self._ingress_ongoing_requests[protocol]
+                )
+
+    def inc_num_ongoing_requests(self, request_metadata: RequestMetadata) -> None:
+        self._change_num_ongoing_requests(request_metadata, 1)
+
+    def dec_num_ongoing_requests(self, request_metadata: RequestMetadata) -> None:
+        self._change_num_ongoing_requests(request_metadata, -1)
 
     def get_num_ongoing_requests(self) -> int:
         """Get current total queue length of requests for this replica."""
@@ -800,7 +817,7 @@ class ReplicaMetricsManager:
         *,
         route: str,
         latency_ms: float,
-        was_error: bool,
+        is_error: bool,
         exception_type: Optional[str] = None,
     ):
         """Records per-request metrics."""
@@ -810,14 +827,14 @@ class ReplicaMetricsManager:
 
         if self._cached_metrics_enabled:
             self._cached_latencies[route].append(latency_ms)
-            if was_error:
+            if is_error:
                 exc_type = exception_type or "Unknown"
                 self._cached_error_counter[(route, exc_type)] += 1
             else:
                 self._cached_request_counter[route] += 1
         else:
             self._processing_latency_tracker.observe(latency_ms, tags={"route": route})
-            if was_error:
+            if is_error:
                 exc_type = exception_type or "Unknown"
                 self._error_counter.inc(
                     tags={"route": route, "exception_type": exc_type}
@@ -834,22 +851,18 @@ class ReplicaMetricsManager:
         app_name: str,
         deployment_name: str,
         latency_ms: float,
-        was_error: bool,
+        is_error: bool,
         status_code: str,
     ):
         """Record per-request metrics."""
         if not self._is_direct_ingress:
             return
 
-        if protocol != RequestProtocol.HTTP:
-            # TODO(alexyang): Add metrics for gRPC.
-            return
-
         if self._cached_metrics_enabled:
             # Cached path: accumulate per-tag-set counts/latencies keyed by the same
             # canonical tag schemas used by the direct emit path, and flush them in
             # `_report_cached_metrics`.
-            request_tags = ProxyMetrics.request_tags(
+            request_tags = RequestIngressMetrics.request_tags(
                 route=route,
                 method=method,
                 application=app_name,
@@ -861,14 +874,14 @@ class ReplicaMetricsManager:
             self._cached_ingress_processing_latencies[protocol][
                 frozenset(request_tags.items())
             ].append(latency_ms)
-            if was_error:
-                request_error_tags = ProxyMetrics.request_error_tags(
+            if is_error:
+                request_error_tags = RequestIngressMetrics.request_error_tags(
                     route=route,
                     method=method,
                     application=app_name,
                     status_code=status_code,
                 )
-                deployment_error_tags = ProxyMetrics.deployment_error_tags(
+                deployment_error_tags = RequestIngressMetrics.deployment_error_tags(
                     route=route,
                     method=method,
                     application=app_name,
@@ -882,13 +895,13 @@ class ReplicaMetricsManager:
                     frozenset(deployment_error_tags.items())
                 ] += 1
         else:
-            self._ingress_http_metrics.record_request(
+            self._ingress_metrics[protocol].record_request(
                 route=route,
                 method=method,
                 application=app_name,
                 status_code=status_code,
                 latency_ms=latency_ms,
-                is_error=was_error,
+                is_error=is_error,
                 deployment_name=deployment_name,
             )
 
@@ -1382,7 +1395,7 @@ class Replica:
         request_metadata: RequestMetadata,
     ):
         http_method = request_metadata._http_method
-        http_route = request_metadata.route
+        route = request_metadata.route
         call_method = request_metadata.call_method
         if user_exception is None:
             status_str = "OK"
@@ -1394,12 +1407,12 @@ class Replica:
         # Mutating self._access_log_context is not thread safe, but since this
         # is only called from the same thread, it is safe. Mutating the same object
         # because creating a new dict is expensive.
-        self._access_log_context[SERVE_LOG_ROUTE] = http_route
+        self._access_log_context[SERVE_LOG_ROUTE] = route
         self._access_log_context[SERVE_LOG_REQUEST_ID] = request_metadata.request_id
         logger.info(
             access_log_msg(
                 method=http_method or "CALL",
-                route=http_route if self._ingress and http_route else call_method,
+                route=route if self._ingress and route else call_method,
                 # Prefer the HTTP status code if it was populated.
                 status=status_code or status_str,
                 latency_ms=latency_ms,
@@ -1411,9 +1424,9 @@ class Replica:
             type(user_exception).__name__ if user_exception is not None else None
         )
         self._metrics_manager.record_request_metrics(
-            route=http_route,
+            route=route,
             latency_ms=latency_ms,
-            was_error=user_exception is not None,
+            is_error=user_exception is not None,
             exception_type=exception_type,
         )
 
@@ -1434,16 +1447,27 @@ class Replica:
             if user_exception is not None:
                 set_span_exception(user_exception, escaped=False)
 
-        # Record ingress metrics for direct ingress HTTP requests
+        # Record ingress metrics for direct ingress requests
         if request_metadata.is_direct_ingress and status_code is not None:
+            if request_metadata.is_grpc_request:
+                protocol = RequestProtocol.GRPC
+                # Match the proxy's `method` tag (the full gRPC service method).
+                # gRPC status codes are names (e.g. "OK", "UNAVAILABLE"); anything
+                # other than OK is an error, mirroring ResponseStatus.is_error.
+                method = request_metadata._grpc_service_method
+                is_error = status_code != grpc.StatusCode.OK.name
+            else:
+                protocol = RequestProtocol.HTTP
+                method = request_metadata._http_method
+                is_error = status_code.startswith(("4", "5"))
             self._metrics_manager.record_ingress_request_metrics(
-                protocol=RequestProtocol.HTTP,
-                method=request_metadata._http_method,
-                route=self._route_prefix,
+                protocol=protocol,
+                method=method,
+                route=route,
                 app_name=self._deployment_id.app_name,
                 deployment_name=self._deployment_id.name,
                 latency_ms=latency_ms,
-                was_error=status_code.startswith(("4", "5")),
+                is_error=is_error,
                 status_code=status_code,
             )
 
@@ -1482,7 +1506,7 @@ class Replica:
                 scope, request_metadata, request.receive_asgi_messages
             )
 
-            request_metadata._http_method = scope.get("method", "WS")
+            request_metadata._http_method = scope.get("method", "WS").upper()
 
             request_args = (scope, receive)
         elif request_metadata.is_grpc_request:
@@ -2159,6 +2183,7 @@ class Replica:
         # Allocate and start gRPC server for ingress replicas if enabled.
         # Ingress request router replicas only need HTTP for /internal/route.
         if grpc_enabled:
+            self._metrics_manager.enable_grpc_ingress_metrics()
 
             async def start_grpc_server_fn(port):
                 options = gRPCOptions(
@@ -2400,12 +2425,25 @@ class Replica:
         request_proto: Any,
         context: grpc._cython.cygrpc._ServicerContext,
     ) -> bytes:
+        start_time = time.time()
         if service_method == "/ray.serve.RayServeAPIService/Healthz":
             healthy, message = await self._dataplane_health_check()
             context.set_code(
                 grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
             )
             context.set_details(message)
+            self._metrics_manager.record_ingress_request_metrics(
+                protocol=RequestProtocol.GRPC,
+                method=service_method,
+                route=self._deployment_id.app_name,
+                app_name=self._deployment_id.app_name,
+                deployment_name=self._deployment_id.name,
+                latency_ms=(time.time() - start_time) * 1000.0,
+                is_error=not healthy,
+                status_code=(
+                    grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
+                ).name,
+            )
             return HealthzResponse(message=message).SerializeToString()
 
         if service_method == "/ray.serve.RayServeAPIService/ListApplications":
@@ -2417,6 +2455,18 @@ class Replica:
             context.set_details(message)
             # ListApplications returns only the app name the replica is serving.
             application_names = [self._deployment_id.app_name]
+            self._metrics_manager.record_ingress_request_metrics(
+                protocol=RequestProtocol.GRPC,
+                method=service_method,
+                route=self._deployment_id.app_name,
+                app_name=self._deployment_id.app_name,
+                deployment_name=self._deployment_id.name,
+                latency_ms=(time.time() - start_time) * 1000.0,
+                is_error=not healthy,
+                status_code=(
+                    grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
+                ).name,
+            )
             return ListApplicationsResponse(
                 application_names=application_names
             ).SerializeToString()
@@ -2424,10 +2474,38 @@ class Replica:
         c = RayServegRPCContext(context)
         request_id = c.request_id() or generate_request_id()
         c.set_trailing_metadata([("request_id", request_id)])
+
+        # If the request targets a different application, return NOT_FOUND.
+        # If no application is specified, serve this replica's app.
+        requested_app = c.application()
+        if requested_app and requested_app != self._deployment_id.app_name:
+            status = ResponseStatus(
+                code=grpc.StatusCode.NOT_FOUND,
+                message=(
+                    f"Application '{requested_app}' not found. Ping "
+                    "/ray.serve.RayServeAPIService/ListApplications for available "
+                    "applications."
+                ),
+                is_error=True,
+            )
+            set_grpc_code_and_details(context, status)
+            self._metrics_manager.record_ingress_request_metrics(
+                protocol=RequestProtocol.GRPC,
+                method=service_method,
+                route="",
+                app_name="",
+                deployment_name="",
+                latency_ms=(time.time() - start_time) * 1000.0,
+                is_error=True,
+                status_code=grpc.StatusCode.NOT_FOUND.name,
+            )
+            return b""
+
         request_metadata = RequestMetadata(
             request_id=request_id,
             internal_request_id=generate_request_id(),
             call_method=service_method.split("/")[-1],
+            _grpc_service_method=service_method,
             _request_protocol=RequestProtocol.GRPC,
             grpc_context=c,
             app_name=self._deployment_id.app_name,
@@ -2494,9 +2572,11 @@ class Replica:
                         self._grpc_options.request_timeout_s,
                         request_metadata.request_id,
                     )
-                    status_code_callback(status.code.name)
                     raise e
                 finally:
+                    # Record the status code for both success and error paths so
+                    # ingress metrics are emitted for successful gRPC requests.
+                    status_code_callback(status.code.name)
                     set_grpc_code_and_details(context, status)
 
                 return result.SerializeToString()
@@ -2628,7 +2708,7 @@ class Replica:
                 app_name=self._deployment_id.app_name,
                 deployment_name=self._deployment_id.name,
                 latency_ms=latency_ms,
-                was_error=not healthy,
+                is_error=not healthy,
                 status_code=str(status_code),
             )
             return
@@ -2640,12 +2720,25 @@ class Replica:
         # matches and downstream user code dispatches.
         route_prefix = self._route_prefix or ""
         if not route.startswith(route_prefix):
+            status_code = 404
             for msg in convert_object_to_asgi_messages(
                 f"Path '{route}' not found. "
                 "Ping http://.../-/routes for available routes.",
-                status_code=404,
+                status_code=status_code,
             ):
                 await send(msg)
+
+            latency_ms = (time.time() - start_time) * 1000.0
+            self._metrics_manager.record_ingress_request_metrics(
+                protocol=RequestProtocol.HTTP,
+                method=method,
+                route="",
+                app_name="",
+                deployment_name="",
+                latency_ms=latency_ms,
+                is_error=True,
+                status_code=str(status_code),
+            )
             return
 
         headers = dict(scope["headers"])
@@ -2672,7 +2765,7 @@ class Replica:
             is_streaming=True,
             _request_protocol=RequestProtocol.HTTP,
             tracing_context=self.get_asgi_tracing_context(scope["headers"]),
-            _http_method=scope.get("method", "WS"),
+            _http_method=scope.get("method", "WS").upper(),
             is_direct_ingress=True,
             _client=format_client_address(scope.get("client")),
         )

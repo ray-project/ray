@@ -20,6 +20,7 @@ from ray._common.test_utils import (
 )
 from ray.actor import ActorHandle
 from ray.cluster_utils import Cluster
+from ray.serve._private.build_app import CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
@@ -30,8 +31,10 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.haproxy import HAProxyManager
 from ray.serve._private.test_utils import get_application_url
-from ray.serve.config import HTTPOptions
+from ray.serve.config import HTTPOptions, RequestRouterConfig
 from ray.serve.context import _get_global_client
+from ray.serve.exceptions import RayServeException
+from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.schema import (
     ProxyStatus,
     ServeDeploySchema,
@@ -307,12 +310,29 @@ async def test_drain_and_undrain_haproxy_manager(
     HEALTHY, DRAINING and DRAINED
     """
     monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "10")
-    monkeypatch.setenv("SERVE_SOCKET_REUSE_PORT_ENABLED", "1")
 
+    # No SO_REUSEPORT. Each node's HAProxy binds its own port. The head keeps the
+    # default 8000. Each worker gets a distinct HTTP port via
+    # RAY_SERVE_WORKER_PROXY_HTTP_PORT and distinct stats/metrics ports so the
+    # three co-located HAProxies don't collide.
     cluster = Cluster()
     head_node = cluster.add_node(num_cpus=0)
-    cluster.add_node(num_cpus=1)
-    cluster.add_node(num_cpus=1)
+    cluster.add_node(
+        num_cpus=1,
+        env_vars={
+            "RAY_SERVE_WORKER_PROXY_HTTP_PORT": "8001",
+            "RAY_SERVE_HAPROXY_STATS_PORT": "8405",
+            "RAY_SERVE_HAPROXY_METRICS_PORT": "9102",
+        },
+    )
+    cluster.add_node(
+        num_cpus=1,
+        env_vars={
+            "RAY_SERVE_WORKER_PROXY_HTTP_PORT": "8002",
+            "RAY_SERVE_HAPROXY_STATS_PORT": "8406",
+            "RAY_SERVE_HAPROXY_METRICS_PORT": "9103",
+        },
+    )
     cluster.wait_for_nodes()
     ray.init(address=head_node.address)
     serve.start(http_options={"location": "EveryNode"})
@@ -339,14 +359,14 @@ async def test_drain_and_undrain_haproxy_manager(
 
     assert len(proxy_actor_ids) == 3
 
-    # 3 HAProxies share *:8000 via SO_REUSEPORT; 20 successive 200s makes it
-    # very likely each shard has served at least one request and converged.
+    # Each HAProxy binds its own port (head 8000, workers 8001/8002); wait until
+    # all three answer health checks.
     def all_haproxies_ready():
         try:
             return all(
-                httpx.get("http://localhost:8000/-/healthz", timeout=2).status_code
+                httpx.get(f"http://localhost:{port}/-/healthz", timeout=2).status_code
                 == 200
-                for _ in range(20)
+                for port in (8000, 8001, 8002)
             )
         except Exception:
             return False
@@ -1135,6 +1155,61 @@ def test_default_host_is_all_interfaces(ray_shutdown):
             f"direct ingress port {conn.laddr.port} bound to {conn.laddr.ip!r}, "
             f"expected {expected!r}"
         )
+
+
+def test_serve_run_rejects_custom_ingress_request_router(ray_shutdown):
+    """serve.run rejects a custom router on the ingress under HAProxy."""
+    ray.init(num_cpus=8)
+    serve.start(http_options=dict(port=8003))
+
+    @serve.deployment(
+        request_router_config=RequestRouterConfig(request_router_class=RoundRobinRouter)
+    )
+    class Ingress:
+        async def __call__(self):
+            return "hi"
+
+    with pytest.raises(
+        RayServeException, match=CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR
+    ):
+        serve.run(Ingress.bind())
+
+
+def test_deploy_config_rejects_custom_ingress_request_router(ray_shutdown):
+    """A config override that sets a custom router on the ingress fails to deploy
+    under HAProxy."""
+    ray.init(num_cpus=8)
+    serve.start(http_options=dict(port=8003))
+    client = _get_global_client()
+
+    module = "ray.serve.tests.test_config_files.use_custom_request_router"
+    config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {
+                    "name": "app",
+                    "import_path": f"{module}.app",
+                    "deployments": [
+                        {
+                            "name": "UniformRequestRouterApp",
+                            "request_router_config": {
+                                "request_router_class": f"{module}.UniformRequestRouter"
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    client.deploy_apps(config)
+
+    def deploy_failed():
+        status = serve.status().applications["app"]
+        assert status.status == "DEPLOY_FAILED"
+        assert CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR in status.message
+        return True
+
+    wait_for_condition(deploy_failed)
 
 
 if __name__ == "__main__":

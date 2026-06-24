@@ -771,6 +771,13 @@ RAY_SERVE_HAPROXY_METRICS_PORT = int(
 # HAProxy stats UI port
 RAY_SERVE_HAPROXY_STATS_PORT = get_env_int("RAY_SERVE_HAPROXY_STATS_PORT", 8404)
 
+# Per-worker-node override for the proxy's HTTP/gRPC bind ports. Head node exempt.
+# Prefer http_options.port / grpc_options.port. This override only matters when
+# proxies are colocated on one machine and need distinct ports without SO_REUSEPORT.
+# Parallels RAY_SERVE_HAPROXY_STATS_PORT / RAY_SERVE_HAPROXY_METRICS_PORT.
+RAY_SERVE_WORKER_PROXY_HTTP_PORT = get_env_int("RAY_SERVE_WORKER_PROXY_HTTP_PORT", None)
+RAY_SERVE_WORKER_PROXY_GRPC_PORT = get_env_int("RAY_SERVE_WORKER_PROXY_GRPC_PORT", None)
+
 # HAProxy log target (single sink). Accepts any syntax HAProxy's `log` directive
 # supports, e.g. "127.0.0.1:514" (UDP syslog) or "/dev/log" (unix datagram socket).
 RAY_SERVE_HAPROXY_LOG_TARGET = get_env_str(
