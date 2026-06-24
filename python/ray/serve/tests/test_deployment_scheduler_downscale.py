@@ -31,16 +31,10 @@ class TestScaleDownReplicaSelection:
         replica_tag_set = set()
 
         def check_new_replica():
-            # Keep several requests in flight so the autoscaler never observes
-            # ongoing=0 and downscales mid-upscale. With serial polling on a slow
-            # or loaded host (e.g. direct ingress under HAProxy, where replicas
-            # bind host ports), the deployment flaps 1<->target and never
-            # sustains it, so the distinct-replica count can't reach the target.
+            # Concurrent load so the autoscaler holds at the target; serial
+            # polling lets ongoing hit 0 between calls and downscale mid-scaleup.
             refs = [handle.get_info.remote() for _ in range(expected_num_replicas * 2)]
-            for ref in refs:
-                replica_tag_set.add(ref.result()["replica_tag"])
-            # >= not ==: the set is cumulative, so a restarted replica adds a new
-            # tag and could push the count past the target in a single poll.
+            replica_tag_set.update(r.result()["replica_tag"] for r in refs)
             return len(replica_tag_set) >= expected_num_replicas
 
         wait_for_condition(check_new_replica, timeout=timeout, retry_interval_ms=50)
