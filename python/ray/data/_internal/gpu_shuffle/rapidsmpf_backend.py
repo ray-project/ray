@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     import pylibcudf as plc
-    from rapidsmpf.shuffler import Shuffler
 
 
 def align_down_to_256(value: int) -> int:
@@ -61,10 +60,15 @@ def lazy_load() -> type[Any]:
         unpack_and_concat,
         unspill_partitions,
     )
+    from rapidsmpf.progress_thread import ProgressThread
     from rapidsmpf.rmm_resource_adaptor import RmmResourceAdaptor
-    from rapidsmpf.statistics import Statistics
+    from rapidsmpf.shuffler import Shuffler
     from rapidsmpf.utils.cudf import cudf_to_pylibcudf_table
-    from rapidsmpf.utils.ray_utils import BaseShufflingActor
+
+    if parse_version(rapidsmpf.__version__) >= parse_version("26.4.0"):
+        from rapidsmpf.integrations.ray import RapidsMPFActor as RapidsMPFActorBase
+    else:
+        from rapidsmpf.utils.ray_utils import BaseShufflingActor as RapidsMPFActorBase
 
     if parse_version(rapidsmpf.__version__) >= parse_version("26.2.0"):
         from rapidsmpf.memory.buffer import MemoryType
@@ -77,7 +81,7 @@ def lazy_load() -> type[Any]:
         from rapidsmpf.buffer.resource import BufferResource, LimitAvailableMemory
 
     # Exempt this class from coverage is it's indirectly tested by the ShuffleStage which coverage tools don't pick up.
-    class BulkRapidsMPFShuffler(BaseShufflingActor):  # pragma: no cover
+    class BulkRapidsMPFShuffler(RapidsMPFActorBase):  # pragma: no cover
         """Class that performs a bulk shuffle operation.
 
         This class is compatible with Ray Actors communicating with each
@@ -95,7 +99,6 @@ def lazy_load() -> type[Any]:
             spill_memory_limit: Device memory limit in bytes for spilling to host.
                 If "auto", the limit is set to 80% of the RMM pool size.
                 If None spilling is disabled.
-            enable_statistics: Whether to collect shuffle statistics.
             read_kwargs: Keyword arguments for cudf.read_parquet method.
             write_kwargs: Keyword arguments for cudf.to_parquet method.
         """
@@ -109,7 +112,6 @@ def lazy_load() -> type[Any]:
             rmm_pool_size: int | Literal["auto"] | None = "auto",
             spill_memory_limit: int | Literal["auto"] | None = "auto",
             *,
-            enable_statistics: bool = False,
             read_kwargs: dict[str, Any] | None = None,
             write_kwargs: dict[str, Any] | None = None,
         ):
@@ -146,7 +148,6 @@ def lazy_load() -> type[Any]:
                 err_msg = f"Invalid spill_memory_limit: {spill_memory_limit}"
                 raise ValueError(err_msg)
 
-            self.enable_statistics = enable_statistics
             self.read_kwargs = read_kwargs if read_kwargs is not None else {}
             self.write_kwargs = write_kwargs if write_kwargs is not None else {}
 
@@ -179,20 +180,22 @@ def lazy_load() -> type[Any]:
                 }
             )
             self.br = BufferResource(device_mr=mr, memory_available=memory_available)
-            # Create a statistics object
-            self.stats = Statistics(enable=self.enable_statistics, mr=mr)
             # Create a shuffler
-            self.shuffler: Shuffler = self.create_shuffler(
-                0,
-                total_num_partitions=self.total_nparts,
-                buffer_resource=self.br,
-                statistics=self.stats,
-            )
+            if parse_version(rapidsmpf.__version__) >= parse_version("26.4.0"):
+                self.shuffler = Shuffler(
+                    self.comm, 0, total_num_partitions=self.total_nparts, br=self.br
+                )
+            else:
+                self.shuffler = Shuffler(
+                    self.comm,
+                    ProgressThread(self.comm),
+                    0,
+                    self.total_nparts,
+                    self.br,
+                )
 
         def cleanup(self) -> None:
             """Cleanup the UCXX communication and the shuffle operation."""
-            if self.enable_statistics and self.stats is not None:
-                self.comm.logger.info(self.stats.report())
             if self.shuffler is not None:
                 self.shuffler.shutdown()
 
@@ -246,7 +249,6 @@ def lazy_load() -> type[Any]:
                         packed_chunks,
                         br=self.br,
                         allow_overbooking=True,
-                        statistics=self.stats,
                     ),
                     br=self.br,
                     stream=DEFAULT_STREAM,
