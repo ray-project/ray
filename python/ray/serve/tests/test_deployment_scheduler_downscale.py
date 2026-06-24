@@ -40,12 +40,19 @@ class TestScaleDownReplicaSelection:
     def _wait_for_upscale(
         expected_num_replicas: int,
         handle,
-        timeout: int = 30,
+        timeout: int = 60,
     ):
         replica_tag_set = set()
 
         def check_new_replica():
-            replica_tag_set.add(handle.get_info.remote().result()["replica_tag"])
+            # Keep several requests in flight so the autoscaler never observes
+            # ongoing=0 and downscales mid-upscale. With serial polling on a slow
+            # or loaded host (e.g. direct ingress under HAProxy, where replicas
+            # bind host ports), the deployment flaps 1<->target and never
+            # sustains it, so the distinct-replica count can't reach the target.
+            refs = [handle.get_info.remote() for _ in range(expected_num_replicas * 2)]
+            for ref in refs:
+                replica_tag_set.add(ref.result()["replica_tag"])
             return len(replica_tag_set) == expected_num_replicas
 
         wait_for_condition(check_new_replica, timeout=timeout, retry_interval_ms=50)
@@ -153,7 +160,6 @@ class TestScaleDownReplicaSelection:
             self._wait_for_upscale(
                 expected_num_replicas=num_replicas_per_node * 2,
                 handle=handle,
-                timeout=60,
             )
             self._wait_until_min_replica(
                 app_name=app_name,
@@ -219,7 +225,6 @@ class TestScaleDownReplicaSelection:
             self._wait_for_upscale(
                 expected_num_replicas=3,
                 handle=handle,
-                timeout=60,
             )
             self._wait_until_min_replica(
                 app_name=app_name,
@@ -282,7 +287,6 @@ class TestScaleDownReplicaSelection:
             self._wait_for_upscale(
                 expected_num_replicas=3,
                 handle=handle,
-                timeout=60,
             )
             self._wait_until_min_replica(
                 app_name=app_name,
