@@ -113,8 +113,8 @@ other memory-related errors, memory pressure might have caused the death.
 
 ### Use ``batch_size="auto"`` or small batch sizes
 
-Choose the smallest batch size that achieves good performance, or if your UDF doesn't 
-require GPUs, use ``batch_size="auto"``.
+Choose the smallest batch size that achieves good performance, or use
+``batch_size="auto"``.
 
 :::{versionadded} 2.56
 ``batch_size="auto"`` was added in Ray 2.56.
@@ -173,7 +173,7 @@ actors for the ones you haven't.
 To avoid this, set ``DataContext.get_current().default_map_logical_memory = True``.
 
 :::{versionadded} 2.56
-``DataContext.default_map_logical_memory``
+``DataContext.default_map_logical_memory`` was added in Ray 2.56.
 :::
 
 ### Start Ray with resource isolation
@@ -186,7 +186,7 @@ To enable *resource isolation*, follow the guide in
 {doc}`Ray Core Resource Isolation </ray-core/resource-isolation-with-cgroupv2>`.
 
 :::{versionadded} 2.56
-The full resource isolation implementation.
+Resource isolation was completed in Ray 2.56.
 :::
 
 ### Configure system memory to cover the raylet and anything outside the container
@@ -217,7 +217,7 @@ The flag prevents Ray Data from scheduling downstream operators on the same
 workers as reads. It can improve memory safety at the cost of some performance.
 
 :::{versionadded} 2.56
-``DataContext.isolate_read_workers``.
+``DataContext.isolate_read_workers`` was added in Ray 2.56.
 :::
 
 ### Don't increase RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
