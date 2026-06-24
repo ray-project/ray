@@ -13,15 +13,12 @@ from ray.tests.conftest import *  # noqa
 class TestScaleDownReplicaSelection:
     @pytest.fixture(autouse=True)
     def _recycle_direct_ingress_ports(self, monkeypatch):
-        """Return freed direct-ingress ports immediately so allocation converges.
+        """Disable direct-ingress port quarantine so freed ports return at once.
 
-        Under HAProxy each replica binds a host port the controller allocates per
-        node from the same base. These tests simulate a multi-node cluster on one
-        host, so replicas on different nodes collide and the controller blocks the
-        taken port and reallocates until each finds a free one. Quarantine would
-        hold freed ports out of that pool, so disable it. Set on the test process
-        so the head-node controller inherits it before any node is added. No-op
-        when direct ingress is off.
+        These tests simulate a multi-node cluster on one host, so replicas
+        collide on host ports and the controller climbs to a free one;
+        quarantine would hold freed ports out of that pool. Set on the test
+        process so the head-node controller inherits it.
         """
         monkeypatch.setenv("RAY_SERVE_PORT_QUARANTINE_S", "0")
 
@@ -53,7 +50,9 @@ class TestScaleDownReplicaSelection:
             refs = [handle.get_info.remote() for _ in range(expected_num_replicas * 2)]
             for ref in refs:
                 replica_tag_set.add(ref.result()["replica_tag"])
-            return len(replica_tag_set) == expected_num_replicas
+            # >= not ==: the set is cumulative, so a restarted replica adds a new
+            # tag and could push the count past the target in a single poll.
+            return len(replica_tag_set) >= expected_num_replicas
 
         wait_for_condition(check_new_replica, timeout=timeout, retry_interval_ms=50)
 
