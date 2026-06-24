@@ -359,9 +359,6 @@ def test_read_lerobot_stats_column(ray_start_regular_shared, lerobot_dataset_no_
 
 
 def test_stats_to_json_roundtrip():
-    """_stats_to_json serializes a lerobot stats dict (numpy arrays/scalars,
-    nested) to JSON that loads back to the same structure as plain Python
-    lists/numbers; empty / None serialize to "{}"."""
     from ray.data._internal.datasource.lerobot_datasource import _stats_to_json
 
     stats = {
