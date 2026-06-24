@@ -2199,6 +2199,7 @@ class ActorClass(Generic[T]):
             fallback_strategy=actor_options.get("fallback_strategy"),
             allow_out_of_order_execution=allow_out_of_order_execution,
             enable_tensor_transport=meta.enable_tensor_transport,
+            is_system_actor=bool(actor_options.get("_system_actor")),
         )
 
         if _actor_launch_hook:
@@ -2789,7 +2790,7 @@ class ActorHandle(Generic[T]):
 
     def __reduce__(self):
         """This code path is used by pickling but not by Ray forking."""
-        (serialized, _, weak_ref) = self._serialization_helper()
+        serialized, _, weak_ref = self._serialization_helper()
         # There is no outer object ref when the actor handle is
         # deserialized out-of-band using pickle.
         return ActorHandle._deserialization_helper, (serialized, weak_ref, None)

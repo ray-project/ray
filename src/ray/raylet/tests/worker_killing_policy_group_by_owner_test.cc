@@ -347,6 +347,54 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestKillingWorkerWithNoLeaseIfMemoryExceed
   }
 }
 
+TEST_F(WorkerKillingGroupByOwnerTest, TestSystemActorSkippedWhenRegularWorkersAvailable) {
+  pid_t current_pid = 2000;
+
+  TaskID owner_id = TaskID::ForDriverTask(job_id_);
+
+  std::shared_ptr<WorkerInterface> regular_worker = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, ++current_pid);
+  std::shared_ptr<WorkerInterface> system_actor =
+      CreateSystemActorWorker(owner_id, has_retry_, port_, clock_, ++current_pid);
+
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+  workers.push_back(regular_worker);
+  workers.push_back(system_actor);
+
+  ProcessesMemorySnapshot process_memory_snapshot = {
+      {regular_worker->GetProcess().GetId(), 500},
+      {system_actor->GetProcess().GetId(), 500}};
+
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill_list =
+      worker_killing_policy_.SelectWorkersToKill(
+          workers, process_memory_snapshot, MemoryUsageSnapshot());
+
+  ASSERT_EQ(workers_to_kill_list.size(), 1);
+  ASSERT_EQ(workers_to_kill_list[0].first->WorkerId(), regular_worker->WorkerId());
+}
+
+TEST_F(WorkerKillingGroupByOwnerTest,
+       TestSystemActorNotSelectedWhenOnlySystemActorPresent) {
+  pid_t current_pid = 3000;
+
+  TaskID owner_id = TaskID::ForDriverTask(job_id_);
+
+  std::shared_ptr<WorkerInterface> system_actor =
+      CreateSystemActorWorker(owner_id, has_retry_, port_, clock_, ++current_pid);
+
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+  workers.push_back(system_actor);
+
+  ProcessesMemorySnapshot process_memory_snapshot = {
+      {system_actor->GetProcess().GetId(), 900}};
+
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill_list =
+      worker_killing_policy_.SelectWorkersToKill(
+          workers, process_memory_snapshot, MemoryUsageSnapshot());
+
+  ASSERT_TRUE(workers_to_kill_list.empty());
+}
+
 }  // namespace raylet
 
 }  // namespace ray

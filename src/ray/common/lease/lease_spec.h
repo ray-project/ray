@@ -70,6 +70,7 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   bool IsRetriable() const;
   TaskID ParentTaskId() const;
   bool IsDetachedActor() const;
+  bool IsSystemActor() const;
   std::string DebugString() const;
   int GetRuntimeEnvHash() const;
   rpc::Language GetLanguage() const;

@@ -573,6 +573,7 @@ py_test_module_list(
         "test_runtime_env_py_executable.py",
         "test_state_api_manager.py",
         "test_streaming_generator_regression.py",
+        "test_system_actor_option.py",
         "test_system_metrics.py",
         "test_task_metrics_reconstruction.py",
         "test_top_level_api.py",
