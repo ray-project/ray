@@ -221,9 +221,9 @@ def _shuffle_reduce_task(
     streaming: bool,
     batch_size: int,
     get_timeout_s: float,
-    map_transformer: Optional["MapTransformer"] = None,
-    map_task_context: Optional["TaskContext"] = None,
-    data_context: Optional["DataContext"] = None,
+    map_transformer: Optional["MapTransformer"],
+    map_task_context: Optional["TaskContext"],
+    data_context: Optional["DataContext"],
 ) -> Generator[Union[Block, bytes], None, None]:
     """Reduce stage: fetch one partition's shards and run reduce_fn over them.
 
@@ -339,6 +339,7 @@ def _shuffle_reduce_task(
         for block in _reduce_output_blocks():
             yield from _yield_with_stats(block)
     else:
+        assert map_task_context is not None and data_context is not None
         with DataContext.current(data_context), TaskContext.current(map_task_context):
             map_transformer.override_target_max_block_size(
                 map_task_context.target_max_block_size_override

@@ -193,9 +193,9 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             self._streaming_reduce,
             self.data_context.hash_shuffle_reduce_batch_size,
             self.data_context.hash_shuffle_reduce_get_timeout_s,
-            map_transformer=self._fused_output_map_transformer,
-            map_task_context=map_task_context,
-            data_context=self.data_context,
+            self._fused_output_map_transformer,
+            map_task_context,
+            self.data_context,
         )
 
         data_task = DataOpTask(
