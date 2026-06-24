@@ -1097,18 +1097,40 @@ cdef class StreamingGeneratorExecutionContext:
         c_bool actor_backpressure_state_owned_by_core_worker
         int64_t num_objects_per_yield
 
-    def __dealloc__(self):
+    cdef _teardown_actor_backpressure_state_if_needed(self):
+        """Release the actor-wide BP slot held by this task.
+
+        Idempotent and safe to invoke multiple times. Skipped when
+        ``actor_backpressure_state_owned_by_core_worker`` is True as that
+        flag means a normal-completion path handed ownership of the state
+        to the C++ core worker, which keeps it alive until downstream
+        consumers drain the stream.
+        """
         cdef c_bool state_found
         if (
-            self.actor_backpressure_metadata.get() != NULL
-            and not self.actor_backpressure_state_owned_by_core_worker
+            self.actor_backpressure_metadata.get() == NULL
+            or self.actor_backpressure_state_owned_by_core_worker
         ):
-            state_found = (
-                CCoreWorkerProcess.GetCoreWorker()
-                .TeardownGeneratorBackpressureTask(self.generator_id)
-            )
-            if not state_found:
-                self.actor_backpressure_metadata.get().Teardown()
+            return
+        # ``state_found`` reports whether ``CoreWorker::generator_backpressure_states_``
+        # still has an entry for this generator. It is False when another
+        # cleanup path already erased it before we got here -- e.g.
+        # ``HandleUpdateGeneratorBackpressureConsumed`` (after the caller
+        # drained the stream), ``HandleOwnerDied`` (owner-worker failure),
+        # or the report-RPC failure callback in
+        # ``CoreWorker::ReportGeneratorItemReturns``. In that case we still
+        # call ``Teardown`` directly on the locally-held metadata so the
+        # actor-wide slot is reclaimed; both calls are no-ops when the
+        # state has already been reaped (``task_alive`` is false).
+        state_found = (
+            CCoreWorkerProcess.GetCoreWorker()
+            .TeardownGeneratorBackpressureTask(self.generator_id)
+        )
+        if not state_found:
+            self.actor_backpressure_metadata.get().Teardown()
+
+    def __dealloc__(self):
+        self._teardown_actor_backpressure_state_if_needed()
 
     def initialize(self, generator: Union[Generator, AsyncGenerator]):
         # We couldn't make this a part of `make` method because
@@ -1447,6 +1469,7 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
             # Streaming execution has completed. The C++ CoreWorker keeps actor-wide state alive until downstream
             # consumers release the remaining generator items.
             context.actor_backpressure_state_owned_by_core_worker = True
+    context._teardown_actor_backpressure_state_if_needed()
 
 
 async def execute_streaming_generator_async(
@@ -1579,6 +1602,7 @@ async def execute_streaming_generator_async(
             # Streaming execution has completed. The C++ CoreWorker keeps actor-wide state alive until downstream
             # consumers release the remaining generator items.
             context.actor_backpressure_state_owned_by_core_worker = True
+    context._teardown_actor_backpressure_state_if_needed()
 
 
 cdef create_generator_return_objs(
