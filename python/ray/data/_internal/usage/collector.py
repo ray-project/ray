@@ -193,7 +193,7 @@ def physical_op_name_with_uuid(
 
 
 def _logical_op_name_with_uuid(
-    logical_op,
+    logical_op: LogicalOperator,
     usage_uuid_map: Optional[Dict[int, str]] = None,
 ) -> str:
     """Logical op is formatted as ``<anonymized_name>-<usage_uuid>``. The usage UUID map is populated before execution starts in the usage callback."""
