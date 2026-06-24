@@ -434,6 +434,11 @@ class BackendConfig:
     # The app name for this backend.
     app_name: str = field(default_factory=str)
 
+    # Name of the app's ingress deployment. Rendered into the per-request
+    # metrics log line so HAProxy-emitted ingress metrics carry the deployment
+    # tag (matches what the Python proxy records). Empty when unknown.
+    ingress_deployment_name: str = field(default_factory=str)
+
     def build_health_check_config(self, global_config: "HAProxyConfig") -> dict:
         """Build health check configuration for HAProxy backend.
 
@@ -572,6 +577,13 @@ class HAProxyConfig:
     ingress_request_router_metrics_enabled: bool = (
         RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED
     )
+
+    # Per-request ingress metrics (serve_num_http_requests, latency, errors)
+    # emitted from HAProxy log datagrams. On by default whenever HAProxy metrics
+    # are enabled; these replace the metrics the Python proxy used to emit. When
+    # enabled, the frontend renders a per-request RFC 5424 log line to
+    # metrics_socket_path and HAProxyManager binds the dgram reader.
+    request_ingress_metrics_enabled: bool = RAY_SERVE_HAPROXY_METRICS_ENABLED
     metrics_socket_path: str = RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH
 
     balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
@@ -1117,6 +1129,7 @@ class HAProxyApi(ProxyApi):
                         RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
                     ),
                     "ingress_request_router_metrics_enabled": self.cfg.ingress_request_router_metrics_enabled,
+                    "request_ingress_metrics_enabled": self.cfg.request_ingress_metrics_enabled,
                     "metrics_socket_path": self.cfg.metrics_socket_path,
                 }
             )
@@ -1496,14 +1509,16 @@ class HAProxyManager(ProxyActorInterface):
             # also binds the per-request dgram reader and returns its bind task (which
             # ready() awaits to surface bind failures).
             self._metrics_collector = HAProxyMetricsCollector(
-                haproxy_api=self._haproxy, node_id=self._node_id
+                haproxy_api=self._haproxy,
+                node_id=self._node_id,
+                node_ip_address=self._node_ip_address,
             )
             try:
                 self._metrics_attach_task = self._metrics_collector.start(
                     self.event_loop,
                     poll_interval_s=RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S,
-                    enable_ingress_router_metrics=(
-                        self._haproxy.cfg.ingress_request_router_metrics_enabled
+                    enable_per_request_metrics=(
+                        self._haproxy.cfg.request_ingress_metrics_enabled
                     ),
                     metrics_socket_path=self._haproxy.cfg.metrics_socket_path,
                 )
@@ -1730,6 +1745,7 @@ class HAProxyManager(ProxyActorInterface):
             servers=servers,
             ingress_request_router_servers=ingress_request_router_servers,
             app_name=target_group.app_name,
+            ingress_deployment_name=target_group.ingress_deployment_name,
             fallback_server=fallback_server,
         )
 

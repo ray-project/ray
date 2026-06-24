@@ -1581,6 +1581,17 @@ class TargetGroup(BaseModel):
             "decisions. Only populated on HTTP target groups; always empty for gRPC."
         ),
     )
+    # Name of the application's ingress deployment (the deployment that serves
+    # the data-plane traffic). Threaded through to HAProxy so per-request
+    # ingress metrics can be tagged with the deployment name, matching what the
+    # Python proxy records. Empty when not applicable (e.g. proxy target groups).
+    ingress_deployment_name: str = Field(
+        "",
+        description=(
+            "Name of the application's ingress deployment, used to tag "
+            "per-request ingress metrics emitted by HAProxy."
+        ),
+    )
 
 
 @PublicAPI(stability="alpha")

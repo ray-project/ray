@@ -167,6 +167,42 @@ def test_parse_line_returns_none_when_sd_missing(raw: bytes, why: str) -> None:
     assert HAProxyMetricsCollector.parse_line(raw) is None, why
 
 
+def test_parse_line_extracts_general_ingress_fields() -> None:
+    """A real HAProxy line carries the general request fields with %ST/%Ta
+    rendered unquoted (bare), alongside the quoted var-based fields."""
+    line = _line(
+        'app="llm" route="/llm" method="POST" status=200 latency_ms=42 '
+        'deployment="LLMDeployment" intended="r1" actual="r1" '
+        'router_latency_us="1234" body_truncated_full_length="" '
+        'via_router="1" failed=""'
+    )
+    parsed = HAProxyMetricsCollector.parse_line(line)
+    assert parsed.app == "llm"
+    assert parsed.route == "/llm"
+    assert parsed.method == "POST"
+    assert parsed.status_code == "200"
+    assert parsed.latency_ms == 42
+    assert parsed.deployment == "LLMDeployment"
+    assert parsed.via_router is True
+    assert parsed.router_latency_us == 1234
+
+
+def test_parse_line_general_only_without_router_fields() -> None:
+    """When router metrics are off, only the general fields are present; router
+    fields parse as absent (None / False)."""
+    line = _line(
+        'app="app1" route="/" method="GET" status=404 latency_ms=3 deployment=""'
+    )
+    parsed = HAProxyMetricsCollector.parse_line(line)
+    assert parsed.app == "app1"
+    assert parsed.status_code == "404"
+    assert parsed.latency_ms == 3
+    assert parsed.deployment is None
+    assert parsed.via_router is False
+    assert parsed.failed is None
+    assert parsed.router_latency_us is None
+
+
 def test_parse_line_handles_unknown_int_value() -> None:
     # router_latency_us isn't a number — parser should map it to None
     # rather than raise.
@@ -201,6 +237,16 @@ class _RecordingMetric:
         self.calls.append(("observe", dict(tags or {}), value))
 
 
+class _RecordingIngressMetrics:
+    """Stub for RequestIngressMetrics that captures record_request kwargs."""
+
+    def __init__(self) -> None:
+        self.calls: list = []
+
+    def record_request(self, **kwargs) -> None:
+        self.calls.append(kwargs)
+
+
 @pytest.fixture
 def collector() -> HAProxyMetricsCollector:
     """Build a collector with real metric constructors but stubbed inc/observe.
@@ -214,6 +260,7 @@ def collector() -> HAProxyMetricsCollector:
     c.replica_mismatches_counter = _RecordingMetric()
     c.failures_counter = _RecordingMetric()
     c.requests_counter = _RecordingMetric()
+    c.request_ingress_metrics = _RecordingIngressMetrics()
     return c
 
 
@@ -439,6 +486,81 @@ def test_record_uses_unknown_app_tag_when_app_missing(collector) -> None:
 
 
 # ---------------------------------------------------------------------------
+# record: RequestIngressMetrics (serve_num_http_*) path
+# ---------------------------------------------------------------------------
+
+
+def _ingress(
+    *,
+    app="llm",
+    route="/llm",
+    method="POST",
+    status="200",
+    latency_ms=42,
+    deployment="LLMDeployment",
+    via_router=True,
+) -> ParsedMetrics:
+    return ParsedMetrics(
+        app=app,
+        intended_server="r1",
+        actual_server="r1",
+        router_latency_us=1234,
+        body_truncated_full_length=None,
+        via_router=via_router,
+        failed=None,
+        route=route,
+        method=method,
+        status_code=status,
+        latency_ms=latency_ms,
+        deployment=deployment,
+    )
+
+
+def test_record_emits_ingress_request_metrics(collector) -> None:
+    collector.record(_ingress())
+    assert collector.request_ingress_metrics.calls == [
+        {
+            "route": "/llm",
+            "method": "POST",
+            "application": "llm",
+            "status_code": "200",
+            "latency_ms": 42.0,
+            "is_error": False,
+            "deployment_name": "LLMDeployment",
+        }
+    ]
+
+
+def test_record_ingress_marks_4xx_5xx_as_error(collector) -> None:
+    collector.record(_ingress(status="503"))
+    assert collector.request_ingress_metrics.calls[0]["is_error"] is True
+    collector.record(_ingress(status="404"))
+    assert collector.request_ingress_metrics.calls[1]["is_error"] is True
+
+
+def test_record_ingress_emitted_for_non_router_requests(collector) -> None:
+    """A static (non-router) request still emits ingress metrics; only the
+    router-specific counters stay quiet."""
+    collector.record(_ingress(via_router=False))
+    assert len(collector.request_ingress_metrics.calls) == 1
+    assert collector.requests_counter.calls == []
+    assert collector.latency_histogram.calls == []
+
+
+def test_record_skips_ingress_when_app_or_status_missing(collector) -> None:
+    """Lines that didn't match a Serve app backend (no app / status, e.g.
+    /-/routes or a 404 from the default backend) emit no ingress metrics."""
+    collector.record(_ingress(app=None))
+    collector.record(_ingress(status=None))
+    assert collector.request_ingress_metrics.calls == []
+
+
+def test_record_ingress_defaults_missing_latency_to_zero(collector) -> None:
+    collector.record(_ingress(latency_ms=None))
+    assert collector.request_ingress_metrics.calls[0]["latency_ms"] == 0.0
+
+
+# ---------------------------------------------------------------------------
 # DatagramHandler: end-to-end through the asyncio protocol layer
 # ---------------------------------------------------------------------------
 
@@ -635,7 +757,7 @@ async def test_start_polls_always_and_binds_only_when_enabled(tmp_path) -> None:
 
     disabled = HAProxyMetricsCollector(haproxy_api=api, node_id="test-node")
     attach_task = disabled.start(
-        loop, poll_interval_s=10.0, enable_ingress_router_metrics=False
+        loop, poll_interval_s=10.0, enable_per_request_metrics=False
     )
     assert attach_task is None
     assert disabled._node_metrics_task is not None
@@ -646,7 +768,7 @@ async def test_start_polls_always_and_binds_only_when_enabled(tmp_path) -> None:
     attach_task = enabled.start(
         loop,
         poll_interval_s=10.0,
-        enable_ingress_router_metrics=True,
+        enable_per_request_metrics=True,
         metrics_socket_path=str(sock_path),
     )
     try:
@@ -663,12 +785,20 @@ async def test_start_polls_always_and_binds_only_when_enabled(tmp_path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _render_with_metrics(enabled: bool) -> str:
+def _render_with_metrics(
+    enabled: bool, request_ingress_enabled: Optional[bool] = None
+) -> str:
     """Render the HAProxy config with metrics on or off; return the text.
+
+    `enabled` toggles the ingress-request-router metrics. By default the
+    general per-request ingress metrics track it; pass `request_ingress_enabled`
+    to control them independently (they are on by default in production).
 
     Imports inside the function so the module-level test discovery doesn't
     drag in HAProxy template rendering for tests that don't need it.
     """
+    if request_ingress_enabled is None:
+        request_ingress_enabled = enabled
 
     from ray.serve._private.haproxy import (
         BackendConfig,
@@ -683,6 +813,7 @@ def _render_with_metrics(enabled: bool) -> str:
             http_options=HTTPOptions(host="127.0.0.1", port=8000),
             socket_path=os.path.join(td, "admin.sock"),
             ingress_request_router_metrics_enabled=enabled,
+            request_ingress_metrics_enabled=request_ingress_enabled,
             metrics_socket_path=os.path.join(td, "metrics.sock"),
             has_received_routes=True,
             has_received_servers=True,
@@ -691,6 +822,7 @@ def _render_with_metrics(enabled: bool) -> str:
             name="llm",
             path_prefix="/",
             app_name="llm",
+            ingress_deployment_name="LLMDeployment",
             servers=[
                 ServerConfig(
                     name="A", host="127.0.0.1", port=9001, replica_id="actor-A"
@@ -719,10 +851,33 @@ def test_rendered_config_contains_metrics_directives_when_enabled() -> None:
 
 
 def test_rendered_config_omits_metrics_directives_when_disabled() -> None:
+    # Both router and request-ingress metrics off -> no log target at all.
     rendered = _render_with_metrics(enabled=False)
     assert "log-format-sd" not in rendered
     assert "[serve@1" not in rendered
     assert "rfc5424" not in rendered
+
+
+def test_rendered_config_emits_request_ingress_without_router_metrics() -> None:
+    """With request-ingress metrics on but router metrics off, the general SD
+    fields + per-backend metric vars render, but the router-specific fields do
+    not. This is the default production shape (router metrics opt-in)."""
+    rendered = _render_with_metrics(enabled=False, request_ingress_enabled=True)
+    assert "log-format-sd" in rendered
+    assert "[serve@1" in rendered
+    assert "format rfc5424" in rendered
+    # General per-request fields and the var-setting rules are present.
+    assert "app=%[var(txn.serve_app)]" in rendered
+    assert "route=%[var(txn.serve_route)]" in rendered
+    assert "method=%HM" in rendered
+    assert "status=%ST" in rendered
+    assert "latency_ms=%Ta" in rendered
+    assert "deployment=%[var(txn.serve_deployment)]" in rendered
+    assert "set-var(txn.serve_app) str(llm)" in rendered
+    assert "set-var(txn.serve_deployment) str(LLMDeployment)" in rendered
+    # Router-specific fields are absent when router metrics are off.
+    assert "router_latency_us" not in rendered
+    assert "via_router" not in rendered
 
 
 def _render_lua_with_metrics(enabled: bool) -> str:

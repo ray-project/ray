@@ -1532,6 +1532,11 @@ class ServeController:
                 app_name
             )
         )
+        # Ingress deployment name, threaded into the target groups so HAProxy can
+        # tag per-request ingress metrics with it (matching the Python proxy).
+        ingress_deployment_name = (
+            self.application_state_manager.get_ingress_deployment_name(app_name) or ""
+        )
 
         # Get running replicas for the ingress deployment
         replica_details = self._get_running_replica_details_for_ingress_deployment(
@@ -1565,6 +1570,7 @@ class ServeController:
                     targets=http_targets,
                     app_name=app_name,
                     ingress_request_router_targets=ingress_request_router_targets,
+                    ingress_deployment_name=ingress_deployment_name,
                 )
             )
 

@@ -86,13 +86,19 @@ frontend prometheus
     no log
 frontend http_frontend
     bind {{ config.frontend_host }}:{{ config.frontend_port }}
-    {%- if ingress_request_router_metrics_enabled and has_ingress_request_router %}
+    {%- if config.request_ingress_metrics_enabled %}
     log global
-    # Per-request metrics for the ingress request router. Goes only to the
-    # rfc5424 target below; the inherited rfc3164 targets do not include the
-    # SD section, so their byte stream is unchanged.
+    # Per-request ingress metrics. Emitted for every request matched to a Serve
+    # app backend and parsed by HAProxyMetricsCollector into the
+    # serve_num_http_* / serve_http_request_latency_ms families (the metrics the
+    # Python proxy emits in non-HAProxy mode). Goes only to the rfc5424 target
+    # below; the inherited rfc3164 targets do not include the SD section, so
+    # their byte stream is unchanged. When ingress-request-router metrics are
+    # also enabled, the router-specific fields are appended to the same line.
+    # %ST/%Ta render unquoted (HAProxy does not quote those aliases); the parser
+    # accepts both quoted and bare values.
     log {{ metrics_socket_path }} len 8192 format rfc5424 local1 info
-    log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.ingress_request_router_app)] intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)]]"
+    log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.serve_app)] route=%[var(txn.serve_route)] method=%HM status=%ST latency_ms=%Ta deployment=%[var(txn.serve_deployment)]{% if ingress_request_router_metrics_enabled and has_ingress_request_router %} intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)]{% endif %}]"
     {%- endif %}
 {{ healthz_rules|safe }}
     # Routes endpoint
@@ -109,6 +115,20 @@ frontend http_frontend
     acl is_{{ backend.name or 'unknown' }} path_beg {{ '/' if not backend.path_prefix or backend.path_prefix == '/' else backend.path_prefix ~ '/' }}
     acl is_{{ backend.name or 'unknown' }} path {{ backend.path_prefix or '/' }}
 {%- endfor %}
+    {%- if config.request_ingress_metrics_enabled %}
+    # Per-request metric vars (app / route / ingress deployment), set on the
+    # first matching backend. Backends are sorted longest-prefix-first and the
+    # !found guard makes the longest match win, mirroring the use_backend rules
+    # below. Requests that match no app backend (e.g. /-/routes, 404s) leave
+    # these unset, so HAProxyMetricsCollector skips them.
+    {%- for backend in backends %}
+    http-request set-var(txn.serve_app) str({{ backend.app_name or 'unknown' }}) if is_{{ backend.name or 'unknown' }} !{ var(txn.serve_app) -m found }
+    http-request set-var(txn.serve_route) str({{ backend.path_prefix or '/' }}) if is_{{ backend.name or 'unknown' }} !{ var(txn.serve_route) -m found }
+    {%- if backend.ingress_deployment_name %}
+    http-request set-var(txn.serve_deployment) str({{ backend.ingress_deployment_name }}) if is_{{ backend.name or 'unknown' }} !{ var(txn.serve_deployment) -m found }
+    {%- endif %}
+    {%- endfor %}
+    {%- endif %}
     {%- if has_ingress_request_router %}
     # Set txn.ingress_request_router_app to the first matching router-bearing
     # backend. Backends are sorted longest-prefix-first, and the !found guard

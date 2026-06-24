@@ -66,6 +66,8 @@ from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_HAPROXY_METRICS_ENABLED,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
@@ -856,6 +858,21 @@ class ReplicaMetricsManager:
     ):
         """Record per-request metrics."""
         if not self._is_direct_ingress:
+            return
+
+        # In HAProxy mode, HTTP ingress requests flow through HAProxy, which
+        # emits these metrics from its per-request log datagrams (covering even
+        # requests it terminates itself, e.g. 404/503, that never reach a
+        # replica). Recording them here too would double-count, so the replica
+        # defers to HAProxy as the single source for HTTP -- but only when
+        # HAProxy metrics are actually enabled, otherwise nothing would emit
+        # them. gRPC is not proxied by HAProxy (it uses direct ingress), so the
+        # replica still emits it.
+        if (
+            RAY_SERVE_ENABLE_HA_PROXY
+            and RAY_SERVE_HAPROXY_METRICS_ENABLED
+            and protocol == RequestProtocol.HTTP
+        ):
             return
 
         if self._cached_metrics_enabled:
