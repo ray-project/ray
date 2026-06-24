@@ -96,14 +96,25 @@ class SGLangPDPrefillServer(_SGLangPDRequestIdMixin, LLMServer):
         engine_cls=None,
         model_downloader=None,
     ):
+        import ray
+
+        node_ip = ray.util.get_node_ip_address()
+
+        llm_config = llm_config.model_copy(deep=True)
+
+        # Bind the SGLang server (and thus its KV bootstrap server) to the
+        # routable node IP, not the default 127.0.0.1. start_disagg_service
+        # binds the bootstrap HTTP server to server_args.host; the decode
+        # KVReceiver dials the node IP we advertise via get_bootstrap_info, so
+        # a loopback bind yields "Connection refused" on the handshake.
+        llm_config.engine_kwargs.setdefault("host", node_ip)
+
         # Allocate a free bootstrap port before the engine starts unless the
         # user pinned one. SGLang's prefill engine binds its bootstrap server
         # to this port and reads it from server_args at startup.
-        if "disaggregation_bootstrap_port" not in llm_config.engine_kwargs:
-            llm_config = llm_config.model_copy(deep=True)
-            llm_config.engine_kwargs[
-                "disaggregation_bootstrap_port"
-            ] = _allocate_free_port()
+        llm_config.engine_kwargs.setdefault(
+            "disaggregation_bootstrap_port", _allocate_free_port()
+        )
 
         await super().__init__(
             llm_config,
@@ -111,9 +122,7 @@ class SGLangPDPrefillServer(_SGLangPDRequestIdMixin, LLMServer):
             model_downloader=model_downloader,
         )
 
-        import ray
-
-        self._bootstrap_host = ray.util.get_node_ip_address()
+        self._bootstrap_host = llm_config.engine_kwargs["host"]
         self._bootstrap_port = llm_config.engine_kwargs["disaggregation_bootstrap_port"]
 
         logger.info(
