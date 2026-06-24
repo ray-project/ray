@@ -719,6 +719,21 @@ py_test(
 )
 
 py_test(
+    name = "test_gpu_aggregate",
+    size = "medium",
+    srcs = ["tests/test_gpu_aggregate.py"],
+    tags = [
+        "exclusive",
+        "gpu",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_hash_shuffle",
     size = "medium",
     srcs = ["tests/test_hash_shuffle.py"],
@@ -1003,6 +1018,20 @@ py_test(
     name = "test_predicate_pushdown",
     size = "small",
     srcs = ["tests/test_predicate_pushdown.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_common_subexpr_elimination",
+    size = "small",
+    srcs = ["tests/test_common_subexpr_elimination.py"],
     tags = [
         "exclusive",
         "team:data",
