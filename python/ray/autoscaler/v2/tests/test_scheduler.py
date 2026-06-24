@@ -3638,26 +3638,6 @@ class TestSchedulerPerformanceOptimizations:
         # Existing nodes can handle all requests (5 nodes × 10 CPU ÷ 2 CPU = 25 slots).
         assert to_launch == {}
 
-    def test_demand_truncation(self):
-        """Demand vector is truncated to AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE."""
-        node_type_configs = {
-            "type_1": NodeTypeConfig(
-                name="type_1",
-                resources={"CPU": 4},
-                min_worker_nodes=0,
-                max_worker_nodes=10000,
-            ),
-        }
-        # Create 5000 demands (well above the 1000 limit).
-        request = sched_request(
-            node_type_configs=node_type_configs,
-            resource_requests=[ResourceRequestUtil.make({"CPU": 1})] * 5000,
-        )
-        reply = ResourceDemandScheduler(event_logger).schedule(request)
-        to_launch, _ = _launch_and_terminate(reply)
-        # With truncation to 1000 demands: needs ceil(1000/4) = 250 nodes.
-        assert to_launch == {"type_1": 250}
-
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
