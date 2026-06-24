@@ -307,12 +307,29 @@ async def test_drain_and_undrain_haproxy_manager(
     HEALTHY, DRAINING and DRAINED
     """
     monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "10")
-    monkeypatch.setenv("SERVE_SOCKET_REUSE_PORT_ENABLED", "1")
 
+    # No SO_REUSEPORT. Each node's HAProxy binds its own port. The head keeps the
+    # default 8000. Each worker gets a distinct HTTP port via
+    # RAY_SERVE_WORKER_PROXY_HTTP_PORT and distinct stats/metrics ports so the
+    # three co-located HAProxies don't collide.
     cluster = Cluster()
     head_node = cluster.add_node(num_cpus=0)
-    cluster.add_node(num_cpus=1)
-    cluster.add_node(num_cpus=1)
+    cluster.add_node(
+        num_cpus=1,
+        env_vars={
+            "RAY_SERVE_WORKER_PROXY_HTTP_PORT": "8001",
+            "RAY_SERVE_HAPROXY_STATS_PORT": "8405",
+            "RAY_SERVE_HAPROXY_METRICS_PORT": "9102",
+        },
+    )
+    cluster.add_node(
+        num_cpus=1,
+        env_vars={
+            "RAY_SERVE_WORKER_PROXY_HTTP_PORT": "8002",
+            "RAY_SERVE_HAPROXY_STATS_PORT": "8406",
+            "RAY_SERVE_HAPROXY_METRICS_PORT": "9103",
+        },
+    )
     cluster.wait_for_nodes()
     ray.init(address=head_node.address)
     serve.start(http_options={"location": "EveryNode"})
@@ -339,14 +356,14 @@ async def test_drain_and_undrain_haproxy_manager(
 
     assert len(proxy_actor_ids) == 3
 
-    # 3 HAProxies share *:8000 via SO_REUSEPORT; 20 successive 200s makes it
-    # very likely each shard has served at least one request and converged.
+    # Each HAProxy binds its own port (head 8000, workers 8001/8002); wait until
+    # all three answer health checks.
     def all_haproxies_ready():
         try:
             return all(
-                httpx.get("http://localhost:8000/-/healthz", timeout=2).status_code
+                httpx.get(f"http://localhost:{port}/-/healthz", timeout=2).status_code
                 == 200
-                for _ in range(20)
+                for port in (8000, 8001, 8002)
             )
         except Exception:
             return False
