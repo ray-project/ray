@@ -2685,7 +2685,7 @@ class Replica:
 
     async def _grpc_request_iterator_with_cancel(
         self, request_iterator: Any, cancel_event: asyncio.Event
-    ):
+    ) -> AsyncGenerator[Any, None]:
         """Yield from the native gRPC iterator, signaling cancellation on error.
 
         Used when user code shares the server loop (no cross-loop bridging). A
@@ -2699,7 +2699,7 @@ class Replica:
                 gRPCInputStream reports `is_cancelled()` and ends gracefully.
 
         Yields:
-            Each request message read from the native gRPC iterator.
+            Any: Each request message read from the native gRPC iterator.
         """
         try:
             async for message in request_iterator:
