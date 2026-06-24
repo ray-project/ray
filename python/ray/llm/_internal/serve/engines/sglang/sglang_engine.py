@@ -21,6 +21,8 @@ from typing import (
     Union,
 )
 
+from pydantic import BaseModel
+
 from ray.llm._internal.serve.constants import ENABLE_WORKER_PROCESS_SETUP_HOOK
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -41,6 +43,28 @@ from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import (
     _merge_replica_actor_and_child_actor_bundles,
 )
+
+
+class SGLangEngineConfig(BaseModel):
+    """Minimal engine config for SGLang, exposing the fields telemetry needs.
+
+    Unlike VLLMEngineConfig, this does not drive engine construction —
+    SGLangServer.__init__ passes engine_kwargs to sglang.Engine directly.
+    This class exists only to satisfy LLMConfig.get_engine_config() callers
+    (e.g. usage telemetry) without requiring vLLM to be installed.
+    """
+
+    tensor_parallel_degree: int
+    num_devices: int
+
+    @classmethod
+    def from_llm_config(cls, llm_config: "LLMConfig") -> "SGLangEngineConfig":
+        tp_size = llm_config.engine_kwargs.get("tp_size", 1)
+        pp_size = llm_config.engine_kwargs.get("pp_size", 1)
+        return cls(
+            tensor_parallel_degree=tp_size,
+            num_devices=tp_size * pp_size,
+        )
 
 
 class SGLangServer:

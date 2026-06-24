@@ -87,6 +87,7 @@ def sglang_pd_client_fake():
             "tp_size": 1,
             "mem_fraction_static": 0.4,
         },
+        llm_engine="SGLang",
     )
 
     decode_config = LLMConfig(
@@ -106,6 +107,7 @@ def sglang_pd_client_fake():
             "tp_size": 1,
             "mem_fraction_static": 0.4,
         },
+        llm_engine="SGLang",
     )
 
     decode_deployment = _make_pd_deployments(prefill_config, decode_config)
@@ -333,6 +335,7 @@ def test_sglang_pd_chat_nixl():
             "model_id": RAY_MODEL_ID,
             "model_source": MODEL_ID,
         },
+        llm_engine="SGLang",
         deployment_config={
             "autoscaling_config": {"min_replicas": 1, "max_replicas": 1}
         },
@@ -360,6 +363,7 @@ def test_sglang_pd_chat_nixl():
             "mem_fraction_static": 0.4,
             "base_gpu_id": 1,
         },
+        llm_engine="SGLang",
     )
 
     decode_deployment = _make_pd_deployments(prefill_config, decode_config)
