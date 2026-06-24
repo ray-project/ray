@@ -8,6 +8,7 @@ import requests
 
 import ray
 import ray._common.usage.usage_lib as ray_usage_lib
+import ray._private.ray_constants as ray_constants
 import ray.dashboard.utils as dashboard_utils
 from ray._common.network_utils import build_address
 from ray._common.utils import get_or_create_event_loop
@@ -190,6 +191,10 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
 
     @async_loop_forever(ray_usage_lib._usage_stats_report_interval_s())
     async def periodically_report_usage(self):
+        is_leader_elect_enabled = ray_constants.RAY_LEADER_ELECT
+        if is_leader_elect_enabled and not self.gcs_client.is_gcs_leader():
+            logger.info("GCS is in passive mode. Skipping periodic usage reporting.")
+            return
         await self._report_usage_async()
 
     async def run(self):
@@ -205,7 +210,11 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             # Wait for 1 minutes to send the first report
             # so autoscaler has the chance to set DEBUG_AUTOSCALING_STATUS.
             await asyncio.sleep(min(60, ray_usage_lib._usage_stats_report_interval_s()))
-            await self._report_usage_async()
+            is_leader_elect_enabled = ray_constants.RAY_LEADER_ELECT
+            if not is_leader_elect_enabled or self.gcs_client.is_gcs_leader():
+                await self._report_usage_async()
+            else:
+                logger.info("GCS is in passive mode. Skipping initial usage reporting.")
             # Add a random offset before the second report to remove sample bias.
             await asyncio.sleep(
                 random.randint(0, ray_usage_lib._usage_stats_report_interval_s())
