@@ -315,6 +315,71 @@ def test_read_lerobot_image_camera_pixel_values(
         )
 
 
+def test_decode_image_frames_from_path(tmp_path):
+    """An image-camera cell holding a path instead of inline bytes (the rare
+    non-embedded HF Image layout) is read from the referenced file through the
+    dataset filesystem and decoded to HWC uint8 pixels."""
+    from ray.data._internal.datasource.lerobot_datasource import _LeRobotReadTask
+    from ray.data.datasource import LeRobotDatasource
+
+    ds = create_lerobot_dataset(
+        str(tmp_path / "img_path"),
+        num_episodes=1,
+        frames_per_episode=1,
+        has_video=False,
+        image_camera=True,
+    )
+    root = LeRobotDatasource(ds)._roots[0]
+
+    # Write a real PNG where _decode_image_frames resolves the path:
+    # f"{fs_root}/{path}" -- the same join it uses for data/video files.
+    rel = "images/observation.image/f0.png"
+    target = f"{root.fs_root}/{rel}"
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    with open(target, "wb") as fh:
+        fh.write(_png_bytes(7))
+
+    table = pa.table(
+        {
+            "observation.image": pa.array(
+                [{"bytes": None, "path": rel}],
+                type=pa.struct([("bytes", pa.binary()), ("path", pa.string())]),
+            )
+        }
+    )
+    decoded = _LeRobotReadTask._decode_image_frames(root, table)
+    frame = np.asarray(decoded["observation.image"][0])
+    assert frame.shape == (FRAME_H, FRAME_W, FRAME_C)
+    assert frame.dtype == np.uint8
+    assert (frame == 7 % 256).all()
+
+
+def test_decode_image_frames_requires_bytes_or_path(tmp_path):
+    """A cell with neither inline bytes nor a path is an inconsistent image
+    column and raises, rather than silently yielding an empty frame."""
+    from ray.data._internal.datasource.lerobot_datasource import _LeRobotReadTask
+    from ray.data.datasource import LeRobotDatasource
+
+    ds = create_lerobot_dataset(
+        str(tmp_path / "img_bad"),
+        num_episodes=1,
+        frames_per_episode=1,
+        has_video=False,
+        image_camera=True,
+    )
+    root = LeRobotDatasource(ds)._roots[0]
+    table = pa.table(
+        {
+            "observation.image": pa.array(
+                [{"bytes": None, "path": None}],
+                type=pa.struct([("bytes", pa.binary()), ("path", pa.string())]),
+            )
+        }
+    )
+    with pytest.raises(ValueError, match="neither inline bytes nor a path"):
+        _LeRobotReadTask._decode_image_frames(root, table)
+
+
 def test_read_lerobot_video_pixel_values(ray_start_regular_shared, lerobot_dataset):
     """Video-camera frames decode (within mpeg4 tolerance) to the solid fill the
     fixture wrote: within each episode, local frame ``fr`` was filled
