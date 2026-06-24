@@ -157,7 +157,7 @@ def _build_schema(
     return pa.schema(fields)
 
 
-def _estimated_row_size_bytes(features: dict, root_for_logging: str) -> int:
+def _estimated_row_size_bytes(features: dict) -> int:
     """Estimated in-memory size of one fully-decoded frame row, in bytes."""
     total = 0
     for feat_name, feat in features.items():
@@ -171,10 +171,9 @@ def _estimated_row_size_bytes(features: dict, root_for_logging: str) -> int:
                 total += int(np.prod(shape)) * np.dtype(feat["dtype"]).itemsize
             except (TypeError, KeyError):
                 logger.warning(
-                    "Could not estimate size for feature %r in dataset %r, "
-                    "skipping. Continuing without this estimate.",
+                    "Could not estimate size for feature %r; skipping it in the "
+                    "row-size estimate.",
                     feat_name,
-                    root_for_logging,
                 )
                 continue
     # Output rows also carry task + dataset_index + stats columns. task and
@@ -418,7 +417,7 @@ def _build_root(
     schema = _build_schema(
         episodes_table, meta.data_path, meta.video_keys, image_keys, fs, fs_root
     )
-    row_size_bytes = _estimated_row_size_bytes(meta.features, root_uri)
+    row_size_bytes = _estimated_row_size_bytes(meta.features)
     stats_json = _stats_to_json(meta.stats)
 
     root_bundle = _LeRobotRoot(
