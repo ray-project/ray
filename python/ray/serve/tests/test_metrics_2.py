@@ -15,6 +15,7 @@ from ray._common.test_utils import (
     fetch_prometheus_metric_timeseries,
     wait_for_condition,
 )
+from ray.serve._private.common import ReplicaState
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
 from ray.serve._private.test_utils import (
     PROMETHEUS_METRICS_TIMEOUT_S,
@@ -1069,6 +1070,135 @@ class TestProxyStateMetrics:
             wait=False,
         )
         assert len(count_metrics) == 1
+
+
+class TestReplicaStateMetrics:
+    def test_replica_state_metric(self, metrics_start_shutdown):
+        """Test that serve_replica_state reports RUNNING and has correct tags."""
+
+        @serve.deployment
+        def f():
+            return "hello"
+
+        serve.run(f.bind(), name="app")
+        timeseries = PrometheusTimeseries()
+
+        # Wait for the replica to reach RUNNING (4).
+        wait_for_condition(
+            check_metric_float_eq,
+            metric="ray_serve_replica_state",
+            expected=ReplicaState.RUNNING.to_numeric(),
+            expected_tags={"deployment": "f", "application": "app"},
+            timeseries=timeseries,
+            timeout=30,
+        )
+
+        # Verify the three expected tag keys are present.
+        metrics_list = get_metric_dictionaries(
+            "ray_serve_replica_state", timeseries=timeseries, wait=False
+        )
+        assert len(metrics_list) >= 1
+        for m in metrics_list:
+            assert "deployment" in m
+            assert "replica" in m
+            assert "application" in m
+
+    def test_replica_state_metric_starting(self, metrics_start_shutdown):
+        """Test that serve_replica_state reports STARTING while replica init is blocked,
+        then transitions to RUNNING once the replica finishes initializing."""
+        import threading
+
+        signal = SignalActor.options(name="signal123").remote()
+
+        @serve.deployment(ray_actor_options={"num_cpus": 0})
+        class SlowInit:
+            def __init__(self):
+                ray.get(ray.get_actor("signal123").wait.remote())
+
+            def __call__(self):
+                return "hello"
+
+        # serve.run blocks until the app is HEALTHY; run it in a daemon thread
+        # so the blocked __init__ doesn't stall the test.
+        deploy_thread = threading.Thread(
+            target=lambda: serve.run(SlowInit.bind(), name="app"),
+            daemon=True,
+        )
+        deploy_thread.start()
+
+        timeseries = PrometheusTimeseries()
+
+        # While __init__ is blocked the replica should be STARTING (1).
+        wait_for_condition(
+            check_metric_float_eq,
+            metric="ray_serve_replica_state",
+            expected=ReplicaState.STARTING.to_numeric(),
+            expected_tags={"deployment": "SlowInit", "application": "app"},
+            timeseries=timeseries,
+            timeout=30,
+        )
+
+        # Unblock __init__; replica transitions to RUNNING (4).
+        ray.get(signal.send.remote())
+        deploy_thread.join(timeout=30)
+
+        wait_for_condition(
+            check_metric_float_eq,
+            metric="ray_serve_replica_state",
+            expected=ReplicaState.RUNNING.to_numeric(),
+            expected_tags={"deployment": "SlowInit", "application": "app"},
+            timeseries=timeseries,
+            timeout=30,
+        )
+
+    def test_replica_state_metric_stopping(self, metrics_start_shutdown):
+        """Test that serve_replica_state reports STOPPING while graceful shutdown is
+        blocked by an in-flight request, then the metric reflects the replica is gone
+        after the request completes."""
+
+        signal = SignalActor.options(name="signal123").remote()
+
+        @serve.deployment(
+            graceful_shutdown_timeout_s=30,
+            ray_actor_options={"num_cpus": 0},
+        )
+        class HangOnRequest:
+            async def __call__(self):
+                await ray.get_actor("signal123").wait.remote()
+                return "done"
+
+        serve.run(HangOnRequest.bind(), name="app")
+        timeseries = PrometheusTimeseries()
+
+        wait_for_condition(
+            check_metric_float_eq,
+            metric="ray_serve_replica_state",
+            expected=ReplicaState.RUNNING.to_numeric(),
+            expected_tags={"deployment": "HangOnRequest", "application": "app"},
+            timeseries=timeseries,
+            timeout=30,
+        )
+
+        # Keep the replica busy with a blocking request so it can't stop immediately.
+        handle = serve.get_deployment_handle("HangOnRequest", "app")
+        _ = handle.remote()
+
+        # Trigger deletion without blocking; the in-flight request holds the replica
+        # in STOPPING until the signal is released.
+        serve.delete("app", _blocking=False)
+        timeseries.flush()
+
+        wait_for_condition(
+            check_metric_float_eq,
+            metric="ray_serve_replica_state",
+            expected=ReplicaState.STOPPING.to_numeric(),
+            expected_tags={"deployment": "HangOnRequest", "application": "app"},
+            timeseries=timeseries,
+            timeout=30,
+        )
+
+        # Release the blocking request so the replica can finish shutting down.
+        ray.get(signal.send.remote())
 
 
 if __name__ == "__main__":
