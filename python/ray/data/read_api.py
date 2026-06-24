@@ -2653,12 +2653,12 @@ def read_lerobot(
             cap the number of simultaneous video decoders. By default,
             concurrency is dynamically decided based on available resources.
         override_num_blocks: Override the number of output blocks from all read
-            tasks. By default, the number is dynamically decided based on input
-            data size and available resources. ``group_by_episode`` sets the
-            base grouping; ``override_num_blocks`` then merges or splits those
-            groups (in either direction) to reach the requested count. Splitting
-            a video-file group re-opens its file(s) once per sub-task, so higher
-            parallelism trades amortized file opens for more concurrency.
+            tasks. By default this is one read task per video-file group (or per
+            episode when ``group_by_episode``), so each file is opened once;
+            raise it (e.g. to your cluster's CPU count) to parallelize a
+            monolithic dataset across more workers. Splitting a video-file group
+            re-opens its file(s) once per sub-task, so higher parallelism trades
+            amortized file opens for more concurrency; lowering it merges groups.
 
     Returns:
         :class:`~ray.data.Dataset` of fully-decoded frames with state, action,
@@ -2671,6 +2671,13 @@ def read_lerobot(
         storage_options=storage_options,
         frame_tolerance_s=frame_tolerance_s,
     )
+    if override_num_blocks is None:
+        # Default to one read task per video-file group. Ray's generic
+        # block-count floor would over-split a video read, where each split
+        # re-opens a file and re-inits a torchcodec decoder -- a cost a small
+        # dataset can't amortize. An explicit override_num_blocks still
+        # splits/merges from this base (e.g. to parallelize a monolithic mp4).
+        override_num_blocks = datasource.default_num_blocks()
     return read_datasource(
         datasource,
         num_cpus=num_cpus,

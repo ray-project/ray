@@ -799,6 +799,27 @@ def test_read_lerobot_get_read_tasks_parallelism_zero(
     assert sorted(indices) == list(range(15))
 
 
+def test_read_lerobot_default_num_blocks_no_oversplit(
+    ray_start_regular_shared, lerobot_dataset
+):
+    """Without override_num_blocks, read_lerobot defaults to one read task per
+    video-file group -- it must NOT over-split into Ray's generic block-count
+    floor (which tanks video throughput: each split re-opens file + decoder)."""
+    import re
+
+    from ray.data.datasource import LeRobotDatasource
+
+    source = LeRobotDatasource(lerobot_dataset)
+    base = len(source._slice())  # 3 episodes -> 3 video file groups
+    assert source.default_num_blocks() == base
+
+    # A default read (no override) must produce exactly the base partition, not
+    # the ~200-block floor Ray would otherwise apply to a tiny dataset.
+    mds = ray.data.read_lerobot(lerobot_dataset).materialize()
+    m = re.search(r"ReadLeRobot.*?(\d+) tasks", mds.stats())
+    assert m is not None and int(m.group(1)) == base, mds.stats()
+
+
 def test_memory_estimate_and_schema_correctness(
     ray_start_regular_shared,
     lerobot_dataset,

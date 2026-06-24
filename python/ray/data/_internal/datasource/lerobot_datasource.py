@@ -1068,6 +1068,18 @@ class LeRobotDatasource(Datasource):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return sum(r.total_frames * r.row_size_bytes for r in self._roots) or None
 
+    def default_num_blocks(self) -> int:
+        """The natural read-task count: one per video-file group (or per episode
+        when ``group_by_episode``).
+
+        ``read_lerobot`` uses this as the default ``override_num_blocks`` so a
+        video read is not over-split by Ray's generic block-count floor -- each
+        extra split re-opens a file and re-inits a decoder, a cost a small
+        dataset cannot amortize. This mirrors how file-based readers cap at the
+        file count; an explicit ``override_num_blocks`` still splits or merges
+        from this base."""
+        return len(self._slice())
+
     def get_read_tasks(
         self,
         parallelism: int,
