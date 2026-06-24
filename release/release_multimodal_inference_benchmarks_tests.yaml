@@ -114,6 +114,13 @@
     byod:
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
       python_depset: video_object_detection_py3.10.lock
+      runtime_env:
+        # Fail the test if a worker OOMs
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if a node dies
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        # Fail on spilling
+        - RAYTEST_FAIL_ON_SPILLING=0
   run:
     timeout: 3600
 
