@@ -6,6 +6,14 @@ filegroup(
     visibility = ["//doc:__subpackages__"],
 )
 
+# pbt_visualization lives in a subdirectory and imports a local helper module
+# (pbt_visualization_utils.py), so its whole directory is needed as test data.
+filegroup(
+    name = "pbt_visualization_files",
+    srcs = glob(["pbt_visualization/**"]),
+    visibility = ["//doc:__subpackages__"],
+)
+
 # --------------------------------------------------------------------
 # Test all doc/source/tune/examples notebooks.
 # --------------------------------------------------------------------
@@ -40,6 +48,21 @@ py_test_run_all_notebooks(
     tags = [
         "exclusive",
         "gpu",
+        "team:ml",
+    ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+)
+
+# The non-recursive "*.ipynb" glob above skips the pbt_visualization
+# subdirectory. It's CPU-only and runs a small PBT experiment, like the other
+# Tune notebook tests, so wire it here with its directory as data.
+py_test_run_all_notebooks(
+    size = "large",
+    include = ["pbt_visualization/*.ipynb"],
+    data = ["//doc/source/tune/examples:pbt_visualization_files"],
+    exclude = [],
+    tags = [
+        "exclusive",
         "team:ml",
     ],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
