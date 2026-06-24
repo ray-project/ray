@@ -47,7 +47,10 @@ CallbackReply::CallbackReply(const redisReply &redis_reply)
     break;
   }
   case REDIS_REPLY_ERROR: {
-    RAY_LOG(FATAL) << "Got an error in redis reply: " << redis_reply.str;
+    // Do not crash on a Redis error reply: store it so callers can surface it
+    // as a Status (e.g. ValidateRedisDB during a non-fatal Connect) instead of
+    // aborting the process.
+    error_reply_ = std::string(redis_reply.str, redis_reply.len);
     break;
   }
   case REDIS_REPLY_INTEGER: {
@@ -471,7 +474,7 @@ Status RedisContext::ValidateRedisDB() {
   // cluster_slots_ok:16384
   // cluster_slots_pfail:0
   // cluster_size:1
-  if (!reply || reply->IsNil()) {
+  if (!reply || reply->IsNil() || reply->IsError()) {
     return Status::RedisError("Failed to get Redis cluster info");
   }
   auto cluster_info = reply->ReadAsString();
@@ -637,6 +640,12 @@ Status ConnectRedisSentinel(RedisContext &context,
     freeReplyObject(redis_reply);
     return Status::RedisError(
         "There should be only one primary behind the Redis sentinel");
+  }
+  if (redis_reply->element[0] == nullptr ||
+      redis_reply->element[0]->type != REDIS_REPLY_ARRAY ||
+      redis_reply->element[0]->elements % 2 != 0) {
+    freeReplyObject(redis_reply);
+    return Status::RedisError("Malformed Redis sentinel master response");
   }
   auto primary = redis_reply->element[0];
   std::string actual_ip, actual_port;
