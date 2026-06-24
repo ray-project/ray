@@ -1,5 +1,6 @@
 import json
-from typing import Any, Optional, Tuple
+from types import SimpleNamespace
+from typing import Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 
@@ -16,36 +17,15 @@ _BODY_TRUNCATED_HEADER = "x-body-truncated"
 router_app = FastAPI()
 
 
-class _RoutingPayload:
-    """Routing key for the direct-streaming path.
+def _parse_routing_payload(body: bytes) -> Optional[SimpleNamespace]:
+    """Derive a routing key from a request body.
 
-    Body-aware routers (e.g. ``PrefixCacheAffinityRouter``) read ``.messages``
-    / ``.prompt`` off the first positional routing arg, which on the normal
-    OpenAI ingress is the parsed ``ChatCompletionRequest`` /
-    ``CompletionRequest``. Direct streaming forwards only the raw body, so this
-    wraps the leniently parsed body in the same attribute shape and no router
-    special-casing is needed. Only the field present in the body is set, so
-    ``hasattr`` tells a chat request from a completion request.
-    """
-
-    __slots__ = ("messages", "prompt")
-
-    def __init__(self, *, messages: Any = None, prompt: Any = None):
-        if messages is not None:
-            self.messages = messages
-        if prompt is not None:
-            self.prompt = prompt
-
-
-def _parse_routing_payload(body: bytes) -> Optional[_RoutingPayload]:
-    """Leniently derive a routing key from a (possibly truncated) request body.
-
-    A cheap ``json.loads`` into the ``messages`` / ``prompt`` routing key, not
-    a full request parse. Direct streaming skips ingress-side Pydantic
-    validation for throughput and HAProxy may forward only a body prefix.
-    Returns ``None`` when no usable key can be derived (empty, non-object,
-    unparseable, or no non-empty ``messages`` / ``prompt``) so the caller
-    degrades to the default load-balanced pick rather than failing.
+    Body-aware routers read ``messages`` or ``prompt`` off the first positional
+    routing arg, where the OpenAI ingress puts the parsed request. Direct
+    streaming has only the raw body, so this exposes the present field on a
+    plain object the routers read the same way. Uses ``json.loads`` rather than
+    a full parse. Returns ``None`` for an empty, non-object, unparseable, or
+    fieldless body, so the caller falls back to the default load-balanced pick.
     """
     if not body:
         return None
@@ -55,13 +35,13 @@ def _parse_routing_payload(body: bytes) -> Optional[_RoutingPayload]:
         return None
     if not isinstance(data, dict):
         return None
-    messages = data.get("messages")
-    prompt = data.get("prompt")
-    # Empty messages/prompt carry no routing signal and would normalize to an
-    # empty string downstream, so treat them as no key.
-    if not messages and not prompt:
+    # Keep only the non-empty routing fields. Empty messages or prompt carry no
+    # routing signal, and exposing just the present field lets ``hasattr`` tell
+    # a chat body from a completion body.
+    key = {field: data[field] for field in ("messages", "prompt") if data.get(field)}
+    if not key:
         return None
-    return _RoutingPayload(messages=messages, prompt=prompt)
+    return SimpleNamespace(**key)
 
 
 @serve.ingress(router_app)
@@ -81,18 +61,16 @@ class LLMRouter:
     Request:
         POST /internal/route
         Content-Type: application/json
-        Body: the target ChatCompletions / Completions request payload.
-            Leniently parsed into a routing key (an object exposing
-            ``messages`` / ``prompt``, see ``_RoutingPayload``) and passed to
-            ``choose_replica`` positionally, the same shape the normal OpenAI
-            ingress forwards, so body-aware policies score replicas identically
-            on both paths.
+        Body: the target ChatCompletions or Completions request payload.
+            Parsed into a routing key by ``_parse_routing_payload`` and passed
+            to ``choose_replica`` positionally. Body-aware policies then score
+            replicas the same way on both paths.
 
     Truncated bodies:
-        HAProxy may forward only a prefix of the request body for routing,
-        flagged by the ``x-body-truncated`` header. A truncated prefix is
-        usually invalid JSON, so no routing key is derived and the request
-        falls back to the default load-balanced pick rather than failing.
+        HAProxy may forward only a prefix of the body for routing and sets the
+        ``x-body-truncated`` header. A truncated prefix is usually not valid
+        JSON, so no routing key is derived and the request falls back to the
+        default load-balanced pick.
 
     Session affinity:
         If the client request carried the session-id header configured by
@@ -114,10 +92,8 @@ class LLMRouter:
         Serve uses ``check_health()`` for replica readiness, not HTTP.
     """
 
-    # Rate-limit the "no routing key" notice to once per replica so a
-    # body-aware router silently degrading to load-balancing is surfaced
-    # without flooding the log on every request. Class-level default so the
-    # guard is safe even before __init__ runs.
+    # Warn once per replica when no routing key is derived. Class-level default
+    # keeps the guard safe before __init__ runs.
     _warned_no_routing_key: bool = False
 
     async def __init__(self, server: DeploymentHandle):
@@ -132,12 +108,12 @@ class LLMRouter:
         if routing_payload is None and not self._warned_no_routing_key:
             self._warned_no_routing_key = True
             logger.warning(
-                "Could not derive a routing key (messages/prompt) from the "
-                "request body (body_truncated=%s). Falling back to "
-                "load-balanced replica selection. A configured body-aware "
-                "router (e.g. PrefixCacheAffinityRouter) cannot take effect "
-                "for these requests. For truncated bodies, raise HAProxy's "
-                "routing body limit.",
+                "Could not derive a routing key from the request body. "
+                "body_truncated=%s. Falling back to load-balanced replica "
+                "selection. A configured body-aware router such as "
+                "PrefixCacheAffinityRouter cannot take effect for these "
+                "requests. For truncated bodies, raise HAProxy's routing body "
+                "limit.",
                 body_truncated,
             )
         # HAProxy forwards the configured session header on the same name,
@@ -167,25 +143,24 @@ class LLMRouter:
     async def _pick_replica(
         self,
         handle: DeploymentHandle,
-        routing_payload: Optional[_RoutingPayload] = None,
+        routing_payload: Optional[SimpleNamespace] = None,
     ) -> Tuple[str, int, str]:
         """Pick a backend HTTP replica via the deployment's request router.
 
-        ``handle`` is the LLMServer deployment handle, optionally configured
-        with ``.options(session_id=...)`` so session-aware routers see the
-        session id on ``RequestMetadata``.
+        ``handle`` is the LLMServer deployment handle. The caller may set
+        ``.options(session_id=...)`` so session-aware routers see the session
+        id on ``RequestMetadata``.
 
         ``routing_payload``, when present, is passed to ``choose_replica``
-        positionally so it lands in ``pending_request.args`` where the normal
-        ingress puts the parsed request, letting a body-aware policy score
-        replicas with no router-side special-casing. When ``None``, nothing is
-        forwarded and the router sees empty ``args``, degrading to its default
-        load-balanced pick rather than failing.
+        positionally. It lands in ``pending_request.args`` where the normal
+        ingress puts the parsed request, so a body-aware policy scores replicas
+        as on the normal path. When ``None``, nothing is forwarded. The router
+        sees empty ``args`` and falls back to its default load-balanced pick.
 
-        ``_reserve=False`` short-circuits the replica-side ``reserve_slot`` RPC
-        and the rejection-retry loop. The real request goes out via HAProxy, so
-        Serve's capacity semaphore is not load-bearing here, and the extra RPC
-        plus retry added burstiness versus the prior local round-robin.
+        ``_reserve=False`` skips the replica-side ``reserve_slot`` RPC and the
+        rejection-retry loop. The real request goes out via HAProxy, so Serve's
+        capacity semaphore is not load-bearing here. The extra RPC and retry
+        added burstiness over the prior local round-robin.
         """
         route_args = (routing_payload,) if routing_payload is not None else ()
         async with handle.choose_replica(
