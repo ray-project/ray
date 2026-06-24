@@ -1,9 +1,11 @@
 import asyncio
+import json
+import re
 import threading
 import time
 import traceback
 from functools import partial
-from typing import Awaitable, Callable, TypeVar
+from typing import Awaitable, Callable, Optional, TypeVar
 
 from fastapi import HTTPException, status
 from httpx import HTTPStatusError as HTTPXHTTPStatusError
@@ -11,6 +13,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from ray import serve
 from ray.llm._internal.common.errors import VLLM_FATAL_ERRORS
+from ray.llm._internal.common.utils.lora_utils import get_base_model_id
 from ray.llm._internal.serve.constants import DEFAULT_FATAL_ERROR_COOLDOWN_S
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ErrorInfo,
@@ -211,6 +214,45 @@ def get_serve_request_id() -> str:
 
 def get_model_request_id(model: str):
     return model + "-" + get_serve_request_id()
+
+
+def extract_model_id_from_body(body: bytes) -> Optional[str]:
+    """Best-effort extraction of the OpenAI ``model`` field from a request body.
+
+    Used by the direct-streaming path, where the request body (or a
+    HAProxy-truncated prefix of it) is the only place the requested model /
+    adapter id is available. Returns None when the body is empty, unparseable,
+    or has no ``model`` field; callers must treat None as "no multiplex hint"
+    and fall back to load balancing.
+    """
+    if not body:
+        return None
+    try:
+        payload = json.loads(body)
+    except (ValueError, TypeError):
+        # Body may be a truncated prefix (HAProxy bufsize cap) and not valid
+        # JSON. Fall back to a shallow regex for the leading ``model`` field.
+        match = re.search(rb'"model"\s*:\s*"([^"]+)"', body)
+        return match.group(1).decode("utf-8", "replace") if match else None
+    if isinstance(payload, dict):
+        model = payload.get("model")
+        return model if isinstance(model, str) and model else None
+    return None
+
+
+def extract_adapter_id_from_body(body: bytes) -> Optional[str]:
+    """Return the requested LoRA adapter id from a request body, or None.
+
+    Wraps :func:`extract_model_id_from_body` and keeps the id only when it names
+    a LoRA adapter (``base:adapter``) rather than the base model. None means "no
+    multiplex hint" (base model, empty/unparseable body, or no ``model`` field),
+    so callers fall back to load balancing. Pinning a base-model request would
+    send every base request to one replica instead of balancing across them.
+    """
+    model_id = extract_model_id_from_body(body)
+    if model_id and get_base_model_id(model_id) != model_id:
+        return model_id
+    return None
 
 
 def replace_prefix(model: str) -> str:

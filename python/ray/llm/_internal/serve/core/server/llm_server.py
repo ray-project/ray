@@ -35,10 +35,9 @@ from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
 )
 from ray.llm._internal.serve.utils.batcher import Batcher
-from ray.llm._internal.serve.utils.lora_serve_utils import (
-    LoraModelLoader,
-)
+from ray.llm._internal.serve.utils.lora_serve_utils import LoraModelLoader
 from ray.llm._internal.serve.utils.server_utils import (
+    extract_adapter_id_from_body,
     get_serve_request_id,
 )
 
@@ -99,6 +98,71 @@ def _merge_replica_actor_and_child_actor_bundles(
     return [merged_first_bundle] + [
         copy.copy(bundle) for bundle in child_actor_bundles[1:]
     ]
+
+
+# Cap how much of a direct-streaming request body is buffered to read the
+# OpenAI ``model`` field. The field sits near the start, so a small prefix is
+# enough; bounding it avoids buffering large (e.g. multimodal) bodies in memory.
+_DIRECT_STREAMING_BODY_PEEK_LIMIT = 256 * 1024
+
+
+class _DirectStreamingLoRAMiddleware:
+    """ASGI middleware that resolves per-request LoRA adapters for direct streaming.
+
+    The data-plane request reaches the engine ASGI app directly (HAProxy ->
+    replica backend port), bypassing ``_run_request``. This middleware buffers a
+    bounded prefix of the body, reads the OpenAI ``model`` field, and for an
+    adapter request downloads + registers + advertises the adapter via the
+    server before replaying the body to the engine app. Non-POST requests pass
+    through untouched.
+    """
+
+    def __init__(self, app: Any, server: "LLMServer"):
+        self._app = app
+        self._server = server
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http" or scope.get("method") != "POST":
+            await self._app(scope, receive, send)
+            return
+
+        # Buffer only enough of the body to peek the model id, then replay the
+        # buffered prefix and stream the rest on demand. Buffering the whole
+        # body would OOM on large (e.g. multimodal) payloads, and the model id
+        # sits near the start anyway; a truncated prefix is handled by
+        # extract_model_id_from_body's regex fallback.
+        messages = []
+        body_chunks = []
+        buffered = 0
+        while True:
+            message = await receive()
+            messages.append(message)
+            if message.get("type") == "http.request":
+                chunk = message.get("body", b"")
+                body_chunks.append(chunk)
+                buffered += len(chunk)
+            if buffered >= _DIRECT_STREAMING_BODY_PEEK_LIMIT or not message.get(
+                "more_body", False
+            ):
+                break
+
+        await self._server._maybe_resolve_lora_for_direct_streaming(
+            b"".join(body_chunks)
+        )
+
+        message_iter = iter(messages)
+
+        async def replay():
+            # Replay the buffered prefix, then defer to the real transport so the
+            # engine streams the remainder and still observes client disconnects
+            # (used to abort in-flight generation). Returning http.disconnect
+            # here instead would abort streaming as soon as the body is read.
+            try:
+                return next(message_iter)
+            except StopIteration:
+                return await receive()
+
+        await self._app(scope, replay, send)
 
 
 class LLMServer(LLMServerProtocol):
@@ -219,6 +283,12 @@ class LLMServer(LLMServerProtocol):
                 raise HTTPException(status_code=404, detail=f"Unknown model: {model}")
             return model_card
 
+        if self._llm_config.lora_config is not None:
+            # Direct-streaming requests reach this app directly, bypassing
+            # _run_request, so per-request LoRA adapters must be resolved and
+            # advertised here for multiplex routing affinity to work.
+            return _DirectStreamingLoRAMiddleware(app, self)
+
         return app
 
     def _init_multiplex_loader(
@@ -312,14 +382,43 @@ class LLMServer(LLMServerProtocol):
         if request_id:
             request.request_id = request_id
 
+    async def _resolve_lora_adapter(self, adapter_id: str) -> None:
+        """Download a LoRA adapter and register it with the engine.
+
+        Loading goes through the multiplexed ``self._load_model`` wrapper, which
+        (besides caching the adapter on disk) advertises it to the controller
+        and request routers, so multiplex-aware routing can steer subsequent
+        requests for this adapter to this replica.
+        """
+        if self._llm_config.lora_config is None:
+            raise ValueError("Must setup lora config for multiplexed requests.")
+        disk_lora_model = await self._load_model(adapter_id)
+        await self.engine.resolve_lora(disk_lora_model)
+
     async def _maybe_resolve_lora_from_multiplex(self) -> None:
         """Handle the lora model for the request."""
         multiplexed_model_id = serve.get_multiplexed_model_id()
         if multiplexed_model_id:
-            if self._llm_config.lora_config is None:
-                raise ValueError("Must setup lora config for multiplexed requests.")
-            disk_lora_model = await self._load_model(multiplexed_model_id)
-            await self.engine.resolve_lora(disk_lora_model)
+            await self._resolve_lora_adapter(multiplexed_model_id)
+
+    async def _maybe_resolve_lora_for_direct_streaming(self, body: bytes) -> None:
+        """Resolve a per-request LoRA adapter on the direct-streaming data path.
+
+        Direct-streaming requests reach the engine ASGI app directly and skip
+        ``_run_request`` (and thus ``_maybe_resolve_lora_from_multiplex``), so
+        the adapter named in the request body is downloaded, registered, and
+        advertised here instead. Best-effort: extraction or load failures are
+        logged and swallowed so the engine's own handling still runs.
+        """
+        adapter_id = extract_adapter_id_from_body(body)
+        if not adapter_id:
+            return
+        try:
+            await self._resolve_lora_adapter(adapter_id)
+        except Exception:
+            logger.exception(
+                "Failed to resolve LoRA adapter '%s' for direct streaming.", adapter_id
+            )
 
     def _batch_output_stream(
         self, generator: AsyncGenerator[T, None]
