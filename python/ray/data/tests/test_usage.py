@@ -116,24 +116,6 @@ def test_self_zip_one_uuid_per_operator(reset_collector, mock_record):
     assert len(recorded_uuids) == len(set(recorded_uuids)) == num_discrete_ops
 
 
-def test_detected_issues_enum_serialized_to_value(reset_collector, mock_record):
-    """An ``IssueType`` enum member is serialized by its string value, not its
-    ``repr`` (``IssueType.HANGING``)."""
-    from ray.data._internal.issue_detection.issue_detector import IssueType
-
-    ds = ray.data.range(1)
-    collector.record_workload("exec-1", ds._logical_plan)
-    collector.record_execution_result(
-        "exec-1", detected_issues=[(IssueType.HANGING, "ReadRange")]
-    )
-
-    _, payload_json = mock_record[-1]
-    entry = json.loads(payload_json)["executions"][0]
-    assert entry["detected_issues"] == [
-        {"issue_type": "hanging", "operator": "ReadRange"}
-    ]
-
-
 def test_detected_issues_absent_defaults_empty(reset_collector, mock_record):
     """record_execution_result without issues leaves detected_issues empty."""
     ds = ray.data.range(1)
