@@ -25,6 +25,11 @@ from ray.llm._internal.serve.serving_patterns.prefill_decode.sglang_pd_server im
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.llm import LLMConfig
 from ray.serve.schema import ApplicationStatus
+from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
+from ray.llm._internal.serve.core.ingress.ingress import (
+    OpenAiIngress,
+    make_fastapi_ingress,
+)
 
 MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
 RAY_MODEL_ID = "qwen-0.5b-sglang-pd"
@@ -41,7 +46,15 @@ def _app_is_running():
 
 
 def _make_pd_deployments(prefill_config, decode_config):
-    """Helper to build prefill and decode deployments from configs."""
+    """Helper to build prefill and decode deployments, wrapped with an ingress.
+
+    Mirrors what build_pd_openai_app does for the vLLM PD path: ingress ->
+    decode -> prefill. We build this manually instead of calling
+    build_pd_openai_app directly because that function's PDServingArgs
+    validates kv_transfer_config, which is vLLM-specific and not used by
+    SGLang (which uses disaggregation_transfer_backend in engine_kwargs
+    instead).
+    """
     prefill_deployment = (
         serve.deployment(SGLangPDPrefillServer)
         .options(**SGLangPDPrefillServer.get_deployment_options(prefill_config))
@@ -52,7 +65,18 @@ def _make_pd_deployments(prefill_config, decode_config):
         .options(**SGLangPDDecodeServer.get_deployment_options(decode_config))
         .bind(decode_config, prefill_server=prefill_deployment)
     )
-    return decode_deployment
+
+    # Wrap decode with a FastAPI ingress so __call__ (the ASGI HTTP
+    # entrypoint) exists and routes /v1/chat/completions and
+    # /v1/completions to decode_deployment.chat / .completions.
+    model_id = decode_config.model_id
+    ingress_cls = make_fastapi_ingress(OpenAiIngress)
+    ingress_options = OpenAiIngress.get_deployment_options([decode_config])
+
+    return serve.deployment(ingress_cls, **ingress_options).bind(
+        llm_deployments={model_id: decode_deployment},
+        model_cards={model_id: to_model_metadata(model_id, decode_config)},
+    )
 
 
 # ---------------------------------------------------------------------------
