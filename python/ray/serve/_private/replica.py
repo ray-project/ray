@@ -101,6 +101,7 @@ from ray.serve._private.default_impl import (
     create_replica_impl,
     create_replica_metrics_manager,
 )
+from ray.serve._private.direct_ingress_grpc_util import gRPCDIReceiveStream
 from ray.serve._private.direct_ingress_http_util import ASGIDIReceiveProxy
 from ray.serve._private.event_loop_monitoring import EventLoopMonitor
 from ray.serve._private.grpc_util import (
@@ -186,7 +187,6 @@ from ray.serve.generated.serve_pb2 import (
 from ray.serve.generated.serve_pb2_grpc import add_ASGIServiceServicer_to_server
 from ray.serve.grpc_util import (
     RayServegRPCContext,
-    gRPCDIReceiveProxy,
     gRPCInputStream,
 )
 from ray.serve.handle import DeploymentHandle
@@ -2639,7 +2639,7 @@ class Replica:
 
     def _make_grpc_input_stream(
         self, request_iterator: Any
-    ) -> Tuple[gRPCInputStream, Optional[gRPCDIReceiveProxy]]:
+    ) -> Tuple[gRPCInputStream, Optional[gRPCDIReceiveStream]]:
         """Build the gRPCInputStream the user method iterates over.
 
         When user code runs on the replica's server event loop (i.e.
@@ -2647,22 +2647,55 @@ class Replica:
         and the native request iterator can be consumed directly -- no bridging.
 
         Otherwise the native iterator is bound to the server loop while user code
-        runs on a separate thread's loop, so a `gRPCDIReceiveProxy` drains it on the
+        runs on a separate thread's loop, so a `gRPCDIReceiveStream` drains it on the
         server loop (where this handler runs, so `start()` must be called here) and
         forwards messages to a queue the user method consumes.
 
-        Returns:
-            (input_stream, receive_proxy) where receive_proxy is None when no bridge
-            is needed (and so nothing needs to be torn down afterwards).
-        """
-        if self._user_callable_wrapper.event_loop is self._event_loop:
-            return gRPCInputStream(request_iterator), None
+        In both cases the gRPCInputStream is built with a `cancel_event` that is set
+        when the client disconnects/errors mid-stream, so the user method sees
+        `is_cancelled()` and a graceful end (matching the proxy path) rather than a
+        raw gRPC error.
 
-        receive_proxy = gRPCDIReceiveProxy(
-            request_iterator, self._user_callable_wrapper.event_loop
+        Returns:
+            (input_stream, receive_stream) where receive_stream is None when no
+            bridge is needed (and so nothing needs to be torn down afterwards).
+        """
+        cancel_event = asyncio.Event()
+        if self._user_callable_wrapper.event_loop is self._event_loop:
+            input_stream = gRPCInputStream(
+                self._grpc_request_iterator_with_cancel(request_iterator, cancel_event),
+                cancel_event=cancel_event,
+            )
+            return input_stream, None
+
+        receive_stream = gRPCDIReceiveStream(
+            request_iterator,
+            self._user_callable_wrapper.event_loop,
+            cancel_event=cancel_event,
         )
-        receive_proxy.start()
-        return gRPCInputStream(receive_proxy), receive_proxy
+        receive_stream.start()
+        return (
+            gRPCInputStream(receive_stream, cancel_event=cancel_event),
+            receive_stream,
+        )
+
+    async def _grpc_request_iterator_with_cancel(
+        self, request_iterator: Any, cancel_event: asyncio.Event
+    ):
+        """Yield from the native gRPC iterator, signaling cancellation on error.
+
+        Used when user code shares the server loop (no cross-loop bridging). A
+        stream error (e.g. client disconnect) sets the cancel event and ends the
+        stream gracefully instead of surfacing the raw gRPC error to user code,
+        matching the bridge and proxy paths.
+        """
+        try:
+            async for message in request_iterator:
+                yield message
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            cancel_event.set()
 
     async def _direct_ingress_stream_unary(
         self,
