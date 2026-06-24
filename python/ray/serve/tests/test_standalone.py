@@ -370,18 +370,17 @@ def test_http_head_only(ray_cluster):
 
     serve.start(http_options={"port": _get_random_port(), "location": "HeadOnly"})
 
-    # The controller and head-node proxy should be started, all on the head node.
-    # Under HAProxy the head node also runs the HAProxyManager alongside the
-    # fallback ProxyActor, so three actors instead of two. The fallback proxy
-    # registers asynchronously, so wait for the expected set rather than
-    # asserting an immediate count.
-    expected_num_actors = 3 if RAY_SERVE_ENABLE_HA_PROXY else 2
+    # Controller and proxy on the head node. HAProxy adds the HAProxyManager
+    # alongside the fallback ProxyActor, which registers asynchronously.
+    expected_classes = {"ServeController", "ProxyActor"}
+    if RAY_SERVE_ENABLE_HA_PROXY:
+        expected_classes.add("HAProxyManager")
 
     def check_head_only_actors():
         actors = list_actors(
             address=head_node.address, filters=[("state", "=", "ALIVE")]
         )
-        assert len(actors) == expected_num_actors
+        assert {actor.class_name for actor in actors} == expected_classes
         assert all(actor.node_id == head_node.node_id for actor in actors)
         return True
 
