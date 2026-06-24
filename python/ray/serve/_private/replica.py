@@ -2656,6 +2656,10 @@ class Replica:
         `is_cancelled()` and a graceful end (matching the proxy path) rather than a
         raw gRPC error.
 
+        Args:
+            request_iterator: The native gRPC request iterator (bound to the server
+                event loop) for this client/bidirectional streaming request.
+
         Returns:
             (input_stream, receive_stream) where receive_stream is None when no
             bridge is needed (and so nothing needs to be torn down afterwards).
@@ -2688,6 +2692,11 @@ class Replica:
         stream error (e.g. client disconnect) sets the cancel event and ends the
         stream gracefully instead of surfacing the raw gRPC error to user code,
         matching the bridge and proxy paths.
+
+        Args:
+            request_iterator: The native gRPC request iterator to consume.
+            cancel_event: Event set when the stream errors so the consuming
+                gRPCInputStream reports `is_cancelled()` and ends gracefully.
         """
         try:
             async for message in request_iterator:
