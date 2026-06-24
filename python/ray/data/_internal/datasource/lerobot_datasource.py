@@ -39,6 +39,7 @@ from ray.data._internal.util import (
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, ReadTask
+from ray.data.extensions import ArrowVariableShapedTensorType
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -128,7 +129,6 @@ def _build_schema(
     output schema: in-parquet ``image`` columns (HF ``struct<bytes, path>``) are
     replaced by decoded uint8 tensor columns, ``video`` columns are appended as
     decoded tensors, plus ``task``, ``dataset_index`` and ``stats``."""
-    from ray.data.extensions import ArrowVariableShapedTensorType
 
     ep = episodes_table.slice(0, 1).to_pylist()[0]
     path = (
@@ -184,18 +184,7 @@ def _estimated_row_size_bytes(features: dict) -> int:
 
 
 def _stats_to_json(stats: Optional[dict]) -> str:
-    """Serialize lerobot's per-feature stats dict to a JSON string.
-
-    Converts numpy arrays / scalars to plain lists / numbers.  Returns ``"{}"``
-    when *stats* is missing or empty.  Emitted verbatim on every row as the
-    ``stats`` column so downstream tasks (e.g. normalizing state/action for
-    policy training) can recover mean/std without a second metadata read.
-
-    Serialized to a string rather than a struct column so a single read can span
-    multiple datasets whose stats have different feature sets / nesting: Ray Data
-    requires one schema across all blocks, and a ``string`` column stays uniform
-    where per-dataset struct types would clash.
-    """
+    """Serialize lerobot's per-feature stats dict to a JSON string."""
     if not stats:
         return "{}"
 
@@ -218,6 +207,9 @@ def _resolve_filesystem(
 ) -> Tuple["fsspec.AbstractFileSystem", str, str, Dict[str, Any], bool]:
     """Resolve the fsspec filesystem and paths for one LeRobot dataset *root*.
 
+    The lerobot library uses fsspec under the hood and fsspec has native support
+    for `hf://` Hugging Face datasets. So we resolve any filesystem via fsspec internally.
+
     * **metadata + parquet** are read through a single fsspec filesystem,
       returned as ``fs`` with the dataset path ``fs_root`` relative to it;
     * **video files** are streamed *by URI* through torchcodec — lerobot opens
@@ -228,12 +220,7 @@ def _resolve_filesystem(
     path: the marker is stripped from ``video_root_uri`` and ``anon=True`` is
     threaded into ``video_storage_options`` (s3fs spells anonymous ``anon=True``).
 
-    Returns ``(fs, fs_root, video_root_uri, video_storage_options)``. Video files
-    are streamed by URI (torchcodec opens them via ``fsspec.open``), so their
-    credentials come from ``video_storage_options`` — i.e. from *storage_options*
-    and from an fsspec *filesystem*'s own options. A pyarrow *filesystem* cannot
-    expose credentials, so pass *storage_options* alongside it for credentialed
-    cloud video.
+    A pyarrow *filesystem* cannot expose credentials, so pass *storage_options* alongside it for credentialed cloud video.
     """
     import fsspec
     from fsspec.core import split_protocol
@@ -834,21 +821,6 @@ class LeRobotDatasource(Datasource):
         >>> ds = ray.data.read_datasource(source)  # doctest: +SKIP
     """
 
-    # (importable_module_name, pip_install_string).  lerobot (the `dataset`
-    # extra pulls torch/datasets) and fsspec are always needed.  The video deps
-    # are required only for datasets with mp4 cameras: torchcodec so cloud-URI
-    # videos stream via HTTP-range reads (its decode path is fsspec-aware), and
-    # av for its container support.  Pillow is required only for datasets whose
-    # cameras are stored as in-parquet encoded images.  The conditional sets are
-    # checked after metadata load, so an image-only dataset needn't install
-    # torchcodec/av (and vice versa).
-    _BASE_DEPENDENCIES = [
-        ("fsspec", "fsspec"),
-        ("lerobot.datasets.dataset_metadata", "lerobot[dataset]"),
-    ]
-    _VIDEO_DEPENDENCIES = [("torchcodec", "torchcodec"), ("av", "av")]
-    _IMAGE_DEPENDENCIES = [("PIL", "pillow")]
-
     def __init__(
         self,
         root: Union[str, Path, List[Union[str, Path]]],
@@ -896,8 +868,10 @@ class LeRobotDatasource(Datasource):
         """
         super().__init__()
 
-        for module, package in self._BASE_DEPENDENCIES:
-            _check_import(self, module=module, package=package)
+        _check_import(self, module="fsspec", package="fsspec")
+        _check_import(
+            self, module="lerobot.datasets.dataset_metadata", package="lerobot[dataset]"
+        )
 
         self._filesystem = filesystem
         self._storage_options: Dict[str, Any] = dict(storage_options or {})
@@ -926,14 +900,11 @@ class LeRobotDatasource(Datasource):
             for r, (fs, fs_root, _, _) in zip(roots, self._resolved)
         ]
 
-        # The video/image deps are needed only for the camera kinds actually
-        # present, so we check them now that metadata is loaded.
         if any(m.video_keys for m in self.metas):
-            for module, package in self._VIDEO_DEPENDENCIES:
-                _check_import(self, module=module, package=package)
-        if any(getattr(m, "image_keys", None) for m in self.metas):
-            for module, package in self._IMAGE_DEPENDENCIES:
-                _check_import(self, module=module, package=package)
+            _check_import(self, module="torchcodec", package="torchcodec")
+            _check_import(self, module="av", package="av")
+        if any(m.image_keys for m in self.metas):
+            _check_import(self, module="PIL", package="pillow")
 
         if len(self.metas) > 1:
             ref = self.metas[0]
