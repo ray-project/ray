@@ -25,12 +25,6 @@ if TYPE_CHECKING:
 
 
 def _creds_cache_cls():
-    """A ``VideoDecoderCache`` subclass that opens videos through ``fsspec`` with
-    explicit ``storage_options``.
-
-    Defined inside a function so importing this module never requires lerobot;
-    constructed per credentialed decode (cheap — one class definition).
-    """
     from lerobot.datasets.video_utils import VideoDecoderCache
 
     class _CredsVideoDecoderCache(VideoDecoderCache):
@@ -73,14 +67,6 @@ def _creds_cache_cls():
 
 
 def new_decoder_cache(storage_options: Optional[Dict[str, Any]] = None):
-    """A torchcodec decoder cache to reuse across :func:`decode_frames` calls
-    within one read task, so each video file is opened once and its decoder
-    persists across batches (bounding per-task memory). The caller owns it and
-    must call ``.clear()`` when done (which also closes any fsspec handles).
-
-    With credentials this is our handle-closing cache; otherwise lerobot's
-    default cache (the same one ``decode_frames`` uses implicitly).
-    """
     storage_options = dict(storage_options or {})
     if storage_options:
         return _creds_cache_cls()(storage_options)
@@ -96,14 +82,6 @@ def decode_frames(
     storage_options: Optional[Dict[str, Any]] = None,
     decoder_cache: Optional[Any] = None,
 ) -> torch.Tensor:
-    """Decode the frames nearest *timestamps* (within *tolerance_s*) from
-    *video_path* via torchcodec.
-
-    Works for local paths and any fsspec URI; *storage_options* supplies cloud
-    credentials. Pass a *decoder_cache* (from :func:`new_decoder_cache`) to reuse
-    decoders across calls — the caller then owns its lifecycle. Returns a
-    ``torch.Tensor`` of shape ``(N, C, H, W)``.
-    """
     from lerobot.datasets.video_utils import decode_video_frames_torchcodec
 
     if decoder_cache is not None:

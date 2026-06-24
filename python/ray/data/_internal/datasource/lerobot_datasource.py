@@ -483,11 +483,7 @@ class _LeRobotReadTask(ReadTask):
 
         Reads the segment's parquet rows, then emits Arrow batches sized from
         this root's estimated row size (so each batch targets one output block),
-        decoding each batch's camera frames on demand. Video
-        decoders are opened once per segment and reused across batches (a
-        per-segment cache), so peak memory is bounded to one batch's frames
-        rather than the whole segment's. Image cameras (encoded bytes in the
-        parquet) are decoded per batch directly.
+        decoding each batch's camera frames on demand.
         """
         fs = root.fs
 
@@ -503,24 +499,19 @@ class _LeRobotReadTask(ReadTask):
         n_rows = full.num_rows
         camera_keys = root.video_keys + root.image_keys
 
-        # Per-segment video state: an episode->file lookup scanned once, and a
-        # decoder cache reused across batches so each video file is opened once.
-        video_meta = (
-            self._video_episode_meta(ep_slice, root.video_keys)
-            if root.video_keys
-            else {}
-        )
-        tolerance_s = (
-            root.frame_tolerance_s
-            if root.frame_tolerance_s is not None
-            else 0.5 / float(root.fps)
-        )
-        cache = new_decoder_cache(root.storage_options) if root.video_keys else None
+        if root.video_keys:
+            video_meta = self._video_episode_meta(ep_slice, root.video_keys)
+            cache = new_decoder_cache(root.storage_options)
+        else:
+            video_meta = {}
+            cache = None
+
+        if root.frame_tolerance_s is not None:
+            tolerance_s = root.frame_tolerance_s
+        else:
+            tolerance_s = 0.5 / float(root.fps)
 
         task_idx_pylist = full.column("task_index").to_pylist()
-        # Fail fast (once per segment) if the parquet data references a task id
-        # that the tasks metadata (meta/tasks.parquet) does not define, rather
-        # than raising a bare KeyError mid-stream.
         missing_tasks = {ti for ti in task_idx_pylist if ti not in root.tasks_dict}
         if missing_tasks:
             raise ValueError(
@@ -528,10 +519,9 @@ class _LeRobotReadTask(ReadTask):
                 f"dataset's tasks metadata (meta/tasks.parquet); the data and "
                 f"tasks metadata are inconsistent."
             )
-        # Size batches from THIS root's row size: roots in a multi-root read can
-        # differ a lot (video vs scalar-only), so a single global batch size
-        # would blow past the target block size for the heavier root.
-        rows_per_batch = max(1, self._max_block_bytes // (root.row_size_bytes or 1))
+
+        # Size batches from this root's row size
+        rows_per_batch = max(1, self._max_block_bytes // (root.row_size_bytes))
         try:
             for batch_start in range(0, n_rows, rows_per_batch):
                 batch_end = min(batch_start + rows_per_batch, n_rows)
@@ -563,9 +553,6 @@ class _LeRobotReadTask(ReadTask):
 
     @staticmethod
     def _video_episode_meta(episodes: pa.Table, video_keys: List[str]) -> dict:
-        """Per-video-camera ``{episode_index: (chunk, file, from_timestamp)}``
-        for this task's episode slice -- O(episodes-per-task), not the whole
-        dataset -- so per-batch decoding can resolve a row's video file in O(1)."""
         eps = episodes
         ep_idx = eps.column("episode_index").to_pylist()
         meta: dict = {}
@@ -1017,20 +1004,12 @@ class LeRobotDatasource(Datasource):
         return all_ranges
 
     def _max_block_bytes(self, data_context: Optional[DataContext] = None) -> int:
-        """Target output block size in bytes. Each segment turns this into a
-        per-root ``rows_per_batch`` (in ``_LeRobotReadTask._read_segment``) using
-        that root's estimated row size -- roots in a multi-root read can differ
-        a lot in row size (e.g. video vs scalar-only), so batch sizing must be
-        per-root, not a single global value."""
-        try:
-            ctx = data_context or DataContext.get_current()
-            return ctx.target_max_block_size or 128 * 1024 * 1024
-        except (AttributeError, RuntimeError):
-            return 128 * 1024 * 1024
+        ctx = data_context or DataContext.get_current()
+        return ctx.target_max_block_size
 
     @staticmethod
     def _merge_segments(group: List[tuple]) -> List[tuple]:
-        """Collapse adjacent same-root consecutive triples into wider segments."""
+        """Collapse adjacent same-root consecutive segments into wider segments."""
         if not group:
             return []
         segments: List[tuple] = []
@@ -1115,31 +1094,20 @@ class LeRobotDatasource(Datasource):
         else:
             groups = [[r] for r in row_ranges]
 
-        task_plan = []
-        for group in groups:
-            segments = self._merge_segments(group)
-            task_plan.append({"segments": segments})
-
-        logger.info(
-            "%d tasks, %d total frames, %d roots, %d cameras",
-            len(task_plan),
-            sum(r.total_frames for r in self._roots),
-            len(self._roots),
-            len(self._roots[0].video_keys) + len(self._roots[0].image_keys),
-        )
+        task_plan = [self._merge_segments(group) for group in groups]
 
         roots_ref = ray.put(self._roots)
         max_block_bytes = self._max_block_bytes(data_context)
         return [
             _LeRobotReadTask(
-                segments=entry["segments"],
+                segments=segments,
                 roots=self._roots,
                 roots_ref=roots_ref,
                 episodes=self._episodes,
                 max_block_bytes=max_block_bytes,
                 per_task_row_limit=per_task_row_limit,
             )
-            for entry in task_plan
+            for segments in task_plan
         ]
 
     def get_name(self) -> str:
