@@ -489,24 +489,6 @@ copybutton_selector = "div:not(.no-copybutton) > div.highlight > pre"
 # functionality with the `sphinx_tabs_disable_tab_closing` option.
 sphinx_tabs_disable_tab_closing = True
 
-# Special mocking of packaging.version.Version is required when using sphinx;
-# we can't just add this to autodoc_mock_imports, as packaging is imported by
-# sphinx even before it can be mocked. Instead, we patch it here.
-import packaging.version as packaging_version  # noqa
-
-Version = packaging_version.Version
-
-
-class MockVersion(Version):
-    def __init__(self, version: str):
-        if isinstance(version, (str, bytes)):
-            super().__init__(version)
-        else:
-            super().__init__("0")
-
-
-packaging_version.Version = MockVersion
-
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
 
