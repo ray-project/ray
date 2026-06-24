@@ -136,7 +136,6 @@ class TestDirectStreamingLLMRouter:
         positionally so body-aware routers read it the same as the normal
         ingress path."""
         router = _new_direct_router()
-        router._warned_no_routing_key = False
         router._pick_replica = AsyncMock(
             return_value=("127.0.0.1", 9001, "DeploymentName#replica")
         )
@@ -166,12 +165,11 @@ class TestDirectStreamingLLMRouter:
         forwards ``routing_payload=None`` (degrade to load-balancing) and warns
         exactly once per replica."""
         router = _new_direct_router()
-        router._warned_no_routing_key = False
         router._pick_replica = AsyncMock(
             return_value=("127.0.0.1", 9001, "DeploymentName#replica")
         )
 
-        # Truncated prefix: valid JSON head, no closing brace -> json.loads fails.
+        # Truncated prefix is not valid JSON so json.loads fails.
         body = b'{"model":"x","prompt":"' + (b"x" * 1024)
         request = _FakeRequest(body, headers={"x-body-truncated": "1058/90000"})
 
@@ -179,7 +177,7 @@ class TestDirectStreamingLLMRouter:
             await router.route(request)
             await router.route(request)
 
-        # routing_payload is None on both calls; warning fires once.
+        # routing_payload is None on both calls. Warning fires once.
         for call in router._pick_replica.call_args_list:
             assert call.kwargs["routing_payload"] is None
         assert mock_warning.call_count == 1
@@ -286,7 +284,7 @@ class TestDirectStreamingLLMRouter:
 
 
 class TestRoutingPayload:
-    """Unit coverage for the lenient body -> routing-key normalization."""
+    """Unit coverage for the lenient body to routing-key normalization."""
 
     def test_parses_chat_messages(self):
         body = b'{"model":"x","messages":[{"role":"user","content":"hi"}]}'
@@ -307,10 +305,12 @@ class TestRoutingPayload:
         "body",
         [
             b"",  # empty
-            b'{"model":"x","prompt":"' + (b"x" * 64),  # truncated -> invalid JSON
+            b'{"model":"x","prompt":"' + (b"x" * 64),  # truncated, invalid JSON
             b"not json",  # unparseable
             b"[1, 2, 3]",  # valid JSON but not an object
             b'{"model":"x","max_tokens":8}',  # object without messages/prompt
+            b'{"messages":[]}',  # empty messages carry no routing signal
+            b'{"prompt":""}',  # empty prompt carries no routing signal
         ],
     )
     def test_returns_none_when_no_key_derivable(self, body):
@@ -319,7 +319,7 @@ class TestRoutingPayload:
     @pytest.mark.asyncio
     async def test_payload_satisfies_prefix_router_contract(self):
         """The normalized payload is readable by the *real*
-        ``PrefixCacheAffinityRouter._extract_text_from_request`` -- the consumer
+        ``PrefixCacheAffinityRouter._extract_text_from_request``, the consumer
         this regressed against (issue #64326). No router special-casing needed.
 
         Async so a running event loop exists when ``PendingRequest`` constructs
@@ -330,7 +330,7 @@ class TestRoutingPayload:
         )
         from ray.serve._private.request_router.common import PendingRequest
 
-        # __new__ avoids the tree-actor setup in __init__; the method under test
+        # __new__ avoids the tree-actor setup in __init__. The method under test
         # only uses self for the pure `_normalize_prompt_to_string` helper.
         router = PrefixCacheAffinityRouter.__new__(PrefixCacheAffinityRouter)
 

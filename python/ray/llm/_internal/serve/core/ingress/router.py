@@ -17,27 +17,20 @@ router_app = FastAPI()
 
 
 class _RoutingPayload:
-    """A minimal routing key for the direct-streaming path.
+    """Routing key for the direct-streaming path.
 
-    Body-aware request routers (e.g. ``PrefixCacheAffinityRouter``) score
-    replicas by reading ``.messages`` / ``.prompt`` off the first positional
-    routing argument -- the parsed ``ChatCompletionRequest`` /
-    ``CompletionRequest`` that the normal OpenAI ingress forwards. On the
-    direct-streaming path the native engine ASGI app is the ingress, so the
-    Serve router only ever sees the raw HTTP body. This wraps the leniently
-    parsed body in an object exposing the *same* attributes, so a single
-    router contract holds on both paths and body-aware routers need no
-    special-casing.
-
-    Only the attribute actually present in the body is set, so ``hasattr``
-    distinguishes a chat request from a completion request the same way a
-    parsed request object would (a ``prompt``-only body must not expose a
-    ``messages`` attribute, and vice versa).
+    Body-aware routers (e.g. ``PrefixCacheAffinityRouter``) read ``.messages``
+    / ``.prompt`` off the first positional routing arg, which on the normal
+    OpenAI ingress is the parsed ``ChatCompletionRequest`` /
+    ``CompletionRequest``. Direct streaming forwards only the raw body, so this
+    wraps the leniently parsed body in the same attribute shape and no router
+    special-casing is needed. Only the field present in the body is set, so
+    ``hasattr`` tells a chat request from a completion request.
     """
 
     __slots__ = ("messages", "prompt")
 
-    def __init__(self, *, messages: Optional[Any] = None, prompt: Optional[Any] = None):
+    def __init__(self, *, messages: Any = None, prompt: Any = None):
         if messages is not None:
             self.messages = messages
         if prompt is not None:
@@ -47,16 +40,12 @@ class _RoutingPayload:
 def _parse_routing_payload(body: bytes) -> Optional[_RoutingPayload]:
     """Leniently derive a routing key from a (possibly truncated) request body.
 
-    Direct streaming exists to skip ingress-side Pydantic validation for
-    throughput, and HAProxy may forward only a prefix of the body. So this is
-    deliberately a cheap ``json.loads`` into a lightweight routing key, not a
-    full request parse: routing only needs ``messages`` / ``prompt``.
-
-    Returns ``None`` when no routing key can be derived -- an unparseable body
-    (e.g. a HAProxy-truncated prefix that isn't valid JSON), a non-object body,
-    or one carrying neither ``messages`` nor ``prompt``. Callers fall back to
-    the default load-balanced pick in that case rather than failing the
-    request.
+    A cheap ``json.loads`` into the ``messages`` / ``prompt`` routing key, not
+    a full request parse. Direct streaming skips ingress-side Pydantic
+    validation for throughput and HAProxy may forward only a body prefix.
+    Returns ``None`` when no usable key can be derived (empty, non-object,
+    unparseable, or no non-empty ``messages`` / ``prompt``) so the caller
+    degrades to the default load-balanced pick rather than failing.
     """
     if not body:
         return None
@@ -68,7 +57,9 @@ def _parse_routing_payload(body: bytes) -> Optional[_RoutingPayload]:
         return None
     messages = data.get("messages")
     prompt = data.get("prompt")
-    if messages is None and prompt is None:
+    # Empty messages/prompt carry no routing signal and would normalize to an
+    # empty string downstream, so treat them as no key.
+    if not messages and not prompt:
         return None
     return _RoutingPayload(messages=messages, prompt=prompt)
 
@@ -91,19 +82,17 @@ class LLMRouter:
         POST /internal/route
         Content-Type: application/json
         Body: the target ChatCompletions / Completions request payload.
-            The body is leniently parsed into a routing key (an object
-            exposing ``messages`` / ``prompt``, see ``_RoutingPayload``) and
-            passed to ``choose_replica`` as the first positional argument --
-            the same shape the normal OpenAI ingress forwards -- so body-aware
-            policies (e.g. prefix-cache-aware) score replicas identically on
-            both paths.
+            Leniently parsed into a routing key (an object exposing
+            ``messages`` / ``prompt``, see ``_RoutingPayload``) and passed to
+            ``choose_replica`` positionally, the same shape the normal OpenAI
+            ingress forwards, so body-aware policies score replicas identically
+            on both paths.
 
     Truncated bodies:
-        HAProxy may forward only a prefix of the request body for routing.
-        When it does, it sets the ``x-body-truncated`` header. A truncated
-        prefix usually isn't valid JSON, so no routing key can be derived; the
-        request then falls back to the default load-balanced pick rather than
-        failing.
+        HAProxy may forward only a prefix of the request body for routing,
+        flagged by the ``x-body-truncated`` header. A truncated prefix is
+        usually invalid JSON, so no routing key is derived and the request
+        falls back to the default load-balanced pick rather than failing.
 
     Session affinity:
         If the client request carried the session-id header configured by
@@ -125,13 +114,15 @@ class LLMRouter:
         Serve uses ``check_health()`` for replica readiness, not HTTP.
     """
 
+    # Rate-limit the "no routing key" notice to once per replica so a
+    # body-aware router silently degrading to load-balancing is surfaced
+    # without flooding the log on every request. Class-level default so the
+    # guard is safe even before __init__ runs.
+    _warned_no_routing_key: bool = False
+
     async def __init__(self, server: DeploymentHandle):
         self._handle: DeploymentHandle = server
         self._handle._init()
-        # Rate-limit the "no routing key" notice to once per replica so a
-        # body-aware router silently degrading to load-balancing is surfaced
-        # without flooding the log on every request.
-        self._warned_no_routing_key: bool = False
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
@@ -141,14 +132,12 @@ class LLMRouter:
         if routing_payload is None and not self._warned_no_routing_key:
             self._warned_no_routing_key = True
             logger.warning(
-                "Could not derive a routing key from the request body "
-                "(body_truncated=%s); falling back to load-balanced replica "
-                "selection. If a body-aware request router (e.g. "
-                "PrefixCacheAffinityRouter) is configured, it cannot take "
-                "effect for these requests. This is expected for bodies "
-                "truncated below the `messages`/`prompt` field; raise "
-                "HAProxy's routing body limit if content-based routing is "
-                "required.",
+                "Could not derive a routing key (messages/prompt) from the "
+                "request body (body_truncated=%s). Falling back to "
+                "load-balanced replica selection. A configured body-aware "
+                "router (e.g. PrefixCacheAffinityRouter) cannot take effect "
+                "for these requests. For truncated bodies, raise HAProxy's "
+                "routing body limit.",
                 body_truncated,
             )
         # HAProxy forwards the configured session header on the same name,
@@ -183,23 +172,20 @@ class LLMRouter:
         """Pick a backend HTTP replica via the deployment's request router.
 
         ``handle`` is the LLMServer deployment handle, optionally configured
-        with ``.options(session_id=...)`` by the caller so session-aware
-        routers see the session id on ``RequestMetadata``.
+        with ``.options(session_id=...)`` so session-aware routers see the
+        session id on ``RequestMetadata``.
 
-        ``routing_payload``, when present, is passed to ``choose_replica`` as
-        the first positional argument so it lands in ``pending_request.args``
-        exactly where the normal ingress puts the parsed request -- letting a
-        body-aware policy score replicas against ``messages`` / ``prompt``
-        with no router-side special-casing. When ``None`` (truncated or
-        unparseable body), nothing is forwarded and the configured router
-        sees an empty ``args``, degrading to its default load-balanced pick
-        rather than failing the request.
+        ``routing_payload``, when present, is passed to ``choose_replica``
+        positionally so it lands in ``pending_request.args`` where the normal
+        ingress puts the parsed request, letting a body-aware policy score
+        replicas with no router-side special-casing. When ``None``, nothing is
+        forwarded and the router sees empty ``args``, degrading to its default
+        load-balanced pick rather than failing.
 
-        ``_reserve=False`` short-circuits the replica-side ``reserve_slot``
-        actor RPC and the rejection-retry loop: the real request goes out via
-        HAProxy, so Serve's capacity semaphore isn't load-bearing here, and
-        the extra RPC + retry introduced burstiness compared to the prior
-        local round-robin implementation.
+        ``_reserve=False`` short-circuits the replica-side ``reserve_slot`` RPC
+        and the rejection-retry loop. The real request goes out via HAProxy, so
+        Serve's capacity semaphore is not load-bearing here, and the extra RPC
+        plus retry added burstiness versus the prior local round-robin.
         """
         route_args = (routing_payload,) if routing_payload is not None else ()
         async with handle.choose_replica(
