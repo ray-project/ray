@@ -6,7 +6,6 @@ import pyarrow as pa
 import pyarrow.dataset as pds
 from pyarrow.fs import FileSystem, LocalFileSystem
 
-from ray._common.utils import env_integer
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource.parquet_datasource import _compute_row_hashes
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
@@ -26,24 +25,24 @@ INCLUDE_PATHS_COLUMN_NAME = "path"
 # Default is specified by PyArrow.
 _ARROW_DEFAULT_BATCH_SIZE = 131_072
 
-# Number of batches read ahead per scanner. PyArrow's default is 16,
-# which can retain a multi-GB working set when scanning jumbo tensor
-# columns. 8 keeps I/O pipelined on remote filesystems for typical
-# Parquet workloads without doubling memory peak. Drop to 1 via the
-# env var when reading wide tensor columns.
-_ARROW_SCANNER_BATCH_READAHEAD = env_integer(
-    "RAY_DATA_ARROW_SCANNER_BATCH_READAHEAD", 8
-)
-
-# Number of worker threads used to read fragments concurrently per task.
-# Defaults to 4 to overlap remote-filesystem I/O latency across multiple
-# fragments. ``_read_fragment_batches`` caps this to ``len(fragments)``
-# at runtime so single-fragment tasks don't spin up extra workers, and
-# falls back to the sequential path entirely when
-# ``DataContext.execution_options.preserve_order`` is set.
-_DEFAULT_NUM_THREADS = env_integer("RAY_DATA_READ_FILES_NUM_THREADS", 4)
-
 ROW_HASH_COLUMN_NAME = "row_hash"
+
+
+def _resolve_num_read_workers(
+    fragments_with_offsets: List[Tuple[pds.Fragment, int]], num_threads: int
+) -> int:
+    """Per-task fragment-read concurrency, capped at the number of DISTINCT files.
+
+    Threads exist to overlap I/O across *different* files. Multiple sub-fragments
+    of the SAME file are consecutive row-group ranges -- reading them concurrently
+    yields no locality benefit (same file, same footer, adjacent bytes) and
+    multiplies the in-flight decoded working set. Keying the worker count on the
+    distinct file count keeps same-file sub-scans sequential (so a file-affinity
+    partition decodes one scan at a time, bounding per-task memory) while
+    multi-file partitions still parallelize one thread per file.
+    """
+    num_distinct_files = len({frag.path for frag, _ in fragments_with_offsets})
+    return min(num_threads, num_distinct_files)
 
 
 class FileFormat(str, Enum):
@@ -248,7 +247,7 @@ class FileReader(Reader[FileManifest]):
                 self._predicate.to_pyarrow() if self._predicate is not None else None
             ),
             "batch_size": self._resolve_batch_size(dataset),
-            "batch_readahead": _ARROW_SCANNER_BATCH_READAHEAD,
+            "batch_readahead": DataContext.get_current().arrow_scanner_batch_readahead,
         }
         scanner_kwargs.update(self._arrow_scanner_kwargs())
 
@@ -407,9 +406,12 @@ class FileReader(Reader[FileManifest]):
         (e.g. variable-shape tensors). V1 ``ParquetDatasource`` follows
         the same per-fragment pattern via ``fragment.to_batches``.
 
-        When ``RAY_DATA_READ_FILES_NUM_THREADS > 1`` and
-        ``execution_options.preserve_order`` is False, fragments are
-        read concurrently via :func:`make_async_gen`. We still pass
+        When the partition spans >1 distinct file (and
+        ``DataContext.read_files_num_threads > 1`` and
+        ``execution_options.preserve_order`` is False), fragments are
+        read concurrently via :func:`make_async_gen` -- one worker per
+        distinct file (see :func:`_resolve_num_read_workers`), so
+        same-file sub-scans stay sequential. We still pass
         ``preserve_ordering=True`` so concurrent reads emit blocks in
         fragment order; otherwise Ray Data task retries (block
         reconstruction) could produce a different block sequence.
@@ -433,7 +435,9 @@ class FileReader(Reader[FileManifest]):
         if not fragments_with_offsets:
             return
 
-        num_workers = min(_DEFAULT_NUM_THREADS, len(fragments_with_offsets))
+        num_workers = _resolve_num_read_workers(
+            fragments_with_offsets, ctx.read_files_num_threads
+        )
         if num_workers <= 1 or ctx.execution_options.preserve_order:
             yield from self._read_fragments_sequential(
                 iter(fragments_with_offsets), scanner_kwargs

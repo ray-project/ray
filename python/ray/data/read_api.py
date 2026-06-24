@@ -447,8 +447,8 @@ def _read_datasource_v2(
     Wires a ``ListFiles → ReadFiles`` logical chain:
 
     - :class:`ListFiles` owns listing (via the datasource's ``FileIndexer``),
-      optional global shuffle (``FileShuffleConfig``), and size-balanced
-      bucketing (``RoundRobinPartitioner``). Its physical planner
+      optional global shuffle (``FileShuffleConfig``), and file-affinity
+      bucketing (``FileAffinityPartitioner``). Its physical planner
       parallelizes listing across path shards and emits manifest blocks.
     - :class:`ReadFiles` consumes the manifest blocks and reads each bucket
       via ``scanner.create_reader().read(manifest)``.
@@ -462,8 +462,8 @@ def _read_datasource_v2(
         _build_pruners,
         sample_files,
     )
-    from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
-        RoundRobinPartitioner,
+    from ray.data._internal.datasource_v2.partitioners.file_affinity_partitioner import (
+        FileAffinityPartitioner,
     )
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
@@ -519,33 +519,30 @@ def _read_datasource_v2(
         partitioning=resolved_partitioning,
     )
 
-    # Size-balanced bucketing for the listing output. The partitioner is
+    # File-affinity bucketing for the listing output. The partitioner is
     # captured in a pickled closure and runs inside worker tasks, so its
     # estimator must be I/O-free and pickle-safe — use the datasource's
-    # canonical estimator (``ParquetInMemorySizeEstimator`` is a fixed
-    # encoding-ratio multiplier). ``num_buckets`` is a hint;
-    # ``RoundRobinPartitioner`` honors ``[min, max]`` block-size limits
-    # first, so the actual bucket count scales with total data size.
-    # ``target_*_block_size`` can be ``None`` (block sizing disabled); fall
-    # back to sentinel bounds so the partitioner just rolls every file
-    # into a single bucket.
+    # canonical estimator. ``max_bucket_size`` (per-partition in-memory cap)
+    # defaults to ``target_max_block_size`` but can be set independently via
+    # ``partitioner_max_bucket_size_bytes`` to bundle more consecutive row groups
+    # per read task without changing the output-block size.
+    # ``target_max_block_size`` can be ``None`` (block sizing disabled); fall back
+    # to a sentinel so the partitioner rolls each file into a single bucket.
     import sys
 
-    min_bucket_size = ctx.target_min_block_size or 0
-    max_bucket_size = (
-        ctx.target_max_block_size
-        if ctx.target_max_block_size is not None
-        else sys.maxsize
-    )
-    # ``parallelism`` is the caller-resolved ``override_num_blocks`` value
-    # (``-1`` when unset). Honoring it here per-read avoids mutating the
-    # process-global ``DataContext.read_op_min_num_blocks``.
-    num_buckets = parallelism if parallelism != -1 else ctx.read_op_min_num_blocks
-    partitioner = RoundRobinPartitioner(
+    max_bucket_size = ctx.partitioner_max_bucket_size_bytes
+    if max_bucket_size is None:
+        max_bucket_size = (
+            ctx.target_max_block_size
+            if ctx.target_max_block_size is not None
+            else sys.maxsize
+        )
+    # Keep each file's chunks in that file's own size-bounded partitions
+    # (locality + sub-file parallelism). The partition count is data-driven, so
+    # ``parallelism`` / ``num_buckets`` does not apply here.
+    partitioner = FileAffinityPartitioner(
         in_memory_size_estimator=datasource.get_size_estimator(),
-        min_bucket_size=min_bucket_size,
         max_bucket_size=max_bucket_size,
-        num_buckets=num_buckets,
     )
 
     # NOTE: We're using shuffle config factory to fix the seed at the planning

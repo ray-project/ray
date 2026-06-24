@@ -17,7 +17,7 @@ from ray.data._internal.datasource.parquet_datasource import (
     _check_for_pickle_object_columns,
 )
 from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
-    _fragments_from_chunk_metadata,
+    fragments_to_read_for_manifest,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.file_reader import (
@@ -278,12 +278,12 @@ class ParquetFileReader(FileReader):
           non-chunking callers.
         - Otherwise the row carries a :class:`ParquetFileChunkMetadata`;
           we slice the fragment via
-          :func:`~ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils._fragments_from_chunk_metadata`
-          which returns one sub-fragment per row group in the chunk's
-          row-group range, paired with the cumulative pre-filter row
-          offset of that row group within the file. The downstream
-          ``_compute_row_hashes`` call uses this offset so row hashes
-          remain unique across sub-fragments that share ``fragment.path``.
+          :func:`~ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils.fragments_to_read_for_manifest`
+          which coalesces the partition's row groups per file into contiguous
+          runs, each paired with the cumulative pre-filter row offset of the
+          run's first row group within the file. The downstream
+          ``_compute_row_hashes`` call uses this offset so row hashes remain
+          unique across sub-fragments that share ``fragment.path``.
 
         Paths are deduped by :meth:`FileReader.read` before the dataset is
         built, so the dataset has exactly one fragment per file. The
@@ -294,16 +294,14 @@ class ParquetFileReader(FileReader):
         path_to_fragment = {
             fragment.path: fragment for fragment in dataset.get_fragments()
         }
-        fragments: List[Tuple[pds.Fragment, int]] = []
-        for path, chunk_metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
-            fragment = path_to_fragment[path]
-            if chunk_metadata is None:
-                fragments.append((fragment, 0))
-            else:
-                fragments.extend(
-                    _fragments_from_chunk_metadata(fragment, chunk_metadata)
-                )
-        return fragments
+        # Coalesce a partition's sister chunks per file into contiguous
+        # row-group runs, so each file is read in a single scan (one open +
+        # cached footer + sequential I/O) rather than one scan per row group.
+        return fragments_to_read_for_manifest(
+            path_to_fragment,
+            manifest.paths,
+            manifest.file_chunk_metadatas,
+        )
 
     @override
     def _iter_fragment_tables(

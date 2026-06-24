@@ -9,8 +9,10 @@ reader carry the per-chunk metadata through to the read task.
 import abc
 import logging
 import math
+from collections import defaultdict
 from typing import (
     TYPE_CHECKING,
+    Dict,
     Iterable,
     Optional,
     Tuple,
@@ -22,9 +24,11 @@ from typing import (
 )
 
 from ray.data._internal.util import MiB, infer_compression
+from ray.data.datatype import _arrow_offset_buffer_bytes, _fixed_arrow_byte_width
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
+    import pyarrow as pa
     from pyarrow.fs import FileSystem
 
 logger = logging.getLogger(__name__)
@@ -68,10 +72,51 @@ class ParquetFileChunkMetadata(ChunkMetadata):
     ``[row_group_start, row_group_end)`` within a single file, computed at
     listing time from the file's footer. The reader slices the fragment to
     exactly this range — no estimation or read-time reconciliation.
+
+    ``in_memory_size`` is the chunk's footer-derived Arrow in-memory size
+    estimate in bytes (see :func:`estimate_chunk_in_memory_size`), carried
+    through the manifest so the partitioner sizes partitions by the decoded
+    footprint rather than a flat on-disk × ratio guess.
     """
 
     row_group_start: int  # inclusive
     row_group_end: int  # exclusive
+    in_memory_size: int  # footer-derived Arrow in-memory estimate (bytes)
+
+
+def estimate_chunk_in_memory_size(
+    arrow_schema: "pa.Schema",
+    num_rows: int,
+    uncompressed_by_column: Dict[str, int],
+    var_width_factor: float,
+) -> int:
+    """Estimate the Arrow in-memory size (bytes) of a chunk from footer data.
+
+    This is the type-aware estimate that absorbs cross-file compression *and*
+    encoding variance for the common analytic case:
+
+    * **Fixed-width** columns (int / float / temporal / decimal / bool /
+      fixed-size-binary): ``num_rows × byte_width`` — exact and independent of
+      compression codec *and* Parquet encoding (dictionary / RLE / delta).
+    * **Variable-width / nested** columns (string / binary / list / map /
+      struct): the column's uncompressed page bytes ``× var_width_factor``
+      plus its offset buffer (int32, or int64 for the ``large_*`` variants).
+      This is the only approximate term (a dictionary-encoded low-cardinality
+      string still under-counts; ``var_width_factor`` is the conservative knob).
+
+    A validity bitmap (``ceil(num_rows / 8)``) is added per nullable column.
+    """
+    total = 0.0
+    for field in arrow_schema:
+        width = _fixed_arrow_byte_width(field.type)
+        if width is not None:
+            total += num_rows * width
+        else:
+            total += uncompressed_by_column.get(field.name, 0) * var_width_factor
+            total += _arrow_offset_buffer_bytes(field.type, num_rows)
+        if field.nullable:
+            total += (num_rows + 7) // 8
+    return int(total)
 
 
 @DeveloperAPI
@@ -216,6 +261,7 @@ class ParquetFileChunker(FileChunker):
             self._target_chunk_size = ctx.target_min_block_size
         else:
             self._target_chunk_size = self._FALLBACK_TARGET_CHUNK_SIZE
+        self._var_width_factor = ctx.parquet_in_memory_var_width_factor
 
     def generate_chunk_metadatas(
         self,
@@ -223,7 +269,14 @@ class ParquetFileChunker(FileChunker):
         file_size: int,
         filesystem: Optional["FileSystem"] = None,
     ) -> Iterable[Tuple[Optional[ChunkMetadata], int]]:
+        import pyarrow as pa
         import pyarrow.parquet as pq
+
+        # Imported lazily: ``file_manifest`` imports ``ChunkMetadata`` from this
+        # module, so a top-level import of the estimator module would cycle.
+        from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
+            PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+        )
 
         try:
             # Reads only the Parquet footer (file metadata), not data.
@@ -246,41 +299,102 @@ class ParquetFileChunker(FileChunker):
             yield None, file_size
             return
 
-        # Greedily bundle consecutive row groups until the running on-disk
-        # size reaches the target. Always emit at least one row group per
-        # chunk (the atomic read unit).
+        # Arrow schema (column types) for the type-aware in-memory estimate.
+        # ``to_arrow_schema`` raises for Parquet logical / extension types PyArrow
+        # can't map to an Arrow type; fall back to the on-disk × ratio estimate for
+        # such files rather than failing the read.
+        try:
+            arrow_schema = metadata.schema.to_arrow_schema()
+        except (pa.ArrowNotImplementedError, pa.ArrowInvalid) as e:
+            logger.debug(
+                "Could not derive Arrow schema for in-memory sizing (%s): %s; "
+                "falling back to the on-disk encoding-ratio estimate.",
+                path,
+                e,
+            )
+            arrow_schema = None
+
+        def _emit(
+            start: int,
+            end: int,
+            on_disk_size: int,
+            rows: int,
+            uncompressed_by_column: Dict[str, int],
+        ):
+            # When the footer schema is unavailable, fall back to the on-disk
+            # (compressed) bytes scaled by the encoding ratio so the stamped
+            # estimate stays in DECODED Arrow units -- the same units as the
+            # type-aware path. Stamping the raw compressed size here would make
+            # ``ParquetFooterDerivedInMemorySizeEstimator`` under-count the
+            # partition.
+            in_memory = (
+                estimate_chunk_in_memory_size(
+                    arrow_schema, rows, uncompressed_by_column, self._var_width_factor
+                )
+                if arrow_schema is not None
+                else int(on_disk_size * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT)
+            )
+            return (
+                create_chunk_metadata(
+                    ParquetFileChunkMetadata,
+                    row_group_start=start,
+                    row_group_end=end,
+                    in_memory_size=in_memory,
+                ),
+                on_disk_size,
+            )
+
+        # Greedily bundle consecutive row groups until the running on-disk size
+        # reaches the target. Always emit at least one row group per chunk (the
+        # atomic read unit). Alongside the on-disk size, accumulate the row count
+        # and per-top-level-column uncompressed bytes the in-memory estimate
+        # needs. ``RowGroupMetaData`` exposes only the *uncompressed*
+        # ``total_byte_size``; the on-disk size lives on each
+        # ``ColumnChunkMetaData``, so sum the per-column compressed sizes -- this
+        # keeps chunk sizes in on-disk units, matching the manifest's
+        # ``file_sizes``.
         start = 0
-        running_size = 0
+        running_compressed_size = 0
+        running_rows = 0
+        running_uncompressed: Dict[str, int] = defaultdict(int)
         for rg_idx in range(num_row_groups):
             rg_meta = metadata.row_group(rg_idx)
-            # On-disk (compressed) row-group size. ``RowGroupMetaData`` exposes
-            # only the *uncompressed* ``total_byte_size``; the on-disk size lives
-            # on each ``ColumnChunkMetaData``, so sum the per-column compressed
-            # sizes. Keeping chunk sizes in on-disk units matches the manifest's
-            # ``file_sizes`` and the ``×encoding_ratio`` in-memory estimator.
-            rg_size = sum(
-                rg_meta.column(c).total_compressed_size
-                for c in range(rg_meta.num_columns)
-            )
-            if running_size > 0 and running_size + rg_size > self._target_chunk_size:
-                yield (
-                    create_chunk_metadata(
-                        ParquetFileChunkMetadata,
-                        row_group_start=start,
-                        row_group_end=rg_idx,
-                    ),
-                    running_size,
+            rg_compressed_size = 0
+            rg_uncompressed: Dict[str, int] = defaultdict(int)
+            for c in range(rg_meta.num_columns):
+                col = rg_meta.column(c)
+                rg_compressed_size += col.total_compressed_size
+                # Top-level (root) column name for this leaf column chunk.
+                root = col.path_in_schema.split(".", 1)[0]
+                rg_uncompressed[root] += col.total_uncompressed_size
+
+            if (
+                running_compressed_size > 0
+                and running_compressed_size + rg_compressed_size
+                > self._target_chunk_size
+            ):
+                yield _emit(
+                    start,
+                    rg_idx,
+                    running_compressed_size,
+                    running_rows,
+                    running_uncompressed,
                 )
                 start = rg_idx
-                running_size = 0
-            running_size += rg_size
+                running_compressed_size = 0
+                running_rows = 0
+                running_uncompressed = defaultdict(int)
+
+            running_compressed_size += rg_compressed_size
+            running_rows += rg_meta.num_rows
+            for root, uncompressed in rg_uncompressed.items():
+                running_uncompressed[root] += uncompressed
 
         # Flush the final bundle.
-        yield (
-            create_chunk_metadata(
-                ParquetFileChunkMetadata,
-                row_group_start=start,
-                row_group_end=num_row_groups,
-            ),
-            running_size,
+        yield _emit(
+            start,
+            num_row_groups,
+            running_compressed_size,
+            running_rows,
+            running_uncompressed,
         )

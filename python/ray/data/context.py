@@ -83,6 +83,55 @@ DEFAULT_USE_DATASOURCE_V2 = env_bool("RAY_DATA_USE_DATASOURCE_V2", False)
 # uses its built-in default (currently 1 GiB).
 DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE: Optional[int] = None
 
+# Multiplier on a variable-width / nested column's footer-uncompressed bytes
+# used to approximate its decoded Arrow size in the V2 Parquet partition-size
+# estimate (``ParquetFooterDerivedInMemorySizeEstimator``). Fixed-width columns
+# are sized exactly from their type, so this only affects string / binary / list
+# / struct / map columns. The default 2.0 is a deliberately conservative
+# heuristic (decoded Arrow can exceed uncompressed page bytes for dictionary /
+# RLE-encoded columns); it is not tuned to a specific workload -- raise it if
+# such columns OOM, lower toward 1.0 if estimates are too conservative.
+# Env-overridable.
+DEFAULT_PARQUET_IN_MEMORY_VAR_WIDTH_FACTOR = env_float(
+    "RAY_DATA_PARQUET_IN_MEMORY_VAR_WIDTH_FACTOR", 2.0
+)
+
+# Max in-memory bytes per V2 read partition (the partitioner's
+# ``max_bucket_size``). Defaults to 1 GiB so consecutive row groups bundle into
+# fewer, file-local read tasks; the reader streams the decode and caps the
+# per-scan ``pre_buffer``, so a large partition does not blow up per-task memory.
+# Setting it to ``None`` falls back to ``target_max_block_size``.
+DEFAULT_PARTITIONER_MAX_BUCKET_SIZE_BYTES: Optional[int] = 1024**3  # 1 GiB
+
+# Target in-memory bytes per decode batch in the V2 Parquet reader. Kept
+# separate from ``target_max_block_size`` (the OUTPUT-block target) on purpose:
+# this controls the DECODE/streaming granularity, so a read task can decode in
+# small batches -- bounding transient per-task memory -- while still emitting
+# large output blocks. Defaults to 128 MiB; combined with
+# ``arrow_scanner_batch_readahead`` this streams the decode so a read task does
+# not hold its whole partition in memory at once. Setting it to ``None`` falls
+# back to ``target_max_block_size``.
+DEFAULT_PARQUET_READER_TARGET_BATCH_SIZE_BYTES: Optional[int] = 128 * 1024 * 1024
+
+# Per-task fragment-read concurrency in the V2 ``FileReader``. Threads overlap
+# I/O across DISTINCT files within a read task; the reader caps the worker count
+# at the number of distinct files in the partition, so consecutive sub-scans of
+# the SAME file stay sequential (one decode pipeline at a time) -- which bounds
+# the per-task decoded working set. Defaults to 2 (file-affinity partitions are
+# single-file, so this caps to 1 there; it only adds cross-file I/O overlap for
+# round-robin / multi-file read tasks). Env-overridable.
+DEFAULT_READ_FILES_NUM_THREADS = env_integer("RAY_DATA_READ_FILES_NUM_THREADS", 2)
+
+# Batches the pyarrow scanner reads ahead per fragment scan. Each batch is
+# ~the reader's target block size DECODED, so per-scan peak decoded memory
+# ≈ batch_readahead × batch target. Defaults to 4 (≈ 512 MiB decoded in flight
+# at the 128 MiB batch target -- streams the partition rather than holding it
+# whole). Lower it (e.g. 1-2) for jumbo / low-compression columns to shrink the
+# in-flight decoded set. Env-overridable.
+DEFAULT_ARROW_SCANNER_BATCH_READAHEAD = env_integer(
+    "RAY_DATA_ARROW_SCANNER_BATCH_READAHEAD", 4
+)
+
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -810,6 +859,28 @@ class DataContext:
     parquet_chunker_target_chunk_size: Optional[
         int
     ] = DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE
+    # Expansion factor for variable-width / nested columns in the footer-derived
+    # V2 Parquet in-memory size estimate. Default 2.0; env override
+    # ``RAY_DATA_PARQUET_IN_MEMORY_VAR_WIDTH_FACTOR``.
+    parquet_in_memory_var_width_factor: float = (
+        DEFAULT_PARQUET_IN_MEMORY_VAR_WIDTH_FACTOR
+    )
+    # Max in-memory bytes per read partition. Defaults to 1 GiB; None ->
+    # target_max_block_size.
+    partitioner_max_bucket_size_bytes: Optional[
+        int
+    ] = DEFAULT_PARTITIONER_MAX_BUCKET_SIZE_BYTES
+    # Target in-memory bytes per decode batch. Defaults to 128 MiB; None ->
+    # target_max_block_size.
+    parquet_reader_target_batch_size_bytes: Optional[
+        int
+    ] = DEFAULT_PARQUET_READER_TARGET_BATCH_SIZE_BYTES
+    # Per-task fragment-read concurrency, capped at the partition's distinct
+    # file count by the reader (same-file sub-scans stay sequential).
+    read_files_num_threads: int = DEFAULT_READ_FILES_NUM_THREADS
+    # Batches the pyarrow scanner reads ahead per fragment scan (× batch target
+    # ≈ per-scan decoded peak).
+    arrow_scanner_batch_readahead: int = DEFAULT_ARROW_SCANNER_BATCH_READAHEAD
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format
