@@ -856,6 +856,61 @@ def _create_router_server(port: int, replica_id_to_return: str):
     return server, thread, captured
 
 
+async def _start_router_haproxy(
+    temp_dir, haproxy_port, stats_port, backend_configs, haproxy_api_cleanup
+):
+    """Build, start, and await readiness of an HAProxyApi for the ingress
+    request router e2e tests. These tests share this scaffold and differ only
+    in their backends, router behavior, and assertions."""
+    config = HAProxyConfig(
+        http_options=HTTPOptions(
+            host="127.0.0.1",
+            port=haproxy_port,
+            keep_alive_timeout_s=58,
+        ),
+        stats_port=stats_port,
+        socket_path=os.path.join(temp_dir, "admin.sock"),
+        has_received_routes=True,
+        has_received_servers=True,
+        health_check_path="/-/healthz",
+        health_check_inter="500ms",
+        health_check_rise=1,
+        health_check_fall=2,
+    )
+    api = HAProxyApi(
+        cfg=config,
+        backend_configs=backend_configs,
+        config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
+    )
+    haproxy_api_cleanup(api)
+    await api.start()
+    wait_for_condition(lambda: check_haproxy_ready(stats_port), timeout=10)
+    # Wait for primary-backend health checks to mark the replicas UP.
+    await async_wait_for_condition(
+        lambda: requests.get(
+            f"http://127.0.0.1:{haproxy_port}/-/healthz", timeout=2
+        ).status_code
+        == 200,
+        timeout=10,
+    )
+    return api
+
+
+def _shutdown_fake_servers(servers, threads):
+    """Signal uvicorn fake servers to exit and join their threads. Mirrors the
+    teardown each router test runs in its finally block."""
+    for srv in servers:
+        try:
+            srv.should_exit = True
+        except Exception:
+            pass
+    for thr in threads:
+        try:
+            thr.join(timeout=5)
+        except Exception:
+            pass
+
+
 @pytest.mark.asyncio
 async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatch):
     """Run actual HAProxy against a fake router + two replicas; verify a POST
@@ -886,22 +941,6 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
         )
 
         try:
-            config = HAProxyConfig(
-                http_options=HTTPOptions(
-                    host="127.0.0.1",
-                    port=haproxy_port,
-                    keep_alive_timeout_s=58,
-                ),
-                stats_port=stats_port,
-                socket_path=os.path.join(temp_dir, "admin.sock"),
-                has_received_routes=True,
-                has_received_servers=True,
-                http_health_check_path="/-/healthz",
-                health_check_inter="500ms",
-                health_check_rise=1,
-                health_check_fall=2,
-            )
-
             backend = BackendConfig(
                 name="llm",
                 path_prefix="/",
@@ -926,22 +965,12 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
                 ],
             )
 
-            api = HAProxyApi(
-                cfg=config,
-                backend_configs={"llm": backend},
-                config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
-            )
-            haproxy_api_cleanup(api)
-            await api.start()
-
-            wait_for_condition(lambda: check_haproxy_ready(stats_port), timeout=10)
-            # Wait for primary-backend health checks to mark both replicas UP.
-            await async_wait_for_condition(
-                lambda: requests.get(
-                    f"http://127.0.0.1:{haproxy_port}/-/healthz", timeout=2
-                ).status_code
-                == 200,
-                timeout=10,
+            await _start_router_haproxy(
+                temp_dir,
+                haproxy_port,
+                stats_port,
+                {"llm": backend},
+                haproxy_api_cleanup,
             )
 
             # POST goes through the router. Router returns B's actor name,
@@ -980,16 +1009,10 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             ), "GET must not invoke /internal/route"
 
         finally:
-            for srv in (replica_a, replica_b, router):
-                try:
-                    srv.should_exit = True
-                except Exception:
-                    pass
-            for thr in (replica_a_thread, replica_b_thread, router_thread):
-                try:
-                    thr.join(timeout=5)
-                except Exception:
-                    pass
+            _shutdown_fake_servers(
+                (replica_a, replica_b, router),
+                (replica_a_thread, replica_b_thread, router_thread),
+            )
 
 
 def _create_broken_router_server(port: int, status_code: int = 500):
@@ -1051,22 +1074,6 @@ async def test_router_failure_fails_loud_with_reason(haproxy_api_cleanup):
         broken_router, broken_router_thread = _create_broken_router_server(router_port)
 
         try:
-            config = HAProxyConfig(
-                http_options=HTTPOptions(
-                    host="127.0.0.1",
-                    port=haproxy_port,
-                    keep_alive_timeout_s=58,
-                ),
-                stats_port=stats_port,
-                socket_path=os.path.join(temp_dir, "admin.sock"),
-                has_received_routes=True,
-                has_received_servers=True,
-                http_health_check_path="/-/healthz",
-                health_check_inter="500ms",
-                health_check_rise=1,
-                health_check_fall=2,
-            )
-
             backend = BackendConfig(
                 name="llm",
                 path_prefix="/",
@@ -1085,21 +1092,12 @@ async def test_router_failure_fails_loud_with_reason(haproxy_api_cleanup):
                 ],
             )
 
-            api = HAProxyApi(
-                cfg=config,
-                backend_configs={"llm": backend},
-                config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
-            )
-            haproxy_api_cleanup(api)
-            await api.start()
-
-            wait_for_condition(lambda: check_haproxy_ready(stats_port), timeout=10)
-            await async_wait_for_condition(
-                lambda: requests.get(
-                    f"http://127.0.0.1:{haproxy_port}/-/healthz", timeout=2
-                ).status_code
-                == 200,
-                timeout=10,
+            await _start_router_haproxy(
+                temp_dir,
+                haproxy_port,
+                stats_port,
+                {"llm": backend},
+                haproxy_api_cleanup,
             )
 
             # Every dispatch failure must surface as 5xx with a reason
@@ -1128,16 +1126,113 @@ async def test_router_failure_fails_loud_with_reason(haproxy_api_cleanup):
                 _backend_stot(stats_csv, "llm-via-ingress-request-router") == 0
             ), stats_csv
         finally:
-            for srv in (replica, broken_router):
-                try:
-                    srv.should_exit = True
-                except Exception:
-                    pass
-            for thr in (replica_thread, broken_router_thread):
-                try:
-                    thr.join(timeout=5)
-                except Exception:
-                    pass
+            _shutdown_fake_servers(
+                (replica, broken_router), (replica_thread, broken_router_thread)
+            )
+
+
+@pytest.mark.asyncio
+async def test_pin_miss_falls_back_to_fallback_server(haproxy_api_cleanup):
+    """When the router pins a replica_id that is not in HAProxy's server map
+    (the brief membership gap right after an app becomes RUNNING, where the
+    router's in-process view runs ahead of HAProxy's config reload), HAProxy
+    must hand the request to the fallback Serve proxy instead of returning 503.
+    The primary backend must not be load-balanced into, since that would break
+    session affinity."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        haproxy_port = find_free_port()
+        stats_port = find_free_port()
+        replica_port = find_free_port()
+        fallback_port = find_free_port()
+        router_port = find_free_port()
+
+        actor_name = "SERVE_REPLICA::app#dep#aaa"
+        # The router names a replica that is NOT among the configured servers,
+        # simulating HAProxy lagging the router's freshly-updated view.
+        unknown_actor_name = "SERVE_REPLICA::app#dep#not_loaded_yet"
+
+        replica, replica_thread = _create_replica_server(
+            replica_port, replica_id_header="A"
+        )
+        fallback, fallback_thread = _create_replica_server(
+            fallback_port, replica_id_header="FALLBACK"
+        )
+        router, router_thread, _ = _create_router_server(
+            router_port, replica_id_to_return=unknown_actor_name
+        )
+
+        try:
+            backend = BackendConfig(
+                name="llm",
+                path_prefix="/",
+                app_name="llm",
+                health_check_path="/-/healthz",
+                servers=[
+                    ServerConfig(
+                        name="A",
+                        host="127.0.0.1",
+                        port=replica_port,
+                        replica_id=actor_name,
+                    ),
+                ],
+                ingress_request_router_servers=[
+                    ServerConfig(name="router", host="127.0.0.1", port=router_port),
+                ],
+                fallback_server=ServerConfig(
+                    name="fallback",
+                    host="127.0.0.1",
+                    port=fallback_port,
+                ),
+            )
+
+            await _start_router_haproxy(
+                temp_dir,
+                haproxy_port,
+                stats_port,
+                {"llm": backend},
+                haproxy_api_cleanup,
+            )
+
+            # The fallback is a `backup` server, so the /-/healthz wait above
+            # (satisfied by the primary replica alone) does not gate it. Before
+            # its health check passes, a pin-miss use-server is skipped and the
+            # request load-balances onto the primary replica; once it passes,
+            # every pin-miss POST lands on the fallback proxy. Require several
+            # consecutive FALLBACK responses so a transient health-check flap
+            # during warmup retries here instead of failing an assertion.
+            def _pin_miss_consistently_reaches_fallback():
+                for _ in range(3):
+                    resp = requests.post(
+                        f"http://127.0.0.1:{haproxy_port}/predict",
+                        json={"prompt": "hi"},
+                        timeout=5,
+                    )
+                    if (
+                        resp.status_code != 200
+                        or resp.headers.get("x-replica-id") != "FALLBACK"
+                    ):
+                        return False
+                return True
+
+            await async_wait_for_condition(
+                _pin_miss_consistently_reaches_fallback, timeout=10
+            )
+
+            # A pin-miss must route via the router backend, never through the
+            # plain primary backend (a silent router bypass). The router backend
+            # carries the fallback-served sessions; the plain backend stays 0.
+            stats_csv = requests.get(
+                f"http://127.0.0.1:{stats_port}/stats;csv", timeout=5
+            ).text
+            assert _backend_stot(stats_csv, "llm") == 0, stats_csv
+            assert (
+                _backend_stot(stats_csv, "llm-via-ingress-request-router") >= 3
+            ), stats_csv
+        finally:
+            _shutdown_fake_servers(
+                (replica, fallback, router),
+                (replica_thread, fallback_thread, router_thread),
+            )
 
 
 @pytest.mark.asyncio

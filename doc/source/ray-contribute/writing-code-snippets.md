@@ -8,16 +8,12 @@ myst:
 
 # How to write code snippets
 
-Users learn from example. So, whether you're writing a docstring or a user guide,
-include examples that illustrate the relevant APIs. Your examples should run
-out-of-the-box so that users can copy them and adapt them to their own needs.
+Users learn from example. So, whether you're writing a docstring or a user guide, include examples that illustrate the relevant APIs. Your examples should run out-of-the-box so that users can copy them and adapt them to their own needs.
 
 This page describes how to write code snippets so that they're tested in CI.
 
 :::{note}
-The examples in this guide use reStructuredText. If you're writing
-Markdown, use MyST syntax. To learn more, read the
-[MyST documentation](https://myst-parser.readthedocs.io/en/latest/syntax/roles-and-directives.html#directives-a-block-level-extension-point).
+The examples in this guide use reStructuredText. If you're writing Markdown, use MyST syntax. To learn more, read the [MyST documentation](https://myst-parser.readthedocs.io/en/latest/syntax/roles-and-directives.html#directives-a-block-level-extension-point).
 :::
 
 ## Types of examples
@@ -123,8 +119,7 @@ They're rendered like this:
 
 ## Which type of example should you write?
 
-There's no hard rule about which style you should use. Choose the style that best
-illustrates your API.
+There's no hard rule about which style you should use. Choose the style that best illustrates your API.
 
 :::{tip}
 If you're not sure which style to use, use *code-output-style*.
@@ -132,8 +127,7 @@ If you're not sure which style to use, use *code-output-style*.
 
 ### When to use *doctest-style*
 
-If you're writing a small example that emphasizes object representations, or if you
-want to print intermediate objects, use *doctest-style*.
+If you're writing a small example that emphasizes object representations, or if you want to print intermediate objects, use *doctest-style*.
 
 ```
 .. doctest::
@@ -196,8 +190,7 @@ If you're writing a longer example, or if object representations aren't relevant
 
 ### When to use *literalinclude*
 
-If you're writing an end-to-end examples and your examples doesn't contain outputs, use
-*literalinclude*.
+If you're writing an end-to-end examples and your examples doesn't contain outputs, use *literalinclude*.
 
 ## How to handle hard-to-test examples
 
@@ -250,8 +243,7 @@ To ignore an output altogether, write a *code-output-style* snippet. Don't use `
 
 ### Ignoring *code-output-style* outputs
 
-If parts of your output are long or non-deterministic, replace problematic sections
-with ellipses.
+If parts of your output are long or non-deterministic, replace problematic sections with ellipses.
 
 ```
 .. testcode::
@@ -265,8 +257,7 @@ with ellipses.
     Dataset(num_rows=..., schema=...)
 ```
 
-If your output is nondeterministic and you want to display a sample output, add
-`:options: +MOCK`.
+If your output is nondeterministic and you want to display a sample output, add `:options: +MOCK`.
 
 ```
 .. testcode::
@@ -280,8 +271,7 @@ If your output is nondeterministic and you want to display a sample output, add
     0.969461416250246
 ```
 
-If your output is hard to test and you don't want to display a sample output, exclude
-the `testoutput`.
+If your output is hard to test and you don't want to display a sample output, exclude the `testoutput`.
 
 ```
 .. testcode::
@@ -293,9 +283,7 @@ the `testoutput`.
 
 To configure Bazel to run an example with GPUs, complete the following steps:
 
-1. Open the corresponding `BUILD` file. If your example is in the `doc/` folder,
-   open `doc/BUILD`. If your example is in the `python/` folder, open a file like
-   `python/ray/train/BUILD`.
+1. Open the corresponding `BUILD` file. If your example is in the `doc/` folder, open `doc/BUILD`. If your example is in the `python/` folder, open a file like `python/ray/train/BUILD`.
 
 2. Locate the `doctest` rule. It looks like this:
 
