@@ -15,6 +15,7 @@
 //python/ray/serve/tests:test_failure
 //python/ray/serve/tests:test_failure_2
 //python/ray/serve/tests:test_fastapi
+//python/ray/serve/tests:test_gang_scheduling
 //python/ray/serve/tests:test_gcs_failure
 //python/ray/serve/tests:test_gradio
 //python/ray/serve/tests:test_grpc_e2e
