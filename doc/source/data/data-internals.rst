@@ -309,6 +309,8 @@ Ray divides each node's memory into three pools. By default, it reserves 30% for
 object store and 10% for system overhead, and treats the remaining as logical memory.
 
 .. image:: ./data-memory-model-1.svg
+   :width: 300
+   :align: center
 
 Each pool serves a different purpose:
 
@@ -325,6 +327,8 @@ Each pool serves a different purpose:
   working memory.
 
 .. image:: ./data-memory-model-2.svg
+   :width: 360
+   :align: center
 
 When a UDF processes data, it uses heap memory to do the work. For example, a UDF that
 calls a Torch preprocessor holds the tensors on the heap. As the UDF produces output 
@@ -332,6 +336,8 @@ rows or batches, Ray Data serializes them into PyArrow tables and stores them in
 shared object store.
 
 .. image:: ./data-memory-model-3.svg
+   :width: 550
+   :align: center
 
 To limit object store use, Ray Data applies backpressure and stops launching tasks once
 enough data is buffered. If Ray Data produces more data than fits, Ray Core *spills* 
