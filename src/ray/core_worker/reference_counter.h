@@ -175,7 +175,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   size_t NumActorsOwnedByUs() const override ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void RecordMetrics() override;
+  void RecordOwnerMetrics() override;
 
   std::unordered_set<ObjectID> GetAllInScopeObjectIDs() const override
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -798,6 +798,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Keep track of actors owend by this worker.
   size_t num_actors_owned_by_us_ ABSL_GUARDED_BY(mutex_) = 0;
 
+  /// Sticky: set to true the first time this worker becomes the owner of
+  /// any non-actor object. Never reset. Gates owner-side metric emission
+  /// so non-owners do not pollute per-worker metric cardinality.
+  std::atomic<bool> has_ever_owned_objects_{false};
   /// Track counts of owned objects by state.
   /// These are atomic to allow lock-free reads via public getters.
   std::atomic<size_t> owned_objects_pending_creation_{0};

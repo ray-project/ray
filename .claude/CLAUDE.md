@@ -7,7 +7,7 @@ Ray is a unified framework for scaling AI and Python applications.
 
 ## Building & Linting
 
-Refer to doc/source/ray-contribute/development.rst for the most up-to date information.
+Refer to doc/source/ray-contribute/development.md for the most up-to date information.
 Use the /rebuild skill for guided rebuilds and the /lint skill for linting.
 
 ## Testing
@@ -30,4 +30,4 @@ Default test timeout: 180s (pytest.ini).
 
 ## Contributing
 
-See @CONTRIBUTING.rst and @doc/source/ray-contribute/getting-involved.rst
+See @CONTRIBUTING.rst and @doc/source/ray-contribute/getting-involved.md

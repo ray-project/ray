@@ -747,6 +747,53 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
   worker_data->set_worker_launched_time_ms(worker_launched_time_ms);
 
   gcs_client_->Workers().AsyncAdd(worker_data, nullptr);
+
+  if (options_.worker_type == WorkerType::WORKER) {
+    // Watch for owner-worker death so finished streaming-generator tasks with
+    // unconsumed objects don't leak their actor-wide BP slot
+    gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
+        [this](const rpc::WorkerDeltaData &worker_failure_data) {
+          HandleOwnerDied(WorkerID::FromBinary(worker_failure_data.worker_id()));
+        },
+        nullptr);
+  }
+}
+
+void CoreWorker::HandleOwnerDied(const WorkerID &dead_owner) {
+  // Snapshot affected entries under the lock; act on them after releasing.
+  struct DeadOwnerEntry {
+    std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter;
+    std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata;
+  };
+  std::vector<DeadOwnerEntry> dead_entries;
+  {
+    absl::MutexLock lock(&mutex_);
+    std::vector<ObjectID> to_erase;
+    for (auto &[generator_id, state] : generator_backpressure_states_) {
+      if (state.owner_worker_id == dead_owner) {
+        dead_entries.push_back({state.waiter, state.actor_metadata});
+        to_erase.push_back(generator_id);
+        // Mark the gen task canceled so the executor loop bails before the
+        // next gen.send instead of running another iteration of user code.
+        canceled_tasks_.insert(generator_id.TaskId());
+      }
+    }
+    for (const auto &generator_id : to_erase) {
+      generator_backpressure_states_.erase(generator_id);
+    }
+  }
+  for (auto &entry : dead_entries) {
+    // Permanently disable per-task backpressure so the task can drain to its
+    // natural exit instead of parking forever in WaitUntilObjectConsumed (the
+    // dead owner will never send a consumption update) or WaitAllObjectsReported
+    // (the in-flight report RPC may keep retrying until the client pool gives up).
+    if (entry.waiter) {
+      entry.waiter->DisableBackpressure();
+    }
+    if (entry.actor_metadata) {
+      entry.actor_metadata->Teardown();
+    }
+  }
 }
 
 void CoreWorker::SubscribeToNodeChanges() {
@@ -848,7 +895,7 @@ void CoreWorker::RecordMetrics() {
   task_counter_.RecordMetrics();
   // Record worker heap memory metrics.
   memory_store_->RecordMetrics();
-  reference_counter_->RecordMetrics();
+  reference_counter_->RecordOwnerMetrics();
   // Flush percentile metrics: swap histogram buffers and update exported gauges.
   normal_task_submitter_->FlushMetrics();
 }
@@ -2080,7 +2127,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.enable_tensor_transport,
       actor_creation_options.enable_task_events,
       actor_creation_options.labels,
-      is_detached);
+      is_detached,
+      actor_creation_options.actor_generator_backpressure_num_objects);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
   ActorID root_detached_actor_id;
@@ -2089,21 +2137,23 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   } else if (!worker_context_->GetRootDetachedActorID().IsNil()) {
     root_detached_actor_id = worker_context_->GetRootDetachedActorID();
   }
-  builder.SetActorCreationTaskSpec(actor_id,
-                                   serialized_actor_handle,
-                                   actor_creation_options.scheduling_strategy,
-                                   actor_creation_options.max_restarts,
-                                   actor_creation_options.max_task_retries,
-                                   actor_creation_options.dynamic_worker_options,
-                                   actor_creation_options.max_concurrency,
-                                   is_detached,
-                                   actor_name,
-                                   ray_namespace,
-                                   actor_creation_options.is_asyncio,
-                                   actor_creation_options.concurrency_groups,
-                                   extension_data,
-                                   actor_creation_options.allow_out_of_order_execution,
-                                   root_detached_actor_id);
+  builder.SetActorCreationTaskSpec(
+      actor_id,
+      serialized_actor_handle,
+      actor_creation_options.scheduling_strategy,
+      actor_creation_options.max_restarts,
+      actor_creation_options.max_task_retries,
+      actor_creation_options.dynamic_worker_options,
+      actor_creation_options.max_concurrency,
+      is_detached,
+      actor_name,
+      ray_namespace,
+      actor_creation_options.is_asyncio,
+      actor_creation_options.concurrency_groups,
+      extension_data,
+      actor_creation_options.allow_out_of_order_execution,
+      root_detached_actor_id,
+      actor_creation_options.actor_generator_backpressure_num_objects);
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorRefDeletedRequest.
@@ -2479,6 +2529,17 @@ bool CoreWorker::IsTaskCanceled(const TaskID &task_id) const {
   return canceled_tasks_.find(task_id) != canceled_tasks_.end();
 }
 
+bool CoreWorker::ShouldInterruptTaskForCancellation() const {
+  if (worker_context_->GetCurrentJobID().IsNil()) {
+    return false;
+  }
+  const TaskID &task_id = worker_context_->GetCurrentTaskID();
+  if (task_id.IsNil()) {
+    return false;
+  }
+  return IsTaskCanceled(task_id);
+}
+
 Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
   absl::flat_hash_set<TaskID> unknown_child_task_ids;
   auto child_task_ids = task_manager_->GetPendingChildrenTasks(task_id);
@@ -2849,6 +2910,15 @@ Status CoreWorker::ExecuteTask(
                                           /*add_local_ref=*/false,
                                           /*is_self=*/true);
     }
+    int64_t actor_generator_bp = task_spec.ActorGeneratorBackpressureNumObjects();
+    if (actor_generator_bp > 0) {
+      // Shared waiter for all streaming-generator tasks on this actor.
+      // check_signals matches what the per-task waiter uses (set in
+      // CoreWorkerOptions from _raylet.pyx), so KeyboardInterrupt /
+      // SystemExit propagate through ReserveSlot's wait loop.
+      actor_generator_waiter_ = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+          actor_generator_bp, options_.check_signals);
+    }
     RAY_LOG(INFO).WithField(task_spec.ActorCreationId()) << "Creating actor";
   } else if (task_spec.IsActorTask()) {
     task_type = TaskType::ACTOR_TASK;
@@ -3127,7 +3197,8 @@ Status CoreWorker::ReportGeneratorItemReturns(
     const rpc::Address &owner_address,
     int64_t item_index,
     uint64_t attempt_number,
-    const std::shared_ptr<GeneratorBackpressureWaiter> &waiter) {
+    const std::shared_ptr<TaskGeneratorBackpressureWaiter> &waiter,
+    const std::shared_ptr<ActorTaskBackpressureMetadata> &actor_metadata) {
   rpc::ReportGeneratorItemReturnsRequest request;
   request.mutable_worker_addr()->CopyFrom(rpc_address_);
   request.set_item_index(item_index);
@@ -3162,29 +3233,41 @@ Status CoreWorker::ReportGeneratorItemReturns(
                  << ", id: " << return_id << ", count: " << return_ids.size();
 
   waiter->IncrementObjectGenerated(return_ids.size());
+  const bool needs_consumed_updates =
+      waiter->NeedsObjectConsumedUpdates() || actor_metadata != nullptr;
+  if (needs_consumed_updates) {
+    absl::MutexLock lock(&mutex_);
+    auto &state = generator_backpressure_states_[generator_id];
+    state.waiter = waiter;
+    state.actor_metadata = actor_metadata;
+    state.owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
+  }
 
   client->ReportGeneratorItemReturns(
       std::move(request),
-      [waiter, generator_id, return_id, item_index](
-          const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
+      [this, waiter, actor_metadata, generator_id, return_id, item_index](
+          const Status &status, const rpc::ReportGeneratorItemReturnsReply &) {
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
-                       << "index: " << item_index << ". total_consumed_reported: "
-                       << reply.total_num_object_consumed();
+                       << "index: " << item_index;
         RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
                        << ". Total object generated: " << waiter->TotalObjectGenerated();
-        int64_t num_objects_consumed = 0;
-        if (status.ok()) {
-          num_objects_consumed = reply.total_num_object_consumed();
-        } else {
+        if (!status.ok()) {
           // If the request fails, we should just resume until task finishes without
           // backpressure.
-          num_objects_consumed = waiter->TotalObjectGenerated();
           RAY_LOG(WARNING).WithField(return_id)
               << "Failed to report streaming generator return "
                  "to the caller. The yield'ed ObjectRef may not be usable. "
               << status;
         }
-        waiter->HandleObjectReported(num_objects_consumed);
+        waiter->OnObjectReportAccepted();
+        if (!status.ok()) {
+          waiter->OnObjectConsumed(waiter->TotalObjectGenerated());
+          if (actor_metadata) {
+            actor_metadata->Teardown();
+          }
+          absl::MutexLock lock(&mutex_);
+          generator_backpressure_states_.erase(generator_id);
+        }
       });
 
   // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
@@ -3192,31 +3275,162 @@ Status CoreWorker::ReportGeneratorItemReturns(
   return waiter->WaitUntilObjectConsumed();
 }
 
+void CoreWorker::RegisterGeneratorBackpressureState(
+    const ObjectID &generator_id,
+    std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter,
+    std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata,
+    const rpc::Address &owner_address) {
+  absl::MutexLock lock(&mutex_);
+  // Only insert if not present. The report path also writes this entry (with
+  // the same values); leaving an existing entry untouched avoids racing with
+  // any in-progress mutation there.
+  auto [it, inserted] = generator_backpressure_states_.try_emplace(generator_id);
+  if (!inserted) {
+    return;
+  }
+  it->second.waiter = std::move(waiter);
+  it->second.actor_metadata = std::move(actor_metadata);
+  it->second.owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
+}
+
+void CoreWorker::MarkGeneratorBackpressureTaskFinished(const ObjectID &generator_id) {
+  std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter;
+  bool keep_until_consumed = false;
+  {
+    absl::MutexLock lock(&mutex_);
+    auto it = generator_backpressure_states_.find(generator_id);
+    if (it == generator_backpressure_states_.end()) {
+      return;
+    }
+    it->second.task_finished = true;
+    keep_until_consumed = it->second.actor_metadata != nullptr;
+    waiter = it->second.waiter;
+    if (!keep_until_consumed) {
+      generator_backpressure_states_.erase(it);
+      return;
+    }
+  }
+
+  if (waiter->TotalObjectConsumed() >= waiter->TotalObjectGenerated()) {
+    absl::MutexLock lock(&mutex_);
+    auto it = generator_backpressure_states_.find(generator_id);
+    if (it != generator_backpressure_states_.end() && it->second.task_finished &&
+        it->second.waiter->TotalObjectConsumed() >=
+            it->second.waiter->TotalObjectGenerated()) {
+      generator_backpressure_states_.erase(it);
+    }
+  }
+}
+
+bool CoreWorker::TeardownGeneratorBackpressureTask(const ObjectID &generator_id) {
+  std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata;
+  {
+    absl::MutexLock lock(&mutex_);
+    auto it = generator_backpressure_states_.find(generator_id);
+    if (it == generator_backpressure_states_.end()) {
+      return false;
+    }
+    actor_metadata = it->second.actor_metadata;
+    generator_backpressure_states_.erase(it);
+  }
+  if (actor_metadata) {
+    actor_metadata->Teardown();
+  }
+  return true;
+}
+
 void CoreWorker::HandleReportGeneratorItemReturns(
     rpc::ReportGeneratorItemReturnsRequest request,
     rpc::ReportGeneratorItemReturnsReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto generator_id = ObjectID::FromBinary(request.generator_id());
-  auto worker_id = WorkerID::FromBinary(request.worker_addr().worker_id());
+  const auto generator_id = ObjectID::FromBinary(request.generator_id());
+  const auto worker_id = WorkerID::FromBinary(request.worker_addr().worker_id());
+  const auto worker_addr = request.worker_addr();
+  const auto reply_generator_id = generator_id;
+  const auto consumption_generator_id = generator_id;
   task_manager_->HandleReportGeneratorItemReturns(
       request,
       /*execution_signal_callback=*/
-      [reply,
-       worker_id = std::move(worker_id),
-       generator_id = std::move(generator_id),
-       send_reply_callback = std::move(send_reply_callback)](
-          const Status &status, int64_t total_num_object_consumed) {
+      [worker_id,
+       generator_id = reply_generator_id,
+       send_reply_callback = std::move(send_reply_callback)](const Status &status) {
         RAY_LOG(DEBUG) << "Reply HandleReportGeneratorItemReturns to signal "
                           "executor to resume tasks. "
-                       << generator_id << ". Worker ID: " << worker_id
-                       << ". Total consumed: " << total_num_object_consumed;
-        if (!status.ok()) {
-          RAY_CHECK_EQ(total_num_object_consumed, -1);
-        }
-
-        reply->set_total_num_object_consumed(total_num_object_consumed);
+                       << generator_id << ". Worker ID: " << worker_id;
         send_reply_callback(status, nullptr, nullptr);
+      },
+      /*consumption_update_callback=*/
+      [this, worker_addr, generator_id = consumption_generator_id](
+          const Status &status, int64_t total_num_object_consumed) {
+        rpc::UpdateGeneratorBackpressureConsumedRequest update_request;
+        update_request.set_generator_id(generator_id.Binary());
+        update_request.set_total_num_object_consumed(
+            status.ok() ? total_num_object_consumed : -1);
+        auto client = core_worker_client_pool_->GetOrConnect(worker_addr);
+        client->UpdateGeneratorBackpressureConsumed(
+            std::move(update_request),
+            [generator_id](const Status &update_status,
+                           const rpc::UpdateGeneratorBackpressureConsumedReply &) {
+              if (!update_status.ok()) {
+                // The retryable RPC layer retries transient failures; a
+                // permanent failure usually means the executor is gone, in
+                // which case no one is blocked on the corresponding
+                // WaitUntilObjectConsumed. Still WARN so unexpected
+                // executor-side stalls (if any) are visible.
+                RAY_LOG(WARNING).WithField(generator_id)
+                    << "Failed to update generator consumed progress: " << update_status;
+              }
+            });
       });
+}
+
+void CoreWorker::HandleUpdateGeneratorBackpressureConsumed(
+    rpc::UpdateGeneratorBackpressureConsumedRequest request,
+    rpc::UpdateGeneratorBackpressureConsumedReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  auto generator_id = ObjectID::FromBinary(request.generator_id());
+  std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter;
+  std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata;
+  {
+    absl::MutexLock lock(&mutex_);
+    auto it = generator_backpressure_states_.find(generator_id);
+    if (it != generator_backpressure_states_.end()) {
+      waiter = it->second.waiter;
+      actor_metadata = it->second.actor_metadata;
+    }
+  }
+
+  const bool teardown = request.total_num_object_consumed() < 0;
+  if (waiter) {
+    const auto total_num_object_consumed =
+        teardown ? waiter->TotalObjectGenerated() : request.total_num_object_consumed();
+    waiter->OnObjectConsumed(total_num_object_consumed);
+    if (actor_metadata) {
+      if (teardown) {
+        actor_metadata->Teardown();
+      } else {
+        actor_metadata->OnConsumed(total_num_object_consumed);
+      }
+    }
+
+    // Snapshot the waiter's counters BEFORE re-acquiring mutex_ below.
+    // TotalObjectConsumed()/TotalObjectGenerated() each lock the waiter's own
+    // internal mutex, so calling them while holding mutex_ acquires locks in
+    // the order (mutex_ -> waiter mutex). The generator-execution path takes
+    // them in the opposite order (waiter mutex held while a callback re-enters
+    // mutex_), so the two orderings form a cycle and can potentially deadlock.
+    const bool all_objects_consumed =
+        waiter->TotalObjectConsumed() >= waiter->TotalObjectGenerated();
+
+    absl::MutexLock lock(&mutex_);
+    auto it = generator_backpressure_states_.find(generator_id);
+    if (it != generator_backpressure_states_.end() &&
+        (teardown || (it->second.task_finished &&
+                      (it->second.actor_metadata == nullptr || all_objects_consumed)))) {
+      generator_backpressure_states_.erase(it);
+    }
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,

@@ -33,7 +33,6 @@ from ray.serve._private.constants import (
     NO_ROUTES_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG,
-    RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY,
     RAY_SERVE_HAPROXY_BALANCE_ALGORITHM,
     RAY_SERVE_HAPROXY_BINARY_PATH,
     RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S,
@@ -51,7 +50,9 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S,
     RAY_SERVE_HAPROXY_LOG_TARGET,
     RAY_SERVE_HAPROXY_MAXCONN,
+    RAY_SERVE_HAPROXY_METRICS_ENABLED,
     RAY_SERVE_HAPROXY_METRICS_PORT,
+    RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S,
     RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH,
     RAY_SERVE_HAPROXY_NBTHREAD,
     RAY_SERVE_HAPROXY_RETRIES,
@@ -59,6 +60,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_SERVER_STATE_BASE,
     RAY_SERVE_HAPROXY_SERVER_STATE_FILE,
     RAY_SERVE_HAPROXY_SOCKET_PATH,
+    RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S,
     RAY_SERVE_HAPROXY_STATS_PORT,
     RAY_SERVE_HAPROXY_TCP_NODELAY,
     RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S,
@@ -79,7 +81,10 @@ from ray.serve._private.haproxy_templates import (
 )
 from ray.serve._private.logging_utils import get_component_logger_file_path
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
-from ray.serve._private.proxy import ProxyActorInterface
+from ray.serve._private.proxy import (
+    ProxyActorInterface,
+    apply_per_node_port_overrides,
+)
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.schema import (
@@ -183,12 +188,9 @@ def _tail_file(path: str, n_bytes: int = 4096) -> str:
 def get_haproxy_binary() -> str:
     """Return the path to the HAProxy binary.
 
-    When RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY is disabled (default), returns
-    RAY_SERVE_HAPROXY_BINARY_PATH (defaults to "haproxy", i.e. system PATH).
-
-    When enabled, resolution order:
-      1. The binary bundled in the ``ray-haproxy`` package.
-      2. ``RAY_SERVE_HAPROXY_BINARY_PATH`` if explicitly set to an absolute path.
+    Resolution order:
+      1. ``RAY_SERVE_HAPROXY_BINARY_PATH`` if explicitly set to an absolute path.
+      2. The binary bundled in the ``ray-haproxy`` package.
       3. ``haproxy`` on the system PATH (fallback).
 
     Raises ``FileNotFoundError`` if no usable binary is found.
@@ -199,25 +201,10 @@ def get_haproxy_binary() -> str:
 
 
 def _resolve_haproxy_binary() -> str:
-    if not RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY:
-        return RAY_SERVE_HAPROXY_BINARY_PATH
-
-    # 1. Bundled binary from the ray-haproxy package. Tried first so the flag
-    # forces the pip binary even when the runtime image bakes in an explicit
-    # RAY_SERVE_HAPROXY_BINARY_PATH (e.g. /usr/local/bin/haproxy); otherwise the
-    # override below would shadow it and the flag would be a no-op.
-    try:
-        from ray_haproxy import get_haproxy_binary as _pip_binary
-
-        return _pip_binary()
-    except ImportError:
-        pass
-    except OSError:
-        pass
-
-    # 2. If RAY_SERVE_HAPROXY_BINARY_PATH was explicitly set (not the default),
-    # use it as an override.
-    if RAY_SERVE_HAPROXY_BINARY_PATH != "haproxy":
+    # 1. Explicit RAY_SERVE_HAPROXY_BINARY_PATH override. An operator who sets
+    # this wants that specific binary, so it takes precedence over the bundled
+    # package.
+    if RAY_SERVE_HAPROXY_BINARY_PATH:
         if os.path.isfile(RAY_SERVE_HAPROXY_BINARY_PATH) and os.access(
             RAY_SERVE_HAPROXY_BINARY_PATH, os.X_OK
         ):
@@ -227,6 +214,18 @@ def _resolve_haproxy_binary() -> str:
             "does not point to an executable file."
         )
 
+    # 2. Bundled binary from the ray-haproxy package, so ray[serve] installs work
+    # without extra configuration. Falls through if the package is missing or its
+    # binary is unusable.
+    try:
+        from ray_haproxy import get_haproxy_binary as _pip_binary
+
+        return _pip_binary()
+    except ImportError:
+        pass
+    except OSError:
+        pass
+
     # 3. System PATH fallback.
     system_haproxy = shutil.which("haproxy")
     if system_haproxy:
@@ -234,8 +233,8 @@ def _resolve_haproxy_binary() -> str:
 
     raise FileNotFoundError(
         "Could not find an HAProxy binary. "
-        "Install 'ray[haproxy]' for the bundled binary, "
-        "set RAY_SERVE_HAPROXY_BINARY_PATH, "
+        "Install 'ray[serve]' on Linux for the bundled binary, "
+        "set RAY_SERVE_HAPROXY_BINARY_PATH to an executable, "
         "or ensure 'haproxy' is on PATH."
     )
 
@@ -791,6 +790,74 @@ class HAProxyApi(ProxyApi):
             self._retire_log_files(p)
         self._old_procs = still_alive
 
+    def _is_our_haproxy(self, pid: int) -> bool:
+        """Whether `pid` is currently one of our haproxy workers.
+
+        Reads /proc to guard against signaling a recycled pid: a reaped or
+        recycled pid won't have our config_file_path in its cmdline and drops
+        out. Returns False on any non-Linux / no-/proc platform (fail-safe:
+        skips re-signaling rather than risk hitting the wrong process).
+        """
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                return self.config_file_path.encode() in f.read().split(b"\0")
+        except OSError:
+            return False
+
+    def count_haproxy_processes(self) -> int:
+        """Number of HAProxy processes on the node belonging to this manager.
+
+        Scans /proc for processes whose cmdline references our config file, so
+        the count spans the live worker, draining workers from prior reloads,
+        and any leaked/orphaned workers — making it a signal for process leaks.
+        Returns 0 on non-Linux / no-/proc platforms where /proc is unavailable.
+        """
+        try:
+            entries = os.listdir("/proc")
+        except OSError:
+            return 0
+
+        processes = {
+            entry
+            for entry in entries
+            if entry.isdigit() and self._is_our_haproxy(int(entry))
+        }
+        return len(processes)
+
+    async def compute_target_mismatch(self) -> int:
+        """Cardinality of the mismatch between the controller's broadcasted
+        targets and the targets HAProxy actually reports in its stats.
+
+        Broadcasted targets are the (backend, server) pairs the controller asked
+        this proxy to configure; reported targets are the (backend, server) pairs
+        present in HAProxy's live stats. The result is the symmetric difference,
+        so it counts both targets not yet applied to HAProxy and stale targets
+        HAProxy still reports.
+        """
+        expected = set()
+        for backend_name, backend_config in self.backend_configs.items():
+            for server in backend_config.servers:
+                expected.add((backend_name, server.name))
+            # The generated config also renders the fallback server as a real
+            # `server ... backup` line in the same backend, so it appears in
+            # get_all_stats; count it as expected or the gauge never converges
+            # to zero for backends that have a fallback.
+            if backend_config.fallback_server is not None:
+                expected.add((backend_name, backend_config.fallback_server.name))
+
+        # Note that if an entire backend scaled down (when an app is removed),
+        # get_all_stats will filter out that entire backend, so there could be
+        # stale servers in that haproxy backend but not reported by this metric.
+        # This case is rare and not really something we worry about since requests
+        # shouldn't be hitting that backend or should return errors anyways.
+        stats = await self.get_all_stats()
+        reported = {
+            (backend_name, server_name)
+            for backend_name, servers in stats.items()
+            for server_name in servers
+        }
+        return len(expected ^ reported)
+
     def _retire_log_files(self, proc: asyncio.subprocess.Process) -> None:
         """Move an exited proc's std-stream logs into the bounded debug ring,
         deleting the oldest pair once the ring exceeds its cap. Only call this
@@ -808,7 +875,9 @@ class HAProxyApi(ProxyApi):
         return self._proc is not None and self._proc.returncode is None
 
     async def _start_and_wait_for_haproxy(
-        self, *extra_args: str, timeout_s: int = 5
+        self,
+        *extra_args: str,
+        timeout_s: int = RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S,
     ) -> asyncio.subprocess.Process:
         # Build command args
         haproxy_bin = get_haproxy_binary()
@@ -872,17 +941,26 @@ class HAProxyApi(ProxyApi):
 
             # Start new HAProxy process with -sf flag to gracefully take over from old process
             # Use -x socket transfer for seamless reloads if optimization is enabled
-            reload_args = ["-sf", str(old_proc.pid)]
+            # Also re-signal still-alive displaced workers: heals any worker
+            # whose earlier -sf signal was lost (re-signaling a draining one is
+            # a no-op). The new process delivers SIGUSR1 only after startup, so
+            # filter to pids whose /proc cmdline is still one of our haproxy
+            # workers: a worker that exited and had its pid recycled in the
+            # meantime drops out, so the signal can't land on an unrelated
+            # process.
+            self._prune_old_procs()
+            live_old_pids = [
+                str(p.pid) for p in self._old_procs if self._is_our_haproxy(p.pid)
+            ]
+            reload_args = ["-sf", str(old_proc.pid), *live_old_pids]
             if self.cfg.enable_hap_optimization:
                 reload_args.extend(["-x", self.cfg.socket_path])
 
             self._proc = await self._start_and_wait_for_haproxy(*reload_args)
 
-            # Track old process for shutdown cleanup, then prune exited ones so
-            # the list and the log files on disk stay bounded across reloads.
+            # Track for shutdown cleanup; pruned at the next reload.
             if old_proc is not None:
                 self._old_procs.append(old_proc)
-            self._prune_old_procs()
 
             logger.info(
                 "Successfully performed graceful HAProxy reload with process restart."
@@ -892,7 +970,9 @@ class HAProxyApi(ProxyApi):
             raise
 
     async def _wait_for_hap_availability(
-        self, proc: asyncio.subprocess.Process, timeout_s: int = 5
+        self,
+        proc: asyncio.subprocess.Process,
+        timeout_s: int = RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S,
     ) -> None:
         start_time = time.time()
 
@@ -908,13 +988,18 @@ class HAProxyApi(ProxyApi):
                     f"HAProxy crashed during startup: {output or f'exit code {proc.returncode}'}"
                 )
 
-            if await self.is_running():
+            # The socket path answers through its previous owner until the
+            # new process rebinds it, so require the answer to come from
+            # `proc` itself. Otherwise a spawn that dies before taking over is
+            # declared ready and its -sf target is stranded forever.
+            if await self._get_running_pid() == proc.pid:
                 return
 
             await asyncio.sleep(0.5)
 
         raise RuntimeError(
-            f"HAProxy did not enter running state within {timeout_s} seconds."
+            f"HAProxy (pid={proc.pid}) did not take over the admin socket within "
+            f"{timeout_s} seconds. stderr: {_tail_file(proc._stderr_path)}"
         )
 
     def _write_ingress_request_router_lua(
@@ -1275,6 +1360,22 @@ class HAProxyApi(ProxyApi):
             len(bc.servers) > 0 for bc in backend_configs.values()
         )
 
+    async def _get_running_pid(self) -> Optional[int]:
+        """Pid of the HAProxy process currently answering the admin socket,
+        or None if the socket is unavailable or the response is unparseable.
+        """
+        try:
+            info = await self._send_socket_command("show info")
+        except Exception:
+            return None
+        for line in info.splitlines():
+            if line.startswith("Pid:"):
+                try:
+                    return int(line.split(":", 1)[1])
+                except ValueError:
+                    return None
+        return None
+
     async def is_running(self) -> bool:
         try:
             await self._send_socket_command("show info")
@@ -1355,6 +1456,7 @@ class HAProxyManager(ProxyActorInterface):
         )
 
         is_head = self._node_id == get_head_node_id()
+        apply_per_node_port_overrides(self._http_options, self._grpc_options, is_head)
 
         startup_msg = f"HAProxy starting on node {self._node_id} (HTTP port: {self._http_options.port})."
         logger.info(startup_msg)
@@ -1383,33 +1485,34 @@ class HAProxyManager(ProxyActorInterface):
             config_file_path=_per_node(RAY_SERVE_HAPROXY_CONFIG_FILE_LOC),
         )
 
-        # Start the metrics collector for the ingress request router. The
-        # collector owns its own dgram socket and transport lifecycle; we
-        # only hold a reference so we can close it on shutdown.
-        self._metrics_collector: Optional["HAProxyMetricsCollector"] = None
+        self._metrics_collector = None
         self._metrics_attach_task: Optional[asyncio.Task] = None
-        if self._haproxy.cfg.ingress_request_router_metrics_enabled:
+        if RAY_SERVE_HAPROXY_METRICS_ENABLED:
             from ray.serve._private.haproxy_metrics import HAProxyMetricsCollector
 
+            # The metrics collector owns all serve_haproxy_* metrics for this proxy.
+            # It is constructed if haproxy metrics are enabled. start() always begins
+            # node-level polling and, when ingress-request-router metrics are enabled,
+            # also binds the per-request dgram reader and returns its bind task (which
+            # ready() awaits to surface bind failures).
+            self._metrics_collector = HAProxyMetricsCollector(
+                haproxy_api=self._haproxy, node_id=self._node_id
+            )
             try:
-                os.makedirs(
-                    os.path.dirname(self._haproxy.cfg.metrics_socket_path),
-                    exist_ok=True,
-                )
-                self._metrics_collector = HAProxyMetricsCollector()
-                self._metrics_attach_task = self.event_loop.create_task(
-                    self._metrics_collector.bind_and_attach(
-                        self._haproxy.cfg.metrics_socket_path,
-                        loop=self.event_loop,
-                    )
+                self._metrics_attach_task = self._metrics_collector.start(
+                    self.event_loop,
+                    poll_interval_s=RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S,
+                    enable_ingress_router_metrics=(
+                        self._haproxy.cfg.ingress_request_router_metrics_enabled
+                    ),
+                    metrics_socket_path=self._haproxy.cfg.metrics_socket_path,
                 )
             except Exception:
                 logger.exception(
-                    "Failed to construct ingress-request-router metrics "
-                    "collector; metrics will not be emitted. HAProxy will "
-                    "continue normally."
+                    "Failed to start the ingress-request-router datagram reader; "
+                    "per-request router metrics will not be emitted. Node-level "
+                    "metrics and HAProxy continue normally."
                 )
-                self._metrics_collector = None
 
         self._haproxy_start_task = self.event_loop.create_task(self._haproxy.start())
 
@@ -1451,13 +1554,13 @@ class HAProxyManager(ProxyActorInterface):
                 try:
                     await self._metrics_attach_task
                 except Exception:
+                    # Only the dgram reader failed. Leave the collector intact
+                    # so node-level gauges keep polling; the socket is left
+                    # unbound (bind_and_attach is safe to have failed).
                     logger.exception(
                         "Failed to bind/attach metrics dgram reader; "
-                        "metrics will not be drained."
+                        "per-request router metrics will not be drained."
                     )
-                    if self._metrics_collector is not None:
-                        self._metrics_collector.close()
-                        self._metrics_collector = None
         except Exception as e:
             logger.exception("Failed to start HAProxy.")
             raise e from None
