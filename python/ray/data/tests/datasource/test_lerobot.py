@@ -608,60 +608,60 @@ def test_read_lerobot_get_read_tasks_parallelism_zero(
     assert sorted(indices) == list(range(15))
 
 
-def test_read_lerobot_estimate_inmemory_data_size(
-    ray_start_regular_shared, lerobot_dataset_no_video
+def test_estimate_memory(
+    ray_start_regular_shared,
+    lerobot_dataset,
+    lerobot_dataset_no_video,
+    lerobot_dataset_image,
 ):
-    """estimate_inmemory_data_size is total_frames * the estimated per-row size."""
-    from ray.data.datasource import LeRobotDatasource
+    """The memory estimates model a real read, for every dataset shape (video /
+    no-camera / image).
 
-    source = LeRobotDatasource(lerobot_dataset_no_video)
-    root = source._roots[0]
-    assert (
-        source.estimate_inmemory_data_size() == root.total_frames * root.row_size_bytes
-    )
-
-
-@pytest.mark.parametrize(
-    "fixture_name",
-    ["lerobot_dataset", "lerobot_dataset_no_video", "lerobot_dataset_image"],
-    ids=["video", "no_camera", "image"],
-)
-def test_estimated_row_size_models_a_decoded_row(
-    ray_start_regular_shared, request, fixture_name
-):
-    """Pin _estimated_row_size_bytes' implicit model of "what's in a row" against
-    a real read: a decoded row holds exactly the dataset's features (cameras
-    decoded in place) plus task/dataset_index/stats; task and stats are
-    dictionary-encoded (so each costs ~one int32 index per row); and the estimate
-    is a lower bound on -- and within ~2x of -- the actual per-row size.
+    For each: a decoded row holds exactly the dataset's features (cameras decoded
+    in place) plus task/dataset_index/stats; task and stats are dictionary-encoded
+    (so each costs ~one int32 index per row); ``_estimated_row_size_bytes`` is a
+    lower bound on -- and within ~2x of -- the real per-row ``nbytes``; and
+    ``estimate_inmemory_data_size`` aggregates it as total_frames * per-row size.
     """
     from ray.data._internal.datasource.lerobot_datasource import (
         LeRobotDatasource,
         _estimated_row_size_bytes,
     )
 
-    source = LeRobotDatasource(request.getfixturevalue(fixture_name))
-    estimate = _estimated_row_size_bytes(source.metas[0].features)
-    block = pa.concat_tables([b for task in source.get_read_tasks(1) for b in task()])
+    for path in (lerobot_dataset, lerobot_dataset_no_video, lerobot_dataset_image):
+        print("Testing dataset:", path)
+        source = LeRobotDatasource(path)
+        root = source._roots[0]
+        estimate = _estimated_row_size_bytes(source.metas[0].features)
+        block = pa.concat_tables(
+            [b for task in source.get_read_tasks(1) for b in task()]
+        )
 
-    # A row is exactly the dataset's feature columns (cameras decoded in place)
-    # plus the three appended columns -- nothing more, nothing less. Adding or
-    # removing an output column must be reflected in _estimated_row_size_bytes.
-    assert set(block.schema.names) == set(source.metas[0].features) | {
-        "task",
-        "dataset_index",
-        "stats",
-    }
+        # A row is exactly the dataset's feature columns (cameras decoded in
+        # place) plus the three appended columns -- nothing more, nothing less.
+        # Adding/removing an output column must be reflected in the estimate.
+        assert set(block.schema.names) == set(source.metas[0].features) | {
+            "task",
+            "dataset_index",
+            "stats",
+        }
 
-    # task and stats are dictionary-encoded, which is why the estimate charges
-    # them one int32 index per row rather than the full string value.
-    assert pa.types.is_dictionary(block.schema.field("task").type)
-    assert pa.types.is_dictionary(block.schema.field("stats").type)
+        # task and stats are dictionary-encoded, so the estimate charges them one
+        # int32 index per row rather than the full string value.
+        assert pa.types.is_dictionary(block.schema.field("task").type)
+        assert pa.types.is_dictionary(block.schema.field("stats").type)
 
-    # The estimate omits Arrow buffer overhead and the once-per-block dictionary
-    # values, so it is a lower bound on the actual per-row size, and close to it.
-    actual_per_row = block.nbytes / block.num_rows
-    assert estimate <= actual_per_row <= 2 * estimate
+        # The estimate omits Arrow overhead and the once-per-block dictionary
+        # values, so it's a lower bound on -- and within ~2x of -- the real
+        # per-row size.
+        actual_per_row = block.nbytes / block.num_rows
+        assert estimate <= actual_per_row <= 2 * estimate
+
+        # estimate_inmemory_data_size aggregates the per-row estimate.
+        assert (
+            source.estimate_inmemory_data_size()
+            == root.total_frames * root.row_size_bytes
+        )
 
 
 def test_read_lerobot_per_task_row_limit_bounds_decode(
