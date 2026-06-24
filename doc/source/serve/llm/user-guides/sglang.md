@@ -25,6 +25,7 @@ Set the following environment variable before running any example:
 
 - **CUDA:** `RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0`
 - **ROCm:** `RAY_EXPERIMENTAL_NOSET_HIP_VISIBLE_DEVICES=0`
+- **Intel GPU:** `RAY_EXPERIMENTAL_NOSET_ZE_AFFINITY_MASK=1` and `RAY_EXPERIMENTAL_NOSET_ONEAPI_DEVICE_SELECTOR=1`
 
 ## Online serving (single node)
 
