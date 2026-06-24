@@ -52,7 +52,23 @@ def _allocate_free_port() -> int:
         return s.getsockname()[1]
 
 
-class SGLangPDPrefillServer(LLMServer):
+class _SGLangPDRequestIdMixin:
+    """Shared request-id handling for SGLang PD servers.
+
+    LLMServer._maybe_add_request_id_to_request assigns ``request.request_id``
+    directly, which works for vLLM's request models but raises ValueError for
+    SGLang's (they don't declare a request_id field). Both the prefill and
+    decode servers need this override — prefill hits it too, when the decode
+    orchestrator forwards a request to its chat/completions handler.
+    """
+
+    async def _maybe_add_request_id_to_request(self, request) -> None:
+        request_id = get_serve_request_id()
+        if request_id and "request_id" in type(request).model_fields:
+            object.__setattr__(request, "request_id", request_id)
+
+
+class SGLangPDPrefillServer(_SGLangPDRequestIdMixin, LLMServer):
     """Prefill-side SGLang server for P/D disaggregation.
 
     A standard LLMServer whose engine is launched with
@@ -124,7 +140,7 @@ class SGLangPDPrefillServer(LLMServer):
         return SGLangServer.get_deployment_options(llm_config)
 
 
-class SGLangPDDecodeServer(LLMServer):
+class SGLangPDDecodeServer(_SGLangPDRequestIdMixin, LLMServer):
     """Decode-side SGLang server that orchestrates remote prefill.
 
     Owns a real SGLang engine launched with ``disaggregation_mode: decode``
@@ -292,13 +308,3 @@ class SGLangPDDecodeServer(LLMServer):
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         return await self._run_pd_request(request, raw_request_info, "completions")
-
-    async def _maybe_add_request_id_to_request(self, request) -> None:
-        """Override LLMServer's version: SGLang's request models don't declare
-        a request_id field (unlike vLLM's), so the base implementation's direct
-        attribute assignment raises ValueError. Guard on field presence and use
-        object.__setattr__ in case the model is frozen.
-        """
-        request_id = get_serve_request_id()
-        if request_id and "request_id" in type(request).model_fields:
-            object.__setattr__(request, "request_id", request_id)
