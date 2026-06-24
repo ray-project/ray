@@ -2697,6 +2697,9 @@ class Replica:
             request_iterator: The native gRPC request iterator to consume.
             cancel_event: Event set when the stream errors so the consuming
                 gRPCInputStream reports `is_cancelled()` and ends gracefully.
+
+        Yields:
+            Each request message read from the native gRPC iterator.
         """
         try:
             async for message in request_iterator:
