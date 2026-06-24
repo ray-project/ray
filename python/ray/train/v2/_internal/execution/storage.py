@@ -406,7 +406,6 @@ class StorageContext:
         )
         self.storage_fs_path = Path(self.storage_fs_path).as_posix()
 
-        self._create_validation_file()
         self._check_validation_file()
 
     def __str__(self):
@@ -465,6 +464,7 @@ class StorageContext:
         Returns:
             Checkpoint: A Checkpoint pointing to the persisted checkpoint location.
         """
+        self._create_validation_file()
         # TODO(justinvyu): Fix this cyclical import.
         from ray.train import Checkpoint
 
