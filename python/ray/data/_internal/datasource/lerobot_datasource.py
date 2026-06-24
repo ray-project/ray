@@ -291,23 +291,7 @@ def _load_lerobot_metadata(
     fs: "fsspec.AbstractFileSystem",
     fs_root: str,
 ) -> "LeRobotDatasetMetadata":
-    """Construct a pristine :class:`lerobot.LeRobotDatasetMetadata` for *root*.
-
-    lerobot's metadata loader only reads local paths. For a local *root* we point
-    it straight at the dataset; for a remote/URI *root* we materialize the small
-    ``meta/`` tree (info/tasks/episodes/stats — KBs to a few MB) into a temp dir
-    via ``fsspec`` and load from there. Either way lerobot's *own* parser runs —
-    no reimplementation, no monkeypatch — which keeps us robust across lerobot
-    versions.
-
-    Pre-validates that ``meta/info.json`` exists at *root* so a missing dataset
-    stays a clean ``FileNotFoundError`` rather than getting transformed into a
-    HuggingFace Hub validation error by lerobot's local-then-Hub fallback.
-
-    *fs* / *fs_root* are the resolved fsspec filesystem and the dataset path
-    relative to it (see :func:`_resolve_filesystem`); they are used for the
-    existence check and the metadata copy.
-    """
+    """Construct a LeRobotDatasetMetadata for a root."""
     from lerobot.datasets.dataset_metadata import LeRobotDatasetMetadata
 
     root_uri = str(root).rstrip("/")
@@ -424,8 +408,6 @@ def _build_root(
         stats_json=stats_json,
         frame_tolerance_s=frame_tolerance_s,
     )
-    # The projected episodes table is kept driver-side (in LeRobotDatasource),
-    # not stored on the shipped-to-workers root.
     return root_bundle, episodes_table
 
 
@@ -908,9 +890,8 @@ class LeRobotDatasource(Datasource):
                         f"{sorted(m_feats)}"
                     )
 
-        # Derived state, computed once on the driver. The slim roots are
-        # shipped to workers via ray.put; the projected episode tables stay
-        # here for planning (slicing) -- each read task embeds only its own
+        # Derived state, computed once on the driver. We ray.put roots for read tasks
+        # and episodes for planning (slicing) -- each read task embeds only its own
         # episode slice rather than broadcasting the whole table.
         self._roots: List[_LeRobotRoot] = []
         self._episodes: List[pa.Table] = []
@@ -941,9 +922,7 @@ class LeRobotDatasource(Datasource):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _slices_by_episode(episodes: pa.Table, _video_keys: List[str]) -> List[tuple]:
-        # _video_keys is unused here but kept so this and _slices_by_file_group
-        # share one signature for the dispatch in _slice().
+    def _slices_by_episode(episodes: pa.Table) -> List[tuple]:
         from_indices = episodes.column("_global_from_index").to_pylist()
         to_indices = episodes.column("_global_to_index").to_pylist()
         return list(zip(from_indices, to_indices))
@@ -1026,16 +1005,15 @@ class LeRobotDatasource(Datasource):
         return list(ranges.values())
 
     def _slice(self) -> List[tuple]:
-        """Return ``(root_index, start, end)`` triples for all roots, sorted."""
-        slice_fn = (
-            self._slices_by_episode
-            if self._group_by_episode
-            else self._slices_by_file_group
-        )
+        """Create ``(root_index, start, end)`` triples for all roots, sorted."""
         all_ranges: List[tuple] = []
         for root_idx, ds_root in enumerate(self._roots):
-            ranges = sorted(slice_fn(self._episodes[root_idx], ds_root.video_keys))
-            all_ranges.extend((root_idx, s, e) for s, e in ranges)
+            episodes = self._episodes[root_idx]
+            if self._group_by_episode:
+                ranges = self._slices_by_episode(episodes)
+            else:
+                ranges = self._slices_by_file_group(episodes, ds_root.video_keys)
+            all_ranges.extend((root_idx, s, e) for s, e in sorted(ranges))
         return all_ranges
 
     def _max_block_bytes(self, data_context: Optional[DataContext] = None) -> int:
