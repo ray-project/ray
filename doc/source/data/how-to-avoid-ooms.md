@@ -113,11 +113,11 @@ other memory-related errors, memory pressure might have caused the death.
 
 ### Use ``batch_size="auto"`` or small batch sizes
 
-Choose the smallest batch size that achieves good performance, or use
-``batch_size="auto"``.
+Choose the smallest batch size that achieves good performance, or if your UDF doesn't
+need GPUs, use ``batch_size="auto"``.
 
 :::{versionadded} 2.56
-``batch_size="auto"`` was added in Ray 2.56.
+``batch_size="auto"``
 :::
 
 <!-- We're recommending 16 MiB because we found that it's the smallest batch size
@@ -173,7 +173,7 @@ actors for the ones you haven't.
 To avoid this, set ``DataContext.get_current().default_map_logical_memory = True``.
 
 :::{versionadded} 2.56
-``DataContext.default_map_logical_memory`` was added in Ray 2.56.
+``DataContext.default_map_logical_memory``
 :::
 
 ### Start Ray with resource isolation
@@ -186,7 +186,7 @@ To enable *resource isolation*, follow the guide in
 {doc}`Ray Core Resource Isolation </ray-core/resource-isolation-with-cgroupv2>`.
 
 :::{versionadded} 2.56
-Resource isolation was completed in Ray 2.56.
+The full implementation of resource isolation.
 :::
 
 ### Configure system memory to cover the raylet and anything outside the container
