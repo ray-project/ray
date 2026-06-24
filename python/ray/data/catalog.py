@@ -245,10 +245,11 @@ class DatabricksUnityCatalog(Catalog):
         return self._call_with_token_refresh(lambda w: w.tables.get(full_name=table))
 
     def _get_creds(
-        self, table_id: str
+        self, table_id: Optional[str]
     ) -> Tuple["GenerateTemporaryTableCredentialResponse", str]:
         from databricks.sdk.service.catalog import TableOperation
 
+        assert table_id is not None
         creds = self._call_with_token_refresh(
             lambda w: w.temporary_table_credentials.generate_temporary_table_credentials(
                 table_id=table_id, operation=TableOperation.READ
@@ -293,7 +294,7 @@ class DatabricksUnityCatalog(Catalog):
 
     def _creds_to_env(
         self, creds: "GenerateTemporaryTableCredentialResponse"
-    ) -> Dict[str, str]:
+    ) -> Dict[str, Optional[str]]:
         """Translate vended credentials into environment variables."""
         if creds.aws_temp_credentials is not None:
             aws = creds.aws_temp_credentials
@@ -319,7 +320,7 @@ class DatabricksUnityCatalog(Catalog):
         raise ValueError("No known credential type found in Databricks UC response.")
 
     @staticmethod
-    def _apply_env(env_vars: Dict[str, str]) -> None:
+    def _apply_env(env_vars: Dict[str, Optional[str]]) -> None:
         """Set vended credentials in the environment and propagate to workers.
 
         Credentials are set on the driver's ``os.environ`` and, if Ray has not
@@ -336,7 +337,8 @@ class DatabricksUnityCatalog(Catalog):
             return
 
         for k, v in env_vars.items():
-            os.environ[k] = v
+            if v:
+                os.environ[k] = v
         if not ray.is_initialized():
             ray.init(runtime_env={"env_vars": dict(env_vars)})
 

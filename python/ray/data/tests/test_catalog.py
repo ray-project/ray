@@ -31,8 +31,6 @@ from databricks.sdk.service.catalog import (  # noqa: E402
     TableInfo,
 )
 
-_UNSET = object()
-
 AWS_RESP = GenerateTemporaryTableCredentialResponse(
     url="s3://bucket/path",
     aws_temp_credentials=AwsCredentials(
@@ -43,7 +41,7 @@ AWS_RESP = GenerateTemporaryTableCredentialResponse(
 )
 
 
-def _mock_uc_sdk(*, data_source_format="DELTA", storage_location=_UNSET, creds=None):
+def _mock_uc_sdk(*, data_source_format="DELTA", storage_location=None, creds=None):
     """Patch DatabricksUnityCatalog._workspace_client to return canned SDK responses.
 
     Replaces the catalog's two SDK calls (``tables.get`` /
@@ -56,7 +54,7 @@ def _mock_uc_sdk(*, data_source_format="DELTA", storage_location=_UNSET, creds=N
         data_source_format=(
             DataSourceFormat(data_source_format) if data_source_format else None
         ),
-        storage_location=creds.url if storage_location is _UNSET else storage_location,
+        storage_location=storage_location,
     )
     client = mock.MagicMock()
     client.tables.get.return_value = table_info
