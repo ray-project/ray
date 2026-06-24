@@ -68,6 +68,7 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
         # If GCS is not local, don't check its health.
         if not self._dashboard_agent.is_head:
             return "success (no local gcs)"
+        # Check liveness against the local GCS process on this head node.
         gcs_alive = await self._health_checker.check_gcs_liveness()
         if not gcs_alive:
             raise Exception("GCS health check failed.")
@@ -77,6 +78,7 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
         # If GCS is not local, don't check its health.
         if not self._dashboard_agent.is_head:
             return "success (no local gcs)"
+        # Check readiness against the local GCS process on this head node.
         gcs_ready = await self._health_checker.check_gcs_readiness()
         if not gcs_ready:
             raise Exception("GCS readiness check failed.")
@@ -84,7 +86,7 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
 
     @routes.get("/api/healthz")
     async def unified_health(self, req: Request) -> Response:
-        # If the ray cluster enables active/passive head replica, 
+        # If the ray cluster enables active/passive head replica,
         # the readiness probe should check the leadership status as well.
         readiness = req.query.get("readiness", "false").lower() in ("true", "1")
         gcs_check_fn = self.local_gcs_readiness if readiness else self.local_gcs_health
