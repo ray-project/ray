@@ -1,5 +1,5 @@
 """Unit tests for the preemption watcher."""
-from typing import Dict
+from typing import Dict, Optional
 from unittest.mock import Mock, patch
 
 import pytest
@@ -14,6 +14,7 @@ _PREEMPTION_MOD = "ray.train.v2._internal.execution.preemption"
 def _make_watcher(
     node_to_ranks: Dict[str, list],
     fd_map: Dict[str, list],
+    worker_actors_by_rank: Optional[Dict[int, object]] = None,
 ) -> PreemptionWatcher:
     """Construct a watcher with a fixed failure-domain map, then halt its loop.
 
@@ -24,7 +25,10 @@ def _make_watcher(
     with patch.object(
         PreemptionWatcher, "_build_failure_domain_map", return_value=fd
     ), patch(f"{_PREEMPTION_MOD}._get_draining_nodes", return_value={}):
-        watcher = PreemptionWatcher(node_to_ranks=node_to_ranks)
+        watcher = PreemptionWatcher(
+            node_to_ranks=node_to_ranks,
+            worker_actors_by_rank=worker_actors_by_rank,
+        )
         watcher._stop_event.set()
         watcher._monitor_thread.join(timeout=5)
     return watcher
@@ -105,6 +109,33 @@ class TestPreemptionWatcher:
         watcher = _make_watcher(node_to_ranks={"node-a": [0]}, fd_map={"node-a": [0]})
         _poll_once_with(watcher, return_value=None)  # must not raise
         assert watcher.get_latest_preemption_info() is None
+
+    def test_fans_out_mark_preempt_to_all_workers(self):
+        """On a preemption, mark_preempt is sent to every worker (preempted or not)."""
+        actor0, actor1 = Mock(), Mock()
+        watcher = _make_watcher(
+            node_to_ranks={"node-a": [0], "node-b": [1]},
+            fd_map={"node-a": [0], "node-b": [1]},
+            worker_actors_by_rank={0: actor0, 1: actor1},
+        )
+        # Only node-a is preempted, but both workers must be notified.
+        _poll_once_with(watcher, return_value={"node-a": 30_000})
+
+        for actor in (actor0, actor1):
+            actor.mark_preempt.remote.assert_called_once()
+            (sent_info,) = actor.mark_preempt.remote.call_args.args
+            assert sent_info.preempted_node_ids == ["node-a"]
+            assert sent_info.preempted_ranks == [0]
+
+    def test_no_fan_out_without_preemption(self):
+        actor0 = Mock()
+        watcher = _make_watcher(
+            node_to_ranks={"node-a": [0]},
+            fd_map={"node-a": [0]},
+            worker_actors_by_rank={0: actor0},
+        )
+        _poll_once_with(watcher, return_value={})
+        actor0.mark_preempt.remote.assert_not_called()
 
 
 class TestBuildFailureDomainMap:
