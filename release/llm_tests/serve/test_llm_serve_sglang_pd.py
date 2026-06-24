@@ -265,16 +265,20 @@ def test_sglang_pd_bootstrap_room_uniqueness():
 
 
 def test_sglang_pd_bootstrap_field_injection():
-    """Verify prefill gets all three bootstrap fields, decode gets only bootstrap_room.
+    """Verify both prefill and decode requests carry the PREFILL bootstrap address.
 
-    Prefill needs host + port + room to connect to decode's bootstrap server.
-    Decode needs only room to identify which KV cache to wait for.
+    SGLang's KV bootstrap server runs on the prefill worker. Prefill registers
+    its KV-sender there keyed by bootstrap_room; decode's KVReceiver connects to
+    that same host/port to pull the KV cache. So both requests must carry the
+    prefill node's bootstrap_host/bootstrap_port — not the decode node's.
     """
     from ray.llm._internal.serve.core.configs.openai_api_models import (
         ChatCompletionRequest,
     )
 
-    # Create a minimal instance without starting the engine
+    # Create a minimal instance without starting the engine.
+    # _bootstrap_host/_bootstrap_port hold the PREFILL node's address,
+    # fetched from the prefill deployment at init.
     server = object.__new__(SGLangPDDecodeServer)
     server._bootstrap_host = "10.0.0.5"
     server._bootstrap_port = 9201
@@ -287,18 +291,35 @@ def test_sglang_pd_bootstrap_field_injection():
 
     bootstrap_room = 7392841029
 
-    # Prefill request must carry all three bootstrap fields
+    # Prefill request must carry all three bootstrap fields and disable streaming.
     prefill_req = server._prepare_prefill_request(request, bootstrap_room)
     assert prefill_req.bootstrap_host == "10.0.0.5"
     assert prefill_req.bootstrap_port == 9201
     assert prefill_req.bootstrap_room == bootstrap_room
     assert prefill_req.stream is False
 
-    # Decode request must carry only bootstrap_room
+    # Decode request must carry the SAME prefill bootstrap address so its
+    # KVReceiver knows which prefill bootstrap server to connect to.
     decode_req = server._prepare_decode_request(request, bootstrap_room)
+    assert decode_req.bootstrap_host == "10.0.0.5"
+    assert decode_req.bootstrap_port == 9201
     assert decode_req.bootstrap_room == bootstrap_room
-    assert getattr(decode_req, "bootstrap_host", None) is None
-    assert getattr(decode_req, "bootstrap_port", None) is None
+
+
+def test_sglang_pd_prefill_exposes_bootstrap_info():
+    """Verify the prefill server exposes its node's bootstrap host/port.
+
+    The bootstrap server lives on the prefill worker. Decode must learn the
+    PREFILL node's address (not its own) to point the KVReceiver at it, so
+    SGLangPDPrefillServer must cache and expose host/port via get_bootstrap_info.
+    """
+    server = object.__new__(SGLangPDPrefillServer)
+    server._bootstrap_host = "10.0.0.7"
+    server._bootstrap_port = 8211
+
+    host, port = server.get_bootstrap_info()
+    assert host == "10.0.0.7"
+    assert port == 8211
 
 
 def test_sglang_pd_bootstrap_port_auto_allocated():
