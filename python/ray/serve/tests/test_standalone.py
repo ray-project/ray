@@ -19,13 +19,13 @@ from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_util import set_socket_reuse_port
-from ray.serve._private.test_utils import skip_if_haproxy
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import (
     ControllerOptions,
@@ -256,7 +256,12 @@ def test_multiple_routers(ray_cluster):
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
 
-@skip_if_haproxy("exercises the native Serve HTTP proxy, which HAProxy replaces")
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY,
+    reason="HAProxy ingress: user HTTP middleware runs on the replica, but the "
+    "/-/routes endpoint is served by HAProxy, so middleware-injected headers "
+    "are absent there.",
+)
 def test_middleware(ray_shutdown):
     from starlette.middleware import Middleware
     from starlette.middleware.cors import CORSMiddleware
@@ -293,7 +298,6 @@ def test_middleware(ray_shutdown):
     assert resp.headers["access-control-allow-origin"] == "*"
 
 
-@skip_if_haproxy("exercises the native Serve HTTP proxy, which HAProxy replaces")
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_root_path(ray_shutdown):
     @serve.deployment
@@ -323,7 +327,6 @@ def test_http_proxy_fail_loudly(ray_shutdown):
         serve.start(http_options={"host": "bad.ip.address"})
 
 
-@skip_if_haproxy("HAProxy ingress forces HTTP up, incompatible with no-HTTP mode")
 def test_no_http(ray_shutdown):
     # The following should have the same effect.
     options = [
@@ -357,7 +360,6 @@ def test_no_http(ray_shutdown):
         serve.shutdown()
 
 
-@skip_if_haproxy("exercises the native Serve HTTP proxy, which HAProxy replaces")
 def test_http_head_only(ray_cluster):
     cluster = ray_cluster
     head_node = cluster.add_node(num_cpus=4, dashboard_port=_get_random_port())
@@ -368,10 +370,21 @@ def test_http_head_only(ray_cluster):
 
     serve.start(http_options={"port": _get_random_port(), "location": "HeadOnly"})
 
-    # Only the controller and head node proxy should be started, both on the head node.
-    actors = list_actors(address=head_node.address)
-    assert len(actors) == 2
-    assert all([actor.node_id == head_node.node_id for actor in actors])
+    # Controller and proxy on the head node. HAProxy adds the HAProxyManager
+    # alongside the fallback ProxyActor, which registers asynchronously.
+    expected_classes = {"ServeController", "ProxyActor"}
+    if RAY_SERVE_ENABLE_HA_PROXY:
+        expected_classes.add("HAProxyManager")
+
+    def check_head_only_actors():
+        actors = list_actors(
+            address=head_node.address, filters=[("state", "=", "ALIVE")]
+        )
+        assert {actor.class_name for actor in actors} == expected_classes
+        assert all(actor.node_id == head_node.node_id for actor in actors)
+        return True
+
+    wait_for_condition(check_head_only_actors)
 
 
 def test_instance_in_non_anonymous_namespace(ray_shutdown):

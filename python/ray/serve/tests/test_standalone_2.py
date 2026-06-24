@@ -11,8 +11,11 @@ import ray.actor
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
-from ray.serve._private.test_utils import skip_if_haproxy
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve.context import _get_global_client
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
@@ -88,7 +91,6 @@ def test_memory_omitted_option(shutdown_ray_and_serve):
     assert handle.remote().result() == "world"
 
 
-@skip_if_haproxy("does not yet pass under HAProxy ingress")
 @pytest.mark.parametrize("ray_namespace", ["arbitrary", SERVE_NAMESPACE, None])
 def test_serve_namespace(shutdown_ray_and_serve, ray_namespace):
     """Test that Serve starts in SERVE_NAMESPACE regardless of driver namespace."""
@@ -101,15 +103,27 @@ def test_serve_namespace(shutdown_ray_and_serve, ray_namespace):
 
         serve.run(f.bind())
 
+        proxy_classes = {"ProxyActor"}
+        if RAY_SERVE_ENABLE_HA_PROXY:
+            # Under HAProxy the per-node HAProxyManager joins the fallback ProxyActor.
+            proxy_classes.add("HAProxyManager")
+        expected_actors = {"ServeController", *proxy_classes, "ServeReplica:default:f"}
+
+        def check_serve_actors():
+            actors = list_actors(
+                address=ray_context.address_info["address"],
+                filters=[("state", "=", "ALIVE")],
+            )
+            return {actor["class_name"] for actor in actors} == expected_actors
+
+        wait_for_condition(check_serve_actors)
+
+        # All actors should be in the SERVE_NAMESPACE, so none of these calls
+        # should throw an error.
         actors = list_actors(
             address=ray_context.address_info["address"],
             filters=[("state", "=", "ALIVE")],
         )
-
-        assert len(actors) == 3
-
-        # All actors should be in the SERVE_NAMESPACE, so none of these calls
-        # should throw an error.
         for actor in actors:
             ray.get_actor(name=actor["name"], namespace=SERVE_NAMESPACE)
 

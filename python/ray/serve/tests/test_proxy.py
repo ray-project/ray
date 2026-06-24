@@ -1,4 +1,3 @@
-import os
 import sys
 
 import grpc
@@ -90,12 +89,12 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
 
     # Setup worker gRPC proxy to be pointing to port 9001. Head node gRPC proxy will
     # continue to be pointing to the default port 9000.
-    os.environ["TEST_WORKER_NODE_GRPC_PORT"] = str(worker_node_grpc_port)
-
-    # Set up a cluster with 2 nodes.
     cluster = ray_cluster
     cluster.add_node(num_cpus=0)
-    cluster.add_node(num_cpus=2)
+    cluster.add_node(
+        num_cpus=2,
+        env_vars={"RAY_SERVE_WORKER_PROXY_GRPC_PORT": str(worker_node_grpc_port)},
+    )
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 

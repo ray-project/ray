@@ -763,6 +763,17 @@ RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S = get_env_float_non_negative(
 # from the first coalesced controller broadcast to the HAProxy reload finishing.
 RAY_SERVE_HAPROXY_UPDATE_LATENCY_BUCKETS_S = [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30]
 
+# Controls whether HAProxy system metrics are reported. On by default.
+RAY_SERVE_HAPROXY_METRICS_ENABLED = get_env_bool(
+    "RAY_SERVE_HAPROXY_METRICS_ENABLED", "1"
+)
+
+# How often (seconds) each HAProxyManager samples and emits node-level HAProxy
+# observability gauges (process count and broadcasted-vs-reported target mismatch).
+RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S = get_env_float_non_negative(
+    "RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S", 10.0
+)
+
 # HAProxy metrics export port
 RAY_SERVE_HAPROXY_METRICS_PORT = int(
     os.environ.get("RAY_SERVE_HAPROXY_METRICS_PORT", "9101")
@@ -770,6 +781,13 @@ RAY_SERVE_HAPROXY_METRICS_PORT = int(
 
 # HAProxy stats UI port
 RAY_SERVE_HAPROXY_STATS_PORT = get_env_int("RAY_SERVE_HAPROXY_STATS_PORT", 8404)
+
+# Per-worker-node override for the proxy's HTTP/gRPC bind ports. Head node exempt.
+# Prefer http_options.port / grpc_options.port. This override only matters when
+# proxies are colocated on one machine and need distinct ports without SO_REUSEPORT.
+# Parallels RAY_SERVE_HAPROXY_STATS_PORT / RAY_SERVE_HAPROXY_METRICS_PORT.
+RAY_SERVE_WORKER_PROXY_HTTP_PORT = get_env_int("RAY_SERVE_WORKER_PROXY_HTTP_PORT", None)
+RAY_SERVE_WORKER_PROXY_GRPC_PORT = get_env_int("RAY_SERVE_WORKER_PROXY_GRPC_PORT", None)
 
 # HAProxy log target (single sink). Accepts any syntax HAProxy's `log` directive
 # supports, e.g. "127.0.0.1:514" (UDP syslog) or "/dev/log" (unix datagram socket).
@@ -952,6 +970,10 @@ RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S = float(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S", "30")
 )
 
+# Grace added on top of the min draining period when flooring an ingress
+# deployment's graceful_shutdown_timeout_s.
+RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S = 5
+
 # HTTP request timeout
 SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER = "x-request-timeout-seconds"
 
@@ -1003,6 +1025,9 @@ if RAY_SERVE_ENABLE_HA_PROXY:
             "so HAProxy on other nodes can reach Serve HTTP ports."
         )
     DEFAULT_HTTP_HOST = get_all_interfaces_ip()
+
+if RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED:
+    RAY_SERVE_HAPROXY_METRICS_ENABLED = True
 
 # Feature flag to aggregate metrics at the controller instead of the replicas or handles.
 RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
