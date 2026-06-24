@@ -376,10 +376,11 @@ class DatabricksUnityCatalog(Catalog):
         )
 
     @staticmethod
-    def _parse_azure_creds(sas: "AzureUserDelegationSas") -> Dict[str, str]:
+    def _parse_azure_creds(sas: "AzureUserDelegationSas") -> Dict[str, Optional[str]]:
         sas_token = sas.sas_token
         if sas_token and sas_token.startswith("?"):
             sas_token = sas_token[1:]
         if not sas_token:
             raise ValueError("Azure UC credentials missing a SAS token.")
-        return {"AZURE_STORAGE_SAS_TOKEN": sas_token}
+        creds: Dict[str, Optional[str]] = {"AZURE_STORAGE_SAS_TOKEN": sas_token}
+        return creds
