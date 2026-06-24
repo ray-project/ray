@@ -10,6 +10,7 @@ provide feedback at https://github.com/ray-project/ray/issues/61114.
 
 import copy
 import json
+import logging
 import signal
 import time
 import uuid
@@ -41,6 +42,11 @@ from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import (
     _merge_replica_actor_and_child_actor_bundles,
 )
+from ray.llm._internal.serve.engines.sglang.metrics_adapter import (
+    SGLangMetricsAdapter,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class SGLangServer:
@@ -48,6 +54,24 @@ class SGLangServer:
 
         self._llm_config = llm_config
         self.engine_kwargs = llm_config.engine_kwargs
+        self._metrics_adapter: Optional[SGLangMetricsAdapter] = None
+
+        # When log_engine_metrics is enabled, claim PROMETHEUS_MULTIPROC_DIR
+        # before SGLang imports prometheus_client and inject enable_metrics
+        # so SGLang's collectors actually write samples. The Ray-side adapter
+        # then scrapes those samples on a 10-second interval.
+        # Tracking issue: https://github.com/ray-project/ray/issues/62791
+        if self._llm_config.log_engine_metrics:
+            SGLangMetricsAdapter.claim_multiproc_dir()
+            if self.engine_kwargs.get("enable_metrics") is False:
+                logger.warning(
+                    "log_engine_metrics=True but engine_kwargs.enable_metrics=False; "
+                    "the SGLang collectors will not write samples and the Ray-side "
+                    "adapter will idle. Drop one of the two flags to silence this."
+                )
+            else:
+                self.engine_kwargs.setdefault("enable_metrics", True)
+            self._metrics_adapter = SGLangMetricsAdapter()
 
         try:
             import sglang
@@ -193,14 +217,27 @@ class SGLangServer:
 
     async def start(self) -> None:
         # Engine is initialized in __init__; keep start idempotent for protocol
-        # compatibility.
+        # compatibility. Launch the metrics adapter here so the asyncio task is
+        # bound to the replica's running event loop.
+        if self._metrics_adapter is not None:
+            self._metrics_adapter.start()
         return
 
     async def check_health(self) -> None:
         # SGLang's in-process Engine API does not expose a health-check method.
         # Its health endpoints exist only in HTTP/gRPC server entrypoints, which
-        # this integration does not run. Keep the protocol hook as a no-op.
+        # this integration does not run. Adapter staleness is surfaced via its
+        # own self-metrics rather than failing the replica health probe, so this
+        # remains a no-op.
         return
+
+    async def stop(self) -> None:
+        # Lifecycle hook for replica teardown. Cancel the metrics scrape loop
+        # so it doesn't outlive the replica's event loop. The multiproc dir is
+        # left for the OS to clean up to avoid blocking shutdown.
+        if self._metrics_adapter is not None:
+            await self._metrics_adapter.stop()
+            self._metrics_adapter = None
 
     def _build_generate_kwargs(
         self, request: Any, prompt: Any, stream: bool
