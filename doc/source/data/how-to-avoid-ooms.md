@@ -114,7 +114,7 @@ other memory-related errors, memory pressure might have caused the death.
 ### Use ``batch_size="auto"`` or small batch sizes
 
 Choose the smallest batch size that achieves good performance, or if your UDF doesn't
-need GPUs, use ``batch_size="auto"``.
+use GPUs, use ``batch_size="auto"``.
 
 :::{versionadded} 2.56
 ``batch_size="auto"``
