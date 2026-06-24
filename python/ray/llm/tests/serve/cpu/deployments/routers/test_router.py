@@ -1,7 +1,7 @@
 import sys
 from contextlib import asynccontextmanager
 from typing import Optional
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import openai
 import pytest
@@ -14,11 +14,16 @@ from ray.llm._internal.serve.core.configs.llm_config import (
     ModelLoadingConfig,
 )
 from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
+from ray.llm._internal.serve.core.ingress import router as router_module
 from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
 )
-from ray.llm._internal.serve.core.ingress.router import LLMRouter
+from ray.llm._internal.serve.core.ingress.router import (
+    LLMRouter,
+    _parse_routing_payload,
+    _RoutingPayload,
+)
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 from ray.serve._private.common import DeploymentID
@@ -126,14 +131,18 @@ def create_oai_client(llm_config: LLMConfig):
 
 class TestDirectStreamingLLMRouter:
     @pytest.mark.asyncio
-    async def test_route_forwards_body_and_truncation_signal(self):
+    async def test_route_parses_body_into_routing_payload(self):
+        """A parseable body is normalized to a ``_RoutingPayload`` and passed
+        positionally so body-aware routers read it the same as the normal
+        ingress path."""
         router = _new_direct_router()
+        router._warned_no_routing_key = False
         router._pick_replica = AsyncMock(
             return_value=("127.0.0.1", 9001, "DeploymentName#replica")
         )
 
-        body = b'{"model":"x","prompt":"' + (b"x" * 1024)
-        request = _FakeRequest(body, headers={"x-body-truncated": "1058/90000"})
+        body = b'{"model":"x","messages":[{"role":"user","content":"hi"}]}'
+        request = _FakeRequest(body)
 
         result = await router.route(request)
 
@@ -142,9 +151,39 @@ class TestDirectStreamingLLMRouter:
             "port": 9001,
             "replica_id": "DeploymentName#replica",
         }
-        router._pick_replica.assert_called_once_with(
-            handle=router._handle, request_body=body, body_truncated=True
+        _, kwargs = router._pick_replica.call_args
+        assert kwargs["handle"] is router._handle
+        payload = kwargs["routing_payload"]
+        assert isinstance(payload, _RoutingPayload)
+        assert payload.messages == [{"role": "user", "content": "hi"}]
+        assert not hasattr(payload, "prompt")
+        # A parseable body must not trip the "no routing key" warning.
+        assert router._warned_no_routing_key is False
+
+    @pytest.mark.asyncio
+    async def test_route_truncated_body_yields_no_payload_and_warns_once(self):
+        """A truncated (unparseable) body derives no routing key: ``route``
+        forwards ``routing_payload=None`` (degrade to load-balancing) and warns
+        exactly once per replica."""
+        router = _new_direct_router()
+        router._warned_no_routing_key = False
+        router._pick_replica = AsyncMock(
+            return_value=("127.0.0.1", 9001, "DeploymentName#replica")
         )
+
+        # Truncated prefix: valid JSON head, no closing brace -> json.loads fails.
+        body = b'{"model":"x","prompt":"' + (b"x" * 1024)
+        request = _FakeRequest(body, headers={"x-body-truncated": "1058/90000"})
+
+        with patch.object(router_module.logger, "warning") as mock_warning:
+            await router.route(request)
+            await router.route(request)
+
+        # routing_payload is None on both calls; warning fires once.
+        for call in router._pick_replica.call_args_list:
+            assert call.kwargs["routing_payload"] is None
+        assert mock_warning.call_count == 1
+        assert router._warned_no_routing_key is True
 
     @pytest.mark.asyncio
     async def test_route_returns_503_on_pick_failure(self):
@@ -184,34 +223,54 @@ class TestDirectStreamingLLMRouter:
         assert (host, port, replica_id) == ("10.0.0.1", 8123, "DeploymentName#r1")
 
     @pytest.mark.asyncio
-    async def test_pick_replica_forwards_body_to_choose_replica(self):
-        """``request_body`` / ``body_truncated`` reach the underlying router.
-
-        Future body-aware request routers read these off the PendingRequest.
-        """
+    async def test_pick_replica_forwards_payload_positionally(self):
+        """A routing payload reaches ``choose_replica`` as the first positional
+        arg (landing in ``pending_request.args``, where body-aware routers
+        read it), alongside the ``_reserve=False`` fast-path flag."""
         replica = _DirectRouterReplica("r1", full_id="d#r1")
 
-        captured_kwargs = {}
+        captured = {}
 
         @asynccontextmanager
         async def fake_choose_replica(*args, **kwargs):
-            captured_kwargs.update(kwargs)
+            captured["args"] = args
+            captured["kwargs"] = kwargs
             yield _selection_for(replica)
 
         handle = MagicMock()
         handle.choose_replica = fake_choose_replica
         router = _new_direct_router(handle)
 
-        body = b'{"messages": [{"role": "user", "content": "hi"}]}'
-        await router._pick_replica(
-            handle=handle, request_body=body, body_truncated=True
-        )
+        payload = _RoutingPayload(messages=[{"role": "user", "content": "hi"}])
+        await router._pick_replica(handle=handle, routing_payload=payload)
 
-        assert captured_kwargs == {
-            "request_body": body,
-            "body_truncated": True,
-            "_reserve": False,
-        }
+        assert captured["args"] == (payload,)
+        assert captured["kwargs"] == {"_reserve": False}
+
+    @pytest.mark.asyncio
+    async def test_pick_replica_omits_positional_arg_when_no_payload(self):
+        """With no routing payload (truncated/unparseable body), nothing is
+        forwarded positionally so ``pending_request.args`` is empty and the
+        configured router degrades to its default load-balanced pick instead of
+        raising on un-readable args."""
+        replica = _DirectRouterReplica("r1", full_id="d#r1")
+
+        captured = {}
+
+        @asynccontextmanager
+        async def fake_choose_replica(*args, **kwargs):
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+            yield _selection_for(replica)
+
+        handle = MagicMock()
+        handle.choose_replica = fake_choose_replica
+        router = _new_direct_router(handle)
+
+        await router._pick_replica(handle=handle, routing_payload=None)
+
+        assert captured["args"] == ()
+        assert captured["kwargs"] == {"_reserve": False}
 
     @pytest.mark.asyncio
     async def test_pick_replica_raises_when_endpoint_missing(self):
@@ -224,6 +283,66 @@ class TestDirectStreamingLLMRouter:
 
         with pytest.raises(RuntimeError, match="no backend HTTP endpoint"):
             await router._pick_replica(handle=handle)
+
+
+class TestRoutingPayload:
+    """Unit coverage for the lenient body -> routing-key normalization."""
+
+    def test_parses_chat_messages(self):
+        body = b'{"model":"x","messages":[{"role":"user","content":"hi"}]}'
+        payload = _parse_routing_payload(body)
+        assert isinstance(payload, _RoutingPayload)
+        assert payload.messages == [{"role": "user", "content": "hi"}]
+        # A chat body must not expose a `prompt` attribute, so
+        # `_extract_text_from_request` resolves it as a chat request.
+        assert not hasattr(payload, "prompt")
+
+    def test_parses_completion_prompt(self):
+        payload = _parse_routing_payload(b'{"model":"x","prompt":"hello"}')
+        assert isinstance(payload, _RoutingPayload)
+        assert payload.prompt == "hello"
+        assert not hasattr(payload, "messages")
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            b"",  # empty
+            b'{"model":"x","prompt":"' + (b"x" * 64),  # truncated -> invalid JSON
+            b"not json",  # unparseable
+            b"[1, 2, 3]",  # valid JSON but not an object
+            b'{"model":"x","max_tokens":8}',  # object without messages/prompt
+        ],
+    )
+    def test_returns_none_when_no_key_derivable(self, body):
+        assert _parse_routing_payload(body) is None
+
+    @pytest.mark.asyncio
+    async def test_payload_satisfies_prefix_router_contract(self):
+        """The normalized payload is readable by the *real*
+        ``PrefixCacheAffinityRouter._extract_text_from_request`` -- the consumer
+        this regressed against (issue #64326). No router special-casing needed.
+
+        Async so a running event loop exists when ``PendingRequest`` constructs
+        its default ``asyncio.Future``.
+        """
+        from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (  # noqa: E501
+            PrefixCacheAffinityRouter,
+        )
+        from ray.serve._private.request_router.common import PendingRequest
+
+        # __new__ avoids the tree-actor setup in __init__; the method under test
+        # only uses self for the pure `_normalize_prompt_to_string` helper.
+        router = PrefixCacheAffinityRouter.__new__(PrefixCacheAffinityRouter)
+
+        chat = _parse_routing_payload(
+            b'{"messages":[{"role":"user","content":"hello world"}]}'
+        )
+        pr = PendingRequest(args=[chat], kwargs={}, metadata=MagicMock())
+        assert router._extract_text_from_request(pr) == "hello world"
+
+        completion = _parse_routing_payload(b'{"prompt":"hello world"}')
+        pr = PendingRequest(args=[completion], kwargs={}, metadata=MagicMock())
+        assert router._extract_text_from_request(pr) == "hello world"
 
 
 class TestOpenAiIngress:
