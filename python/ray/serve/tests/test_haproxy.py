@@ -30,7 +30,10 @@ from ray.serve._private.constants import (
     SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy import HAProxyManager
-from ray.serve._private.test_utils import get_application_url
+from ray.serve._private.test_utils import (
+    expected_proxy_actors,
+    get_application_url,
+)
 from ray.serve.config import HTTPOptions, RequestRouterConfig
 from ray.serve.context import _get_global_client
 from ray.serve.exceptions import RayServeException
@@ -123,8 +126,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HAProxyManager",
-        "ProxyActor",
+        *expected_proxy_actors(),
         "ServeReplica:app:f",
     }
 
@@ -165,8 +167,7 @@ async def test_single_app_shutdown_actors_async(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HAProxyManager",
-        "ProxyActor",
+        *expected_proxy_actors(),
         "ServeReplica:app:f",
     }
 
@@ -347,8 +348,10 @@ async def test_drain_and_undrain_haproxy_manager(
 
     serve.run(HelloModel.options(num_replicas=2).bind())
 
-    # 3 haproxies, 1 controller, 2 replicas, 1 signal actor, 1 fallback proxy
-    wait_for_condition(lambda: len(list_actors()) == 8)
+    # 1 controller, 2 replicas, 1 signal actor, plus the proxy actors for 3 nodes
+    # (3 HAProxyManagers and the head fallback ProxyActor under HAProxy).
+    expected_total = 1 + 2 + 1 + sum(expected_proxy_actors(num_proxy_nodes=3).values())
+    wait_for_condition(lambda: len(list_actors()) == expected_total)
     assert len(ray.nodes()) == 3
 
     client = _get_global_client()
