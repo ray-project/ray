@@ -155,8 +155,15 @@ class SGLangPDDecodeServer(LLMServer):
     def _prepare_decode_request(
         self, request: RequestType, bootstrap_room: int
     ) -> RequestType:
-        """Inject bootstrap_room so the decode engine can rendezvous with prefill."""
+        """Inject bootstrap fields so the decode engine can rendezvous with prefill.
+
+        SGLang's decode-side handshake (tokenizer_manager.py, decode.py) reads
+        bootstrap_host/bootstrap_port directly off the request to know which
+        prefill bootstrap server to connect to — not just bootstrap_room.
+        """
         decode_request = request.model_copy(deep=True)
+        object.__setattr__(decode_request, "bootstrap_host", self._bootstrap_host)
+        object.__setattr__(decode_request, "bootstrap_port", self._bootstrap_port)
         object.__setattr__(decode_request, "bootstrap_room", bootstrap_room)
         return decode_request
 
