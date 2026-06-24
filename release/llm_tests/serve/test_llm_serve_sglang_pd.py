@@ -3,8 +3,9 @@
 Tests the new SGLangPDPrefillServer / SGLangPDDecodeServer classes
 introduced alongside the existing SGLangServer.
 
-Two-GPU node required for the real-transfer tests.
-The fake-transport tests run on a single GPU.
+A two-GPU node is required (prefill on GPU 0, decode on GPU 1). Tests use the
+real NIXL KV transport — SGLang's "fake" transport has no bootstrap-server
+class, so a prefill-mode engine cannot start under it.
 """
 
 import sys
@@ -85,13 +86,17 @@ def _make_pd_deployments(prefill_config, decode_config):
 
 
 @pytest.fixture(scope="module")
-def sglang_pd_client_fake():
-    """Start a SGLang PD deployment using the fake transport.
+def sglang_pd_client():
+    """Start a SGLang PD deployment using the real NIXL KV transport.
 
-    Fake transport does not move real KV cache data — it validates the Ray
-    orchestration layer (bootstrap_room injection, concurrent dispatch,
-    response streaming) without requiring two physical GPUs or RDMA hardware.
-    Runs on a single GPU node.
+    Requires a node with at least 2 GPUs (prefill on GPU 0, decode on GPU 1).
+    NIXL is pre-installed in the llm-cu130 BYOD image.
+
+    NIXL is used rather than the "fake" transport because SGLang's fake backend
+    has no bootstrap-server class (get_kv_class returns None for it), so a
+    prefill-mode engine cannot start under fake — it crashes in
+    start_disagg_service. Real NIXL is the only transport that exercises the
+    full PD orchestration path (bootstrap handshake, KV transfer, streaming).
     """
 
     prefill_config = LLMConfig(
@@ -107,9 +112,10 @@ def sglang_pd_client_fake():
         },
         engine_kwargs={
             "disaggregation_mode": "prefill",
-            "disaggregation_transfer_backend": "fake",
+            "disaggregation_transfer_backend": "nixl",
             "tp_size": 1,
             "mem_fraction_static": 0.4,
+            "base_gpu_id": 0,
         },
         llm_engine="SGLang",
     )
@@ -127,9 +133,10 @@ def sglang_pd_client_fake():
         },
         engine_kwargs={
             "disaggregation_mode": "decode",
-            "disaggregation_transfer_backend": "fake",
+            "disaggregation_transfer_backend": "nixl",
             "tp_size": 1,
             "mem_fraction_static": 0.4,
+            "base_gpu_id": 1,
         },
         llm_engine="SGLang",
     )
@@ -145,14 +152,14 @@ def sglang_pd_client_fake():
 
 
 # ---------------------------------------------------------------------------
-# Tests — fake transport (single GPU)
+# Tests — real NIXL transport (two-GPU node required)
 # ---------------------------------------------------------------------------
 
 
-def test_sglang_pd_chat_fake_transport(sglang_pd_client_fake):
-    """Verify chat completions work end-to-end with fake KV transport."""
+def test_sglang_pd_chat(sglang_pd_client):
+    """Verify chat completions work end-to-end over NIXL KV transfer."""
 
-    resp = sglang_pd_client_fake.chat.completions.create(
+    resp = sglang_pd_client.chat.completions.create(
         model=RAY_MODEL_ID,
         messages=[{"role": "user", "content": "What is the capital of France?"}],
         max_tokens=64,
@@ -161,10 +168,10 @@ def test_sglang_pd_chat_fake_transport(sglang_pd_client_fake):
     assert resp.choices[0].message.content.strip()
 
 
-def test_sglang_pd_completions_fake_transport(sglang_pd_client_fake):
-    """Verify completions work end-to-end with fake KV transport."""
+def test_sglang_pd_completions(sglang_pd_client):
+    """Verify completions work end-to-end over NIXL KV transfer."""
 
-    resp = sglang_pd_client_fake.completions.create(
+    resp = sglang_pd_client.completions.create(
         model=RAY_MODEL_ID,
         prompt="The capital of France is",
         max_tokens=64,
@@ -173,10 +180,10 @@ def test_sglang_pd_completions_fake_transport(sglang_pd_client_fake):
     assert resp.choices[0].text.strip()
 
 
-def test_sglang_pd_streaming_chat_fake_transport(sglang_pd_client_fake):
+def test_sglang_pd_streaming_chat(sglang_pd_client):
     """Verify streaming chat completions produce incremental chunks."""
 
-    stream = sglang_pd_client_fake.chat.completions.create(
+    stream = sglang_pd_client.chat.completions.create(
         model=RAY_MODEL_ID,
         messages=[{"role": "user", "content": "Count to 5"}],
         max_tokens=64,
@@ -200,10 +207,10 @@ def test_sglang_pd_streaming_chat_fake_transport(sglang_pd_client_fake):
     assert finish_reason is not None, "Final chunk must have a finish_reason"
 
 
-def test_sglang_pd_streaming_completions_fake_transport(sglang_pd_client_fake):
+def test_sglang_pd_streaming_completions(sglang_pd_client):
     """Verify streaming completions produce incremental chunks."""
 
-    stream = sglang_pd_client_fake.completions.create(
+    stream = sglang_pd_client.completions.create(
         model=RAY_MODEL_ID,
         prompt="The capital of France is",
         max_tokens=32,
@@ -226,7 +233,7 @@ def test_sglang_pd_streaming_completions_fake_transport(sglang_pd_client_fake):
     assert finish_reason is not None, "Final chunk must have a finish_reason"
 
 
-def test_sglang_pd_concurrent_requests(sglang_pd_client_fake):
+def test_sglang_pd_concurrent_requests(sglang_pd_client):
     """Verify multiple concurrent requests each complete successfully.
 
     Each request gets its own unique bootstrap_room — if rooms collide,
@@ -234,7 +241,7 @@ def test_sglang_pd_concurrent_requests(sglang_pd_client_fake):
     """
 
     def send_request(i):
-        return sglang_pd_client_fake.chat.completions.create(
+        return sglang_pd_client.chat.completions.create(
             model=RAY_MODEL_ID,
             messages=[{"role": "user", "content": f"Say the number {i}"}],
             max_tokens=10,
@@ -361,80 +368,6 @@ def test_sglang_pd_dp_size_mismatch_rejected():
     pytest.skip(
         "Builder-level dp_size validation not yet implemented — tracked as follow-up TODO"
     )
-
-
-# ---------------------------------------------------------------------------
-# Tests — real NIXL transport (two-GPU node required)
-# ---------------------------------------------------------------------------
-
-
-def test_sglang_pd_chat_nixl():
-    """Verify chat and completions work with real NIXL KV transfer.
-
-    Requires a node with at least 2 GPUs. NIXL is pre-installed in the
-    llm-cu130 BYOD image — no separate install needed.
-    Prefill runs on GPU 0, decode on GPU 1.
-    """
-    prefill_config = LLMConfig(
-        model_loading_config={
-            "model_id": RAY_MODEL_ID,
-            "model_source": MODEL_ID,
-        },
-        llm_engine="SGLang",
-        deployment_config={
-            "autoscaling_config": {"min_replicas": 1, "max_replicas": 1}
-        },
-        engine_kwargs={
-            "disaggregation_mode": "prefill",
-            "disaggregation_transfer_backend": "nixl",
-            "tp_size": 1,
-            "mem_fraction_static": 0.4,
-            "base_gpu_id": 0,
-        },
-    )
-
-    decode_config = LLMConfig(
-        model_loading_config={
-            "model_id": RAY_MODEL_ID,
-            "model_source": MODEL_ID,
-        },
-        deployment_config={
-            "autoscaling_config": {"min_replicas": 1, "max_replicas": 1}
-        },
-        engine_kwargs={
-            "disaggregation_mode": "decode",
-            "disaggregation_transfer_backend": "nixl",
-            "tp_size": 1,
-            "mem_fraction_static": 0.4,
-            "base_gpu_id": 1,
-        },
-        llm_engine="SGLang",
-    )
-
-    decode_deployment = _make_pd_deployments(prefill_config, decode_config)
-    serve.run(decode_deployment, blocking=False)
-
-    try:
-        wait_for_condition(_app_is_running, timeout=300)
-        client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
-
-        resp = client.chat.completions.create(
-            model=RAY_MODEL_ID,
-            messages=[{"role": "user", "content": "What is the capital of France?"}],
-            max_tokens=64,
-            temperature=0.0,
-        )
-        assert resp.choices[0].message.content.strip()
-
-        comp_resp = client.completions.create(
-            model=RAY_MODEL_ID,
-            prompt="The capital of France is",
-            max_tokens=64,
-            temperature=0.0,
-        )
-        assert comp_resp.choices[0].text.strip()
-    finally:
-        serve.shutdown()
 
 
 if __name__ == "__main__":
