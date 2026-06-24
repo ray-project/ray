@@ -38,7 +38,9 @@ from ray.data._internal.logical.operators import (
     RandomShuffle,
     Repartition,
     StreamingRepartition,
+    Write,
 )
+from ray.data.datasource.file_datasink import _FileDatasink
 from ray.util.annotations import DeveloperAPI
 
 __all__ = [
@@ -108,6 +110,7 @@ class FuseOperators(Rule):
         if (
             isinstance(dag, TaskPoolMapOperator)
             and dag.supports_fusion()
+            and self._can_fuse_map_into_shuffle_reduce(dag)
             and len(upstream_ops) == 1
             and isinstance(upstream_ops[0], ShuffleReduceOp)
             and upstream_ops[0]._fused_output_map_transformer is None
@@ -795,6 +798,23 @@ class FuseOperators(Rule):
 
             return False
 
+        return True
+
+    def _can_fuse_map_into_shuffle_reduce(self, map_op: TaskPoolMapOperator) -> bool:
+        """Whether ``map_op`` may be fused into an upstream reduce.
+
+        Writes to non-file datasinks are excluded: their ``on_write_start`` hook
+        is deferred to the map op's first input (e.g. Iceberg schema evolution),
+        and the fused reduce never runs it.  ``_FileDatasink`` writes are safe --
+        their ``on_write_start`` runs driver-side in ``Dataset.write_datasink``.
+        Non-write maps don't have the hook and always fuse.
+
+        TODO: support non-file-datasink writes by running the map's ``on_start``
+        hook in the fused reduce op.
+        """
+        logical_op = self._op_map.get(map_op)
+        if isinstance(logical_op, Write):
+            return isinstance(logical_op.datasink_or_legacy_datasource, _FileDatasink)
         return True
 
 

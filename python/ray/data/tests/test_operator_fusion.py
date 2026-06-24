@@ -21,6 +21,7 @@ from ray.data._internal.logical.operators import (
     MapRows,
     Project,
     Read,
+    Write,
 )
 from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_execution_plan
 from ray.data._internal.planner import create_planner
@@ -614,6 +615,34 @@ def test_actor_map_not_fused_into_shuffle_reduce(
     dag = get_execution_plan(ds._logical_plan)[0].dag
 
     assert dag.name == "MapBatches(Mapper)"
+    reduce_op = dag.input_dependencies[0]
+    assert reduce_op.name == "HashShuffleReduce(keys=('id',), partitions=4)"
+    assert reduce_op._fused_output_map_transformer is None
+
+
+def test_non_file_datasink_write_not_fused_into_shuffle_reduce(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    """A write to a non-file datasink is NOT fused into the reduce."""
+    from ray.data.datasource.datasink import Datasink
+
+    DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+
+    class _NoopDatasink(Datasink):
+        def write(self, blocks, ctx):
+            for _ in blocks:
+                pass
+            return None
+
+    repartitioned = ray.data.range(100).repartition(4, keys=["id"])
+    write_op = Write(
+        _NoopDatasink(),
+        input_dependencies=[repartitioned._logical_plan.dag],
+    )
+    dag = get_execution_plan(LogicalPlan(write_op, DataContext.get_current()))[0].dag
+
+    # The write stays a separate root op feeding off an un-fused reduce.
+    assert dag.name == "Write"
     reduce_op = dag.input_dependencies[0]
     assert reduce_op.name == "HashShuffleReduce(keys=('id',), partitions=4)"
     assert reduce_op._fused_output_map_transformer is None
