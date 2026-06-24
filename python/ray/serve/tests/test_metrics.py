@@ -38,7 +38,6 @@ from ray.serve._private.test_utils import (
     get_metric_float,
     ping_grpc_call_method,
     ping_grpc_list_applications,
-    skip_if_haproxy,
 )
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.config import RequestRouterConfig
@@ -105,7 +104,6 @@ def check_sum_metric_eq(
     return True
 
 
-@skip_if_haproxy("metrics emitted by the native Serve proxy, which HAProxy replaces")
 def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
     @serve.deployment(name="metrics")
     async def f(request):
@@ -205,7 +203,6 @@ def test_http_replica_gauge_metrics(metrics_start_shutdown):
     wait_for_condition(ensure_request_processing, timeout=5)
 
 
-@skip_if_haproxy("metrics emitted by the native Serve proxy, which HAProxy replaces")
 def test_proxy_metrics_not_found(metrics_start_shutdown):
     # NOTE: These metrics should be documented at
     # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
@@ -303,7 +300,6 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
         verify_error_count(do_assert=True)
 
 
-@skip_if_haproxy("metrics emitted by the native Serve proxy, which HAProxy replaces")
 def test_proxy_metrics_internal_error(metrics_start_shutdown):
     # This test kills the replica process so metrics are not emitted.
     if RAY_SERVE_ENABLE_DIRECT_INGRESS and not RAY_SERVE_ENABLE_HA_PROXY:
@@ -406,7 +402,6 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
         verify_error_count(do_assert=True)
 
 
-@skip_if_haproxy("metrics emitted by the native Serve proxy, which HAProxy replaces")
 def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for not found."""
 
@@ -469,7 +464,6 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     ],
     indirect=True,
 )
-@skip_if_haproxy("metrics emitted by the native Serve proxy, which HAProxy replaces")
 def test_proxy_timeout_metrics(metrics_start_shutdown):
     """Test that HTTP timeout metrics are reported correctly."""
     signal = SignalActor.remote()
@@ -549,7 +543,6 @@ def test_proxy_disconnect_http_metrics(metrics_start_shutdown):
     assert num_errors[0]["application"] == "disconnect"
 
 
-@skip_if_haproxy("metrics emitted by the native Serve proxy, which HAProxy replaces")
 def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     """Test that gRPC disconnect metrics are reported correctly."""
     signal = SignalActor.remote()
@@ -601,7 +594,6 @@ def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     assert num_errors[0]["application"] == "disconnect"
 
 
-@skip_if_haproxy("metrics emitted by the native Serve proxy, which HAProxy replaces")
 def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for internal error."""
 
@@ -743,7 +735,6 @@ def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
     )
 
 
-@skip_if_haproxy("metrics emitted by the native Serve proxy, which HAProxy replaces")
 def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
     """Verify that status codes aisde from 1000 or 1001 are errors."""
 
@@ -1156,7 +1147,6 @@ def test_multiplexed_metrics(metrics_start_shutdown):
 
 
 @pytest.mark.parametrize("use_factory_pattern", [False, True])
-@skip_if_haproxy("metrics emitted by the native Serve proxy, which HAProxy replaces")
 def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_pattern):
     """Test that proxy metrics use specific route patterns for FastAPI apps.
 

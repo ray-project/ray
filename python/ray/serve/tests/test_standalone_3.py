@@ -15,7 +15,7 @@ from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import get_serve_logs_dir
-from ray.serve._private.test_utils import SharedCounter, skip_if_haproxy
+from ray.serve._private.test_utils import SharedCounter
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ProxyStatus, ServeInstanceDetails
@@ -239,7 +239,6 @@ def test_handle_early_detect_failure(shutdown_ray):
         serve.shutdown()
 
 
-@skip_if_haproxy("does not yet pass under HAProxy ingress")
 @pytest.mark.parametrize(
     "autoscaler_v2",
     [False, True],
@@ -324,7 +323,6 @@ def test_autoscaler_shutdown_node_http_everynode(
     ray.shutdown()
 
 
-@skip_if_haproxy("does not yet pass under HAProxy ingress")
 @pytest.mark.parametrize("wait_for_controller_shutdown", (True, False))
 def test_controller_shutdown_gracefully(
     shutdown_ray, call_ray_stop_only, wait_for_controller_shutdown  # noqa: F811
@@ -387,7 +385,6 @@ def test_controller_shutdown_gracefully(
     serve.shutdown()
 
 
-@skip_if_haproxy("does not yet pass under HAProxy ingress")
 def test_client_shutdown_gracefully_when_timeout(
     shutdown_ray, call_ray_stop_only, caplog  # noqa: F811
 ):

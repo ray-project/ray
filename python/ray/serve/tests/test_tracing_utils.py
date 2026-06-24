@@ -25,7 +25,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
 )
 from ray.serve._private.logging_utils import get_serve_logs_dir
-from ray.serve._private.test_utils import get_application_url, skip_if_haproxy
+from ray.serve._private.test_utils import get_application_url
 from ray.serve._private.tracing_utils import (
     DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
     TRACE_STACK,
@@ -278,7 +278,6 @@ def test_tracing_sampler(use_custom_tracing_exporter):
     assert isinstance(sampler, ParentBasedTraceIdRatio)
 
 
-@skip_if_haproxy("does not yet pass under HAProxy ingress")
 @pytest.mark.parametrize(
     (
         "serve_application",
@@ -512,7 +511,6 @@ def test_tracing_e2e(
     safe_remove(spans_dir)
 
 
-@skip_if_haproxy("does not yet pass under HAProxy ingress")
 @pytest.mark.parametrize(
     "protocol,expected_status_code,expected_span_status",
     [

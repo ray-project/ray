@@ -15,7 +15,6 @@ from ray.serve._private.test_utils import (
     FailedGangReplicaStore,
     check_apps_running,
     check_num_replicas_eq,
-    skip_if_haproxy,
 )
 from ray.serve._private.utils import get_all_live_placement_group_names
 from ray.serve.config import GangPlacementStrategy, GangSchedulingConfig
@@ -1202,7 +1201,6 @@ class TestGangControllerRecovery:
             serve.delete(app_name)
         serve.shutdown()
 
-    @skip_if_haproxy("does not yet pass under HAProxy ingress")
     @pytest.mark.parametrize("same_gang", [True, False])
     def test_gang_replica_crash_during_controller_downtime(
         self, ray_cluster, same_gang

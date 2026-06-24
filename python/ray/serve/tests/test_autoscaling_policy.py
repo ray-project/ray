@@ -38,7 +38,6 @@ from ray.serve._private.test_utils import (
     check_num_replicas_lte,
     check_running,
     get_num_alive_replicas,
-    skip_if_haproxy,
     tlog,
 )
 from ray.serve.config import AutoscalingConfig, AutoscalingContext, AutoscalingPolicy
@@ -340,7 +339,6 @@ class TestAutoscalingMetrics:
         # handle to `A` and fails.)
         wait_for_condition(check_num_replicas_eq, name="Router", target=1)
 
-    @skip_if_haproxy("does not yet pass under HAProxy ingress")
     @pytest.mark.skipif(
         not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
         reason="Needs metric collection at handle.",
