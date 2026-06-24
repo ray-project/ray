@@ -1,11 +1,15 @@
 import logging
 import threading
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Set
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
 import ray
+from ray.actor import ActorHandle
 from ray.train.v2._internal.constants import DEFAULT_PREEMPTION_POLL_INTERVAL_S
 from ray.util.tpu import get_tpu_slice_name_from_node
+
+if TYPE_CHECKING:
+    from ray.train.v2._internal.worker import RayTrainWorker
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +41,23 @@ class PreemptionInfo:
         )
 
 
+@dataclass
+class PreemptionContext:
+    """Thread-shared preemption signal for one worker actor."""
+
+    _preemption_info: Optional[PreemptionInfo] = field(default=None, init=False)
+    _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
+
+    def set(self, info: PreemptionInfo) -> None:
+        with self._lock:
+            self._preemption_info = info
+
+    def get(self) -> Optional[PreemptionInfo]:
+        """Return the current preemption signal, or ``None`` if none received."""
+        with self._lock:
+            return self._preemption_info
+
+
 def _get_draining_nodes() -> Dict[str, int]:
     """Ray Core's draining nodes as ``{node_id_hex: deadline_ms}`` (0 = no deadline)."""
     return ray._private.state.state.get_draining_nodes()
@@ -59,17 +80,25 @@ class PreemptionWatcher:
             as the set of nodes we care about (drains elsewhere are ignored)
             and as the seed for failure-domain expansion.
         poll_interval_s: Seconds between drain-state polls.
+        worker_actors_by_rank: Map ``world_rank -> worker actor handle``. On a
+            detected preemption, ``mark_preempt`` is called on every worker.
     """
 
     def __init__(
         self,
         node_to_ranks: Dict[str, List[int]],
         poll_interval_s: float = DEFAULT_PREEMPTION_POLL_INTERVAL_S,
+        worker_actors_by_rank: Optional[
+            Dict[int, ActorHandle["RayTrainWorker"]]
+        ] = None,
     ):
         self._node_to_ranks: Dict[str, List[int]] = {
             nid: sorted(ranks) for nid, ranks in node_to_ranks.items()
         }
         self._poll_interval_s = poll_interval_s
+        self._worker_actors_by_rank: Dict[int, ActorHandle["RayTrainWorker"]] = (
+            worker_actors_by_rank or {}
+        )
         self._failure_domain_map: Dict[str, List[int]] = self._build_failure_domain_map(
             self._node_to_ranks
         )
@@ -206,8 +235,9 @@ class PreemptionWatcher:
             info.preempted_ranks,
             deadline_ms,
         )
-        # TODO(lehui): forward the detected preemption to the workers so the
-        # training loop can react to it.
+
+        for rank, actor in self._worker_actors_by_rank.items():
+            actor.mark_preempt.remote(info)
         # TODO(lehui): coalesce preemptions seen within one window into a single
         # worker-group restart, so a staggered drain (node A at t, node B at
         # t+60s) doesn't cause back-to-back restarts.
