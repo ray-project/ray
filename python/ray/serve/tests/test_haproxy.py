@@ -31,6 +31,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.haproxy import HAProxyManager
 from ray.serve._private.test_utils import (
+    alive_actor_counts,
     expected_proxy_actors,
     get_application_url,
 )
@@ -348,10 +349,13 @@ async def test_drain_and_undrain_haproxy_manager(
 
     serve.run(HelloModel.options(num_replicas=2).bind())
 
-    # 1 controller, 2 replicas, 1 signal actor, plus the proxy actors for 3 nodes
-    # (3 HAProxyManagers and the head fallback ProxyActor under HAProxy).
-    expected_total = 1 + 2 + 1 + sum(expected_proxy_actors(num_proxy_nodes=3).values())
-    wait_for_condition(lambda: len(list_actors()) == expected_total)
+    expected_actors = {
+        "ServeController": 1,
+        **expected_proxy_actors(num_proxy_nodes=3),
+        "ServeReplica:default:HelloModel": 2,
+        "SignalActor": 1,
+    }
+    wait_for_condition(lambda: alive_actor_counts() == expected_actors)
     assert len(ray.nodes()) == 3
 
     client = _get_global_client()
