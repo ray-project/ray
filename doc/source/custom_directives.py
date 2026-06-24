@@ -20,7 +20,6 @@ import requests
 import sphinx
 import yaml
 from docutils import nodes
-from pydata_sphinx_theme.toctree import add_collapse_checkboxes
 from pygments import highlight
 from pygments.formatters import HtmlFormatter
 from pygments.lexers import PythonLexer
@@ -243,6 +242,121 @@ def parse_navbar_config(app: sphinx.application.Sphinx, config: sphinx.config.Co
 
 
 NavEntry = Dict[str, Union[str, List["NavEntry"]]]
+
+
+def add_collapse_checkboxes(soup: bs4.BeautifulSoup) -> None:
+    """Add checkboxes to collapse children in a toctree.
+
+    Vendored from ``pydata_sphinx_theme.toctree.add_collapse_checkboxes`` so the
+    sidebar build does not reach into a private theme API. That symbol is not
+    part of the theme's public interface (the module has no ``__all__``) and the
+    sibling ``generate_toctree_html`` that ``preload_sidebar_nav`` below is
+    forked from has already been removed upstream, so depending on it makes
+    theme upgrades fragile.
+    """
+    # based on https://github.com/pradyunsg/furo
+
+    for element in soup.find_all("li", recursive=True):
+        # We check all "li" elements, to add a "current-page" to the correct li.
+        classes = element.get("class", [])
+
+        # expanding the parent part explicitly, if present
+        if "current" in classes:
+            parentli = element.find_parent("li", class_="toctree-l0")
+            if parentli:
+                parentli.find("details")["open"] = None
+
+        # Nothing more to do, unless this has "children"
+        if not element.find("ul"):
+            continue
+
+        # Add a class to indicate that this has children.
+        element["class"] = [*classes, "has-children"]
+
+        if soup.new_tag is None:
+            continue
+
+        # For table of contents nodes that have subtrees, we modify the HTML so
+        # that the subtree can be expanded or collapsed in the browser.
+        #
+        # The HTML markup tree at the parent node starts with this structure:
+        #
+        # - li.has-children
+        #   - a.reference or p.caption
+        #   - ul
+        #
+        # Note the first child of li.has-children is p.caption only if this node
+        # is a section heading. (This only happens when show_nav_level is set to
+        # 0.)
+        #
+        # Now we modify the tree structure in one of two ways.
+        #
+        # (1) If the node holds a section heading, the HTML tree will be
+        # modified like so:
+        #
+        # - li.has-children
+        #   - details
+        #     - summary
+        #       - p.caption
+        #       - .toctree-toggle
+        #     - ul
+        #
+        # (2) Otherwise, if the node holds a link to a page in the docs:
+        #
+        # - li.has-children
+        #   - a.reference
+        #   - details
+        #     - summary
+        #       - .toctree-toggle
+        #   - ul
+        #
+        # Why the difference? In the first case, the TOC section heading is not
+        # a link, but in the second case it is. So in the first case it makes
+        # sense to put the (non-link) text inside the summary tag so that the
+        # user can click either the text or the .toctree-toggle chevron icon to
+        # expand/collapse the TOC subtree. But in the second case, putting the
+        # link in the summary tag would make it unclear whether clicking on the
+        # link should expand the subtree or take you to the link.
+
+        # Create <details> and put the entire subtree into it
+        details = soup.new_tag("details")
+        details.extend(element.contents)
+        element.append(details)
+
+        # Hoist the link to the top if there is one
+        toc_link = element.select_one("details > a.reference")
+        if toc_link:
+            element.insert(0, toc_link)
+
+        # Create <summary> with chevron icon
+        summary = soup.new_tag("summary")
+        span = soup.new_tag(
+            "span",
+            attrs={
+                "class": "toctree-toggle",
+                # This element and the chevron it contains are purely decorative;
+                # the actual expand/collapse functionality is delegated to the
+                # <summary> tag
+                "role": "presentation",
+            },
+        )
+        span.append(soup.new_tag("i", attrs={"class": "fa-solid fa-chevron-down"}))
+        summary.append(span)
+
+        # Prepend section heading (if there is one) to <summary>
+        collapsible_section_heading = element.select_one("details > p.caption")
+        if collapsible_section_heading:
+            # Put heading inside summary so that the heading text (and chevron) are both
+            # clickable
+            summary.insert(0, collapsible_section_heading)
+
+        # Prepend <summary> to <details>
+        details.insert(0, summary)
+
+        # If this TOC node has a "current" class, be expanded by default
+        # (by opening the details/summary disclosure widget)
+        if "current" in classes:
+            details["open"] = "open"
 
 
 def preload_sidebar_nav(
