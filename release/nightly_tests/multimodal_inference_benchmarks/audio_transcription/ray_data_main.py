@@ -17,6 +17,7 @@ SAMPLING_RATE = 16000
 INPUT_PATH = "s3://anonymous@ray-example-data/common_voice_17/parquet/"
 OUTPUT_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 BATCH_SIZE = 64
+PREPROCESS_MEMORY = 3143442432
 
 ray.init()
 
@@ -92,9 +93,12 @@ def decoder(batch):
 
 
 def run_pipeline():
+    ray.data.DataContext.isolate_read_workers = True
+    ray.data.DataContext.default_map_logical_memory_enabled = True
+
     ds = ray.data.read_parquet(INPUT_PATH)
-    ds = ds.map(resample)
-    ds = ds.map_batches(whisper_preprocess, batch_size="auto")
+    ds = ds.map(resample, memory=PREPROCESS_MEMORY)
+    ds = ds.map_batches(whisper_preprocess, batch_size="auto", memory=PREPROCESS_MEMORY)
     ds = ds.map_batches(
         Transcriber,
         batch_size=BATCH_SIZE,
