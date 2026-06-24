@@ -11,6 +11,20 @@ from ray.tests.conftest import *  # noqa
 
 
 class TestScaleDownReplicaSelection:
+    @pytest.fixture(autouse=True)
+    def _recycle_direct_ingress_ports(self, monkeypatch):
+        """Return freed direct-ingress ports immediately so allocation converges.
+
+        Under HAProxy each replica binds a host port the controller allocates per
+        node from the same base. These tests simulate a multi-node cluster on one
+        host, so replicas on different nodes collide and the controller blocks the
+        taken port and reallocates until each finds a free one. Quarantine would
+        hold freed ports out of that pool, so disable it. Set on the test process
+        so the head-node controller inherits it before any node is added. No-op
+        when direct ingress is off.
+        """
+        monkeypatch.setenv("RAY_SERVE_PORT_QUARANTINE_S", "0")
+
     @staticmethod
     def _quick_upscale_config():
         return {
@@ -139,7 +153,7 @@ class TestScaleDownReplicaSelection:
             self._wait_for_upscale(
                 expected_num_replicas=num_replicas_per_node * 2,
                 handle=handle,
-                timeout=30,
+                timeout=60,
             )
             self._wait_until_min_replica(
                 app_name=app_name,
@@ -205,7 +219,7 @@ class TestScaleDownReplicaSelection:
             self._wait_for_upscale(
                 expected_num_replicas=3,
                 handle=handle,
-                timeout=30,
+                timeout=60,
             )
             self._wait_until_min_replica(
                 app_name=app_name,
@@ -268,7 +282,7 @@ class TestScaleDownReplicaSelection:
             self._wait_for_upscale(
                 expected_num_replicas=3,
                 handle=handle,
-                timeout=30,
+                timeout=60,
             )
             self._wait_until_min_replica(
                 app_name=app_name,
