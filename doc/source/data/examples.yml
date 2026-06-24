@@ -28,7 +28,7 @@ examples:
     skill_level: beginner
     frameworks:
       - xgboost
-    link: ../train/examples/xgboost/distributed-xgboost-lightgbm
+    link: ../_collections/ray-overview/examples/e2e-xgboost/README
   - title: LLM Batch Inference
     skill_level: beginner
     frameworks:

@@ -227,4 +227,4 @@ examples:
     frameworks:
       - xgboost
     skill_level: beginner
-    link: examples/xgboost/distributed-xgboost-lightgbm
+    link: ../_collections/ray-overview/examples/e2e-xgboost/README
