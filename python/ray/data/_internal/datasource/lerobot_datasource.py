@@ -791,35 +791,7 @@ class _LeRobotReadTask(ReadTask):
 
 @PublicAPI(stability="alpha")
 class LeRobotDatasource(Datasource):
-    """Ray Data ``Datasource`` for LeRobot v3 datasets.
-
-    Reads LeRobot v3 datasets from local or cloud storage, combining the chunked
-    parquet rows with decoded camera frames. Cameras may be stored as mp4 video
-    (``dtype: video``, decoded via torchcodec) or as encoded images inside the
-    parquet rows (``dtype: image``, decoded via Pillow); both are emitted as HWC
-    uint8 tensor columns.
-
-    Use :func:`ray.data.read_lerobot` for typical use. Construct this class
-    directly when you need to inspect ``source.metas`` (a list of upstream
-    :class:`lerobot.LeRobotDatasetMetadata` instances) before reading, or
-    when passing Ray Data execution options to ``ray.data.read_datasource``.
-
-    Examples:
-        Basic usage:
-
-        >>> import ray  # doctest: +SKIP
-        >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
-        ...     "s3://anonymous@ray-example-data/lerobot/libero-mini",
-        ... )
-
-        One read task per episode:
-
-        >>> source = LeRobotDatasource(  # doctest: +SKIP
-        ...     "s3://anonymous@ray-example-data/lerobot/libero-mini",
-        ...     group_by_episode=True,
-        ... )
-        >>> ds = ray.data.read_datasource(source)  # doctest: +SKIP
-    """
+    """Ray Data ``Datasource`` for LeRobot v3 datasets."""
 
     def __init__(
         self,
@@ -884,17 +856,10 @@ class LeRobotDatasource(Datasource):
         self._frame_tolerance_s: Optional[float] = frame_tolerance_s
 
         roots = [root] if isinstance(root, (str, Path)) else list(root)
-        # A ``local://`` root means the files live only on the driver's node, so
-        # pin reads there rather than distributing them (the same convention as
-        # FileBasedDatasource). Bare paths are assumed shared/distributed.
         self._supports_distributed_reads = not _is_local_scheme(roots)
-        # Resolve the metadata/parquet filesystem + the by-URI video options
-        # once per root on the driver: (fs, fs_root, video_root_uri, video_opts).
         self._resolved = [
             _resolve_filesystem(r, filesystem, self._storage_options) for r in roots
         ]
-        # Pristine upstream metadata instances, exposed via self.metas /
-        # self.meta for callers that want full lerobot API access.
         self.metas = [
             _load_lerobot_metadata(r, fs, fs_root)
             for r, (fs, fs_root, _, _) in zip(roots, self._resolved)
@@ -947,8 +912,12 @@ class LeRobotDatasource(Datasource):
         # shipped to workers via ray.put; the projected episode tables stay
         # here for planning (slicing) -- each read task embeds only its own
         # episode slice rather than broadcasting the whole table.
-        built = [
-            _build_root(
+        self._roots: List[_LeRobotRoot] = []
+        self._episodes: List[pa.Table] = []
+        for m, r, (fs, fs_root, video_uri, video_opts) in zip(
+            self.metas, roots, self._resolved
+        ):
+            root, episodes = _build_root(
                 m,
                 r,
                 fs,
@@ -957,12 +926,8 @@ class LeRobotDatasource(Datasource):
                 video_opts,
                 frame_tolerance_s=self._frame_tolerance_s,
             )
-            for m, r, (fs, fs_root, video_uri, video_opts) in zip(
-                self.metas, roots, self._resolved
-            )
-        ]
-        self._roots: List[_LeRobotRoot] = [root for root, _ in built]
-        self._episodes: List[pa.Table] = [episodes for _, episodes in built]
+            self._roots.append(root)
+            self._episodes.append(episodes)
 
         self._group_by_episode: bool = group_by_episode
 
