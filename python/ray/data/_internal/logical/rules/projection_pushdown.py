@@ -145,17 +145,10 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
         are_remote_args_compatible,
     )
 
-    # Check if remote args (num_cpus, num_gpus, etc.) are compatible
-    if not are_remote_args_compatible(
-        upstream_project.ray_remote_args or {},
-        downstream_project.ray_remote_args or {},
-    ):
+    # Check if remote args (num_cpus, num_gpus, etc.) are compatible and that
+    # neither op specifies a `ray_remote_args_fn`.
+    if not are_remote_args_compatible(upstream_project, downstream_project):
         # Resources don't match - cannot fuse
-        return downstream_project
-
-    # Do not fuse if either op specifies a `ray_remote_args_fn`,
-    # since it is not known whether the generated args will be compatible.
-    if upstream_project.ray_remote_args_fn or downstream_project.ray_remote_args_fn:
         return downstream_project
 
     # Check if compute strategies are compatible

@@ -1,6 +1,6 @@
 import itertools
 import logging
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -257,17 +257,7 @@ class FuseOperators(Rule):
             return False
 
         # Only fuse if the ops' remote arguments are compatible.
-        if not are_remote_args_compatible(
-            getattr(up_logical_op, "ray_remote_args", {}),
-            getattr(down_logical_op, "ray_remote_args", {}),
-        ):
-            return False
-
-        # Do not fuse if either op specifies a `ray_remote_args_fn`,
-        # since it is not known whether the generated args will be compatible.
-        if getattr(up_logical_op, "ray_remote_args_fn", None) or getattr(
-            down_logical_op, "ray_remote_args_fn", None
-        ):
+        if not are_remote_args_compatible(up_logical_op, down_logical_op):
             return False
 
         if not self._can_merge_target_max_block_size(
@@ -737,12 +727,23 @@ class FuseOperators(Rule):
 
 
 @DeveloperAPI
-def are_remote_args_compatible(
-    prev_args: Dict[str, Any], next_args: Dict[str, Any]
-) -> bool:
-    """Check if Ray remote arguments are compatible for merging."""
-    prev_args = _canonicalize(prev_args)
-    next_args = _canonicalize(next_args)
+def are_remote_args_compatible(up_logical_op, down_logical_op) -> bool:
+    """Check whether two logical ops can be fused based on their Ray remote args.
+
+    Two ops are compatible only if their ``ray_remote_args`` are mergeable and
+    neither op specifies a ``ray_remote_args_fn``, since the args it generates
+    are not known ahead of time.
+    """
+    # Do not fuse if either op specifies a `ray_remote_args_fn`,
+    # since it is not known whether the generated args will be compatible.
+    if getattr(up_logical_op, "ray_remote_args_fn", None) or getattr(
+        down_logical_op, "ray_remote_args_fn", None
+    ):
+        return False
+
+    # Only fuse if the ops' remote arguments are compatible.
+    prev_args = _canonicalize(getattr(up_logical_op, "ray_remote_args", None) or {})
+    next_args = _canonicalize(getattr(down_logical_op, "ray_remote_args", None) or {})
     remote_args = next_args.copy()
     for key in INHERITABLE_REMOTE_ARGS:
         # NOTE: We only carry over inheritable value in case
