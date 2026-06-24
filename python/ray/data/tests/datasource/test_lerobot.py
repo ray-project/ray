@@ -574,6 +574,81 @@ def test_read_lerobot_override_num_blocks_splits_and_merges(
     assert ds.count() == 15
 
 
+def _covered_cells(ranges):
+    """Flatten ``(root_idx, start, end)`` ranges into their ``(root_idx, row)``
+    cells, so two partitions can be compared for exact coverage."""
+    return [(ri, i) for ri, s, e in ranges for i in range(s, e)]
+
+
+@pytest.mark.parametrize(
+    "ranges, target",
+    [
+        # Equal ranges, one root: split each group in two.
+        ([(0, 0, 10), (0, 10, 20), (0, 20, 30)], 6),
+        # Skewed sizes: apportionment must be proportional (90:10), not 5/5 --
+        # naive-equal would emit size-18 and size-2 pieces.
+        ([(0, 0, 90), (1, 0, 10)], 10),
+        # Base boundaries off any uniform grid, two roots: a global uniform-cut
+        # scheme would strand a sliver and cross a root boundary; this must not.
+        ([(0, 0, 100), (1, 0, 30)], 4),
+        # One monolithic range parallelized, with an uneven remainder.
+        ([(0, 0, 100)], 7),
+        # More tasks than rows: capped at one row per task.
+        ([(0, 0, 3), (0, 3, 5)], 10),
+        # Small range, uneven remainder (5 -> 2, 2, 1).
+        ([(0, 0, 5)], 3),
+    ],
+)
+def test_split_ranges_partitions_and_balances(ranges, target):
+    """``_split_ranges`` must produce a *balanced* exact partition: every row is
+    covered once, no sub-range crosses a base range, within a base range the
+    pieces differ in size by at most one (no slivers), and each base range's
+    share of the splits is proportional to its row count."""
+    from ray.data.datasource import LeRobotDatasource
+
+    out = LeRobotDatasource._split_ranges(ranges, target)
+    total = sum(e - s for _, s, e in ranges)
+
+    # Exact partition: identical coverage -- no gaps, no duplicates.
+    assert sorted(_covered_cells(out)) == sorted(_covered_cells(ranges))
+
+    # Each piece is non-empty and lies inside exactly one base range.
+    pieces = {i: [] for i in range(len(ranges))}
+    for ri, s, e in out:
+        assert e > s
+        owners = [
+            i
+            for i, (bri, bs, be) in enumerate(ranges)
+            if bri == ri and bs <= s and e <= be
+        ]
+        assert len(owners) == 1, f"{(ri, s, e)} crosses a base range boundary"
+        pieces[owners[0]].append(e - s)
+
+    # Count: hit target exactly, unless more tasks than rows were requested.
+    assert len(out) == (target if target <= total else total)
+
+    for i, (_, s, e) in enumerate(ranges):
+        n = e - s
+        sizes = pieces[i]
+        # No slivers: a base range's pieces are as even as integer division allows.
+        assert max(sizes) - min(sizes) <= 1, f"unbalanced split of range {i}: {sizes}"
+        # Proportional: piece count tracks the range's row share (within rounding).
+        ideal = max(1, min(round(n * target / total), n))
+        assert (
+            abs(len(sizes) - ideal) <= 1
+        ), f"range {i} (n={n}) got {len(sizes)} pieces, expected ~{ideal}"
+
+
+def test_split_ranges_noop_when_target_not_greater():
+    """``_split_ranges`` returns the input unchanged when the requested task
+    count does not exceed the number of base ranges (nothing to split)."""
+    from ray.data.datasource import LeRobotDatasource
+
+    ranges = [(0, 0, 10), (0, 10, 25), (1, 0, 7)]
+    assert LeRobotDatasource._split_ranges(ranges, 3) == ranges
+    assert LeRobotDatasource._split_ranges(ranges, 1) == ranges
+
+
 def test_read_lerobot_batches_sized_per_root(ray_start_regular_shared, tmp_path):
     """Batches must be sized from each segment's OWN root, not one global value.
 
