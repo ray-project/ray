@@ -11,17 +11,6 @@ from ray.tests.conftest import *  # noqa
 
 
 class TestScaleDownReplicaSelection:
-    @pytest.fixture(autouse=True)
-    def _recycle_direct_ingress_ports(self, monkeypatch):
-        """Disable direct-ingress port quarantine so freed ports return at once.
-
-        These tests simulate a multi-node cluster on one host, so replicas
-        collide on host ports and the controller climbs to a free one;
-        quarantine would hold freed ports out of that pool. Set on the test
-        process so the head-node controller inherits it.
-        """
-        monkeypatch.setenv("RAY_SERVE_PORT_QUARANTINE_S", "0")
-
     @staticmethod
     def _quick_upscale_config():
         return {
