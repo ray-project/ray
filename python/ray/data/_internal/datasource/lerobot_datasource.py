@@ -635,6 +635,7 @@ class _LeRobotReadTask(ReadTask):
         its own encoded frame. Returns ``{image_key: list[np.ndarray HWC uint8]}``
         aligned to *full*'s row order.
         """
+
         import io
 
         from PIL import Image
@@ -645,6 +646,8 @@ class _LeRobotReadTask(ReadTask):
             for cell in full.column(ik).to_pylist():
                 data = cell.get("bytes") if isinstance(cell, dict) else cell
                 if data is None and isinstance(cell, dict) and cell.get("path"):
+                    # Derived from how lerobot stores images
+                    # There are two ways: inline bytes or a path to the image file.
                     p = cell["path"]
                     p = p if p.startswith(root.fs_root) else f"{root.fs_root}/{p}"
                     with root.fs.open(p, "rb") as fh:
