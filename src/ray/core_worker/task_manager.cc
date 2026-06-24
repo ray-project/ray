@@ -724,96 +724,88 @@ bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
   return true;
 }
 
-int64_t TaskManager::GetGeneratorBackpressureThreshold(const ObjectID &generator_id) {
-  absl::MutexLock lock(&mu_);
-  absl::flat_hash_map<TaskID, TaskEntry>::iterator it =
-      submissible_tasks_.find(generator_id.TaskId());
-  if (it != submissible_tasks_.end()) {
-    return it->second.spec_.GeneratorBackpressureNumObjects();
-  }
-  return 0;
-}
-
-void TaskManager::ResumeGeneratorTaskIfBackpressured(const ObjectID &generator_id,
-                                                     int64_t backpressure_threshold,
-                                                     ObjectRefStream &stream) {
-  int64_t total_generated = stream.TotalNumObjectWritten();
-  int64_t total_consumed = stream.TotalNumObjectConsumed();
-  int64_t total_unconsumed = total_generated - total_consumed;
-  if (backpressure_threshold == -1 || total_unconsumed >= backpressure_threshold) {
-    return;
-  }
-
-  absl::flat_hash_map<ObjectID, std::vector<ExecutionSignalCallback>>::iterator it =
-      ref_stream_execution_signal_callbacks_.find(generator_id);
-  if (it == ref_stream_execution_signal_callbacks_.end()) {
-    return;
-  }
-  for (const ExecutionSignalCallback &execution_signal : it->second) {
-    RAY_LOG(DEBUG) << absl::StrFormat(
-        "The task for a stream %s should resume. total_generated: %d. "
-        "total_consumed: %d. threshold: %d",
-        generator_id.Hex(),
-        total_generated,
-        total_consumed,
-        backpressure_threshold);
-    execution_signal(Status::OK(), total_consumed);
-  }
-  it->second.clear();
-}
-
 Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
                                            ObjectID *object_id_out) {
-  RAY_CHECK(object_id_out != nullptr);
-  int64_t backpressure_threshold = GetGeneratorBackpressureThreshold(generator_id);
+  Status read_status;
+  ConsumptionUpdateCallback consumption_update_callback;
+  int64_t consumption_total_consumed = 0;
 
-  absl::MutexLock lock(&object_ref_stream_ops_mu_);
-  absl::flat_hash_map<ObjectID, ObjectRefStream>::iterator stream_it =
-      object_ref_streams_.find(generator_id);
-  RAY_CHECK(stream_it != object_ref_streams_.end())
-      << "TryReadObjectRefStream API can be used only when the stream has been "
-         "created and not removed.";
-  Status status = stream_it->second.TryReadNextItem(object_id_out);
+  {
+    absl::MutexLock lock(&object_ref_stream_ops_mu_);
+    RAY_CHECK(object_id_out != nullptr);
+    auto stream_it = object_ref_streams_.find(generator_id);
+    RAY_CHECK(stream_it != object_ref_streams_.end())
+        << "TryReadObjectRefStream API can be used only when the stream has been "
+           "created "
+           "and not removed.";
+    read_status = stream_it->second.TryReadNextItem(object_id_out);
 
-  // If we could read the next item, signal the executor to resume if necessary.
-  if (status.ok()) {
-    ResumeGeneratorTaskIfBackpressured(
-        generator_id, backpressure_threshold, stream_it->second);
+    /// If you could read the next item, signal the executor to resume
+    /// if necessary.
+    if (read_status.ok() && !object_id_out->IsNil()) {
+      auto total_consumed = stream_it->second.TotalNumObjectConsumed();
+      auto consumption_it = ref_stream_consumption_update_callbacks_.find(generator_id);
+      if (consumption_it != ref_stream_consumption_update_callbacks_.end()) {
+        consumption_update_callback = consumption_it->second;
+        consumption_total_consumed = total_consumed;
+      }
+    }
   }
-  return status;
+
+  if (consumption_update_callback) {
+    consumption_update_callback(Status::OK(), consumption_total_consumed);
+  }
+  return read_status;
 }
 
 Status TaskManager::TryReadObjectRefStreamN(const ObjectID &generator_id,
                                             int64_t num_items) {
   RAY_CHECK_GT(num_items, 0);
-  int64_t backpressure_threshold = GetGeneratorBackpressureThreshold(generator_id);
 
-  absl::MutexLock lock(&object_ref_stream_ops_mu_);
-  absl::flat_hash_map<ObjectID, ObjectRefStream>::iterator stream_it =
-      object_ref_streams_.find(generator_id);
-  RAY_CHECK(stream_it != object_ref_streams_.end())
-      << "TryReadObjectRefStreamN API can be used only when the stream has been "
-         "created and not removed.";
+  Status status;
   std::vector<ObjectID> consumed_object_ids;
-  Status status = stream_it->second.TryReadNextItems(num_items, &consumed_object_ids);
+  ConsumptionUpdateCallback consumption_update_callback;
+  int64_t consumption_total_consumed = 0;
 
-  // If we could read the next items, signal the executor to resume if necessary.
-  if (status.ok()) {
-    ResumeGeneratorTaskIfBackpressured(
-        generator_id, backpressure_threshold, stream_it->second);
+  {
+    absl::MutexLock lock(&object_ref_stream_ops_mu_);
+    absl::flat_hash_map<ObjectID, ObjectRefStream>::iterator stream_it =
+        object_ref_streams_.find(generator_id);
+    RAY_CHECK(stream_it != object_ref_streams_.end())
+        << "TryReadObjectRefStreamN API can be used only when the stream has been "
+           "created and not removed.";
+    status = stream_it->second.TryReadNextItems(num_items, &consumed_object_ids);
+
+    // If we consumed any items, notify the executor of the new consumed count so
+    // owner backpressure can release. This mirrors TryReadObjectRefStream; the
+    // callback is only registered when the generator has owner backpressure
+    // enabled, so streams without backpressure are unaffected.
+    if (status.ok() && !consumed_object_ids.empty()) {
+      auto consumption_it = ref_stream_consumption_update_callbacks_.find(generator_id);
+      if (consumption_it != ref_stream_consumption_update_callbacks_.end()) {
+        consumption_update_callback = consumption_it->second;
+        consumption_total_consumed = stream_it->second.TotalNumObjectConsumed();
+      }
+    }
+
+    // Release the owner-side reference held for each consumed object. Unlike
+    // TryReadObjectRefStream, whose returned ObjectRef reuses this reference (it
+    // is created with skip_adding_local_ref=True), the bulk API hands back the
+    // refs peeked via PeekObjectRefStreamN, which add their own local reference.
+    // Without releasing here, the owner-side reference taken at peek/report time
+    // would dangle for every consumed object (it is never reclaimed by the
+    // teardown path, which only releases unconsumed refs). The consumer's peeked
+    // ref governs the object lifetime from here on.
+    std::vector<ObjectID> deleted;
+    reference_counter_.TryReleaseLocalRefs(consumed_object_ids, &deleted);
+    in_memory_store_.Delete(deleted);
   }
 
-  // Release the owner-side reference held for each consumed object. Unlike
-  // TryReadObjectRefStream, whose returned ObjectRef reuses this reference (it
-  // is created with skip_adding_local_ref=True), the bulk API hands back the
-  // refs peeked via PeekObjectRefStreamN, which add their own local reference.
-  // Without releasing here, the owner-side reference taken at peek/report time
-  // would dangle for every consumed object (it is never reclaimed by the
-  // teardown path, which only releases unconsumed refs). The consumer's peeked
-  // ref governs the object lifetime from here on.
-  std::vector<ObjectID> deleted;
-  reference_counter_.TryReleaseLocalRefs(consumed_object_ids, &deleted);
-  in_memory_store_.Delete(deleted);
+  // Fire the consumption update outside the stream lock, matching
+  // TryReadObjectRefStream, since it issues an RPC to the executor.
+  if (consumption_update_callback) {
+    consumption_update_callback(Status::OK(), consumption_total_consumed);
+  }
   return status;
 }
 
@@ -836,7 +828,7 @@ bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
     RAY_LOG(DEBUG) << "Deleting execution signal callbacks for generator "
                    << generator_id;
     for (const auto &execution_signal : signal_it->second) {
-      execution_signal(Status::NotFound("Stream is deleted."), -1);
+      execution_signal(Status::NotFound("Stream is deleted."));
     }
     // We may still receive more generator return reports in the future, if the
     // generator task is still running or is retried. They will get the
@@ -846,7 +838,14 @@ bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
 
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
+    ref_stream_consumption_update_callbacks_.erase(generator_id);
     return true;
+  }
+
+  auto consumption_it = ref_stream_consumption_update_callbacks_.find(generator_id);
+  if (consumption_it != ref_stream_consumption_update_callbacks_.end()) {
+    consumption_it->second(Status::NotFound("Stream is deleted."), -1);
+    ref_stream_consumption_update_callbacks_.erase(consumption_it);
   }
 
   // Remove any unconsumed refs from the stream metadata in-memory store.
@@ -960,7 +959,8 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
 
 bool TaskManager::HandleReportGeneratorItemReturns(
     const rpc::ReportGeneratorItemReturnsRequest &request,
-    const ExecutionSignalCallback &execution_signal_callback) {
+    const ExecutionSignalCallback &execution_signal_callback,
+    const ConsumptionUpdateCallback &consumption_update_callback) {
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
   const auto &task_id = generator_id.TaskId();
   int64_t item_index = request.item_index();
@@ -974,14 +974,15 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     if (it != submissible_tasks_.end()) {
-      backpressure_threshold = it->second.spec_.GeneratorBackpressureNumObjects();
+      backpressure_threshold =
+          it->second.spec_.EffectiveStreamingGeneratorOwnerBackpressureThreshold();
       if (it->second.spec_.AttemptNumber() > attempt_number) {
         // Generator task reports can arrive at any time. If the first attempt
         // fails, we may receive a report from the first executor after the
         // second attempt has started. In this case, we should ignore the first
         // attempt.
         execution_signal_callback(
-            Status::NotFound("Stale object reports from the previous attempt."), -1);
+            Status::NotFound("Stale object reports from the previous attempt."));
         return false;
       }
     }
@@ -995,8 +996,19 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
     // Stream has been already deleted. Do not handle it.
-    execution_signal_callback(Status::NotFound("Stream is already deleted"), -1);
+    execution_signal_callback(Status::NotFound("Stream is already deleted"));
     return false;
+  }
+  if (backpressure_threshold != -1) {
+    auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
+    if (signal_it == ref_stream_execution_signal_callbacks_.end()) {
+      execution_signal_callback(Status::NotFound("Stream is deleted."));
+      return false;
+    }
+    if (consumption_update_callback) {
+      ref_stream_consumption_update_callbacks_[generator_id] =
+          consumption_update_callback;
+    }
   }
   size_t num_objects_written = 0;
 
@@ -1030,38 +1042,20 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   }
 
   // Handle backpressure if needed.
-  auto total_generated = stream_it->second.TotalNumObjectWritten();
   auto total_consumed = stream_it->second.TotalNumObjectConsumed();
   auto last_item_index = request.returned_objects_size() == 0
                              ? item_index
                              : item_index + request.returned_objects_size() - 1;
 
   if (stream_it->second.IsObjectConsumed(last_item_index)) {
-    execution_signal_callback(Status::OK(), total_consumed);
+    execution_signal_callback(Status::OK());
+    if (backpressure_threshold != -1 && consumption_update_callback) {
+      consumption_update_callback(Status::OK(), total_consumed);
+    }
     return false;
   }
 
-  // Otherwise, follow the regular backpressure logic.
-  // NOTE, here we check `last_item_index - last_consumed_index >=
-  // backpressure_threshold`, instead of the number of unconsumed items, because we may
-  // receive the `HandleReportGeneratorItemReturns` requests out of order.
-  if (backpressure_threshold != -1 &&
-      (last_item_index - stream_it->second.LastConsumedIndex()) >=
-          backpressure_threshold) {
-    RAY_LOG(DEBUG) << "Stream " << generator_id
-                   << " is backpressured. total_generated: " << total_generated
-                   << ". total_consumed: " << total_consumed
-                   << ". threshold: " << backpressure_threshold;
-    auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
-    if (signal_it == ref_stream_execution_signal_callbacks_.end()) {
-      execution_signal_callback(Status::NotFound("Stream is deleted."), -1);
-    } else {
-      signal_it->second.push_back(execution_signal_callback);
-    }
-  } else {
-    // No need to backpressure.
-    execution_signal_callback(Status::OK(), total_consumed);
-  }
+  execution_signal_callback(Status::OK());
   return num_objects_written != 0;
 }
 
