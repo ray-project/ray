@@ -7,6 +7,9 @@ from ray._private.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
 
+ZE_AFFINITY_MASK_ENV_VAR = "ZE_AFFINITY_MASK"
+NOSET_ZE_AFFINITY_MASK_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_ZE_AFFINITY_MASK"
+
 ONEAPI_DEVICE_SELECTOR_ENV_VAR = "ONEAPI_DEVICE_SELECTOR"
 NOSET_ONEAPI_DEVICE_SELECTOR_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_ONEAPI_DEVICE_SELECTOR"
 ONEAPI_DEVICE_BACKEND_TYPE = "level_zero"
@@ -22,25 +25,29 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_visible_accelerator_ids_env_var() -> str:
-        return ONEAPI_DEVICE_SELECTOR_ENV_VAR
+        return ZE_AFFINITY_MASK_ENV_VAR
 
     @staticmethod
     def get_current_process_visible_accelerator_ids() -> Optional[List[str]]:
-        oneapi_visible_devices = os.environ.get(
-            IntelGPUAcceleratorManager.get_visible_accelerator_ids_env_var(), None
-        )
+        # Primary: ZE_AFFINITY_MASK uses bare IDs ("0,1,2"), like CUDA_VISIBLE_DEVICES.
+        ze_mask = os.environ.get(ZE_AFFINITY_MASK_ENV_VAR, None)
+        if ze_mask is not None:
+            if ze_mask == "":
+                return []
+            return list(ze_mask.split(","))
+
+        # Fallback: ONEAPI_DEVICE_SELECTOR for backward compatibility.
+        oneapi_visible_devices = os.environ.get(ONEAPI_DEVICE_SELECTOR_ENV_VAR, None)
         if oneapi_visible_devices is None:
             return None
-
-        if oneapi_visible_devices == "":
-            return []
-
-        if oneapi_visible_devices == "NoDevFiles":
+        if oneapi_visible_devices == "" or oneapi_visible_devices == "NoDevFiles":
             return []
 
         prefix = ONEAPI_DEVICE_BACKEND_TYPE + ":"
-
-        return list(oneapi_visible_devices.split(prefix)[1].split(","))
+        if prefix in oneapi_visible_devices:
+            return list(oneapi_visible_devices.split(prefix)[1].split(","))
+        # bare IDs without prefix (e.g. "0,1") — accepted as-is
+        return list(oneapi_visible_devices.split(","))
 
     @staticmethod
     def get_current_node_num_accelerators() -> int:
@@ -95,10 +102,11 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
     def set_current_process_visible_accelerator_ids(
         visible_xpu_devices: List[str],
     ) -> None:
-        if env_bool(NOSET_ONEAPI_DEVICE_SELECTOR_ENV_VAR, False):
-            return
+        ids_bare = ",".join([str(i) for i in visible_xpu_devices])
+        ids_prefixed = ONEAPI_DEVICE_BACKEND_TYPE + ":" + ids_bare
 
-        prefix = ONEAPI_DEVICE_BACKEND_TYPE + ":"
-        os.environ[
-            IntelGPUAcceleratorManager.get_visible_accelerator_ids_env_var()
-        ] = prefix + ",".join([str(i) for i in visible_xpu_devices])
+        if not env_bool(NOSET_ZE_AFFINITY_MASK_ENV_VAR, False):
+            os.environ[ZE_AFFINITY_MASK_ENV_VAR] = ids_bare
+
+        if not env_bool(NOSET_ONEAPI_DEVICE_SELECTOR_ENV_VAR, False):
+            os.environ[ONEAPI_DEVICE_SELECTOR_ENV_VAR] = ids_prefixed

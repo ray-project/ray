@@ -79,10 +79,11 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
 
         .. tip::
 
-            You can set the ``ONEAPI_DEVICE_SELECTOR`` environment variable before starting a Ray node
+            You can set the ``ZE_AFFINITY_MASK`` environment variable before starting a Ray node
             to limit the Intel GPUs that are visible to Ray.
-            For example, ``ONEAPI_DEVICE_SELECTOR=1,3 ray start --head --num-gpus=2``
+            For example, ``ZE_AFFINITY_MASK=1,3 ray start --head --num-gpus=2``
             lets Ray only see devices 1 and 3.
+            ``ONEAPI_DEVICE_SELECTOR`` is still accepted for backward compatibility.
 
     .. tab-item:: AWS Neuron Core
         :sync: AWS Neuron Core
@@ -282,12 +283,12 @@ and assign accelerators to the task or actor by setting the corresponding enviro
             class GPUActor:
                 def ping(self):
                     print("GPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
-                    print("ONEAPI_DEVICE_SELECTOR: {}".format(os.environ["ONEAPI_DEVICE_SELECTOR"]))
+                    print("ZE_AFFINITY_MASK: {}".format(os.environ["ZE_AFFINITY_MASK"]))
 
             @ray.remote(num_gpus=1)
             def gpu_task():
                 print("GPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
-                print("ONEAPI_DEVICE_SELECTOR: {}".format(os.environ["ONEAPI_DEVICE_SELECTOR"]))
+                print("ZE_AFFINITY_MASK: {}".format(os.environ["ZE_AFFINITY_MASK"]))
 
             gpu_actor = GPUActor.remote()
             ray.get(gpu_actor.ping.remote())
@@ -298,9 +299,9 @@ and assign accelerators to the task or actor by setting the corresponding enviro
             :options: +MOCK
 
             (GPUActor pid=52420) GPU IDs: [0]
-            (GPUActor pid=52420) ONEAPI_DEVICE_SELECTOR: 0
+            (GPUActor pid=52420) ZE_AFFINITY_MASK: 0
             (gpu_task pid=51830) GPU IDs: [1]
-            (gpu_task pid=51830) ONEAPI_DEVICE_SELECTOR: 1
+            (gpu_task pid=51830) ZE_AFFINITY_MASK: 1
 
     .. tab-item:: AWS Neuron Core
         :sync: AWS Neuron Core
