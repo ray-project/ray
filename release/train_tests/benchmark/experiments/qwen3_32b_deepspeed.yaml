@@ -1,0 +1,54 @@
+# Qwen3-32B + DeepSpeed ZeRO-3 — large-model training benchmark.
+#
+# Unlike the 0.6B workload (ZeRO-2, single node), a 32B dense model cannot keep
+# a full parameter/optimizer copy per GPU, so this uses ZeRO-3 to shard params,
+# gradients, AND optimizer state across every worker. At bf16 the model states
+# are roughly:
+#   params 2B x 32e9   = 64 GB
+#   grads  2B x 32e9   = 64 GB
+#   Adam   12B x 32e9  = 384 GB   (fp32 master + momentum + variance)
+#   total              ~512 GB, sharded across num_workers GPUs.
+# So this needs aggregate GPU memory well beyond a single node.
+#
+# Cluster shape: 2x p4de.24xlarge (16x A100-80GB) => 1280 GB aggregate. At
+# 16-way ZeRO-3 each GPU holds ~32 GB of model state, leaving headroom for
+# activations (kept small with SDPA attention + gradient checkpointing).
+# On larger clusters raise num_workers: ZeRO-3's per-GPU model-state memory
+# falls as workers increase, so more GPUs let you grow batch_size or seq_len.
+#
+# torchrun parity baseline (same nodes):
+#   torchrun --nnodes=2 --nproc_per_node=8 -m core.runner \
+#       --experiment experiments/qwen3_32b_deepspeed.yaml --launcher torchrun
+name: qwen3_32b_deepspeed
+launcher: ray
+num_workers: 16                  # 2x p4de.24xlarge, 8x A100-80GB each
+use_gpu: true
+model:
+  adapter: deepspeed
+  name: Qwen/Qwen3-32B           # HF model id; AutoModelForCausalLM.from_pretrained
+  parallelism:
+    zero_stage: 3                # shard params+grads+optimizer; required at 32B
+  precision: bf16                # A100 supports bf16 natively
+  attn_implementation: sdpa      # avoid eager attention's O(S^2) score matrix
+  gradient_checkpointing: true   # essential for activation memory at this scale
+data:
+  dataloader: framework_default
+  dataset: wikitext             # use `synthetic` to isolate compute from data ingest
+  dataset_path: ""
+  batch_size: 1                 # per-GPU micro batch; global = 1 x 16 = 16 seqs/step
+  seq_len: 2048
+  limit_training_rows: 8000
+training:
+  num_steps: 100
+  warmup_steps: 10
+  seed: 42
+  log_every_n_steps: 10
+  gradient_accumulation_steps: 1
+  optimizer:
+    lr: 1.0e-5                   # benchmark-only; LR does not affect throughput
+    betas: [0.9, 0.95]
+    weight_decay: 0.1
+checkpoint:
+  interval: -1
+  at_end: false
+perturbation: null
