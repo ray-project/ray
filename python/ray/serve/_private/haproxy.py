@@ -50,7 +50,9 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S,
     RAY_SERVE_HAPROXY_LOG_TARGET,
     RAY_SERVE_HAPROXY_MAXCONN,
+    RAY_SERVE_HAPROXY_METRICS_ENABLED,
     RAY_SERVE_HAPROXY_METRICS_PORT,
+    RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S,
     RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH,
     RAY_SERVE_HAPROXY_NBTHREAD,
     RAY_SERVE_HAPROXY_RETRIES,
@@ -802,6 +804,60 @@ class HAProxyApi(ProxyApi):
         except OSError:
             return False
 
+    def count_haproxy_processes(self) -> int:
+        """Number of HAProxy processes on the node belonging to this manager.
+
+        Scans /proc for processes whose cmdline references our config file, so
+        the count spans the live worker, draining workers from prior reloads,
+        and any leaked/orphaned workers — making it a signal for process leaks.
+        Returns 0 on non-Linux / no-/proc platforms where /proc is unavailable.
+        """
+        try:
+            entries = os.listdir("/proc")
+        except OSError:
+            return 0
+
+        processes = {
+            entry
+            for entry in entries
+            if entry.isdigit() and self._is_our_haproxy(int(entry))
+        }
+        return len(processes)
+
+    async def compute_target_mismatch(self) -> int:
+        """Cardinality of the mismatch between the controller's broadcasted
+        targets and the targets HAProxy actually reports in its stats.
+
+        Broadcasted targets are the (backend, server) pairs the controller asked
+        this proxy to configure; reported targets are the (backend, server) pairs
+        present in HAProxy's live stats. The result is the symmetric difference,
+        so it counts both targets not yet applied to HAProxy and stale targets
+        HAProxy still reports.
+        """
+        expected = set()
+        for backend_name, backend_config in self.backend_configs.items():
+            for server in backend_config.servers:
+                expected.add((backend_name, server.name))
+            # The generated config also renders the fallback server as a real
+            # `server ... backup` line in the same backend, so it appears in
+            # get_all_stats; count it as expected or the gauge never converges
+            # to zero for backends that have a fallback.
+            if backend_config.fallback_server is not None:
+                expected.add((backend_name, backend_config.fallback_server.name))
+
+        # Note that if an entire backend scaled down (when an app is removed),
+        # get_all_stats will filter out that entire backend, so there could be
+        # stale servers in that haproxy backend but not reported by this metric.
+        # This case is rare and not really something we worry about since requests
+        # shouldn't be hitting that backend or should return errors anyways.
+        stats = await self.get_all_stats()
+        reported = {
+            (backend_name, server_name)
+            for backend_name, servers in stats.items()
+            for server_name in servers
+        }
+        return len(expected ^ reported)
+
     def _retire_log_files(self, proc: asyncio.subprocess.Process) -> None:
         """Move an exited proc's std-stream logs into the bounded debug ring,
         deleting the oldest pair once the ring exceeds its cap. Only call this
@@ -1429,33 +1485,34 @@ class HAProxyManager(ProxyActorInterface):
             config_file_path=_per_node(RAY_SERVE_HAPROXY_CONFIG_FILE_LOC),
         )
 
-        # Start the metrics collector for the ingress request router. The
-        # collector owns its own dgram socket and transport lifecycle; we
-        # only hold a reference so we can close it on shutdown.
-        self._metrics_collector: Optional["HAProxyMetricsCollector"] = None
+        self._metrics_collector = None
         self._metrics_attach_task: Optional[asyncio.Task] = None
-        if self._haproxy.cfg.ingress_request_router_metrics_enabled:
+        if RAY_SERVE_HAPROXY_METRICS_ENABLED:
             from ray.serve._private.haproxy_metrics import HAProxyMetricsCollector
 
+            # The metrics collector owns all serve_haproxy_* metrics for this proxy.
+            # It is constructed if haproxy metrics are enabled. start() always begins
+            # node-level polling and, when ingress-request-router metrics are enabled,
+            # also binds the per-request dgram reader and returns its bind task (which
+            # ready() awaits to surface bind failures).
+            self._metrics_collector = HAProxyMetricsCollector(
+                haproxy_api=self._haproxy, node_id=self._node_id
+            )
             try:
-                os.makedirs(
-                    os.path.dirname(self._haproxy.cfg.metrics_socket_path),
-                    exist_ok=True,
-                )
-                self._metrics_collector = HAProxyMetricsCollector()
-                self._metrics_attach_task = self.event_loop.create_task(
-                    self._metrics_collector.bind_and_attach(
-                        self._haproxy.cfg.metrics_socket_path,
-                        loop=self.event_loop,
-                    )
+                self._metrics_attach_task = self._metrics_collector.start(
+                    self.event_loop,
+                    poll_interval_s=RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S,
+                    enable_ingress_router_metrics=(
+                        self._haproxy.cfg.ingress_request_router_metrics_enabled
+                    ),
+                    metrics_socket_path=self._haproxy.cfg.metrics_socket_path,
                 )
             except Exception:
                 logger.exception(
-                    "Failed to construct ingress-request-router metrics "
-                    "collector; metrics will not be emitted. HAProxy will "
-                    "continue normally."
+                    "Failed to start the ingress-request-router datagram reader; "
+                    "per-request router metrics will not be emitted. Node-level "
+                    "metrics and HAProxy continue normally."
                 )
-                self._metrics_collector = None
 
         self._haproxy_start_task = self.event_loop.create_task(self._haproxy.start())
 
@@ -1497,13 +1554,13 @@ class HAProxyManager(ProxyActorInterface):
                 try:
                     await self._metrics_attach_task
                 except Exception:
+                    # Only the dgram reader failed. Leave the collector intact
+                    # so node-level gauges keep polling; the socket is left
+                    # unbound (bind_and_attach is safe to have failed).
                     logger.exception(
                         "Failed to bind/attach metrics dgram reader; "
-                        "metrics will not be drained."
+                        "per-request router metrics will not be drained."
                     )
-                    if self._metrics_collector is not None:
-                        self._metrics_collector.close()
-                        self._metrics_collector = None
         except Exception as e:
             logger.exception("Failed to start HAProxy.")
             raise e from None
