@@ -823,7 +823,7 @@ def _map_task(
             # retries of this one), so a prior task/attempt's stats can't leak
             # into this one. A producing transform repopulates it before the
             # first block is yielded.
-            map_transformer.reset_custom_op_stats()
+            map_transformer.set_custom_op_stats(None)
             blocks_iter = (
                 _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
             )
@@ -873,7 +873,7 @@ def _map_task(
                             max_uss_bytes=profiler.estimate_max_uss(),
                             # Set by a producing transform on the
                             # MapTransformer; None if the op reports nothing.
-                            custom_op_stats=map_transformer.custom_op_stats(),
+                            custom_op_stats=map_transformer.get_custom_op_stats(),
                         ),
                     ),
                     schema=block_schema if not yielded_schema else None,

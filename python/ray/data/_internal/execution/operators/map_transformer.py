@@ -302,13 +302,9 @@ class MapTransformer:
         """
         self._custom_op_stats = stats
 
-    def custom_op_stats(self) -> Optional[CustomOpStats]:
+    def get_custom_op_stats(self) -> Optional[CustomOpStats]:
         """Per-task custom stats reported by a transform, else ``None``."""
         return self._custom_op_stats
-
-    def reset_custom_op_stats(self) -> None:
-        """Clear per-task custom stats before a task runs"""
-        self._custom_op_stats = None
 
 
 class RowMapTransformFn(MapTransformFn):

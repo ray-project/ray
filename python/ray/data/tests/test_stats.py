@@ -6,7 +6,7 @@ import threading
 import time
 from collections import Counter, defaultdict
 from contextlib import contextmanager
-from dataclasses import fields
+from dataclasses import dataclass, fields
 from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
@@ -41,10 +41,16 @@ from ray.data._internal.stats import (
     get_or_create_stats_actor,
 )
 from ray.data._internal.util import MemoryProfiler
-from ray.data.block import BlockExecStats, BlockStats
+from ray.data.block import BlockExecStats, BlockStats, CustomOpStats
 from ray.data.context import DataContext
-from ray.data.tests.util import _ReadTaskStats, column_udf
+from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
+
+
+@dataclass(frozen=True)
+class _ReadTaskStats(CustomOpStats):
+    num_rows: int
+    num_columns: int
 
 
 def get_operator(
@@ -202,15 +208,15 @@ def test_map_transformer_custom_op_stats():
     )
 
     # Nothing set until a task runs.
-    assert transformer.custom_op_stats() is None
+    assert transformer.get_custom_op_stats() is None
 
     ctx = TaskContext(task_idx=0, op_name="test")
     list(transformer.apply_transform([pa.table({"id": list(range(4))})], ctx))
-    assert transformer.custom_op_stats() == expected
+    assert transformer.get_custom_op_stats() == expected
 
-    # Reset clears it before the next task on a reused transformer.
-    transformer.reset_custom_op_stats()
-    assert transformer.custom_op_stats() is None
+    # Clearing before the next task on a reused transformer.
+    transformer.set_custom_op_stats(None)
+    assert transformer.get_custom_op_stats() is None
 
 
 def test_map_task_carries_custom_op_stats_to_block_metadata(ray_start_regular_shared):
