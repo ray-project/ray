@@ -872,7 +872,7 @@ async def _start_router_haproxy(
         socket_path=os.path.join(temp_dir, "admin.sock"),
         has_received_routes=True,
         has_received_servers=True,
-        health_check_path="/-/healthz",
+        http_health_check_path="/-/healthz",
         health_check_inter="500ms",
         health_check_rise=1,
         health_check_fall=2,
@@ -1166,7 +1166,7 @@ async def test_pin_miss_falls_back_to_fallback_server(haproxy_api_cleanup):
                 name="llm",
                 path_prefix="/",
                 app_name="llm",
-                health_check_path="/-/healthz",
+                http_health_check_path="/-/healthz",
                 servers=[
                     ServerConfig(
                         name="A",
