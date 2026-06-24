@@ -144,3 +144,52 @@ class ParquetInMemorySizeEstimator(InMemorySizeEstimator):
 
     def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
         return self._encoding_ratio * manifest.file_sizes
+
+
+def _as_finite_float(value) -> float:
+    """Coerce ``value`` to a float, mapping ``None`` and ``NaN`` to ``0.0``.
+
+    File sizes can be ``None`` (e.g. ``HTTPFileSystem``, which doesn't report
+    sizes) or surface as ``NaN`` from a nullable size column; either would make
+    a downstream ``float(...)`` raise.
+    """
+    if value is None or value != value:  # ``value != value`` is True only for NaN
+        return 0.0
+    return float(value)
+
+
+@DeveloperAPI
+class ParquetFooterDerivedInMemorySizeEstimator(InMemorySizeEstimator):
+    """Parquet-specific estimator that reads the per-chunk footer-derived hint.
+
+    The row-group-aware ``ParquetFileChunker`` reads each Parquet file's footer at
+    listing time and stamps a type-aware Arrow in-memory estimate onto each
+    chunk's metadata under the ``in_memory_size`` key -- assigned in
+    ``ParquetFileChunker.generate_chunk_metadatas`` (its ``_emit`` helper) and
+    carried through the manifest's chunk-metadata column. This estimator reads
+    that hint, so partition sizing reflects each chunk's actual columns --
+    absorbing cross-file compression and encoding variance -- instead of a single
+    global on-disk × encoding-ratio guess.
+
+    Chunks without a hint (whole-file fallback on a corrupt/empty footer, or
+    non-Parquet inputs) fall back to ``on_disk_size × fallback_ratio`` -- the
+    constant-ratio behavior -- so mixed manifests are handled row by row and the
+    estimate is never missing.
+    """
+
+    def __init__(self, fallback_ratio: float = PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT):
+        self._fallback_ratio = fallback_ratio
+
+    def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
+        file_sizes = manifest.file_sizes
+        chunk_metadatas = manifest.file_chunk_metadatas
+        out = np.empty(len(file_sizes), dtype=np.float64)
+        for i in range(len(file_sizes)):
+            md = chunk_metadatas[i]
+            hint = md.get("in_memory_size") if isinstance(md, dict) else None
+            out[i] = (
+                float(hint)
+                if hint is not None
+                else _as_finite_float(file_sizes[i]) * self._fallback_ratio
+            )
+        return out
