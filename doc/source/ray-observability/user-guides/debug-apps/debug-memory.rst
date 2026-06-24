@@ -82,8 +82,9 @@ Ray logs something similar to the following example if it detects this scenario.
 
   System slice memory usage 10869600256 bytes has exceeded the reserved system memory of 10737418240 bytes. This can prevent Ray from being able to provide the proper protection to critical system processes and can lead to node deaths and significant loss of progress. Please consider passing a system reserved memory value that is higher than the current system slice memory usage via the --system-reserved-memory flag when starting the raylet.
 
-When you see a kernel OOM or this log message with resource isolation enabled, increase the memory reserved for system processes
-by setting a higher value than the reported system slice memory usage for the ``--system-reserved-memory`` flag when starting Ray.
+When you see a kernel OOM or this log message with resource isolation enabled, try increasing the memory reserved for system processes
+by setting a higher value than the reported system slice memory usage for the ``--system-reserved-memory`` flag when starting Ray. 
+We recommend reserving a value that has at least a GiB of buffer space above the reported system slice memory usage for buffer space.
 
 .. note::
 
