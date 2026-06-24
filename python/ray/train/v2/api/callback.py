@@ -1,11 +1,11 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from __future__ import annotations
 
+from typing import Any, Dict, List, Optional
+
+import ray
 from ray.train import Checkpoint
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.util.annotations import DeveloperAPI
-
-if TYPE_CHECKING:
-    from ray.train.v2.api.result import Result
 
 
 @DeveloperAPI
@@ -74,7 +74,9 @@ class UserCallback(RayTrainCallback):
         """
         pass
 
-    def after_run(self, run_context: TrainRunContext, result: "Result") -> None:
+    def after_run(
+        self, run_context: TrainRunContext, result: "ray.train.Result"
+    ) -> None:
         """Called after the training run completes (success or failure).
 
         This is called after the control loop exits and the final ``Result``

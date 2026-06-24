@@ -27,7 +27,6 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.train import Checkpoint
-    from ray.train.v2.api.result import Result
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +202,9 @@ class MLflowLoggerCallback(UserCallback):
         self._failed = True
         logger.error("MLflow run %s marked FAILED", self._run_id)
 
-    def after_run(self, run_context: TrainRunContext, result: "Result") -> None:
+    def after_run(
+        self, run_context: TrainRunContext, result: "ray.train.Result"  # noqa: F821
+    ) -> None:
         """Finalize MLflow run: upload last checkpoint if needed, end run."""
         if self._util is None or self._run_id is None:
             return
