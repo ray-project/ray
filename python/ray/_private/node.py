@@ -1097,18 +1097,27 @@ class Node:
             stdout_filepath=stdout_log_fname,
             stderr_filepath=stderr_log_fname,
             proxy_server_url=self._ray_params.proxy_server_url,
+            env_updates=self._ray_params.env_vars,
         )
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
                 process_info,
             ]
-            self.get_gcs_client().internal_kv_put(
-                b"webui:url",
-                self._webui_url.encode(),
-                True,
-                ray_constants.KV_NAMESPACE_DASHBOARD,
-            )
+            try:
+                self.get_gcs_client().internal_kv_put(
+                    b"webui:url",
+                    self._webui_url.encode(),
+                    True,
+                    ray_constants.KV_NAMESPACE_DASHBOARD,
+                )
+            except ValueError as e:
+                if "passive" in str(e).lower():
+                    logger.warning(
+                        "GCS is in passive mode. Skipping writing webui:url to KV."
+                    )
+                else:
+                    raise
 
     def start_gcs_server(self):
         """Start the gcs server."""
@@ -1134,6 +1143,8 @@ class Node:
             node_ip_address=self._node_ip_address,
             session_dir=self._session_dir,
             node_id=self._node_id,
+            # Pass environment variables to the GCS server.
+            env_updates=self._ray_params.env_vars,
         )
         assert ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
@@ -1331,35 +1342,43 @@ class Node:
         # Make sure the cluster metadata wasn't reported before.
         import ray._common.usage.usage_lib as ray_usage_lib
 
-        ray_usage_lib.put_cluster_metadata(
-            self.get_gcs_client(), ray_init_cluster=self.ray_init_cluster
-        )
-        # Make sure GCS is up.
-        added = self.get_gcs_client().internal_kv_put(
-            b"session_name",
-            self._session_name.encode(),
-            False,
-            ray_constants.KV_NAMESPACE_SESSION,
-        )
-        if not added:
-            curr_val = self.get_gcs_client().internal_kv_get(
-                b"session_name", ray_constants.KV_NAMESPACE_SESSION
+        try:
+            ray_usage_lib.put_cluster_metadata(
+                self.get_gcs_client(), ray_init_cluster=self.ray_init_cluster
             )
-            assert curr_val == self._session_name.encode("utf-8"), (
-                f"Session name {self._session_name} does not match "
-                f"persisted value {curr_val}. Perhaps there was an "
-                f"error connecting to Redis."
+            # Make sure GCS is up.
+            added = self.get_gcs_client().internal_kv_put(
+                b"session_name",
+                self._session_name.encode(),
+                False,
+                ray_constants.KV_NAMESPACE_SESSION,
             )
+            if not added:
+                curr_val = self.get_gcs_client().internal_kv_get(
+                    b"session_name", ray_constants.KV_NAMESPACE_SESSION
+                )
+                assert curr_val == self._session_name.encode("utf-8"), (
+                    f"Session name {self._session_name} does not match "
+                    f"persisted value {curr_val}. Perhaps there was an "
+                    f"error connecting to Redis."
+                )
 
-        # Add tracing_startup_hook to redis / internal kv manually
-        # since internal kv is not yet initialized.
-        if self._ray_params.tracing_startup_hook:
-            self.get_gcs_client().internal_kv_put(
-                b"tracing_startup_hook",
-                self._ray_params.tracing_startup_hook.encode(),
-                True,
-                ray_constants.KV_NAMESPACE_TRACING,
-            )
+            # Add tracing_startup_hook to redis / internal kv manually
+            # since internal kv is not yet initialized.
+            if self._ray_params.tracing_startup_hook:
+                self.get_gcs_client().internal_kv_put(
+                    b"tracing_startup_hook",
+                    self._ray_params.tracing_startup_hook.encode(),
+                    True,
+                    ray_constants.KV_NAMESPACE_TRACING,
+                )
+        except ValueError as e:
+            if "passive" in str(e).lower():
+                logger.warning(
+                    "GCS is in passive mode. Skipping writing cluster metadata / session info to KV."
+                )
+            else:
+                raise
 
     def start_head_processes(self):
         """Start head processes on the node."""
