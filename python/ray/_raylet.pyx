@@ -1503,19 +1503,26 @@ cdef create_generator_error_object(
 
 
 cdef execute_dynamic_generator_and_store_task_outputs(
+        CTaskExecutionMetadata &metadata,
         generator,
         const CObjectID &generator_id,
-        CTaskType task_type,
-        const c_string &serialized_retry_exception_allowlist,
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
-        c_bool *is_retryable_error,
-        c_string *application_error,
-        c_bool is_reattempt,
         function_name,
         function_descriptor,
-        title,
-        const CAddress &caller_address,
-        c_bool should_retry_exceptions):
+        title):
+    # Unpack the task-spec-derived values used below from the metadata, and bind
+    # pointers to its output fields. This is only ever called for dynamic
+    # generator tasks, so dynamic_returns points at the metadata's field.
+    cdef:
+        CTaskType task_type = metadata.GetTaskType()
+        c_string serialized_retry_exception_allowlist = \
+            metadata.SerializedRetryExceptionAllowlist()
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns = \
+            &metadata.dynamic_return_objects
+        c_bool *is_retryable_error = &metadata.is_retryable_error
+        c_string *application_error = &metadata.application_error
+        c_bool is_reattempt = metadata.IsReattempt()
+        CAddress caller_address = metadata.CallerAddress()
+        c_bool should_retry_exceptions = metadata.ShouldRetryExceptions()
     worker = ray._private.worker.global_worker
     cdef:
         CoreWorker core_worker = worker.core_worker
@@ -1583,34 +1590,48 @@ cdef execute_dynamic_generator_and_store_task_outputs(
 
 
 cdef void execute_task(
-        const CAddress &caller_address,
-        CTaskType task_type,
-        const c_string name,
-        const CRayFunction &ray_function,
-        const unordered_map[c_string, double] &c_resources,
-        const c_vector[shared_ptr[CRayObject]] &c_args,
-        const c_vector[CObjectReference] &c_arg_refs,
-        const c_string debugger_breakpoint,
-        const c_string serialized_retry_exception_allowlist,
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
-        c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
-        c_bool *is_retryable_error,
-        c_string *actor_repr_name,
-        c_string *application_error,
-        # This parameter is only used for actor creation task to define
-        # the concurrency groups of this actor.
-        const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups,
-        const c_string c_name_of_concurrency_group_to_execute,
-        c_bool is_reattempt,
+        CTaskExecutionMetadata &metadata,
         execution_info,
         title,
-        task_name,
-        c_bool is_streaming_generator,
-        c_bool should_retry_exceptions,
-        int64_t generator_backpressure_num_objects,
-        int64_t num_objects_per_yield,
-        optional[c_string] c_tensor_transport) except *:
+        task_name) except *:
+    # Unpack from the TaskExecutionMetadata the values used below (the metadata
+    # derives them from the task spec) into locals, and bind pointers to its
+    # output fields. execution_info/title/task_name are computed by the caller
+    # and are not part of the metadata.
+    cdef:
+        CAddress caller_address = metadata.CallerAddress()
+        CTaskType task_type = metadata.GetTaskType()
+        c_string name = metadata.TaskName()
+        CRayFunction ray_function = metadata.GetRayFunction()
+        c_vector[shared_ptr[CRayObject]] c_args = metadata.args
+        c_vector[CObjectReference] c_arg_refs = metadata.arg_refs
+        c_string debugger_breakpoint = metadata.DebuggerBreakpoint()
+        c_string serialized_retry_exception_allowlist = \
+            metadata.SerializedRetryExceptionAllowlist()
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns = \
+            &metadata.return_objects
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns
+        c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns = \
+            &metadata.streaming_generator_returns
+        c_bool *is_retryable_error = &metadata.is_retryable_error
+        c_string *actor_repr_name = &metadata.actor_repr_name
+        c_string *application_error = &metadata.application_error
+        c_string c_name_of_concurrency_group_to_execute = \
+            metadata.ConcurrencyGroupToExecute()
+        c_bool is_streaming_generator = metadata.IsStreamingGenerator()
+        c_bool should_retry_exceptions = metadata.ShouldRetryExceptions()
+        int64_t generator_backpressure_num_objects = \
+            metadata.GeneratorBackpressureNumObjects()
+        int64_t num_objects_per_yield = metadata.NumObjectsPerYield()
+        optional[c_string] c_tensor_transport = metadata.TensorTransport()
+
+    # A NULL pointer signals that this is not a dynamic task, matching the
+    # behavior where the C++ side passed nullptr for non-dynamic tasks.
+    if metadata.ReturnsDynamic():
+        dynamic_returns = &metadata.dynamic_return_objects
+    else:
+        dynamic_returns = NULL
+
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
@@ -1904,19 +1925,12 @@ cdef void execute_task(
                     task_exception = True
 
                     execute_dynamic_generator_and_store_task_outputs(
+                            metadata,
                             outputs,
                             returns[0][0].first,
-                            task_type,
-                            serialized_retry_exception_allowlist,
-                            dynamic_returns,
-                            is_retryable_error,
-                            application_error,
-                            is_reattempt,
                             function_name,
                             function_descriptor,
-                            title,
-                            caller_address,
-                            should_retry_exceptions)
+                            title)
 
                     task_exception = False
                     dynamic_refs = collections.deque()
@@ -1954,32 +1968,22 @@ cdef void execute_task(
                         "See https://github.com/ray-project/ray/issues/28689.")
 
 
-cdef execute_task_with_cancellation_handler(
-        const CAddress &caller_address,
-        CTaskType task_type,
-        const c_string name,
-        const CRayFunction &ray_function,
-        const unordered_map[c_string, double] &c_resources,
-        const c_vector[shared_ptr[CRayObject]] &c_args,
-        const c_vector[CObjectReference] &c_arg_refs,
-        const c_string debugger_breakpoint,
-        const c_string serialized_retry_exception_allowlist,
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
-        c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
-        c_bool *is_retryable_error,
-        c_string *actor_repr_name,
-        c_string *application_error,
-        # This parameter is only used for actor creation task to define
-        # the concurrency groups of this actor.
-        const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups,
-        const c_string c_name_of_concurrency_group_to_execute,
-        c_bool is_reattempt,
-        c_bool is_streaming_generator,
-        c_bool should_retry_exceptions,
-        int64_t generator_backpressure_num_objects,
-        int64_t num_objects_per_yield,
-        optional[c_string] c_tensor_transport):
+cdef execute_task_with_cancellation_handler(CTaskExecutionMetadata &metadata):
+    # The executor is given only the TaskExecutionMetadata. Unpack the values used
+    # directly below into locals (the metadata derives them from the task spec) and
+    # bind a pointer to the is_retryable_error output field. The remaining inputs
+    # are read from the metadata inside execute_task, which is passed the metadata.
+    cdef:
+        CAddress caller_address = metadata.CallerAddress()
+        CTaskType task_type = metadata.GetTaskType()
+        c_string name = metadata.TaskName()
+        CRayFunction ray_function = metadata.GetRayFunction()
+        # Only populated (and used) for actor creation tasks.
+        c_vector[CConcurrencyGroup] c_defined_concurrency_groups = \
+            metadata.DefinedConcurrencyGroups()
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns = \
+            &metadata.return_objects
+        c_bool *is_retryable_error = &metadata.is_retryable_error
 
     is_retryable_error[0] = False
 
@@ -2051,29 +2055,7 @@ cdef execute_task_with_cancellation_handler(
         with current_task_id_lock:
             current_task_id = task_id
 
-        execute_task(caller_address,
-                     task_type,
-                     name,
-                     ray_function,
-                     c_resources,
-                     c_args,
-                     c_arg_refs,
-                     debugger_breakpoint,
-                     serialized_retry_exception_allowlist,
-                     returns,
-                     dynamic_returns,
-                     streaming_generator_returns,
-                     is_retryable_error,
-                     actor_repr_name,
-                     application_error,
-                     c_defined_concurrency_groups,
-                     c_name_of_concurrency_group_to_execute,
-                     is_reattempt, execution_info, title, task_name,
-                     is_streaming_generator,
-                     should_retry_exceptions,
-                     generator_backpressure_num_objects,
-                     num_objects_per_yield,
-                     c_tensor_transport)
+        execute_task(metadata, execution_info, title, task_name)
 
         # Check for cancellation.
         PyErr_CheckSignals()
@@ -2169,50 +2151,19 @@ cdef function[void()] initialize_pygilstate_for_thread() nogil:
     return callback
 
 cdef CRayStatus task_execution_handler(CTaskExecutionMetadata &metadata) nogil:
-    cdef:
-        CRayFunction ray_function
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns
     with gil, disable_client_hook():
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
         maybe_initialize_job_config()
 
-        # The executor is given only the TaskExecutionMetadata; unpack the values it
-        # needs from the metadata (which derives them from the task spec) here.
-        ray_function = metadata.GetRayFunction()
-        # A NULL pointer signals that this is not a dynamic task, matching the previous
-        # behavior where the C++ side passed nullptr for non-dynamic tasks.
-        if metadata.ReturnsDynamic():
-            dynamic_returns = &metadata.dynamic_return_objects
-        else:
-            dynamic_returns = NULL
-
         try:
             try:
                 # Exceptions, including task cancellation, should be handled
                 # internal to this call. If it does raise an exception, that
-                # indicates that there was an internal error.
-                execute_task_with_cancellation_handler(
-                        metadata.CallerAddress(),
-                        metadata.GetTaskType(), metadata.TaskName(),
-                        ray_function, metadata.RequiredResources(),
-                        metadata.args, metadata.arg_refs,
-                        metadata.DebuggerBreakpoint(),
-                        metadata.SerializedRetryExceptionAllowlist(),
-                        &metadata.return_objects,
-                        dynamic_returns,
-                        &metadata.streaming_generator_returns,
-                        &metadata.is_retryable_error,
-                        &metadata.actor_repr_name,
-                        &metadata.application_error,
-                        metadata.DefinedConcurrencyGroups(),
-                        metadata.ConcurrencyGroupToExecute(),
-                        metadata.IsReattempt(),
-                        metadata.IsStreamingGenerator(),
-                        metadata.ShouldRetryExceptions(),
-                        metadata.GeneratorBackpressureNumObjects(),
-                        metadata.NumObjectsPerYield(),
-                        metadata.TensorTransport())
+                # indicates that there was an internal error. The executor reads
+                # all of its inputs from (and writes its outputs back into) the
+                # TaskExecutionMetadata.
+                execute_task_with_cancellation_handler(metadata)
             except Exception as e:
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorError) and \
