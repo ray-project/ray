@@ -712,6 +712,37 @@ def test_split_ranges_noop_when_target_not_greater():
     assert LeRobotDatasource._split_ranges(ranges, 1) == ranges
 
 
+@pytest.mark.parametrize(
+    "video_keys, file_cols",
+    [
+        ([], {"data/chunk_index": [0, 0, 0], "data/file_index": [0, 1, 0]}),
+        (
+            ["cam"],
+            {
+                "videos/cam/chunk_index": [0, 0, 0],
+                "videos/cam/file_index": [0, 1, 0],
+            },
+        ),
+    ],
+)
+def test_slices_by_file_group_non_contiguous_raises(video_keys, file_cols):
+    """Episodes that share a file group but are not contiguous in the global
+    index are a non-standard layout: file-group slicing must raise (and point to
+    group_by_episode) rather than emit a wrong range. Here ep0 and ep2 share a
+    file but ep1 sits between them."""
+    from ray.data.datasource import LeRobotDatasource
+
+    eps = pa.table(
+        {
+            "_global_from_index": [0, 10, 20],
+            "_global_to_index": [10, 20, 30],
+            **file_cols,
+        }
+    )
+    with pytest.raises(ValueError, match="Non-contiguous episodes share"):
+        LeRobotDatasource._slices_by_file_group(eps, video_keys)
+
+
 def test_read_lerobot_batches_sized_per_root(ray_start_regular_shared, tmp_path):
     """Batches must be sized from each segment's OWN root, not one global value.
 
@@ -909,6 +940,36 @@ def test_resolve_filesystem_video_credentials(uri, fs_factory, expect_key):
         assert video_opts.get("key") == expect_key
     else:
         assert "key" not in video_opts
+
+
+def test_resolve_filesystem_anonymous_uri_strips_and_sets_anon():
+    """``s3://anonymous@bucket/...`` drops the ``anonymous@`` marker for the
+    by-URI video path and threads ``anon=True`` into the video options."""
+    import pyarrow.fs as pafs
+
+    from ray.data._internal.datasource.lerobot_datasource import _resolve_filesystem
+
+    # An explicit filesystem avoids the network-backed default resolver; the
+    # anonymous@ rewrite happens before the filesystem branch either way.
+    _, _, video_uri, video_opts = _resolve_filesystem(
+        "s3://anonymous@my-bucket/path", filesystem=pafs.LocalFileSystem()
+    )
+    assert video_uri == "s3://my-bucket/path"
+    assert video_opts.get("anon") is True
+
+
+def test_resolve_filesystem_storage_options_only(tmp_path):
+    """With ``storage_options`` but no ``filesystem``, resolution goes through
+    fsspec so the same options cover metadata, parquet, and video."""
+    import fsspec
+
+    from ray.data._internal.datasource.lerobot_datasource import _resolve_filesystem
+
+    fs, fs_root, _, _ = _resolve_filesystem(
+        str(tmp_path), storage_options={"auto_mkdir": True}
+    )
+    assert isinstance(fs, fsspec.AbstractFileSystem)
+    assert os.path.realpath(fs_root) == os.path.realpath(str(tmp_path))
 
 
 def test_lerobot_compat_creds_cache_closes_handles(tmp_path):
