@@ -84,7 +84,7 @@ Ray logs something similar to the following example if it detects this scenario.
 
 When you see a kernel OOM or this log message with resource isolation enabled, try increasing the memory reserved for system processes
 by setting a higher value than the reported system slice memory usage for the ``--system-reserved-memory`` flag when starting Ray. 
-We recommend reserving a value that has at least a GiB of buffer space above the reported system slice memory usage for buffer space.
+Try to allocate at least a GiB (depending on host size) of buffer space between the reported/expected system slice memory usage and the system reserved memory.
 
 .. note::
 

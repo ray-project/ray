@@ -206,9 +206,9 @@ System slice memory usage 10869600256 bytes has exceeded the reserved system mem
 ```
 
 In this case, allocate more memory by passing in a custom byte value to the ray start 
-flag `--system-reserved-memory`, using the memory usage logged by Ray as a reference.
-We recommend reserving a value that has at least a GiB of buffer space above the reported
-system slice memory usage for buffer space.
+flag `--system-reserved-memory`. Try to allocate at least a GiB (depending on host size)
+of buffer space between the reported/expected system slice memory uage and the reserved 
+system memory.
 
 The default is usually fine unless you're on tiny nodes, like an m5.xlarge.
 
