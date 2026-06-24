@@ -1201,6 +1201,23 @@ cdef class StreamingGeneratorExecutionContext:
             self.actor_backpressure_metadata = (
                 make_shared[CActorTaskBackpressureMetadata](actor_waiter))
 
+        # Pre-register the backpressure entry up-front so HandleOwnerDied can
+        # find tasks blocked in ReserveActorWideSlot before they have sent
+        # their first ReportGeneratorItemReturns (which is the other site that
+        # writes this entry). Without this, a multi-stream actor whose budget
+        # is held by other tasks can leave the dying-owner's task parked in
+        # reserve indefinitely, pinning a concurrency slot.
+        if (
+            generator_backpressure_num_objects > 0
+            or self.actor_backpressure_metadata.get() != NULL
+        ):
+            CCoreWorkerProcess.GetCoreWorker().RegisterGeneratorBackpressureState(
+                generator_id,
+                self.waiter,
+                self.actor_backpressure_metadata,
+                caller_address,
+            )
+
         return self
 
 

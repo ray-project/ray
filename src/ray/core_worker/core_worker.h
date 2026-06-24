@@ -805,6 +805,19 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   void MarkGeneratorBackpressureTaskFinished(const ObjectID &generator_id);
   bool TeardownGeneratorBackpressureTask(const ObjectID &generator_id);
 
+  /// Register a generator-backpressure entry up-front so that owner-failure
+  /// sweeps (``HandleOwnerDied``) can find tasks that are still blocked in
+  /// ``ReserveActorWideSlot`` before they have a chance to send their first
+  /// ``ReportGeneratorItemReturns`` (which is where the state is otherwise
+  /// inserted). Inserts only if no entry exists for ``generator_id``; existing
+  /// entries are left untouched so an in-progress report path does not race
+  /// with this call. Safe to invoke from any thread.
+  void RegisterGeneratorBackpressureState(
+      const ObjectID &generator_id,
+      std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter,
+      std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata,
+      const rpc::Address &owner_address);
+
   /// Tear down any generator_backpressure_states_ entries owned by ``dead_owner``
   /// so the actor-wide BP budget gets reclaimed when an owner worker dies without
   /// running TryDelObjectRefStream (the path that normally sends the teardown

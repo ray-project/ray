@@ -339,6 +339,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CObjectID &generator_id)
         c_bool TeardownGeneratorBackpressureTask(
             const CObjectID &generator_id)
+        void RegisterGeneratorBackpressureState(
+            const CObjectID &generator_id,
+            shared_ptr[CTaskGeneratorBackpressureWaiter] waiter,
+            shared_ptr[CActorTaskBackpressureMetadata] actor_metadata,
+            const CAddress &owner_address)
         shared_ptr[CActorWideGeneratorBackpressureWaiter] GetActorGeneratorWaiter() const
 
         # Param output contains the usage string if successful.

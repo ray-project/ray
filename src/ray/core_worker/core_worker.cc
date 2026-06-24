@@ -3275,6 +3275,24 @@ Status CoreWorker::ReportGeneratorItemReturns(
   return waiter->WaitUntilObjectConsumed();
 }
 
+void CoreWorker::RegisterGeneratorBackpressureState(
+    const ObjectID &generator_id,
+    std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter,
+    std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata,
+    const rpc::Address &owner_address) {
+  absl::MutexLock lock(&mutex_);
+  // Only insert if not present. The report path also writes this entry (with
+  // the same values); leaving an existing entry untouched avoids racing with
+  // any in-progress mutation there.
+  auto [it, inserted] = generator_backpressure_states_.try_emplace(generator_id);
+  if (!inserted) {
+    return;
+  }
+  it->second.waiter = std::move(waiter);
+  it->second.actor_metadata = std::move(actor_metadata);
+  it->second.owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
+}
+
 void CoreWorker::MarkGeneratorBackpressureTaskFinished(const ObjectID &generator_id) {
   std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter;
   bool keep_until_consumed = false;
@@ -3354,7 +3372,12 @@ void CoreWorker::HandleReportGeneratorItemReturns(
             [generator_id](const Status &update_status,
                            const rpc::UpdateGeneratorBackpressureConsumedReply &) {
               if (!update_status.ok()) {
-                RAY_LOG(DEBUG).WithField(generator_id)
+                // The retryable RPC layer retries transient failures; a
+                // permanent failure usually means the executor is gone, in
+                // which case no one is blocked on the corresponding
+                // WaitUntilObjectConsumed. Still WARN so unexpected
+                // executor-side stalls (if any) are visible.
+                RAY_LOG(WARNING).WithField(generator_id)
                     << "Failed to update generator consumed progress: " << update_status;
               }
             });
