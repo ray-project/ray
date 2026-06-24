@@ -31,8 +31,9 @@ class TestScaleDownReplicaSelection:
         replica_tag_set = set()
 
         def check_new_replica():
-            # Concurrent load so the autoscaler holds at the target; serial
-            # polling lets ongoing hit 0 between calls and downscale mid-scaleup.
+            # Send several requests per check so load stays high and the
+            # deployment holds at the target instead of scaling back down
+            # before it gets there.
             refs = [handle.get_info.remote() for _ in range(expected_num_replicas * 2)]
             replica_tag_set.update(r.result()["replica_tag"] for r in refs)
             return len(replica_tag_set) >= expected_num_replicas
