@@ -614,28 +614,22 @@ def test_estimate_memory(
     lerobot_dataset_no_video,
     lerobot_dataset_image,
 ):
-    """The memory estimates model a real read, for every dataset shape (video /
-    no-camera / image).
-
-    For each: a decoded row holds exactly the dataset's features (cameras decoded
-    in place) plus task/dataset_index/stats; task and stats are dictionary-encoded
-    (so each costs ~one int32 index per row); ``_estimated_row_size_bytes`` is a
-    lower bound on -- and within ~2x of -- the real per-row ``nbytes``; and
-    ``estimate_inmemory_data_size`` aggregates it as total_frames * per-row size.
-    """
     from ray.data._internal.datasource.lerobot_datasource import (
         LeRobotDatasource,
         _estimated_row_size_bytes,
     )
 
     for path in (lerobot_dataset, lerobot_dataset_no_video, lerobot_dataset_image):
-        print("Testing dataset:", path)
         source = LeRobotDatasource(path)
         root = source._roots[0]
         estimate = _estimated_row_size_bytes(source.metas[0].features)
-        block = pa.concat_tables(
-            [b for task in source.get_read_tasks(1) for b in task()]
-        )
+        tasks = source.get_read_tasks(1)
+        block = pa.concat_tables([b for task in tasks for b in task()])
+
+        # The schema _build_schema declares up front is exactly what _build_batch
+        # emits -- so ds.schema() is exact (not just plausible) and the declared
+        # and produced schemas can't silently drift apart.
+        assert tasks[0].schema.equals(block.schema)
 
         # A row is exactly the dataset's feature columns (cameras decoded in
         # place) plus the three appended columns -- nothing more, nothing less.
