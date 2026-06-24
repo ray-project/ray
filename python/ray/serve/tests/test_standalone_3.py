@@ -13,7 +13,11 @@ from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.test_utils import SharedCounter
 from ray.serve._private.utils import get_head_node_id
@@ -23,11 +27,21 @@ from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
 
 
-# Some tests are not possible to run if proxy is not available on every node.
-# We skip them if proxy is not available.
-def is_proxy_on_every_node() -> bool:
-    client = _get_global_client()
-    return client._http_config.location == "EveryNode"
+def _expected_proxy_classes():
+    """Proxy actor class names expected ALIVE while a Serve app is running.
+
+    Under HAProxy the per-node HAProxyManager joins the head-node fallback ProxyActor.
+    """
+    if RAY_SERVE_ENABLE_HA_PROXY:
+        return {"ProxyActor", "HAProxyManager"}
+    return {"ProxyActor"}
+
+
+def _alive_actor_classes() -> set:
+    """Class names of all ALIVE actors in the current Ray session."""
+    return {
+        actor["class_name"] for actor in list_actors(filters=[("STATE", "=", "ALIVE")])
+    }
 
 
 @pytest.fixture
@@ -283,18 +297,22 @@ def test_autoscaler_shutdown_node_http_everynode(
 
     serve.run(A.bind(), name="app_f")
 
-    # If proxy is on every node, total actors are 2 proxies, 1 controller, 2 replicas.
-    # Otherwise, total actors are 1 proxy, 1 controller, 2 replicas.
-    expected_actors = 5 if is_proxy_on_every_node() else 4
-    wait_for_condition(lambda: len(list_actors()) == expected_actors)
-    assert len(ray.nodes()) == 2
+    # The second replica needs more CPU than the head node has free, so the autoscaler
+    # brings up the worker node (and its EveryNode proxy) to schedule it.
+    wait_for_condition(lambda: len(ray.nodes()) == 2)
+    wait_for_condition(
+        lambda: _alive_actor_classes()
+        == {"ServeController", *_expected_proxy_classes(), "ServeReplica:app_f:A"}
+    )
 
     # Stop all deployment replicas.
     serve.delete("app_f")
 
-    # The http proxy on worker node should exit as well.
+    # The worker node and its proxy exit, leaving the controller and the head-node
+    # proxy actor(s).
     wait_for_condition(
-        lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 2,
+        lambda: _alive_actor_classes()
+        == {"ServeController", *_expected_proxy_classes()},
     )
 
     client = _get_global_client()
@@ -360,10 +378,14 @@ def test_controller_shutdown_gracefully(
     model = HelloModel.bind()
     serve.run(target=model)
 
-    # If proxy is on every node, total actors are 2 proxies, 1 controller, and 2 replicas
-    # Otherwise, total actors are 1 proxy, 1 controller, and 2 replicas
-    expected_actors = 5 if is_proxy_on_every_node() else 4
-    wait_for_condition(lambda: len(list_actors()) == expected_actors)
+    wait_for_condition(
+        lambda: _alive_actor_classes()
+        == {
+            "ServeController",
+            *_expected_proxy_classes(),
+            f"ServeReplica:{SERVE_DEFAULT_APP_NAME}:HelloModel",
+        }
+    )
     assert len(ray.nodes()) == 2
 
     # Call `graceful_shutdown()` on the controller, so it will start shutdown.
@@ -421,11 +443,14 @@ def test_client_shutdown_gracefully_when_timeout(
     model = HelloModel.bind()
     serve.run(target=model)
 
-    # Check expected actors based on mode
-    # If proxy is on every node, total actors are 2 proxies, 1 controller, and 2 replicas
-    # Otherwise, total actors are 1 proxy, 1 controller, and 2 replicas
-    expected_actors = 5 if is_proxy_on_every_node() else 4
-    wait_for_condition(lambda: len(list_actors()) == expected_actors)
+    wait_for_condition(
+        lambda: _alive_actor_classes()
+        == {
+            "ServeController",
+            *_expected_proxy_classes(),
+            f"ServeReplica:{SERVE_DEFAULT_APP_NAME}:HelloModel",
+        }
+    )
     assert len(ray.nodes()) == 2
 
     # Ensure client times out if the controller does not shutdown within timeout.
