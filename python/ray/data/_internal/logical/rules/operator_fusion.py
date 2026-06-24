@@ -23,6 +23,9 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
+    ShuffleReduceOp,
+)
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
@@ -68,6 +71,11 @@ class FuseOperators(Rule):
         # we fuse together MapOperator -> AllToAllOperator pairs.
         fused_dag = self._fuse_all_to_all_operators_in_dag(fused_dag)
 
+        # Fuse a downstream task-pool map into the V2 hash-shuffle reduce phase.
+        # Runs after map fusion so a downstream map chain is already collapsed
+        # into one TaskPoolMapOperator.
+        fused_dag = self._fuse_map_into_shuffle_reduce_in_dag(fused_dag)
+
         # Update output dependencies after fusion.
         # TODO(hchen): Instead of updating the depdencies manually,
         # we need a better abstraction for manipulating the DAG.
@@ -86,6 +94,31 @@ class FuseOperators(Rule):
         for input in op.input_dependencies:
             input._output_dependencies.append(op)
             self._update_output_deps(input)
+
+    def _fuse_map_into_shuffle_reduce_in_dag(
+        self, dag: PhysicalOperator
+    ) -> PhysicalOperator:
+        """Starting at the given operator, traverses up the DAG and fuses a
+        task-pool map sitting directly downstream of a V2 hash-shuffle reduce
+        into the reduce (a ``ShuffleReduceOp -> TaskPoolMapOperator`` pair).
+
+        Returns the current (root) operator after completing upstream fusions.
+        """
+        upstream_ops = dag.input_dependencies
+        if (
+            isinstance(dag, TaskPoolMapOperator)
+            and dag.supports_fusion()
+            and len(upstream_ops) == 1
+            and isinstance(upstream_ops[0], ShuffleReduceOp)
+            and upstream_ops[0]._fused_output_map_transformer is None
+        ):
+            dag = self._get_fused_map_into_shuffle_reduce_operator(dag, upstream_ops[0])
+
+        dag._input_dependencies = [
+            self._fuse_map_into_shuffle_reduce_in_dag(upstream_op)
+            for upstream_op in dag.input_dependencies
+        ]
+        return dag
 
     def _fuse_streaming_repartition_operators_in_dag(
         self, dag: PhysicalOperator
@@ -307,6 +340,35 @@ class FuseOperators(Rule):
 
         # Otherwise, ops are compatible for fusion.
         return True
+
+    def _get_fused_map_into_shuffle_reduce_operator(
+        self, down_op: TaskPoolMapOperator, up_op: ShuffleReduceOp
+    ) -> ShuffleReduceOp:
+        name = up_op.name + "->" + down_op.name
+
+        up_logical_op = self._op_map.pop(up_op)
+        self._op_map.pop(down_op)
+
+        fused_op = ShuffleReduceOp(
+            up_op.input_dependencies[0],
+            up_op.data_context,
+            num_partitions=up_op._num_partitions,
+            reduce_fn=up_op._reduce_fn,
+            streaming_reduce=up_op._streaming_reduce,
+            disallow_block_splitting=up_op._disallow_block_splitting,
+            reduce_cpus=up_op._shuffle_reduce_task_num_cpus,
+            name=name,
+            fused_output_map_transformer=down_op.get_map_transformer(),
+            fused_output_map_task_kwargs=down_op.get_map_task_kwargs(),
+            fused_output_map_target_max_block_size_override=(
+                down_op.target_max_block_size_override
+            ),
+        )
+        fused_op.set_logical_operators(
+            *up_op._logical_operators, *down_op._logical_operators
+        )
+        self._op_map[fused_op] = up_logical_op
+        return fused_op
 
     def _get_fused_streaming_repartition_operator(
         self, down_op: PhysicalOperator, up_op: PhysicalOperator
