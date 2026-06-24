@@ -117,8 +117,9 @@ class HAProxyMetricsCollector:
                 "'unparseable_replica_id' (router 200 but response body "
                 "did not contain a string replica_id), "
                 "'unknown_replica_id' (router returned a replica_id not "
-                "present in the current replica map). Each failure causes "
-                "HAProxy to return 503 to the client."
+                "present in the current replica map). All reasons return 503 "
+                "to the client except 'unknown_replica_id', which routes to the "
+                "fallback proxy when one is available (otherwise 503)."
             ),
             tag_keys=("application", "reason"),
         )
