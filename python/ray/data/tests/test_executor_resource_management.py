@@ -709,6 +709,45 @@ def test_execution_resources_to_resource_dict():
     }
 
 
+def test_execution_resources_combine_sum_empty_reuses_zero():
+    # An empty fold returns the shared zero singleton instead of allocating.
+    assert ExecutionResources.combine_sum([]) is ExecutionResources.zero()
+    # Works for a one-shot generator (can't be len()'d or re-iterated).
+    assert ExecutionResources.combine_sum(iter([])) is ExecutionResources.zero()
+
+
+def test_execution_resources_combine_sum():
+    rs = [
+        ExecutionResources(cpu=1, gpu=2, object_store_memory=3, memory=4),
+        ExecutionResources(cpu=10, gpu=20, object_store_memory=30, memory=40),
+    ]
+    expected = ExecutionResources(cpu=11, gpu=22, object_store_memory=33, memory=44)
+    assert ExecutionResources.combine_sum(rs) == expected
+    # Same result from a one-shot generator.
+    assert ExecutionResources.combine_sum(r for r in rs) == expected
+
+
+def test_execution_resources_combine():
+    import operator
+
+    rs = [
+        ExecutionResources(cpu=1, gpu=5, object_store_memory=3, memory=40),
+        ExecutionResources(cpu=10, gpu=2, object_store_memory=30, memory=4),
+    ]
+    # Per-dimension fold with an arbitrary float op.
+    assert ExecutionResources.combine(rs, operator.add) == ExecutionResources(
+        11, 7, 33, 44
+    )
+    assert ExecutionResources.combine(rs, max) == ExecutionResources(10, 5, 30, 40)
+    assert ExecutionResources.combine(rs, min) == ExecutionResources(1, 2, 3, 4)
+    # Single-pass over a one-shot generator.
+    assert ExecutionResources.combine((r for r in rs), max) == ExecutionResources(
+        10, 5, 30, 40
+    )
+    # Empty -> None (no identity to seed a general fn with).
+    assert ExecutionResources.combine([], operator.add) is None
+
+
 if __name__ == "__main__":
     import sys
 
