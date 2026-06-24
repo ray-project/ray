@@ -187,69 +187,50 @@ def test_block_exec_stats_max_uss_bytes_without_polling(ray_start_regular_shared
 
 
 def test_map_transformer_custom_op_stats():
-    """A transform sets per-task custom stats on the MapTransformer"""
+    """A reporting transform reports per-task custom stats via the sink."""
     import pyarrow as pa
 
     from ray.data._internal.execution.operators.map_transformer import (
         BlockMapTransformFn,
+        OpStatsSink,
         MapTransformer,
     )
 
     expected = _ReadTaskStats(num_rows=4, num_columns=1)
 
-    def set_stats(blocks, ctx):
-        # A producing transform sets stats on its owning transformer;
-        # `transformer` is bound below and the transform runs only when iterated.
-        transformer.set_custom_op_stats(expected)
+    def set_stats(blocks, ctx, op_stats_sink):
+        # A producing transform reports through the per-task reporter sink it's
+        # handed (opted in via reports_custom_op_stats=True).
+        op_stats_sink(expected)
         yield from blocks
 
     transformer = MapTransformer(
-        [BlockMapTransformFn(set_stats, disable_block_shaping=True)]
+        [
+            BlockMapTransformFn(
+                set_stats, disable_block_shaping=True, reports_custom_op_stats=True
+            )
+        ]
     )
 
-    # Nothing set until a task runs.
-    assert transformer.get_custom_op_stats() is None
+    reporter = OpStatsSink()
+    # Nothing reported until a task runs.
+    assert reporter.stats is None
 
     ctx = TaskContext(task_idx=0, op_name="test")
-    list(transformer.apply_transform([pa.table({"id": list(range(4))})], ctx))
-    assert transformer.get_custom_op_stats() == expected
-
-    # Clearing before the next task on a reused transformer.
-    transformer.set_custom_op_stats(None)
-    assert transformer.get_custom_op_stats() is None
+    list(transformer.apply_transform([pa.table({"id": list(range(4))})], ctx, reporter))
+    assert reporter.stats == expected
 
 
-def test_map_task_carries_custom_op_stats_to_block_metadata(ray_start_regular_shared):
-    """End-to-end wiring: a transform's set_custom_op_stats(...) reaches the
-    per-block TaskExecWorkerStats that ``_map_task`` emits back to the driver.
+def _drive_map_task_metadata(transformer, ctx, block):
+    """Run ``_map_task`` to completion and return the per-block metadata.
 
-    Guards the ``_map_task`` -> ``TaskExecWorkerStats.custom_op_stats`` plumbing
-    so a future edit there can't silently drop the field.
+    ``_map_task`` yields each block, then (after a ``send``) the pickled
+    ``BlockMetadataWithSchema`` for that block.
     """
     import pickle
 
-    import pyarrow as pa
-
     from ray.data._internal.execution.operators.map_operator import _map_task
-    from ray.data._internal.execution.operators.map_transformer import (
-        BlockMapTransformFn,
-        MapTransformer,
-    )
 
-    expected = _ReadTaskStats(num_rows=2, num_columns=1)
-
-    def set_stats(blocks, ctx):
-        transformer.set_custom_op_stats(expected)
-        yield from blocks
-
-    transformer = MapTransformer(
-        [BlockMapTransformFn(set_stats, disable_block_shaping=True)]
-    )
-    ctx = TaskContext(task_idx=0, op_name="test")
-    block = pa.table({"id": [0, 1]})
-
-    # _map_task yields each block, then (after a send) the pickled
-    # BlockMetadataWithSchema for that block. Drive it and collect the metadata.
     gen = _map_task(transformer, DataContext.get_current(), ctx, block)
     metas = []
     try:
@@ -259,6 +240,87 @@ def test_map_task_carries_custom_op_stats_to_block_metadata(ray_start_regular_sh
             next(gen)  # next block; StopIteration when exhausted
     except StopIteration:
         pass
+    return metas
+
+
+def test_map_task_carries_custom_op_stats_to_block_metadata(ray_start_regular_shared):
+    """End-to-end wiring: a reporting transform's stats reach the per-block
+    TaskExecWorkerStats that ``_map_task`` emits back to the driver.
+
+    Guards the ``_map_task`` -> ``TaskExecWorkerStats.custom_op_stats`` plumbing
+    so a future edit there can't silently drop the field.
+    """
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.map_transformer import (
+        BlockMapTransformFn,
+        MapTransformer,
+    )
+
+    expected = _ReadTaskStats(num_rows=2, num_columns=1)
+
+    def set_stats(blocks, ctx, op_stats_sink):
+        op_stats_sink(expected)
+        yield from blocks
+
+    transformer = MapTransformer(
+        [
+            BlockMapTransformFn(
+                set_stats, disable_block_shaping=True, reports_custom_op_stats=True
+            )
+        ]
+    )
+    ctx = TaskContext(task_idx=0, op_name="test")
+    metas = _drive_map_task_metadata(transformer, ctx, pa.table({"id": [0, 1]}))
+
+    carried = [
+        m.metadata.task_exec_stats.custom_op_stats
+        for m in metas
+        if m.metadata.task_exec_stats is not None
+    ]
+    assert expected in carried, carried
+
+
+def test_custom_op_stats_survives_operator_fusion(ray_start_regular_shared):
+    """A reporting transform's stats survive operator fusion.
+
+    Because ``_map_task`` owns the reporter (rather than the transformer), a
+    reporting upstream transform fused with a downstream transform still carries
+    its stats back: both run under the fused operator's single reporter. This is
+    a regression guard — when stats lived on the transformer, fusion built a new
+    transformer and the closure-captured original was orphaned, silently
+    dropping the stats.
+    """
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.map_transformer import (
+        BlockMapTransformFn,
+        MapTransformer,
+    )
+
+    expected = _ReadTaskStats(num_rows=2, num_columns=1)
+
+    def report_stats(blocks, ctx, op_stats_sink):
+        op_stats_sink(expected)
+        yield from blocks
+
+    def passthrough(blocks, ctx):
+        yield from blocks
+
+    upstream = MapTransformer(
+        [
+            BlockMapTransformFn(
+                report_stats, disable_block_shaping=True, reports_custom_op_stats=True
+            )
+        ]
+    )
+    downstream = MapTransformer(
+        [BlockMapTransformFn(passthrough, disable_block_shaping=True)]
+    )
+    fused = upstream.fuse(downstream)
+
+    ctx = TaskContext(task_idx=0, op_name="test")
+    metas = _drive_map_task_metadata(fused, ctx, pa.table({"id": [0, 1]}))
 
     carried = [
         m.metadata.task_exec_stats.custom_op_stats

@@ -69,6 +69,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
+    OpStatsSink,
     MapTransformer,
 )
 from ray.data._internal.execution.util import memory_string, merge_label_selector
@@ -817,17 +818,22 @@ def _map_task(
         # the same schema)
         yielded_schema: bool = False
 
+        # Defines a sink where a transform can report its ``CustomOpStats``
+        # which are recorded during the task execution on the worker.
+        # This is owned by _map_task so it belongs to actual, possibly-fused, running task
+        # rather than a transformer instance reused across tasks.
+        op_stats_sink = OpStatsSink()
+
         def transform_iter_factory():
-            # Clear any per-task custom stats before each attempt (the
-            # transformer instance is reused across a worker's tasks, and across
-            # retries of this one), so a prior task/attempt's stats can't leak
-            # into this one. A producing transform repopulates it before the
-            # first block is yielded.
-            map_transformer.set_custom_op_stats(None)
+            # Clear any per-task custom stats before each attempt (the reporter
+            # is reused across retries of this task), so a prior attempt's stats
+            # can't leak into this one. A producing transform repopulates it
+            # before the first block is yielded.
+            op_stats_sink.clear()
             blocks_iter = (
                 _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
             )
-            return map_transformer.apply_transform(blocks_iter, ctx)
+            return map_transformer.apply_transform(blocks_iter, ctx, op_stats_sink)
 
         if retry_on:
             block_iter = iterate_with_retry(
@@ -873,7 +879,7 @@ def _map_task(
                             max_uss_bytes=profiler.estimate_max_uss(),
                             # Set by a producing transform on the
                             # MapTransformer; None if the op reports nothing.
-                            custom_op_stats=map_transformer.get_custom_op_stats(),
+                            custom_op_stats=op_stats_sink.stats,
                         ),
                     ),
                     schema=block_schema if not yielded_schema else None,
