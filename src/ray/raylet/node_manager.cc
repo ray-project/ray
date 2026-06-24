@@ -64,6 +64,7 @@
 #include "ray/util/process.h"
 #include "ray/util/process_utils.h"
 #include "ray/util/string_utils.h"
+#include "ray/util/thread_utils.h"
 
 namespace ray::raylet {
 
@@ -245,7 +246,19 @@ NodeManager::NodeManager(
       ray_syncer_(io_service_, periodical_runner, self_node_id_.Binary(), 1, 0),
       worker_killing_policy_(WorkerKillingPolicyFactory::Create(
           config.enable_resource_isolation, *cgroup_manager)),
-      memory_monitors_(MemoryMonitorFactory::Create(*periodical_runner,
+      memory_monitor_io_service_(/*emit_metrics=*/false,
+                                 /*running_on_single_thread=*/true,
+                                 "MemoryMonitor.IOContext"),
+      memory_monitor_work_guard_(
+          std::make_unique<
+              boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
+              boost::asio::make_work_guard(memory_monitor_io_service_.get_executor()))),
+      memory_monitor_thread_([this] {
+        SetThreadName("MemoryMonitor.IOContextThread");
+        memory_monitor_io_service_.run();
+      }),
+      memory_monitor_runner_(PeriodicalRunner::Create(memory_monitor_io_service_)),
+      memory_monitors_(MemoryMonitorFactory::Create(*memory_monitor_runner_,
                                                     CreateKillWorkersCallback(),
                                                     config.enable_resource_isolation,
                                                     *cgroup_manager)),
@@ -304,6 +317,20 @@ NodeManager::NodeManager(
   periodical_runner_->RunFnPeriodically([this]() { GCWorkerFailureReason(); },
                                         RayConfig::instance().task_failure_entry_ttl_ms(),
                                         "NodeManager.GCTaskFailureReason");
+}
+
+NodeManager::~NodeManager() {
+  // Tear down the memory monitors (and their periodic callbacks) before stopping the
+  // dedicated io_service that the runner is backed by, then join its thread. Done
+  // explicitly here because a joinable std::thread would otherwise terminate the
+  // process on destruction.
+  memory_monitors_.clear();
+  memory_monitor_runner_.reset();
+  memory_monitor_work_guard_.reset();
+  memory_monitor_io_service_.stop();
+  if (memory_monitor_thread_.joinable()) {
+    memory_monitor_thread_.join();
+  }
 }
 
 void NodeManager::Start(rpc::GcsNodeInfo &&self_node_info) {

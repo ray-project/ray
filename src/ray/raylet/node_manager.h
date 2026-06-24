@@ -20,11 +20,13 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <thread>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
@@ -184,6 +186,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       ray::observability::MetricInterface
           &node_manager_unexpected_worker_failure_total_count,
       ClockInterface &clock);
+
+  ~NodeManager();
 
   void Start(rpc::GcsNodeInfo &&self_node_info);
 
@@ -1009,6 +1013,23 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// True while a kill-workers operation is inflight; prevents concurrent kills.
   bool worker_killing_in_progress_ ABSL_GUARDED_BY(worker_killing_in_progress_mutex_) =
       false;
+
+  /// Dedicated single-threaded io_service for the memory monitors so that periodic
+  /// memory checks run off the raylet's main io_service thread. Declared before
+  /// memory_monitor_runner_ and memory_monitors_ so it outlives them.
+  instrumented_io_context memory_monitor_io_service_;
+
+  /// Keeps memory_monitor_io_service_ from exiting when it has no pending work.
+  std::unique_ptr<
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>
+      memory_monitor_work_guard_;
+
+  /// Thread running memory_monitor_io_service_. Joined in the destructor.
+  std::thread memory_monitor_thread_;
+
+  /// Periodical runner backed by memory_monitor_io_service_, injected into the memory
+  /// monitors so they schedule their periodic checks on the dedicated thread.
+  std::shared_ptr<PeriodicalRunner> memory_monitor_runner_;
 
   /// Monitors node memory usage and triggers kill callbacks when pressure is detected.
   std::vector<std::unique_ptr<MemoryMonitorInterface>> memory_monitors_;
