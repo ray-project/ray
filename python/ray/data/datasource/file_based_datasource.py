@@ -280,6 +280,12 @@ class FileBasedDatasource(Datasource):
         paths = self._paths()
         file_sizes = self._file_sizes()
 
+        # Early return for empty paths (e.g. ignore_missing_paths=True with
+        # no matching files).  Without this guard, parallelism becomes 0 and
+        # np.array_split raises ValueError.
+        if len(paths) == 0:
+            return []
+
         execution_idx = data_context._execution_idx if data_context is not None else 0
         paths, file_sizes = _shuffle_file_metadata(
             paths, file_sizes, self._shuffle, execution_idx
