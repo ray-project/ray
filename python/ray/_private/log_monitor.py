@@ -385,7 +385,13 @@ class LogMonitor:
                     "task_name": file_info.task_name,
                 }
                 try:
-                    self.gcs_client.publish_logs(data)
+                    is_leader_elect_enabled = ray_constants.RAY_LEADER_ELECT
+                    if is_leader_elect_enabled and not self.gcs_client.is_gcs_leader():
+                        logger.info(
+                            "GCS is in passive mode. Skipping publishing log messages."
+                        )
+                    else:
+                        self.gcs_client.publish_logs(data)
                 except Exception:
                     logger.exception(f"Failed to publish log messages {data}")
                 anything_published = True
@@ -448,7 +454,7 @@ class LogMonitor:
 
             if file_info.file_position == 0:
                 # make filename windows-agnostic
-                filename = file_info.filename.replace("\\", "/")
+                filename = str(file_info.filename).replace("\\", "/")
                 if "/raylet" in filename:
                     file_info.worker_pid = "raylet"
                 elif "/gcs_server" in filename:
@@ -633,10 +639,16 @@ if __name__ == "__main__":
             f"The log monitor on node {platform.node()} "
             f"failed with the following error:\n{traceback_str}"
         )
-        ray._private.utils.publish_error_to_driver(
-            ray_constants.LOG_MONITOR_DIED_ERROR,
-            message,
-            gcs_client=gcs_client,
-        )
+        is_leader_elect_enabled = ray_constants.RAY_LEADER_ELECT
+        if is_leader_elect_enabled and not gcs_client.is_gcs_leader():
+            logger.warning(
+                "GCS is in passive mode. Skipping publishing error to driver."
+            )
+        else:
+            ray._private.utils.publish_error_to_driver(
+                ray_constants.LOG_MONITOR_DIED_ERROR,
+                message,
+                gcs_client=gcs_client,
+            )
         logger.error(message)
         raise e

@@ -157,11 +157,28 @@ class Monitor:
 
         _initialize_internal_kv(self.gcs_client)
 
+        self._autoscaler_metrics_registered = False
+        self._monitor_ip = monitor_ip
         if monitor_ip:
-            monitor_addr = build_address(monitor_ip, AUTOSCALER_METRIC_PORT)
-            self.gcs_client.internal_kv_put(
-                b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
-            )
+            is_leader_elect_enabled = ray_constants.RAY_LEADER_ELECT
+            if is_leader_elect_enabled and not self.gcs_client.is_gcs_leader():
+                logger.info(
+                    "GCS is in passive mode. Skipping writing AutoscalerMetricsAddress to KV. Will retry in the loop."
+                )
+            else:
+                try:
+                    monitor_addr = build_address(monitor_ip, AUTOSCALER_METRIC_PORT)
+                    self.gcs_client.internal_kv_put(
+                        b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
+                    )
+                    self._autoscaler_metrics_registered = True
+                except ValueError as e:
+                    if "passive" in str(e).lower():
+                        logger.info(
+                            "GCS is in passive mode. Skipping writing AutoscalerMetricsAddress to KV. Will retry in the loop."
+                        )
+                    else:
+                        raise
         self._session_name = self.get_session_name(self.gcs_client)
         logger.info(f"session_name: {self._session_name}")
         worker.mode = 0
@@ -379,6 +396,12 @@ class Monitor:
 
         while True:
             try:
+                is_leader_elect_enabled = ray_constants.RAY_LEADER_ELECT
+                if is_leader_elect_enabled and not self.gcs_client.is_gcs_leader():
+                    logger.info("GCS is in passive mode. Suppressing autoscaler loop.")
+                    time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
+                    continue
+
                 gcs_request_start_time = time.time()
                 self.update_load_metrics()
                 gcs_request_time = time.time() - gcs_request_start_time
@@ -437,11 +460,29 @@ class Monitor:
 
                     self.event_summarizer.clear()
 
+                # Retry registering metrics address if we couldn't do it at startup.
+                if not self._autoscaler_metrics_registered and self._monitor_ip:
+                    monitor_addr = build_address(
+                        self._monitor_ip, AUTOSCALER_METRIC_PORT
+                    )
+                    self.gcs_client.internal_kv_put(
+                        b"AutoscalerMetricsAddress",
+                        monitor_addr.encode(),
+                        True,
+                        None,
+                    )
+                    self._autoscaler_metrics_registered = True
+                    logger.info(
+                        "Successfully registered AutoscalerMetricsAddress in GCS."
+                    )
+
                 status["load_metrics_report"] = asdict(load_metrics_summary)
                 as_json = json.dumps(status)
                 if _internal_kv_initialized():
                     _internal_kv_put(
-                        ray_constants.DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True
+                        ray_constants.DEBUG_AUTOSCALING_STATUS,
+                        as_json,
+                        overwrite=True,
                     )
             except Exception:
                 # By default, do not exit the monitor on failure.
@@ -565,17 +606,31 @@ class Monitor:
         # Something went wrong, so push an error to all current and future
         # drivers.
         message = f"The autoscaler failed with the following error:\n{error}"
-        if _internal_kv_initialized():
-            _internal_kv_put(
-                ray_constants.DEBUG_AUTOSCALING_ERROR, message, overwrite=True
+        is_leader_elect_enabled = ray_constants.RAY_LEADER_ELECT
+        if is_leader_elect_enabled and not self.gcs_client.is_gcs_leader():
+            logger.warning(
+                "GCS is in passive mode. Skipping writing error to KV and driver."
             )
-        from ray._private.utils import publish_error_to_driver
+        else:
+            try:
+                if _internal_kv_initialized():
+                    _internal_kv_put(
+                        ray_constants.DEBUG_AUTOSCALING_ERROR, message, overwrite=True
+                    )
+                from ray._private.utils import publish_error_to_driver
 
-        publish_error_to_driver(
-            ray_constants.MONITOR_DIED_ERROR,
-            message,
-            gcs_client=self.gcs_client,
-        )
+                publish_error_to_driver(
+                    ray_constants.MONITOR_DIED_ERROR,
+                    message,
+                    gcs_client=self.gcs_client,
+                )
+            except ValueError as e:
+                if "passive" in str(e).lower():
+                    logger.warning(
+                        "GCS is in passive mode. Skipping writing error to KV and driver."
+                    )
+                else:
+                    raise
 
     def _signal_handler(self, sig, frame):
         try:
@@ -593,9 +648,23 @@ class Monitor:
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
         try:
-            if _internal_kv_initialized():
-                # Delete any previous autoscaling errors.
-                _internal_kv_del(ray_constants.DEBUG_AUTOSCALING_ERROR)
+            is_leader_elect_enabled = ray_constants.RAY_LEADER_ELECT
+            if is_leader_elect_enabled and not self.gcs_client.is_gcs_leader():
+                logger.info(
+                    "GCS is in passive mode. Skipping deleting legacy autoscaling errors."
+                )
+            else:
+                if _internal_kv_initialized():
+                    try:
+                        # Delete any previous autoscaling errors.
+                        _internal_kv_del(ray_constants.DEBUG_AUTOSCALING_ERROR)
+                    except ValueError as e:
+                        if "passive" in str(e).lower():
+                            logger.info(
+                                "GCS is in passive mode. Skipping deleting legacy autoscaling errors."
+                            )
+                        else:
+                            raise
             self._initialize_autoscaler()
             self._run()
         except Exception:
