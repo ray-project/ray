@@ -1,5 +1,6 @@
 import gc
 import logging
+import pickle
 import platform
 import re
 import threading
@@ -11,6 +12,7 @@ from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pyarrow as pa
 import pytest
 
 import ray
@@ -29,6 +31,12 @@ from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data._internal.execution.operators.map_operator import _map_task
+from ray.data._internal.execution.operators.map_transformer import (
+    BlockMapTransformFn,
+    MapTransformer,
+    OpStatsSink,
+)
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import (
     DatasetStats,
@@ -188,14 +196,6 @@ def test_block_exec_stats_max_uss_bytes_without_polling(ray_start_regular_shared
 
 def test_map_transformer_custom_op_stats():
     """A reporting transform reports per-task custom stats via the sink."""
-    import pyarrow as pa
-
-    from ray.data._internal.execution.operators.map_transformer import (
-        BlockMapTransformFn,
-        OpStatsSink,
-        MapTransformer,
-    )
-
     expected = _ReadTaskStats(num_rows=4, num_columns=1)
 
     def set_stats(blocks, ctx, op_stats_sink):
@@ -217,7 +217,8 @@ def test_map_transformer_custom_op_stats():
     assert reporter.stats is None
 
     ctx = TaskContext(task_idx=0, op_name="test")
-    list(transformer.apply_transform([pa.table({"id": list(range(4))})], ctx, reporter))
+    block = pa.table({"id": list(range(expected.num_rows))})
+    list(transformer.apply_transform([block], ctx, reporter))
     assert reporter.stats == expected
 
 
@@ -227,10 +228,6 @@ def _drive_map_task_metadata(transformer, ctx, block):
     ``_map_task`` yields each block, then (after a ``send``) the pickled
     ``BlockMetadataWithSchema`` for that block.
     """
-    import pickle
-
-    from ray.data._internal.execution.operators.map_operator import _map_task
-
     gen = _map_task(transformer, DataContext.get_current(), ctx, block)
     metas = []
     try:
@@ -250,13 +247,6 @@ def test_map_task_carries_custom_op_stats_to_block_metadata(ray_start_regular_sh
     Guards the ``_map_task`` -> ``TaskExecWorkerStats.custom_op_stats`` plumbing
     so a future edit there can't silently drop the field.
     """
-    import pyarrow as pa
-
-    from ray.data._internal.execution.operators.map_transformer import (
-        BlockMapTransformFn,
-        MapTransformer,
-    )
-
     expected = _ReadTaskStats(num_rows=2, num_columns=1)
 
     def set_stats(blocks, ctx, op_stats_sink):
@@ -273,12 +263,12 @@ def test_map_task_carries_custom_op_stats_to_block_metadata(ray_start_regular_sh
     ctx = TaskContext(task_idx=0, op_name="test")
     metas = _drive_map_task_metadata(transformer, ctx, pa.table({"id": [0, 1]}))
 
-    carried = [
+    reported_stats = [
         m.metadata.task_exec_stats.custom_op_stats
         for m in metas
         if m.metadata.task_exec_stats is not None
     ]
-    assert expected in carried, carried
+    assert expected in reported_stats, reported_stats
 
 
 def test_custom_op_stats_survives_operator_fusion(ray_start_regular_shared):
@@ -291,13 +281,6 @@ def test_custom_op_stats_survives_operator_fusion(ray_start_regular_shared):
     transformer and the closure-captured original was orphaned, silently
     dropping the stats.
     """
-    import pyarrow as pa
-
-    from ray.data._internal.execution.operators.map_transformer import (
-        BlockMapTransformFn,
-        MapTransformer,
-    )
-
     expected = _ReadTaskStats(num_rows=2, num_columns=1)
 
     def report_stats(blocks, ctx, op_stats_sink):
@@ -322,12 +305,12 @@ def test_custom_op_stats_survives_operator_fusion(ray_start_regular_shared):
     ctx = TaskContext(task_idx=0, op_name="test")
     metas = _drive_map_task_metadata(fused, ctx, pa.table({"id": [0, 1]}))
 
-    carried = [
+    reported_stats = [
         m.metadata.task_exec_stats.custom_op_stats
         for m in metas
         if m.metadata.task_exec_stats is not None
     ]
-    assert expected in carried, carried
+    assert expected in reported_stats, reported_stats
 
 
 def gen_expected_metrics(
