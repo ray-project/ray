@@ -1400,3 +1400,18 @@ py_test_module_list(
         "//:ray_lib",
     ],
 )
+
+py_test(
+    name = "test_python314_jit_workaround",
+    size = "small",
+    srcs = ["test_python314_jit_workaround.py"],
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+

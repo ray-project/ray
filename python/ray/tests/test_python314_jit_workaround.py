@@ -45,9 +45,9 @@ class TestPython314JitWorkaround:
                 return os.environ.get("PYTHON_JIT", "not_set")
 
             result = ray.get(get_jit_env.remote())
-            assert result == "0", (
-                f"Expected worker to have PYTHON_JIT=0, got '{result}'"
-            )
+            assert (
+                result == "0"
+            ), f"Expected worker to have PYTHON_JIT=0, got '{result}'"
         finally:
             ray.shutdown()
 
