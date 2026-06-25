@@ -17,6 +17,9 @@ VALID_PLACEMENT_GROUP_STRATEGIES = {
     "STRICT_SPREAD",
 }
 
+# Mirrors kLabelKeyNodeID from src/ray/common/constants.h. placement_group.py
+# can be imported while ray._raylet is still initializing, before common.pxi
+# exports that symbol, so this cannot be directly mirrored from common.pxi
 NODE_ID_LABEL_KEY = "ray.io/node-id"
 
 
@@ -164,8 +167,8 @@ def placement_group(
         bundle_label_selector: A list of label selectors to apply to a
             placement group on a per-bundle level.
         topology_strategy: Topology-aware placement. A dict mapping each
-            topology label key to a placement strategy (e.g.
-            ``{"ray.io/node-id": "STRICT_PACK", "rack_id": "STRICT_PACK"}``).
+            topology label key to a placement strategy (e.g.,
+            ``{"ray.io/gpu-domain": "STRICT_PACK"}``).
             Mutually exclusive with `strategy`.
 
     Raises:
@@ -350,7 +353,9 @@ def check_placement_group_index(
         )
 
 
-def _derive_node_level_strategy(strategy: str, topology_strategy: Dict[str, str]):
+def _derive_node_level_strategy(
+    strategy: Optional[str], topology_strategy: Optional[Dict[str, str]]
+) -> str:
     """Assumes valid strategy and topology strategy, and derives the node level
     strategy from the corresponding fields accordingly.
     """
@@ -377,6 +382,12 @@ def validate_placement_group(
             "`strategy` and `topology_strategy` cannot both be specified. "
             "Pass node-level packing via "
             f"`topology_strategy['{NODE_ID_LABEL_KEY}']`."
+        )
+
+    if strategy is not None and strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
+        raise ValueError(
+            f"Invalid placement group strategy {strategy}. "
+            f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
         )
 
     if topology_strategy is not None:
@@ -406,12 +417,6 @@ def validate_placement_group(
             )
         _validate_bundle_label_selector(bundle_label_selector)
 
-    if node_level_strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
-        raise ValueError(
-            f"Invalid placement group strategy {node_level_strategy}. "
-            f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
-        )
-
     if lifetime not in [None, "detached"]:
         raise ValueError(
             "Placement group `lifetime` argument must be either `None` or "
@@ -440,6 +445,7 @@ def _validate_topology_strategy(topology_strategy: Dict[str, str]) -> None:
             f"Got {len(topology_strategy)} entries."
         )
 
+    topology_label_keys = []
     for key, value in topology_strategy.items():
         if not isinstance(key, str) or not key:
             raise ValueError(
@@ -452,13 +458,22 @@ def _validate_topology_strategy(topology_strategy: Dict[str, str]) -> None:
             )
         # The node-id entry is just a redirect to the existing `strategy=`
         # parameter and accepts any valid placement-group strategy. For other
-        # topology labels (e.g. rack_id), v1 only supports STRICT_PACK.
-        if key != NODE_ID_LABEL_KEY and value != "STRICT_PACK":
-            raise ValueError(
-                f"Topology strategy {value!r} for label {key!r} is not "
-                "supported yet; only 'STRICT_PACK' is supported for topology "
-                "labels other than `ray.io/node-id` for now."
-            )
+        # topology labels (e.g. "ray.io/gpu-domain"), currently only supports
+        # STRICT_PACK.
+        if not key == NODE_ID_LABEL_KEY:
+            topology_label_keys.append(key)
+            if value != "STRICT_PACK":
+                raise ValueError(
+                    f"Topology strategy {value!r} for label {key!r} is not "
+                    "supported yet; only 'STRICT_PACK' is supported for topology "
+                    f"labels other than `{NODE_ID_LABEL_KEY}` for now."
+                )
+
+    if len(topology_label_keys) > 1:
+        raise ValueError(
+            "`topology_strategy` currently supports at most one topology label "
+            f"other than `{NODE_ID_LABEL_KEY}`. Got {topology_label_keys}."
+        )
 
 
 def _validate_bundles(bundles: List[Dict[str, float]]):

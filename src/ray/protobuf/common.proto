@@ -709,8 +709,8 @@ message PlacementGroupSpec {
   // Otherwise, the bundles can be placed elsewhere.
   // This only applies to STRICT_PACK pg.
   bytes soft_target_node_id = 11;
-  // Topology strategy. Maps label keys (e.g. "ray.io/node-id", "rack_id") to
-  // the placement strategy applied at that label.
+  // Topology strategy. Maps non-node topology label keys (e.g.
+  // "ray.io/gpu-domain") to the placement strategy applied at that label.
   map<string, PlacementStrategy> topology_strategy = 12;
 }
 

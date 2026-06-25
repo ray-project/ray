@@ -261,8 +261,8 @@ struct PlacementGroupCreationOptions {
   const NodeID soft_target_node_id_;
   /// The label selectors to apply per-bundle in this placement group.
   const std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector_;
-  /// Topology strategy. Maps each topology label (e.g. "ray.io/node-id",
-  /// "rack_id") to the placement strategy applied at that label.
+  /// Topology strategy. Maps each non-node topology label (e.g.
+  /// "ray.io/gpu-domain") to the placement strategy applied at that label.
   const std::unordered_map<std::string, PlacementStrategy> topology_strategy_;
 };
 

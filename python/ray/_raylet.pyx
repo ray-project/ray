@@ -713,6 +713,9 @@ cdef int prepare_actor_concurrency_groups(
 
 
 cdef CPlacementStrategy prepare_c_strategy(c_string strategy) except *:
+    # Called by CoreWorker.create_placement_group(..., c_string strategy, ...).
+    # The Python placement_group wrapper validates `strategy` to be one of the
+    # strategies below beforehand.
     if strategy == b"PACK":
         return PLACEMENT_STRATEGY_PACK
     elif strategy == b"SPREAD":
@@ -3683,7 +3686,7 @@ cdef class CoreWorker:
                             c_bool is_detached,
                             soft_target_node_id,
                             c_vector[unordered_map[c_string, c_string]] bundle_label_selector,
-                            topology_strategy):
+                            dict topology_strategy):
         cdef:
             CPlacementGroupID c_placement_group_id
             CPlacementStrategy c_strategy

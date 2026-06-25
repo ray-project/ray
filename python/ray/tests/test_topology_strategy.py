@@ -4,9 +4,13 @@ import sys
 import pytest
 
 import ray
-from ray.util.placement_group import placement_group, placement_group_table
+from ray.util.placement_group import (
+    NODE_ID_LABEL_KEY,
+    placement_group,
+    placement_group_table,
+)
 
-NODE_ID_LABEL = "ray.io/node-id"
+NODE_ID_LABEL = NODE_ID_LABEL_KEY
 RACK_LABEL = "ray.io/gpu-domain"
 RACK_ONE = "rack-1"
 RACK_TWO = "rack-2"
