@@ -1,3 +1,6 @@
+.. meta::
+   :description: Ray Tune how-to guides: experiment runs, trial resources, search spaces, stopping, checkpointing, storage, fault tolerance, and callbacks.
+
 .. _tune-guides:
 
 ===========

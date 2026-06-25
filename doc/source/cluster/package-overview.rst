@@ -1,3 +1,6 @@
+.. meta::
+   :description: Reference index for the Ray cluster management API: CLI commands, job submission package, job submission CLI, and autoscaling API.
+
 .. _cluster-api-ref:
 
 Ray Cluster Management API

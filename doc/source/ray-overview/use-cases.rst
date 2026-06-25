@@ -1,3 +1,6 @@
+.. meta::
+   :description: Common Ray use cases: LLMs and generative AI, batch inference, distributed training, hyperparameter tuning, reinforcement learning, and ML platforms.
+
 .. _ref-use-cases:
 
 Ray Use Cases

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Collect and monitor Ray cluster metrics in Prometheus format, configure Prometheus scraping, and integrate Grafana for system and application-level metrics."
+---
+
 (collect-metrics)=
 # Collecting and monitoring metrics
 Metrics are useful for monitoring and troubleshooting Ray applications and Clusters. For example, you may want to access a node's metrics if it terminates unexpectedly.

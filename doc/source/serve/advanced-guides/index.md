@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Advanced Ray Serve guides: autoscaling tuning, asyncio, performance, request batching, gRPC, replica and gang scheduling, and custom routing."
+---
+
 (serve-advanced-guides)=
 # Advanced Guides
 

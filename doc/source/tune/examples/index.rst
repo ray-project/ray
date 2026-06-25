@@ -1,3 +1,6 @@
+.. meta::
+   :description: Ray Tune examples by ML framework (PyTorch, Lightning, XGBoost, Keras), experiment trackers (W&B, MLflow), and HPO frameworks.
+
 .. _tune-examples-ref:
 .. _tune-recipes:
 

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Reference for @serve.deployment parameters: num_replicas, ray_actor_options, max_ongoing_requests, autoscaling_config, and health checks."
+---
+
 (serve-configure-deployment)=
 
 # Configure Ray Serve deployments

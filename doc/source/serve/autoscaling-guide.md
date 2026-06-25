@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Configure Ray Serve autoscaling with num_replicas=auto or autoscaling_config: tune target_ongoing_requests, min_replicas, and max_replicas to match traffic."
+---
+
 (serve-autoscaling)=
 
 # Ray Serve Autoscaling

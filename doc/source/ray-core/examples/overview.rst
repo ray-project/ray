@@ -1,3 +1,6 @@
+.. meta::
+   :description: Ray Core code examples from beginner (Monte Carlo pi) to intermediate (MapReduce, web crawler) to advanced (parameter server, pong).
+
 .. _ray-core-examples-tutorial:
 
 Ray Core Examples

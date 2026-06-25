@@ -1,3 +1,6 @@
+.. meta::
+   :description: Scalable data processing for AI workloads — a streaming engine for batch inference, preprocessing, and ML training ingest across CPUs and GPUs.
+
 .. _data:
 
 ===================================================

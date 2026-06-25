@@ -1,3 +1,6 @@
+.. meta::
+   :description: Core Ray Data concepts: Datasets and blocks, the lazy streaming execution model, and how data is partitioned and processed in parallel.
+
 .. _data_key_concepts:
 
 Key Concepts

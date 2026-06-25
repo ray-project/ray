@@ -1,3 +1,6 @@
+.. meta::
+   :description: Industry-grade, scalable reinforcement learning with a unified API for single-agent, multi-agent, and offline RL training and deployment.
+
 .. include:: /_includes/rllib/we_are_hiring.rst
 
 .. sphinx_rllib_readme_begin

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Runnable RLlib example scripts organized by feature area, with common CLI flags like --num-env-runners and --wandb-key.
+
 .. include:: /_includes/rllib/we_are_hiring.rst
 
 .. _rllib-examples-overview-docs:

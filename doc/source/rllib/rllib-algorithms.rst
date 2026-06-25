@@ -1,3 +1,6 @@
+.. meta::
+   :description: Catalog of all RLlib built-in algorithms -- PPO, DQN, SAC, APPO, IMPALA, DreamerV3, BC, CQL, IQL, MARWIL -- with action-space and multi-GPU support details.
+
 .. include:: /_includes/rllib/we_are_hiring.rst
 
 .. _rllib-algorithms-doc:
