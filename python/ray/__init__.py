@@ -20,16 +20,30 @@ def _configure_system():
     # in _Py_Executors_InvalidateDependency during module import.
     # Automatically disable JIT unless the user explicitly opts in.
     if sys.version_info >= (3, 14):
-        if os.environ.get("RAY_ALLOW_PYTHON_JIT") != "1":
+        if os.environ.get("RAY_ALLOW_PYTHON_JIT") == "1":
+            logger.warning(
+                "Python %d.%d support in Ray is experimental. "
+                "You have opted in to the Python JIT (RAY_ALLOW_PYTHON_JIT=1), "
+                "which is known to cause SIGSEGV crashes with the tail-call interpreter. "
+                "Proceed at your own risk.",
+                sys.version_info.major,
+                sys.version_info.minor,
+            )
+        else:
+            # Setting PYTHON_JIT here only affects child processes (e.g. workers)
+            # spawned by the driver. It cannot turn off the JIT for the current
+            # driver process because the Python interpreter has already started.
             os.environ["PYTHON_JIT"] = "0"
-        logger.warning(
-            "Python %d.%d support in Ray is experimental. "
-            "The Python JIT has been automatically disabled (PYTHON_JIT=0) "
-            "to prevent known SIGSEGV crashes with the tail-call interpreter. "
-            "Set RAY_ALLOW_PYTHON_JIT=1 to override at your own risk.",
-            sys.version_info.major,
-            sys.version_info.minor,
-        )
+            logger.warning(
+                "Python %d.%d support in Ray is experimental. "
+                "The Python JIT has been automatically disabled for Ray worker "
+                "processes (PYTHON_JIT=0) to prevent known SIGSEGV crashes. "
+                "However, the driver process JIT cannot be disabled dynamically. "
+                "We strongly recommend exporting 'PYTHON_JIT=0' in your "
+                "environment before starting your script.",
+                sys.version_info.major,
+                sys.version_info.minor,
+            )
 
     # Sanity check pickle5 if it has been installed.
     if "pickle5" in sys.modules:
