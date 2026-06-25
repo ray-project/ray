@@ -879,7 +879,7 @@ def _map_task(
                             max_uss_bytes=profiler.estimate_max_uss(),
                             # Reported by a producing transform through the
                             # per-task reporter; None if the op reports nothing.
-                            custom_op_stats=op_stats_reporter.stats,
+                            custom_op_stats=op_stats_reporter.get_stats(),
                         ),
                     ),
                     schema=block_schema if not yielded_schema else None,

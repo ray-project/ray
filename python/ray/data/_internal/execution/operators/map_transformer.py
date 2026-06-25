@@ -41,22 +41,26 @@ class CustomOpStatsReporter:
     """Per-task reporter that carries a transform's :class:`CustomOpStats`.
 
     ``_map_task`` creates one per task and threads it into the transform chain.
-    A producing transform calls ``op_stats_reporter.report(stats)`` to store the custom stats in the reporter
-    before yielding output blocks.
-    ``_map_task`` then reads :attr:`stats` after each output block and stamps it as part of TaskExecWorkerStats
-    onto the block metadata.
+    A producing transform calls ``op_stats_reporter.set_stats(stats)`` to
+    store the stats in the reporter before yielding output blocks. ``_map_task``
+    then calls ``get_stats()`` after each output block and stamps the result onto
+    the block metadata as part of ``TaskExecWorkerStats``.
     """
 
     def __init__(self) -> None:
-        self.stats: Optional[CustomOpStats] = None
+        self._stats: Optional[CustomOpStats] = None
 
-    def report(self, stats: CustomOpStats) -> None:
-        """Record the per-task stats to carry back to the driver."""
-        self.stats = stats
+    def set_stats(self, stats: CustomOpStats) -> None:
+        """Record the per-task CustomOpStats."""
+        self._stats = stats
+
+    def get_stats(self) -> Optional[CustomOpStats]:
+        """Return the reported CustomOpStats, or ``None`` if none was reported."""
+        return self._stats
 
     def clear(self) -> None:
         """Drop any reported stats (called before each task attempt)."""
-        self.stats = None
+        self._stats = None
 
 
 IN = TypeVar("IN")
