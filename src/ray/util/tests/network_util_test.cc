@@ -129,4 +129,19 @@ TEST(NetworkUtilTest, TestIsIPv6) {
   EXPECT_FALSE(IsIPv6("::1::2"));
 }
 
+TEST(NetworkUtilTest, TestGetNodeIpAddressHostnameRouting) {
+  // Test that GetNodeIpAddressFromPerspective returns hostname when RAY_NODE_USE_HOSTNAME=1
+  setenv("RAY_NODE_USE_HOSTNAME", "1", 1);
+  std::string hostname = boost::asio::ip::host_name();
+  EXPECT_EQ(GetNodeIpAddressFromPerspective(std::nullopt), hostname);
+
+  // Test default behavior (should be an IP, not the hostname)
+  unsetenv("RAY_NODE_USE_HOSTNAME");
+  std::string ip_address = GetNodeIpAddressFromPerspective(std::nullopt);
+  EXPECT_NE(ip_address, hostname);
+  // Basic IP validation (v4 or v6)
+  EXPECT_TRUE(ip_address.find('.') != std::string::npos ||
+              ip_address.find(':') != std::string::npos);
+}
+
 }  // namespace ray
