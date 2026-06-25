@@ -14,98 +14,111 @@
 
 #pragma once
 
+#include <memory>
+#include <utility>
+
 #include "absl/synchronization/mutex.h"
 #include "ray/core_worker/common.h"
 
 namespace ray {
 namespace core {
 
-/// A class to pause a task execution while a generator is backpressured.
-class GeneratorBackpressureWaiter {
+class ActorWideGeneratorBackpressureWaiter;
+
+/// Per-(streaming-generator)-task counters and liveness for the actor-wide
+/// waiter: one running generator task contributes its share of the shared
+/// unconsumed-object budget.
+///
+/// Fields are guarded by the owning waiter's mutex_. Mutations go only through
+/// ReserveActorWideSlot, ReleaseActorWideSlot, OnConsumedForTask, and TeardownTask
+/// on that waiter.
+struct ActorTaskBackpressureMetadata {
+  std::shared_ptr<ActorWideGeneratorBackpressureWaiter> actor_waiter;
+  int64_t per_task_generated = 0;
+  int64_t per_task_consumed = 0;
+  bool task_alive = true;
+
+  explicit ActorTaskBackpressureMetadata(
+      std::shared_ptr<ActorWideGeneratorBackpressureWaiter> w)
+      : actor_waiter(std::move(w)) {}
+
+  // Thin forwarders for Cython and RPC callbacks.
+  // num_objects is the number of objects the yield produces
+  // (`_num_objects_per_yield`), so a grouped yield reserves/releases its whole
+  // group of objects against the actor-wide budget.
+  Status ReserveSlot(int64_t num_objects = 1);
+  void ReleaseSlot(int64_t num_objects = 1);
+  void OnConsumed(int64_t total);
+  void Teardown();
+};
+
+/// Per streaming generator task: owner RPC reporting and per-task unconsumed cap.
+class TaskGeneratorBackpressureWaiter {
  public:
-  /// Create a generator backpressure waiter. One instance should be created
-  /// for each streaming generator task.
-  ///
-  /// \param[in] generator_backpressure_num_objects The number of objects to
-  /// generate before requiring a signal from the consumer that ObjectRefs have
-  /// been consumed (yield'ed) to continue generation. This ensures that we do
-  /// not generate too many objects in the object store during execution if the
-  /// producer is faster than the consumer. Set to -1 to disable.
-  /// \param[in] check_signals A callback to check Python signals while we are
-  /// blocked in C++ code. If check_signals returns non-ok status, it finishes
-  /// blocking and returns the non-ok status to the caller.
-  GeneratorBackpressureWaiter(int64_t generator_backpressure_num_objects,
-                              std::function<Status()> check_signals);
+  /// \param[in] generator_backpressure_num_objects Same semantics as
+  /// TaskSpecification::GeneratorBackpressureNumObjects (-1 disables).
+  /// \param[in] check_signals Invoked periodically while blocked.
+  TaskGeneratorBackpressureWaiter(int64_t generator_backpressure_num_objects,
+                                  std::function<Status()> check_signals);
 
-  /// Block and wait until enough objects are consumed from the consumer, so
-  /// that we are under the backpressure threshold. Returns OK status if
-  /// backpressure is not set or if backpressure is relieved.
-  ///
-  /// \return Status OK if backpressure is released and the executor may
-  /// generate another item. Else, returns the status returned by check_signals
-  /// callback.
   Status WaitUntilObjectConsumed();
-
-  /// Block and wait until all objects that have been generated so far have
-  /// been reported to the consumer.
-  ///
-  /// At the end of a streaming generator task, the executor should call this
-  /// before sending the PushTaskReply RPC reply to the caller. Otherwise, we
-  /// may fail after completing a task but before we have reported a return.
-  /// Then, the consumer will mark the task as completed but will never receive
-  /// the dynamic return's value.
-  ///
-  /// \return Status OK if all generator items have been reported. Else,
-  /// returns the status returned by check_signals callback.
   Status WaitAllObjectsReported();
-
-  void UpdateTotalObjectConsumed();
 
   /// Increment the number of objects generated. The executor should call this
   /// before sending an object report to the caller.
   void IncrementObjectGenerated(int64_t num_objects_generated = 1);
+  void OnObjectReportAccepted();
+  void OnObjectConsumed(int64_t total_objects_consumed);
 
-  /// Handle a completed object report. The executor should call this after
-  /// receiving an ack from the caller for an object report.
-  ///
-  /// Updates the total number of objects that have been consumed by the
-  /// caller.  The caller "consumes" an object by calling next() on the
-  /// ObjectRef generator.
-  ///
-  /// \param[in] total_objects_consumed The number of objects consumed by the
-  /// caller will be set to this value, if it is greater than the previous
-  /// value. Unblocks execution if the updated number of objects consumed puts
-  /// us under the backpressure threshold. Setting this to the total objects
-  /// generated will always unblock execution.
-  void HandleObjectReported(int64_t total_objects_consumed);
+  /// Permanently disable backpressure for this waiter. After this is called,
+  /// WaitUntilObjectConsumed returns immediately and WaitAllObjectsReported
+  /// stops waiting on outstanding report acks.
+  void DisableBackpressure();
 
-  /// Get the total number of objects consumed by the caller so far.
+  bool NeedsObjectConsumedUpdates() const;
   int64_t TotalObjectConsumed() const;
-
-  /// Get the total number of objects generated so far.
   int64_t TotalObjectGenerated() const;
 
  private:
   mutable absl::Mutex mutex_;
-  // Used to signal when backpressure is released and
-  // execution may continue. Only used if
-  // backpressure_threshold_ > 0.
   absl::CondVar backpressure_cond_var_;
-  // Used to signal when all objects that have been generated so far have been
-  // reported to the caller. At the end of a streaming generator task, we
-  // should wait on this cond var before sending the PushTaskReply RPC reply to
-  // the caller. Otherwise, we may fail after completing a task but before we
-  // have reported a return.
   absl::CondVar all_objects_reported_cond_var_;
-  // If total_objects_generated_ - total_objects_consumed_ < this
-  // the task will stop.
   const int64_t backpressure_threshold_;
   const std::function<Status()> check_signals_;
-  // Total number of objects generated from a generator.
   int64_t total_objects_generated_ = 0;
-  // Total number of objects whose reports to the caller are in flight.
   int64_t num_object_reports_in_flight_ = 0;
-  // Total number of objects consumed from a generator.
+  int64_t total_objects_consumed_ = 0;
+  bool backpressure_disabled_ = false;
+};
+
+/// Shared across all streaming-generator tasks on one actor; enforces
+/// `_actor_generator_backpressure_num_objects`.
+class ActorWideGeneratorBackpressureWaiter {
+ public:
+  /// \param[in] actor_cap Must be > 0 (callers create this only when the actor
+  /// option is set).
+  ActorWideGeneratorBackpressureWaiter(int64_t actor_cap,
+                                       std::function<Status()> check_signals);
+
+  // num_objects is the number of objects admitted/reclaimed in one call so the
+  // actor-wide budget is accounted in object units even when a single yield
+  // produces multiple objects (`_num_objects_per_yield` > 1).
+  Status ReserveActorWideSlot(ActorTaskBackpressureMetadata &metadata,
+                              int64_t num_objects = 1);
+  void ReleaseActorWideSlot(ActorTaskBackpressureMetadata &metadata,
+                            int64_t num_objects = 1);
+  void OnConsumedForTask(ActorTaskBackpressureMetadata &metadata, int64_t total);
+  void TeardownTask(ActorTaskBackpressureMetadata &metadata);
+
+  int64_t TotalObjectConsumed() const;
+  int64_t TotalObjectGenerated() const;
+
+ private:
+  mutable absl::Mutex mutex_;
+  absl::CondVar backpressure_cond_var_;
+  const int64_t backpressure_threshold_;
+  const std::function<Status()> check_signals_;
+  int64_t total_objects_generated_ = 0;
   int64_t total_objects_consumed_ = 0;
 };
 
