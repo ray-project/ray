@@ -26,6 +26,7 @@ from ray.data.block import UserDefinedFunction
 from ray.data.expressions import (
     Expr,
     StarExpr,
+    UnnestExpr,
     expand_star_exprs,
     exprlist_to_fields,
 )
@@ -380,10 +381,10 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
                 self._detect_and_get_compute_strategy(self.get_all_exprs()),
             )
         for expr in self.exprs:
-            if expr.name is None and not isinstance(expr, StarExpr):
+            if expr.name is None and not isinstance(expr, (StarExpr, UnnestExpr)):
                 raise TypeError(
                     "All Project expressions must be named (use .alias(name) or col(name)), "
-                    "or be a star() expression."
+                    "or be a star() or unnest() expression."
                 )
 
     def _detect_and_get_compute_strategy(self, exprs: list["Expr"]) -> ComputeStrategy:

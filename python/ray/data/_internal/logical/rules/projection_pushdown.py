@@ -16,6 +16,7 @@ from ray.data.expressions import (
     AliasExpr,
     Expr,
     StarExpr,
+    UnnestExpr,
     is_rename_expr,
 )
 
@@ -41,6 +42,12 @@ def _collect_referenced_columns(exprs: List[Expr]) -> Optional[List[str]]:
     if any(isinstance(expr, StarExpr) for expr in exprs):
         return None
 
+    # ``UnnestExpr`` output column names are only known at runtime (they come
+    # from the Arrow struct type, not from the expression tree). We cannot
+    # statically enumerate referenced columns when unnest is present.
+    if any(isinstance(expr, UnnestExpr) for expr in exprs):
+        return None
+
     collector = _ColumnReferenceCollector()
     for expr in exprs or []:
         collector.visit(expr)
@@ -64,7 +71,7 @@ def _analyze_upstream_project(
     #   - Target column name
     #   - Target expression
     output_column_defs = {
-        expr.name: expr for expr in _filter_out_star(upstream_project.exprs)
+        expr.name: expr for expr in _filter_out_star_and_unnest(upstream_project.exprs)
     }
 
     # Identify upstream input columns removed by renaming (ie not propagated into
@@ -145,6 +152,15 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
         are_remote_args_compatible,
     )
 
+    # Guard: never fuse two Projects when either contains an UnnestExpr.
+    # UnnestExpr output column names are only known at runtime from the Arrow
+    # struct type, so the static fusion analysis cannot correctly track which
+    # input columns are overwritten or produced.
+    if any(isinstance(e, UnnestExpr) for e in upstream_project.exprs) or any(
+        isinstance(e, UnnestExpr) for e in downstream_project.exprs
+    ):
+        return downstream_project
+
     # Check if remote args (num_cpus, num_gpus, etc.) are compatible
     if not are_remote_args_compatible(
         upstream_project.ray_remote_args or {},
@@ -219,7 +235,7 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
     v = _ColumnSubstitutionVisitor(upstream_column_defs)
 
     rebound_downstream_exprs = [
-        v.visit(e) for e in _filter_out_star(downstream_project.exprs)
+        v.visit(e) for e in _filter_out_star_and_unnest(downstream_project.exprs)
     ]
 
     if not downstream_project.has_star_expr():
@@ -280,8 +296,14 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
     )
 
 
-def _filter_out_star(exprs: List[Expr]) -> List[Expr]:
-    return [e for e in exprs if not isinstance(e, StarExpr)]
+def _filter_out_star_and_unnest(exprs: List[Expr]) -> List[Expr]:
+    """Filter out StarExpr and UnnestExpr from a projection list.
+
+    UnnestExpr is excluded because its output name (``__unnest__``) is a
+    sentinel, not a real column name. Including it in name-based analysis
+    (e.g. ``_analyze_upstream_project``) would produce incorrect results.
+    """
+    return [e for e in exprs if not isinstance(e, (StarExpr, UnnestExpr))]
 
 
 class ProjectionPushdown(Rule):
@@ -431,7 +453,8 @@ class ProjectionPushdown(Rule):
             # runtime cost is the same either way.
             has_renames = any(isinstance(e, AliasExpr) for e in current_project.exprs)
             all_col_refs = all(
-                _is_col_expr(e) for e in _filter_out_star(current_project.exprs)
+                _is_col_expr(e)
+                for e in _filter_out_star_and_unnest(current_project.exprs)
             )
             is_pure_prune = not has_renames and all_col_refs
             if is_pure_prune:
@@ -457,7 +480,7 @@ def _extract_input_columns_renaming_mapping(
     return dict(
         [
             _get_renaming_mapping(expr)
-            for expr in _filter_out_star(projection_exprs)
+            for expr in _filter_out_star_and_unnest(projection_exprs)
             if is_rename_expr(expr)
         ]
     )
