@@ -130,7 +130,11 @@ class MockK8sClient:
         self.patch_history: List[Dict] = []
         self._resource_version = 100
         # Worker pod names - defaults to worker-001, worker-002, worker-003
-        self.worker_pod_names = worker_pod_names or ["worker-001", "worker-002", "worker-003"]
+        self.worker_pod_names = worker_pod_names or [
+            "worker-001",
+            "worker-002",
+            "worker-003",
+        ]
 
     def get(self, path: str) -> Dict[str, Any]:
         """Handle GET requests"""
@@ -205,8 +209,6 @@ class MockK8sClient:
         return {}
 
 
-
-
 class TestAllocationTimeoutRecovery:
     """Test ALLOCATION_TIMEOUT instance recovery"""
 
@@ -247,7 +249,7 @@ class TestAllocationTimeoutRecovery:
         mock_k8s = MockK8sClient(
             max_replicas=3,
             initial_replicas=3,
-            worker_pod_names=["worker-001", "worker-002", "worker-003"]
+            worker_pod_names=["worker-001", "worker-002", "worker-003"],
         )
 
         # Create real cloud provider with mock k8s client
@@ -272,7 +274,9 @@ class TestAllocationTimeoutRecovery:
 
         # Create 2 ALLOCATED instances and 1 ALLOCATION_TIMEOUT instance.
         current_time = time.time_ns()
-        timeout_time = current_time - 200 * s_to_ns  # 200s ago, beyond the timeout threshold.
+        timeout_time = (
+            current_time - 200 * s_to_ns
+        )  # 200s ago, beyond the timeout threshold.
 
         from ray._common.utils import binary_to_hex
 
@@ -357,7 +361,10 @@ class TestAllocationTimeoutRecovery:
                 "worker-002", "default-worker-group", True, NodeKind.WORKER
             ),
             "worker-003": CloudInstance(
-                "worker-003", "default-worker-group", False, NodeKind.WORKER  # is_running=False
+                "worker-003",
+                "default-worker-group",
+                False,
+                NodeKind.WORKER,  # is_running=False
             ),
         }
 
@@ -371,12 +378,12 @@ class TestAllocationTimeoutRecovery:
             ResourceRequest,
             ResourceRequestByCount,
         )
+
         ray_cluster_resource_state = ClusterResourceState(
             node_states=ray_nodes,
             pending_resource_requests=[
                 ResourceRequestByCount(
-                    request=ResourceRequest(resources_bundle={"CPU": 4}),
-                    count=1
+                    request=ResourceRequest(resources_bundle={"CPU": 4}), count=1
                 ),
             ],
         )
@@ -494,24 +501,24 @@ class TestAllocationTimeoutRecovery:
         for op in first_patch["payload"]:
             if "scaleStrategy" in op.get("path", ""):
                 workers_to_delete = op["value"].get("workersToDelete", [])
-                assert "worker-003" in workers_to_delete, (
-                    f"Expected worker-003 in workersToDelete, got {workers_to_delete}"
-                )
+                assert (
+                    "worker-003" in workers_to_delete
+                ), f"Expected worker-003 in workersToDelete, got {workers_to_delete}"
                 break
 
         # Verify the second patch increases replicas.
         second_patch = mock_k8s.patch_history[1]
         for op in second_patch["payload"]:
             if "replicas" in op.get("path", ""):
-                assert op["value"] == 3, (
-                    f"Expected replicas=3 after launch, got {op['value']}"
-                )
+                assert (
+                    op["value"] == 3
+                ), f"Expected replicas=3 after launch, got {op['value']}"
                 break
 
         # 4. Verify final replicas do not exceed maxReplicas.
-        assert mock_k8s.replicas <= 3, (
-            f"Expected replicas <= 3, got {mock_k8s.replicas}"
-        )
+        assert (
+            mock_k8s.replicas <= 3
+        ), f"Expected replicas <= 3, got {mock_k8s.replicas}"
 
         # 5. Verify no instance enters a REQUESTED->QUEUED->REQUESTED loop.
         # Check whether status_history contains a repeated transition pattern.
