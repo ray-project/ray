@@ -37,12 +37,12 @@ Row = Dict[str, Any]
 MapTransformFnData = Union[Block, Row, DataBatch]
 
 
-class OpStatsSink:
-    """Per-task sink a transform calls to report its :class:`CustomOpStats`.
+class CustomOpStatsReporter:
+    """Per-task reporter a transform calls to report its :class:`CustomOpStats`.
 
     ``_map_task`` creates one per task and threads it into the transform chain,
     then reads :attr:`stats` after each output block to stamp onto block
-    metadata. A producing transform calls the reporter (``op_stats_sink(stats)``)
+    metadata. A producing transform calls ``op_stats_reporter.report(stats)``
     before yielding the blocks the stats describe. Created fresh per task, so
     there is no cross-task state to reset.
     """
@@ -50,7 +50,8 @@ class OpStatsSink:
     def __init__(self) -> None:
         self.stats: Optional[CustomOpStats] = None
 
-    def __call__(self, stats: CustomOpStats) -> None:
+    def report(self, stats: CustomOpStats) -> None:
+        """Record the per-task stats to carry back to the driver."""
         self.stats = stats
 
     def clear(self) -> None:
@@ -89,7 +90,7 @@ class MapTransformFn(ABC):
             is_udf: Whether this transformation is UDF or not.
             output_block_size_option: (Optional) Output block size configuration.
             reports_custom_op_stats: If ``True``, the wrapped callable accepts a
-                third ``OpStatsSink`` argument and may report per-task
+                third ``CustomOpStatsReporter`` argument and may report per-task
                 :class:`CustomOpStats` to the driver. Defaults to ``False``, in
                 which case the callable is invoked with ``(data, ctx)`` only.
         """
@@ -103,16 +104,16 @@ class MapTransformFn(ABC):
         fn: Callable,
         inputs: Iterable[MapTransformFnData],
         ctx: TaskContext,
-        op_stats_sink: OpStatsSink,
+        op_stats_reporter: CustomOpStatsReporter,
     ) -> Iterable[MapTransformFnData]:
-        """Call the wrapped transform, passing ``op_stats_sink`` only if it opted in.
+        """Call the wrapped transform, passing ``op_stats_reporter`` only if it opted in.
 
         Keeps the common ``(data, ctx)`` signature for the vast majority of
         transforms; only those constructed with ``reports_custom_op_stats=True``
         receive the reporter.
         """
         if self._reports_custom_op_stats:
-            return fn(inputs, ctx, op_stats_sink)
+            return fn(inputs, ctx, op_stats_reporter)
         return fn(inputs, ctx)
 
     @abstractmethod
@@ -123,7 +124,7 @@ class MapTransformFn(ABC):
     def _apply_transform(
         self,
         ctx: TaskContext,
-        op_stats_sink: OpStatsSink,
+        op_stats_reporter: CustomOpStatsReporter,
         inputs: Iterable[MapTransformFnData],
     ) -> Iterable[MapTransformFnData]:
         pass
@@ -141,12 +142,12 @@ class MapTransformFn(ABC):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-        op_stats_sink: Optional[OpStatsSink] = None,
+        op_stats_reporter: Optional[CustomOpStatsReporter] = None,
     ) -> Iterable[Block]:
-        if op_stats_sink is None:
-            op_stats_sink = OpStatsSink()
+        if op_stats_reporter is None:
+            op_stats_reporter = CustomOpStatsReporter()
         batches = self._pre_process(blocks)
-        results = self._apply_transform(ctx, op_stats_sink, batches)
+        results = self._apply_transform(ctx, op_stats_reporter, batches)
         return self._post_process(results)
 
     @property
@@ -267,14 +268,14 @@ class MapTransformer:
         self,
         input_blocks: Iterable[Block],
         ctx: TaskContext,
-        op_stats_sink: Optional[OpStatsSink] = None,
+        op_stats_reporter: Optional[CustomOpStatsReporter] = None,
     ) -> Iterable[Block]:
         """Apply the transform functions to the input blocks.
 
         Args:
             input_blocks: The blocks to transform.
             ctx: The task context for this transform.
-            op_stats_sink: Per-task sink a producing transform calls to report its
+            op_stats_reporter: Per-task reporter a producing transform calls to report its
                 :class:`CustomOpStats`. ``_map_task`` passes the reporter it
                 later reads; defaults to a throwaway for callers (e.g. tests)
                 that don't collect custom stats.
@@ -282,8 +283,8 @@ class MapTransformer:
         Returns:
             An iterable of the transformed output blocks.
         """
-        if op_stats_sink is None:
-            op_stats_sink = OpStatsSink()
+        if op_stats_reporter is None:
+            op_stats_reporter = CustomOpStatsReporter()
 
         # NOTE: We only need to configure last transforming function to do
         #       appropriate block sizing
@@ -297,7 +298,7 @@ class MapTransformer:
         iter = input_blocks
         # Apply the transform functions sequentially to the input iterable.
         for transform_fn in self._transform_fns:
-            iter = transform_fn(iter, ctx, op_stats_sink)
+            iter = transform_fn(iter, ctx, op_stats_reporter)
             if transform_fn._is_udf:
                 iter = self._UDFTimingIterator(iter, self)
 
@@ -381,10 +382,12 @@ class RowMapTransformFn(MapTransformFn):
     def _apply_transform(
         self,
         ctx: TaskContext,
-        op_stats_sink: OpStatsSink,
+        op_stats_reporter: CustomOpStatsReporter,
         inputs: Iterable[MapTransformFnData],
     ) -> Iterable[MapTransformFnData]:
-        return self._apply_transform_with_stats(self._row_fn, inputs, ctx, op_stats_sink)
+        return self._apply_transform_with_stats(
+            self._row_fn, inputs, ctx, op_stats_reporter
+        )
 
     def _post_process(self, results: Iterable[MapTransformFnData]) -> Iterable[Block]:
         return self._shape_blocks(results)
@@ -472,11 +475,13 @@ class BatchMapTransformFn(MapTransformFn):
     def _apply_transform(
         self,
         ctx: TaskContext,
-        op_stats_sink: OpStatsSink,
+        op_stats_reporter: CustomOpStatsReporter,
         batches: Iterable[MapTransformFnData],
     ) -> Iterable[MapTransformFnData]:
         # _batch_fn returns an Iterable, just pass it through
-        return self._apply_transform_with_stats(self._batch_fn, batches, ctx, op_stats_sink)
+        return self._apply_transform_with_stats(
+            self._batch_fn, batches, ctx, op_stats_reporter
+        )
 
     def _post_process(self, results: Iterable[MapTransformFnData]) -> Iterable[Block]:
         return self._shape_blocks(results)
@@ -509,7 +514,7 @@ class BlockMapTransformFn(MapTransformFn):
                 produce blocks as is.
             output_block_size_option: (Optional) Configure output block sizing.
             reports_custom_op_stats: If ``True``, ``block_fn`` accepts a third
-                ``OpStatsSink`` argument and may report per-task
+                ``CustomOpStatsReporter`` argument and may report per-task
                 :class:`CustomOpStats` to the driver.
         """
 
@@ -526,11 +531,13 @@ class BlockMapTransformFn(MapTransformFn):
     def _apply_transform(
         self,
         ctx: TaskContext,
-        op_stats_sink: OpStatsSink,
+        op_stats_reporter: CustomOpStatsReporter,
         blocks: Iterable[Block],
     ) -> Iterable[Block]:
         # _block_fn returns an Iterable, just pass it through
-        return self._apply_transform_with_stats(self._block_fn, blocks, ctx, op_stats_sink)
+        return self._apply_transform_with_stats(
+            self._block_fn, blocks, ctx, op_stats_reporter
+        )
 
     def _post_process(self, results: Iterable[MapTransformFnData]) -> Iterable[Block]:
         # Short-circuit for block transformations for which no

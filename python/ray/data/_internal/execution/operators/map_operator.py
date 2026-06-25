@@ -69,8 +69,8 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
+    CustomOpStatsReporter,
     MapTransformer,
-    OpStatsSink,
 )
 from ray.data._internal.execution.util import memory_string, merge_label_selector
 from ray.data._internal.stats import StatsDict
@@ -818,22 +818,22 @@ def _map_task(
         # the same schema)
         yielded_schema: bool = False
 
-        # Defines a sink where a transform can report its ``CustomOpStats``
+        # Defines a reporter a transform calls to report its ``CustomOpStats``
         # which are recorded during the task execution on the worker.
         # This is owned by _map_task so it belongs to actual, possibly-fused, running task
         # rather than a transformer instance reused across tasks.
-        op_stats_sink = OpStatsSink()
+        op_stats_reporter = CustomOpStatsReporter()
 
         def transform_iter_factory():
             # Clear any per-task custom stats before each attempt (the reporter
             # is reused across retries of this task), so a prior attempt's stats
             # can't leak into this one. A producing transform repopulates it
             # before the first block is yielded.
-            op_stats_sink.clear()
+            op_stats_reporter.clear()
             blocks_iter = (
                 _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
             )
-            return map_transformer.apply_transform(blocks_iter, ctx, op_stats_sink)
+            return map_transformer.apply_transform(blocks_iter, ctx, op_stats_reporter)
 
         if retry_on:
             block_iter = iterate_with_retry(
@@ -878,8 +878,8 @@ def _map_task(
                             task_wall_time_s=task_dur_s,
                             max_uss_bytes=profiler.estimate_max_uss(),
                             # Reported by a producing transform through the
-                            # per-task sink; None if the op reports nothing.
-                            custom_op_stats=op_stats_sink.stats,
+                            # per-task reporter; None if the op reports nothing.
+                            custom_op_stats=op_stats_reporter.stats,
                         ),
                     ),
                     schema=block_schema if not yielded_schema else None,

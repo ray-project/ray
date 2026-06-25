@@ -34,8 +34,8 @@ from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import _map_task
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
+    CustomOpStatsReporter,
     MapTransformer,
-    OpStatsSink,
 )
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import (
@@ -197,10 +197,10 @@ def test_block_exec_stats_max_uss_bytes_without_polling(ray_start_regular_shared
 def test_map_transformer_custom_op_stats():
     expected = _ReadTaskStats(num_rows=4, num_columns=1)
 
-    def set_stats(blocks, ctx, op_stats_sink):
-        # A producing transform reports through the per-task reporter sink it's
+    def set_stats(blocks, ctx, op_stats_reporter):
+        # A producing transform reports through the per-task reporter it's
         # handed (opted in via reports_custom_op_stats=True).
-        op_stats_sink(expected)
+        op_stats_reporter.report(expected)
         yield from blocks
 
     transformer = MapTransformer(
@@ -211,7 +211,7 @@ def test_map_transformer_custom_op_stats():
         ]
     )
 
-    reporter = OpStatsSink()
+    reporter = CustomOpStatsReporter()
     # Nothing reported until a task runs.
     assert reporter.stats is None
 
@@ -248,8 +248,8 @@ def test_map_task_carries_custom_op_stats_to_block_metadata(ray_start_regular_sh
     """
     expected = _ReadTaskStats(num_rows=2, num_columns=1)
 
-    def set_stats(blocks, ctx, op_stats_sink):
-        op_stats_sink(expected)
+    def set_stats(blocks, ctx, op_stats_reporter):
+        op_stats_reporter.report(expected)
         yield from blocks
 
     transformer = MapTransformer(
@@ -282,8 +282,8 @@ def test_custom_op_stats_survives_operator_fusion(ray_start_regular_shared):
     """
     expected = _ReadTaskStats(num_rows=2, num_columns=1)
 
-    def report_stats(blocks, ctx, op_stats_sink):
-        op_stats_sink(expected)
+    def report_stats(blocks, ctx, op_stats_reporter):
+        op_stats_reporter.report(expected)
         yield from blocks
 
     def passthrough(blocks, ctx):
