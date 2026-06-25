@@ -62,10 +62,9 @@ class UserCallback(RayTrainCallback):
         """Called after one or more workers have raised an exception.
 
         This fires during the control loop, *before* the controller decides
-        whether to retry or raise.  The callback should mark any tracking
-        state as FAILED but should **not** close the tracking run here —
-        closing is deferred to ``after_run`` so that retry scenarios work
-        correctly.
+        whether to retry or raise.  Implementations should avoid finalizing
+        resources here, as the controller may retry training without
+        re-entering ``before_run``.
 
         Args:
             run_context: The ``TrainRunContext`` for the current training run.
