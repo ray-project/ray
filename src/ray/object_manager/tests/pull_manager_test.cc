@@ -931,6 +931,70 @@ TEST_P(PullManagerTest, TestCoalesceTickRetries) {
   ASSERT_EQ(sent_batches_.back().first.size(), expected_batch_size);
 }
 
+// A bundle activated in one shot whose objects have no remote location
+// must not produce any Pull RPC; each object should fall through to the
+// local spill restore path instead.
+TEST_P(PullManagerTest, TestBatchActivationWithLocalSpillOnly) {
+  BundlePriority prio = GetParam();
+  auto refs = CreateObjectRefs(3);
+  auto oids = ObjectRefsToIds(refs);
+  std::vector<rpc::ObjectReference> objects_to_locate;
+  pull_manager_.Pull(refs, prio, {"", false}, &objects_to_locate);
+
+  for (const auto &oid : oids) {
+    ObjectSpilled(oid, "spill://" + oid.Hex());
+  }
+
+  // Reveal sizes with empty client_ids and nil spilled_node_id so that no
+  // remote source exists for any object. The bundle becomes pullable on
+  // the last call and activates all three at once.
+  for (const auto &oid : oids) {
+    pull_manager_.OnLocationChange(oid, {}, "", NodeID::Nil(), false, 1);
+  }
+
+  ASSERT_EQ(num_send_pull_request_rpcs_, 0);
+  ASSERT_EQ(num_object_pulls_sent_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, static_cast<int>(oids.size()));
+}
+
+// A bundle activated in one shot whose objects mix remote-locatable and
+// locally-spilled-only objects: the remote ones go out as a single
+// batched RPC while the locally-spilled ones trigger restore inline.
+TEST_P(PullManagerTest, TestBatchActivationWithMixedSources) {
+  BundlePriority prio = GetParam();
+  auto refs = CreateObjectRefs(4);
+  auto oids = ObjectRefsToIds(refs);
+  std::vector<rpc::ObjectReference> objects_to_locate;
+  pull_manager_.Pull(refs, prio, {"", false}, &objects_to_locate);
+
+  std::unordered_set<NodeID> client_ids;
+  const NodeID remote = NodeID::FromRandom();
+  client_ids.insert(remote);
+
+  // First two objects have a remote in-memory copy. Last two are only
+  // available via a local spill URL.
+  ObjectSpilled(oids[2], "spill://" + oids[2].Hex());
+  ObjectSpilled(oids[3], "spill://" + oids[3].Hex());
+
+  pull_manager_.OnLocationChange(oids[0], client_ids, "", NodeID::Nil(), false, 1);
+  pull_manager_.OnLocationChange(oids[1], client_ids, "", NodeID::Nil(), false, 1);
+  pull_manager_.OnLocationChange(oids[2], {}, "", NodeID::Nil(), false, 1);
+  ASSERT_EQ(num_send_pull_request_rpcs_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+
+  // Reveal the last object: bundle becomes pullable, all four activate
+  // together. The two remote ones go out in one batched RPC; the two
+  // locally-spilled ones trigger restore_spilled_object_ inline.
+  pull_manager_.OnLocationChange(oids[3], {}, "", NodeID::Nil(), false, 1);
+
+  ASSERT_EQ(num_send_pull_request_rpcs_, 1);
+  ASSERT_EQ(num_object_pulls_sent_, 2);
+  ASSERT_EQ(sent_batches_.size(), 1u);
+  ASSERT_EQ(sent_batches_[0].second, remote);
+  ASSERT_EQ(sent_batches_[0].first.size(), 2u);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 2);
+}
+
 TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
   BundlePriority prio = GetParam();
   /// Test admission control for a single pull bundle request. We should
