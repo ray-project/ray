@@ -350,8 +350,6 @@ The following example shows how to download a batch of images from URLs listed i
 
 .. testcode::
 
-    import pyarrow.fs
-
     import ray
     from ray.data.expressions import download
 
@@ -362,10 +360,7 @@ The following example shows how to download a batch of images from URLs listed i
     # This creates a new column 'bytes' with the downloaded file contents.
     ds = ds.with_column(
         "bytes",
-        download(
-            "image_url",
-            filesystem=pyarrow.fs.S3FileSystem(anonymous=True, region="us-west-2"),
-        ),
+        download("image_url"),
     )
 
     ds.take(1)
@@ -814,10 +809,7 @@ Ray Data interoperates with PyTorch and TensorFlow datasets.
 
         To convert a PyTorch dataset to a Ray Dataset, call :func:`~ray.data.from_torch`.
 
-        .. The mirror for CIFAR10 has historically been unreliable, so we skip the test.
-
         .. testcode::
-            :skipif: True
 
             import ray
             from torch.utils.data import Dataset
