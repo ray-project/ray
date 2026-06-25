@@ -76,7 +76,7 @@ def _create_controller_and_proxy_refs(
     global_logging_config: Union[None, dict, LoggingConfig],
     controller_options: ControllerOptions,
     **kwargs,
-) -> Tuple["ActorHandle", List["ObjectRef"]]:
+) -> Tuple[ActorHandle, List[ObjectRef]]:
     """Create the detached ServeController actor in the caller process.
 
     Runs everything the old ``_start_controller`` remote task did, but inline:
@@ -158,7 +158,7 @@ async def serve_start_async(
     usage_lib.record_library_usage("serve")
 
     # Validate eagerly in the caller so a bad ``controller_options`` raises
-    # locally rather than from the ``_start_controller`` Ray task.
+    # here, at the call site, rather than after a round-trip into the helper.
     controller_options = _coerce_controller_options(controller_options)
 
     client, _ = _check_cached_client_alive()
@@ -180,6 +180,10 @@ async def serve_start_async(
     # ray.get(controller.get_proxies.remote()) does not stall this event loop.
     # serve_start_async exists (vs serve_start) precisely to keep long-lived
     # callers like the Dashboard Agent responsive while Serve starts up.
+    # Safe because the helper only touches ray.init/ray.get/actor.remote, all
+    # thread-safe via the CoreWorker C++ API, and the Dashboard Agent uses sync
+    # ray.init (so the helper's ray.init branch is skipped). If the dashboard
+    # ever switched to async-mode ray.init this would need revisiting.
     controller, proxy_ready_refs = await asyncio.to_thread(
         _create_controller_and_proxy_refs,
         http_options,
