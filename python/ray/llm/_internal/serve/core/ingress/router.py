@@ -1,15 +1,48 @@
+import json
+from types import SimpleNamespace
 from typing import Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
+from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve._private.http_util import _matches_session_id_header
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
 
+logger = get_logger(__name__)
+
 _BODY_TRUNCATED_HEADER = "x-body-truncated"
 
+# A request body routes on one of these fields. Body-aware routers read it off
+# the namespace; a body without any of them degrades to load-balancing. Extend
+# as routers learn to route additional request types.
+_ROUTING_KEY_FIELDS = ("messages", "prompt")
+
 router_app = FastAPI()
+
+
+def _parse_routing_payload(body: bytes) -> Optional[SimpleNamespace]:
+    """Wrap a request body as a namespace a body-aware router routes on.
+
+    Routers read a routing field (``messages`` or ``prompt``) off the first
+    positional routing arg, the parsed request the normal ingress forwards.
+    Direct streaming has only the raw body, so this wraps the parsed body in a
+    namespace exposing every field by attribute, which a router reads the same
+    way regardless of request type. Returns ``None`` for an empty, non-object,
+    unparseable, or keyless body, so the caller falls back to load-balancing.
+    """
+    if not body:
+        return None
+    try:
+        data = json.loads(body)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    if not any(data.get(field) for field in _ROUTING_KEY_FIELDS):
+        return None
+    return SimpleNamespace(**data)
 
 
 @serve.ingress(router_app)
@@ -29,16 +62,17 @@ class LLMRouter:
     Request:
         POST /internal/route
         Content-Type: application/json
-        Body: the target ChatCompletions / Completions request payload.
-            The body is plumbed through to ``choose_replica`` so future
-            body-aware policies (e.g. prefix-cache-aware) can score replicas
-            against ``messages`` / ``prompt``.
+        Body: the target ChatCompletions or Completions request payload.
+            Wrapped in a namespace by ``_parse_routing_payload`` and passed to
+            ``choose_replica`` positionally, exposing the request fields the way
+            the parsed request does. Body-aware policies then score replicas the
+            same way on both paths.
 
     Truncated bodies:
-        HAProxy may forward only a prefix of the request body for routing.
-        When it does, it must set the ``x-body-truncated`` header; both the
-        body bytes and this signal are forwarded to ``choose_replica`` for
-        future body-aware policies.
+        HAProxy may forward only a prefix of the body for routing and sets the
+        ``x-body-truncated`` header. A truncated prefix is usually not valid
+        JSON, so no routing key is derived and the request falls back to the
+        default load-balanced pick.
 
     Session affinity:
         If the client request carried the session-id header configured by
@@ -60,6 +94,10 @@ class LLMRouter:
         Serve uses ``check_health()`` for replica readiness, not HTTP.
     """
 
+    # Warn once per replica when no routing key is derived. Class-level default
+    # keeps the guard safe before __init__ runs.
+    _warned_no_routing_key: bool = False
+
     async def __init__(self, server: DeploymentHandle):
         self._handle: DeploymentHandle = server
         self._handle._init()
@@ -68,6 +106,18 @@ class LLMRouter:
     async def route(self, request: Request):
         body = await request.body()
         body_truncated = _BODY_TRUNCATED_HEADER in request.headers
+        routing_payload = _parse_routing_payload(body)
+        if routing_payload is None and not self._warned_no_routing_key:
+            self._warned_no_routing_key = True
+            logger.warning(
+                "Could not derive a routing key from the request body. "
+                "body_truncated=%s. Falling back to load-balanced replica "
+                "selection. A configured body-aware router such as "
+                "PrefixCacheAffinityRouter cannot take effect for these "
+                "requests. For truncated bodies, raise HAProxy's routing body "
+                "limit.",
+                body_truncated,
+            )
         # HAProxy forwards the configured session header on the same name,
         # but use the same case-insensitive, separator-tolerant matcher as
         # proxy.py / ingress.py so a `-`/`_` rewrite anywhere in the path
@@ -82,8 +132,7 @@ class LLMRouter:
         try:
             host, port, replica_id = await self._pick_replica(
                 handle=handle,
-                request_body=body,
-                body_truncated=body_truncated,
+                routing_payload=routing_payload,
             )
         except (RuntimeError, DeploymentUnavailableError) as e:
             raise HTTPException(status_code=503, detail=str(e))
@@ -96,8 +145,7 @@ class LLMRouter:
     async def _pick_replica(
         self,
         handle: DeploymentHandle,
-        request_body: Optional[bytes] = None,
-        body_truncated: bool = False,
+        routing_payload: Optional[SimpleNamespace] = None,
     ) -> Tuple[str, int, str]:
         """Pick a backend HTTP replica via the deployment's request router.
 
@@ -105,11 +153,11 @@ class LLMRouter:
         with ``.options(session_id=...)`` by the caller so session-aware
         routers see the session id on ``RequestMetadata``.
 
-        ``request_body`` (possibly a HAProxy-truncated prefix, indicated by
-        ``body_truncated``) is forwarded to ``choose_replica`` so a future
-        body-aware policy can score replicas against the request's prompt /
-        messages without changing the /internal/route contract or the call
-        site.
+        ``routing_payload``, when present, is passed to ``choose_replica``
+        positionally. It lands in ``pending_request.args`` where the normal
+        ingress puts the parsed request, so a body-aware policy scores replicas
+        as on the normal path. When ``None``, nothing is forwarded. The router
+        sees empty ``args`` and falls back to its default load-balanced pick.
 
         ``_reserve=False`` short-circuits the replica-side ``reserve_slot``
         actor RPC and the rejection-retry loop: the real request goes out via
@@ -117,9 +165,9 @@ class LLMRouter:
         the extra RPC + retry introduced burstiness compared to the prior
         local round-robin implementation.
         """
+        route_args = (routing_payload,) if routing_payload is not None else ()
         async with handle.choose_replica(
-            request_body=request_body,
-            body_truncated=body_truncated,
+            *route_args,
             _reserve=False,
         ) as selection:
             replica = selection._replica
