@@ -44,6 +44,7 @@ def _setup_tensorflow_environment(worker_addresses: List[str], index: int):
         "task": {"type": "worker", "index": index},
     }
     os.environ["TF_CONFIG"] = json.dumps(tf_config)
+    os.environ["TF_USE_LEGACY_KERAS"] = "1"
 
 
 class _TensorflowBackend(Backend):
