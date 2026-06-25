@@ -20,8 +20,10 @@ from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
 )
-from ray.llm._internal.serve.core.ingress.router import LLMRouter
-from ray.llm._internal.serve.core.ingress.routing_payload import parse_routing_payload
+from ray.llm._internal.serve.core.ingress.router import (
+    LLMRouter,
+    _parse_routing_payload,
+)
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 from ray.serve._private.common import DeploymentID
@@ -151,6 +153,8 @@ class TestDirectStreamingLLMRouter:
         payload = kwargs["routing_payload"]
         assert isinstance(payload, SimpleNamespace)
         assert payload.messages == [{"role": "user", "content": "hi"}]
+        # The whole body is exposed, so a router can read any field.
+        assert payload.model == "x"
         assert not hasattr(payload, "prompt")
         # A parseable body must not trip the "no routing key" warning.
         assert router._warned_no_routing_key is False
@@ -276,19 +280,20 @@ class TestDirectStreamingLLMRouter:
 
 
 class TestRoutingPayload:
-    """Unit coverage for body to routing-key normalization."""
+    """Unit coverage for wrapping a body as a routing namespace."""
 
     def test_parses_chat_messages(self):
         body = b'{"model":"x","messages":[{"role":"user","content":"hi"}]}'
-        payload = parse_routing_payload(body)
+        payload = _parse_routing_payload(body)
         assert isinstance(payload, SimpleNamespace)
         assert payload.messages == [{"role": "user", "content": "hi"}]
-        # A chat body must not expose a `prompt` attribute, so
-        # `_extract_text_from_request` resolves it as a chat request.
+        # A chat body exposes no `prompt`, so `_extract_text_from_request`
+        # resolves it as a chat request. Other fields are still exposed.
         assert not hasattr(payload, "prompt")
+        assert payload.model == "x"
 
     def test_parses_completion_prompt(self):
-        payload = parse_routing_payload(b'{"model":"x","prompt":"hello"}')
+        payload = _parse_routing_payload(b'{"model":"x","prompt":"hello"}')
         assert isinstance(payload, SimpleNamespace)
         assert payload.prompt == "hello"
         assert not hasattr(payload, "messages")
@@ -303,10 +308,11 @@ class TestRoutingPayload:
             b'{"model":"x","max_tokens":8}',  # object without messages or prompt
             b'{"messages":[]}',  # empty messages carry no routing signal
             b'{"prompt":""}',  # empty prompt carries no routing signal
+            b'{"model":"x","input":"hello"}',  # other request type, no routing key
         ],
     )
     def test_returns_none_when_no_key_derivable(self, body):
-        assert parse_routing_payload(body) is None
+        assert _parse_routing_payload(body) is None
 
     @pytest.mark.asyncio
     async def test_payload_satisfies_prefix_router_contract(self):
@@ -326,13 +332,13 @@ class TestRoutingPayload:
         # only uses self for the pure `_normalize_prompt_to_string` helper.
         router = PrefixCacheAffinityRouter.__new__(PrefixCacheAffinityRouter)
 
-        chat = parse_routing_payload(
+        chat = _parse_routing_payload(
             b'{"messages":[{"role":"user","content":"hello world"}]}'
         )
         pr = PendingRequest(args=[chat], kwargs={}, metadata=MagicMock())
         assert router._extract_text_from_request(pr) == "hello world"
 
-        completion = parse_routing_payload(b'{"prompt":"hello world"}')
+        completion = _parse_routing_payload(b'{"prompt":"hello world"}')
         pr = PendingRequest(args=[completion], kwargs={}, metadata=MagicMock())
         assert router._extract_text_from_request(pr) == "hello world"
 
