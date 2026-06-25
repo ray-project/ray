@@ -1931,24 +1931,24 @@ class Replica:
         finally:
             self._semaphore.release()
 
-    @asynccontextmanager
-    async def _start_queued_request(self, request_metadata: RequestMetadata):
-        """Acquire a slot for a queued direct-ingress request.
+    def _track_queued_request(self) -> Callable[[], None]:
+        """Count a queued direct-ingress request and return its release callback.
 
-        The caller increments _num_queued_requests before awaiting this. The
-        counter is decremented exactly once, when a slot is acquired or if the
-        request is cancelled while still waiting for one. This keeps a cancelled
-        queued request from leaking its count and wedging backpressure.
+        Increments _num_queued_requests now and returns a callback that
+        decrements it once. Call the callback after acquiring a slot and again
+        from a finally that always runs, so a request cancelled while queued
+        cannot leak its count and wedge backpressure.
         """
-        dequeued = False
-        try:
-            async with self._start_request(request_metadata):
+        self._num_queued_requests += 1
+        released = False
+
+        def release() -> None:
+            nonlocal released
+            if not released:
+                released = True
                 self._num_queued_requests -= 1
-                dequeued = True
-                yield
-        finally:
-            if not dequeued:
-                self._num_queued_requests -= 1
+
+        return release
 
     async def _drain_ongoing_requests(self, min_draining_period_s: float = 0.0):
         """Wait until the minimum draining period has elapsed and no ongoing
@@ -2573,42 +2573,46 @@ class Replica:
             )
 
         with self._wrap_request(request_metadata) as status_code_callback:
-            self._num_queued_requests += 1
-            async with self._start_queued_request(request_metadata):
-                # Use the generic disconnect detecting wrapper
-                result_gen = call_unary()
-                replica_response_generator = ReplicaResponseGenerator(
-                    result_gen,
-                    timeout_s=self._grpc_options.request_timeout_s,
-                )
-                try:
-                    result = await replica_response_generator.__anext__()
-                    c._set_on_grpc_context(context)
-                    status = ResponseStatus(code=grpc.StatusCode.OK)
-
-                    # NOTE(edoakes): we need to fully consume the generator otherwise the
-                    # finalizers that run after the `yield` statement won't run. There might
-                    # be a cleaner way to structure this.
-                    try:
-                        await replica_response_generator.__anext__()
-                    except StopAsyncIteration:
-                        pass
-                except BaseException as e:
-                    # For gRPC requests, wrap exception with user-set status code
-                    e = self._maybe_wrap_grpc_exception(e, request_metadata)
-                    status = get_grpc_response_status(
-                        e,
-                        self._grpc_options.request_timeout_s,
-                        request_metadata.request_id,
+            release_queue_slot = self._track_queued_request()
+            try:
+                async with self._start_request(request_metadata):
+                    release_queue_slot()
+                    # Use the generic disconnect detecting wrapper
+                    result_gen = call_unary()
+                    replica_response_generator = ReplicaResponseGenerator(
+                        result_gen,
+                        timeout_s=self._grpc_options.request_timeout_s,
                     )
-                    raise e
-                finally:
-                    # Record the status code for both success and error paths so
-                    # ingress metrics are emitted for successful gRPC requests.
-                    status_code_callback(status.code.name)
-                    set_grpc_code_and_details(context, status)
+                    try:
+                        result = await replica_response_generator.__anext__()
+                        c._set_on_grpc_context(context)
+                        status = ResponseStatus(code=grpc.StatusCode.OK)
 
-                return result.SerializeToString()
+                        # NOTE(edoakes): we need to fully consume the generator otherwise the
+                        # finalizers that run after the `yield` statement won't run. There might
+                        # be a cleaner way to structure this.
+                        try:
+                            await replica_response_generator.__anext__()
+                        except StopAsyncIteration:
+                            pass
+                    except BaseException as e:
+                        # For gRPC requests, wrap exception with user-set status code
+                        e = self._maybe_wrap_grpc_exception(e, request_metadata)
+                        status = get_grpc_response_status(
+                            e,
+                            self._grpc_options.request_timeout_s,
+                            request_metadata.request_id,
+                        )
+                        raise e
+                    finally:
+                        # Record the status code for both success and error paths so
+                        # ingress metrics are emitted for successful gRPC requests.
+                        status_code_callback(status.code.name)
+                        set_grpc_code_and_details(context, status)
+
+                    return result.SerializeToString()
+            finally:
+                release_queue_slot()
 
     async def _direct_ingress_unary_stream(
         self,
@@ -2825,7 +2829,7 @@ class Replica:
         first_message_peeked = False
 
         with self._wrap_request(request_metadata) as status_code_callback:
-            self._num_queued_requests += 1
+            release_queue_slot = self._track_queued_request()
 
             async def send_user_message(msg: Dict):
                 nonlocal response_started
@@ -2850,7 +2854,8 @@ class Replica:
                     response_finished = True
 
             async def call_asgi():
-                async with self._start_queued_request(request_metadata):
+                async with self._start_request(request_metadata):
+                    release_queue_slot()
                     if (
                         not self._user_callable_wrapper._run_user_code_in_separate_thread
                     ):
@@ -2872,54 +2877,59 @@ class Replica:
                             for message in asgi_messages:
                                 await send_user_message(message)
 
-            # Optimization: if Serve doesn't need to handle disconnects and
-            # timeouts for this request, we can avoid event loop overhead by
-            # directly awaiting the user code.
-            if receive_task is None and request_timeout_s is None:
-                return await call_asgi()
+            try:
+                # Optimization: if Serve doesn't need to handle disconnects and
+                # timeouts for this request, we can avoid event loop overhead by
+                # directly awaiting the user code.
+                if receive_task is None and request_timeout_s is None:
+                    return await call_asgi()
 
-            # Otherwise, we'd always need the call_asgi() task.
-            request_task = asyncio.create_task(call_asgi())
-            tasks = [request_task]
-            if receive_task is not None:
-                tasks.append(receive_task)
-
-            done, _ = await asyncio.wait(
-                tasks,
-                timeout=request_timeout_s,
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-
-            # NOTE(zcin): it's possible that the request task has finished sending
-            # all ASGI messages, but the task is suspended and before it can fully
-            # complete, the client has sent a disconnect message after the request
-            # is completed. That is why we check for `response_finished` here.
-            if request_task in done or response_finished:
+                # Otherwise, we'd always need the call_asgi() task.
+                request_task = asyncio.create_task(call_asgi())
+                tasks = [request_task]
                 if receive_task is not None:
-                    receive_task.cancel()
-                await request_task
-            elif receive_task in done:
-                request_task.cancel()
-                status_code_callback("499")
-                if not response_started:
-                    msg = (
-                        f"Client for request {request_id} disconnected, "
-                        "cancelling request."
-                    )
-                    await send_http_response(msg, 499, send)
-                raise asyncio.CancelledError
-            else:
-                request_task.cancel()
-                if receive_task is not None:
-                    receive_task.cancel()
-                status_code_callback("408")
-                if not response_started:
-                    msg = (
-                        f"Request {request_id} timed out after "
-                        f"{self._http_options.request_timeout_s}s."
-                    )
-                    await send_http_response(msg, 408, send)
-                raise asyncio.CancelledError
+                    tasks.append(receive_task)
+
+                done, _ = await asyncio.wait(
+                    tasks,
+                    timeout=request_timeout_s,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+
+                # NOTE(zcin): it's possible that the request task has finished sending
+                # all ASGI messages, but the task is suspended and before it can fully
+                # complete, the client has sent a disconnect message after the request
+                # is completed. That is why we check for `response_finished` here.
+                if request_task in done or response_finished:
+                    if receive_task is not None:
+                        receive_task.cancel()
+                    await request_task
+                elif receive_task in done:
+                    request_task.cancel()
+                    status_code_callback("499")
+                    if not response_started:
+                        msg = (
+                            f"Client for request {request_id} disconnected, "
+                            "cancelling request."
+                        )
+                        await send_http_response(msg, 499, send)
+                    raise asyncio.CancelledError
+                else:
+                    request_task.cancel()
+                    if receive_task is not None:
+                        receive_task.cancel()
+                    status_code_callback("408")
+                    if not response_started:
+                        msg = (
+                            f"Request {request_id} timed out after "
+                            f"{self._http_options.request_timeout_s}s."
+                        )
+                        await send_http_response(msg, 408, send)
+                    raise asyncio.CancelledError
+            finally:
+                # Releases the queue slot if call_asgi never acquired one, e.g.
+                # the task was cancelled before the event loop stepped it.
+                release_queue_slot()
 
     def _get_inflight_direct_ingress_task_counts_for_testing(self) -> Dict[str, int]:
         """Return counts of in-flight direct-ingress asyncio tasks. Used for testing."""
