@@ -14,6 +14,10 @@
 
 #pragma once
 
+#ifdef _WIN32
+#include <Windows.h>
+#endif
+
 #include <boost/asio/executor_work_guard.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/chrono.hpp>
