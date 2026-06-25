@@ -354,21 +354,28 @@ class PullManager {
     }
   };
 
-  /// Try to make an object local, by restoring the object from external
-  /// storage or by fetching the object from one of its expected client
-  /// locations. This does nothing if the object is not needed by any pull
-  /// request or if it is already local. This also sets a timeout for when to
-  /// make the next attempt to make the object local.
-  void TryToMakeObjectLocal(const ObjectID &object_id)
+  /**
+   * Try to make each object local, by restoring it from external storage or
+   * by fetching it from one of its expected client locations. Objects bound
+   * for the same remote node are coalesced into a single Pull RPC per node.
+   * Objects that are already local, no longer needed, or still inside their
+   * retry-timer window are skipped. May also set a fetch-timeout deadline.
+   *
+   * \param object_ids The objects to attempt to make local.
+   */
+  void TryToMakeObjectsLocal(const std::vector<ObjectID> &object_ids)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(active_objects_mu_);
 
-  /// Batched variant of TryToMakeObjectLocal. Objects with a remote
-  /// location are grouped by destination node and sent as a single Pull
-  /// RPC per node. Objects that fall through to the local spill restore
-  /// or fetch-timeout path are handled per-object via TryToMakeObjectLocal.
-  ///
-  /// \param object_ids The objects to attempt to make local.
-  void TryToMakeObjectsLocal(const std::vector<ObjectID> &object_ids)
+  /**
+   * Fallback path for an object that has no known remote location. Either
+   * restores the object from a local spilled URL, or counts toward the
+   * fetch-timeout deadline (and fails the pull once the deadline elapses).
+   *
+   * \param object_id The object whose source we are looking for.
+   * \param request Mutable per-object pull state used for retry / timeout
+   *     bookkeeping.
+   */
+  void RestoreFromLocalOrTimeout(const ObjectID &object_id, ObjectPullRequest &request)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(active_objects_mu_);
 
   /// Returns whether the set of active pull requests exceeds the memory allowance
@@ -382,15 +389,16 @@ class PullManager {
   /// Unpin the given object if pinned.
   void UnpinObject(const ObjectID &object_id);
 
-  /// Pick a remote node to pull the object from. This does not send an
-  /// RPC, so the caller can group objects bound for the same node into a
-  /// single batched Pull request.
-  ///
-  /// \param object_id The object to pull.
-  /// \return The chosen node, or nullopt if no remote location is known.
-  /// In the nullopt case the caller should fall through to the local
-  /// spill restore path.
-  std::optional<NodeID> PickPullLocation(const ObjectID &object_id);
+  /**
+   * Pick a remote node uniformly at random from the known in-memory
+   * locations of the object, or fall back to the spilled-node location if
+   * no in-memory location is known. Does not send an RPC.
+   *
+   * \param object_id Identifier of the object whose remote source will be
+   *     selected.
+   * \return The chosen node, or nullopt if no remote location is known.
+   */
+  std::optional<NodeID> PickRandomPullLocation(const ObjectID &object_id);
 
   /// Update the request retry time for the given request.
   /// The retry timer is incremented exponentially, capped at 1024 * 10 seconds.

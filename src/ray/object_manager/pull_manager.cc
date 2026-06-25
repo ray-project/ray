@@ -443,35 +443,12 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
 
   {
     absl::MutexLock lock(&active_objects_mu_);
-    TryToMakeObjectLocal(object_id);
+    TryToMakeObjectsLocal({object_id});
   }
 }
 
-void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
-  // The object is already local; abort.
-  if (object_is_local_(object_id)) {
-    return;
-  }
-
-  // The object is no longer needed; abort.
-  if (active_object_pull_requests_.count(object_id) == 0) {
-    return;
-  }
-
-  // The object waiting for local pull retry; abort.
-  auto &request = map_find_or_die(object_pull_requests_, object_id);
-  if (request.next_pull_time > get_time_seconds_()) {
-    return;
-  }
-
-  // Try to pull the object from a remote node. If the object is spilled on the local
-  // disk of the remote node, it will be restored by PushManager prior to pushing.
-  if (auto node_id = PickPullLocation(object_id); node_id.has_value()) {
-    send_pull_request_({object_id}, *node_id);
-    UpdateRetryTimer(request, object_id);
-    return;
-  }
-
+void PullManager::RestoreFromLocalOrTimeout(const ObjectID &object_id,
+                                            ObjectPullRequest &request) {
   // check if we can restore the object directly in the current raylet.
   // first check local spilled objects
   std::string direct_restore_url = get_locally_spilled_object_url_(object_id);
@@ -512,7 +489,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   }
 }
 
-std::optional<NodeID> PullManager::PickPullLocation(const ObjectID &object_id) {
+std::optional<NodeID> PullManager::PickRandomPullLocation(const ObjectID &object_id) {
   auto it = object_pull_requests_.find(object_id);
   if (it == object_pull_requests_.end()) {
     return std::nullopt;
@@ -548,7 +525,6 @@ std::optional<NodeID> PullManager::PickPullLocation(const ObjectID &object_id) {
 
 void PullManager::TryToMakeObjectsLocal(const std::vector<ObjectID> &object_ids) {
   absl::flat_hash_map<NodeID, std::vector<ObjectID>> batch_by_node;
-  std::vector<ObjectID> needs_fallback;
 
   const double now = get_time_seconds_();
   for (const auto &object_id : object_ids) {
@@ -562,24 +538,16 @@ void PullManager::TryToMakeObjectsLocal(const std::vector<ObjectID> &object_ids)
     if (request.next_pull_time > now) {
       continue;
     }
-    auto node_id = PickPullLocation(object_id);
-    if (node_id.has_value()) {
+    if (auto node_id = PickRandomPullLocation(object_id); node_id.has_value()) {
       batch_by_node[*node_id].push_back(object_id);
       UpdateRetryTimer(request, object_id);
     } else {
-      needs_fallback.push_back(object_id);
+      RestoreFromLocalOrTimeout(object_id, request);
     }
   }
 
   for (const auto &[node_id, oids] : batch_by_node) {
     send_pull_request_(oids, node_id);
-  }
-
-  // Objects with no remote location are handled per-object: the local
-  // spill restore path reads a per-object URL from local disk and the
-  // fetch-timeout path fails one object at a time.
-  for (const auto &object_id : needs_fallback) {
-    TryToMakeObjectLocal(object_id);
   }
 }
 
