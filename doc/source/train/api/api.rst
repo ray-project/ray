@@ -106,6 +106,7 @@ LightGBM
     ~train.lightgbm.LightGBMTrainer
     ~train.lightgbm.get_network_params
     ~train.lightgbm.RayTrainReportCallback
+    ~train.lightgbm.normalize_pandas_for_lightgbm
 
 JAX
 ~~~
@@ -129,6 +130,7 @@ Ray Train Configuration
     ~train.CheckpointConfig
     ~train.DataConfig
     ~train.FailureConfig
+    ~train.LoggingConfig
     ~train.RunConfig
     ~train.ScalingConfig
     ~train.ValidationConfig

@@ -218,7 +218,7 @@ def main(args: argparse.Namespace):
             .filter(lambda row: row["image"].size != 0)
             .map(process_image)
             .flat_map(patch_image)
-            .map_batches(ProcessPatches(transform))
+            .map_batches(ProcessPatches(transform), batch_size="auto")
             .map_batches(
                 EmbedPatches,
                 num_gpus=1,

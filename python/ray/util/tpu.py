@@ -1,10 +1,13 @@
+import atexit
 import logging
 import math
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray
 from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.accelerators.tpu import (
+    DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S,
     VALID_TPU_TYPES,
     get_chips_per_host,
     get_num_chips_from_topology,
@@ -136,6 +139,7 @@ def get_tpu_worker_resources(
     accelerator_type: str,
     resources_per_unit: Optional[Dict[str, float]] = None,
     num_slices: int = 1,
+    chips_per_vm: Optional[int] = None,
 ) -> Tuple[int, Dict[str, float]]:
     """
     Calculates the number of workers and the resources required for each worker
@@ -147,6 +151,9 @@ def get_tpu_worker_resources(
         resources_per_unit: Optional manual override for resources per unit. If
             unspecified, the number of TPU chips in a host is assumed.
         num_slices: The number of TPU slices.
+        chips_per_vm: An optional override for the number of chips per VM.
+            If unspecified, this is inferred automatically from the topology
+            and accelerator type.
 
     Returns:
         A tuple containing:
@@ -155,9 +162,15 @@ def get_tpu_worker_resources(
     """
     accelerator_version = get_tpu_version_from_type(accelerator_type)
 
-    chips_per_host = get_chips_per_host(topology, accelerator_version)
-    total_chips_per_slice = get_num_chips_from_topology(topology)
+    resolved_chips_per_vm = (
+        chips_per_vm
+        if chips_per_vm is not None
+        else get_chips_per_host(topology, accelerator_version)
+    )
+    if resolved_chips_per_vm <= 0:
+        raise ValueError("chips_per_vm must be positive.")
 
+    total_chips_per_slice = get_num_chips_from_topology(topology)
     total_chips_available = total_chips_per_slice * num_slices
 
     # Calculate the per-unit resources based on the TPU topology.
@@ -168,7 +181,7 @@ def get_tpu_worker_resources(
 
     # If user didn't specify TPU, default to # of chips on 1 host.
     if "TPU" not in final_resources:
-        final_resources["TPU"] = chips_per_host
+        final_resources["TPU"] = resolved_chips_per_vm
 
     tpus_per_unit = final_resources["TPU"]
 
@@ -415,51 +428,59 @@ class SlicePlacementGroup:
     - Pod type: The TPU accelerator version and the number of chips in a topology. (e.g. v6e-128, v5p-8).
     - Accelerator topology: The physical topology representing the structure (e.g. 2x2x2, 16x16).
 
-        Args:
-            topology: The TPU topology string (e.g. "2x2x2").
-            accelerator_version: The TPU accelerator generation (e.g. "v6e", "v5p", "v4").
-            resources_per_bundle: Optionally specify the resources to include in every worker bundle.
-            strategy: PlacementGroup parameter. The strategy to create the placement group. Currently default to "SPREAD"
+    Args:
+        topology: The TPU topology string (e.g. "2x2x2").
+        accelerator_version: The TPU accelerator generation (e.g. "v6e", "v5p", "v4").
+        resources_per_bundle: Optionally specify the resources to include in every worker bundle.
+        strategy: PlacementGroup parameter. The strategy to create the placement group. Currently default to "SPREAD"
 
-             - "PACK": Packs Bundles into as few nodes as possible.
-             - "SPREAD": Places Bundles across distinct nodes as even as possible.
-             - "STRICT_PACK": Packs Bundles into one node. The group is
-               not allowed to span multiple nodes.
-             - "STRICT_SPREAD": Packs Bundles across distinct nodes.
+            - "PACK": Packs Bundles into as few nodes as possible.
+            - "SPREAD": Places Bundles across distinct nodes as even as possible.
+            - "STRICT_PACK": Packs Bundles into one node. The group is
+              not allowed to span multiple nodes.
+            - "STRICT_SPREAD": Packs Bundles across distinct nodes.
 
-            lifetime: PlacementGroup parameter. Either `None`, which defaults to the placement group
-                will fate share with its creator and will be deleted once its
-                creator is dead, or "detached", which means the placement group
-                will live as a global object independent of the creator.
+        name: PlacementGroup parameter. The name of the placement group.
+        lifetime: PlacementGroup parameter. Either `None`, which defaults to the placement group
+            will fate share with its creator and will be deleted once its
+            creator is dead, or "detached", which means the placement group
+            will live as a global object independent of the creator.
+        num_slices: Number of TPU slices in the SlicePlacementGroup. Defaults to 1 when unspecified.
+        chips_per_vm: An optional override for the number of chips per VM. Useful for resolving
+            ambiguous topologies (e.g. v6e 2x4) where the slice could physically consist of
+            a single 8-chip VM or two 4-chip VMs.
+        head_reservation_timeout_s: The maximum time in seconds to wait for each
+            TPU head placement group to become ready. Defaults to
+            ``DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S``. Pass ``None`` to wait
+            indefinitely.
+        bundle_label_selector: Optional list of label selectors to apply per bundle. These label
+            selectors are applied in addition to dynamic TPU slice name labels, which take precedence.
 
-            num_slices: Number of TPU slices in the SlicePlacementGroup. Defaults to 1 when unspecified.
+    Examples:
 
-        Examples:
+    .. testcode:: python
+        :skipif: True
 
-        .. testcode:: python
-            :skipif: True
+        import ray
+        from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+        from ray.util.tpu import SlicePlacementGroup
 
-            import ray
-            from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-            from ray.util.tpu import SlicePlacementGroup
+        slice_handle = SlicePlacementGroup(topology="4x4", accelerator_version="v6e")
+        slice_pg = slice_handle.placement_group
+        ray.get(slice_pg.ready(), timeout=10)
 
-            slice_handle = SlicePlacementGroup(topology="4x4", accelerator_version="v6e")
-            slice_pg = slice_handle.placement_group
-            ray.get(slice_pg.ready(), timeout=10)
+        @ray.remote(num_cpus=0, resources={'TPU': 4})
+        def spmd_task(world, rank):
+            print(f"Current TPU is rank {rank} of {world}")
 
-            @ray.remote(num_cpus=0, resources={'TPU': 4})
-            def spmd_task(world, rank):
-                print(f"Current TPU is rank {rank} of {world}")
-
-            tasks = [
-                spmd_task.options(
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=slice_pg,
-                    )
-                ).remote(world=4, rank=i)
-                for i in range(slice_handle.num_hosts)
-            ]
-
+        tasks = [
+            spmd_task.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=slice_pg,
+                )
+            ).remote(world=4, rank=i)
+            for i in range(slice_handle.num_hosts)
+        ]
     """
 
     def __init__(
@@ -473,13 +494,24 @@ class SlicePlacementGroup:
         lifetime: Optional[str] = None,
         # default
         num_slices: int = 1,
+        chips_per_vm: Optional[int] = None,
+        head_reservation_timeout_s: Optional[float] = (
+            DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S
+        ),
+        bundle_label_selector: Optional[List[Dict[str, str]]] = None,
     ):
+        self._head_pgs: List[PlacementGroup] = []
+        self._bundle_label_selector: List[Dict[str, str]] = []
+        self._placement_group: Optional[PlacementGroup] = None
+        self._user_bundle_label_selector = bundle_label_selector or []
+
         self._topology = topology.strip().lower()
         self._accelerator_version = get_tpu_version_from_type(
             accelerator_version.strip()
         )
         self._resources_per_bundle = resources_per_bundle or {}
         self._num_slices = num_slices
+        self._head_reservation_timeout_s = head_reservation_timeout_s
 
         # Calculate number of bundles and bundle resources for specified TPU topology.
         self._num_bundles, self._bundle_resources = get_tpu_worker_resources(
@@ -487,20 +519,24 @@ class SlicePlacementGroup:
             accelerator_type=self._accelerator_version,
             resources_per_unit=resources_per_bundle,
             num_slices=self._num_slices,
+            chips_per_vm=chips_per_vm,
         )
 
-        self._chips_per_host = get_chips_per_host(
-            self._topology, self._accelerator_version
+        self._chips_per_host = (
+            chips_per_vm
+            if chips_per_vm is not None
+            else get_chips_per_host(self._topology, self._accelerator_version)
         )
+        if self._chips_per_host <= 0:
+            raise ValueError("chips_per_vm must be positive.")
 
+        # Within Ray, a "host" corresponds to a user-visible compute VM.
+        # This may differ from the physical hardware host definitions in GCP/GKE docs.
         total_chips = get_num_chips_from_topology(self._topology)
         hosts_per_slice = max(1, total_chips // self._chips_per_host)
         self._num_hosts = hosts_per_slice * self._num_slices
 
-        self._head_pgs: List[PlacementGroup] = []
-        self._bundle_label_selector: List[Dict[str, str]] = []
         self._validate_tpu_config()
-        self._placement_group = None
 
         # Reserve a TPU slice of the provided accelerator version and topology.
         self._placement_group = self._reserve_slice(
@@ -528,6 +564,15 @@ class SlicePlacementGroup:
         lifetime: Optional[str] = None,
     ) -> PlacementGroup:
         """Performs the two-step scheduling to reserve a TPU slice."""
+        if (
+            self._user_bundle_label_selector
+            and len(self._user_bundle_label_selector) != self._num_bundles
+        ):
+            raise ValueError(
+                f"bundle_label_selector length ({len(self._user_bundle_label_selector)}) must "
+                f"match the number of bundles ({self._num_bundles})."
+            )
+
         self._bundle_label_selector = []
         bundles = []
         bundles_per_slice = self._num_bundles // self._num_slices
@@ -536,8 +581,12 @@ class SlicePlacementGroup:
         accelerator_type = "TPU-" + self.accelerator_version.upper()
 
         try:
-            for _ in range(self.num_slices):
-                reservation = reserve_tpu_slice(self._topology, accelerator_type)
+            for slice_idx in range(self.num_slices):
+                reservation = reserve_tpu_slice(
+                    self._topology,
+                    accelerator_type,
+                    timeout_s=self._head_reservation_timeout_s,
+                )
                 if not reservation:
                     raise RuntimeError(
                         f"Failed to reserve TPU slice. Requested {self.num_slices} "
@@ -550,10 +599,22 @@ class SlicePlacementGroup:
                 slice_name, head_pg = reservation
                 self._head_pgs.append(head_pg)
 
-                # Reserving a slice is done through constructing num_hosts bundles, each with a label selector for
-                # the unique name of an available TPU slice.
-                selector = {ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name}
-                self._bundle_label_selector.extend([selector] * bundles_per_slice)
+                tpu_slice_name_label = {
+                    ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name
+                }
+
+                for bundle_idx in range(bundles_per_slice):
+                    global_bundle_idx = slice_idx * bundles_per_slice + bundle_idx
+
+                    user_labels = (
+                        self._user_bundle_label_selector[global_bundle_idx]
+                        if global_bundle_idx < len(self._user_bundle_label_selector)
+                        else {}
+                    )
+                    # TPU slice name label takes precedence; user labels fill in the rest.
+                    merged_labels = {**user_labels, **tpu_slice_name_label}
+                    self._bundle_label_selector.append(merged_labels)
+
                 bundles += [
                     self._bundle_resources.copy() for _ in range(bundles_per_slice)
                 ]
@@ -622,14 +683,47 @@ class SlicePlacementGroup:
         """The resources that are assigned to each bundle."""
         return self._bundle_resources
 
-    def shutdown(self):
-        """Removes the worker placement group and all internal head PGs."""
-        if self._placement_group:
-            remove_placement_group(self._placement_group)
-            self._placement_group = None
-        for head_pg in self._head_pgs:
-            remove_placement_group(head_pg)
+    @DeveloperAPI(stability="alpha")
+    def release_head_pgs(self) -> None:
+        """Remove all internal head placement groups.
+
+        The head PGs exist only to atomically claim a TPU slice's label during
+        the race window between slice selection and worker-PG construction.
+        Once the worker PG's bundles are scheduled, the worker PG holds the TPU
+        resources on every host in the slice and the head PGs are redundant.
+
+        Callers should invoke this idempotent call after `self.placement_group.ready()`
+        resolves successfully.
+        """
+        head_pgs = getattr(self, "_head_pgs", [])
         self._head_pgs = []
+        for head_pg in head_pgs:
+            try:
+                remove_placement_group(head_pg)
+            except Exception:
+                logger.exception(
+                    "Failed to remove TPU head placement group %s; the "
+                    "slice reservation marker may leak until the creator "
+                    "process exits.",
+                    getattr(head_pg, "id", head_pg),
+                )
+
+    def shutdown(self):
+        """Remove the worker placement group and all internal head PGs.
+
+        Idempotent. Safe to call on a partially-constructed instance.
+        """
+        worker_pg = getattr(self, "_placement_group", None)
+        if worker_pg is not None:
+            self._placement_group = None
+            try:
+                remove_placement_group(worker_pg)
+            except Exception:
+                logger.exception(
+                    "Failed to remove TPU worker placement group %s.",
+                    getattr(worker_pg, "id", worker_pg),
+                )
+        self.release_head_pgs()
 
 
 @PublicAPI(stability="alpha")
@@ -639,6 +733,7 @@ def slice_placement_group(
     accelerator_version: str,
     resources_per_bundle: Optional[Dict[str, float]] = None,
     num_slices: int = 1,
+    chips_per_vm: Optional[int] = None,
     **kwargs,
 ) -> SlicePlacementGroup:
     """Asynchronously creates a PlacementGroup for a TPU slice.
@@ -654,7 +749,10 @@ def slice_placement_group(
             a topology, with the bundle resources set to the number of TPU in a host.
             Ex: Specifying {"TPU": 1} for a 4x4 topology would result in 16 bundles, each with 1 TPU.
             If resources_per_bundle=None for the same topology, there would be 4 bundles with 4 TPU each.
-        num_slices: The number of tpu slices within the placement group
+        num_slices: The number of tpu slices within the placement group.
+        chips_per_vm: An optional override for the number of chips per TPU VM.
+            Useful for ambiguous topologies like v6e 2x4 which have 1 host, but can be provisioned
+            as either 1 VM (8 chips) or 2 VMs (4 chips each).
         **kwargs: Additional arguments for the placement group, such as 'name', 'lifetime', or 'strategy'.
 
     Returns:
@@ -666,5 +764,80 @@ def slice_placement_group(
         accelerator_version=accelerator_version,
         resources_per_bundle=resources_per_bundle,
         num_slices=num_slices,
+        chips_per_vm=chips_per_vm,
         **kwargs,
     )
+
+
+@PublicAPI(stability="alpha")
+def init_jax_profiler(port: Optional[int] = None) -> None:
+    """Setup JAX Profiler server for in-process JAX profiling.
+
+    This opens a background gRPC profiling port inside the current worker process
+    and automatically registers the port to GCS internal_kv so that the Ray Dashboard
+    can discover the profiling endpoint.
+
+    Args:
+        port: The port where JAX profiler server should listen. If None, it reads the
+              port from JAX_PROFILER_PORT environment variable (default: 9999).
+
+    Note:
+        JAX profiling is inherently an in-process operation. The JAX profiler server
+        must run inside the memory space of the target worker process executing the
+        JAX/XLA code in order to capture trace events, Python thread stacks, and XLA
+        execution times.
+    """
+    logger = logging.getLogger(__name__)
+
+    try:
+        import jax
+
+        if port is None:
+            port = int(os.getenv("JAX_PROFILER_PORT", "9999"))
+        try:
+            # NOTE: We assume there is at most one JAX worker process per host/node
+            # (which is typical for multi-host JAX/TPU VM training). Therefore, we attempt
+            # to bind directly to a single port without dynamically scanning a range.
+            # If this assumption is relaxed in the future (e.g. multiple JAX workers per node),
+            # we should consider switching to dynamic port scanning/allocation.
+            jax.profiler.start_server(port)
+            logger.info(f"Started JAX profiler server on port {port}")
+
+            # Register the JAX profiler port in GCS internal_kv so dashboard head can auto-discover it.
+            try:
+                worker = ray._private.worker.global_worker
+                if worker and hasattr(worker, "node") and worker.node:
+                    node_id_hex = worker.node.node_id
+                    pid = os.getpid()
+                    key = f"jax_profiler_port:{node_id_hex}:{pid}"
+                    ray.experimental.internal_kv._internal_kv_put(
+                        key,
+                        str(port).encode(),
+                        namespace=ray._private.ray_constants.KV_NAMESPACE_DASHBOARD,
+                    )
+                    logger.info(
+                        f"Registered JAX profiler port {port} in GCS internal_kv"
+                    )
+
+                    atexit.register(_cleanup_jax_profiler_kv, key)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to register JAX profiler port in internal_kv: {e}"
+                )
+
+        except Exception as e:
+            logger.error(f"Failed to start JAX profiler server on port {port}: {e}")
+    except ImportError:
+        logger.warning("JAX is not installed, skipping JAX profiler setup")
+    except Exception as e:
+        logger.error(f"Failed to start JAX profiler server: {e}")
+
+
+def _cleanup_jax_profiler_kv(key: str) -> None:
+    try:
+        ray.experimental.internal_kv._internal_kv_del(
+            key,
+            namespace=ray._private.ray_constants.KV_NAMESPACE_DASHBOARD,
+        )
+    except Exception:
+        pass

@@ -55,11 +55,19 @@ To view the full list of supported file formats, see the
 
         .. testcode::
 
+            import pyarrow.fs
+
             import ray
             from ray.data.expressions import download
 
             ds = ray.data.read_parquet("s3://anonymous@ray-example-data/imagenet/metadata_file.parquet")
-            ds = ds.with_column("bytes", download("image_url"))
+            ds = ds.with_column(
+                "bytes",
+                download(
+                    "image_url",
+                    filesystem=pyarrow.fs.S3FileSystem(anonymous=True, region="us-west-2"),
+                ),
+            )
 
             print(ds.schema())
 
@@ -68,7 +76,7 @@ To view the full list of supported file formats, see the
             Column     Type
             ------     ----
             image_url  string
-            bytes      null
+            bytes      binary
 
     .. tab-item:: NumPy
 
@@ -194,7 +202,7 @@ To transform images, call :meth:`~ray.data.Dataset.map` or
 
     ds = (
         ray.data.read_images("s3://anonymous@ray-example-data/batoidea/JPEGImages")
-        .map_batches(increase_brightness)
+        .map_batches(increase_brightness, batch_size="auto")
     )
 
 For more information on transforming data, see

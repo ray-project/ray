@@ -1,5 +1,6 @@
 import abc
 import logging
+import pickle
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -17,7 +18,7 @@ from typing import (
 )
 
 import ray
-from .ref_bundle import RefBundle
+from .ref_bundle import BlockEntry, RefBundle
 from ray._raylet import ObjectRefGenerator
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     ActorPoolInfo,
@@ -36,6 +37,7 @@ from ray.data.context import DataContext
 
 if TYPE_CHECKING:
 
+    from ray.data._internal.execution.streaming_executor_state import OpState
     from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
@@ -48,6 +50,23 @@ METADATA_WAIT_TIMEOUT_S = 0.1
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
 Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
+
+
+@dataclass(frozen=True)
+class ObjectStoreUsage:
+    """Per-op object store accounting.
+
+    Attributes:
+        internal: Bytes held by this op's currently-running tasks
+            (outputs not yet yielded to the object store).
+        outputs: Bytes this op has produced that are still live in
+            the object store — its internal output queue, its
+            ``OpState`` external output queue, and the downstream
+            eligible ops' inputs.
+    """
+
+    internal: int
+    outputs: int
 
 
 class OpTask(ABC):
@@ -77,7 +96,6 @@ class OpTask(ABC):
         ...
 
     def _cancel(self, force: bool):
-
         is_actor_task = not self.get_task_id().actor_id().is_nil()
 
         ray.cancel(
@@ -176,7 +194,9 @@ class DataOpTask(OpTask):
         Args:
             max_bytes_to_read: Max bytes of blocks to read. If None, all available
                 will be read.
-        Returns: The number of blocks read.
+
+        Returns:
+            The number of blocks read.
         """
         bytes_read = 0
 
@@ -252,7 +272,7 @@ class DataOpTask(OpTask):
                 # block metadata to this node. So, if we set the timeout to 0, `ray.get`
                 # will timeout and possible cancel the download. To avoid this issue,
                 # we set the timeout to a small non-zero value.
-                meta_with_schema: "BlockMetadataWithSchema" = ray.get(
+                meta_with_schema_bytes: bytes = ray.get(
                     self._pending_meta_ref, timeout=METADATA_GET_TIMEOUT_S
                 )
             except ray.exceptions.GetTimeoutError:
@@ -268,10 +288,13 @@ class DataOpTask(OpTask):
                 )
                 break
 
+            meta_with_schema: "BlockMetadataWithSchema" = pickle.loads(
+                meta_with_schema_bytes
+            )
             meta = meta_with_schema.metadata
             self._output_ready_callback(
                 RefBundle(
-                    [(self._pending_block_ref, meta)],
+                    [BlockEntry(self._pending_block_ref, meta)],
                     owns_blocks=True,
                     schema=meta_with_schema.schema,
                 ),
@@ -318,10 +341,13 @@ class MetadataOpTask(OpTask):
         task_done_callback: Callable[[], None],
         task_resource_bundle: Optional[ExecutionResources] = None,
     ):
-        """
+        """Initialize a metadata-only OpTask.
+
         Args:
+            task_index: Index identifying this task within its operator.
             object_ref: The ObjectRef of the task.
             task_done_callback: The callback to call when the task is done.
+            task_resource_bundle: Optional resource bundle reserved for this task.
         """
         super().__init__(task_index, task_resource_bundle)
         self._object_ref = object_ref
@@ -378,7 +404,8 @@ class PhysicalOperator(Operator):
         target_max_block_size_override: Optional[int] = None,
         num_output_splits: int = 1,
     ):
-        super().__init__(name, input_dependencies)
+        self._name = name
+        self._input_dependencies = input_dependencies
         self._output_dependencies: List["PhysicalOperator"] = []
 
         for input in input_dependencies:
@@ -433,8 +460,29 @@ class PhysicalOperator(Operator):
     # Override the following methods to correct type hints.
 
     @property
+    def name(self) -> str:
+        return self._name
+
+    @property
     def input_dependencies(self) -> List["PhysicalOperator"]:
-        return super().input_dependencies  # type: ignore
+        return self._input_dependencies
+
+    @property
+    def dag_str(self) -> str:
+        """String representation of the whole physical DAG."""
+        if self.input_dependencies:
+            out_str = ", ".join([x.dag_str for x in self.input_dependencies])
+            out_str += " -> "
+        else:
+            out_str = ""
+        out_str += f"{self.__class__.__name__}[{self._name}]"
+        return out_str
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}[{self._name}]"
+
+    def __str__(self) -> str:
+        return repr(self)
 
     @property
     def output_dependencies(self) -> List["PhysicalOperator"]:
@@ -838,6 +886,41 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources.zero()
 
+    def estimate_object_store_usage(self, state: "OpState") -> ObjectStoreUsage:
+        """Returns the bytes this operator contributes to the global object
+        store budget. Subclasses may override this when their object store
+        footprint doesn't match the generic model.
+        """
+        # Operator's internal Object Store usage
+        mem_op_internal = self.metrics.obj_store_mem_pending_task_outputs or 0
+
+        # Operator's outputs' Object Store usage
+        op_outputs_bytes = (
+            # Internal output queue
+            self.metrics.obj_store_mem_internal_outqueue
+            +
+            # External output queue
+            state.output_queue_bytes()
+        )
+
+        # TODO fix ineligible ops: this needs to include usage of all of OS
+        #      for ineligible ops
+        #
+        # Outputs of this operator used downstream
+        used_op_outputs_bytes = sum(
+            (
+                downstream_op.metrics.obj_store_mem_internal_inqueue_for_input(
+                    downstream_op.input_dependencies.index(self)
+                )
+                + downstream_op.metrics.obj_store_mem_pending_task_inputs
+            )
+            for downstream_op in self.output_dependencies
+        )
+        return ObjectStoreUsage(
+            internal=int(mem_op_internal),
+            outputs=int(op_outputs_bytes + used_op_outputs_bytes),
+        )
+
     def running_logical_usage(self) -> ExecutionResources:
         """Returns the estimated running CPU, GPU, and memory usage of this operator,
         excluding object store memory.
@@ -939,7 +1022,15 @@ class PhysicalOperator(Operator):
 
     def get_actor_info(self) -> ActorPoolInfo:
         """Returns the current status of actors being used by the operator"""
-        return ActorPoolInfo(running=0, pending=0, restarting=0)
+        return ActorPoolInfo(
+            running=0,
+            restarting=0,
+            pending=0,
+            active=0,
+            idle=0,
+            pool_utilization=0,
+            tasks_in_flight=0,
+        )
 
     def _cancel_active_tasks(self, force: bool):
         tasks: List[OpTask] = self.get_active_tasks()

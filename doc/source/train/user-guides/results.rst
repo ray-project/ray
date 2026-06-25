@@ -9,6 +9,7 @@ The :class:`~ray.train.Result` object contains, among other information:
 
 - The last reported checkpoint (to load the model) and its attached metrics
 - Error messages, if any errors occurred
+- Any data returned by the training function (on worker 0 only)
 
 Viewing metrics
 ---------------
@@ -49,6 +50,16 @@ a pandas DataFrame of all metrics reported alongside checkpoints.
     :start-after: __result_dataframe_start__
     :end-before: __result_dataframe_end__
 
+Returned data from train function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Use :attr:`Result.return_value <ray.train.Result>` to retrieve any data
+returned from worker 0's train function.
+
+.. literalinclude:: ../doc_code/key_concepts.py
+    :language: python
+    :start-after: __result_return_value_start__
+    :end-before: __result_return_value_end__
 
 Retrieving checkpoints
 ----------------------
@@ -115,13 +126,12 @@ access the storage location, which is useful if the path is on cloud storage.
     :end-before: __result_path_end__
 
 
-.. You can restore a result with :meth:`Result.from_path <ray.train.Result.from_path>`:
+You can restore a result with :meth:`Result.from_path <ray.train.Result.from_path>`:
 
-.. .. literalinclude:: ../doc_code/key_concepts.py
-..     :language: python
-..     :start-after: __result_restore_start__
-..     :end-before: __result_restore_end__
-
+.. literalinclude:: ../doc_code/key_concepts.py
+    :language: python
+    :start-after: __result_restore_start__
+    :end-before: __result_restore_end__
 
 
 Catching Errors

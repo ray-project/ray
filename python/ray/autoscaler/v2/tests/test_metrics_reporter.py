@@ -40,6 +40,13 @@ def test_report_nodes_resources():
         _i += 1
         return f"i-{_i}"
 
+    terminating_type_1 = create_instance(
+        id(), status=Instance.TERMINATING, instance_type="type_1"
+    )
+    terminating_type_2 = create_instance(
+        id(), status=Instance.TERMINATING, instance_type="type_2"
+    )
+
     instances = [
         # Active = 3
         create_instance(id(), status=Instance.RAY_RUNNING, instance_type="type_1"),
@@ -56,13 +63,9 @@ def test_report_nodes_resources():
         create_instance(id(), status=Instance.RAY_INSTALLING, instance_type="type_2"),
         create_instance(id(), status=Instance.ALLOCATED, instance_type="type_2"),
         # Terminating
-        create_instance(id(), status=Instance.TERMINATING, instance_type="type_1"),
-        create_instance(id(), status=Instance.TERMINATING, instance_type="type_2"),
-        # Terminated
-        create_instance(id(), status=Instance.TERMINATED, instance_type="type_1"),
-        create_instance(id(), status=Instance.TERMINATED, instance_type="type_2"),
+        terminating_type_1,
+        terminating_type_2,
     ]
-
     reporter.report_instances(instances, node_type_configs)
 
     def _get_metrics(metrics, name) -> List[float]:
@@ -92,10 +95,6 @@ def test_report_nodes_resources():
         ).collect(),
         "autoscaler_recently_failed_nodes",
     ) == [1]
-    assert _get_metrics(
-        reporter._prom_metrics.stopped_nodes.collect(),
-        "autoscaler_stopped_nodes_total",
-    ) == [2]
 
     # Test that resources are reported correctly
     reporter.report_resources(instances, node_type_configs)

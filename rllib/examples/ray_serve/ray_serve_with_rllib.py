@@ -151,8 +151,10 @@ if __name__ == "__main__":
 
     try:
         # Create the environment that we would like to receive
-        # served actions for.
-        env = gym.make("CartPole-v1", render_mode="human")
+        # served actions for. Only request a "human" render window when rendering
+        # is actually enabled; otherwise leave `render_mode=None` so that calling
+        # `env.reset()`/`env.step()` does not try to open a pygame/X11 display.
+        env = gym.make("CartPole-v1", render_mode=None if args.no_render else "human")
         obs, _ = env.reset()
 
         num_episodes = 0

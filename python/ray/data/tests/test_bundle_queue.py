@@ -5,7 +5,7 @@ import pytest
 
 import ray
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
-from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
 from ray.data.block import BlockAccessor
 
 
@@ -15,7 +15,9 @@ def _create_bundle(data: Any) -> RefBundle:
     block_ref = ray.put(block)
     metadata = BlockAccessor.for_block(block).get_metadata()
     schema = BlockAccessor.for_block(block).schema()
-    return RefBundle([(block_ref, metadata)], owns_blocks=False, schema=schema)
+    return RefBundle(
+        [BlockEntry(block_ref, metadata)], owns_blocks=False, schema=schema
+    )
 
 
 # CVGA-start

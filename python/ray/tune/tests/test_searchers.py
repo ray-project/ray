@@ -93,6 +93,7 @@ class InvalidValuesTest(unittest.TestCase):
         converted_config = AxSearch.convert_search_space(config)
         # At least one nan, inf, -inf and float
         client = AxClient(random_seed=4321)
+
         client.create_experiment(
             parameters=converted_config,
             objectives={"_metric": ObjectiveProperties(minimize=False)},
@@ -798,6 +799,44 @@ class MultiObjectiveTest(unittest.TestCase):
         best_trial_c = out.get_best_trial("c", "max")
         self.assertGreaterEqual(best_trial_c.config["c"], 0.8)
         self.assertTrue(os.path.exists(storage_file_path))
+
+
+class BayesOptHashPrecisionTest(unittest.TestCase):
+    def testDictHashPrecisionDistinguishesNearFloats(self):
+        from ray.tune.search.bayesopt.bayesopt_search import _dict_hash
+
+        a = {"lr": 1.00001e-05}
+        b = {"lr": 1.46532e-05}
+        # The default precision of 5 rounds both to the same string, so the
+        # two distinct configs collide and one suggestion would be skipped.
+        self.assertEqual(_dict_hash(a, 5), _dict_hash(b, 5))
+        # A higher precision keeps them apart.
+        self.assertNotEqual(_dict_hash(a, 16), _dict_hash(b, 16))
+
+    def testRepeatFloatPrecisionIsConfigurable(self):
+        pytest.importorskip("bayes_opt")
+        from ray.tune.search.bayesopt import BayesOptSearch
+
+        # Default stays at 5 for backward compatibility.
+        self.assertEqual(BayesOptSearch().repeat_float_precision, 5)
+        searcher = BayesOptSearch(repeat_float_precision=16)
+        self.assertEqual(searcher.repeat_float_precision, 16)
+
+    def testInvalidRepeatFloatPrecisionRaises(self):
+        pytest.importorskip("bayes_opt")
+        from ray.tune.search.bayesopt import BayesOptSearch
+
+        with self.assertRaises(ValueError):
+            BayesOptSearch(repeat_float_precision=-1)
+
+        with self.assertRaises(TypeError):
+            BayesOptSearch(repeat_float_precision="5")
+
+        with self.assertRaises(TypeError):
+            BayesOptSearch(repeat_float_precision=5.5)
+
+        with self.assertRaises(TypeError):
+            BayesOptSearch(repeat_float_precision=True)
 
 
 if __name__ == "__main__":

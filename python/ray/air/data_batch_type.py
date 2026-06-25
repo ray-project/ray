@@ -7,5 +7,5 @@ if TYPE_CHECKING:
 
 # TODO de-dup with ray.data.block.DataBatch
 DataBatchType = Union[
-    "numpy.ndarray", "pyarrow.Table" "pandas.DataFrame", Dict[str, "numpy.ndarray"]
+    "numpy.ndarray", "pyarrow.Table", "pandas.DataFrame", Dict[str, "numpy.ndarray"]
 ]

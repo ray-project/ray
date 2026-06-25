@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/bundle_location_index.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
@@ -49,7 +50,8 @@ class GcsActorSchedulerTest;
 /// This class is not thread safe.
 class ClusterResourceManager {
  public:
-  explicit ClusterResourceManager(instrumented_io_context &io_service);
+  explicit ClusterResourceManager(
+      std::shared_ptr<PeriodicalRunnerInterface> periodical_runner);
 
   /// Get the resource view of the cluster.
   const absl::flat_hash_map<scheduling::NodeID, Node> &GetResourceView() const;
@@ -151,6 +153,25 @@ class ClusterResourceManager {
   void SetNodeLabels(const scheduling::NodeID &node_id,
                      absl::flat_hash_map<std::string, std::string> labels);
 
+  /// Get the labels for a given node.
+  ///
+  /// \param node_id The ID of the node whose labels to retrieve.
+  /// \return The node's labels.
+  /// \note Crashes (via map_find_or_die) if the node_id does not exist in the
+  ///   cluster. Callers must ensure the node exists before calling this method.
+  const absl::flat_hash_map<std::string, std::string> &GetNodeLabels(
+      scheduling::NodeID node_id) const;
+
+  /// Get the total capacity of a specific resource on a given node.
+  ///
+  /// \param node_id The ID of the node to query.
+  /// \param resource_id The ID of the resource whose total capacity to retrieve.
+  /// \return The total capacity of the resource as a FixedPoint value.
+  /// \note Crashes (via map_find_or_die) if the node_id does not exist in the
+  ///   cluster. Callers must ensure the node exists before calling this method.
+  FixedPoint GetNodeTotalResources(scheduling::NodeID node_id,
+                                   scheduling::ResourceID resource_id) const;
+
  private:
   friend class ClusterResourceScheduler;
   friend class gcs::GcsActorSchedulerTest;
@@ -187,7 +208,7 @@ class ClusterResourceManager {
   BundleLocationIndex bundle_location_index_;
 
   /// Timer to revert local changes to the resources periodically.
-  std::shared_ptr<PeriodicalRunner> timer_;
+  std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
 
   mutable ray::stats::Gauge local_resource_view_node_count_gauge_;
 

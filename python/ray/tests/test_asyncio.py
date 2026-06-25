@@ -126,14 +126,14 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
     def task():
         return 1
 
-    assert await task.remote().as_future() == 1
+    assert await task.remote() == 1
 
     @ray.remote
     def task_throws():
         _ = 1 / 0
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        await task_throws.remote().as_future()
+        await task_throws.remote()
 
     # Test actor calls.
     str_len = 200 * 1024
@@ -152,14 +152,12 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
 
     actor = Actor.remote()
 
-    actor_call_future = actor.echo.remote(2).as_future()
-    assert await actor_call_future == 2
+    assert await actor.echo.remote(2) == 2
 
-    promoted_to_plasma_future = actor.big_object.remote().as_future()
-    assert await promoted_to_plasma_future == "a" * str_len
+    assert await actor.big_object.remote() == "a" * str_len
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        await actor.throw_error.remote().as_future()
+        await actor.throw_error.remote()
 
     # Wrap in Remote Function to work with Ray client.
     kill_actor_ref = ray.remote(kill_actor_and_wait_for_failure).remote(actor)
@@ -196,7 +194,7 @@ async def test_asyncio_double_await(ray_start_regular_shared):
     signal = SignalActor.remote()
     waiting = signal.wait.remote()
 
-    future = waiting.as_future()
+    future = asyncio.ensure_future(waiting)
     with pytest.raises(asyncio.TimeoutError):
         await asyncio.wait_for(future, timeout=0.1)
     assert future.cancelled()
@@ -387,28 +385,34 @@ def test_asyncio_actor_with_large_concurrency(ray_start_regular_shared):
 
 
 def test_asyncio_actor_shutdown_when_non_async_method_mixed(ray_start_regular_shared):
-    # It is a regression test.
-    # https://github.com/ray-project/ray/issues/32376
-    # Make sure the core worker doesn't crash when
-    # exit_actor is used when async & regular actor tasks
-    # are executed.
+    # Regression test for:  https://github.com/ray-project/ray/issues/32376
+    # Ensure the core worker doesn't crash when exit_actor is used while mixing async
+    # and sync actor tasks.
     @ray.remote
     class A:
-        async def f(self):
-            await asyncio.sleep(1)
+        def __init__(self, *, exit_after: int):
+            self._remaining = exit_after
+            self._event = asyncio.Event()
+
+        async def wait_then_exit(self):
+            await self._event.wait()
             ray.actor.exit_actor()
 
         def ping(self):
-            pass
+            self._remaining -= 1
+            if self._remaining == 0:
+                self._event.set()
 
-    a = A.remote()
-    a.f.remote()
+    # Exit after 1/2 of the ping tasks have executed to ensure interleaving.
+    a = A.remote(exit_after=500)
+    exit_ref = a.wait_then_exit.remote()
+    ping_refs = [a.ping.remote() for _ in range(1000)]
 
     with pytest.raises(
         ray.exceptions.RayActorError,
-        match=("exit_actor"),
+        match="INTENDED_USER_EXIT",
     ):
-        ray.get([a.ping.remote() for _ in range(10000)])
+        ray.get([exit_ref] + ping_refs)
 
 
 def test_asyncio_actor_argument_collision(ray_start_regular_shared):

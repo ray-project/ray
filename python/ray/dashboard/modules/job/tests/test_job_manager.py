@@ -12,7 +12,7 @@ from uuid import uuid4
 import pytest
 
 import ray
-from ray._common.network_utils import build_address
+from ray._common.network_utils import build_address, get_localhost_ip
 from ray._common.test_utils import (
     FakeTimer,
     SignalActor,
@@ -25,7 +25,6 @@ from ray._private.ray_constants import (
     KV_NAMESPACE_JOB,
     RAY_ADDRESS_ENVIRONMENT_VARIABLE,
 )
-from ray._raylet import NodeID
 from ray.dashboard.consts import (
     DEFAULT_JOB_START_TIMEOUT_SECONDS,
     RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
@@ -45,7 +44,6 @@ from ray.dashboard.modules.job.tests.conftest import (
 )
 from ray.job_submission import JobErrorType, JobStatus
 from ray.tests.conftest import call_ray_start  # noqa: F401
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # noqa: F401
 from ray.util.state import list_tasks
 
 import psutil
@@ -66,7 +64,20 @@ async def test_get_scheduling_strategy(
     gcs_client = ray._private.worker.global_worker.gcs_client
 
     job_manager = JobManager(gcs_client, tmp_path)
-    node_id = NodeID.from_random().hex()
+    node_id = ray.get_runtime_context().get_node_id()
+
+    async def _submit_and_get_options():
+        with patch.object(
+            job_manager._supervisor_actor_cls,
+            "options",
+            wraps=job_manager._supervisor_actor_cls.options,
+        ) as mocked_options:
+            kwargs = {"entrypoint_num_cpus": 1} if resources_specified else {}
+            job_id = await job_manager.submit_job(entrypoint="echo hi", **kwargs)
+            await async_wait_for_condition(
+                check_job_succeeded, job_manager=job_manager, job_id=job_id
+            )
+            return mocked_options.call_args.kwargs
 
     # If no head node id is found, we should use "DEFAULT".
     await gcs_client.async_internal_kv_del(
@@ -74,8 +85,9 @@ async def test_get_scheduling_strategy(
         del_by_prefix=False,
         namespace=KV_NAMESPACE_JOB,
     )
-    strategy = await job_manager._get_scheduling_strategy(resources_specified)
-    assert strategy == "DEFAULT"
+    options = await _submit_and_get_options()
+    assert options.get("scheduling_strategy", "DEFAULT") == "DEFAULT"
+    assert ray._raylet.RAY_NODE_ID_KEY not in options.get("label_selector", {})
 
     # Add a head node id to the internal KV to simulate what is done in node_head.py.
     await gcs_client.async_internal_kv_put(
@@ -84,18 +96,21 @@ async def test_get_scheduling_strategy(
         True,
         namespace=KV_NAMESPACE_JOB,
     )
-    strategy = await job_manager._get_scheduling_strategy(resources_specified)
+    options = await _submit_and_get_options()
+    assert options.get("scheduling_strategy", "DEFAULT") == "DEFAULT"
     if resources_specified:
-        assert strategy == "DEFAULT"
+        assert ray._raylet.RAY_NODE_ID_KEY not in options.get("label_selector", {})
     else:
-        expected_strategy = NodeAffinitySchedulingStrategy(node_id, soft=False)
-        assert expected_strategy.node_id == strategy.node_id
-        assert expected_strategy.soft == strategy.soft
+        assert (
+            options.get("label_selector", {}).get(ray._raylet.RAY_NODE_ID_KEY)
+            == node_id
+        )
 
     # When the env var is set to 1, we should use DEFAULT.
     monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "1")
-    strategy = await job_manager._get_scheduling_strategy(resources_specified)
-    assert strategy == "DEFAULT"
+    options = await _submit_and_get_options()
+    assert options.get("scheduling_strategy", "DEFAULT") == "DEFAULT"
+    assert ray._raylet.RAY_NODE_ID_KEY not in options.get("label_selector", {})
 
 
 @pytest.mark.asyncio
@@ -1295,20 +1310,20 @@ while True:
     "use_env_var,stop_timeout",
     [(True, 10), (False, JobSupervisor.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S)],
 )
-async def test_stop_job_timeout(job_manager, use_env_var, stop_timeout):
+async def test_stop_job_timeout(job_manager, tmp_path, use_env_var, stop_timeout):
     """
     Stop job should send SIGTERM first, then if timeout occurs, send SIGKILL.
     """
-    entrypoint = """python -c \"
-import sys
+    ready_file = tmp_path / "handler_installed"
+    handled_file = tmp_path / "sigterm_handled"
+    entrypoint = f"""python -c \"
 import signal
 import time
 def handler(*args):
-    print('SIGTERM signal handled!');
+    open({handled_file.as_posix()!r}, 'w').close()
 signal.signal(signal.SIGTERM, handler)
-
+open({ready_file.as_posix()!r}, 'w').close()
 while True:
-    print('Waiting...')
     time.sleep(1)\"
 """
     if use_env_var:
@@ -1319,9 +1334,7 @@ while True:
     else:
         job_id = await job_manager.submit_job(entrypoint=entrypoint)
 
-    await async_wait_for_condition(
-        lambda: "Waiting..." in job_manager.get_job_logs(job_id)
-    )
+    await async_wait_for_condition(lambda: ready_file.exists())
 
     assert job_manager.stop_job(job_id) is True
 
@@ -1333,9 +1346,7 @@ while True:
             timeout=stop_timeout / 2,
         )
 
-    await async_wait_for_condition(
-        lambda: "SIGTERM signal handled!" in job_manager.get_job_logs(job_id)
-    )
+    await async_wait_for_condition(lambda: handled_file.exists())
 
     await async_wait_for_condition(
         check_job_stopped,
@@ -1372,7 +1383,7 @@ async def test_bootstrap_address(job_manager, monkeypatch):
     cluster might be started with http://ip:{dashboard_port} from previous
     runs.
     """
-    ip = ray._private.ray_constants.DEFAULT_DASHBOARD_IP
+    ip = get_localhost_ip()
     port = ray._private.ray_constants.DEFAULT_DASHBOARD_PORT
 
     monkeypatch.setenv("RAY_ADDRESS", f"http://{build_address(ip, port)}")

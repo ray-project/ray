@@ -37,7 +37,8 @@ Worker::Worker(const JobID &job_id,
                rpc::WorkerType worker_type,
                const std::string &ip_address,
                std::shared_ptr<ClientConnection> connection,
-               rpc::ClientCallManager &client_call_manager)
+               rpc::ClientCallManager &client_call_manager,
+               ClockInterface &clock)
     : worker_id_(worker_id),
       language_(language),
       worker_type_(worker_type),
@@ -50,7 +51,8 @@ Worker::Worker(const JobID &job_id,
       bundle_id_(std::make_pair(PlacementGroupID::Nil(), -1)),
       killing_(false),
       blocked_(false),
-      client_call_manager_(client_call_manager) {}
+      client_call_manager_(client_call_manager),
+      clock_(clock) {}
 
 rpc::WorkerType Worker::GetWorkerType() const { return worker_type_; }
 
@@ -124,7 +126,7 @@ void Worker::SetProcess(std::unique_ptr<ProcessInterface> proc) {
 
 rpc::Language Worker::GetLanguage() const { return language_; }
 
-const std::string Worker::IpAddress() const { return ip_address_; }
+std::string Worker::IpAddress() const { return ip_address_; }
 
 int Worker::Port() const {
   // NOTE(kfstorm): Since `RayletClient::AnnounceWorkerPort` is an asynchronous
@@ -183,7 +185,7 @@ void Worker::GrantLeaseId(const LeaseID &lease_id) {
   lease_id_ = lease_id;
   if (!lease_id.IsNil()) {
     RAY_CHECK(worker_type_ != rpc::WorkerType::DRIVER);
-    lease_grant_time_ = absl::Now();
+    last_lease_grant_time_ = clock_.Now();
   }
 };
 
@@ -206,8 +208,6 @@ void Worker::AssignActorId(const ActorID &actor_id) {
 
 const ActorID &Worker::GetActorId() const { return actor_id_; }
 
-const RayLease &Worker::GetGrantedLease() const { return granted_lease_; }
-
 const std::string Worker::GetLeaseIdAsDebugString() const {
   std::stringstream id_ss;
   if (GetActorId().IsNil()) {
@@ -218,7 +218,8 @@ const std::string Worker::GetLeaseIdAsDebugString() const {
 }
 
 bool Worker::IsDetachedActor() const {
-  return granted_lease_.GetLeaseSpecification().IsDetachedActor();
+  RAY_CHECK(granted_lease_.has_value());
+  return granted_lease_->GetLeaseSpecification().IsDetachedActor();
 }
 
 const std::shared_ptr<ClientConnection> Worker::Connection() const { return connection_; }

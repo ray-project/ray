@@ -39,11 +39,9 @@ class FakeRayletClient : public RayletClientInterface {
                     const ObjectID &generator_id,
                     const ClientCallback<PinObjectIDsReply> &callback) override {}
 
-  void RequestWorkerLease(const LeaseSpec &lease_spec,
-                          bool grant_or_reject,
-                          const ClientCallback<RequestWorkerLeaseReply> &callback,
-                          const int64_t backlog_size = -1,
-                          const bool is_selected_based_on_locality = false) override {
+  void RequestWorkerLease(
+      rpc::RequestWorkerLeaseRequest &&request,
+      const ClientCallback<RequestWorkerLeaseReply> &callback) override {
     num_workers_requested += 1;
     callbacks.push_back(callback);
   }
@@ -183,11 +181,13 @@ class FakeRayletClient : public RayletClientInterface {
     commit_callbacks.push_back(callback);
   }
 
-  void CancelResourceReserve(
-      const BundleSpecification &bundle_spec,
-      const ClientCallback<CancelResourceReserveReply> &callback) override {
-    num_return_requested += 1;
-    return_callbacks.push_back(callback);
+  void RemovePlacementGroupBundles(
+      const PlacementGroupID &placement_group_id,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
+      const ClientCallback<RemovePlacementGroupBundlesReply> &callback) override {
+    num_remove_pg_bundles_requested += 1;
+    num_bundles_removed += bundle_specs.size();
+    remove_pg_bundles_callbacks.push_back(callback);
   }
 
   void ReleaseUnusedBundles(
@@ -222,15 +222,15 @@ class FakeRayletClient : public RayletClientInterface {
     }
   }
 
-  bool GrantCancelResourceReserve(bool success = true) {
+  bool GrantRemovePlacementGroupBundles(bool success = true) {
     Status status = Status::OK();
-    CancelResourceReserveReply reply;
-    if (return_callbacks.size() == 0) {
+    RemovePlacementGroupBundlesReply reply;
+    if (remove_pg_bundles_callbacks.size() == 0) {
       return false;
     } else {
-      auto callback = return_callbacks.front();
+      auto callback = remove_pg_bundles_callbacks.front();
       callback(status, std::move(reply));
-      return_callbacks.pop_front();
+      remove_pg_bundles_callbacks.pop_front();
       return true;
     }
   }
@@ -314,6 +314,10 @@ class FakeRayletClient : public RayletClientInterface {
     num_cancel_local_task_requested += 1;
   }
 
+  void FreeLocalObjects(const FreeLocalObjectsRequest &request) override {
+    num_free_local_objects_requested += 1;
+  }
+
   int num_workers_requested = 0;
   int num_workers_returned = 0;
   int num_workers_disconnected = 0;
@@ -321,9 +325,11 @@ class FakeRayletClient : public RayletClientInterface {
   int num_release_unused_workers = 0;
   int num_get_task_failure_causes = 0;
   int num_lease_requested = 0;
-  int num_return_requested = 0;
+  int num_remove_pg_bundles_requested = 0;
+  int num_bundles_removed = 0;
   int num_commit_requested = 0;
   int num_cancel_local_task_requested = 0;
+  int num_free_local_objects_requested = 0;
   int num_release_unused_bundles_requested = 0;
   NodeID node_id_ = NodeID::FromRandom();
   std::vector<ActorID> killed_actors;
@@ -336,7 +342,8 @@ class FakeRayletClient : public RayletClientInterface {
   std::list<ClientCallback<ReleaseUnusedActorWorkersReply>> release_callbacks = {};
   std::list<ClientCallback<PrepareBundleResourcesReply>> lease_callbacks = {};
   std::list<ClientCallback<CommitBundleResourcesReply>> commit_callbacks = {};
-  std::list<ClientCallback<CancelResourceReserveReply>> return_callbacks = {};
+  std::list<ClientCallback<RemovePlacementGroupBundlesReply>>
+      remove_pg_bundles_callbacks = {};
 };
 
 }  // namespace rpc

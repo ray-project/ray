@@ -23,10 +23,11 @@
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/gcs/postable/postable.h"
 #include "ray/gcs/store_client/redis_context.h"
 #include "ray/gcs/store_client/store_client.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 
@@ -130,7 +131,8 @@ class RedisStoreClient : public StoreClient {
   /// \param io_service The event loop for this client. Must be single threaded.
   /// \param options The options for connecting to Redis.
   explicit RedisStoreClient(instrumented_io_context &io_service,
-                            const RedisClientOptions &options);
+                            const RedisClientOptions &options,
+                            ClockInterface &clock);
 
   void AsyncPut(const std::string &table_name,
                 const std::string &key,

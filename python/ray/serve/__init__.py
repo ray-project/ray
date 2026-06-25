@@ -12,6 +12,7 @@ try:
         deployment,
         get_app_handle,
         get_deployment_actor,
+        get_deployment_actor_context,
         get_deployment_handle,
         get_multiplexed_model_id,
         get_replica_context,
@@ -25,7 +26,7 @@ try:
         status,
     )
     from ray.serve.batching import batch
-    from ray.serve.config import HTTPOptions
+    from ray.serve.config import ControllerOptions, HTTPOptions
     from ray.serve.utils import get_trace_context
 
 except ModuleNotFoundError as e:
@@ -47,9 +48,11 @@ __all__ = [
     "_run_many",
     "batch",
     "start",
+    "ControllerOptions",
     "HTTPOptions",
     "get_replica_context",
     "get_deployment_actor",
+    "get_deployment_actor_context",
     "get_trace_context",
     "shutdown",
     "shutdown_async",

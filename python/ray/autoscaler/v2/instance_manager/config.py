@@ -129,6 +129,8 @@ class NodeTypeConfig:
     max_worker_nodes: int
     # Idle timeout seconds for worker nodes of this node type.
     idle_timeout_s: Optional[float] = None
+    # The priority of the worker group. Higher value means the group will be scaled up first if everything else is equal.
+    priority: int = 0
     # The total resources on the node.
     resources: Dict[str, float] = field(default_factory=dict)
     # The labels on the node.
@@ -160,11 +162,12 @@ class AutoscalingConfig:
         configs: Dict[str, Any],
         skip_content_hash: bool = False,
     ) -> None:
-        """
+        """Initialize the autoscaling config.
+
         Args:
-            configs : The raw configs dict.
-            skip_content_hash :
-                Whether to skip file mounts/ray command hash calculation.
+            configs: The raw configs dict.
+            skip_content_hash: Whether to skip file mounts/ray command hash
+                calculation.
         """
         self._sync_continuously = False
         self.update_configs(configs, skip_content_hash)
@@ -309,7 +312,9 @@ class AutoscalingConfig:
 
     def get_provider_instance_type(self, ray_node_type: NodeType) -> str:
         provider = self.provider
-        node_config = self.get_node_type_specific_config(ray_node_type, "node_config")
+        node_config = (
+            self.get_node_type_specific_config(ray_node_type, "node_config") or {}
+        )
         if provider in [Provider.AWS, Provider.ALIYUN]:
             return node_config.get("InstanceType", "")
         elif provider == Provider.AZURE:
@@ -348,6 +353,7 @@ class AutoscalingConfig:
                 min_worker_nodes=node_config.get("min_workers", 0),
                 max_worker_nodes=max_workers_nodes,
                 idle_timeout_s=node_config.get("idle_timeout_s", None),
+                priority=node_config.get("priority", 0),
                 resources=node_config.get("resources", {}),
                 labels=node_config.get("labels", {}),
                 launch_config_hash=launch_config_hash,
@@ -450,10 +456,11 @@ class FileConfigReader(IConfigReader):
     """A class that reads cluster config from a yaml file."""
 
     def __init__(self, config_file: str, skip_content_hash: bool = True) -> None:
-        """
+        """Initialize the file config reader.
+
         Args:
             config_file: The path to the config file.
-            skip_content_hash:  Whether to skip file mounts/ray command
+            skip_content_hash: Whether to skip file mounts/ray command
                 hash calculation. Default to True.
         """
         self._config_file_path = Path(config_file).resolve()
@@ -541,7 +548,9 @@ class ReadOnlyProviderConfigReader(IConfigReader):
 
         if available_node_types:
             self._configs["available_node_types"].update(available_node_types)
-            self._configs["max_workers"] = len(available_node_types)
+            self._configs["max_workers"] = sum(
+                v["max_workers"] for v in available_node_types.values()
+            )
             assert head_node_type, "Head node type should be found."
             self._configs["head_node_type"] = head_node_type
 

@@ -24,8 +24,8 @@
 #include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/io_service_pool.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/io_service_pool.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/observability/open_telemetry_metric_recorder.h"
@@ -125,7 +125,7 @@ static inline void InitOpenTelemetryExporter(const int metrics_agent_port) {
     return;
   }
   OpenTelemetryMetricRecorder::GetInstance().Start(
-      /*endpoint=*/std::string("127.0.0.1:") + std::to_string(metrics_agent_port),
+      /*endpoint=*/BuildAddress(GetLocalhostIP(), metrics_agent_port),
       /*interval=*/
       std::chrono::milliseconds(
           absl::ToInt64Milliseconds(StatsConfig::instance().GetReportInterval())),

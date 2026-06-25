@@ -221,6 +221,18 @@ class LLMEngine(abc.ABC):
         """
         return
 
+    async def build_asgi_app(self) -> Any:
+        """Build an ASGI app that serves directly from this engine's frontend.
+
+        Used by direct streaming, which serves traffic from the LLMServer
+        replica's own ASGI ingress instead of the OpenAiIngress deployment.
+        Engines that do not support direct serving should keep the default,
+        which raises NotImplementedError.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support direct ASGI serving."
+        )
+
     ##############################################################
     # Optional methods
     # These methods will be implemented in the future to allow

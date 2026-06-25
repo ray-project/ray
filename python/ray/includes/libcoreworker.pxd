@@ -99,11 +99,22 @@ cdef extern from "ray/core_worker/context.h" nogil:
         CActorID GetRootDetachedActorID()
 
 cdef extern from "ray/core_worker/generator_waiter.h" nogil:
-    cdef cppclass CGeneratorBackpressureWaiter "ray::core::GeneratorBackpressureWaiter": # noqa
-        CGeneratorBackpressureWaiter(
+    cdef cppclass CTaskGeneratorBackpressureWaiter "ray::core::TaskGeneratorBackpressureWaiter":  # noqa
+        CTaskGeneratorBackpressureWaiter(
                 int64_t generator_backpressure_num_objects,
                 (CRayStatus() nogil) check_signals)
         CRayStatus WaitAllObjectsReported()
+
+    cdef cppclass CActorWideGeneratorBackpressureWaiter "ray::core::ActorWideGeneratorBackpressureWaiter":  # noqa
+        pass
+
+    cdef cppclass CActorTaskBackpressureMetadata "ray::core::ActorTaskBackpressureMetadata":  # noqa
+        CActorTaskBackpressureMetadata(
+                shared_ptr[CActorWideGeneratorBackpressureWaiter] actor_waiter)
+        CRayStatus ReserveSlot(int64_t num_objects)
+        void ReleaseSlot(int64_t num_objects)
+        void OnReport(int64_t total)
+        void Teardown()
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:
     cdef cppclass CActorHandle "ray::core::ActorHandle":
@@ -117,6 +128,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool EnableTaskEvents() const
         c_bool AllowOutOfOrderExecution() const
         c_bool EnableTensorTransport() const
+        int64_t ActorGeneratorBackpressureNumObjects() const
 
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
         CWorkerType GetWorkerType()
@@ -167,6 +179,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus CancelTask(const CObjectID &object_id, c_bool force_kill,
                               c_bool recursive)
         c_bool IsTaskCanceled(const CTaskID &task_id) const
+        c_bool ShouldInterruptTaskForCancellation() const
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)
@@ -195,6 +208,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             CObjectReference *object_ref_out)
         c_bool StreamingGeneratorIsFinished(const CObjectID &generator_id) const
         pair[CObjectReference, c_bool] PeekObjectRefStream(
+            const CObjectID &generator_id)
+        CObjectID PeekObjectIdStream(
             const CObjectID &generator_id)
         CObjectID AllocateDynamicReturnId(
             const CAddress &owner_address,
@@ -262,7 +277,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     const size_t data_size,
                     const c_vector[CObjectID] &contained_object_ids,
                     CObjectID *object_id, shared_ptr[CBuffer] *data,
-                    const unique_ptr[CAddress] &owner_address,
                     c_bool inline_small_object,
                     const optional[c_string] &tensor_transport)
         CRayStatus CreateExisting(const shared_ptr[CBuffer] &metadata,
@@ -289,8 +303,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus ExperimentalRegisterMutableObjectReaderRemote(
                 const CObjectID &object_id,
                 const c_vector[CReaderRefInfo] &remote_reader_ref_info)
-        CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
-                             const unique_ptr[CAddress] &owner_address)
+        CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,
                                 const CObjectID &generator_id,
                                 const unique_ptr[CAddress] &owner_address)
@@ -315,12 +328,23 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                 c_vector[shared_ptr[CObjectLocation]] *results)
         CRayStatus TriggerGlobalGC()
         CRayStatus ReportGeneratorItemReturns(
-            const pair[CObjectID, shared_ptr[CRayObject]] &dynamic_return_object,
+            const c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] &dynamic_return_objects,
             const CObjectID &generator_id,
             const CAddress &caller_address,
             int64_t item_index,
             uint64_t attempt_number,
-            shared_ptr[CGeneratorBackpressureWaiter] waiter)
+            shared_ptr[CTaskGeneratorBackpressureWaiter] waiter,
+            shared_ptr[CActorTaskBackpressureMetadata] actor_metadata)
+        void MarkGeneratorBackpressureTaskFinished(
+            const CObjectID &generator_id)
+        c_bool TeardownGeneratorBackpressureTask(
+            const CObjectID &generator_id)
+        void RegisterGeneratorBackpressureState(
+            const CObjectID &generator_id,
+            shared_ptr[CTaskGeneratorBackpressureWaiter] waiter,
+            shared_ptr[CActorTaskBackpressureMetadata] actor_metadata,
+            const CAddress &owner_address)
+        shared_ptr[CActorWideGeneratorBackpressureWaiter] GetActorGeneratorWaiter() const
 
         # Param output contains the usage string if successful.
         # Returns an error status if unable to communicate with the plasma store.
@@ -407,6 +431,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_bool is_streaming_generator,
             c_bool should_retry_exceptions,
             int64_t generator_backpressure_num_objects,
+            int64_t num_objects_per_yield,
             optional[c_string] tensor_transport
         ) nogil) task_execution_callback
         (void(const CObjectID &) nogil) free_actor_object_callback

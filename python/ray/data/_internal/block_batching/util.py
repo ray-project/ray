@@ -1,9 +1,20 @@
 import dataclasses
 import functools
 import logging
+import queue
 import threading
 from contextlib import nullcontext
-from typing import Any, Callable, Generic, Iterator, List, Optional, Tuple, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Generator,
+    Generic,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+)
 
 import ray
 from ray.actor import ActorHandle
@@ -17,12 +28,131 @@ from ray.data._internal.block_batching.interfaces import (
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.types import ObjectRef
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T")
+U = TypeVar("U")
 I = TypeVar("I")
 O = TypeVar("O")
+
+_SENTINEL = object()
+
+
+def iter_threaded(
+    base_iterator: Iterator[T],
+    fn: Callable[[Iterator[T]], Iterator[U]],
+    num_workers: int = 1,
+    output_buffer_size: int = 1,
+) -> Generator[U, None, None]:
+    """Apply ``fn`` to ``base_iterator`` across ``num_workers`` background
+    threads, yielding results through a bounded queue.
+
+    Workers share ``base_iterator`` under a lock (so it may be a stateful,
+    non-thread-safe generator) and run ``fn`` concurrently. With
+    ``num_workers > 1`` the output order is not preserved and must be restored
+    downstream by the consumer.
+
+    Invariant: the number of output-queue items + items in-flight in workers is
+    bounded by ``output_buffer_size``.
+    Workers reserve an output buffer slot before pulling from ``fn``, ensuring
+    they don't run ``fn`` (and hold the result) while waiting for queue space.
+
+    When the consumer stops early (``break``, ``.close()``, or GC), workers
+    are signaled via a stop event so they don't leak. Note: a hanging
+    ``fn`` cannot be interrupted, so ``fn`` must terminate or raise within
+    bounded time per element. For example, the user function should have
+    timeouts if doing blocking I/O.
+
+    Args:
+        base_iterator: Iterator consumed (under a lock) by the workers.
+        fn: Transform applied by each worker to its view of ``base_iterator``.
+        num_workers: Number of background worker threads.
+        output_buffer_size: Max number of items held by the output-queue
+            + in-flight in the workers.
+    """
+    if num_workers < 1:
+        raise ValueError("num_workers must be at least 1.")
+    if output_buffer_size < 1:
+        raise ValueError("output_buffer_size must be at least 1.")
+
+    stopped = threading.Event()
+    result_queue: queue.Queue = queue.Queue()
+    slots = threading.Semaphore(output_buffer_size)
+    iter_lock = threading.Lock()
+
+    def _locked_iter() -> Iterator[T]:
+        while True:
+            with iter_lock:
+                if stopped.is_set():
+                    return
+                try:
+                    item = next(base_iterator)
+                except StopIteration:
+                    return
+            yield item
+
+    def _acquire_slot() -> bool:
+        # Block until a slot is acquired or the consumer has stopped.
+        while not stopped.is_set():
+            if slots.acquire(timeout=0.1):
+                return True
+        return False
+
+    remaining_workers = num_workers
+    remaining_lock = threading.Lock()
+
+    def _worker():
+        nonlocal remaining_workers
+        slot_acquired = False
+        try:
+            # Construct `fn_iter` inside the try so any exception during
+            # construction propagates to the consumer via the outer except.
+            fn_iter = fn(_locked_iter())
+            while True:
+                slot_acquired = _acquire_slot()
+                if not slot_acquired:
+                    break
+                item = next(fn_iter)
+                result_queue.put(item)
+                # The consumer pulling from the result_queue will release the slot.
+                # Resetting here prevents the finally block from double-releasing.
+                slot_acquired = False
+        except StopIteration:
+            pass
+        except Exception as e:
+            # Handle errors in `fn` by propagating them to the consumer.
+            if not stopped.is_set():
+                result_queue.put(e)
+        finally:
+            if slot_acquired:
+                slots.release()
+            with remaining_lock:
+                remaining_workers -= 1
+                is_last = remaining_workers == 0
+            # Signal the consumer that all thread workers have exhausted their input.
+            if is_last and not stopped.is_set():
+                result_queue.put(_SENTINEL)
+
+    worker_threads = [
+        threading.Thread(target=_worker, name="iter_threaded", daemon=True)
+        for _ in range(num_workers)
+    ]
+    for t in worker_threads:
+        t.start()
+
+    try:
+        while True:
+            item = result_queue.get()
+            if item is _SENTINEL:
+                break
+            if isinstance(item, Exception):
+                raise item
+            # Release one slot at yield time so a worker can run `fn` for the next item.
+            slots.release()
+            yield item
+    finally:
+        stopped.set()
 
 
 class _MappingIterator(Iterator[O], Generic[I, O]):
@@ -71,6 +201,9 @@ def resolve_block_refs(
     Args:
         block_ref_iter: An iterator over block object references.
         stats: An optional stats object to recording block hits and misses.
+
+    Yields:
+        Block: The resolved blocks for each block reference.
     """
     hits = 0
     misses = 0
@@ -364,7 +497,7 @@ class ActorBlockPrefetcher(BlockPrefetcher):
         node_id = ray.get_runtime_context().get_node_id()
         actor_name = f"dataset-block-prefetcher-{node_id}"
         return _BlockPretcher.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: node_id},
             name=actor_name,
             namespace=PREFETCHER_ACTOR_NAMESPACE,
             get_if_exists=True,

@@ -24,7 +24,7 @@ ray_cc_test(
     srcs = ["concurrency_group_manager_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker/task_execution:concurrency_group_manager",
     ],
@@ -45,7 +45,7 @@ ray_cc_test(
     srcs = ["actor_task_execution_queue_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker/task_execution:common",
         "//src/ray/core_worker/task_execution:ordered_actor_task_execution_queue",
@@ -59,7 +59,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker/task_execution:common",
         "//src/ray/core_worker/task_execution:task_receiver",

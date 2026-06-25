@@ -32,6 +32,7 @@
 #include "ray/raylet/scheduling/local_lease_manager_interface.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet/worker_pool.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace raylet {
@@ -71,7 +72,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   /// \param get_lease_arguments: A callback for getting a leases' arguments by
   ///                            their ids.
   /// \param max_pinned_lease_arguments_bytes: The cap on pinned arguments.
-  /// \param get_time_ms: A callback which returns the current time in milliseconds.
+  /// \param clock: Clock used to read the current time.
   /// \param sched_cls_cap_interval_ms: The time before we increase the cap
   ///                                   on the number of leases that can run per
   ///                                   scheduling class. If set to 0, there is no
@@ -88,8 +89,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
           get_lease_arguments,
       size_t max_pinned_lease_arguments_bytes,
       SchedulerMetrics &scheduler_metrics,
-      std::function<int64_t(void)> get_time_ms =
-          []() { return static_cast<int64_t>(absl::GetCurrentTimeNanos() / 1e6); },
+      ClockInterface &clock,
       int64_t sched_cls_cap_interval_ms =
           RayConfig::instance().worker_cap_initial_backoff_delay_ms());
 
@@ -106,12 +106,9 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   void LeasesUnblocked(const std::vector<LeaseID> &ready_ids) override;
 
   /// Cleanup the lease and release the worker resources.
-  /// This method will be removed and can be replaced by `ReleaseWorkerResources` directly
-  /// once we remove the legacy scheduler.
   ///
   /// \param worker: The worker which was granted the lease.
-  /// \param lease: Output parameter.
-  void CleanupLease(std::shared_ptr<WorkerInterface> worker, RayLease *lease) override;
+  void CleanupLease(const std::shared_ptr<WorkerInterface> &worker) override;
 
   /// Attempt to cancel all queued leases that match the predicate.
   ///
@@ -200,7 +197,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   void RemoveFromGrantedLeasesIfExists(const RayLease &lease);
 
   /// Handle the popped worker from worker pool.
-  bool PoppedWorkerHandler(const std::shared_ptr<WorkerInterface> worker,
+  bool PoppedWorkerHandler(const std::shared_ptr<WorkerInterface> &worker,
                            PopWorkerStatus status,
                            const LeaseID &lease_id,
                            SchedulingClass scheduling_class,
@@ -249,7 +246,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   void RecomputeDebugStats() const;
 
   void Grant(
-      std::shared_ptr<WorkerInterface> worker,
+      const std::shared_ptr<WorkerInterface> &worker,
       absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers_,
       const std::shared_ptr<TaskResourceInstances> &allocated_instances,
       const RayLease &lease,
@@ -371,8 +368,8 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
 
   mutable SchedulerMetrics scheduler_metrics_;
 
-  /// Returns the current time in milliseconds.
-  std::function<int64_t()> get_time_ms_;
+  /// Clock used to read the current time.
+  ClockInterface &clock_;
 
   /// Whether or not to enable the worker process cap.
   const bool sched_cls_cap_enabled_;
