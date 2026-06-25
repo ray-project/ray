@@ -69,8 +69,8 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
-    OpStatsSink,
     MapTransformer,
+    OpStatsSink,
 )
 from ray.data._internal.execution.util import memory_string, merge_label_selector
 from ray.data._internal.stats import StatsDict
@@ -877,8 +877,8 @@ def _map_task(
                         task_exec_stats=TaskExecWorkerStats(
                             task_wall_time_s=task_dur_s,
                             max_uss_bytes=profiler.estimate_max_uss(),
-                            # Set by a producing transform on the
-                            # MapTransformer; None if the op reports nothing.
+                            # Reported by a producing transform through the
+                            # per-task sink; None if the op reports nothing.
                             custom_op_stats=op_stats_sink.stats,
                         ),
                     ),
