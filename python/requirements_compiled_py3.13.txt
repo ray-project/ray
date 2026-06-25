@@ -601,7 +601,7 @@ fsspec==2023.12.1
     #   delta-sharing
     #   etils
     #   evaluate
-    #   getdaft
+    #   daft
     #   gradio-client
     #   huggingface-hub
     #   lightning
@@ -622,7 +622,7 @@ gast==0.7.0
     #   tensorflow-probability
 gcs-oauth2-boto-plugin==3.3
     # via gsutil
-getdaft==0.4.3
+daft==0.7.15
     # via -r python/requirements/ml/py313/data-requirements.txt
 gitdb==4.0.12
     # via gitpython
@@ -1697,7 +1697,7 @@ pyarrow==23.0.1
     #   datasets
     #   delta-sharing
     #   feather-format
-    #   getdaft
+    #   daft
     #   hudi
     #   mlflow
     #   pylance
@@ -2433,7 +2433,7 @@ tqdm==4.67.1
     #   dm-control
     #   etils
     #   evaluate
-    #   getdaft
+    #   daft
     #   huggingface-hub
     #   hyperopt
     #   lightning
