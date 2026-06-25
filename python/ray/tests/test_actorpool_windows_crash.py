@@ -44,11 +44,20 @@ assert results == ["success", "success"]
         [sys.executable, "-c", script], capture_output=True, text=True
     )
 
-    # A segfault/access violation will result in a non-zero exit code
-    # (usually a large negative number or a Windows exception code like 0xC0000005)
     assert (
         process.returncode == 0
-    ), f"Subprocess crashed!\nSTDOUT: {process.stdout}\nSTDERR: {process.stderr}"
+    ), f"Subprocess exited with {process.returncode}!\nSTDOUT: {process.stdout}\nSTDERR: {process.stderr}"
+
+    # Specifically check for worker crashes which might not change the driver's return code.
+    # Python's faulthandler prints this on Windows access violations.
+    assert "Windows fatal exception" not in process.stderr, (
+        f"A worker process crashed with an access violation during teardown!\n"
+        f"STDERR: {process.stderr}"
+    )
+    assert "Segmentation fault" not in process.stderr, (
+        f"A worker process crashed with a segfault during teardown!\n"
+        f"STDERR: {process.stderr}"
+    )
 
 
 if __name__ == "__main__":
