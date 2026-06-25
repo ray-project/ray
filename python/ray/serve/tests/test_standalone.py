@@ -26,6 +26,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_util import set_socket_reuse_port
+from ray.serve._private.test_utils import expected_proxy_actors
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import (
     ControllerOptions,
@@ -370,11 +371,9 @@ def test_http_head_only(ray_cluster):
 
     serve.start(http_options={"port": _get_random_port(), "location": "HeadOnly"})
 
-    # Controller and proxy on the head node. HAProxy adds the HAProxyManager
-    # alongside the fallback ProxyActor, which registers asynchronously.
-    expected_classes = {"ServeController", "ProxyActor"}
-    if RAY_SERVE_ENABLE_HA_PROXY:
-        expected_classes.add("HAProxyManager")
+    # Controller and proxy on the head node. Under HAProxy the proxy is the
+    # HAProxyManager alongside the fallback ProxyActor, which registers asynchronously.
+    expected_classes = {"ServeController", *expected_proxy_actors()}
 
     def check_head_only_actors():
         actors = list_actors(

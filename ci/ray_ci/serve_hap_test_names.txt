@@ -58,6 +58,7 @@
 //python/ray/serve/tests:test_shutdown
 //python/ray/serve/tests:test_standalone
 //python/ray/serve/tests:test_standalone_2
+//python/ray/serve/tests:test_standalone_3
 //python/ray/serve/tests:test_streaming_response
 //python/ray/serve/tests:test_target_capacity
 //python/ray/serve/tests:test_task_processor
