@@ -66,7 +66,7 @@ if is_v2_enabled():
         get_checkpoint,
         get_context,
         get_dataset_shard,
-        preemption_status,
+        preemption_info,
         report,
     )
     from ray.train.v2.api.validation_config import (  # noqa: F811
@@ -128,7 +128,7 @@ if is_v2_enabled():
             "ValidationFn",
             "ValidationTaskConfig",
             "get_all_reported_checkpoints",
-            "preemption_status",
+            "preemption_info",
         ]
     )
 
@@ -145,7 +145,7 @@ if is_v2_enabled():
     ValidationFn.__module__ = "ray.train"
     ValidationTaskConfig.__module__ = "ray.train"
     get_all_reported_checkpoints.__module__ = "ray.train"
-    preemption_status.__module__ = "ray.train"
+    preemption_info.__module__ = "ray.train"
 
 
 # DO NOT ADD ANYTHING AFTER THIS LINE.

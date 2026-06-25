@@ -14,6 +14,7 @@ from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_ENABLE_PREEMPTION_WATCHER,
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
+    DEFAULT_PREEMPTION_DEADLINE_S,
     ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
     ENABLE_PREEMPTION_WATCHER_ENV_VAR,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
@@ -670,7 +671,10 @@ class TrainController:
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
                     previous_state=controller_state,
-                    next_state=PreemptingState(preemption_info=preemption_info),
+                    next_state=PreemptingState(
+                        preemption_info=preemption_info,
+                        detected_at_s=time_seconds(),
+                    ),
                 )
 
             if worker_group_status.errors:
@@ -721,15 +725,19 @@ class TrainController:
     @staticmethod
     def _is_preemption_deadline_exceeded(
         preemption_info: "PreemptionInfo",
+        detected_at_s: float,
     ) -> bool:
         """Whether the preemption reclaim deadline has passed.
 
         `deadline_ms` mirrors Ray Core's draining deadline: an epoch timestamp
-        in milliseconds, or None when no deadline is known.
+        in milliseconds. Ray Core reports 0 (which the watcher maps to None)
+        when no deadline is known, in which case we cap the drain wait at
+        `DEFAULT_PREEMPTION_DEADLINE_S` from when the preemption was first
+        detected, so we never wait indefinitely for workers to exit.
         """
         deadline_ms = preemption_info.deadline_ms
         if deadline_ms is None:
-            return False
+            deadline_ms = (detected_at_s + DEFAULT_PREEMPTION_DEADLINE_S) * 1000
         return time_seconds() * 1000 >= deadline_ms
 
     async def _handle_preempting_state(
@@ -738,11 +746,15 @@ class TrainController:
         """Wait for the worker group to drain after a preemption, then restart.
 
         Polls the worker group until either all workers have exited or the
-        preemption deadline elapses, whichever comes first, then synthesizes a
-        `PreemptionError` and routes it through the failure policy (which
-        consumes the separate `max_preemption_failures` budget). A RETRY
-        decision transitions to RestartingState, which tears down and recreates
-        the worker group on healthy nodes.
+        preemption deadline elapses (capped at `DEFAULT_PREEMPTION_DEADLINE_S`
+        when the deadline is unknown), whichever comes first. It then
+        synthesizes a `PreemptionError` and routes it through the failure
+        policy, which consumes the separate `max_preemption_failures` budget:
+        while that budget remains (it is unlimited by default), the decision is
+        RETRY and we transition to RestartingState, which tears down and
+        recreates the worker group on healthy nodes; once the budget is
+        exhausted the decision is RAISE and we transition to ShuttingDownState
+        followed by ErroredState.
         """
         worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
 
@@ -751,7 +763,9 @@ class TrainController:
             worker_group_status.get_preemption_info()
             or controller_state.preemption_info
         )
-        deadline_exceeded = self._is_preemption_deadline_exceeded(preemption_info)
+        deadline_exceeded = self._is_preemption_deadline_exceeded(
+            preemption_info, controller_state.detected_at_s
+        )
 
         # Stay in PreemptingState until the workers exit on their own or the
         # reclaim deadline passes.
@@ -759,13 +773,18 @@ class TrainController:
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
-                next_state=PreemptingState(preemption_info=preemption_info),
+                next_state=PreemptingState(
+                    preemption_info=preemption_info,
+                    detected_at_s=controller_state.detected_at_s,
+                ),
             )
 
+        # True when the deadline forced teardown before every rank had exited.
+        drain_timed_out = deadline_exceeded and not worker_group_status.finished
         preemption_error = PreemptionError(
             preemption_info=preemption_info,
             worker_failures=worker_group_status.errors,
-            deadline_exceeded=deadline_exceeded,
+            drain_timed_out=drain_timed_out,
         )
         failure_decision = self._failure_policy.make_decision(
             training_failed_error=preemption_error,

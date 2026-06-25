@@ -67,6 +67,12 @@ DEFAULT_ENABLE_PREEMPTION_WATCHER: bool = True
 PREEMPTION_POLL_INTERVAL_S_ENV_VAR = "RAY_TRAIN_PREEMPTION_POLL_INTERVAL_S"
 DEFAULT_PREEMPTION_POLL_INTERVAL_S: float = 5.0
 
+# Fallback grace window used by the controller while draining after a preemption
+# when Ray Core reports no deadline (deadline unknown). Sized to the shortest
+# common cloud reclaim notice (AWS spot gives ~120s) so we don't wait forever
+# for workers to exit before forcing a restart.
+DEFAULT_PREEMPTION_DEADLINE_S: float = 120.0
+
 # Environment variable to enable the print function patching.
 ENABLE_PRINT_PATCH_ENV_VAR = "RAY_TRAIN_ENABLE_PRINT_PATCH"
 DEFAULT_ENABLE_PRINT_PATCH = True

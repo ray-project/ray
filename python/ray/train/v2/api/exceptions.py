@@ -66,27 +66,29 @@ class PreemptionError(TrainingFailedError):
             ranks, and the reclaim deadline).
         worker_failures: A mapping from worker rank to the exception observed on
             that worker at teardown, if any.
-        deadline_exceeded: True if the worker group was torn down because the
-            preemption deadline elapsed before all workers exited.
+        drain_timed_out: True if the worker group was torn down because the
+            preemption deadline elapsed before all ranks had exited (i.e. the
+            drain did not complete in time), rather than all workers exiting
+            cleanly first.
     """
 
     def __init__(
         self,
         preemption_info: "PreemptionInfo",
         worker_failures: Optional[Dict[int, Exception]] = None,
-        deadline_exceeded: bool = False,
+        drain_timed_out: bool = False,
     ):
         self.preemption_info = preemption_info
         self.worker_failures = worker_failures or {}
-        self.deadline_exceeded = deadline_exceeded
+        self.drain_timed_out = drain_timed_out
         super().__init__(
             "Training was interrupted by node preemption "
             f"(preempted_ranks={preemption_info.preempted_ranks}, "
-            f"deadline_exceeded={deadline_exceeded})."
+            f"drain_timed_out={drain_timed_out})."
         )
 
     def __reduce__(self):
         return (
             self.__class__,
-            (self.preemption_info, self.worker_failures, self.deadline_exceeded),
+            (self.preemption_info, self.worker_failures, self.drain_timed_out),
         )
