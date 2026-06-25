@@ -61,6 +61,12 @@ RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR = (
 # zipped on MacOS.
 MAC_OS_ZIP_HIDDEN_DIR_NAME = "__MACOSX"
 
+# Cap the flattened local package name from parse_uri() so that the ".lock"
+# the caller appends stays within NAME_MAX (255 bytes on ext4/xfs/btrfs/APFS).
+# Exact ceiling is 250 (255 - len(".lock")); 200 leaves a defensive margin
+# without shortening typical names.
+_MAX_PACKAGE_NAME_LEN = 200
+
 
 def _mib_string(num_bytes: float) -> str:
     size_mib = float(num_bytes / 1024**2)
@@ -310,6 +316,20 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
                 package_name = package_name.replace(
                     ".", "_", package_name.count(".") - 1
                 )
+
+            # If the flattened name would push the caller-appended ".lock"
+            # past NAME_MAX, replace the long middle with a stable hash of
+            # the original URI. The extension is preserved so is_zip_uri /
+            # is_jar_uri keep working.
+            if len(package_name) > _MAX_PACKAGE_NAME_LEN:
+                if package_name.endswith(".tar.gz"):
+                    suffix = ".tar.gz"
+                elif package_name.endswith(".tar.bz2"):
+                    suffix = ".tar.bz2"
+                else:
+                    suffix = Path(package_name).suffix
+                digest = hashlib.sha1(pkg_uri.encode("utf-8")).hexdigest()
+                package_name = f"{protocol.value}_{digest}{suffix}"
     else:
         package_name = uri.netloc
     return (protocol, package_name)
@@ -922,6 +942,9 @@ async def download_and_unpack_package(
                     or if package URI is invalid.
 
     """
+    if logger is None:
+        logger = default_logger
+
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
     if pkg_file.suffix == "":
         raise ValueError(
@@ -929,10 +952,9 @@ async def download_and_unpack_package(
             "URI must have a file extension and the URI must be valid."
         )
 
-    async with _AsyncFileLock(str(pkg_file) + ".lock"):
-        if logger is None:
-            logger = default_logger
+    logger.debug(f"runtime_env package URI {pkg_uri} -> local file {pkg_file}")
 
+    async with _AsyncFileLock(str(pkg_file) + ".lock"):
         logger.debug(f"Fetching package for URI: {pkg_uri}")
 
         local_dir = get_local_dir_from_uri(pkg_uri, base_directory)

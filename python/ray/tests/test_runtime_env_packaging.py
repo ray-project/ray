@@ -821,6 +821,47 @@ class TestParseUri:
         assert protocol == Protocol.GCS
         assert package_name == gcs_uri.split("/")[-1]
 
+    def test_parse_uri_long_path_uses_hash_fallback(self):
+        """Long remote URIs hash the middle so package_name + ".lock" fits under
+        NAME_MAX (255 bytes). Without the cap, a deeply-nested S3 key produces a
+        flat filename that overflows NAME_MAX and breaks os.open(<lock_file>)."""
+        long_uri = "s3://bucket/" + ("deep/segment/" * 30) + "package.zip"
+        assert len(long_uri) > 250  # would overflow without the fix
+        protocol, name = parse_uri(long_uri)
+        assert protocol == Protocol.S3
+        # Caller appends ".lock"; the result must fit on ext4/xfs/btrfs/APFS.
+        assert len(name) + len(".lock") <= 255
+        # Extension preserved so is_zip_uri / is_jar_uri keep working.
+        assert name.endswith(".zip")
+        assert is_zip_uri(long_uri)
+        # Hashed form retains the protocol prefix for debuggability.
+        assert name.startswith("s3_")
+
+    def test_parse_uri_long_path_is_stable(self):
+        """Same long URI must always map to the same package_name; otherwise
+        concurrent workers would acquire different file locks."""
+        long_uri = "s3://bucket/" + ("x/" * 200) + "pkg.zip"
+        _, name_first = parse_uri(long_uri)
+        _, name_second = parse_uri(long_uri)
+        assert name_first == name_second
+
+    def test_parse_uri_long_paths_are_unique(self):
+        """Two distinct long URIs must not collide on the same package_name."""
+        uri_a = "s3://bucket/" + ("x/" * 200) + "a.zip"
+        uri_b = "s3://bucket/" + ("x/" * 200) + "b.zip"
+        _, name_a = parse_uri(uri_a)
+        _, name_b = parse_uri(uri_b)
+        assert name_a != name_b
+
+    @pytest.mark.parametrize("ext", [".tar.gz", ".tar.bz2"])
+    def test_parse_uri_long_path_preserves_compound_extension(self, ext):
+        """When the hash fallback fires for a compound-extension URI, both parts
+        of the suffix are preserved (so downstream archive-type detection works)."""
+        long_uri = "s3://bucket/" + ("deep/segment/" * 30) + "package" + ext
+        _, name = parse_uri(long_uri)
+        assert name.endswith(ext)
+        assert len(name) + len(".lock") <= 255
+
 
 class TestAbfssProtocol:
     """Test ABFSS protocol implementation."""
