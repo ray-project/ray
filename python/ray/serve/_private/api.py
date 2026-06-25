@@ -1,16 +1,18 @@
+import asyncio
 import inspect
 import logging
 from types import FunctionType
-from typing import Any, Dict, Union
+from typing import Any, Dict, List, Tuple, Union
 
 from pydantic import BaseModel
 
 import ray
+from ray import ObjectRef
 from ray._common.usage import usage_lib
+from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.constants import (
     HTTP_PROXY_TIMEOUT,
-    SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
@@ -68,21 +70,29 @@ def _check_http_options(
             )
 
 
-def _start_controller(
-    http_options: Union[None, dict, HTTPOptions] = None,
-    grpc_options: Union[None, dict, gRPCOptions] = None,
-    global_logging_config: Union[None, dict, LoggingConfig] = None,
-    controller_options: Union[None, dict, ControllerOptions] = None,
+def _create_controller_and_proxy_refs(
+    http_options: Union[None, dict, HTTPOptions],
+    grpc_options: Union[None, dict, gRPCOptions],
+    global_logging_config: Union[None, dict, LoggingConfig],
+    controller_options: ControllerOptions,
     **kwargs,
-) -> None:
-    """Start Ray Serve controller.
+) -> Tuple["ActorHandle", List["ObjectRef"]]:
+    """Create the detached ServeController actor in the caller process.
 
-    The function makes sure controller is ready to start deploying apps
-    after it returns.
+    Runs everything the old ``_start_controller`` remote task did, but inline:
+    ray.init if needed, arg validation, controller actor creation, and resolving
+    ``get_proxies``. Returns the controller handle (owned locally by the caller,
+    following normal ref-counting — no cross-process transfer) plus the list of
+    proxy-readiness ObjectRefs the caller must still wait on.
 
-    Parameters are same as ray.serve._private.api.serve_start().
+    Caller resolves ``proxy_ready_refs`` synchronously (``ray.get``) or
+    asynchronously (``await asyncio.gather``). Splitting the wait out of this
+    helper is what lets sync and async share one creation path without
+    duplication (per @edoakes's suggestion on #63597).
 
-    Returns: None. Caller should use ray.get_actor() to get the controller.
+    Parameters are same as ray.serve._private.api.serve_start(), except
+    ``controller_options`` must already be a validated ``ControllerOptions``
+    (callers coerce eagerly so a bad value raises locally, not from a task).
     """
 
     # Initialize ray if needed.
@@ -112,7 +122,6 @@ def _start_controller(
     elif isinstance(global_logging_config, dict):
         global_logging_config = LoggingConfig(**global_logging_config)
 
-    controller_options = _coerce_controller_options(controller_options)
     controller_impl = get_controller_impl(controller_options=controller_options)
     controller = controller_impl.remote(
         http_options=http_options,
@@ -121,16 +130,12 @@ def _start_controller(
     )
 
     proxy_handles = ray.get(controller.get_proxies.remote())
-    if len(proxy_handles) > 0:
-        try:
-            ray.get(
-                [handle.ready.remote() for handle in proxy_handles.values()],
-                timeout=HTTP_PROXY_TIMEOUT,
-            )
-        except ray.exceptions.GetTimeoutError:
-            raise TimeoutError(
-                f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
-            )
+    proxy_ready_refs = (
+        [handle.ready.remote() for handle in proxy_handles.values()]
+        if len(proxy_handles) > 0
+        else []
+    )
+    return controller, proxy_ready_refs
 
 
 async def serve_start_async(
@@ -171,18 +176,31 @@ async def serve_start_async(
             _check_http_options(client, http_options)
         return client
 
-    await ray.remote(_start_controller).options(num_cpus=0).remote(
+    # Run the blocking controller-creation helper in a worker thread so its
+    # ray.get(controller.get_proxies.remote()) does not stall this event loop.
+    # serve_start_async exists (vs serve_start) precisely to keep long-lived
+    # callers like the Dashboard Agent responsive while Serve starts up.
+    controller, proxy_ready_refs = await asyncio.to_thread(
+        _create_controller_and_proxy_refs,
         http_options,
         grpc_options,
         global_logging_config,
-        controller_options=controller_options,
+        controller_options,
         **kwargs,
     )
 
-    controller = ray.get_actor(name=SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
-    client = ServeControllerClient(
-        controller,
-    )
+    if proxy_ready_refs:
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*proxy_ready_refs),
+                timeout=HTTP_PROXY_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            raise TimeoutError(
+                f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
+            )
+
+    client = ServeControllerClient(controller)
     _set_global_client(client)
     logger.info(f'Started Serve in namespace "{SERVE_NAMESPACE}".')
     return client
@@ -267,18 +285,23 @@ def serve_start(
             _check_http_options(client, http_options)
         return client
 
-    _start_controller(
+    controller, proxy_ready_refs = _create_controller_and_proxy_refs(
         http_options,
         grpc_options,
         global_logging_config,
-        controller_options=controller_options,
+        controller_options,
         **kwargs,
     )
 
-    controller = ray.get_actor(name=SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
-    client = ServeControllerClient(
-        controller,
-    )
+    if proxy_ready_refs:
+        try:
+            ray.get(proxy_ready_refs, timeout=HTTP_PROXY_TIMEOUT)
+        except ray.exceptions.GetTimeoutError:
+            raise TimeoutError(
+                f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
+            )
+
+    client = ServeControllerClient(controller)
     _set_global_client(client)
     logger.info(f'Started Serve in namespace "{SERVE_NAMESPACE}".')
     return client

@@ -803,5 +803,83 @@ def test_serve_start_controller_options_rejects_disallowed_runtime_env(
     assert "only supports ['env_vars']" in str(exc.value)
 
 
+def test_serve_start_does_not_leak_idle_worker(ray_shutdown):
+    """Regression test for #63596 / PR #63597.
+
+    Before the fix, ``serve_start_async`` ran ``_start_controller`` as a remote
+    Ray task and returned the controller ``ActorHandle`` cross-process to the
+    caller (the Dashboard Agent). That transfer inserted the handle's
+    ObjectRefs into the executor worker's ``stored_in_objects``, pinning the
+    worker IDLE forever (it could never drain). Accumulated across calls in a
+    long-lived caller, this eventually OOM'd the head node.
+
+    With the inline fix, controller creation runs in the caller process — there
+    is no executor worker to pin. This test drives ``serve_start_async`` (the
+    exact #63596 path the Dashboard Agent uses) and asserts the symptom.
+
+    ``ray._private.state.workers()`` reports all WORKER-type processes, which
+    includes the actor-hosting workers for the controller and HTTP proxies.
+    Those are created on ``serve_start_async`` and reaped on ``serve.shutdown()``
+    each cycle, so they do not accumulate. The leaked ``_start_controller``
+    executor, by contrast, was pinned IDLE and SURVIVED ``serve.shutdown()``
+    (its ``object_id_refs_`` never drained) — so it accumulated across cycles
+    and grew the count. The non-growth assertion below catches exactly that.
+    """
+    import asyncio
+
+    import ray._private.state as state
+    from ray.serve._private.api import serve_start_async
+
+    def _idle_worker_count() -> int:
+        return len(state.workers())
+
+    # Start and stop Serve several times via the async path. The leaked
+    # executor (pre-fix) would survive serve.shutdown() because it was pinned
+    # IDLE and never drained, so each cycle would add one to the worker count.
+    # Post-fix there is no such executor, so the count must not grow.
+    cycles = 3
+    counts = []
+    for _ in range(cycles):
+        asyncio.run(serve_start_async())
+        time.sleep(1)
+        counts.append(_idle_worker_count())
+        serve.shutdown()
+
+    # The count must not grow across cycles — that growth was the leak.
+    # Allow equal-or-fewer (reaping may reduce it); forbid growth.
+    assert counts[-1] <= counts[0], (
+        f"Idle WORKER count grew across {cycles} serve_start_async()/shutdown() "
+        f"cycles: {counts}. Growth indicates a pinned (leaked) executor worker "
+        f"— the #63596 regression."
+    )
+
+
+def test_serve_start_no_remote_start_controller_task():
+    """Structural regression test for PR #63597.
+
+    The leak came from wrapping ``_start_controller`` in a remote Ray task and
+    returning its ``ActorHandle`` cross-process. The fix removes that wrapper
+    entirely and inlines controller creation. Assert the wrapper symbol is gone
+    and neither start path dispatches a remote task for controller creation.
+    This guards against a future reintroduction of the leak pattern even if the
+    behavioral test above is environment-sensitive.
+    """
+    import inspect
+
+    from ray.serve._private import api as serve_api
+
+    assert not hasattr(serve_api, "_start_controller"), (
+        "_start_controller should be removed; its remote-task wrapping was the "
+        "leak source in #63596."
+    )
+
+    src_async = inspect.getsource(serve_api.serve_start_async)
+    src_sync = inspect.getsource(serve_api.serve_start)
+    assert "ray.remote(_start_controller)" not in src_async
+    assert "ray.remote(_start_controller)" not in src_sync
+    assert "_create_controller_and_proxy_refs" in src_async
+    assert "_create_controller_and_proxy_refs" in src_sync
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
