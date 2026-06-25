@@ -89,6 +89,19 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "redis_auth_provider_test",
+    size = "small",
+    srcs = ["redis_auth_provider_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/gcs/store_client:redis_store_client",
+        "//src/ray/util:clock",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_test(
     name = "redis_callback_reply_test",
     size = "small",
     srcs = ["redis_callback_reply_test.cc"],

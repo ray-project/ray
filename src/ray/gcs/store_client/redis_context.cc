@@ -684,8 +684,23 @@ Status RedisContext::Connect(const std::string &address,
     RAY_CHECK(redisInitiateSSLWithContext(context_.get(), ssl_context_) == REDIS_OK)
         << "Failed to setup encrypted redis: " << context_->errstr;
   }
-  RAY_CHECK_OK(AuthenticateRedis(
-      context_.get(), username, password, redis_db_probe_timeout_milliseconds_));
+
+  // Resolve the credentials to use for AUTH. For static auth these are just the
+  // username/password passed in; for Entra auth they are a freshly-fetched
+  // token. The same credentials are reused for the sync and async contexts.
+  EnsureAuthProvider(username, password);
+  RedisCredentials creds;
+  {
+    auto creds_or = auth_provider_->GetCredentials();
+    RAY_CHECK_OK(creds_or.status()) << "Failed to obtain Redis credentials.";
+    creds = std::move(creds_or).value();
+  }
+  last_applied_password_ = creds.password;
+
+  RAY_CHECK_OK(AuthenticateRedis(context_.get(),
+                                 creds.username,
+                                 creds.password,
+                                 redis_db_probe_timeout_milliseconds_));
 
   // Connect to async context
   std::unique_ptr<redisAsyncContext, RedisContextDeleter> async_context;
@@ -700,7 +715,7 @@ Status RedisContext::Connect(const std::string &address,
     RAY_CHECK(redisInitiateSSLWithContext(&async_context->c, ssl_context_) == REDIS_OK)
         << "Failed to setup encrypted redis: " << async_context->errstr;
   }
-  RAY_CHECK_OK(AuthenticateRedis(async_context.get(), username, password));
+  RAY_CHECK_OK(AuthenticateRedis(async_context.get(), creds.username, creds.password));
   redis_async_context_.reset(
       new RedisAsyncContext(io_service_, std::move(async_context)));
   SetDisconnectCallback(redis_async_context_.get());
@@ -712,6 +727,90 @@ Status RedisContext::Connect(const std::string &address,
     return ConnectRedisCluster(
         username, password, enable_ssl, BuildAddress(ip_addresses[0], port));
   }
+}
+
+void RedisContext::EnsureAuthProvider(const std::string &username,
+                                      const std::string &password) {
+  if (auth_provider_) {
+    // Already built (e.g. on a recursive Connect for cluster/sentinel).
+    return;
+  }
+  const std::string &auth_mode = RayConfig::instance().REDIS_AUTH_MODE();
+  if (auth_mode == "entra") {
+    EntraAuthConfig config;
+    config.imds_endpoint = RayConfig::instance().REDIS_ENTRA_IMDS_ENDPOINT();
+    config.resource = RayConfig::instance().REDIS_ENTRA_RESOURCE();
+    config.client_id = RayConfig::instance().REDIS_ENTRA_CLIENT_ID();
+    // An explicit username overrides the token's `oid` claim.
+    config.username = username;
+    config.refresh_buffer =
+        absl::Seconds(RayConfig::instance().redis_entra_token_refresh_buffer_seconds());
+    RAY_LOG(INFO) << "Using Microsoft Entra ID authentication for Redis (resource="
+                  << config.resource << ").";
+    auth_provider_ = std::make_shared<EntraRedisAuthProvider>(clock_, std::move(config));
+  } else {
+    RAY_CHECK(auth_mode.empty() || auth_mode == "static")
+        << "Unknown REDIS_AUTH_MODE: '" << auth_mode
+        << "'. Supported values: '' / 'static' (default) and 'entra'.";
+    auth_provider_ = std::make_shared<StaticRedisAuthProvider>(username, password);
+  }
+}
+
+void RedisContext::StartTokenRefresh() {
+  RAY_CHECK(auth_provider_) << "StartTokenRefresh called before a successful Connect.";
+  if (!auth_provider_->IsRefreshable()) {
+    return;
+  }
+  RAY_CHECK(!token_refresh_runner_) << "Token refresh has already been started.";
+  token_refresh_runner_ = PeriodicalRunner::Create(io_service_);
+  token_refresh_runner_->RunFnPeriodically(
+      [this]() { RefreshAndReauthenticate(); },
+      RayConfig::instance().redis_token_refresh_interval_ms(),
+      "RedisContext.RefreshToken");
+}
+
+void RedisContext::RefreshAndReauthenticate() {
+  auto creds_or = auth_provider_->GetCredentials();
+  if (!creds_or.ok()) {
+    RAY_LOG(ERROR) << "Failed to refresh Redis credentials; keeping the existing "
+                   << "token and retrying on the next tick. Error: " << creds_or.status();
+    return;
+  }
+  const RedisCredentials &creds = creds_or.value();
+  if (creds.password == last_applied_password_) {
+    // Token has not rotated yet; the current AUTH is still valid.
+    return;
+  }
+  RAY_LOG(INFO) << "Re-authenticating the Redis connection with a refreshed token.";
+
+  if (context_) {
+    Status status = AuthenticateRedis(context_.get(),
+                                      creds.username,
+                                      creds.password,
+                                      redis_db_probe_timeout_milliseconds_);
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to re-AUTH the sync Redis connection: " << status;
+      return;
+    }
+  }
+  if (redis_async_context_) {
+    Status status;
+    if (creds.username.empty()) {
+      status = redis_async_context_->RedisAsyncCommand(
+          /*fn=*/nullptr, /*privdata=*/nullptr, "AUTH %s", creds.password.c_str());
+    } else {
+      status = redis_async_context_->RedisAsyncCommand(/*fn=*/nullptr,
+                                                       /*privdata=*/nullptr,
+                                                       "AUTH %s %s",
+                                                       creds.username.c_str(),
+                                                       creds.password.c_str());
+    }
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to re-AUTH the async Redis connection: " << status;
+      return;
+    }
+  }
+  last_applied_password_ = creds.password;
 }
 
 std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
