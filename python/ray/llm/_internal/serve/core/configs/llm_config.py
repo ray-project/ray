@@ -86,6 +86,7 @@ class LLMEngine(str, Enum):
     """Enum that represents an LLMEngine."""
 
     vLLM = "vLLM"
+    SGLang = "SGLang"
 
 
 class LoraConfig(BaseModelExtended):
@@ -595,6 +596,12 @@ class LLMConfig(BaseModelExtended):
             )
 
             self._engine_config = VLLMEngineConfig.from_llm_config(self)
+        elif self.llm_engine == LLMEngine.SGLang:
+            from ray.llm._internal.serve.engines.sglang.sglang_engine import (
+                SGLangEngineConfig,
+            )
+
+            self._engine_config = SGLangEngineConfig.from_llm_config(self)
         else:
             # Note (genesu): This should never happen because we validate the engine
             # in the config.

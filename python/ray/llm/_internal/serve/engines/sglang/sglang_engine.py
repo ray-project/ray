@@ -21,6 +21,8 @@ from typing import (
     Union,
 )
 
+from pydantic import BaseModel
+
 from ray.llm._internal.serve.constants import ENABLE_WORKER_PROCESS_SETUP_HOOK
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -41,6 +43,28 @@ from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import (
     _merge_replica_actor_and_child_actor_bundles,
 )
+
+
+class SGLangEngineConfig(BaseModel):
+    """Minimal engine config for SGLang, exposing the fields telemetry needs.
+
+    Unlike VLLMEngineConfig, this does not drive engine construction —
+    SGLangServer.__init__ passes engine_kwargs to sglang.Engine directly.
+    This class exists only to satisfy LLMConfig.get_engine_config() callers
+    (e.g. usage telemetry) without requiring vLLM to be installed.
+    """
+
+    tensor_parallel_degree: int
+    num_devices: int
+
+    @classmethod
+    def from_llm_config(cls, llm_config: "LLMConfig") -> "SGLangEngineConfig":
+        tp_size = llm_config.engine_kwargs.get("tp_size", 1)
+        pp_size = llm_config.engine_kwargs.get("pp_size", 1)
+        return cls(
+            tensor_parallel_degree=tp_size,
+            num_devices=tp_size * pp_size,
+        )
 
 
 class SGLangServer:
@@ -65,10 +89,29 @@ class SGLangServer:
             # Returns default handler to satisfy signal.signal() return signature
             return signal.SIG_DFL
 
+        # Inject model_path from model_loading_config if the user hasn't set it
+        # explicitly in engine_kwargs. This mirrors what VLLMEngineConfig does for
+        # vLLM — the user specifies the model via model_loading_config.model_source
+        # and the engine layer handles the translation to the backend's kwarg name.
+        engine_init_kwargs = dict(self.engine_kwargs)
+
+        if "model_path" not in engine_init_kwargs:
+            model_source = llm_config.model_loading_config.model_source
+            engine_init_kwargs["model_path"] = (
+                model_source if isinstance(model_source, str) else llm_config.model_id
+            )
+
+        if not engine_init_kwargs.get("model_path"):
+            raise ValueError(
+                "SGLang engine requires 'model_path' but it could not be determined. "
+                "Set it via model_loading_config.model_source or "
+                "engine_kwargs['model_path'] directly."
+            )
+
         try:
             # Override signal.signal with our no-op function
             signal.signal = noop_signal_handler
-            self.engine = sglang.Engine(**self.engine_kwargs)
+            self.engine = sglang.Engine(**engine_init_kwargs)
         finally:
             signal.signal = original_signal_func
 
@@ -213,6 +256,20 @@ class SGLangServer:
         sampling_params = self._build_sampling_params(request)
         if sampling_params:
             generate_kwargs["sampling_params"] = sampling_params
+
+        # PD disaggregation: pass bootstrap fields if present on the request.
+        # These are set by SGLangPDDecodeServer before calling the local engine
+        # (decode role) or before forwarding to the prefill server (prefill role).
+        bootstrap_room = getattr(request, "bootstrap_room", None)
+        if bootstrap_room is not None:
+            generate_kwargs["bootstrap_room"] = bootstrap_room
+            bootstrap_host = getattr(request, "bootstrap_host", None)
+            if bootstrap_host is not None:
+                generate_kwargs["bootstrap_host"] = bootstrap_host
+            bootstrap_port = getattr(request, "bootstrap_port", None)
+            if bootstrap_port is not None:
+                generate_kwargs["bootstrap_port"] = bootstrap_port
+
         return generate_kwargs
 
     async def _generate_raw(
