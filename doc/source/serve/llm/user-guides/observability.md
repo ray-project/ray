@@ -37,7 +37,7 @@ The dashboard includes visualizations for:
 
 ## Engine metrics
 
-All engine metrics, including vLLM, are available through the Ray metrics export endpoint and are queryable with Prometheus. See [vLLM metrics](https://docs.vllm.ai/en/stable/usage/metrics.html) for a complete list. The Serve LLM Grafana dashboard also visualizes these metrics.
+All engine metrics, including vLLM and SGLang, are available through the Ray metrics export endpoint and are queryable with Prometheus. See [vLLM metrics](https://docs.vllm.ai/en/stable/usage/metrics.html) and [SGLang production metrics](https://docs.sglang.ai/references/production_metrics.html) for engine-specific details. The Serve LLM Grafana dashboard also visualizes these metrics.
 
 Key engine metrics include:
 
@@ -46,6 +46,8 @@ Key engine metrics include:
 - **GPU cache utilization**: KV cache memory usage.
 - **Batch size**: Current and average batch sizes.
 - **Throughput**: Requests per second and tokens per second.
+
+For SGLang-backed deployments, `log_engine_metrics: true` also enables SGLang's scheduler, tokenizer, storage, radix cache, and expert-dispatch collectors and routes supported metrics through Ray's metrics export endpoint.
 
 ### Configure engine metrics
 
@@ -122,4 +124,3 @@ To opt out from usage data collection, see {ref}`Ray usage stats <ref-usage-stat
 - {ref}`collect-metrics` - Ray metrics collection guide
 - [vLLM metrics documentation](https://docs.vllm.ai/en/stable/usage/metrics.html)
 - {doc}`Troubleshooting <../troubleshooting>` - Common issues and solutions
-

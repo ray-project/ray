@@ -112,12 +112,26 @@ The `placement_group_strategy: "PACK"` fills GPUs on each node before moving to 
 RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0 serve run serve_sglang_multinode_example:app
 ```
 
+## Metrics
+
+SGLang engine metrics are enabled by default through `log_engine_metrics: true`.
+Ray Serve LLM passes SGLang's scheduler, tokenizer, storage, radix cache, and expert-dispatch collectors through Ray's metrics export endpoint, so you can query them from the same Prometheus scrape target as other Ray metrics.
+
+Useful SGLang metric groups include:
+
+- Queue depth and running request counts.
+- TTFT, inter-token latency, and end-to-end request latency.
+- KV cache usage, cache hit rate, and evictable token counts.
+- Prefill, decode, and disaggregated serving queue metrics.
+- Expert-dispatch heatmap metrics for MoE deployments when enabled in SGLang.
+
+To turn off SGLang engine metrics for a deployment, set `log_engine_metrics: false` on the `LLMConfig`.
+
 ## Limitations
 
 The following SGLang features are available upstream but not yet integrated into Ray Serve LLM. Community contributions are welcome:
 
 - **Engine replicas:** Multiple engine replicas within a single deployment. See [ray-project/ray#62480](https://github.com/ray-project/ray/issues/62480).
-- **Observability:** Engine-level metrics (e.g. KV cache utilization, request queue depth).
 - **Prefill disaggregation:** Separating prefill and decode phases across different workers.
 - **Wide EP:** Wide expert parallelism for Mixture-of-Experts models.
 - **Elastic EP:** Fault-tolerant expert parallelism with dynamic rank health tracking.
@@ -133,4 +147,3 @@ SGLang's in-process engine overrides Python signal handlers on startup. The `SGL
 - [SGLang OpenAI compatibility](https://docs.sglang.ai/basic_usage/openai_api.html)
 - {doc}`../quick-start` - Basic LLM deployment examples
 - {doc}`cross-node-parallelism` - Cross-node parallelism with placement groups
-
