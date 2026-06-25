@@ -275,42 +275,48 @@ void GcsServer::GetOrGenerateClusterId(
       kClusterIdKey,
       {[this, continuation = std::move(continuation)](
            std::optional<std::string> provided_cluster_id) mutable {
-         if (!provided_cluster_id.has_value()) {
-           if (!IsLeader()) {
-             RAY_LOG(INFO) << "Cluster ID not found in storage. Waiting for active GCS "
-                              "leader to write it...";
-             auto &io_ctx = continuation.io_context();
-             execute_after(
-                 io_ctx,
-                 [this, continuation = std::move(continuation)]() mutable {
-                   GetOrGenerateClusterId(std::move(continuation));
-                 },
-                 std::chrono::seconds(1));
-             return;
-           }
-           instrumented_io_context &io_ctx = continuation.io_context();
-           ClusterID cluster_id = ClusterID::FromRandom();
-           RAY_LOG(INFO).WithField(cluster_id) << "Generated new cluster ID.";
-           kv_manager_->GetInstance().Put(
-               kClusterIdNamespace,
-               kClusterIdKey,
-               cluster_id.Binary(),
-               false,
-               {[cluster_id,
-                 continuation = std::move(continuation)](bool added_entry) mutable {
-                  RAY_CHECK(added_entry) << "Failed to persist new cluster ID.";
-                  std::move(continuation)
-                      .Dispatch("GcsServer.GetOrGenerateClusterId.continuation",
-                                cluster_id);
-                },
-                io_ctx});
-         } else {
+         // 1. Existing Cluster ID found in storage.
+         if (provided_cluster_id.has_value()) {
            ClusterID cluster_id = ClusterID::FromBinary(provided_cluster_id.value());
            RAY_LOG(INFO).WithField(cluster_id)
                << "Using existing cluster ID from external storage.";
            std::move(continuation)
                .Dispatch("GcsServer.GetOrGenerateClusterId.continuation", cluster_id);
+           return;
          }
+
+         // 2. Cluster ID not found, and GCS is running in standby (passive) mode.
+         if (config_.ray_leader_elect_enabled && !IsLeader()) {
+           RAY_LOG(INFO) << "Cluster ID not found in storage. Waiting for active GCS "
+                            "leader to write it...";
+           auto &io_ctx = continuation.io_context();
+           execute_after(
+               io_ctx,
+               [this, continuation = std::move(continuation)]() mutable {
+                 GetOrGenerateClusterId(std::move(continuation));
+               },
+               std::chrono::seconds(1));
+           return;
+         }
+
+         // 3. Cluster ID not found, and GCS is either active leader or leader election is
+         // disabled.
+         instrumented_io_context &io_ctx = continuation.io_context();
+         ClusterID cluster_id = ClusterID::FromRandom();
+         RAY_LOG(INFO).WithField(cluster_id) << "Generated new cluster ID.";
+         kv_manager_->GetInstance().Put(
+             kClusterIdNamespace,
+             kClusterIdKey,
+             cluster_id.Binary(),
+             false,
+             {[cluster_id,
+               continuation = std::move(continuation)](bool added_entry) mutable {
+                RAY_CHECK(added_entry) << "Failed to persist new cluster ID.";
+                std::move(continuation)
+                    .Dispatch("GcsServer.GetOrGenerateClusterId.continuation",
+                              cluster_id);
+              },
+              io_ctx});
        },
        io_context});
 }
@@ -424,7 +430,7 @@ void GcsServer::DoStartLoadingDeferred() {
               io_context_provider_.GetDefaultIOContext()});
          gcs_autoscaler_state_manager_->Initialize(*gcs_init_data);
 
-          gcs_node_manager_->PromoteNodeManager();
+         gcs_node_manager_->PromoteNodeManager();
          periodical_runner_->RunFnPeriodically(
              [this] { RecordMetrics(); },
              /*ms*/ RayConfig::instance().metrics_report_interval_ms() / 2,

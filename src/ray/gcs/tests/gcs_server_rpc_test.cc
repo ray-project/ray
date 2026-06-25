@@ -80,25 +80,24 @@ class GcsServerTest : public ::testing::Test {
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
 
     gcs_server_ = std::make_unique<gcs::GcsServer>(config, fake_metrics_, io_service_);
+    std::promise<int> port_promise;
+    gcs_server_->SetPortReadyCallback(
+        [&port_promise](int port) { port_promise.set_value(port); });
     gcs_server_->Start();
 
     StartMainIOServiceThread();
 
     // Wait until server starts listening.
-    while (gcs_server_->GetPort() == 0) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
+    int port = port_promise.get_future().get();
 
     // Create gcs rpc client
     client_call_manager_.reset(new rpc::ClientCallManager(
         io_service_, /*record_stats=*/false, /*local_address=*/""));
-    client_.reset(
-        new rpc::GcsRpcClient("0.0.0.0", gcs_server_->GetPort(), *client_call_manager_));
+    client_.reset(new rpc::GcsRpcClient("0.0.0.0", port, *client_call_manager_));
 
     // Create health check stub.
-    auto channel =
-        grpc::CreateChannel("localhost:" + std::to_string(gcs_server_->GetPort()),
-                            grpc::InsecureChannelCredentials());
+    auto channel = grpc::CreateChannel("localhost:" + std::to_string(port),
+                                       grpc::InsecureChannelCredentials());
     health_check_stub_ = grpc::health::v1::Health::NewStub(channel);
   }
 
@@ -608,6 +607,71 @@ class GcsServerTestFixture : public gcs::GcsServer {
   void TriggerPromotion() { DoStartLoadingDeferred(); }
 };
 
+/// Helper class that runs an isolated GCS server on a dedicated event loop thread.
+/// This is used specifically for passive (standby) GCS head node tests where multiple GCS
+/// server instances need to run concurrently.
+///
+/// Sharing the main fixture's `io_service_` for temporary GCS server instances is unsafe
+/// because if a temporary instance is destroyed while the shared `io_service_` loop
+/// thread is still running, pending callbacks referencing the deleted instance can
+/// execute and cause use-after-free heap corruptions.
+///
+/// This runner solves the issue by wrapping GCS Server with its own private thread and
+/// private `io_context`, ensuring the thread is stopped and joined before the server is
+/// deallocated.
+class DedicatedGcsServerRunner {
+ public:
+  DedicatedGcsServerRunner(const gcs::GcsServerConfig &config,
+                           const gcs::GcsServerMetrics &metrics)
+      : io_service_(),
+        server_(std::make_unique<GcsServerTestFixture>(config, metrics, io_service_)) {}
+
+  /// Starts the GCS server and its private event loop thread.
+  /// Blocks the calling test thread until the GCS server has bound to its gRPC port
+  /// and is fully ready to receive incoming RPC requests.
+  void Start() {
+    std::promise<int> port_promise;
+    server_->SetPortReadyCallback(
+        [&port_promise](int port) { port_promise.set_value(port); });
+
+    thread_ = std::thread([this]() {
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service_.get_executor());
+      io_service_.run();
+    });
+
+    server_->Start();
+    // Wait until the GCS server executes the port ready callback on the event thread,
+    // guaranteeing that the gRPC service is listening before we start making requests.
+    port_ = port_promise.get_future().get();
+  }
+
+  /// Stops the GCS server, stops its event loop, and joins the event thread.
+  /// Blocks until the event loop is fully stopped and no more callbacks can run.
+  /// This must be called before deleting the server object.
+  void Stop() {
+    if (server_) {
+      server_->Stop();
+    }
+    io_service_.stop();
+    if (thread_.joinable()) {
+      thread_.join();  // Ensure the event loop thread is dead before deleting GcsServer
+    }
+    server_.reset();
+  }
+
+  ~DedicatedGcsServerRunner() { Stop(); }
+
+  GcsServerTestFixture &GetServer() { return *server_; }
+  int GetPort() const { return port_; }
+
+ private:
+  instrumented_io_context io_service_;
+  std::unique_ptr<GcsServerTestFixture> server_;
+  std::thread thread_;
+  int port_ = 0;
+};
+
 TEST_F(GcsServerTest, TestPassiveServerReadiness) {
   gcs::GcsServerConfig passive_config;
   passive_config.grpc_server_port = 0;
@@ -620,19 +684,13 @@ TEST_F(GcsServerTest, TestPassiveServerReadiness) {
   // Enable leader election to boot in passive.
   passive_config.ray_leader_elect_enabled = true;
 
-  auto passive_server =
-      std::make_unique<gcs::GcsServer>(passive_config, fake_metrics_, io_service_);
-  passive_server->Start();
-
-  // Wait until server starts listening.
-  while (passive_server->GetPort() == 0) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
+  DedicatedGcsServerRunner passive_runner(passive_config, fake_metrics_);
+  passive_runner.Start();
+  int port = passive_runner.GetPort();
 
   // Create health check stub pointing to the passive GCS server.
-  auto channel =
-      grpc::CreateChannel("localhost:" + std::to_string(passive_server->GetPort()),
-                          grpc::InsecureChannelCredentials());
+  auto channel = grpc::CreateChannel("localhost:" + std::to_string(port),
+                                     grpc::InsecureChannelCredentials());
   auto passive_health_check_stub = grpc::health::v1::Health::NewStub(channel);
 
   // Check health of the passive server.
@@ -645,7 +703,7 @@ TEST_F(GcsServerTest, TestPassiveServerReadiness) {
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(response.status(), grpc::health::v1::HealthCheckResponse::SERVING);
 
-  passive_server->Stop();
+  passive_runner.Stop();
 }
 
 TEST_F(GcsServerTest, TestPassivePromotion) {
@@ -666,23 +724,17 @@ TEST_F(GcsServerTest, TestPassivePromotion) {
   // Enable leader election to boot in passive.
   passive_config.ray_leader_elect_enabled = true;
 
-  auto passive_server =
-      std::make_unique<GcsServerTestFixture>(passive_config, fake_metrics_, io_service_);
-  passive_server->Start();
-
-  // Wait until server starts listening.
-  while (passive_server->GetPort() == 0) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
+  DedicatedGcsServerRunner passive_runner(passive_config, fake_metrics_);
+  passive_runner.Start();
+  int port = passive_runner.GetPort();
 
   // Create client pointing to the passive GCS server.
-  auto passive_client = std::make_unique<rpc::GcsRpcClient>(
-      "0.0.0.0", passive_server->GetPort(), *client_call_manager_);
+  auto passive_client =
+      std::make_unique<rpc::GcsRpcClient>("0.0.0.0", port, *client_call_manager_);
 
   // Verify it is responsive to healthcheck.
-  auto channel =
-      grpc::CreateChannel("localhost:" + std::to_string(passive_server->GetPort()),
-                          grpc::InsecureChannelCredentials());
+  auto channel = grpc::CreateChannel("localhost:" + std::to_string(port),
+                                     grpc::InsecureChannelCredentials());
   auto passive_health_check_stub = grpc::health::v1::Health::NewStub(channel);
   grpc::health::v1::HealthCheckRequest request;
   grpc::health::v1::HealthCheckResponse response;
@@ -726,7 +778,7 @@ TEST_F(GcsServerTest, TestPassivePromotion) {
   }
 
   // 3. Trigger promotion
-  passive_server->TriggerPromotion();
+  passive_runner.GetServer().TriggerPromotion();
 
   // Wait 200ms for async load from Redis to finish.
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -776,7 +828,7 @@ TEST_F(GcsServerTest, TestPassivePromotion) {
     EXPECT_TRUE(WaitReady(promise.get_future(), client_timeout_ms_));
   }
 
-  passive_server->Stop();
+  passive_runner.Stop();
 }
 
 TEST_F(GcsServerTest, TestPassiveHeadNodeRegistrationAndPromotion) {
@@ -797,18 +849,13 @@ TEST_F(GcsServerTest, TestPassiveHeadNodeRegistrationAndPromotion) {
   passive_config.redis_port = TEST_REDIS_SERVER_PORTS.front();
   passive_config.ray_leader_elect_enabled = true;
 
-  auto passive_server =
-      std::make_unique<GcsServerTestFixture>(passive_config, fake_metrics_, io_service_);
-  passive_server->Start();
-
-  // Wait until server starts listening.
-  while (passive_server->GetPort() == 0) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
+  DedicatedGcsServerRunner passive_runner(passive_config, fake_metrics_);
+  passive_runner.Start();
+  int port = passive_runner.GetPort();
 
   // Create client pointing to passive GCS server.
-  auto passive_client = std::make_unique<rpc::GcsRpcClient>(
-      "0.0.0.0", passive_server->GetPort(), *client_call_manager_);
+  auto passive_client =
+      std::make_unique<rpc::GcsRpcClient>("0.0.0.0", port, *client_call_manager_);
 
   // 2. Register new head node B (ALIVE) on passive GCS server.
   // It must bypass passive gating and return Status::OK!
@@ -851,7 +898,7 @@ TEST_F(GcsServerTest, TestPassiveHeadNodeRegistrationAndPromotion) {
   }
 
   // 3. Trigger GCS promotion on passive server.
-  passive_server->TriggerPromotion();
+  passive_runner.GetServer().TriggerPromotion();
 
   // Wait 200ms for async load and PromoteNodeManager standard delegation to finish.
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -886,7 +933,7 @@ TEST_F(GcsServerTest, TestPassiveHeadNodeRegistrationAndPromotion) {
     EXPECT_TRUE(WaitReady(promise.get_future(), client_timeout_ms_));
   }
 
-  passive_server->Stop();
+  passive_runner.Stop();
 }
 
 }  // namespace ray
