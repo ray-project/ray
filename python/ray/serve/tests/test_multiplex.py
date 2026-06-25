@@ -13,6 +13,7 @@ from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
 from ray.serve._private.request_router import RequestRouter
+from ray.serve._private.test_utils import skip_if_haproxy
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
@@ -381,6 +382,10 @@ def check_model_id_in_replicas(handle: DeploymentHandle, model_id: str) -> bool:
     return True
 
 
+@skip_if_haproxy(
+    "multiplexed model routing is unsupported on a HAProxy ingress deployment "
+    "because HAProxy bypasses the Serve request router"
+)
 def test_multiplexed_e2e(serve_instance):
     """Test multiplexed function end to end"""
 
@@ -416,6 +421,10 @@ def test_multiplexed_e2e(serve_instance):
         )
 
 
+@skip_if_haproxy(
+    "multiplexed model routing is unsupported on a HAProxy ingress deployment "
+    "because HAProxy bypasses the Serve request router"
+)
 def test_multiplexed_lru_policy(serve_instance):
     """Test multiplexed function LRU policy"""
 
@@ -514,6 +523,10 @@ def test_setting_model_id_on_handle_does_not_set_it_locally(serve_instance):
     assert handle.options(multiplexed_model_id="foo").remote().result() == "foo"
 
 
+@skip_if_haproxy(
+    "multiplexed model routing is unsupported on a HAProxy ingress deployment "
+    "because HAProxy bypasses the Serve request router"
+)
 def test_replica_upgrade_to_cleanup_resource(serve_instance):
     """When replica is upgraded, we need to make sure model resources are released."""
 
