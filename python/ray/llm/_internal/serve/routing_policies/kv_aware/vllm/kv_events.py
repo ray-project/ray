@@ -1,8 +1,6 @@
 import logging
 from typing import Any, Dict, Optional
 
-from vllm.config import CacheConfig
-
 import ray
 from ray import serve
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
@@ -126,9 +124,10 @@ def resolve_kv_event_source_endpoint(llm_config: LLMConfig) -> Optional[str]:
 
 
 def get_kv_event_routing_stats(
-    llm_config: LLMConfig, max_num_batched_tokens: int
+    llm_config: LLMConfig, block_size: int, max_num_batched_tokens: int
 ) -> Dict[str, Any]:
-    """Returns this replica's routing-stats payload advertising its KV-events endpoint."""
+    """Returns this replica's routing-stats payload advertising its KV-events
+    endpoint and the engine's resolved KV-cache block size."""
     if not is_kv_aware_routing(
         llm_config.deployment_config.get("request_router_config")
     ):
@@ -140,6 +139,7 @@ def get_kv_event_routing_stats(
         "endpoint": _get_node_routable_endpoint(
             llm_config, kv_events_config["endpoint"]
         ),
+        "block_size": block_size,
         "max_num_batched_tokens": max_num_batched_tokens,
         "dp_rank": llm_config.engine_kwargs.get("data_parallel_rank") or 0,
     }
@@ -189,12 +189,3 @@ def _get_offset_endpoint_port(endpoint: str, offset: int) -> str:
     """Offset a TCP endpoint's port with vLLM's ZmqEventPublisher convention."""
     base, port = endpoint.rsplit(":", 1)
     return f"{base}:{int(port) + offset}"
-
-
-def derive_kv_event_block_size(engine_kwargs: Dict[str, Any]) -> int:
-    """The engine's KV-cache block size, resolved at build time.
-
-    The selection service indexes blocks at this size; it must match what the
-    engine emits.
-    """
-    return CacheConfig(block_size=engine_kwargs.get("block_size")).block_size

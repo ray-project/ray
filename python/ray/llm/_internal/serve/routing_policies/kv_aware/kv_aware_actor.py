@@ -66,10 +66,11 @@ class KVRouterActor:
        worker.
     """
 
-    def __init__(
-        self, block_size: int, indexer_threads: int = DEFAULT_KV_INDEXER_THREADS
-    ):
-        self._block_size = block_size
+    def __init__(self, indexer_threads: int = DEFAULT_KV_INDEXER_THREADS):
+        # KV-cache block size, learned once from the first replica's reported
+        # engine config and passed to the selection service, which uses it to
+        # track the worker's active load and index its KV blocks for overlap.
+        self._block_size: Optional[int] = None
         self._indexer_threads = indexer_threads
         # _replica_id_by_worker maps a Dynamo worker id to the running replica's full
         # id string, kept in sync with the deployment's live replicas over LongPoll.
@@ -96,8 +97,7 @@ class KVRouterActor:
 
         self._svc = SelectionService(indexer_threads=self._indexer_threads)
         logger.info(
-            "Dynamo SelectionService created (block size %d, indexer threads %d).",
-            self._block_size,
+            "Dynamo SelectionService created (indexer threads %d).",
             self._indexer_threads,
         )
 
@@ -127,6 +127,29 @@ class KVRouterActor:
         self._pending_tasks.add(task)
         task.add_done_callback(self._pending_tasks.discard)
 
+    def _register_block_size(self, block_size: int, replica_id: str) -> None:
+        """Pin the deployment's KV-cache block size from the first replica's
+        reported engine config.
+        """
+        if self._block_size is None:
+            self._block_size = block_size
+            logger.info("KV router block size set to %d.", block_size)
+        elif block_size != self._block_size:
+            # Replicas of a deployment are expected to resolve the same block
+            # size, so a mismatch is unexpected. We still register the worker so
+            # the selection service spawns its KV-event listener, but the indexer
+            # only ingests blocks whose size matches the pinned block size, so a
+            # genuinely mismatched replica's KV events would be dropped (its KV
+            # cache never indexed).
+            logger.error(
+                "Replica %s reports KV block size %d but the KV router is "
+                "pinned at %d; registering it at the pinned size (replicas of a "
+                "deployment are expected to agree).",
+                replica_id,
+                block_size,
+                self._block_size,
+            )
+
     def _on_deployment_targets(self, target_info: DeploymentTargetInfo) -> None:
         """LongPoll listener: reconcile tracked workers against the running-replica
         snapshot.
@@ -154,6 +177,7 @@ class KVRouterActor:
             self._replica_id_by_worker.pop(worker_id, None)
         for worker_id in added:
             replica_id, kv_event_metadata = members[worker_id]
+            self._register_block_size(kv_event_metadata["block_size"], replica_id)
             self._replica_id_by_worker[worker_id] = replica_id
             self._schedule(
                 self._upsert_worker(worker_id, replica_id, kv_event_metadata)

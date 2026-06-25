@@ -14,7 +14,6 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     configure_kv_events_for_kv_routing,
-    derive_kv_event_block_size,
     is_kv_aware_routing,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -49,7 +48,6 @@ def _maybe_setup_kv_aware_routing(
             actor_class=ray.remote(KVRouterActor),
             actor_options={"num_cpus": 0},
             init_kwargs={
-                "block_size": derive_kv_event_block_size(llm_config.engine_kwargs),
                 "indexer_threads": llm_config.experimental_configs.get(
                     KV_INDEXER_THREADS_KEY, DEFAULT_KV_INDEXER_THREADS
                 ),

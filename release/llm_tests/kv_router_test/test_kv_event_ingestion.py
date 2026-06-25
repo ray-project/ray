@@ -156,6 +156,7 @@ def running_replica(
         routing_stats={
             "kv_event_metadata": {
                 "endpoint": endpoint,
+                "block_size": BLOCK_SIZE,
                 "max_num_batched_tokens": MAX_NUM_BATCHED_TOKENS,
                 "dp_rank": dp_rank,
                 "replay_endpoint": replay_endpoint,
@@ -199,7 +200,7 @@ class TestKvEventIngestion:
     async def test_register_then_ingest_events(self, ray_instance):
         """A replica appearing on the snapshot with a KV-events endpoint makes the
         selection service dial it and index the KV events it publishes."""
-        actor = LocalKVRouterActor.remote(block_size=BLOCK_SIZE)
+        actor = LocalKVRouterActor.remote()
         replica = FakeReplica.remote(23901)
         try:
             worker_id = get_worker_id("replica-A")
@@ -235,7 +236,7 @@ class TestKvEventIngestion:
     @pytest.mark.asyncio
     async def test_per_worker_isolation(self, ray_instance):
         """Each worker's overlap reflects only the blocks its own replica cached."""
-        actor = LocalKVRouterActor.remote(block_size=BLOCK_SIZE)
+        actor = LocalKVRouterActor.remote()
         a = FakeReplica.remote(23902)
         b = FakeReplica.remote(23903)
         workers = {
@@ -288,7 +289,7 @@ class TestKvEventIngestion:
     async def test_departed_replica_is_evicted(self, ray_instance):
         """A replica dropping off the snapshot tears down its listener and drops
         it from the selection service catalog."""
-        actor = LocalKVRouterActor.remote(block_size=BLOCK_SIZE)
+        actor = LocalKVRouterActor.remote()
         replica = FakeReplica.remote(23904)
         worker_id = get_worker_id("replica-A")
         try:

@@ -1,13 +1,11 @@
 import sys
 
 import pytest
-from vllm.config import CacheConfig
 
 import ray
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     configure_kv_events_for_kv_routing,
-    derive_kv_event_block_size,
     get_kv_event_routing_stats,
     resolve_kv_event_source_endpoint,
 )
@@ -53,11 +51,6 @@ class TestConfigureKvEvents:
         }
         assert llm_config.runtime_env["env_vars"]["PYTHONHASHSEED"] == "0"
 
-    def test_derive_block_size(self):
-        """The actor's block size comes from the engine's resolved config."""
-        assert derive_kv_event_block_size({"block_size": 32}) == 32
-        assert derive_kv_event_block_size({}) == CacheConfig.DEFAULT_BLOCK_SIZE
-
     def test_resolve_endpoint_is_node_routable(self, ray_instance):
         """The advertised endpoint is the replica's node IP."""
         llm_config = make_kv_aware_llm_config()
@@ -73,11 +66,14 @@ class TestConfigureKvEvents:
         llm_config = make_kv_aware_llm_config()
         configure_kv_events_for_kv_routing(llm_config)
 
-        stats = get_kv_event_routing_stats(llm_config, max_num_batched_tokens=4096)
+        stats = get_kv_event_routing_stats(
+            llm_config, block_size=16, max_num_batched_tokens=4096
+        )
         node_ip = ray.util.get_node_ip_address()
         assert stats == {
             "kv_event_metadata": {
                 "endpoint": f"tcp://{node_ip}:5557",
+                "block_size": 16,
                 "max_num_batched_tokens": 4096,
                 "dp_rank": 0,
                 "replay_endpoint": f"tcp://{node_ip}:6557",
@@ -87,7 +83,12 @@ class TestConfigureKvEvents:
     def test_routing_stats_empty_without_kv_events(self):
         """Nothing to advertise when KV-cache events are not enabled."""
         llm_config = make_kv_aware_llm_config()
-        assert get_kv_event_routing_stats(llm_config, max_num_batched_tokens=4096) == {}
+        assert (
+            get_kv_event_routing_stats(
+                llm_config, block_size=16, max_num_batched_tokens=4096
+            )
+            == {}
+        )
 
 
 if __name__ == "__main__":

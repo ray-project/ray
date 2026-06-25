@@ -148,7 +148,7 @@ def test_build_openai_app_attaches_kv_actor():
     actor_cfg = configs[0]
     assert actor_cfg.get_actor_class().__ray_actor_class__ is KVRouterActor
     assert actor_cfg.actor_options["num_cpus"] == 0
-    assert actor_cfg.init_kwargs == {"block_size": 16, "indexer_threads": 4}
+    assert actor_cfg.init_kwargs == {"indexer_threads": 4}
 
 
 def test_configurable_indexer_threads():
@@ -214,7 +214,7 @@ class _TestKVRouterActor(KVRouterActor):
             name=KV_ROUTER_ACTOR_NAME,
             actor_class=ray.remote(_TestKVRouterActor),
             actor_options={"num_cpus": 0},
-            init_kwargs={"block_size": 16},
+            init_kwargs={},
         ),
     ],
 )
@@ -233,6 +233,7 @@ class ReplicaTrackingDeployment:
         return {
             "kv_event_metadata": {
                 "endpoint": f"tcp://{ray.util.get_node_ip_address()}:{25000 + rank}",
+                "block_size": 16,
                 "max_num_batched_tokens": 8192,
                 "dp_rank": 0,
             }
@@ -322,6 +323,7 @@ def make_target_info(unique_ids):
             routing_stats={
                 "kv_event_metadata": {
                     "endpoint": "tcp://10.0.0.1:25000",
+                    "block_size": 16,
                     "max_num_batched_tokens": 8192,
                     "dp_rank": 0,
                 }
@@ -334,7 +336,7 @@ def make_target_info(unique_ids):
 
 class TestOnDeploymentTargets:
     async def test_reconciles_added_and_removed_workers(self):
-        actor = _LocalKVRouterActor(block_size=16)
+        actor = _LocalKVRouterActor()
         actor._on_deployment_targets(make_target_info(["a", "b"]))
         assert set(await actor.get_candidate_worker_ids()) == {
             get_worker_id("a"),

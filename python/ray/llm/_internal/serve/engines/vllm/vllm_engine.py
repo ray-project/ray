@@ -404,6 +404,7 @@ class VLLMEngine(LLMEngine):
 
         self._routing_stats = get_kv_event_routing_stats(
             self.llm_config,
+            vllm_engine_config.cache_config.block_size,
             vllm_engine_config.scheduler_config.max_num_batched_tokens,
         )
 
