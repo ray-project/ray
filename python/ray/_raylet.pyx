@@ -981,9 +981,6 @@ cdef class StreamingGeneratorExecutionContext:
         if not state_found:
             self.actor_backpressure_metadata.get().Teardown()
 
-    def __dealloc__(self):
-        self._teardown_actor_backpressure_state_if_needed()
-
     def initialize(self, generator: Union[Generator, AsyncGenerator]):
         # We couldn't make this a part of `make` method because
         # It looks like we cannot pass generator to cdef
