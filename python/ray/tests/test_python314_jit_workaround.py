@@ -20,10 +20,17 @@ class TestPython314JitWorkaround:
 
     def test_jit_disabled_after_ray_import(self):
         """Verify PYTHON_JIT=0 is set after Ray is imported on 3.14+."""
-        # Ray's __init__.py should have already set this
-        assert os.environ.get("PYTHON_JIT") == "0", (
+        import subprocess
+
+        cmd = [
+            sys.executable,
+            "-c",
+            "import os; import ray; print(os.environ.get('PYTHON_JIT', 'None'))",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        assert result.stdout.strip() == "0", (
             "Expected PYTHON_JIT=0 to be set by Ray on Python 3.14+, "
-            f"but got PYTHON_JIT={os.environ.get('PYTHON_JIT', 'unset')}"
+            f"but got PYTHON_JIT={result.stdout.strip()}"
         )
 
     def test_worker_inherits_jit_disabled(self):
@@ -53,17 +60,19 @@ class TestPrePython314NoWarning:
     """Tests that verify no JIT interference on older Python versions."""
 
     def test_jit_env_not_forced_on_old_python(self):
-        """On Python < 3.14, Ray should NOT force PYTHON_JIT=0 via __init__.py.
+        """On Python < 3.14, Ray should NOT force PYTHON_JIT=0 via __init__.py."""
+        import subprocess
 
-        Note: The C++ worker_pool.cc does set PYTHON_JIT=0 for workers
-        unconditionally, but that env var is ignored by Python < 3.13.
-        """
-        # If the user didn't set PYTHON_JIT themselves, it should be absent
-        # (Ray's __init__.py only sets it for >= 3.14)
-        if "RAY_ALLOW_PYTHON_JIT" not in os.environ:
-            # We can't assert it's unset because something else might set it,
-            # but we can verify Ray didn't log the 3.14 warning
-            pass  # The warning test is sufficient
+        cmd = [
+            sys.executable,
+            "-c",
+            "import os; import ray; print(os.environ.get('PYTHON_JIT', 'None'))",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        assert result.stdout.strip() == "None", (
+            "Expected PYTHON_JIT to not be set by Ray on Python < 3.14, "
+            f"but got PYTHON_JIT={result.stdout.strip()}"
+        )
 
 
 if __name__ == "__main__":
