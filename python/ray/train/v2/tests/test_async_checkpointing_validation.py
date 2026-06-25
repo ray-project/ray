@@ -1263,7 +1263,8 @@ def test_out_of_band_checkpoints_local(checkpoint_upload_mode, tmp_path):
         )
 
     with pytest.raises(
-        WorkerGroupError, match="is not saved within the RunConfig\\.storage_path"
+        WorkerGroupError,
+        match="The reported checkpoint is within Ray Train's experiment directory",
     ) as exc_info:
         DataParallelTrainer(
             train_fn,
@@ -1330,10 +1331,8 @@ def test_out_of_band_checkpoints_s3(
 
         if out_of_band_filesystem == "s3":
             out_of_band_ckpt = str(oob_uri / "out_of_band_ckpt")
-            error_msg = "is not saved within the RunConfig\\.storage_path"
         else:
             out_of_band_ckpt = str(out_of_band_local_path / "out_of_band_ckpt")
-            error_msg = "differs from the RunConfig\\.storage_filesystem"
 
         def train_fn():
             s3 = boto3.client(
@@ -1394,7 +1393,10 @@ def test_out_of_band_checkpoints_s3(
                 worker_runtime_env={"env_vars": AWS_ENV_VARS},
             ),
         )
-        with pytest.raises(WorkerGroupError, match=error_msg) as exc_info:
+        with pytest.raises(
+            WorkerGroupError,
+            match="The reported checkpoint is within Ray Train's experiment directory",
+        ) as exc_info:
             trainer.fit()
         assert isinstance(exc_info.value.worker_failures[0], ValueError)
 

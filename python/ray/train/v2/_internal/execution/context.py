@@ -476,15 +476,46 @@ class TrainContext:
                     checkpoint_upload_fn,
                     validation,
                 )
-                if training_report.checkpoint is not None:
-                    check_checkpoint_in_band(
+
+                if (
+                    training_report.checkpoint is not None
+                    and not is_managed_checkpoint(
                         self.storage_context, training_report.checkpoint
+                    )
+                ):
+                    raise ValueError(
+                        "The reported checkpoint is within Ray Train's experiment directory. "
+                        "A checkpoint must be saved on the same filesystem"
+                        "and within the storage path configured by "
+                        "`RunConfig(storage_path, storage_filesystem)`:\n"
+                        f"  - storage filesystem:    {self.storage_context.storage_filesystem}\n"
+                        f"  - checkpoint filesystem: {checkpoint.filesystem}\n"
+                        f"  - storage path:          {self.storage_context.experiment_fs_path}\n"
+                        f"  - checkpoint path:       {checkpoint.path}\n"
+                        "You can access the storage configuration with "
+                        "`ray.train.get_context().get_storage().storage_filesystem` and "
+                        "`ray.train.get_context().get_storage().experiment_fs_path`."
                     )
                 self._wait_then_report(training_report, report_call_index)
 
             elif checkpoint_upload_mode == CheckpointUploadMode.NO_UPLOAD:
-                if checkpoint is not None:
-                    check_checkpoint_in_band(self.storage_context, checkpoint)
+                if checkpoint is not None and not is_managed_checkpoint(
+                    self.storage_context, checkpoint
+                ):
+                    raise ValueError(
+                        "The reported checkpoint is within Ray Train's experiment directory. "
+                        "A checkpoint must be saved on the same filesystem"
+                        "and within the storage path configured by "
+                        "`RunConfig(storage_path, storage_filesystem)`:\n"
+                        f"  - storage filesystem:    {self.storage_context.storage_filesystem}\n"
+                        f"  - checkpoint filesystem: {checkpoint.filesystem}\n"
+                        f"  - storage path:          {self.storage_context.experiment_fs_path}\n"
+                        f"  - checkpoint path:       {checkpoint.path}\n"
+                        "You can access the storage configuration with "
+                        "`ray.train.get_context().get_storage().storage_filesystem` and "
+                        "`ray.train.get_context().get_storage().experiment_fs_path`."
+                    )
+
                 training_report = _TrainingReport(
                     checkpoint=checkpoint,
                     metrics=metrics,
@@ -509,10 +540,27 @@ class TrainContext:
                             checkpoint_upload_fn,
                             validation,
                         )
-                        if training_report.checkpoint is not None:
-                            check_checkpoint_in_band(
+
+                        if (
+                            training_report.checkpoint is not None
+                            and not is_managed_checkpoint(
                                 self.storage_context, training_report.checkpoint
                             )
+                        ):
+                            raise ValueError(
+                                "The reported checkpoint is within Ray Train's experiment directory. "
+                                "A checkpoint must be saved on the same filesystem"
+                                "and within the storage path configured by "
+                                "`RunConfig(storage_path, storage_filesystem)`:\n"
+                                f"  - storage filesystem:    {self.storage_context.storage_filesystem}\n"
+                                f"  - checkpoint filesystem: {checkpoint.filesystem}\n"
+                                f"  - storage path:          {self.storage_context.experiment_fs_path}\n"
+                                f"  - checkpoint path:       {checkpoint.path}\n"
+                                "You can access the storage configuration with "
+                                "`ray.train.get_context().get_storage().storage_filesystem` and "
+                                "`ray.train.get_context().get_storage().experiment_fs_path`."
+                            )
+
                         self._wait_then_report(training_report, report_call_index)
                     except Exception as e:
                         # TODO: env var to disable eager raising
@@ -568,21 +616,25 @@ def set_train_context(context) -> None:
         _train_context = context
 
 
-def check_checkpoint_in_band(
+def is_managed_checkpoint(
     storage_context: StorageContext, checkpoint: "Checkpoint"
-) -> None:
-    """Check that a checkpoint is in a band for this worker.
+) -> bool:
+    """Whether a checkpoint is managed by Ray Train.
+
+    A checkpoint is saved on the same filesystem as the experiment storage and
+    within the experiment storage path allows it to be managed by Ray Train.
 
     Args:
         storage_context: The experiment storage context.
         checkpoint: The checkpoint to check.
+
+    Returns:
+        If the checkpoint is within the experiment storage path
     """
     if storage_context.storage_filesystem != checkpoint.filesystem:
-        raise ValueError(
-            f"The saved checkpoint's filesystem ({checkpoint}) differs from the RunConfig.storage_filesystem ({storage_context.storage_filesystem})."
-        )
+        return False
 
-    # resolve paths for symlinks and `..`
+    # Resolve paths for symlinks and `..`.
     if Path(checkpoint.path).is_absolute():
         checkpoint_path = Path(checkpoint.path).resolve()
     else:
@@ -592,7 +644,4 @@ def check_checkpoint_in_band(
     else:
         experiment_path = Path(os.path.normpath(storage_context.experiment_fs_path))
 
-    if not checkpoint_path.is_relative_to(experiment_path):
-        raise ValueError(
-            f"The saved checkpoint's path ({checkpoint}) is not saved within the RunConfig.storage_path ({storage_context.experiment_fs_path})."
-        )
+    return checkpoint_path.is_relative_to(experiment_path)
