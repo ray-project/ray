@@ -396,22 +396,28 @@ class TestGetCgroupAwareSwapMemory:
     ):
         """When cgroup v2 swap.max is the kernel's "unlimited" sentinel
         ("max", non-numeric, or overflowing int64), the cgroup imposes no
-        cap, so the practical swap budget is the host's swap. C++ mirrors
-        this. swap.current must NOT be read — used comes from psutil only."""
+        cap, so the practical swap budget is the host's swap. Used still
+        comes from per-cgroup memory.swap.current — host SwapTotal-SwapFree
+        would include other workloads' swap and inflate Ray's view (same
+        rule the C++ OOM monitor follows)."""
+        cgroup_swap_current = 512 * 1024**2  # 512 MiB
         self._patch_paths(
             monkeypatch,
             tmp_path,
             _CGROUP_V2_SWAP_MAX=self._write(tmp_path, "swap.max", swap_max_value),
-            # Sentinel: if the helper ever reads swap.current in these cases,
-            # used would equal 12345 and the assertion below would catch it.
-            _CGROUP_V2_SWAP_CURRENT=self._write(tmp_path, "swap.current", "12345"),
+            _CGROUP_V2_SWAP_CURRENT=self._write(
+                tmp_path, "swap.current", str(cgroup_swap_current)
+            ),
         )
+        # Host swap used (50 GiB) is intentionally far larger than the
+        # cgroup's swap.current (512 MiB) so a regression that returned host
+        # used here would fail loudly.
         self._patch_host_swap(monkeypatch, total=100 * 1024**3, used=50 * 1024**3)
 
         total, used = get_cgroup_aware_swap_memory()
 
         assert total == 100 * 1024**3
-        assert used == 50 * 1024**3
+        assert used == cgroup_swap_current
 
     def test_cgroup_v2_swap_disabled_returns_zero(self, monkeypatch, tmp_path):
         """Regression: when swap.max is explicitly 0, the kernel is saying

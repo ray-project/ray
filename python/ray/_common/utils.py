@@ -433,6 +433,17 @@ _CGROUP_V1_MEM_USAGE = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
 _INT64_MAX = 2**63 - 1
 
 
+def _read_cgroup_v2_swap_current() -> int:
+    """Return memory.swap.current as int, 0 on missing file or read error."""
+    if not os.path.exists(_CGROUP_V2_SWAP_CURRENT):
+        return 0
+    try:
+        with open(_CGROUP_V2_SWAP_CURRENT) as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return 0
+
+
 def get_cgroup_aware_swap_memory() -> Tuple[int, int]:
     """Return (swap_total_bytes, swap_used_bytes) using cgroup-scoped limits.
 
@@ -476,13 +487,17 @@ def get_cgroup_aware_swap_memory() -> Tuple[int, int]:
             # accept Unicode numeric characters (e.g. Arabic-Indic digits) that
             # the C++ parser rejects, causing the two layers to disagree.
             if not (val and val.isascii() and val.isdigit()):
-                # "max" (unlimited) or unparseable: the cgroup imposes no swap
-                # cap, so the practical limit is the host's swap.
-                return _get_host_swap_memory()
+                # "max" / unparseable: cgroup imposes no swap cap, so the
+                # practical limit is host swap. Used still comes from
+                # per-cgroup memory.swap.current — host SwapTotal-SwapFree
+                # would include other workloads' swap and inflate Ray's view.
+                host_total, _ = _get_host_swap_memory()
+                return host_total, _read_cgroup_v2_swap_current()
             cgroup_swap_max = int(val)
             if cgroup_swap_max > _INT64_MAX:
                 # Overflows int64; kernel's "unlimited" sentinel — same as "max".
-                return _get_host_swap_memory()
+                host_total, _ = _get_host_swap_memory()
+                return host_total, _read_cgroup_v2_swap_current()
             if cgroup_swap_max == 0:
                 # Swap disabled. Mirror C++, which guards the swap.current
                 # read on swap_max_bytes > 0 — don't leak a stale or
@@ -493,17 +508,7 @@ def get_cgroup_aware_swap_memory() -> Tuple[int, int]:
             return 0, 0
         # Match C++: trust the cgroup limit as-is. Clamping by host swap
         # would silently under-report when cgroup_swap_max > host.total.
-        # The swap.current read is in its own try/except so a transient
-        # failure here doesn't discard the already-known swap_max — C++
-        # leaves swap_used_bytes at 0 in the same case.
-        swap_used = 0
-        if os.path.exists(_CGROUP_V2_SWAP_CURRENT):
-            try:
-                with open(_CGROUP_V2_SWAP_CURRENT) as f:
-                    swap_used = int(f.read().strip())
-            except (OSError, ValueError):
-                swap_used = 0
-        return cgroup_swap_max, swap_used
+        return cgroup_swap_max, _read_cgroup_v2_swap_current()
 
     if os.path.exists(_CGROUP_V1_MEMSW_LIMIT) and os.path.exists(
         _CGROUP_V1_MEMSW_USAGE
