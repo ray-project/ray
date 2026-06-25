@@ -11,12 +11,21 @@ from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
 )
-from ray.serve._private.test_utils import check_running, get_application_url
+from ray.serve._private.test_utils import (
+    check_running,
+    get_application_url,
+    skip_if_haproxy,
+)
 from ray.serve.config import RequestRouterConfig
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
 ROUTER_CLASS = "ray.serve.experimental.round_robin_router:RoundRobinRouter"
+
+# Every test sets a custom ingress request router, rejected under HAProxy per #64211.
+pytestmark = skip_if_haproxy(
+    "custom request router on the ingress deployment is unsupported (see #64211)"
+)
 
 
 def _round_robin_config() -> RequestRouterConfig:

@@ -8,11 +8,16 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX, SERVE_NAMESPACE
-from ray.serve._private.test_utils import check_running
+from ray.serve._private.test_utils import check_running, skip_if_haproxy
 from ray.serve.config import DeploymentActorConfig, RequestRouterConfig
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.experimental.capacity_queue import (
     CapacityQueue,
+)
+
+# Every test sets a custom ingress request router, rejected under HAProxy per #64211.
+pytestmark = skip_if_haproxy(
+    "custom request router on the ingress deployment is unsupported (see #64211)"
 )
 
 
