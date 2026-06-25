@@ -322,9 +322,16 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             # the original URI. The extension is preserved so is_zip_uri /
             # is_jar_uri keep working.
             if len(package_name) > _MAX_PACKAGE_NAME_LEN:
+                original_len = len(package_name)
                 suffix = compound_ext or Path(package_name).suffix
                 digest = hashlib.sha1(pkg_uri.encode("utf-8")).hexdigest()
                 package_name = f"{protocol.value}_{digest}{suffix}"
+                default_logger.debug(
+                    f"runtime_env URI '{pkg_uri}' flattens to {original_len} "
+                    f"chars, which would breach the filesystem NAME_MAX limit "
+                    f"once '.lock' is appended; hashing the URI to "
+                    f"'{package_name}' to stay under it."
+                )
     else:
         package_name = uri.netloc
     return (protocol, package_name)
@@ -937,9 +944,6 @@ async def download_and_unpack_package(
                     or if package URI is invalid.
 
     """
-    if logger is None:
-        logger = default_logger
-
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
     if pkg_file.suffix == "":
         raise ValueError(
@@ -947,9 +951,10 @@ async def download_and_unpack_package(
             "URI must have a file extension and the URI must be valid."
         )
 
-    logger.debug(f"runtime_env package URI {pkg_uri} -> local file {pkg_file}")
-
     async with _AsyncFileLock(str(pkg_file) + ".lock"):
+        if logger is None:
+            logger = default_logger
+
         logger.debug(f"Fetching package for URI: {pkg_uri}")
 
         local_dir = get_local_dir_from_uri(pkg_uri, base_directory)
