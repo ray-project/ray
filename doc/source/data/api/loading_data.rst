@@ -53,6 +53,24 @@ Binary
 
    read_binary_files
 
+Catalog
+^^^^^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Catalog
+
+   DatabricksUnityCatalog
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
+
+   ReaderFormat
+
 CSV
 ^^^
 
@@ -333,17 +351,6 @@ Unity Catalog
    :toctree: doc/
 
    read_unity_catalog
-
-   Catalog
-
-   DatabricksUnityCatalog
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-   :template: autosummary/class_without_autosummary.rst
-
-   ReaderFormat
 
 Video
 ^^^^^
