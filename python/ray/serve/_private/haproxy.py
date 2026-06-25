@@ -710,6 +710,7 @@ class HAProxyConfig:
     def grpc_frontend_port(self) -> int:
         return self.grpc_options.port
 
+    @property
     def root_path(self) -> str:
         """Global root_path prefix, normalized without a trailing slash.
 
