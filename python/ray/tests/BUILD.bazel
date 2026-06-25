@@ -340,7 +340,6 @@ py_test_module_list(
         "test_placement_group_4.py",
         "test_placement_group_failover.py",
         "test_ray_debugger.py",
-        "test_ray_init.py",
         "test_ray_shutdown.py",
         "test_resize_raylet.py",
         "test_resource_metrics.py",
@@ -632,6 +631,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
+        "rdt/test_nixl_backend_selection.py",
         "rdt/test_nixl_memory_pool.py",
         "rdt/test_rdt_custom.py",
         "rdt/test_rdt_gloo.py",
@@ -654,9 +654,28 @@ py_test_module_list(
     files = [
         "rdt/test_rdt_ipc.py",
         "rdt/test_rdt_nccl.py",
-        "rdt/test_rdt_nixl.py",
         "test_gpu_provider_on_gpu.py",
         "test_gpu_tensor_zero_copy_serialization.py",
+    ],
+    tags = [
+        "custom_setup",
+        "exclusive",
+        "multi_gpu",
+        "no_windows",
+        "rdt",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "large",
+    env = {"RAY_PYTEST_USE_GPU": "1"},
+    files = [
+        "rdt/test_rdt_nixl.py",
     ],
     tags = [
         "custom_setup",
@@ -894,6 +913,7 @@ py_test_module_list(
         "test_object_manager_fault_tolerance.py",
         "test_placement_group_3.py",
         "test_placement_group_5.py",
+        "test_ray_init.py",
         "test_ray_init_2.py",
         "test_raylet_fault_tolerance.py",
         "test_reconstruction.py",

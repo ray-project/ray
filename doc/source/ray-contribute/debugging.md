@@ -10,8 +10,7 @@ This debugging guide is for contributors to the Ray project.
 
 ## Starting processes in a debugger
 
-When processes are crashing, it is often useful to start them in a debugger.
-Ray currently allows processes to be started in the following:
+When processes are crashing, it is often useful to start them in a debugger. Ray currently allows processes to be started in the following:
 
 - valgrind
 - the valgrind profiler
@@ -19,46 +18,30 @@ Ray currently allows processes to be started in the following:
 - gdb
 - tmux
 
-To use any of these tools, please make sure that you have them installed on
-your machine first (`gdb` and `valgrind` on MacOS are known to have issues).
-Then, you can launch a subset of ray processes by adding the environment
-variable `RAY_{PROCESS_NAME}_{DEBUGGER}=1`. For instance, if you wanted to
-start the raylet in `valgrind`, then you simply need to set the environment
-variable `RAY_RAYLET_VALGRIND=1`.
+To use any of these tools, please make sure that you have them installed on your machine first (`gdb` and `valgrind` on MacOS are known to have issues). Then, you can launch a subset of ray processes by adding the environment variable `RAY_{PROCESS_NAME}_{DEBUGGER}=1`. For instance, if you wanted to start the raylet in `valgrind`, then you simply need to set the environment variable `RAY_RAYLET_VALGRIND=1`.
 
-To start a process inside of `gdb`, the process must also be started inside of
-`tmux`. So if you want to start the raylet in `gdb`, you would start your
-Python script with the following:
+To start a process inside of `gdb`, the process must also be started inside of `tmux`. So if you want to start the raylet in `gdb`, you would start your Python script with the following:
 
 ```bash
 RAY_RAYLET_GDB=1 RAY_RAYLET_TMUX=1 python
 ```
 
-You can then list the `tmux` sessions with `tmux ls` and attach to the
-appropriate one.
+You can then list the `tmux` sessions with `tmux ls` and attach to the appropriate one.
 
-You can also get a core dump of the `raylet` process, which is especially
-useful when filing [issues](https://github.com/ray-project/ray/issues). The process to obtain a core dump is OS-specific,
-but usually involves running `ulimit -c unlimited` before starting Ray to
-allow core dump files to be written.
+You can also get a core dump of the `raylet` process, which is especially useful when filing [issues](https://github.com/ray-project/ray/issues). The process to obtain a core dump is OS-specific, but usually involves running `ulimit -c unlimited` before starting Ray to allow core dump files to be written.
 
 (backend-logging)=
 
 ## Backend logging
 
-The `raylet` process logs detailed information about events like task
-execution and object transfers between nodes. To set the logging level at
-runtime, you can set the `RAY_BACKEND_LOG_LEVEL` environment variable before
-starting Ray. For example, you can do:
+The `raylet` process logs detailed information about events like task execution and object transfers between nodes. To set the logging level at runtime, you can set the `RAY_BACKEND_LOG_LEVEL` environment variable before starting Ray. For example, you can do:
 
 ```shell
 export RAY_BACKEND_LOG_LEVEL=debug
 ray start
 ```
 
-This will print any `RAY_LOG(DEBUG)` lines in the source code to the
-`raylet.err` file, which you can find in {ref}`temp-dir-log-files`.
-If it worked, you should see as the first line in `raylet.err`:
+This will print any `RAY_LOG(DEBUG)` lines in the source code to the `raylet.err` file, which you can find in {ref}`temp-dir-log-files`. If it worked, you should see as the first line in `raylet.err`:
 
 ```shell
 logging.cc:270: Set ray log level from environment variable RAY_BACKEND_LOG_LEVEL to -1
@@ -73,12 +56,9 @@ logging.cc:270: Set ray log level from environment variable RAY_BACKEND_LOG_LEVE
 
 ## Backend event stats
 
-The `raylet` process also periodically dumps event stats to `debug_state.txt` and its log
-file if `RAY_event_stats=1` environment variable is set. To alter the interval at which
-Ray writes stats to log files, you can set `RAY_event_stats_print_interval_ms`.
+The `raylet` process also periodically dumps event stats to `debug_state.txt` and its log file if `RAY_event_stats=1` environment variable is set. To alter the interval at which Ray writes stats to log files, you can set `RAY_event_stats_print_interval_ms`.
 
-Event stats include ASIO event handlers, periodic timers, and RPC handlers. Here is a sample
-of what the event stats look like:
+Event stats include ASIO event handlers, periodic timers, and RPC handlers. Here is a sample of what the event stats look like:
 
 ```shell
 Event stats:
@@ -97,14 +77,10 @@ Handler stats:
 
 ## Callback latency injection
 
-Sometimes, bugs are caused by RPC issues, for example, due to the delay of some requests, the system goes to a deadlock.
-To debug and reproduce this kind of issue, we need to have a way to inject latency for the RPC request. To enable this,
-`RAY_testing_asio_delay_us` is introduced. If you'd like to make the callback of some RPC requests be executed after some time,
-you can do it with this variable. For example:
+Sometimes, bugs are caused by RPC issues, for example, due to the delay of some requests, the system goes to a deadlock. To debug and reproduce this kind of issue, we need to have a way to inject latency for the RPC request. To enable this, `RAY_testing_asio_delay_us` is introduced. If you'd like to make the callback of some RPC requests be executed after some time, you can do it with this variable. For example:
 
 ```shell
 RAY_testing_asio_delay_us="NodeManagerService.grpc_client.PrepareBundleResources=2000000:2000000" ray start --head
 ```
 
-The syntax for this is `RAY_testing_asio_delay_us="method1=min_us:max_us,method2=min_us:max_us"`. Entries are comma separated.
-There is a special method `*` which means all methods. It has a lower priority compared with other entries.
+The syntax for this is `RAY_testing_asio_delay_us="method1=min_us:max_us,method2=min_us:max_us"`. Entries are comma separated. There is a special method `*` which means all methods. It has a lower priority compared with other entries.
