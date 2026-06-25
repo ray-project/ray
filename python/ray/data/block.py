@@ -218,9 +218,10 @@ class TaskExecWorkerStats:
     # or None if USS measurement is unavailable (e.g., non-Linux platforms).
     max_uss_bytes: Optional[int] = None
 
-    # Operator-specific worker-reported stats (a CustomOpStats subclass), or None
-    # for operators that do not report any extra stats
-    custom_op_stats: Optional[CustomOpStats] = None
+    # Operator-specific worker-reported stats: one CustomOpStats entry per
+    # reporting transform (fused transforms each contribute one). Empty for
+    # operators that do not report any extra stats.
+    custom_op_stats: List[CustomOpStats] = field(default_factory=list)
 
 
 @DeveloperAPI

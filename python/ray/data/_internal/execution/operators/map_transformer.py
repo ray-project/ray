@@ -38,29 +38,30 @@ MapTransformFnData = Union[Block, Row, DataBatch]
 
 
 class CustomOpStatsReporter:
-    """Per-task reporter that carries a transform's :class:`CustomOpStats`.
+    """Per-task reporter that carries transforms' :class:`CustomOpStats`.
 
     ``_map_task`` creates one per task and threads it into the transform chain.
-    A producing transform calls ``op_stats_reporter.set_stats(stats)`` to
-    store the stats in the reporter before yielding output blocks. ``_map_task``
-    then calls ``get_stats()`` after each output block and stamps the result onto
-    the block metadata as part of ``TaskExecWorkerStats``.
+    Each producing transform calls ``op_stats_reporter.report(stats)`` once,
+    before yielding output blocks, to append its :class:`CustomOpStats` to the
+    reporter. Fused transforms each contribute one entry, so the reporter holds a
+    list. ``_map_task`` reads :meth:`get_stats` after each output block and stamps
+    the list onto the block metadata as part of ``TaskExecWorkerStats``
     """
 
     def __init__(self) -> None:
-        self._stats: Optional[CustomOpStats] = None
+        self._stats: List[CustomOpStats] = []
 
-    def set_stats(self, stats: CustomOpStats) -> None:
-        """Record the per-task CustomOpStats."""
-        self._stats = stats
+    def report(self, stats: CustomOpStats) -> None:
+        """Append a producing transform's per-task CustomOpStats."""
+        self._stats.append(stats)
 
-    def get_stats(self) -> Optional[CustomOpStats]:
-        """Return the reported CustomOpStats, or ``None`` if none was reported."""
+    def get_stats(self) -> List[CustomOpStats]:
+        """Return all reported CustomOpStats (empty if none were reported)."""
         return self._stats
 
     def clear(self) -> None:
         """Drop any reported stats (called before each task attempt)."""
-        self._stats = None
+        self._stats = []
 
 
 IN = TypeVar("IN")
