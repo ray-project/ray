@@ -29,6 +29,7 @@
 #include "ray/common/protobuf_utils.h"
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/spilled_object_reader.h"
+#include "ray/util/container_util.h"
 #include "ray/util/exponential_backoff.h"
 #include "ray/util/network_util.h"
 #include "ray/util/time.h"
@@ -311,28 +312,21 @@ void ObjectManager::SendPullRequest(const std::vector<ObjectID> &object_ids,
           for (const auto &oid : object_ids) {
             pull_request.add_object_ids(oid.Binary());
           }
-          // Capture only what the failure log needs, so the gRPC callback
-          // does not pay for an extra copy of the full object_ids vector.
-          const size_t batch_size = object_ids.size();
-          const ObjectID first_id = object_ids.front();
-
-          rpc_client->Pull(pull_request,
-                           [batch_size, first_id, client_id](
-                               const Status &status, const rpc::PullReply &reply) {
-                             if (!status.ok()) {
-                               RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
-                                   << "Send pull (batch of " << batch_size
-                                   << ", first=" << first_id << ") request to client "
-                                   << client_id << " failed due to " << status;
-                             }
-                           });
+          rpc_client->Pull(
+              pull_request,
+              [object_ids, client_id](const Status &status, const rpc::PullReply &reply) {
+                if (!status.ok()) {
+                  RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
+                      << "Send pull request for " << debug_string(object_ids)
+                      << " to client " << client_id << " failed due to " << status;
+                }
+              });
         },
         "ObjectManager.SendPull");
   } else {
     RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
         << "Couldn't send pull request from " << self_node_id_ << " to " << client_id
-        << " for " << object_ids.size() << " object(s) (first=" << object_ids.front()
-        << "), setup rpc connection failed.";
+        << " for " << debug_string(object_ids) << ", setup rpc connection failed.";
   }
 }
 
