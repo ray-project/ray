@@ -1,22 +1,29 @@
 import os
+import re
 import sys
 from collections import defaultdict
 from subprocess import check_output
+from typing import List
 
 import click
 from tqdm import tqdm
 
 from ray_release.github_client import GitHubClient, GitHubException
 
+# Matches a well-formed "(#<digits>)" reference. Compiled once at module scope
+# because _find_pr_numbers may run a thousand or more times per invocation.
+_PR_NUMBER_RE = re.compile(r"\(#(\d+)\)")
 
-def _find_pr_number(line: str) -> str:
-    start = line.find("(#")
-    if start < 0:
-        return ""
-    end = line.find(")", start + 2)
-    if end < 0:
-        return ""
-    return line[start + 2 : end]
+
+def _find_pr_numbers(line: str) -> List[int]:
+    # A commit title may carry several "(#<digits>)" references: a fixed issue,
+    # a reverted PR, or an original PR plus its cherry-pick/backport PR (e.g.
+    # "...in MiB (#63932) (#64042)"). The text alone cannot tell an issue from a
+    # PR, nor an original from a backport, so we return every well-formed
+    # candidate in title order and let the caller resolve which are real PRs via
+    # the GitHub API. Truncated text like "(#6..." is ignored because it has no
+    # closing ")".
+    return [int(n) for n in _PR_NUMBER_RE.findall(line)]
 
 
 @click.command()
@@ -85,12 +92,13 @@ def run(access_token, prev_release_commit, curr_release_commit):
             for commit_msg in commit_msgs:
                 file.write("{}\n".format(commit_msg))
 
-    # Query Github API to get the list of contributors
-    pr_numbers = []
-    for line in lines:
-        pr_number = _find_pr_number(line)
-        if pr_number:
-            pr_numbers.append(int(pr_number))
+    # Query Github API to get the list of contributors. A commit may reference
+    # several numbers (e.g. an original PR plus its backport); we collect every
+    # candidate so that both the original author and the backporter are credited
+    # and a cherry-pick never silently drops the original author. Numbers that
+    # are actually issues (or deleted PRs) resolve to a 404 below and are
+    # skipped, so we cannot pre-filter them from the text.
+    pr_numbers = sorted({num for line in lines for num in _find_pr_numbers(line)})
 
     # Sort the PR numbers
     print("PR numbers", pr_numbers)
@@ -99,11 +107,27 @@ def run(access_token, prev_release_commit, curr_release_commit):
     client = GitHubClient(access_token)
     ray_repo = client.get_repo("ray-project/ray")
     logins = set()
+    # A 404 is expected for numbers that are actually issues rather than PRs.
+    # We still collect them so the script acknowledges every number it could
+    # not resolve, in case GitHub's behavior (issue numbers 404, PR numbers
+    # never do) changes and a real PR silently stops being credited.
+    not_found_numbers = []
     for num in tqdm(pr_numbers):
         try:
             logins.add(ray_repo.get_pull(num).user.login)
         except GitHubException as e:
-            print(e)
+            if getattr(e, "status", None) == 404:
+                not_found_numbers.append(num)
+            else:
+                print(e)
+
+    if not_found_numbers:
+        print()
+        print(
+            "The following numbers did not resolve to a PR (expected for issue "
+            "references; investigate if any of these are known PRs):"
+        )
+        print(not_found_numbers)
 
     print()
     print("Here's the list of contributors")
