@@ -70,6 +70,7 @@ struct TaskOptions {
               std::unordered_map<std::string, double> &resources_p,
               std::string concurrency_group_name_p = "",
               int64_t generator_backpressure_num_objects_p = -1,
+              int64_t num_objects_per_yield_p = 1,
               std::string serialized_runtime_env_info_p = "{}",
               bool enable_task_events_p = kDefaultTaskEventEnabled,
               std::unordered_map<std::string, std::string> labels_p = {},
@@ -82,6 +83,7 @@ struct TaskOptions {
         concurrency_group_name(std::move(concurrency_group_name_p)),
         serialized_runtime_env_info(std::move(serialized_runtime_env_info_p)),
         generator_backpressure_num_objects(generator_backpressure_num_objects_p),
+        num_objects_per_yield(num_objects_per_yield_p),
         enable_task_events(enable_task_events_p),
         labels(std::move(labels_p)),
         label_selector(std::move(label_selector_p)),
@@ -104,6 +106,9 @@ struct TaskOptions {
   /// -1 means either streaming generator is not used or
   /// it is used but the feature is disabled.
   int64_t generator_backpressure_num_objects;
+  /// Only applicable when streaming generator is used.
+  /// The number of ObjectRefs produced by each generator yield.
+  int64_t num_objects_per_yield = 1;
   /// True if task events (worker::TaskEvent) from this task should be reported, default
   /// to true.
   bool enable_task_events = kDefaultTaskEventEnabled;
@@ -138,7 +143,8 @@ struct ActorCreationOptions {
                        bool enable_task_events_p = kDefaultTaskEventEnabled,
                        std::unordered_map<std::string, std::string> labels_p = {},
                        LabelSelector label_selector_p = {},
-                       std::vector<FallbackOption> fallback_strategy_p = {})
+                       std::vector<FallbackOption> fallback_strategy_p = {},
+                       int64_t actor_generator_backpressure_num_objects_p = -1)
       : max_restarts(max_restarts_p),
         max_task_retries(max_task_retries_p),
         max_concurrency(max_concurrency_p),
@@ -159,7 +165,9 @@ struct ActorCreationOptions {
         enable_task_events(enable_task_events_p),
         labels(std::move(labels_p)),
         label_selector(std::move(label_selector_p)),
-        fallback_strategy(std::move(fallback_strategy_p)) {
+        fallback_strategy(std::move(fallback_strategy_p)),
+        actor_generator_backpressure_num_objects(
+            actor_generator_backpressure_num_objects_p) {
     // Check that resources is a subset of placement resources.
     for (auto &resource : resources) {
       auto it = this->placement_resources.find(resource.first);
@@ -220,6 +228,10 @@ struct ActorCreationOptions {
   const LabelSelector label_selector;
   // A list of scheduling options defining fallback strategies for scheduling.
   const std::vector<FallbackOption> fallback_strategy;
+  // Cap on unconsumed streaming-generator objects across all generator tasks
+  // on this actor. -1 disables the cap. See proto field
+  // ActorCreationTaskSpec.actor_generator_backpressure_num_objects.
+  const int64_t actor_generator_backpressure_num_objects = -1;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;

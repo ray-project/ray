@@ -76,6 +76,8 @@ message ActorHandle {
   bool enable_tensor_transport = 16;
 
   bool is_detached = 17;
+
+  optional int64 actor_generator_backpressure_num_objects = 18;
 }
 
 message PushTaskRequest {
@@ -417,8 +419,8 @@ message NumPendingTasksReply {
 }
 
 message ReportGeneratorItemReturnsRequest {
-  // Object returned from the executor (can be inlined or in plasma).
-  ReturnObject returned_object = 1;
+  // Objects returned from the executor (can be inlined or in plasma).
+  repeated ReturnObject returned_objects = 1;
   // The address of the executor.
   Address worker_addr = 2;
   // The index of the task return. It is used to
@@ -435,11 +437,17 @@ message ReportGeneratorItemReturnsRequest {
 }
 
 message ReportGeneratorItemReturnsReply {
-  // The total number objects consumed from the generator.
-  // -1 means it is not known. The executor side should just
-  // assume everything is consumed if it is -1.
+  // Deprecated. Consumed progress is sent with
+  // UpdateGeneratorBackpressureConsumed.
   int64 total_num_object_consumed = 1;
 }
+
+message UpdateGeneratorBackpressureConsumedRequest {
+  bytes generator_id = 1;
+  int64 total_num_object_consumed = 2;
+}
+
+message UpdateGeneratorBackpressureConsumedReply {}
 
 message RegisterMutableObjectReaderRequest {
   // The object ID of the mutable object on the remote node (where the object is written).
@@ -494,6 +502,12 @@ service CoreWorkerService {
   // Failure: Handles failures, TODO: Failure behavior needs more tests.
   rpc ReportGeneratorItemReturns(ReportGeneratorItemReturnsRequest)
       returns (ReportGeneratorItemReturnsReply);
+
+  // The owner notifies an actor executor that a streaming-generator item was consumed.
+  // This is used for actor-wide generator backpressure, where report visibility and
+  // consumed-progress acknowledgements are separate.
+  rpc UpdateGeneratorBackpressureConsumed(UpdateGeneratorBackpressureConsumedRequest)
+      returns (UpdateGeneratorBackpressureConsumedReply);
 
   // The pubsub command batch request used by the subscriber.
   // Subscribe / unsubscribe commands to the publisher worker.

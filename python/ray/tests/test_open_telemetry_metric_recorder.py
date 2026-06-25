@@ -1,3 +1,4 @@
+import os
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -5,8 +6,10 @@ import pytest
 from opentelemetry.metrics import NoOpHistogram
 
 from ray._private.metrics_agent import Gauge, Record
+from ray._private.telemetry.metric_types import MetricType
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
+    _get_service_name,
 )
 
 
@@ -302,6 +305,66 @@ def test_record_histogram_aggregated_batch(
     mock_logger_warning.assert_not_called()
 
 
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+@pytest.mark.parametrize(
+    "register_metric,metric_type",
+    [
+        (
+            lambda recorder: recorder.register_gauge_metric(
+                name="test_metric", description="Test Gauge"
+            ),
+            MetricType.GAUGE,
+        ),
+        (
+            lambda recorder: recorder.register_counter_metric(
+                name="test_metric", description="Test Counter"
+            ),
+            MetricType.COUNTER,
+        ),
+        (
+            lambda recorder: recorder.register_sum_metric(
+                name="test_metric", description="Test Sum"
+            ),
+            MetricType.SUM,
+        ),
+    ],
+)
+def test_observable_callback_normalizes_mixed_attribute_sets(
+    mock_get_meter, mock_set_meter_provider, register_metric, metric_type
+):
+    mock_get_meter.return_value = MagicMock()
+    recorder = OpenTelemetryMetricRecorder()
+    register_metric(recorder)
+
+    recorder.set_metric_value(
+        name="test_metric",
+        tags={"Component": "worker_a", "SessionName": "s1", "dataset": "train"},
+        value=1.0,
+    )
+    recorder.set_metric_value(
+        name="test_metric",
+        tags={"Component": "worker_b", "dataset": "test"},
+        value=2.0,
+    )
+
+    callback = recorder._create_observable_callback("test_metric", metric_type)
+    observations = callback(options=None)
+
+    assert len(observations) == 2
+    expected_keys = {"Component", "SessionName", "dataset"}
+    assert [set(obs.attributes) for obs in observations] == [
+        expected_keys,
+        expected_keys,
+    ]
+
+    obs_b = next(o for o in observations if o.attributes["Component"] == "worker_b")
+    assert obs_b.attributes["SessionName"] == ""
+
+    obs_a = next(o for o in observations if o.attributes["Component"] == "worker_a")
+    assert obs_a.attributes["SessionName"] == "s1"
+
+
 @patch("ray._private.telemetry.open_telemetry_metric_recorder.MeterProvider")
 @patch("ray._private.telemetry.open_telemetry_metric_recorder.PrometheusMetricReader")
 @patch("opentelemetry.metrics.set_meter_provider")
@@ -334,6 +397,61 @@ def test_init_metrics_runs_only_once_per_class(
         assert OpenTelemetryMetricRecorder._metrics_initialized is True
     finally:
         OpenTelemetryMetricRecorder._metrics_initialized = original_flag
+
+
+@patch("opentelemetry.sdk.resources.Resource.create")
+@patch("ray._private.telemetry.open_telemetry_metric_recorder.MeterProvider")
+@patch("ray._private.telemetry.open_telemetry_metric_recorder.PrometheusMetricReader")
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_init_metrics_sets_service_name_resource(
+    mock_get_meter,
+    mock_set_meter_provider,
+    mock_prometheus_reader,
+    mock_meter_provider,
+    mock_resource_create,
+):
+    """
+    Regression test: the Prometheus exporter must not fall back to the default
+    OpenTelemetry service.name of unknown_service, otherwise multiple target_info
+    samples can collide in a single scrape.
+    """
+    mock_get_meter.return_value = MagicMock()
+    mock_resource = MagicMock()
+    mock_resource_create.return_value = mock_resource
+
+    original_flag = OpenTelemetryMetricRecorder._metrics_initialized
+    OpenTelemetryMetricRecorder._metrics_initialized = False
+    try:
+        with patch.dict(
+            os.environ,
+            {"OTEL_SERVICE_NAME": "", "OTEL_RESOURCE_ATTRIBUTES": ""},
+        ):
+            OpenTelemetryMetricRecorder()
+
+        mock_resource_create.assert_called_once_with(
+            {"service.name": "ray-dashboard-agent"}
+        )
+        mock_meter_provider.assert_called_once_with(
+            resource=mock_resource,
+            metric_readers=[mock_prometheus_reader.return_value],
+        )
+        mock_set_meter_provider.assert_called_once_with(
+            mock_meter_provider.return_value
+        )
+    finally:
+        OpenTelemetryMetricRecorder._metrics_initialized = original_flag
+
+
+def test_get_service_name_decodes_otel_resource_attributes():
+    with patch.dict(
+        os.environ,
+        {
+            "OTEL_SERVICE_NAME": "",
+            "OTEL_RESOURCE_ATTRIBUTES": "service.name=ray%20dashboard%2Cagent",
+        },
+    ):
+        assert _get_service_name("ray-dashboard-agent") == "ray dashboard,agent"
 
 
 if __name__ == "__main__":
