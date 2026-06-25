@@ -248,7 +248,7 @@ async def test_preemption_drain_then_restart():
 @pytest.mark.asyncio
 async def test_preemption_deadline_exceeded_and_raise():
     """If the reclaim deadline passes before workers exit, the controller stops
-    draining and surfaces a PreemptionError with deadline_exceeded=True."""
+    draining and surfaces a PreemptionError with drain_timed_out=True."""
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
     train_run_context = create_dummy_run_context()
@@ -276,7 +276,47 @@ async def test_preemption_deadline_exceeded_and_raise():
     state = controller.get_state()
     assert isinstance(state, ErroredState)
     assert isinstance(state.training_failed_error, PreemptionError)
-    assert state.training_failed_error.deadline_exceeded is True
+    assert state.training_failed_error.drain_timed_out is True
+
+
+def test_preemption_deadline_unknown_falls_back_to_default(monkeypatch):
+    """With no deadline reported, the drain wait is capped at the default grace
+    window measured from when the preemption was detected."""
+    import ray.train.v2._internal.execution.controller.controller as controller_module
+    from ray.train.v2._internal.constants import DEFAULT_PREEMPTION_DEADLINE_S
+
+    info = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"node-a": [0]})
+    detected_at_s = 1000.0
+
+    # Before the fallback window elapses -> not exceeded.
+    monkeypatch.setattr(
+        controller_module,
+        "time_seconds",
+        lambda: detected_at_s + DEFAULT_PREEMPTION_DEADLINE_S - 1,
+    )
+    assert not TrainController._is_preemption_deadline_exceeded(info, detected_at_s)
+
+    # After the fallback window elapses -> exceeded.
+    monkeypatch.setattr(
+        controller_module,
+        "time_seconds",
+        lambda: detected_at_s + DEFAULT_PREEMPTION_DEADLINE_S + 1,
+    )
+    assert TrainController._is_preemption_deadline_exceeded(info, detected_at_s)
+
+
+def test_preemption_deadline_uses_reported_deadline(monkeypatch):
+    """A known deadline is honored regardless of when it was detected."""
+    import ray.train.v2._internal.execution.controller.controller as controller_module
+
+    # Deadline is 5s past epoch (5000ms).
+    info = PreemptionInfo(deadline_ms=5000, preempted_node_to_ranks={"node-a": [0]})
+
+    monkeypatch.setattr(controller_module, "time_seconds", lambda: 4.0)
+    assert not TrainController._is_preemption_deadline_exceeded(info, detected_at_s=0.0)
+
+    monkeypatch.setattr(controller_module, "time_seconds", lambda: 6.0)
+    assert TrainController._is_preemption_deadline_exceeded(info, detected_at_s=0.0)
 
 
 @pytest.mark.parametrize(

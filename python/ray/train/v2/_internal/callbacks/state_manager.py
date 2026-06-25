@@ -164,8 +164,8 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
             pass
 
         elif isinstance(current_state, PreemptingState):
-            # Draining substate of RunningState; the run keeps reporting as
-            # running until it transitions to RestartingState.
+            # substate of RunningState; the run keeps reporting as
+            # running until it transitions to RestartingState or ShuttingDownState.
             pass
 
     def before_worker_group_start(self, worker_group_context: WorkerGroupContext):

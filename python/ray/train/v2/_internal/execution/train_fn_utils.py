@@ -122,7 +122,7 @@ class TrainFnUtils(ABC):
         pass
 
     @abstractmethod
-    def preemption_status(self) -> Optional["PreemptionInfo"]:
+    def preemption_info(self) -> Optional["PreemptionInfo"]:
         """Return the latest preemption signal for this worker, or None.
 
         Returns:
@@ -188,7 +188,7 @@ class DistributedTrainFnUtils(TrainFnUtils):
     def get_context(self) -> DistributedTrainContext:
         return DistributedTrainContext()
 
-    def preemption_status(self) -> Optional["PreemptionInfo"]:
+    def preemption_info(self) -> Optional["PreemptionInfo"]:
         return get_internal_train_context().preemption_context.get()
 
     def is_distributed(self) -> bool:
@@ -262,7 +262,7 @@ class LocalTrainFnUtils(TrainFnUtils):
     def get_context(self) -> LocalTrainContext:
         return self._context
 
-    def preemption_status(self) -> Optional["PreemptionInfo"]:
+    def preemption_info(self) -> Optional["PreemptionInfo"]:
         # Local mode runs in a single process with no preemption watcher.
         return None
 

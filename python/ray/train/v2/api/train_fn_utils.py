@@ -147,7 +147,7 @@ def get_context() -> TrainContext:
 
 @PublicAPI(stability="alpha")
 @requires_train_worker(raise_in_tune_session=True)
-def preemption_status() -> Optional["PreemptionInfo"]:
+def preemption_info() -> Optional["PreemptionInfo"]:
     """Return the preemption signal for the current worker, or ``None``.
 
     Ray Train surfaces the cloud's advance preemption notice (e.g. a spot/TPU
@@ -166,7 +166,7 @@ def preemption_status() -> Optional["PreemptionInfo"]:
             def train_func(config):
                 rank = ray.train.get_context().get_world_rank()
                 for step in range(config["total_steps"]):
-                    info = ray.train.preemption_status()
+                    info = ray.train.preemption_info()
                     if info is not None:
                         if rank in info.preempted_ranks:
                             # This worker's node is being reclaimed: clean up.
@@ -182,7 +182,7 @@ def preemption_status() -> Optional["PreemptionInfo"]:
         node IDs / ranks are affected and the reclaim deadline), or ``None`` if
         no preemption has been signaled.
     """
-    return get_train_fn_utils().preemption_status()
+    return get_train_fn_utils().preemption_info()
 
 
 @PublicAPI(stability="stable")
