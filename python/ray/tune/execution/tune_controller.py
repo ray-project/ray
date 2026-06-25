@@ -1369,6 +1369,10 @@ class TuneController:
             logger.debug(f"Not requesting trial STOP as it is ERROR already: {trial}")
             return
 
+        # Clean up any queued decision for this trial to prevent memory leak
+        # when trials stop or fail outside the normal result path (see #64231)
+        self._queued_trial_decisions.pop(trial.trial_id, None)
+
         logger.debug(f"Requesting to STOP actor for trial {trial}")
 
         if trial.is_saving:
