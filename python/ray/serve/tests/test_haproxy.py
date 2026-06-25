@@ -20,6 +20,7 @@ from ray._common.test_utils import (
 )
 from ray.actor import ActorHandle
 from ray.cluster_utils import Cluster
+from ray.serve._private.build_app import CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
@@ -29,9 +30,15 @@ from ray.serve._private.constants import (
     SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy import HAProxyManager
-from ray.serve._private.test_utils import get_application_url
-from ray.serve.config import HTTPOptions
+from ray.serve._private.test_utils import (
+    alive_actor_counts,
+    expected_proxy_actors,
+    get_application_url,
+)
+from ray.serve.config import HTTPOptions, RequestRouterConfig
 from ray.serve.context import _get_global_client
+from ray.serve.exceptions import RayServeException
+from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.schema import (
     ProxyStatus,
     ServeDeploySchema,
@@ -120,8 +127,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HAProxyManager",
-        "ProxyActor",
+        *expected_proxy_actors(),
         "ServeReplica:app:f",
     }
 
@@ -162,8 +168,7 @@ async def test_single_app_shutdown_actors_async(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HAProxyManager",
-        "ProxyActor",
+        *expected_proxy_actors(),
         "ServeReplica:app:f",
     }
 
@@ -344,8 +349,13 @@ async def test_drain_and_undrain_haproxy_manager(
 
     serve.run(HelloModel.options(num_replicas=2).bind())
 
-    # 3 haproxies, 1 controller, 2 replicas, 1 signal actor, 1 fallback proxy
-    wait_for_condition(lambda: len(list_actors()) == 8)
+    expected_actors = {
+        "ServeController": 1,
+        **expected_proxy_actors(num_proxy_nodes=3),
+        "ServeReplica:default:HelloModel": 2,
+        "SignalActor": 1,
+    }
+    wait_for_condition(lambda: alive_actor_counts() == expected_actors)
     assert len(ray.nodes()) == 3
 
     client = _get_global_client()
@@ -1152,6 +1162,61 @@ def test_default_host_is_all_interfaces(ray_shutdown):
             f"direct ingress port {conn.laddr.port} bound to {conn.laddr.ip!r}, "
             f"expected {expected!r}"
         )
+
+
+def test_serve_run_rejects_custom_ingress_request_router(ray_shutdown):
+    """serve.run rejects a custom router on the ingress under HAProxy."""
+    ray.init(num_cpus=8)
+    serve.start(http_options=dict(port=8003))
+
+    @serve.deployment(
+        request_router_config=RequestRouterConfig(request_router_class=RoundRobinRouter)
+    )
+    class Ingress:
+        async def __call__(self):
+            return "hi"
+
+    with pytest.raises(
+        RayServeException, match=CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR
+    ):
+        serve.run(Ingress.bind())
+
+
+def test_deploy_config_rejects_custom_ingress_request_router(ray_shutdown):
+    """A config override that sets a custom router on the ingress fails to deploy
+    under HAProxy."""
+    ray.init(num_cpus=8)
+    serve.start(http_options=dict(port=8003))
+    client = _get_global_client()
+
+    module = "ray.serve.tests.test_config_files.use_custom_request_router"
+    config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {
+                    "name": "app",
+                    "import_path": f"{module}.app",
+                    "deployments": [
+                        {
+                            "name": "UniformRequestRouterApp",
+                            "request_router_config": {
+                                "request_router_class": f"{module}.UniformRequestRouter"
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    client.deploy_apps(config)
+
+    def deploy_failed():
+        status = serve.status().applications["app"]
+        assert status.status == "DEPLOY_FAILED"
+        assert CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR in status.message
+        return True
+
+    wait_for_condition(deploy_failed)
 
 
 if __name__ == "__main__":
