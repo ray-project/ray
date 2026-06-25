@@ -13,6 +13,7 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import asdict, dataclass, field
+from functools import cache
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
@@ -284,30 +285,23 @@ def _collect_workload(logical_plan: "LogicalPlan") -> _Workload:
 def _build_plan(
     op: LogicalOperator,
     ordered_logical_ops: List[Tuple[LogicalOperator, str]],
-    memo: Optional[Dict[int, _PlanNode]] = None,
 ) -> _PlanNode:
     """Build the plan tree and record logical ops in post-order.
 
-    ``memo`` deduplicates shared operator instances (e.g. ``ds.zip(ds)``), so
-    each operator is assigned a single usage_id even when reachable via
-    multiple plan branches.
+    Deduplicates shared operator instances (e.g. ``ds.zip(ds)``), so each
+    operator is assigned a single usage_id even when reachable via multiple
+    plan branches.
     """
-    if memo is None:
-        memo = {}
-    op_id = id(op)
-    if op_id in memo:
-        return memo[op_id]
 
-    child_plans: List[_PlanNode] = []
-    for child in op.input_dependencies:
-        child_plans.append(_build_plan(child, ordered_logical_ops, memo))
+    @cache
+    def _build_cached(op: LogicalOperator) -> _PlanNode:
+        child_plans = [_build_cached(child) for child in op.input_dependencies]
+        name = anonymize_op_name(op)
+        usage_id = _make_usage_op_id(len(ordered_logical_ops), name)
+        ordered_logical_ops.append((op, usage_id))
+        return _PlanNode(usage_id=usage_id, op=name, inputs=child_plans)
 
-    name = anonymize_op_name(op)
-    usage_id = _make_usage_op_id(len(ordered_logical_ops), name)
-    ordered_logical_ops.append((op, usage_id))
-    node = _PlanNode(usage_id=usage_id, op=name, inputs=child_plans)
-    memo[op_id] = node
-    return node
+    return _build_cached(op)
 
 
 def _build_ops(
