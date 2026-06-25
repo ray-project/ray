@@ -22,7 +22,7 @@ class BlockRefCounter:
     ):
         if add_object_out_of_scope_callback is None:
             add_object_out_of_scope_callback = (
-                global_worker.core_worker.add_object_out_of_scope_callback
+                global_worker.core_worker.add_object_out_of_scope_callback  # pyrefly: ignore[missing-attribute]
             )
         self._add_callback_fn = add_object_out_of_scope_callback
         # IDs of live blocks. Stale callbacks (fired after clear()) check

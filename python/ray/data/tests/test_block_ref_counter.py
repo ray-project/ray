@@ -118,7 +118,9 @@ class TestBlockRefCounterLifecycle:
         reference and this lifetime-extension behavior would not apply.
         """
         counter = BlockRefCounter()
-        ref = ray.put(np.zeros(1 * MiB, dtype=np.uint8))
+        ref = ray.put(
+            np.zeros(1 * MiB, dtype=np.uint8)
+        )  # pyrefly: ignore[bad-argument-type]
 
         counter.on_block_produced(ref, 1 * MiB, "op_task")
         assert counter.get_object_store_memory_usage("op_task") == 1 * MiB
