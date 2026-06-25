@@ -220,9 +220,11 @@ class StreamingExecutor(Executor, threading.Thread):
                 )
 
         # Setup the streaming DAG topology and start the runner thread.
-        self._topology = build_streaming_topology(dag, self._options)
-
         self._block_ref_counter = BlockRefCounter()
+        self._topology = build_streaming_topology(
+            dag, self._options, self._block_ref_counter
+        )
+
         self._resource_manager = ResourceManager(
             self._topology,
             self._options,
@@ -230,9 +232,6 @@ class StreamingExecutor(Executor, threading.Thread):
             self._data_context,
             self._block_ref_counter,
         )
-
-        for op in self._topology:
-            op.start(self._options, self._block_ref_counter)
 
         # Constructed once per executor (not per scheduling iteration) so the
         # guard's idle-detection state accumulates across scheduling iterations.

@@ -41,6 +41,7 @@ from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.block import TaskExecWorkerStats
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.conftest import noop_counter
 
 
 def mock_map_op(
@@ -56,10 +57,6 @@ def mock_map_op(
         ray_remote_args=ray_remote_args or {},
         compute_strategy=compute_strategy,
         name=name,
-    )
-    op.start(
-        ExecutionOptions(),
-        BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
     )
     return op
 
@@ -228,7 +225,7 @@ class TestResourceManager:
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
-        topo = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
 
         # Mock different metrics that contribute to the resource usage.
         mock_cpu = {
@@ -348,7 +345,7 @@ class TestResourceManager:
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
 
-        topo = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
@@ -458,7 +455,7 @@ class TestResourceManager:
             internal=42, outputs=100
         )
 
-        topo = build_streaming_topology(override, ExecutionOptions())
+        topo = build_streaming_topology(override, ExecutionOptions(), noop_counter())
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
@@ -486,7 +483,7 @@ class TestResourceManager:
         o1.mark_execution_finished()
         o2.mark_execution_finished()
 
-        topo = build_streaming_topology(o5, ExecutionOptions())
+        topo = build_streaming_topology(o5, ExecutionOptions(), noop_counter())
 
         op_usages = {
             o1: ExecutionResources.zero(),
@@ -546,7 +543,7 @@ class TestResourceManager:
         o5.mark_execution_finished()
         o7.mark_execution_finished()
 
-        topo = build_streaming_topology(o8, ExecutionOptions())
+        topo = build_streaming_topology(o8, ExecutionOptions(), noop_counter())
 
         op_usages = {
             o1: ExecutionResources.zero(),
@@ -589,7 +586,7 @@ class TestResourceManager:
         o1.mark_execution_finished()
         o2.mark_execution_finished()
 
-        topo = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
@@ -658,7 +655,7 @@ class TestResourceManager:
         attach to that terminal sink instead of being dropped by the
         InputDataBuffer early return."""
         buf = InputDataBuffer(DataContext.get_current(), [])
-        topo = build_streaming_topology(buf, ExecutionOptions())
+        topo = build_streaming_topology(buf, ExecutionOptions(), noop_counter())
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
@@ -690,7 +687,7 @@ class TestResourceManager:
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
 
-        topo = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
@@ -789,7 +786,7 @@ class TestResourceManager:
         o4 = mock_all_to_all_op(o3, name="Sort")
         o5 = mock_map_op(o4, name="Map2")
 
-        topo = build_streaming_topology(o5, ExecutionOptions())
+        topo = build_streaming_topology(o5, ExecutionOptions(), noop_counter())
 
         resource_manager = ResourceManager(
             topo,
@@ -821,7 +818,7 @@ class TestResourceManager:
         o6 = LimitOperator(1, o5, DataContext.get_current())
         o7 = mock_map_op(o6, name="Map3")
 
-        topo2 = build_streaming_topology(o7, ExecutionOptions())
+        topo2 = build_streaming_topology(o7, ExecutionOptions(), noop_counter())
         resource_manager2 = ResourceManager(
             topo2,
             ExecutionOptions(),
@@ -847,7 +844,7 @@ class TestResourceManager:
             name="HighMemoryTask",
         )
 
-        topo = build_streaming_topology(o2, ExecutionOptions())
+        topo = build_streaming_topology(o2, ExecutionOptions(), noop_counter())
         options = ExecutionOptions()
 
         resource_manager = ResourceManager(
@@ -883,7 +880,7 @@ class TestOutputBackpressureGuard:
         o2 = mock_map_op(o1)
         o3 = LimitOperator(1, o2, DataContext.get_current())
 
-        topo = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
 
         resource_manager = ResourceManager(
             topo,
@@ -901,7 +898,7 @@ class TestOutputBackpressureGuard:
         # Add o4 operator - o2 is no longer terminal
         o4 = mock_map_op(o3)
 
-        topo = build_streaming_topology(o4, ExecutionOptions())
+        topo = build_streaming_topology(o4, ExecutionOptions(), noop_counter())
 
         resource_manager = ResourceManager(
             topo,
@@ -929,7 +926,7 @@ class TestOutputBackpressureGuard:
         o2 = mock_map_op(o1)
         o3 = LimitOperator(1, o2, DataContext.get_current())
 
-        topo = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
 
         resource_manager = ResourceManager(
             topo,
@@ -964,7 +961,7 @@ class TestOutputBackpressureGuard:
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
 
-        topo = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
 
         resource_manager = ResourceManager(
             topo,
@@ -995,7 +992,7 @@ class TestOutputBackpressureGuard:
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
 
-        topo = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
 
         resource_manager = ResourceManager(
             topo,
@@ -1037,7 +1034,7 @@ class TestOutputBackpressureGuard:
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
 
-        topo = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
 
         resource_manager = ResourceManager(
             topo,

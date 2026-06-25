@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 import ray
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import ActorPoolInfo
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.bundle_queue import (
     ThreadSafeBundleQueue,
     create_bundle_queue,
@@ -543,7 +544,9 @@ class OpState:
 
 
 def build_streaming_topology(
-    dag: PhysicalOperator, options: ExecutionOptions
+    dag: PhysicalOperator,
+    options: ExecutionOptions,
+    block_ref_counter: BlockRefCounter,
 ) -> Topology:
     """Instantiate the streaming operator state topology for the given DAG.
 
@@ -554,6 +557,8 @@ def build_streaming_topology(
     Args:
         dag: The operator DAG to instantiate.
         options: The execution options to use to start operators.
+        block_ref_counter: The executor-wide shared counter for tracking
+            object-store memory.
 
     Returns:
         The topology dict holding the streaming execution state.
@@ -575,6 +580,7 @@ def build_streaming_topology(
         # Create state.
         op_state = OpState(op, inqueues)
         topology[op] = op_state
+        op.start(options, block_ref_counter)
         return op_state
 
     setup_state(dag)

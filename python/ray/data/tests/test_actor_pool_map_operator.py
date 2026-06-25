@@ -57,6 +57,7 @@ from ray.data.context import (
     DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
     DataContext,
 )
+from ray.data.tests.conftest import noop_counter
 from ray.data.tests.test_executor_resource_management import SMALL_STR
 from ray.data.tests.test_operators import _mul2_map_data_prcessor
 from ray.data.tests.util import (
@@ -1285,7 +1286,9 @@ def test_completed_when_downstream_op_has_finished_execution(ray_start_regular_s
     downstream_op = IdentityOperator(
         "Downstream", input_dependencies=[actor_pool_map_op], data_context=data_context
     )
-    topology = build_streaming_topology(downstream_op, ExecutionOptions())
+    topology = build_streaming_topology(
+        downstream_op, ExecutionOptions(), noop_counter()
+    )
 
     # SETUP: Add a bundle to the upstream operator's external output queue. This is
     # necessary to reproduce the bug where the actor pool operator wouldn't complete if
