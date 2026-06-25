@@ -140,6 +140,32 @@ class TestBlockRefCounterLifecycle:
         _wait_for_counter(counter=counter, producer_id="op_task", expected=0)
 
 
+class TestBlockRefCounterNonOwnedBlocks:
+    def test_non_owned_block_not_tracked(self, ray_start_regular_shared):
+        """on_block_produced gracefully skips blocks not owned by this worker.
+
+        This reproduces the SplitCoordinator scenario where an actor-hosted
+        executor receives driver-owned blocks and calls on_block_produced on
+        them. The callback registration raises ValueError because the actor
+        does not own the blocks. The counter must handle this without crashing
+        and must not count the block's bytes.
+        """
+
+        @ray.remote
+        class CounterActor:
+            def try_track_non_owned_block(self, block_ref, size_bytes):
+                counter = BlockRefCounter()
+                counter.on_block_produced(block_ref, size_bytes, "op_split")
+                return counter.get_object_store_memory_usage("op_split")
+
+        block_ref = ray.put(np.zeros(1024, dtype=np.uint8))
+        actor = CounterActor.remote()
+        usage = ray.get(actor.try_track_non_owned_block.remote(block_ref, 1024))
+        assert (
+            usage == 0
+        ), f"Non-owned block should not be tracked, but got {usage} bytes"
+
+
 if __name__ == "__main__":
     import sys
 

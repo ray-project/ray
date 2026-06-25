@@ -61,7 +61,12 @@ class BlockRefCounter:
                 self._registered_ids.discard(id_bytes)
                 self._bytes_by_producer[producer_id] -= size_bytes
 
-        registered = self._add_callback_fn(block_ref, _on_object_freed)
+        try:
+            registered = self._add_callback_fn(block_ref, _on_object_freed)
+        except ValueError:
+            # Block not owned by this worker; can't track it.
+            _on_object_freed(id_binary)
+            return
         if not registered:
             _on_object_freed(id_binary)
 
