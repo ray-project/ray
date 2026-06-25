@@ -743,6 +743,29 @@ def test_slices_by_file_group_non_contiguous_raises(video_keys, file_cols):
         LeRobotDatasource._slices_by_file_group(eps, video_keys)
 
 
+def test_episodes_for_row_range_uses_row_positions_not_episode_index():
+    """_episodes_for_row_range must return episodes-table ROW positions (for
+    eps.slice), not episode_index values -- they coincide only for the usual
+    0..N-1 numbering. Here episode_index is offset, so a value-based slice would
+    pick the wrong rows (the bug Cursor Bugbot flagged)."""
+    from ray.data._internal.datasource.lerobot_datasource import _LeRobotReadTask
+
+    # 3 episodes at rows 0/1/2, but episode_index offset to 100/101/102.
+    eps = pa.table(
+        {
+            "episode_index": [100, 101, 102],
+            "_global_from_index": [0, 10, 20],
+            "_global_to_index": [10, 20, 30],
+        }
+    )
+    # [10, 20) overlaps only the middle episode -> row position 1, not value 101.
+    assert _LeRobotReadTask._episodes_for_row_range(eps, 10, 20) == (1, 2)
+    # [5, 25) overlaps all three -> positions (0, 3), not values (100, 103).
+    assert _LeRobotReadTask._episodes_for_row_range(eps, 5, 25) == (0, 3)
+    with pytest.raises(ValueError, match="No episodes overlap"):
+        _LeRobotReadTask._episodes_for_row_range(eps, 100, 200)
+
+
 def test_read_lerobot_batches_sized_per_root(ray_start_regular_shared, tmp_path):
     """Batches must be sized from each segment's OWN root, not one global value.
 

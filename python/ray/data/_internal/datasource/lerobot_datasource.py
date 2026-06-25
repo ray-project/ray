@@ -708,23 +708,30 @@ class _LeRobotReadTask(ReadTask):
         start_row: int,
         end_row: int,
     ) -> tuple:
-        """Return the half-open ``(start_ep, end_ep)`` range covering
-        ``[start_row, end_row)``."""
+        """Return the half-open ``(start, end)`` *row positions* in the episodes
+        table covering ``[start_row, end_row)`` of the global frame index.
+
+        These are episodes-table row positions (used by ``episodes.slice``), NOT
+        ``episode_index`` values -- the two are equal only for the usual
+        ``0..N-1`` numbering, so deriving the slice from positions keeps it
+        correct for any ``episode_index`` numbering.
+        """
         from_idx = episodes.column("_global_from_index")
         to_idx = episodes.column("_global_to_index")
         mask = pc.and_(
             pc.less(from_idx, end_row),
             pc.greater(to_idx, start_row),
         )
-        indices = pc.filter(episodes.column("episode_index"), mask).to_pylist()
-        if not indices:
+        # Row positions where the mask is true (NOT episode_index values).
+        positions = pc.indices_nonzero(mask).to_pylist()
+        if not positions:
             raise ValueError(
                 f"No episodes overlap the row range [{start_row}, {end_row}). "
                 f"Dataset has "
                 f"{episodes.column('_global_to_index')[-1].as_py()} total frames "
                 f"across {len(episodes)} episodes."
             )
-        return (indices[0], indices[-1] + 1)
+        return (positions[0], positions[-1] + 1)
 
     @staticmethod
     def _build_batch(
