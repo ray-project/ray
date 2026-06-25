@@ -102,10 +102,6 @@ def mock_all_to_all_op(input_op, name="MockShuffle"):
         data_context=DataContext.get_current(),
         name=name,
     )
-    op.start(
-        ExecutionOptions(),
-        BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
-    )
     return op
 
 
