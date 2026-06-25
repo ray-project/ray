@@ -287,6 +287,51 @@ def test_run_skips_issue_reference_but_keeps_pr():
     assert "63729" in result.output
 
 
+@responses.activate
+def test_run_fails_loudly_on_non_404_error():
+    # A non-404 error (e.g. rate limit / 5xx) means a real PR author could not
+    # be fetched. The run must fail rather than print a complete-looking list.
+    responses.add(
+        responses.GET,
+        f"{BASE}/repos/{REPO}/pulls/100",
+        json={"number": 100, "user": {"login": "alice"}},
+    )
+    responses.add(
+        responses.GET,
+        f"{BASE}/repos/{REPO}/pulls/101",
+        json={"message": "rate limited"},
+        status=403,
+    )
+    responses.add(
+        responses.GET,
+        f"{BASE}/repos/{REPO}/pulls/102",
+        json={"number": 102, "user": {"login": "carol"}},
+    )
+
+    with (
+        mock.patch(
+            "ci.ray_ci.automation.get_contributors.check_output",
+            return_value=_COMMIT_LOG.encode(),
+        ),
+        mock.patch.dict("os.environ", {"BUILD_WORKSPACE_DIRECTORY": "/fake/repo"}),
+    ):
+        result = CliRunner().invoke(
+            run,
+            [
+                "--access-token",
+                "tok",
+                "--prev-release-commit",
+                "abc",
+                "--curr-release-commit",
+                "def",
+            ],
+        )
+
+    # Non-zero exit signals the incomplete list, and the failing number is named.
+    assert result.exit_code != 0
+    assert "101" in result.output
+
+
 def test_run_writes_commits_file_with_categories():
     with (
         mock.patch(
