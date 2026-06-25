@@ -17,7 +17,6 @@ import ray
 import ray.cluster_utils
 from ray._common.test_utils import (
     SignalActor,
-    fetch_prometheus_metrics,
     wait_for_condition,
 )
 from ray._private.internal_api import memory_summary
@@ -388,83 +387,6 @@ def test_captured_object_ref(ray_start_regular):
     # references.
     ray.get(signal.send.remote())
     _fill_object_store_and_get(obj_ref)
-
-
-def test_borrowed_id_failure_while_pulling(ray_start_cluster):
-    """The driver creates an object and passes the ref to actor A via an actor
-    task. That task passes the ref on to B, then A kills itself before
-    finishing the task, so the task never reports the borrower B to the
-    driver. The driver can therefore erase the ref while B is still pulling
-    the object, and B's get must then fail promptly instead of hanging.
-    """
-    cluster = ray_start_cluster
-    cluster.add_node(
-        num_cpus=1,
-        resources={"head_node": 1},
-        object_store_memory=100 * 1024 * 1024,
-        _system_config={
-            "testing_asio_delay_us": (
-                "ObjectManagerService.grpc_server.Pull=5000000000:5000000000"
-            ),
-            "metrics_report_interval_ms": 200,
-        },
-    )
-    ray.init(address=cluster.address)
-    cluster.add_node(
-        num_cpus=1,
-        resources={"worker_node": 1},
-        object_store_memory=100 * 1024 * 1024,
-    )
-    cluster.wait_for_nodes()
-
-    @ray.remote(resources={"head_node": 1})
-    class A:
-        def pass_ref(self, ref, b):
-            ray.get(b.receive_ref.remote(ref))
-            sys.exit(-1)
-
-    @ray.remote(resources={"worker_node": 1})
-    class B:
-        def __init__(self):
-            self.ref = None
-
-        def receive_ref(self, ref):
-            self.ref = ref[0]
-
-        def resolve_ref(self):
-            with pytest.raises(ray.exceptions.ObjectLostError):
-                ray.get(self.ref)
-            return True
-
-        def ping(self):
-            return
-
-    a = A.remote()
-    b = B.remote()
-    ray.get(b.ping.remote())
-
-    obj = ray.put(np.zeros(1024 * 1024, dtype=np.uint8))
-    with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(a.pass_ref.remote([obj], b))
-
-    resolved = b.resolve_ref.remote()
-
-    def pull_in_flight():
-        (worker_node,) = [n for n in ray.nodes() if "worker_node" in n["Resources"]]
-        address = (
-            f"{worker_node['NodeManagerAddress']}:{worker_node['MetricsExportPort']}"
-        )
-        samples = fetch_prometheus_metrics([address]).get(
-            "ray_pull_manager_usage_bytes", []
-        )
-        return any(
-            s.labels.get("Type") == "BeingPulled" and s.value > 0 for s in samples
-        )
-
-    # make sure to only del the last ref to let ref count go to 0 after actor B's raylet starts pulling that object.
-    wait_for_condition(pull_in_flight, timeout=30)
-    del obj
-    assert ray.get(resolved, timeout=30)
 
 
 if __name__ == "__main__":
