@@ -468,6 +468,11 @@ class StorageContext:
         Returns:
             Checkpoint: A Checkpoint pointing to the persisted checkpoint location.
         """
+        if self.read_only:
+            raise RuntimeError(
+                "Cannot perform write/validation operations as the StorageContext is read-only."
+            )
+
         # TODO(justinvyu): Fix this cyclical import.
         from ray.train import Checkpoint
 
