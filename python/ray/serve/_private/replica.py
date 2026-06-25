@@ -1931,6 +1931,25 @@ class Replica:
         finally:
             self._semaphore.release()
 
+    @asynccontextmanager
+    async def _start_queued_request(self, request_metadata: RequestMetadata):
+        """Acquire a slot for a queued direct-ingress request.
+
+        The caller increments _num_queued_requests before awaiting this. The
+        counter is decremented exactly once, when a slot is acquired or if the
+        request is cancelled while still waiting for one. This keeps a cancelled
+        queued request from leaking its count and wedging backpressure.
+        """
+        dequeued = False
+        try:
+            async with self._start_request(request_metadata):
+                self._num_queued_requests -= 1
+                dequeued = True
+                yield
+        finally:
+            if not dequeued:
+                self._num_queued_requests -= 1
+
     async def _drain_ongoing_requests(self, min_draining_period_s: float = 0.0):
         """Wait until the minimum draining period has elapsed and no ongoing
         requests remain.
@@ -2555,9 +2574,7 @@ class Replica:
 
         with self._wrap_request(request_metadata) as status_code_callback:
             self._num_queued_requests += 1
-            async with self._start_request(request_metadata):
-                self._num_queued_requests -= 1
-
+            async with self._start_queued_request(request_metadata):
                 # Use the generic disconnect detecting wrapper
                 result_gen = call_unary()
                 replica_response_generator = ReplicaResponseGenerator(
@@ -2833,9 +2850,7 @@ class Replica:
                     response_finished = True
 
             async def call_asgi():
-                async with self._start_request(request_metadata):
-                    self._num_queued_requests -= 1
-
+                async with self._start_queued_request(request_metadata):
                     if (
                         not self._user_callable_wrapper._run_user_code_in_separate_thread
                     ):
