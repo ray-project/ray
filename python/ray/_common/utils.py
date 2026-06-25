@@ -521,16 +521,15 @@ def get_cgroup_aware_swap_memory() -> Tuple[int, int]:
             if os.path.exists(_CGROUP_V1_MEM_USAGE):
                 with open(_CGROUP_V1_MEM_USAGE) as f:
                     ram_usage = int(f.read().strip())
-            # We need ram_limit to derive swap-only from memsw (memsw is
-            # RAM+swap combined); without it we'd double-count RAM. ram_usage
-            # is only needed to derive swap_used — if it's missing we keep the
-            # correct swap_total and default swap_used to 0, which matches
-            # what C++ leaves in the per-tick used_bytes when memsw_usage is
-            # unreadable.
+            # memsw is RAM+swap combined; subtract the RAM share to derive
+            # swap-only. When memory.limit_in_bytes is missing, approximate
+            # with host RAM — the scheduler's auto-computed memory uses
+            # psutil host total as the RAM portion in the same case, so
+            # (ram_capacity + swap_total) lands on memsw_limit, matching
+            # what C++ GetCGroupMemoryBytes does in this branch (it uses
+            # memsw_limit as the combined total directly).
             if ram_limit is None:
-                return 0, 0
-            # Match C++: no host clamp; the cgroup-derived value is the limit
-            # the OOM monitor enforces.
+                ram_limit = psutil.virtual_memory().total
             swap_total = max(0, memsw_limit - ram_limit)
             swap_used = 0 if ram_usage is None else max(0, memsw_usage - ram_usage)
             return swap_total, swap_used

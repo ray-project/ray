@@ -458,25 +458,41 @@ class TestGetCgroupAwareSwapMemory:
         assert total == 1 * 1024**3
         assert used == int(0.5 * 1024**3)
 
-    def test_cgroup_v1_memsw_without_ram_limit(self, monkeypatch, tmp_path):
-        """Regression: memsw without mem_limit must NOT treat memsw as
-        swap-only (that would double-count RAM inside memsw)."""
+    def test_cgroup_v1_memsw_without_ram_limit_falls_back_to_host_ram(
+        self, monkeypatch, tmp_path
+    ):
+        """When memsw files exist but memory.limit_in_bytes is missing,
+        approximate ram_limit with host RAM so the scheduler's view
+        (ram_capacity + swap_total) matches C++ GetCGroupMemoryBytes, which
+        uses memsw_limit as the combined total in this case."""
+        memsw_limit = 6 * 1024**3
+        memsw_usage = 4 * 1024**3
+        host_ram = 4 * 1024**3
         self._patch_paths(
             monkeypatch,
             tmp_path,
             _CGROUP_V1_MEMSW_LIMIT=self._write(
-                tmp_path, "memsw.limit", str(3 * 1024**3)
+                tmp_path, "memsw.limit", str(memsw_limit)
             ),
             _CGROUP_V1_MEMSW_USAGE=self._write(
-                tmp_path, "memsw.usage", str(2 * 1024**3)
+                tmp_path, "memsw.usage", str(memsw_usage)
             ),
             # mem.limit / mem.usage intentionally missing
         )
         self._patch_host_swap(monkeypatch, total=100 * 1024**3, used=50 * 1024**3)
 
+        class _FakeVMem:
+            total = host_ram
+
+        monkeypatch.setattr(
+            "ray._common.utils.psutil.virtual_memory", lambda: _FakeVMem()
+        )
+
         total, used = get_cgroup_aware_swap_memory()
 
-        assert total == 0
+        # swap_total = memsw_limit - host_ram (the ram_limit proxy).
+        assert total == memsw_limit - host_ram
+        # ram_usage still missing → swap_used stays at 0.
         assert used == 0
 
     @pytest.mark.parametrize("variant", ["v2", "v1"])
