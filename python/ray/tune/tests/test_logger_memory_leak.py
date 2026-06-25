@@ -29,7 +29,8 @@ class Trial:
         return self.evaluated_params
 
     def init_local_path(self):
-        return
+        if self.logdir:
+            os.makedirs(self.logdir, exist_ok=True)
 
     @property
     def local_path(self):
