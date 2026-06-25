@@ -482,6 +482,16 @@ RAY_CONFIG(uint32_t, gcs_rpc_server_reconnect_timeout_s, 60)
 /// The timeout for GCS connection in seconds
 RAY_CONFIG(int32_t, gcs_rpc_server_connect_timeout_s, 5)
 
+/// When GCS restarts (e.g. with GCS fault tolerance), a raylet must reconnect and
+/// resubscribe to the new GCS instance. If the raylet cannot confirm its own liveness
+/// with GCS for this many seconds, it concludes it has been partitioned from GCS (for
+/// example, GCS is up but unreachable from this node) and self-terminates so that GCS's
+/// health check fails the node, marks it dead, and the autoscaler can reclaim it.
+/// Without this, a worker whose GCS pubsub connection is wedged stays Running but
+/// un-Ready forever as a "zombie" that the autoscaler never drains.
+/// Set to 0 to disable self-termination on GCS unreachability.
+RAY_CONFIG(int64_t, gcs_failover_worker_reconnect_timeout, 120)
+
 /// gRPC channel reconnection related configs to GCS.
 /// Check https://grpc.github.io/grpc/core/group__grpc__arg__keys.html for details
 /// Note: `gcs_grpc_min_reconnect_backoff_ms` is (mis)used by gRPC as the connection
