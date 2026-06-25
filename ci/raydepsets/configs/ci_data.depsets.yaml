@@ -26,6 +26,7 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
+      - --override python/requirements/ml/lerobot_overrides.txt
     build_arg_sets:
       - py310
       - py311
@@ -69,6 +70,7 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
+      - --override python/requirements/ml/lerobot_overrides.txt
     build_arg_sets:
       - py310
       - py312
