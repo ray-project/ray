@@ -188,9 +188,7 @@ def physical_op_name_with_id(
     logical_ops = operator._logical_operators
     if not logical_ops:
         return "Unknown"
-    return "->".join(
-        _logical_op_name_with_id(op, usage_id_map) for op in logical_ops
-    )
+    return "->".join(_logical_op_name_with_id(op, usage_id_map) for op in logical_ops)
 
 
 def _logical_op_name_with_id(
