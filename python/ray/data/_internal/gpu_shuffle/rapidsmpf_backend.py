@@ -60,7 +60,6 @@ def lazy_load() -> type[Any]:
         unpack_and_concat,
         unspill_partitions,
     )
-    from rapidsmpf.progress_thread import ProgressThread
     from rapidsmpf.rmm_resource_adaptor import RmmResourceAdaptor
     from rapidsmpf.shuffler import Shuffler
     from rapidsmpf.utils.cudf import cudf_to_pylibcudf_table
@@ -68,6 +67,7 @@ def lazy_load() -> type[Any]:
     if parse_version(rapidsmpf.__version__) >= parse_version("26.4.0"):
         from rapidsmpf.integrations.ray import RapidsMPFActor as RapidsMPFActorBase
     else:
+        from rapidsmpf.progress_thread import ProgressThread
         from rapidsmpf.utils.ray_utils import BaseShufflingActor as RapidsMPFActorBase
 
     if parse_version(rapidsmpf.__version__) >= parse_version("26.2.0"):
