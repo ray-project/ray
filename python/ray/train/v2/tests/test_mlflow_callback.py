@@ -261,7 +261,7 @@ class TestMLflowLoggerCallbackLifecycle:
         mock_util.end_run.assert_called_once_with("run-456", status="FAILED")
 
     @patch("ray.train.v2.api.mlflow._MLflowTrackerUtil")
-    def test_after_exception_sets_failed_flag(self, MockUtil):
+    def test_after_exception_keeps_run_open(self, MockUtil):
         mock_util = MagicMock()
         MockUtil.return_value = mock_util
 
@@ -270,22 +270,22 @@ class TestMLflowLoggerCallbackLifecycle:
         cb._run_id = "run-456"
 
         cb.after_exception(_make_run_context(), {0: RuntimeError("boom")})
-        # after_exception only sets the flag; closing is deferred to after_run
+        # after_exception logs but does not close the run
         mock_util.end_run.assert_not_called()
-        assert cb._failed is True
 
     @patch("ray.train.v2.api.mlflow._MLflowTrackerUtil")
-    def test_after_run_closes_failed_run(self, MockUtil):
+    def test_after_run_success_overrides_earlier_failure(self, MockUtil):
+        """Retry success → FINISHED, even if after_exception was called."""
         mock_util = MagicMock()
         MockUtil.return_value = mock_util
 
         cb = MLflowLoggerCallback(experiment_name="exp1", save_checkpoints="none")
         cb._util = mock_util
         cb._run_id = "run-456"
-        cb._failed = True  # already marked by after_exception
 
-        cb.after_run(_make_run_context(), _make_result(error=True))
-        mock_util.end_run.assert_called_once_with("run-456", status="FAILED")
+        cb.after_exception(_make_run_context(), {0: RuntimeError("boom")})
+        cb.after_run(_make_run_context(), _make_result(error=False))
+        mock_util.end_run.assert_called_once_with("run-456", status="FINISHED")
 
 
 @_skip_no_mlflow
@@ -500,7 +500,11 @@ class TestMLflowIntegration:
             self._cleanup_experiment(exp_name)
 
     def test_full_lifecycle_failure(self):
-        """Full lifecycle: before_run -> after_exception -> after_run (failure)."""
+        """Full lifecycle: before_run -> after_exception -> after_run (failure).
+
+        after_exception logs but does not mark the run; after_run uses
+        result.error to determine the final status.
+        """
         import uuid
 
         from mlflow.tracking import MlflowClient

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-import ray
 from ray.train import Checkpoint
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    import ray
 
 
 @DeveloperAPI

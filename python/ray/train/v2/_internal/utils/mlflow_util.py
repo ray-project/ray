@@ -38,7 +38,7 @@ class _MLflowTrackerUtil:
             of logging warnings.
     """
 
-    # MLflow parameter limits (compatible with 2.18.0+ server).
+    # MLflow server parameter limits.
     _MAX_PARAM_KEY_LEN = 250
     _MAX_PARAM_VALUE_LEN = 500
 
@@ -156,12 +156,16 @@ class _MLflowTrackerUtil:
 
         Nested dicts are flattened with ``.`` separator
         (e.g., ``{"a": {"b": 1}}`` becomes ``{"a.b": "1"}``).
+        Parameters are sent in a single ``log_batch`` call.
 
         Args:
             run_id: The run to log parameters to.
             params: Parameter dictionary (may be nested).
         """
+        from mlflow.entities import Param
+
         flat_params = self._flatten_dict(params)
+        params_to_log: List[Param] = []
         for key, value in flat_params.items():
             if len(key) > self._MAX_PARAM_KEY_LEN:
                 logger.warning(
@@ -182,7 +186,10 @@ class _MLflowTrackerUtil:
                 safe_value = (
                     safe_value[: self._MAX_PARAM_VALUE_LEN - 11] + "[truncated]"
                 )
-            self._safe_call(self._client.log_param, run_id, key, safe_value)
+            params_to_log.append(Param(key=key, value=safe_value))
+
+        if params_to_log:
+            self._safe_call(self._client.log_batch, run_id, params=params_to_log)
 
     # ------------------------------------------------------------------
     # Metric logging
@@ -222,7 +229,7 @@ class _MLflowTrackerUtil:
             if math.isnan(float_value):
                 logger.debug("Skipping NaN metric '%s'.", key)
                 continue
-            if float_value in (float("inf"), float("-inf")):
+            if math.isinf(float_value):
                 logger.debug("Skipping Inf metric '%s'.", key)
                 continue
             metrics_to_log.append(

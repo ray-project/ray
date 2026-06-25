@@ -17,7 +17,10 @@ Key design choices:
 
 from __future__ import annotations
 
+import atexit
 import logging
+import os
+import signal
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
 
 from ray.train.v2._internal.execution.context import TrainRunContext
@@ -26,6 +29,7 @@ from ray.train.v2.api.callback import UserCallback
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
+    import ray
     from ray.train import Checkpoint
 
 logger = logging.getLogger(__name__)
@@ -99,7 +103,13 @@ class MLflowLoggerCallback(UserCallback):
         self._run_id: Optional[str] = None
         self._best_metric_value: Optional[float] = None
         self._last_checkpoint: Optional["Checkpoint"] = None
-        self._failed: bool = False
+        self._step_counter: int = 0
+
+        # Cleanup handlers for abnormal exit (SIGTERM, SIGINT, atexit).
+        # Ensures the MLflow run is closed even if after_run never executes.
+        self._original_sigterm: Any = None
+        self._original_sigint: Any = None
+        self._atexit_registered: bool = False
 
         # Validate config
         if save_checkpoints == "best" and checkpoint_metric is None:
@@ -112,17 +122,18 @@ class MLflowLoggerCallback(UserCallback):
     # ------------------------------------------------------------------
 
     def before_run(self, run_context: TrainRunContext) -> None:
-        """Create MLflow experiment and run, log parameters."""
-        # Close any previous run (e.g. from a prior retry attempt) to
-        # avoid leaving it in RUNNING state on the MLflow server.
-        if self._util is not None and self._run_id is not None:
-            self._util.end_run(self._run_id, status="FAILED")
+        """Create MLflow experiment and run, log parameters.
 
-        # Reset state so retries after a failure start with a clean slate.
-        self._failed = False
+        Called once at the start of training.  On worker failure the
+        controller may retry without re-entering this method, so the
+        same MLflow run continues across retry attempts.  The run is
+        closed in ``after_run`` with the final terminal status.
+        """
+        # Reset state for a clean start.
         self._best_metric_value = None
         self._last_checkpoint = None
         self._run_id = None
+        self._step_counter = 0
 
         # Only the constructor can raise outside of _safe_call;
         # setup_experiment / start_run / log_params are all protected.
@@ -148,9 +159,11 @@ class MLflowLoggerCallback(UserCallback):
         )
 
         if self._log_params and self._run_id:
-            train_loop_config = getattr(run_context, "train_loop_config", None)
-            if train_loop_config:
-                self._util.log_params(self._run_id, train_loop_config)
+            if run_context.train_loop_config:
+                self._util.log_params(self._run_id, run_context.train_loop_config)
+
+        # Install cleanup handlers so the run is closed on abnormal exit.
+        self._install_cleanup_handlers()
 
         logger.info(
             "MLflow run started: experiment=%s, run=%s",
@@ -172,12 +185,15 @@ class MLflowLoggerCallback(UserCallback):
             # Log metrics from rank 0
             if metrics:
                 rank_0_metrics = metrics[0]
-                step = rank_0_metrics.get("training_iteration")
-                self._util.log_metrics_batch(self._run_id, rank_0_metrics, step=step)
+                self._util.log_metrics_batch(
+                    self._run_id, rank_0_metrics, step=self._step_counter
+                )
 
-            # Handle checkpoint upload
+            # Handle checkpoint upload (before increment so label matches step)
             if checkpoint and self._save_checkpoints != "none":
                 self._handle_checkpoint(checkpoint, metrics)
+
+            self._step_counter += 1
         except Exception as e:
             logger.warning("MLflow after_report failed: %s", e)
             if self._raise_on_error:
@@ -188,22 +204,23 @@ class MLflowLoggerCallback(UserCallback):
         run_context: TrainRunContext,
         worker_exceptions: Dict[int, Exception],
     ) -> None:
-        """Mark the run as failed.
+        """Log worker exceptions without closing the MLflow run.
 
-        This is called when worker errors are detected, *before* the controller
-        decides whether to retry or raise.  We only set a flag here so that
-        ``after_run`` can close the run with the correct terminal status.
-        Closing the run prematurely would break retry scenarios where the
-        controller schedules a new worker group and continues training.
+        The run stays open across retry attempts.  The final status is
+        determined in ``after_run`` from ``result.error``, so a successful
+        retry is recorded as FINISHED even if earlier attempts failed.
         """
         if self._util is None or self._run_id is None:
             return
 
-        self._failed = True
-        logger.error("MLflow run %s marked FAILED", self._run_id)
+        logger.warning(
+            "MLflow run %s: %d worker exception(s) detected (run kept open for retry)",
+            self._run_id,
+            len(worker_exceptions),
+        )
 
     def after_run(
-        self, run_context: TrainRunContext, result: "ray.train.Result"  # noqa: F821
+        self, run_context: TrainRunContext, result: "ray.train.Result"
     ) -> None:
         """Finalize MLflow run: upload last checkpoint if needed, end run."""
         if self._util is None or self._run_id is None:
@@ -221,16 +238,82 @@ class MLflowLoggerCallback(UserCallback):
 
         # End run with the appropriate terminal status.
         try:
-            if self._failed:
-                status = "FAILED"
-            else:
-                status = "FINISHED" if result.error is None else "FAILED"
+            status = "FINISHED" if result.error is None else "FAILED"
             self._util.end_run(self._run_id, status=status)
             logger.info("MLflow run %s completed with status %s", self._run_id, status)
         except Exception as e:
             logger.warning("MLflow end_run failed: %s", e)
             if self._raise_on_error:
                 raise
+        finally:
+            self._run_id = None  # make atexit handler idempotent
+            self._remove_cleanup_handlers()
+
+    # ------------------------------------------------------------------
+    # Cleanup handlers for abnormal exit
+    # ------------------------------------------------------------------
+
+    def _install_cleanup_handlers(self) -> None:
+        """Install signal and atexit handlers to close the MLflow run on
+        abnormal exit (SIGTERM, SIGINT, interpreter shutdown).
+
+        These are best-effort: if the process is SIGKILL'd, the run will
+        remain in RUNNING state on the MLflow server until manually closed.
+        Signal handlers can only be installed from the main thread; when
+        called from a worker thread only atexit is registered.
+        """
+
+        def _close_run() -> None:
+            if self._util is not None and self._run_id is not None:
+                try:
+                    self._util.end_run(self._run_id, status="FAILED")
+                except Exception:
+                    pass  # best-effort cleanup
+
+        def _handle_sigterm(signum: int, frame: Any) -> None:
+            _close_run()
+            # Restore original handler and re-raise so the process exits.
+            orig = self._original_sigterm
+            if callable(orig):
+                orig(signum, frame)
+            else:
+                signal.signal(signal.SIGTERM, signal.SIG_DFL)
+                os.kill(os.getpid(), signal.SIGTERM)
+
+        def _handle_sigint(signum: int, frame: Any) -> None:
+            _close_run()
+            # Restore original handler and re-raise for KeyboardInterrupt.
+            orig = self._original_sigint
+            if callable(orig):
+                orig(signum, frame)
+            else:
+                signal.signal(signal.SIGINT, signal.SIG_DFL)
+                os.kill(os.getpid(), signal.SIGINT)
+
+        try:
+            self._original_sigterm = signal.getsignal(signal.SIGTERM)
+            self._original_sigint = signal.getsignal(signal.SIGINT)
+            signal.signal(signal.SIGTERM, _handle_sigterm)
+            signal.signal(signal.SIGINT, _handle_sigint)
+        except (ValueError, OSError):
+            # Not in main thread — signal handlers unavailable, rely on atexit.
+            pass
+        if not self._atexit_registered:
+            atexit.register(_close_run)
+            self._atexit_registered = True
+
+    def _remove_cleanup_handlers(self) -> None:
+        """Remove cleanup handlers after normal run completion."""
+        if self._original_sigterm is not None or self._original_sigint is not None:
+            try:
+                if self._original_sigterm is not None:
+                    signal.signal(signal.SIGTERM, self._original_sigterm)
+                if self._original_sigint is not None:
+                    signal.signal(signal.SIGINT, self._original_sigint)
+            except (ValueError, OSError):
+                pass  # not in main thread
+        # atexit cannot be unregistered, but _cleanup is idempotent
+        # (checks _run_id which is None after after_run).
 
     # ------------------------------------------------------------------
     # Checkpoint handling
@@ -241,24 +324,30 @@ class MLflowLoggerCallback(UserCallback):
     ) -> None:
         """Handle checkpoint based on strategy."""
         if self._save_checkpoints == "all":
-            step = metrics[0].get("training_iteration", 0) if metrics else 0
-            self._upload_checkpoint(checkpoint, f"step_{step}")
+            self._upload_checkpoint(checkpoint, f"step_{self._step_counter}")
         elif self._save_checkpoints == "best":
             if metrics and self._checkpoint_metric:
                 metric_value = metrics[0].get(self._checkpoint_metric)
                 if metric_value is not None and self._is_better(metric_value):
-                    self._best_metric_value = metric_value
+                    self._best_metric_value = float(metric_value)
                     self._upload_checkpoint(checkpoint, "best")
         elif self._save_checkpoints == "last":
             self._last_checkpoint = checkpoint
 
-    def _is_better(self, new_value: float) -> bool:
+    def _is_better(self, new_value: Any) -> bool:
         """Check if new metric value is better than current best."""
+        try:
+            new_float = float(new_value)
+        except (ValueError, TypeError):
+            logger.debug(
+                "Cannot convert checkpoint metric value '%s' to float", new_value
+            )
+            return False
         if self._best_metric_value is None:
             return True
         if self._checkpoint_metric_mode == "min":
-            return new_value < self._best_metric_value
-        return new_value > self._best_metric_value
+            return new_float < self._best_metric_value
+        return new_float > self._best_metric_value
 
     def _upload_checkpoint(self, checkpoint: "Checkpoint", label: str) -> None:
         """Upload checkpoint as MLflow artifact."""
