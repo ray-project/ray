@@ -455,7 +455,6 @@ class PhysicalOperator(Operator):
         self._id = str(uuid.uuid4())
         # Initialize metrics after data_context is set
         self._metrics = OpRuntimeMetrics(self)
-        self._block_ref_counter: Optional[BlockRefCounter] = None
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")

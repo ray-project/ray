@@ -70,6 +70,7 @@ from ray.data._internal.util import MiB
 from ray.data.block import BlockAccessor, BlockMetadataWithSchema, TaskExecWorkerStats
 from ray.data.context import EXECUTION_CALLBACKS_ENV_VAR, DataContext
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.conftest import noop_counter
 
 
 def mock_resource_manager(
@@ -125,7 +126,7 @@ def test_build_streaming_topology(verbose_progress, ray_start_regular_shared):
         DataContext.get_current(),
     )
     topo = build_streaming_topology(
-        o3, ExecutionOptions(verbose_progress=verbose_progress)
+        o3, ExecutionOptions(verbose_progress=verbose_progress), noop_counter()
     )
     assert len(topo) == 3, topo
     assert o1 in topo, topo
@@ -155,7 +156,9 @@ def test_disallow_non_unique_operators(ray_start_regular_shared):
         DataContext.get_current(),
     )
     with pytest.raises(ValueError):
-        build_streaming_topology(o4, ExecutionOptions(verbose_progress=True))
+        build_streaming_topology(
+            o4, ExecutionOptions(verbose_progress=True), noop_counter()
+        )
 
 
 def _make_disabled_guard() -> MagicMock:
@@ -180,7 +183,9 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
         o1,
         DataContext.get_current(),
     )
-    topo = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
+    topo = build_streaming_topology(
+        o2, ExecutionOptions(verbose_progress=True), noop_counter()
+    )
 
     # Test processing output bundles.
     assert len(topo[o1].output_queue) == 0, topo
@@ -229,7 +234,9 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
         o2,
         DataContext.get_current(),
     )
-    topo = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
+    topo = build_streaming_topology(
+        o3, ExecutionOptions(verbose_progress=True), noop_counter()
+    )
 
     o3.mark_execution_finished()
     o2.mark_execution_finished = MagicMock()
@@ -254,7 +261,9 @@ def test_update_operator_states_drains_upstream(ray_start_regular_shared):
         o2,
         DataContext.get_current(),
     )
-    topo = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
+    topo = build_streaming_topology(
+        o3, ExecutionOptions(verbose_progress=True), noop_counter()
+    )
 
     # First, populate the upstream output queues by processing some tasks
     process_completed_tasks(topo, [], 0, _make_disabled_guard())
@@ -299,7 +308,7 @@ def test_get_eligible_operators_to_run(ray_start_regular_shared):
         DataContext.get_current(),
         name="O3",
     )
-    topo = build_streaming_topology(o3, opts)
+    topo = build_streaming_topology(o3, opts, noop_counter())
 
     resource_manager = mock_resource_manager(
         global_limits=ExecutionResources.for_limits(1, 1, 1),
@@ -374,7 +383,7 @@ def test_backpressure_policy_tracking(ray_start_regular_shared):
         DataContext.get_current(),
         name="O2",
     )
-    topo = build_streaming_topology(o2, opts)
+    topo = build_streaming_topology(o2, opts, noop_counter())
 
     # Add input to o2's input queue so it becomes eligible
     topo[o1].output_queue.append(make_ref_bundle("dummy1"))
@@ -452,7 +461,7 @@ def test_output_backpressure_policy_tracking(ray_start_regular_shared):
         DataContext.get_current(),
         name="O2",
     )
-    topo = build_streaming_topology(o2, opts)
+    topo = build_streaming_topology(o2, opts, noop_counter())
 
     # Create mock backpressure policies for output limiting with name property
     class LimitingPolicy:
@@ -527,7 +536,7 @@ def test_process_completed_tasks_unblocks_when_non_resource_budget_policy_zeros_
         DataContext.get_current(),
         name="O2",
     )
-    topo = build_streaming_topology(o2, ExecutionOptions())
+    topo = build_streaming_topology(o2, ExecutionOptions(), noop_counter())
 
     resource_manager = ResourceManager(
         topo,
@@ -576,7 +585,7 @@ def test_summary_str_backpressure_policies(ray_start_regular_shared):
         DataContext.get_current(),
         name="O2",
     )
-    topo = build_streaming_topology(o2, opts)
+    topo = build_streaming_topology(o2, opts, noop_counter())
 
     resource_manager = mock_resource_manager()
 
@@ -681,7 +690,7 @@ def test_select_ops_to_run(ray_start_regular_shared):
         # Case 1: Should pick the `o4` since it has throttling disabled
         _mock.return_value = [o1, o2, o3, o4]
 
-        topo = build_streaming_topology(o4, opts)
+        topo = build_streaming_topology(o4, opts, noop_counter())
 
         selected = select_operator_to_run(
             topo,
@@ -696,7 +705,7 @@ def test_select_ops_to_run(ray_start_regular_shared):
         # Case 2: Should pick the `o1` since it has lowest object store usage
         _mock.return_value = [o1, o2, o3]
 
-        topo = build_streaming_topology(o3, opts)
+        topo = build_streaming_topology(o3, opts, noop_counter())
 
         selected = select_operator_to_run(
             topo,
@@ -749,7 +758,7 @@ def test_debug_dump_topology(ray_start_regular_shared):
         o2,
         DataContext.get_current(),
     )
-    topo = build_streaming_topology(o3, opt)
+    topo = build_streaming_topology(o3, opt, noop_counter())
     resource_manager = ResourceManager(
         topo,
         ExecutionOptions(),
@@ -869,7 +878,7 @@ class GetOutputBlockingTest(unittest.TestCase):
         """num_waiting_consumers is incremented/decremented by get_output_blocking."""
         o1 = InputDataBuffer(ray.data.DataContext.get_current(), [])
         o2 = LimitOperator(1, o1, ray.data.DataContext.get_current())
-        topo = build_streaming_topology(o2, ExecutionOptions())
+        topo = build_streaming_topology(o2, ExecutionOptions(), noop_counter())
         state = topo[o2]
 
         assert state.num_waiting_consumers == 0
@@ -903,7 +912,7 @@ class GetOutputBlockingTest(unittest.TestCase):
         For example, this happens for multiple streaming_split iterators."""
         o1 = InputDataBuffer(ray.data.DataContext.get_current(), [])
         o2 = LimitOperator(1, o1, ray.data.DataContext.get_current())
-        topo = build_streaming_topology(o2, ExecutionOptions())
+        topo = build_streaming_topology(o2, ExecutionOptions(), noop_counter())
         state = topo[o2]
 
         def blocking_consumer():
@@ -1230,7 +1239,9 @@ def test_create_topology_metadata():
     executor = StreamingExecutor(DataContext.get_current())
 
     # Initialize the topology on the executor
-    executor._topology = build_streaming_topology(o3, ExecutionOptions())
+    executor._topology = build_streaming_topology(
+        o3, ExecutionOptions(), noop_counter()
+    )
 
     # Call the _dump_dag_structure method
     op_to_id = {
@@ -1293,7 +1304,9 @@ def test_create_topology_metadata_with_sub_stages():
 
     # Create the executor and set up topology
     executor = StreamingExecutor(DataContext.get_current())
-    executor._topology = build_streaming_topology(o2, ExecutionOptions())
+    executor._topology = build_streaming_topology(
+        o2, ExecutionOptions(), noop_counter()
+    )
 
     # Get the DAG structure
     op_to_id = {

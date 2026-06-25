@@ -21,6 +21,7 @@ from ray.data._internal.execution.streaming_executor_state import (
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.conftest import noop_counter
 
 
 def test_physical_operator_tracks_output_dependencies():
@@ -125,7 +126,7 @@ def test_does_not_double_count_usage_from_union():
     input1 = PhysicalOperator("op1", [], DataContext.get_current())
     input2 = PhysicalOperator("op2", [], DataContext.get_current())
     union_op = UnionOperator(DataContext.get_current(), input1, input2)
-    topology = build_streaming_topology(union_op, ExecutionOptions())
+    topology = build_streaming_topology(union_op, ExecutionOptions(), noop_counter())
 
     # Create a resource manager.
     total_resources = ExecutionResources(cpu=0, object_store_memory=2)
@@ -188,7 +189,7 @@ def test_per_input_inqueue_attribution_for_union():
 
     options = ExecutionOptions()
     options.preserve_order = True
-    topology = build_streaming_topology(union_op, options)
+    topology = build_streaming_topology(union_op, options, noop_counter())
 
     # Create a resource manager.
     total_resources = ExecutionResources(cpu=0, object_store_memory=200)
