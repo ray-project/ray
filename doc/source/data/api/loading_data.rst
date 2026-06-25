@@ -338,6 +338,11 @@ Unity Catalog
 
    DatabricksUnityCatalog
 
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
+
    ReaderFormat
 
 Video
