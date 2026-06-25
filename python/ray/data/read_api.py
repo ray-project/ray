@@ -3387,7 +3387,7 @@ def from_daft(df: "daft.DataFrame") -> Dataset:
     from packaging.version import parse as parse_version
 
     if parse_version(daft.__version__) < parse_version("0.7.0"):
-        raise ImportError(
+        raise RuntimeError(
             f"ray.data.from_daft requires daft >= 0.7.0, but found {daft.__version__}. "
             "Please upgrade daft via 'pip install -U daft'."
         )
