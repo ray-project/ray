@@ -1927,6 +1927,54 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBulkPeekAfterEofReturnsEof) {
   manager_.TryDelObjectRefStream(generator_id);
 }
 
+TEST_F(TaskManagerTest, TestObjectRefStreamPeekedEofSentinelNotOverReleasedOnDelete) {
+  // A peeked EOF sentinel must be released exactly once at teardown; a double
+  // release would free a consumer's still-held peeked ref.
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto eof_id = ObjectID::FromIndex(spec.TaskId(), 3);
+
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}));
+
+  // Peek past the produced object (before EOF is marked) so the EOF sentinel is
+  // temporarily owned by the stream.
+  auto peeked = manager_.PeekObjectRefStreamN(generator_id, 3);
+  ASSERT_EQ(peeked.size(), 3);
+  ASSERT_EQ(peeked[1].first, eof_id);
+
+  // Simulate the consumer retaining the peeked sentinel ref. PeekObjectRefStreamN
+  // hands back ObjectRefs without skip_adding_local_ref, so each peeked ref adds
+  // its own consumer-side local reference on top of the owner-side one.
+  reference_counter_->AddLocalReference(eof_id, "");
+  ASSERT_TRUE(reference_counter_->HasReference(eof_id));
+
+  CompletePendingStreamingTask(
+      spec, caller_address, /*num_streaming_generator_returns=*/1);
+
+  // Tearing down the stream releases owner-side refs for unconsumed items. The
+  // consumer's reference on the sentinel must survive.
+  manager_.TryDelObjectRefStream(generator_id);
+  ASSERT_TRUE(reference_counter_->HasReference(eof_id))
+      << "EOF sentinel was over-released at stream teardown, freeing a "
+         "consumer-held peeked reference.";
+
+  reference_counter_->RemoveLocalReference(eof_id, nullptr);
+}
+
 TEST_F(TaskManagerTest, TestObjectRefStreamPeekAfterEofReturnsEof) {
   auto spec =
       CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);

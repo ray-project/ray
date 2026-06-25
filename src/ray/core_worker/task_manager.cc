@@ -109,7 +109,12 @@ std::vector<ObjectID> ObjectRefStream::PopUnconsumedItems() {
     // End of stream index is never consumed by a caller
     // so we should add it here.
     const auto &object_id = GetObjectRefAtIndex(end_of_stream_index_);
-    unconsumed_ids.push_back(object_id);
+    // Skip if already temp-owned (e.g. peeked before EOF); the loop below
+    // releases it. The sentinel holds a single ref, so listing it twice would
+    // over-release and free a consumer's still-live peeked ref.
+    if (temporarily_owned_refs_.find(object_id) == temporarily_owned_refs_.end()) {
+      unconsumed_ids.push_back(object_id);
+    }
   }
 
   // Temporarily owned refs are not consumed.
