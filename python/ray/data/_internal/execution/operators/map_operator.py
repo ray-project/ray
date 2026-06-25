@@ -836,7 +836,9 @@ def _map_task(
             blocks_iter = (
                 _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
             )
-            return map_transformer.apply_transform(blocks_iter, ctx, op_stats_reporter)
+            return map_transformer.apply_transform(
+                blocks_iter, ctx, op_stats_reporter.report
+            )
 
         if retry_on:
             block_iter = iterate_with_retry(
