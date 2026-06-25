@@ -4,7 +4,6 @@ import copy
 import functools
 import logging
 import math
-import pickle
 import time
 from abc import ABC, abstractmethod
 from dataclasses import replace
@@ -32,7 +31,7 @@ if TYPE_CHECKING:
 
 import ray
 from ray import ObjectRef
-from ray._raylet import ObjectRefGenerator, StreamingGeneratorStats
+from ray._raylet import ObjectRefGenerator
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     ComputeStrategy,
@@ -72,7 +71,11 @@ from ray.data._internal.execution.operators.map_transformer import (
     CustomOpStatsReporter,
     MapTransformer,
 )
-from ray.data._internal.execution.util import memory_string, merge_label_selector
+from ray.data._internal.execution.util import (
+    memory_string,
+    merge_label_selector,
+    yield_block_with_stats,
+)
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import MemoryProfiler, iterate_with_retry
 from ray.data.block import (
@@ -854,37 +857,32 @@ def _map_task(
                 # Finish processing before yielding the block!
                 blk_exec_stats_builder.finish()
 
-                # Yield block and retrieve its Ray object serialization timing
-                gen_stats: StreamingGeneratorStats = yield block
-
-                exec_stats = blk_exec_stats_builder.build(
-                    block_ser_time_s=(
-                        gen_stats.object_creation_dur_s if gen_stats else None
-                    ),
-                    udf_time_s=map_transformer.udf_time_s(reset=True),
-                    task_idx=ctx.task_idx,
-                )
-
-                # NOTE: This tracks task duration up to this point, though we're primarily
-                #       interested in task total duration
-                # TODO figure out a better way to track task total duration
-                task_dur_s = time.perf_counter() - task_start_s
-
-                bm = BlockMetadataWithSchema.from_metadata(
-                    replace(
-                        block_meta,
-                        exec_stats=exec_stats,
-                        task_exec_stats=TaskExecWorkerStats(
-                            task_wall_time_s=task_dur_s,
-                            max_uss_bytes=profiler.estimate_max_uss(),
-                            # Reported by a producing transform through the
-                            # per-task reporter; None if the op reports nothing.
-                            custom_op_stats=op_stats_reporter.get_stats(),
+                def build_metadata(block_ser_time_s):
+                    exec_stats = blk_exec_stats_builder.build(
+                        block_ser_time_s=block_ser_time_s,
+                        udf_time_s=map_transformer.udf_time_s(reset=True),
+                        task_idx=ctx.task_idx,
+                    )
+                    # NOTE: This tracks task duration up to this point, though we're
+                    # primarily interested in task total duration.
+                    # TODO figure out a better way to track task total duration
+                    task_dur_s = time.perf_counter() - task_start_s
+                    return BlockMetadataWithSchema.from_metadata(
+                        replace(
+                            block_meta,
+                            exec_stats=exec_stats,
+                            task_exec_stats=TaskExecWorkerStats(
+                                task_wall_time_s=task_dur_s,
+                                max_uss_bytes=profiler.estimate_max_uss(),
+                                # Reported by producing transforms through the
+                                # per-task reporter; empty if the op reports nothing.
+                                custom_op_stats=op_stats_reporter.get_stats(),
+                            ),
                         ),
-                    ),
-                    schema=block_schema if not yielded_schema else None,
-                )
-                yield pickle.dumps(bm)
+                        schema=block_schema if not yielded_schema else None,
+                    )
+
+                yield from yield_block_with_stats(block, build_metadata)
 
                 # Reset trackers
                 yielded_schema = True
