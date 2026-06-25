@@ -322,12 +322,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             # the original URI. The extension is preserved so is_zip_uri /
             # is_jar_uri keep working.
             if len(package_name) > _MAX_PACKAGE_NAME_LEN:
-                if package_name.endswith(".tar.gz"):
-                    suffix = ".tar.gz"
-                elif package_name.endswith(".tar.bz2"):
-                    suffix = ".tar.bz2"
-                else:
-                    suffix = Path(package_name).suffix
+                suffix = compound_ext or Path(package_name).suffix
                 digest = hashlib.sha1(pkg_uri.encode("utf-8")).hexdigest()
                 package_name = f"{protocol.value}_{digest}{suffix}"
     else:
