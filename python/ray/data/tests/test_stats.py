@@ -195,7 +195,6 @@ def test_block_exec_stats_max_uss_bytes_without_polling(ray_start_regular_shared
 
 
 def test_map_transformer_custom_op_stats():
-    """A reporting transform reports per-task custom stats via the sink."""
     expected = _ReadTaskStats(num_rows=4, num_columns=1)
 
     def set_stats(blocks, ctx, op_stats_sink):
