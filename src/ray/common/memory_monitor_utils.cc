@@ -360,11 +360,20 @@ std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetCGroupMemoryBytes(
       }
     }
     if (unlimited) {
-      auto [host_swap_total, host_swap_used] = GetHostSwapBytes(proc_dir);
+      auto [host_swap_total, _host_swap_used] = GetHostSwapBytes(proc_dir);
       if (host_swap_total > 0) {
         total_bytes += host_swap_total;
-        if (used_bytes != MemoryMonitorInterface::kNull && host_swap_used > 0) {
-          used_bytes += host_swap_used;
+        // Per-cgroup swap usage from memory.swap.current — host SwapTotal-SwapFree
+        // would pick up other workloads' swap and inflate Ray's view.
+        if (used_bytes != MemoryMonitorInterface::kNull &&
+            std::filesystem::exists(cgroupV2MemorySwapCurrentPath)) {
+          std::ifstream swap_cur_ifs(cgroupV2MemorySwapCurrentPath,
+                                     std::ios::in | std::ios::binary);
+          int64_t swap_used_bytes = 0;
+          swap_cur_ifs >> swap_used_bytes;
+          if (swap_used_bytes > 0) {
+            used_bytes += swap_used_bytes;
+          }
         }
       }
     }

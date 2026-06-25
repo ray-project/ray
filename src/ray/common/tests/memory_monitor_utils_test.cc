@@ -197,14 +197,18 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV2SwapIgnoredWhenFlagDisabled) {
 TEST_F(MemoryMonitorUtilsTest, TestCgroupV2UnlimitedSwapFallsBackToHostSwap) {
   // swap.max == "max" means the cgroup imposes no swap cap, so the practical
   // limit is whatever the host has. Mirrors the Python helper in
-  // ray._common.utils.get_cgroup_aware_swap_memory.
+  // ray._common.utils.get_cgroup_aware_swap_memory. Per-cgroup swap usage
+  // comes from memory.swap.current, NOT host SwapTotal-SwapFree — otherwise
+  // other workloads' swap consumption would inflate Ray's view and trigger
+  // the OOM monitor early.
   SetCountSwapFlag(true);
   int64_t cgroup_total_bytes = 4LL * 1024 * 1024 * 1024;    // 4 GiB
   int64_t cgroup_current_bytes = 2LL * 1024 * 1024 * 1024;  // 2 GiB
+  int64_t cgroup_swap_current_bytes = 512LL * 1024 * 1024;  // 512 MiB
   int64_t mem_total_kb = 16 * 1024 * 1024;                  // unused but required
   int64_t mem_available_kb = 4 * 1024 * 1024;               // unused but required
   int64_t swap_total_kb = 8 * 1024 * 1024;                  // 8 GiB host swap
-  int64_t swap_free_kb = 6 * 1024 * 1024;                   // 2 GiB host swap used
+  int64_t swap_free_kb = 6 * 1024 * 1024;                   // 2 GiB host-wide used
 
   std::string cgroup_dir = MockCgroupv2MemoryUsage(cgroup_total_bytes,
                                                    cgroup_current_bytes,
@@ -214,7 +218,7 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV2UnlimitedSwapFallsBackToHostSwap) {
                                                    /*active_file_bytes=*/0);
   MockCgroupv2Swap(cgroup_dir,
                    /*swap_max_bytes=*/std::nullopt,  // writes "max"
-                   /*swap_current_bytes=*/0);
+                   cgroup_swap_current_bytes);
   std::string proc_dir =
       MockProcMeminfo(mem_total_kb, mem_available_kb, swap_total_kb, swap_free_kb);
 
@@ -224,20 +228,24 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV2UnlimitedSwapFallsBackToHostSwap) {
                                                proc_dir);
 
   ASSERT_EQ(total_bytes, cgroup_total_bytes + swap_total_kb * 1024);
-  ASSERT_EQ(used_bytes, cgroup_current_bytes + (swap_total_kb - swap_free_kb) * 1024);
+  // Used must reflect the cgroup's own swap.current (512 MiB), not the
+  // host-wide 2 GiB that includes other workloads.
+  ASSERT_EQ(used_bytes, cgroup_current_bytes + cgroup_swap_current_bytes);
 }
 
 TEST_F(MemoryMonitorUtilsTest, TestCgroupV2OverflowSwapFallsBackToHostSwap) {
   // Numeric swap.max that overflows int64 (e.g. ULLONG_MAX written by the
   // kernel as the "unlimited" sentinel on some configs) — same semantics as
-  // the literal "max": fall back to host swap.
+  // the literal "max": fall back to host swap for the cap, but per-cgroup
+  // memory.swap.current for usage.
   SetCountSwapFlag(true);
   int64_t cgroup_total_bytes = 4LL * 1024 * 1024 * 1024;
   int64_t cgroup_current_bytes = 2LL * 1024 * 1024 * 1024;
+  int64_t cgroup_swap_current_bytes = 256LL * 1024 * 1024;  // 256 MiB
   int64_t mem_total_kb = 16 * 1024 * 1024;
   int64_t mem_available_kb = 4 * 1024 * 1024;
   int64_t swap_total_kb = 8 * 1024 * 1024;
-  int64_t swap_free_kb = 8 * 1024 * 1024;
+  int64_t swap_free_kb = 4 * 1024 * 1024;  // 4 GiB host-wide used
 
   std::string cgroup_dir = MockCgroupv2MemoryUsage(cgroup_total_bytes,
                                                    cgroup_current_bytes,
@@ -249,7 +257,7 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV2OverflowSwapFallsBackToHostSwap) {
   // which we treat the same as the literal "max".
   MockCgroupv2Swap(cgroup_dir,
                    /*swap_max_str=*/"18446744073709551615",
-                   /*swap_current_bytes=*/0);
+                   cgroup_swap_current_bytes);
   std::string proc_dir =
       MockProcMeminfo(mem_total_kb, mem_available_kb, swap_total_kb, swap_free_kb);
 
@@ -259,7 +267,7 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV2OverflowSwapFallsBackToHostSwap) {
                                                proc_dir);
 
   ASSERT_EQ(total_bytes, cgroup_total_bytes + swap_total_kb * 1024);
-  ASSERT_EQ(used_bytes, cgroup_current_bytes);  // host swap fully free
+  ASSERT_EQ(used_bytes, cgroup_current_bytes + cgroup_swap_current_bytes);
 }
 
 TEST_F(MemoryMonitorUtilsTest, TestCgroupV1MemswAddedToTotalAndUsed) {
