@@ -3219,6 +3219,30 @@
       cluster:
         cluster_compute: object_store_gce.yaml
 
+- name: callback_throughput
+  python: "3.10"
+  group: core-scalability-test
+  working_dir: benchmarks
+
+  frequency: nightly
+  team: core
+  env: aws_perf
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+    cluster_compute: object_store/callback_throughput.yaml
+
+  run:
+    timeout: 600
+    script: python object_store/test_callback_throughput.py
+    wait_for_nodes:
+      num_nodes: 101
+
+  variations:
+    - __suffix__: aws
+
 - name: small_objects
   python: "3.10"
   group: core-scalability-test
