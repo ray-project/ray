@@ -38,13 +38,13 @@ MapTransformFnData = Union[Block, Row, DataBatch]
 
 
 class CustomOpStatsReporter:
-    """Per-task reporter a transform calls to report its :class:`CustomOpStats`.
+    """Per-task reporter that carries a transform's :class:`CustomOpStats`.
 
-    ``_map_task`` creates one per task and threads it into the transform chain,
-    then reads :attr:`stats` after each output block to stamp onto block
-    metadata. A producing transform calls ``op_stats_reporter.report(stats)``
-    before yielding the blocks the stats describe. Created fresh per task, so
-    there is no cross-task state to reset.
+    ``_map_task`` creates one per task and threads it into the transform chain.
+    A producing transform calls ``op_stats_reporter.report(stats)`` to store the custom stats in the reporter
+    before yielding output blocks.
+    ``_map_task`` then reads :attr:`stats` after each output block and stamps it as part of TaskExecWorkerStats
+    onto the block metadata.
     """
 
     def __init__(self) -> None:
