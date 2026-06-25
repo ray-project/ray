@@ -137,5 +137,28 @@ class TestIsOurHaproxy:
         assert api._is_our_haproxy(2_000_000_000) is False
 
 
+class TestCountHaproxyProcesses:
+    """`count_haproxy_processes` scans /proc for processes whose cmdline carries
+    our config path, so the count spans live, draining, and leaked workers."""
+
+    @pytest.mark.skipif(
+        not sys.platform.startswith("linux"), reason="/proc is Linux-only"
+    )
+    def test_counts_matching_processes(self, api):
+        # Point config_file_path at a real token in this process's cmdline so at
+        # least this process is counted.
+        with open(f"/proc/{os.getpid()}/cmdline", "rb") as f:
+            argv = [t for t in f.read().split(b"\0") if t]
+        api.config_file_path = argv[0].decode()
+        assert api.count_haproxy_processes() >= 1
+
+    @pytest.mark.skipif(
+        not sys.platform.startswith("linux"), reason="/proc is Linux-only"
+    )
+    def test_returns_zero_when_no_match(self, api):
+        api.config_file_path = "/tmp/not-in-any-cmdline/haproxy.cfg"
+        assert api.count_haproxy_processes() == 0
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
