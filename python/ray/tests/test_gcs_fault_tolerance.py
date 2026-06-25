@@ -899,7 +899,7 @@ def test_raylet_self_terminates_when_gcs_unreachable(
     wait_for_condition(lambda: not check_raylet_healthy(), timeout=40)
 
 
-
+def test_session_name(ray_start_cluster):
     # Kill GCS and check that raylets kill themselves when not backed by Redis,
     # and stay alive when backed by Redis.
     # Raylets should kill themselves due to cluster ID mismatch in the

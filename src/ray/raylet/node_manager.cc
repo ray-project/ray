@@ -469,6 +469,27 @@ void NodeManager::RegisterGcs() {
   last_gcs_liveness_check_success_ms_ = clock_.SteadyNowMillis();
   periodical_runner_->RunFnPeriodically(
       [this] {
+        // Self-terminate if GCS has been unreachable for longer than the reconnect
+        // timeout. This is evaluated at the top of the periodic runner (not only in
+        // the AsyncCheckAlive callback) so it fires promptly every self-check
+        // interval, instead of waiting for an in-flight check to hit its own 30s
+        // timeout.
+        const int64_t reconnect_timeout_s =
+            RayConfig::instance().gcs_failover_worker_reconnect_timeout();
+        if (reconnect_timeout_s > 0) {
+          const int64_t unreachable_ms =
+              clock_.SteadyNowMillis() - last_gcs_liveness_check_success_ms_;
+          if (unreachable_ms >= reconnect_timeout_s * 1000) {
+            RAY_LOG(FATAL)
+                << "This node has been unable to confirm its liveness with the GCS "
+                << "for " << unreachable_ms / 1000 << "s (>= "
+                << "gcs_failover_worker_reconnect_timeout=" << reconnect_timeout_s
+                << "s). The GCS is likely up but unreachable from this node. "
+                << "Self-terminating so the node can be reclaimed instead of "
+                << "lingering as an un-Ready zombie.";
+          }
+        }
+
         // Don't allow overlapping checks.
         if (gcs_liveness_check_in_flight_) {
           return;
@@ -498,29 +519,13 @@ void NodeManager::RegisterGcs() {
                     << "GCS is not backed by a DB and restarted or there is data loss "
                     << "in the DB. Local cluster ID: " << gcs_client_.GetClusterId();
               }
-              // Otherwise GCS is unreachable. Self-terminate if we've been unable to
-              // confirm our liveness for longer than the reconnect timeout.
-              const int64_t reconnect_timeout_s =
-                  RayConfig::instance().gcs_failover_worker_reconnect_timeout();
-              if (reconnect_timeout_s <= 0) {
-                return;
-              }
-              const int64_t unreachable_ms =
-                  clock_.SteadyNowMillis() - last_gcs_liveness_check_success_ms_;
-              if (unreachable_ms >= reconnect_timeout_s * 1000) {
-                RAY_LOG(FATAL)
-                    << "This node has been unable to confirm its liveness with the GCS "
-                    << "for " << unreachable_ms / 1000 << "s (>= "
-                    << "gcs_failover_worker_reconnect_timeout=" << reconnect_timeout_s
-                    << "s). The GCS is likely up but unreachable from this node. "
-                    << "Self-terminating so the node can be reclaimed instead of "
-                    << "lingering as an un-Ready zombie. Last status: " << status;
-              }
+              // Otherwise GCS is unreachable. We don't reset the success timer; if this
+              // persists, the timeout check at the top of the periodic runner will
+              // self-terminate the node.
               RAY_LOG(WARNING)
-                  << "Failed to confirm node liveness with the GCS; will self-terminate "
-                  << "if this persists for "
-                  << reconnect_timeout_s - unreachable_ms / 1000 << "s more. Status: "
-                  << status;
+                  << "Failed to confirm node liveness with the GCS. Will self-terminate "
+                  << "if GCS stays unreachable for gcs_failover_worker_reconnect_timeout."
+                  << " Status: " << status;
             });
       },
       RayConfig::instance().raylet_liveness_self_check_interval_ms(),
