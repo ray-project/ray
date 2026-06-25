@@ -260,7 +260,7 @@ class TestResourceManager:
                 obj_store_mem_pending_task_outputs=mock_pending_task_outputs[op],
             )
 
-        counter = StubBlockRefCounter(add_object_out_of_scope_callback=lambda *_: True)
+        counter = StubBlockRefCounter()
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
@@ -761,7 +761,9 @@ class TestResourceManager:
             options=options,
             get_total_resources=lambda: cluster_resources,
             data_context=DataContext.get_current(),
-            block_ref_counter=BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+            block_ref_counter=BlockRefCounter(
+                add_object_out_of_scope_callback=lambda *_: True
+            ),
         )
         resource_manager.update_usages()
 
