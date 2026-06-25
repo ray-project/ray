@@ -57,7 +57,10 @@ def mock_map_op(
         compute_strategy=compute_strategy,
         name=name,
     )
-    op.start(ExecutionOptions(), BlockRefCounter())
+    op.start(
+        ExecutionOptions(),
+        BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+    )
     return op
 
 
@@ -102,7 +105,10 @@ def mock_all_to_all_op(input_op, name="MockShuffle"):
         data_context=DataContext.get_current(),
         name=name,
     )
-    op.start(ExecutionOptions(), BlockRefCounter())
+    op.start(
+        ExecutionOptions(),
+        BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+    )
     return op
 
 
@@ -120,7 +126,7 @@ def _resource_manager_for_limits_only_test(
         options,
         get_total_resources,
         DataContext.get_current(),
-        BlockRefCounter(),
+        BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
     )
 
 
@@ -285,7 +291,7 @@ class TestResourceManager:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            BlockRefCounter(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         resource_manager._op_resource_allocator = None
         resource_manager.update_usages()
@@ -348,7 +354,7 @@ class TestResourceManager:
             ExecutionOptions(),
             MagicMock(return_value=ExecutionResources.zero()),
             DataContext.get_current(),
-            BlockRefCounter(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         ray.data.DataContext.get_current()._max_num_blocks_in_streaming_gen_buffer = 1
         ray.data.DataContext.get_current().target_max_block_size = 2
@@ -458,7 +464,7 @@ class TestResourceManager:
             ExecutionOptions(),
             MagicMock(return_value=ExecutionResources.zero()),
             DataContext.get_current(),
-            BlockRefCounter(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
 
         resource_manager.update_usages()
@@ -495,7 +501,7 @@ class TestResourceManager:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            BlockRefCounter(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
 
@@ -558,7 +564,7 @@ class TestResourceManager:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            BlockRefCounter(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
 
@@ -589,7 +595,7 @@ class TestResourceManager:
             ExecutionOptions(),
             lambda: cluster_resources,
             DataContext.get_current(),
-            BlockRefCounter(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
 
         for op in [o1, o2, o3]:
@@ -658,7 +664,7 @@ class TestResourceManager:
             ExecutionOptions(),
             lambda: ExecutionResources(cpu=10, gpu=0, object_store_memory=1000),
             DataContext.get_current(),
-            BlockRefCounter(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         buf.current_logical_usage = MagicMock(return_value=ExecutionResources.zero())
         buf.running_logical_usage = MagicMock(return_value=ExecutionResources.zero())
@@ -690,7 +696,7 @@ class TestResourceManager:
             ExecutionOptions(),
             lambda: cluster_resources,
             DataContext.get_current(),
-            BlockRefCounter(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
 
         for op in [o1, o2, o3]:
@@ -733,7 +739,7 @@ class TestResourceManager:
                 ExecutionOptions(),
                 MagicMock(return_value=ExecutionResources.zero()),
                 DataContext.get_current(),
-                BlockRefCounter(),
+                BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
             )
 
     def test_topology_rejects_empty_topology(self, restore_data_context):
@@ -743,7 +749,7 @@ class TestResourceManager:
                 ExecutionOptions(),
                 MagicMock(return_value=ExecutionResources.zero()),
                 DataContext.get_current(),
-                BlockRefCounter(),
+                BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
             )
 
     def test_topology_rejects_no_terminal_operator(self, restore_data_context):
@@ -761,7 +767,7 @@ class TestResourceManager:
                 ExecutionOptions(),
                 MagicMock(return_value=ExecutionResources.zero()),
                 DataContext.get_current(),
-                BlockRefCounter(),
+                BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
             )
 
     def test_is_blocking_materializing_op(self, restore_data_context):
@@ -790,7 +796,7 @@ class TestResourceManager:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            BlockRefCounter(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
 
         # Case 1: Shuffle operator itself is blocking materializing
@@ -821,7 +827,7 @@ class TestResourceManager:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            BlockRefCounter(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
 
         # o5's downstream (o6, o7) has no blocking materializing ops
@@ -849,7 +855,9 @@ class TestResourceManager:
             options=options,
             get_total_resources=lambda: cluster_resources,
             data_context=DataContext.get_current(),
-            block_ref_counter=BlockRefCounter(),
+            block_ref_counter=BlockRefCounter(
+                add_object_out_of_scope_callback=lambda *_: True
+            ),
         )
         resource_manager.update_usages()
 
@@ -882,7 +890,7 @@ class TestOutputBackpressureGuard:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            BlockRefCounter(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         guard = OutputBackpressureGuard(topo, resource_manager)
 
@@ -900,7 +908,7 @@ class TestOutputBackpressureGuard:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            BlockRefCounter(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         guard = OutputBackpressureGuard(topo, resource_manager)
 
@@ -928,7 +936,7 @@ class TestOutputBackpressureGuard:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            BlockRefCounter(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         guard = OutputBackpressureGuard(topo, resource_manager)
 
@@ -963,7 +971,7 @@ class TestOutputBackpressureGuard:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            BlockRefCounter(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         guard = OutputBackpressureGuard(topo, resource_manager)
         o3.num_active_tasks = MagicMock(return_value=0)
@@ -994,7 +1002,7 @@ class TestOutputBackpressureGuard:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            BlockRefCounter(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         guard = OutputBackpressureGuard(topo, resource_manager)
 
@@ -1036,7 +1044,7 @@ class TestOutputBackpressureGuard:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            BlockRefCounter(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         assert not resource_manager.op_resource_allocator_enabled()
 
