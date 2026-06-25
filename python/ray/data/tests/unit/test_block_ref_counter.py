@@ -16,20 +16,20 @@ class FakeAddObjectOutOfScopeCallback:
     """Test double for CoreWorker.add_object_out_of_scope_callback.
 
     Records each registered callback keyed by the block's object-ID bytes so a
-    test can fire it explicitly. Set registered=False to simulate an object
+    test can fire it explicitly. Set should_registration_fail=True to simulate an object
     that is already out of scope at registration time.
     """
 
-    def __init__(self, registered: bool = True):
-        self._registered = registered
+    def __init__(self, should_registration_fail: bool = False):
+        self._should_fail = should_registration_fail
         self._callbacks: Dict[bytes, Callable[[bytes], None]] = {}
 
     def __call__(
         self, object_ref: "ray.ObjectRef", callback: Callable[[bytes], None]
     ) -> bool:
-        if self._registered:
+        if not self._should_fail:
             self._callbacks[object_ref.binary()] = callback
-        return self._registered
+        return not self._should_fail
 
     def fire(self, object_ref: "ray.ObjectRef") -> None:
         id_binary = object_ref.binary()
@@ -95,7 +95,7 @@ class TestBlockRefCounterAccounting:
     def test_register_when_object_already_out_of_scope(self):
         """If registration reports the object is already gone, the increment is
         undone immediately so the producer nets to zero."""
-        add_cb = FakeAddObjectOutOfScopeCallback(registered=False)
+        add_cb = FakeAddObjectOutOfScopeCallback(should_registration_fail=True)
         counter = BlockRefCounter(add_object_out_of_scope_callback=add_cb)
 
         counter.on_block_produced(_ref(1), 1, "op_a")

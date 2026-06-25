@@ -30,7 +30,8 @@ def _hold_ref_for(block_ref, sleep_s: float) -> bool:
 
 @pytest.fixture(params=["inlined", "regular"])
 def make_block(request):
-    """Factory for a block ObjectRef, parametrized over the two storage paths.
+    """Factory for a block (ObjectRef, size_bytes), parametrized over the two
+    storage paths.
 
     Ray Core inlines tiny objects in the in-process store and puts larger ones
     in the shared-memory object store; the out-of-scope callback must work for
@@ -38,15 +39,17 @@ def make_block(request):
     an extra reference that would keep the object alive past the test's own ``del``.
     """
 
-    def _make() -> "ray.ObjectRef":
+    def _make() -> tuple["ray.ObjectRef", int]:
         if request.param == "inlined":
-            return ray.put(0)
-        return ray.put(np.zeros(1 * MiB, dtype=np.uint8))
+            data = np.zeros(1, dtype=np.uint8)
+        else:
+            data = np.zeros(1 * MiB, dtype=np.uint8)
+        return ray.put(data), len(data)
 
     return _make
 
 
-def _wait_for_counter(counter, producer_id, expected, timeout_s: float = 10.0):
+def _wait_for_counter(*, counter, producer_id, expected, timeout_s: float = 10.0):
     """Wait until *counter* reports *expected* bytes for *producer_id*.
 
     ``gc.collect()`` runs on each poll so any pending Python-level ObjectRef
@@ -67,13 +70,13 @@ class TestBlockRefCounterLifecycle:
     ):
         """Counter reaches 0 once the only Python ObjectRef is GC'd."""
         counter = BlockRefCounter()
-        ref = make_block()
+        ref, size_bytes = make_block()
 
-        counter.on_block_produced(ref, 1 * MiB, "op_basic")
-        assert counter.get_object_store_memory_usage("op_basic") == 1 * MiB
+        counter.on_block_produced(ref, size_bytes, "op_basic")
+        assert counter.get_object_store_memory_usage("op_basic") == size_bytes
 
         del ref  # last Python ref gone
-        _wait_for_counter(counter, "op_basic", 0)
+        _wait_for_counter(counter=counter, producer_id="op_basic", expected=0)
 
     def test_second_python_ref_keeps_counter_alive(
         self, ray_start_regular_shared, make_block
@@ -84,22 +87,22 @@ class TestBlockRefCounterLifecycle:
         the callback. Only the final ref drop may do so.
         """
         counter = BlockRefCounter()
-        ref1 = make_block()
+        ref1, size_bytes = make_block()
         ref2 = ref1  # second Python ref to the same ObjectID
 
-        counter.on_block_produced(ref1, 1 * MiB, "op_two_refs")
-        assert counter.get_object_store_memory_usage("op_two_refs") == 1 * MiB
+        counter.on_block_produced(ref1, size_bytes, "op_two_refs")
+        assert counter.get_object_store_memory_usage("op_two_refs") == size_bytes
 
         del ref1
         gc.collect()
         time.sleep(_EARLY_FIRE_GRACE_S)  # counter must still be non-zero
 
         assert (
-            counter.get_object_store_memory_usage("op_two_refs") == 1 * MiB
+            counter.get_object_store_memory_usage("op_two_refs") == size_bytes
         ), "Callback fired too early — counter decremented while ref2 was still alive"
 
         del ref2  # last ref gone; callback must now fire
-        _wait_for_counter(counter, "op_two_refs", 0)
+        _wait_for_counter(counter=counter, producer_id="op_two_refs", expected=0)
 
     def test_task_ref_keeps_counter_alive_until_task_completes(
         self, ray_start_regular_shared
@@ -132,7 +135,7 @@ class TestBlockRefCounterLifecycle:
         ), "Callback fired too early: counter decremented while task was still running"
 
         ray.get(task_future)  # task completes; now both refs are gone
-        _wait_for_counter(counter, "op_task", 0)
+        _wait_for_counter(counter=counter, producer_id="op_task", expected=0)
 
 
 if __name__ == "__main__":

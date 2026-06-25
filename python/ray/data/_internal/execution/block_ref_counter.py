@@ -3,6 +3,7 @@ from collections import defaultdict
 from typing import Callable, Dict, Optional
 
 import ray
+from ray._private.worker import global_worker
 
 
 class BlockRefCounter:
@@ -19,6 +20,10 @@ class BlockRefCounter:
             Callable[["ray.ObjectRef", Callable[[bytes], None]], bool]
         ] = None,
     ):
+        if add_object_out_of_scope_callback is None:
+            add_object_out_of_scope_callback = (
+                global_worker.core_worker.add_object_out_of_scope_callback
+            )
         self._add_callback_fn = add_object_out_of_scope_callback
         # IDs of live blocks. Stale callbacks (fired after clear()) check
         # membership here and no-op, preventing negative _bytes_by_producer.
@@ -56,14 +61,7 @@ class BlockRefCounter:
                 self._registered_ids.discard(id_bytes)
                 self._bytes_by_producer[producer_id] -= size_bytes
 
-        add_callback = self._add_callback_fn
-        if add_callback is None:
-            import ray._private.worker
-
-            core_worker = ray._private.worker.global_worker.core_worker  # type: ignore[attr-defined]
-            add_callback = core_worker.add_object_out_of_scope_callback
-
-        registered = add_callback(block_ref, _on_object_freed)
+        registered = self._add_callback_fn(block_ref, _on_object_freed)
         if not registered:
             _on_object_freed(id_binary)
 
