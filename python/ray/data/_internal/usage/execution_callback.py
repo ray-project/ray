@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING, Dict, List, Tuple
 
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.usage.collector import (
-    build_usage_uuid_map,
-    physical_op_name_with_uuid,
+    build_usage_id_map,
+    physical_op_name_with_id,
     record_execution_result,
     record_workload,
 )
@@ -32,14 +32,14 @@ class UsageCallback(ExecutionCallback):
         self._logical_plan = logical_plan
         # Globally unique per-execution id, used for deduplicating executions for usage collection
         self._execution_id = uuid.uuid4().hex
-        # id(logical_op) -> usage_uuid, built at execution start and used to label
+        # id(logical_op) -> usage_id, built at execution start and used to label
         # operators so they reference the workload payload.
-        self._usage_uuid_map: Dict[int, str] = {}
+        self._usage_id_map: Dict[int, str] = {}
 
     def before_execution_starts(self, executor: "StreamingExecutor") -> None:
         try:
             record_workload(self._execution_id, self._logical_plan)
-            self._usage_uuid_map = build_usage_uuid_map(self._logical_plan)
+            self._usage_id_map = build_usage_id_map(self._logical_plan)
         except Exception:
             logger.debug("Usage record_workload failed", exc_info=True)
 
@@ -68,7 +68,7 @@ class UsageCallback(ExecutionCallback):
         if manager is None:
             return []
         issues = (
-            (issue_type, physical_op_name_with_uuid(operator, self._usage_uuid_map))
+            (issue_type, physical_op_name_with_id(operator, self._usage_id_map))
             for issue_type, operator in manager.get_detected_issues()
         )
         # Sort by the issue type's string value, then by the operator name.

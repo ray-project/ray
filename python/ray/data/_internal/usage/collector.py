@@ -48,7 +48,7 @@ class _OpConfig:
 class _LogicalOp:
     """An operator in the plan"""
 
-    usage_uuid: str
+    usage_id: str
     name: str
     config: Optional[_OpConfig] = None
 
@@ -57,7 +57,7 @@ class _LogicalOp:
 class _PlanNode:
     """A node in the anonymized plan tree (one logical operator)."""
 
-    usage_uuid: str
+    usage_id: str
     op: str
     inputs: List["_PlanNode"] = field(default_factory=list)
 
@@ -157,29 +157,29 @@ def record_workload(
         logger.debug("Failed to record workload usage", exc_info=True)
 
 
-def build_usage_uuid_map(logical_plan: "LogicalPlan") -> Dict[int, str]:
-    """Build the ``id(logical_op) -> usage_uuid`` map for a plan.
+def build_usage_id_map(logical_plan: "LogicalPlan") -> Dict[int, str]:
+    """Build the ``id(logical_op) -> usage_id`` map for a plan.
 
-    The UUIDs are computed based on the hash of the (post-order index, anonymized name) tuple. These are
-    used to identify logical ops after anonymization (i.e. MapBatches-<uuid1>, MapBatches-<uuid2>, etc.).
+    The IDs are computed based on the hash of the (post-order index, anonymized name) tuple. These are
+    used to identify logical ops after anonymization (i.e. MapBatches-<id1>, MapBatches-<id2>, etc.).
 
     Short-circuits to an empty map when the user has opted out of usage stats:
-    without a recorded payload there is nothing for the UUIDs to reference.
+    without a recorded payload there is nothing for the IDs to reference.
     """
     if _usage_collection_disabled():
         return {}
     try:
         ordered_logical_ops: List[Tuple[LogicalOperator, str]] = []
         _build_plan(logical_plan.dag, ordered_logical_ops)
-        return {id(op): usage_uuid for op, usage_uuid in ordered_logical_ops}
+        return {id(op): usage_id for op, usage_id in ordered_logical_ops}
     except Exception:
-        logger.debug("Failed to build usage uuid map", exc_info=True)
+        logger.debug("Failed to build usage id map", exc_info=True)
         return {}
 
 
-def physical_op_name_with_uuid(
+def physical_op_name_with_id(
     operator: "PhysicalOperator",
-    usage_uuid_map: Optional[Dict[int, str]] = None,
+    usage_id_map: Optional[Dict[int, str]] = None,
 ) -> str:
     """Anonymized name for a physical op. Fused ops join their constituent logical
     ops with '->' to signal operator fusion. We need physical op name as
@@ -188,21 +188,21 @@ def physical_op_name_with_uuid(
     if not logical_ops:
         return "Unknown"
     return "->".join(
-        _logical_op_name_with_uuid(op, usage_uuid_map) for op in logical_ops
+        _logical_op_name_with_id(op, usage_id_map) for op in logical_ops
     )
 
 
-def _logical_op_name_with_uuid(
+def _logical_op_name_with_id(
     logical_op: LogicalOperator,
-    usage_uuid_map: Optional[Dict[int, str]] = None,
+    usage_id_map: Optional[Dict[int, str]] = None,
 ) -> str:
-    """Logical op is formatted as ``<anonymized_name>-<usage_uuid>``. The usage UUID map is populated before execution starts in the usage callback."""
+    """Logical op is formatted as ``<anonymized_name>-<usage_id>``. The usage ID map is populated before execution starts in the usage callback."""
     name = anonymize_op_name(logical_op)
-    if usage_uuid_map:
-        # Correlate with the UUIDs assigned to the logical ops in the workload plan.
-        usage_uuid = usage_uuid_map.get(id(logical_op))
-        if usage_uuid is not None:
-            return f"{name}-{usage_uuid}"
+    if usage_id_map:
+        # Correlate with the IDs assigned to the logical ops in the workload plan.
+        usage_id = usage_id_map.get(id(logical_op))
+        if usage_id is not None:
+            return f"{name}-{usage_id}"
     return name
 
 
@@ -289,7 +289,7 @@ def _build_plan(
     """Build the plan tree and record logical ops in post-order.
 
     ``memo`` deduplicates shared operator instances (e.g. ``ds.zip(ds)``), so
-    each operator is assigned a single usage_uuid even when reachable via
+    each operator is assigned a single usage_id even when reachable via
     multiple plan branches.
     """
     if memo is None:
@@ -303,9 +303,9 @@ def _build_plan(
         child_plans.append(_build_plan(child, ordered_logical_ops, memo))
 
     name = anonymize_op_name(op)
-    usage_uuid = _make_usage_op_uuid(len(ordered_logical_ops), name)
-    ordered_logical_ops.append((op, usage_uuid))
-    node = _PlanNode(usage_uuid=usage_uuid, op=name, inputs=child_plans)
+    usage_id = _make_usage_op_id(len(ordered_logical_ops), name)
+    ordered_logical_ops.append((op, usage_id))
+    node = _PlanNode(usage_id=usage_id, op=name, inputs=child_plans)
     memo[op_id] = node
     return node
 
@@ -315,11 +315,11 @@ def _build_ops(
 ) -> List[_LogicalOp]:
     """Build the flat logical-op list from the canonical post-order traversal."""
     ops: List[_LogicalOp] = []
-    for op, usage_uuid in ordered_logical_ops:
+    for op, usage_id in ordered_logical_ops:
         name = anonymize_op_name(op)
         ops.append(
             _LogicalOp(
-                usage_uuid=usage_uuid,
+                usage_id=usage_id,
                 name=name,
                 config=_get_op_config(op),
             )
@@ -340,7 +340,7 @@ def _get_op_config(op: LogicalOperator) -> Optional[_OpConfig]:
     return _OpConfig(batch_format="unknown")
 
 
-def _make_usage_op_uuid(index: int, name: str) -> str:
+def _make_usage_op_id(index: int, name: str) -> str:
     return hashlib.sha256(f"{index}:{name}".encode()).hexdigest()[:4]
 
 
