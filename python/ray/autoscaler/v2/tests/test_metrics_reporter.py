@@ -131,7 +131,7 @@ def test_report_nodes_resources():
 
 def test_report_skips_unknown_instance_types():
     """Instances whose type is no longer in the active config (e.g. after a
-    RayWorkerGroup CR is dynamically removed) should be skipped silently
+    worker group is removed from the RayCluster CR) should be skipped silently
     instead of raising KeyError.
     """
     reporter = AutoscalerMetricsReporter(

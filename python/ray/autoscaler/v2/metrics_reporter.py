@@ -23,14 +23,14 @@ class AutoscalerMetricsReporter:
     ) -> List[IMInstance]:
         """Filter instances whose type is still in the active config.
 
-        This is needed because instances may linger after their
-        RayWorkerGroup CR is dynamically removed.
+        This is needed because instances may linger after a
+        worker group is dynamically removed from the RayCluster CR.
         """
         filtered = []
         for instance in instances:
             if instance.instance_type not in active_types:
                 # Log once per unknown type so transient drain windows during
-                # dynamic RayWorkerGroup removal don't spam every tick, while
+                # dynamic worker group removal don't spam every tick, while
                 # persistent config mismatches (e.g. a typo'd node type) still
                 # surface for operators.
                 if log_once(
