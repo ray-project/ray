@@ -11,9 +11,25 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     DEFAULT_KV_EVENTS_REPLAY_PORT_OFFSET,
     KV_EVENTS_PORT_BASE_KEY,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    KVAwareRouter,
+)
 from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve.config import RequestRouterConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def is_kv_aware_routing(request_router_config) -> bool:
+    """Whether ``request_router_config`` (a dict, a ``RequestRouterConfig``, or
+    ``None``) selects a ``KVAwareRouter`` -- the only consumer of the engine's
+    KV events. Engine KV events are otherwise dead weight, so all KV-events
+    wiring is gated on this."""
+    if isinstance(request_router_config, dict):
+        request_router_config = RequestRouterConfig(**request_router_config)
+    return isinstance(request_router_config, RequestRouterConfig) and issubclass(
+        request_router_config.get_request_router_class(), KVAwareRouter
+    )
 
 
 def configure_kv_events_for_kv_routing(llm_config: LLMConfig) -> None:
@@ -63,23 +79,32 @@ def assign_replica_kv_events_endpoint(llm_config: LLMConfig) -> None:
     replicas would otherwise bind the same ZMQ port. Offsets the configured
     base port by the replica's rank.
     """
+    if not is_kv_aware_routing(
+        llm_config.deployment_config.get("request_router_config")
+    ):
+        return
     kv_events_config = llm_config.engine_kwargs.get("kv_events_config")
     if kv_events_config is None:
         return
+    updated = dict(kv_events_config)
+    endpoint = updated.pop("endpoint", None)
+    if endpoint is None:
+        raise ValueError(
+            "engine_kwargs['kv_events_config']['endpoint'] must be set when "
+            "providing a vLLM KV-cache events config. To let Ray Serve ingest "
+            "engine KV events for KV-aware routing, configure KVAwareRouter via "
+            "deployment_config.request_router_config."
+        )
+    replay_endpoint = updated.pop("replay_endpoint", None)
     # With data parallelism the engine offsets ports by dp_rank itself; otherwise
     # offset by the replica's node-local rank so colocated replicas don't collide.
     if llm_config.engine_kwargs.get("data_parallel_rank") is not None:
         offset = 0
     else:
         offset = _get_replica_rank()
-    updated = {
-        **kv_events_config,
-        "endpoint": _get_offset_endpoint_port(kv_events_config["endpoint"], offset),
-    }
-    if kv_events_config.get("replay_endpoint") is not None:
-        updated["replay_endpoint"] = _get_offset_endpoint_port(
-            kv_events_config["replay_endpoint"], offset
-        )
+    updated["endpoint"] = _get_offset_endpoint_port(endpoint, offset)
+    if replay_endpoint is not None:
+        updated["replay_endpoint"] = _get_offset_endpoint_port(replay_endpoint, offset)
     llm_config.update_engine_kwargs(kv_events_config=updated)
 
 
@@ -90,6 +115,10 @@ def resolve_kv_event_source_endpoint(llm_config: LLMConfig) -> Optional[str]:
     The engine's KV-events endpoint at the replica's node IP; ``None`` when
     KV-cache events are not enabled.
     """
+    if not is_kv_aware_routing(
+        llm_config.deployment_config.get("request_router_config")
+    ):
+        return None
     kv_events_config = llm_config.engine_kwargs.get("kv_events_config")
     if kv_events_config is None:
         return None
@@ -100,6 +129,10 @@ def get_kv_event_routing_stats(
     llm_config: LLMConfig, max_num_batched_tokens: int
 ) -> Dict[str, Any]:
     """Returns this replica's routing-stats payload advertising its KV-events endpoint."""
+    if not is_kv_aware_routing(
+        llm_config.deployment_config.get("request_router_config")
+    ):
+        return {}
     kv_events_config = llm_config.engine_kwargs.get("kv_events_config")
     if kv_events_config is None:
         return {}

@@ -5,6 +5,9 @@ from typing import Any, Dict, List, Optional, Set, TypedDict
 
 import ray
 from ray import serve
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    DEFAULT_KV_INDEXER_THREADS,
+)
 from ray.serve._private.common import DeploymentTargetInfo
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
@@ -63,8 +66,11 @@ class KVRouterActor:
        worker.
     """
 
-    def __init__(self, block_size: int):
+    def __init__(
+        self, block_size: int, indexer_threads: int = DEFAULT_KV_INDEXER_THREADS
+    ):
         self._block_size = block_size
+        self._indexer_threads = indexer_threads
         # _replica_id_by_worker maps a Dynamo worker id to the running replica's full
         # id string, kept in sync with the deployment's live replicas over LongPoll.
         # NOTE (jeffreywang): _replica_id_by_worker is later used by select_worker
@@ -88,9 +94,11 @@ class KVRouterActor:
             )
             return
 
-        self._svc = SelectionService(indexer_threads=4)
+        self._svc = SelectionService(indexer_threads=self._indexer_threads)
         logger.info(
-            "Dynamo SelectionService created (block size %d).", self._block_size
+            "Dynamo SelectionService created (block size %d, indexer threads %d).",
+            self._block_size,
+            self._indexer_threads,
         )
 
     def _start_replica_tracking(self) -> None:
@@ -183,6 +191,9 @@ class KVRouterActor:
                 "worker_id": worker_id,
                 "model_name": _MODEL_NAME,
                 "tenant_id": _TENANT_ID,
+                # NOTE: SelectionService requires endpoint to be non-empty although it's left
+                # unused under an external runtime like Ray Serve LLM.
+                # TODO (jeffreywang): Allow empty endpoints upstream.
                 "endpoint": f"ray://{replica_id}",
                 "block_size": self._block_size,
                 # NOTE: max_num_batched_tokens is a proxy of load capacity for load-based

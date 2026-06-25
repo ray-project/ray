@@ -4754,7 +4754,7 @@
     anyscale_sdk_2026: true
     # Kept in this working_dir rather than referenced across dirs
     # so it ships in the test's runfiles.
-    cluster_compute: llm_four_L4_gpu_head_node.yaml
+    cluster_compute: llm_4xl4.yaml
 
   run:
     timeout: 3600

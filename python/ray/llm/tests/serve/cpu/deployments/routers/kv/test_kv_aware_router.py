@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 from typing import List
+from unittest import mock
 
 import pytest
 
@@ -48,7 +49,7 @@ def get_kv_actor_configs(deployment):
     ]
 
 
-def build_test_llm_config() -> LLMConfig:
+def build_test_llm_config(experimental_configs=None) -> LLMConfig:
     return LLMConfig(
         model_loading_config={
             "model_id": "qwen3-0.6b",
@@ -59,6 +60,22 @@ def build_test_llm_config() -> LLMConfig:
             "autoscaling_config": {"min_replicas": 1, "max_replicas": 1},
             "request_router_config": {"request_router_class": KVAwareRouter},
         },
+        experimental_configs=experimental_configs or {},
+    )
+
+
+def build_non_kv_llm_config(**engine_kwargs) -> LLMConfig:
+    """An LLMConfig whose request router is the default (not a KVAwareRouter)."""
+    return LLMConfig(
+        model_loading_config={
+            "model_id": "qwen3-0.6b",
+            "model_source": "Qwen/Qwen3-0.6B",
+        },
+        accelerator_type=None,
+        deployment_config={
+            "autoscaling_config": {"min_replicas": 1, "max_replicas": 1}
+        },
+        engine_kwargs=engine_kwargs,
     )
 
 
@@ -131,7 +148,37 @@ def test_build_openai_app_attaches_kv_actor():
     actor_cfg = configs[0]
     assert actor_cfg.get_actor_class().__ray_actor_class__ is KVRouterActor
     assert actor_cfg.actor_options["num_cpus"] == 0
-    assert actor_cfg.init_kwargs == {"block_size": 16}
+    assert actor_cfg.init_kwargs == {"block_size": 16, "indexer_threads": 4}
+
+
+def test_configurable_indexer_threads():
+    llm_config = build_test_llm_config(experimental_configs={"KV_INDEXER_THREADS": 8})
+    app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
+
+    actor_cfg = get_kv_actor_configs(app._bound_deployment)[0]
+    assert actor_cfg.init_kwargs["indexer_threads"] == 8
+
+
+def test_non_kv_router_warns_kv_events_config():
+    """Without a KVAwareRouter no KVRouterActor is attached and a user-provided
+    kv_events_config is left untouched (just unused), with a warning pointing at
+    how to consume the engine's KV events."""
+    kv_events_config = {
+        "enable_kv_cache_events": True,
+        "publisher": "zmq",
+        "endpoint": "tcp://*:5557",
+    }
+    llm_config = build_non_kv_llm_config(kv_events_config=kv_events_config)
+
+    with mock.patch(
+        "ray.llm._internal.serve.routing_policies.kv_aware.utils.logger"
+    ) as logger:
+        app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
+
+    assert get_kv_actor_configs(app._bound_deployment) == []
+    assert llm_config.engine_kwargs["kv_events_config"] == kv_events_config
+    logger.warning.assert_called_once()
+    assert "KVAwareRouter" in logger.warning.call_args.args[0]
 
 
 def test_yaml_config_attaches_kv_actor(serve_instance):

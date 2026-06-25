@@ -18,7 +18,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     KV_ROUTER_ACTOR_NAME,
     KVRouterActor,
 )
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     configure_kv_events_for_kv_routing,
 )
 from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX, SERVE_NAMESPACE

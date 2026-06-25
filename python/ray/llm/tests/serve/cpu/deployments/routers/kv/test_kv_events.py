@@ -5,7 +5,7 @@ from vllm.config import CacheConfig
 
 import ray
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     configure_kv_events_for_kv_routing,
     derive_kv_event_block_size,
     get_kv_event_routing_stats,
