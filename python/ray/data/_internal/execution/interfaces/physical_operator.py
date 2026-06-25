@@ -1007,6 +1007,30 @@ class PhysicalOperator(Operator):
         """Returns ```True``` if this operator can be fused with other operators."""
         return False
 
+    def absorbs_upstream_map_transformer(self) -> bool:
+        """Whether this operator can absorb an upstream TaskPoolMapOperator's
+        MapTransformer into its task body.
+
+        When True, the fusion rule calls fuse_with_upstream_map_transformer
+        with the upstream's MapTransformer to produce a fused replacement op;
+        the op is responsible for plumbing the transformer into its task body.
+        """
+        return False
+
+    def fuse_with_upstream_map_transformer(
+        self, upstream_map_transformer
+    ) -> "PhysicalOperator":
+        """Return a new operator that runs upstream_map_transformer inline
+        in this op's task body, taking the upstream's input_dependency as
+        its own input (dropping the absorbed upstream from the DAG).
+        Required only when absorbs_upstream_map_transformer returns True.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} declares "
+            f"absorbs_upstream_map_transformer=True but doesn't implement "
+            f"fuse_with_upstream_map_transformer"
+        )
+
     def refresh_state(self):
         """Refreshes the state of the operator at runtime.
 

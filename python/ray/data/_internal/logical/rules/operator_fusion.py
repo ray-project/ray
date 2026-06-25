@@ -1,6 +1,6 @@
 import itertools
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -10,17 +10,9 @@ from ray.data._internal.compute import (
 from ray.data._internal.execution.bundle_queue import ExactMultipleSize, RebundleQueue
 from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
-    RefBundle,
-    TaskContext,
-)
-from ray.data._internal.execution.interfaces.transform_fn import (
-    AllToAllTransformFnResult,
 )
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
-)
-from ray.data._internal.execution.operators.base_physical_operator import (
-    AllToAllOperator,
 )
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
@@ -28,7 +20,6 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
 )
 from ray.data._internal.logical.interfaces import PhysicalPlan, Rule
 from ray.data._internal.logical.operators import (
-    AbstractAllToAll,
     AbstractMap,
     AbstractUDFMap,
     MapBatches,
@@ -64,9 +55,11 @@ class FuseOperators(Rule):
         # In the first pass, only fuse back-to-back map operators together.
         fused_dag = self._fuse_map_operators_in_dag(fused_dag)
 
-        # Now that we have fused together all back-to-back map operators,
-        # we fuse together MapOperator -> AllToAllOperator pairs.
-        fused_dag = self._fuse_all_to_all_operators_in_dag(fused_dag)
+        # Fuse MapOperator -> absorber pairs. An absorber is any op that
+        # advertises absorbs_upstream_map_transformer(). The capability
+        # check keeps the rule free of isinstance branches on the
+        # absorber side.
+        fused_dag = self._fuse_absorber_operators_in_dag(fused_dag)
 
         # Update output dependencies after fusion.
         # TODO(hchen): Instead of updating the depdencies manually,
@@ -158,57 +151,99 @@ class FuseOperators(Rule):
         ]
         return dag
 
-    def _fuse_all_to_all_operators_in_dag(
-        self, dag: AllToAllOperator
-    ) -> AllToAllOperator:
-        """Starting at the given operator, traverses up the DAG of operators
-        and recursively fuses compatible MapOperator -> AllToAllOperator pairs.
+    def _fuse_absorber_operators_in_dag(
+        self, dag: PhysicalOperator
+    ) -> PhysicalOperator:
+        """Traverse up the DAG fusing TaskPoolMapOperator -> absorber pairs.
 
-        Also, sets the target block size of the immediately upstream map op to
-        match the shuffle block size. We use a larger block size for shuffles
-        because tiny blocks are bad for I/O performance.
-
-        Returns the current (root) operator after completing upstream operator fusions.
+        An absorber is any op whose absorbs_upstream_map_transformer()
+        returns True; the op itself decides how the absorbed
+        MapTransformer is plumbed into its task body via
+        fuse_with_upstream_map_transformer. Returns the (possibly new)
+        root after completing the local fusion run.
         """
         upstream_ops = dag.input_dependencies
         while (
             len(upstream_ops) == 1
-            and isinstance(dag, AllToAllOperator)
+            and dag.absorbs_upstream_map_transformer()
             and isinstance(upstream_ops[0], MapOperator)
             and self._can_fuse(dag, upstream_ops[0])
         ):
             # Fuse operator with its upstream op.
-            dag = self._get_fused_all_to_all_operator(dag, upstream_ops[0])
+            dag = self._get_fused_absorber_operator(dag, upstream_ops[0])
             upstream_ops = dag.input_dependencies
 
-        # Done fusing MapOperator -> AllToAllOperator together here,
-        # move up the DAG to find the next pair of operators to fuse.
+        # Done fusing the immediate run; recurse upward.
         dag._input_dependencies = [
-            self._fuse_all_to_all_operators_in_dag(upstream_op)
+            self._fuse_absorber_operators_in_dag(upstream_op)
             for upstream_op in upstream_ops
         ]
         return dag
 
-    def _can_fuse(self, down_op: PhysicalOperator, up_op: PhysicalOperator) -> bool:
-        """Returns whether the provided downstream operator can be fused with the given
-        upstream operator.
+    def _get_fused_absorber_operator(
+        self, down_op: PhysicalOperator, up_op: "MapOperator"
+    ) -> PhysicalOperator:
+        """Build the fused replacement for a MapOperator -> absorber edge.
 
-        We currently support fusing two operators if the following are all true:
-            * We are fusing either MapOperator -> MapOperator or
-              MapOperator -> AllToAllOperator.
-            * They either use the same compute configuration, or the upstream operator
-              uses a task pool while the downstream operator uses an actor pool.
-            * If both operators involve callable classes, the callable classes are
-              the same class AND constructor args are the same for both.
-            * They have compatible remote arguments.
+        down_op builds the new physical op via
+        fuse_with_upstream_map_transformer; this method handles
+        DAG-level bookkeeping (logical-op mapping in _op_map).
+        """
+        new_op = down_op.fuse_with_upstream_map_transformer(up_op.get_map_transformer())
+        if down_op in self._op_map:
+            self._op_map[new_op] = self._build_fused_logical_op(down_op, up_op)
+            self._op_map.pop(down_op)
+        if up_op in self._op_map:
+            self._op_map.pop(up_op)
+        return new_op
+
+    def _build_fused_logical_op(self, down_op: PhysicalOperator, up_op: "MapOperator"):
+        """Build the logical-op replacement for a fused absorber op.
+
+        When the absorber's logical op is RandomShuffle or Repartition,
+        rebuild the same type wrapping the upstream's source. Otherwise
+        return the existing logical op unchanged.
+        """
+        down_logical_op = self._op_map.get(down_op)
+        up_logical_op = self._op_map.get(up_op)
+        if down_logical_op is None or up_logical_op is None:
+            return down_logical_op
+
+        if isinstance(down_logical_op, RandomShuffle):
+            return RandomShuffle(
+                name=down_logical_op._name,
+                input_dependencies=[up_logical_op],
+                ray_remote_args=getattr(up_logical_op, "ray_remote_args", {}),
+            )
+        if isinstance(down_logical_op, Repartition):
+            return Repartition(
+                num_outputs=down_logical_op.num_outputs,
+                input_dependencies=[up_logical_op],
+                shuffle=down_logical_op.shuffle,
+            )
+        return down_logical_op
+
+    def _can_fuse(self, down_op: PhysicalOperator, up_op: PhysicalOperator) -> bool:
+        """Whether the given downstream op can be fused with the upstream op.
+
+        Two operators can be fused when all of these hold:
+            * Edge type is supported: TaskPoolMapOperator ->
+              (TaskPoolMapOperator | ActorPoolMapOperator | absorber).
+            * Compute strategies are compatible (same strategy, or task
+              pool upstream feeding an actor pool downstream).
+            * Callable-class operators have matching class + constructor
+              args on both sides.
+            * Remote arguments are compatible.
         """
         if not up_op.supports_fusion() or not down_op.supports_fusion():
             return False
 
-        # We currently only support fusing for the following cases:
+        # Supported edges:
         # - TaskPoolMapOperator -> TaskPoolMapOperator/ActorPoolMapOperator
-        # - TaskPoolMapOperator -> AllToAllOperator
-        # (only RandomShuffle and Repartition LogicalOperators are currently supported)
+        #   (the standard up-absorbs-down map chain).
+        # - TaskPoolMapOperator -> any op that opts in via
+        #   absorbs_upstream_map_transformer(); the down op constructs
+        #   its own fused replacement.
         if not (
             (
                 isinstance(up_op, TaskPoolMapOperator)
@@ -216,7 +251,7 @@ class FuseOperators(Rule):
             )
             or (
                 isinstance(up_op, TaskPoolMapOperator)
-                and isinstance(down_op, AllToAllOperator)
+                and down_op.absorbs_upstream_map_transformer()
             )
         ):
             return False
@@ -535,9 +570,9 @@ class FuseOperators(Rule):
             target_max_block_size_override=target_max_block_size,
             name=name,
             compute_strategy=compute,
-            min_rows_per_bundle=min_rows_per_bundled_input
-            if ref_bundler is None
-            else None,
+            min_rows_per_bundle=(
+                min_rows_per_bundled_input if ref_bundler is None else None
+            ),
             ref_bundler=ref_bundler,
             map_task_kwargs=map_task_kwargs,
             ray_remote_args=ray_remote_args,
@@ -612,78 +647,6 @@ class FuseOperators(Rule):
             ds_bundle_min_rows_req or 0,
             us_bundle_min_rows_req or 0,
         )
-
-    def _get_fused_all_to_all_operator(
-        self, down_op: AllToAllOperator, up_op: MapOperator
-    ) -> AllToAllOperator:
-        assert self._can_fuse(down_op, up_op), (
-            "Current rule supports fusing MapOperator -> AllToAllOperator"
-            f", but received: {type(up_op).__name__} -> {type(down_op).__name__}"
-        )
-
-        # Fuse operator names.
-        name = up_op.name + "->" + down_op.name
-
-        down_logical_op = self._op_map.pop(down_op)
-        up_logical_op = self._op_map.pop(up_op)
-        assert isinstance(down_logical_op, AbstractAllToAll)
-        assert isinstance(up_logical_op, AbstractMap)
-
-        # Fuse transformation functions.
-        ray_remote_args = up_logical_op.ray_remote_args
-        down_transform_fn = down_op.get_transformation_fn()
-        up_map_transformer = up_op.get_map_transformer()
-
-        def fused_all_to_all_transform_fn(
-            blocks: List[RefBundle],
-            ctx: TaskContext,
-        ) -> AllToAllTransformFnResult:
-            """To fuse MapOperator->AllToAllOperator, we store the map function
-            in the TaskContext so that it may be used by the downstream
-            AllToAllOperator's transform function."""
-            ctx.upstream_map_transformer = up_map_transformer
-            ctx.upstream_map_ray_remote_args = ray_remote_args
-            return down_transform_fn(blocks, ctx)
-
-        # Make the upstream operator's inputs the new, fused operator's inputs.
-        input_deps = up_op.input_dependencies
-        assert len(input_deps) == 1
-        input_op = input_deps[0]
-
-        target_max_block_size = self._get_merged_target_max_block_size(
-            up_op.target_max_block_size_override, down_op.target_max_block_size_override
-        )
-
-        assert up_op.data_context is down_op.data_context
-        op = AllToAllOperator(
-            fused_all_to_all_transform_fn,
-            input_op,
-            up_op.data_context,
-            target_max_block_size_override=target_max_block_size,
-            num_outputs=down_op._num_outputs,
-            # Transfer over the existing sub-progress bars from
-            # the AllToAllOperator (if any) into the fused operator.
-            sub_progress_bar_names=down_op._sub_progress_bar_names,
-            name=name,
-        )
-        # Bottom out at the source logical op (e.g. Read()).
-        input_op = up_logical_op
-
-        if isinstance(down_logical_op, RandomShuffle):
-            logical_op = RandomShuffle(
-                name=name,
-                input_dependencies=[input_op],
-                ray_remote_args=ray_remote_args,
-            )
-        elif isinstance(down_logical_op, Repartition):
-            logical_op = Repartition(
-                num_outputs=down_logical_op.num_outputs,
-                input_dependencies=[input_op],
-                shuffle=down_logical_op.shuffle,
-            )
-        self._op_map[op] = logical_op
-        # Return the fused physical operator.
-        return op
 
     @classmethod
     def _can_fuse_map_ops(
