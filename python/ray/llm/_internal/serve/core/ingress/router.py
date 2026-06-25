@@ -1,10 +1,10 @@
-import json
 from types import SimpleNamespace
 from typing import Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
+from ray.llm._internal.serve.core.ingress.routing_payload import parse_routing_payload
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve._private.http_util import _matches_session_id_header
 from ray.serve.exceptions import DeploymentUnavailableError
@@ -15,33 +15,6 @@ logger = get_logger(__name__)
 _BODY_TRUNCATED_HEADER = "x-body-truncated"
 
 router_app = FastAPI()
-
-
-def _parse_routing_payload(body: bytes) -> Optional[SimpleNamespace]:
-    """Derive a routing key from a request body.
-
-    Body-aware routers read ``messages`` or ``prompt`` off the first positional
-    routing arg, where the OpenAI ingress puts the parsed request. Direct
-    streaming has only the raw body, so this exposes the present field on a
-    plain object the routers read the same way. Uses ``json.loads`` rather than
-    a full parse. Returns ``None`` for an empty, non-object, unparseable, or
-    fieldless body, so the caller falls back to the default load-balanced pick.
-    """
-    if not body:
-        return None
-    try:
-        data = json.loads(body)
-    except (ValueError, TypeError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    # Keep only the non-empty routing fields. Empty messages or prompt carry no
-    # routing signal, and exposing just the present field lets ``hasattr`` tell
-    # a chat body from a completion body.
-    key = {field: data[field] for field in ("messages", "prompt") if data.get(field)}
-    if not key:
-        return None
-    return SimpleNamespace(**key)
 
 
 @serve.ingress(router_app)
@@ -62,7 +35,7 @@ class LLMRouter:
         POST /internal/route
         Content-Type: application/json
         Body: the target ChatCompletions or Completions request payload.
-            Parsed into a routing key by ``_parse_routing_payload`` and passed
+            Parsed into a routing key by ``parse_routing_payload`` and passed
             to ``choose_replica`` positionally. Body-aware policies then score
             replicas the same way on both paths.
 
@@ -104,7 +77,7 @@ class LLMRouter:
     async def route(self, request: Request):
         body = await request.body()
         body_truncated = _BODY_TRUNCATED_HEADER in request.headers
-        routing_payload = _parse_routing_payload(body)
+        routing_payload = parse_routing_payload(body)
         if routing_payload is None and not self._warned_no_routing_key:
             self._warned_no_routing_key = True
             logger.warning(
@@ -147,9 +120,9 @@ class LLMRouter:
     ) -> Tuple[str, int, str]:
         """Pick a backend HTTP replica via the deployment's request router.
 
-        ``handle`` is the LLMServer deployment handle. The caller may set
-        ``.options(session_id=...)`` so session-aware routers see the session
-        id on ``RequestMetadata``.
+        ``handle`` is the LLMServer deployment handle, optionally configured
+        with ``.options(session_id=...)`` by the caller so session-aware
+        routers see the session id on ``RequestMetadata``.
 
         ``routing_payload``, when present, is passed to ``choose_replica``
         positionally. It lands in ``pending_request.args`` where the normal
@@ -157,10 +130,11 @@ class LLMRouter:
         as on the normal path. When ``None``, nothing is forwarded. The router
         sees empty ``args`` and falls back to its default load-balanced pick.
 
-        ``_reserve=False`` skips the replica-side ``reserve_slot`` RPC and the
-        rejection-retry loop. The real request goes out via HAProxy, so Serve's
-        capacity semaphore is not load-bearing here. The extra RPC and retry
-        added burstiness over the prior local round-robin.
+        ``_reserve=False`` short-circuits the replica-side ``reserve_slot``
+        actor RPC and the rejection-retry loop: the real request goes out via
+        HAProxy, so Serve's capacity semaphore isn't load-bearing here, and
+        the extra RPC + retry introduced burstiness compared to the prior
+        local round-robin implementation.
         """
         route_args = (routing_payload,) if routing_payload is not None else ()
         async with handle.choose_replica(
