@@ -1016,7 +1016,7 @@ TEST_F(MemoryMonitorUtilsTest, TestUserSliceZeroSwapMaxIgnoresCurrent) {
                                                  0,
                                                  0);
   MockCgroupv2Swap(user_dir,
-                   /*swap_max_bytes=*/0,
+                   /*swap_max_bytes=*/std::optional<int64_t>{0},
                    /*swap_current_bytes=*/kSwapCurrentSentinel);
   std::string system_dir =
       MockCgroupv2MemoryUsage(/*total_bytes=*/1LL * 1024 * 1024 * 1024,
@@ -1026,7 +1026,7 @@ TEST_F(MemoryMonitorUtilsTest, TestUserSliceZeroSwapMaxIgnoresCurrent) {
                               0,
                               0);
   MockCgroupv2Swap(system_dir,
-                   /*swap_max_bytes=*/0,
+                   /*swap_max_bytes=*/std::optional<int64_t>{0},
                    /*swap_current_bytes=*/kSwapCurrentSentinel);
   std::string proc_dir = MockProcMeminfo(
       kUserSliceHostMemKb, kUserSliceHostMemAvailKb, std::nullopt, std::nullopt);

@@ -307,13 +307,15 @@ class MemoryMonitorUtils {
   FRIEND_TEST(MemoryMonitorUtilsTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV2SwapAddedToTotalAndUsed);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV2SwapIgnoredWhenFlagDisabled);
-  FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV2UnlimitedSwapNotAddedToTotal);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV2UnlimitedSwapFallsBackToHostSwap);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV2OverflowSwapFallsBackToHostSwap);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV1MemswAddedToTotalAndUsed);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV1MemswIgnoredWhenFlagDisabled);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV1MemswFallsBackWhenUsageMissing);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestUserSliceSwapAddedToTotalAndUsed);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestUserSliceSwapIgnoredWhenFlagDisabled);
-  FRIEND_TEST(MemoryMonitorUtilsTest, TestUserSliceUnlimitedSwapNotAddedToTotal);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestUserSliceUnlimitedSwapFallsBackToHostSwap);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestUserSliceOverflowSwapFallsBackToHostSwap);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestUserSliceZeroSwapMaxIgnoresCurrent);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestUserSliceMissingSwapFiles);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupFilesValidReturnsWorkingSet);
