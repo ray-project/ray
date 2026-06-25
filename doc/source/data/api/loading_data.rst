@@ -334,6 +334,12 @@ Unity Catalog
 
    read_unity_catalog
 
+   Catalog
+
+   DatabricksUnityCatalog
+
+   ReaderFormat
+
 Video
 ^^^^^
 
