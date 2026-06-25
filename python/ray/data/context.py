@@ -208,6 +208,8 @@ DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER = 2
 # calls if the URI is an S3 URI.
 DEFAULT_S3_TRY_CREATE_DIR = False
 
+DEFAULT_ICEBERG_CASE_SENSITIVE = False
+
 DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
     "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", -1
 )
@@ -465,6 +467,12 @@ class DataContext:
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
+        iceberg_case_sensitive: Whether Iceberg column operations are case-sensitive.
+            Defaults to ``False`` (case-insensitive). Set to ``True`` to make all
+            Iceberg column name resolution (reads, writes, schema evolution, upserts,
+            overwrites) case-sensitive. Per-operation kwargs (e.g.,
+            ``scan_kwargs["case_sensitive"]``, ``upsert_kwargs["case_sensitive"]``)
+            take precedence over this setting.
     """
 
     # `None` means the block size is infinite.
@@ -608,6 +616,8 @@ class DataContext:
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
+
+    iceberg_case_sensitive: bool = DEFAULT_ICEBERG_CASE_SENSITIVE
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to

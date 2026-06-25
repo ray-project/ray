@@ -175,6 +175,26 @@ class _IcebergExpressionVisitor(
         )
 
 
+def _build_case_insensitive_rename_map(
+    column_rename_map: Optional[Dict[str, str]],
+) -> Optional[Dict[str, str]]:
+    """Build a lowercased-key rename map for case-insensitive column matching."""
+    if not column_rename_map:
+        return column_rename_map
+    return {k.lower(): v for k, v in column_rename_map.items()}
+
+
+def _apply_rename_case_insensitive(
+    table: "pa.Table",
+    rename_map_lower: Optional[Dict[str, str]],
+) -> "pa.Table":
+    """Apply column renames using case-insensitive key matching."""
+    if not rename_map_lower:
+        return table
+    new_names = [rename_map_lower.get(col.lower(), col) for col in table.schema.names]
+    return table.rename_columns(new_names)
+
+
 def _get_read_task(
     tasks: Iterable["FileScanTask"],
     table_io: "FileIO",
@@ -233,9 +253,14 @@ def _get_read_task(
             yield table
 
     # Apply renames to all tables from the generator
-    yield from _DatasourceProjectionPushdownMixin._apply_rename_to_tables(
-        _generate_tables(), column_rename_map
-    )
+    if not case_sensitive and column_rename_map:
+        rename_map_lower = _build_case_insensitive_rename_map(column_rename_map)
+        for tbl in _generate_tables():
+            yield _apply_rename_case_insensitive(tbl, rename_map_lower)
+    else:
+        yield from _DatasourceProjectionPushdownMixin._apply_rename_to_tables(
+            _generate_tables(), column_rename_map
+        )
 
 
 @DeveloperAPI
@@ -279,6 +304,14 @@ class IcebergDatasource(Datasource):
 
         self._scan_kwargs = scan_kwargs if scan_kwargs is not None else {}
         self._catalog_kwargs = catalog_kwargs if catalog_kwargs is not None else {}
+
+        # Inject case_sensitive from DataContext if not explicitly set in scan_kwargs
+        if "case_sensitive" not in self._scan_kwargs:
+            from ray.data import DataContext
+
+            self._scan_kwargs["case_sensitive"] = (
+                DataContext.get_current().iceberg_case_sensitive
+            )
 
         if "name" in self._catalog_kwargs:
             self._catalog_name = self._catalog_kwargs.pop("name")
@@ -477,7 +510,12 @@ class IcebergDatasource(Datasource):
             metadata = BlockMetadata(
                 num_rows=sum(task.file.record_count for task in chunk_tasks)
                 - position_delete_count,
-                size_bytes=sum(task.length for task in chunk_tasks),
+                # PyIceberg < 0.11 exposed a per-task ``length`` attribute; newer
+                # versions removed it, so fall back to the data file's size.
+                size_bytes=sum(
+                    getattr(task, "length", task.file.file_size_in_bytes)
+                    for task in chunk_tasks
+                ),
                 input_files=[task.file.file_path for task in chunk_tasks],
                 exec_stats=None,
             )

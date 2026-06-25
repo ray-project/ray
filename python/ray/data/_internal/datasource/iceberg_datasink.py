@@ -25,6 +25,21 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _get_arrow_column(
+    table: "pa.Table", col_name: str, case_sensitive: bool = True
+) -> "pa.ChunkedArray":
+    """Look up a column in an Arrow table, optionally case-insensitively."""
+    if case_sensitive:
+        return table[col_name]
+    col_lower = col_name.lower()
+    for name in table.schema.names:
+        if name.lower() == col_lower:
+            return table[name]
+    raise KeyError(
+        f"Column {col_name!r} not found (case-insensitive) in {table.schema.names}"
+    )
+
+
 def _append_and_commit(
     txn: "Transaction",
     data_files: List["DataFile"],
@@ -52,6 +67,7 @@ def _commit_upsert_task(
     join_keys_dicts: List[Dict[str, List[Any]]],
     join_cols: List[str],
     snapshot_properties: Dict[str, str],
+    case_sensitive: bool = True,
 ) -> None:
     """
     Ray task to commit upsert transaction with copy-on-write strategy.
@@ -68,6 +84,7 @@ def _commit_upsert_task(
         join_keys_dicts: List of dictionaries mapping column names to lists of key values
         join_cols: List of join column names
         snapshot_properties: Custom properties to write to snapshot summary
+        case_sensitive: Whether column name matching is case-sensitive
     """
     import functools
     from collections import defaultdict
@@ -106,6 +123,7 @@ def _commit_upsert_task(
             delete_filter = create_match_filter(keys_table, join_cols)
             txn.delete(
                 delete_filter=delete_filter,
+                case_sensitive=case_sensitive,
                 snapshot_properties=snapshot_properties,
             )
 
@@ -173,6 +191,21 @@ class IcebergDatasink(
         self._overwrite_kwargs = (overwrite_kwargs or {}).copy()
         self._upsert_commit_memory = upsert_commit_memory
 
+        # Resolve case_sensitive: per-operation kwargs override DataContext global
+        from ray.data import DataContext
+
+        ctx_case_sensitive = DataContext.get_current().iceberg_case_sensitive
+        if self._mode == SaveMode.UPSERT:
+            self._case_sensitive = self._upsert_kwargs.pop(
+                "case_sensitive", ctx_case_sensitive
+            )
+        elif self._mode == SaveMode.OVERWRITE:
+            self._case_sensitive = self._overwrite_kwargs.pop(
+                "case_sensitive", ctx_case_sensitive
+            )
+        else:
+            self._case_sensitive = ctx_case_sensitive
+
         # Validate kwargs are only set for relevant modes
         if self._upsert_kwargs and self._mode != SaveMode.UPSERT:
             raise ValueError(
@@ -227,6 +260,33 @@ class IcebergDatasink(
         catalog = self._get_catalog()
         self._table = catalog.load_table(self.table_identifier)
 
+    def _normalize_column_names(self, pa_table: "pa.Table") -> "pa.Table":
+        """Rename DataFrame columns to match Iceberg schema casing.
+
+        PyIceberg's ``apply_name_mapping`` is always case-sensitive
+        (``field_name in field.names``).  When ``case_sensitive=False``, the
+        incoming PyArrow table may use different casing than the Iceberg
+        schema (e.g. ``ID`` vs ``id``), causing name-mapping to fail.
+
+        This method normalises the top-level column names to the canonical
+        names in the Iceberg schema before the table is handed to
+        ``_dataframe_to_data_files``.
+        """
+        if self._case_sensitive:
+            return pa_table
+
+        iceberg_schema = self._table.schema()
+        iceberg_names = {col.name.lower(): col.name for col in iceberg_schema.columns}
+
+        new_names = []
+        for name in pa_table.schema.names:
+            canonical = iceberg_names.get(name.lower())
+            new_names.append(canonical if canonical is not None else name)
+
+        if new_names != pa_table.schema.names:
+            pa_table = pa_table.rename_columns(new_names)
+        return pa_table
+
     def _get_join_cols(self) -> List[str]:
         """Get join columns for upsert, using table identifier fields as fallback."""
         join_cols = self._upsert_kwargs.get("join_cols", [])
@@ -262,6 +322,7 @@ class IcebergDatasink(
         for attempt in range(max_retries):
             try:
                 with self._table.update_schema() as update:
+                    update.case_sensitive(self._case_sensitive)
                     update.union_by_name(incoming_schema)
                 # Succeeded, reload to get latest table version and exit.
                 self._reload_table()
@@ -352,7 +413,15 @@ class IcebergDatasink(
                 if extract_join_keys:
                     join_cols = self._get_join_cols()
                     for col in join_cols:
-                        join_keys_dict[col].extend(pa_table[col].to_pylist())
+                        join_keys_dict[col].extend(
+                            _get_arrow_column(
+                                pa_table, col, self._case_sensitive
+                            ).to_pylist()
+                        )
+
+                # Normalise column names so PyIceberg's case-sensitive
+                # name-mapping can resolve them against the Iceberg schema.
+                pa_table = self._normalize_column_names(pa_table)
 
                 # Write data files to storage (distributed!)
                 # _dataframe_to_data_files writes Parquet files and returns DataFile metadata
@@ -429,6 +498,7 @@ class IcebergDatasink(
                     join_keys_dicts=join_keys_dicts,
                     join_cols=join_cols,
                     snapshot_properties=self._snapshot_properties,
+                    case_sensitive=self._case_sensitive,
                 )
             )
         else:
@@ -453,6 +523,7 @@ class IcebergDatasink(
 
             txn.delete(
                 delete_filter=pyi_filter,
+                case_sensitive=self._case_sensitive,
                 snapshot_properties=self._snapshot_properties,
                 **self._overwrite_kwargs,
             )
@@ -462,6 +533,7 @@ class IcebergDatasink(
 
             txn.delete(
                 delete_filter=AlwaysTrue(),
+                case_sensitive=self._case_sensitive,
                 snapshot_properties=self._snapshot_properties,
                 **self._overwrite_kwargs,
             )

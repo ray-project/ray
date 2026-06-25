@@ -4113,11 +4113,14 @@ class Dataset:
                 Example: `col("date") >= "2024-01-01"` or `(col("region") == "US") & (col("status") == "active")`
             upsert_kwargs: Optional arguments for upsert operations.
                 Supported parameters: join_cols (List[str]), case_sensitive (bool), branch (str).
+                If ``case_sensitive`` is not set here, the value from
+                ``DataContext.get_current().iceberg_case_sensitive`` is used.
                 Note: Ray Data uses a copy-on-write strategy that always updates all columns
                 for matched keys and inserts all new keys for optimal parallelism.
             overwrite_kwargs: Optional arguments to pass through to PyIceberg's table.overwrite() method.
-                Supported parameters: case_sensitive (bool), branch (str). See PyIceberg documentation
-                for details.
+                Supported parameters: case_sensitive (bool), branch (str). If ``case_sensitive``
+                is not set here, the value from ``DataContext.get_current().iceberg_case_sensitive``
+                is used. See PyIceberg documentation for details.
             ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
