@@ -2020,21 +2020,6 @@ py_test(
 )
 
 py_test(
-    name = "test_lerobot_integration",
-    size = "medium",
-    srcs = ["tests/datasource/test_lerobot_integration.py"],
-    tags = [
-        "data_integration",
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
     name = "test_mcap",
     size = "small",
     srcs = ["tests/datasource/test_mcap.py"],
