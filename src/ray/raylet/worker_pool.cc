@@ -447,6 +447,16 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
   // Refer this issue for more details: https://github.com/ray-project/ray/issues/15061
   if (language == Language::PYTHON) {
     env.insert({"SPT_NOENV", "1"});
+    // Disable the experimental Python JIT compiler to prevent SIGSEGV crashes
+    // on Python 3.14+ with the tail-call interpreter. The crash occurs in
+    // _Py_Executors_InvalidateDependency during module import when
+    // func_set_qualname triggers executor dependency invalidation.
+    // On Python < 3.13, this env var is simply ignored (no-op).
+    // Users can override by setting RAY_ALLOW_PYTHON_JIT=1 in their environment.
+    auto allow_jit = std::getenv("RAY_ALLOW_PYTHON_JIT");
+    if (allow_jit == nullptr || std::string(allow_jit) != "1") {
+      env.insert({"PYTHON_JIT", "0"});
+    }
   }
 
   if (RayConfig::instance().support_fork()) {

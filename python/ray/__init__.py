@@ -16,6 +16,21 @@ def _configure_system():
 
     """Wraps system configuration to avoid 'leaking' variables into ray."""
 
+    # Python 3.14 with the tail-call interpreter + JIT causes SIGSEGV crashes
+    # in _Py_Executors_InvalidateDependency during module import.
+    # Automatically disable JIT unless the user explicitly opts in.
+    if sys.version_info >= (3, 14):
+        if os.environ.get("RAY_ALLOW_PYTHON_JIT") != "1":
+            os.environ["PYTHON_JIT"] = "0"
+        logger.warning(
+            "Python %d.%d support in Ray is experimental. "
+            "The Python JIT has been automatically disabled (PYTHON_JIT=0) "
+            "to prevent known SIGSEGV crashes with the tail-call interpreter. "
+            "Set RAY_ALLOW_PYTHON_JIT=1 to override at your own risk.",
+            sys.version_info.major,
+            sys.version_info.minor,
+        )
+
     # Sanity check pickle5 if it has been installed.
     if "pickle5" in sys.modules:
         if sys.version_info >= (3, 8):
