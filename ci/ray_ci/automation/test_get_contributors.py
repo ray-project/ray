@@ -63,6 +63,21 @@ def test_find_pr_numbers_at_start_of_line():
     assert _find_pr_numbers("(#99)") == [99]
 
 
+def test_find_pr_numbers_multiple_titles_in_one_blob():
+    # `run` passes the entire multi-line `git log` output at once; every
+    # reference across all lines must be found, in order, including both
+    # references of a cherry-pick and ignoring titles with no PR.
+    blob = "\n".join(
+        [
+            "[core] Fix scheduler bug (#100)",
+            "[data] No PR reference here",
+            "[Core] Compute per component memory usage in MiB (#63932) (#64042)",
+            "[serve] Add new endpoint (#101)",
+        ]
+    )
+    assert _find_pr_numbers(blob) == [100, 63932, 64042, 101]
+
+
 @pytest.mark.parametrize(
     "line,expected",
     [

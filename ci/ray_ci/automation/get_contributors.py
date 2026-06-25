@@ -98,7 +98,7 @@ def run(access_token, prev_release_commit, curr_release_commit):
     # and a cherry-pick never silently drops the original author. Numbers that
     # are actually issues (or deleted PRs) resolve to a 404 below and are
     # skipped, so we cannot pre-filter them from the text.
-    pr_numbers = sorted({num for line in lines for num in _find_pr_numbers(line)})
+    pr_numbers = sorted(set(_find_pr_numbers(commits)))
 
     # Sort the PR numbers
     print("PR numbers", pr_numbers)
