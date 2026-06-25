@@ -161,25 +161,20 @@ class TestMBLTAcceleratorManager:
         assert "1.5" in error
 
     def test_set_current_process_visible_accelerator_ids(self, monkeypatch):
-        # Clear both env vars so the assertion below is unambiguous.
-        monkeypatch.delenv("QBRUNTIME_VISIBLE_DEVICES", raising=False)
         MBLTAcceleratorManager.set_current_process_visible_accelerator_ids(["0", "1"])
+        # qb Runtime reads QBRUNTIME_VISIBLE_DEVICES; Ray sets exactly this one
+        # env var (no second mirrored name) so it is restorable on worker reuse.
         assert os.environ[MBLT_RT_VISIBLE_DEVICES_ENV_VAR] == "0,1"
-        # The qb Runtime native library reads QBRUNTIME_VISIBLE_DEVICES,
-        # not MBLT_DEVICES, so Ray must mirror the value into both.
-        assert os.environ["QBRUNTIME_VISIBLE_DEVICES"] == "0,1"
 
     def test_set_current_process_visible_accelerator_ids_respects_noset(
         self, monkeypatch
     ):
         os.environ[MBLT_RT_VISIBLE_DEVICES_ENV_VAR] = "0,1"
-        monkeypatch.delenv("QBRUNTIME_VISIBLE_DEVICES", raising=False)
         os.environ[NOSET_MBLT_RT_VISIBLE_DEVICES_ENV_VAR] = "1"
 
         MBLTAcceleratorManager.set_current_process_visible_accelerator_ids(["2", "3"])
+        # The NOSET flag must leave the env var untouched.
         assert os.environ[MBLT_RT_VISIBLE_DEVICES_ENV_VAR] == "0,1"
-        # The NOSET flag must also prevent the QBRUNTIME mirror.
-        assert "QBRUNTIME_VISIBLE_DEVICES" not in os.environ
 
 
 if __name__ == "__main__":

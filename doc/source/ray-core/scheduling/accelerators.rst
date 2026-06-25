@@ -179,9 +179,9 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
 
         .. tip::
 
-            You can set the ``MBLT_DEVICES`` environment variable before starting a Ray node
+            You can set the ``QBRUNTIME_VISIBLE_DEVICES`` environment variable before starting a Ray node
             to limit the Mobilint MBLTs that are visible to Ray.
-            For example, ``MBLT_DEVICES=1,3 ray start --head --resources='{"MBLT": 2}'``
+            For example, ``QBRUNTIME_VISIBLE_DEVICES=1,3 ray start --head --resources='{"MBLT": 2}'``
             lets Ray only see devices 1 and 3.
 .. note::
 
@@ -607,12 +607,12 @@ and assign accelerators to the task or actor by setting the corresponding enviro
             class MBLTActor:
                 def ping(self):
                     print("MBLT IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["MBLT"]))
-                    print("MBLT_DEVICES: {}".format(os.environ["MBLT_DEVICES"]))
+                    print("QBRUNTIME_VISIBLE_DEVICES: {}".format(os.environ["QBRUNTIME_VISIBLE_DEVICES"]))
 
             @ray.remote(resources={"MBLT": 1})
             def mblt_task():
                 print("MBLT IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["MBLT"]))
-                print("MBLT_DEVICES: {}".format(os.environ["MBLT_DEVICES"]))
+                print("QBRUNTIME_VISIBLE_DEVICES: {}".format(os.environ["QBRUNTIME_VISIBLE_DEVICES"]))
 
             mblt_actor = MBLTActor.remote()
             ray.get(mblt_actor.ping.remote())
@@ -623,9 +623,9 @@ and assign accelerators to the task or actor by setting the corresponding enviro
             :options: +MOCK
 
             (MBLTActor pid=52420) MBLT IDs: [0]
-            (MBLTActor pid=52420) MBLT_DEVICES: 0
+            (MBLTActor pid=52420) QBRUNTIME_VISIBLE_DEVICES: 0
             (mblt_task pid=51830) MBLT IDs: [1]
-            (mblt_task pid=51830) MBLT_DEVICES: 1
+            (mblt_task pid=51830) QBRUNTIME_VISIBLE_DEVICES: 1
 
 Inside a task or actor, :func:`ray.get_runtime_context().get_accelerator_ids() <ray.runtime_context.RuntimeContext.get_accelerator_ids>` returns a
 list of accelerator IDs that are available to the task or actor.

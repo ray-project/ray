@@ -9,17 +9,16 @@ from ray._private.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
 
-# Ray-facing visibility env var. Ray's accelerator scheduler reads and writes
-# this name; qb Runtime itself reads ``QBRUNTIME_VISIBLE_DEVICES`` (see
-# ``set_current_process_visible_accelerator_ids`` below for the mirror).
-MBLT_RT_VISIBLE_DEVICES_ENV_VAR = "MBLT_DEVICES"
+# Visibility env var for Mobilint NPUs. The qb Runtime native library reads
+# ``QBRUNTIME_VISIBLE_DEVICES`` directly to decide which devices a process may
+# open (verified by inspecting the SDK shared object strings;
+# ``libqbruntime.so.1.2.0`` references ``QBRUNTIME_VISIBLE_DEVICES``). Ray uses
+# this same single name as the MBLT visibility env var so the per-worker
+# assignment propagates into ``qbruntime.Accelerator(...)`` /
+# ``get_available_device_numbers()`` and so Ray's scheduler can save and
+# restore exactly one env var when a worker is reused.
+MBLT_RT_VISIBLE_DEVICES_ENV_VAR = "QBRUNTIME_VISIBLE_DEVICES"
 NOSET_MBLT_RT_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_MBLT_RT_VISIBLE_DEVICES"
-
-# The visibility env var the qb Runtime native library actually reads when
-# resolving device numbers. Verified by inspecting the SDK shared object
-# strings (``libqbruntime.so.1.2.0`` references
-# ``QBRUNTIME_VISIBLE_DEVICES`` directly).
-_QBRUNTIME_VISIBLE_DEVICES_ENV_VAR = "QBRUNTIME_VISIBLE_DEVICES"
 
 # Character device files created by the Mobilint kernel driver.
 # ARIES family enumerates as ``/dev/aries0``, ``/dev/aries1``, ... (one
@@ -140,13 +139,14 @@ class MBLTAcceleratorManager(AcceleratorManager):
         if env_bool(NOSET_MBLT_RT_VISIBLE_DEVICES_ENV_VAR, False):
             return
 
-        ids_str = ",".join(map(str, visible_mblt_devices))
-        # ``MBLT_DEVICES`` is the Ray-facing name used by user code; the qb
-        # Runtime native library reads ``QBRUNTIME_VISIBLE_DEVICES``. Both
-        # must be set for Ray's per-worker visibility to propagate into
-        # ``qbruntime.Accelerator(...)`` and ``get_available_device_numbers()``.
-        os.environ[MBLT_RT_VISIBLE_DEVICES_ENV_VAR] = ids_str
-        os.environ[_QBRUNTIME_VISIBLE_DEVICES_ENV_VAR] = ids_str
+        # qb Runtime reads ``QBRUNTIME_VISIBLE_DEVICES`` to scope which Mobilint
+        # NPUs this worker may open. Set exactly this one env var so that the
+        # value stays consistent with what Ray's scheduler saves and restores
+        # on worker reuse; mirroring into a second name would leave that name
+        # stale after the task finishes.
+        os.environ[MBLT_RT_VISIBLE_DEVICES_ENV_VAR] = ",".join(
+            map(str, visible_mblt_devices)
+        )
 
 
 def _count_mblt_dev_nodes() -> int:
