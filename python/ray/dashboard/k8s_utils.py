@@ -46,7 +46,14 @@ def cpu_percent():
             system_delta = (system_usage - last_system_usage) / _host_num_cpus()
 
             quotient = cpu_delta / system_delta
-            cpu_percent = round(quotient * 100 / get_num_cpus(), 1)
+            # A node can be registered with 0 CPUs (e.g. the recommended
+            # `num-cpus: "0"` for KubeRay head nodes). Guard against dividing by
+            # zero, which otherwise raises on every poll and spams the logs.
+            num_cpus = get_num_cpus()
+            if num_cpus <= 0:
+                cpu_percent = 0.0
+            else:
+                cpu_percent = round(quotient * 100 / num_cpus, 1)
         last_system_usage = system_usage
         last_cpu_usage = cpu_usage
         # Computed percentage might be slightly above 100%.

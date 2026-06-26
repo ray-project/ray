@@ -59,7 +59,10 @@ def create_checkpoint_filter_op(
     if info.type == fs.FileType.NotFound:
         return physical_input_op
 
-    checkpoint_manager = IdColumnCheckpointManager(checkpoint_config=checkpoint_config)
+    checkpoint_manager = IdColumnCheckpointManager(
+        checkpoint_config=checkpoint_config,
+        data_context=data_context,
+    )
     # load checkpointed IDs as a numpy ndarray and store it to object store.
     checkpointed_ids_ref, checkpointed_ids_size = checkpoint_manager.load_checkpoint(
         data_file_dir, data_file_filesystem

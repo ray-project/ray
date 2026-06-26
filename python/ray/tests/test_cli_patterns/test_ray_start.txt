@@ -6,6 +6,9 @@ Ray runtime started.
 --------------------
 
 Next steps
+  Note: The following commands are intended for use on
+  the head node or within the cluster network\.
+
   To add another node to this Ray cluster, run
     ray start --address='.+'
 

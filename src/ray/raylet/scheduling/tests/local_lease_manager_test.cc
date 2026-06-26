@@ -27,6 +27,7 @@
 
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/object_manager.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/task/task_util.h"
@@ -61,7 +62,7 @@ class MockWorkerPool : public WorkerPoolInterface {
     return {};
   }
 
-  bool IsWorkerAvailableForScheduling() const override {
+  bool AllAliveWorkersAreActors() const override {
     RAY_CHECK(false) << "Not used.";
     return false;
   }
@@ -260,7 +261,7 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   local_node_resources[ray::kCPU_ResourceLabel] = num_cpus;
   static instrumented_io_context io_context;
   auto scheduler = std::make_shared<ClusterResourceScheduler>(
-      io_context,
+      PeriodicalRunner::Create(io_context),
       scheduling::NodeID(id),
       local_node_resources,
       /*is_node_available_fn*/
@@ -360,7 +361,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
             },
             /*max_pinned_lease_arguments_bytes=*/1000,
             /*scheduler_metrics=*/scheduler_metrics_,
-            /*get_time=*/[this]() { return current_time_ms_; })) {}
+            /*clock=*/clock_)) {}
 
   void SetUp() override {
     static rpc::GcsNodeAddressAndLiveness node_info;
@@ -388,7 +389,6 @@ class LocalLeaseManagerTest : public ::testing::Test {
   std::unordered_set<ObjectID> missing_objects_;
 
   int default_arg_size_ = 10;
-  int64_t current_time_ms_ = 0;
 
   absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness> node_info_;
 
@@ -447,11 +447,11 @@ TEST_F(LocalLeaseManagerTest, TestCancelLeasesWithoutReply) {
 TEST_F(LocalLeaseManagerTest, TestLeaseGrantingOrder) {
   // Initial setup: 3 CPUs available.
   std::shared_ptr<MockWorker> worker1 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
   std::shared_ptr<MockWorker> worker2 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
   std::shared_ptr<MockWorker> worker3 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker3));
@@ -527,9 +527,9 @@ TEST_F(LocalLeaseManagerTest, TestNoLeakOnImpossibleInfeasibleLease) {
   // See https://github.com/ray-project/ray/pull/52295 for reasons why added this.
 
   std::shared_ptr<MockWorker> worker1 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
   std::shared_ptr<MockWorker> worker2 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
 
   // Create 2 leases that requires 3 CPU's each and are waiting on an arg.
@@ -596,7 +596,7 @@ TEST_F(LocalLeaseManagerTest, TestNodeBusyWhenPullingTaskArguments) {
   // - Node has 3 CPUs available with one free worker.
   // - Node is idle initially.
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
   ASSERT_EQ(scheduler_->GetLocalResourceManager().IsLocalNodeIdle(), true);
   ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 3);

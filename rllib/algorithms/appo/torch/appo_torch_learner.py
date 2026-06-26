@@ -14,6 +14,8 @@ from typing import Dict
 from ray.rllib.algorithms.appo.appo import (
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_KL_KEY,
+    LEARNER_RESULTS_MEAN_IS_KEY,
+    LEARNER_RESULTS_VAR_IS_KEY,
     APPOConfig,
 )
 from ray.rllib.algorithms.appo.appo_learner import APPOLearner
@@ -178,6 +180,13 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
             * torch.clip(logp_ratio, 1 - config.clip_param, 1 + config.clip_param),
         )
 
+        # IS-ratio diagnostics; restricted to valid timesteps via loss mask.
+        mean_is_ratio = torch.sum(is_ratio * loss_mask_time_major) / size_loss_mask
+        var_is_ratio = (
+            torch.sum(torch.square(is_ratio - mean_is_ratio) * loss_mask_time_major)
+            / size_loss_mask
+        )
+
         if config.use_kl_loss:
             action_kl = old_target_policy_dist.kl(target_policy_dist) * loss_mask
             mean_kl_loss = torch.sum(action_kl) / size_loss_mask
@@ -218,6 +227,8 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
                 LEARNER_RESULTS_CURR_KL_COEFF_KEY: (
                     self.curr_kl_coeffs_per_module[module_id]
                 ),
+                LEARNER_RESULTS_MEAN_IS_KEY: mean_is_ratio,
+                LEARNER_RESULTS_VAR_IS_KEY: var_is_ratio,
             },
             key=module_id,
             window=1,  # <- single items (should not be mean/ema-reduced over time).

@@ -17,17 +17,18 @@
 #include <cstdlib>
 
 #include "gtest/gtest.h"
+#include "ray/util/clock.h"
 
 TEST(ThrottlerTest, BasicTest) {
-  int64_t now = 100;
-  ray::Throttler throttler(5, [&now] { return now; });
+  ray::FakeClock clock(absl::FromUnixNanos(100));
+  ray::Throttler throttler(5, clock);
   EXPECT_TRUE(throttler.CheckAndUpdateIfPossible());
-  now += 5;
+  clock.AdvanceTime(absl::Nanoseconds(5));
   EXPECT_TRUE(throttler.CheckAndUpdateIfPossible());
-  now += 1;
+  clock.AdvanceTime(absl::Nanoseconds(1));
   EXPECT_FALSE(throttler.CheckAndUpdateIfPossible());
-  now += 4;
+  clock.AdvanceTime(absl::Nanoseconds(4));
   EXPECT_TRUE(throttler.CheckAndUpdateIfPossible());
-  now += 5;
+  clock.AdvanceTime(absl::Nanoseconds(5));
   EXPECT_TRUE(throttler.CheckAndUpdateIfPossible());
 }

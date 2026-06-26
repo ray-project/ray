@@ -27,13 +27,17 @@ OrderedActorTaskExecutionQueue::OrderedActorTaskExecutionQueue(
     ActorTaskExecutionArgWaiterInterface &waiter,
     worker::TaskEventBuffer &task_event_buffer,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
-    int64_t reorder_wait_seconds)
+    int64_t reorder_wait_seconds,
+    ExecuteTaskCallback execute_task,
+    CancelTaskCallback cancel_task)
     : task_execution_service_(task_execution_service),
       reorder_wait_seconds_(reorder_wait_seconds),
       main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),
       task_event_buffer_(task_event_buffer),
-      pool_manager_(std::move(pool_manager)) {}
+      pool_manager_(std::move(pool_manager)),
+      execute_task_(std::move(execute_task)),
+      cancel_task_(std::move(cancel_task)) {}
 
 void OrderedActorTaskExecutionQueue::CancelAllQueuedTasks(const std::string &msg) {
   absl::MutexLock lock(&mu_);
@@ -44,7 +48,7 @@ void OrderedActorTaskExecutionQueue::CancelAllQueuedTasks(const std::string &msg
     // Cancel queued ordered tasks.
     while (!group_state.pending_tasks.empty()) {
       auto head = group_state.pending_tasks.begin();
-      head->second.Cancel(status);
+      cancel_task_(head->second, status);
       pending_task_id_to_is_canceled.erase(head->second.TaskID());
       group_state.pending_tasks.erase(head);
     }
@@ -52,7 +56,7 @@ void OrderedActorTaskExecutionQueue::CancelAllQueuedTasks(const std::string &msg
     // Cancel queued retry tasks.
     while (!group_state.pending_retry_tasks.empty()) {
       auto &req = group_state.pending_retry_tasks.front();
-      req.Cancel(status);
+      cancel_task_(req, status);
       pending_task_id_to_is_canceled.erase(req.TaskID());
       group_state.pending_retry_tasks.pop_front();
     }
@@ -183,7 +187,8 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
       auto head = group_state.pending_tasks.begin();
       RAY_LOG(ERROR) << "Cancelling stale RPC with seqno " << head->first << " < "
                      << group_state.next_seq_no << " in group '" << group_name << "'";
-      head->second.Cancel(
+      cancel_task_(
+          head->second,
           Status::Invalid("Task canceled due to stale sequence number. The client "
                           "intentionally discarded this task."));
       {
@@ -267,7 +272,7 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
             for (auto &[_, group_state_in] : group_states_) {
               while (!group_state_in.pending_tasks.empty()) {
                 auto head = group_state_in.pending_tasks.begin();
-                head->second.Cancel(invalid_status);
+                cancel_task_(head->second, invalid_status);
                 group_state_in.next_seq_no =
                     std::max(group_state_in.next_seq_no, head->first + 1);
                 {
@@ -312,10 +317,10 @@ void OrderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
 
   // Accept can be very long, and we shouldn't hold a lock.
   if (is_canceled) {
-    request.Cancel(
-        Status::SchedulingCancelled("Task is canceled before it is scheduled."));
+    cancel_task_(request,
+                 Status::SchedulingCancelled("Task is canceled before it is scheduled."));
   } else {
-    request.Execute();
+    execute_task_(request);
   }
 
   absl::MutexLock lock(&mu_);

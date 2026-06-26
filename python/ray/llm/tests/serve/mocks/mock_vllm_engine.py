@@ -4,6 +4,9 @@ import random
 from random import randint
 from typing import Any, AsyncGenerator, Dict, Optional, Union
 
+from fastapi import FastAPI, HTTPException, Request
+from starlette.responses import JSONResponse, StreamingResponse
+
 from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
@@ -28,7 +31,14 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
+from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+    DefaultConnectorBackend,
+)
 from ray.llm._internal.serve.utils.lora_serve_utils import LoraModelLoader
+from ray.serve.context import (
+    _get_internal_replica_context,
+    _get_serve_request_context,
+)
 
 
 class MockVLLMEngine(LLMEngine):
@@ -44,6 +54,9 @@ class MockVLLMEngine(LLMEngine):
             llm_config: The llm configuration for this engine
         """
         self.llm_config = llm_config
+        # The mock skips engine init, where setup_engine_backend attaches this.
+        if llm_config.engine_kwargs.get("kv_transfer_config"):
+            llm_config._kv_connector_backend = DefaultConnectorBackend(llm_config)
         self.started = False
         self._current_lora_model: Dict[str, DiskMultiplexConfig] = {}
         self._is_sleeping = False
@@ -144,10 +157,20 @@ class MockVLLMEngine(LLMEngine):
 
     async def build_asgi_app(self):
         """Build a minimal ASGI app for direct-streaming tests."""
-        from fastapi import FastAPI, HTTPException, Request
-        from starlette.responses import JSONResponse, StreamingResponse
-
         app = FastAPI()
+
+        @app.middleware("http")
+        async def _tag_serving_replica(request: Request, call_next):
+            # Tag each response with the serving replica and the session id it
+            # saw, so direct-streaming tests can assert affinity over HAProxy.
+            response = await call_next(request)
+            ctx = _get_internal_replica_context()
+            if ctx is not None:
+                response.headers["x-replica-id"] = ctx.replica_id.unique_id
+            response.headers[
+                "x-serve-session-id"
+            ] = _get_serve_request_context().session_id
+            return response
 
         def check_model(model: Optional[str]) -> None:
             if model is not None and model != self.llm_config.model_id:
@@ -392,6 +415,25 @@ class MockVLLMEngine(LLMEngine):
         response = DetokenizeResponse(prompt=prompt)
         yield response
 
+    def _maybe_attach_kv_transfer_params(self, request, response) -> None:
+        """Stamp the serving replica id into ``kv_transfer_params`` for P/D tests.
+
+        The orchestrator sends the prefill request with ``remote_engine_id``
+        unset; fill it with this replica's id so the response reports the prefill
+        replica. On the decode request the id is already set and passes through.
+        Lets tests observe that the session id pinned the prefill replica, not
+        just the decode ingress.
+        """
+        params = getattr(request, "kv_transfer_params", None)
+        if not params:
+            return
+        params = dict(params)
+        if params.get("remote_engine_id") is None:
+            ctx = _get_internal_replica_context()
+            if ctx is not None:
+                params["remote_engine_id"] = ctx.replica_id.unique_id
+        response.kv_transfer_params = params
+
     async def _generate_chat_response(
         self, request: ChatCompletionRequest, prompt_text: str, max_tokens: int
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse], None]:
@@ -466,6 +508,7 @@ class MockVLLMEngine(LLMEngine):
                 },
             )
 
+            self._maybe_attach_kv_transfer_params(request, response)
             yield response
 
     async def _generate_completion_response(
@@ -533,6 +576,7 @@ class MockVLLMEngine(LLMEngine):
                 },
             )
 
+            self._maybe_attach_kv_transfer_params(request, response)
             yield response
 
     async def _generate_transcription_response(

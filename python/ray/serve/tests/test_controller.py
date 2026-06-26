@@ -230,6 +230,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                                     "start_time_s": replica.start_time_s,
                                 }
                             ],
+                            "recent_dead_replicas": [],
                         }
                     },
                     "external_scaler_enabled": False,

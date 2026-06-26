@@ -530,6 +530,26 @@ def _assert_scalar_values(result_by_id, expected_values):
             assert result_by_id[row_id][column] == expected_value
 
 
+def test_should_not_index_empty_schema_tables():
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import _should_index_side
+
+    supported_table = pa.table({"id": pa.array([1])})
+    unsupported_table = pa.table({"unsupported": pa.array([[1]])})
+    empty_schema_table = pa.table({})
+
+    assert not _should_index_side(
+        "left", empty_schema_table, unsupported_table, JoinType.LEFT_OUTER
+    )
+    assert not _should_index_side(
+        "left", supported_table, empty_schema_table, JoinType.LEFT_OUTER
+    )
+    assert _should_index_side(
+        "left", supported_table, unsupported_table, JoinType.LEFT_OUTER
+    )
+
+
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("10.0.0"),
     reason="""Joins use empty arrays with type coercion. This pyarrow

@@ -46,6 +46,7 @@ exceptions:
   - MPS
   - NET
   - NFS
+  - NIXL
   - NOTE
   - NVDA
   - OSS
