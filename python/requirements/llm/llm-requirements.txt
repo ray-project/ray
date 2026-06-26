@@ -1,5 +1,12 @@
 # Keep this in sync with the definition in setup.py for ray[llm]
-vllm[audio]==0.23.0
+# Python 3.14: vllm 0.23.0 pins flashinfer-python==0.6.12, which requires
+# cuda-tile[tileiras]. On cp314 the only cuda-tile wheel is 1.4.0, whose
+# tileiras extra needs cuda-toolkit>=13.2, conflicting with torch 2.11.0's
+# cuda-toolkit<=13.0.2. Hold 3.14 at vllm 0.22.0 (flashinfer 0.6.11.post2,
+# no tileiras extra) until upstream cp314 wheels align. Remove this split
+# once vllm/flashinfer/torch are co-installable on 3.14.
+vllm[audio]==0.23.0 ; python_version < '3.14'
+vllm[audio]==0.22.0 ; python_version >= '3.14'
 prometheus-fastapi-instrumentator>=8.0.0  # for starlette v1.0.1+
 # Keep NIXL in sync with vLLM's kv_connectors requirements.
 # https://github.com/vllm-project/vllm/blob/v0.23.0/requirements/kv_connectors.txt#L2

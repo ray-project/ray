@@ -3881,6 +3881,10 @@ pyzmq==27.1.0 \
     #   jupyter-client
     #   jupyter-server
     #   locust
+ray-haproxy==2.8.21 ; sys_platform == 'linux' \
+    --hash=sha256:b09cea2a2f11abae71018f06a2d2b00f095f493e021b31ff2c452bebb89f786c \
+    --hash=sha256:f155c8a92a73b4477f8b59f1d9e45b69d5a800f48b579be097cfa67cc53f65f0
+    # via ray
 referencing==0.37.0 \
     --hash=sha256:381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231 \
     --hash=sha256:44aefc3142c5b842538163acb373e24cce6632bd54bdb01b21ad5863489f50d8
