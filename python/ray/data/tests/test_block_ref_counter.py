@@ -144,18 +144,19 @@ class TestBlockRefCounterNonOwnedBlocks:
     def test_non_owned_block_not_tracked(self, ray_start_regular_shared):
         """on_block_produced gracefully skips blocks not owned by this worker.
 
-        This reproduces the SplitCoordinator scenario where an actor-hosted
-        executor receives driver-owned blocks and calls on_block_produced on
-        them. The callback registration raises ValueError because the actor
-        does not own the blocks. The counter must handle this without crashing
-        and must not count the block's bytes.
+        When SplitCoordinator runs a streaming executor inside an actor, the
+        input blocks are owned by the driver. The actor cannot register
+        out-of-scope callbacks on them, so on_block_produced should catch the
+        ValueError and leave the usage at zero.
+
+        We wrap the ObjectRef in a list to prevent Ray from auto-resolving it,
+        mirroring how SplitCoordinator receives refs embedded in a serialized
+        Dataset object.
         """
 
         @ray.remote
         class CounterActor:
             def try_track_non_owned_block(self, block_ref_wrapped, size_bytes):
-                # Unwrap: ObjectRef was wrapped in a list to prevent
-                # Ray from auto-resolving it into the value.
                 block_ref = block_ref_wrapped[0]
                 counter = BlockRefCounter()
                 counter.on_block_produced(block_ref, size_bytes, "op_split")
