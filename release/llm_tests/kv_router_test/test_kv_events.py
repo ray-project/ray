@@ -10,9 +10,6 @@ from dynamo.llm import compute_block_hash_for_seq
 import ray
 from ray import serve
 from ray._common.test_utils import async_wait_for_condition
-from ray.llm._internal.serve.core.ingress.builder import (
-    _build_direct_streaming_llm_deployment,
-)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     _MODEL_NAME,
     _TENANT_ID,
@@ -21,7 +18,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
 )
 from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX, SERVE_NAMESPACE
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
-from ray.serve.llm import LLMConfig, ModelLoadingConfig
+from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_openai_app
 from ray.serve.llm.request_router import KVAwareRouter
 
 MODEL_ID = "qwen3-0.6b"
@@ -203,7 +200,7 @@ class TestKvEvents:
             "ray.llm._internal.serve.routing_policies.kv_aware.utils.KVRouterActor",
             _TestKVRouterActor,
         ):
-            app = _build_direct_streaming_llm_deployment(llm_config)
+            app = build_openai_app({"llm_configs": [llm_config]})
             handle = serve.run(app, name=APP_NAME)
         yield handle
         serve.shutdown()
