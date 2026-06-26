@@ -40,13 +40,6 @@ def set_oss_autoscaler(monkeypatch):
     monkeypatch.setenv(CLUSTER_AUTOSCALER_ENV_KEY, ClusterAutoscalerVersion.V2.value)
 
 
-@pytest.fixture
-def ray_start_4_cpus():
-    ray.init(num_cpus=4)
-    yield
-    ray.shutdown()
-
-
 def test_after_worker_group_shutdown():
     """The callback delegates shutdown to the dataset shard provider."""
     callback = DatasetsCallback(
