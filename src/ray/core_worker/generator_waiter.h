@@ -47,6 +47,11 @@ struct ActorTaskBackpressureMetadata {
   // (`_num_objects_per_yield`), so a grouped yield reserves/releases its whole
   // group of objects against the actor-wide budget.
   Status ReserveSlot(int64_t num_objects = 1);
+  // Non-blocking variant of ReserveSlot used by async streaming generators:
+  // admits the group and returns true if the shared budget allows (or the task
+  // is no longer alive); returns false if the caller must wait for budget. The
+  // caller then awaits an asyncio.Event instead of blocking a thread.
+  bool TryReserveSlot(int64_t num_objects = 1);
   void ReleaseSlot(int64_t num_objects = 1);
   void OnConsumed(int64_t total);
   void Teardown();
@@ -62,6 +67,12 @@ class TaskGeneratorBackpressureWaiter {
                                   std::function<Status()> check_signals);
 
   Status WaitUntilObjectConsumed();
+  // Non-blocking check used by async streaming generators: returns true if the
+  // per-task unconsumed-object count is at/above the threshold (i.e. the
+  // generator should pause). Returns false when backpressure is disabled or the
+  // threshold is not configured. Lets the async executor await an asyncio.Event
+  // instead of blocking a thread in WaitUntilObjectConsumed.
+  bool IsBackpressured() const;
   Status WaitAllObjectsReported();
 
   /// Increment the number of objects generated. The executor should call this
@@ -105,6 +116,10 @@ class ActorWideGeneratorBackpressureWaiter {
   // produces multiple objects (`_num_objects_per_yield` > 1).
   Status ReserveActorWideSlot(ActorTaskBackpressureMetadata &metadata,
                               int64_t num_objects = 1);
+  // Non-blocking variant of ReserveActorWideSlot (see
+  // ActorTaskBackpressureMetadata::TryReserveSlot).
+  bool TryReserveActorWideSlot(ActorTaskBackpressureMetadata &metadata,
+                               int64_t num_objects = 1);
   void ReleaseActorWideSlot(ActorTaskBackpressureMetadata &metadata,
                             int64_t num_objects = 1);
   void OnConsumedForTask(ActorTaskBackpressureMetadata &metadata, int64_t total);

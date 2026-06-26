@@ -792,6 +792,11 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// streaming-generator cap (`_actor_generator_backpressure_num_objects`).
   /// nullptr when the actor option is disabled or this is not an actor
   /// task.
+  ///
+  /// This only reports the items and never blocks on backpressure. Callers apply
+  /// backpressure separately: sync generators block on
+  /// TaskGeneratorBackpressureWaiter::WaitUntilObjectConsumed, async generators
+  /// await an asyncio.Event woken via SetAsyncGeneratorBackpressureUnblockNotify.
   Status ReportGeneratorItemReturns(
       const std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           &returned_objects,
@@ -804,6 +809,28 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   void MarkGeneratorBackpressureTaskFinished(const ObjectID &generator_id);
   bool TeardownGeneratorBackpressureTask(const ObjectID &generator_id);
+
+  /// Register the async-streaming-generator unblock notification for
+  /// `generator_id`. The async executor passes a (non-null) trampoline `fn` and
+  /// a borrowed context `ctx`; `fn(ctx)` is invoked (from any thread, e.g. the
+  /// RPC handler that processes consumption updates) when the task may have
+  /// become unblocked, so it can set the generator's asyncio.Event instead of
+  /// blocking a thread on the backpressure wait. Use
+  /// ClearAsyncGeneratorBackpressureUnblockNotify to remove the entry before the
+  /// context is destroyed.
+  ///
+  /// The notification registry is guarded by its own mutex and never by the
+  /// GIL: callers MUST invoke this with the GIL released so the lock is always
+  /// acquired without holding the GIL (the trampoline acquires the GIL only
+  /// after this lock), keeping a consistent lock order.
+  void SetAsyncGeneratorBackpressureUnblockNotify(const ObjectID &generator_id,
+                                                  void (*fn)(void *),
+                                                  void *ctx);
+
+  /// Clear a notification registered with SetAsyncGeneratorBackpressureUnblockNotify.
+  /// MUST be called (with the GIL released) before the registered context is
+  /// destroyed so a late notification never dereferences a freed context.
+  void ClearAsyncGeneratorBackpressureUnblockNotify(const ObjectID &generator_id);
 
   /// Register a generator-backpressure entry up-front so that owner-failure
   /// sweeps (``HandleOwnerDied``) can find tasks that are still blocked in
@@ -1928,6 +1955,23 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   absl::flat_hash_map<ObjectID, GeneratorBackpressureState> generator_backpressure_states_
       ABSL_GUARDED_BY(mutex_);
+
+  /// Fire the registered unblock notification(s) for async streaming generators.
+  /// When `notify_all` is true, every registered generator is woken (used when
+  /// the actor-wide cap is involved, since one task's consumption frees shared
+  /// budget for the others); otherwise only `generator_id` is woken. Must be
+  /// called WITHOUT holding `mutex_` (the trampoline acquires the GIL).
+  void NotifyAsyncGeneratorBackpressureUnblock(const ObjectID &generator_id,
+                                               bool notify_all);
+
+  /// Registry of async-streaming-generator unblock notifications, keyed by
+  /// generator id. Deliberately guarded by its own mutex (not `mutex_`) so the
+  /// notify path (which calls into Python via the trampoline) never contends
+  /// with the hot `mutex_`. Always acquired with the GIL released; see
+  /// SetAsyncGeneratorBackpressureUnblockNotify.
+  mutable absl::Mutex generator_notify_mutex_;
+  absl::flat_hash_map<ObjectID, std::pair<void (*)(void *), void *>>
+      generator_unblock_notifies_ ABSL_GUARDED_BY(generator_notify_mutex_);
 
   /// Number of tasks that have been pushed to the actor but not executed.
   std::atomic<int64_t> task_queue_length_;

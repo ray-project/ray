@@ -230,36 +230,119 @@ def test_caller_failure_doesnt_hang(shutdown_only):
     wait_for_condition(verify)
 
 
-def test_backpressure_invalid(shutdown_only):
+def test_backpressure_async_generator(shutdown_only):
     """
-    Verify invalid cases.
-    1. Verify using backpressure + async actor raises an exception
-    2. Verify _generator_backpressure_num_objects == 0 is not allowed.
+    Verify that both per-method and actor-wide backpressure work for async
+    streaming generators, and that the per-method threshold actually limits how
+    far ahead an async generator runs.
     """
     ray.init(num_cpus=1)
 
+    TOTAL_RETURN = 10
+
+    @ray.remote
+    class Reporter:
+        def __init__(self):
+            self.reported = set()
+
+        def report(self, i):
+            self.reported.add(i)
+
+        def reported(self):
+            return self.reported
+
     @ray.remote
     class A:
-        async def f(self):
-            for i in range(10):
-                print("yield", i)
+        async def f(self, reporter):
+            for i in range(TOTAL_RETURN):
+                await reporter.report.remote(i)
                 yield i
 
-    a = A.remote()
-    gen = a.f.options(_generator_backpressure_num_objects=1).remote()
-    with pytest.raises(ValueError):
-        ray.get(next(gen))
+    reporter = Reporter.remote()
 
+    def check_reported(i):
+        return i in ray.get(reporter.reported.remote())
+
+    a = A.remote()
+    gen = a.f.options(_generator_backpressure_num_objects=1).remote(reporter)
+
+    # With a threshold of 1, the async generator must not produce object i + 1
+    # until object i has been consumed.
+    for i in range(TOTAL_RETURN - 1):
+        wait_for_condition(lambda: check_reported(i))
+        # i + 1 must not be produced while i is unconsumed.
+        time.sleep(1)
+        assert not check_reported(i + 1), "async generator was not backpressured"
+        # Consume the ref -> the task is allowed to produce one more.
+        ray.get(next(gen))
+        wait_for_condition(lambda: check_reported(i + 1))
+    ray.get(next(gen))
+
+    # Actor-wide backpressure on an async actor.
     @ray.remote(_actor_generator_backpressure_num_objects=1)
     class AsyncActorWithActorBP:
         async def f(self):
-            for i in range(10):
+            for i in range(TOTAL_RETURN):
                 yield i
 
     async_actor_bp = AsyncActorWithActorBP.remote()
     gen = async_actor_bp.f.remote()
-    with pytest.raises(ValueError):
-        ray.get(next(gen))
+    assert [ray.get(ref) for ref in gen] == list(range(TOTAL_RETURN))
+
+
+def test_backpressure_async_generator_concurrent_no_deadlock(shutdown_only):
+    """
+    Regression test: concurrent backpressured async streaming generators on the
+    same async actor must not deadlock, even when the caller drains them out of
+    submission order.
+
+    Output reporting is serialized on a single shared executor thread. If a
+    generator parked under backpressure held that thread, a second concurrent
+    generator could never report its objects, so draining the second generator
+    before the first would hang forever.
+    """
+    ray.init(num_cpus=1)
+
+    N = 20
+
+    @ray.remote
+    class A:
+        async def f(self, n):
+            for i in range(n):
+                yield i
+
+    a = A.remote()
+    # Start two generators concurrently; each backpressures after 1 object.
+    gen_a = a.f.options(_generator_backpressure_num_objects=1).remote(N)
+    gen_b = a.f.options(_generator_backpressure_num_objects=1).remote(N)
+
+    # Let both tasks start and become backpressured before we consume anything.
+    time.sleep(1)
+
+    result = {}
+
+    def drain():
+        # Drain the second generator fully first, then the first. This is the
+        # ordering that deadlocks if the parked generator holds the shared
+        # report thread.
+        result["b"] = [ray.get(ref) for ref in gen_b]
+        result["a"] = [ray.get(ref) for ref in gen_a]
+
+    t = threading.Thread(target=drain, daemon=True)
+    t.start()
+    t.join(timeout=60)
+    assert not t.is_alive(), "concurrent backpressured async generators deadlocked"
+    assert result["a"] == list(range(N))
+    assert result["b"] == list(range(N))
+
+
+def test_backpressure_invalid(shutdown_only):
+    """
+    Verify invalid cases.
+    1. Verify _generator_backpressure_num_objects == 0 is not allowed.
+    2. Verify _num_objects_per_yield == 0 is not allowed.
+    """
+    ray.init(num_cpus=1)
 
     with pytest.raises(ValueError, match="backpressure_num_objects=0 is not allowed"):
 
@@ -1025,6 +1108,320 @@ os._exit(0)
     finally:
         ray.kill(a)
         ray.kill(reporter)
+
+
+def _async_dual_stream_actor_class(
+    *,
+    actor_cap: int,
+    method_cap: Optional[int],
+) -> Type:
+    """Async counterpart of ``_dual_stream_actor_class``."""
+    if method_cap is None:
+
+        @ray.remote(_actor_generator_backpressure_num_objects=actor_cap)
+        class _A:
+            async def gen(self, reporter, tag: str):
+                for i in range(5):
+                    await reporter.report.remote(tag, i)
+                    yield i
+
+        return _A
+
+    @ray.remote(_actor_generator_backpressure_num_objects=actor_cap)
+    class _B:
+        @ray.method(_generator_backpressure_num_objects=method_cap)
+        async def gen(self, reporter, tag: str):
+            for i in range(5):
+                await reporter.report.remote(tag, i)
+                yield i
+
+    return _B
+
+
+def test_actor_generator_backpressure_async_single_task(shutdown_only):
+    """Async generator, actor-wide cap only (no per-method cap)."""
+    ray.init(num_cpus=2)
+    reporter = TagReporter.remote()
+
+    @ray.remote(_actor_generator_backpressure_num_objects=3)
+    class A:
+        async def gen(self, rep, tag):
+            for i in range(5):
+                await rep.report.remote(tag, i)
+                yield i
+
+    a = A.remote()
+    g = a.gen.remote(reporter, "a")
+
+    # First 3 items get reported, then the producer parks at the cap.
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 3,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    # Confirm it is actually parked (no further production without consumption).
+    time.sleep(1)
+    assert ray.get(reporter.count_tag.remote("a")) == 3
+
+    # Consume one → exactly one more is produced.
+    ray.get(next(g))
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 4,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    # Drain the rest, generator ends.
+    _drain_all([g])
+
+    # Fire again: the cap is reclaimed, the new task fills up to 3 again.
+    g2 = a.gen.remote(reporter, "a")
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 5 + 3,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    _drain_all([g2])
+
+
+def test_actor_generator_backpressure_async_mt_actor(shutdown_only):
+    """Two concurrent async generator tasks share an actor-wide cap of 6.
+
+    Exercises the cross-task wakeup: when one stream's consumption frees shared
+    budget, the other parked async generator must be woken to re-check.
+    """
+    ray.init(num_cpus=4)
+    reporter = TagReporter.remote()
+    A = _async_dual_stream_actor_class(actor_cap=6, method_cap=None)
+    a = A.remote()
+
+    g1 = a.gen.remote(reporter, "1")
+    g2 = a.gen.remote(reporter, "2")
+
+    # Together the two producers fill the shared cap of 6, then both park.
+    wait_for_condition(
+        lambda: ray.get(reporter.total_len.remote()) == 6,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    time.sleep(1)
+    assert ray.get(reporter.total_len.remote()) == 6
+
+    # Consume one ref from g1 — exactly one more report across the two streams.
+    ray.get(next(g1))
+    wait_for_condition(
+        lambda: ray.get(reporter.total_len.remote()) == 7,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    _drain_all([g1])
+    _drain_all([g2])
+    assert ray.get(reporter.count_tag.remote("1")) == 5
+    assert ray.get(reporter.count_tag.remote("2")) == 5
+    assert ray.get(reporter.total_len.remote()) == 10
+
+
+def test_actor_generator_backpressure_async_num_objects_per_yield(shutdown_only):
+    """Actor-wide cap counts objects, not yields, for async generators too."""
+    ray.init(num_cpus=2)
+    reporter = TagReporter.remote()
+
+    @ray.remote(_actor_generator_backpressure_num_objects=4)
+    class A:
+        @ray.method(_num_objects_per_yield=2)
+        async def gen(self, rep, tag):
+            for i in range(5):
+                await rep.report.remote(tag, i)
+                yield i, i
+
+    a = A.remote()
+    g = a.gen.remote(reporter, "a")
+
+    # Two yields (= 4 objects) fill the cap, then the producer parks.
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 2,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    time.sleep(1)
+    assert ray.get(reporter.count_tag.remote("a")) == 2
+
+    # Consuming a ref frees budget below the cap and admits one more yield.
+    ray.get(next(g))
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 3,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    _drain_all([g])
+    assert ray.get(reporter.count_tag.remote("a")) == 5
+
+
+def test_actor_generator_backpressure_async_mt_with_method_cap(shutdown_only):
+    """Per-method cap 2 (tighter) under async actor-wide cap 6.
+
+    Exercises both backpressure paths together: per-task (IsBackpressured) and
+    actor-wide (TryReserveSlot), each awaiting the asyncio.Event.
+    """
+    ray.init(num_cpus=4)
+    reporter = TagReporter.remote()
+    A = _async_dual_stream_actor_class(actor_cap=6, method_cap=2)
+    a = A.remote()
+
+    g1 = a.gen.remote(reporter, "1")
+    g2 = a.gen.remote(reporter, "2")
+
+    # Each stream parks at its per-method cap of 2 (tighter than the actor cap).
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("1")) == 2,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("2")) == 2,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    time.sleep(1)
+    assert ray.get(reporter.count_tag.remote("1")) == 2
+    assert ray.get(reporter.count_tag.remote("2")) == 2
+
+    # Consuming a ref from g1 admits exactly one more for that stream.
+    ray.get(next(g1))
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("1")) == 3,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    _drain_all([g1, g2])
+
+
+def test_actor_generator_backpressure_async_reclaim_on_exception(shutdown_only):
+    """Async yield-then-raise reclaims the cap for a follow-up task."""
+    ray.init()
+
+    @ray.remote(_actor_generator_backpressure_num_objects=1)
+    class A:
+        async def yields_then_raises(self):
+            yield 0
+            raise RuntimeError("boom")
+
+        async def ok(self):
+            for i in range(3):
+                yield i
+
+    a = A.remote()
+
+    bad = a.yields_then_raises.remote()
+    ray.get(next(bad))
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(next(bad))
+
+    # If the exception did not reclaim the cap, this task could never start.
+    good = a.ok.remote()
+    seen = [ray.get(next(good)) for _ in range(3)]
+    assert seen == [0, 1, 2]
+
+
+def test_actor_generator_backpressure_async_reclaim_on_del_gen(shutdown_only):
+    """Deleting a partially-read async stream frees BP budget for the other."""
+    ray.init(num_cpus=4)
+    reporter = TagReporter.remote()
+
+    @ray.remote(_actor_generator_backpressure_num_objects=6)
+    class A:
+        def __init__(self):
+            self._extend = asyncio.Event()
+
+        async def enable_extend(self) -> None:
+            self._extend.set()
+
+        async def gen(self, rep, tag: str):
+            if tag == "2":
+                for i in range(5):
+                    await rep.report.remote(tag, i)
+                    yield i
+                return
+            for i in range(16):
+                await rep.report.remote(tag, i)
+                yield i
+                if i == 5:
+                    await self._extend.wait()
+
+    a = A.remote()
+    g1 = a.gen.remote(reporter, "1")
+    g2 = a.gen.remote(reporter, "2")
+
+    wait_for_condition(
+        lambda: ray.get(reporter.total_len.remote()) == 6,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    n_take = 2
+    for _ in range(n_take):
+        ray.get(next(g2))
+
+    n1_before = ray.get(reporter.count_tag.remote("1"))
+
+    del g2
+    gc.collect()
+
+    ray.get(a.enable_extend.remote())
+
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("1")) >= n1_before + n_take,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    _drain_all([g1])
+    assert ray.get(reporter.count_tag.remote("1")) == 16
+
+
+def test_actor_generator_backpressure_mixed_sync_async(shutdown_only):
+    """A sync and an async streaming generator on the same actor share the cap.
+
+    Both methods reserve against the one actor-wide waiter; consumption from
+    either stream frees shared budget for both (sync producers are woken via the
+    condition variable, async producers via the asyncio.Event).
+    """
+    ray.init(num_cpus=4)
+    reporter = TagReporter.remote()
+
+    @ray.remote(_actor_generator_backpressure_num_objects=6)
+    class A:
+        def sync_gen(self, rep, tag):
+            for i in range(5):
+                ray.get(rep.report.remote(tag, i))
+                yield i
+
+        async def async_gen(self, rep, tag):
+            for i in range(5):
+                await rep.report.remote(tag, i)
+                yield i
+
+    a = A.remote()
+    g_sync = a.sync_gen.remote(reporter, "sync")
+    g_async = a.async_gen.remote(reporter, "async")
+
+    # Together the two producers fill the shared cap of 6, then both park.
+    wait_for_condition(
+        lambda: ray.get(reporter.total_len.remote()) == 6,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    time.sleep(1)
+    assert ray.get(reporter.total_len.remote()) == 6
+
+    # Consuming from the async stream frees one shared slot.
+    ray.get(next(g_async))
+    wait_for_condition(
+        lambda: ray.get(reporter.total_len.remote()) == 7,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    # Consuming from the sync stream frees one shared slot too.
+    ray.get(next(g_sync))
+    wait_for_condition(
+        lambda: ray.get(reporter.total_len.remote()) == 8,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    _drain_all([g_sync, g_async])
+    assert ray.get(reporter.count_tag.remote("sync")) == 5
+    assert ray.get(reporter.count_tag.remote("async")) == 5
+    assert ray.get(reporter.total_len.remote()) == 10
 
 
 if __name__ == "__main__":

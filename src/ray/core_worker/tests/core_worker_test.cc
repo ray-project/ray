@@ -36,6 +36,7 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker_rpc_proxy.h"
 #include "ray/core_worker/future_resolver.h"
+#include "ray/core_worker/generator_waiter.h"
 #include "ray/core_worker/grpc_service.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/reference_counter.h"
@@ -351,6 +352,54 @@ TEST_F(CoreWorkerTest, RecordMetrics) {
     ASSERT_EQ(key.at("Source"), "executor");
     ASSERT_EQ(key.at("IsRetry"), "0");
   }
+}
+
+// Free callback used to exercise the async-generator unblock notify registry.
+// Increments the int pointed to by `ctx` (the registry treats ctx opaquely).
+static void IncrementUnblockCounter(void *ctx) { ++(*static_cast<int *>(ctx)); }
+
+TEST_F(CoreWorkerTest, AsyncGeneratorUnblockNotifyFiresOnConsumptionUpdate) {
+  const auto generator_id = ObjectID::FromRandom();
+  auto waiter = std::make_shared<TaskGeneratorBackpressureWaiter>(
+      /*generator_backpressure_num_objects=*/1, []() { return Status::OK(); });
+
+  // Register a backpressure state so the consumption handler finds a waiter,
+  // plus an async unblock notify for this generator.
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  core_worker_->RegisterGeneratorBackpressureState(
+      generator_id, waiter, /*actor_metadata=*/nullptr, owner_address);
+
+  int count = 0;
+  core_worker_->SetAsyncGeneratorBackpressureUnblockNotify(
+      generator_id, &IncrementUnblockCounter, &count);
+
+  auto send_consumed = [&](int64_t total) {
+    rpc::UpdateGeneratorBackpressureConsumedRequest request;
+    request.set_generator_id(generator_id.Binary());
+    request.set_total_num_object_consumed(total);
+    rpc::UpdateGeneratorBackpressureConsumedReply reply;
+    core_worker_->HandleUpdateGeneratorBackpressureConsumed(
+        std::move(request),
+        &reply,
+        [](Status, std::function<void()>, std::function<void()>) {});
+  };
+
+  // A consumption update through the public RPC handler wakes the async
+  // generator by firing the registered notify.
+  send_consumed(1);
+  ASSERT_EQ(count, 1);
+
+  // After clearing, a further consumption update does not fire it.
+  core_worker_->ClearAsyncGeneratorBackpressureUnblockNotify(generator_id);
+  send_consumed(2);
+  ASSERT_EQ(count, 1);
+
+  // Defense-in-depth: a null callback must not crash when the handler fires it.
+  core_worker_->SetAsyncGeneratorBackpressureUnblockNotify(
+      generator_id, nullptr, nullptr);
+  send_consumed(3);
+  ASSERT_EQ(count, 1);
 }
 
 TEST_F(CoreWorkerTest, HandleGetObjectStatusIdempotency) {
