@@ -17,9 +17,8 @@ VALID_PLACEMENT_GROUP_STRATEGIES = {
     "STRICT_SPREAD",
 }
 
-# Mirrors kLabelKeyNodeID from src/ray/common/constants.h. placement_group.py
-# can be imported while ray._raylet is still initializing, before common.pxi
-# exports that symbol, so this cannot be directly mirrored from common.pxi
+# Keep this in sync with RAY_NODE_ID_KEY in common.pxi. The module cannot import
+# that value because it forms a circular dependency.
 NODE_ID_LABEL_KEY = "ray.io/node-id"
 
 
