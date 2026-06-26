@@ -149,6 +149,7 @@ Ray Train Utilities
     ~train.Checkpoint
     ~train.CheckpointUploadMode
     ~train.CheckpointConsistencyMode
+    ~train.PreemptionInfo
     ~train.TrainContext
     ~train.ValidationFn
     ~train.ValidationTaskConfig
@@ -163,6 +164,7 @@ Ray Train Utilities
     ~train.get_checkpoint
     ~train.get_context
     ~train.get_dataset_shard
+    ~train.preemption_info
     ~train.report
 
 **Collective**
@@ -195,6 +197,7 @@ Ray Train Errors
     :toctree: doc/
 
     ~train.ControllerError
+    ~train.PreemptionError
     ~train.WorkerGroupError
     ~train.TrainingFailedError
 
