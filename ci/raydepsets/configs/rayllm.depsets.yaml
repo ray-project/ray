@@ -3,15 +3,20 @@ build_arg_sets:
     PYTHON_VERSION: py314
     PYTHON_VERSION_STR: "3.14"
     CUDA_CODE: cpu
+    TORCH_CUDA_CODE: cpu
   cu128:
     PYTHON_VERSION: py314
     PYTHON_VERSION_STR: "3.14"
-    # The py3.14 LLM image is built on the cu128 base. vLLM 0.22.0 publishes a
-    # single abi3 wheel built against the PyPI torch 2.11.0 (a cu128 build), so
-    # the torch family (torch/torchvision/torchaudio + nixl-cu12) is resolved
-    # from the cu128 index to keep the prebuilt _C.abi3.so linkable against the
-    # installed libtorch.
+    # The py3.14 LLM image is built on the CUDA 12.8 base container, but vLLM
+    # 0.22.0's default PyPI wheel is compiled against the CUDA 12.9 (cu129)
+    # public torch release (torch 2.11.0). Resolve the torch family
+    # (torch/torchvision/torchaudio + nixl-cu12) from the cu129 index so the
+    # prebuilt _C.abi3.so links against the matching libtorch; pulling from
+    # cu128 ships a torch built differently from vLLM's wheel and the abi3 .so
+    # fails to load with an undefined libtorch symbol. The lock filenames keep
+    # the cu128 tag because the base container is still cu128.
     CUDA_CODE: cu128
+    TORCH_CUDA_CODE: cu129
 
 
 .common_settings: &common_settings
@@ -28,7 +33,7 @@ build_arg_sets:
     # dp_pd_example can `import nixl` to gate optional features.
     - --unsafe-package nixl-cu13
     - --python-platform=x86_64-manylinux_2_31
-    - --index https://download.pytorch.org/whl/${CUDA_CODE}
+    - --index https://download.pytorch.org/whl/${TORCH_CUDA_CODE}
   build_arg_sets:
     - cpu
     - cu128
