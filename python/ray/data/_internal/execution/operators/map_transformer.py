@@ -75,7 +75,12 @@ def _noop_report_custom_op_stats(stats: CustomOpStats) -> None:
 
 IN = TypeVar("IN")
 OUT = TypeVar("OUT")
-MapTransformCallable = Callable[[Iterable[IN], TaskContext], Iterable[OUT]]
+# A transform callable accepts either ``(data, ctx)`` or, when it reports
+# per-task CustomOpStats, ``(data, ctx, report_custom_op_stats)``.
+MapTransformCallable = Union[
+    Callable[[Iterable[IN], TaskContext], Iterable[OUT]],
+    Callable[[Iterable[IN], TaskContext, CustomOpStatsReportFn], Iterable[OUT]],
+]
 
 
 class MapTransformFnDataType(Enum):
