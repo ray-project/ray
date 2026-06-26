@@ -14,7 +14,6 @@ In the benchmarking, the image download and tensor conversion is done across dif
 replicas on CPUs.
 """
 
-import os
 from typing import List, Optional
 import asyncio
 import time
@@ -22,9 +21,11 @@ import time
 import aiohttp
 import click
 import numpy as np
+import requests
 import starlette.requests
 import torch
-from torchvision import models
+from PIL import Image
+from torchvision import models, transforms
 
 from ray import serve
 from ray.serve.handle import DeploymentHandle
@@ -76,57 +77,32 @@ class ImageObjectioner:
 @serve.deployment(num_replicas=5)
 class DataDownloader:
     def __init__(self):
-
-        # For multiple process scheduled on the same node, torch.hub.load doesn't
-        # handle the multi-process download well. This logic ensures only one
-        # replica downloads the package.
-        torch_cache_dir = os.path.dirname(torch.hub.get_dir())
-        lock_dir = os.path.join(torch_cache_dir, "serve_lock_dir")
-        success_file = os.path.join(lock_dir, "success")
-
-        os.makedirs(os.path.dirname(lock_dir), exist_ok=True)
-
-        try:
-            # Atomic operation acts as a lock.
-            os.mkdir(lock_dir)
-
-            # This replica is the first one, so it's responsible for downloading.
-            print("Downloading torch hub NVIDIA package...")
-            torch.hub.load(
-                repo_or_dir="NVIDIA/DeepLearningExamples:torchhub",
-                model="nvidia_convnets_processing_utils",
-                trust_repo=True,
-                force_reload=False,
-            )
-            with open(success_file, "w") as _:
-                pass
-            print("Download complete.")
-
-        except FileExistsError:
-            # Other replicas wait until downloaded.
-            print("Waiting for torch hub NVIDIA package download...")
-            counter = 10
-            while counter > 0:
-                if os.path.exists(success_file):
-                    break
-                time.sleep(20)
-                counter -= 1
-
-            if not os.path.exists(success_file):
-                raise Exception(
-                    "Failed to load module 'nvidia_convnets_processing_utils' after waiting."
-                )
-
-        self.utils = torch.hub.load(
-            repo_or_dir="NVIDIA/DeepLearningExamples:torchhub",
-            model="nvidia_convnets_processing_utils",
-            trust_repo=True,
-            force_reload=False,
+        # Preprocessing equivalent to NVIDIA's nvidia_convnets_processing_utils
+        # (Resize 256 -> CenterCrop 224 -> ToTensor -> ImageNet normalization).
+        # Implemented inline with torchvision rather than torch.hub.load() of the
+        # unmaintained NVIDIA/DeepLearningExamples repo: its monolithic hubconf
+        # eagerly imports unrelated models and pollutes sys.path (e.g. shadowing
+        # `triton`), which breaks under newer torch / Python 3.14. Doing it
+        # inline also removes the GitHub clone and the multi-replica download lock.
+        self._transform = transforms.Compose(
+            [
+                transforms.Resize(256),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+            ]
         )
-        print("'nvidia_convnets_processing_utils' loaded")
+        # mean/std are not multiplied by 255: PIL + ToTensor yields floats in [0, 1].
+        self._mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
+        self._std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+
+    def _prepare_input_from_uri(self, uri: str):
+        img = Image.open(requests.get(uri, stream=True).raw).convert("RGB")
+        with torch.no_grad():
+            tensor = self._transform(img).unsqueeze(0).float()
+            return tensor.sub_(self._mean).div_(self._std)
 
     def __call__(self, uris: List[str]):
-        return [self.utils.prepare_input_from_uri(uri) for uri in uris]
+        return [self._prepare_input_from_uri(uri) for uri in uris]
 
 
 async def measure_http_throughput_tps(data_size: int = 8, requests_sent: int = 8):
