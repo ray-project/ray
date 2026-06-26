@@ -41,6 +41,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.experimental.locations import get_local_object_locations
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
 
@@ -130,7 +131,7 @@ TaskDoneCallbackType = Callable[
 ]
 
 
-@dataclass
+@dataclass(slots=True)
 class DeferredEmit:
     """A pulled (block_ref, meta_ref) pair whose ``RefBundle`` emit is
     deferred until its metadata has been fetched.
@@ -347,6 +348,11 @@ class DataOpTask(OpTask):
             # Normally known: the driver owns the just-yielded block ref, so
             # the value (which matches ``meta.size_bytes``) is in the local
             # object directory.
+            # TODO: ``object_size`` is the object-store size of the block, which
+            # can differ from ``meta.size_bytes`` (the in-memory/logical size).
+            # We should add an explicit ``object_size_bytes`` to ``BlockMetadata``
+            # (the true object-store size) and use it directly, so the fallback
+            # below doesn't conflate the two.
             info: Optional[Dict[str, Any]] = get_local_object_locations(
                 [self._pending_block_ref]
             ).get(self._pending_block_ref)
@@ -355,13 +361,15 @@ class DataOpTask(OpTask):
             )
             if object_size is None:
                 # Rare: no local size record. Fall back to a short metadata
-                # ``ray.get`` for the size.
-                logger.warning(
-                    "Local object_size unavailable for a block from operator "
-                    "'%s'; falling back to its metadata for the output-budget "
-                    "size.",
-                    self._operator_name,
-                )
+                # ``ray.get`` for the size. Log once to flag the path without
+                # spamming if it recurs.
+                if log_once(f"data_object_size_unavailable_{self._operator_name}"):
+                    logger.warning(
+                        "Local object_size unavailable for a block from operator "
+                        "'%s'; falling back to its metadata for the output-budget "
+                        "size.",
+                        self._operator_name,
+                    )
                 try:
                     meta_with_schema: BlockMetadataWithSchema = pickle.loads(
                         ray.get(self._pending_meta_ref, timeout=METADATA_WAIT_TIMEOUT_S)

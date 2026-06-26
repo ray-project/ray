@@ -142,17 +142,17 @@ _PREFETCHER_POLL_INTERVAL_S = 0.001
 
 
 def drain_prefetcher(prefetcher, timeout_s: float = 30.0) -> None:
-    """Test helper: pump ``prefetcher.drain()`` until every submitted pair has
-    been emitted and all postponed done callbacks have fired.
+    """Test helper: pump the prefetcher until every submitted pair has been
+    emitted and all postponed done callbacks have fired.
 
-    Production code calls ``drain()`` once per scheduling iteration and lets
-    emits land across iterations; tests want the post-conditions to hold
-    immediately, so they poll to completion here. Must run on the executor
-    (test) thread.
+    Production code calls ``emit_ready``/``fire_done_callbacks`` once per
+    scheduling iteration and lets emits land across iterations; tests want the
+    post-conditions to hold immediately, so they poll to completion here. Must
+    run on the executor (test) thread.
     """
     deadline = time.monotonic() + timeout_s
     while prefetcher.has_pending_work():
-        failures = prefetcher.drain()
+        failures = prefetcher.emit_ready() + prefetcher.fire_done_callbacks()
         if failures:
             # Tests using this helper don't expect metadata-fetch errors;
             # surface the first one rather than swallowing it.

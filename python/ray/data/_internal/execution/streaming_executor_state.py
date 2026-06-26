@@ -58,12 +58,6 @@ Topology = Dict[PhysicalOperator, "OpState"]
 # Maximum time `process_completed_tasks` will block in `ray.wait()` waiting for tasks to complete.
 WAIT_FOR_TASK_COMPLETION_TIMEOUT_S = 0.1
 
-# Maximum time the final `metadata_prefetcher.drain()` will block waiting for
-# the prefetcher's first result when there's pending work but nothing ready —
-# paces the scheduling loop to metadata availability instead of spinning.
-# Independent of the task-completion timeout so it can be tuned separately.
-DRAIN_BLOCK_TIMEOUT_S = 0.1
-
 
 class IdleDetector:
     """Utility class for detecting idle operators.
@@ -748,21 +742,21 @@ def process_completed_tasks(
                     assert isinstance(task, MetadataOpTask)
                     task.on_task_finished()
 
-            # Queue this op's pairs for background fetch; they emit in
-            # per-op order in `drain()` once their metadata is ready.
-            metadata_prefetcher.submit(state, op_deferred, op_data_tasks)
+            # Queue this op's pairs for background fetch, and register any
+            # end-of-stream tasks for a postponed done-callback. They emit in
+            # per-op order once their metadata is ready.
+            metadata_prefetcher.submit(state, op_deferred)
+            metadata_prefetcher.register_drained_tasks(op_data_tasks)
 
-    # Emit whatever's ready, in per-op order — UNCONDITIONALLY, even when there
-    # are no active tasks this iteration. Pairs deferred in earlier iterations
-    # (their tasks may already be gone) can still have metadata land later;
-    # gating this on `active_tasks` would strand them and stall output forever.
-    # Deferred metadata-fetch failures go through the same `max_errored_blocks`
-    # accounting as inline `on_data_ready` errors.
-    # Block briefly for metadata when there's pending work but nothing ready,
-    # so the loop is paced by metadata availability instead of spinning
-    # (re-running per-iteration scheduling work) while fetches are in flight.
-    for failed_op_name, fetch_exc in metadata_prefetcher.drain(
-        block_timeout_s=DRAIN_BLOCK_TIMEOUT_S
+    # Emit whatever's ready, in per-op order, then fire any postponed done
+    # callbacks — UNCONDITIONALLY, even when there are no active tasks this
+    # iteration. Pairs deferred in earlier iterations (their tasks may already
+    # be gone) can still have metadata land later; gating this on `active_tasks`
+    # would strand them and stall output forever. Deferred metadata-fetch
+    # failures go through the same `max_errored_blocks` accounting as inline
+    # `on_data_ready` errors.
+    for failed_op_name, fetch_exc in (
+        metadata_prefetcher.emit_ready() + metadata_prefetcher.fire_done_callbacks()
     ):
         _record_errored_block(fetch_exc, failed_op_name)
 

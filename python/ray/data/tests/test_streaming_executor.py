@@ -1593,12 +1593,15 @@ class TestDataOpTask:
                     time.sleep(0.01)
             assert task_a.is_drained() and task_b.is_drained()
 
-            prefetcher.submit("a", deferred_a, [task_a])
-            prefetcher.submit("b", deferred_b, [task_b])
+            prefetcher.submit("a", deferred_a)
+            prefetcher.register_drained_tasks([task_a])
+            prefetcher.submit("b", deferred_b)
+            prefetcher.register_drained_tasks([task_b])
 
             deadline = time.time() + 30
             while len(outputs) < 4 and time.time() < deadline:
-                prefetcher.drain()
+                prefetcher.emit_ready()
+                prefetcher.fire_done_callbacks()
                 time.sleep(0.01)
         finally:
             prefetcher.stop()
@@ -1641,20 +1644,23 @@ class TestDataOpTask:
         # Don't start the fetch thread: publish fetch results by hand to
         # control which pair's metadata is "fetched" first.
         prefetcher = MetadataPrefetcher()
-        prefetcher.submit("op", deferred, [task])
+        prefetcher.submit("op", deferred)
+        prefetcher.register_drained_tasks([task])
         meta_bytes_first, meta_bytes_second = ray.get([first.meta_ref, second.meta_ref])
 
         # Only the LATER pair's metadata is available: it must be held.
         with prefetcher._results_lock:
             prefetcher._results[second.meta_ref] = meta_bytes_second
-        prefetcher.drain()
+        prefetcher.emit_ready()
+        prefetcher.fire_done_callbacks()
         assert outputs == []
         assert not task.has_finished
 
         # Once the EARLIER pair's metadata arrives, both emit, in yield order.
         with prefetcher._results_lock:
             prefetcher._results[first.meta_ref] = meta_bytes_first
-        prefetcher.drain()
+        prefetcher.emit_ready()
+        prefetcher.fire_done_callbacks()
         assert [b.size_bytes() for b in outputs] == [
             pytest.approx(100, abs=64),
             pytest.approx(200, abs=64),
@@ -1664,9 +1670,9 @@ class TestDataOpTask:
     def test_prefetcher_fetch_failure_is_returned_not_raised(
         self, ray_start_regular_shared
     ):
-        """A metadata-fetch error is returned from drain() (so the caller can
-        apply max_errored_blocks) rather than raised; the bad block is dropped,
-        the other pair still emits, and the task still completes."""
+        """A metadata-fetch error is returned from emit_ready() (so the caller
+        can apply max_errored_blocks) rather than raised; the bad block is
+        dropped, the other pair still emits, and the task still completes."""
         from ray.data._internal.execution.metadata_prefetcher import (
             MetadataPrefetcher,
         )
@@ -1692,7 +1698,8 @@ class TestDataOpTask:
         first, second = deferred
 
         prefetcher = MetadataPrefetcher()
-        prefetcher.submit("op", deferred, [task])
+        prefetcher.submit("op", deferred)
+        prefetcher.register_drained_tasks([task])
         good_bytes = ray.get(first.meta_ref)
         boom = ValueError("metadata fetch boom")
         # First pair fetches fine; the second resolves to an exception.
@@ -1700,7 +1707,7 @@ class TestDataOpTask:
             prefetcher._results[first.meta_ref] = good_bytes
             prefetcher._results[second.meta_ref] = boom
 
-        failures = prefetcher.drain()
+        failures = prefetcher.emit_ready() + prefetcher.fire_done_callbacks()
 
         # The error is surfaced (not raised), tagged with the operator name.
         assert failures == [("Map(fn)", boom)]
@@ -1711,6 +1718,55 @@ class TestDataOpTask:
         assert done == [1]
         assert task.has_finished
         assert not prefetcher.has_pending_work()
+
+    def test_prefetcher_sync_fallback_when_thread_disabled(
+        self, ray_start_regular_shared, monkeypatch
+    ):
+        """With RAY_DATA_METADATA_PREFETCH_ON_THREAD disabled, no background
+        thread is started and emit_ready fetches metadata synchronously on the
+        calling thread, still emitting in order and firing the done callback."""
+        import ray.data._internal.execution.metadata_prefetcher as mp
+
+        monkeypatch.setattr(mp, "_PREFETCH_ON_THREAD", False)
+
+        gen = create_stub_streaming_gen(block_nbytes=[100, 200])
+        outputs: list = []
+        done: list = []
+        task = DataOpTask(
+            0,
+            gen,
+            output_ready_callback=lambda b: outputs.append(b),
+            task_done_callback=lambda *a: done.append(1),
+        )
+
+        ray.wait([gen], fetch_local=False)
+        deferred: list[DeferredEmit] = []
+        deadline = time.time() + 30
+        while not task.is_drained() and time.time() < deadline:
+            task.on_data_ready(None, deferred)
+            time.sleep(0.01)
+        assert len(deferred) == 2
+
+        prefetcher = mp.MetadataPrefetcher()
+        assert not prefetcher._use_thread
+        prefetcher.start()  # no-op when the thread is disabled
+        assert not prefetcher._started
+        prefetcher.submit("op", deferred)
+        prefetcher.register_drained_tasks([task])
+
+        # No background thread: emit_ready must fetch synchronously itself.
+        deadline = time.time() + 30
+        while prefetcher.has_pending_work() and time.time() < deadline:
+            prefetcher.emit_ready()
+            prefetcher.fire_done_callbacks()
+        prefetcher.stop()
+
+        assert [b.size_bytes() for b in outputs] == [
+            pytest.approx(100, abs=64),
+            pytest.approx(200, abs=64),
+        ]
+        assert done == [1]
+        assert task.has_finished
 
     @pytest.mark.parametrize(
         "preempt_on", ["block_ready_callback", "metadata_ready_callback"]
