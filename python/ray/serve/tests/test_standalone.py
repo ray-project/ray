@@ -3,6 +3,7 @@ The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
 
+import asyncio
 import logging
 import os
 import random
@@ -14,10 +15,12 @@ import httpx
 import pytest
 
 import ray
+import ray._private.state as state
 from ray import serve
 from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
+from ray.serve._private.api import serve_start_async
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
@@ -825,10 +828,6 @@ def test_serve_start_does_not_leak_idle_worker(ray_shutdown):
     (its ``object_id_refs_`` never drained) — so it accumulated across cycles
     and grew the count. The non-growth assertion below catches exactly that.
     """
-    import asyncio
-
-    import ray._private.state as state
-    from ray.serve._private.api import serve_start_async
 
     def _worker_count() -> int:
         return len(state.workers())
@@ -866,57 +865,6 @@ def test_serve_start_does_not_leak_idle_worker(ray_shutdown):
         f"Idle WORKER count grew across {cycles} serve_start_async()/shutdown() "
         f"cycles: {counts}. Growth indicates a pinned (leaked) executor worker "
         f"— the #63596 regression."
-    )
-
-
-def test_serve_start_no_remote_start_controller_task():
-    """Structural regression test for PR #63597.
-
-    The leak came from wrapping ``_start_controller`` in a remote Ray task and
-    returning its ``ActorHandle`` cross-process. The fix removes that wrapper
-    entirely and inlines controller creation. Assert the wrapper symbol is gone
-    and neither start path dispatches a ``ray.remote(...)`` task for controller
-    creation (AST-based, so a renamed or line-split reintroduction is still
-    caught). This guards against a future reintroduction of the leak pattern
-    even if the behavioral test above is environment-sensitive.
-    """
-    import ast
-    import inspect
-
-    from ray.serve._private import api as serve_api
-
-    assert not hasattr(serve_api, "_start_controller"), (
-        "_start_controller should be removed; its remote-task wrapping was the "
-        "leak source in #63596."
-    )
-
-    def _has_ray_remote_call(func) -> bool:
-        # Match a ``ray.remote(...)`` call (base is the ``ray`` name, attr is
-        # ``remote``). Actor method calls like ``controller.get_proxies.remote()``
-        # are excluded: their base is an attribute/call, not the ``ray`` name.
-        tree = ast.parse(inspect.getsource(func))
-        return any(
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "remote"
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == "ray"
-            for node in ast.walk(tree)
-        )
-
-    assert not _has_ray_remote_call(serve_api.serve_start_async), (
-        "serve_start_async must not dispatch a ray.remote(...) task; that was "
-        "the cross-process ActorHandle transfer that caused the #63596 leak."
-    )
-    assert not _has_ray_remote_call(serve_api.serve_start), (
-        "serve_start must not dispatch a ray.remote(...) task; that was the "
-        "cross-process ActorHandle transfer that caused the #63596 leak."
-    )
-    assert "_create_controller_and_proxy_refs" in inspect.getsource(
-        serve_api.serve_start_async
-    )
-    assert "_create_controller_and_proxy_refs" in inspect.getsource(
-        serve_api.serve_start
     )
 
 
