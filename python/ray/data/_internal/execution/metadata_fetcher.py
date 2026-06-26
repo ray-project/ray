@@ -1,12 +1,5 @@
 """Metadata-fetch strategy for the streaming executor.
 
-``DataOpTask.on_data_ready`` pulls ``(block_ref, meta_ref)`` pairs from a task's
-streaming generator. How each pair's metadata is turned into an emitted
-``RefBundle`` is the one thing that differs between the two scheduling modes, so
-it lives behind this single interface. The pull loop in ``on_data_ready`` is
-shared; only :meth:`MetadataFetcher.in_loop_get_size` (per pulled pair) and
-:meth:`MetadataFetcher.after_loop_batch` (once per scheduling iteration) differ.
-
 Two modes, selected by ``RAY_DATA_METADATA_PREFETCH_ON_THREAD`` (default on):
 
 - :class:`ThreadedMetadataFetcher` (default): defer every pair and fetch its
@@ -51,14 +44,6 @@ _PREFETCH_ON_THREAD = env_bool("RAY_DATA_METADATA_PREFETCH_ON_THREAD", True)
 
 
 class MetadataFetcher(ABC):
-    """Strategy for resolving pulled ``(block_ref, meta_ref)`` pairs into
-    emitted ``RefBundle``s. See module docstring for the two modes."""
-
-    # Whether the ``task_done_callback`` is postponed until a task's deferred
-    # pairs have emitted (threaded), or fired inline by ``on_data_ready`` at
-    # end-of-stream (inline). ``on_data_ready`` reads this.
-    defers_completion: bool = False
-
     def start(self) -> None:
         """Start any background machinery (no-op unless overridden)."""
 
@@ -71,7 +56,6 @@ class MetadataFetcher(ABC):
         task: DataOpTask,
         block_ref: "ray.ObjectRef[Any]",
         meta_ref: "ray.ObjectRef[Any]",
-        deferred: List[DeferredEmit],
     ) -> Optional[int]:
         """Handle one pulled pair inside the ``on_data_ready`` loop.
 
@@ -80,9 +64,14 @@ class MetadataFetcher(ABC):
         caller breaks, leaving the refs set).
         """
 
-    def submit(self, op_key: Hashable, deferred: List[DeferredEmit]) -> None:
-        """Hand one operator's just-deferred pairs off for processing (no-op
-        unless overridden)."""
+    def in_loop_done(self, task: DataOpTask) -> None:
+        """Called once a task is drained (generator exhausted/failed). The
+        inline mode fires the done-callback here (re-raising a task failure);
+        the threaded mode postpones it, so this is a no-op there."""
+
+    def submit(self, op_key: Hashable) -> None:
+        """Hand the operator's deferred pairs off for processing (no-op unless
+        overridden)."""
 
     def register_drained(self, tasks: List[DataOpTask]) -> None:
         """Record end-of-stream/failed tasks whose completion is postponed
@@ -99,14 +88,11 @@ class InlineMetadataFetcher(MetadataFetcher):
     """Synchronous, master-identical mode: fetch metadata inline and emit
     immediately. Holds no state and starts no thread."""
 
-    defers_completion = False
-
     def in_loop_get_size(
         self,
         task: DataOpTask,
         block_ref: "ray.ObjectRef[Any]",
         meta_ref: "ray.ObjectRef[Any]",
-        deferred: List[DeferredEmit],
     ) -> Optional[int]:
         try:
             # The timeout includes the time to ship the metadata to this node,
@@ -129,17 +115,28 @@ class InlineMetadataFetcher(MetadataFetcher):
             return None
         return task.emit_block(block_ref, meta_bytes)
 
+    def in_loop_done(self, task: DataOpTask) -> None:
+        # Inline mode fires the done-callback the moment the generator drains
+        # (matching the historical timing): all of the task's pairs have already
+        # emitted inline, so ``_pending_emit_count`` is 0. A task failure is
+        # re-raised after the callback, as before.
+        task.mark_done()
+        if task.task_error is not None:
+            raise task.task_error from None
+
 
 class ThreadedMetadataFetcher(MetadataFetcher):
     """Asynchronous mode: defer every pair and fetch its metadata on a
     background :class:`MetadataPrefetcher` thread."""
 
-    defers_completion = True
-
     def __init__(self, prefetcher: Optional[MetadataPrefetcher] = None):
         # Injectable so tests can drive a prefetcher whose results they publish
         # by hand.
         self.prefetcher = prefetcher if prefetcher is not None else MetadataPrefetcher()
+        # Pairs deferred by ``in_loop_get_size`` for the current operator, flushed
+        # to the prefetcher by ``submit``. Owned here (not threaded through
+        # ``on_data_ready``) since deferring is the threaded mode's concern.
+        self._deferred: List[DeferredEmit] = []
 
     def start(self) -> None:
         self.prefetcher.start()
@@ -152,7 +149,6 @@ class ThreadedMetadataFetcher(MetadataFetcher):
         task: DataOpTask,
         block_ref: "ray.ObjectRef[Any]",
         meta_ref: "ray.ObjectRef[Any]",
-        deferred: List[DeferredEmit],
     ) -> Optional[int]:
         # Output-budget size from the block's local object_size (no RPC).
         # Normally known: the driver owns the just-yielded block ref, so the
@@ -189,11 +185,14 @@ class ThreadedMetadataFetcher(MetadataFetcher):
                 return None
             object_size = meta_with_schema.metadata.size_bytes
 
-        deferred.append(DeferredEmit(task=task, block_ref=block_ref, meta_ref=meta_ref))
+        self._deferred.append(
+            DeferredEmit(task=task, block_ref=block_ref, meta_ref=meta_ref)
+        )
         return object_size
 
-    def submit(self, op_key: Hashable, deferred: List[DeferredEmit]) -> None:
-        self.prefetcher.submit(op_key, deferred)
+    def submit(self, op_key: Hashable) -> None:
+        self.prefetcher.submit(op_key, self._deferred)
+        self._deferred = []
 
     def register_drained(self, tasks: List[DataOpTask]) -> None:
         self.prefetcher.register_drained_tasks(tasks)
@@ -211,13 +210,3 @@ def make_metadata_fetcher() -> MetadataFetcher:
     if _PREFETCH_ON_THREAD:
         return ThreadedMetadataFetcher()
     return InlineMetadataFetcher()
-
-
-# Shared, stateless inline fetcher used as the default when no fetcher is passed
-# (e.g. direct ``on_data_ready`` / ``process_completed_tasks`` calls in tests).
-_DEFAULT_INLINE_FETCHER = InlineMetadataFetcher()
-
-
-def default_metadata_fetcher() -> MetadataFetcher:
-    """The fetcher used when a caller passes none: the inline (master) path."""
-    return _DEFAULT_INLINE_FETCHER

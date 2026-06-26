@@ -13,6 +13,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.metadata_fetcher import InlineMetadataFetcher
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformCallable,
@@ -120,7 +121,7 @@ def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
             task = ref_to_task[ref]
             if isinstance(task, DataOpTask):
                 # Read all currently available output from the streaming generator
-                task.on_data_ready(max_bytes_to_read=None)
+                task.on_data_ready(None, InlineMetadataFetcher())
                 # Only remove the task when the generator has been fully exhausted
                 if task.has_finished:
                     tasks.remove(task)
@@ -154,7 +155,7 @@ def run_one_op_task(op):
         tasks = [task]
 
         if isinstance(task, DataOpTask):
-            task.on_data_ready(None)
+            task.on_data_ready(None, InlineMetadataFetcher())
             if task.has_finished:
                 tasks.remove(task)
         else:

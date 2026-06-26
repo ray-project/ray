@@ -155,14 +155,8 @@ class TaskGeneratorState(Enum):
     """Lifecycle of a ``DataOpTask``'s streaming generator, as seen by the
     data driver. Advances strictly ACTIVE -> DRAINED -> FINISHED."""
 
-    # The generator task is still running and the driver hasn't pulled all of
-    # its (block_ref, meta_ref) pairs yet.
     ACTIVE = auto()
-    # The generator is exhausted (or the task failed) and the driver has pulled
-    # all its pairs, but their metadata hasn't all been emitted yet.
     DRAINED = auto()
-    # All pulled pairs' metadata has been emitted; the task is truly done and
-    # its ``task_done_callback`` has fired.
     FINISHED = auto()
 
 
@@ -253,8 +247,7 @@ class DataOpTask(OpTask):
     def on_data_ready(
         self,
         max_bytes_to_read: Optional[int],
-        metadata_fetcher: Optional["MetadataFetcher"] = None,
-        deferred_emits: Optional[List[DeferredEmit]] = None,
+        metadata_fetcher: "MetadataFetcher",
     ) -> int:
         """Pull ready ``(block_ref, meta_ref)`` pairs from the streaming
         generator and let ``metadata_fetcher`` turn each into an emitted
@@ -284,22 +277,10 @@ class DataOpTask(OpTask):
             max_bytes_to_read: Max bytes of blocks to read. If None, all
                 currently available pairs are drained.
             metadata_fetcher: Strategy that fetches/emits each pulled pair.
-                Defaults to the synchronous inline fetcher.
-            deferred_emits: List to which the threaded fetcher appends
-                :class:`DeferredEmit` entries (ignored by the inline fetcher).
 
         Returns:
             The number of bytes accounted for (for the budget loop).
         """
-        if metadata_fetcher is None:
-            from ray.data._internal.execution.metadata_fetcher import (
-                default_metadata_fetcher,
-            )
-
-            metadata_fetcher = default_metadata_fetcher()
-        if deferred_emits is None:
-            deferred_emits = []
-
         bytes_read = 0
 
         self._track_task_output_backpressure(max_bytes_to_read)
@@ -323,7 +304,6 @@ class DataOpTask(OpTask):
                         timeout_s=0
                     )
                 except StopIteration:
-                    # End of stream (normal completion).
                     self._state = TaskGeneratorState.DRAINED
                     break
 
@@ -350,9 +330,6 @@ class DataOpTask(OpTask):
                         ray.get(self._pending_block_ref)
                         assert False, "Above ray.get should raise an exception."
                     except Exception as ex:
-                        # Task failure: record the error and drain. The inline
-                        # mode re-raises below; the threaded mode surfaces it
-                        # later for max_errored_blocks accounting.
                         self._task_error = ex
                         self._state = TaskGeneratorState.DRAINED
                         break
@@ -371,7 +348,6 @@ class DataOpTask(OpTask):
                 self,
                 self._pending_block_ref,
                 self._pending_meta_ref,
-                deferred_emits,
             )
             if object_size is None:
                 break
@@ -385,19 +361,11 @@ class DataOpTask(OpTask):
             self._pending_block_ref = ray.ObjectRef.nil()
             self._pending_meta_ref = ray.ObjectRef.nil()
 
-        # Inline mode fires the done-callback here, the moment the generator is
-        # drained (matching the historical timing): all of its pairs have
-        # already emitted inline, so ``_pending_emit_count`` is 0. A task
-        # failure is re-raised after the callback, as before. The threaded mode
-        # postpones completion (``register_drained`` + ``fire_done_callbacks``)
-        # until its deferred pairs emit, so it skips this.
-        if (
-            not metadata_fetcher.defers_completion
-            and self._state is TaskGeneratorState.DRAINED
-        ):
-            self.mark_done()
-            if self._task_error is not None:
-                raise self._task_error from None
+        # Once drained, let the fetcher decide how completion is signalled:
+        # inline fires the done-callback now (re-raising a task failure);
+        # threaded postpones it until the deferred pairs emit (a no-op here).
+        if self._state is TaskGeneratorState.DRAINED:
+            metadata_fetcher.in_loop_done(self)
 
         return bytes_read
 
