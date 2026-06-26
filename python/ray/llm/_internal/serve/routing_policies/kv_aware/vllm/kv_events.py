@@ -85,15 +85,8 @@ def assign_replica_kv_events_endpoint(llm_config: LLMConfig) -> None:
     if kv_events_config is None:
         return
     updated = dict(kv_events_config)
-    endpoint = updated.pop("endpoint", None)
-    if endpoint is None:
-        raise ValueError(
-            "engine_kwargs['kv_events_config']['endpoint'] must be set when "
-            "providing a vLLM KV-cache events config. To let Ray Serve ingest "
-            "engine KV events for KV-aware routing, configure KVAwareRouter via "
-            "deployment_config.request_router_config."
-        )
-    replay_endpoint = updated.pop("replay_endpoint", None)
+    endpoint = updated.pop("endpoint")
+    replay_endpoint = updated.pop("replay_endpoint")
     # With data parallelism the engine offsets ports by dp_rank itself; otherwise
     # offset by the replica's node-local rank so colocated replicas don't collide.
     if llm_config.engine_kwargs.get("data_parallel_rank") is not None:
@@ -101,8 +94,7 @@ def assign_replica_kv_events_endpoint(llm_config: LLMConfig) -> None:
     else:
         offset = _get_replica_rank()
     updated["endpoint"] = _get_offset_endpoint_port(endpoint, offset)
-    if replay_endpoint is not None:
-        updated["replay_endpoint"] = _get_offset_endpoint_port(replay_endpoint, offset)
+    updated["replay_endpoint"] = _get_offset_endpoint_port(replay_endpoint, offset)
     llm_config.update_engine_kwargs(kv_events_config=updated)
 
 
@@ -142,11 +134,10 @@ def get_kv_event_routing_stats(
         "block_size": block_size,
         "max_num_batched_tokens": max_num_batched_tokens,
         "dp_rank": llm_config.engine_kwargs.get("data_parallel_rank") or 0,
-    }
-    if kv_events_config.get("replay_endpoint") is not None:
-        kv_event_metadata["replay_endpoint"] = _get_node_routable_endpoint(
+        "replay_endpoint": _get_node_routable_endpoint(
             llm_config, kv_events_config["replay_endpoint"]
-        )
+        ),
+    }
     return {"kv_event_metadata": kv_event_metadata}
 
 
