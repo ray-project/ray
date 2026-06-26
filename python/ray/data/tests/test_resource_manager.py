@@ -66,7 +66,7 @@ def mock_union_op(input_ops):
         DataContext.get_current(),
         *input_ops,
     )
-    op.start = MagicMock(side_effect=lambda _: None)
+    op.start = MagicMock(side_effect=lambda *_: None)
     return op
 
 
@@ -90,7 +90,7 @@ def mock_join_op(left_input_op, right_input_op):
             partition_size_hint=1,
         )
 
-    op.start = MagicMock(side_effect=lambda _: None)
+    op.start = MagicMock(side_effect=lambda *_: None)
     return op
 
 
