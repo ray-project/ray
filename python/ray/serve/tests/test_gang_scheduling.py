@@ -1250,38 +1250,48 @@ class TestGangControllerRecovery:
 
         victim_ids = {v.replica_id.unique_id for v in victims}
 
+        # Record the controller pid so we can confirm it actually restarts.
+        # ray.kill(..., no_restart=False) is asynchronous, so without this wait
+        # the checks below can read stale pre-crash state from the still-alive
+        # old controller (which still lists the victims as RUNNING).
+        original_controller_pid = ray.get(controller.get_pid.remote())
+
         # Kill the controller, then kill the victims while it is down.
         ray.kill(controller, no_restart=False)
         for v in victims:
             handle = ray.get_actor(v.replica_id.to_full_id_str(), namespace="serve")
             ray.kill(handle, no_restart=True)
 
-        # Wait for the controller to restart and the app to recover.
-        wait_for_condition(check_apps_running, apps=[app_name])
+        # Wait for the controller process to actually restart before checking
+        # recovery, otherwise we may observe the old controller's stale state.
+        def controller_restarted():
+            try:
+                pid = ray.get(controller.get_pid.remote(), timeout=5)
+                return pid != original_controller_pid
+            except Exception:
+                return False
+
+        wait_for_condition(controller_restarted, timeout=60)
+        wait_for_condition(check_apps_running, apps=[app_name], timeout=60)
 
         new_controller = serve.context._get_global_client()._controller
 
-        def fully_recovered():
+        # The affected gangs must be fully rescheduled: 4 RUNNING replicas, all
+        # with gang_context, and none of them the killed victims. Folding the
+        # victim check into the wait avoids racing the controller's reconcile.
+        def recovered_without_victims():
             replicas = ray.get(
                 new_controller._dump_replica_states_for_testing.remote(dep_id)
             )
             running = replicas.get([ReplicaState.RUNNING])
             if len(running) != 4:
                 return False
-            for r in running:
-                if r.gang_context is None:
-                    return False
-            return True
+            running_ids = {r.replica_id.unique_id for r in running}
+            return victim_ids.isdisjoint(running_ids) and all(
+                r.gang_context is not None for r in running
+            )
 
-        wait_for_condition(fully_recovered)
-
-        # The killed replicas should have been replaced by new ones.
-        replicas = ray.get(
-            new_controller._dump_replica_states_for_testing.remote(dep_id)
-        )
-        running = replicas.get([ReplicaState.RUNNING])
-        recovered_ids = {r.replica_id.unique_id for r in running}
-        assert victim_ids.isdisjoint(recovered_ids)
+        wait_for_condition(recovered_without_victims, timeout=60)
 
         serve.delete(app_name)
         serve.shutdown()
