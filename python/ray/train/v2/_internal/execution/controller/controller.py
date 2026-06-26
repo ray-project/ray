@@ -55,6 +55,7 @@ from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     FailurePolicy,
 )
+from ray.train.v2._internal.execution.preemption import merge_preemption_info
 from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
     ResizeDecision,
@@ -652,20 +653,13 @@ class TrainController:
         elif isinstance(controller_state, RunningState):
             worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
 
-            if worker_group_status.finished and not worker_group_status.errors:
-                self._return_value = worker_group_status.worker_statuses[0].return_value
-                return TrainControllerLoopIterationResult(
-                    run_attempt_id=self._get_run_attempt_id(),
-                    previous_state=controller_state,
-                    next_state=ShuttingDownState(
-                        next_state=FinishedState(),
-                    ),
-                )
-
             # A worker echoed a preemption signal: move to PreemptingState and
-            # let the worker group drain before restarting. Checked before the
-            # error branch so that workers killed by the preemption are counted
-            # against the preemption retry budget rather than `max_failures`.
+            # let the worker group drain before restarting. Checked before both
+            # the completion and error branches: a worker may react to the
+            # signal by checkpointing and returning (a clean exit) or be killed
+            # when its node is reclaimed (an error). Either way we want to drain
+            # and restart against the preemption retry budget, rather than
+            # finishing the run or charging it against `max_failures`.
             preemption_info = worker_group_status.get_preemption_info()
             if preemption_info is not None:
                 return TrainControllerLoopIterationResult(
@@ -674,6 +668,16 @@ class TrainController:
                     next_state=PreemptingState(
                         preemption_info=preemption_info,
                         detected_at_s=time_seconds(),
+                    ),
+                )
+
+            if worker_group_status.finished and not worker_group_status.errors:
+                self._return_value = worker_group_status.worker_statuses[0].return_value
+                return TrainControllerLoopIterationResult(
+                    run_attempt_id=self._get_run_attempt_id(),
+                    previous_state=controller_state,
+                    next_state=ShuttingDownState(
+                        next_state=FinishedState(),
                     ),
                 )
 
@@ -759,10 +763,16 @@ class TrainController:
         worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
 
         # Keep the preemption info current as additional nodes are drained.
-        preemption_info = (
-            worker_group_status.get_preemption_info()
-            or controller_state.preemption_info
-        )
+        # Merge rather than overwrite so a staggered preemption (or a node
+        # dropping out of the draining list once it's gone) doesn't erase
+        # earlier preempted nodes/ranks from the final PreemptionError.
+        new_preemption_info = worker_group_status.get_preemption_info()
+        if new_preemption_info is not None:
+            preemption_info = merge_preemption_info(
+                controller_state.preemption_info, new_preemption_info
+            )
+        else:
+            preemption_info = controller_state.preemption_info
         deadline_exceeded = self._is_preemption_deadline_exceeded(
             preemption_info, controller_state.detected_at_s
         )
