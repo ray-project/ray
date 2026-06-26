@@ -1,5 +1,5 @@
 import pathlib
-import urllib
+import urllib.parse
 
 """Cross-platform utilities for manipulating paths and URIs.
 
