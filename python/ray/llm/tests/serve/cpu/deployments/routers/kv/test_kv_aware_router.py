@@ -329,7 +329,12 @@ class _SelectWorkerStub:
     async def remote(self, request_id, token_ids, allowed_worker_ids):
         self.token_ids = token_ids
         self.allowed = allowed_worker_ids
-        return {"worker_id": self._worker_id, "dp_rank": 0, "overlap_tokens": 1}
+        return {
+            "worker_id": self._worker_id,
+            "dp_rank": 0,
+            "overlap_tokens": 1,
+            "effective_prefill_tokens": len(token_ids),
+        }
 
 
 class _KVRouterActorStub:

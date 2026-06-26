@@ -1,6 +1,8 @@
 import asyncio
 import hashlib
 import logging
+import math
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, TypedDict
 
 import ray
@@ -42,6 +44,22 @@ def get_worker_id(replica_unique_id: str) -> int:
     )
 
 
+@dataclass
+class RequestLifecycle:
+    """In-flight request load state while the request is served by a replica."""
+
+    worker_id: int
+    prompt_tokens: int = 0
+    # Client-provided output-length estimate (``sampling_params.max_tokens``);
+    # weights each decode block's load by how much generation remains.
+    expected_output_tokens: Optional[int] = None
+    prefill_completed: bool = False
+    output_tokens: int = 0
+    # Running count of KV blocks (prompt + output) the request occupies; the
+    # cursor for booking each newly crossed decode block.
+    total_blocks: int = 0
+
+
 class WorkerSelection(TypedDict):
     """The worker chosen by ``KVRouterActor.select_worker`` for a request."""
 
@@ -51,6 +69,8 @@ class WorkerSelection(TypedDict):
     dp_rank: int
     # Matched prompt tokens available on the selected worker.
     overlap_tokens: int
+    # Prompt tokens that still need prefill on the selected worker.
+    effective_prefill_tokens: int
 
 
 class KVRouterActor:
@@ -67,7 +87,9 @@ class KVRouterActor:
     4. The ``SelectionService`` maintains a global KV index radix tree, fed by
        every replica's KV events; each node records which workers hold that KV block.
     5. Scoring (``select_worker``) ranks candidate workers by KV-cache overlap
-       and prefill/decode load.
+       (queried from the KV index) plus prefill/decode load.
+    6. Books each request's lifecycle into the service's active-load tracker, so
+       in-flight load feeds back into scoring for subsequent requests.
     """
 
     def __init__(self, block_size: int):
@@ -77,6 +99,16 @@ class KVRouterActor:
         # NOTE (jeffreywang): _replica_id_by_worker is later used by select_worker
         # to get candidate workers to route among.
         self._replica_id_by_worker: Dict[int, str] = {}
+        # Per-request state that the lifecycle hooks need, keyed by request id, serves
+        # the following purposes:
+        #   1. Block cursor: Turn cumulative decode tokens into add_output_block deltas.
+        #   2. expected_output_tokens for decode-block decay weighting.
+        #   3. In-flight request set: Free reservation exactly once.
+        self._requests: Dict[str, RequestLifecycle] = {}
+        # ``select_worker`` already asks Dynamo for the chosen worker's
+        # effective prefill tokens. Keep that hint until the same request id's
+        # ``on_request_added`` lifecycle event books it as active load.
+        self._effective_prefill_tokens_by_request: Dict[str, int] = {}
         self._pending_tasks: Set[asyncio.Task] = set()
         self._long_poll_client: Optional[LongPollClient] = None
         self._create_selection_service()
@@ -86,6 +118,10 @@ class KVRouterActor:
         """Readiness probe for KVAwareRouter to confirm KVRouterActor is initialized
         before it starts routing requests to it.
         """
+
+    def get_block_size(self) -> int:
+        """Return the KV-cache block size used for decode-block accounting."""
+        return self._block_size
 
     def _create_selection_service(self) -> None:
         """Create the in-process Dynamo selection service for this deployment."""
@@ -253,10 +289,14 @@ class KVRouterActor:
                 "allowed_worker_ids": allowed_worker_ids,
             }
         )
+        self._effective_prefill_tokens_by_request[request_id] = selection[
+            "effective_prefill_tokens"
+        ]
         return {
             "worker_id": selection["worker_id"],
             "dp_rank": selection["dp_rank"],
             "overlap_tokens": selection["overlap"]["longest_matched"],
+            "effective_prefill_tokens": selection["effective_prefill_tokens"],
         }
 
     async def on_lifecycle_events(self, events: List[tuple]) -> None:
@@ -277,14 +317,43 @@ class KVRouterActor:
         request_id: str,
         worker_id: int,
         token_ids: List[int],
+        expected_output_tokens: Optional[int] = None,
     ) -> None:
         """Admit a routed request into ``worker_id``'s active load, booking it
-        into the selection service which computes the worker's KV overlap from
-        ``token_ids``, so the recorded prefill excludes the cached prefix."""
+        into the selection service with the worker's uncached prompt length, so
+        active prefill load excludes any KV prefix already cached on that worker.
+        """
+        prompt_tokens = len(token_ids)
+        self._requests[request_id] = RequestLifecycle(
+            worker_id=worker_id,
+            prompt_tokens=prompt_tokens,
+            expected_output_tokens=expected_output_tokens,
+            total_blocks=math.ceil(prompt_tokens / self._block_size),
+        )
+        effective_prefill_tokens = self._effective_prefill_tokens_by_request.pop(
+            request_id, None
+        )
+
+        await self._svc.create_reservation(
+            {
+                "model_name": _MODEL_NAME,
+                "tenant_id": _TENANT_ID,
+                "reservation_id": request_id,
+                "worker_id": worker_id,
+                "token_ids": token_ids,
+                "expected_output_tokens": expected_output_tokens,
+                "effective_prefill_tokens": effective_prefill_tokens,
+            }
+        )
 
     async def on_prefill_complete(self, request_id: str) -> None:
         """Record a request's prefill -> decode transition, dropping its prefill
         load in the selection service."""
+        state = self._requests.get(request_id)
+        if state is None:
+            return
+        state.prefill_completed = True
+        await self._svc.prefill_complete(request_id)
 
     async def on_decode_progress(
         self, request_id: str, cumulative_output_tokens: int
@@ -292,7 +361,28 @@ class KVRouterActor:
         """Advance ``request_id`` to an exact cumulative output-token count,
         booking one decode block in the selection service per crossed boundary.
         """
+        state = self._requests.get(request_id)
+        if state is None:
+            return
+        state.output_tokens = cumulative_output_tokens
+        new_total_blocks = math.ceil(
+            (state.prompt_tokens + cumulative_output_tokens) / self._block_size
+        )
+        decay_fraction = self._get_decay_fraction(state)
+        while new_total_blocks > state.total_blocks:
+            state.total_blocks += 1
+            self._svc.add_output_block(request_id, decay_fraction=decay_fraction)
 
     async def on_request_completed(self, request_id: str) -> None:
         """Free ``request_id`` from the selection service's active load and the
         local view."""
+        self._effective_prefill_tokens_by_request.pop(request_id, None)
+        if self._requests.pop(request_id, None) is not None:
+            await self._svc.free_reservation(request_id)
+
+    def _get_decay_fraction(self, state: RequestLifecycle) -> Optional[float]:
+        """Fraction of output still expected, or ``None`` without an estimate;
+        weights each decode block by how much generation remains."""
+        if not state.expected_output_tokens:
+            return None
+        return max(0.0, 1.0 - state.output_tokens / state.expected_output_tokens)
