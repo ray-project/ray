@@ -126,6 +126,11 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual void Flush();
 
+  // Lazily initializes log_sink_ on the first write, so that no log file
+  // is created on disk unless at least one event is actually written.
+  // Fixes: https://github.com/ray-project/ray/issues/64153
+  void EnsureSinkInitialized();
+
   std::string GetReporterKey() override { return "log.event.reporter"; }
 
  protected:
@@ -136,6 +141,11 @@ class LogEventReporter : public BaseEventReporter {
 
   std::string file_name_;
 
+  // The key used to look up / register the spdlog logger. Stored to enable
+  // lazy initialization of log_sink_ in EnsureSinkInitialized().
+  std::string log_sink_key_;
+
+  // The underlying spdlog logger. nullptr until the first event is written.
   std::shared_ptr<spdlog::logger> log_sink_;
 };
 
