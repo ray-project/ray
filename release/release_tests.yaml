@@ -3238,7 +3238,7 @@
     timeout: 600
     script: python object_store/test_callback_throughput.py
     wait_for_nodes:
-      num_nodes: 101
+      num_nodes: 11
 
   variations:
     - __suffix__: aws
