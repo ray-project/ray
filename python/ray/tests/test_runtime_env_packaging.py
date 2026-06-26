@@ -17,6 +17,7 @@ from shutil import copytree, make_archive, rmtree
 import pytest
 
 import ray
+from ray._common.runtime_env_uri import parse_uri
 from ray._private.ray_constants import (
     KV_NAMESPACE_PACKAGE,
 )
@@ -39,7 +40,6 @@ from ray._private.runtime_env.packaging import (
     is_tar_gz_uri,
     is_whl_uri,
     is_zip_uri,
-    parse_uri,
     remove_dir_from_filepaths,
     untar_package,
     unzip_package,
