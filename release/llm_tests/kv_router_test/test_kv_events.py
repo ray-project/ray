@@ -8,7 +8,7 @@ import requests
 from dynamo.llm import compute_block_hash_for_seq
 
 import ray
-from ray import serve
+from ray import cloudpickle, serve
 from ray._common.test_utils import async_wait_for_condition
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     _MODEL_NAME,
@@ -201,6 +201,10 @@ class TestKvEvents:
             _TestKVRouterActor,
         ):
             app = build_openai_app({"llm_configs": [llm_config]})
+            # build_openai_app serializes the router class and unregisters this
+            # module from pickle-by-value. Re-register so the LLMConfig that
+            # serve.run ships to replicas embeds the test classes by value.
+            cloudpickle.register_pickle_by_value(sys.modules[__name__])
             handle = serve.run(app, name=APP_NAME)
         yield handle
         serve.shutdown()
