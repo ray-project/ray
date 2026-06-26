@@ -62,6 +62,13 @@ class LocustProcess:
         # Prepare the subprocess script
         if self.worker_type == "master":
             script = f"""
+# locust monkey-patches ssl via gevent on import. It must run before anything
+# imports ssl/urllib3 (e.g. `import ray` below), otherwise patching ssl late
+# infinitely recurses in SSLContext.minimum_version on py3.12+ (RecursionError).
+from gevent import monkey
+
+monkey.patch_all()
+
 import sys
 import json
 from ray.serve._private.benchmarks.locust_utils import run_locust_master, run_locust_worker, LocustStage
@@ -83,6 +90,13 @@ with open("{results_file.name}", 'w') as f:
             cmd_args = [sys.executable, "-c", script, stages]
         else:
             script = f"""
+# locust monkey-patches ssl via gevent on import. It must run before anything
+# imports ssl/urllib3 (e.g. `import ray` below), otherwise patching ssl late
+# infinitely recurses in SSLContext.minimum_version on py3.12+ (RecursionError).
+from gevent import monkey
+
+monkey.patch_all()
+
 import sys
 import json
 from ray.serve._private.benchmarks.locust_utils import run_locust_master, run_locust_worker, LocustStage

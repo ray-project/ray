@@ -3,11 +3,6 @@ torchvision
 torchmetrics
 pytest
 locust==2.44.3
-# gevent 25.9.1 infinitely recurses in the ssl SSLContext.minimum_version setter
-# under monkey-patching on py3.14 (RecursionError when locust imports urllib3).
-# locust caps gevent <26.0.0, so pin the last good release before the regression.
-# Remove once locust allows a fixed gevent 26.x.
-gevent==25.8.2
 openai
 google-api-python-client
 transformers

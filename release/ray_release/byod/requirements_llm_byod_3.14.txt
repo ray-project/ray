@@ -1,3 +1,16 @@
+# Pin the torch family to the build that the ray-llm base layer (and vLLM
+# 0.22.0's prebuilt wheels) are compiled against. sentence-transformers pulls
+# torch transitively, and this depset is otherwise unconstrained, so without
+# these pins it resolves to the latest PyPI torch (e.g. 2.12.0 + CUDA 13). That
+# lock is installed --no-deps into the -base-extra-testdeps image, overwriting
+# the base layer's 2.11.0+cu129 and breaking vLLM/torchvision prebuilt
+# extensions (undefined libtorch symbol _RegisterOrVerify / missing
+# torchvision::nms op). Keep in sync with the rayllm deplock + llm-requirements.
+--extra-index-url https://download.pytorch.org/whl/cu129
+torch==2.11.0+cu129
+torchvision==0.26.0+cu129
+torchaudio==2.11.0+cu129
+
 pytest-asyncio==0.21.2
 pytest-timeout==2.1.0
 locust==2.33.0
