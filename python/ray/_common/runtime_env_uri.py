@@ -1,8 +1,8 @@
 import enum
+import pathlib
+import urllib.parse
 from typing import Tuple
 from urllib.parse import urlparse
-
-from ray._common.path_utils import is_path
 
 _REMOTE_PROTOCOLS = ("http", "https", "s3", "gs", "azure", "abfss", "file")
 
@@ -39,6 +39,23 @@ class Protocol(enum.Enum):
         return [cls[protocol.upper()] for protocol in _REMOTE_PROTOCOLS]
 
 
+def _is_path(path_or_uri: str) -> bool:
+    """Returns True if path_or_uri is a path and False otherwise."""
+    if not isinstance(path_or_uri, str):
+        raise TypeError(f" path_or_uri must be a string, got {type(path_or_uri)}.")
+
+    parsed_path = pathlib.Path(path_or_uri)
+    parsed_uri = urllib.parse.urlparse(path_or_uri)
+
+    if isinstance(parsed_path, pathlib.PurePosixPath):
+        return not parsed_uri.scheme
+    elif isinstance(parsed_path, pathlib.PureWindowsPath):
+        return parsed_uri.scheme == parsed_path.drive.strip(":").lower()
+    else:
+        # this should never happen.
+        raise TypeError(f"Unsupported path type: {type(parsed_path).__name__}")
+
+
 def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     """
     Parse package uri into protocol and package name based on its format.
@@ -52,7 +69,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     (<Protocol.HTTPS: 'https'>, 'file.whl')
 
     """
-    if is_path(pkg_uri):
+    if _is_path(pkg_uri):
         raise ValueError(f"Expected URI but received path {pkg_uri}")
 
     uri = urlparse(pkg_uri)
