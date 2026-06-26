@@ -3,6 +3,7 @@ import io
 import logging
 import time
 from collections import deque
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import wraps
 from inspect import isasyncgenfunction, iscoroutinefunction
@@ -153,7 +154,8 @@ class _BatchQueue:
         self.batch_wait_timeout_s = batch_wait_timeout_s
         self.max_concurrent_batches = max_concurrent_batches
         self.batch_size_fn = batch_size_fn
-        self.semaphore = asyncio.Semaphore(max_concurrent_batches)
+        self._in_flight_batches = 0
+        self._concurrency_condition = asyncio.Condition()
         self.requests_available_event = asyncio.Event()
         self.tasks: Set[asyncio.Task] = set()
 
@@ -229,6 +231,26 @@ class _BatchQueue:
         """Updates queue's max_batch_size."""
         self.max_batch_size = new_max_batch_size
         self._warn_if_max_batch_size_exceeds_max_ongoing_requests()
+
+    def set_max_concurrent_batches(self, new_max_concurrent_batches: int) -> None:
+        """Updates queue's max_concurrent_batches.
+
+        Raising the limit admits waiting batches immediately; lowering it takes
+        effect as in-flight batches drain. In-flight batches are never cancelled.
+        """
+        self.max_concurrent_batches = new_max_concurrent_batches
+        self._warn_if_max_batch_size_exceeds_max_ongoing_requests()
+        # Wake waiters so a raised limit takes effect now. reconfigure may run on a worker
+        # thread (RAY_SERVE_RUN_SYNC_IN_THREADPOOL), so schedule on the loop thread-safely;
+        # skip if the loop is already gone (e.g. shutdown before reconfigure).
+        if self._loop.is_running():
+            asyncio.run_coroutine_threadsafe(
+                self._notify_concurrency_waiters(), self._loop
+            )
+
+    async def _notify_concurrency_waiters(self) -> None:
+        async with self._concurrency_condition:
+            self._concurrency_condition.notify_all()
 
     def put(self, request: Tuple[_SingleRequest, asyncio.Future]) -> None:
         self.queue.put_nowait(request)
@@ -485,26 +507,46 @@ class _BatchQueue:
             # for different models would not work correctly.
             sub_batches = self._split_batch_by_model_id(batch)
 
-            # Process all sub-batches together under a single semaphore permit.
+            # Process all sub-batches together under a single concurrency slot.
             # This ensures sub-batches from the same original batch run concurrently
-            # rather than being serialized by the semaphore.
+            # rather than being serialized by the concurrency limit.
             promise = self._process_sub_batches(func, sub_batches)
             task = asyncio.create_task(promise)
             self.tasks.add(task)
             self.curr_iteration_start_times[task] = time.time()
             task.add_done_callback(self._handle_completed_task)
 
+    @asynccontextmanager
+    async def _concurrency_slot(self):
+        """Limits concurrent batches to the live max_concurrent_batches.
+
+        Re-checked on each admission, so set_max_concurrent_batches takes effect
+        without recreating the queue.
+        """
+        async with self._concurrency_condition:
+            await self._concurrency_condition.wait_for(
+                lambda: self._in_flight_batches < self.max_concurrent_batches
+            )
+            self._in_flight_batches += 1
+        try:
+            yield
+        finally:
+            async with self._concurrency_condition:
+                self._in_flight_batches -= 1
+                # One slot freed -> wake one waiter. Limit raises are handled by
+                # set_max_concurrent_batches, which wakes all.
+                self._concurrency_condition.notify(1)
+
     async def _process_sub_batches(
         self, func: Callable, sub_batches: List[List[_SingleRequest]]
     ) -> None:
-        """Processes multiple sub-batches concurrently under a single semaphore permit.
+        """Processes multiple sub-batches concurrently under a single concurrency slot.
 
-        This method acquires the semaphore once and then processes all sub-batches
+        This method acquires one concurrency slot and then processes all sub-batches
         in parallel, ensuring that sub-batches from the same original batch don't
-        compete for semaphore permits.
+        compete for slots.
         """
-        # NOTE: this semaphore caps the number of concurrent batches specified by `max_concurrent_batches`
-        async with self.semaphore:
+        async with self._concurrency_slot():
             # Create tasks for each sub-batch. We use asyncio.create_task() instead
             # of passing coroutines directly to asyncio.gather() because create_task
             # copies the current context, giving each sub-batch its own isolated
@@ -520,10 +562,10 @@ class _BatchQueue:
     async def _process_batch_inner(
         self, func: Callable, batch: List[_SingleRequest]
     ) -> None:
-        """Processes a single batch without acquiring the semaphore.
+        """Processes a single batch without acquiring a concurrency slot.
 
         This is the inner implementation called by _process_sub_batches after
-        the semaphore has already been acquired.
+        the concurrency slot has already been acquired.
         """
         # Remove requests that have been cancelled from the batch. If
         # all requests have been cancelled, simply return and wait for
@@ -677,11 +719,22 @@ class _LazyBatchQueueWrapper:
         if self._queue is not None:
             self._queue.batch_wait_timeout_s = new_batch_wait_timeout_s
 
+    def set_max_concurrent_batches(self, new_max_concurrent_batches: int) -> None:
+        # Reject < 1: unlike max_batch_size, it would hang the gate, not shrink batches.
+        _validate_max_concurrent_batches(new_max_concurrent_batches)
+        self.max_concurrent_batches = new_max_concurrent_batches
+
+        if self._queue is not None:
+            self._queue.set_max_concurrent_batches(new_max_concurrent_batches)
+
     def get_max_batch_size(self) -> int:
         return self.max_batch_size
 
     def get_batch_wait_timeout_s(self) -> float:
         return self.batch_wait_timeout_s
+
+    def get_max_concurrent_batches(self) -> int:
+        return self.max_concurrent_batches
 
     def _get_curr_iteration_start_times(self) -> _RuntimeSummaryStatistics:
         """Gets summary statistics of current iteration's start times."""
@@ -742,8 +795,12 @@ def _validate_batch_wait_timeout_s(batch_wait_timeout_s):
 
 
 def _validate_max_concurrent_batches(max_concurrent_batches: int) -> None:
-    if not isinstance(max_concurrent_batches, int) or max_concurrent_batches < 1:
+    if not isinstance(max_concurrent_batches, int):
         raise TypeError(
+            f"max_concurrent_batches must be an integer >= 1, got {max_concurrent_batches}"
+        )
+    if max_concurrent_batches < 1:
+        raise ValueError(
             f"max_concurrent_batches must be an integer >= 1, got {max_concurrent_batches}"
         )
 
@@ -853,9 +910,9 @@ def batch(
     and executed asynchronously once there is a batch of `max_batch_size`
     or `batch_wait_timeout_s` has elapsed, whichever occurs first.
 
-    `max_batch_size` and `batch_wait_timeout_s` can be updated using setter
-    methods from the batch_handler (`set_max_batch_size` and
-    `set_batch_wait_timeout_s`).
+    `max_batch_size`, `batch_wait_timeout_s`, and `max_concurrent_batches` can be
+    updated using setter methods from the batch_handler (`set_max_batch_size`,
+    `set_batch_wait_timeout_s`, and `set_max_concurrent_batches`).
 
     Example:
 
@@ -987,9 +1044,15 @@ def batch(
         wrapper._get_batch_wait_timeout_s = (
             lazy_batch_queue_wrapper.get_batch_wait_timeout_s
         )
+        wrapper._get_max_concurrent_batches = (
+            lazy_batch_queue_wrapper.get_max_concurrent_batches
+        )
         wrapper.set_max_batch_size = lazy_batch_queue_wrapper.set_max_batch_size
         wrapper.set_batch_wait_timeout_s = (
             lazy_batch_queue_wrapper.set_batch_wait_timeout_s
+        )
+        wrapper.set_max_concurrent_batches = (
+            lazy_batch_queue_wrapper.set_max_concurrent_batches
         )
 
         # Store debugging methods in the lazy_batch_queue wrapper
