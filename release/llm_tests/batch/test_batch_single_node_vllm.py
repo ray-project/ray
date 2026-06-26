@@ -254,11 +254,15 @@ def test_single_node_baseline_benchmark():
     metrics_export_port = int(
         os.getenv("RAY_DATA_LLM_BENCHMARK_METRICS_EXPORT_PORT", "8080")
     )
-    ray.init(
-        _metrics_export_port=metrics_export_port,
-        ignore_reinit_error=True,
-        _system_config={"metrics_report_interval_ms": 1000},
-    )
+    ray_init_kwargs = {"ignore_reinit_error": True}
+
+    if not os.getenv("RAY_ADDRESS"):
+        ray_init_kwargs.update(
+            _metrics_export_port=metrics_export_port,
+            _system_config={"metrics_report_interval_ms": 1000},
+        )
+
+    ray.init(**ray_init_kwargs)
 
     ds = ray.data.from_items(prompts)
 
