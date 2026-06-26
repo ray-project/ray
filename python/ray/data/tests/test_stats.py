@@ -197,10 +197,8 @@ def test_block_exec_stats_max_uss_bytes_without_polling(ray_start_regular_shared
 def test_map_transformer_custom_op_stats():
     expected = _ReadTaskStats(num_rows=4, num_columns=1)
 
-    def set_stats(blocks, ctx, op_stats_reporter):
-        # A producing transform reports through the per-task reporter it's
-        # handed (opted in via reports_custom_op_stats=True).
-        op_stats_reporter.report(expected)
+    def set_stats(blocks, ctx, report_custom_op_stats):
+        report_custom_op_stats(expected)
         yield from blocks
 
     transformer = MapTransformer(
@@ -213,12 +211,13 @@ def test_map_transformer_custom_op_stats():
 
     reporter = CustomOpStatsReporter()
     # Nothing reported until a task runs.
-    assert reporter.stats is None
+    assert reporter.get_stats() == []
 
     ctx = TaskContext(task_idx=0, op_name="test")
     block = pa.table({"id": list(range(expected.num_rows))})
-    list(transformer.apply_transform([block], ctx, reporter))
-    assert reporter.stats == expected
+    # apply_transform takes the report callback, not the reporter object.
+    list(transformer.apply_transform([block], ctx, reporter.report))
+    assert reporter.get_stats() == [expected]
 
 
 def _drive_map_task_metadata(transformer, ctx, block):
@@ -248,8 +247,8 @@ def test_map_task_carries_custom_op_stats_to_block_metadata(ray_start_regular_sh
     """
     expected = _ReadTaskStats(num_rows=2, num_columns=1)
 
-    def set_stats(blocks, ctx, op_stats_reporter):
-        op_stats_reporter.report(expected)
+    def set_stats(blocks, ctx, report_custom_op_stats):
+        report_custom_op_stats(expected)
         yield from blocks
 
     transformer = MapTransformer(
@@ -262,10 +261,12 @@ def test_map_task_carries_custom_op_stats_to_block_metadata(ray_start_regular_sh
     ctx = TaskContext(task_idx=0, op_name="test")
     metas = _drive_map_task_metadata(transformer, ctx, pa.table({"id": [0, 1]}))
 
+    # custom_op_stats is a List[CustomOpStats] per block; flatten across blocks.
     reported_stats = [
-        m.metadata.task_exec_stats.custom_op_stats
+        stats
         for m in metas
         if m.metadata.task_exec_stats is not None
+        for stats in m.metadata.task_exec_stats.custom_op_stats
     ]
     assert expected in reported_stats, reported_stats
 
@@ -282,8 +283,8 @@ def test_custom_op_stats_survives_operator_fusion(ray_start_regular_shared):
     """
     expected = _ReadTaskStats(num_rows=2, num_columns=1)
 
-    def report_stats(blocks, ctx, op_stats_reporter):
-        op_stats_reporter.report(expected)
+    def report_stats(blocks, ctx, report_custom_op_stats):
+        report_custom_op_stats(expected)
         yield from blocks
 
     def passthrough(blocks, ctx):
@@ -304,10 +305,12 @@ def test_custom_op_stats_survives_operator_fusion(ray_start_regular_shared):
     ctx = TaskContext(task_idx=0, op_name="test")
     metas = _drive_map_task_metadata(fused, ctx, pa.table({"id": [0, 1]}))
 
+    # custom_op_stats is a List[CustomOpStats] per block; flatten across blocks.
     reported_stats = [
-        m.metadata.task_exec_stats.custom_op_stats
+        stats
         for m in metas
         if m.metadata.task_exec_stats is not None
+        for stats in m.metadata.task_exec_stats.custom_op_stats
     ]
     assert expected in reported_stats, reported_stats
 
