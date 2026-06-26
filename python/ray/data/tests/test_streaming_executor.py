@@ -31,8 +31,15 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
+    DeferredEmit,
     MetadataOpTask,
 )
+from ray.data._internal.execution.metadata_fetcher import (
+    InlineMetadataFetcher,
+    MetadataFetcher,
+    ThreadedMetadataFetcher,
+)
+from ray.data._internal.execution.metadata_prefetcher import MetadataPrefetcher
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -164,6 +171,67 @@ def _make_disabled_guard() -> MagicMock:
     return guard
 
 
+def _process_completed_tasks_sync(
+    topo, backpressure_policies, max_errored_blocks, output_backpressure_guard
+):
+    """Run ``process_completed_tasks`` in the synchronous inline mode, so all
+    output is fetched and emitted before the call returns (test post-conditions
+    hold immediately). The default executor uses the threaded fetcher, which
+    lets emits land across iterations."""
+    return process_completed_tasks(
+        topo,
+        backpressure_policies,
+        max_errored_blocks,
+        output_backpressure_guard,
+        metadata_fetcher=InlineMetadataFetcher(),
+    )
+
+
+def _drain_completed_tasks_threaded(
+    topo, backpressure_policies, max_errored_blocks, output_backpressure_guard
+):
+    """Run ``process_completed_tasks`` with the threaded fetcher and pump it
+    until the background metadata fetches have all emitted, so test
+    post-conditions hold once it returns."""
+    fetcher = ThreadedMetadataFetcher()
+    fetcher.start()
+    try:
+        result = process_completed_tasks(
+            topo,
+            backpressure_policies,
+            max_errored_blocks,
+            output_backpressure_guard,
+            metadata_fetcher=fetcher,
+        )
+        deadline = time.time() + 30
+        while fetcher.prefetcher.has_pending_work() and time.time() < deadline:
+            fetcher.after_loop_batch()
+            time.sleep(0.005)
+        return result
+    finally:
+        fetcher.stop()
+
+
+def test_process_completed_tasks_threaded_emits_output(ray_start_regular_shared):
+    """End-to-end check of the threaded mode through ``process_completed_tasks``:
+    pulled pairs are deferred, fetched on the background thread, and emitted
+    (per-op order) by ``after_loop_batch`` — yielding the same outputs as the
+    inline mode."""
+    inputs = make_ref_bundles([[x] for x in range(20)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
+    )
+    topo = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
+
+    assert len(topo[o1].output_queue) == 0, topo
+    _drain_completed_tasks_threaded(topo, [], 0, _make_disabled_guard())
+    update_operator_states(topo)
+    assert len(topo[o1].output_queue) == 20, topo
+
+
 @pytest.fixture
 def sleep_task_ref():
     sleep_task_ref = sleep.remote()
@@ -183,7 +251,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
 
     # Test processing output bundles.
     assert len(topo[o1].output_queue) == 0, topo
-    process_completed_tasks(topo, [], 0, _make_disabled_guard())
+    _process_completed_tasks_sync(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     assert len(topo[o1].output_queue) == 20, topo
 
@@ -195,7 +263,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
     o2.get_active_tasks = MagicMock(return_value=[sleep_task, done_task])
     o2.all_inputs_done = MagicMock()
     o1.mark_execution_finished = MagicMock()
-    process_completed_tasks(topo, [], 0, _make_disabled_guard())
+    _process_completed_tasks_sync(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     sleep_task_callback.assert_not_called()
     done_task_callback.assert_called_once()
@@ -210,7 +278,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
     o1.mark_execution_finished = MagicMock()
     o1.has_completed = MagicMock(return_value=True)
     topo[o1].output_queue.clear()
-    process_completed_tasks(topo, [], 0, _make_disabled_guard())
+    _process_completed_tasks_sync(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_called_once()
@@ -232,7 +300,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
 
     o3.mark_execution_finished()
     o2.mark_execution_finished = MagicMock()
-    process_completed_tasks(topo, [], 0, _make_disabled_guard())
+    _process_completed_tasks_sync(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     o2.mark_execution_finished.assert_called_once()
 
@@ -256,7 +324,7 @@ def test_update_operator_states_drains_upstream(ray_start_regular_shared):
     topo = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
 
     # First, populate the upstream output queues by processing some tasks
-    process_completed_tasks(topo, [], 0, _make_disabled_guard())
+    _process_completed_tasks_sync(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
 
     # Verify that o1 (upstream) has output in its queue
@@ -490,23 +558,15 @@ def test_output_backpressure_policy_tracking(ray_start_regular_shared):
     policies = [LimitingPolicy(), NonLimitingPolicy(), NoLimitPolicy()]
 
     # Call process_completed_tasks which tracks output policies
-    process_completed_tasks(
-        topo,
-        policies,
-        max_errored_blocks=0,
-        output_backpressure_guard=_make_disabled_guard(),
-    )
+    _process_completed_tasks_sync(topo, policies, 0, _make_disabled_guard())
 
     # Check that o2 has the first limiting policy tracked
     assert o2._in_task_output_backpressure is True
     assert o2._task_output_backpressure_policy == "Limiting"
 
     # Now test with no output backpressure
-    process_completed_tasks(
-        topo,
-        [NonLimitingPolicy()],
-        max_errored_blocks=0,
-        output_backpressure_guard=_make_disabled_guard(),
+    _process_completed_tasks_sync(
+        topo, [NonLimitingPolicy()], 0, _make_disabled_guard()
     )
 
     # Check that o2 is no longer in output backpressure
@@ -548,12 +608,7 @@ def test_process_completed_tasks_unblocks_when_non_resource_budget_policy_zeros_
         def max_task_output_bytes_to_read(self, op):
             return 0 if op is o2 else None
 
-    process_completed_tasks(
-        topo,
-        [ZeroLimitPolicy()],
-        max_errored_blocks=0,
-        output_backpressure_guard=guard,
-    )
+    _process_completed_tasks_sync(topo, [ZeroLimitPolicy()], 0, guard)
 
     # o2 is terminal with no downstream eligible ops and no external
     # consumer — the guard's terminal-op branch should unblock, bumping
@@ -1425,6 +1480,9 @@ class TestDataOpTask:
         assert bytes_read == pytest.approx(256 * MiB)
 
     def test_on_data_ready_exception(self, ray_start_regular_shared):
+        # In the inline (default) mode a task failure fires the done-callback
+        # with the exception and re-raises it from ``on_data_ready``, exactly as
+        # before the threaded-fetch refactor.
         streaming_gen = create_stub_streaming_gen(
             block_nbytes=[128 * MiB],
             raise_exception=AssertionError("Block generation failed"),
@@ -1454,6 +1512,345 @@ class TestDataOpTask:
         streaming_gen2 = create_stub_streaming_gen(block_nbytes=[1])
         task_default = DataOpTask(1, streaming_gen2)
         assert task_default._operator_name == "Unknown"
+
+    def test_on_data_ready_deferred_does_not_emit_inline(
+        self, ray_start_regular_shared
+    ):
+        """In the threaded mode, on_data_ready appends to the deferred list
+        without emitting RefBundles or updating ``_last_block_meta``. Emission
+        happens later, when the prefetcher delivers the fetched metadata."""
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[1024])
+        outputs = []
+        task = DataOpTask(0, streaming_gen, output_ready_callback=outputs.append)
+
+        ray.wait([streaming_gen], fetch_local=False)
+        deferred: list[DeferredEmit] = []
+        task.on_data_ready(None, ThreadedMetadataFetcher(), deferred)
+
+        # No emit yet, _last_block_meta still None.
+        assert outputs == []
+        assert task._last_block_meta is None
+        assert len(deferred) >= 1
+
+        # Emitting the fetched metadata fires the callback in deferred order.
+        for d, meta_bytes in zip(deferred, ray.get([d.meta_ref for d in deferred])):
+            d.task.emit_block(d.block_ref, meta_bytes)
+        assert len(outputs) == len(deferred)
+        assert task._last_block_meta is not None
+
+    def test_deferred_preserves_emission_order_across_tasks(
+        self, ray_start_regular_shared
+    ):
+        """If two tasks produce pairs in interleaved order
+        (task_a's first, task_b's first, then task_a's second, etc.),
+        the deferred emission preserves the original append order — same
+        as today's per-op, per-task, per-pair sequence."""
+        gen_a = create_stub_streaming_gen(block_nbytes=[100, 200])
+        gen_b = create_stub_streaming_gen(block_nbytes=[300, 400])
+
+        outputs: list[tuple[int, int]] = []  # (task_idx, bytes)
+        task_a = DataOpTask(
+            0,
+            gen_a,
+            output_ready_callback=lambda b: outputs.append((0, b.size_bytes())),
+        )
+        task_b = DataOpTask(
+            1,
+            gen_b,
+            output_ready_callback=lambda b: outputs.append((1, b.size_bytes())),
+        )
+
+        ray.wait([gen_a, gen_b], fetch_local=False)
+
+        fetcher = ThreadedMetadataFetcher()
+        deferred: list[DeferredEmit] = []
+        # Today's order: task_a fully drained, then task_b fully drained.
+        # Drain each task in a loop: on a small (e.g. 1-CPU) cluster the
+        # second generator may not have started when the first is ready, and
+        # a single on_data_ready call would pull nothing from it.
+        deadline = time.time() + 30
+        for task in (task_a, task_b):
+            while not task.is_drained() and time.time() < deadline:
+                task.on_data_ready(None, fetcher, deferred)
+                time.sleep(0.01)
+        assert task_a.is_drained() and task_b.is_drained()
+        for d, meta_bytes in zip(deferred, ray.get([d.meta_ref for d in deferred])):
+            d.task.emit_block(d.block_ref, meta_bytes)
+
+        # Expect: task_a's two bundles in size order, then task_b's two.
+        # Sizes carry a small block-format overhead over the raw payload.
+        assert outputs == [
+            (0, pytest.approx(100, abs=64)),
+            (0, pytest.approx(200, abs=64)),
+            (1, pytest.approx(300, abs=64)),
+            (1, pytest.approx(400, abs=64)),
+        ]
+
+    def test_metadata_prefetcher_emits_in_per_op_order(self, ray_start_regular_shared):
+        """The async ``MetadataPrefetcher`` fetches ``meta_ref``s on a
+        background thread and emits each op's RefBundles in append order
+        (same sequence the synchronous replay would produce), and fires the
+        postponed done callback only after all of a task's pairs are emitted."""
+        gen_a = create_stub_streaming_gen(block_nbytes=[100, 200])
+        gen_b = create_stub_streaming_gen(block_nbytes=[300, 400])
+
+        outputs: list[tuple[int, int]] = []  # (task_idx, bytes)
+        done: list[int] = []
+        task_a = DataOpTask(
+            0,
+            gen_a,
+            output_ready_callback=lambda b: outputs.append((0, b.size_bytes())),
+            task_done_callback=lambda *a: done.append(0),
+        )
+        task_b = DataOpTask(
+            1,
+            gen_b,
+            output_ready_callback=lambda b: outputs.append((1, b.size_bytes())),
+            task_done_callback=lambda *a: done.append(1),
+        )
+
+        ray.wait([gen_a, gen_b], fetch_local=False)
+
+        prefetcher = MetadataPrefetcher()
+        fetcher = ThreadedMetadataFetcher(prefetcher)
+        prefetcher.start()
+        try:
+            # Drain each task until end-of-stream (the trailing StopIteration
+            # moves the task to DRAINED for the postponed done callback).
+            # Loop because on a small cluster the second generator may not
+            # have started when the first is ready.
+            deferred_a: list = []
+            deferred_b: list = []
+            deadline = time.time() + 30
+            for task, deferred in ((task_a, deferred_a), (task_b, deferred_b)):
+                while not task.is_drained() and time.time() < deadline:
+                    task.on_data_ready(None, fetcher, deferred)
+                    time.sleep(0.01)
+            assert task_a.is_drained() and task_b.is_drained()
+
+            prefetcher.submit("a", deferred_a)
+            prefetcher.register_drained_tasks([task_a])
+            prefetcher.submit("b", deferred_b)
+            prefetcher.register_drained_tasks([task_b])
+
+            deadline = time.time() + 30
+            while len(outputs) < 4 and time.time() < deadline:
+                prefetcher.emit_ready()
+                prefetcher.fire_done_callbacks()
+                time.sleep(0.01)
+        finally:
+            prefetcher.stop()
+
+        # Per-op append order is preserved. Cross-op interleaving is NOT
+        # asserted: each op emits into its own downstream queue, so the order
+        # ops emit relative to each other doesn't matter (and depends on which
+        # op's metadata lands first). Sizes carry a small block-format
+        # overhead over the raw payload.
+        op0 = [b for t, b in outputs if t == 0]
+        op1 = [b for t, b in outputs if t == 1]
+        assert op0 == [pytest.approx(100, abs=64), pytest.approx(200, abs=64)]
+        assert op1 == [pytest.approx(300, abs=64), pytest.approx(400, abs=64)]
+        # Done callbacks fire only after each task's pairs are fully emitted.
+        assert sorted(done) == [0, 1]
+
+    def test_prefetcher_holds_later_ready_outputs_for_order(
+        self, ray_start_regular_shared
+    ):
+        """Within a task, a later pair whose metadata is fetched FIRST must
+        be held until the earlier pair's metadata arrives, so the task's
+        outputs are emitted in yield order."""
+        gen = create_stub_streaming_gen(block_nbytes=[100, 200])
+        outputs: list = []
+        task = DataOpTask(0, gen, output_ready_callback=lambda b: outputs.append(b))
+
+        ray.wait([gen], fetch_local=False)
+        fetcher = ThreadedMetadataFetcher()
+        deferred: list[DeferredEmit] = []
+        deadline = time.time() + 30
+        while not task.is_drained() and time.time() < deadline:
+            task.on_data_ready(None, fetcher, deferred)
+            time.sleep(0.01)
+        assert len(deferred) == 2
+        first, second = deferred
+
+        # Don't start the fetch thread: publish fetch results by hand to
+        # control which pair's metadata is "fetched" first.
+        prefetcher = MetadataPrefetcher()
+        prefetcher.submit("op", deferred)
+        prefetcher.register_drained_tasks([task])
+        meta_bytes_first, meta_bytes_second = ray.get([first.meta_ref, second.meta_ref])
+
+        # Only the LATER pair's metadata is available: it must be held.
+        with prefetcher._results_lock:
+            prefetcher._results[second.meta_ref] = meta_bytes_second
+        prefetcher.emit_ready()
+        prefetcher.fire_done_callbacks()
+        assert outputs == []
+        assert not task.has_finished
+
+        # Once the EARLIER pair's metadata arrives, both emit, in yield order.
+        with prefetcher._results_lock:
+            prefetcher._results[first.meta_ref] = meta_bytes_first
+        prefetcher.emit_ready()
+        prefetcher.fire_done_callbacks()
+        assert [b.size_bytes() for b in outputs] == [
+            pytest.approx(100, abs=64),
+            pytest.approx(200, abs=64),
+        ]
+        assert task.has_finished
+
+    def test_prefetcher_fetch_failure_is_returned_not_raised(
+        self, ray_start_regular_shared
+    ):
+        """A metadata-fetch error is returned from emit_ready() (so the caller
+        can apply max_errored_blocks) rather than raised; the bad block is
+        dropped, the other pair still emits, and the task still completes."""
+        gen = create_stub_streaming_gen(block_nbytes=[100, 200])
+        outputs: list = []
+        done: list = []
+        task = DataOpTask(
+            0,
+            gen,
+            output_ready_callback=lambda b: outputs.append(b),
+            task_done_callback=lambda *a: done.append(1),
+            operator_name="Map(fn)",
+        )
+
+        ray.wait([gen], fetch_local=False)
+        fetcher = ThreadedMetadataFetcher()
+        deferred: list[DeferredEmit] = []
+        deadline = time.time() + 30
+        while not task.is_drained() and time.time() < deadline:
+            task.on_data_ready(None, fetcher, deferred)
+            time.sleep(0.01)
+        assert len(deferred) == 2
+        first, second = deferred
+
+        prefetcher = MetadataPrefetcher()
+        prefetcher.submit("op", deferred)
+        prefetcher.register_drained_tasks([task])
+        good_bytes = ray.get(first.meta_ref)
+        boom = ValueError("metadata fetch boom")
+        # First pair fetches fine; the second resolves to an exception.
+        with prefetcher._results_lock:
+            prefetcher._results[first.meta_ref] = good_bytes
+            prefetcher._results[second.meta_ref] = boom
+
+        failures = prefetcher.emit_ready() + prefetcher.fire_done_callbacks()
+
+        # The error is surfaced (not raised), tagged with the operator name.
+        assert failures == [("Map(fn)", boom)]
+        # The good block still emitted; the failed one was dropped.
+        assert len(outputs) == 1
+        assert outputs[0].size_bytes() == pytest.approx(100, abs=64)
+        # The task completed despite the dropped block (done callback fired).
+        assert done == [1]
+        assert task.has_finished
+        assert not prefetcher.has_pending_work()
+
+    def test_object_size_ready_callback_seam(self, ray_start_regular_shared):
+        """The ``object_size_ready_callback`` seam fires once per pulled pair,
+        with the resolved output-budget size, in both modes."""
+        # Inline mode: size is meta.size_bytes, fired as each pair emits.
+        gen = create_stub_streaming_gen(block_nbytes=[100, 200])
+        sizes_inline: list = []
+        task = DataOpTask(
+            0,
+            gen,
+            object_size_ready_callback=lambda block_ref, size: sizes_inline.append(
+                size
+            ),
+        )
+        while not task.has_finished:
+            ray.wait([gen], fetch_local=False)
+            task.on_data_ready(None, InlineMetadataFetcher())
+        assert len(sizes_inline) == 2
+        assert all(s > 0 for s in sizes_inline)
+
+        # Threaded mode: size is the block's local object_size, fired as each
+        # pair is deferred (before emission).
+        gen2 = create_stub_streaming_gen(block_nbytes=[100, 200])
+        sizes_threaded: list = []
+        task2 = DataOpTask(
+            0,
+            gen2,
+            object_size_ready_callback=lambda block_ref, size: sizes_threaded.append(
+                size
+            ),
+        )
+        ray.wait([gen2], fetch_local=False)
+        fetcher = ThreadedMetadataFetcher()
+        deferred: list[DeferredEmit] = []
+        deadline = time.time() + 30
+        while not task2.is_drained() and time.time() < deadline:
+            task2.on_data_ready(None, fetcher, deferred)
+            time.sleep(0.01)
+        assert len(sizes_threaded) == 2
+        assert all(s > 0 for s in sizes_threaded)
+
+    def test_on_data_ready_branches_with_fake_fetcher(self, ray_start_regular_shared):
+        """Mock the fetcher interface to drive ``on_data_ready``'s per-pair
+        outcomes deterministically — no cluster timing or polling.
+
+        Covers: a pair not-ready (``in_loop_get_size`` returns None -> the loop
+        stops, refs stay set), then the same pair becoming ready (size returned
+        -> charged + refs advanced), then end-of-stream completion (inline
+        fetcher -> done-callback fires)."""
+
+        class FakeFetcher(MetadataFetcher):
+            defers_completion = False
+
+            def __init__(self):
+                self.calls = []
+                # Per call, the size to return (None = not ready yet).
+                self.script = [None, 4096]
+
+            def in_loop_get_size(self, task, block_ref, meta_ref, deferred):
+                self.calls.append((block_ref, meta_ref))
+                size = self.script.pop(0) if self.script else 0
+                if size is not None:
+                    # Emulate the inline fetcher emitting the pair.
+                    task._output_ready_callback(object())
+                return size
+
+        gen = create_stub_streaming_gen(block_nbytes=[1024])
+        emits: list = []
+        done: list = []
+        task = DataOpTask(
+            0,
+            gen,
+            output_ready_callback=emits.append,
+            task_done_callback=lambda *a: done.append(a),
+        )
+        ray.wait([gen], fetch_local=False)
+        fake = FakeFetcher()
+
+        # 1st call: fetcher reports not-ready -> nothing charged, not finished,
+        # the pair's refs are retained for a retry.
+        assert task.on_data_ready(None, fake) == 0
+        assert emits == [] and done == [] and not task.has_finished
+        assert not task._pending_block_ref.is_nil()
+
+        # 2nd call: same pair now ready (4096) -> charged + emitted, then the
+        # generator drains and the inline done-callback fires.
+        bytes_read = 0
+        deadline = time.time() + 30
+        while not task.has_finished and time.time() < deadline:
+            ray.wait([gen], fetch_local=False)
+            bytes_read += task.on_data_ready(None, fake)
+        assert bytes_read == 4096
+        assert len(emits) == 1
+        assert len(done) == 1
+
+    def test_make_metadata_fetcher_mode_selection(self, monkeypatch):
+        """The env var selects the fetcher implementation."""
+        import ray.data._internal.execution.metadata_fetcher as mf
+
+        monkeypatch.setattr(mf, "_PREFETCH_ON_THREAD", True)
+        assert isinstance(mf.make_metadata_fetcher(), ThreadedMetadataFetcher)
+
+        monkeypatch.setattr(mf, "_PREFETCH_ON_THREAD", False)
+        assert isinstance(mf.make_metadata_fetcher(), InlineMetadataFetcher)
 
     @pytest.mark.parametrize(
         "preempt_on", ["block_ready_callback", "metadata_ready_callback"]

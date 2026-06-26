@@ -25,6 +25,7 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
+    DeferredEmit,
     MetadataOpTask,
     OpTask,
     Waitable,
@@ -44,9 +45,11 @@ from ray.data._internal.util import (
 )
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.metadata_fetcher import MetadataFetcher
     from ray.data.block import Schema
 
 logger = logging.getLogger(__name__)
+
 
 # Holds the full execution state of the streaming topology. It's a dict mapping each
 # operator to tracked streaming exec state.
@@ -587,6 +590,7 @@ def process_completed_tasks(
     backpressure_policies: List[BackpressurePolicy],
     max_errored_blocks: int,
     output_backpressure_guard: OutputBackpressureGuard,
+    metadata_fetcher: Optional["MetadataFetcher"] = None,
 ) -> int:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards.
@@ -599,9 +603,20 @@ def process_completed_tasks(
         output_backpressure_guard: Escape hatch for streaming output
             backpressure. Bumps a fully-throttled output limit (0 bytes) to
             1 byte when the guard signals a stall.
+        metadata_fetcher: Resolves pulled (block_ref, meta_ref) pairs into
+            emitted RefBundles. The threaded fetcher defers metadata fetches to
+            a background thread (emitting in per-op order as they become ready);
+            the inline fetcher emits synchronously. Defaults to the inline
+            (master-identical) fetcher.
     Returns:
         The number of errored blocks.
     """
+    if metadata_fetcher is None:
+        from ray.data._internal.execution.metadata_fetcher import (
+            default_metadata_fetcher,
+        )
+
+        metadata_fetcher = default_metadata_fetcher()
 
     # All active tasks, keyed by their waitables.
     active_tasks: Dict[Waitable, Tuple[OpState, OpTask]] = {}
@@ -646,6 +661,37 @@ def process_completed_tasks(
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
+
+    def _record_errored_block(e: BaseException, op_name: str) -> None:
+        """Apply ``max_errored_blocks`` accounting to a block-level error from
+        either ``on_data_ready`` or a deferred metadata fetch. Raises to abort
+        once the budget is exhausted."""
+        nonlocal num_errored_blocks
+        num_errored_blocks += 1
+        should_ignore = (
+            max_errored_blocks < 0 or max_errored_blocks >= num_errored_blocks
+        )
+        error_message = f'An exception was raised from a task of operator "{op_name}".'
+        if should_ignore:
+            remaining = (
+                max_errored_blocks - num_errored_blocks
+                if max_errored_blocks >= 0
+                else "unlimited"
+            )
+            error_message += (
+                f" Ignoring this exception with remaining"
+                f" max_errored_blocks={remaining}."
+            )
+            logger.error(error_message, exc_info=e)
+        else:
+            error_message += (
+                " Dataset execution will now abort."
+                " To ignore this exception and continue, set"
+                " DataContext.max_errored_blocks."
+            )
+            logger.exception(error_message)
+            raise e from None
+
     if active_tasks:
         ready, _ = ray.wait(
             list(active_tasks.keys()),
@@ -664,52 +710,56 @@ def process_completed_tasks(
             state, task = active_tasks[ref]
             ready_tasks_by_op[state].append(task)
 
+        # Per-op task processing. ``metadata_fetcher`` decides how each pulled
+        # (block_ref, meta_ref) pair becomes an emitted RefBundle:
+        # - inline mode: ``on_data_ready`` fetches + emits each pair inline and
+        #   fires the task's done-callback at end-of-stream (op_deferred stays
+        #   empty; submit/register_drained are no-ops). Master-identical.
+        # - threaded mode: every pulled pair is appended to ``op_deferred``
+        #   (budget arithmetic uses the block's local ``object_size``, no
+        #   per-ref ``ray.get``) and handed to the background fetcher; emission
+        #   and the postponed done-callback happen in ``after_loop_batch``,
+        #   preserving today's per-op, per-task, per-pair emission order.
         for state, ready_tasks in ready_tasks_by_op.items():
             # TODO elaborate why sorting (helps preserve_order case)
             ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
+            op_deferred: List[DeferredEmit] = []
+            op_data_tasks: List[DataOpTask] = []
             for task in ready_tasks:
                 if isinstance(task, DataOpTask):
                     try:
                         bytes_read = task.on_data_ready(
-                            remaining_output_budget.get(state, None)
+                            remaining_output_budget.get(state, None),
+                            metadata_fetcher,
+                            op_deferred,
                         )
+                        op_data_tasks.append(task)
                         if state in remaining_output_budget:
                             # Clamp remaining output budget at 0
                             remaining_output_budget[state] = max(
                                 remaining_output_budget[state] - bytes_read, 0
                             )
                     except Exception as e:
-                        num_errored_blocks += 1
-                        should_ignore = (
-                            max_errored_blocks < 0
-                            or max_errored_blocks >= num_errored_blocks
-                        )
-                        error_message = (
-                            "An exception was raised from a task of "
-                            f'operator "{state.op.name}".'
-                        )
-                        if should_ignore:
-                            remaining = (
-                                max_errored_blocks - num_errored_blocks
-                                if max_errored_blocks >= 0
-                                else "unlimited"
-                            )
-                            error_message += (
-                                " Ignoring this exception with remaining"
-                                f" max_errored_blocks={remaining}."
-                            )
-                            logger.error(error_message, exc_info=e)
-                        else:
-                            error_message += (
-                                " Dataset execution will now abort."
-                                " To ignore this exception and continue, set"
-                                " DataContext.max_errored_blocks."
-                            )
-                            logger.exception(error_message)
-                            raise e from None
+                        _record_errored_block(e, state.op.name)
                 else:
                     assert isinstance(task, MetadataOpTask)
                     task.on_task_finished()
+
+            # Hand this op's just-deferred pairs to the fetcher, and register any
+            # end-of-stream tasks for a postponed done-callback (no-ops in inline
+            # mode, where the pairs already emitted above).
+            metadata_fetcher.submit(state, op_deferred)
+            metadata_fetcher.register_drained(op_data_tasks)
+
+    # Emit whatever's ready, in per-op order, then fire any postponed done
+    # callbacks — UNCONDITIONALLY, even when there are no active tasks this
+    # iteration. Pairs deferred in earlier iterations (their tasks may already
+    # be gone) can still have metadata land later; gating this on `active_tasks`
+    # would strand them and stall output forever. Deferred metadata-fetch
+    # failures go through the same `max_errored_blocks` accounting as inline
+    # `on_data_ready` errors. (Inline mode returns nothing here.)
+    for failed_op_name, fetch_exc in metadata_fetcher.after_loop_batch():
+        _record_errored_block(fetch_exc, failed_op_name)
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():

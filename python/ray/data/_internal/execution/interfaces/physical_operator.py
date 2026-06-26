@@ -5,6 +5,7 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import Enum, auto
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -32,18 +33,20 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntime
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import StatsDict, Timer
-from ray.data.block import Block, BlockMetadata, TaskExecWorkerStats
+from ray.data.block import (
+    Block,
+    BlockMetadata,
+    BlockMetadataWithSchema,
+    TaskExecWorkerStats,
+)
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
 
+    from ray.data._internal.execution.metadata_fetcher import MetadataFetcher
     from ray.data._internal.execution.streaming_executor_state import OpState
-    from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
-
-# Timeout for getting metadata from Ray object references (in seconds)
-METADATA_GET_TIMEOUT_S = 1.0
 
 # Timeout for waiting for metadata object to become available (in seconds)
 METADATA_WAIT_TIMEOUT_S = 0.1
@@ -127,6 +130,42 @@ TaskDoneCallbackType = Callable[
 ]
 
 
+@dataclass(slots=True)
+class DeferredEmit:
+    """A pulled (block_ref, meta_ref) pair whose ``RefBundle`` emit is
+    deferred until its metadata has been fetched.
+
+    Populated by :meth:`DataOpTask.on_data_ready`; consumed by the
+    ``MetadataPrefetcher``, which fetches ``meta_ref`` on a background
+    thread and emits the pair (in per-op append order) once the bytes
+    are available. The fetched bytes are carried by the prefetcher, not
+    on this object.
+
+    The budget size used inside ``on_data_ready`` comes from the block's
+    local ``object_size`` (a local-only lookup, no RPC; pairs whose size
+    isn't known yet are not consumed).
+    """
+
+    task: "DataOpTask"
+    block_ref: "ray.ObjectRef[Block]"
+    meta_ref: "ray.ObjectRef[BlockMetadata]"
+
+
+class TaskGeneratorState(Enum):
+    """Lifecycle of a ``DataOpTask``'s streaming generator, as seen by the
+    data driver. Advances strictly ACTIVE -> DRAINED -> FINISHED."""
+
+    # The generator task is still running and the driver hasn't pulled all of
+    # its (block_ref, meta_ref) pairs yet.
+    ACTIVE = auto()
+    # The generator is exhausted (or the task failed) and the driver has pulled
+    # all its pairs, but their metadata hasn't all been emitted yet.
+    DRAINED = auto()
+    # All pulled pairs' metadata has been emitted; the task is truly done and
+    # its ``task_done_callback`` has fired.
+    FINISHED = auto()
+
+
 class DataOpTask(OpTask):
     """Represents an OpTask that handles Block data."""
 
@@ -142,6 +181,9 @@ class DataOpTask(OpTask):
         metadata_ready_callback: Callable[
             [ray.ObjectRef[BlockMetadata]], None
         ] = lambda metadata_ref: None,
+        object_size_ready_callback: Callable[
+            [ray.ObjectRef[Block], int], None
+        ] = lambda block_ref, object_size: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
         operator_name: str = "Unknown",
     ):
@@ -156,6 +198,10 @@ class DataOpTask(OpTask):
                 is ready. This is exposed as a seam for testing.
             metadata_ready_callback: A callback that's invoked when a new block metadata
                 reference is ready. This is exposed as a seam for testing.
+            object_size_ready_callback: A callback invoked with
+                ``(block_ref, object_size)`` once a pulled pair's output-budget
+                size is resolved (before the pair is emitted/deferred). Exposed
+                as a seam for testing the metadata-fetch branches.
             task_resource_bundle: The execution resources of this task.
             operator_name: The name of the physical operator that created this task.
                 Used for logging the operator name in warnings/errors.
@@ -170,6 +216,7 @@ class DataOpTask(OpTask):
         self._task_done_callback = task_done_callback
         self._block_ready_callback = block_ready_callback
         self._metadata_ready_callback = metadata_ready_callback
+        self._object_size_ready_callback = object_size_ready_callback
         self._operator_name = operator_name
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
@@ -180,7 +227,22 @@ class DataOpTask(OpTask):
         self._pending_meta_ref: ray.ObjectRef[BlockMetadata] = ray.ObjectRef.nil()
 
         self._last_block_meta: Optional[BlockMetadata] = None
-        self._has_finished = False
+
+        # Generator lifecycle (see ``TaskGeneratorState``). The driver moves it
+        # ACTIVE -> DRAINED (generator exhausted/failed, all pairs pulled) ->
+        # FINISHED (all pairs' metadata emitted, ``task_done_callback`` fired).
+        # Completion is postponed to FINISHED — rather than fired at DRAINED —
+        # so a task's output is delivered before its completion is signalled.
+        self._state: TaskGeneratorState = TaskGeneratorState.ACTIVE
+
+        # If the task failed, the exception to pass to ``task_done_callback``
+        # when it transitions to FINISHED (None for normal completion).
+        self._task_error: Optional[Exception] = None
+
+        # Count of this task's pulled pairs not yet emitted by the async
+        # ``MetadataPrefetcher``. The DRAINED -> FINISHED transition happens
+        # only once this reaches 0 (all of the task's bundles emitted).
+        self._pending_emit_count: int = 0
 
         self._start_output_backpressure_s: Optional[float] = None
         self._total_output_backpressure_s: float = 0
@@ -188,19 +250,65 @@ class DataOpTask(OpTask):
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
 
-    def on_data_ready(self, max_bytes_to_read: Optional[int]) -> int:
-        """Callback when data is ready to be read from the streaming generator.
+    def on_data_ready(
+        self,
+        max_bytes_to_read: Optional[int],
+        metadata_fetcher: Optional["MetadataFetcher"] = None,
+        deferred_emits: Optional[List[DeferredEmit]] = None,
+    ) -> int:
+        """Pull ready ``(block_ref, meta_ref)`` pairs from the streaming
+        generator and let ``metadata_fetcher`` turn each into an emitted
+        ``RefBundle``.
+
+        This method owns the shared pull loop; how a pair's metadata is fetched
+        and emitted is delegated to ``metadata_fetcher``
+        (:meth:`MetadataFetcher.in_loop_get_size`). The generator yields a block
+        ref then its metadata ref. Each iteration pulls one pair and ends in one
+        of these outcomes:
+        - both refs available -> ``in_loop_get_size`` handles the pair (emit
+          inline, or defer for background fetch), charge its size, continue;
+        - block ref not yet yielded -> stop, retry next call;
+        - metadata ref not yet yielded -> stop, retry next call;
+        - metadata not available yet (``in_loop_get_size`` returns ``None``) ->
+          stop, retry next call;
+        - generator exhausted before a block -> end of stream (normal
+          completion) -> ``DRAINED``;
+        - generator raises after a block -> task failure -> ``DRAINED``,
+          recording the error.
+
+        On ``DRAINED``: in the inline mode the ``task_done_callback`` fires here
+        (re-raising a task failure, as before); in the threaded mode completion
+        is postponed until the task's deferred pairs have emitted.
 
         Args:
-            max_bytes_to_read: Max bytes of blocks to read. If None, all available
-                will be read.
+            max_bytes_to_read: Max bytes of blocks to read. If None, all
+                currently available pairs are drained.
+            metadata_fetcher: Strategy that fetches/emits each pulled pair.
+                Defaults to the synchronous inline fetcher.
+            deferred_emits: List to which the threaded fetcher appends
+                :class:`DeferredEmit` entries (ignored by the inline fetcher).
 
         Returns:
-            The number of blocks read.
+            The number of bytes accounted for (for the budget loop).
         """
+        if metadata_fetcher is None:
+            from ray.data._internal.execution.metadata_fetcher import (
+                default_metadata_fetcher,
+            )
+
+            metadata_fetcher = default_metadata_fetcher()
+        if deferred_emits is None:
+            deferred_emits = []
+
         bytes_read = 0
 
         self._track_task_output_backpressure(max_bytes_to_read)
+
+        if self._state is not TaskGeneratorState.ACTIVE or self._pending_emit_count > 0:
+            # Already DRAINED, or earlier pairs still await their background
+            # metadata fetch. Don't pull further output ahead of unfetched
+            # metadata; retry once the pending pairs have emitted.
+            return 0
 
         while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
             if self._pending_block_ref.is_nil():
@@ -215,17 +323,8 @@ class DataOpTask(OpTask):
                         timeout_s=0
                     )
                 except StopIteration:
-                    self._task_done_callback(
-                        None,  # exception
-                        self._last_block_meta.task_exec_stats
-                        if self._last_block_meta is not None
-                        else None,
-                        TaskExecDriverStats(
-                            task_output_backpressure_s=self._total_output_backpressure_s,
-                        ),
-                    )
-
-                    self._has_finished = True
+                    # End of stream (normal completion).
+                    self._state = TaskGeneratorState.DRAINED
                     break
 
                 if self._pending_block_ref.is_nil():
@@ -251,14 +350,12 @@ class DataOpTask(OpTask):
                         ray.get(self._pending_block_ref)
                         assert False, "Above ray.get should raise an exception."
                     except Exception as ex:
-                        self._task_done_callback(
-                            ex,
-                            None,  # TaskExecStats
-                            None,  # TaskExecDriverStats
-                        )
-
-                        self._has_finished = True
-                        raise ex from None
+                        # Task failure: record the error and drain. The inline
+                        # mode re-raises below; the threaded mode surfaces it
+                        # later for max_errored_blocks accounting.
+                        self._task_error = ex
+                        self._state = TaskGeneratorState.DRAINED
+                        break
 
                 if self._pending_meta_ref.is_nil():
                     # We have a reference to the block but the metadata isn't ready
@@ -267,44 +364,40 @@ class DataOpTask(OpTask):
 
                 self._metadata_ready_callback(self._pending_meta_ref)
 
-            try:
-                # The timeout for `ray.get` includes the time required to ship the
-                # block metadata to this node. So, if we set the timeout to 0, `ray.get`
-                # will timeout and possible cancel the download. To avoid this issue,
-                # we set the timeout to a small non-zero value.
-                meta_with_schema_bytes: bytes = ray.get(
-                    self._pending_meta_ref, timeout=METADATA_GET_TIMEOUT_S
-                )
-            except ray.exceptions.GetTimeoutError:
-                # We have a reference to the block and its metadata, but the metadata
-                # object isn't available. This can happen if the node dies.
-                logger.warning(
-                    f"Timed out ({METADATA_GET_TIMEOUT_S}s) waiting for metadata from "
-                    f"operator '{self._operator_name}' "
-                    f"(metadata_ref={self._pending_meta_ref.hex()}). "
-                    f"Possible causes include a worker crash, node preemption, or an overloaded worker or head node. "
-                    f"Will retry next iteration. "
-                    f"If this repeats, check the Ray dashboard and logs for worker crashes, node preemption, or overload."
-                )
+            # Delegate metadata fetch + emit (inline) or defer (threaded). A
+            # None result means the metadata isn't available yet: leave the
+            # pair pending (refs stay set) and retry next call.
+            object_size = metadata_fetcher.in_loop_get_size(
+                self,
+                self._pending_block_ref,
+                self._pending_meta_ref,
+                deferred_emits,
+            )
+            if object_size is None:
                 break
+            self._object_size_ready_callback(self._pending_block_ref, object_size)
 
-            meta_with_schema: "BlockMetadataWithSchema" = pickle.loads(
-                meta_with_schema_bytes
-            )
-            meta = meta_with_schema.metadata
-            self._output_ready_callback(
-                RefBundle(
-                    [BlockEntry(self._pending_block_ref, meta)],
-                    owns_blocks=True,
-                    schema=meta_with_schema.schema,
-                ),
-            )
-
-            self._last_block_meta = meta
+            # Charge the budget at pull time (the block already exists in the
+            # object store). Not refunded on a later drop: the budget is
+            # recomputed each scheduling iteration, so there's no balance to
+            # restore.
+            bytes_read += object_size
             self._pending_block_ref = ray.ObjectRef.nil()
             self._pending_meta_ref = ray.ObjectRef.nil()
 
-            bytes_read += meta.size_bytes
+        # Inline mode fires the done-callback here, the moment the generator is
+        # drained (matching the historical timing): all of its pairs have
+        # already emitted inline, so ``_pending_emit_count`` is 0. A task
+        # failure is re-raised after the callback, as before. The threaded mode
+        # postpones completion (``register_drained`` + ``fire_done_callbacks``)
+        # until its deferred pairs emit, so it skips this.
+        if (
+            not metadata_fetcher.defers_completion
+            and self._state is TaskGeneratorState.DRAINED
+        ):
+            self.mark_done()
+            if self._task_error is not None:
+                raise self._task_error from None
 
         return bytes_read
 
@@ -328,7 +421,64 @@ class DataOpTask(OpTask):
 
     @property
     def has_finished(self) -> bool:
-        return self._has_finished
+        return self._state is TaskGeneratorState.FINISHED
+
+    @property
+    def operator_name(self) -> str:
+        return self._operator_name
+
+    @property
+    def task_error(self) -> Optional[Exception]:
+        return self._task_error
+
+    def is_drained(self) -> bool:
+        return self._state is TaskGeneratorState.DRAINED
+
+    def has_pending_emits(self) -> bool:
+        return self._pending_emit_count > 0
+
+    def mark_pending(self) -> None:
+        self._pending_emit_count += 1
+
+    def mark_emitted(self) -> None:
+        self._pending_emit_count -= 1
+
+    def emit_block(self, block_ref: "ray.ObjectRef[Block]", meta_bytes: bytes) -> int:
+        """Deserialize ``meta_bytes``, emit the block's ``RefBundle``, and
+        return ``meta.size_bytes`` (the inline mode's output-budget size)."""
+        meta_with_schema: BlockMetadataWithSchema = pickle.loads(meta_bytes)
+        meta = meta_with_schema.metadata
+        self._output_ready_callback(
+            RefBundle(
+                [BlockEntry(block_ref, meta)],
+                owns_blocks=True,
+                schema=meta_with_schema.schema,
+            ),
+        )
+        self._last_block_meta = meta
+        return meta.size_bytes
+
+    def mark_done(self) -> None:
+        """Transition DRAINED -> FINISHED and fire ``task_done_callback``.
+        A failed task reports the error with no stats; a successful one
+        reports the final block's stats."""
+        if self._task_error is not None:
+            self._task_done_callback(
+                self._task_error,
+                None,  # TaskExecStats
+                None,  # TaskExecDriverStats
+            )
+        else:
+            self._task_done_callback(
+                None,  # exception
+                self._last_block_meta.task_exec_stats
+                if self._last_block_meta is not None
+                else None,
+                TaskExecDriverStats(
+                    task_output_backpressure_s=self._total_output_backpressure_s,
+                ),
+            )
+        self._state = TaskGeneratorState.FINISHED
 
 
 class MetadataOpTask(OpTask):
