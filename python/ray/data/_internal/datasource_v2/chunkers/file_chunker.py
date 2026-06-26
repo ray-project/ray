@@ -205,12 +205,17 @@ class ParquetFileChunker(FileChunker):
         from ray.data.context import DataContext
 
         ctx = DataContext.get_current()
-        self._target_chunk_size = (
-            target_chunk_size
-            or ctx.parquet_chunker_target_chunk_size
-            or ctx.target_min_block_size
-            or self._FALLBACK_TARGET_CHUNK_SIZE
-        )
+        # Resolve with explicit ``is not None`` checks rather than ``or`` so an
+        # explicit ``0`` (e.g. to force one row group per chunk) isn't treated as
+        # "unset" and silently overridden by a falsy-coalescing fallback.
+        if target_chunk_size is not None:
+            self._target_chunk_size = target_chunk_size
+        elif ctx.parquet_chunker_target_chunk_size is not None:
+            self._target_chunk_size = ctx.parquet_chunker_target_chunk_size
+        elif ctx.target_min_block_size is not None:
+            self._target_chunk_size = ctx.target_min_block_size
+        else:
+            self._target_chunk_size = self._FALLBACK_TARGET_CHUNK_SIZE
 
     def generate_chunk_metadatas(
         self,

@@ -221,7 +221,9 @@ class NonSamplingFileIndexer(FileIndexer):
 
         if chunker.reads_file_metadata and self._num_workers > 1:
             yield from make_async_gen(
-                base_iterator=file_infos,
+                # ``iter(...)`` so a non-iterator iterable (e.g. a list from a
+                # test or subclass) is still consumed correctly by the helper.
+                base_iterator=iter(file_infos),
                 fn=chunk,
                 preserve_ordering=preserve_order,
                 num_workers=self._num_workers,

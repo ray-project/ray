@@ -89,23 +89,25 @@ class TestParquetFileChunker:
     def test_reads_file_metadata_flag(self):
         assert ParquetFileChunker.reads_file_metadata is True
 
-    def test_one_chunk_per_row_group_when_target_below_rg_size(self, tmp_path):
-        """target < row-group size → K=1, one chunk per row group."""
+    @pytest.mark.parametrize(
+        "target_chunk_size, expected_ranges",
+        [
+            # target < row-group size → K=1, one chunk per row group.
+            (1, [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]),
+            # target ≫ file size → all row groups bundled into one chunk.
+            (10 * 1024**3, [(0, 5)]),
+        ],
+        ids=["target_below_rg_size", "target_above_file_size"],
+    )
+    def test_row_group_bundling_by_target(
+        self, tmp_path, target_chunk_size, expected_ranges
+    ):
         p = str(tmp_path / "d.parquet")
         size = _write_parquet_with_row_groups(p, num_row_groups=5)
-        chunker = ParquetFileChunker(target_chunk_size=1)
+        chunker = ParquetFileChunker(target_chunk_size=target_chunk_size)
         chunks = list(chunker.generate_chunk_metadatas(p, size))
         ranges = [(m["row_group_start"], m["row_group_end"]) for m, _ in chunks]
-        assert ranges == [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
-
-    def test_bundles_all_row_groups_when_target_large(self, tmp_path):
-        """target ≫ file size → all row groups in one chunk."""
-        p = str(tmp_path / "d.parquet")
-        size = _write_parquet_with_row_groups(p, num_row_groups=5)
-        chunker = ParquetFileChunker(target_chunk_size=10 * 1024**3)
-        chunks = list(chunker.generate_chunk_metadatas(p, size))
-        ranges = [(m["row_group_start"], m["row_group_end"]) for m, _ in chunks]
-        assert ranges == [(0, 5)]
+        assert ranges == expected_ranges
 
     def test_chunk_size_equals_summed_row_group_bytes(self, tmp_path):
         p = str(tmp_path / "d.parquet")
@@ -143,29 +145,31 @@ class TestParquetFileChunker:
         chunks = list(chunker.generate_chunk_metadatas(p, 26))
         assert chunks == [(None, 26)]
 
-    def test_default_target_falls_back_to_target_min_block_size(
-        self, restore_data_context
+    @pytest.mark.parametrize(
+        "ctor_arg, ctx_chunk_size, ctx_min_block, expected",
+        [
+            # ctor arg wins over the context knobs.
+            (2048, 1024, 7777, 2048),
+            # An explicit 0 is honored (resolved with ``is not None``, not
+            # ``or``), so it isn't silently treated as "unset" and overridden.
+            (0, 1024, 7777, 0),
+            # ctx chunk-size knob used when there's no ctor arg.
+            (None, 1024, 7777, 1024),
+            # Falls back to target_min_block_size when the chunk-size knob is unset.
+            (None, None, 7777, 7777),
+        ],
+        ids=["ctor_arg", "ctor_arg_zero", "ctx_knob", "fallback_min_block"],
+    )
+    def test_target_chunk_size_resolution(
+        self, restore_data_context, ctor_arg, ctx_chunk_size, ctx_min_block, expected
     ):
         from ray.data.context import DataContext
 
         ctx = DataContext.get_current()
-        ctx.parquet_chunker_target_chunk_size = None
-        ctx.target_min_block_size = 7777
-        chunker = ParquetFileChunker()
-        assert chunker._target_chunk_size == 7777
-
-    def test_ctx_knob_used_when_set(self, restore_data_context):
-        from ray.data.context import DataContext
-
-        DataContext.get_current().parquet_chunker_target_chunk_size = 1024
-        assert ParquetFileChunker()._target_chunk_size == 1024
-
-    def test_ctor_arg_takes_precedence_over_context(self, restore_data_context):
-        from ray.data.context import DataContext
-
-        DataContext.get_current().parquet_chunker_target_chunk_size = 1024
-        chunker = ParquetFileChunker(target_chunk_size=2048)
-        assert chunker._target_chunk_size == 2048
+        ctx.parquet_chunker_target_chunk_size = ctx_chunk_size
+        ctx.target_min_block_size = ctx_min_block
+        chunker = ParquetFileChunker(target_chunk_size=ctor_arg)
+        assert chunker._target_chunk_size == expected
 
 
 def test_chunk_metadata_subclasses_are_typeddicts():
