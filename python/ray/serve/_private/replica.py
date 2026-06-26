@@ -2551,13 +2551,10 @@ class Replica:
                     )
                     raise e
                 finally:
-                    # Deterministically close the user-response generator. When the
-                    # client has stopped reading, grpc tears this generator down with
-                    # a GeneratorExit at the outer `yield` above, which does not reach
-                    # the user code on its own. Closing `result_gen` here runs
-                    # `call_user_generator`'s `finally`, which cancels the unit
-                    # running the user method (its task, or the inline generator).
-                    # No-op on the normal-completion path (already exhausted).
+                    # Closing `result_gen` runs `call_user_generator`'s `finally`,
+                    # which cancels the unit running the user method (its task,
+                    # or the inline generator). This is a noop if the generator is
+                    # already exhausted.
                     await result_gen.aclose()
                     # Record the status code for both success and error paths so
                     # ingress metrics are emitted for successful gRPC requests.
