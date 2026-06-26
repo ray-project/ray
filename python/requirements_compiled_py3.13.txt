@@ -2507,6 +2507,7 @@ typing-extensions==4.15.0
     #   botorch
     #   cfn-lint
     #   configspace
+    #   daft
     #   etils
     #   fastapi
     #   gradio
