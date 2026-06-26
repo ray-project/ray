@@ -45,7 +45,7 @@ def mock_all_to_all_op(input_op, name="MockAllToAll"):
         data_context=ray.data.DataContext.get_current(),
         name=name,
     )
-    op.start = MagicMock(side_effect=lambda _: None)
+    op.start = MagicMock(side_effect=lambda *_: None)
     return op
 
 
