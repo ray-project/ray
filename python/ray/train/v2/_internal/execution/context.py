@@ -562,7 +562,7 @@ class TrainContext:
                     except Exception as e:
                         # TODO: env var to disable eager raising
                         logger.exception(
-                            "Checkpoint upload failed in the background thread. Raising eagerly "
+                            "Checkpoint reporting failed in the background thread. Raising eagerly "
                             "to avoid training in a corrupted state with more potential progress "
                             "lost due to checkpointing failures."
                         )
