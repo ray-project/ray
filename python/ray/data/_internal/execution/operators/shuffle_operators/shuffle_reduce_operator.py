@@ -144,13 +144,20 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         partition_id = extract_partition_id(refs)
 
         schema = refs.schema
-        if (
-            self._fused_output_map_transformer is None
-            and isinstance(schema, pa.Schema)
-            and not any((m.num_rows or 0) for m in refs.metadata)
-        ):
-            self._emit_empty_partition(refs, schema)
-            return
+        partition_is_empty = not any((m.num_rows or 0) for m in refs.metadata)
+        if partition_is_empty:
+            if self._fused_output_map_transformer is None:
+                # No fused map: emit an empty block so the schema propagates
+                # even when every partition is empty.
+                if isinstance(schema, pa.Schema):
+                    self._emit_empty_partition(refs, schema)
+                    return
+            else:
+                # Fused map: drop the partition instead of spawning a
+                # task per empty partition (the fused map's output
+                # schema is unknown for empty input anyway).
+                refs.destroy_if_owned()
+                return
 
         shard_refs = list(refs.block_refs)
         estimated_bytes = sum((m.size_bytes or 0) for m in refs.metadata)
