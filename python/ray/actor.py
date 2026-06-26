@@ -2608,7 +2608,7 @@ class ActorHandle(Generic[T]):
 
         if not self._ray_is_cross_language:
             raise AttributeError(
-                f"'{type(self).__name__}' object has " f"no attribute '{item}'"
+                f"'{type(self).__name__}' object has no attribute '{item}'"
             )
         if item in ["__ray_terminate__"]:
 
@@ -2807,7 +2807,69 @@ def _modify_class(cls):
         def __ray_ready__(self):
             return True
 
-        def __ray_call__(self, fn, *args, **kwargs):
+        @DeveloperAPI
+        def __ray_call__(
+            self, fn: "Callable[..., Any]", *args: Any, **kwargs: Any
+        ) -> Any:
+            """Run a closure remotely on this actor instance.
+
+            Provides a standard way to execute an arbitrary callable on a remote
+            actor without pre-defining a dedicated method. The callable receives
+            the actor instance as its first argument, followed by any additional
+            positional and keyword arguments passed to ``__ray_call__``.
+
+            This is useful when you want to:
+
+            * Access or modify actor state without defining a getter/setter method.
+            * Run ad-hoc operations on an actor for debugging or testing.
+            * Integrate with libraries that produce callables dynamically
+            (e.g., vLLM's worker dispatch pattern).
+
+            Args:
+                fn: A callable that accepts the actor instance as its first
+                    argument. The callable is serialized with cloudpickle and
+                    executed on the remote actor process.
+                *args: Additional positional arguments forwarded to ``fn``
+                    after the actor instance.
+                **kwargs: Additional keyword arguments forwarded to ``fn``.
+
+            Returns:
+                The return value of ``fn(self, *args, **kwargs)``.
+
+            Examples:
+                .. testcode::
+
+                    import ray
+
+                    @ray.remote
+                    class Counter:
+                        def __init__(self):
+                            self.count = 0
+
+                        def increment(self):
+                            self.count += 1
+
+                    counter = Counter.remote()
+                    ray.get(counter.increment.remote())
+
+                    # Access state without a dedicated getter method
+                    value = ray.get(counter.__ray_call__.remote(
+                        lambda self: self.count
+                    ))
+                    assert value == 1
+
+                    # Pass extra arguments to the closure
+                    result = ray.get(counter.__ray_call__.remote(
+                        lambda self, x: self.count + x, 10
+                    ))
+                    assert result == 11
+
+            .. note::
+
+                ``fn`` must be serializable by cloudpickle. Lambda functions
+                and top-level functions are typically supported. Closures over
+                large objects may incur serialization overhead.
+            """
             return fn(self, *args, **kwargs)
 
         def __ray_terminate__(self):
