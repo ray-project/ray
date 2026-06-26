@@ -23,6 +23,10 @@ OUTPUT_JSON_FILENAME = "output.json"
 AWS_CP_TIMEOUT = 300
 TIMEOUT_RETURN_CODE = 124  # same as bash timeout
 
+# Prometheus metric type for idle worker evictions. We expect Ray to kill idle workers
+# under memory pressure, so we exclude them from the OOM check.
+IDLE_WORKER_EVICTION_METRIC_TYPE = "MemoryManager.IdleWorkerEviction.Total"
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 handler = logging.StreamHandler(stream=sys.stderr)
@@ -312,11 +316,13 @@ def run_oom_check():
     return_code = 0
     if _metric_unavailable("OOM check", metrics, "worker_oom_kills"):
         return_code = 1
-    elif metrics["worker_oom_kills"]:
-        logger.error(
-            f"Test failed: OOM worker kills detected. Details: {metrics['worker_oom_kills']}"
-        )
-        return_code = 1
+    else:
+        worker_oom_kills = _filter_idle_worker_kills(metrics["worker_oom_kills"])
+        if worker_oom_kills:
+            logger.error(
+                f"Test failed: OOM worker kills detected. Details: {worker_oom_kills}"
+            )
+            return_code = 1
 
     if _metric_unavailable("OOM check", metrics, "unexpected_worker_failures"):
         return_code = 1
@@ -328,6 +334,19 @@ def run_oom_check():
         )
         return_code = 1
     return return_code
+
+
+def _filter_idle_worker_kills(worker_oom_kills: list) -> list:
+    """Drop idle-worker evictions from the worker OOM kill series.
+
+    Idle-worker evictions are expected behavior, so we exclude them and only keep task
+    and actor kills.
+    """
+    return [
+        series
+        for series in worker_oom_kills
+        if series.get("metric", {}).get("Type") != IDLE_WORKER_EVICTION_METRIC_TYPE
+    ]
 
 
 def run_spilling_check():
