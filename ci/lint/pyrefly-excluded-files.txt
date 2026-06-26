@@ -281,6 +281,7 @@ python/ray/data/tests/test_filter.py
 python/ray/data/tests/test_groupby_e2e.py
 python/ray/data/tests/test_hash_shuffle.py
 python/ray/data/tests/test_hash_shuffle_aggregator.py
+python/ray/data/tests/test_idempotency_optimizer_guards.py
 python/ray/data/tests/test_hash_shuffle_v2.py
 python/ray/data/tests/test_issue_detection.py
 python/ray/data/tests/test_issue_detection_manager.py
