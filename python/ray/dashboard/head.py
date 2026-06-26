@@ -175,8 +175,8 @@ class DashboardHead:
         return self.http_server.http_session
 
     async def _register_addresses(self):
-        if not self.gcs_client.is_gcs_leader():
-            logger.info("Not the GCS leader, skip registration.")
+        if not self.gcs_client.is_gcs_leader_local():
+            logger.debug("Not the GCS leader, skip registration.")
             return
 
         if not self._dashboard_address_registered and self._dashboard_http_address:
@@ -186,9 +186,16 @@ class DashboardHead:
                 True,
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             )
+            # Register the webui:url after promotion as we skip it in the initial setup in node.py.
+            await self.gcs_client.async_internal_kv_put(
+                b"webui:url",
+                self._dashboard_http_address.encode(),
+                True,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            )
             self._dashboard_address_registered = True
             logger.info(
-                "Successfully registered dashboard address in GCS after promotion."
+                "Successfully registered dashboard and webui addresses in GCS after promotion."
             )
 
         if not self._metrics_address_registered and self._metrics_http_address:
@@ -209,9 +216,29 @@ class DashboardHead:
             # If gcs is permanently dead, gcs client will exit the process
             # (see gcs_rpc_client.h)
             await self.gcs_client.async_check_alive(node_ids=[], timeout=None)
-            await self._register_addresses()
         except Exception:
             logger.warning("Failed to check gcs aliveness, will retry", exc_info=True)
+
+    async def _register_addresses_loop(self):
+        is_leader_elect_enabled = ray_constants.RAY_LEADER_ELECT
+        while True:
+            dashboard_done = (
+                self._dashboard_http_address is None
+                or self._dashboard_address_registered
+            )
+            metrics_done = (
+                self._metrics_http_address is None or self._metrics_address_registered
+            )
+            if dashboard_done and metrics_done:
+                break
+            try:
+                if not is_leader_elect_enabled or self.gcs_client.is_gcs_leader_local():
+                    await self._register_addresses()
+            except Exception:
+                logger.warning(
+                    "Failed to register dashboard addresses, will retry", exc_info=True
+                )
+            await asyncio.sleep(dashboard_consts.GCS_CHECK_ALIVE_INTERVAL_SECONDS)
 
     def _load_modules(
         self, modules_to_load: Optional[Set[str]] = None
@@ -276,6 +303,7 @@ class DashboardHead:
             ip=self.ip,
             http_host=self.http_host,
             http_port=self.http_port,
+            gcs_client=self.gcs_client,
         )
 
         # Select modules to load.
@@ -364,8 +392,8 @@ class DashboardHead:
         assert gcs_client is not None
         self._metrics_http_address = build_address(self.ip, DASHBOARD_METRIC_PORT)
         is_leader_elect_enabled = ray_constants.RAY_LEADER_ELECT
-        if is_leader_elect_enabled and not gcs_client.is_gcs_leader():
-            logger.info(
+        if is_leader_elect_enabled and not gcs_client.is_gcs_leader_local():
+            logger.debug(
                 "GCS is in passive mode. Deferring dashboard metrics address registration after promotion."
             )
         else:
@@ -380,7 +408,7 @@ class DashboardHead:
                 logger.info("Successfully registered dashboard metrics address in GCS.")
             except ValueError as e:
                 if "passive" in str(e).lower():
-                    logger.info(
+                    logger.debug(
                         "GCS is in passive mode. Deferring dashboard metrics address registration after promotion."
                     )
                 else:
@@ -541,8 +569,8 @@ class DashboardHead:
         # server address to Ray via stdin / stdout or a pipe.
         self._dashboard_http_address = build_address(dashboard_http_host, http_port)
         is_leader_elect_enabled = ray_constants.RAY_LEADER_ELECT
-        if is_leader_elect_enabled and not self.gcs_client.is_gcs_leader():
-            logger.info(
+        if is_leader_elect_enabled and not self.gcs_client.is_gcs_leader_local():
+            logger.debug(
                 "GCS is in passive mode. Deferring dashboard address registration after promotion."
             )
         else:
@@ -557,7 +585,7 @@ class DashboardHead:
                 logger.info("Successfully registered dashboard address in GCS.")
             except ValueError as e:
                 if "passive" in str(e).lower():
-                    logger.info(
+                    logger.debug(
                         "GCS is in passive mode. Deferring dashboard address registration after promotion."
                     )
                 else:
@@ -565,6 +593,7 @@ class DashboardHead:
 
         concurrent_tasks = [
             self._gcs_check_alive(),
+            self._register_addresses_loop(),
         ]
         for m in dashboard_head_modules:
             concurrent_tasks.append(m.run())

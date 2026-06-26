@@ -185,6 +185,7 @@ def test_monitor_failure_handling_passive(monkeypatch):
 
     def mock_kv_put(*args, **kwargs):
         called["kv_put"] = True
+        raise ValueError("GCS is in passive mode")
 
     monkeypatch.setattr(monitor_module, "_internal_kv_put", mock_kv_put)
     monkeypatch.setattr(monitor_module, "_internal_kv_initialized", lambda: True)
@@ -196,8 +197,8 @@ def test_monitor_failure_handling_passive(monkeypatch):
 
     monitor._handle_failure("test failure")
 
-    # Verify failure logs were not published to GCS KV or driver logs while passive
-    assert not called["kv_put"]
+    # Verify GCS KV put was attempted (and raised ValueError), and driver error was skipped
+    assert called["kv_put"]
     assert not called["publish_error"]
 
 

@@ -130,6 +130,10 @@ def test_reopen_same_inode_growth_keeps_size_when_last_opened(tmp_path):
     file_info.file_handle.close()
 
 
+class SentinelException(Exception):
+    pass
+
+
 def test_log_monitor_passive_publish_suppression(tmp_path, monkeypatch):
     """Verify that LogMonitor suppresses log publishing when GCS is in passive mode."""
     log_path = tmp_path / "worker-0-1234.out"
@@ -160,11 +164,25 @@ def test_log_monitor_passive_publish_suppression(tmp_path, monkeypatch):
     log_monitor.logs_dir = str(tmp_path)
     log_monitor.gcs_client = mock_gcs_client
     log_monitor.open_file_infos = [file_info]
+    log_monitor.closed_file_infos = []
+    log_monitor.max_files_open = 1000
+    log_monitor.log_filenames = set()
 
     # Enable leader election config
     monkeypatch.setattr(ray_constants, "RAY_LEADER_ELECT", True)
 
-    log_monitor.check_log_files_and_publish_updates()
+    def mock_sleep(seconds):
+        raise SentinelException("Loop suppressed")
+
+    import ray._private.log_monitor as log_monitor_module
+
+    monkeypatch.setattr(log_monitor_module.time, "sleep", mock_sleep)
+
+    log_monitor.should_update_filenames = lambda last: False
+    log_monitor.open_closed_files = lambda: None
+
+    with pytest.raises(SentinelException):
+        log_monitor.run()
 
     # Verify log publishing to GCS was suppressed in passive mode
     assert not called["publish"]
@@ -202,11 +220,25 @@ def test_log_monitor_active_publish_resume(tmp_path, monkeypatch):
     log_monitor.logs_dir = str(tmp_path)
     log_monitor.gcs_client = mock_gcs_client
     log_monitor.open_file_infos = [file_info]
+    log_monitor.closed_file_infos = []
+    log_monitor.max_files_open = 1000
+    log_monitor.log_filenames = set()
 
     # Enable leader election config
     monkeypatch.setattr(ray_constants, "RAY_LEADER_ELECT", True)
 
-    log_monitor.check_log_files_and_publish_updates()
+    def mock_sleep(seconds):
+        raise SentinelException("Loop active run finished")
+
+    import ray._private.log_monitor as log_monitor_module
+
+    monkeypatch.setattr(log_monitor_module.time, "sleep", mock_sleep)
+
+    log_monitor.should_update_filenames = lambda last: False
+    log_monitor.open_closed_files = lambda: None
+
+    with pytest.raises(SentinelException):
+        log_monitor.run()
 
     # Verify log publishing to GCS resumed in active mode
     assert called["publish"]

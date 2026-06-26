@@ -106,6 +106,7 @@ class DashboardHeadModuleConfig:
     ip: str
     http_host: str
     http_port: int
+    gcs_client: Optional[GcsClient] = None
 
 
 class DashboardHeadModule(abc.ABC):
@@ -174,10 +175,13 @@ class DashboardHeadModule(abc.ABC):
     @property
     def gcs_client(self):
         if self._gcs_client is None:
-            self._gcs_client = GcsClient(
-                address=self._config.gcs_address,
-                cluster_id=self._config.cluster_id_hex,
-            )
+            if self._config.gcs_client is not None:
+                self._gcs_client = self._config.gcs_client
+            else:
+                self._gcs_client = GcsClient(
+                    address=self._config.gcs_address,
+                    cluster_id=self._config.cluster_id_hex,
+                )
             if not internal_kv._internal_kv_initialized():
                 internal_kv._initialize_internal_kv(self._gcs_client)
         return self._gcs_client

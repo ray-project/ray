@@ -20,6 +20,7 @@ from ray._common.utils import get_or_create_event_loop
 from typing import Dict, List, Sequence, Tuple
 from libcpp.utility cimport move
 import concurrent.futures
+import ray._private.ray_constants as ray_constants
 from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray.includes.common cimport (
     CGcsClient,
@@ -278,7 +279,14 @@ cdef class InnerGcsClient:
     #############################################################
     # NodeInfo methods
     #############################################################
+    def is_gcs_leader_local(self) -> bool:
+        if not ray_constants.RAY_LEADER_ELECT:
+            return True
+        return self.inner.get().Nodes().IsGcsLeader()
+
     def is_gcs_leader(self) -> bool:
+        if not ray_constants.RAY_LEADER_ELECT:
+            return True
         try:
             self.check_alive([], timeout=2)
         except Exception:

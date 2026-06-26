@@ -1658,7 +1658,7 @@ def test_usage_stats_head_passive_suppression(monkeypatch):
     """Verify that UsageStatsHead suppresses telemetry reports in passive mode."""
     mock_gcs_client = types.SimpleNamespace()
     # Simulate GCS running in standby (passive) mode on this head node
-    mock_gcs_client.is_gcs_leader = lambda: False
+    mock_gcs_client.is_gcs_leader_local = lambda: False
 
     called = {"report": False}
 
@@ -1692,7 +1692,7 @@ def test_usage_stats_head_active_resume(monkeypatch):
     """Verify that UsageStatsHead sends telemetry reports in active mode."""
     mock_gcs_client = types.SimpleNamespace()
     # Simulate GCS running in active leader mode on this head node
-    mock_gcs_client.is_gcs_leader = lambda: True
+    mock_gcs_client.is_gcs_leader_local = lambda: True
 
     called = {"report": False}
 
