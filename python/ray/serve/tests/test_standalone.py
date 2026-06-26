@@ -3,6 +3,7 @@ The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
 
+import asyncio
 import logging
 import os
 import random
@@ -14,10 +15,12 @@ import httpx
 import pytest
 
 import ray
+import ray._private.state as state
 from ray import serve
 from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
+from ray.serve._private.api import serve_start_async
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
@@ -26,6 +29,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_util import set_socket_reuse_port
+from ray.serve._private.test_utils import expected_proxy_actors
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import (
     ControllerOptions,
@@ -370,11 +374,9 @@ def test_http_head_only(ray_cluster):
 
     serve.start(http_options={"port": _get_random_port(), "location": "HeadOnly"})
 
-    # Controller and proxy on the head node. HAProxy adds the HAProxyManager
-    # alongside the fallback ProxyActor, which registers asynchronously.
-    expected_classes = {"ServeController", "ProxyActor"}
-    if RAY_SERVE_ENABLE_HA_PROXY:
-        expected_classes.add("HAProxyManager")
+    # Controller and proxy on the head node. Under HAProxy the proxy is the
+    # HAProxyManager alongside the fallback ProxyActor, which registers asynchronously.
+    expected_classes = {"ServeController", *expected_proxy_actors()}
 
     def check_head_only_actors():
         actors = list_actors(
@@ -802,6 +804,68 @@ def test_serve_start_controller_options_rejects_disallowed_runtime_env(
     with pytest.raises(ValidationError) as exc:
         serve.start(controller_options={"runtime_env": {"pip": ["numpy"]}})
     assert "only supports ['env_vars']" in str(exc.value)
+
+
+def test_serve_start_does_not_leak_idle_worker(ray_shutdown):
+    """Regression test for #63596 / PR #63597.
+
+    Before the fix, ``serve_start_async`` ran ``_start_controller`` as a remote
+    Ray task and returned the controller ``ActorHandle`` cross-process to the
+    caller (the Dashboard Agent). That transfer inserted the handle's
+    ObjectRefs into the executor worker's ``stored_in_objects``, pinning the
+    worker IDLE forever (it could never drain). Accumulated across calls in a
+    long-lived caller, this eventually OOM'd the head node.
+
+    With the inline fix, controller creation runs in the caller process — there
+    is no executor worker to pin. This test drives ``serve_start_async`` (the
+    exact #63596 path the Dashboard Agent uses) and asserts the symptom.
+
+    ``ray._private.state.workers()`` reports all WORKER-type processes, which
+    includes the actor-hosting workers for the controller and HTTP proxies.
+    Those are created on ``serve_start_async`` and reaped on ``serve.shutdown()``
+    each cycle, so they do not accumulate. The leaked ``_start_controller``
+    executor, by contrast, was pinned IDLE and SURVIVED ``serve.shutdown()``
+    (its ``object_id_refs_`` never drained) — so it accumulated across cycles
+    and grew the count. The non-growth assertion below catches exactly that.
+    """
+
+    def _worker_count() -> int:
+        return len(state.workers())
+
+    def _settled_worker_count() -> int:
+        # ``state.workers()`` reflects the GCS worker table, which updates
+        # asynchronously after processes exit and the raylet deregisters them.
+        # A fixed sleep is unsafe under CI contention: a not-yet-deregistered
+        # worker would false-fail the fixed code. Settle by polling until two
+        # consecutive reads agree, so reaping of the controller/proxy workers
+        # is complete before sampling. After shutdown only a leaked (pinned)
+        # executor survives.
+        seen = {"prev": None, "stable": False}
+
+        def _stable() -> bool:
+            cur = _worker_count()
+            if seen["prev"] is not None and cur == seen["prev"]:
+                seen["stable"] = True
+            seen["prev"] = cur
+            return seen["stable"]
+
+        wait_for_condition(_stable, timeout=30)
+        return _worker_count()
+
+    cycles = 3
+    counts = []
+    for _ in range(cycles):
+        asyncio.run(serve_start_async())
+        serve.shutdown()
+        counts.append(_settled_worker_count())
+
+    # The count must not grow across cycles — that growth was the leak.
+    # Allow equal-or-fewer (reaping may reduce it); forbid growth.
+    assert counts[-1] <= counts[0], (
+        f"Idle WORKER count grew across {cycles} serve_start_async()/shutdown() "
+        f"cycles: {counts}. Growth indicates a pinned (leaked) executor worker "
+        f"— the #63596 regression."
+    )
 
 
 if __name__ == "__main__":
