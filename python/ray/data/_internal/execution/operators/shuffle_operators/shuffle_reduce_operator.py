@@ -211,7 +211,9 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
 
         # Empty partition creates a new block; register it for memory tracking.
         self._block_ref_counter.on_block_produced(
-            out_bundle.blocks[0].ref, block_meta.size_bytes or 0, self.id
+            out_bundle.blocks[0].ref,  # pyrefly: ignore[bad-argument-type]
+            block_meta.size_bytes or 0,
+            self.id,
         )
         self._num_reduce_tasks_submitted += 1
         self._output_queue.append(out_bundle)
