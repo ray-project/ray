@@ -139,6 +139,13 @@ class DatabricksUnityCatalog(Catalog):
     )
     region: Optional[str] = None
 
+    # Derived in __post_init__; declared (init=False) so type checkers know the
+    # attributes exist, and excluded from repr/eq.
+    _provider: "DatabricksCredentialProvider" = field(
+        init=False, repr=False, compare=False
+    )
+    _base_url: str = field(init=False, repr=False, compare=False)
+
     def __post_init__(self):
         from ray.data._internal.datasource.databricks_credentials import (
             UnityCatalogCredentialConfig,
