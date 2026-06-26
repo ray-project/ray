@@ -171,6 +171,42 @@ def test_lance_write(data_path):
 
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_write_create_errors_if_exists(data_path):
+    table_path = os.path.join(data_path, "my_table")
+    ds = ray.data.range(10)
+
+    # First CREATE succeeds on an empty destination.
+    ds.write_lance(table_path, mode=SaveMode.CREATE)
+    assert lance.dataset(table_path).count_rows() == 10
+
+    # A second CREATE must error instead of silently overwriting.
+    with pytest.raises(ValueError, match="already exists"):
+        ray.data.range(5).write_lance(table_path, mode=SaveMode.CREATE)
+
+    # Existing data is untouched.
+    assert lance.dataset(table_path).count_rows() == 10
+
+    # CREATE is also the default mode, so it must guard too.
+    with pytest.raises(ValueError, match="already exists"):
+        ray.data.range(5).write_lance(table_path)
+    assert lance.dataset(table_path).count_rows() == 10
+
+    # OVERWRITE replaces the existing data.
+    ray.data.range(5).write_lance(table_path, mode=SaveMode.OVERWRITE)
+    assert lance.dataset(table_path).count_rows() == 5
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_write_append_errors_if_missing(data_path):
+    table_path = os.path.join(data_path, "missing_table")
+    # APPEND surfaces Lance's own "not found" error. We don't pin the message,
+    # since it can change across Lance versions.
+    with pytest.raises((ValueError, OSError, FileNotFoundError)):
+        ray.data.range(5).write_lance(table_path, mode=SaveMode.APPEND)
+    assert not os.path.exists(table_path)
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
 def test_lance_write_min_rows_per_file(data_path):
     schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
 
