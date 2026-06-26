@@ -72,9 +72,7 @@ class TestConfigureKvEvents:
         llm_config = make_kv_aware_llm_config(engine_kwargs=dict(engine_kwargs))
         configure_kv_events_for_kv_routing(llm_config)  # base ports 5557 / 6557
         replica_context = SimpleNamespace(rank=SimpleNamespace(local_rank=local_rank))
-        with mock.patch(
-            "ray.serve.get_replica_context", return_value=replica_context
-        ):
+        with mock.patch("ray.serve.get_replica_context", return_value=replica_context):
             assign_replica_kv_events_endpoint(llm_config)
         kv_events_config = llm_config.engine_kwargs["kv_events_config"]
         assert kv_events_config["endpoint"] == f"tcp://*:{expected_port}"
