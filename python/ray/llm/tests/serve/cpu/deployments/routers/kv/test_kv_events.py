@@ -1,10 +1,13 @@
 import sys
+from types import SimpleNamespace
+from unittest import mock
 
 import pytest
 
 import ray
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
+    assign_replica_kv_events_endpoint,
     configure_kv_events_for_kv_routing,
     get_kv_event_routing_stats,
     resolve_kv_event_source_endpoint,
@@ -50,6 +53,32 @@ class TestConfigureKvEvents:
             "replay_endpoint": "tcp://*:6557",
         }
         assert llm_config.runtime_env["env_vars"]["PYTHONHASHSEED"] == "0"
+
+    @pytest.mark.parametrize(
+        "engine_kwargs, local_rank, expected_port, expected_replay_port",
+        [
+            # Non-DP: offset the base port by the replica's node-local rank so
+            # colocated replicas don't bind the same ZMQ PUB port.
+            ({}, 2, 5559, 6559),
+            # DP: data_parallel_rank set -> offset 0 (the engine offsets the
+            # bound port by dp_rank itself), so local_rank must be ignored.
+            ({"data_parallel_rank": 2}, 2, 5557, 6557),
+        ],
+    )
+    def test_assign_replica_endpoint_offsets_port(
+        self, engine_kwargs, local_rank, expected_port, expected_replay_port
+    ):
+        """Per-replica endpoint offset: by node-local rank without DP, 0 with DP."""
+        llm_config = make_kv_aware_llm_config(engine_kwargs=dict(engine_kwargs))
+        configure_kv_events_for_kv_routing(llm_config)  # base ports 5557 / 6557
+        replica_context = SimpleNamespace(rank=SimpleNamespace(local_rank=local_rank))
+        with mock.patch(
+            "ray.serve.get_replica_context", return_value=replica_context
+        ):
+            assign_replica_kv_events_endpoint(llm_config)
+        kv_events_config = llm_config.engine_kwargs["kv_events_config"]
+        assert kv_events_config["endpoint"] == f"tcp://*:{expected_port}"
+        assert kv_events_config["replay_endpoint"] == f"tcp://*:{expected_replay_port}"
 
     def test_resolve_endpoint_is_node_routable(self, ray_instance):
         """The advertised endpoint is the replica's node IP."""
