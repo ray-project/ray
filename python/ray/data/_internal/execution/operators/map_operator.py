@@ -4,7 +4,6 @@ import copy
 import functools
 import logging
 import math
-import pickle
 import time
 from abc import ABC, abstractmethod
 from dataclasses import replace
@@ -32,7 +31,7 @@ if TYPE_CHECKING:
 
 import ray
 from ray import ObjectRef
-from ray._raylet import ObjectRefGenerator, StreamingGeneratorStats
+from ray._raylet import ObjectRefGenerator
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     ComputeStrategy,
@@ -71,7 +70,11 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
-from ray.data._internal.execution.util import memory_string, merge_label_selector
+from ray.data._internal.execution.util import (
+    memory_string,
+    merge_label_selector,
+    yield_block_with_stats,
+)
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import MemoryProfiler, iterate_with_retry
 from ray.data.block import (
@@ -86,6 +89,50 @@ from ray.data.block import (
 from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
+
+SAFE_DEFAULT_LOGICAL_MEMORY_PER_CPU: Final[int] = int(
+    4
+    * GiB
+    * (
+        1
+        - DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION
+        - DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+    )
+)
+"""A safe default logical memory to request for map tasks and actors per logical CPU.
+
+Ray Data aims to guarantee that if you set each UDF's logical memory to at least
+the heap memory that UDF needs, the system won't oversubscribe tasks and actors.
+
+The problem is that if you set logical memory for some UDFs but not others, the
+unspecified ones fall back to 0 and the system oversubscribes anyway.
+
+To avoid that, we can default to ~2.57 GiB per CPU core. Here's where that magic number
+comes from: We want to pick the largest logical memory (so it's safe) that won't
+decrease concurrency (so we don't regress performance). Hyperscaler nodes usually
+have 4 GiB per CPU core, and Ray Core sets logical memory to physical memory minus
+30% for the object store and 10% for system-reserved memory. So, in the typical
+case, you end up with 4 GiB * 60% = ~2.57 GiB GiB of logical memory per core, and
+that's the highest you can go before you start decreasing concurrency.
+
+We use this heuristic over more sophisticated alternatives because a constant
+default is easy to reason about.
+"""
+
+
+def get_safe_default_logical_memory(ray_remote_args: Dict[str, Any]) -> int:
+    """Return a safe default logical memory (in bytes) for the given remote args."""
+    num_cpus = ray_remote_args.get("num_cpus")
+    if not num_cpus:
+        # If the map tasks or actors don't require logical CPUs, just assume it
+        # requires one logical CPU for the purpose of computing a default value.
+        default_memory = math.ceil(SAFE_DEFAULT_LOGICAL_MEMORY_PER_CPU)
+    else:
+        default_memory = math.ceil(SAFE_DEFAULT_LOGICAL_MEMORY_PER_CPU * num_cpus)
+
+    assert isinstance(default_memory, int), default_memory
+    assert default_memory > 0, default_memory
+    return default_memory
 
 
 @ray.remote(num_cpus=0)
@@ -161,35 +208,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     Warn if the size of the map UDF exceeds this threshold.
     """
 
-    DEFAULT_LOGICAL_MEMORY_PER_CPU: Final[int] = int(
-        4
-        * GiB
-        * (
-            1
-            - DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION
-            - DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
-        )
-    )
-    """Default logical memory to request for map tasks and actors per logical CPU.
-
-    Ray Data aims to guarantee that if you set each UDF's logical memory to at least
-    the heap memory that UDF needs, the system won't oversubscribe tasks and actors.
-
-    The problem is that if you set logical memory for some UDFs but not others, the
-    unspecified ones fall back to 0 and the system oversubscribes anyway.
-
-    To avoid that, we default to ~2.57 GiB per CPU core. Here's where that magic number
-    comes from: We want to pick the largest logical memory (so it's safe) that won't
-    decrease concurrency (so we don't regress performance). Hyperscaler nodes usually
-    have 4 GiB per CPU core, and Ray Core sets logical memory to physical memory minus
-    30% for the object store and 10% for system-reserved memory. So, in the typical
-    case, you end up with 4 GiB * 60% = ~2.57 GiB GiB of logical memory per core, and
-    that's the highest you can go before you start decreasing concurrency.
-
-    We use this heuristic over more sophisticated alternatives because a constant
-    default is easy to reason about.
-    """
-
     def __init__(
         self,
         map_transformer: MapTransformer,
@@ -220,10 +238,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # Configure a default logical memory to improve memory safety when the user has
         # specified memory for some UDFs but not others.
         if default_logical_memory_enabled:
-            self._set_default_logical_memory(ray_remote_args)
+            default_memory = get_safe_default_logical_memory(ray_remote_args)
+            ray_remote_args.setdefault("memory", default_memory)
             logger.debug(
-                f"Operator {name!r} set default logical memory to "
-                f"{ray_remote_args.get('memory')}"
+                f"Operator {name!r} set default logical memory to {default_memory}"
             )
 
         self._map_transformer = map_transformer
@@ -264,19 +282,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # (e.g., schema evolution for Iceberg writes via on_write_start).
         self._on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = on_start
         self._on_start_called = False
-
-    def _set_default_logical_memory(self, ray_remote_args: Dict[str, Any]) -> None:
-        num_cpus = ray_remote_args.get("num_cpus")
-        if not num_cpus:
-            # If the map tasks or actors don't require logical CPUs, just assume it
-            # requires one logical CPU for the purpose of computing a default value.
-            default_memory = math.ceil(self.DEFAULT_LOGICAL_MEMORY_PER_CPU)
-        else:
-            default_memory = math.ceil(self.DEFAULT_LOGICAL_MEMORY_PER_CPU * num_cpus)
-
-        assert isinstance(default_memory, int), default_memory
-        assert default_memory > 0, default_memory
-        ray_remote_args.setdefault("memory", default_memory)
 
     @functools.cached_property
     def _map_transformer_ref(self) -> ObjectRef[MapTransformer]:
@@ -840,34 +845,29 @@ def _map_task(
                 # Finish processing before yielding the block!
                 blk_exec_stats_builder.finish()
 
-                # Yield block and retrieve its Ray object serialization timing
-                gen_stats: StreamingGeneratorStats = yield block
-
-                exec_stats = blk_exec_stats_builder.build(
-                    block_ser_time_s=(
-                        gen_stats.object_creation_dur_s if gen_stats else None
-                    ),
-                    udf_time_s=map_transformer.udf_time_s(reset=True),
-                    task_idx=ctx.task_idx,
-                )
-
-                # NOTE: This tracks task duration up to this point, though we're primarily
-                #       interested in task total duration
-                # TODO figure out a better way to track task total duration
-                task_dur_s = time.perf_counter() - task_start_s
-
-                bm = BlockMetadataWithSchema.from_metadata(
-                    replace(
-                        block_meta,
-                        exec_stats=exec_stats,
-                        task_exec_stats=TaskExecWorkerStats(
-                            task_wall_time_s=task_dur_s,
-                            max_uss_bytes=profiler.estimate_max_uss(),
+                def build_metadata(block_ser_time_s):
+                    exec_stats = blk_exec_stats_builder.build(
+                        block_ser_time_s=block_ser_time_s,
+                        udf_time_s=map_transformer.udf_time_s(reset=True),
+                        task_idx=ctx.task_idx,
+                    )
+                    # NOTE: This tracks task duration up to this point, though we're
+                    # primarily interested in task total duration.
+                    # TODO figure out a better way to track task total duration
+                    task_dur_s = time.perf_counter() - task_start_s
+                    return BlockMetadataWithSchema.from_metadata(
+                        replace(
+                            block_meta,
+                            exec_stats=exec_stats,
+                            task_exec_stats=TaskExecWorkerStats(
+                                task_wall_time_s=task_dur_s,
+                                max_uss_bytes=profiler.estimate_max_uss(),
+                            ),
                         ),
-                    ),
-                    schema=block_schema if not yielded_schema else None,
-                )
-                yield pickle.dumps(bm)
+                        schema=block_schema if not yielded_schema else None,
+                    )
+
+                yield from yield_block_with_stats(block, build_metadata)
 
                 # Reset trackers
                 yielded_schema = True

@@ -59,6 +59,7 @@ pyOpenSSL
 celery
 taskiq
 mmh3
+ray-haproxy>=2.8.20,<2.9.0; sys_platform == 'linux'
 
 cupy-cuda12x==14.0.1; sys_platform != 'darwin' and python_version == '3.14'
 llvmlite==0.47.0; python_version == '3.14'
