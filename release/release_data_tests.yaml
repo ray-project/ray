@@ -891,7 +891,7 @@
 # label_selector. Asserts isolation (no runtime regression vs. solo) and
 # placement (no task crossed subcluster boundaries).
 - name: heterogeneous_memory_batch_inference_multitenancy
-  python: "3.10"
+  python: "3.14"
   frequency: nightly
   group: data-batch-inference
 
