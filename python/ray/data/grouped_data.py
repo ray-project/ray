@@ -34,7 +34,7 @@ class GroupedData:
         key: Optional[Union[str, List[str]]],
         *,
         num_partitions: Optional[int],
-    ):
+    ) -> None:
         """Construct a dataset grouped by key (internal API).
 
         The constructor is not part of the GroupedData API.
@@ -75,10 +75,10 @@ class GroupedData:
     def _aggregate_on(
         self,
         agg_cls: type,
-        on: Union[str, List[str]],
+        on: Optional[Union[str, List[str]]],
         *args,
         **kwargs,
-    ):
+    ) -> Dataset:
         """Helper for aggregating on a particular subset of the dataset.
 
         This validates the `on` argument, and converts a list of column names
@@ -97,7 +97,7 @@ class GroupedData:
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
         zero_copy_batch: bool = True,
-        compute: Union[str, ComputeStrategy] = None,
+        compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Optional[str] = "default",
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -392,7 +392,7 @@ class GroupedData:
 
     @PublicAPI(api_group=CDS_API_GROUP)
     def sum(
-        self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
+        self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Dataset:
         r"""Compute grouped sum aggregation.
 
@@ -436,7 +436,7 @@ class GroupedData:
 
     @PublicAPI(api_group=CDS_API_GROUP)
     def min(
-        self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
+        self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Dataset:
         r"""Compute grouped min aggregation.
 
@@ -475,7 +475,7 @@ class GroupedData:
 
     @PublicAPI(api_group=CDS_API_GROUP)
     def max(
-        self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
+        self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Dataset:
         r"""Compute grouped max aggregation.
 
@@ -514,7 +514,7 @@ class GroupedData:
 
     @PublicAPI(api_group=CDS_API_GROUP)
     def mean(
-        self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
+        self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Dataset:
         r"""Compute grouped mean aggregation.
 
@@ -554,7 +554,7 @@ class GroupedData:
     @PublicAPI(api_group=CDS_API_GROUP)
     def std(
         self,
-        on: Union[str, List[str]] = None,
+        on: Optional[Union[str, List[str]]] = None,
         ddof: int = 1,
         ignore_nulls: bool = True,
     ) -> Dataset:
