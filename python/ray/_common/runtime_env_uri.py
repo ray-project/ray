@@ -4,48 +4,39 @@ from urllib.parse import urlparse
 
 from ray._common.path_utils import is_path
 
-_PROTOCOLS = (
-    # For packages dynamically uploaded and managed by the GCS.
-    "gcs",
-    # For conda environments installed locally on each node.
-    "conda",
-    # For pip environments installed locally on each node.
-    "pip",
-    # For uv environments installed locally on each node.
-    "uv",
-    # Remote http path, assumes everything packed in one zip file.
-    "http",
-    # Remote https path, assumes everything packed in one zip file.
-    "https",
-    # Remote s3 path, assumes everything packed in one zip file.
-    "s3",
-    # Remote google storage path, assumes everything packed in one zip file.
-    "gs",
-    # Remote azure blob storage path, assumes everything packed in one zip file.
-    "azure",
-    # Remote Azure Blob File System Secure path, assumes everything packed in one zip file.
-    "abfss",
-    # File storage path, assumes everything packed in one zip file.
-    "file",
-)
-
 _REMOTE_PROTOCOLS = ("http", "https", "s3", "gs", "azure", "abfss", "file")
 
-Protocol = enum.Enum(
-    "Protocol",
-    {protocol.upper(): protocol for protocol in _PROTOCOLS},
-)
 
+class Protocol(enum.Enum):
+    # For packages dynamically uploaded and managed by the GCS.
+    GCS = "gcs"
+    # For conda environments installed locally on each node.
+    CONDA = "conda"
+    # For pip environments installed locally on each node.
+    PIP = "pip"
+    # For uv environments installed locally on each node.
+    UV = "uv"
+    # Remote http path, assumes everything packed in one zip file.
+    HTTP = "http"
+    # Remote https path, assumes everything packed in one zip file.
+    HTTPS = "https"
+    # Remote s3 path, assumes everything packed in one zip file.
+    S3 = "s3"
+    # Remote google storage path, assumes everything packed in one zip file.
+    GS = "gs"
+    # Remote azure blob storage path, assumes everything packed in one zip file.
+    AZURE = "azure"
+    # Remote Azure Blob File System Secure path, assumes everything packed in one zip file.
+    ABFSS = "abfss"
+    # File storage path, assumes everything packed in one zip file.
+    FILE = "file"
 
-@classmethod
-def _remote_protocols(cls):
-    # Returns a list of protocols that support remote storage.
-    # These protocols should only be used with paths that end in
-    # ".zip", ".whl", ".tar.gz", or ".tgz".
-    return [cls[protocol.upper()] for protocol in _REMOTE_PROTOCOLS]
-
-
-Protocol.remote_protocols = _remote_protocols
+    @classmethod
+    def remote_protocols(cls):
+        # Returns a list of protocols that support remote storage.
+        # These protocols should only be used with paths that end in
+        # ".zip", ".whl", ".tar.gz", or ".tgz".
+        return [cls[protocol.upper()] for protocol in _REMOTE_PROTOCOLS]
 
 
 def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
