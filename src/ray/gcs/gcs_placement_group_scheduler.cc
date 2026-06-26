@@ -105,10 +105,9 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   RAY_CHECK(bundles.size() == selected_nodes.size());
 
-  // TODO(#64370) rename this to fit topology strategy
-  if (scheduling_result.selected_label_domain.has_value()) {
+  if (scheduling_result.selected_topology_assignment.has_value()) {
     const auto &[topology_label_key, topology_label_value] =
-        *scheduling_result.selected_label_domain;
+        *scheduling_result.selected_topology_assignment;
     placement_group->SetTopologyAssignment(topology_label_key, topology_label_value);
     RAY_LOG(INFO) << "Placement group " << placement_group->GetPlacementGroupID()
                   << " assigned to topology label " << topology_label_key << ": "

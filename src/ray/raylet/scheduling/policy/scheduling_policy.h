@@ -81,14 +81,14 @@ struct SchedulingResult {
   SchedulingResultStatus status;
   // The nodes successfully scheduled.
   std::vector<scheduling::NodeID> selected_nodes;
-  // The label domain selected during placement group scheduling.
-  // The key is the label domain key (e.g. "ray.io/gpu-domain"),
-  // the value is the label domain value (e.g. "rack-1").
+  // The topology assignment selected during placement group scheduling.
+  // The key is the topology label key (e.g. "ray.io/gpu-domain"),
+  // the value is the topology label value (e.g. "rack-1").
   // We have one pair per placement group for now because we only support
   // STRICT_PACK scheduling strategy. To support other strategies, this data
   // structure will need to be extended.
-  // TODO(#61777): Extend to support multiple tiers of label-domain scheduling.
-  std::optional<std::pair<std::string, std::string>> selected_label_domain;
+  // TODO(#61777): Extend to support multiple tiers of topology-aware scheduling.
+  std::optional<std::pair<std::string, std::string>> selected_topology_assignment;
 };
 
 using NodeScheduleFn =

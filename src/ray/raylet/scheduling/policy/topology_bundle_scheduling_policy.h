@@ -24,36 +24,35 @@ namespace ray {
 namespace raylet_scheduling_policy {
 
 /**
- * @brief Abstract base class for label-domain-level scheduling policies.
+ * @brief Abstract base class for topology-level scheduling policies.
  *
- * @details Label-domain scheduling partitions the cluster's candidate nodes
+ * @details Topology-aware scheduling partitions the cluster's candidate nodes
  * into groups by an arbitrary node label key (e.g. "ray.io/gpu-domain") and
  * selects which groups can feasibly host a placement group's bundles. It then
  * delegates to a node-level scheduling policy to schedule the bundles within
  * the selected groups.
  */
-// TODO(#64370) rename this to fit topology strategy
-class LabelDomainSchedulingPolicyInterface {
+class TopologySchedulingPolicyInterface {
  public:
-  explicit LabelDomainSchedulingPolicyInterface(
+  explicit TopologySchedulingPolicyInterface(
       ClusterResourceManager &cluster_resource_manager)
       : cluster_resource_manager_(cluster_resource_manager) {}
-  virtual ~LabelDomainSchedulingPolicyInterface() = default;
+  virtual ~TopologySchedulingPolicyInterface() = default;
 
   /**
-   * @brief Partitions candidate nodes by label domain, then for each feasible
-   * domain invokes the node-level scheduling callback. Returns the first
+   * @brief Partitions candidate nodes by topology value, then for each feasible
+   * group invokes the node-level scheduling callback. Returns the first
    * successful result.
    *
    * @param resource_request_list The resource/label requirements for each
    * bundle in the placement group.
-   * @param options Scheduling options that contains which label domain key to group by.
-   *   If the label domain value is specified, scheduling is constrained to that specific
-   * domain (bundle rescheduling).
+   * @param options Scheduling options that contains which topology label key to group by.
+   *   If the topology value is specified, scheduling is constrained to that specific
+   * value (bundle rescheduling).
    * @param candidate_nodes All available candidate nodes to consider.
    * @param node_schedule_fn Callback that performs node-level bundle scheduling
    *   on a set of candidate nodes.
-   * @return A LabelDomainFilterResult with the feasible candidate groups, or
+   * @return A SchedulingResult with the feasible candidate groups, or
    *   an INFEASIBLE / FAILED status if no group qualifies.
    */
   virtual SchedulingResult Schedule(
@@ -83,14 +82,14 @@ class LabelDomainSchedulingPolicyInterface {
 };
 
 /**
- * @brief Strict-pack label-domain scheduling policy.
+ * @brief Strict-pack topology scheduling policy.
  *
- * @details Ensures that each bundle is placed on a node in the same label domain value.
+ * @details Ensures that each bundle is placed on a node with the same topology value.
  */
-class LabelDomainStrictPackSchedulingPolicy
-    : public LabelDomainSchedulingPolicyInterface {
+class TopologyStrictPackSchedulingPolicy
+    : public TopologySchedulingPolicyInterface {
  public:
-  using LabelDomainSchedulingPolicyInterface::LabelDomainSchedulingPolicyInterface;
+  using TopologySchedulingPolicyInterface::TopologySchedulingPolicyInterface;
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
       const SchedulingOptions &options,

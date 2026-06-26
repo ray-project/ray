@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/scheduling/policy/label_domain_bundle_scheduling_policy.h"
+#include "ray/raylet/scheduling/policy/topology_bundle_scheduling_policy.h"
 
 namespace ray {
 namespace raylet_scheduling_policy {
 
-bool LabelDomainSchedulingPolicyInterface::IsRequestFeasible(
+bool TopologySchedulingPolicyInterface::IsRequestFeasible(
     const std::vector<const ResourceRequest *> &resource_request_list,
     const absl::flat_hash_set<scheduling::NodeID> &candidate_nodes) const {
   // Check that each bundle is individually feasible on at least one node.
@@ -52,21 +52,21 @@ bool LabelDomainSchedulingPolicyInterface::IsRequestFeasible(
   return true;
 }
 
-SchedulingResult LabelDomainStrictPackSchedulingPolicy::Schedule(
+SchedulingResult TopologyStrictPackSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
     const SchedulingOptions &options,
     absl::flat_hash_set<scheduling::NodeID> candidate_nodes,
     NodeScheduleFn node_schedule_fn) {
   RAY_CHECK(!resource_request_list.empty());
 
-  const std::string &label_key = options.target_label_domain_.first;
+  const std::string &label_key = options.target_topology_assignment_.first;
   RAY_CHECK(!label_key.empty());
 
-  // If a target label domain value is specified (partial failure rescheduling),
-  // prune to only nodes in that domain and use the node-level scheduling callback to
+  // If a target topology value is specified (partial failure rescheduling),
+  // prune to only nodes with that value and use the node-level scheduling callback to
   // schedule the bundles.
-  if (options.target_label_domain_.second.has_value()) {
-    const std::string &target = *options.target_label_domain_.second;
+  if (options.target_topology_assignment_.second.has_value()) {
+    const std::string &target = *options.target_topology_assignment_.second;
     for (auto it = candidate_nodes.begin(); it != candidate_nodes.end();) {
       const auto &labels = cluster_resource_manager_.GetNodeLabels(*it);
       auto label_it = labels.find(label_key);
@@ -77,44 +77,47 @@ SchedulingResult LabelDomainStrictPackSchedulingPolicy::Schedule(
       }
     }
     if (!IsRequestFeasible(resource_request_list, candidate_nodes)) {
-      RAY_LOG(DEBUG) << "Target label domain '" << target
+      RAY_LOG(DEBUG) << "Target topology value '" << target
                      << "' has insufficient resources; infeasible.";
       return SchedulingResult::Infeasible();
     }
     SchedulingResult result =
         node_schedule_fn(resource_request_list, options, std::move(candidate_nodes));
     if (result.status.IsSuccess()) {
-      result.selected_label_domain = std::make_pair(label_key, std::string(target));
+      result.selected_topology_assignment =
+          std::make_pair(label_key, std::string(target));
     }
     return result;
   }
 
-  // Group candidate nodes by their label domain.
-  absl::flat_hash_map<std::string, absl::flat_hash_set<scheduling::NodeID>> domain_groups;
+  // Group candidate nodes by their topology value.
+  absl::flat_hash_map<std::string, absl::flat_hash_set<scheduling::NodeID>>
+      topology_groups;
   for (const auto &node_id : candidate_nodes) {
     const auto &labels = cluster_resource_manager_.GetNodeLabels(node_id);
     auto it = labels.find(label_key);
     if (it != labels.end() && !it->second.empty()) {
-      domain_groups[it->second].insert(node_id);
+      topology_groups[it->second].insert(node_id);
     }
   }
 
-  if (domain_groups.empty()) {
+  if (topology_groups.empty()) {
     RAY_LOG(DEBUG) << "No candidate nodes have a " << label_key
-                   << " label; label domain scheduling infeasible.";
+                   << " label; topology-aware scheduling infeasible.";
     return SchedulingResult::Infeasible();
   }
 
-  // Try each feasible domain: call node-level scheduling and return on first success.
+  // Try each feasible group: call node-level scheduling and return on first success.
   bool all_infeasible = true;
-  for (auto &[domain_id, domain_nodes] : domain_groups) {
-    if (!IsRequestFeasible(resource_request_list, domain_nodes)) {
+  for (auto &[topology_value, topology_nodes] : topology_groups) {
+    if (!IsRequestFeasible(resource_request_list, topology_nodes)) {
       continue;
     }
     SchedulingResult result =
-        node_schedule_fn(resource_request_list, options, std::move(domain_nodes));
+        node_schedule_fn(resource_request_list, options, std::move(topology_nodes));
     if (result.status.IsSuccess()) {
-      result.selected_label_domain = std::make_pair(label_key, std::move(domain_id));
+      result.selected_topology_assignment =
+          std::make_pair(label_key, std::move(topology_value));
       return result;
     }
     if (!result.status.IsInfeasible()) {
@@ -123,10 +126,10 @@ SchedulingResult LabelDomainStrictPackSchedulingPolicy::Schedule(
   }
 
   if (all_infeasible) {
-    RAY_LOG(DEBUG) << "No label domain has sufficient total resources; infeasible.";
+    RAY_LOG(DEBUG) << "No topology value has sufficient total resources; infeasible.";
     return SchedulingResult::Infeasible();
   } else {
-    RAY_LOG(DEBUG) << "No label domain has sufficient available resources; failed";
+    RAY_LOG(DEBUG) << "No topology value has sufficient available resources; failed";
     return SchedulingResult::Failed();
   }
 }
