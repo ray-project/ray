@@ -105,6 +105,19 @@ py_test_module_list(
     ],
 )
 
+py_test_module_list(
+    size = "small",
+    files = glob(["tests/anyscale/test_*.py"]),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
 py_test(
     name = "test_arrow",
     size = "small",
@@ -379,7 +392,7 @@ py_test(
 
 py_test(
     name = "test_context_propagation",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_context_propagation.py"],
     tags = [
         "exclusive",
@@ -719,21 +732,6 @@ py_test(
 )
 
 py_test(
-    name = "test_gpu_aggregate",
-    size = "medium",
-    srcs = ["tests/test_gpu_aggregate.py"],
-    tags = [
-        "exclusive",
-        "gpu",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
     name = "test_hash_shuffle",
     size = "medium",
     srcs = ["tests/test_hash_shuffle.py"],
@@ -751,20 +749,6 @@ py_test(
     name = "test_hash_shuffle_aggregator",
     size = "small",
     srcs = ["tests/test_hash_shuffle_aggregator.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_hash_shuffle_v2",
-    size = "medium",
-    srcs = ["tests/test_hash_shuffle_v2.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1018,34 +1002,6 @@ py_test(
     name = "test_predicate_pushdown",
     size = "small",
     srcs = ["tests/test_predicate_pushdown.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_common_subexpr_elimination",
-    size = "small",
-    srcs = ["tests/test_common_subexpr_elimination.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_idempotency_optimizer_guards",
-    size = "small",
-    srcs = ["tests/test_idempotency_optimizer_guards.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1754,6 +1710,20 @@ py_test(
 )
 
 py_test(
+    name = "test_throughput_based_resource_allocator",
+    size = "medium",
+    srcs = ["tests/test_throughput_based_resource_allocator.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_streaming_executor_errored_blocks",
     size = "small",
     srcs = ["tests/test_streaming_executor_errored_blocks.py"],
@@ -1880,20 +1850,6 @@ py_test(
 )
 
 py_test(
-    name = "test_zarrv2",
-    size = "medium",
-    srcs = ["tests/datasource/test_zarrv2.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
     name = "test_zip",
     size = "small",
     srcs = ["tests/test_zip.py"],
@@ -1940,6 +1896,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_backpressure_e2e.py"],
     tags = [
+        "data_non_parallel",
         "exclusive",
         "team:data",
     ],
@@ -1964,9 +1921,9 @@ py_test(
 )
 
 py_test(
-    name = "test_autoscaler",
+    name = "test_actor_autoscaler",
     size = "small",
-    srcs = ["tests/test_autoscaler.py"],
+    srcs = ["tests/test_actor_autoscaler.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -2247,20 +2204,6 @@ py_test(
     name = "test_read_datasource",
     size = "small",
     srcs = ["tests/test_read_datasource.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_catalog",
-    size = "small",
-    srcs = ["tests/test_catalog.py"],
     tags = [
         "exclusive",
         "team:data",

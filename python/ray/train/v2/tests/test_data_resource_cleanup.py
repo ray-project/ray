@@ -5,6 +5,10 @@ from unittest.mock import create_autospec
 import pytest
 
 import ray
+from ray.data._internal.cluster_autoscaler import (
+    CLUSTER_AUTOSCALER_ENV_KEY,
+    ClusterAutoscalerVersion,
+)
 from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
     get_or_create_autoscaling_coordinator,
 )
@@ -28,6 +32,19 @@ def _dummy_worker_group_context() -> WorkerGroupContext:
         num_workers=4,
         resources_per_worker={"CPU": 1},
     )
+
+
+@pytest.fixture(autouse=True)
+def set_oss_autoscaler(monkeypatch):
+    """Set cluster autoscaler to use OSS autoscaler for all tests in this module."""
+    monkeypatch.setenv(CLUSTER_AUTOSCALER_ENV_KEY, ClusterAutoscalerVersion.V2.value)
+
+
+@pytest.fixture
+def ray_start_4_cpus():
+    ray.init(num_cpus=4)
+    yield
+    ray.shutdown()
 
 
 def test_after_worker_group_shutdown():
