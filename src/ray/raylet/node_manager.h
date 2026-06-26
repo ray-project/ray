@@ -17,6 +17,7 @@
 #include <gtest/gtest_prod.h>
 
 #include <atomic>
+#include <boost/asio/deadline_timer.hpp>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -760,6 +761,20 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                         rpc::WorkerExitType disconnect_type,
                         const std::string &disconnect_detail,
                         const rpc::RayException *creation_task_exception = nullptr);
+
+#if !defined(_WIN32)
+  /// Poll for a gracefully-exiting worker process to exit, then SIGKILL its
+  /// process group to reap any orphaned descendants. Reschedules itself on
+  /// `timer` until the worker exits or `polls_remaining` reaches zero. Used so
+  /// per-worker process-group cleanup does not interrupt the worker's own
+  /// shutdown sequence (atexit / __ray_shutdown__ handlers).
+  void SchedulePostExitProcessGroupCleanup(
+      std::shared_ptr<boost::asio::deadline_timer> timer,
+      pid_t worker_pid,
+      pid_t pgid,
+      WorkerID wid,
+      int polls_remaining);
+#endif
 
   /// Will trigger local gc if needed and do a syncer global gc broadcast if needed.
   void TriggerLocalOrGlobalGCIfNeeded();

@@ -298,5 +298,41 @@ def test_nested_subprocess_cleanup_with_pg_cleanup(enable_pg_cleanup, shutdown_o
     )
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Process‑group cleanup is POSIX‑only (Linux/macOS).",
+)
+def test_graceful_exit_runs_shutdown_handler_with_pg_cleanup(
+    enable_pg_cleanup, shutdown_only, tmp_path
+):
+    """
+    Regression test: PG cleanup must not signal-kill a gracefully exiting worker
+    before it finishes its shutdown sequence. The actor's __ray_shutdown__ handler
+    should still run when the actor is terminated gracefully via __ray_terminate__.
+    """
+    ray.init()
+    shutdown_file = str(tmp_path / "ray_shutdown_called")
+
+    @ray.remote
+    class UserShutdownActor:
+        def __ray_shutdown__(self):
+            with open(shutdown_file, "w") as f:
+                f.write("ray_shutdown_called")
+                f.flush()
+
+        def get_ready(self):
+            return "ready"
+
+    actor = UserShutdownActor.remote()
+    ray.get(actor.get_ready.remote())
+    # Graceful termination; PG cleanup must not kill the worker mid-shutdown.
+    actor.__ray_terminate__.remote()
+
+    wait_for_condition(
+        lambda: os.path.exists(shutdown_file) and os.path.getsize(shutdown_file) > 0,
+        retry_interval_ms=100,
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -104,6 +104,13 @@ std::vector<ObjectID> FlatbufferToObjectIds(
 }
 
 #if !defined(_WIN32)
+// Graceful per-worker process-group cleanup polls for the worker process to exit
+// before sweeping its group, so it does not interrupt the worker's own shutdown.
+// Poll every kGracefulPgCleanupPollMs, up to kGracefulPgCleanupMaxPolls times,
+// before giving up (the product bounds the wall-clock wait).
+constexpr int kGracefulPgCleanupPollMs = 100;
+constexpr int kGracefulPgCleanupMaxPolls = 600;  // ~60s
+
 // Send a signal to the worker's saved process group with safety guards and logging.
 void CleanupProcessGroupSend(pid_t saved_pgid,
                              const WorkerID &wid,
@@ -1556,7 +1563,18 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       }
     }
 
-    // Attempt per-worker process-group cleanup before removing the worker.
+    // Attempt per-worker process-group cleanup before removing the worker. The
+    // worker is its own process-group leader, so killpg also targets the worker
+    // process itself. The timing therefore differs by disconnect type:
+    //   - Non-graceful (e.g. the worker crashed): the worker is already gone, so
+    //     signal the group now (SIGTERM, then SIGKILL shortly after) to reap any
+    //     orphaned descendants it left behind.
+    //   - Graceful: the worker is still running its own shutdown sequence (e.g.
+    //     atexit / __ray_shutdown__ handlers). Signaling the group now would kill
+    //     it mid-shutdown, so wait until the worker process has exited on its own
+    //     and only then SIGKILL the group to reap any orphaned descendants. The
+    //     process group outlives the dead leader as long as members remain, so
+    //     the pgid stays valid for this post-exit sweep.
 #if !defined(_WIN32)
     const bool pg_enabled = RayConfig::instance().process_group_cleanup_enabled();
     const bool subreaper_enabled =
@@ -1570,23 +1588,31 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     if (pg_enabled) {
       auto saved = worker->GetSavedProcessGroupId();
       if (saved.has_value()) {
-        // Send SIGTERM first, then schedule a short async escalation to SIGKILL.
-        CleanupProcessGroupSend(*saved, worker->WorkerId(), "DisconnectClient", SIGTERM);
-        auto timer = std::make_shared<boost::asio::deadline_timer>(
-            io_service_, boost::posix_time::milliseconds(200));
-        auto wid = worker->WorkerId();
-        auto pgid = *saved;
-        timer->async_wait(
-            [timer, wid, pgid](const boost::system::error_code &ec) mutable {
-              if (!ec) {
-                // Probe with signal 0; if group plausibly exists, send SIGKILL.
-                auto probe = KillProcessGroup(pgid, 0);
-                const bool group_absent = (probe && probe->value() == ESRCH);
-                if (!group_absent) {
-                  CleanupProcessGroupSend(pgid, wid, "DisconnectClient", SIGKILL);
+        const auto wid = worker->WorkerId();
+        const pid_t pgid = *saved;
+        if (!graceful) {
+          // Send SIGTERM first, then schedule a short async escalation to SIGKILL.
+          CleanupProcessGroupSend(pgid, wid, "DisconnectClient", SIGTERM);
+          auto timer = std::make_shared<boost::asio::deadline_timer>(
+              io_service_, boost::posix_time::milliseconds(200));
+          timer->async_wait(
+              [timer, wid, pgid](const boost::system::error_code &ec) mutable {
+                if (!ec) {
+                  // Probe with signal 0; if group plausibly exists, send SIGKILL.
+                  auto probe = KillProcessGroup(pgid, 0);
+                  const bool group_absent = (probe && probe->value() == ESRCH);
+                  if (!group_absent) {
+                    CleanupProcessGroupSend(pgid, wid, "DisconnectClient", SIGKILL);
+                  }
                 }
-              }
-            });
+              });
+        } else {
+          // Poll for the worker process to exit, then sweep its process group.
+          const pid_t worker_pid = worker->GetProcess().GetId();
+          auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
+          SchedulePostExitProcessGroupCleanup(
+              std::move(timer), worker_pid, pgid, wid, kGracefulPgCleanupMaxPolls);
+        }
       }
     }
 #endif
@@ -1636,6 +1662,42 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   // that it can clean up the wait requests for this client. Currently I think
   // these can be leaked.
 }
+
+#if !defined(_WIN32)
+void NodeManager::SchedulePostExitProcessGroupCleanup(
+    std::shared_ptr<boost::asio::deadline_timer> timer,
+    pid_t worker_pid,
+    pid_t pgid,
+    WorkerID wid,
+    int polls_remaining) {
+  // If the worker process has exited, sweep its (now leaderless) process group
+  // to reap any orphaned descendants it left behind, then stop.
+  if (kill(worker_pid, 0) == -1 && errno == ESRCH) {
+    auto probe = KillProcessGroup(pgid, 0);
+    const bool group_absent = (probe && probe->value() == ESRCH);
+    if (!group_absent) {
+      CleanupProcessGroupSend(pgid, wid, "DisconnectClient(graceful)", SIGKILL);
+    }
+    return;
+  }
+  // The worker is still running its own shutdown. Nothing is orphaned while the
+  // group leader is alive, so just give up once the polling budget is exhausted.
+  if (polls_remaining <= 0) {
+    RAY_LOG(INFO).WithField(wid)
+        << "DisconnectClient(graceful): worker pid=" << worker_pid
+        << " still alive after process-group cleanup polling budget; skipping sweep.";
+    return;
+  }
+  timer->expires_from_now(boost::posix_time::milliseconds(kGracefulPgCleanupPollMs));
+  timer->async_wait([this, timer, worker_pid, pgid, wid, polls_remaining](
+                        const boost::system::error_code &ec) {
+    if (!ec) {
+      SchedulePostExitProcessGroupCleanup(
+          timer, worker_pid, pgid, wid, polls_remaining - 1);
+    }
+  });
+}
+#endif
 
 void NodeManager::ProcessDisconnectClientMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
