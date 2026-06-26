@@ -1,6 +1,6 @@
 import itertools
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -29,7 +29,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_ope
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
-from ray.data._internal.logical.interfaces import PhysicalPlan, Rule
+from ray.data._internal.logical.interfaces import LogicalOperator, PhysicalPlan, Rule
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
     AbstractMap,
@@ -114,6 +114,9 @@ class FuseOperators(Rule):
             and len(upstream_ops) == 1
             and isinstance(upstream_ops[0], ShuffleReduceOp)
             and upstream_ops[0]._fused_output_map_transformer is None
+            and are_op_remote_args_compatible(
+                self._op_map[upstream_ops[0]], self._op_map[dag]
+            )
         ):
             dag = self._get_fused_map_into_shuffle_reduce_operator(dag, upstream_ops[0])
 
@@ -809,8 +812,8 @@ class FuseOperators(Rule):
 
 
 def are_op_remote_args_compatible(
-    up_logical_op: AbstractMap,
-    down_logical_op: Union[AbstractMap, AbstractAllToAll],
+    up_logical_op: LogicalOperator,
+    down_logical_op: LogicalOperator,
 ) -> bool:
     """Check whether two logical ops can be fused based on their Ray remote args.
 
@@ -821,10 +824,9 @@ def are_op_remote_args_compatible(
     # Do not fuse if either op specifies a `ray_remote_args_fn`,
     # since it is not known whether the generated args will be compatible.
     # Only `AbstractMap` ops carry a `ray_remote_args_fn`.
-    if up_logical_op.ray_remote_args_fn or (
-        isinstance(down_logical_op, AbstractMap) and down_logical_op.ray_remote_args_fn
-    ):
-        return False
+    for logical_op in (up_logical_op, down_logical_op):
+        if isinstance(logical_op, AbstractMap) and logical_op.ray_remote_args_fn:
+            return False
 
     # Only fuse if the ops' remote arguments are compatible.
     return are_remote_args_compatible(
