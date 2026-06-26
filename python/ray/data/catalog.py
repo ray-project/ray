@@ -8,7 +8,7 @@ credentials) for a reader such as :func:`ray.data.read_delta`,
 import logging
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import KW_ONLY, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
@@ -97,6 +97,7 @@ class Catalog(ABC):
 
 
 @PublicAPI(stability="alpha")
+@dataclass(frozen=True)
 class DatabricksUnityCatalog(Catalog):
     """Databricks Unity Catalog connector.
 
@@ -129,26 +130,32 @@ class DatabricksUnityCatalog(Catalog):
         ... )
     """
 
-    def __init__(
-        self,
-        url: Optional[str] = None,
-        token: Optional[str] = None,
-        *,
-        credential_provider: Optional["DatabricksCredentialProvider"] = None,
-        region: Optional[str] = None,
-    ):
+    _: KW_ONLY
+    url: Optional[str] = None
+    # `repr=False` keeps the token/provider out of the auto-generated repr.
+    token: Optional[str] = field(default=None, repr=False)
+    credential_provider: Optional["DatabricksCredentialProvider"] = field(
+        default=None, repr=False
+    )
+    region: Optional[str] = None
+
+    def __post_init__(self):
         from ray.data._internal.datasource.databricks_credentials import (
             UnityCatalogCredentialConfig,
             resolve_credential_provider,
         )
 
-        self._provider = resolve_credential_provider(
+        # Derived (not init args); `object.__setattr__` is how a frozen dataclass
+        # assigns inside __post_init__.
+        provider = resolve_credential_provider(
             UnityCatalogCredentialConfig(
-                credential_provider=credential_provider, url=url, token=token
+                credential_provider=self.credential_provider,
+                url=self.url,
+                token=self.token,
             )
         )
-        self._region = region
-        self._base_url = _normalize_host(self._provider.get_host())
+        object.__setattr__(self, "_provider", provider)
+        object.__setattr__(self, "_base_url", _normalize_host(provider.get_host()))
 
     # ---- Catalog interface -------------------------------------------------
     def resolve(self, table: str, *, reader: ReaderFormat) -> ResolvedSource:
@@ -313,9 +320,9 @@ class DatabricksUnityCatalog(Catalog):
                 _AWS_SECRET_ACCESS_KEY: aws.secret_access_key,
                 _AWS_SESSION_TOKEN: aws.session_token,
             }
-            if self._region:
-                env[_AWS_REGION] = self._region
-                env[_AWS_DEFAULT_REGION] = self._region
+            if self.region:
+                env[_AWS_REGION] = self.region
+                env[_AWS_DEFAULT_REGION] = self.region
             return env
 
         if creds.azure_user_delegation_sas is not None:
@@ -353,7 +360,7 @@ class DatabricksUnityCatalog(Catalog):
             ray.init(runtime_env={"env_vars": dict(env_vars)})
 
     def _build_s3_filesystem(self, aws: "AwsCredentials") -> "pyarrow.fs.FileSystem":
-        if not self._region:
+        if not self.region:
             raise ValueError(
                 "The 'region' parameter is required for AWS S3 access. "
                 "Please specify the AWS region (e.g., region='us-west-2')."
@@ -364,7 +371,7 @@ class DatabricksUnityCatalog(Catalog):
             access_key=aws.access_key_id,
             secret_key=aws.secret_access_key,
             session_token=aws.session_token,
-            region=self._region,
+            region=self.region,
         )
 
     @staticmethod

@@ -355,7 +355,7 @@ def test_read_iceberg_explicit_catalog_kwargs_take_precedence():
 def test_unity_catalog_is_picklable(uc_catalog):
     restored = pickle.loads(pickle.dumps(uc_catalog))
     assert isinstance(restored, DatabricksUnityCatalog)
-    assert restored._region == "us-west-2"
+    assert restored.region == "us-west-2"
 
 
 def test_resolved_source_with_filesystem_is_picklable():
