@@ -25,7 +25,6 @@
 #include "ray/common/buffer.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/actor_management/actor_manager.h"
-#include "ray/util/time.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -635,46 +634,36 @@ bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
 
 Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
                                            ObjectID *object_id_out) {
-  auto backpressure_threshold = 0;
+  Status read_status;
+  ConsumptionUpdateCallback consumption_update_callback;
+  int64_t consumption_total_consumed = 0;
+
   {
-    absl::MutexLock lock(&mu_);
-    auto it = submissible_tasks_.find(generator_id.TaskId());
-    if (it != submissible_tasks_.end()) {
-      backpressure_threshold = it->second.spec_.GeneratorBackpressureNumObjects();
-    }
-  }
+    absl::MutexLock lock(&object_ref_stream_ops_mu_);
+    RAY_CHECK(object_id_out != nullptr);
+    auto stream_it = object_ref_streams_.find(generator_id);
+    RAY_CHECK(stream_it != object_ref_streams_.end())
+        << "TryReadObjectRefStream API can be used only when the stream has been "
+           "created "
+           "and not removed.";
+    read_status = stream_it->second.TryReadNextItem(object_id_out);
 
-  absl::MutexLock lock(&object_ref_stream_ops_mu_);
-  RAY_CHECK(object_id_out != nullptr);
-  auto stream_it = object_ref_streams_.find(generator_id);
-  RAY_CHECK(stream_it != object_ref_streams_.end())
-      << "TryReadObjectRefStream API can be used only when the stream has been "
-         "created "
-         "and not removed.";
-  auto status = stream_it->second.TryReadNextItem(object_id_out);
-
-  /// If you could read the next item, signal the executor to resume
-  /// if necessary.
-  if (status.ok()) {
-    auto total_generated = stream_it->second.TotalNumObjectWritten();
-    auto total_consumed = stream_it->second.TotalNumObjectConsumed();
-    auto total_unconsumed = total_generated - total_consumed;
-    if (backpressure_threshold != -1 && total_unconsumed < backpressure_threshold) {
-      auto it = ref_stream_execution_signal_callbacks_.find(generator_id);
-      if (it != ref_stream_execution_signal_callbacks_.end()) {
-        for (const auto &execution_signal : it->second) {
-          RAY_LOG(DEBUG) << "The task for a stream " << generator_id
-                         << " should resume. total_generated: " << total_generated
-                         << ". total_consumed: " << total_consumed
-                         << ". threshold: " << backpressure_threshold;
-          execution_signal(Status::OK(), total_consumed);
-        }
-        it->second.clear();
+    /// If you could read the next item, signal the executor to resume
+    /// if necessary.
+    if (read_status.ok() && !object_id_out->IsNil()) {
+      auto total_consumed = stream_it->second.TotalNumObjectConsumed();
+      auto consumption_it = ref_stream_consumption_update_callbacks_.find(generator_id);
+      if (consumption_it != ref_stream_consumption_update_callbacks_.end()) {
+        consumption_update_callback = consumption_it->second;
+        consumption_total_consumed = total_consumed;
       }
     }
   }
 
-  return status;
+  if (consumption_update_callback) {
+    consumption_update_callback(Status::OK(), consumption_total_consumed);
+  }
+  return read_status;
 }
 
 bool TaskManager::StreamingGeneratorIsFinished(const ObjectID &generator_id) const {
@@ -695,7 +684,7 @@ bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
     RAY_LOG(DEBUG) << "Deleting execution signal callbacks for generator "
                    << generator_id;
     for (const auto &execution_signal : signal_it->second) {
-      execution_signal(Status::NotFound("Stream is deleted."), -1);
+      execution_signal(Status::NotFound("Stream is deleted."));
     }
     // We may still receive more generator return reports in the future, if the
     // generator task is still running or is retried. They will get the
@@ -705,7 +694,14 @@ bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
 
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
+    ref_stream_consumption_update_callbacks_.erase(generator_id);
     return true;
+  }
+
+  auto consumption_it = ref_stream_consumption_update_callbacks_.find(generator_id);
+  if (consumption_it != ref_stream_consumption_update_callbacks_.end()) {
+    consumption_it->second(Status::NotFound("Stream is deleted."), -1);
+    ref_stream_consumption_update_callbacks_.erase(consumption_it);
   }
 
   // Remove any unconsumed refs from the stream metadata in-memory store.
@@ -778,7 +774,8 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
 
 bool TaskManager::HandleReportGeneratorItemReturns(
     const rpc::ReportGeneratorItemReturnsRequest &request,
-    const ExecutionSignalCallback &execution_signal_callback) {
+    const ExecutionSignalCallback &execution_signal_callback,
+    const ConsumptionUpdateCallback &consumption_update_callback) {
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
   const auto &task_id = generator_id.TaskId();
   int64_t item_index = request.item_index();
@@ -792,14 +789,15 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     if (it != submissible_tasks_.end()) {
-      backpressure_threshold = it->second.spec_.GeneratorBackpressureNumObjects();
+      backpressure_threshold =
+          it->second.spec_.EffectiveStreamingGeneratorOwnerBackpressureThreshold();
       if (it->second.spec_.AttemptNumber() > attempt_number) {
         // Generator task reports can arrive at any time. If the first attempt
         // fails, we may receive a report from the first executor after the
         // second attempt has started. In this case, we should ignore the first
         // attempt.
         execution_signal_callback(
-            Status::NotFound("Stale object reports from the previous attempt."), -1);
+            Status::NotFound("Stale object reports from the previous attempt."));
         return false;
       }
     }
@@ -813,8 +811,19 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
     // Stream has been already deleted. Do not handle it.
-    execution_signal_callback(Status::NotFound("Stream is already deleted"), -1);
+    execution_signal_callback(Status::NotFound("Stream is already deleted"));
     return false;
+  }
+  if (backpressure_threshold != -1) {
+    auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
+    if (signal_it == ref_stream_execution_signal_callbacks_.end()) {
+      execution_signal_callback(Status::NotFound("Stream is deleted."));
+      return false;
+    }
+    if (consumption_update_callback) {
+      ref_stream_consumption_update_callbacks_[generator_id] =
+          consumption_update_callback;
+    }
   }
   size_t num_objects_written = 0;
 
@@ -848,38 +857,20 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   }
 
   // Handle backpressure if needed.
-  auto total_generated = stream_it->second.TotalNumObjectWritten();
   auto total_consumed = stream_it->second.TotalNumObjectConsumed();
   auto last_item_index = request.returned_objects_size() == 0
                              ? item_index
                              : item_index + request.returned_objects_size() - 1;
 
   if (stream_it->second.IsObjectConsumed(last_item_index)) {
-    execution_signal_callback(Status::OK(), total_consumed);
+    execution_signal_callback(Status::OK());
+    if (backpressure_threshold != -1 && consumption_update_callback) {
+      consumption_update_callback(Status::OK(), total_consumed);
+    }
     return false;
   }
 
-  // Otherwise, follow the regular backpressure logic.
-  // NOTE, here we check `last_item_index - last_consumed_index >=
-  // backpressure_threshold`, instead of the number of unconsumed items, because we may
-  // receive the `HandleReportGeneratorItemReturns` requests out of order.
-  if (backpressure_threshold != -1 &&
-      (last_item_index - stream_it->second.LastConsumedIndex()) >=
-          backpressure_threshold) {
-    RAY_LOG(DEBUG) << "Stream " << generator_id
-                   << " is backpressured. total_generated: " << total_generated
-                   << ". total_consumed: " << total_consumed
-                   << ". threshold: " << backpressure_threshold;
-    auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
-    if (signal_it == ref_stream_execution_signal_callbacks_.end()) {
-      execution_signal_callback(Status::NotFound("Stream is deleted."), -1);
-    } else {
-      signal_it->second.push_back(execution_signal_callback);
-    }
-  } else {
-    // No need to backpressure.
-    execution_signal_callback(Status::OK(), total_consumed);
-  }
+  execution_signal_callback(Status::OK());
   return num_objects_written != 0;
 }
 
@@ -1224,7 +1215,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
             push_error_callback_(task_entry.spec_.JobId(),
                                  rpc::ErrorType_Name(error_info.error_type()),
                                  error_message,
-                                 current_time_ms());
+                                 clock_.NowUnixMillis());
         if (!push_error_status.ok()) {
           RAY_LOG(ERROR) << "Failed to push error to driver for task " << spec.TaskId();
         }
@@ -1322,12 +1313,13 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     auto debug_str = spec.DebugString();
     if (!absl::StrContains(debug_str, "__ray_terminate__") &&
         (num_failure_logs_ < kTaskFailureThrottlingThreshold ||
-         (current_time_ms() - last_log_time_ms_) > kTaskFailureLoggingFrequencyMillis)) {
+         (clock_.SteadyNowMillis() - last_log_time_ms_) >
+             kTaskFailureLoggingFrequencyMillis)) {
       if (num_failure_logs_++ == kTaskFailureThrottlingThreshold) {
         RAY_LOG(WARNING) << "Too many failure logs, throttling to once every "
                          << kTaskFailureLoggingFrequencyMillis << " millis.";
       }
-      last_log_time_ms_ = current_time_ms();
+      last_log_time_ms_ = clock_.SteadyNowMillis();
       if (status != nullptr) {
         RAY_LOG(INFO) << "Task failed: " << *status << ": " << spec.DebugString();
       } else {

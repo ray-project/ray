@@ -65,7 +65,12 @@ class TaskReceiver {
         task_event_buffer_(task_event_buffer),
         waiter_(actor_task_execution_arg_waiter),
         initialize_thread_callback_(std::move(initialize_thread_callback)),
-        normal_task_execution_queue_(std::make_unique<NormalTaskExecutionQueue>()),
+        execute_task_callback_([this](TaskToExecute &task) { ExecuteTask(task); }),
+        cancel_task_callback_([this](const TaskToExecute &task, const Status &status) {
+          CancelTask(task, status);
+        }),
+        normal_task_execution_queue_(std::make_unique<NormalTaskExecutionQueue>(
+            execute_task_callback_, cancel_task_callback_)),
         pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()),
         fiber_state_manager_(nullptr) {}
 
@@ -116,6 +121,14 @@ class TaskReceiver {
   std::shared_ptr<BoundedExecutor> GetAsyncReplyExecutor();
   void StopAsyncReplyExecutor();
 
+  /// Execute a task that was queued for execution. Invoked by the execution queues via
+  /// `execute_task_callback_`. Reads all per-request state from `task`.
+  void ExecuteTask(TaskToExecute &task);
+
+  /// Reply that a queued task was canceled before it started executing. Invoked by the
+  /// execution queues via `cancel_task_callback_`. Reads per-request state from `task`.
+  void CancelTask(const TaskToExecute &task, const Status &status);
+
   // True once shutdown begins. Requests to execute new tasks will be rejected.
   std::atomic<bool> stopping_ = false;
 
@@ -132,6 +145,12 @@ class TaskReceiver {
 
   /// The language-specific callback function that initializes threads.
   std::function<std::function<void()>()> initialize_thread_callback_;
+
+  /// Queue-level callbacks passed to each execution queue at construction time. They
+  /// capture only `this` and read all per-request state from the TaskToExecute argument.
+  /// Declared before the queues so they are constructed first and outlive them.
+  ExecuteTaskCallback execute_task_callback_;
+  CancelTaskCallback cancel_task_callback_;
 
   /// Queue of actor tasks waiting to execute, keyed on the ID of the worker that
   /// submitted the task.

@@ -17,7 +17,11 @@ import torch
 from pydantic import BaseModel, Field, root_validator
 
 if TYPE_CHECKING:
-    from vllm.inputs import MultiModalDataDict
+    try:
+        # vLLM >= 0.19: MultiModalDataDict moved to vllm.inputs.llm
+        from vllm.inputs.llm import MultiModalDataDict
+    except ImportError:
+        from vllm.inputs import MultiModalDataDict
 else:
     MultiModalDataDict = Any
 
@@ -45,6 +49,34 @@ logger = logging.getLogger(__name__)
 
 # Length of prompt snippet to surface in case of recoverable error
 _MAX_PROMPT_LENGTH_IN_ERROR = 500
+
+
+# Module-level cache for vLLM prompt classes. Populated on first call to
+# _get_vllm_prompt_classes() so that import resolution (and the try/except)
+# only happens once rather than on every inference request.
+_VLLM_PROMPT_CLASSES = None
+
+
+def _get_vllm_prompt_classes():
+    """Return (TokensPrompt, TextPrompt) compatible with both old and new vLLM.
+
+    Starting from vLLM >= 0.19, the ``data.py`` submodule was removed and
+    ``TokensPrompt`` / ``TextPrompt`` were moved to ``vllm.inputs.llm``.
+    They are no longer re-exported from ``vllm.inputs`` directly.
+    This helper abstracts that difference so the rest of the code works
+    with any supported vLLM version.
+    """
+    global _VLLM_PROMPT_CLASSES
+    if _VLLM_PROMPT_CLASSES is None:
+        try:
+            # vLLM >= 0.19: classes live in vllm.inputs.llm and are NOT
+            # re-exported from vllm.inputs.__init__.
+            from vllm.inputs.llm import TextPrompt, TokensPrompt
+        except ImportError:
+            # vLLM < 0.19: classes were re-exported from vllm.inputs directly.
+            from vllm.inputs import TextPrompt, TokensPrompt  # type: ignore[no-redef]
+        _VLLM_PROMPT_CLASSES = (TokensPrompt, TextPrompt)
+    return _VLLM_PROMPT_CLASSES
 
 
 class vLLMEngineRequest(BaseModel):
@@ -509,10 +541,16 @@ class vLLMEngineWrapper:
             The output of the request.
         """
 
-        import vllm
+        import vllm  # noqa: F401  (needed for vllm.outputs, vllm.SamplingParams, etc.)
+
+        # Use the compatibility helper to support both vLLM < 0.19 (where
+        # TokensPrompt/TextPrompt were exported from vllm.inputs) and
+        # vLLM >= 0.19 (where they live in vllm.inputs.llm and are NOT
+        # re-exported). See: https://github.com/ray-project/ray/issues/64275
+        TokensPrompt, TextPrompt = _get_vllm_prompt_classes()
 
         if request.prompt_token_ids is not None:
-            llm_prompt = vllm.inputs.TokensPrompt(
+            llm_prompt = TokensPrompt(
                 prompt_token_ids=request.prompt_token_ids,
                 multi_modal_data=request.multimodal_data,
                 mm_processor_kwargs=request.mm_processor_kwargs,
@@ -520,7 +558,7 @@ class vLLMEngineWrapper:
             )
         else:
             assert request.prompt
-            llm_prompt = vllm.inputs.TextPrompt(
+            llm_prompt = TextPrompt(
                 prompt=request.prompt,
                 multi_modal_data=request.multimodal_data,
                 mm_processor_kwargs=request.mm_processor_kwargs,
