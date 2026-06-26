@@ -55,11 +55,19 @@ To view the full list of supported file formats, see the
 
         .. testcode::
 
+            import pyarrow.fs
+
             import ray
             from ray.data.expressions import download
 
             ds = ray.data.read_parquet("s3://anonymous@ray-example-data/imagenet/metadata_file.parquet")
-            ds = ds.with_column("bytes", download("image_url"))
+            ds = ds.with_column(
+                "bytes",
+                download(
+                    "image_url",
+                    filesystem=pyarrow.fs.S3FileSystem(anonymous=True, region="us-west-2"),
+                ),
+            )
 
             print(ds.schema())
 

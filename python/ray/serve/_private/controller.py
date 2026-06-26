@@ -55,7 +55,6 @@ from ray.serve._private.controller_health_metrics_tracker import (
 )
 from ray.serve._private.default_impl import (
     create_cluster_node_info_cache,
-    get_proxy_actor_class,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import (
@@ -64,6 +63,7 @@ from ray.serve._private.deployment_state import (
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.exceptions import ExternalScalerDisabledError
 from ray.serve._private.grpc_util import set_proxy_default_grpc_options
+from ray.serve._private.haproxy import HAProxyManager
 from ray.serve._private.http_util import (
     configure_http_options_with_defaults,
 )
@@ -74,6 +74,7 @@ from ray.serve._private.logging_utils import (
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.node_port_manager import NodePortManager
+from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
@@ -225,7 +226,7 @@ class ServeController:
             cluster_node_info_cache=self.cluster_node_info_cache,
             logging_config=self.global_logging_config,
             grpc_options=set_proxy_default_grpc_options(grpc_options),
-            proxy_actor_class=get_proxy_actor_class(),
+            proxy_actor_class=HAProxyManager if self._ha_proxy_enabled else ProxyActor,
             running_native_proxies=self._ha_proxy_enabled,
         )
         # We modify the HTTP and gRPC options above, so delete them to avoid
