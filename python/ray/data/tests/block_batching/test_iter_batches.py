@@ -130,12 +130,12 @@ def test_restore_original_order_stats():
 def test_report_batch_timings_overlap_attribution():
     stats = DatasetStats(metadata={}, parent=None)
     batch_iterator = BatchIterator(iter([]), stats=stats)
-    timings = BatchTimings(num_rows=8)
+    timings = BatchTimings()
     timings.production_wait = TimeSpan(start_s=10.0, end_s=20.0)
     timings.batching = TimeSpan(start_s=20.0, end_s=30.0)
     timings.format = TimeSpan(start_s=30.0, end_s=40.0)
     timings.finalize = TimeSpan(start_s=50.0, end_s=60.0)
-    batch = Batch(BatchMetadata(batch_idx=0, timings=timings), None)
+    batch = Batch(BatchMetadata(batch_idx=0, num_rows=8, timings=timings), None)
 
     batch_iterator._report_batch_timings(
         batch, blocked_start_s=15.0, blocked_end_s=35.0
@@ -173,14 +173,14 @@ def _make_batch_with_timings(
     num_rows=0,
 ):
     """Helper to construct a Batch with specific stage timing windows."""
-    timings = BatchTimings(num_rows=num_rows)
+    timings = BatchTimings()
     timings.production_wait = _make_span(production_wait_start, production_wait_end)
     timings.data_transfer = _make_span(data_transfer_start, data_transfer_end)
     timings.batching = _make_span(batching_start, batching_end)
     timings.format = _make_span(format_start, format_end)
     timings.collate = _make_span(collate_start, collate_end)
     timings.finalize = _make_span(finalize_start, finalize_end)
-    return Batch(BatchMetadata(batch_idx=0, timings=timings), None)
+    return Batch(BatchMetadata(batch_idx=0, num_rows=num_rows, timings=timings), None)
 
 
 def _make_report_iterator(stats):
@@ -442,14 +442,14 @@ class TestEndToEndTimingPropagation:
 
     def test_batch_carries_timings_through_pipeline(self):
         """A Batch's metadata.timings carries all stage windows."""
-        timings = BatchTimings(num_rows=50)
+        timings = BatchTimings()
         timings.production_wait = TimeSpan(start_s=1.0, end_s=2.0)
         timings.batching = TimeSpan(start_s=2.0, end_s=3.0)
         timings.format = TimeSpan(start_s=3.0, end_s=4.0)
         timings.collate = TimeSpan(start_s=4.0, end_s=5.0)
         timings.finalize = TimeSpan(start_s=5.0, end_s=6.0)
 
-        batch = Batch(BatchMetadata(batch_idx=0, timings=timings), None)
+        batch = Batch(BatchMetadata(batch_idx=0, num_rows=50, timings=timings), None)
 
         # Verify all stages are accessible via stages() iterator
         stage_dict = dict(batch.metadata.timings.stages())
@@ -459,7 +459,7 @@ class TestEndToEndTimingPropagation:
         assert stage_dict["format"].start_s == 3.0
         assert stage_dict["collate"].end_s == 5.0
         assert stage_dict["finalize"].start_s == 5.0
-        assert batch.metadata.timings.num_rows == 50
+        assert batch.metadata.num_rows == 50
 
     def test_full_pipeline_attribution(self):
         """End-to-end: all 5 stages with realistic timing, full overlap."""

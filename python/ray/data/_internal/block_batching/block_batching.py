@@ -1,9 +1,6 @@
 from typing import Callable, Iterator, Optional, TypeVar
 
-from ray.data._internal.block_batching.interfaces import (
-    BatchTimings,
-    BlockWithTiming,
-)
+from ray.data._internal.block_batching.interfaces import BlockFetchResult
 from ray.data._internal.block_batching.util import (
     _MappingIterator,
     blocks_to_batches,
@@ -33,13 +30,11 @@ def batch_blocks(
     This function takes in an iterator of already fetched blocks. Consequently, this
     function doesn't support block prefetching.
     """
-    # Wrap raw blocks in BlockWithTiming with zero timing so that
-    # _BatchingIterator receives a uniform type. Use map() instead of a
-    # generator expression to avoid holding references to blocks.
-    def _wrap_block(b):
-        return BlockWithTiming(block=b, timings=BatchTimings())
-
-    wrapped_blocks = map(_wrap_block, blocks)
+    # Wrap raw blocks in BlockFetchResult with no fetch timing (these
+    # blocks were already resolved before entering the pipeline).
+    # Use map() instead of a generator expression to avoid holding
+    # references to blocks.
+    wrapped_blocks = map(lambda b: BlockFetchResult(block=b), blocks)
 
     # Build the processing pipeline
     batch_iter = format_batches(

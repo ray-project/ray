@@ -8,6 +8,30 @@ from ray.types import ObjectRef
 
 
 @dataclass
+class BlockFetchTiming:
+    """Fetch timing for a single block (production_wait + data_transfer).
+
+    Produced by :func:`resolve_block_refs` and merged into
+    :class:`BatchTimings` by :class:`_BatchingIterator`.
+    """
+
+    production_wait: Optional[TimeSpan] = None
+    data_transfer: Optional[TimeSpan] = None
+
+
+@dataclass
+class BlockFetchResult:
+    """A resolved block paired with its per-block fetch timing.
+
+    When ``fetch`` is ``None``, no fetch timing was recorded (e.g. blocks
+    that were already resolved before entering the pipeline).
+    """
+
+    block: Block
+    fetch: Optional[BlockFetchTiming] = None
+
+
+@dataclass
 class BatchTimings:
     """Per-batch pipeline-stage timing windows for overlap-based attribution.
 
@@ -19,16 +43,6 @@ class BatchTimings:
 
     A field value of ``None`` indicates the stage did not execute for this
     batch (e.g. no ``collate_fn`` provided).
-
-    Attributes:
-        production_wait: Waiting for upstream data production (next on
-            the ref bundle iterator).
-        data_transfer: Cross-node transfer via ``ray.get()``.
-        batching: Assembling blocks into a batch via ``_batcher.next_batch()``.
-        format: Converting the batch to the requested format (numpy, pandas…).
-        collate: Running the user-provided ``collate_fn``.
-        finalize: Running the user-provided ``finalize_fn`` (e.g. host→device).
-        num_rows: Number of rows in this batch (for ``iter_rows_total``).
     """
 
     production_wait: Optional[TimeSpan] = None
@@ -37,7 +51,6 @@ class BatchTimings:
     format: Optional[TimeSpan] = None
     collate: Optional[TimeSpan] = None
     finalize: Optional[TimeSpan] = None
-    num_rows: int = 0
 
     def stages(self) -> Iterable[Tuple[str, Optional[TimeSpan]]]:
         """Iterate over ``(name, timing)`` pairs for all pipeline stages."""
@@ -50,14 +63,10 @@ class BatchTimings:
             ("finalize", self.finalize),
         )
 
-    def merge_fetch(self, other: "BatchTimings") -> None:
-        """Merge fetch timings from another batch into this one.
-
-        Expands each fetch sub-stage window to span from the earliest
-        block's start to the latest block's end.
-        """
-        self.production_wait = _merge_span(self.production_wait, other.production_wait)
-        self.data_transfer = _merge_span(self.data_transfer, other.data_transfer)
+    def merge_fetch(self, src: BlockFetchTiming) -> None:
+        """Merge per-block fetch timings into this batch's fetch windows."""
+        self.production_wait = _merge_span(self.production_wait, src.production_wait)
+        self.data_transfer = _merge_span(self.data_transfer, src.data_transfer)
 
 
 def _merge_span(dst: Optional[TimeSpan], src: Optional[TimeSpan]) -> Optional[TimeSpan]:
@@ -78,28 +87,18 @@ def _merge_span(dst: Optional[TimeSpan], src: Optional[TimeSpan]) -> Optional[Ti
 
 
 @dataclass
-class BlockWithTiming:
-    """A resolved block paired with its fetch timing window.
-
-    Produced by :func:`resolve_block_refs` so that downstream pipeline stages
-    can track how long each block took to fetch (upstream wait + ``ray.get()``).
-    """
-
-    block: Block
-    timings: BatchTimings = field(default_factory=BatchTimings)
-
-
-@dataclass
 class BatchMetadata:
     """Metadata associated with a batch.
 
     Attributes:
         batch_idx: The global index of this batch so that downstream operations can
             maintain ordering.
+        num_rows: Number of rows in this batch (for ``iter_rows_total``).
         timings: Pipeline-stage timing windows for this batch.
     """
 
     batch_idx: int
+    num_rows: int = 0
     timings: BatchTimings = field(default_factory=BatchTimings)
 
 

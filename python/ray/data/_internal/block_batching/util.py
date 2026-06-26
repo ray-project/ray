@@ -22,8 +22,9 @@ from ray.data._internal.block_batching.interfaces import (
     Batch,
     BatchMetadata,
     BatchTimings,
+    BlockFetchResult,
+    BlockFetchTiming,
     BlockPrefetcher,
-    BlockWithTiming,
     CollatedBatch,
 )
 from ray.data._internal.stats import DatasetStats, _timed
@@ -174,10 +175,10 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
 def resolve_block_refs(
     block_ref_iter: Iterator[ObjectRef[Block]],
     stats: Optional[DatasetStats] = None,
-) -> Iterator[BlockWithTiming]:
+) -> Iterator[BlockFetchResult]:
     """Resolves the block references for each logical batch.
 
-    Each resolved block is wrapped in a :class:`BlockWithTiming` that carries
+    Each resolved block is wrapped in a :class:`BlockFetchResult` that carries
     the per-block fetch window.  The fetch window spans from the moment we
     start waiting for the upstream iterator (blocked on the data pipeline or
     cross-node transfer) until ``ray.get()`` returns the resolved block.
@@ -190,21 +191,19 @@ def resolve_block_refs(
             cumulative fetch time.
 
     Yields:
-        BlockWithTiming: Each resolved block with its fetch timing window.
+        BlockFetchResult: Each resolved block with its fetch timing window.
     """
     hits = 0
     misses = 0
     unknowns = 0
 
     while True:
-        timings = BatchTimings()
         # (1) production_wait: blocked on upstream data pipeline
         with _timed(stats.iter_get_ref_bundles_s if stats else None) as prod_span:
             try:
                 block_ref = next(block_ref_iter)
             except StopIteration:
                 break
-        timings.production_wait = prod_span
 
         current_hit, current_miss, current_unknown = _calculate_ref_hits([block_ref])
         hits += current_hit
@@ -216,9 +215,9 @@ def resolve_block_refs(
         # in a single `ray.get()` call.
         with _timed(stats.iter_get_s if stats else None) as xfer_span:
             block = ray.get(block_ref)
-        timings.data_transfer = xfer_span
 
-        yield BlockWithTiming(block=block, timings=timings)
+        fetch = BlockFetchTiming(production_wait=prod_span, data_transfer=xfer_span)
+        yield BlockFetchResult(block=block, fetch=fetch)
 
     if stats:
         stats.iter_blocks_local = hits
@@ -227,7 +226,7 @@ def resolve_block_refs(
 
 
 def blocks_to_batches(
-    block_iter: Iterator[BlockWithTiming],
+    block_iter: Iterator[BlockFetchResult],
     stats: Optional[DatasetStats] = None,
     batch_size: Optional[int] = None,
     drop_last: bool = False,
@@ -256,7 +255,7 @@ class _BatchingIterator(Iterator[Batch]):
 
     def __init__(
         self,
-        block_iter: Iterator[BlockWithTiming],
+        block_iter: Iterator[BlockFetchResult],
         stats: Optional[DatasetStats] = None,
         batch_size: Optional[int] = None,
         drop_last: bool = False,
@@ -300,13 +299,11 @@ class _BatchingIterator(Iterator[Batch]):
                 res = Batch(
                     metadata=BatchMetadata(
                         batch_idx=self._global_counter,
+                        num_rows=BlockAccessor.for_block(next_batch).num_rows(),
                         timings=self._pending_timings,
                     ),
                     data=next_batch,
                 )
-                res.metadata.timings.num_rows = BlockAccessor.for_block(
-                    next_batch
-                ).num_rows()
                 self._pending_timings = BatchTimings()
 
                 self._global_counter += 1
@@ -316,9 +313,10 @@ class _BatchingIterator(Iterator[Batch]):
                 # If can't yield try adding more blocks
                 try:
                     # NOTE: Block ref is released immediately
-                    block_with_timing = next(self._block_iter)
-                    self._pending_timings.merge_fetch(block_with_timing.timings)
-                    self._batcher.add(block_with_timing.block)
+                    block_result = next(self._block_iter)
+                    if block_result.fetch is not None:
+                        self._pending_timings.merge_fetch(block_result.fetch)
+                    self._batcher.add(block_result.block)
                 except StopIteration:
                     self._batcher.done_adding()
                     self._done_adding = True

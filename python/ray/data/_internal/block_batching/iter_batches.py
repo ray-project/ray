@@ -307,7 +307,7 @@ class BatchIterator:
             if overlap_s > 0:
                 getattr(self._stats, f"iter_blocked_{name}_s").add(overlap_s)
         self._stats.iter_batches_total += 1
-        self._stats.iter_rows_total += timings.num_rows
+        self._stats.iter_rows_total += batch.metadata.num_rows
 
     def __iter__(self) -> Iterator[DataBatch]:
         return self._iter_batches()

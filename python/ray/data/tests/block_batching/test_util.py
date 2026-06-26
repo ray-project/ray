@@ -16,8 +16,7 @@ import ray
 from ray.data._internal.block_batching.interfaces import (
     Batch,
     BatchMetadata,
-    BatchTimings,
-    BlockWithTiming,
+    BlockFetchResult,
 )
 from ray.data._internal.block_batching.util import (
     _calculate_ref_hits,
@@ -43,7 +42,7 @@ def test_resolve_block_refs(ray_start_regular_shared):
 
     resolved_iter = resolve_block_refs(iter(block_refs))
     resolved = list(resolved_iter)
-    assert all(isinstance(b, BlockWithTiming) for b in resolved)
+    assert all(isinstance(b, BlockFetchResult) for b in resolved)
     assert [b.block for b in resolved] == [0, 1, 2]
 
 
@@ -52,10 +51,8 @@ def test_resolve_block_refs(ray_start_regular_shared):
 def test_blocks_to_batches(block_size, drop_last):
     num_blocks = 5
     block_iter = block_generator(num_rows=block_size, num_blocks=num_blocks)
-    # Wrap raw blocks in BlockWithTiming as blocks_to_batches now expects
-    wrapped_blocks = (
-        BlockWithTiming(block=b, timings=BatchTimings()) for b in block_iter
-    )
+    # Wrap raw blocks in BlockFetchResult (fetch=None) as blocks_to_batches now expects
+    wrapped_blocks = (BlockFetchResult(block=b) for b in block_iter)
 
     batch_size = 3
     batch_iter = list(
