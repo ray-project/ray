@@ -6,14 +6,30 @@ import pytest
 from pyarrow.fs import LocalFileSystem
 
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
+    FileChunker,
     LineDelimitedFileChunker,
     ParquetFileChunker,
     WholeFileChunker,
 )
 from ray.data._internal.datasource_v2.listing.file_indexer import (
+    FileInfo,
     NonSamplingFileIndexer,
 )
 from ray.data._internal.datasource_v2.listing.file_pruners import FileExtensionPruner
+
+
+class _CountingChunker(FileChunker):
+    """Fake chunker that emits a fixed number of chunks per file and reports it
+    reads metadata, so the indexer takes the threaded fan-out path."""
+
+    reads_file_metadata = True
+
+    def __init__(self, chunks_per_file: int):
+        self._chunks_per_file = chunks_per_file
+
+    def generate_chunk_metadatas(self, path, file_size, filesystem=None):
+        for i in range(self._chunks_per_file):
+            yield {"chunk_index": i}, file_size
 
 
 def _list_all(indexer, paths, **kwargs):
@@ -301,6 +317,33 @@ class TestFileChunkerIntegration:
         # Byte ranges must tile the file exactly.
         assert rows[0][2]["chunk_byte_start_idx"] == 0
         assert rows[-1][2]["chunk_byte_end_idx"] == 10_000
+
+    def test_parallel_chunking_preserves_discovery_order(self):
+        """Regression: with num_workers>1 and preserve_order, a multi-chunk-per-
+        file chunker's records stay grouped per file in discovery order.
+
+        ``make_async_gen`` only preserves order for a 1:1 map, so the indexer
+        must emit one record list per file (not yield chunk rows individually) --
+        otherwise its round-robin merge interleaves chunks across the files
+        processed concurrently, e.g. f0,f1,f2,f3,f0,f1,... instead of f0,f0,f0,...
+        """
+        chunker = _CountingChunker(chunks_per_file=3)
+        indexer = NonSamplingFileIndexer(
+            ignore_missing_paths=False, num_workers=4, file_chunker=chunker
+        )
+        file_infos = [FileInfo(path=f"f{i}.parquet", size=100 + i) for i in range(8)]
+        records = list(
+            indexer._generate_chunk_records(
+                file_infos, filesystem=None, preserve_order=True
+            )
+        )
+        # 8 files x 3 chunks each, contiguous per file in discovery order.
+        assert [path for path, _, _ in records] == [
+            f"f{i}.parquet" for i in range(8) for _ in range(3)
+        ]
+        assert [md["chunk_index"] for _, _, md in records] == [
+            i for _ in range(8) for i in range(3)
+        ]
 
 
 if __name__ == "__main__":

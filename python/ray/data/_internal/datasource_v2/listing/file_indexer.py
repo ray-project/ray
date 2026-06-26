@@ -210,27 +210,42 @@ class NonSamplingFileIndexer(FileIndexer):
         """
         chunker = self._file_chunker
 
-        def chunk(
-            infos: Iterator[FileInfo],
-        ) -> Iterator[Tuple[str, int, Optional[ChunkMetadata]]]:
-            for fi in infos:
+        def chunk_file(
+            fi: FileInfo,
+        ) -> List[Tuple[str, int, Optional[ChunkMetadata]]]:
+            return [
+                (fi.path, chunk_size, chunk_metadata)
                 for chunk_metadata, chunk_size in chunker.generate_chunk_metadatas(
                     fi.path, fi.size, filesystem
-                ):
-                    yield fi.path, chunk_size, chunk_metadata
+                )
+            ]
 
         if chunker.reads_file_metadata and self._num_workers > 1:
-            yield from make_async_gen(
+            # Fan per-file footer reads across the thread pool. ``make_async_gen``
+            # only preserves ordering for a 1:1 map (one output per input item), so
+            # emit ONE record list per file and flatten here. Yielding chunk rows
+            # individually would let its round-robin merge interleave chunks from
+            # the files processed concurrently -- breaking per-file contiguity and
+            # discovery order under ``preserve_order=True``.
+            def chunk_files(
+                infos: Iterator[FileInfo],
+            ) -> Iterator[List[Tuple[str, int, Optional[ChunkMetadata]]]]:
+                for fi in infos:
+                    yield chunk_file(fi)
+
+            for records in make_async_gen(
                 # ``iter(...)`` so a non-iterator iterable (e.g. a list from a
                 # test or subclass) is still consumed correctly by the helper.
                 base_iterator=iter(file_infos),
-                fn=chunk,
+                fn=chunk_files,
                 preserve_ordering=preserve_order,
                 num_workers=self._num_workers,
                 buffer_size=self._queue_size_per_thread,
-            )
+            ):
+                yield from records
         else:
-            yield from chunk(iter(file_infos))
+            for fi in file_infos:
+                yield from chunk_file(fi)
 
     def _batch_chunk_records_to_manifests(
         self,
