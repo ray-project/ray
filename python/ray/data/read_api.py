@@ -4915,11 +4915,11 @@ def read_delta(
         pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)
     except Exception as e:
         error_msg = str(e)
-        if "DeletionVectors" in error_msg or "Unsupported reader features" in error_msg:
+        # from: https://github.com/delta-io/delta-rs/blob/main/python/deltalake/table.py
+        if "deletionVectors" in error_msg:
             raise RuntimeError(
                 f"Delta table uses Deletion Vectors, which requires deltalake>=0.10.0. "
                 f"Error: {error_msg}\n"
-                f"Solution: pip install --upgrade 'deltalake>=0.10.0'"
             ) from e
         raise
 

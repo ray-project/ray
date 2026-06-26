@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
 from urllib.parse import urljoin
 
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -34,6 +34,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _DELTA_UNIFORM_FORMATS_PROPERTY = "delta.universalFormat.enabledFormats"
+
+# Environment-variable names the underlying readers (pyarrow / deltalake's
+# object_store) pick up vended credentials from.
+_AWS_ACCESS_KEY_ID = "AWS_ACCESS_KEY_ID"
+_AWS_SECRET_ACCESS_KEY = "AWS_SECRET_ACCESS_KEY"
+_AWS_SESSION_TOKEN = "AWS_SESSION_TOKEN"
+_AWS_REGION = "AWS_REGION"
+_AWS_DEFAULT_REGION = "AWS_DEFAULT_REGION"
+_AZURE_STORAGE_SAS_TOKEN = "AZURE_STORAGE_SAS_TOKEN"
 
 
 def _normalize_host(host: str) -> str:
@@ -174,7 +183,8 @@ class DatabricksUnityCatalog(Catalog):
                 # metadata-server auth.
                 raise RuntimeError(
                     "Reading a GCP-backed Delta table via Unity Catalog "
-                    "credential vending is not supported."
+                    "credential vending is not supported as deltalake "
+                    "does not have the required object_store version."
                 )
             filesystem = self._build_gcs_filesystem(
                 creds.gcp_oauth_token, creds.expiration_time
@@ -225,7 +235,7 @@ class DatabricksUnityCatalog(Catalog):
 
         return WorkspaceClient(host=self._base_url, token=self._provider.get_token())
 
-    def _call_with_token_refresh(self, call):
+    def _call_with_token_refresh(self, call: Callable) -> Any:
         """Run ``call(workspace_client)``, retrying once on 401.
 
         Mirrors the previous ``request_with_401_retry`` behavior: on an
@@ -263,19 +273,18 @@ class DatabricksUnityCatalog(Catalog):
         table_info: "TableInfo", table_url: str
     ) -> Optional[ReaderFormat]:
         """Best-effort format hint from table metadata or file extension."""
+        from databricks.sdk.service.catalog import DataSourceFormat
+
         dsf = table_info.data_source_format
-        fmt = (dsf.value if dsf else "").lower()
-        if fmt in {f.value for f in ReaderFormat}:
-            # A UniForm Delta table reports DELTA but also exposes Iceberg
-            # metadata. Prefer Iceberg: these tables require columnMapping, which
-            # deltalake's pyarrow reader can't read, so the Delta path would fail.
-            if fmt == ReaderFormat.DELTA.value:
-                uniform = (table_info.properties or {}).get(
-                    _DELTA_UNIFORM_FORMATS_PROPERTY, ""
-                )
-                if "iceberg" in uniform.lower():
-                    return ReaderFormat.ICEBERG
-            return ReaderFormat(fmt)
+        if dsf == DataSourceFormat.DELTA:
+            uniform = (table_info.properties or {}).get(
+                _DELTA_UNIFORM_FORMATS_PROPERTY, ""
+            )
+            if "iceberg" in uniform.lower():
+                return ReaderFormat.ICEBERG
+            return ReaderFormat.DELTA
+        elif dsf == DataSourceFormat.PARQUET:
+            return ReaderFormat.PARQUET
 
         storage_loc = table_info.storage_location or table_url
         if storage_loc:
@@ -300,13 +309,13 @@ class DatabricksUnityCatalog(Catalog):
         if creds.aws_temp_credentials is not None:
             aws = creds.aws_temp_credentials
             env = {
-                "AWS_ACCESS_KEY_ID": aws.access_key_id,
-                "AWS_SECRET_ACCESS_KEY": aws.secret_access_key,
-                "AWS_SESSION_TOKEN": aws.session_token,
+                _AWS_ACCESS_KEY_ID: aws.access_key_id,
+                _AWS_SECRET_ACCESS_KEY: aws.secret_access_key,
+                _AWS_SESSION_TOKEN: aws.session_token,
             }
             if self._region:
-                env["AWS_REGION"] = self._region
-                env["AWS_DEFAULT_REGION"] = self._region
+                env[_AWS_REGION] = self._region
+                env[_AWS_DEFAULT_REGION] = self._region
             return env
 
         if creds.azure_user_delegation_sas is not None:
@@ -382,5 +391,5 @@ class DatabricksUnityCatalog(Catalog):
             sas_token = sas_token[1:]
         if not sas_token:
             raise ValueError("Azure UC credentials missing a SAS token.")
-        creds: Dict[str, Optional[str]] = {"AZURE_STORAGE_SAS_TOKEN": sas_token}
+        creds: Dict[str, Optional[str]] = {_AZURE_STORAGE_SAS_TOKEN: sas_token}
         return creds
