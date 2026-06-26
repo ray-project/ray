@@ -126,8 +126,8 @@ class MapTransformFn(ABC):
     def _apply_transform(
         self,
         ctx: TaskContext,
-        report_custom_op_stats: CustomOpStatsReportFn,
         inputs: Iterable[MapTransformFnData],
+        report_custom_op_stats: CustomOpStatsReportFn = _noop_report_custom_op_stats,
     ) -> Iterable[MapTransformFnData]:
         """Call the wrapped fn, passing ``report_custom_op_stats`` only if it opted in.
 
@@ -155,7 +155,7 @@ class MapTransformFn(ABC):
         report_custom_op_stats: CustomOpStatsReportFn = _noop_report_custom_op_stats,
     ) -> Iterable[Block]:
         batches = self._pre_process(blocks)
-        results = self._apply_transform(ctx, report_custom_op_stats, batches)
+        results = self._apply_transform(ctx, batches, report_custom_op_stats)
         return self._post_process(results)
 
     @property

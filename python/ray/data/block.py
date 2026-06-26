@@ -3,7 +3,6 @@ import functools
 import logging
 import sys
 import time
-from abc import ABC
 from dataclasses import dataclass, field, fields
 from enum import Enum
 from typing import (
@@ -192,7 +191,7 @@ def to_stats(metas: List["BlockMetadata"]) -> List["BlockStats"]:
 
 @DeveloperAPI
 @dataclass(frozen=True)
-class CustomOpStats(ABC):
+class CustomOpStats:
     """Base for operator-specific, worker-reported per-task stats.
 
     A generic extension slot carried by :class:`TaskExecWorkerStats`. Operators
@@ -200,10 +199,9 @@ class CustomOpStats(ABC):
     cannot be instantiated directly.
     """
 
-    def __new__(cls, *args, **kwargs):
-        if cls is CustomOpStats:
+    def __post_init__(self):
+        if type(self) is CustomOpStats:
             raise TypeError("CustomOpStats cannot be instantiated directly")
-        return super().__new__(cls)
 
 
 @DeveloperAPI
