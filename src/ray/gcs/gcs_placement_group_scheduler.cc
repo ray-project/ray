@@ -105,6 +105,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   RAY_CHECK(bundles.size() == selected_nodes.size());
 
+  // TODO(#64370) rename this to fit topology strategy
   if (scheduling_result.selected_label_domain.has_value()) {
     const auto &[topology_label_key, topology_label_value] =
         *scheduling_result.selected_label_domain;
