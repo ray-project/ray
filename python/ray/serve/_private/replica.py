@@ -2551,6 +2551,14 @@ class Replica:
                     )
                     raise e
                 finally:
+                    # Deterministically close the user-response generator. When the
+                    # client has stopped reading, grpc tears this generator down with
+                    # a GeneratorExit at the outer `yield` above, which does not reach
+                    # the user code on its own. Closing `result_gen` here runs
+                    # `call_user_generator`'s `finally`, which cancels the unit
+                    # running the user method (its task, or the inline generator).
+                    # No-op on the normal-completion path (already exhausted).
+                    await result_gen.aclose()
                     # Record the status code for both success and error paths so
                     # ingress metrics are emitted for successful gRPC requests.
                     status_code_callback(status.code.name)
@@ -4124,13 +4132,24 @@ class UserCallableWrapper:
 
         The user method is called in an asyncio `Task` and places its results on a
         `result_queue`. This method pulls and yields from the `result_queue`.
+
+        If this generator is closed before the user method finishes (e.g. the
+        client disconnected mid-stream), the unit running the user code is
+        cancelled so a `CancelledError` is raised inside the user generator: the
+        `call_future` task in separate-thread mode, or (inline) the user generator
+        itself in same-loop mode.
         """
         if not self._run_user_code_in_separate_thread:
             gen = await self._call_user_generator(
                 request_metadata, request_args, request_kwargs
             )
-            async for result in gen:
-                yield result
+            try:
+                async for result in gen:
+                    yield result
+            finally:
+                # User code runs inline; closing the wrapper injects a
+                # CancelledError into the user generator (see `_call_generator_async`).
+                await gen.aclose()
         else:
             result_queue = MessageQueue()
 
@@ -4148,9 +4167,17 @@ class UserCallableWrapper:
                 enqueue=_enqueue_thread_safe,
             )
 
-            async for messages in result_queue.fetch_messages_from_queue(call_future):
-                for msg in messages:
-                    yield msg
+            try:
+                async for messages in result_queue.fetch_messages_from_queue(
+                    call_future
+                ):
+                    for msg in messages:
+                        yield msg
+            finally:
+                # Cancel the user-code task so a CancelledError is raised inside the
+                # user method. No-op if it already completed.
+                if not call_future.done():
+                    call_future.cancel()
 
     @_run_user_code
     async def _call_user_generator(
@@ -4194,17 +4221,30 @@ class UserCallableWrapper:
             if inspect.iscoroutine(gen):
                 gen = await gen
 
-            if inspect.isgenerator(gen):
-                for result in gen:
-                    yield result
-            elif inspect.isasyncgen(gen):
-                async for result in gen:
-                    yield result
-            else:
-                raise TypeError(
-                    f"Called method '{user_method_info.name}' with "
-                    "`handle.options(stream=True)` but it did not return a generator."
-                )
+            try:
+                if inspect.isgenerator(gen):
+                    for result in gen:
+                        yield result
+                elif inspect.isasyncgen(gen):
+                    async for result in gen:
+                        yield result
+                else:
+                    raise TypeError(
+                        f"Called method '{user_method_info.name}' with "
+                        "`handle.options(stream=True)` but it did not return a "
+                        "generator."
+                    )
+            finally:
+                # If this wrapper is closed before the user generator finishes
+                # (e.g. the client disconnected), inject a CancelledError into the
+                # user's async generator so its cancellation handling runs. (Sync
+                # generators have no await points to cancel.) No-op if it already
+                # finished, in which case athrow raises StopAsyncIteration.
+                if inspect.isasyncgen(gen):
+                    try:
+                        await gen.athrow(asyncio.CancelledError())
+                    except (StopAsyncIteration, asyncio.CancelledError):
+                        pass
 
         def _call_generator_sync():
             gen = callable(*request_args, **request_kwargs)
