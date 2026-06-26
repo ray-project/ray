@@ -101,6 +101,12 @@ class VLLMEngineConfig(BaseModelExtended):
         """Instantiates the accelerator backend based on the resolved config."""
         cfg = self.accelerator_config
 
+        if self.accelerator_type and isinstance(cfg, CPUConfig):
+            raise ValueError(
+                f"accelerator_type='{self.accelerator_type}' cannot be used with "
+                "CPU-only configurations. Either remove accelerator_type, or provide an accelerator_config."
+            )
+
         # LLMConfig has already resolved and validated accelerator_config
         if isinstance(cfg, TPUConfig):
             self._accelerator = TPUAccelerator(cfg)
@@ -109,7 +115,6 @@ class VLLMEngineConfig(BaseModelExtended):
         else:
             # Default to GPU if it's GPUConfig or isn't set
             self._accelerator = GPUAccelerator()
-
         return self
 
     @property
