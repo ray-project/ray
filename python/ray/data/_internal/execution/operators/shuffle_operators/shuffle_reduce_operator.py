@@ -174,6 +174,10 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             "scheduling_strategy": "SPREAD",
             "num_returns": "streaming",
         }
+        if self.data_context._max_num_blocks_in_streaming_gen_buffer is not None:
+            reduce_options["_generator_backpressure_num_objects"] = (
+                2 * self.data_context._max_num_blocks_in_streaming_gen_buffer
+            )
 
         target_max_block_size = (
             None
