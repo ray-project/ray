@@ -43,6 +43,29 @@ class PreemptionInfo:
         )
 
 
+def merge_preemption_info(old: PreemptionInfo, new: PreemptionInfo) -> PreemptionInfo:
+    """Combine two preemption signals into one.
+
+    Used while the controller drains the worker group: in a staggered
+    preemption (nodes drained one after another, or a previously drained node
+    dropping out of Ray Core's draining list once it's gone) a later signal may
+    not include earlier preempted nodes. Union the ``preempted_node_to_ranks``
+    maps so we keep the full history, and keep the earliest known deadline.
+    """
+    merged_node_to_ranks: Dict[str, List[int]] = {
+        node: list(ranks) for node, ranks in old.preempted_node_to_ranks.items()
+    }
+    for node, ranks in new.preempted_node_to_ranks.items():
+        merged_node_to_ranks[node] = sorted(
+            set(merged_node_to_ranks.get(node, [])) | set(ranks)
+        )
+    deadlines = [d for d in (old.deadline_ms, new.deadline_ms) if d is not None]
+    return PreemptionInfo(
+        deadline_ms=min(deadlines) if deadlines else None,
+        preempted_node_to_ranks=merged_node_to_ranks,
+    )
+
+
 @dataclass
 class PreemptionContext:
     """Thread-shared preemption signal for one worker actor."""

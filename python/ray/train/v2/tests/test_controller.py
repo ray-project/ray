@@ -246,6 +246,39 @@ async def test_preemption_drain_then_restart():
 
 
 @pytest.mark.asyncio
+async def test_preemption_takes_priority_over_clean_exit():
+    """If a worker reacts to preemption by checkpointing and returning (a clean
+    exit), the controller must still drain and restart, not finish the run."""
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    train_run_context = create_dummy_run_context()
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=train_run_context,
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
+
+    await _advance_to_running(controller, scaling_policy, num_workers=2)
+    worker_group = controller.get_worker_group()
+
+    # Workers exit cleanly (no errors) but carry a preemption signal.
+    info = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"node-a": [0]})
+    worker_group.preempt_worker(0, info)
+    worker_group.finish_worker(0)
+    worker_group.finish_worker(1)
+    await controller._run_control_loop_iteration()
+    # Must NOT short-circuit to FinishedState.
+    assert isinstance(controller.get_state(), PreemptingState)
+
+    # Workers already exited -> next iteration drains and restarts.
+    failure_policy.queue_decision(FailureDecision.RETRY)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RestartingState)
+    assert isinstance(controller.get_state().training_failed_error, PreemptionError)
+
+
+@pytest.mark.asyncio
 async def test_preemption_deadline_exceeded_and_raise():
     """If the reclaim deadline passes before workers exit, the controller stops
     draining and surfaces a PreemptionError with drain_timed_out=True."""

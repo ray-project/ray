@@ -6,7 +6,11 @@ import pytest
 
 import ray
 from ray.train.v2._internal.callbacks.preemption_callback import PreemptionCallback
-from ray.train.v2._internal.execution.preemption import PreemptionWatcher
+from ray.train.v2._internal.execution.preemption import (
+    PreemptionInfo,
+    PreemptionWatcher,
+    merge_preemption_info,
+)
 
 _PREEMPTION_MOD = "ray.train.v2._internal.execution.preemption"
 
@@ -215,6 +219,31 @@ class TestPreemptionCallbackTeardown:
 
         mock_kill.assert_called_once_with(watcher)
         assert callback._watcher is None
+
+
+def test_merge_preemption_info_unions_nodes_and_keeps_earliest_deadline():
+    a = PreemptionInfo(deadline_ms=5000, preempted_node_to_ranks={"n1": [0, 1]})
+    b = PreemptionInfo(deadline_ms=3000, preempted_node_to_ranks={"n2": [2]})
+    merged = merge_preemption_info(a, b)
+    assert merged.deadline_ms == 3000
+    assert merged.preempted_node_ids == ["n1", "n2"]
+    assert merged.preempted_ranks == [0, 1, 2]
+
+
+def test_merge_preemption_info_dedupes_overlapping_ranks():
+    a = PreemptionInfo(deadline_ms=5000, preempted_node_to_ranks={"n1": [0, 1]})
+    # Same node reappears with an additional rank; None deadline must not erase
+    # the known one.
+    b = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"n1": [1, 3]})
+    merged = merge_preemption_info(a, b)
+    assert merged.deadline_ms == 5000
+    assert merged.preempted_node_to_ranks == {"n1": [0, 1, 3]}
+
+
+def test_merge_preemption_info_both_deadlines_none():
+    a = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"n1": [0]})
+    b = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"n2": [1]})
+    assert merge_preemption_info(a, b).deadline_ms is None
 
 
 if __name__ == "__main__":
