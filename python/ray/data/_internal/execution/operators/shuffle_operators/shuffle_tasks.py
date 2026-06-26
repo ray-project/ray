@@ -2,7 +2,6 @@
 
 import logging
 import math
-import pickle
 import time
 import typing
 from dataclasses import replace
@@ -12,10 +11,8 @@ import pyarrow as pa
 
 import ray
 from ray import ObjectRef
-from ray._raylet import (
-    StreamingGeneratorStats,  # pyrefly: ignore[missing-module-attribute]
-)
 from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data._internal.execution.util import yield_block_with_stats
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.block import (
@@ -258,22 +255,20 @@ def _shuffle_reduce_task(
     output_buffer: Optional[BlockOutputBuffer] = None
 
     def _yield_with_stats(block: Block):
-        """Yield (block, pickled metadata) following the streaming-gen protocol."""
-        exec_stats_builder = BlockExecStats.builder()
-        exec_stats_builder.finish()
-        gen_stats: StreamingGeneratorStats = yield block
-        exec_stats = exec_stats_builder.build(
-            block_ser_time_s=(gen_stats.object_creation_dur_s if gen_stats else None),
-        )
-        yield pickle.dumps(
-            BlockMetadataWithSchema.from_block(
+        """Yield a block then its pickled metadata (streaming-gen protocol)."""
+
+        def build_metadata(block_ser_time_s):
+            exec_stats = BlockExecStats.builder()
+            exec_stats.finish()
+            return BlockMetadataWithSchema.from_block(
                 block,
-                block_exec_stats=exec_stats,
+                block_exec_stats=exec_stats.build(block_ser_time_s=block_ser_time_s),
                 task_exec_stats=TaskExecWorkerStats(
                     task_wall_time_s=time.perf_counter() - start_time_s,
                 ),
             )
-        )
+
+        yield from yield_block_with_stats(block, build_metadata)
 
     def _flush(tables: List[pa.Table]):
         nonlocal output_buffer
@@ -285,8 +280,9 @@ def _shuffle_reduce_task(
             )
         for block in reduce_fn(partition_id, tables):
             output_buffer.add_block(block)
-            while output_buffer.has_next():
-                yield output_buffer.next()
+            # Yield raw blocks: a fused map (and `_yield_with_stats`) is applied
+            # downstream of ``_reduce_output_blocks``.
+            yield from output_buffer.iter_ready_blocks()
 
     def _reduce_output_blocks():
         nonlocal accum_tables, accum_bytes
@@ -332,8 +328,7 @@ def _shuffle_reduce_task(
         # any partial block.
         if output_buffer is not None:
             output_buffer.finalize()
-            while output_buffer.has_next():
-                yield output_buffer.next()
+            yield from output_buffer.iter_ready_blocks()
 
     if map_transformer is None:
         for block in _reduce_output_blocks():
