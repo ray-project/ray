@@ -633,6 +633,11 @@ RAY_CONFIG(int64_t, io_context_monitor_probe_interval_ms, 1000)
 /// unhealthy.
 RAY_CONFIG(int64_t, io_context_monitor_healthy_deadline_ms, 5000)
 
+/// Sliding window over which the max probe latency is tracked and exported. The
+/// Prometheus metrics scrape interval is usually 15s; we exceed it so that the
+/// windowed max is not missed between scrapes.
+RAY_CONFIG(int64_t, io_context_monitor_latency_window_ms, 20000)
+
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 
@@ -878,14 +883,15 @@ RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000)
 /// grpc keepalive timeout.
 RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000)
 
-/// NOTE: we set a loose client keep alive because
-/// they have a failure model that considers network failures as component failures
-/// and this configuration break that assumption. We should apply to every other component
-/// after we change this failure assumption from code.
-/// grpc keepalive timeout for client.
+/// gRPC client keepalive ping interval: how often a client pings the server to
+/// detect a dead connection. We keep it loose because the failure model treats
+/// network failures as component failures, which an aggressive value would break.
+/// NOTE: the GCS server derives its minimum accepted ping interval from this value
+/// (see grpc_server.cc), so it must be set consistently across the head and all nodes.
 RAY_CONFIG(int64_t, grpc_client_keepalive_time_ms, 300000)
 
-/// grpc keepalive timeout for client.
+/// gRPC client keepalive timeout: how long to wait for a ping ack before treating
+/// the connection as dead.
 RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)
 
 RAY_CONFIG(int64_t, grpc_client_idle_timeout_ms, 1800000)

@@ -52,6 +52,7 @@
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
+#include "ray/util/clock.h"
 #include "ray/util/shared_lru.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
@@ -201,7 +202,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
              std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
              uint32_t pid,
              ray::observability::MetricInterface &task_by_state_counter,
-             ray::observability::MetricInterface &actor_by_state_counter);
+             ray::observability::MetricInterface &actor_by_state_counter,
+             ClockInterface &clock);
 
   CoreWorker(CoreWorker const &) = delete;
 
@@ -774,12 +776,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// NOTE: The API doesn't guarantee the ordering of the report. The
   /// owner is supposed to reorder the report based on the item_index.
   ///
-  /// \param[in] returned_object A intermediate ray object to report
-  /// to the owner before the task terminates. This object must have been
+  /// \param[in] returned_objects Intermediate ray objects to report
+  /// to the owner before the task terminates. These objects must have been
   /// created dynamically from this worker via AllocateReturnObject.
-  /// If the Object ID is nil, it means it is the end of the task return.
-  /// In this case, the owner is responsible for setting finished = true,
-  /// otherwise it will panic.
   /// \param[in] generator_id The return object ref ID from a current generator
   /// task.
   /// \param[in] owner_address The address of the owner of the current task.
@@ -789,13 +788,41 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// 0 means it is the first attempt.
   /// \param[in] waiter The class to pause the thread if generator backpressure limit
   /// is reached.
+  /// \param[in] actor_metadata Actor-task bookkeeping for the actor-wide
+  /// streaming-generator cap (`_actor_generator_backpressure_num_objects`).
+  /// nullptr when the actor option is disabled or this is not an actor
+  /// task.
   Status ReportGeneratorItemReturns(
-      const std::pair<ObjectID, std::shared_ptr<RayObject>> &returned_object,
+      const std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
+          &returned_objects,
       const ObjectID &generator_id,
       const rpc::Address &owner_address,
       int64_t item_index,
       uint64_t attempt_number,
-      const std::shared_ptr<GeneratorBackpressureWaiter> &waiter);
+      const std::shared_ptr<TaskGeneratorBackpressureWaiter> &waiter,
+      const std::shared_ptr<ActorTaskBackpressureMetadata> &actor_metadata);
+
+  void MarkGeneratorBackpressureTaskFinished(const ObjectID &generator_id);
+  bool TeardownGeneratorBackpressureTask(const ObjectID &generator_id);
+
+  /// Register a generator-backpressure entry up-front so that owner-failure
+  /// sweeps (``HandleOwnerDied``) can find tasks that are still blocked in
+  /// ``ReserveActorWideSlot`` before they have a chance to send their first
+  /// ``ReportGeneratorItemReturns`` (which is where the state is otherwise
+  /// inserted). Inserts only if no entry exists for ``generator_id``; existing
+  /// entries are left untouched so an in-progress report path does not race
+  /// with this call. Safe to invoke from any thread.
+  void RegisterGeneratorBackpressureState(
+      const ObjectID &generator_id,
+      std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter,
+      std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata,
+      const rpc::Address &owner_address);
+
+  /// Tear down any generator_backpressure_states_ entries owned by ``dead_owner``
+  /// so the actor-wide BP budget gets reclaimed when an owner worker dies without
+  /// running TryDelObjectRefStream (the path that normally sends the teardown
+  /// sentinel via UpdateGeneratorBackpressureConsumed).
+  void HandleOwnerDied(const WorkerID &dead_owner);
 
   /// Implements gRPC server handler.
   /// If an executor can generator task return before the task is finished,
@@ -803,6 +830,11 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   void HandleReportGeneratorItemReturns(rpc::ReportGeneratorItemReturnsRequest request,
                                         rpc::ReportGeneratorItemReturnsReply *reply,
                                         rpc::SendReplyCallback send_reply_callback);
+
+  void HandleUpdateGeneratorBackpressureConsumed(
+      rpc::UpdateGeneratorBackpressureConsumedRequest request,
+      rpc::UpdateGeneratorBackpressureConsumedReply *reply,
+      rpc::SendReplyCallback send_reply_callback);
 
   ///
   /// Public methods related to task submission.
@@ -983,6 +1015,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \return Whether the task has been canceled.
   bool IsTaskCanceled(const TaskID &task_id) const;
 
+  /// True when this thread is running a task that was marked canceled (ray.cancel on
+  /// sync actor workers). Safe from periodic / io threads: no-op without job + task.
+  bool ShouldInterruptTaskForCancellation() const;
+
   /// Decrease the reference count for this actor. Should be called by the
   /// language frontend when a reference to the ActorHandle destroyed.
   ///
@@ -1034,6 +1070,16 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ActorID GetActorId() const {
     absl::MutexLock lock(&mutex_);
     return actor_id_;
+  }
+
+  /// Returns the actor-wide streaming-generator backpressure waiter, or
+  /// nullptr if the option was disabled / this worker is not an actor.
+  /// Each streaming-generator task on the actor shares this waiter via an
+  /// ActorTaskBackpressureMetadata to enforce a single cap across all
+  /// concurrent generator tasks. Thread-safe; the waiter is set once
+  /// during actor creation and never reassigned.
+  std::shared_ptr<ActorWideGeneratorBackpressureWaiter> GetActorGeneratorWaiter() const {
+    return actor_generator_waiter_;
   }
 
   std::string GetActorName() const;
@@ -1428,7 +1474,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       bool enable_task_events = true,
       const std::unordered_map<std::string, std::string> &labels = {},
       const LabelSelector &label_selector = {},
-      const std::vector<FallbackOption> &fallback_strategy = {});
+      const std::vector<FallbackOption> &fallback_strategy = {},
+      int64_t num_objects_per_yield = 1);
 
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
@@ -1861,6 +1908,27 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Actor repr name if overrides by the user, empty string if not.
   std::string actor_repr_name_ ABSL_GUARDED_BY(mutex_);
 
+  /// Actor-wide streaming-generator backpressure waiter. Shared across all
+  /// generator tasks running on this actor. nullptr when the actor was
+  /// created without `_actor_generator_backpressure_num_objects` (or with
+  /// -1, meaning disabled). Constructed lazily when the actor creation
+  /// task spec is executed.
+  std::shared_ptr<ActorWideGeneratorBackpressureWaiter> actor_generator_waiter_;
+
+  struct GeneratorBackpressureState {
+    std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter;
+    std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata;
+    bool task_finished = false;
+    // Owner that submitted the streaming generator task. When this worker dies
+    // we tear down the entry so the actor-wide BP budget gets reclaimed even
+    // when the task has already finished (and so the owner can no longer drive
+    // consumption updates).
+    WorkerID owner_worker_id;
+  };
+
+  absl::flat_hash_map<ObjectID, GeneratorBackpressureState> generator_backpressure_states_
+      ABSL_GUARDED_BY(mutex_);
+
   /// Number of tasks that have been pushed to the actor but not executed.
   std::atomic<int64_t> task_queue_length_;
 
@@ -1967,5 +2035,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   // Shutdown synchronization primitives
   std::atomic<bool> connected_{true};
   std::atomic<bool> event_loops_running_{false};
+
+  /// Clock used for timestamping events, retries, and timeouts.
+  ClockInterface &clock_;
 };
 }  // namespace ray::core
