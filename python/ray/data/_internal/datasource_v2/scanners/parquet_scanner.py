@@ -31,6 +31,9 @@ class ParquetScanner(ArrowFileScanner):
     """
 
     target_block_size: Optional[int] = None
+    # Cap on on-disk bytes coalesced into one Parquet read scan (bounds the
+    # per-task pre_buffer footprint); None coalesces each contiguous run whole.
+    max_coalesced_scan_bytes: Optional[int] = None
     include_paths: bool = False
     include_row_hash: bool = False
     # Extra kwargs forwarded to ``pds.ParquetFileFormat(**kwargs)`` inside
@@ -81,6 +84,7 @@ class ParquetScanner(ArrowFileScanner):
             partitioning=self.partitioning,
             ignore_prefixes=self.ignore_prefixes,
             target_block_size=self.target_block_size,
+            max_coalesced_scan_bytes=self.max_coalesced_scan_bytes,
             include_paths=self.include_paths,
             include_row_hash=self.include_row_hash,
             schema=self.schema,

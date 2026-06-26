@@ -1,7 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Iterable, Iterator, List, Optional
+from typing import Iterable, Iterator, List, Optional, Tuple
 
 from pyarrow.fs import FileSystem
 
@@ -122,9 +122,12 @@ class NonSamplingFileIndexer(FileIndexer):
             else self._get_file_info_iterator_sequential(paths, filesystem)
         )
 
-        yield from self._process_file_infos_to_manifests(
-            file_info_iterator, pruners or []
-        )
+        # Stage pipeline: list → prune (cheap, inline) → chunk (may read
+        # per-file metadata) → batch into manifests. Pruning runs *before*
+        # chunking so we never read a footer for a file we'd discard.
+        pruned = self._filter_file_infos(file_info_iterator, pruners or [])
+        chunk_records = self._generate_chunk_records(pruned, filesystem, preserve_order)
+        yield from self._batch_chunk_records_to_manifests(chunk_records)
 
     def _get_file_info_iterator_sequential(
         self,
@@ -176,50 +179,84 @@ class NonSamplingFileIndexer(FileIndexer):
             buffer_size=self._queue_size_per_thread,
         )
 
-    def _process_file_infos_to_manifests(
+    def _filter_file_infos(
         self,
         file_infos: Iterable[FileInfo],
         pruners: List[FilePruner],
+    ) -> Iterator[FileInfo]:
+        """Drop zero-size and pruned files before any per-file metadata read."""
+        for file_info in file_infos:
+            if file_info.size is None or file_info.size == 0:
+                logger.warning(f"Skipping zero-size file: {file_info.path!r}")
+                continue
+            if not all(pruner.should_include(file_info.path) for pruner in pruners):
+                continue
+            yield file_info
+
+    def _generate_chunk_records(
+        self,
+        file_infos: Iterable[FileInfo],
+        filesystem: "FileSystem",
+        preserve_order: bool,
+    ) -> Iterator[Tuple[str, int, Optional[ChunkMetadata]]]:
+        """Drive the chunker per file, yielding ``(path, chunk_size, metadata)``.
+
+        When the chunker reads per-file metadata (e.g. ``ParquetFileChunker``
+        reading footers), fan the work across the indexer's thread pool so the
+        I/O parallelizes even for a single input directory — ``make_async_gen``
+        over the *discovered files*, not the input paths. Chunkers that don't
+        read metadata (whole-file / line-delimited) are driven inline to avoid
+        a pointless thread hand-off.
+        """
+        chunker = self._file_chunker
+
+        def chunk(
+            infos: Iterator[FileInfo],
+        ) -> Iterator[Tuple[str, int, Optional[ChunkMetadata]]]:
+            for fi in infos:
+                for chunk_metadata, chunk_size in chunker.generate_chunk_metadatas(
+                    fi.path, fi.size, filesystem
+                ):
+                    yield fi.path, chunk_size, chunk_metadata
+
+        if chunker.reads_file_metadata and self._num_workers > 1:
+            yield from make_async_gen(
+                base_iterator=file_infos,
+                fn=chunk,
+                preserve_ordering=preserve_order,
+                num_workers=self._num_workers,
+                buffer_size=self._queue_size_per_thread,
+            )
+        else:
+            yield from chunk(iter(file_infos))
+
+    def _batch_chunk_records_to_manifests(
+        self,
+        chunk_records: Iterable[Tuple[str, int, Optional[ChunkMetadata]]],
     ) -> Iterable[FileManifest]:
+        """Batch chunk records into ``FileManifest`` blocks of bounded size."""
         running_paths: List[str] = []
         running_file_sizes: List[int] = []
         running_chunk_metadatas: List[Optional[ChunkMetadata]] = []
         manifests_count = 0
         chunks_count = 0
 
-        for file_info in file_infos:
-            path, file_size = file_info.path, file_info.size
+        for path, chunk_size, chunk_metadata in chunk_records:
+            running_paths.append(path)
+            running_file_sizes.append(chunk_size)
+            running_chunk_metadatas.append(chunk_metadata)
+            chunks_count += 1
 
-            if file_size is None or file_size == 0:
-                logger.warning(f"Skipping zero-size file: {path!r}")
-                continue
-
-            if not all(pruner.should_include(path) for pruner in pruners):
-                continue
-
-            # Drive the chunker once per file; emit one manifest row per chunk.
-            # ``chunk_metadata`` is ``None`` for whole-file chunks (default
-            # ``WholeFileChunker`` behavior and ``ParquetFileChunker`` for files
-            # smaller than the target chunk size).
-            for (
-                chunk_metadata,
-                chunk_size,
-            ) in self._file_chunker.generate_chunk_metadatas(path, file_size):
-                running_paths.append(path)
-                running_file_sizes.append(chunk_size)
-                running_chunk_metadatas.append(chunk_metadata)
-                chunks_count += 1
-
-                if len(running_paths) >= self._max_paths_per_output:
-                    manifests_count += 1
-                    yield FileManifest.construct_manifest(
-                        running_paths,
-                        running_file_sizes,
-                        running_chunk_metadatas,
-                    )
-                    running_paths = []
-                    running_file_sizes = []
-                    running_chunk_metadatas = []
+            if len(running_paths) >= self._max_paths_per_output:
+                manifests_count += 1
+                yield FileManifest.construct_manifest(
+                    running_paths,
+                    running_file_sizes,
+                    running_chunk_metadatas,
+                )
+                running_paths = []
+                running_file_sizes = []
+                running_chunk_metadatas = []
 
         if running_paths:
             manifests_count += 1

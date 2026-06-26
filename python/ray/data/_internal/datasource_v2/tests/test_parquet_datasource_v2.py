@@ -9,9 +9,10 @@ import os
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-import pytest
 
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
+    ByteEstimateParquetFileChunker,
+    ByteEstimateParquetFileChunkMetadata,
     ParquetFileChunker,
     ParquetFileChunkMetadata,
     WholeFileChunker,
@@ -20,6 +21,8 @@ from ray.data._internal.datasource_v2.chunkers.file_chunker import (
 from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
     _calculate_row_group_range,
     _fragments_from_chunk_metadata,
+    _row_group_on_disk_size,
+    fragments_to_read_for_manifest,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
@@ -105,7 +108,9 @@ def test_create_scanner_returns_parquet_scanner(tmp_path):
     assert scanner.schema == schema
 
 
-def test_get_size_estimator_returns_parquet_estimator(tmp_path):
+def test_get_size_estimator_returns_parquet_in_memory(tmp_path):
+    # V2 sizes partitions with the constant-ratio in-memory estimator
+    # (in-memory ≈ ratio × on-disk), independent of the chunker in use.
     datasource = ParquetDatasourceV2([str(tmp_path)])
     assert isinstance(datasource.get_size_estimator(), ParquetInMemorySizeEstimator)
 
@@ -230,51 +235,51 @@ def test_datasource_accepts_custom_chunker(tmp_path):
     assert indexer.file_chunker is custom
 
 
-@pytest.mark.parametrize(
-    "total_row_groups,total_num_chunks,expected_ranges",
-    [
-        # Even distribution.
-        (10, 2, [(0, 5), (5, 10)]),
-        (12, 3, [(0, 4), (4, 8), (8, 12)]),
-        (20, 4, [(0, 5), (5, 10), (10, 15), (15, 20)]),
-        # Uneven distribution: earlier chunks get extra row groups.
-        (10, 3, [(0, 4), (4, 7), (7, 10)]),
-        (11, 3, [(0, 4), (4, 8), (8, 11)]),
-        (13, 4, [(0, 4), (4, 7), (7, 10), (10, 13)]),
-        # Edge cases — over-estimated chunk counts must produce ``None``.
-        (1, 1, [(0, 1)]),
-        (1, 2, [(0, 1), None]),
-        (0, 1, [None]),
-        (5, 10, [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)] + [None] * 5),
-    ],
-)
-def test_calculate_row_group_range_distribution(
-    total_row_groups, total_num_chunks, expected_ranges
-):
-    """Row-group distribution across chunks is even and covers everything."""
-    for chunk_idx in range(total_num_chunks):
-        result = _calculate_row_group_range(
-            chunk_idx, total_num_chunks, total_row_groups
-        )
-        expected = (
-            expected_ranges[chunk_idx] if chunk_idx < len(expected_ranges) else None
-        )
-        assert (
-            result == expected
-        ), f"Chunk {chunk_idx}: expected {expected}, got {result}"
+def _chunker_for_flag(path, row_group_aware: bool):
+    """Construct a ``ParquetDatasourceV2`` under the given flag and return its
+    selected chunker, restoring the flag afterwards."""
+    from ray.data.context import DataContext
 
-    # No gaps, no overlaps, every row group covered exactly once.
-    covered = set()
-    for chunk_idx in range(total_num_chunks):
-        result = _calculate_row_group_range(
-            chunk_idx, total_num_chunks, total_row_groups
-        )
-        if result is not None:
-            start, end = result
-            chunk_rows = set(range(start, end))
-            assert not (covered & chunk_rows)
-            covered.update(chunk_rows)
-    assert covered == set(range(total_row_groups))
+    ctx = DataContext.get_current()
+    original = ctx.parquet_chunker_row_group_aware
+    ctx.parquet_chunker_row_group_aware = row_group_aware
+    try:
+        return ParquetDatasourceV2([str(path)])._file_chunker
+    finally:
+        ctx.parquet_chunker_row_group_aware = original
+
+
+def test_datasource_selects_row_group_chunker_when_flag_on(tmp_path):
+    file_path = tmp_path / "data.parquet"
+    _write_parquet(str(file_path), pa.table({"a": [1, 2, 3]}))
+    assert isinstance(_chunker_for_flag(file_path, True), ParquetFileChunker)
+
+
+def test_datasource_selects_byte_estimate_chunker_when_flag_off(tmp_path):
+    file_path = tmp_path / "data.parquet"
+    _write_parquet(str(file_path), pa.table({"a": [1, 2, 3]}))
+    chunker = _chunker_for_flag(file_path, False)
+    assert isinstance(chunker, ByteEstimateParquetFileChunker)
+    # ``isinstance`` against the row-group subclass relationship is not a thing
+    # here — they're independent ``FileChunker`` subclasses.
+    assert not isinstance(chunker, ParquetFileChunker)
+
+
+def test_explicit_chunker_overrides_flag(tmp_path):
+    """An injected ``file_chunker`` wins even when the flag would pick another."""
+    from ray.data.context import DataContext
+
+    file_path = tmp_path / "data.parquet"
+    _write_parquet(str(file_path), pa.table({"a": [1, 2, 3]}))
+    ctx = DataContext.get_current()
+    original = ctx.parquet_chunker_row_group_aware
+    ctx.parquet_chunker_row_group_aware = False
+    try:
+        custom = WholeFileChunker()
+        ds = ParquetDatasourceV2([str(file_path)], file_chunker=custom)
+        assert ds._file_chunker is custom
+    finally:
+        ctx.parquet_chunker_row_group_aware = original
 
 
 def _write_multi_row_group_parquet(path, num_rows: int, row_group_size: int):
@@ -284,7 +289,7 @@ def _write_multi_row_group_parquet(path, num_rows: int, row_group_size: int):
 
 
 def test_fragments_from_chunk_metadata_subsets_by_row_group(tmp_path):
-    """``_fragments_from_chunk_metadata`` slices a file fragment per chunk."""
+    """``_fragments_from_chunk_metadata`` slices a fragment to the explicit range."""
     import pyarrow.dataset as pds
 
     file_path = str(tmp_path / "multi.parquet")
@@ -295,24 +300,21 @@ def test_fragments_from_chunk_metadata_subsets_by_row_group(tmp_path):
     (fragment,) = dataset.get_fragments()
     assert fragment.metadata.num_row_groups == 100
 
-    # 100 row groups split into 4 chunks -> 25 row groups each.
+    # Explicit range [25, 50) → 25 row groups, starting row offset 250.
     chunk_md = create_chunk_metadata(
-        ParquetFileChunkMetadata, chunk_idx=1, total_num_chunks=4
+        ParquetFileChunkMetadata, row_group_start=25, row_group_end=50
     )
     sub_fragments = _fragments_from_chunk_metadata(fragment, chunk_md)
-    assert len(sub_fragments) == 25
-    # chunk_idx=1, 25 rows/chunk * 10 rows/row_group = starting offset 250.
-    expected_offset = 250
-    for sub, offset in sub_fragments:
-        assert len(sub.row_groups) == 1
-        assert offset == expected_offset
-        expected_offset += sub.metadata.row_group(sub.row_groups[0].id).num_rows
+    # Coalesced: one sub-fragment spanning the whole [25, 50) range in a single
+    # scan, seeded with the range's starting row offset.
+    assert len(sub_fragments) == 1
+    sub, offset = sub_fragments[0]
+    assert offset == 250  # 25 row groups × 10 rows each precede the range.
+    assert len(sub.row_groups) == 25
 
 
-def test_fragments_from_chunk_metadata_returns_empty_for_out_of_range_chunk(
-    tmp_path,
-):
-    """Over-estimated chunk indices fall off the end → no sub-fragments."""
+def test_fragments_from_chunk_metadata_clamps_range_beyond_row_groups(tmp_path):
+    """A range beyond the file's actual row-group count is clamped (no crash)."""
     import pyarrow.dataset as pds
 
     file_path = str(tmp_path / "single.parquet")
@@ -321,12 +323,200 @@ def test_fragments_from_chunk_metadata_returns_empty_for_out_of_range_chunk(
 
     dataset = pds.dataset(file_path, format="parquet")
     (fragment,) = dataset.get_fragments()
+    assert fragment.metadata.num_row_groups == 1
 
-    # chunk_idx=4 with 5 chunks but only 1 row group → no sub-fragments.
+    # Fully out-of-range [5, 6) → clamped to [1, 1) → no sub-fragments.
     chunk_md = create_chunk_metadata(
-        ParquetFileChunkMetadata, chunk_idx=4, total_num_chunks=5
+        ParquetFileChunkMetadata, row_group_start=5, row_group_end=6
     )
     assert _fragments_from_chunk_metadata(fragment, chunk_md) == []
+
+    # Partially out-of-range [0, 9) → clamped to [0, 1) → the one real row group.
+    chunk_md = create_chunk_metadata(
+        ParquetFileChunkMetadata, row_group_start=0, row_group_end=9
+    )
+    sub_fragments = _fragments_from_chunk_metadata(fragment, chunk_md)
+    assert len(sub_fragments) == 1
+    assert sub_fragments[0][1] == 0  # row offset
+
+
+def test_calculate_row_group_range_distributes_evenly():
+    # 10 row groups across 3 chunks -> [0,4), [4,7), [7,10) (extras go first).
+    assert _calculate_row_group_range(0, 3, 10) == (0, 4)
+    assert _calculate_row_group_range(1, 3, 10) == (4, 7)
+    assert _calculate_row_group_range(2, 3, 10) == (7, 10)
+    # Over-estimated chunk index (beyond the real row-group count) -> None.
+    assert _calculate_row_group_range(5, 6, 3) is None
+
+
+def test_fragments_from_chunk_metadata_reconciles_byte_estimate(tmp_path):
+    """Byte-estimate metadata is reconciled to a real row-group range."""
+    import pyarrow.dataset as pds
+
+    file_path = str(tmp_path / "multi.parquet")
+    # 100 rows, 10 row groups (row_group_size=10).
+    _write_multi_row_group_parquet(file_path, num_rows=100, row_group_size=10)
+
+    dataset = pds.dataset(file_path, format="parquet")
+    (fragment,) = dataset.get_fragments()
+    assert fragment.metadata.num_row_groups == 10
+
+    # chunk 1 of 3 over 10 row groups -> range [4, 7) -> one coalesced
+    # sub-fragment (3 row groups), starting at row offset 40.
+    chunk_md = create_chunk_metadata(
+        ByteEstimateParquetFileChunkMetadata, chunk_idx=1, total_num_chunks=3
+    )
+    sub_fragments = _fragments_from_chunk_metadata(fragment, chunk_md)
+    assert len(sub_fragments) == 1
+    sub, offset = sub_fragments[0]
+    assert offset == 40
+    assert len(sub.row_groups) == 3
+
+
+def test_fragments_from_chunk_metadata_byte_estimate_over_count_drops_chunk(tmp_path):
+    """An over-estimated chunk (beyond real row groups) yields no sub-fragments."""
+    import pyarrow.dataset as pds
+
+    file_path = str(tmp_path / "single.parquet")
+    _write_multi_row_group_parquet(file_path, num_rows=5, row_group_size=5)
+    dataset = pds.dataset(file_path, format="parquet")
+    (fragment,) = dataset.get_fragments()
+    assert fragment.metadata.num_row_groups == 1
+
+    # 5 estimated chunks but only 1 row group -> chunk_idx=3 is dropped.
+    chunk_md = create_chunk_metadata(
+        ByteEstimateParquetFileChunkMetadata, chunk_idx=3, total_num_chunks=5
+    )
+    assert _fragments_from_chunk_metadata(fragment, chunk_md) == []
+
+
+def test_fragments_to_read_coalesces_sister_chunks(tmp_path):
+    """Sister chunks of one file collapse into a single contiguous-run scan."""
+    import pyarrow.dataset as pds
+
+    file_path = str(tmp_path / "multi.parquet")
+    _write_multi_row_group_parquet(file_path, num_rows=100, row_group_size=10)
+    (fragment,) = pds.dataset(file_path, format="parquet").get_fragments()
+
+    # Two adjacent row-group chunks of the same file: [0, 2) and [2, 4).
+    chunk_a = create_chunk_metadata(
+        ParquetFileChunkMetadata, row_group_start=0, row_group_end=2
+    )
+    chunk_b = create_chunk_metadata(
+        ParquetFileChunkMetadata, row_group_start=2, row_group_end=4
+    )
+    frags = fragments_to_read_for_manifest(
+        {fragment.path: fragment},
+        [fragment.path, fragment.path],
+        [chunk_a, chunk_b],
+    )
+    # One coalesced scan over [0, 4): a single open instead of one per chunk.
+    assert len(frags) == 1
+    sub, offset = frags[0]
+    assert offset == 0
+    assert len(sub.row_groups) == 4
+
+
+def test_fragments_to_read_caps_coalesced_scan_bytes(tmp_path):
+    """``max_coalesced_scan_bytes`` splits a big run into bounded sub-scans.
+
+    The run still covers the whole range contiguously, every sub-scan stays
+    within the cap (unless it's a single row group), row offsets stay correct,
+    and all sub-scans share the one file (footer read once)."""
+    import pyarrow.dataset as pds
+
+    file_path = str(tmp_path / "multi.parquet")
+    _write_multi_row_group_parquet(file_path, num_rows=100, row_group_size=10)
+    (fragment,) = pds.dataset(file_path, format="parquet").get_fragments()
+    md = fragment.metadata
+    assert md.num_row_groups == 10
+
+    # Cap that admits 2 row groups but not a 3rd: forces a multi-sub-scan split.
+    rg_bytes = [_row_group_on_disk_size(md, i) for i in range(10)]
+    cap = rg_bytes[0] + rg_bytes[1] + rg_bytes[2] // 2
+
+    chunk = create_chunk_metadata(
+        ParquetFileChunkMetadata, row_group_start=0, row_group_end=10
+    )
+    frags = fragments_to_read_for_manifest(
+        {fragment.path: fragment},
+        [fragment.path],
+        [chunk],
+        max_coalesced_scan_bytes=cap,
+    )
+
+    assert len(frags) > 1  # the single coalesced run got split
+    covered: list = []
+    for sub, offset in frags:
+        assert sub.path == fragment.path  # same file -> footer shared
+        ids = [rg.id for rg in sub.row_groups]
+        sub_bytes = sum(_row_group_on_disk_size(md, i) for i in ids)
+        # Within the cap, unless a lone oversized row group (the atomic floor).
+        assert sub_bytes <= cap or len(ids) == 1
+        # Offset is the pre-filter row count before this sub-run's first rg.
+        assert offset == sum(md.row_group(i).num_rows for i in range(ids[0]))
+        covered.extend(ids)
+    assert covered == list(range(10))  # contiguous, complete, ordered
+
+
+def test_fragments_to_read_scan_cap_floors_at_one_row_group(tmp_path):
+    """A cap below a single row group still yields one sub-scan per row group
+    (never zero) -- the atomic Parquet read floor."""
+    import pyarrow.dataset as pds
+
+    file_path = str(tmp_path / "multi.parquet")
+    _write_multi_row_group_parquet(file_path, num_rows=50, row_group_size=10)
+    (fragment,) = pds.dataset(file_path, format="parquet").get_fragments()
+    assert fragment.metadata.num_row_groups == 5
+
+    chunk = create_chunk_metadata(
+        ParquetFileChunkMetadata, row_group_start=0, row_group_end=5
+    )
+    frags = fragments_to_read_for_manifest(
+        {fragment.path: fragment},
+        [fragment.path],
+        [chunk],
+        max_coalesced_scan_bytes=1,  # 1 byte: below any row group
+    )
+    assert len(frags) == 5  # one row group per sub-scan, none dropped
+    assert [rg.id for sub, _ in frags for rg in sub.row_groups] == list(range(5))
+
+
+def test_fragments_to_read_groups_by_file(tmp_path):
+    """Chunks of different files map to one scan per file (no cross-file scan)."""
+    import pyarrow.dataset as pds
+
+    path_to_fragment, paths, metas = {}, [], []
+    for name in ("a", "b"):
+        p = str(tmp_path / f"{name}.parquet")
+        _write_multi_row_group_parquet(p, num_rows=40, row_group_size=10)  # 4 rgs
+        (fragment,) = pds.dataset(p, format="parquet").get_fragments()
+        path_to_fragment[fragment.path] = fragment
+        paths.append(fragment.path)
+        metas.append(
+            create_chunk_metadata(
+                ParquetFileChunkMetadata,
+                row_group_start=0,
+                row_group_end=4,
+            )
+        )
+    frags = fragments_to_read_for_manifest(path_to_fragment, paths, metas)
+    assert len(frags) == 2  # one sub-fragment per file
+    assert {sub.path for sub, _ in frags} == set(paths)
+
+
+def test_fragments_to_read_whole_file_chunk_passes_through(tmp_path):
+    """A ``None`` (whole-file) chunk yields the full fragment at offset 0."""
+    import pyarrow.dataset as pds
+
+    file_path = str(tmp_path / "whole.parquet")
+    _write_multi_row_group_parquet(file_path, num_rows=20, row_group_size=10)
+    (fragment,) = pds.dataset(file_path, format="parquet").get_fragments()
+    frags = fragments_to_read_for_manifest(
+        {fragment.path: fragment}, [fragment.path], [None]
+    )
+    assert len(frags) == 1
+    assert frags[0][1] == 0
 
 
 def _read_via_reader(reader, manifest):
@@ -346,7 +536,8 @@ def test_parquet_file_reader_reads_chunked_manifest(tmp_path):
     whole_tables = _read_via_reader(reader_whole, whole_manifest)
     whole_rows = pa.concat_tables(whole_tables).column("id").to_pylist()
 
-    chunker = ParquetFileChunker(target_chunk_size=1024)
+    # target_chunk_size=1 forces one chunk per row group.
+    chunker = ParquetFileChunker(target_chunk_size=1)
     chunks = list(chunker.generate_chunk_metadatas(file_path, file_size))
     assert len(chunks) > 1, "test setup expects ParquetFileChunker to chunk"
 
@@ -378,7 +569,7 @@ def test_parquet_file_reader_chunked_row_hashes_are_unique(tmp_path):
     _write_multi_row_group_parquet(file_path, num_rows=expected_rows, row_group_size=20)
     file_size = os.path.getsize(file_path)
 
-    chunker = ParquetFileChunker(target_chunk_size=1024)
+    chunker = ParquetFileChunker(target_chunk_size=1)
     chunks = list(chunker.generate_chunk_metadatas(file_path, file_size))
     assert len(chunks) > 1, "test setup expects ParquetFileChunker to chunk"
 
@@ -399,23 +590,55 @@ def test_parquet_file_reader_chunked_row_hashes_are_unique(tmp_path):
 
 
 def test_parquet_file_reader_handles_out_of_range_chunks(tmp_path):
-    """Out-of-range chunk metadata is silently dropped — no exception, no rows."""
+    """Defensively clamped out-of-range chunk metadata yields no rows, no crash.
+
+    The chunker never emits out-of-range ranges (they're computed from the
+    same footer the reader sees), but a hand-constructed range beyond the
+    file's row groups must be handled gracefully.
+    """
     file_path = str(tmp_path / "tiny.parquet")
+    # 5 rows, single row group.
     _write_multi_row_group_parquet(file_path, num_rows=5, row_group_size=5)
-
     file_size = os.path.getsize(file_path)
-    # ``ParquetFileChunker`` over-estimates here; keep only the over-estimated
-    # tail (chunk_idx >= 1) to assert the reader yields no tables.
-    chunker = ParquetFileChunker(target_chunk_size=128)
-    chunks = list(chunker.generate_chunk_metadatas(file_path, file_size))
-    assert len(chunks) > 1
 
-    paths = [file_path] * (len(chunks) - 1)
-    out_of_range_metadatas = [md for md, _ in chunks[1:]]
-    sizes = [sz for _, sz in chunks[1:]]
-    manifest = FileManifest.construct_manifest(paths, sizes, out_of_range_metadatas)
+    # Explicit range entirely beyond the file's one row group.
+    out_of_range = create_chunk_metadata(
+        ParquetFileChunkMetadata, row_group_start=3, row_group_end=4
+    )
+    manifest = FileManifest.construct_manifest([file_path], [file_size], [out_of_range])
 
     reader = ParquetFileReader()
     tables = list(reader.read(manifest))
-    # All sub-fragments are out-of-range -> 0 tables emitted.
     assert sum(t.num_rows for t in tables) == 0
+
+
+class _StubFragment:
+    def __init__(self, path: str):
+        self.path = path
+
+
+def test_resolve_num_read_workers_caps_at_distinct_files():
+    """Per-task fragment-read concurrency keys on DISTINCT files, not fragment
+    count: same-file sub-scans (file-affinity) stay sequential; cross-file
+    partitions (round-robin) parallelize one worker per file, capped at the
+    thread budget."""
+    from ray.data._internal.datasource_v2.readers.file_reader import (
+        _resolve_num_read_workers,
+    )
+
+    # File-affinity: many sub-fragments of ONE file -> sequential (1 worker).
+    same_file = [(_StubFragment("a.parquet"), off) for off in (0, 2, 4, 6)]
+    assert _resolve_num_read_workers(same_file, num_threads=4) == 1
+
+    # Round-robin: 3 distinct files (one repeated) under a 4-thread budget -> 3.
+    mixed = [
+        (_StubFragment("a.parquet"), 0),
+        (_StubFragment("b.parquet"), 0),
+        (_StubFragment("c.parquet"), 0),
+        (_StubFragment("a.parquet"), 5),
+    ]
+    assert _resolve_num_read_workers(mixed, num_threads=4) == 3
+
+    # More distinct files than threads -> capped at the thread budget.
+    many = [(_StubFragment(f"{c}.parquet"), 0) for c in "abcdef"]
+    assert _resolve_num_read_workers(many, num_threads=4) == 4

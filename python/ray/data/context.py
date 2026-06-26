@@ -83,6 +83,62 @@ DEFAULT_USE_DATASOURCE_V2 = env_bool("RAY_DATA_USE_DATASOURCE_V2", False)
 # uses its built-in default (currently 1 GiB).
 DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE: Optional[int] = None
 
+# When True, V2 Parquet reads use the row-group-aware ``ParquetFileChunker``
+# (reads the footer at listing time and chunks on true row-group boundaries).
+# When False, they use the legacy ``ByteEstimateParquetFileChunker`` (no footer
+# read; chunk count estimated from file size and reconciled to row groups at
+# read time). Runtime-toggleable on ``DataContext`` for A/B experiments, the
+# same way as ``use_datasource_v2``.
+DEFAULT_PARQUET_CHUNKER_ROW_GROUP_AWARE = True
+
+# V2 read partitioning strategy. ``"file_affinity"`` (default) keeps each file's
+# chunks in that file's own size-bounded partitions -- one file per read task
+# (locality: one open + footer + sequential I/O) with sub-file parallelism for
+# large files. ``"round_robin"`` spreads chunks across ``num_buckets`` buckets
+# (may mix files in a partition). Env-overridable for experiments.
+DEFAULT_PARQUET_PARTITIONER_STRATEGY = os.environ.get(
+    "RAY_DATA_PARQUET_PARTITIONER_STRATEGY", "file_affinity"
+)
+
+# Max in-memory bytes per V2 read partition (the partitioner's
+# ``max_bucket_size``). ``None`` falls back to ``target_max_block_size``. Raise
+# it to bundle more consecutive row groups per read task (fewer tasks) WITHOUT
+# changing the output-block size.
+DEFAULT_PARQUET_PARTITIONER_MAX_BUCKET_SIZE_BYTES: Optional[int] = None
+
+# Target in-memory bytes per decode batch in the V2 Parquet reader. ``None``
+# falls back to ``target_max_block_size``. Lower it to decode in finer batches
+# (smaller per-task transient memory) independent of the output-block size.
+DEFAULT_PARQUET_READER_TARGET_BATCH_SIZE_BYTES: Optional[int] = None
+
+# Max ON-DISK (compressed) bytes coalesced into a single Parquet read scan. With
+# the row-group-aware chunker + file-affinity partitioner, a partition's
+# consecutive row groups are read in one scan; ``pre_buffer`` then holds that
+# whole scan's compressed column data in memory at once, so per-task memory
+# grows with the partition (``parquet_partitioner_max_bucket_size_bytes``).
+# Capping the scan splits a partition's row groups into multiple sequential
+# sub-scans -- bounding the ``pre_buffer`` footprint -- while still reading the
+# footer only once per file (the sub-scans share the file's fragment metadata).
+# This decouples partition size (parallelism / locality) from per-task scan
+# memory. ``None`` falls back to ``target_max_block_size``; a single row group
+# larger than the cap still scans alone (the atomic floor).
+DEFAULT_PARQUET_READER_MAX_COALESCED_SCAN_BYTES: Optional[int] = None
+
+# Per-task fragment-read concurrency in the V2 ``FileReader``. Threads overlap
+# I/O across DISTINCT files within a read task; the reader caps the worker count
+# at the number of distinct files in the partition, so consecutive sub-scans of
+# the SAME file stay sequential (one decode pipeline at a time) -- which bounds
+# the per-task decoded working set. Env-overridable.
+DEFAULT_READ_FILES_NUM_THREADS = env_integer("RAY_DATA_READ_FILES_NUM_THREADS", 4)
+
+# Batches the pyarrow scanner reads ahead per fragment scan. Each batch is
+# ~the reader's target block size DECODED, so per-scan peak decoded memory
+# ≈ batch_readahead × batch target. Lower it (e.g. 1-2) for jumbo / low-
+# compression columns to shrink the in-flight decoded set. Env-overridable.
+DEFAULT_ARROW_SCANNER_BATCH_READAHEAD = env_integer(
+    "RAY_DATA_ARROW_SCANNER_BATCH_READAHEAD", 8
+)
+
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -537,10 +593,12 @@ class DataContext:
             driver-side first-file sampling for schema inference,
             ``ParquetScanner`` / ``ParquetFileReader``). Defaults to False — V1
             remains the production path while V2 bakes.
-        parquet_chunker_target_chunk_size: Target chunk size in bytes used by
-            ``ParquetFileChunker`` when splitting large Parquet files into
-            multiple read tasks. When ``None``, the chunker's built-in default
-            (currently 1 GiB) is used.
+        parquet_chunker_target_chunk_size: Target on-disk bytes per chunk used
+            by ``ParquetFileChunker``. The chunker reads each file's footer at
+            listing time and bundles consecutive row groups until their on-disk
+            size reaches this target (always at least one row group per chunk),
+            so normal-sized row groups map roughly 1:1 to chunks. When ``None``,
+            falls back to ``target_min_block_size``.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
@@ -802,11 +860,37 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
-    # Target chunk size in bytes for ``ParquetFileChunker``. When ``None``, the
-    # chunker uses its built-in default (currently 1 GiB).
+    # Target on-disk bytes per chunk for ``ParquetFileChunker`` (bundles
+    # consecutive row groups up to this size, >= 1 row group). When ``None``,
+    # falls back to ``target_min_block_size``.
     parquet_chunker_target_chunk_size: Optional[
         int
     ] = DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE
+    # When True, use the row-group-aware Parquet chunker; when False, the legacy
+    # byte-estimate chunker. Runtime toggle for A/B experiments (read at
+    # ``read_parquet`` time, like ``use_datasource_v2``).
+    parquet_chunker_row_group_aware: bool = DEFAULT_PARQUET_CHUNKER_ROW_GROUP_AWARE
+    # V2 read partitioning strategy: "file_affinity" (default) or "round_robin".
+    parquet_partitioner_strategy: str = DEFAULT_PARQUET_PARTITIONER_STRATEGY
+    # Max in-memory bytes per read partition; None -> target_max_block_size.
+    parquet_partitioner_max_bucket_size_bytes: Optional[
+        int
+    ] = DEFAULT_PARQUET_PARTITIONER_MAX_BUCKET_SIZE_BYTES
+    # Target in-memory bytes per decode batch; None -> target_max_block_size.
+    parquet_reader_target_batch_size_bytes: Optional[
+        int
+    ] = DEFAULT_PARQUET_READER_TARGET_BATCH_SIZE_BYTES
+    # Max on-disk bytes coalesced into one Parquet read scan (bounds the
+    # pre_buffer footprint per read task); None -> target_max_block_size.
+    parquet_reader_max_coalesced_scan_bytes: Optional[
+        int
+    ] = DEFAULT_PARQUET_READER_MAX_COALESCED_SCAN_BYTES
+    # Per-task fragment-read concurrency, capped at the partition's distinct
+    # file count by the reader (same-file sub-scans stay sequential).
+    read_files_num_threads: int = DEFAULT_READ_FILES_NUM_THREADS
+    # Batches the pyarrow scanner reads ahead per fragment scan (× batch target
+    # ≈ per-scan decoded peak).
+    arrow_scanner_batch_readahead: int = DEFAULT_ARROW_SCANNER_BATCH_READAHEAD
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format

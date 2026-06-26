@@ -10,6 +10,9 @@ from ray.data._internal.datasource_v2.listing.file_manifest import (
     PATH_COLUMN_NAME,
 )
 from ray.data._internal.datasource_v2.listing.listing_utils import partition_files
+from ray.data._internal.datasource_v2.partitioners.file_affinity_partitioner import (
+    FileAffinityPartitioner,
+)
 from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
     RoundRobinPartitioner,
 )
@@ -136,6 +139,83 @@ def test_weighted_round_robin_partitioner_can_emit_before_overflow():
     partitioner.finalize()
     assert partitioner.has_partition()
     assert partitioner.next_partition() == ["b"]
+
+
+class _FileSizeStubEstimator(InMemorySizeEstimator):
+    """In-memory size == the manifest's on-disk ``file_sizes`` (test control)."""
+
+    def estimate_in_memory_sizes(self, manifest) -> np.ndarray:
+        return np.asarray(manifest.file_sizes)
+
+
+def _affinity_table(paths, sizes, metas):
+    return pa.Table.from_pydict(
+        {
+            PATH_COLUMN_NAME: paths,
+            FILE_SIZE_COLUMN_NAME: sizes,
+            FILE_CHUNK_METADATA_COLUMN_NAME: metas,
+        }
+    )
+
+
+def _affinity_outputs(table, max_bucket_size):
+    return list(
+        partition_files(
+            iter([table]),
+            MagicMock(),
+            partitioner=FileAffinityPartitioner(
+                in_memory_size_estimator=_FileSizeStubEstimator(),
+                max_bucket_size=max_bucket_size,
+            ),
+        )
+    )
+
+
+def test_file_affinity_groups_by_file_and_bounds_size():
+    # File "a": 4 chunks of size 1; "b": 1 chunk. max_bucket_size=2 -> "a"
+    # splits into two 2-chunk partitions, "b" is its own. No partition mixes
+    # files.
+    table = _affinity_table(["a", "a", "a", "a", "b"], [1, 1, 1, 1, 1], [None] * 5)
+    partitions = [o[PATH_COLUMN_NAME].to_pylist() for o in _affinity_outputs(table, 2)]
+    assert partitions == [["a", "a"], ["a", "a"], ["b"]]
+    assert all(len(set(p)) == 1 for p in partitions)  # each partition single-file
+
+
+def test_file_affinity_interleaved_input_groups_by_file():
+    # Chunks of "a" and "b" interleaved in the input still group per file.
+    table = _affinity_table(["a", "b", "a", "b"], [1, 1, 1, 1], [None] * 4)
+    partitions = [o[PATH_COLUMN_NAME].to_pylist() for o in _affinity_outputs(table, 2)]
+    assert partitions == [["a", "a"], ["b", "b"]]
+
+
+def test_file_affinity_small_file_is_single_partition():
+    table = _affinity_table(["a", "a"], [1, 1], [None, None])
+    partitions = [
+        o[PATH_COLUMN_NAME].to_pylist() for o in _affinity_outputs(table, 100)
+    ]
+    assert partitions == [["a", "a"]]
+
+
+def test_file_affinity_empty_input_emits_nothing():
+    table = _affinity_table([], [], [])
+    assert _affinity_outputs(table, 2) == []
+
+
+def test_file_affinity_sorts_partition_chunks_by_row_group_start():
+    # Row groups arrive out of order; the emitted partition is ascending.
+    metas = [
+        {"row_group_start": 2, "row_group_end": 3},
+        {"row_group_start": 0, "row_group_end": 1},
+        {"row_group_start": 1, "row_group_end": 2},
+    ]
+    table = _affinity_table(["a", "a", "a"], [1, 1, 1], metas)
+    outputs = _affinity_outputs(table, 100)
+    assert len(outputs) == 1
+    starts = [
+        cm["row_group_start"]
+        for cm in outputs[0][FILE_CHUNK_METADATA_COLUMN_NAME].to_pylist()
+    ]
+    assert starts == [0, 1, 2]
 
 
 if __name__ == "__main__":

@@ -36,6 +36,40 @@ def test_data_context_current_context_manager():
     assert DataContext.get_current() is original
 
 
+def test_parquet_chunker_row_group_aware_default_and_mutable():
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+    # Defaults on (the row-group-aware chunker); runtime-toggleable for A/B.
+    assert ctx.parquet_chunker_row_group_aware is True
+    original = ctx.parquet_chunker_row_group_aware
+    try:
+        ctx.parquet_chunker_row_group_aware = False
+        assert DataContext.get_current().parquet_chunker_row_group_aware is False
+    finally:
+        ctx.parquet_chunker_row_group_aware = original
+
+
+def test_parquet_partitioner_and_sizing_knob_defaults():
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+    # file_affinity is the default partitioning strategy.
+    assert ctx.parquet_partitioner_strategy == "file_affinity"
+    # The dedicated sizing knobs default to None (fall back to block sizes).
+    assert ctx.parquet_partitioner_max_bucket_size_bytes is None
+    assert ctx.parquet_reader_target_batch_size_bytes is None
+    assert ctx.parquet_reader_max_coalesced_scan_bytes is None
+    # Read concurrency / readahead default to their env-backed constants.
+    from ray.data.context import (
+        DEFAULT_ARROW_SCANNER_BATCH_READAHEAD,
+        DEFAULT_READ_FILES_NUM_THREADS,
+    )
+
+    assert ctx.read_files_num_threads == DEFAULT_READ_FILES_NUM_THREADS
+    assert ctx.arrow_scanner_batch_readahead == DEFAULT_ARROW_SCANNER_BATCH_READAHEAD
+
+
 if __name__ == "__main__":
     import sys
 

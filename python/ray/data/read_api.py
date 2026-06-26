@@ -458,6 +458,9 @@ def _read_datasource_v2(
         _build_pruners,
         sample_files,
     )
+    from ray.data._internal.datasource_v2.partitioners.file_affinity_partitioner import (
+        FileAffinityPartitioner,
+    )
     from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
         RoundRobinPartitioner,
     )
@@ -528,21 +531,36 @@ def _read_datasource_v2(
     import sys
 
     min_bucket_size = ctx.target_min_block_size or 0
-    max_bucket_size = (
-        ctx.target_max_block_size
-        if ctx.target_max_block_size is not None
-        else sys.maxsize
-    )
-    # ``parallelism`` is the caller-resolved ``override_num_blocks`` value
-    # (``-1`` when unset). Honoring it here per-read avoids mutating the
-    # process-global ``DataContext.read_op_min_num_blocks``.
-    num_buckets = parallelism if parallelism != -1 else ctx.read_op_min_num_blocks
-    partitioner = RoundRobinPartitioner(
-        in_memory_size_estimator=datasource.get_size_estimator(),
-        min_bucket_size=min_bucket_size,
-        max_bucket_size=max_bucket_size,
-        num_buckets=num_buckets,
-    )
+    # ``max_bucket_size`` (per-partition in-memory cap) defaults to
+    # ``target_max_block_size`` but can be set independently via
+    # ``parquet_partitioner_max_bucket_size_bytes`` to bundle more consecutive
+    # row groups per read task without changing the output-block size.
+    max_bucket_size = ctx.parquet_partitioner_max_bucket_size_bytes
+    if max_bucket_size is None:
+        max_bucket_size = (
+            ctx.target_max_block_size
+            if ctx.target_max_block_size is not None
+            else sys.maxsize
+        )
+    estimator = datasource.get_size_estimator()
+    if ctx.parquet_partitioner_strategy == "round_robin":
+        # ``parallelism`` is the caller-resolved ``override_num_blocks`` value
+        # (``-1`` when unset). Honoring it here per-read avoids mutating the
+        # process-global ``DataContext.read_op_min_num_blocks``.
+        num_buckets = parallelism if parallelism != -1 else ctx.read_op_min_num_blocks
+        partitioner = RoundRobinPartitioner(
+            in_memory_size_estimator=estimator,
+            min_bucket_size=min_bucket_size,
+            max_bucket_size=max_bucket_size,
+            num_buckets=num_buckets,
+        )
+    else:
+        # "file_affinity" (default): keep each file's chunks in that file's own
+        # size-bounded partitions (locality + sub-file parallelism).
+        partitioner = FileAffinityPartitioner(
+            in_memory_size_estimator=estimator,
+            max_bucket_size=max_bucket_size,
+        )
 
     # NOTE: We're using shuffle config factory to fix the seed at the planning
     #       time, rather than at the composition time (for backward-compatibility)
