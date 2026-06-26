@@ -21,7 +21,7 @@ from ray.data._internal.block_batching.iter_batches import (
 )
 from ray.data._internal.block_batching.util import WaitBlockPrefetcher
 from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry, RefBundle
-from ray.data._internal.stats import DatasetStats, TimeSpan
+from ray.data._internal.stats import DatasetStats, PipelineStage, TimeSpan
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
 
@@ -127,7 +127,7 @@ def test_restore_original_order_stats():
     assert [batch.metadata.batch_idx for batch in ordered] == [0, 1, 2]
 
 
-def test_report_batch_timings_overlap_attribution():
+def test_attribute_blocked_time_overlap_attribution():
     stats = DatasetStats(metadata={}, parent=None)
     batch_iterator = BatchIterator(iter([]), stats=stats)
     timings = BatchTimings()
@@ -137,7 +137,7 @@ def test_report_batch_timings_overlap_attribution():
     timings.finalize = TimeSpan(start_s=50.0, end_s=60.0)
     batch = Batch(BatchMetadata(batch_idx=0, num_rows=8, timings=timings), None)
 
-    batch_iterator._report_batch_timings(
+    batch_iterator._attribute_blocked_time(
         batch, blocked_start_s=15.0, blocked_end_s=35.0
     )
 
@@ -200,7 +200,7 @@ class TestReportBatchTimingsEdgeCases:
         batch = _make_batch_with_timings(
             production_wait_start=0.0, production_wait_end=1.5
         )
-        it._report_batch_timings(batch, blocked_start_s=2.0, blocked_end_s=3.0)
+        it._attribute_blocked_time(batch, blocked_start_s=2.0, blocked_end_s=3.0)
         assert stats.iter_blocked_production_wait_s.get() == 0.0
 
     def test_zero_overlap_blocked_before_stage(self):
@@ -208,7 +208,7 @@ class TestReportBatchTimingsEdgeCases:
         stats = DatasetStats(metadata={}, parent=None)
         it = _make_report_iterator(stats)
         batch = _make_batch_with_timings(format_start=2.0, format_end=3.0)
-        it._report_batch_timings(batch, blocked_start_s=0.0, blocked_end_s=1.0)
+        it._attribute_blocked_time(batch, blocked_start_s=0.0, blocked_end_s=1.0)
         assert stats.iter_blocked_format_s.get() == 0.0
 
     def test_partial_overlap(self):
@@ -218,7 +218,7 @@ class TestReportBatchTimingsEdgeCases:
         batch = _make_batch_with_timings(
             production_wait_start=0.0, production_wait_end=2.0
         )
-        it._report_batch_timings(batch, blocked_start_s=1.0, blocked_end_s=3.0)
+        it._attribute_blocked_time(batch, blocked_start_s=1.0, blocked_end_s=3.0)
         assert stats.iter_blocked_production_wait_s.get() == pytest.approx(1.0)
 
     def test_full_overlap_stage_inside_blocked(self):
@@ -226,7 +226,7 @@ class TestReportBatchTimingsEdgeCases:
         stats = DatasetStats(metadata={}, parent=None)
         it = _make_report_iterator(stats)
         batch = _make_batch_with_timings(batching_start=1.0, batching_end=2.0)
-        it._report_batch_timings(batch, blocked_start_s=0.0, blocked_end_s=3.0)
+        it._attribute_blocked_time(batch, blocked_start_s=0.0, blocked_end_s=3.0)
         assert stats.iter_blocked_batching_s.get() == pytest.approx(1.0)
 
     def test_no_collate_fn_zero_attribution(self):
@@ -234,7 +234,7 @@ class TestReportBatchTimingsEdgeCases:
         stats = DatasetStats(metadata={}, parent=None)
         it = _make_report_iterator(stats)
         batch = _make_batch_with_timings(format_start=1.0, format_end=2.0)
-        it._report_batch_timings(batch, blocked_start_s=0.0, blocked_end_s=3.0)
+        it._attribute_blocked_time(batch, blocked_start_s=0.0, blocked_end_s=3.0)
         assert stats.iter_blocked_format_s.get() == pytest.approx(1.0)
         assert stats.iter_blocked_collate_s.get() == 0.0
 
@@ -243,7 +243,7 @@ class TestReportBatchTimingsEdgeCases:
         stats = DatasetStats(metadata={}, parent=None)
         it = _make_report_iterator(stats)
         batch = _make_batch_with_timings(collate_start=1.0, collate_end=2.0)
-        it._report_batch_timings(batch, blocked_start_s=0.0, blocked_end_s=3.0)
+        it._attribute_blocked_time(batch, blocked_start_s=0.0, blocked_end_s=3.0)
         assert stats.iter_blocked_collate_s.get() == pytest.approx(1.0)
         assert stats.iter_blocked_finalize_s.get() == 0.0
 
@@ -258,7 +258,7 @@ class TestReportBatchTimingsEdgeCases:
             collate_end=2.6,
         )
         # Training only starts blocking at t=2 (prefetch worked)
-        it._report_batch_timings(batch, blocked_start_s=2.0, blocked_end_s=2.6)
+        it._attribute_blocked_time(batch, blocked_start_s=2.0, blocked_end_s=2.6)
         assert stats.iter_blocked_production_wait_s.get() == 0.0
         assert stats.iter_blocked_collate_s.get() == pytest.approx(0.3)
 
@@ -270,12 +270,12 @@ class TestReportBatchTimingsEdgeCases:
         b1 = _make_batch_with_timings(
             production_wait_start=0.0, production_wait_end=1.0, num_rows=10
         )
-        it._report_batch_timings(b1, blocked_start_s=0.0, blocked_end_s=2.0)
+        it._attribute_blocked_time(b1, blocked_start_s=0.0, blocked_end_s=2.0)
         # Batch 2: fetch [5,6], blocked [5,7] → overlap 1.0
         b2 = _make_batch_with_timings(
             production_wait_start=5.0, production_wait_end=6.0, num_rows=20
         )
-        it._report_batch_timings(b2, blocked_start_s=5.0, blocked_end_s=7.0)
+        it._attribute_blocked_time(b2, blocked_start_s=5.0, blocked_end_s=7.0)
 
         assert stats.iter_blocked_production_wait_s.get() == pytest.approx(2.0)
         assert stats.iter_batches_total == 2
@@ -295,7 +295,7 @@ class TestReportBatchTimingsEdgeCases:
             format_end=3.0,
             num_rows=5,
         )
-        it._report_batch_timings(batch, blocked_start_s=0.0, blocked_end_s=5.0)
+        it._attribute_blocked_time(batch, blocked_start_s=0.0, blocked_end_s=5.0)
 
         total = stats.iter_total_blocked_s.get()
         sum_stages = (
@@ -314,7 +314,7 @@ class TestReportBatchTimingsEdgeCases:
         batch = _make_batch_with_timings(
             production_wait_start=0.0, production_wait_end=10.0
         )
-        it._report_batch_timings(batch, blocked_start_s=3.0, blocked_end_s=5.0)
+        it._attribute_blocked_time(batch, blocked_start_s=3.0, blocked_end_s=5.0)
         assert stats.iter_blocked_production_wait_s.get() == pytest.approx(2.0)
 
     def test_all_stages_simultaneous_overlap(self):
@@ -335,7 +335,7 @@ class TestReportBatchTimingsEdgeCases:
             num_rows=100,
         )
         # Blocked window covers all stages
-        it._report_batch_timings(batch, blocked_start_s=0.0, blocked_end_s=5.0)
+        it._attribute_blocked_time(batch, blocked_start_s=0.0, blocked_end_s=5.0)
         assert stats.iter_blocked_production_wait_s.get() == pytest.approx(1.0)
         assert stats.iter_blocked_batching_s.get() == pytest.approx(1.0)
         assert stats.iter_blocked_format_s.get() == pytest.approx(1.0)
@@ -454,11 +454,11 @@ class TestEndToEndTimingPropagation:
         # Verify all stages are accessible via stages() iterator
         stage_dict = dict(batch.metadata.timings.stages())
         assert len(stage_dict) == 6
-        assert stage_dict["production_wait"].start_s == 1.0
-        assert stage_dict["batching"].end_s == 3.0
-        assert stage_dict["format"].start_s == 3.0
-        assert stage_dict["collate"].end_s == 5.0
-        assert stage_dict["finalize"].start_s == 5.0
+        assert stage_dict[PipelineStage.PRODUCTION_WAIT].start_s == 1.0
+        assert stage_dict[PipelineStage.BATCHING].end_s == 3.0
+        assert stage_dict[PipelineStage.FORMAT].start_s == 3.0
+        assert stage_dict[PipelineStage.COLLATE].end_s == 5.0
+        assert stage_dict[PipelineStage.FINALIZE].start_s == 5.0
         assert batch.metadata.num_rows == 50
 
     def test_full_pipeline_attribution(self):
@@ -482,7 +482,7 @@ class TestEndToEndTimingPropagation:
         )
 
         # Blocked window covers all stages
-        it._report_batch_timings(batch, blocked_start_s=0.0, blocked_end_s=5.0)
+        it._attribute_blocked_time(batch, blocked_start_s=0.0, blocked_end_s=5.0)
 
         # Each stage gets its full duration
         assert stats.iter_blocked_production_wait_s.get() == pytest.approx(0.5)

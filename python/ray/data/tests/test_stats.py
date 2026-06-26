@@ -1940,17 +1940,23 @@ def test_update_iteration_metrics_exports_new_iter_metrics():
         "iter_batch_finalizing_s",
         "time_to_first_batch_s",
         "iter_total_blocked_s",
-        "iter_blocked_production_wait_s",
-        "iter_blocked_data_transfer_s",
-        "iter_blocked_batching_s",
-        "iter_blocked_format_s",
-        "iter_blocked_collate_s",
-        "iter_blocked_finalize_s",
         "iter_batches_total",
         "iter_rows_total",
         "iter_user_s",
     ]:
         setattr(actor, attr, FakeGauge(attr))
+
+    # Set up the blocked gauges dict (now stored as Dict[PipelineStage, Gauge])
+    from ray.data._internal.stats import PipelineStage
+
+    actor._blocked_gauges = {
+        PipelineStage.PRODUCTION_WAIT: FakeGauge("iter_blocked_production_wait_s"),
+        PipelineStage.DATA_TRANSFER: FakeGauge("iter_blocked_data_transfer_s"),
+        PipelineStage.BATCHING: FakeGauge("iter_blocked_batching_s"),
+        PipelineStage.FORMAT: FakeGauge("iter_blocked_format_s"),
+        PipelineStage.COLLATE: FakeGauge("iter_blocked_collate_s"),
+        PipelineStage.FINALIZE: FakeGauge("iter_blocked_finalize_s"),
+    }
 
     actor.update_iteration_metrics(stats, "train_dataset_split_3")
 

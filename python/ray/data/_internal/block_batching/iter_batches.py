@@ -255,26 +255,26 @@ class BatchIterator:
                 except StopIteration:
                     break
                 blocked_end_s = time.perf_counter()
-            self._report_batch_timings(batch, blocked_start_s, blocked_end_s)
+            self._attribute_blocked_time(batch, blocked_start_s, blocked_end_s)
             with self.yield_batch_context(batch):
                 yield batch.data
 
         self.after_epoch_end()
 
-    def _report_batch_timings(
+    def _attribute_blocked_time(
         self, batch: Batch, blocked_start_s: float, blocked_end_s: float
     ) -> None:
         """Attribute per-stage blocked time via overlap with the training window.
 
-        For each pipeline stage we know when it ran ``[stage.start_s,
-        stage.end_s]`` (recorded by background threads onto
+        For each pipeline stage we know when it ran ``[timing.start_s,
+        timing.end_s]`` (recorded by background threads onto
         ``batch.metadata.timings``).  We also know when the training thread
         was blocked ``[blocked_start_s, blocked_end_s]`` (captured in
         ``_iter_batches`` around ``next()``).
 
         The attribution for a stage is the length of the intersection::
 
-            overlap = min(stage.end, blocked_end) - max(stage.start, blocked_start)
+            overlap = min(timing.end, blocked_end) - max(timing.start, blocked_start)
 
         This correctly handles all prefetch configurations:
 
@@ -298,14 +298,14 @@ class BatchIterator:
         if self._stats is None:
             return
         timings = batch.metadata.timings
-        for name, timing in timings.stages():
+        for stage, timing in timings.stages():
             if timing is None:
                 continue
             overlap_s = min(timing.end_s, blocked_end_s) - max(
                 timing.start_s, blocked_start_s
             )
             if overlap_s > 0:
-                getattr(self._stats, f"iter_blocked_{name}_s").add(overlap_s)
+                self._stats.get_blocked_timer(stage).add(overlap_s)
         self._stats.iter_batches_total += 1
         self._stats.iter_rows_total += batch.metadata.num_rows
 

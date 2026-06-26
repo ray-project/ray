@@ -2,7 +2,7 @@ import abc
 from dataclasses import dataclass, field
 from typing import Any, Iterable, List, Optional, Tuple
 
-from ray.data._internal.stats import TimeSpan
+from ray.data._internal.stats import PipelineStage, TimeSpan
 from ray.data.block import Block, DataBatch
 from ray.types import ObjectRef
 
@@ -52,15 +52,15 @@ class BatchTimings:
     collate: Optional[TimeSpan] = None
     finalize: Optional[TimeSpan] = None
 
-    def stages(self) -> Iterable[Tuple[str, Optional[TimeSpan]]]:
-        """Iterate over ``(name, timing)`` pairs for all pipeline stages."""
+    def stages(self) -> Iterable[Tuple[PipelineStage, Optional[TimeSpan]]]:
+        """Iterate over ``(stage, timing)`` pairs for all pipeline stages."""
         return (
-            ("production_wait", self.production_wait),
-            ("data_transfer", self.data_transfer),
-            ("batching", self.batching),
-            ("format", self.format),
-            ("collate", self.collate),
-            ("finalize", self.finalize),
+            (PipelineStage.PRODUCTION_WAIT, self.production_wait),
+            (PipelineStage.DATA_TRANSFER, self.data_transfer),
+            (PipelineStage.BATCHING, self.batching),
+            (PipelineStage.FORMAT, self.format),
+            (PipelineStage.COLLATE, self.collate),
+            (PipelineStage.FINALIZE, self.finalize),
         )
 
     def merge_fetch(self, src: BlockFetchTiming) -> None:

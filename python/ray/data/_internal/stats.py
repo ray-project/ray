@@ -6,6 +6,7 @@ import time
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
+from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -173,6 +174,17 @@ class _StatsAccumulator:
             sum=safe_round(self.acc_sum, round_digits),
             count=self.count,
         )
+
+
+class PipelineStage(Enum):
+    """Pipeline stages for blocked attribution."""
+
+    PRODUCTION_WAIT = "production_wait"
+    DATA_TRANSFER = "data_transfer"
+    BATCHING = "batching"
+    FORMAT = "format"
+    COLLATE = "collate"
+    FINALIZE = "finalize"
 
 
 @dataclass
@@ -546,36 +558,38 @@ class _StatsActor:
             description="Total wall-clock seconds spent in the dataset iterator",
             tag_keys=iter_tag_keys,
         )
-        self.iter_blocked_production_wait_s = Gauge(
-            "data_iter_blocked_production_wait_seconds",
-            description="Seconds user thread is blocked on upstream data production",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_blocked_data_transfer_s = Gauge(
-            "data_iter_blocked_data_transfer_seconds",
-            description="Seconds user thread is blocked on cross-node data transfer (ray.get)",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_blocked_batching_s = Gauge(
-            "data_iter_blocked_batching_seconds",
-            description="Seconds user thread is blocked on batch creation",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_blocked_format_s = Gauge(
-            "data_iter_blocked_format_seconds",
-            description="Seconds user thread is blocked on batch formatting",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_blocked_collate_s = Gauge(
-            "data_iter_blocked_collate_seconds",
-            description="Seconds user thread is blocked on batch collation",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_blocked_finalize_s = Gauge(
-            "data_iter_blocked_finalize_seconds",
-            description="Seconds user thread is blocked on batch finalization",
-            tag_keys=iter_tag_keys,
-        )
+        self._blocked_gauges: Dict[PipelineStage, Gauge] = {
+            PipelineStage.PRODUCTION_WAIT: Gauge(
+                "data_iter_blocked_production_wait_seconds",
+                description="Seconds user thread is blocked on upstream data production",
+                tag_keys=iter_tag_keys,
+            ),
+            PipelineStage.DATA_TRANSFER: Gauge(
+                "data_iter_blocked_data_transfer_seconds",
+                description="Seconds user thread is blocked on cross-node data transfer (ray.get)",
+                tag_keys=iter_tag_keys,
+            ),
+            PipelineStage.BATCHING: Gauge(
+                "data_iter_blocked_batching_seconds",
+                description="Seconds user thread is blocked on batch creation",
+                tag_keys=iter_tag_keys,
+            ),
+            PipelineStage.FORMAT: Gauge(
+                "data_iter_blocked_format_seconds",
+                description="Seconds user thread is blocked on batch formatting",
+                tag_keys=iter_tag_keys,
+            ),
+            PipelineStage.COLLATE: Gauge(
+                "data_iter_blocked_collate_seconds",
+                description="Seconds user thread is blocked on batch collation",
+                tag_keys=iter_tag_keys,
+            ),
+            PipelineStage.FINALIZE: Gauge(
+                "data_iter_blocked_finalize_seconds",
+                description="Seconds user thread is blocked on batch finalization",
+                tag_keys=iter_tag_keys,
+            ),
+        }
         self.iter_batches_total = Gauge(
             "data_iter_batches_total",
             description="Total batches delivered to the user thread",
@@ -847,16 +861,8 @@ class _StatsActor:
         self.time_to_first_batch_s.set(stats.iter_time_to_first_batch_s.get(), tags)
 
         self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
-        self.iter_blocked_production_wait_s.set(
-            stats.iter_blocked_production_wait_s.get(), tags
-        )
-        self.iter_blocked_data_transfer_s.set(
-            stats.iter_blocked_data_transfer_s.get(), tags
-        )
-        self.iter_blocked_batching_s.set(stats.iter_blocked_batching_s.get(), tags)
-        self.iter_blocked_format_s.set(stats.iter_blocked_format_s.get(), tags)
-        self.iter_blocked_collate_s.set(stats.iter_blocked_collate_s.get(), tags)
-        self.iter_blocked_finalize_s.set(stats.iter_blocked_finalize_s.get(), tags)
+        for stage, gauge in self._blocked_gauges.items():
+            gauge.set(stats.get_blocked_timer(stage).get(), tags)
         self.iter_batches_total.set(stats.iter_batches_total, tags)
         self.iter_rows_total.set(stats.iter_rows_total, tags)
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
@@ -1283,6 +1289,22 @@ class DatasetStats:
 
         # Streaming split coordinator stats (dataset level)
         self.streaming_split_coordinator_s: Timer = Timer()
+
+    def get_blocked_timer(self, stage: PipelineStage) -> Timer:
+        """Return the blocked-attribution Timer for the given pipeline stage."""
+        match stage:
+            case PipelineStage.PRODUCTION_WAIT:
+                return self.iter_blocked_production_wait_s
+            case PipelineStage.DATA_TRANSFER:
+                return self.iter_blocked_data_transfer_s
+            case PipelineStage.BATCHING:
+                return self.iter_blocked_batching_s
+            case PipelineStage.FORMAT:
+                return self.iter_blocked_format_s
+            case PipelineStage.COLLATE:
+                return self.iter_blocked_collate_s
+            case PipelineStage.FINALIZE:
+                return self.iter_blocked_finalize_s
 
     @property
     def stats_actor(self):
