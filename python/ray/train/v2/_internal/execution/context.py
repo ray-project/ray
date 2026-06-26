@@ -484,14 +484,13 @@ class TrainContext:
                     )
                 ):
                     raise ValueError(
-                        "The reported checkpoint is within Ray Train's experiment directory. "
-                        "A checkpoint must be saved on the same filesystem"
-                        "and within the storage path configured by "
-                        "`RunConfig(storage_path, storage_filesystem)`:\n"
+                        "The reported checkpoint not is within Ray Train's experiment directory. "
+                        "A checkpoint must be saved on the same filesystem and within the storage "
+                        "path configured by `RunConfig(storage_path, storage_filesystem)`:\n"
                         f"  - storage filesystem:    {self.storage_context.storage_filesystem}\n"
-                        f"  - checkpoint filesystem: {checkpoint.filesystem}\n"
+                        f"  - checkpoint filesystem: {training_report.checkpoint.filesystem}\n"
                         f"  - storage path:          {self.storage_context.experiment_fs_path}\n"
-                        f"  - checkpoint path:       {checkpoint.path}\n"
+                        f"  - checkpoint path:       {training_report.checkpoint.path}\n"
                         "You can access the storage configuration with "
                         "`ray.train.get_context().get_storage().storage_filesystem` and "
                         "`ray.train.get_context().get_storage().experiment_fs_path`."
@@ -503,10 +502,9 @@ class TrainContext:
                     self.storage_context, checkpoint
                 ):
                     raise ValueError(
-                        "The reported checkpoint is within Ray Train's experiment directory. "
-                        "A checkpoint must be saved on the same filesystem"
-                        "and within the storage path configured by "
-                        "`RunConfig(storage_path, storage_filesystem)`:\n"
+                        "The reported checkpoint not is within Ray Train's experiment directory. "
+                        "A checkpoint must be saved on the same filesystem and within the storage "
+                        "path configured by `RunConfig(storage_path, storage_filesystem)`:\n"
                         f"  - storage filesystem:    {self.storage_context.storage_filesystem}\n"
                         f"  - checkpoint filesystem: {checkpoint.filesystem}\n"
                         f"  - storage path:          {self.storage_context.experiment_fs_path}\n"
@@ -548,14 +546,13 @@ class TrainContext:
                             )
                         ):
                             raise ValueError(
-                                "The reported checkpoint is within Ray Train's experiment directory. "
-                                "A checkpoint must be saved on the same filesystem"
-                                "and within the storage path configured by "
-                                "`RunConfig(storage_path, storage_filesystem)`:\n"
+                                "The reported checkpoint not is within Ray Train's experiment directory. "
+                                "A checkpoint must be saved on the same filesystem and within the storage "
+                                "path configured by `RunConfig(storage_path, storage_filesystem)`:\n"
                                 f"  - storage filesystem:    {self.storage_context.storage_filesystem}\n"
-                                f"  - checkpoint filesystem: {checkpoint.filesystem}\n"
+                                f"  - checkpoint filesystem: {training_report.checkpoint.filesystem}\n"
                                 f"  - storage path:          {self.storage_context.experiment_fs_path}\n"
-                                f"  - checkpoint path:       {checkpoint.path}\n"
+                                f"  - checkpoint path:       {training_report.checkpoint.path}\n"
                                 "You can access the storage configuration with "
                                 "`ray.train.get_context().get_storage().storage_filesystem` and "
                                 "`ray.train.get_context().get_storage().experiment_fs_path`."

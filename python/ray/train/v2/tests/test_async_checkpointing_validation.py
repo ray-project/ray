@@ -1250,9 +1250,7 @@ def test_out_of_band_checkpoints_local(checkpoint_upload_mode, tmp_path):
             write_file(out_of_band_ckpt, "out-of-band")
             upload_fn = None
         else:
-            upload_fn = upload(
-                lambda: write_file(out_of_band_ckpt.parent, "out-of-band")
-            )
+            upload_fn = upload(lambda: write_file(out_of_band_ckpt, "out-of-band"))
 
         ray.train.report(
             metrics={"out-of-band": True},
@@ -1264,7 +1262,7 @@ def test_out_of_band_checkpoints_local(checkpoint_upload_mode, tmp_path):
 
     with pytest.raises(
         WorkerGroupError,
-        match="The reported checkpoint is within Ray Train's experiment directory",
+        match="The reported checkpoint not is within Ray Train's experiment directory",
     ) as exc_info:
         DataParallelTrainer(
             train_fn,
@@ -1395,7 +1393,7 @@ def test_out_of_band_checkpoints_s3(
         )
         with pytest.raises(
             WorkerGroupError,
-            match="The reported checkpoint is within Ray Train's experiment directory",
+            match="The reported checkpoint not is within Ray Train's experiment directory",
         ) as exc_info:
             trainer.fit()
         assert isinstance(exc_info.value.worker_failures[0], ValueError)
