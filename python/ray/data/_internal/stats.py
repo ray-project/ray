@@ -546,9 +546,14 @@ class _StatsActor:
             description="Total wall-clock seconds spent in the dataset iterator",
             tag_keys=iter_tag_keys,
         )
-        self.iter_blocked_fetch_s = Gauge(
-            "data_iter_blocked_fetch_seconds",
-            description="Seconds user thread is blocked on block fetching",
+        self.iter_blocked_production_wait_s = Gauge(
+            "data_iter_blocked_production_wait_seconds",
+            description="Seconds user thread is blocked on upstream data production",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_data_transfer_s = Gauge(
+            "data_iter_blocked_data_transfer_seconds",
+            description="Seconds user thread is blocked on cross-node data transfer (ray.get)",
             tag_keys=iter_tag_keys,
         )
         self.iter_blocked_batching_s = Gauge(
@@ -842,7 +847,12 @@ class _StatsActor:
         self.time_to_first_batch_s.set(stats.iter_time_to_first_batch_s.get(), tags)
 
         self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
-        self.iter_blocked_fetch_s.set(stats.iter_blocked_fetch_s.get(), tags)
+        self.iter_blocked_production_wait_s.set(
+            stats.iter_blocked_production_wait_s.get(), tags
+        )
+        self.iter_blocked_data_transfer_s.set(
+            stats.iter_blocked_data_transfer_s.get(), tags
+        )
         self.iter_blocked_batching_s.set(stats.iter_blocked_batching_s.get(), tags)
         self.iter_blocked_format_s.set(stats.iter_blocked_format_s.get(), tags)
         self.iter_blocked_collate_s.set(stats.iter_blocked_collate_s.get(), tags)
@@ -1242,7 +1252,8 @@ class DatasetStats:
         self.iter_finalize_batch_s: Timer = Timer()
         self.iter_time_to_first_batch_s: Timer = Timer()
         self.iter_total_blocked_s: Timer = Timer()
-        self.iter_blocked_fetch_s: Timer = Timer()
+        self.iter_blocked_production_wait_s: Timer = Timer()
+        self.iter_blocked_data_transfer_s: Timer = Timer()
         self.iter_blocked_batching_s: Timer = Timer()
         self.iter_blocked_format_s: Timer = Timer()
         self.iter_blocked_collate_s: Timer = Timer()
@@ -1307,7 +1318,8 @@ class DatasetStats:
             self.iter_blocks_remote,
             self.iter_unknown_location,
             self.iter_prefetched_bytes,
-            self.iter_blocked_fetch_s,
+            self.iter_blocked_production_wait_s,
+            self.iter_blocked_data_transfer_s,
             self.iter_blocked_batching_s,
             self.iter_blocked_format_s,
             self.iter_blocked_collate_s,
@@ -1997,7 +2009,8 @@ class IterStatsSummary:
     # Current bytes of prefetched blocks in the iterator
     iter_prefetched_bytes: int
     # Per-stage training-thread blocked attribution timers.
-    blocked_fetch_time: Timer
+    blocked_production_wait_time: Timer
+    blocked_data_transfer_time: Timer
     blocked_batching_time: Timer
     blocked_format_time: Timer
     blocked_collate_time: Timer
@@ -2113,7 +2126,8 @@ class IterStatsSummary:
 
         # Per-stage training-thread blocked attribution.
         stage_totals = [
-            ("block fetch (ray.get)", self.blocked_fetch_time),
+            ("production wait", self.blocked_production_wait_time),
+            ("data transfer (ray.get)", self.blocked_data_transfer_time),
             ("batching", self.blocked_batching_time),
             ("format", self.blocked_format_time),
             ("collate", self.blocked_collate_time),

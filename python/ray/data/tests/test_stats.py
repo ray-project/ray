@@ -1899,7 +1899,8 @@ def test_create_iteration_tags_extracts_rank():
 def test_update_iteration_metrics_exports_new_iter_metrics():
     stats = DatasetStats(metadata={}, parent=None)
     stats.iter_total_s.add(11.0)
-    stats.iter_blocked_fetch_s.add(1.0)
+    stats.iter_blocked_production_wait_s.add(1.0)
+    stats.iter_blocked_data_transfer_s.add(1.5)
     stats.iter_blocked_batching_s.add(2.0)
     stats.iter_blocked_format_s.add(3.0)
     stats.iter_blocked_collate_s.add(4.0)
@@ -1939,7 +1940,8 @@ def test_update_iteration_metrics_exports_new_iter_metrics():
         "iter_batch_finalizing_s",
         "time_to_first_batch_s",
         "iter_total_blocked_s",
-        "iter_blocked_fetch_s",
+        "iter_blocked_production_wait_s",
+        "iter_blocked_data_transfer_s",
         "iter_blocked_batching_s",
         "iter_blocked_format_s",
         "iter_blocked_collate_s",
@@ -1954,7 +1956,8 @@ def test_update_iteration_metrics_exports_new_iter_metrics():
 
     expected_tags = {"dataset": "train_dataset_split_3", "rank": "3"}
     assert recorded["iter_total_s"] == (11.0, expected_tags)
-    assert recorded["iter_blocked_fetch_s"] == (1.0, expected_tags)
+    assert recorded["iter_blocked_production_wait_s"] == (1.0, expected_tags)
+    assert recorded["iter_blocked_data_transfer_s"] == (1.5, expected_tags)
     assert recorded["iter_blocked_batching_s"] == (2.0, expected_tags)
     assert recorded["iter_blocked_format_s"] == (3.0, expected_tags)
     assert recorded["iter_blocked_collate_s"] == (4.0, expected_tags)
@@ -1969,7 +1972,8 @@ def test_iter_stats_summary_has_new_fields():
     summary = stats.to_summary()
     iter_summary = summary.iter_stats
 
-    assert hasattr(iter_summary, "blocked_fetch_time")
+    assert hasattr(iter_summary, "blocked_production_wait_time")
+    assert hasattr(iter_summary, "blocked_data_transfer_time")
     assert hasattr(iter_summary, "blocked_batching_time")
     assert hasattr(iter_summary, "blocked_format_time")
     assert hasattr(iter_summary, "blocked_collate_time")
@@ -1981,13 +1985,14 @@ def test_iter_stats_summary_has_new_fields():
 def test_iter_stats_summary_reflects_accumulated_values():
     """IterStatsSummary carries the accumulated timer values."""
     stats = DatasetStats(metadata={}, parent=None)
-    stats.iter_blocked_fetch_s.add(0.5)
+    stats.iter_blocked_production_wait_s.add(0.5)
     stats.iter_blocked_batching_s.add(0.2)
     stats.iter_batches_total = 10
     stats.iter_rows_total = 320
 
     summary = stats.to_summary().iter_stats
-    assert summary.blocked_fetch_time.get() == pytest.approx(0.5)
+    assert summary.blocked_production_wait_time.get() == pytest.approx(0.5)
+    assert summary.blocked_data_transfer_time.get() == pytest.approx(0.0)
     assert summary.blocked_batching_time.get() == pytest.approx(0.2)
     assert summary.batches_total == 10
     assert summary.rows_total == 320
@@ -1996,14 +2001,14 @@ def test_iter_stats_summary_reflects_accumulated_values():
 def test_iter_stats_to_string_shows_stage_breakdown():
     """to_string() renders per-stage breakdown when values are non-zero."""
     stats = DatasetStats(metadata={}, parent=None)
-    stats.iter_blocked_fetch_s.add(1.5)
+    stats.iter_blocked_production_wait_s.add(1.5)
     stats.iter_blocked_format_s.add(0.8)
     stats.iter_batches_total = 5
     stats.iter_rows_total = 160
     stats.iter_total_blocked_s.add(2.3)
 
     text = str(stats.to_summary().iter_stats)
-    assert "block fetch" in text
+    assert "production wait" in text
     assert "format" in text
     assert "Total batches consumed: 5" in text
     assert "Total rows consumed: 160" in text
@@ -2013,11 +2018,11 @@ def test_iter_stats_to_string_shows_stage_breakdown():
 def test_iter_stats_to_string_omits_zero_stages():
     """to_string() omits stages with zero values from the breakdown."""
     stats = DatasetStats(metadata={}, parent=None)
-    stats.iter_blocked_fetch_s.add(0.5)
+    stats.iter_blocked_production_wait_s.add(0.5)
     stats.iter_total_blocked_s.add(0.5)
 
     text = str(stats.to_summary().iter_stats)
-    assert "block fetch" in text
+    assert "production wait" in text
     # Zero stages should not appear
     assert "batching" not in text
     assert "collate" not in text

@@ -3,7 +3,6 @@ import functools
 import logging
 import queue
 import threading
-import time
 from typing import (
     Any,
     Callable,
@@ -27,7 +26,7 @@ from ray.data._internal.block_batching.interfaces import (
     BlockWithTiming,
     CollatedBatch,
 )
-from ray.data._internal.stats import DatasetStats, TimeSpan, _timed
+from ray.data._internal.stats import DatasetStats, _timed
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.types import ObjectRef
 
@@ -198,26 +197,26 @@ def resolve_block_refs(
     unknowns = 0
 
     while True:
-        # Time the full fetch window — from upstream pull through ray.get().
-        # In a follow-up, this will be split into production_wait + data_transfer.
         timings = BatchTimings()
-        fetch_span = TimeSpan(start_s=time.perf_counter())
-        try:
-            block_ref = next(block_ref_iter)
-        except StopIteration:
-            break
+        # (1) production_wait: blocked on upstream data pipeline
+        with _timed(stats.iter_get_ref_bundles_s if stats else None) as prod_span:
+            try:
+                block_ref = next(block_ref_iter)
+            except StopIteration:
+                break
+        timings.production_wait = prod_span
 
         current_hit, current_miss, current_unknown = _calculate_ref_hits([block_ref])
         hits += current_hit
         misses += current_miss
         unknowns += current_unknown
 
+        # (2) data_transfer: cross-node transfer via ray.get()
         # TODO(amogkam): Optimized further by batching multiple references
         # in a single `ray.get()` call.
-        with _timed(stats.iter_get_s if stats else None):
+        with _timed(stats.iter_get_s if stats else None) as xfer_span:
             block = ray.get(block_ref)
-        fetch_span.end_s = time.perf_counter()
-        timings.fetch = fetch_span
+        timings.data_transfer = xfer_span
 
         yield BlockWithTiming(block=block, timings=timings)
 

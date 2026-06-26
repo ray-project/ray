@@ -21,7 +21,9 @@ class BatchTimings:
     batch (e.g. no ``collate_fn`` provided).
 
     Attributes:
-        fetch: Waiting for upstream data production + ``ray.get()`` transfer.
+        production_wait: Waiting for upstream data production (next on
+            the ref bundle iterator).
+        data_transfer: Cross-node transfer via ``ray.get()``.
         batching: Assembling blocks into a batch via ``_batcher.next_batch()``.
         format: Converting the batch to the requested format (numpy, pandas…).
         collate: Running the user-provided ``collate_fn``.
@@ -29,7 +31,8 @@ class BatchTimings:
         num_rows: Number of rows in this batch (for ``iter_rows_total``).
     """
 
-    fetch: Optional[TimeSpan] = None
+    production_wait: Optional[TimeSpan] = None
+    data_transfer: Optional[TimeSpan] = None
     batching: Optional[TimeSpan] = None
     format: Optional[TimeSpan] = None
     collate: Optional[TimeSpan] = None
@@ -39,7 +42,8 @@ class BatchTimings:
     def stages(self) -> Iterable[Tuple[str, Optional[TimeSpan]]]:
         """Iterate over ``(name, timing)`` pairs for all pipeline stages."""
         return (
-            ("fetch", self.fetch),
+            ("production_wait", self.production_wait),
+            ("data_transfer", self.data_transfer),
             ("batching", self.batching),
             ("format", self.format),
             ("collate", self.collate),
@@ -49,12 +53,11 @@ class BatchTimings:
     def merge_fetch(self, other: "BatchTimings") -> None:
         """Merge fetch timings from another batch into this one.
 
-        Expands the fetch window to span from the earliest block fetch start
-        to the latest block fetch end. This represents the total time the
-        training thread was blocked waiting for this batch, including any
-        pipeline overhead between consecutive block fetches.
+        Expands each fetch sub-stage window to span from the earliest
+        block's start to the latest block's end.
         """
-        self.fetch = _merge_span(self.fetch, other.fetch)
+        self.production_wait = _merge_span(self.production_wait, other.production_wait)
+        self.data_transfer = _merge_span(self.data_transfer, other.data_transfer)
 
 
 def _merge_span(dst: Optional[TimeSpan], src: Optional[TimeSpan]) -> Optional[TimeSpan]:
