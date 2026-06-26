@@ -14,9 +14,14 @@ python/ray/data/_internal/datasource/binary_datasource.py
 python/ray/data/_internal/datasource/clickhouse_datasink.py
 python/ray/data/_internal/datasource/csv_datasink.py
 python/ray/data/_internal/datasource/csv_datasource.py
+python/ray/data/_internal/datasource/delta/adapter.py
+python/ray/data/_internal/datasource/delta/committer.py
+python/ray/data/_internal/datasource/delta/utils.py
+python/ray/data/_internal/datasource/delta/writer.py
 python/ray/data/_internal/datasource/delta_sharing_datasource.py
 python/ray/data/_internal/datasource/hudi_datasource.py
 python/ray/data/_internal/datasource/huggingface_datasource.py
+python/ray/data/_internal/datasource/iceberg_adapter.py
 python/ray/data/_internal/datasource/iceberg_datasink.py
 python/ray/data/_internal/datasource/iceberg_datasource.py
 python/ray/data/_internal/datasource/image_datasink.py
@@ -32,6 +37,7 @@ python/ray/data/_internal/datasource/parquet_datasink.py
 python/ray/data/_internal/datasource/parquet_datasource.py
 python/ray/data/_internal/datasource/range_datasource.py
 python/ray/data/_internal/datasource/sql_datasource.py
+python/ray/data/_internal/datasource/table/file_writer.py
 python/ray/data/_internal/datasource/tfrecords_datasink.py
 python/ray/data/_internal/datasource/tfrecords_datasource.py
 python/ray/data/_internal/datasource/torch_datasource.py
@@ -215,6 +221,8 @@ python/ray/data/tests/datasource/test_numpy.py
 python/ray/data/tests/datasource/test_pandas.py
 python/ray/data/tests/datasource/test_parquet.py
 python/ray/data/tests/datasource/test_snowflake.py
+python/ray/data/tests/datasource/test_table_datasink.py
+python/ray/data/tests/datasource/test_table_datasink_integration.py
 python/ray/data/tests/datasource/test_text.py
 python/ray/data/tests/datasource/test_tf.py
 python/ray/data/tests/datasource/test_tfrecords.py
@@ -222,6 +230,7 @@ python/ray/data/tests/datasource/test_torch.py
 python/ray/data/tests/datasource/test_turbopuffer_datasink.py
 python/ray/data/tests/datasource/test_uc_datasource.py
 python/ray/data/tests/datasource/test_webdataset.py
+python/ray/data/tests/datasource/test_write_delta.py
 python/ray/data/tests/expressions/test_arithmetic.py
 python/ray/data/tests/expressions/test_boolean.py
 python/ray/data/tests/expressions/test_cast.py

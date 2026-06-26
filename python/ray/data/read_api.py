@@ -134,6 +134,8 @@ if TYPE_CHECKING:
     from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
+    from ray.data.catalog import Catalog
+
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
@@ -4669,7 +4671,24 @@ def read_unity_catalog(
 
     Returns:
         A :class:`~ray.data.Dataset` containing the data from Unity Catalog.
+
+    .. deprecated::
+        ``read_unity_catalog`` is deprecated. Pass a
+        :class:`~ray.data.UnityCatalog` to the ``catalog=`` parameter of the
+        format reader instead, e.g.
+        ``ray.data.read_delta(table, catalog=UnityCatalog(url=..., token=...))``.
     """  # noqa: E501
+    import warnings
+
+    warnings.warn(
+        "`ray.data.read_unity_catalog` is deprecated and will be removed in a "
+        "future release. Use the `catalog=` parameter of the format reader "
+        "instead, e.g. `ray.data.read_delta(table, "
+        "catalog=ray.data.UnityCatalog(url=..., token=..., region=...))`.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     from ray.data._internal.datasource.databricks_credentials import (
         UnityCatalogCredentialConfig,
         resolve_credential_provider,
@@ -4696,6 +4715,7 @@ def read_delta(
     path: Union[str, List[str]],
     version: Optional[int] = None,
     *,
+    catalog: Optional["Catalog"] = None,
     storage_options: Optional[Dict[str, Any]] = None,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
@@ -4747,9 +4767,17 @@ def read_delta(
 
     Args:
         path: A single path to a Delta Lake table. Multiple tables are not
-            supported.
+            supported. When ``catalog`` is provided, this is instead a catalog
+            table identifier (e.g. ``"catalog.schema.table"``) that the catalog
+            resolves to a physical location.
         version: The version of the Delta Lake table to read. If not specified,
             the latest version is read.
+        catalog: An optional :class:`~ray.data.Catalog` (e.g.
+            :class:`~ray.data.UnityCatalog`). When provided, ``path`` is treated
+            as a catalog table identifier; the catalog resolves it to the
+            physical URL and vends cloud credentials into ``storage_options``.
+            User-supplied ``storage_options`` / ``filesystem`` take precedence
+            over vended values.
         storage_options: A dictionary of storage options passed to the
             ``deltalake`` library for authentication and configuration.
             Supported keys depend on the storage backend:
@@ -4818,6 +4846,34 @@ def read_delta(
     # multi-table reads, it's usually up to the developer to keep it in one table.
     if not isinstance(path, str):
         raise ValueError("Only a single Delta Lake table path is supported.")
+
+    # When a catalog is supplied, treat ``path`` as a catalog table identifier:
+    # resolve it to the physical URL + vended credentials. User-supplied
+    # ``storage_options`` / ``filesystem`` take precedence over vended values.
+    if catalog is not None:
+        resolved = catalog.resolve(path, operation="READ")
+        if resolved.data_format != "delta":
+            raise ValueError(
+                f"read_delta: catalog resolved '{path}' to format "
+                f"'{resolved.data_format}', not 'delta'. "
+                f"Use read_{resolved.data_format}(...) instead."
+            )
+        path = resolved.url
+        storage_options = {**resolved.storage_options, **(storage_options or {})}
+        if filesystem is None:
+            filesystem = resolved.filesystem
+            if filesystem is None:
+                from ray.data._internal.datasource.delta.utils import (
+                    create_filesystem_from_storage_options,
+                )
+
+                # AWS session-token reads need an explicit S3FileSystem;
+                # PyArrow's default S3 resolution won't pick a session token
+                # out of ``storage_options``. Returns None for paths/creds it
+                # can't express, leaving PyArrow's default resolution.
+                filesystem = create_filesystem_from_storage_options(
+                    path, storage_options
+                )
 
     dt = DeltaTable(path, version=version, storage_options=storage_options)
     pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)

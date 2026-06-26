@@ -162,6 +162,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data._internal.execution.streaming_executor_state import Topology
     from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
+    from ray.data.catalog import Catalog
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
 
@@ -4571,6 +4572,7 @@ class Dataset:
         overwrite_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
+        **write_kwargs: Any,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to an Iceberg table.
 
@@ -4653,6 +4655,16 @@ class Dataset:
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
+            **write_kwargs: Additional keyword arguments forwarded to the
+                Iceberg adapter. Recognised cross-format retry overrides:
+
+                * ``commit_retry_max_attempts`` -- max retries for the commit step.
+                * ``commit_retry_max_backoff_s`` -- max exponential backoff (seconds).
+                * ``commit_retried_errors`` -- list of error-message substrings.
+
+                These take precedence over
+                ``DataContext.iceberg_config.catalog_*`` and the shared
+                ``DataContext.table_write_config`` defaults.
 
         Note:
             Schema evolution is automatically enabled. New columns in the incoming data
@@ -4667,8 +4679,133 @@ class Dataset:
             overwrite_filter=overwrite_filter,
             upsert_kwargs=upsert_kwargs,
             overwrite_kwargs=overwrite_kwargs,
+            **write_kwargs,
         )
 
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
+    @ConsumptionAPI
+    def write_delta(
+        self,
+        path: str,
+        *,
+        catalog: Optional["Catalog"] = None,
+        mode: str = "append",
+        partition_cols: Optional[List[str]] = None,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        schema: Optional["pyarrow.Schema"] = None,
+        schema_mode: str = "error",
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
+        **write_kwargs,
+    ) -> None:
+        """Write the dataset to a Delta Lake table.
+
+        Supports ``"append"``, ``"overwrite"``, ``"error"``, and ``"ignore"``
+        modes. Partitioning lands in PR 5, schema evolution in PR 6, cloud
+        storage authentication in PR 7. UPSERT is intentionally not part of
+        this delivery train.
+
+        Examples:
+
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_delta("/tmp/my-delta-table")  # doctest: +SKIP
+            >>> ds.write_delta("/tmp/my-delta-table", mode="overwrite")  # doctest: +SKIP
+
+        Args:
+            path: Path to the Delta table. When ``catalog`` is provided, this
+                is instead a catalog table identifier (e.g.
+                ``"catalog.schema.table"``) that the catalog resolves to a
+                physical location.
+            catalog: An optional :class:`~ray.data.Catalog` (e.g.
+                :class:`~ray.data.UnityCatalog`). When provided, ``path`` is
+                treated as a catalog table identifier; the catalog resolves it
+                to the physical URL and vends ``READ_WRITE`` cloud credentials
+                into ``storage_options`` (which then reach the write workers).
+                User-supplied ``storage_options`` / ``filesystem`` take
+                precedence over vended values.
+            mode: One of:
+
+                * ``"append"`` (default): add data to the table, creating it
+                  if it doesn't exist.
+                * ``"overwrite"``: replace all data in the table (creates
+                  the table if it doesn't exist).
+                * ``"error"``: raise if the table already exists.
+                * ``"ignore"``: skip the write if the table already exists.
+            partition_cols: Hive-style partition columns. Partition columns
+                are dropped from the on-disk Parquet payload and encoded in
+                directory names (``col=val/``). NULL values use
+                ``__HIVE_DEFAULT_PARTITION__``; float NaN values use the
+                literal ``"NaN"``.
+            filesystem: Optional PyArrow filesystem.
+            schema: Optional explicit schema.
+            schema_mode: How to handle schema changes when writing to an
+                existing table.
+
+                * ``"error"`` (default) -- reject new columns.
+                * ``"merge"`` -- add new columns via
+                  ``DeltaTable.alter.add_columns``.
+            ray_remote_args: Arguments passed to :func:`ray.remote` for write tasks.
+            concurrency: Maximum number of concurrent write tasks.
+            **write_kwargs: Additional Delta writer options
+                (``compression``, ``write_statistics``, ``name``, ``description``,
+                ``configuration``, ``storage_options``, ``target_file_size_bytes``,
+                ``partition_overwrite_mode``). Also accepts the cross-format
+                retry overrides:
+
+                * ``commit_retry_max_attempts`` -- max retries for the commit step.
+                * ``commit_retry_max_backoff_s`` -- max exponential backoff (seconds).
+                * ``commit_retried_errors`` -- list of error-message substrings.
+
+                These take precedence over
+                ``DataContext.delta_config.commit_*`` and the shared
+                ``DataContext.table_write_config`` defaults.
+
+        Raises:
+            ImportError: If ``deltalake`` is not installed.
+            ValueError: If ``mode="error"`` and the table already exists,
+                or if ``mode`` is unrecognised.
+        """
+        from ray.data._internal.datasource.delta import DeltaDatasink
+
+        # When a catalog is supplied, treat ``path`` as a catalog table
+        # identifier: resolve it (vending READ_WRITE credentials) to the
+        # physical URL + storage_options. The vended storage_options are
+        # injected into write_kwargs so the existing _FsConfig -> worker
+        # filesystem path carries them to workers. User-supplied
+        # storage_options take precedence over vended values.
+        if catalog is not None:
+            resolved = catalog.resolve(path, operation="READ_WRITE")
+            if resolved.data_format != "delta":
+                raise ValueError(
+                    f"write_delta: catalog resolved '{path}' to format "
+                    f"'{resolved.data_format}', not 'delta'. "
+                    f"Use write_{resolved.data_format}(...) instead."
+                )
+            path = resolved.url
+            user_storage_options = write_kwargs.get("storage_options")
+            write_kwargs["storage_options"] = {
+                **resolved.storage_options,
+                **(user_storage_options or {}),
+            }
+            if filesystem is None and resolved.filesystem is not None:
+                filesystem = resolved.filesystem
+
+        datasink = DeltaDatasink(
+            path,
+            mode=mode,
+            partition_cols=partition_cols,
+            filesystem=filesystem,
+            schema=schema,
+            schema_mode=schema_mode,
+            **write_kwargs,
+        )
         self.write_datasink(
             datasink,
             ray_remote_args=ray_remote_args,

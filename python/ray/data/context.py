@@ -222,6 +222,31 @@ DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS = (
     "DEADLINE_EXCEEDED",
 )
 
+DEFAULT_DELTA_COMMIT_MAX_ATTEMPTS = env_integer("RAY_DATA_DELTA_COMMIT_MAX_ATTEMPTS", 5)
+DEFAULT_DELTA_COMMIT_RETRY_MAX_BACKOFF_S = env_integer(
+    "RAY_DATA_DELTA_COMMIT_RETRY_MAX_BACKOFF_S", 16
+)
+# Delta-side driver retry targets transient I/O / network errors only;
+# concurrency conflicts are retried inside delta-rs via
+# CommitProperties.max_commit_retries. The substring set is identical to
+# Iceberg's catalog retry set because both surface the same HTTP / TCP
+# transients from object-store backends.
+DEFAULT_DELTA_COMMIT_RETRIED_ERRORS = DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS
+
+# ---------------------------------------------------------------------------
+# Cross-format default retry policy for table writes (Delta, Iceberg, …).
+# Format-specific DeltaConfig / IcebergConfig retry fields fall through to
+# these values when unset. Per-call **write_kwargs overrides take precedence
+# over both.
+# ---------------------------------------------------------------------------
+DEFAULT_TABLE_WRITE_MAX_ATTEMPTS = env_integer("RAY_DATA_TABLE_WRITE_MAX_ATTEMPTS", 5)
+DEFAULT_TABLE_WRITE_MAX_BACKOFF_S = env_integer(
+    "RAY_DATA_TABLE_WRITE_MAX_BACKOFF_S", 16
+)
+# Reuse the Iceberg catalog set: the same HTTP / TCP transients afflict both
+# object-store writes (Delta) and catalog protocol writes (Iceberg).
+DEFAULT_TABLE_WRITE_RETRIED_ERRORS = DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS
+
 DEFAULT_LANCE_READ_FRAGMENTS_ERRORS_TO_RETRY = ("LanceError(IO)",)
 DEFAULT_LANCE_READ_FRAGMENTS_MAX_ATTEMPTS = env_integer(
     "RAY_DATA_LANCE_READ_FRAGMENTS_MAX_ATTEMPTS", 10
@@ -341,6 +366,34 @@ DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO: float = env_float(
 
 @DeveloperAPI
 @dataclass
+class TableWriteConfig:
+    """Default retry policy for *all* table-format writes (Delta, Iceberg, …).
+
+    Adapter-specific configs (``DeltaConfig`` / ``IcebergConfig``) fall
+    through to these values when their format-specific retry fields are
+    unset. Per-call ``**write_kwargs`` overrides (``commit_retry_max_attempts``
+    etc.) take precedence over everything.
+
+    Args:
+        max_attempts: Max retry attempts for the commit step. Default 5;
+            overridable via ``RAY_DATA_TABLE_WRITE_MAX_ATTEMPTS``.
+        max_backoff_s: Max exponential backoff (seconds) between commit
+            retries. Default 16; overridable via
+            ``RAY_DATA_TABLE_WRITE_MAX_BACKOFF_S``.
+        retried_errors: Substrings of exception messages that should trigger
+            a commit retry. Default mirrors the Iceberg catalog set
+            (HTTP 4xx / 5xx and TCP transients).
+    """
+
+    max_attempts: int = DEFAULT_TABLE_WRITE_MAX_ATTEMPTS
+    max_backoff_s: int = DEFAULT_TABLE_WRITE_MAX_BACKOFF_S
+    retried_errors: List[str] = field(
+        default_factory=lambda: list(DEFAULT_TABLE_WRITE_RETRIED_ERRORS)
+    )
+
+
+@DeveloperAPI
+@dataclass
 class IcebergConfig:
     """Configuration for Iceberg datasource operations.
 
@@ -350,23 +403,53 @@ class IcebergConfig:
         write_file_retry_max_backoff_s: Maximum backoff time in seconds between
             Iceberg write retry attempts. Uses exponential backoff with jitter.
             Defaults to 32.
-        catalog_max_attempts: Maximum number of retry attempts for Iceberg
+        catalog_max_attempts: Override for max retry attempts on Iceberg
             catalog operations (load catalog, load table, commit transactions).
-            Defaults to 5.
-        catalog_retry_max_backoff_s: Maximum backoff time in seconds between
-            Iceberg catalog retry attempts. Defaults to 16.
-        catalog_retried_errors: A list of substrings of error messages that
-            should trigger a retry for Iceberg catalog operations. Includes common
-            HTTP error codes and connection errors.
+            ``None`` (default) means fall through to
+            :class:`TableWriteConfig.max_attempts`. Set explicitly to override.
+        catalog_retry_max_backoff_s: Override for max retry backoff (seconds)
+            on Iceberg catalog operations. ``None`` falls through to
+            :class:`TableWriteConfig.max_backoff_s`.
+        catalog_retried_errors: Override for the set of error-message
+            substrings that trigger an Iceberg catalog retry. ``None`` falls
+            through to :class:`TableWriteConfig.retried_errors`.
     """
 
     write_file_max_attempts: int = DEFAULT_ICEBERG_WRITE_FILE_MAX_ATTEMPTS
     write_file_retry_max_backoff_s: int = DEFAULT_ICEBERG_WRITE_FILE_RETRY_MAX_BACKOFF_S
-    catalog_max_attempts: int = DEFAULT_ICEBERG_CATALOG_MAX_ATTEMPTS
-    catalog_retry_max_backoff_s: int = DEFAULT_ICEBERG_CATALOG_RETRY_MAX_BACKOFF_S
-    catalog_retried_errors: List[str] = field(
-        default_factory=lambda: list(DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS)
-    )
+    catalog_max_attempts: Optional[int] = None
+    catalog_retry_max_backoff_s: Optional[int] = None
+    catalog_retried_errors: Optional[List[str]] = None
+
+
+@DeveloperAPI
+@dataclass
+class DeltaConfig:
+    """Configuration for Delta Lake datasink driver-side retry behaviour.
+
+    These knobs control the *driver-side* retry layer that wraps each
+    Delta commit, mirroring ``IcebergConfig``'s catalog-retry pattern.
+    They target transient HTTP / network failures during the commit
+    metadata write. Concurrency-conflict retries are handled separately
+    inside delta-rs via ``CommitProperties.max_commit_retries``, which is
+    plumbed through from user ``write_kwargs`` independently.
+
+    Args:
+        commit_max_attempts: Override for max driver-side retry attempts
+            around each Delta commit. ``None`` (default) means fall through
+            to :class:`TableWriteConfig.max_attempts`. Set explicitly to
+            override.
+        commit_retry_max_backoff_s: Override for max retry backoff (seconds)
+            on Delta commit. ``None`` falls through to
+            :class:`TableWriteConfig.max_backoff_s`.
+        commit_retried_errors: Override for the set of error-message
+            substrings that trigger a Delta-commit retry. ``None`` falls
+            through to :class:`TableWriteConfig.retried_errors`.
+    """
+
+    commit_max_attempts: Optional[int] = None
+    commit_retry_max_backoff_s: Optional[int] = None
+    commit_retried_errors: Optional[List[str]] = None
 
 
 @DeveloperAPI
@@ -636,6 +719,13 @@ class DataContext:
         iceberg_config: Configuration for Iceberg datasource operations including
             retry settings for file writes and catalog operations. See
             :class:`IcebergConfig` for details.
+        delta_config: Configuration for Delta Lake datasink driver-side retry
+            behaviour. See :class:`DeltaConfig` for details.
+        table_write_config: Shared default retry policy for all table-format
+            writes (Delta, Iceberg, ...). Both ``iceberg_config`` and
+            ``delta_config`` fall through to these values when their
+            format-specific retry fields are unset. See
+            :class:`TableWriteConfig` for details.
         default_hash_shuffle_parallelism: Default parallelism level for hash-based
             shuffle operations if the number of partitions is unspecifed.
         hash_shuffle_compression: Codec used to compress hash-shuffle
@@ -862,6 +952,8 @@ class DataContext:
     )
     lance_config: LanceConfig = field(default_factory=LanceConfig)
     iceberg_config: IcebergConfig = field(default_factory=IcebergConfig)
+    delta_config: DeltaConfig = field(default_factory=DeltaConfig)
+    table_write_config: TableWriteConfig = field(default_factory=TableWriteConfig)
     enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
     override_object_store_memory_limit_fraction: float = None
     memory_usage_poll_interval_s: Optional[float] = 1

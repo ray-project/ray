@@ -33,6 +33,7 @@ from ray.data.datasource import (
     ReadTask,
     RowBasedFileDatasink,
 )
+from ray.data.catalog import Catalog, ResolvedTable, UnityCatalog
 from ray.data.iterator import DataIterator, DatasetIterator
 from ray.data.preprocessor import Preprocessor
 from ray.data.read_api import (  # noqa: F401
@@ -196,4 +197,7 @@ __all__ = [
     "read_webdataset",
     "KafkaAuthConfig",
     "Preprocessor",
+    "Catalog",
+    "ResolvedTable",
+    "UnityCatalog",
 ]
