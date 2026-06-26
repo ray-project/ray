@@ -582,6 +582,12 @@ def test_humanify():
     assert Humanify.duration(timestamp) == "18 days, 15:13:20"
 
 
+def test_runtime_env_state_humanify_creation_time_ms():
+    state = {"creation_time_ms": 36639}
+    RuntimeEnvState.humanify(state)
+    assert state["creation_time_ms"] == "0:00:36.639000"
+
+
 def is_hex(val):
     try:
         int_val = int(val, 16)

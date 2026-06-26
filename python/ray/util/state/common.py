@@ -918,7 +918,7 @@ class RuntimeEnvState(StateSchema):
     #: The latency of creating the runtime environment.
     #: Available if the runtime env is successfully created.
     creation_time_ms: Optional[float] = state_column(
-        filterable=False, format_fn=Humanify.timestamp
+        filterable=False, format_fn=Humanify.duration
     )
     #: The node id of this runtime environment.
     node_id: str = state_column(filterable=True)
@@ -1072,10 +1072,10 @@ class TaskSummaries:
         total_actor_scheduled = 0
 
         for task in tasks:
-            key = task["func_or_class_name"]
+            key = task.get("name") or task.get("func_or_class_name")
             if key not in summary:
                 summary[key] = TaskSummaryPerFuncOrClassName(
-                    func_or_class_name=task["func_or_class_name"],
+                    func_or_class_name=key,
                     type=task["type"],
                 )
             task_summary = summary[key]
@@ -1172,7 +1172,7 @@ class TaskSummaries:
 
             # Use name first which allows users to customize the name of
             # their remote function call using the name option.
-            func_name = task["name"] or task["func_or_class_name"]
+            func_name = task.get("name") or task.get("func_or_class_name")
             task_id = task["task_id"]
             type_enum = TaskType.DESCRIPTOR.values_by_name[task["type"]].number
 

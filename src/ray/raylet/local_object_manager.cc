@@ -22,6 +22,7 @@
 
 #include "absl/strings/str_format.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/common/filter_local_objects_util.h"
 #include "ray/stats/tag_defs.h"
 
 namespace ray {
@@ -83,17 +84,14 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
       RAY_CHECK(msg.has_worker_object_eviction_message());
       const auto &object_eviction_msg = msg.worker_object_eviction_message();
       const auto obj_id = ObjectID::FromBinary(object_eviction_msg.object_id());
-      ReleaseFreedObject(obj_id);
       core_worker_subscriber_->Unsubscribe(
           rpc::ChannelType::WORKER_OBJECT_EVICTION, owner_address, obj_id.Binary());
     };
 
     // Callback that is invoked when the owner of the object id is dead.
-    auto owner_dead_callback = [this, owner_address](const std::string &object_id_binary,
-                                                     const Status &) {
-      const auto obj_id = ObjectID::FromBinary(object_id_binary);
-      ReleaseFreedObject(obj_id);
-    };
+    // TODO(#63181) will delete pubsub and update testing
+    auto owner_dead_callback = [owner_address](const std::string &object_id_binary,
+                                               const Status &) {};
 
     auto sub_message = std::make_unique<rpc::SubMessage>();
     *sub_message->mutable_worker_object_eviction_message() = std::move(wait_request);
@@ -108,33 +106,34 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
   }
 }
 
-void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
-  // Only free the object if it is not already freed.
+void LocalObjectManager::ReleaseFreedLocalObject(const ObjectID &object_id) {
+  // Called for both primary and secondary copies. For primary copies, do primary
+  // copy bookkeeping. For secondary copies, there is no primary copy bookkeeping,
+  // so the only work below is enqueueing for the next free batch.
   auto it = local_objects_.find(object_id);
-  if (it == local_objects_.end() || it->second.is_freed_) {
-    return;
-  }
-  // Mark the object as freed. NOTE(swang): We have to mark this instead of
-  // deleting the entry immediately in case the object is currently being
-  // spilled. In that case, we should process the free event once the object
-  // spill is complete.
-  it->second.is_freed_ = true;
+  if (it != local_objects_.end() && !it->second.is_freed_) {
+    // Mark the object as freed. NOTE(swang): We have to mark this instead of
+    // deleting the entry immediately in case the object is currently being
+    // spilled. In that case, we should process the free event once the object
+    // spill is complete.
+    it->second.is_freed_ = true;
 
-  RAY_LOG(DEBUG) << "Unpinning object " << object_id;
-  // The object should be in one of these states: pinned, spilling, or spilled.
-  auto pinned_objects_it = pinned_objects_.find(object_id);
-  RAY_CHECK(pinned_objects_it != pinned_objects_.end() ||
-            spilled_objects_url_.contains(object_id) ||
-            objects_pending_spill_.contains(object_id));
-  if (pinned_objects_it != pinned_objects_.end()) {
-    pinned_objects_size_ -= pinned_objects_it->second->GetSize();
-    pinned_objects_.erase(pinned_objects_it);
-    local_objects_.erase(it);
-  } else {
-    // If the object is being spilled or is already spilled, then we will clean
-    // up the local_objects_ entry once the spilled copy has been
-    // freed.
-    spilled_object_pending_delete_.push(object_id);
+    RAY_LOG(DEBUG) << "Unpinning object " << object_id;
+    // The object should be in one of these states: pinned, spilling, or spilled.
+    auto pinned_objects_it = pinned_objects_.find(object_id);
+    RAY_CHECK(pinned_objects_it != pinned_objects_.end() ||
+              spilled_objects_url_.contains(object_id) ||
+              objects_pending_spill_.contains(object_id));
+    if (pinned_objects_it != pinned_objects_.end()) {
+      pinned_objects_size_ -= pinned_objects_it->second->GetSize();
+      pinned_objects_.erase(pinned_objects_it);
+      local_objects_.erase(it);
+    } else {
+      // If the object is being spilled or is already spilled, then we will clean
+      // up the local_objects_ entry once the spilled copy has been
+      // freed.
+      spilled_object_pending_delete_.push(object_id);
+    }
   }
 
   // Try to evict all copies of the object from the cluster.
@@ -145,6 +144,24 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
       free_objects_period_ms_ == 0) {
     FlushFreeObjects();
   }
+}
+
+std::vector<ObjectID> LocalObjectManager::GetLocalObjectsOwnedBy(
+    const WorkerID &worker_id) const {
+  return GetLocalObjectsFilteredBy(
+      local_objects_, [&worker_id](const LocalObjectInfo &info) {
+        return !info.is_freed_ &&
+               WorkerID::FromBinary(info.owner_address_.worker_id()) == worker_id;
+      });
+}
+
+std::vector<ObjectID> LocalObjectManager::GetLocalObjectsOwnedByOwnersOn(
+    const NodeID &node_id) const {
+  return GetLocalObjectsFilteredBy(
+      local_objects_, [&node_id](const LocalObjectInfo &info) {
+        return !info.is_freed_ &&
+               NodeID::FromBinary(info.owner_address_.node_id()) == node_id;
+      });
 }
 
 void LocalObjectManager::FlushFreeObjects() {
@@ -159,7 +176,6 @@ void LocalObjectManager::FlushFreeObjects() {
     objects_pending_deletion_.clear();
   }
   ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);
-  last_free_objects_at_ms_ = current_time_ms();
 }
 
 bool LocalObjectManager::ObjectPendingDeletion(const ObjectID &object_id) {
@@ -230,14 +246,14 @@ bool LocalObjectManager::TryToSpillObjects() {
   }
   RAY_LOG(DEBUG) << "Spilling objects of total size " << bytes_to_spill << " num objects "
                  << objects_to_spill.size();
-  auto start_time = absl::GetCurrentTimeNanos();
+  auto start_time = clock_.NowUnixNanos();
   SpillObjectsInternal(
       objects_to_spill,
       [this, bytes_to_spill, objects_to_spill, start_time](const Status &status) {
         if (!status.ok()) {
           RAY_LOG(DEBUG) << "Failed to spill objects: " << status.ToString();
         } else {
-          auto now = absl::GetCurrentTimeNanos();
+          auto now = clock_.NowUnixNanos();
           RAY_LOG(DEBUG) << "Spilled " << bytes_to_spill << " bytes in "
                          << (now - start_time) / 1e6 << "ms";
           // Adjust throughput timing to account for concurrent spill operations.
@@ -476,7 +492,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
   num_bytes_pending_restore_ += object_size;
   io_worker_pool_.PopRestoreWorker([this, object_id, object_size, object_url, callback](
                                        std::shared_ptr<WorkerInterface> io_worker) {
-    auto start_time = absl::GetCurrentTimeNanos();
+    auto start_time = clock_.NowUnixNanos();
     RAY_LOG(DEBUG) << "Sending restore spilled object request";
     rpc::RestoreSpilledObjectsRequest request;
     request.add_spilled_objects_url(object_url);
@@ -492,7 +508,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
             RAY_LOG(ERROR) << "Failed to send restore spilled object request: "
                            << status.ToString();
           } else {
-            auto now = absl::GetCurrentTimeNanos();
+            auto now = clock_.NowUnixNanos();
             auto restored_bytes = r.bytes_restored_total();
             RAY_LOG(DEBUG) << "Restored " << restored_bytes << " in "
                            << (now - start_time) / 1e6 << "ms. Object id:" << object_id;

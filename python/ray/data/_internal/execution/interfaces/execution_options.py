@@ -68,11 +68,16 @@ class ExecutionResources:
         memory: Optional[float] = None,
     ) -> "ExecutionResources":
         """Create an ExecutionResources object that represents resource limits.
+
         Args:
             cpu: Amount of logical CPU slots.
             gpu: Amount of logical GPU slots.
             object_store_memory: Amount of object store memory.
             memory: Amount of logical memory in bytes.
+
+        Returns:
+            An ``ExecutionResources`` with the given limits (defaulting to
+            infinity for any unspecified field).
         """
         return ExecutionResources(
             cpu=safe_or(cpu, float("inf")),
@@ -181,6 +186,9 @@ class ExecutionResources:
     def add(self, other: "ExecutionResources") -> "ExecutionResources":
         """Adds execution resources.
 
+        Args:
+            other: The other ``ExecutionResources`` to add to this one.
+
         Returns:
             A new ExecutionResource object with summed resources.
         """
@@ -193,6 +201,9 @@ class ExecutionResources:
 
     def subtract(self, other: "ExecutionResources") -> "ExecutionResources":
         """Subtracts execution resources.
+
+        Args:
+            other: The other ``ExecutionResources`` to subtract from this one.
 
         Returns:
             A new ExecutionResource object with subtracted resources.
@@ -230,7 +241,7 @@ class ExecutionResources:
         self,
         limit: "ExecutionResources",
         *,
-        ignore_object_store_memory=False,
+        ignore_object_store_memory: bool = False,
     ) -> bool:
         """Return if this resource struct meets the specified limits.
 
@@ -240,6 +251,9 @@ class ExecutionResources:
             limit: The resource limits to check against.
             ignore_object_store_memory: If True, ignore the object store memory
                 limit when checking if this resource struct meets the limits.
+
+        Returns:
+            ``True`` if every resource is within the corresponding limit.
         """
         return (
             self.cpu <= limit.cpu
@@ -311,6 +325,14 @@ class ExecutionOptions:
         verbose_progress: Whether to report progress individually per operator. By
             default, only AllToAll operators and global progress is reported. This
             option is useful for performance debugging. On by default.
+        label_selector: A mapping of label key to label value. When set, every task
+            and actor launched by this Dataset (including shuffle, sort, and
+            aggregator actors) carries this label selector in its remote args,
+            constraining placement to nodes whose labels satisfy the selector.
+            Used to scope a Dataset to a labeled subset of the cluster (e.g.
+            ``{"ray-subcluster": "training"}``). Operator-level ``label_selector``
+            entries in ``ray_remote_args`` take precedence on key conflicts so
+            existing node-pin selectors are preserved.
     """
 
     def __init__(
@@ -320,6 +342,7 @@ class ExecutionOptions:
         preserve_order: bool = False,
         actor_locality_enabled: bool = True,
         verbose_progress: Optional[bool] = None,
+        label_selector: Optional[Dict[str, str]] = None,
     ):
         """Initialize execution options.
 
@@ -332,6 +355,8 @@ class ExecutionOptions:
                 stateful map and streaming split operations.
             verbose_progress: Whether to report progress per operator. If None,
                 read from ``RAY_DATA_VERBOSE_PROGRESS``.
+            label_selector: Per-Dataset label selector applied to every task and
+                actor launched by Ray Data. ``None`` means no selector is added.
         """
         if resource_limits is None:
             resource_limits = ExecutionResources.for_limits()
@@ -346,6 +371,7 @@ class ExecutionOptions:
                 int(os.environ.get("RAY_DATA_VERBOSE_PROGRESS", "1"))
             )
         self.verbose_progress = verbose_progress
+        self.label_selector = label_selector
 
     def __repr__(self) -> str:
         return (
@@ -353,7 +379,8 @@ class ExecutionOptions:
             f"exclude_resources={self.exclude_resources}, "
             f"preserve_order={self.preserve_order}, "
             f"actor_locality_enabled={self.actor_locality_enabled}, "
-            f"verbose_progress={self.verbose_progress})"
+            f"verbose_progress={self.verbose_progress}, "
+            f"label_selector={self.label_selector})"
         )
 
     @property

@@ -34,6 +34,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
@@ -501,6 +502,7 @@ class MockReplicaActorWrapper:
         self._node_ip = None
         self._node_instance_id = None
         self._node_id_is_set = False
+        self._log_file_path = None
         self._actor_id = None
         self._internal_grpc_port = None
         self._http_port = None
@@ -580,7 +582,7 @@ class MockReplicaActorWrapper:
 
     @property
     def log_file_path(self) -> Optional[str]:
-        return None
+        return self._log_file_path
 
     @property
     def grpc_port(self) -> Optional[int]:
@@ -618,6 +620,8 @@ class MockReplicaActorWrapper:
 
     def set_ready(self, version: DeploymentVersion = None):
         self.status = ReplicaStartupStatus.SUCCEEDED
+        # Mirror the real actor: a started replica has allocated a log file.
+        self._log_file_path = "serve/replica.log"
         if version:
             self.version_to_be_fetched_from_actor = version
         else:
@@ -818,6 +822,26 @@ def get_num_alive_replicas(
     return len(actors)
 
 
+def expected_proxy_actors(num_proxy_nodes: int = 1) -> Dict[str, int]:
+    """Proxy actors expected ALIVE by class name for the given number of proxy nodes.
+
+    Natively each proxy node runs one ProxyActor. Under HAProxy each proxy node runs an
+    HAProxyManager and the head node also runs a single fallback ProxyActor. Set-based
+    callers can take the keys, count-based callers use the counts directly.
+    """
+    if RAY_SERVE_ENABLE_HA_PROXY:
+        return {"HAProxyManager": num_proxy_nodes, "ProxyActor": 1}
+    return {"ProxyActor": num_proxy_nodes}
+
+
+def alive_actor_counts() -> Dict[str, int]:
+    """Count of ALIVE actors by class name in the current Ray session."""
+    counts: Dict[str, int] = {}
+    for actor in list_actors(filters=[("STATE", "=", "ALIVE")]):
+        counts[actor["class_name"]] = counts.get(actor["class_name"], 0) + 1
+    return counts
+
+
 def check_num_replicas_gte(
     name: str, target: int, app_name: str = SERVE_DEFAULT_APP_NAME
 ) -> int:
@@ -878,6 +902,9 @@ def check_replica_counts(
         by_state: A list of tuples of the form
             (replica state, number of replicas, filter function).
             Used for more fine grained checks.
+
+    Returns:
+        True when all assertions pass (raises ``AssertionError`` otherwise).
     """
     replicas = ray.get(
         controller._dump_replica_states_for_testing.remote(deployment_id)
@@ -998,7 +1025,9 @@ def ping_grpc_healthz(channel, test_draining=False):
     else:
         response, call = stub.Healthz.with_call(request=request)
         assert call.code() == grpc.StatusCode.OK
-        assert response.message == "success"
+        if not RAY_SERVE_ENABLE_HA_PROXY:
+            assert response.message == "success"
+    return True
 
 
 def ping_grpc_call_method(channel, app_name, test_not_found=False):
@@ -1602,13 +1631,16 @@ def get_metric_dictionaries(
         timeseries = PrometheusTimeseries()
 
     def metric_available() -> bool:
-        assert name in fetch_prometheus_metric_timeseries(
+        prom_timeseries = fetch_prometheus_metric_timeseries(
             [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
             timeseries,
             # pass timeout to fetch_prometheus_metric_timeseries
             # so the test doesn't hang on requests.get
             timeout=timeout,
         )
+        assert (
+            name in prom_timeseries
+        ), f"Metric {name} not found. Available metrics: {list(prom_timeseries.keys())}"
         return True
 
     if wait:

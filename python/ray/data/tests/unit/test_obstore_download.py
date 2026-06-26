@@ -10,13 +10,19 @@ import pyarrow.fs as pafs
 import pytest
 
 from ray.data._internal.planner._obstore_download import (
+    _BUCKET_REGION_CACHE,
     _FILE_SIZE_COLUMN_PREFIX,
+    StoreRegistry,
+    _discover_aws_bucket_region,
     _download_uris_with_obstore,
     _extract_credentials_from_filesystem,
     _is_obstore_supported_url,
+    _native_s3_obstore_kwargs,
     _obstore_filesystem_requires_threaded_download,
     _plan_obstore_routing,
+    _resolve_size,
     _S3FSSessionCredentialProvider,
+    _split_obstore_uri,
     download_bytes_async,
 )
 from ray.data._internal.planner.plan_download_op import (
@@ -58,6 +64,255 @@ def test_split_uri(uri, expected_store_url, expected_path):
     assert path == expected_path
 
 
+# TestSplitObstoreUri — AWS path-style HTTPS URLs must be rewritten to s3://
+# so obstore's S3Store keys off the bucket (with region discovery) instead of
+# off the regional host endpoint (which pins region and fails with
+# BareRedirect on cross-region buckets).
+@pytest.mark.parametrize(
+    "uri, expected_store_url, expected_path",
+    [
+        # Path-style regional: must rewrite to s3://<bucket>.
+        (
+            "https://s3.us-east-1.amazonaws.com/ray-example-data/imagenet/foo.jpg",
+            "s3://ray-example-data",
+            "imagenet/foo.jpg",
+        ),
+        # Path-style legacy global endpoint: also rewrite.
+        (
+            "https://s3.amazonaws.com/my-bucket/key.bin",
+            "s3://my-bucket",
+            "key.bin",
+        ),
+        # Virtual-host style: bucket already in netloc, leave alone.
+        (
+            "https://my-bucket.s3.us-west-2.amazonaws.com/key.bin",
+            "https://my-bucket.s3.us-west-2.amazonaws.com",
+            "key.bin",
+        ),
+        # Native s3:// URIs: no change.
+        (
+            "s3://my-bucket/prefix/key.jpg",
+            "s3://my-bucket",
+            "prefix/key.jpg",
+        ),
+        # Pre-signed URLs (any query string): signature is bound to host +
+        # path + query, so rewriting would invalidate it. Pass through.
+        (
+            "https://s3.us-east-1.amazonaws.com/bucket/key?X-Amz-Signature=abc",
+            "https://s3.us-east-1.amazonaws.com",
+            "bucket/key?X-Amz-Signature=abc",
+        ),
+        # Non-AWS HTTPS (MinIO, R2 custom domain, generic file server):
+        # leave alone — only AWS S3 needs the region-discovery rewrite.
+        (
+            "https://files.example.com/bucket/key.bin",
+            "https://files.example.com",
+            "bucket/key.bin",
+        ),
+        # Other clouds: untouched.
+        ("gs://bucket/path", "gs://bucket", "path"),
+        # Path-style with nested key.
+        (
+            "https://s3.eu-central-1.amazonaws.com/bucket/a/b/c.parquet",
+            "s3://bucket",
+            "a/b/c.parquet",
+        ),
+        # Path-style with only a bucket (no key): bucket is preserved, key
+        # is empty. Edge case; downstream obstore call would fail but that's
+        # the caller's problem.
+        (
+            "https://s3.amazonaws.com/just-a-bucket",
+            "s3://just-a-bucket",
+            "",
+        ),
+    ],
+)
+def test_split_obstore_uri(uri, expected_store_url, expected_path):
+    store_url, path = _split_obstore_uri(uri)
+    assert store_url == expected_store_url
+    assert path == expected_path
+
+
+# TestBucketRegionDiscovery — exercise the region-discovery path used by
+# StoreRegistry to find the real region of cross-region S3 buckets. Region
+# resolution is delegated to ``pyarrow.fs.resolve_s3_region``; these tests
+# patch it to avoid real network calls.
+class TestBucketRegionDiscovery:
+    @staticmethod
+    def _clear_cache():
+        _BUCKET_REGION_CACHE.clear()
+
+    def test_resolved_region_is_returned(self):
+        # Whether the bucket is same-region (200 OK) or cross-region (301
+        # PermanentRedirect), PyArrow reads x-amz-bucket-region and returns it.
+        self._clear_cache()
+        with patch("pyarrow.fs.resolve_s3_region", return_value="us-west-2"):
+            assert _discover_aws_bucket_region("cross-region-bucket") == "us-west-2"
+
+    def test_cache_hit_avoids_second_probe(self):
+        # First call probes; second call must not invoke resolve_s3_region.
+        self._clear_cache()
+        with patch("pyarrow.fs.resolve_s3_region", return_value="eu-west-1") as resolve:
+            _discover_aws_bucket_region("euro-bucket")
+            _discover_aws_bucket_region("euro-bucket")
+            assert resolve.call_count == 1
+
+    def test_failure_returns_none_and_caches(self):
+        # On resolution failure (network error, non-AWS endpoint) return None
+        # so StoreRegistry leaves obstore's defaults intact for MinIO/R2/etc.
+        # Cache the negative result so we don't keep probing.
+        self._clear_cache()
+        with patch(
+            "pyarrow.fs.resolve_s3_region", side_effect=OSError("nope")
+        ) as resolve:
+            assert _discover_aws_bucket_region("unreachable") is None
+            assert _discover_aws_bucket_region("unreachable") is None
+            assert resolve.call_count == 1
+
+    def test_missing_resolve_s3_region_returns_none(self):
+        # PyArrow builds compiled without S3 support lack resolve_s3_region,
+        # so the attribute access raises AttributeError; discovery must degrade
+        # to None rather than propagate it.
+        self._clear_cache()
+        with patch("pyarrow.fs.resolve_s3_region", side_effect=AttributeError("no S3")):
+            assert _discover_aws_bucket_region("no-s3-support") is None
+
+    def test_none_result_does_not_overwrite_cached_region(self):
+        # Race: this thread probes (outside the lock) and gets None, while a
+        # concurrent thread resolves and caches the real region. The failed
+        # probe must not clobber the cached region, otherwise later
+        # StoreRegistry.get calls skip region injection and cross-region
+        # downloads fail intermittently.
+        self._clear_cache()
+
+        def resolve_then_simulate_concurrent_win(bucket):
+            # Stand in for another thread caching the real region mid-probe.
+            _BUCKET_REGION_CACHE[bucket] = "us-west-2"
+            return None
+
+        with patch(
+            "pyarrow.fs.resolve_s3_region",
+            side_effect=resolve_then_simulate_concurrent_win,
+        ):
+            assert _discover_aws_bucket_region("racy-bucket") == "us-west-2"
+        assert _BUCKET_REGION_CACHE["racy-bucket"] == "us-west-2"
+
+
+# TestStoreRegistryRegionInjection — verify region discovery happens at
+# store-construction time for s3:// URLs without an explicit region, and is
+# correctly skipped when the caller has already configured one.
+class TestStoreRegistryRegionInjection:
+    @staticmethod
+    def _make_registry_capturing_kwargs():
+        _BUCKET_REGION_CACHE.clear()
+        captured = {}
+
+        def fake_from_url(url, **kwargs):
+            captured["store_url"] = url
+            captured["kwargs"] = kwargs
+            return MagicMock(name="fake-store")
+
+        reg = StoreRegistry()
+        reg._from_url = fake_from_url
+        return reg, captured
+
+    def test_s3_url_injects_discovered_region(self):
+        reg, captured = self._make_registry_capturing_kwargs()
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region",
+            return_value="us-west-2",
+        ):
+            reg.get("s3://ray-example-data")
+        assert captured["kwargs"].get("region") == "us-west-2"
+
+    def test_s3a_url_also_injects_region(self):
+        reg, captured = self._make_registry_capturing_kwargs()
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region",
+            return_value="us-west-2",
+        ):
+            reg.get("s3a://some-bucket")
+        assert captured["kwargs"].get("region") == "us-west-2"
+
+    def test_explicit_region_not_overridden(self):
+        # Caller (e.g., creds extracted from PyArrow S3FileSystem) already
+        # supplied region; do not probe and do not override.
+        reg = StoreRegistry(region="eu-central-1")
+        captured = {}
+
+        def fake_from_url(url, **kwargs):
+            captured["kwargs"] = kwargs
+            return MagicMock()
+
+        reg._from_url = fake_from_url
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region"
+        ) as probe:
+            reg.get("s3://bucket")
+        probe.assert_not_called()
+        assert captured["kwargs"]["region"] == "eu-central-1"
+
+    def test_custom_endpoint_skips_probe(self):
+        # MinIO / R2 / localstack: caller configured a custom endpoint, so
+        # the AWS region probe would be both wrong and wasteful.
+        reg = StoreRegistry(endpoint="http://localhost:9000")
+        reg._from_url = lambda *a, **k: MagicMock()
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region"
+        ) as probe:
+            reg.get("s3://bucket")
+        probe.assert_not_called()
+
+    def test_https_url_does_not_probe(self):
+        # Virtual-hosted-style or presigned HTTPS URLs reach get() unchanged
+        # (after _split_obstore_uri). obstore parses the region from the
+        # netloc directly, so probing would be redundant.
+        reg, captured = self._make_registry_capturing_kwargs()
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region"
+        ) as probe:
+            reg.get("https://bucket.s3.us-east-1.amazonaws.com")
+        probe.assert_not_called()
+
+
+# TestResolveSizeRewrite — the HEAD size probe must apply the same path-style
+# -> s3:// rewrite as the download paths. Otherwise a cross-region path-style
+# URL keeps the regional HTTPS store, hits BareRedirect, returns size 0, and
+# wrongly skips ranged downloads even when a whole-file GET would succeed.
+class TestResolveSizeRewrite:
+    def test_resolve_size_rewrites_path_style_uri(self):
+        _BUCKET_REGION_CACHE.clear()
+        captured = {}
+
+        def fake_from_url(url, **kwargs):
+            captured["store_url"] = url
+            return MagicMock(name="store")
+
+        registry = StoreRegistry()
+        registry._from_url = fake_from_url
+
+        async def fake_head_async(store, path):
+            captured["path"] = path
+            return {"size": 4096}
+
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region",
+            return_value="us-west-2",
+        ), patch("obstore.head_async", side_effect=fake_head_async):
+            size = asyncio.run(
+                _resolve_size(
+                    "https://s3.us-east-1.amazonaws.com/cross-region-bucket/key.bin",
+                    registry,
+                    asyncio.Semaphore(),
+                )
+            )
+
+        # Rewritten to s3://<bucket> so region discovery applies; HEAD succeeds.
+        assert size == 4096
+        assert captured["store_url"] == "s3://cross-region-bucket"
+        assert captured["path"] == "key.bin"
+
+
 # TestDownloadHelpers
 class TestDownloadHelpers:
     """Unit tests for credential extraction and URL-scheme detection."""
@@ -81,72 +336,80 @@ class TestDownloadHelpers:
         retrying = RetryingPyFileSystem.wrap(inner, retryable_errors=[])
         assert _extract_credentials_from_filesystem(retrying) is None
 
-    def test_extract_credentials_unwraps_retrying_fs_over_s3(self):
-        # Even when an S3FileSystem is wrapped, credentials must still be
-        # extracted from the inner filesystem after unwrapping.
-        mock_fs = MagicMock()
-        mock_fs.region = "eu-west-1"
-        mock_fs.access_key = None
-        mock_fs.secret_key = None
-        mock_fs.session_token = None
-        mock_fs.endpoint_override = None
-        mock_fs.anonymous = False
-
-        mock_retrying = MagicMock(spec=RetryingPyFileSystem)
-        mock_retrying.unwrap.return_value = mock_fs
-
-        with patch("pyarrow.fs.S3FileSystem", type(mock_fs)):
-            result = _extract_credentials_from_filesystem(mock_retrying)
-
-        assert result is not None
-        assert result.get("region") == "eu-west-1"
-
-    # _extract_credentials_from_filesystem with S3
-    def test_extract_credentials_s3_region_real(self):
-        # PyArrow's S3FileSystem C extension only exposes `region` as a Python
-        # attribute; credential fields are not accessible. This test documents
-        # that boundary with a real filesystem object.
+    # Native S3FileSystem is translated to obstore kwargs from its pickle state
+    # so the fast obstore path is kept. Anonymous, explicit static keys, and the
+    # default credential chain are all statically representable.
+    @pytest.mark.parametrize(
+        "kwargs, expected",
+        [
+            (
+                {"anonymous": True, "region": "us-west-2"},
+                {"region": "us-west-2", "skip_signature": True},
+            ),
+            (
+                {"region": "us-west-2"},
+                {"region": "us-west-2"},
+            ),
+            (
+                {"access_key": "AKID", "secret_key": "SECRET", "region": "us-west-2"},
+                {
+                    "region": "us-west-2",
+                    "access_key_id": "AKID",
+                    "secret_access_key": "SECRET",
+                },
+            ),
+        ],
+    )
+    def test_native_s3_translates_to_obstore(self, kwargs, expected):
         try:
-            fs = pafs.S3FileSystem(region="us-west-2")
+            fs = pafs.S3FileSystem(**kwargs)
         except Exception:
             pytest.skip("Cannot instantiate S3FileSystem in this environment")
-        result = _extract_credentials_from_filesystem(fs)
-        assert result is not None
-        assert result.get("region") == "us-west-2"
-        assert "access_key_id" not in result
-        assert "skip_signature" not in result
+        assert _extract_credentials_from_filesystem(fs) == expected
+        assert _plan_obstore_routing(fs) == (True, expected)
 
-    def test_extract_credentials_s3_anonymous_mock(self):
-        # We patch pyarrow.fs.S3FileSystem so isinstance() recognises the mock.
-        mock_fs = MagicMock()
-        mock_fs.anonymous = True
-        mock_fs.access_key = None
-        mock_fs.secret_key = None
-        mock_fs.session_token = None
-        mock_fs.endpoint_override = None
-        mock_fs.region = None
-        with patch("pyarrow.fs.S3FileSystem", type(mock_fs)):
-            result = _extract_credentials_from_filesystem(mock_fs)
-        assert result is not None
-        assert result.get("skip_signature") is True
-        assert "access_key_id" not in result
+    def test_native_s3_unwrapped_from_retrying_wrapper(self):
+        # RetryingPyFileSystem is unwrapped before the S3 check, so a wrapped
+        # native S3FileSystem is translated to obstore kwargs just the same.
+        try:
+            fs = pafs.S3FileSystem(anonymous=True, region="us-west-2")
+        except Exception:
+            pytest.skip("Cannot instantiate S3FileSystem in this environment")
+        retrying = RetryingPyFileSystem.wrap(fs, retryable_errors=[])
+        assert _extract_credentials_from_filesystem(retrying) == {
+            "region": "us-west-2",
+            "skip_signature": True,
+        }
 
-    def test_extract_credentials_s3_with_keys_mock(self):
-        mock_fs = MagicMock()
-        mock_fs.anonymous = False
-        mock_fs.access_key = "AKID"
-        mock_fs.secret_key = "SECRET"
-        mock_fs.session_token = "TOKEN"
-        mock_fs.endpoint_override = "https://custom-endpoint.com"
-        mock_fs.region = "us-west-2"
-        with patch("pyarrow.fs.S3FileSystem", type(mock_fs)):
-            result = _extract_credentials_from_filesystem(mock_fs)
-        assert result is not None
-        assert result["access_key_id"] == "AKID"
-        assert result["secret_access_key"] == "SECRET"
-        assert result["session_token"] == "TOKEN"
-        assert result["endpoint"] == "https://custom-endpoint.com"
-        assert result["region"] == "us-west-2"
+    def test_native_s3_assume_role_falls_back_to_threaded(self):
+        # Assume-role creds rotate; a static obstore snapshot would go stale, so
+        # the translation declines (None) and the caller uses the threaded path.
+        # Driven through the pickle state to avoid constructing a real
+        # assume-role filesystem (which may attempt STS).
+        class _Stub:
+            def __reduce__(self):
+                return (
+                    object,
+                    (
+                        {
+                            "role_arn": "arn:aws:iam::123456789012:role/test",
+                            "anonymous": False,
+                            "access_key": None,
+                            "region": "us-west-2",
+                        },
+                    ),
+                )
+
+        assert _native_s3_obstore_kwargs(_Stub()) is None
+
+    def test_native_s3_unreadable_pickle_state_falls_back_to_threaded(self):
+        # If the pickle state can't be introspected (e.g. a future PyArrow
+        # changes its serialization), fail safe to the threaded path.
+        class _Stub:
+            def __reduce__(self):
+                raise RuntimeError("unexpected serialization")
+
+        assert _native_s3_obstore_kwargs(_Stub()) is None
 
     # _extract_credentials_from_filesystem with GCS
     @pytest.mark.parametrize(
@@ -537,6 +800,165 @@ class TestPlanObstoreRouting:
             asyncio.run(
                 _download_uris_with_obstore(
                     ["file:///tmp/x.bin"], "uri", filesystem=pafs.LocalFileSystem()
+                )
+            )
+
+
+# TestThreadedDownloadPreResolve
+def _spy_resolve(fake_fn=None):
+    """Patch _resolve_paths_and_filesystem, returning (patch_cm, probe_calls,
+    normalize_calls). Probe calls pass filesystem=None; normalize calls supply
+    one. ``fake_fn`` replaces the real function when given."""
+    from ray.data._internal.planner import plan_download_op as pdo
+
+    probe_calls: list = []
+    normalize_calls: list = []
+    original = pdo._resolve_paths_and_filesystem
+
+    def _tracking(uri, filesystem=None, **kw):
+        (probe_calls if filesystem is None else normalize_calls).append(uri)
+        if fake_fn is not None:
+            return fake_fn(uri, filesystem=filesystem, **kw)
+        return original(uri, filesystem=filesystem, **kw)
+
+    return (
+        patch.object(pdo, "_resolve_paths_and_filesystem", side_effect=_tracking),
+        probe_calls,
+        normalize_calls,
+    )
+
+
+class TestThreadedDownloadPreResolve:
+    """``download_bytes_threaded`` probes the filesystem once and shares it
+    across workers, instead of each worker inferring it (the IMDS herd)."""
+
+    def test_probe_once_across_workers(self, tmp_path):
+        for i in range(10):
+            (tmp_path / f"f{i}.bin").write_bytes(f"data-{i}".encode())
+        uris = [f"file://{tmp_path}/f{i}.bin" for i in range(10)]
+        table = pa.Table.from_arrays([pa.array(uris)], names=["uri"])
+
+        spy, probes, normalizes = _spy_resolve()
+        with spy:
+            results = list(
+                download_bytes_threaded(
+                    table, ["uri"], ["bytes"], DataContext.get_current()
+                )
+            )
+
+        # One probe regardless of worker count; one normalize per URI.
+        assert len(probes) == 1
+        assert len(normalizes) == 10
+        assert [b.as_py() for b in results[0].column("bytes")] == [
+            f"data-{i}".encode() for i in range(10)
+        ]
+
+    @pytest.mark.parametrize(
+        "fs_factory",
+        [
+            pytest.param(lambda: pafs.LocalFileSystem(), id="pyarrow-local"),
+            # fsspec FS lacks open_input_stream and must be normalized before
+            # wrapping, else reads raise AttributeError mid-flight.
+            pytest.param(
+                lambda: pytest.importorskip("fsspec").filesystem("file"),
+                id="fsspec-local",
+            ),
+        ],
+    )
+    def test_supplied_fs_skips_probe(self, tmp_path, fs_factory):
+        (tmp_path / "f.bin").write_bytes(b"supplied")
+        table = pa.Table.from_arrays(
+            [pa.array([f"file://{tmp_path}/f.bin"])], names=["uri"]
+        )
+
+        spy, probes, _ = _spy_resolve()
+        with spy:
+            results = list(
+                download_bytes_threaded(
+                    table,
+                    ["uri"],
+                    ["bytes"],
+                    DataContext.get_current(),
+                    filesystem=fs_factory(),
+                )
+            )
+
+        assert probes == []
+        assert results[0].column("bytes")[0].as_py() == b"supplied"
+
+    @pytest.mark.parametrize(
+        "first_uri,probe_returns_for_first",
+        [
+            pytest.param(None, None, id="none-in-list"),
+            pytest.param("file:///first-dropped", ([], None), id="empty-paths-result"),
+        ],
+    )
+    def test_probe_loop_skips_unusable(
+        self, tmp_path, first_uri, probe_returns_for_first
+    ):
+        # Probe must skip None URIs and ([], fs)/(paths, None) returns rather
+        # than break early with no usable filesystem.
+        from ray.data._internal.planner import plan_download_op as pdo
+
+        (tmp_path / "good.bin").write_bytes(b"good")
+        real_fs = pafs.LocalFileSystem()
+
+        def _fake(uri, filesystem=None, **_kw):
+            if filesystem is not None:
+                # Normalize-only: pass paths through when FS is supplied.
+                return ([str(tmp_path / "good.bin")], filesystem)
+            if uri == first_uri:
+                return probe_returns_for_first
+            return ([str(tmp_path / "good.bin")], real_fs)
+
+        good = f"file://{tmp_path}/good.bin"
+        table = pa.Table.from_arrays([pa.array([first_uri, good])], names=["uri"])
+
+        with patch.object(pdo, "_resolve_paths_and_filesystem", side_effect=_fake):
+            results = list(
+                download_bytes_threaded(
+                    table, ["uri"], ["bytes"], DataContext.get_current()
+                )
+            )
+        assert results[0].column("bytes")[-1].as_py() == b"good"
+
+    def test_all_probes_fail_yields_none(self):
+        # No URI resolves; we short-circuit to None for every row instead of
+        # letting workers repeat the failed inference.
+        from ray.data._internal.planner import plan_download_op as pdo
+
+        resolve_calls: list = []
+
+        def _fail_all(uri, filesystem=None, **_kw):
+            resolve_calls.append((uri, filesystem))
+            raise RuntimeError("nothing resolves")
+
+        uris = ["bad-1", "bad-2", "bad-3"]
+        table = pa.Table.from_arrays([pa.array(uris)], names=["uri"])
+        with patch.object(pdo, "_resolve_paths_and_filesystem", side_effect=_fail_all):
+            results = list(
+                download_bytes_threaded(
+                    table, ["uri"], ["bytes"], DataContext.get_current()
+                )
+            )
+
+        # Probe tried each URI exactly once. No worker calls.
+        assert len(resolve_calls) == len(uris)
+        assert all(fs is None for _, fs in resolve_calls)
+        # Every URI yields None.
+        assert [b.as_py() for b in results[0].column("bytes")] == [None] * len(uris)
+
+    def test_empty_block_no_workers(self):
+        # Zero URIs → the column loop skips; no probe, no workers spawned.
+        table = pa.Table.from_arrays([pa.array([], type=pa.string())], names=["uri"])
+        from ray.data._internal.planner import plan_download_op as pdo
+
+        with patch.object(
+            pdo, "_resolve_paths_and_filesystem", side_effect=AssertionError
+        ):
+            list(
+                download_bytes_threaded(
+                    table, ["uri"], ["bytes"], DataContext.get_current()
                 )
             )
 
@@ -1067,24 +1489,19 @@ class TestObstoreRangeSplitDownload:
             import obstore as obs
 
             call_count = 0
+            original_get_range = obs.get_range_async
 
             async def _failing_range(*args, **kwargs):
                 nonlocal call_count
                 call_count += 1
                 if call_count == 2:
                     raise OSError("simulated network failure")
-                return await obs.__wrapped_get_range(*args, **kwargs)
+                return await original_get_range(*args, **kwargs)
 
-            obs.__wrapped_get_range = obs.get_range_async
-            try:
-                with patch.object(obs, "get_range_async", side_effect=_failing_range):
-                    results = asyncio.run(
-                        _download_uris_with_obstore(
-                            [uri], "uri", file_sizes=[len(content)]
-                        )
-                    )
-            finally:
-                del obs.__wrapped_get_range
+            with patch.object(obs, "get_range_async", side_effect=_failing_range):
+                results = asyncio.run(
+                    _download_uris_with_obstore([uri], "uri", file_sizes=[len(content)])
+                )
 
         # Ranged failed, but simple GET fallback should succeed.
         assert results == [content]

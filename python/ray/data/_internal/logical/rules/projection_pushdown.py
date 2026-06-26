@@ -14,9 +14,9 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 )
 from ray.data.expressions import (
     AliasExpr,
-    ColumnExpr,
     Expr,
     StarExpr,
+    is_rename_expr,
 )
 
 __all__ = [
@@ -33,10 +33,12 @@ def _collect_referenced_columns(exprs: List[Expr]) -> Optional[List[str]]:
 
     Example: For expression "col1 + col2", returns {"col1", "col2"}
     """
-    # If any expression is star(), we need all columns
+    # ``StarExpr`` is eagerly expanded to explicit ``col()`` refs in
+    # ``Project.__post_init__`` when the input schema is known. So this
+    # branch is hit only on the UDF-fallback path (Project on top of an
+    # opaque-schema input like ``MapBatches``), where we can't enumerate
+    # columns and have to fall back to "all columns" (``None``).
     if any(isinstance(expr, StarExpr) for expr in exprs):
-        # TODO (goutam): Instead of using None to refer to All columns, resolve the AST against the schema.
-        # https://github.com/ray-project/ray/issues/57720
         return None
 
     collector = _ColumnReferenceCollector()
@@ -130,6 +132,56 @@ def _validate_fusion(
     return is_valid, missing_columns
 
 
+def _would_duplicate_nonidempotent_expr(
+    upstream_project: Project,
+    downstream_project: Project,
+    upstream_column_defs: Dict[str, Expr],
+) -> bool:
+    """Return ``True`` if fusing would materialize a non-idempotent column >1 time.
+
+    Fusion inlines each upstream output column definition into every downstream
+    reference. For a non-idempotent definition (random/uuid/monotonically_increasing_id)
+    this changes its evaluation count, so we block the fusion and let the upstream
+    evaluate it exactly once.
+
+    Materialization count for an upstream column post-fusion is its downstream reference
+    multiplicity, plus one if it survives as a passthrough (the composition/star case).
+    """
+    nonidem_cols = {
+        name
+        for name, def_expr in upstream_column_defs.items()
+        if not def_expr.is_idempotent()
+    }
+    if not nonidem_cols:
+        return False
+
+    # Downstream reference multiplicity (counts ``x + x`` as 2).
+    counter = _ColumnReferenceCollector()
+    # Note: We ignore _common_sub_exprs field as CSE rule is applied post-optimization.
+    # If order is to be changed, we also need to invoke the _ColumnReferenceCollector
+    # on _common_sub_exprs.
+    for e in _filter_out_star(downstream_project.exprs):
+        counter.visit(e)
+    ref_counts = counter.get_counts()
+
+    # In the composition (downstream-star) case the upstream column also survives in
+    # the fused output unless downstream renames it away, adding one materialization.
+    passthrough: Set[str] = set()
+    if downstream_project.has_star_expr():
+        renamed_away = _extract_input_columns_renaming_mapping(downstream_project.exprs)
+        passthrough = {
+            e.name
+            for e in upstream_project.exprs
+            if not isinstance(e, StarExpr) and e.name not in renamed_away
+        }
+
+    for name in nonidem_cols:
+        total = ref_counts.get(name, 0) + (1 if name in passthrough else 0)
+        if total > 1:
+            return True
+    return False
+
+
 def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project:
     """
     Attempt to merge two consecutive Project operations into one.
@@ -140,14 +192,12 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
     # This ensures with_column respects resource boundaries like map_batches does
     from ray.data._internal.logical.rules.operator_fusion import (
         FuseOperators,
-        are_remote_args_compatible,
+        are_op_remote_args_compatible,
     )
 
-    # Check if remote args (num_cpus, num_gpus, etc.) are compatible
-    if not are_remote_args_compatible(
-        upstream_project.ray_remote_args or {},
-        downstream_project.ray_remote_args or {},
-    ):
+    # Check if remote args (num_cpus, num_gpus, etc.) are compatible and that
+    # neither op specifies a `ray_remote_args_fn`.
+    if not are_op_remote_args_compatible(upstream_project, downstream_project):
         # Resources don't match - cannot fuse
         return downstream_project
 
@@ -186,6 +236,15 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
             f"Available columns: {sorted(upstream_output_cols) if not upstream_has_star else 'all columns (has star)'}"
         )
 
+    if _would_duplicate_nonidempotent_expr(
+        upstream_project, downstream_project, upstream_column_defs
+    ):
+        # Fusing would inline a non-idempotent expression (random/uuid/
+        # monotonically_increasing_id) into multiple references, changing its
+        # evaluation count. Leave the two Projects unfused so the upstream evaluates
+        # it exactly once and downstream reads the materialized column.
+        return downstream_project
+
     # Following invariants are upheld for each ``Project`` logical op:
     #
     #   1. ``Project``s list of expressions are bound to op's input columns **only**
@@ -217,7 +276,9 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
 
     if not downstream_project.has_star_expr():
         # Projection case: this is when downstream is a *selection* (ie, not including
-        # the upstream columns with ``StarExpr``)
+        # the upstream columns with ``StarExpr``). With eager expansion of
+        # ``StarExpr`` in ``Project.__post_init__`` this is the common case
+        # for typed chains (no ``StarExpr`` reaches the optimizer).
         #
         # Example:
         #   Upstream: Project([col("a").alias("b")])
@@ -227,7 +288,10 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
         new_exprs = rebound_downstream_exprs
     else:
         # Composition case: downstream has ``StarExpr`` (entailing that downstream
-        # output will be including all of the upstream output columns)
+        # output will be including all of the upstream output columns). This
+        # is the UDF-fallback path; for typed chains
+        # ``Project.__post_init__`` would have replaced the ``StarExpr``
+        # with explicit ``col()`` refs already.
         #
         # Example 1:
         #   Upstream: [star(), col("a").alias("b")],
@@ -285,9 +349,65 @@ class ProjectionPushdown(Rule):
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
         """Apply projection pushdown optimization to the entire plan."""
         dag = plan.dag
-        new_dag = dag._apply_transform(self._try_fuse_projects)
+        # Insert a pruning projection below consuming ops (e.g. ``Aggregate``)
+        # first, so the fuse/push steps can carry the narrowed columns into the
+        # read.
+        new_dag = dag._apply_transform(self._prune_aggregate_input)
+        new_dag = new_dag._apply_transform(self._try_fuse_projects)
         new_dag = new_dag._apply_transform(self._push_projection_into_read_op)
         return LogicalPlan(new_dag, plan.context) if dag is not new_dag else plan
+
+    @classmethod
+    def _prune_aggregate_input(cls, op: LogicalOperator) -> LogicalOperator:
+        """Insert a ``Project`` below an ``Aggregate`` that keeps only the
+        columns it consumes (group keys + each aggregation's target column).
+
+        The aggregation drops every other column anyway, so pruning them before
+        the shuffle avoids dragging unused (often wide) columns through it --
+        which otherwise inflates both the aggregator's memory reservation and
+        the bytes shuffled. The inserted projection is fused/pushed toward the
+        read by the steps in ``apply``.
+        """
+        from dataclasses import replace
+
+        from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
+        from ray.data.aggregate import AggregateFnV2
+        from ray.data.expressions import col
+
+        if not isinstance(op, Aggregate):
+            return op
+
+        keys = op.key if isinstance(op.key, list) else ([op.key] if op.key else [])
+        required: List[str] = list(keys)
+        for agg in op.aggs:
+            # A generic ``AggregateFn`` may read arbitrary columns, so only
+            # prune when every aggregation declares the column it reads.
+            if not isinstance(agg, AggregateFnV2):
+                return op
+            target = agg.get_target_column()
+            if target is not None:
+                required.append(target)
+
+        # Order-preserving dedup; empty means nothing safe to prune to (e.g. a
+        # global count reading no columns).
+        required = list(dict.fromkeys(required))
+        if not required:
+            return op
+
+        input_op = op.input_dependencies[0]
+        schema = input_op.infer_schema()
+        if schema is None or not hasattr(schema, "names"):
+            return op  # unknown schema: can't prove pruning helps
+
+        # Insert only when ``required`` is a strict subset of the input columns:
+        # this guarantees there's something to drop and keeps the rule
+        # idempotent (once the input yields exactly ``required`` nothing more is
+        # inserted, so the fixed-point optimizer terminates).
+        if not set(required) < set(schema.names):
+            return op
+
+        prune = Project(exprs=[col(c) for c in required], input_dependencies=[input_op])
+        return replace(op, input_dependencies=[prune])
 
     @classmethod
     def _try_fuse_projects(cls, op: LogicalOperator) -> LogicalOperator:
@@ -334,8 +454,15 @@ class ProjectionPushdown(Rule):
             # in a single column namespace (the scanner's on-disk names)
             # and avoids the predicate-pushdown rebinding dance.
             if current_project.has_star_expr():
+                # UDF-fallback path: if ``StarExpr`` survives to this rule
+                # the input schema was unknown at construction time, so
+                # we can't enumerate columns and have to push "all".
                 required_columns = None
             else:
+                # Otherwise, collect required columns to push projection down
+                # into the reader. (``Project.__post_init__`` expands
+                # ``StarExpr`` to explicit ``col()`` refs when the input
+                # schema is known, so this is the common path.)
                 required_columns = _collect_referenced_columns(current_project.exprs)
 
             # Build a pure-prune projection map (identity, no renames).
@@ -383,24 +510,14 @@ def _extract_input_columns_renaming_mapping(
         [
             _get_renaming_mapping(expr)
             for expr in _filter_out_star(projection_exprs)
-            if _is_renaming_expr(expr)
+            if is_rename_expr(expr)
         ]
     )
 
 
 def _get_renaming_mapping(expr: Expr) -> Tuple[str, str]:
-    assert _is_renaming_expr(expr)
+    assert is_rename_expr(expr)
 
     alias: AliasExpr = expr
 
     return alias.expr.name, alias.name
-
-
-def _is_renaming_expr(expr: Expr) -> bool:
-    is_renaming = isinstance(expr, AliasExpr) and expr._is_rename
-
-    assert not is_renaming or isinstance(
-        expr.expr, ColumnExpr
-    ), f"Renaming expression expected to be of the shape alias(col('source'), 'target') (got {expr})"
-
-    return is_renaming

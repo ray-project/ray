@@ -214,8 +214,12 @@ def test_json_roundtrip(
     ds2 = ray.data.read_json(tmp_path)
     ds2df = ds2.to_pandas()
     assert rows_same(ds2df, df)
-    for block, meta in ds2._execute().blocks:
-        assert BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes  # type: ignore[call-overload]
+    for entry in ds2._execute().blocks:
+        assert (
+            # pyrefly: ignore[no-matching-overload]
+            BlockAccessor.for_block(ray.get(entry.ref)).size_bytes()
+            == entry.metadata.size_bytes
+        )
 
 
 def test_json_read_small_file_unit_block_size(

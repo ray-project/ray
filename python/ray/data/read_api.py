@@ -66,6 +66,7 @@ from ray.data._internal.datasource.torch_datasource import TorchDatasource
 from ray.data._internal.datasource.uc_datasource import UnityCatalogConnector
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
+from ray.data._internal.datasource.zarrv2_datasource import ZarrV2Datasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
@@ -121,6 +122,7 @@ if TYPE_CHECKING:
     import daft
     import dask
     import datasets
+    import fsspec.spec
     import mars
     import modin
     import pandas
@@ -926,6 +928,143 @@ def read_videos(
 
 
 @PublicAPI(stability="alpha")
+def read_zarr(
+    path: str,
+    *,
+    filesystem: "pyarrow.fs.FileSystem | fsspec.spec.AbstractFileSystem | None" = None,
+    chunk_shapes: dict[str, list] | list | None = None,
+    array_paths: list[str] | None = None,
+    allow_full_metadata_scan: bool = False,
+    align_axis_0: bool = False,
+    overlap: int = 0,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+):
+    """Creates a :class:`~ray.data.Dataset` from a Zarr v2 store.
+
+    By default each row is one chunk of one array (long-form), with columns
+    ``array``, ``chunk_index``, ``chunk_slices``, and ``chunk``. With
+    ``align_axis_0=True``, each row is one axis-0 chunk with ``t_start``,
+    ``t_stop``, and one column per selected array (wide-form), for arrays that
+    share ``shape[0]``.
+
+    For the output schemas, chunk re-tiling, aligned and sliding-window reads,
+    metadata discovery, custom codecs, and cloud-storage setup, see
+    :ref:`Working with Zarr <working_with_zarr>`.
+
+    .. note::
+
+        In long-form the ``chunk`` column is a tensor, and tensors of different
+        rank or dtype can't be combined into one batch. Consume long-form per
+        array (filter on the ``array`` column first), or, when arrays are
+        row-aligned (share ``shape[0]``), use ``align_axis_0=True`` so each
+        array is its own column -- which is batch-safe.
+
+    Examples:
+        Read every array at its native chunking (long-form, one row per chunk):
+
+        >>> import ray
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
+        ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
+        ... )
+
+        Aligned read -- paired ``(images, labels)`` per row; ``align_axis_0``
+        requires all selected arrays to share ``shape[0]``:
+
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
+        ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
+        ...     align_axis_0=True,
+        ...     chunk_shapes=[50],
+        ... )
+
+        Per-array chunk overrides -- re-tile only the selected arrays:
+
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
+        ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
+        ...     chunk_shapes={"images": [50], "labels": [50]},
+        ... )
+
+    Args:
+        path: Path to the Zarr v2 store.
+        filesystem: The filesystem
+            implementation to read from. PyArrow filesystems are specified in the
+            `pyarrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
+            the filesystem is automatically selected based on the scheme of the paths.
+            For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+            Also acceptsan :class:`fsspec.spec.AbstractFileSystem`.
+            pyarrow filesystems are wrapped internally with
+            :class:`fsspec.implementations.arrow.ArrowFSWrapper`
+        chunk_shapes: Optional re-tiling of the leading chunk axes at read
+            time (see :ref:`Working with Zarr <working_with_zarr>`). Either a
+            sequence applied as a shared prefix across all selected arrays
+            (trailing axes keep native chunks), or a dict of per-array
+            prefixes (arrays absent from it keep native chunks). An override
+            may not exceed its target array's rank. Defaults to native chunks.
+        array_paths: Optional list of array paths within the Zarr store to
+            read. If unspecified, all arrays discovered in the store are
+            included.
+        allow_full_metadata_scan: If ``True``, recursively scan the store for
+            ``.zarray`` files when ``array_paths`` is unspecified and
+            ``.zmetadata`` is missing. This may be slow or expensive for large
+            remote stores, so it is disabled by default.
+        align_axis_0: If ``True``, emit the wide-form schema: one row per
+            axis-0 chunk with one column per selected array, plus ``t_start``
+            and ``t_stop`` columns naming the global axis-0 range. All selected
+            arrays must share ``shape[0]`` and resolve to the same effective
+            axis-0 chunk size after ``chunk_shapes`` resolution. Defaults to
+            ``False`` (long-form, one chunk per row).
+        overlap: The number of additional axis-0 timesteps to extend each
+            row's per-array data forward by, clipped at the store end, for
+            sliding-window pipelines. Only valid with ``align_axis_0=True``.
+            Defaults to ``0``. See :ref:`Working with Zarr <working_with_zarr>`.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+
+    Returns:
+        A :class:`~ray.data.Dataset` of long-form chunk rows by default
+        (``array``, ``chunk_index``, ``chunk_slices``, ``chunk``), or
+        wide-form aligned rows (``t_start``, ``t_stop``, plus one column
+        per aligned array) when ``align_axis_0`` is set.
+    """
+    datasource = ZarrV2Datasource(
+        path=path,
+        filesystem=filesystem,
+        chunk_shapes=chunk_shapes,
+        array_paths=array_paths,
+        allow_full_metadata_scan=allow_full_metadata_scan,
+        align_axis_0=align_axis_0,
+        overlap=overlap,
+    )
+    return read_datasource(
+        datasource,
+        ray_remote_args=ray_remote_args,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
 def read_mongo(
     uri: str,
     database: str,
@@ -1289,6 +1428,20 @@ def read_parquet(
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified parquet
         files.
+
+    .. tip::
+
+        If you're reading large Parquet files and getting out-of-memory errors, try
+        setting ``ray.data.DataContext.get_current().isolate_read_workers = True``.
+
+        Parquet reads can allocate lots of heap memory because of issues like
+        https://github.com/apache/arrow/issues/39808. Since Ray Data re-uses workers
+        for different operators, downstream tasks can look like they're using too much
+        memory when they're not. By setting ``isolate_read_workers``, Ray Data ensures
+        downstream tasks run on distinct workers without memory bloat.
+
+        The tradeoff is that you might see a performance regression if Ray needs to
+        restart more workers.
     """
     _validate_shuffle_arg(shuffle)
 
@@ -3464,8 +3617,13 @@ def from_pandas_refs(
         )
 
     context = DataContext.get_current()
+    label_selector = context.execution_options.label_selector
     if context.enable_pandas_block:
         get_metadata_schema = cached_remote_fn(get_table_block_metadata_schema)
+        if label_selector:
+            get_metadata_schema = get_metadata_schema.options(
+                label_selector=label_selector
+            )
         metadata_schema = ray.get([get_metadata_schema.remote(df) for df in dfs])
         stats = DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None)
         ctx = DataContext.get_current().copy()
@@ -3473,6 +3631,8 @@ def from_pandas_refs(
         return MaterializedDataset(logical_plan, ctx, stats)
 
     df_to_block = cached_remote_fn(pandas_df_to_arrow_block, num_returns=2)
+    if label_selector:
+        df_to_block = df_to_block.options(label_selector=label_selector)
 
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata_schema = map(list, zip(*res))
@@ -3591,6 +3751,11 @@ def from_numpy_refs(
 
     ctx = DataContext.get_current()
     ndarray_to_block_remote = cached_remote_fn(ndarray_to_block, num_returns=2)
+    label_selector = ctx.execution_options.label_selector
+    if label_selector:
+        ndarray_to_block_remote = ndarray_to_block_remote.options(
+            label_selector=label_selector
+        )
 
     res = [ndarray_to_block_remote.remote(ndarray, ctx) for ndarray in ndarrays]
     blocks, metadata_schema = map(list, zip(*res))
@@ -3741,6 +3906,9 @@ def from_arrow_refs(
         tables = [tables]
 
     get_metadata_schema = cached_remote_fn(get_table_block_metadata_schema)
+    label_selector = DataContext.get_current().execution_options.label_selector
+    if label_selector:
+        get_metadata_schema = get_metadata_schema.options(label_selector=label_selector)
     metadata_schema = ray.get([get_metadata_schema.remote(t) for t in tables])
     stats = DatasetStats(metadata={"FromArrow": metadata_schema}, parent=None)
     context = DataContext.get_current().copy()
