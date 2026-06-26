@@ -27,9 +27,9 @@ APP_NAME = "lifecycle_tracking_gpu_test"
 REQUEST_ID = "gpu-req-1"
 MAX_TOKENS = 48
 PROMPT_TEXT = "Describe the water cycle in detail, stage by stage."
-# vLLM adopts the X-Request-Id header as the engine request id, prefixed per
-# endpoint; the engine-level id is what token tracking reports to the actor.
-ENGINE_REQUEST_ID = f"chatcmpl-{REQUEST_ID}"
+# Token tracking reports Serve's canonical request id, matching the id used for
+# routing, even if vLLM derives a separate engine-level id internally.
+LIFECYCLE_REQUEST_ID = REQUEST_ID
 
 
 @ray.remote(num_cpus=0)
@@ -152,7 +152,7 @@ class TestLifecycleTracking:
             return [
                 (name, args)
                 for name, args in ray.get(actor.get_event_log.remote())
-                if args[0] == ENGINE_REQUEST_ID
+                if args[0] == LIFECYCLE_REQUEST_ID
             ]
 
         for _ in range(75):

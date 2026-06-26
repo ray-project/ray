@@ -152,6 +152,37 @@ async def test_basic_lifecycle(build_token_tracking_engine):
 
 
 @pytest.mark.asyncio
+async def test_lifecycle_uses_serve_request_id(build_token_tracking_engine):
+    """Lifecycle events use the same Serve request id used by routing, even if
+    vLLM's engine-level id is different."""
+    actor = RecordingKVRouterActor.remote(block_size=16)
+    engine = build_token_tracking_engine(delta_steps(1, prompt_len=10), actor)
+
+    prompt = {"prompt_token_ids": list(range(10))}
+    serve.context._serve_request_context.set(
+        serve.context._RequestContext(request_id="serve-route-id")
+    )
+    try:
+        await consume(
+            engine.generate(
+                prompt,
+                SamplingParams(output_kind=RequestOutputKind.DELTA),
+                "chatcmpl-serve-route-id",
+            )
+        )
+    finally:
+        serve.context._serve_request_context.set(serve.context._RequestContext())
+    await drain(engine)
+
+    assert ray.get(actor.get_event_log.remote()) == [
+        ("on_request_added", ("serve-route-id", WORKER_ID, list(range(10)))),
+        ("on_prefill_complete", ("serve-route-id",)),
+        ("on_decode_progress", ("serve-route-id", 1)),
+        ("on_request_completed", ("serve-route-id",)),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_in_order_reports(build_token_tracking_engine):
     """Back-to-back reports reach the actor in submission order."""
     actor = RecordingKVRouterActor.remote(block_size=16)

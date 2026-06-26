@@ -11,6 +11,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     KV_ROUTER_ACTOR_NAME,
     get_worker_id,
 )
+from ray.llm._internal.serve.utils.server_utils import get_serve_request_id
 
 logger = get_logger(__name__)
 
@@ -138,9 +139,10 @@ def enable_token_tracking(engine_cls: Type[AsyncLLM]) -> Type[AsyncLLM]:
                     yield output
                 return
 
+            lifecycle_request_id = get_serve_request_id() or request_id
             tracker = RequestTokenTracker(
                 forwarder,
-                request_id,
+                lifecycle_request_id,
                 _get_prompt_token_ids(prompt),
             )
             try:
