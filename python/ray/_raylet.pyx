@@ -259,6 +259,26 @@ GRPC_STATUS_CODE_UNIMPLEMENTED = CGrpcStatusCode.UNIMPLEMENTED
 
 logger = logging.getLogger(__name__)
 
+cdef class _DirectTransportMetadataSetter:
+    cdef shared_ptr[CRayObject] return_object
+
+    cdef initialize(self, shared_ptr[CRayObject] return_object):
+        self.return_object = return_object
+        return self
+
+    def __call__(self, future):
+        cdef c_string c_direct_transport_metadata
+        cdef c_string c_error
+        try:
+            c_direct_transport_metadata = future.result()
+            self.return_object.get().SetDirectTransportMetadata(
+                move(c_direct_transport_metadata))
+        except BaseException as exc:
+            logger.exception("Failed to extract RDT metadata asynchronously.")
+            c_error = str(exc).encode("utf-8")
+            self.return_object.get().SetDirectTransportMetadataError(move(c_error))
+
+
 import warnings
 class NumReturnsWarning(UserWarning):
     """Warning when num_returns=0 but the task returns a non-None value."""
@@ -4287,7 +4307,6 @@ cdef class CoreWorker:
             int64_t num_returns = -1
             CObjectID c_ref_generator_id = CObjectID.Nil()
             shared_ptr[CRayObject] *return_ptr
-            c_string c_pickled_rdt_metadata
 
         if ref_generator_id:
             c_ref_generator_id = CObjectID.FromBinary(ref_generator_id)
@@ -4364,13 +4383,13 @@ cdef class CoreWorker:
             # when GPU objects are more stable. We currently separate the logic to ensure
             # GPU object-related logic does not affect the normal object serialization logic.
             if tensor_transport is not None:
-                # `output` contains tensors. We need to retrieve these tensors from `output`
-                # and store them in the RDTManager.
                 serialized_object, tensors = context.serialize_rdt_objects(output, tensor_transport)
-                pickled_rdt_metadata = context.store_rdt_objects(
+                # Submit metadata extraction to a background thread so that
+                # store_task_output (plasma write) can overlap with
+                # extract_tensor_transport_metadata.
+                # See https://github.com/ray-project/ray/issues/63150.
+                rdt_metadata_future = context.store_rdt_objects_async(
                     return_id.Hex().decode("ascii"), tensors, tensor_transport)
-                # One copy from python bytes object to C++ string
-                c_pickled_rdt_metadata = pickled_rdt_metadata
             else:
                 serialized_object = context.serialize(output)
 
@@ -4417,8 +4436,12 @@ cdef class CoreWorker:
                 continue
 
             if tensor_transport is not None:
-                return_ptr.get().SetDirectTransportMetadata(move(c_pickled_rdt_metadata))
-                c_pickled_rdt_metadata = c_string()
+                # Let the task execution thread return before metadata
+                # extraction finishes. TaskReceiver will finish the reply from
+                # a separate executor once this callback sets the metadata.
+                return_ptr[0].get().SetDirectTransportMetadataPending()
+                rdt_metadata_future.add_done_callback(
+                    _DirectTransportMetadataSetter().initialize(return_ptr[0]))
 
             num_outputs_stored += 1
 

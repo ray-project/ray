@@ -1,6 +1,7 @@
 import multiprocessing.shared_memory as shm
 import pickle
 import sys
+import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -116,6 +117,32 @@ class SharedMemoryTransport(TensorTransportManager):
         pass
 
 
+class SlowSharedMemoryTransport(SharedMemoryTransport):
+    def tensor_transport_backend(self) -> str:
+        return "slow_shared_memory"
+
+    def extract_tensor_transport_metadata(
+        self,
+        obj_id: str,
+        rdt_object: List[numpy.ndarray],
+    ) -> TensorTransportMetadata:
+        time.sleep(2)
+        return super().extract_tensor_transport_metadata(obj_id, rdt_object)
+
+
+class InvalidDeviceSharedMemoryTransport(SharedMemoryTransport):
+    def tensor_transport_backend(self) -> str:
+        return "invalid_device_shared_memory"
+
+    def extract_tensor_transport_metadata(
+        self,
+        obj_id: str,
+        rdt_object: List[numpy.ndarray],
+    ) -> TensorTransportMetadata:
+        tensor_meta = [(tensor.shape, tensor.dtype) for tensor in rdt_object]
+        return ShmTransportMetadata(tensor_meta=tensor_meta, tensor_device="cuda")
+
+
 def test_register_and_use_custom_transport(ray_start_regular):
     register_tensor_transport(
         "shared_memory", ["cpu"], SharedMemoryTransport, numpy.ndarray
@@ -150,6 +177,62 @@ def test_register_and_use_custom_transport(ray_start_regular):
     ref = actors[0].non_rdt_echo.remote(numpy.array([1, 2, 3]))
     result = actors[1].sum.remote(ref)
     assert ray.get(result) == 6
+
+
+def test_async_metadata_extraction_does_not_block_next_actor_task(ray_start_regular):
+    register_tensor_transport(
+        "slow_shared_memory", ["cpu"], SlowSharedMemoryTransport, numpy.ndarray
+    )
+
+    @ray.remote
+    class Actor:
+        @ray.method(tensor_transport="slow_shared_memory")
+        def slow_rdt_return(self):
+            return numpy.array([1, 2, 3])
+
+        def ping(self):
+            return time.perf_counter()
+
+    from ray import cloudpickle
+
+    cloudpickle.register_pickle_by_value(
+        sys.modules[SlowSharedMemoryTransport.__module__]
+    )
+
+    producer = Actor.remote()
+
+    start = time.perf_counter()
+    slow_ref = producer.slow_rdt_return.remote()
+    ping_ref = producer.ping.remote()
+
+    ping_time = ray.get(ping_ref, timeout=1.5)
+    assert ping_time - start < 1.5
+    assert numpy.array_equal(ray.get(slow_ref), numpy.array([1, 2, 3]))
+
+
+def test_async_metadata_extraction_validates_tensor_device(ray_start_regular):
+    register_tensor_transport(
+        "invalid_device_shared_memory",
+        ["cpu"],
+        InvalidDeviceSharedMemoryTransport,
+        numpy.ndarray,
+    )
+
+    @ray.remote
+    class Actor:
+        @ray.method(tensor_transport="invalid_device_shared_memory")
+        def invalid_device_return(self):
+            return numpy.array([1, 2, 3])
+
+    from ray import cloudpickle
+
+    cloudpickle.register_pickle_by_value(
+        sys.modules[InvalidDeviceSharedMemoryTransport.__module__]
+    )
+
+    actor = Actor.remote()
+    with pytest.raises(ray.exceptions.RaySystemError, match="does not support"):
+        ray.get(actor.invalid_device_return.remote())
 
 
 if __name__ == "__main__":
