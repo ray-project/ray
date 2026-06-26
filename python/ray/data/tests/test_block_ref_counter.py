@@ -153,14 +153,19 @@ class TestBlockRefCounterNonOwnedBlocks:
 
         @ray.remote
         class CounterActor:
-            def try_track_non_owned_block(self, block_ref, size_bytes):
+            def try_track_non_owned_block(self, block_ref_wrapped, size_bytes):
+                # Unwrap: ObjectRef was wrapped in a list to prevent
+                # Ray from auto-resolving it into the value.
+                block_ref = block_ref_wrapped[0]
                 counter = BlockRefCounter()
                 counter.on_block_produced(block_ref, size_bytes, "op_split")
                 return counter.get_object_store_memory_usage("op_split")
 
-        block_ref = ray.put(np.zeros(1024, dtype=np.uint8))
-        actor = CounterActor.remote()
-        usage = ray.get(actor.try_track_non_owned_block.remote(block_ref, 1024))
+        block_ref = ray.put(
+            np.zeros(1, dtype=np.uint8)  # pyrefly: ignore[bad-argument-type]
+        )
+        actor = CounterActor.remote()  # pyrefly: ignore[missing-attribute]
+        usage = ray.get(actor.try_track_non_owned_block.remote([block_ref], 1))
         assert (
             usage == 0
         ), f"Non-owned block should not be tracked, but got {usage} bytes"
