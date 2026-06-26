@@ -1043,6 +1043,20 @@ py_test(
 )
 
 py_test(
+    name = "test_idempotency_optimizer_guards",
+    size = "small",
+    srcs = ["tests/test_idempotency_optimizer_guards.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_infer_schema",
     size = "small",
     srcs = ["tests/test_infer_schema.py"],
