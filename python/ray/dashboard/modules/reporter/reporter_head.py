@@ -1029,7 +1029,7 @@ class ReportHead(SubprocessModule):
             if ready is True:
                 return aiohttp.web.Response(
                     text="success",
-                    content_type="application/text",
+                    content_type="text/plain",
                 )
         except Exception as e:
             return aiohttp.web.HTTPServiceUnavailable(
@@ -1037,7 +1037,6 @@ class ReportHead(SubprocessModule):
             )
 
         return aiohttp.web.HTTPServiceUnavailable(reason="Readiness check failed")
-
 
     @routes.get("/api/prometheus/sd")
     async def prometheus_service_discovery(self, req) -> aiohttp.web.Response:

@@ -385,13 +385,7 @@ class LogMonitor:
                     "task_name": file_info.task_name,
                 }
                 try:
-                    is_leader_elect_enabled = ray_constants.RAY_LEADER_ELECT
-                    if is_leader_elect_enabled and not self.gcs_client.is_gcs_leader():
-                        logger.info(
-                            "GCS is in passive mode. Skipping publishing log messages."
-                        )
-                    else:
-                        self.gcs_client.publish_logs(data)
+                    self.gcs_client.publish_logs(data)
                 except Exception:
                     logger.exception(f"Failed to publish log messages {data}")
                 anything_published = True
@@ -495,7 +489,14 @@ class LogMonitor:
         check if there are new log files to monitor. It will also publish new
         log lines.
         """
+        is_leader_elect_enabled = ray_constants.RAY_LEADER_ELECT
+        if is_leader_elect_enabled:
+            while not self.gcs_client.is_gcs_leader():
+                logger.debug("GCS is in passive mode. Suppressing log monitor loop.")
+                time.sleep(5.0)
+
         last_updated = time.time()
+        logger.info("GCS is active. Log monitor is running.")
         while True:
             if self.should_update_filenames(last_updated):
                 self.update_log_filenames()
@@ -640,7 +641,7 @@ if __name__ == "__main__":
             f"failed with the following error:\n{traceback_str}"
         )
         is_leader_elect_enabled = ray_constants.RAY_LEADER_ELECT
-        if is_leader_elect_enabled and not gcs_client.is_gcs_leader():
+        if is_leader_elect_enabled and gcs_client and not gcs_client.is_gcs_leader():
             logger.warning(
                 "GCS is in passive mode. Skipping publishing error to driver."
             )

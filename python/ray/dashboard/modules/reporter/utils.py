@@ -20,5 +20,4 @@ class HealthChecker:
 
     async def check_gcs_readiness(self) -> bool:
         await self._gcs_client.async_check_alive([], 0.1)
-        return self._gcs_client.is_gcs_leader()
-
+        return self._gcs_client.is_gcs_leader_local()

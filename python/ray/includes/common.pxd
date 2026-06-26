@@ -134,6 +134,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsChannelError()
         c_bool IsChannelTimeoutError()
         c_bool IsUnauthenticated()
+        c_bool IsGcsPassive()
 
         c_string ToString()
         c_string CodeAsString()

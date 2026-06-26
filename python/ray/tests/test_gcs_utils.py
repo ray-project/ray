@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import json
+import multiprocessing
 import os
 import signal
 import sys
@@ -18,7 +19,7 @@ from ray._private.test_utils import (
     external_redis_test_enabled,
     generate_system_config_map,
 )
-from ray._raylet import GcsClient, NodeID
+from ray._raylet import Config, GcsClient, NodeID
 
 # Import asyncio timeout depends on python version
 if sys.version_info >= (3, 11):
@@ -330,6 +331,40 @@ def test_redis_cleanup(redis_replicas, shutdown_only):
     assert set(cli.keys()) == set(c2_keys)
     gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c2")
     assert len(cli.keys()) == 0
+
+
+def _test_gcs_leader_with_leader_elect(gcs_address):
+    os.environ["RAY_LEADER_ELECT"] = "true"
+    ray_constants.RAY_LEADER_ELECT = True
+    Config.initialize(b'{"LEADER_ELECT": true}')
+
+    gcs_client_le = GcsClient(address=gcs_address)
+    # Since leader election is enabled, the client starts with cache = False
+    assert gcs_client_le.is_gcs_leader_local() is False
+
+    # Calling is_gcs_leader() triggers a CheckAlive RPC to the GCS server.
+    # The GCS server started by the fixture is the active leader (and runs with
+    # LEADER_ELECT=false by default, so it always responds as leader).
+    # When the client receives this response, it updates its local cache to True.
+    assert gcs_client_le.is_gcs_leader() is True
+    # Now is_gcs_leader_local() should also return True
+    assert gcs_client_le.is_gcs_leader_local() is True
+
+
+def test_is_gcs_leader_defaults(ray_start_regular):
+    gcs_address = ray._private.worker.global_worker.gcs_client.address
+
+    # 1. By default, RAY_LEADER_ELECT is False
+    gcs_client = GcsClient(address=gcs_address)
+    assert gcs_client.is_gcs_leader() is True
+    assert gcs_client.is_gcs_leader_local() is True
+
+    # 2. Run the LEADER_ELECT=True test in a spawned subprocess
+    ctx = multiprocessing.get_context("spawn")
+    p = ctx.Process(target=_test_gcs_leader_with_leader_elect, args=(gcs_address,))
+    p.start()
+    p.join()
+    assert p.exitcode == 0
 
 
 if __name__ == "__main__":
