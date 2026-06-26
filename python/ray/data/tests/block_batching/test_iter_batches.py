@@ -1,7 +1,7 @@
 import queue
 import threading
 import time
-from typing import Iterator, List
+from typing import Iterator, List, Optional
 
 import pandas as pd
 import pyarrow as pa
@@ -13,7 +13,6 @@ from ray.data._internal.block_batching.interfaces import (
     BatchMetadata,
     BatchTimings,
     BlockPrefetcher,
-    StageTiming,
 )
 from ray.data._internal.block_batching.iter_batches import (
     BatchIterator,
@@ -22,7 +21,7 @@ from ray.data._internal.block_batching.iter_batches import (
 )
 from ray.data._internal.block_batching.util import WaitBlockPrefetcher
 from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry, RefBundle
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatasetStats, TimeSpan
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
 
@@ -132,10 +131,10 @@ def test_report_batch_timings_overlap_attribution():
     stats = DatasetStats(metadata={}, parent=None)
     batch_iterator = BatchIterator(iter([]), stats=stats)
     timings = BatchTimings(num_rows=8)
-    timings.fetch = StageTiming(start_s=10.0, end_s=20.0)
-    timings.batching = StageTiming(start_s=20.0, end_s=30.0)
-    timings.format = StageTiming(start_s=30.0, end_s=40.0)
-    timings.finalize = StageTiming(start_s=50.0, end_s=60.0)
+    timings.fetch = TimeSpan(start_s=10.0, end_s=20.0)
+    timings.batching = TimeSpan(start_s=20.0, end_s=30.0)
+    timings.format = TimeSpan(start_s=30.0, end_s=40.0)
+    timings.finalize = TimeSpan(start_s=50.0, end_s=60.0)
     batch = Batch(BatchMetadata(batch_idx=0, timings=timings), None)
 
     batch_iterator._report_batch_timings(
@@ -149,6 +148,13 @@ def test_report_batch_timings_overlap_attribution():
     assert stats.iter_blocked_finalize_s.get() == 0
     assert stats.iter_batches_total == 1
     assert stats.iter_rows_total == 8
+
+
+def _make_span(start: float, end: float) -> Optional[TimeSpan]:
+    """Create a TimeSpan, or None if the stage didn't execute (both zero)."""
+    if start == 0.0 and end == 0.0:
+        return None
+    return TimeSpan(start_s=start, end_s=end)
 
 
 def _make_batch_with_timings(
@@ -166,11 +172,11 @@ def _make_batch_with_timings(
 ):
     """Helper to construct a Batch with specific stage timing windows."""
     timings = BatchTimings(num_rows=num_rows)
-    timings.fetch = StageTiming(start_s=fetch_start, end_s=fetch_end)
-    timings.batching = StageTiming(start_s=batching_start, end_s=batching_end)
-    timings.format = StageTiming(start_s=format_start, end_s=format_end)
-    timings.collate = StageTiming(start_s=collate_start, end_s=collate_end)
-    timings.finalize = StageTiming(start_s=finalize_start, end_s=finalize_end)
+    timings.fetch = _make_span(fetch_start, fetch_end)
+    timings.batching = _make_span(batching_start, batching_end)
+    timings.format = _make_span(format_start, format_end)
+    timings.collate = _make_span(collate_start, collate_end)
+    timings.finalize = _make_span(finalize_start, finalize_end)
     return Batch(BatchMetadata(batch_idx=0, timings=timings), None)
 
 
@@ -326,30 +332,24 @@ class TestReportBatchTimingsEdgeCases:
         assert stats.iter_rows_total == 100
 
 
-class TestStageTimingRecord:
-    """Tests for StageTiming.record() behavior."""
-
-    def test_context_manager_captures_window(self):
-        """Using as context manager captures start_s and end_s."""
-        t = StageTiming()
-        with t:
-            pass
-        assert t.start_s > 0
-        assert t.end_s >= t.start_s
-
-    def test_timer_context_manager(self):
-        """The timer() method works as a context manager too."""
-        t = StageTiming()
-        with t.timer():
-            pass
-        assert t.start_s > 0
-        assert t.end_s >= t.start_s
+class TestTimeSpan:
+    """Tests for TimeSpan dataclass."""
 
     def test_default_values(self):
-        """Unrecorded StageTiming has start_s=0 and end_s=0."""
-        t = StageTiming()
+        """Default TimeSpan has start_s=0 and end_s=0."""
+        t = TimeSpan()
         assert t.start_s == 0.0
         assert t.end_s == 0.0
+
+    def test_duration(self):
+        """Duration is end_s - start_s."""
+        t = TimeSpan(start_s=1.0, end_s=3.5)
+        assert t.duration == pytest.approx(2.5)
+
+    def test_zero_duration(self):
+        """Default TimeSpan has zero duration."""
+        t = TimeSpan()
+        assert t.duration == 0.0
 
 
 class TestMergeFetch:
@@ -359,7 +359,7 @@ class TestMergeFetch:
         """Merging a single block preserves its fetch window."""
         dst = BatchTimings()
         src = BatchTimings()
-        src.fetch = StageTiming(start_s=1.0, end_s=2.0)
+        src.fetch = TimeSpan(start_s=1.0, end_s=2.0)
         dst.merge_fetch(src)
         assert dst.fetch.start_s == 1.0
         assert dst.fetch.end_s == 2.0
@@ -370,17 +370,17 @@ class TestMergeFetch:
 
         # Block 1: fetched [1.0, 2.0]
         src1 = BatchTimings()
-        src1.fetch = StageTiming(start_s=1.0, end_s=2.0)
+        src1.fetch = TimeSpan(start_s=1.0, end_s=2.0)
         dst.merge_fetch(src1)
 
         # Block 2: fetched [3.0, 4.0]
         src2 = BatchTimings()
-        src2.fetch = StageTiming(start_s=3.0, end_s=4.0)
+        src2.fetch = TimeSpan(start_s=3.0, end_s=4.0)
         dst.merge_fetch(src2)
 
         # Block 3: fetched [5.0, 6.0]
         src3 = BatchTimings()
-        src3.fetch = StageTiming(start_s=5.0, end_s=6.0)
+        src3.fetch = TimeSpan(start_s=5.0, end_s=6.0)
         dst.merge_fetch(src3)
 
         # Union: [1.0, 6.0]
@@ -390,7 +390,7 @@ class TestMergeFetch:
     def test_merge_unrecorded_block_ignored(self):
         """Merging a block with no fetch timing (start_s=0) is a no-op."""
         dst = BatchTimings()
-        dst.fetch = StageTiming(start_s=2.0, end_s=3.0)
+        dst.fetch = TimeSpan(start_s=2.0, end_s=3.0)
 
         src = BatchTimings()  # fetch defaults to (0.0, 0.0)
         dst.merge_fetch(src)
@@ -403,11 +403,11 @@ class TestMergeFetch:
         dst = BatchTimings()
 
         src1 = BatchTimings()
-        src1.fetch = StageTiming(start_s=1.0, end_s=5.0)
+        src1.fetch = TimeSpan(start_s=1.0, end_s=5.0)
         dst.merge_fetch(src1)
 
         src2 = BatchTimings()
-        src2.fetch = StageTiming(start_s=3.0, end_s=7.0)
+        src2.fetch = TimeSpan(start_s=3.0, end_s=7.0)
         dst.merge_fetch(src2)
 
         # Union: [1.0, 7.0]
@@ -418,7 +418,7 @@ class TestMergeFetch:
         """Merging into an empty BatchTimings takes the source window."""
         dst = BatchTimings()  # fetch = (0.0, 0.0)
         src = BatchTimings()
-        src.fetch = StageTiming(start_s=10.0, end_s=20.0)
+        src.fetch = TimeSpan(start_s=10.0, end_s=20.0)
         dst.merge_fetch(src)
         assert dst.fetch.start_s == 10.0
         assert dst.fetch.end_s == 20.0
@@ -430,11 +430,11 @@ class TestEndToEndTimingPropagation:
     def test_batch_carries_timings_through_pipeline(self):
         """A Batch's metadata.timings carries all stage windows."""
         timings = BatchTimings(num_rows=50)
-        timings.fetch = StageTiming(start_s=1.0, end_s=2.0)
-        timings.batching = StageTiming(start_s=2.0, end_s=3.0)
-        timings.format = StageTiming(start_s=3.0, end_s=4.0)
-        timings.collate = StageTiming(start_s=4.0, end_s=5.0)
-        timings.finalize = StageTiming(start_s=5.0, end_s=6.0)
+        timings.fetch = TimeSpan(start_s=1.0, end_s=2.0)
+        timings.batching = TimeSpan(start_s=2.0, end_s=3.0)
+        timings.format = TimeSpan(start_s=3.0, end_s=4.0)
+        timings.collate = TimeSpan(start_s=4.0, end_s=5.0)
+        timings.finalize = TimeSpan(start_s=5.0, end_s=6.0)
 
         batch = Batch(BatchMetadata(batch_idx=0, timings=timings), None)
 

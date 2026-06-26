@@ -298,11 +298,11 @@ class BatchIterator:
         if self._stats is None:
             return
         timings = batch.metadata.timings
-        for name, stage in timings.stages():
-            if stage.start_s == 0.0 and stage.end_s == 0.0:
+        for name, timing in timings.stages():
+            if timing is None:
                 continue
-            overlap_s = min(stage.end_s, blocked_end_s) - max(
-                stage.start_s, blocked_start_s
+            overlap_s = min(timing.end_s, blocked_end_s) - max(
+                timing.start_s, blocked_start_s
             )
             if overlap_s > 0:
                 getattr(self._stats, f"iter_blocked_{name}_s").add(overlap_s)

@@ -11,6 +11,7 @@ from typing import (
     Any,
     DefaultDict,
     Dict,
+    Iterator,
     List,
     Mapping,
     Optional,
@@ -174,6 +175,37 @@ class _StatsAccumulator:
         )
 
 
+@dataclass
+class TimeSpan:
+    """A measured wall-clock interval.
+
+    Created by :meth:`Timer.timer` and carried per-batch for overlap-based
+    blocked attribution. ``None`` (when used as ``Optional[TimeSpan]``)
+    indicates the stage did not execute.
+    """
+
+    start_s: float = 0.0
+    end_s: float = 0.0
+
+    @property
+    def duration(self) -> float:
+        return self.end_s - self.start_s
+
+
+@contextmanager
+def _timed(timer: Optional["Timer"]) -> Iterator[Optional[TimeSpan]]:
+    """Time a block of code, yielding a :class:`TimeSpan` (or ``None``).
+
+    When *timer* is ``None`` (e.g. ``stats`` is not configured), yields
+    ``None`` and skips timing entirely — no ``perf_counter`` calls.
+    """
+    if timer is None:
+        yield None
+    else:
+        with timer.timer() as span:
+            yield span
+
+
 class Timer:
     """Helper class for tracking accumulated time (in seconds).
 
@@ -195,22 +227,24 @@ class Timer:
         self._min: float = float("inf")
         self._max: float = 0
         self._total_count: float = 0
-        # Wall-clock window of the most recent timer() invocation.
-        # Used by overlap-based blocked attribution in iter_batches.
-        self.start_s: float = 0.0
-        self.end_s: float = 0.0
         # Bounded-memory percentile backend. add() forwards every value
         # to ``add_sample`` and ``percentile`` reads from it.
         self._distribution: DistributionTracker = DistributionTracker()
 
     @contextmanager
-    def timer(self) -> None:
-        self.start_s = time.perf_counter()
+    def timer(self) -> Iterator[TimeSpan]:
+        """Time a block, yielding a thread-local :class:`TimeSpan`.
+
+        The returned ``TimeSpan`` is a fresh instance per call, making
+        this safe to use from multiple threads sharing the same ``Timer``.
+        The duration is also accumulated into ``self`` via :meth:`add`.
+        """
+        span = TimeSpan(start_s=time.perf_counter())
         try:
-            yield
+            yield span
         finally:
-            self.end_s = time.perf_counter()
-            self.add(self.end_s - self.start_s)
+            span.end_s = time.perf_counter()
+            self.add(span.duration)
 
     def add(self, value: float) -> None:
         self._total += value

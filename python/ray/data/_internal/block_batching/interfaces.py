@@ -1,43 +1,10 @@
 import abc
-import time
-from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Iterable, List, Tuple
+from typing import Any, Iterable, List, Optional, Tuple
 
+from ray.data._internal.stats import TimeSpan
 from ray.data.block import Block, DataBatch
 from ray.types import ObjectRef
-
-
-@dataclass
-class StageTiming:
-    """Wall-clock window for a single batch-processing stage.
-
-    Can be used as a context manager to automatically capture the start and
-    end timestamps of a pipeline operation::
-
-        with stage_timing:
-            do_work()
-        # stage_timing.start_s and stage_timing.end_s are now set
-    """
-
-    start_s: float = 0.0
-    end_s: float = 0.0
-
-    def __enter__(self):
-        self.start_s = time.perf_counter()
-        return self
-
-    def __exit__(self, *args):
-        self.end_s = time.perf_counter()
-
-    @contextmanager
-    def timer(self):
-        """Alias for using as a context manager, matching Timer.timer() API."""
-        self.start_s = time.perf_counter()
-        try:
-            yield
-        finally:
-            self.end_s = time.perf_counter()
 
 
 @dataclass
@@ -48,7 +15,10 @@ class BatchTimings:
     a particular pipeline stage was active for this batch.  The training thread
     later compares these windows against its own blocked window to determine
     how much each stage contributed to training-thread stall (see
-    :meth:`BatchIterator._report_batch_timings`).
+    :meth:`BatchIterator._attribute_blocked_time`).
+
+    A field value of ``None`` indicates the stage did not execute for this
+    batch (e.g. no ``collate_fn`` provided).
 
     Attributes:
         fetch: Waiting for upstream data production + ``ray.get()`` transfer.
@@ -59,14 +29,14 @@ class BatchTimings:
         num_rows: Number of rows in this batch (for ``iter_rows_total``).
     """
 
-    fetch: StageTiming = field(default_factory=StageTiming)
-    batching: StageTiming = field(default_factory=StageTiming)
-    format: StageTiming = field(default_factory=StageTiming)
-    collate: StageTiming = field(default_factory=StageTiming)
-    finalize: StageTiming = field(default_factory=StageTiming)
+    fetch: Optional[TimeSpan] = None
+    batching: Optional[TimeSpan] = None
+    format: Optional[TimeSpan] = None
+    collate: Optional[TimeSpan] = None
+    finalize: Optional[TimeSpan] = None
     num_rows: int = 0
 
-    def stages(self) -> Iterable[Tuple[str, StageTiming]]:
+    def stages(self) -> Iterable[Tuple[str, Optional[TimeSpan]]]:
         """Iterate over ``(name, timing)`` pairs for all pipeline stages."""
         return (
             ("fetch", self.fetch),
@@ -84,18 +54,24 @@ class BatchTimings:
         training thread was blocked waiting for this batch, including any
         pipeline overhead between consecutive block fetches.
         """
-        if other.fetch.start_s == 0.0:
-            return
-        if self.fetch.start_s == 0.0:
-            # First block: copy the timing
-            self.fetch.start_s = other.fetch.start_s
-            self.fetch.end_s = other.fetch.end_s
-        else:
-            # Subsequent blocks: expand the window
-            if other.fetch.start_s < self.fetch.start_s:
-                self.fetch.start_s = other.fetch.start_s
-            if other.fetch.end_s > self.fetch.end_s:
-                self.fetch.end_s = other.fetch.end_s
+        self.fetch = _merge_span(self.fetch, other.fetch)
+
+
+def _merge_span(dst: Optional[TimeSpan], src: Optional[TimeSpan]) -> Optional[TimeSpan]:
+    """Merge two optional ``TimeSpan`` windows into a spanning window.
+
+    Returns ``dst`` unchanged if ``src`` is ``None`` (stage didn't run).
+    Returns a copy of ``src`` if ``dst`` is ``None`` (first block).
+    Otherwise returns a new ``TimeSpan`` spanning both windows.
+    """
+    if src is None:
+        return dst
+    if dst is None:
+        return TimeSpan(start_s=src.start_s, end_s=src.end_s)
+    return TimeSpan(
+        start_s=min(dst.start_s, src.start_s),
+        end_s=max(dst.end_s, src.end_s),
+    )
 
 
 @dataclass
