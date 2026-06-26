@@ -149,10 +149,16 @@ Ray Train Utilities
     ~train.Checkpoint
     ~train.CheckpointUploadMode
     ~train.CheckpointConsistencyMode
-    ~train.PreemptionInfo
     ~train.TrainContext
     ~train.ValidationFn
     ~train.ValidationTaskConfig
+
+.. autosummary::
+    :nosignatures:
+    :template: autosummary/class_without_autosummary.rst
+    :toctree: doc/
+
+    ~train.PreemptionInfo
 
 **Functions**
 

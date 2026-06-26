@@ -23,8 +23,8 @@ class PreemptionInfo:
     Attributes:
         deadline_ms: Earliest preemption deadline (UNIX time in milliseconds)
             across all preempted nodes. ``None`` if no deadline was reported.
-        preempted_node_to_ranks: Map of preempted ``node_id`` to the worker ``world_rank``s affected when that node
-            is preempted.
+        preempted_node_to_ranks: Map of each preempted ``node_id`` to the
+            affected worker world ranks when that node is preempted.
     """
 
     deadline_ms: Optional[int]
