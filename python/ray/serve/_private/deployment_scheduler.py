@@ -286,6 +286,7 @@ class DeploymentSchedulingInfo:
     label_selector: Optional[Dict[str, str]] = None
     placement_group_bundles: Optional[List[RequestedResources]] = None
     bundle_label_selector: Optional[List[Dict[str, str]]] = None
+    fallback_strategy: Optional[List[Dict[str, Any]]] = None
     placement_group_strategy: Optional[str] = None
     max_replicas_per_node: Optional[int] = None
 
@@ -427,6 +428,9 @@ class DeploymentScheduler(ABC):
         info.label_selector = replica_config.ray_actor_options.get("label_selector")
         info.bundle_label_selector = (
             replica_config.placement_group_bundle_label_selector
+        )
+        info.fallback_strategy = replica_config.ray_actor_options.get(
+            "fallback_strategy"
         )
         info.max_replicas_per_node = replica_config.max_replicas_per_node
         if replica_config.placement_group_bundles:

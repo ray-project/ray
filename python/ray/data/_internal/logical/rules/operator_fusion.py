@@ -1,6 +1,6 @@
 import itertools
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -257,17 +257,7 @@ class FuseOperators(Rule):
             return False
 
         # Only fuse if the ops' remote arguments are compatible.
-        if not are_remote_args_compatible(
-            getattr(up_logical_op, "ray_remote_args", {}),
-            getattr(down_logical_op, "ray_remote_args", {}),
-        ):
-            return False
-
-        # Do not fuse if either op specifies a `ray_remote_args_fn`,
-        # since it is not known whether the generated args will be compatible.
-        if getattr(up_logical_op, "ray_remote_args_fn", None) or getattr(
-            down_logical_op, "ray_remote_args_fn", None
-        ):
+        if not are_op_remote_args_compatible(up_logical_op, down_logical_op):
             return False
 
         if not self._can_merge_target_max_block_size(
@@ -734,6 +724,31 @@ class FuseOperators(Rule):
             return False
 
         return True
+
+
+def are_op_remote_args_compatible(
+    up_logical_op: AbstractMap,
+    down_logical_op: Union[AbstractMap, AbstractAllToAll],
+) -> bool:
+    """Check whether two logical ops can be fused based on their Ray remote args.
+
+    Two ops are compatible only if their ``ray_remote_args`` are mergeable and
+    neither op specifies a ``ray_remote_args_fn``, since the args it generates
+    are not known ahead of time.
+    """
+    # Do not fuse if either op specifies a `ray_remote_args_fn`,
+    # since it is not known whether the generated args will be compatible.
+    # Only `AbstractMap` ops carry a `ray_remote_args_fn`.
+    if up_logical_op.ray_remote_args_fn or (
+        isinstance(down_logical_op, AbstractMap) and down_logical_op.ray_remote_args_fn
+    ):
+        return False
+
+    # Only fuse if the ops' remote arguments are compatible.
+    return are_remote_args_compatible(
+        up_logical_op.ray_remote_args,
+        down_logical_op.ray_remote_args,
+    )
 
 
 @DeveloperAPI
