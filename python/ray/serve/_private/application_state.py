@@ -13,7 +13,11 @@ from ray import cloudpickle
 from ray._common.utils import import_attr, import_module_and_attr
 from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
-from ray.serve._private.build_app import BuiltApplication, build_app
+from ray.serve._private.build_app import (
+    CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR,
+    BuiltApplication,
+    build_app,
+)
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
@@ -26,6 +30,7 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_REQUEST_ROUTER_PATH,
+    RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     SERVE_LOGGER_NAME,
@@ -1319,7 +1324,7 @@ class ApplicationStateManager:
 
         Args:
             name: application name
-            deployment_args_list: arguments for deploying a list of deployments.
+            deployment_args: arguments for deploying a list of deployments.
             application_args: application arguments.
         """
         self.deploy_apps({name: deployment_args}, {name: application_args})
@@ -1739,7 +1744,6 @@ def override_deployment_info(
     """Override deployment infos with options from app config.
 
     Args:
-        app_name: application name
         deployment_infos: deployment info loaded from code
         override_config: application config deployed by user with
             options to override those loaded from code.
@@ -1749,7 +1753,8 @@ def override_deployment_info(
             to {actor_name: serialized_actor_class_bytes} for each deployment
             actor, produced by the build task
 
-    Returns: the updated deployment infos.
+    Returns:
+        The updated deployment infos.
 
     Raises:
         ValueError: If config options have invalid values.
@@ -1945,5 +1950,15 @@ def override_deployment_info(
             and deployment.route_prefix is not None
         ):
             deployment.route_prefix = app_route_prefix
+
+    # build_app cannot see config overrides, so re-check the post-override
+    # ingress router here.
+    if RAY_SERVE_ENABLE_HA_PROXY and not any(
+        info.ingress_request_router for info in deployment_infos.values()
+    ):
+        for info in deployment_infos.values():
+            request_router_config = info.deployment_config.request_router_config
+            if info.ingress and not request_router_config.is_default_request_router():
+                raise RayServeException(CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR)
 
     return deployment_infos

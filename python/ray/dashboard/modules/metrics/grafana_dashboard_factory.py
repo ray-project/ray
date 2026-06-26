@@ -50,9 +50,12 @@ ROW_HEIGHT = 1  # Height of row container
 def _read_configs_for_dashboard(
     dashboard_config: DashboardConfig,
 ) -> Tuple[str, List[str], str]:
-    """
-    Reads environment variable configs for overriding uid, global_filters,
-    and the log link URL for a given dashboard.
+    """Reads environment variable configs for overriding uid, global_filters, and the log link URL for a given dashboard.
+
+    Args:
+        dashboard_config: The dashboard whose env-var overrides are read.
+            ``dashboard_config.name`` selects the env-var suffix and
+            ``default_uid`` is used as a fallback.
 
     Returns:
       Tuple with format uid, global_filters, log_link_url
@@ -172,7 +175,12 @@ def generate_train_grafana_dashboard() -> Tuple[str, str]:
 
 
 def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
-    """
+    """Render the Grafana dashboard JSON for the given config.
+
+    Args:
+        dashboard_config: Configuration describing the panels and base
+            template JSON file to use for rendering.
+
     Returns:
       Tuple with format dashboard_content, uid
     """

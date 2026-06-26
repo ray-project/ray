@@ -1,4 +1,7 @@
+import functools
+import glob
 import logging
+import os
 import threading
 import time
 import traceback
@@ -22,6 +25,50 @@ if TYPE_CHECKING:
     import torch
 
 logger = logging.getLogger(__name__)
+
+
+@functools.lru_cache(maxsize=1)
+def _is_efa_available() -> bool:
+    """Detect whether AWS EFA (Elastic Fabric Adapter) devices are present.
+
+    A bare host exposes ``efa*`` netdevs, but inside a container/Kubernetes pod
+    netdevs are network-namespaced away and only the rdma-verbs devices under
+    ``/sys/class/infiniband`` are mounted in. Those verbs devices are not
+    EFA-specific -- ordinary InfiniBand/RoCE NICs appear there too -- so we
+    confirm each one is bound to the kernel ``efa`` driver before treating it as
+    EFA. Without that check, non-AWS RDMA nodes would wrongly auto-select the
+    LIBFABRIC backend instead of UCX.
+    """
+    if glob.glob("/sys/class/net/efa*"):
+        return True
+    for ib_dev in glob.glob("/sys/class/infiniband/*"):
+        # A stale or broken sysfs entry shouldn't abort the scan; skip it and
+        # keep looking (defaulting to UCX if nothing resolves to the efa driver).
+        try:
+            driver = os.path.realpath(os.path.join(ib_dev, "device", "driver"))
+        except OSError:
+            continue
+        if os.path.basename(driver) == "efa":
+            return True
+    return False
+
+
+def _nixl_transport_available_in_process() -> bool:
+    """Returns whether the NIXL tensor transport can be initialized in this process.
+
+    Returns:
+        True if the NIXL agent initializes successfully, False on any failure
+        (e.g. nixl not installed, LIBFABRIC/EFA probe failure, or other backend
+        init errors).
+    """
+    try:
+        from ray.experimental.rdt.util import get_tensor_transport_manager
+
+        get_tensor_transport_manager("NIXL").get_nixl_agent()
+        return True
+    except Exception:
+        logger.debug("NIXL tensor transport unavailable on actor.", exc_info=True)
+        return False
 
 
 @dataclass
@@ -113,6 +160,8 @@ class NixlTensorTransport(TensorTransportManager):
         # Increment the version whenever memory is deregistered.
         self._nixl_agent_meta_version = 0
         self._memory_pool: Optional[MemoryPoolManager] = None
+        # The NIXL backend the agent was actually created with ("UCX" or "LIBFABRIC").
+        self._backend: Optional[str] = None
 
     def tensor_transport_backend(self) -> str:
         return "NIXL"
@@ -155,16 +204,21 @@ class NixlTensorTransport(TensorTransportManager):
         """
         self._remove_tensor_descs([tensor])
 
-    def get_nixl_agent(self):
-        """
-        Creates a NIXL agent with UCX backend if not already created.
-        """
-        if self._nixl_agent is not None:
-            return self._nixl_agent
+    def select_backend(self) -> str:
+        """Returns the NIXL backend to attempt.
 
+        Prefers LIBFABRIC when EFA devices are present and UCX everywhere else.
+        LIBFABRIC requires GPUDirect (GDR) for CUDA registration; if it isn't
+        available, ``_add_tensor_descs`` surfaces a clear error at registration
+        time with backend-specific troubleshooting guidance.
+        """
+        return "LIBFABRIC" if _is_efa_available() else "UCX"
+
+    def _make_nixl_agent(self, backend: str):
+        """Creates a NIXL agent configured with the given backend."""
         from nixl._api import nixl_agent, nixl_agent_config
 
-        agent_config = nixl_agent_config(backends=["UCX"])
+        agent_config = nixl_agent_config(backends=[backend])
         ctx = ray.get_runtime_context()
         actor_id = ctx.get_actor_id()
         if actor_id is None:
@@ -172,25 +226,28 @@ class NixlTensorTransport(TensorTransportManager):
             import uuid
 
             actor_id = f"RAY-DRIVER-{uuid.uuid4()}"
-        self._nixl_agent = nixl_agent(actor_id, agent_config)
+        return nixl_agent(actor_id, agent_config)
 
+    def get_nixl_agent(self):
+        """Returns the NIXL agent, building it once on first use."""
+        if self._nixl_agent is None:
+            self._nixl_agent = self._init_nixl_agent()
         return self._nixl_agent
+
+    def _init_nixl_agent(self):
+        """Builds the NIXL agent for the selected backend."""
+        backend = self.select_backend()
+        agent = self._make_nixl_agent(backend)
+        self._backend = backend
+        logger.info("Using NIXL backend: %s", backend)
+        return agent
 
     def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
         # TODO(dayshah): This is called on a .remote RDT call, so it's quite expensive.
         def __ray_actor_has_tensor_transport__(
             self: "ray.actor.ActorHandle",
         ) -> bool:
-            # Check if nixl is installed
-            try:
-                from ray.experimental.rdt.util import (
-                    get_tensor_transport_manager,
-                )
-
-                get_tensor_transport_manager("NIXL").get_nixl_agent()
-                return True
-            except Exception:
-                return False
+            return _nixl_transport_available_in_process()
 
         return ray.get(
             actor.__ray_call__.options(concurrency_group="_ray_system").remote(
@@ -596,17 +653,32 @@ class NixlTensorTransport(TensorTransportManager):
                         mem_type=mem_type,
                     )
                 except Exception as e:
+                    # TODO(xyuzh): Remove the warning after nixl surfaces the error message
+                    if self._backend == "LIBFABRIC":
+                        troubleshooting = (
+                            "See https://github.com/ai-dynamo/nixl/blob/main/src/plugins/libfabric/README.md "
+                            "for LIBFABRIC troubleshooting. "
+                            "Set FI_LOG_LEVEL=Debug for libfabric diagnostics."
+                        )
+                    else:
+                        troubleshooting = (
+                            "See https://docs.ray.io/en/latest/ray-core/direct-transport/direct-transport.html "
+                            "for NIXL/UCX configuration. "
+                            "Set UCX_LOG_LEVEL=debug for UCX diagnostics."
+                        )
+                    vmm_hint = ""
+                    alloc_conf = os.environ.get("PYTORCH_CUDA_ALLOC_CONF", "").lower()
+                    if mem_type == "cuda" and "expandable_segments:true" in alloc_conf:
+                        vmm_hint = (
+                            " PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True is set; "
+                            "CUDA VMM memory can't be RDMA-registered — allocate "
+                            "transferred tensors without expandable_segments."
+                        )
                     raise RuntimeError(
                         f"Failed to register {mem_type} memory with NIXL "
-                        f"(size={tensor.untyped_storage().nbytes()} bytes, "
-                        f"gpu_id={gpu_id}). "
-                        f"Common causes:\n"
-                        f"  - Locked memory limit too low: check 'ulimit -l' (should be 'unlimited')\n"
-                        f"  - nvidia-peermem kernel module not loaded: check 'lsmod | grep nvidia_peermem'\n"
-                        f"  - gdrcopy not installed: check 'lsmod | grep gdrdrv'\n"
-                        f"  - IOMMU enabled without passthrough mode\n"
-                        f"  - Container cgroup memory restrictions\n"
-                        f"Set UCX_LOG_LEVEL=debug for detailed UCX diagnostics."
+                        f"(backend={self._backend}, "
+                        f"size={tensor.untyped_storage().nbytes()} bytes, "
+                        f"gpu_id={gpu_id}).{vmm_hint} {troubleshooting}"
                     ) from e
                 self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1)
 

@@ -1,10 +1,14 @@
+---
+myst:
+  html_meta:
+    description: "How to configure and use AI coding agents like Claude Code on the Ray codebase, including the repository's shared CLAUDE.md instructions, rules, skills, and personal environment setup. Read this to work effectively with AI coding agents when developing Ray."
+---
+
 (agent-development)=
 
 # Using Agents for Development
 
-AI coding agents can accelerate development on the Ray codebase. This guide covers
-how the Ray project is configured for agent-assisted development and how to set up
-your local environment.
+AI coding agents can accelerate development on the Ray codebase. This guide covers how the Ray project is configured for agent-assisted development and how to set up your local environment.
 
 ```{contents}
 :local:
@@ -15,17 +19,14 @@ your local environment.
 
 ## Claude Code
 
-[Claude Code](https://code.claude.com) is an AI coding assistant that understands the Ray codebase
-through a hierarchy of instruction files, rules, and skills. For installation instructions, see the
-[official documentation](https://code.claude.com/docs).
+[Claude Code](https://code.claude.com) is an AI coding assistant that understands the Ray codebase through a hierarchy of instruction files, rules, and skills. For installation instructions, see the [official documentation](https://code.claude.com/docs).
 
 ### Project configuration
 
 The Ray repository includes shared Claude Code configuration that is version-controlled:
 
 - `.claude/CLAUDE.md` — root instructions loaded in every session
-- `<library>/.claude/CLAUDE.md` — library-specific instructions loaded on-demand
-  (e.g., `python/ray/data/.claude/CLAUDE.md`)
+- `<library>/.claude/CLAUDE.md` — library-specific instructions loaded on-demand (e.g., `python/ray/data/.claude/CLAUDE.md`)
 - `.claude/rules/` — coding rules scoped by file type
 - `.claude/skills/` — reusable workflows (rebuild, lint, fetch CI logs)
 - `.claude/agents/` — project-specific subagents
@@ -37,8 +38,7 @@ Personal configuration lives in files that are **not** version-controlled:
 
 ### Personal setup
 
-After installing Claude Code, create a `CLAUDE.local.md` file in the repository root
-with your environment-specific configuration:
+After installing Claude Code, create a `CLAUDE.local.md` file in the repository root with your environment-specific configuration:
 
 ```markdown
 ## My Environment
@@ -57,12 +57,9 @@ This file is gitignored and will not be committed.
 
 ### Cross-worktree setup
 
-If you use multiple git worktrees, `CLAUDE.local.md` only exists in the worktree where
-you created it. To automatically symlink it from your main checkout whenever a new
-worktree is created, set up a `post-checkout` git hook:
+If you use multiple git worktrees, `CLAUDE.local.md` only exists in the worktree where you created it. To automatically symlink it from your main checkout whenever a new worktree is created, set up a `post-checkout` git hook:
 
-1. From your main Ray checkout (not a worktree), create the hook file at
-   `$(git rev-parse --git-common-dir)/hooks/post-checkout` with the following contents:
+1. From your main Ray checkout (not a worktree), create the hook file at `$(git rev-parse --git-common-dir)/hooks/post-checkout` with the following contents:
 
    ```bash
    #!/bin/bash
@@ -80,8 +77,7 @@ worktree is created, set up a `post-checkout` git hook:
    chmod +x "$(git rev-parse --git-common-dir)/hooks/post-checkout"
    ```
 
-3. The hook fires automatically when you create a new worktree with
-   `git worktree add`. For existing worktrees, run the symlink manually:
+3. The hook fires automatically when you create a new worktree with `git worktree add`. For existing worktrees, run the symlink manually:
 
    ```bash
    ln -s /path/to/ray/CLAUDE.local.md CLAUDE.local.md
@@ -116,11 +112,9 @@ Shared skills available in every session:
 
 ### Adding team rules
 
-Each Ray library has a `.claude/rules/` directory where teams can add coding rules
-that apply when working on their files. To add a new rule:
+Each Ray library has a `.claude/rules/` directory where teams can add coding rules that apply when working on their files. To add a new rule:
 
-1. Create a `.md` file in your library's rules directory, e.g.,
-   `python/ray/data/.claude/rules/data-conventions.md`
+1. Create a `.md` file in your library's rules directory, e.g., `python/ray/data/.claude/rules/data-conventions.md`
 
 2. Add a `paths` frontmatter to scope it to your files:
 
@@ -133,16 +127,13 @@ that apply when working on their files. To add a new rule:
    - Prefer streaming execution over batch where possible
    ```
 
-Rules without `paths` frontmatter load unconditionally in every session.
-See the `README.md` in each rules directory for examples.
+Rules without `paths` frontmatter load unconditionally in every session. See the `README.md` in each rules directory for examples.
 
 ### Adding team skills
 
-Skills are reusable workflows that load on-demand when invoked with `/<skill-name>`.
-To add a new skill:
+Skills are reusable workflows that load on-demand when invoked with `/<skill-name>`. To add a new skill:
 
-1. Create a directory under your library's `.claude/skills/`, e.g.,
-   `python/ray/data/.claude/skills/debug-data/`
+1. Create a directory under your library's `.claude/skills/`, e.g., `python/ray/data/.claude/skills/debug-data/`
 
 2. Add a `SKILL.md` file with frontmatter:
 
@@ -159,5 +150,4 @@ To add a new skill:
    2. Look for common issues...
    ```
 
-Skills in a library's `.claude/skills/` directory are discovered when working in that
-library. Shared skills in `.claude/skills/` are available everywhere.
+Skills in a library's `.claude/skills/` directory are discovered when working in that library. Shared skills in `.claude/skills/` are available everywhere.
