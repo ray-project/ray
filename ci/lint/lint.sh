@@ -129,11 +129,18 @@ api_policy_check() {
   _install_ray_no_deps
 
   echo "--- Check API/doc consistency"
-  bazel run //ci/ray_ci/doc:cmd_check_api_discrepancy -- /ray "$@"
+  # Run via the image interpreter, not `bazel run`: the bazel target's @py_deps_py310
+  # (cp310) wheels can't import under the py3.11 docbuild image (e.g. rpds).
+  # TODO(elliot-barn): #64070 switch back to bazel once hermetic python 3.11 is setup
+  PYTHONPATH="$(pwd)${PYTHONPATH:+:$PYTHONPATH}" python ci/ray_ci/doc/cmd_check_api_discrepancy.py /ray "$@"
 }
 
 documentation_style() {
   ./ci/lint/check-documentation-style.sh
+}
+
+doc_no_new_rst() {
+  python doc/test_no_new_rst.py
 }
 
 "$@"

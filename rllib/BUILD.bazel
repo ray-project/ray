@@ -1608,6 +1608,17 @@ py_test(
 )
 
 py_test(
+    name = "test_env_runner_state_server",
+    size = "small",
+    srcs = ["algorithms/tests/test_env_runner_state_server.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "test_algorithm_export_checkpoint",
     size = "medium",
     srcs = ["algorithms/tests/test_algorithm_export_checkpoint.py"],
@@ -1896,6 +1907,16 @@ py_test(
         "team:rllib",
     ],
     deps = [":conftest"],
+)
+
+py_test(
+    name = "test_ppo_value_bootstrapping",
+    size = "medium",
+    srcs = ["algorithms/ppo/tests/test_ppo_value_bootstrapping.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
 )
 
 # SAC
@@ -3475,18 +3496,6 @@ py_test(
     size = "small",
     srcs = ["examples/catalogs/custom_action_distribution.py"],
     main = "examples/catalogs/custom_action_distribution.py",
-    tags = [
-        "examples",
-        "no_main",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "examples/_old_api_stack/catalogs/mobilenet_v2_encoder",
-    size = "small",
-    srcs = ["examples/_old_api_stack/catalogs/mobilenet_v2_encoder.py"],
-    main = "examples/_old_api_stack/catalogs/mobilenet_v2_encoder.py",
     tags = [
         "examples",
         "no_main",

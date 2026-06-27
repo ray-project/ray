@@ -866,7 +866,7 @@ def test_clean_pending_checkpoint(
         with fs.open_output_stream(data_file) as f:
             f.write(b"id\n0\n")
 
-    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config)
+    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config, ctx)
     checkpoint_manager._clean_pending_checkpoints(data_dir, fs)
 
     # Data file should be deleted (if it existed)
@@ -954,7 +954,7 @@ def test_clean_pending_checkpoint_with_partitioned_data(
         ), f"Expected file to exist: {f}"
 
     # Run cleanup
-    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config)
+    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config, ctx)
     checkpoint_manager._clean_pending_checkpoints(data_dir, fs)
 
     # Verify data files matching pending checkpoint were deleted
@@ -973,15 +973,15 @@ def test_clean_pending_checkpoint_with_partitioned_data(
     assert fs.get_file_info(pending.pending_path).type == FileType.NotFound
 
 
-def test_clean_pending_checkpoints_task_failure(ray_start_10_cpus_shared, tmp_path):
-    """Test that _clean_pending_checkpoints raises when the cleanup task fails.
+def test_clean_pending_checkpoints_nonexistent_path(ray_start_10_cpus_shared, tmp_path):
+    """Test that _clean_pending_checkpoints handles a non-existent checkpoint dir.
 
-    This verifies that:
-    1. When the underlying Ray task fails, the exception is propagated
-    2. The error is logged properly before re-raising
+    On cloud storage like Azure Blob Storage, listing a non-existent directory
+    raises FileNotFoundError (unlike S3 which returns an empty result). The
+    FileSelector uses allow_not_found=True so that first-run scenarios where
+    the checkpoint directory does not yet exist succeed without error.
     """
     ctx = ray.data.DataContext.get_current()
-    # Use a non-existent path to trigger a failure when trying to list files
     checkpoint_path = os.path.join(tmp_path, "nonexistent", "deeply", "nested", "path")
 
     ctx.checkpoint_config = CheckpointConfig(
@@ -990,12 +990,13 @@ def test_clean_pending_checkpoints_task_failure(ray_start_10_cpus_shared, tmp_pa
         delete_checkpoint_on_success=False,
     )
 
-    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config)
+    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config, ctx)
 
-    # The cleanup task should fail because the checkpoint directory doesn't exist
-    # and get_file_info on a non-existent path will raise an error
-    with pytest.raises(ray.exceptions.RayTaskError):
-        checkpoint_manager._clean_pending_checkpoints("/dummy/data/path")
+    data_dir = os.path.join(tmp_path, "data")
+    os.makedirs(data_dir, exist_ok=True)
+
+    # Should succeed gracefully (no pending checkpoints to clean)
+    checkpoint_manager._clean_pending_checkpoints(data_dir)
 
 
 def test_prepare_checkpoint_transform_writes_pending(tmp_path):
@@ -2022,7 +2023,7 @@ def test_clean_pending_checkpoints_no_pending(ray_start_10_cpus_shared, fs, base
     with fs.open_output_stream(data_file) as f:
         f.write(b"dummy")
 
-    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config)
+    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config, ctx)
     checkpoint_manager._clean_pending_checkpoints(data_dir, fs)
 
     # Data file should still exist (no pending checkpoints means nothing to clean)

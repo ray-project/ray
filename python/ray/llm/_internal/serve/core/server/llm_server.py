@@ -15,11 +15,13 @@ from typing import (
 
 import ray
 from ray import serve
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._common.utils import import_attr
 from ray.llm._internal.serve.constants import (
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
     ENGINE_START_TIMEOUT_S,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
+    RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING,
     RAYLLM_VLLM_ENGINE_CLS_ENV,
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
@@ -272,6 +274,10 @@ class LLMServer(LLMServerProtocol):
 
         # Push telemetry reports for the model in the current deployment.
         push_telemetry_report_for_all_models(all_models=[self._llm_config])
+        if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+            # Cluster-wide adoption signal: written from each replica on engine
+            # start, but last-write-wins so it reports one value per cluster.
+            record_extra_usage_tag(TagKey.LLM_SERVE_DIRECT_STREAMING_ENABLED, "1")
 
     def _get_batch_interval_ms(self, stream: bool = True) -> int:
         """Calculate the batching interval for responses."""
@@ -291,7 +297,17 @@ class LLMServer(LLMServerProtocol):
             "TranscriptionRequest",
         ],
     ):
-        """Add the request id to the request."""
+        """Stamp the Serve request id, unless the caller set request_id explicitly.
+
+        request_id defaults to a random uuid (never None), so use model_fields_set
+        to avoid clobbering an id a caller deliberately set (e.g. a P/D connector's
+        coordination id). Some request types (tokenize/detokenize) have no
+        request_id field at all -- skip those.
+        """
+        if not hasattr(request, "request_id"):
+            return
+        if "request_id" in request.model_fields_set:
+            return
         request_id = get_serve_request_id()
         if request_id:
             request.request_id = request_id

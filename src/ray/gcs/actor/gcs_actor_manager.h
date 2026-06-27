@@ -552,6 +552,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   FRIEND_TEST(GcsActorManagerTest, TestKillActorWhenActorIsCreating);
   FRIEND_TEST(GcsActorManagerTest, TestBasic);
   FRIEND_TEST(GcsActorManagerTest, TestDeadCount);
+  FRIEND_TEST(GcsActorManagerTest, TestNonDeadEntryEvictionDecrementsCounter);
   FRIEND_TEST(GcsActorManagerTest, TestSchedulingFailed);
   FRIEND_TEST(GcsActorManagerTest, TestWorkerFailure);
   FRIEND_TEST(GcsActorManagerTest, TestNodeFailure);

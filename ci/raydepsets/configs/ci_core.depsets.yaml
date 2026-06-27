@@ -63,7 +63,11 @@ depsets:
       - /tmp/ray-deps/requirements_compiled_py3.13.txt
     output: python/deplocks/ci/core-gpu-cu130-build-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
-      - --index https://download.pytorch.org/whl/cu130
+      # TODO(elliot): dl-gpu-requirements.txt pins torch==2.9.0+cu128, which forces
+      # cu128 wheels regardless of this index. Compiling with cu128 here matches
+      # what the lock has always actually contained. Restore to cu130 once the
+      # +cu128 local-version is stripped from dl-gpu-requirements.txt.
+      - --index https://download.pytorch.org/whl/cu128
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
