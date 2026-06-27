@@ -197,6 +197,10 @@ This is the default `replace` strategy, where the submitted config is the author
 The in-place update behavior for an application when you resubmit a config is the same as the single-application behavior. For how an application reacts to different config changes, see [Updating a Serve Application](serve-inplace-updates).
 :::
 
+:::{note}
+Each application's `route_prefix` must be unique across all applications on the cluster, and a config where two applications resolve to the same prefix is rejected in both `replace` and `merge` modes. If you omit `route_prefix`, it defaults to `/` (see [`ServeDeploySchema`](serve-rest-api-config-schema)).
+:::
+
 ### Per-application upsert with `--merge`
 
 The `--merge` flag changes `serve deploy` to upsert mode. Applications in the config are created or updated, and applications not in the config are left untouched:
@@ -204,16 +208,6 @@ The `--merge` flag changes `serve deploy` to upsert mode. Applications in the co
 ```console
 $ serve deploy my_app.yaml --merge
 ```
-
-In merge mode, top level fields such as `http_options`, `grpc_options`, `proxy_location`, and `logging_config` are only applied if you explicitly set them in the YAML. If you omit them, the cluster keeps its running options.
-
-:::{note}
-Merge operates at the application level, not the field level. Each application you submit is treated exactly as if you redeployed it on its own with `replace`.
-:::
-
-:::{note}
-You can't set `target_capacity` in merge mode. It's a cluster wide setting that applies to every application, so a partial config can't change it. To change `target_capacity`, use a `replace` deploy.
-:::
 
 You can also set the strategy directly in the YAML config:
 
@@ -224,6 +218,12 @@ applications:
     import_path: my_module:app
     route_prefix: /my-app
 ```
+
+In `merge` mode the config is a partial, per-application upsert, so it can only contain the `applications` field (plus `apply_strategy` to select the mode). Cluster level fields, the top-level [`ServeDeploySchema`](serve-rest-api-config-schema) options other than `applications` can't be expressed in a partial config, so setting any of them in a merge deploy is rejected with an error. To change cluster-level fields, use a `replace` deploy.
+
+:::{note}
+Merge operates at the application level, not the field level. Each application you submit is treated exactly as if you redeployed it on its own with `replace`.
+:::
 
 :::{tip}
 Use `--merge` for per-application iteration on shared clusters. Use the default `replace` mode when you want a single config file to be the authoritative source of truth for the entire cluster.
