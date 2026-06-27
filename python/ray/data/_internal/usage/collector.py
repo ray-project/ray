@@ -4,6 +4,7 @@ Accumulates per-execution usage data (environment, workload description,
 performance) and flushes it to GCS via ``record_extra_usage_tag``.
 """
 
+import hashlib
 import importlib.metadata
 import json
 import logging
@@ -12,6 +13,7 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import asdict, dataclass, field
+from functools import cache
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
@@ -22,11 +24,15 @@ from ray._common.usage.usage_lib import (
 )
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.logical.operators import AbstractUDFMap
+from ray.data._internal.logical.operators import MapBatches
 from ray.data._internal.logical.util import anonymize_op_name
 from ray.data.block import VALID_BATCH_FORMATS, _apply_batch_format
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        PhysicalOperator,
+    )
+    from ray.data._internal.issue_detection.issue_detector import IssueType
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 
 logger = logging.getLogger(__name__)
@@ -40,9 +46,10 @@ class _OpConfig:
 
 
 @dataclass(frozen=True)
-class _Op:
+class _LogicalOp:
     """An operator in the plan"""
 
+    usage_id: str
     name: str
     config: Optional[_OpConfig] = None
 
@@ -51,6 +58,7 @@ class _Op:
 class _PlanNode:
     """A node in the anonymized plan tree (one logical operator)."""
 
+    usage_id: str
     op: str
     inputs: List["_PlanNode"] = field(default_factory=list)
 
@@ -62,7 +70,7 @@ class _Workload:
 
     plan: _PlanNode
     plan_str: str
-    ops: List[_Op]
+    ops: List[_LogicalOp]
 
 
 @dataclass(frozen=True)
@@ -78,6 +86,14 @@ class _PipelinePerf:
     node_deaths: Optional[int] = None
 
 
+@dataclass(frozen=True)
+class _Issue:
+    """An issue detected during execution, tied to an anonymized operator."""
+
+    issue_type: str
+    operator: str
+
+
 @dataclass
 class _Entry:
     id: str
@@ -85,6 +101,7 @@ class _Entry:
     env: _Env
     workload: _Workload
     performance: Optional[_PipelinePerf] = None
+    detected_issues: List[_Issue] = field(default_factory=list)
 
 
 # Bounded buffer of recent executions. OrderedDict so eviction picks the
@@ -96,6 +113,14 @@ _executions: "OrderedDict[str, _Entry]" = OrderedDict()
 # Per-execution spillage recorded at start of execution to compute delta
 _spillage_dict: Dict[str, Optional[int]] = {}
 _lock = threading.Lock()
+
+
+def _usage_collection_disabled() -> bool:
+    """True when the user has opted out of usage stats (via
+    ``RAY_USAGE_STATS_ENABLED=0``, ``ray disable-usage-stats``, or
+    ``~/.ray/config.json``) or when ``RAY_DATA_USAGE_DISABLED=1`` is set.
+    """
+    return not usage_stats_enabled() or os.environ.get("RAY_DATA_USAGE_DISABLED") == "1"
 
 
 def record_workload(
@@ -111,7 +136,7 @@ def record_workload(
     ``RAY_USAGE_STATS_ENABLED=0``, ``ray disable-usage-stats``, or
     ``~/.ray/config.json``) or when ``RAY_DATA_USAGE_DISABLED=1`` is set.
     """
-    if not usage_stats_enabled() or os.environ.get("RAY_DATA_USAGE_DISABLED") == "1":
+    if _usage_collection_disabled():
         return
     try:
         entry = _Entry(
@@ -133,16 +158,68 @@ def record_workload(
         logger.debug("Failed to record workload usage", exc_info=True)
 
 
+def build_usage_id_map(logical_plan: "LogicalPlan") -> Dict[int, str]:
+    """Build the ``id(logical_op) -> usage_id`` map for a plan.
+
+    The IDs are computed based on the hash of the (post-order index, anonymized name) tuple. These are
+    used to identify logical ops after anonymization (i.e. MapBatches-<id1>, MapBatches-<id2>, etc.).
+
+    Short-circuits to an empty map when the user has opted out of usage stats:
+    without a recorded payload there is nothing for the IDs to reference.
+    """
+    if _usage_collection_disabled():
+        return {}
+    try:
+        ordered_logical_ops: List[Tuple[LogicalOperator, str]] = []
+        _build_plan(logical_plan.dag, ordered_logical_ops)
+        return {id(op): usage_id for op, usage_id in ordered_logical_ops}
+    except Exception:
+        logger.debug("Failed to build usage id map", exc_info=True)
+        return {}
+
+
+def physical_op_name_with_id(
+    operator: "PhysicalOperator",
+    usage_id_map: Optional[Dict[int, str]] = None,
+) -> str:
+    """Anonymized name for a physical op. Fused ops join their constituent logical
+    ops with '->' to signal operator fusion. We need physical op name as
+    issues from the issue detector reference physical ops."""
+    logical_ops = operator._logical_operators
+    if not logical_ops:
+        return "Unknown"
+    return "->".join(_logical_op_name_with_id(op, usage_id_map) for op in logical_ops)
+
+
+def _logical_op_name_with_id(
+    logical_op: LogicalOperator,
+    usage_id_map: Optional[Dict[int, str]] = None,
+) -> str:
+    """Logical op is formatted as ``<anonymized_name>-<usage_id>``. The usage ID map is populated before execution starts in the usage callback."""
+    name = anonymize_op_name(logical_op)
+    if usage_id_map:
+        # Correlate with the IDs assigned to the logical ops in the workload plan.
+        usage_id = usage_id_map.get(id(logical_op))
+        if usage_id is not None:
+            return f"{name}-{usage_id}"
+    return name
+
+
 def record_execution_result(
     execution_id: str,
+    detected_issues: Optional[List[Tuple["IssueType", str]]] = None,
 ) -> None:
-    """Fill in performance for a previously recorded execution and flush.
+    """Fill in performance and detected issues for a previously recorded
+    execution and flush.
+
+    ``detected_issues`` is a list of ``(issue_type, anonymized_operator_name)``
+    pairs surfaced by the issue detectors during execution.
 
     Short-circuits when the user has opted out of Ray usage stats (via
     ``RAY_USAGE_STATS_ENABLED=0``, ``ray disable-usage-stats``, or
     ``~/.ray/config.json``) or when ``RAY_DATA_USAGE_DISABLED=1`` is set.
     """
-    if not usage_stats_enabled() or os.environ.get("RAY_DATA_USAGE_DISABLED") == "1":
+    if _usage_collection_disabled():
         return
     try:
         spilled_now = _cluster_spilled_bytes()
@@ -153,10 +230,24 @@ def record_execution_result(
                 return
             spilled_at_start = _spillage_dict.pop(execution_id, None)
             entry.performance = _collect_pipeline_perf(spilled_at_start, spilled_now)
+            entry.detected_issues = _collect_issues(detected_issues)
             payload = _serialize_locked()
         record_extra_usage_tag(TagKey.DATA_USAGE, payload)
     except Exception:
         logger.debug("Failed to record execution result usage", exc_info=True)
+
+
+def _collect_issues(
+    detected_issues: Optional[List[Tuple["IssueType", str]]],
+) -> List[_Issue]:
+    """Convert (issue_type, operator) pairs into ``_Issue`` records, mapping
+    each ``IssueType`` enum to its string value."""
+    if not detected_issues:
+        return []
+    return [
+        _Issue(issue_type=issue_type.value, operator=operator)
+        for issue_type, operator in detected_issues
+    ]
 
 
 def _serialize_locked() -> str:
@@ -177,39 +268,72 @@ def _safe_version(pkg: str) -> Optional[str]:
 
 
 def _collect_workload(logical_plan: "LogicalPlan") -> _Workload:
-    """Collect anonymized plan tree, indented text rendering, and per-op
-    config list."""
+    """Collect the anonymized plan tree, indented text rendering, and per-op
+    config list in a single DAG walk."""
     dag = logical_plan.dag
-    plan, ops = _build_plan_and_ops(dag)
+    ordered_logical_ops: List[Tuple[LogicalOperator, str]] = []
+    plan = _build_plan(dag, ordered_logical_ops)
     return _Workload(
         plan=plan,
         plan_str=_format_plan_str(dag),
-        ops=ops,
+        ops=_build_ops(ordered_logical_ops),
     )
 
 
-def _build_plan_and_ops(op: LogicalOperator) -> Tuple[_PlanNode, List[_Op]]:
-    """Build plan tree and flat op list in one post-order walk."""
-    child_plans: List[_PlanNode] = []
-    ops: List[_Op] = []
-    for child in op.input_dependencies:
-        child_plan, child_ops = _build_plan_and_ops(child)
-        child_plans.append(child_plan)
-        ops.extend(child_ops)
+def _build_plan(
+    op: LogicalOperator,
+    ordered_logical_ops: List[Tuple[LogicalOperator, str]],
+) -> _PlanNode:
+    """Build the plan tree and record logical ops in post-order.
 
-    name = anonymize_op_name(op)
-    config: Optional[_OpConfig] = None
-    if isinstance(op, AbstractUDFMap):
-        batch_format = getattr(op, "batch_format", None)
-        if batch_format == "default":
-            batch_format = _apply_batch_format(batch_format)
-        if batch_format in VALID_BATCH_FORMATS:
-            config = _OpConfig(batch_format=batch_format)
-        else:
-            logger.debug(f"Unexpected batch format: {batch_format!r}")
-            config = _OpConfig(batch_format="unknown")
-    ops.append(_Op(name=name, config=config))
-    return _PlanNode(op=name, inputs=child_plans), ops
+    Deduplicates shared operator instances (e.g. ``ds.zip(ds)``), so each
+    operator is assigned a single usage_id even when reachable via multiple
+    plan branches.
+    """
+
+    @cache
+    def _build_cached(op: LogicalOperator) -> _PlanNode:
+        child_plans = [_build_cached(child) for child in op.input_dependencies]
+        name = anonymize_op_name(op)
+        usage_id = _make_usage_op_id(len(ordered_logical_ops), name)
+        ordered_logical_ops.append((op, usage_id))
+        return _PlanNode(usage_id=usage_id, op=name, inputs=child_plans)
+
+    return _build_cached(op)
+
+
+def _build_ops(
+    ordered_logical_ops: List[Tuple[LogicalOperator, str]],
+) -> List[_LogicalOp]:
+    """Build the flat logical-op list from the canonical post-order traversal."""
+    ops: List[_LogicalOp] = []
+    for op, usage_id in ordered_logical_ops:
+        name = anonymize_op_name(op)
+        ops.append(
+            _LogicalOp(
+                usage_id=usage_id,
+                name=name,
+                config=_get_op_config(op),
+            )
+        )
+    return ops
+
+
+def _get_op_config(op: LogicalOperator) -> Optional[_OpConfig]:
+    # MapBatches is the only operator with a user-facing batch_format.
+    if not isinstance(op, MapBatches):
+        return None
+    batch_format = op.batch_format
+    if batch_format == "default":
+        batch_format = _apply_batch_format(batch_format)
+    if batch_format in VALID_BATCH_FORMATS:
+        return _OpConfig(batch_format=batch_format)
+    logger.debug(f"Unexpected batch format: {batch_format!r}")
+    return _OpConfig(batch_format="unknown")
+
+
+def _make_usage_op_id(index: int, name: str) -> str:
+    return hashlib.sha256(f"{index}:{name}".encode()).hexdigest()[:4]
 
 
 def _format_plan_str(op: LogicalOperator, depth: int = 0) -> str:
