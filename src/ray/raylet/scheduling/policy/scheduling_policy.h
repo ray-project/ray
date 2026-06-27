@@ -87,7 +87,7 @@ struct SchedulingResult {
   // We have one pair per placement group for now because we only support
   // STRICT_PACK scheduling strategy. To support other strategies, this data
   // structure will need to be extended.
-  // TODO(#61777): Extend to support multiple tiers of topology-aware scheduling.
+  // TODO(#61777): Extend to support multiple tiers of topology strategy scheduling.
   std::optional<std::pair<std::string, std::string>> selected_topology_assignment;
 };
 

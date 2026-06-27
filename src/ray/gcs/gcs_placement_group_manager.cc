@@ -731,7 +731,7 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
             iter->second->GetPlacementGroupTableData(),
             {[this](Status status) { SchedulePendingPlacementGroups(); }, io_context_});
       } else if (iter->second->GetState() == rpc::PlacementGroupTableData::RESCHEDULING) {
-        // For topology-aware PGs that are stuck in the infeasible queue: if ALL
+        // For topology strategy PGs that are stuck in the infeasible queue: if ALL
         // bundles are now unplaced (total failure), move the PG back to the
         // pending queue so the scheduler can clear the stale topology
         // assignments and retry on a fresh selection. The manager here is just

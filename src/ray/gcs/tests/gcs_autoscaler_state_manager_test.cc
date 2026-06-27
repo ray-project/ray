@@ -1434,7 +1434,7 @@ TEST_F(GcsAutoscalerStateManagerTest,
 
   const auto &req = requests.Get(0);
   ASSERT_EQ(req.bundle_selectors_size(), 1);
-  // Does not use topology-aware scheduling, so locality_requirement should not be set.
+  // Does not use a topology strategy, so locality_requirement should not be set.
   EXPECT_FALSE(req.bundle_selectors(0).has_locality_requirement());
 }
 

@@ -57,7 +57,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   const auto &bundles = placement_group->GetUnplacedBundles();
   const auto &strategy = placement_group->GetStrategy();
 
-  // For topology-aware PGs: if ALL bundles are unplaced (total failure), clear
+  // For topology strategy PGs: if ALL bundles are unplaced (total failure), clear
   // the topology assignments so new values can be selected. If only some bundles
   // are unplaced (partial failure), we attempt to reschedule onto the same
   // assignments.

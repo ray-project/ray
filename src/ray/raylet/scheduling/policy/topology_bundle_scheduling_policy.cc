@@ -103,7 +103,7 @@ SchedulingResult TopologyStrictPackSchedulingPolicy::Schedule(
 
   if (topology_groups.empty()) {
     RAY_LOG(DEBUG) << "No candidate nodes have a " << label_key
-                   << " label; topology-aware scheduling infeasible.";
+                   << " label; topology strategy scheduling infeasible.";
     return SchedulingResult::Infeasible();
   }
 
@@ -117,7 +117,7 @@ SchedulingResult TopologyStrictPackSchedulingPolicy::Schedule(
         node_schedule_fn(resource_request_list, options, std::move(topology_nodes));
     if (result.status.IsSuccess()) {
       result.selected_topology_assignment =
-          std::make_pair(label_key, std::move(topology_value));
+          std::make_pair(label_key, topology_value);
       return result;
     }
     if (!result.status.IsInfeasible()) {

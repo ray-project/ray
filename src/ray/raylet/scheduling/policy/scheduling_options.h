@@ -195,10 +195,10 @@ struct SchedulingOptions {
   bool require_node_available_;
   bool avoid_gpu_nodes_;
   // The scheduling strategy for the topology level.
-  // Set to NONE to disable topology-aware scheduling.
+  // Set to NONE to disable the topology strategy.
   TopologySchedulingStrategy topology_scheduling_strategy_ =
       TopologySchedulingStrategy::NONE;
-  // The topology target for topology-aware scheduling.
+  // The topology target for topology strategy scheduling.
   // first: the node label key used to partition nodes into groups.
   // second: if set, constrains scheduling to this topology value
   //   (bundle rescheduling). If nullopt, a new group is selected.

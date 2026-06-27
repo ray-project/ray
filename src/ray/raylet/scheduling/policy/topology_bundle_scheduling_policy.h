@@ -26,7 +26,7 @@ namespace raylet_scheduling_policy {
 /**
  * @brief Abstract base class for topology-level scheduling policies.
  *
- * @details Topology-aware scheduling partitions the cluster's candidate nodes
+ * @details Topology strategy scheduling partitions the cluster's candidate nodes
  * into groups by an arbitrary node label key (e.g. "ray.io/gpu-domain") and
  * selects which groups can feasibly host a placement group's bundles. It then
  * delegates to a node-level scheduling policy to schedule the bundles within
