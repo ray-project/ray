@@ -66,37 +66,24 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         """
         assert len(input_ops) >= 2
         n = len(input_ops)
-        # Bundles received from each input, before being staged into block deques.
         self._input_buffers: List[FIFOBundleQueue] = [
             FIFOBundleQueue() for _ in range(n)
         ]
-        # Output blocks are emitted in submission order using the zip-task index
-        # as the ordering key, since tasks may finish out of order.
         self._output_buffer: ReorderingBundleQueue = ReorderingBundleQueue()
-        # Per-input raw blocks pulled from a bundle but not yet assigned a known
-        # row count (entries are resolved in order; see ``_fill_block_deque``).
         self._staging: List[collections.deque] = [collections.deque() for _ in range(n)]
-        # Per-input staged blocks as (block_ref, num_rows) awaiting alignment.
         self._block_deques: List[collections.deque] = [
             collections.deque() for _ in range(n)
         ]
-        # Per-input remainder left over after a block was split for alignment.
         self._leftovers: List[Optional[Tuple[ray.ObjectRef, int]]] = [None] * n
-        # Per-input flag: a row-count task is in flight for the head staged block,
-        # so staging for that input is paused to preserve order.
         self._awaiting_count: List[bool] = [False] * n
-        # In-flight zip tasks, keyed by task index. Keys index the output queue,
-        # so they must stay a contiguous range.
         self._data_tasks: Dict[int, DataOpTask] = {}
+
         self._next_task_idx: int = 0
-        # In-flight row-count tasks (used only when a block's metadata lacks a
-        # row count). Tracked separately so their indices don't perturb the
-        # contiguous output-queue keys above.
         self._pending_count_tasks: Dict[int, MetadataOpTask] = {}
         self._next_meta_task_idx: int = 0
-        # Set once the executor has delivered every input bundle.
+
         self._inputs_fully_delivered: bool = False
-        # Accumulated output stats, extended as outputs are taken.
+
         self._output_blocks_stats: List[BlockStats] = []
         self._stats: StatsDict = {}
         super().__init__(
@@ -148,18 +135,14 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
     def all_inputs_done(self) -> None:
         self._inputs_fully_delivered = True
         self._dispatch_ready_zips()
-        # Row-count validation can only run once every input is fully delivered
-        # *and* nothing is still in flight. If row-count tasks are pending, the
+        # If row-count tasks are pending, the
         # check is deferred to the last one's completion callback instead.
         self._validate_if_settled()
         super().all_inputs_done()
 
     def _validate_if_settled(self) -> None:
-        """Raise if inputs have unequal row counts, once everything has settled.
-
-        "Settled" means all inputs are delivered, no row-count tasks are in
-        flight, and nothing remains staged or buffered. If blocks are still left
-        over at that point, the inputs had differing row counts.
+        """
+        Raise if inputs have unequal row counts, once all inputs are delivered.
         """
         if not self._inputs_fully_delivered:
             return
@@ -201,11 +184,10 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         return False
 
     def _fill_block_deque(self, input_index: int) -> None:
-        """Stage ready (block_ref, num_rows) entries for the given input.
+        """
+        Stage ready (block_ref, num_rows) entries for the given input.
 
-        Pulls blocks from the next input bundle into a per-input staging deque
-        and moves those with a known row count into the block deque. If a block's
-        metadata lacks a row count, a row-count task is submitted asynchronously
+        If a block's metadata lacks a row count, a row-count task is submitted asynchronously
         and staging for this input pauses (to preserve order) until it resolves.
         """
         if self._awaiting_count[input_index]:
@@ -234,11 +216,8 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             self._block_deques[input_index].append((entry.ref, num_rows))
 
     def _submit_count_task(self, input_index: int, block_ref: ray.ObjectRef) -> None:
-        """Asynchronously fetch a block's row count without blocking the loop.
-
-        Used only when a block's metadata lacks ``num_rows`` (rare; some external
-        datasources don't populate it). The block stays at the head of the input's
-        staging deque until the count resolves.
+        """
+        Asynchronously fetch a block's row count without blocking the loop.
         """
         self._awaiting_count[input_index] = True
 
@@ -293,15 +272,13 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         return self._block_deques[input_index].popleft()
 
     def _dispatch_ready_zips(self) -> None:
-        """Submit zip tasks for every set of blocks ready across all inputs.
+        """
+        Submit zip tasks for every set of blocks ready across all inputs.
 
         While a block is available from every input, takes one block from each,
         aligns them to the minimum row count (splitting larger blocks and storing
         the remainder as leftovers), and submits an asynchronous zip task for the
         aligned blocks. Repeats until some input has no data available.
-
-        Alignment decisions use the row counts already known from block metadata,
-        so this method does not block waiting on remote results.
         """
         label_selector = self.data_context.execution_options.label_selector
 
@@ -340,10 +317,8 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
 
     def _submit_zip_task(self, aligned_refs: List[ray.ObjectRef]) -> None:
         """Submit an asynchronous task that zips the aligned blocks together."""
-        # TODO(ekl): Wire up per-task metrics (on_task_submitted /
-        # on_task_output_generated / on_task_finished) so the progress bar and
-        # task counters reflect zip tasks. Only queue-level metrics are tracked
-        # today.
+        # TODO(ekl): Wire up per-task metrics so the progress bar and
+        # task counters reflect zip tasks.
         label_selector = self.data_context.execution_options.label_selector
         zip_fn = cached_remote_fn(_zip_blocks_task, num_returns="streaming")
         if label_selector:
