@@ -715,30 +715,33 @@ def process_completed_tasks(
             # TODO elaborate why sorting (helps preserve_order case)
             ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
             op_data_tasks: List[DataOpTask] = []
-            for task in ready_tasks:
-                if isinstance(task, DataOpTask):
-                    try:
-                        bytes_read = task.on_data_ready(
-                            remaining_output_budget.get(state, None),
-                            metadata_fetcher,
-                        )
-                        op_data_tasks.append(task)
-                        if state in remaining_output_budget:
-                            # Clamp remaining output budget at 0
-                            remaining_output_budget[state] = max(
-                                remaining_output_budget[state] - bytes_read, 0
+            try:
+                for task in ready_tasks:
+                    if isinstance(task, DataOpTask):
+                        try:
+                            bytes_read = task.on_data_ready(
+                                remaining_output_budget.get(state, None),
+                                metadata_fetcher,
                             )
-                    except Exception as e:
-                        _record_errored_block(e, state.op.name)
-                else:
-                    assert isinstance(task, MetadataOpTask)
-                    task.on_task_finished()
-
-            # Hand this op's just-deferred pairs to the fetcher, and register any
-            # end-of-stream tasks for a postponed done-callback (no-ops in inline
-            # mode, where the pairs already emitted above).
-            metadata_fetcher.submit(state)
-            metadata_fetcher.register_drained(op_data_tasks)
+                            op_data_tasks.append(task)
+                            if state in remaining_output_budget:
+                                # Clamp remaining output budget at 0
+                                remaining_output_budget[state] = max(
+                                    remaining_output_budget[state] - bytes_read, 0
+                                )
+                        except Exception as e:
+                            _record_errored_block(e, state.op.name)
+                    else:
+                        assert isinstance(task, MetadataOpTask)
+                        task.on_task_finished()
+            finally:
+                # Hand this op's just-deferred pairs to the fetcher, and register
+                # any end-of-stream tasks for a postponed done-callback (no-ops in
+                # inline mode, where the pairs already emitted above). In a
+                # ``finally`` so a re-raised ``max_errored_blocks`` error can't
+                # strand pairs already deferred into the fetcher this iteration.
+                metadata_fetcher.submit(state)
+                metadata_fetcher.register_drained(op_data_tasks)
 
     # Emit whatever's ready, in per-op order, then fire any postponed done
     # callbacks — UNCONDITIONALLY, even when there are no active tasks this

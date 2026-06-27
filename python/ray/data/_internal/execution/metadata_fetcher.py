@@ -45,10 +45,10 @@ _PREFETCH_ON_THREAD = env_bool("RAY_DATA_METADATA_PREFETCH_ON_THREAD", True)
 
 class MetadataFetcher(ABC):
     def start(self) -> None:
-        """Start any background machinery (no-op unless overridden)."""
+        """Start any background machinery."""
 
     def stop(self) -> None:
-        """Stop any background machinery (no-op unless overridden)."""
+        """Stop any background machinery."""
 
     @abstractmethod
     def in_loop_get_size(
@@ -65,17 +65,13 @@ class MetadataFetcher(ABC):
         """
 
     def in_loop_done(self, task: DataOpTask) -> None:
-        """Called once a task is drained (generator exhausted/failed). The
-        inline mode fires the done-callback here (re-raising a task failure);
-        the threaded mode postpones it, so this is a no-op there."""
+        """Called once a task is drained (generator exhausted/failed)."""
 
     def submit(self, op_key: Hashable) -> None:
-        """Hand the operator's deferred pairs off for processing (no-op unless
-        overridden)."""
+        """Hand the operator's deferred pairs off for processing."""
 
     def register_drained(self, tasks: List[DataOpTask]) -> None:
-        """Record end-of-stream/failed tasks whose completion is postponed
-        (no-op unless overridden)."""
+        """Record end-of-stream/failed tasks whose completion is postponed."""
 
     def after_loop_batch(self) -> List[Tuple[str, BaseException]]:
         """Run once at the end of ``process_completed_tasks``. Returns
@@ -133,10 +129,9 @@ class ThreadedMetadataFetcher(MetadataFetcher):
         # Injectable so tests can drive a prefetcher whose results they publish
         # by hand.
         self.prefetcher = prefetcher if prefetcher is not None else MetadataPrefetcher()
-        # Pairs deferred by ``in_loop_get_size`` for the current operator, flushed
-        # to the prefetcher by ``submit``. Owned here (not threaded through
-        # ``on_data_ready``) since deferring is the threaded mode's concern.
-        self._deferred: List[DeferredEmit] = []
+        # Pairs deferred by ``in_loop_get_size`` for the current operator,
+        # flushed to the prefetcher by ``submit``.
+        self._pending_deferred: List[DeferredEmit] = []
 
     def start(self) -> None:
         self.prefetcher.start()
@@ -185,14 +180,14 @@ class ThreadedMetadataFetcher(MetadataFetcher):
                 return None
             object_size = meta_with_schema.metadata.size_bytes
 
-        self._deferred.append(
+        self._pending_deferred.append(
             DeferredEmit(task=task, block_ref=block_ref, meta_ref=meta_ref)
         )
         return object_size
 
     def submit(self, op_key: Hashable) -> None:
-        self.prefetcher.submit(op_key, self._deferred)
-        self._deferred = []
+        self.prefetcher.submit(op_key, self._pending_deferred)
+        self._pending_deferred = []
 
     def register_drained(self, tasks: List[DataOpTask]) -> None:
         self.prefetcher.register_drained_tasks(tasks)

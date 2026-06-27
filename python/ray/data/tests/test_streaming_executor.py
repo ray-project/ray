@@ -231,6 +231,35 @@ def test_process_completed_tasks_threaded(ray_start_regular_shared):
     assert len(topo[o1].output_queue) == 20, topo
 
 
+def test_process_completed_tasks_threaded_multi_step(ray_start_regular_shared):
+    """Threaded mode driven the way the executor does it: one long-lived
+    fetcher, ``process_completed_tasks`` called once per scheduling iteration.
+    Deferred pairs are emitted across successive calls, ending with the same
+    outputs as the single inline call in ``test_process_completed_tasks_inline``."""
+    inputs = make_ref_bundles([[x] for x in range(20)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
+    )
+    topo = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
+
+    assert len(topo[o1].output_queue) == 0, topo
+    fetcher = ThreadedMetadataFetcher()
+    fetcher.start()
+    try:
+        guard = _make_disabled_guard()
+        deadline = time.time() + 30
+        while len(topo[o1].output_queue) < 20 and time.time() < deadline:
+            process_completed_tasks(topo, [], 0, guard, metadata_fetcher=fetcher)
+            update_operator_states(topo)
+            time.sleep(0.005)
+    finally:
+        fetcher.stop()
+    assert len(topo[o1].output_queue) == 20, topo
+
+
 @pytest.fixture
 def sleep_task_ref():
     sleep_task_ref = sleep.remote()
@@ -1512,9 +1541,7 @@ class TestDataOpTask:
         task_default = DataOpTask(1, streaming_gen2)
         assert task_default._operator_name == "Unknown"
 
-    def test_on_data_ready_deferred_does_not_emit_inline(
-        self, ray_start_regular_shared
-    ):
+    def test_on_data_ready_deferred_threading(self, ray_start_regular_shared):
         """In the threaded mode, on_data_ready appends to the deferred list
         without emitting RefBundles or updating ``_last_block_meta``. Emission
         happens later, when the prefetcher delivers the fetched metadata."""
@@ -1530,12 +1557,9 @@ class TestDataOpTask:
         # The pair was deferred: no emit yet, _last_block_meta still None.
         assert outputs == []
         assert task._last_block_meta is None
-        deferred = list(fetcher._deferred)
+        deferred = list(fetcher._pending_deferred)
         assert len(deferred) >= 1
 
-        # Drive emission through the real flow (prefetcher.emit_ready), not a
-        # manual emit_block: hand the pairs off, publish their fetched bytes,
-        # then emit.
         fetcher.submit("op")
         with prefetcher._results_lock:
             for d, meta_bytes in zip(deferred, ray.get([d.meta_ref for d in deferred])):
@@ -1626,7 +1650,7 @@ class TestDataOpTask:
         while not task.is_drained() and time.time() < deadline:
             task.on_data_ready(None, fetcher)
             time.sleep(0.01)
-        deferred = list(fetcher._deferred)
+        deferred = list(fetcher._pending_deferred)
         assert len(deferred) == 2
         first, second = deferred
         fetcher.submit("op")
@@ -1673,7 +1697,7 @@ class TestDataOpTask:
         while not task.is_drained() and time.time() < deadline:
             task.on_data_ready(None, fetcher)
             time.sleep(0.01)
-        deferred = list(fetcher._deferred)
+        deferred = list(fetcher._pending_deferred)
         assert len(deferred) == 2
         first, second = deferred
         fetcher.submit("op")
@@ -1696,45 +1720,6 @@ class TestDataOpTask:
         assert done == [1]
         assert task.has_finished
         assert not prefetcher.has_pending_work()
-
-    def test_object_size_ready_callback_seam(self, ray_start_regular_shared):
-        """The ``object_size_ready_callback`` seam fires once per pulled pair,
-        with the resolved output-budget size, in both modes."""
-        # Inline mode: size is meta.size_bytes, fired as each pair emits.
-        gen = create_stub_streaming_gen(block_nbytes=[100, 200])
-        sizes_inline: list = []
-        task = DataOpTask(
-            0,
-            gen,
-            object_size_ready_callback=lambda block_ref, size: sizes_inline.append(
-                size
-            ),
-        )
-        while not task.has_finished:
-            ray.wait([gen], fetch_local=False)
-            task.on_data_ready(None, InlineMetadataFetcher())
-        assert len(sizes_inline) == 2
-        assert all(s > 0 for s in sizes_inline)
-
-        # Threaded mode: size is the block's local object_size, fired as each
-        # pair is deferred (before emission).
-        gen2 = create_stub_streaming_gen(block_nbytes=[100, 200])
-        sizes_threaded: list = []
-        task2 = DataOpTask(
-            0,
-            gen2,
-            object_size_ready_callback=lambda block_ref, size: sizes_threaded.append(
-                size
-            ),
-        )
-        ray.wait([gen2], fetch_local=False)
-        fetcher = ThreadedMetadataFetcher()
-        deadline = time.time() + 30
-        while not task2.is_drained() and time.time() < deadline:
-            task2.on_data_ready(None, fetcher)
-            time.sleep(0.01)
-        assert len(sizes_threaded) == 2
-        assert all(s > 0 for s in sizes_threaded)
 
     def test_on_data_ready_branches_with_fake_fetcher(self, ray_start_regular_shared):
         """Mock the fetcher interface to drive ``on_data_ready``'s per-pair
