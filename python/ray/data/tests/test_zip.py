@@ -188,6 +188,161 @@ def test_zip_does_not_free_shared_materialized_blocks(ray_start_regular_shared):
     assert len(result2) == 20
 
 
+def test_zip_streaming_produces_output_incrementally(ray_start_regular_shared):
+    """Verify that ZipOperator produces output as blocks arrive, not only after
+    all inputs are done (which the old bulk operator did)."""
+    from ray.data._internal.execution.interfaces import ExecutionOptions
+    from ray.data._internal.execution.operators.input_data_buffer import (
+        InputDataBuffer,
+    )
+    from ray.data._internal.execution.operators.zip_operator import ZipOperator
+    from ray.data._internal.execution.util import make_ref_bundles
+    from ray.data.block import BlockAccessor
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+
+    # Two inputs, each with 3 blocks of 2 rows.
+    bundles_a = make_ref_bundles([[0, 1], [2, 3], [4, 5]])
+    bundles_b = make_ref_bundles([[10, 11], [12, 13], [14, 15]])
+
+    input_a = InputDataBuffer(ctx, bundles_a)
+    input_b = InputDataBuffer(ctx, bundles_b)
+    zip_op = ZipOperator(ctx, input_a, input_b)
+
+    zip_op.start(ExecutionOptions())
+    input_a.start(ExecutionOptions())
+    input_b.start(ExecutionOptions())
+
+    # Feed one block from each input — enough to align and emit output, well
+    # before all inputs are done.
+    zip_op.add_input(input_a.get_next(), 0)
+    zip_op.add_input(input_b.get_next(), 1)
+
+    assert zip_op.has_next(), "Streaming zip should emit output before all inputs done"
+
+    # Feed remaining blocks.
+    while input_a.has_next():
+        zip_op.add_input(input_a.get_next(), 0)
+    while input_b.has_next():
+        zip_op.add_input(input_b.get_next(), 1)
+
+    zip_op.input_done(0)
+    zip_op.input_done(1)
+    zip_op.all_inputs_done()
+
+    results = []
+    while zip_op.has_next():
+        bundle = zip_op.get_next()
+        for block_ref in bundle.block_refs:
+            df = BlockAccessor.for_block(ray.get(block_ref)).to_pandas()
+            results.extend(df["id"].tolist())
+
+    assert results == [0, 1, 2, 3, 4, 5]
+
+
+def test_zip_streaming_with_unaligned_blocks(ray_start_regular_shared):
+    """Verify that streaming zip correctly aligns blocks with different row counts
+    using the split-and-leftover mechanism."""
+    from ray.data._internal.execution.interfaces import ExecutionOptions
+    from ray.data._internal.execution.operators.input_data_buffer import (
+        InputDataBuffer,
+    )
+    from ray.data._internal.execution.operators.zip_operator import ZipOperator
+    from ray.data._internal.execution.util import make_ref_bundles
+    from ray.data.block import BlockAccessor
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+
+    # Input A: 3 blocks of [3, 3, 3] rows = 9 rows
+    # Input B: 2 blocks of [5, 4] rows = 9 rows
+    # Block boundaries don't align — tests the split/leftover logic.
+    bundles_a = make_ref_bundles([[0, 1, 2], [3, 4, 5], [6, 7, 8]])
+    bundles_b = make_ref_bundles([[10, 11, 12, 13, 14], [15, 16, 17, 18]])
+
+    input_a = InputDataBuffer(ctx, bundles_a)
+    input_b = InputDataBuffer(ctx, bundles_b)
+    zip_op = ZipOperator(ctx, input_a, input_b)
+
+    zip_op.start(ExecutionOptions())
+    input_a.start(ExecutionOptions())
+    input_b.start(ExecutionOptions())
+
+    while input_a.has_next():
+        zip_op.add_input(input_a.get_next(), 0)
+    while input_b.has_next():
+        zip_op.add_input(input_b.get_next(), 1)
+
+    zip_op.input_done(0)
+    zip_op.input_done(1)
+    zip_op.all_inputs_done()
+
+    id_values = []
+    id_1_values = []
+    while zip_op.has_next():
+        bundle = zip_op.get_next()
+        for block_ref in bundle.block_refs:
+            df = BlockAccessor.for_block(ray.get(block_ref)).to_pandas()
+            id_values.extend(df["id"].tolist())
+            id_1_values.extend(df["id_1"].tolist())
+
+    assert id_values == list(range(9))
+    assert id_1_values == list(range(10, 19))
+
+
+def test_zip_streaming_different_row_counts_raises(ray_start_regular_shared):
+    """Verify that zipping datasets with different total row counts raises
+    ValueError at all_inputs_done."""
+    from ray.data._internal.execution.interfaces import ExecutionOptions
+    from ray.data._internal.execution.operators.input_data_buffer import (
+        InputDataBuffer,
+    )
+    from ray.data._internal.execution.operators.zip_operator import ZipOperator
+    from ray.data._internal.execution.util import make_ref_bundles
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+
+    bundles_a = make_ref_bundles([[0, 1, 2]])  # 3 rows
+    bundles_b = make_ref_bundles([[10, 11]])  # 2 rows
+
+    input_a = InputDataBuffer(ctx, bundles_a)
+    input_b = InputDataBuffer(ctx, bundles_b)
+    zip_op = ZipOperator(ctx, input_a, input_b)
+
+    zip_op.start(ExecutionOptions())
+    input_a.start(ExecutionOptions())
+    input_b.start(ExecutionOptions())
+
+    zip_op.add_input(input_a.get_next(), 0)
+    zip_op.add_input(input_b.get_next(), 1)
+
+    zip_op.input_done(0)
+    zip_op.input_done(1)
+
+    with pytest.raises(ValueError, match="different number of rows"):
+        zip_op.all_inputs_done()
+
+
+def test_zip_streaming_throttling_enabled(ray_start_regular_shared):
+    """Verify the streaming zip operator has throttling enabled (backpressure)."""
+    from ray.data._internal.execution.operators.input_data_buffer import (
+        InputDataBuffer,
+    )
+    from ray.data._internal.execution.operators.zip_operator import ZipOperator
+    from ray.data._internal.execution.util import make_ref_bundles
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+
+    input_a = InputDataBuffer(ctx, make_ref_bundles([[1]]))
+    input_b = InputDataBuffer(ctx, make_ref_bundles([[2]]))
+    zip_op = ZipOperator(ctx, input_a, input_b)
+
+    assert not zip_op.throttling_disabled()
+
+
 if __name__ == "__main__":
     import sys
 
