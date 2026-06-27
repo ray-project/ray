@@ -20,10 +20,9 @@
 .. autosummary::
    :nosignatures:
    :toctree: doc
-
-   {% for method in methods | select_api_group(name, module, api_group) %}
-      {{ name }}.{{ method }}
-   {% endfor %}
+{% for method in methods | select_api_group(name, module, api_group) %}
+   {{ name }}.{{ method }}
+{%- endfor %}
 
 {% endfor %}
 {% endif %}
