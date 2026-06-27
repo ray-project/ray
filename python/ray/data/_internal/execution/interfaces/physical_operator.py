@@ -136,10 +136,9 @@ class DeferredEmit:
     deferred until its metadata has been fetched.
 
     Populated by :meth:`DataOpTask.on_data_ready`; consumed by the
-    ``MetadataPrefetcher``, which fetches ``meta_ref`` on a background
-    thread and emits the pair (in per-op append order) once the bytes
-    are available. The fetched bytes are carried by the prefetcher, not
-    on this object.
+    ``ThreadedMetadataFetcher``, which fetches ``meta_ref`` on a background
+    thread and emits the pair (in per-op append order) once the bytes are
+    available. The fetched bytes are carried by the fetcher, not on this object.
 
     The budget size used inside ``on_data_ready`` comes from the block's
     local ``object_size`` (a local-only lookup, no RPC; pairs whose size
@@ -234,7 +233,7 @@ class DataOpTask(OpTask):
         self._task_error: Optional[Exception] = None
 
         # Count of this task's pulled pairs not yet emitted by the async
-        # ``MetadataPrefetcher``. The DRAINED -> FINISHED transition happens
+        # ``ThreadedMetadataFetcher``. The DRAINED -> FINISHED transition happens
         # only once this reaches 0 (all of the task's bundles emitted).
         self._pending_emit_count: int = 0
 

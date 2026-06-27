@@ -38,7 +38,6 @@ from ray.data._internal.execution.metadata_fetcher import (
     MetadataFetcher,
     ThreadedMetadataFetcher,
 )
-from ray.data._internal.execution.metadata_prefetcher import MetadataPrefetcher
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -203,7 +202,9 @@ def _drain_completed_tasks_threaded(
             metadata_fetcher=fetcher,
         )
         deadline = time.time() + 30
-        while fetcher.prefetcher.has_pending_work() and time.time() < deadline:
+        while fetcher.has_pending_work():
+            if time.time() >= deadline:
+                raise TimeoutError("threaded metadata fetch did not finish within 30s")
             fetcher.after_loop_batch()
             time.sleep(0.005)
         return result
@@ -1544,14 +1545,13 @@ class TestDataOpTask:
     def test_on_data_ready_deferred_threading(self, ray_start_regular_shared):
         """In the threaded mode, on_data_ready appends to the deferred list
         without emitting RefBundles or updating ``_last_block_meta``. Emission
-        happens later, when the prefetcher delivers the fetched metadata."""
+        happens later, when the fetcher delivers the fetched metadata."""
         streaming_gen = create_stub_streaming_gen(block_nbytes=[1024])
         outputs = []
         task = DataOpTask(0, streaming_gen, output_ready_callback=outputs.append)
 
         ray.wait([streaming_gen], fetch_local=False)
-        prefetcher = MetadataPrefetcher()
-        fetcher = ThreadedMetadataFetcher(prefetcher)
+        fetcher = ThreadedMetadataFetcher()
         task.on_data_ready(None, fetcher)
 
         # The pair was deferred: no emit yet, _last_block_meta still None.
@@ -1561,15 +1561,15 @@ class TestDataOpTask:
         assert len(deferred) >= 1
 
         fetcher.submit("op")
-        with prefetcher._results_lock:
+        with fetcher._results_lock:
             for d, meta_bytes in zip(deferred, ray.get([d.meta_ref for d in deferred])):
-                prefetcher._results[d.meta_ref] = meta_bytes
-        prefetcher.emit_ready()
+                fetcher._results[d.meta_ref] = meta_bytes
+        fetcher.after_loop_batch()
         assert len(outputs) == len(deferred)
         assert task._last_block_meta is not None
 
-    def test_metadata_prefetcher_emits_in_per_op_order(self, ray_start_regular_shared):
-        """The async ``MetadataPrefetcher`` fetches ``meta_ref``s on a
+    def test_threaded_emits_in_per_op_order(self, ray_start_regular_shared):
+        """The threaded fetcher fetches ``meta_ref``s on a
         background thread and emits each op's RefBundles in append order
         (same sequence the synchronous replay would produce), and fires the
         postponed done callback only after all of a task's pairs are emitted."""
@@ -1593,13 +1593,12 @@ class TestDataOpTask:
 
         ray.wait([gen_a, gen_b], fetch_local=False)
 
-        prefetcher = MetadataPrefetcher()
-        fetcher = ThreadedMetadataFetcher(prefetcher)
-        prefetcher.start()
+        fetcher = ThreadedMetadataFetcher()
+        fetcher.start()
         try:
             # Drain each task to end-of-stream, then submit it under its own op
             # key (the real per-op flow: the fetcher accumulates the task's
-            # deferred pairs and ``submit`` hands them to the prefetcher). Loop
+            # deferred pairs and ``submit`` hands them to the fetch thread). Loop
             # because on a small cluster the second generator may not have
             # started when the first is ready.
             deadline = time.time() + 30
@@ -1608,16 +1607,15 @@ class TestDataOpTask:
                     task.on_data_ready(None, fetcher)
                     time.sleep(0.01)
                 fetcher.submit(op_key)
-                fetcher.register_drained([task])
+                fetcher.check_if_drained([task])
             assert task_a.is_drained() and task_b.is_drained()
 
             deadline = time.time() + 30
             while len(outputs) < 4 and time.time() < deadline:
-                prefetcher.emit_ready()
-                prefetcher.fire_done_callbacks()
+                fetcher.after_loop_batch()
                 time.sleep(0.01)
         finally:
-            prefetcher.stop()
+            fetcher.stop()
 
         # Per-op append order is preserved. Cross-op interleaving is NOT
         # asserted: each op emits into its own downstream queue, so the order
@@ -1644,8 +1642,7 @@ class TestDataOpTask:
         ray.wait([gen], fetch_local=False)
         # Don't start the fetch thread: publish fetch results by hand to
         # control which pair's metadata is "fetched" first.
-        prefetcher = MetadataPrefetcher()
-        fetcher = ThreadedMetadataFetcher(prefetcher)
+        fetcher = ThreadedMetadataFetcher()
         deadline = time.time() + 30
         while not task.is_drained() and time.time() < deadline:
             task.on_data_ready(None, fetcher)
@@ -1654,22 +1651,20 @@ class TestDataOpTask:
         assert len(deferred) == 2
         first, second = deferred
         fetcher.submit("op")
-        fetcher.register_drained([task])
+        fetcher.check_if_drained([task])
         meta_bytes_first, meta_bytes_second = ray.get([first.meta_ref, second.meta_ref])
 
         # Only the LATER pair's metadata is available: it must be held.
-        with prefetcher._results_lock:
-            prefetcher._results[second.meta_ref] = meta_bytes_second
-        prefetcher.emit_ready()
-        prefetcher.fire_done_callbacks()
+        with fetcher._results_lock:
+            fetcher._results[second.meta_ref] = meta_bytes_second
+        fetcher.after_loop_batch()
         assert outputs == []
         assert not task.has_finished
 
         # Once the EARLIER pair's metadata arrives, both emit, in yield order.
-        with prefetcher._results_lock:
-            prefetcher._results[first.meta_ref] = meta_bytes_first
-        prefetcher.emit_ready()
-        prefetcher.fire_done_callbacks()
+        with fetcher._results_lock:
+            fetcher._results[first.meta_ref] = meta_bytes_first
+        fetcher.after_loop_batch()
         assert [b.size_bytes() for b in outputs] == [108, 208]
         assert task.has_finished
 
@@ -1691,8 +1686,7 @@ class TestDataOpTask:
         )
 
         ray.wait([gen], fetch_local=False)
-        prefetcher = MetadataPrefetcher()
-        fetcher = ThreadedMetadataFetcher(prefetcher)
+        fetcher = ThreadedMetadataFetcher()
         deadline = time.time() + 30
         while not task.is_drained() and time.time() < deadline:
             task.on_data_ready(None, fetcher)
@@ -1701,15 +1695,15 @@ class TestDataOpTask:
         assert len(deferred) == 2
         first, second = deferred
         fetcher.submit("op")
-        fetcher.register_drained([task])
+        fetcher.check_if_drained([task])
         good_bytes = ray.get(first.meta_ref)
         boom = ValueError("metadata fetch boom")
         # First pair fetches fine; the second resolves to an exception.
-        with prefetcher._results_lock:
-            prefetcher._results[first.meta_ref] = good_bytes
-            prefetcher._results[second.meta_ref] = boom
+        with fetcher._results_lock:
+            fetcher._results[first.meta_ref] = good_bytes
+            fetcher._results[second.meta_ref] = boom
 
-        failures = prefetcher.emit_ready() + prefetcher.fire_done_callbacks()
+        failures = fetcher.after_loop_batch()
 
         # The error is surfaced (not raised), tagged with the operator name.
         assert failures == [("Map(fn)", boom)]
@@ -1719,7 +1713,7 @@ class TestDataOpTask:
         # The task completed despite the dropped block (done callback fired).
         assert done == [1]
         assert task.has_finished
-        assert not prefetcher.has_pending_work()
+        assert not fetcher.has_pending_work()
 
     def test_on_data_ready_branches_with_fake_fetcher(self, ray_start_regular_shared):
         """Mock the fetcher interface to drive ``on_data_ready``'s per-pair

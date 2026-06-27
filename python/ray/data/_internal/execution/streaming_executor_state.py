@@ -705,12 +705,12 @@ def process_completed_tasks(
         # (block_ref, meta_ref) pair becomes an emitted RefBundle:
         # - inline mode: ``on_data_ready`` fetches + emits each pair inline and
         #   fires the task's done-callback at end-of-stream (submit/
-        #   register_drained are no-ops). Master-identical.
+        #   check_if_drained are no-ops).
         # - threaded mode: every pulled pair is deferred (budget arithmetic uses
         #   the block's local ``object_size``, no per-ref ``ray.get``) and handed
         #   to the background fetcher by ``submit``; emission and the postponed
-        #   done-callback happen in ``after_loop_batch``, preserving today's
-        #   per-op, per-task, per-pair emission order.
+        #   done-callback happen in ``after_loop_batch``, preserving the per-op,
+        #   per-task, per-pair emission order.
         for state, ready_tasks in ready_tasks_by_op.items():
             # TODO elaborate why sorting (helps preserve_order case)
             ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
@@ -738,10 +738,10 @@ def process_completed_tasks(
                 # Hand this op's just-deferred pairs to the fetcher, and register
                 # any end-of-stream tasks for a postponed done-callback (no-ops in
                 # inline mode, where the pairs already emitted above). In a
-                # ``finally`` so a re-raised ``max_errored_blocks`` error can't
-                # strand pairs already deferred into the fetcher this iteration.
+                # ``finally`` so a thrown error can't strand pairs already
+                # deferred into the fetcher this iteration.
                 metadata_fetcher.submit(state)
-                metadata_fetcher.register_drained(op_data_tasks)
+                metadata_fetcher.check_if_drained(op_data_tasks)
 
     # Emit whatever's ready, in per-op order, then fire any postponed done
     # callbacks — UNCONDITIONALLY, even when there are no active tasks this
