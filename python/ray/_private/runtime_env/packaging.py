@@ -61,12 +61,6 @@ RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR = (
 # zipped on MacOS.
 MAC_OS_ZIP_HIDDEN_DIR_NAME = "__MACOSX"
 
-# Cap the flattened local package name from parse_uri() so that the ".lock"
-# the caller appends stays within NAME_MAX (255 bytes on ext4/xfs/btrfs/APFS).
-# Exact ceiling is 250 (255 - len(".lock")); 200 leaves a defensive margin
-# without shortening typical names.
-_MAX_PACKAGE_NAME_LEN = 200
-
 
 def _mib_string(num_bytes: float) -> str:
     size_mib = float(num_bytes / 1024**2)
@@ -266,8 +260,14 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     Note that the output of this function is not for handling actual IO, it's
     only for setting up local directory folders by using package name as path.
 
-    >>> parse_uri("https://test.com/file.zip")
-    (<Protocol.HTTPS: 'https'>, 'https_test_com_file.zip')
+    Remote URIs (non-.whl) are hashed so the local filename stays well within
+    the filesystem NAME_MAX limit (255 bytes on ext4/xfs/btrfs/APFS) once the
+    caller appends ".lock". `.whl` URIs are kept verbatim to honor PEP 427.
+
+    >>> import hashlib
+    >>> protocol, name = parse_uri("https://test.com/file.zip")
+    >>> name == f"https_{hashlib.sha1(b'https://test.com/file.zip').hexdigest()}.zip"
+    True
 
     >>> parse_uri("https://test.com/file.whl")
     (<Protocol.HTTPS: 'https'>, 'file.whl')
@@ -292,46 +292,19 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             # for more information.
             package_name = uri.path.split("/")[-1]
         else:
-            package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
-
-            disallowed_chars = ["/", ":", "@", "+", " ", "(", ")"]
-            for disallowed_char in disallowed_chars:
-                package_name = package_name.replace(disallowed_char, "_")
-
-            # Preserve compound extensions like .tar.gz before replacing dots
-            compound_ext = None
-            if package_name.endswith(".tar.gz"):
-                compound_ext = ".tar.gz"
-                package_name = package_name[: -len(".tar.gz")]
-            elif package_name.endswith(".tar.bz2"):
-                compound_ext = ".tar.bz2"
-                package_name = package_name[: -len(".tar.bz2")]
-
-            if compound_ext:
-                package_name = package_name.replace(".", "_")
-                package_name += compound_ext
+            # Hash the URI to produce a stable, NAME_MAX-safe local filename
+            # regardless of how long or deeply nested the URI is. The extension
+            # is preserved so is_zip_uri / is_jar_uri keep working. Compound
+            # extensions (.tar.gz, .tar.bz2) are kept intact so archive-type
+            # detection downstream still works.
+            if uri.path.endswith(".tar.gz"):
+                suffix = ".tar.gz"
+            elif uri.path.endswith(".tar.bz2"):
+                suffix = ".tar.bz2"
             else:
-                # Remove all periods except the last, which is part of the
-                # file extension
-                package_name = package_name.replace(
-                    ".", "_", package_name.count(".") - 1
-                )
-
-            # If the flattened name would push the caller-appended ".lock"
-            # past NAME_MAX, replace the long middle with a stable hash of
-            # the original URI. The extension is preserved so is_zip_uri /
-            # is_jar_uri keep working.
-            if len(package_name) > _MAX_PACKAGE_NAME_LEN:
-                original_len = len(package_name)
-                suffix = compound_ext or Path(package_name).suffix
-                digest = hashlib.sha1(pkg_uri.encode("utf-8")).hexdigest()
-                package_name = f"{protocol.value}_{digest}{suffix}"
-                default_logger.debug(
-                    f"runtime_env URI '{pkg_uri}' flattens to {original_len} "
-                    f"chars, which would breach the filesystem NAME_MAX limit "
-                    f"once '.lock' is appended; hashing the URI to "
-                    f"'{package_name}' to stay under it."
-                )
+                suffix = Path(uri.path).suffix
+            digest = hashlib.sha1(pkg_uri.encode("utf-8")).hexdigest()
+            package_name = f"{protocol.value}_{digest}{suffix}"
     else:
         package_name = uri.netloc
     return (protocol, package_name)
@@ -944,6 +917,9 @@ async def download_and_unpack_package(
                     or if package URI is invalid.
 
     """
+    if logger is None:
+        logger = default_logger
+
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
     if pkg_file.suffix == "":
         raise ValueError(
@@ -951,10 +927,14 @@ async def download_and_unpack_package(
             "URI must have a file extension and the URI must be valid."
         )
 
-    async with _AsyncFileLock(str(pkg_file) + ".lock"):
-        if logger is None:
-            logger = default_logger
+    # Surface the URI -> local-path mapping at INFO so an engineer can
+    # always recover which URI produced a given cached file (parse_uri
+    # hashes remote URIs, so the basename is opaque without this log).
+    logger.info(
+        f"runtime_env URI '{pkg_uri}' resolves to local file '{pkg_file}'."
+    )
 
+    async with _AsyncFileLock(str(pkg_file) + ".lock"):
         logger.debug(f"Fetching package for URI: {pkg_uri}")
 
         local_dir = get_local_dir_from_uri(pkg_uri, base_directory)
