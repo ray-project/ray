@@ -16,5 +16,6 @@ SGLang integration <sglang>
 vLLM compatibility <vllm-compatibility>
 Fractional GPU serving <fractional-gpu>
 Observability and monitoring <observability>
+Ascend NPU deployment <npu-ascend>
 ```
 

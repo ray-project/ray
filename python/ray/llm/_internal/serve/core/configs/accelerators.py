@@ -25,6 +25,12 @@ TPU_ACCELERATOR_VALUES = {
     if name.startswith("GOOGLE_TPU")
 }
 
+NPU_ACCELERATOR_VALUES = {
+    member.value
+    for name, member in AcceleratorType.__members__.items()
+    if name.startswith("HUAWEI_NPU")
+}
+
 
 def format_ray_accelerator_resource(accelerator_type_str: str) -> str:
     """Formats the accelerator type into a Ray custom resource string."""
@@ -32,7 +38,7 @@ def format_ray_accelerator_resource(accelerator_type_str: str) -> str:
 
 
 def infer_hardware_kind_from_bundles(
-    placement_group_config: Optional[Dict[str, Any]]
+    placement_group_config: Optional[Dict[str, Any]],
 ) -> Optional[str]:
     """Inspects placement group bundles and returns the inferred hardware kind."""
     if not placement_group_config:
@@ -44,10 +50,12 @@ def infer_hardware_kind_from_bundles(
 
     if any(b.get("TPU", 0) > 0 for b in all_bundles):
         return "tpu"
+    if any(b.get("NPU", 0) > 0 for b in all_bundles):
+        return "npu"
     if any(b.get("GPU", 0) > 0 for b in all_bundles):
         return "gpu"
 
-    # If a config was provided but lacks GPUs or TPUs, it is a CPU deployment
+    # If a config was provided but lacks GPUs, TPUs, or NPUs, it is a CPU deployment
     return "cpu"
 
 
@@ -63,13 +71,17 @@ class GPUConfig(AcceleratorConfig):
     kind: Literal["gpu"] = "gpu"
 
 
+class NPUConfig(AcceleratorConfig):
+    kind: Literal["npu"] = "npu"
+
+
 class TPUConfig(AcceleratorConfig):
     kind: Literal["tpu"] = "tpu"
     topology: Optional[str] = None
 
 
 AnyAcceleratorConfig = Annotated[
-    Union[CPUConfig, GPUConfig, TPUConfig],
+    Union[CPUConfig, GPUConfig, NPUConfig, TPUConfig],
     Field(discriminator="kind"),
 ]
 
@@ -171,6 +183,36 @@ class GPUAccelerator(AcceleratorBackend):
 
     def get_remote_options(self, accelerator_type_str: str = None):
         options = {"num_gpus": 0.001}
+        if accelerator_type_str:
+            options["accelerator_type"] = accelerator_type_str
+        return options
+
+
+class NPUAccelerator(AcceleratorBackend):
+    def default_bundles(
+        self, *, num_devices: int, accelerator_type_str: Optional[str] = None
+    ):
+        bundle = {"NPU": 1}
+        if accelerator_type_str:
+            bundle[format_ray_accelerator_resource(accelerator_type_str)] = 0.001
+        return [bundle.copy() for _ in range(num_devices)]
+
+    def create_placement_group(
+        self,
+        *,
+        bundles: List[Dict[str, float]],
+        strategy: str,
+        name: str,
+        accelerator_type_str: Optional[str] = None,
+    ):
+        return placement_group(bundles=bundles, strategy=strategy, name=name)
+
+    @property
+    def requires_remote_initialization(self) -> bool:
+        return True
+
+    def get_remote_options(self, accelerator_type_str: str = None):
+        options = {"resources": {"NPU": 0.001}}
         if accelerator_type_str:
             options["accelerator_type"] = accelerator_type_str
         return options
