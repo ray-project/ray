@@ -22,6 +22,7 @@ from ray.data._internal.execution.operators.actor_pool_map_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
+from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
     ShuffleReduceOp,
@@ -98,7 +99,7 @@ class FuseOperators(Rule):
             self._update_output_deps(input)
 
     def _fuse_map_into_shuffle_reduce_in_dag(
-        self, dag: PhysicalOperator
+        self, dag: PhysicalOperator, has_downstream_limit: bool = False
     ) -> PhysicalOperator:
         """Starting at the given operator, traverses up the DAG and fuses a
         task-pool map sitting directly downstream of a V2 hash-shuffle reduce
@@ -106,25 +107,56 @@ class FuseOperators(Rule):
 
         Returns the current (root) operator after completing upstream fusions.
         """
-        upstream_ops = dag.input_dependencies
-        if (
-            isinstance(dag, TaskPoolMapOperator)
-            and dag.supports_fusion()
-            and self._can_fuse_map_into_shuffle_reduce(dag)
-            and len(upstream_ops) == 1
-            and isinstance(upstream_ops[0], ShuffleReduceOp)
-            and upstream_ops[0]._fused_output_map_transformer is None
-            and are_op_remote_args_compatible(
-                self._op_map[upstream_ops[0]], self._op_map[dag]
+        if self._can_fuse_map_into_shuffle_reduce(dag, has_downstream_limit):
+            dag = self._get_fused_map_into_shuffle_reduce_operator(
+                dag, dag.input_dependencies[0]
             )
-        ):
-            dag = self._get_fused_map_into_shuffle_reduce_operator(dag, upstream_ops[0])
 
+        has_downstream_limit = has_downstream_limit or isinstance(dag, LimitOperator)
         dag._input_dependencies = [
-            self._fuse_map_into_shuffle_reduce_in_dag(upstream_op)
+            self._fuse_map_into_shuffle_reduce_in_dag(upstream_op, has_downstream_limit)
             for upstream_op in dag.input_dependencies
         ]
         return dag
+
+    def _can_fuse_map_into_shuffle_reduce(
+        self, dag: PhysicalOperator, has_downstream_limit: bool
+    ) -> bool:
+        """Whether ``dag`` is a task-pool map that can be fused into the V2
+        hash-shuffle reduce immediately upstream of it.
+        """
+        # `dag` must be a fusable task-pool map.
+        if not (isinstance(dag, TaskPoolMapOperator) and dag.supports_fusion()):
+            return False
+
+        # Don't fuse under a downstream limit. A standalone map is throttled at
+        # task admission (so a `take(n)` only runs ~n tasks), but a fused reduce
+        # task runs the map over its whole partition before the limit can stop
+        # it -- materializing far more than requested.
+        if has_downstream_limit:
+            return False
+
+        # A non-file-datasink write defers `on_write_start` to the map op (e.g.
+        # Iceberg schema evolution), which the fused reduce never runs. File
+        # datasinks run it driver-side in `Dataset.write_datasink`, so they're
+        # safe; non-write maps have no such hook.
+        # TODO: support non-file-datasink writes by running the map's `on_start`
+        # hook in the fused reduce op.
+        logical_op = self._op_map.get(dag)
+        if isinstance(logical_op, Write) and not isinstance(
+            logical_op.datasink_or_legacy_datasource, _FileDatasink
+        ):
+            return False
+
+        # The sole upstream must be a reduce that hasn't already fused with a map.
+        upstream_ops = dag.input_dependencies
+        if len(upstream_ops) != 1 or not isinstance(upstream_ops[0], ShuffleReduceOp):
+            return False
+        reduce_op = upstream_ops[0]
+        if reduce_op._fused_output_map_transformer is not None:
+            return False
+
+        return are_op_remote_args_compatible(self._op_map[reduce_op], self._op_map[dag])
 
     def _fuse_streaming_repartition_operators_in_dag(
         self, dag: PhysicalOperator
@@ -791,23 +823,6 @@ class FuseOperators(Rule):
 
             return False
 
-        return True
-
-    def _can_fuse_map_into_shuffle_reduce(self, map_op: TaskPoolMapOperator) -> bool:
-        """Whether ``map_op`` may be fused into an upstream reduce.
-
-        Writes to non-file datasinks are excluded: their ``on_write_start`` hook
-        is deferred to the map op's first input (e.g. Iceberg schema evolution),
-        and the fused reduce never runs it.  ``_FileDatasink`` writes are safe --
-        their ``on_write_start`` runs driver-side in ``Dataset.write_datasink``.
-        Non-write maps don't have the hook and always fuse.
-
-        TODO: support non-file-datasink writes by running the map's ``on_start``
-        hook in the fused reduce op.
-        """
-        logical_op = self._op_map.get(map_op)
-        if isinstance(logical_op, Write):
-            return isinstance(logical_op.datasink_or_legacy_datasource, _FileDatasink)
         return True
 
 
