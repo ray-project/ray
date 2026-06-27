@@ -68,10 +68,12 @@ def _cpu_usage():
     by reading from cpuacct in cgroups v1 or cpu.stat in cgroups v2."""
     try:
         # cgroups v1
-        return int(open(CPU_USAGE_PATH).read())
+        with open(CPU_USAGE_PATH) as f:
+            return int(f.read())
     except FileNotFoundError:
         # cgroups v2
-        cpu_stat_text = open(CPU_USAGE_PATH_V2).read()
+        with open(CPU_USAGE_PATH_V2) as f:
+            cpu_stat_text = f.read()
         # e.g. "usage_usec 16089294616"
         cpu_stat_first_line = cpu_stat_text.split("\n")[0]
         # get the second word of the first line, cast as an integer
@@ -91,7 +93,8 @@ def _system_usage():
     See also the /proc/stat entry here:
     https://man7.org/linux/man-pages/man5/proc.5.html
     """  # noqa
-    cpu_summary_str = open(PROC_STAT_PATH).read().split("\n")[0]
+    with open(PROC_STAT_PATH) as f:
+        cpu_summary_str = f.readline()
     parts = cpu_summary_str.split()
     assert parts[0] == "cpu"
     usage_data = parts[1:8]
@@ -105,7 +108,8 @@ def _host_num_cpus():
     """Number of physical CPUs, obtained by parsing /proc/stat."""
     global host_num_cpus
     if host_num_cpus is None:
-        proc_stat_lines = open(PROC_STAT_PATH).read().split("\n")
+        with open(PROC_STAT_PATH) as f:
+            proc_stat_lines = f.read().split("\n")
         split_proc_stat_lines = [line.split() for line in proc_stat_lines]
         cpu_lines = [
             split_line
