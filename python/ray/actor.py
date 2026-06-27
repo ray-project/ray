@@ -616,6 +616,7 @@ def method(
     max_task_retries: Optional[int] = None,
     retry_exceptions: Optional[Union[bool, list, tuple]] = None,
     _generator_backpressure_num_objects: Optional[int] = None,
+    _num_objects_per_yield: Optional[int] = None,
     enable_task_events: Optional[bool] = None,
     tensor_transport: Optional[str] = None,
 ) -> _MethodDecorator:
@@ -693,6 +694,7 @@ def method(*args: Any, **kwargs: Any):
         "max_task_retries",
         "retry_exceptions",
         "_generator_backpressure_num_objects",
+        "_num_objects_per_yield",
         "enable_task_events",
         "tensor_transport",
     ]
@@ -717,6 +719,11 @@ def method(*args: Any, **kwargs: Any):
             method.__ray_generator_backpressure_num_objects__ = kwargs[
                 "_generator_backpressure_num_objects"
             ]
+        if "_num_objects_per_yield" in kwargs:
+            ray_option_utils.task_options["_num_objects_per_yield"].validate(
+                "_num_objects_per_yield", kwargs["_num_objects_per_yield"]
+            )
+            method.__ray_num_objects_per_yield__ = kwargs["_num_objects_per_yield"]
         if "enable_task_events" in kwargs and kwargs["enable_task_events"] is not None:
             method.__ray_enable_task_events__ = kwargs["enable_task_events"]
         if "tensor_transport" in kwargs:
@@ -770,6 +777,7 @@ class _ActorMethodMetadata:
         retry_exceptions: Union[bool, list, tuple],
         is_generator: bool,
         generator_backpressure_num_objects: int,
+        num_objects_per_yield: int,
         enable_task_events: bool,
         decorator: Optional[Any] = None,
         signature: Optional[List[inspect.Parameter]] = None,
@@ -787,6 +795,7 @@ class _ActorMethodMetadata:
             retry_exceptions: Boolean or list/tuple of exceptions to retry.
             is_generator: True if the method is a generator.
             generator_backpressure_num_objects: Generator-only config for backpressure.
+            num_objects_per_yield: Private generator-only config for grouped yields.
             enable_task_events: True if task events are enabled for this method.
             decorator: Optional decorator for the method invocation.
             signature: The signature of the actor method.
@@ -805,6 +814,9 @@ class _ActorMethodMetadata:
         self._retry_exceptions = retry_exceptions
         self._is_generator = is_generator
         self._generator_backpressure_num_objects = generator_backpressure_num_objects
+        self._num_objects_per_yield = (
+            1 if num_objects_per_yield is None else num_objects_per_yield
+        )
         self._enable_task_events = enable_task_events
         self._decorator = decorator
         self._signature = signature
@@ -822,6 +834,7 @@ class _ActorMethodMetadata:
             self._retry_exceptions,
             self._is_generator,
             self._generator_backpressure_num_objects,
+            self._num_objects_per_yield,
             self._enable_task_events,
             decorator=self._decorator,
             signature=self._signature,
@@ -848,6 +861,7 @@ class ActorMethod:
         retry_exceptions: Union[bool, list, tuple],
         is_generator: bool,
         generator_backpressure_num_objects: int,
+        num_objects_per_yield: int,
         enable_task_events: bool,
         decorator: Optional[Callable] = None,
         signature: Optional[List[inspect.Parameter]] = None,
@@ -869,6 +883,7 @@ class ActorMethod:
             generator_backpressure_num_objects: Generator-only config.
                 If a number of unconsumed objects reach this threshold,
                 the actor task stops pausing.
+            num_objects_per_yield: Private generator-only config for grouped yields.
             enable_task_events: True if task events is enabled, i.e., task events from
                 the actor should be reported. Defaults to True.
             decorator: An optional decorator that should be applied to the actor
@@ -892,6 +907,9 @@ class ActorMethod:
         self._retry_exceptions = retry_exceptions
         self._is_generator = is_generator
         self._generator_backpressure_num_objects = generator_backpressure_num_objects
+        self._num_objects_per_yield = (
+            1 if num_objects_per_yield is None else num_objects_per_yield
+        )
         self._enable_task_events = enable_task_events
         self._signature = signature
         # This is a decorator that is used to wrap the function invocation (as
@@ -945,6 +963,11 @@ class ActorMethod:
             A wrapper exposing ``.remote()`` / ``.bind()`` that applies the
             given options when the method is invoked.
         """
+        if "_num_objects_per_yield" in options:
+            raise ValueError(
+                "_num_objects_per_yield cannot be overridden per actor method "
+                "call. Use @ray.method(_num_objects_per_yield=...) instead."
+            )
 
         tensor_transport = options.get("tensor_transport", None)
         if tensor_transport is not None:
@@ -967,6 +990,7 @@ class ActorMethod:
         num_returns=None,
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
+        _num_objects_per_yield=None,
     ) -> Union["ray.dag.ClassMethodNode", Tuple["ray.dag.ClassMethodNode", ...]]:
         from ray.dag.class_node import (
             BIND_INDEX_KEY,
@@ -983,6 +1007,11 @@ class ActorMethod:
             "concurrency_group": concurrency_group,
             "_generator_backpressure_num_objects": _generator_backpressure_num_objects,
         }
+        if _num_objects_per_yield is not None:
+            ray_option_utils.task_options["_num_objects_per_yield"].validate(
+                "_num_objects_per_yield", _num_objects_per_yield
+            )
+            options["_num_objects_per_yield"] = _num_objects_per_yield
 
         actor = self._actor
         if actor is None:
@@ -1049,6 +1078,7 @@ class ActorMethod:
         retry_exceptions=None,
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
+        _num_objects_per_yield=None,
         enable_task_events=None,
         tensor_transport: Optional[str] = None,
         _labels: Optional[Dict[str, str]] = None,
@@ -1067,6 +1097,13 @@ class ActorMethod:
             _generator_backpressure_num_objects = (
                 self._generator_backpressure_num_objects
             )
+        if _generator_backpressure_num_objects is None:
+            _generator_backpressure_num_objects = -1
+        if _num_objects_per_yield is None:
+            _num_objects_per_yield = self._num_objects_per_yield
+        ray_option_utils.task_options["_num_objects_per_yield"].validate(
+            "_num_objects_per_yield", _num_objects_per_yield
+        )
         if tensor_transport is None:
             tensor_transport = self._tensor_transport
 
@@ -1120,6 +1157,7 @@ class ActorMethod:
                 generator_backpressure_num_objects=(
                     _generator_backpressure_num_objects
                 ),
+                num_objects_per_yield=_num_objects_per_yield,
                 enable_task_events=enable_task_events,
                 tensor_transport=tensor_transport,
                 labels=_labels,
@@ -1149,6 +1187,7 @@ class ActorMethod:
             "decorator": self._decorator,
             "is_generator": self._is_generator,
             "generator_backpressure_num_objects": self._generator_backpressure_num_objects,  # noqa
+            "num_objects_per_yield": self._num_objects_per_yield,
             "enable_task_events": self._enable_task_events,
             "_tensor_transport": self._tensor_transport,
         }
@@ -1162,6 +1201,7 @@ class ActorMethod:
             state["retry_exceptions"],
             state["is_generator"],
             state["generator_backpressure_num_objects"],
+            state.get("num_objects_per_yield", 1),
             state["enable_task_events"],
             state["decorator"],
             state["_tensor_transport"],
@@ -1250,6 +1290,7 @@ class _ActorClassMethodMetadata(object):
         self.method_is_generator = {}
         self.enable_task_events = {}
         self.generator_backpressure_num_objects = {}
+        self.num_objects_per_yield = {}
         self.concurrency_group_for_methods = {}
         self.method_name_to_tensor_transport: Dict[str, str] = {}
 
@@ -1317,6 +1358,10 @@ class _ActorClassMethodMetadata(object):
                 self.generator_backpressure_num_objects[
                     method_name
                 ] = method.__ray_generator_backpressure_num_objects__
+            if hasattr(method, "__ray_num_objects_per_yield__"):
+                self.num_objects_per_yield[
+                    method_name
+                ] = method.__ray_num_objects_per_yield__
 
             if hasattr(method, "__ray_tensor_transport__"):
                 self.method_name_to_tensor_transport[
@@ -2131,6 +2176,12 @@ class ActorClass(Generic[T]):
                 "out-of-order execution."
             )
 
+        actor_generator_backpressure_num_objects = actor_options.get(
+            "_actor_generator_backpressure_num_objects"
+        )
+        if actor_generator_backpressure_num_objects is None:
+            actor_generator_backpressure_num_objects = -1
+
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,
@@ -2156,6 +2207,9 @@ class ActorClass(Generic[T]):
             fallback_strategy=actor_options.get("fallback_strategy"),
             allow_out_of_order_execution=allow_out_of_order_execution,
             enable_tensor_transport=meta.enable_tensor_transport,
+            actor_generator_backpressure_num_objects=(
+                actor_generator_backpressure_num_objects
+            ),
         )
 
         if _actor_launch_hook:
@@ -2175,6 +2229,7 @@ class ActorClass(Generic[T]):
             meta.method_meta.max_task_retries,
             meta.method_meta.retry_exceptions,
             meta.method_meta.generator_backpressure_num_objects,
+            meta.method_meta.num_objects_per_yield,
             meta.method_meta.enable_task_events,
             meta.enable_tensor_transport,
             meta.method_meta.method_name_to_tensor_transport,
@@ -2183,6 +2238,9 @@ class ActorClass(Generic[T]):
             worker.current_cluster_and_job,
             original_handle=True,
             allow_out_of_order_execution=allow_out_of_order_execution,
+            actor_generator_backpressure_num_objects=(
+                actor_generator_backpressure_num_objects
+            ),
         )
 
         if meta.enable_tensor_transport:
@@ -2237,6 +2295,8 @@ class ActorHandle(Generic[T]):
         _ray_method_generator_backpressure_num_objects: Generator-only
             config. The max number of objects to generate before it
             starts pausing a generator.
+        _ray_method_num_objects_per_yield: Private generator-only config.
+            The number of ObjectRefs produced by each streaming generator yield.
         _ray_method_enable_task_events: The value of whether task
             tracing is enabled for the actor methods. This overrides the
             actor's default value (`_ray_enable_task_events`).
@@ -2273,6 +2333,7 @@ class ActorHandle(Generic[T]):
         method_max_task_retries: Dict[str, int],
         method_retry_exceptions: Dict[str, Union[bool, list, tuple]],
         method_generator_backpressure_num_objects: Dict[str, int],
+        method_num_objects_per_yield: Dict[str, int],
         method_enable_task_events: Dict[str, bool],
         enable_tensor_transport: bool,
         method_name_to_tensor_transport: Dict[str, str],
@@ -2282,6 +2343,7 @@ class ActorHandle(Generic[T]):
         original_handle: bool = False,
         weak_ref: bool = False,
         allow_out_of_order_execution: Optional[bool] = None,
+        actor_generator_backpressure_num_objects: int = -1,
     ):
         """Initialize an ActorHandle.
 
@@ -2297,6 +2359,7 @@ class ActorHandle(Generic[T]):
             method_max_task_retries: Dictionary mapping method names to their maximum task retries.
             method_retry_exceptions: Dictionary mapping method names to their retry exception settings.
             method_generator_backpressure_num_objects: Dictionary mapping method names to their generator backpressure settings.
+            method_num_objects_per_yield: Dictionary mapping method names to their grouped-yield arity.
             method_enable_task_events: Dictionary mapping method names to whether task events are enabled.
             enable_tensor_transport: Whether tensor transport is enabled for
                 this actor. If True, then methods can be called with
@@ -2309,6 +2372,10 @@ class ActorHandle(Generic[T]):
             original_handle: Whether this is the original actor handle.
             weak_ref: Whether this is a weak reference to the actor.
             allow_out_of_order_execution: Whether the actor can execute tasks out of order.
+            actor_generator_backpressure_num_objects: Actor-wide cap on unconsumed
+                streaming generator objects across concurrent generator tasks; ``-1`` means
+                disabled. Mirrors ``_actor_generator_backpressure_num_objects`` on actor
+                creation.
         """
         self._ray_actor_language = language
         self._ray_actor_id = actor_id
@@ -2317,6 +2384,9 @@ class ActorHandle(Generic[T]):
         self._ray_weak_ref = weak_ref
         self._ray_enable_task_events = enable_task_events
         self._ray_allow_out_of_order_execution = allow_out_of_order_execution
+        self._ray_actor_generator_backpressure_num_objects = (
+            actor_generator_backpressure_num_objects
+        )
 
         self._ray_method_is_generator = method_is_generator
         self._ray_method_decorators = method_decorators
@@ -2327,6 +2397,7 @@ class ActorHandle(Generic[T]):
         self._ray_method_generator_backpressure_num_objects = (
             method_generator_backpressure_num_objects
         )
+        self._ray_method_num_objects_per_yield = method_num_objects_per_yield
         self._ray_method_enable_task_events = method_enable_task_events
         self._ray_enable_tensor_transport = enable_tensor_transport
         self._ray_method_name_to_tensor_transport = method_name_to_tensor_transport
@@ -2370,7 +2441,10 @@ class ActorHandle(Generic[T]):
                 retry_exceptions=self._ray_method_retry_exceptions.get(method_name),
                 is_generator=self._ray_method_is_generator.get(method_name),
                 generator_backpressure_num_objects=self._ray_method_generator_backpressure_num_objects.get(
-                    method_name
+                    method_name, -1
+                ),
+                num_objects_per_yield=self._ray_method_num_objects_per_yield.get(
+                    method_name, 1
                 ),
                 enable_task_events=self._ray_method_enable_task_events.get(
                     method_name, self._ray_enable_task_events
@@ -2412,6 +2486,7 @@ class ActorHandle(Generic[T]):
         retry_exceptions: Union[bool, list, tuple] = None,
         concurrency_group_name: Optional[str] = None,
         generator_backpressure_num_objects: Optional[int] = None,
+        num_objects_per_yield: Optional[int] = None,
         enable_task_events: Optional[bool] = None,
         tensor_transport: Optional[str] = None,
         labels: Optional[Dict[str, str]] = None,
@@ -2435,6 +2510,8 @@ class ActorHandle(Generic[T]):
             concurrency_group_name: The name of the concurrency group to use.
             generator_backpressure_num_objects: The number of objects to generate
                 before applying backpressure.
+            num_objects_per_yield: Private streaming generator option for how many
+                ObjectRefs each yield should unpack into.
             enable_task_events: True if tracing is enabled, i.e., task events from
                 the actor should be reported.
             tensor_transport: The tensor transport protocol to use for the actor method.
@@ -2487,6 +2564,8 @@ class ActorHandle(Generic[T]):
 
         if generator_backpressure_num_objects is None:
             generator_backpressure_num_objects = -1
+        if num_objects_per_yield is None:
+            num_objects_per_yield = 1
 
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,
@@ -2501,6 +2580,7 @@ class ActorHandle(Generic[T]):
             self._ray_actor_method_cpus,
             concurrency_group_name if concurrency_group_name is not None else b"",
             generator_backpressure_num_objects,
+            num_objects_per_yield,
             enable_task_events,
             tensor_transport,
             labels,
@@ -2578,6 +2658,7 @@ class ActorHandle(Generic[T]):
             False,  # retry_exceptions
             False,  # is_generator
             self._ray_method_generator_backpressure_num_objects.get(item, -1),
+            self._ray_method_num_objects_per_yield.get(item, 1),
             self._ray_enable_task_events,  # enable_task_events
             # Currently, cross-lang actor method not support decorator
             decorator=None,
@@ -2658,6 +2739,9 @@ class ActorHandle(Generic[T]):
                     "method_generator_backpressure_num_objects": (
                         self._ray_method_generator_backpressure_num_objects
                     ),
+                    "method_num_objects_per_yield": (
+                        self._ray_method_num_objects_per_yield
+                    ),
                     "method_enable_task_events": self._ray_method_enable_task_events,
                     "enable_tensor_transport": self._ray_enable_tensor_transport,
                     "method_name_to_tensor_transport": self._ray_method_name_to_tensor_transport,
@@ -2716,6 +2800,7 @@ class ActorHandle(Generic[T]):
                 state["method_max_task_retries"],
                 state["method_retry_exceptions"],
                 state["method_generator_backpressure_num_objects"],
+                state.get("method_num_objects_per_yield", {}),
                 state["method_enable_task_events"],
                 state["enable_tensor_transport"],
                 state["method_name_to_tensor_transport"],
