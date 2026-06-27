@@ -46,6 +46,40 @@ def test_resolve_block_refs(ray_start_regular_shared):
     assert [b.block for b in resolved] == [0, 1, 2]
 
 
+def test_resolve_block_refs_does_not_accumulate_ref_bundles_timer(
+    ray_start_regular_shared,
+):
+    """Regression test for nested-timer double-counting.
+
+    ``resolve_block_refs`` must NOT accumulate into
+    ``iter_get_ref_bundles_s``.  When prefetching is enabled, that Timer is
+    already driven by ``prefetch_batches_locally.get_next_ref_bundle``;
+    accumulating here too would double-count the upstream wait.  The
+    ``production_wait`` TimeSpan is still captured per block for overlap
+    attribution.
+    """
+    from ray.data._internal.stats import DatasetStats
+
+    def slow_block_ref_iter():
+        for i in range(3):
+            time.sleep(0.05)
+            yield ray.put(i)
+
+    stats = DatasetStats(metadata={}, parent=None)
+    resolved = list(resolve_block_refs(slow_block_ref_iter(), stats=stats))
+
+    assert len(resolved) == 3
+
+    # production_wait TimeSpan captured per block for overlap attribution.
+    for r in resolved:
+        assert r.fetch is not None
+        assert r.fetch.production_wait is not None
+        assert r.fetch.production_wait.duration >= 0.0
+
+    # iter_get_ref_bundles_s must NOT be accumulated here.
+    assert stats.iter_get_ref_bundles_s.get() == 0.0
+
+
 @pytest.mark.parametrize("block_size", [1, 10])
 @pytest.mark.parametrize("drop_last", [True, False])
 def test_blocks_to_batches(block_size, drop_last):
