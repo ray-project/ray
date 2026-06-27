@@ -1,4 +1,17 @@
-export const memoryConverter = (bytes: number) => {
+export const memoryConverter = (bytes: number | undefined | null) => {
+  // The reporter agent serializes psutil process stats via as_dict(), which
+  // yields null for fields psutil cannot read (e.g. pfaults/pageins on some
+  // platforms, or when AccessDenied is raised). Guard against null/undefined
+  // /NaN so the Worker table keeps rendering instead of crashing on `.toFixed`.
+  if (
+    bytes === null ||
+    bytes === undefined ||
+    typeof bytes !== "number" ||
+    isNaN(bytes)
+  ) {
+    return "-";
+  }
+
   if (bytes < 1024) {
     return `${bytes.toFixed(4)}B`;
   }
