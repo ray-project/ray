@@ -173,6 +173,8 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         has_leftover = any(leftover is not None for leftover in self._leftovers)
         has_remaining = any(len(d) > 0 for d in self._block_deques)
         if has_leftover or has_remaining:
+            # TODO(Clark): Support different number of rows via user-directed
+            # dropping/padding instead of erroring out.
             raise ValueError("Cannot zip datasets of different number of rows")
 
     def has_next(self) -> bool:
@@ -338,6 +340,10 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
 
     def _submit_zip_task(self, aligned_refs: List[ray.ObjectRef]) -> None:
         """Submit an asynchronous task that zips the aligned blocks together."""
+        # TODO(ekl): Wire up per-task metrics (on_task_submitted /
+        # on_task_output_generated / on_task_finished) so the progress bar and
+        # task counters reflect zip tasks. Only queue-level metrics are tracked
+        # today.
         label_selector = self.data_context.execution_options.label_selector
         zip_fn = cached_remote_fn(_zip_blocks_task, num_returns="streaming")
         if label_selector:
@@ -389,6 +395,8 @@ def _zip_blocks_task(
     per the streaming-generator protocol expected by :class:`DataOpTask`.
     """
     stats = BlockExecStats.builder()
+    # TODO(Clark): Extend BlockAccessor.zip() to accept N other blocks so we can
+    # zip in a single call instead of folding pairwise.
     result = blocks[0]
     for other_block in blocks[1:]:
         result = BlockAccessor.for_block(result).zip(other_block)
