@@ -1066,31 +1066,28 @@ class TestServeDeploySchema:
                 {"applications": [], "apply_strategy": "invalid"}
             )
 
-    def test_merge_rejects_target_capacity(self):
-        with pytest.raises(ValidationError, match="target_capacity cannot be set"):
+    @pytest.mark.parametrize(
+        "field, value",
+        [
+            ("target_capacity", 50.0),
+            ("http_options", {"host": "1.2.3.4"}),
+            ("grpc_options", {"port": 9001}),
+            ("proxy_location", "EveryNode"),
+            ("logging_config", {"log_level": "DEBUG"}),
+        ],
+    )
+    def test_merge_rejects_non_application_fields(self, field, value):
+        """Merge mode must reject any top level field other than applications."""
+        with pytest.raises(
+            ValidationError, match="cannot be set when apply_strategy is 'merge'"
+        ):
             ServeDeploySchema.model_validate(
                 {
                     "applications": [],
                     "apply_strategy": "merge",
-                    "target_capacity": 50.0,
+                    field: value,
                 }
             )
-
-    def test_replace_allows_target_capacity(self):
-        config = ServeDeploySchema.model_validate(
-            {
-                "applications": [],
-                "apply_strategy": "replace",
-                "target_capacity": 50.0,
-            }
-        )
-        assert config.target_capacity == 50.0
-
-    def test_merge_allows_omitting_target_capacity(self):
-        config = ServeDeploySchema.model_validate(
-            {"applications": [], "apply_strategy": "merge"}
-        )
-        assert config.target_capacity is None
 
 
 class TestLoggingConfig:

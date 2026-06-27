@@ -147,7 +147,7 @@ class ServeHead(SubprocessModule):
     async def put_all_applications(self, req: Request) -> Response:
         from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
         from ray.serve._private.api import serve_start_async
-        from ray.serve.schema import ApplyStrategy, ServeDeploySchema
+        from ray.serve.schema import ServeDeploySchema
 
         try:
             config: ServeDeploySchema = ServeDeploySchema.model_validate(
@@ -159,27 +159,11 @@ class ServeHead(SubprocessModule):
                 text=repr(e),
             )
 
-        is_merge = config.apply_strategy == ApplyStrategy.MERGE
-        fields_set = config.model_fields_set
-
-        # In merge mode, setting one of http_options/proxy_location fills the
-        # other with defaults which is a no-op on a running cluster and behaves similar to replace mode
-        # on startup.
-        build_http = not is_merge or (
-            "http_options" in fields_set or "proxy_location" in fields_set
+        config_http_options = config.http_options.model_dump()
+        full_http_options = dict(
+            {"location": config.proxy_location.value}, **config_http_options
         )
-        build_grpc = not is_merge or "grpc_options" in fields_set
-
-        full_http_options = None
-        if build_http:
-            config_http_options = config.http_options.model_dump()
-            full_http_options = dict(
-                {"location": config.proxy_location.value}, **config_http_options
-            )
-
-        grpc_options = None
-        if build_grpc:
-            grpc_options = config.grpc_options.model_dump()
+        grpc_options = config.grpc_options.model_dump()
 
         async with self._controller_start_lock:
             client = await serve_start_async(
@@ -192,8 +176,7 @@ class ServeHead(SubprocessModule):
         # Serve ignores HTTP options if it was already running when
         # serve_start_async() is called. Therefore we validate that no
         # existing HTTP options are updated and print warning in case they are
-        if full_http_options:
-            self.validate_http_options(client, full_http_options)
+        self.validate_http_options(client, full_http_options)
 
         try:
             if config.logging_config:

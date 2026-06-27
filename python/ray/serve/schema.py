@@ -1125,17 +1125,16 @@ class ServeDeploySchema(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def target_capacity_not_set_in_merge(self):
-        # target_capacity is a cluster-wide knob applied uniformly to all apps,
-        # so it can't be altered through a partial (merge) config.
-        if (
-            self.apply_strategy == ApplyStrategy.MERGE
-            and "target_capacity" in self.model_fields_set
-        ):
-            raise ValueError(
-                "target_capacity cannot be set when apply_strategy is 'merge'. "
-                "Use a 'replace' deploy to change target_capacity."
-            )
+    def merge_only_allows_applications(self):
+        # Merge disallows top level fields except apply_strategy and applications.
+        if self.apply_strategy == ApplyStrategy.MERGE:
+            disallowed = self.model_fields_set - {"applications", "apply_strategy"}
+            if disallowed:
+                raise ValueError(
+                    f"Top level fields: {sorted(disallowed)} cannot be set when "
+                    "apply_strategy is 'merge'. Use a 'replace' deploy to change "
+                    "these fields."
+                )
         return self
 
     @staticmethod
