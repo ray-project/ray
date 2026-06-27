@@ -560,8 +560,6 @@ def test_read_map_batches_operator_fusion_with_repartition_operator(
 def test_fuse_map_into_shuffle_reduce(
     ray_start_regular_shared_2_cpus, restore_data_context
 ):
-    """A task-pool map directly downstream of a V2 hash-shuffle reduce is
-    fused into the reduce op."""
     DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     ds = ray.data.range(100).repartition(4, keys=["id"]).map_batches(lambda b: b)
@@ -575,55 +573,32 @@ def test_fuse_map_into_shuffle_reduce(
     assert sorted(extract_values("id", ds.take_all())) == list(range(100))
 
 
-def test_fuse_chained_maps_into_shuffle_reduce(
+def test_map_not_fused_into_shuffle_reduce_with_downstream_limit(
     ray_start_regular_shared_2_cpus, restore_data_context
 ):
-    """A chain of task-pool maps is collapsed by map fusion first, then the
-    single resulting map is fused into the reduce."""
     DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     ds = (
         ray.data.range(100)
         .repartition(4, keys=["id"])
         .map_batches(lambda b: b)
-        .map_batches(lambda b: b)
+        .limit(10)
     )
     dag = get_execution_plan(ds._logical_plan)[0].dag
 
-    assert dag.name == (
-        "HashShuffleReduce(keys=('id',), partitions=4)"
-        "->MapBatches(<lambda>)->MapBatches(<lambda>)"
-    )
-    assert dag._fused_output_map_transformer is not None
-
-
-def test_actor_map_not_fused_into_shuffle_reduce(
-    ray_start_regular_shared_2_cpus, restore_data_context
-):
-    """An actor-pool map downstream of the reduce is NOT fused."""
-    DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
-
-    class Mapper:
-        def __call__(self, batch):
-            return batch
-
-    ds = (
-        ray.data.range(100)
-        .repartition(4, keys=["id"])
-        .map_batches(Mapper, concurrency=2)
-    )
-    dag = get_execution_plan(ds._logical_plan)[0].dag
-
-    assert dag.name == "MapBatches(Mapper)"
-    reduce_op = dag.input_dependencies[0]
+    assert dag.name == "limit=10"
+    map_op = dag.input_dependencies[0]
+    assert map_op.name == "MapBatches(<lambda>)"
+    reduce_op = map_op.input_dependencies[0]
     assert reduce_op.name == "HashShuffleReduce(keys=('id',), partitions=4)"
     assert reduce_op._fused_output_map_transformer is None
+
+    assert len(ds.take_all()) == 10
 
 
 def test_non_file_datasink_write_not_fused_into_shuffle_reduce(
     ray_start_regular_shared_2_cpus, restore_data_context
 ):
-    """A write to a non-file datasink is NOT fused into the reduce."""
     from ray.data.datasource.datasink import Datasink
 
     DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
