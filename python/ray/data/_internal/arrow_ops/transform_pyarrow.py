@@ -526,6 +526,33 @@ def _backfill_missing_fields(
     if isinstance(column, pa.ChunkedArray):
         column = pa.concat_arrays(column.chunks)
 
+    # Handle the case where the input is an all-null column (``pa.null()``).
+    # This commonly happens when a block contains the field but every row is
+    # null, so PyArrow infers the field as ``null`` instead of struct. The
+    # right answer here is to materialize a null struct of the target type
+    # rather than reject the alignment.
+    if pa.types.is_null(column.type):
+        return pa.nulls(block_length, type=unified_struct_type)
+
+    # Reject other non-struct inputs with a clear schema-reconciliation error.
+    # The caller (``_align_struct_fields``) gates on ``isinstance(column.type,
+    # pa.StructType)`` at the top level, but the recursive call inside this
+    # function can still land here with a non-struct child array when two
+    # blocks disagree on whether a field is a struct or a primitive (e.g.
+    # block A has ``a: int64`` while block B has ``a: struct<x: int64>`` and
+    # the unified schema picks the struct). Without this guard, iterating
+    # over ``column.type`` below raises an inscrutable
+    # ``TypeError: 'pyarrow.lib.DataType' object is not iterable`` (#61656).
+    if not pa.types.is_struct(column.type):
+        raise ValueError(
+            f"Cannot align column of type {column.type} to struct type "
+            f"{unified_struct_type}: the input is not a struct. This usually "
+            "means two blocks contain the same field name with incompatible "
+            "types (for example, a primitive in one block and a struct in "
+            "another). Make the field types consistent across blocks before "
+            "concatenation."
+        )
+
     # Extract the current struct field names and their corresponding data
     current_fields = {
         field.name: column.field(i) for i, field in enumerate(column.type)
