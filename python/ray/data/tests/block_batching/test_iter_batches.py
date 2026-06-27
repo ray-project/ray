@@ -441,14 +441,10 @@ class TestMergeFetch:
         """data_transfer windows are unioned across multiple blocks."""
         dst = BatchTimings()
 
-        src1 = BlockFetchTiming(
-            data_transfer=TimeSpan(start_s=1.0, end_s=2.0)
-        )
+        src1 = BlockFetchTiming(data_transfer=TimeSpan(start_s=1.0, end_s=2.0))
         dst.merge_fetch(src1)
 
-        src2 = BlockFetchTiming(
-            data_transfer=TimeSpan(start_s=3.0, end_s=4.0)
-        )
+        src2 = BlockFetchTiming(data_transfer=TimeSpan(start_s=3.0, end_s=4.0))
         dst.merge_fetch(src2)
 
         # Union: [1.0, 4.0]

@@ -218,9 +218,7 @@ def resolve_block_refs(
         except StopIteration:
             break
         prod_span = (
-            TimeSpan(start_s=prod_start_s, end_s=time.perf_counter())
-            if stats
-            else None
+            TimeSpan(start_s=prod_start_s, end_s=time.perf_counter()) if stats else None
         )
 
         current_hit, current_miss, current_unknown = _calculate_ref_hits([block_ref])
