@@ -266,10 +266,17 @@ def download_bytes_threaded(
                 f"{uri_column_name!r} ({len(uris)} URIs). Yielding None for "
                 "all rows."
             )
-            output_block = output_block.add_column(
-                len(output_block.column_names),
-                output_bytes_column_name,
-                pa.array([None] * len(uris), type=pa.binary()),
+            # For a list column the output must be list<binary> with one inner
+            # list per row (every download failed -> None in place), not a flat
+            # scalar binary column sized to the flattened URI count (which would
+            # mis-shape or raise on append).
+            none_column = (
+                renest_downloaded_bytes([None] * len(uris), row_lengths)
+                if is_list
+                else pa.array([None] * len(uris), type=pa.binary())
+            )
+            output_block = output_block.append_column(
+                output_bytes_column_name, none_column
             )
             continue
 

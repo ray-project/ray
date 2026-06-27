@@ -1154,6 +1154,35 @@ class TestObstoreDownloadPath:
             # Bytes columns appear together or not at all, never partially.
             assert ("frames_bytes" in cols) == ("uri_bytes" in cols)
 
+    def test_download_bytes_threaded_list_unresolvable_filesystem(self):
+        # Regression: when no filesystem can be inferred for a list<string>
+        # column, the fallback must still emit list<binary> with one inner list
+        # per row (every download -> None), not a flat scalar binary column
+        # sized to the flattened URI count (which would mis-shape or raise on
+        # append). Patch path resolution to fail so the fallback is hit.
+        ctx = DataContext.get_current()
+        table = pa.Table.from_arrays(
+            [
+                pa.array(
+                    [["x://a", "x://b"], ["x://c"], []], type=pa.list_(pa.string())
+                ),
+                pa.array(["r0", "r1", "r2"], type=pa.string()),
+            ],
+            names=["frames", "row_id"],
+        )
+
+        with patch(
+            "ray.data._internal.planner.plan_download_op._resolve_paths_and_filesystem",
+            side_effect=Exception("no filesystem"),
+        ):
+            results = list(
+                download_bytes_threaded(table, ["frames"], ["frames_bytes"], ctx)
+            )
+
+        out = pa.concat_tables(results)
+        assert pa.types.is_list(out.schema.field("frames_bytes").type)
+        assert out.column("frames_bytes").to_pylist() == [[None, None], [None], []]
+
 
 class TestObstoreRangeSplitDownload:
     """Tests for the range-split download path (get_range_async).
