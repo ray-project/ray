@@ -728,6 +728,52 @@ class TestParseUri:
         assert package_name == parsed_package_name
 
     @pytest.mark.parametrize(
+        "raw_uri",
+        [
+            "https://username:PAT@github.com/repo/archive/commit_hash.zip",
+            (
+                "https://un:pwd@gitlab.com/user/repo/-/"
+                "archive/commit_hash/repo-commit_hash.zip"
+            ),
+        ],
+    )
+    def test_parse_private_git_https_uris(self, raw_uri):
+        """Private git HTTPS URIs (with embedded credentials) round-trip
+        through parse_uri without error and are hashed like any other remote
+        URI."""
+        parsed_protocol, parsed_package_name = parse_uri(raw_uri)
+        assert parsed_protocol == Protocol.HTTPS
+        assert parsed_package_name == f"https_{_sha1_hex(raw_uri)}.zip"
+
+    @pytest.mark.parametrize(
+        "raw_uri,protocol",
+        [
+            (
+                "https://username:PAT@github.com/repo/archive:2/commit_hash.zip",
+                Protocol.HTTPS,
+            ),
+            ("gs://fake/2022-10-21T13:11:35+00:00/package.zip", Protocol.GS),
+            ("s3://fake/2022-10-21T13:11:35+00:00/package.zip", Protocol.S3),
+            ("azure://fake/2022-10-21T13:11:35+00:00/package.zip", Protocol.AZURE),
+            (
+                "abfss://container@account.dfs.core.windows.net/2022-10-21T13:11:35+00:00/package.zip",
+                Protocol.ABFSS,
+            ),
+            ("file:///fake/2022-10-21T13:11:35+00:00/package.zip", Protocol.FILE),
+            ("file:///fake/2022-10-21T13:11:35+00:00/(package).zip", Protocol.FILE),
+        ],
+    )
+    def test_parse_uris_with_disallowed_chars(self, raw_uri, protocol):
+        """URIs containing characters that would historically be escaped
+        (`:`, `@`, `+`, `(`, `)`) round-trip through parse_uri without error.
+        Under the always-hash design these chars are absorbed by the hash, but
+        the test still guards against `urlparse` / hashing failures on such
+        URIs."""
+        parsed_protocol, parsed_package_name = parse_uri(raw_uri)
+        assert parsed_protocol == protocol
+        assert parsed_package_name == f"{protocol.value}_{_sha1_hex(raw_uri)}.zip"
+
+    @pytest.mark.parametrize(
         "parsing_tuple",
         [
             (
