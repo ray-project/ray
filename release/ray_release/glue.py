@@ -82,7 +82,7 @@ def _load_test_configuration(
 ) -> Tuple[ClusterManager, AnyscaleJobRunner, str]:
     logger.info(f"Test config: {test}")
 
-    # Populate result paramaters
+    # Populate result parameters
     result.stable = test.get("stable", True)
     result.smoke_test = smoke_test
     buildkite_url = os.getenv("BUILDKITE_BUILD_URL", "")

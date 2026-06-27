@@ -517,7 +517,7 @@ def test_vllm_qwen_vl_multimodal(multimodal_content):
         engine_kwargs=dict(
             enable_chunked_prefill=True,
             distributed_executor_backend="ray",
-            # A single GPU won't be able to accomodate Qwen/Qwen2.5-VL-3B-Instruct's memory requirements
+            # A single GPU won't be able to accommodate Qwen/Qwen2.5-VL-3B-Instruct's memory requirements
             # due to vllm0.12.0 resource/profiling issues.
             # Issue: https://github.com/vllm-project/vllm/issues/30521.
             tensor_parallel_size=2,
