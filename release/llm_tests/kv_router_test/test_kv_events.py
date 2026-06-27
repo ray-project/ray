@@ -8,7 +8,7 @@ import requests
 from dynamo.llm import compute_block_hash_for_seq
 
 import ray
-from ray import cloudpickle, serve
+from ray import serve
 from ray._common.test_utils import async_wait_for_condition
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     _MODEL_NAME,
@@ -17,6 +17,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     KVRouterActor,
 )
 from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX, SERVE_NAMESPACE
+from ray.serve.config import RequestRouterConfig
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_openai_app
 from ray.serve.llm.request_router import KVAwareRouter
@@ -176,7 +177,9 @@ class TestKvEvents:
                 # selection purely so replica discovery can enumerate both.
                 # TODO (jeffreywang): use KVAwareRouter directly once it
                 # implements routing.
-                request_router_config={"request_router_class": _TestKVAwareRouter},
+                request_router_config=RequestRouterConfig(
+                    request_router_class=_TestKVAwareRouter
+                ),
             ),
             engine_kwargs=dict(
                 max_model_len=2048,
@@ -201,10 +204,6 @@ class TestKvEvents:
             _TestKVRouterActor,
         ):
             app = build_openai_app({"llm_configs": [llm_config]})
-            # build_openai_app serializes the router class and unregisters this
-            # module from pickle-by-value. Re-register so the LLMConfig that
-            # serve.run ships to replicas embeds the test classes by value.
-            cloudpickle.register_pickle_by_value(sys.modules[__name__])
             handle = serve.run(app, name=APP_NAME)
         yield handle
         serve.shutdown()
