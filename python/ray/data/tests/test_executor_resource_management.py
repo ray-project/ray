@@ -1,3 +1,5 @@
+import operator
+
 import pytest
 
 import ray
@@ -728,8 +730,6 @@ def test_execution_resources_combine_sum():
 
 
 def test_execution_resources_combine():
-    import operator
-
     rs = [
         ExecutionResources(cpu=1, gpu=5, object_store_memory=3, memory=40),
         ExecutionResources(cpu=10, gpu=2, object_store_memory=30, memory=4),

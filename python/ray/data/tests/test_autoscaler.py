@@ -12,6 +12,9 @@ from ray.data._internal.actor_autoscaler import (
     ActorPoolScalingRequest,
     DefaultActorAutoscaler,
 )
+from ray.data._internal.actor_autoscaler.default_actor_autoscaler import (
+    _get_max_scale_up,
+)
 from ray.data._internal.cluster_autoscaler import DefaultClusterAutoscaler
 from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -966,10 +969,6 @@ def test_get_max_scale_up_tolerates_float_drift():
     scale-up. ``ExecutionResources`` rounds at construction, so the drift
     collapses to 0.
     """
-    from ray.data._internal.actor_autoscaler.default_actor_autoscaler import (
-        _get_max_scale_up,
-    )
-
     actor_pool = MagicMock()
     actor_pool.per_actor_resource_usage = MagicMock(
         return_value=ExecutionResources(cpu=1.0, gpu=0.25, memory=0.0)

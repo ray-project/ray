@@ -1,3 +1,4 @@
+import functools
 import math
 import operator
 import os
@@ -21,14 +22,6 @@ class ExecutionResources:
     # constructs many of these per iteration (every ``add``/``subtract``/
     # ``max``/``copy`` returns a new object), so this is a hot-path win.
     __slots__ = ("_cpu", "_gpu", "_object_store_memory", "_memory")
-
-    # Cached singletons for the two most common constants. ``zero()``/``inf()``
-    # are called all over the scheduler hot path (e.g. ``.max(zero())``); the
-    # instances are immutable in practice (every arithmetic op returns a new
-    # object and there are no setters), so sharing one instance is safe and
-    # avoids the per-call allocation.
-    _ZERO_SINGLETON: Optional["ExecutionResources"] = None
-    _INF_SINGLETON: Optional["ExecutionResources"] = None
 
     def __init__(
         self,
@@ -143,26 +136,27 @@ class ExecutionResources:
         )
 
     @classmethod
+    @functools.cache
     def zero(cls) -> "ExecutionResources":
         """Returns an ExecutionResources object with zero resources.
 
-        Returns a cached, shared singleton (safe because instances are
-        immutable in practice).
+        Returns a cached, shared singleton (``functools.cache`` keyed on ``cls``)
+        -- ``zero()`` is called all over the scheduler hot path (e.g.
+        ``.max(zero())``) and instances are immutable in practice (every
+        arithmetic op returns a new object and there are no setters), so sharing
+        one instance is safe and avoids the per-call allocation.
         """
-        if cls._ZERO_SINGLETON is None:
-            cls._ZERO_SINGLETON = ExecutionResources(0.0, 0.0, 0.0, 0.0)
-        return cls._ZERO_SINGLETON
+        return ExecutionResources(0.0, 0.0, 0.0, 0.0)
 
     @classmethod
+    @functools.cache
     def inf(cls) -> "ExecutionResources":
         """Returns an ExecutionResources object with infinite resources.
 
-        Returns a cached, shared singleton (safe because instances are
-        immutable in practice).
+        Returns a cached, shared singleton (see :meth:`zero` for why this is
+        safe).
         """
-        if cls._INF_SINGLETON is None:
-            cls._INF_SINGLETON = ExecutionResources.for_limits()
-        return cls._INF_SINGLETON
+        return ExecutionResources.for_limits()
 
     @classmethod
     def combine(
