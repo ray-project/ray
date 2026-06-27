@@ -1298,5 +1298,85 @@ def test_merge_rejects_new_app_claiming_root_prefix(serve_instance):
     assert "new_app" not in details["applications"]
 
 
+def test_replace_rejects_route_prefix_claimed_via_omission(serve_instance):
+    """Replace rejects a new app claiming a prefix preserved via omission."""
+    client = serve_instance
+
+    pizza = "ray.serve.tests.test_config_files.pizza.serve_dag"
+
+    # Deploy app1 at /app1.
+    config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {"name": "app1", "route_prefix": "/app1", "import_path": pizza},
+            ],
+        }
+    )
+    client.deploy_apps(config)
+    wait_for_condition(
+        check_endpoint, json=["ADD", 2], expected="4 pizzas please!", app_name="app1"
+    )
+
+    # Replace deploy: app1 omits route_prefix, new app2 claims /app1.
+    collision_config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {"name": "app1", "import_path": pizza},
+                {"name": "app2", "route_prefix": "/app1", "import_path": pizza},
+            ],
+        }
+    )
+    with pytest.raises(RayServeException, match="is being used by application"):
+        client.deploy_apps(collision_config)
+
+    # app1 still serves /app1 and app2 was never created.
+    wait_for_condition(
+        check_endpoint, json=["ADD", 2], expected="4 pizzas please!", app_name="app1"
+    )
+    details = ray.get(client._controller.get_serve_instance_details.remote())
+    assert "app2" not in details["applications"]
+
+
+def test_replace_allows_reassigning_dropped_app_prefix(serve_instance):
+    """Replace lets a new app take a prefix owned by a dropped app."""
+    client = serve_instance
+
+    pizza = "ray.serve.tests.test_config_files.pizza.serve_dag"
+
+    config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {"name": "app1", "route_prefix": "/app1", "import_path": pizza},
+            ],
+        }
+    )
+    client.deploy_apps(config)
+    wait_for_condition(
+        check_endpoint, json=["ADD", 2], expected="4 pizzas please!", app_name="app1"
+    )
+
+    # Replace deploy drops app1 and hands /app1 to app2.
+    handoff_config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {"name": "app2", "route_prefix": "/app1", "import_path": pizza},
+            ],
+        }
+    )
+    client.deploy_apps(handoff_config)
+
+    def app1_dropped_app2_owns_prefix():
+        details = ray.get(client._controller.get_serve_instance_details.remote())
+        apps = details["applications"]
+        return (
+            "app1" not in apps and apps.get("app2", {}).get("route_prefix") == "/app1"
+        )
+
+    wait_for_condition(app1_dropped_app2_owns_prefix)
+    wait_for_condition(
+        check_endpoint, json=["ADD", 2], expected="4 pizzas please!", app_name="app2"
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

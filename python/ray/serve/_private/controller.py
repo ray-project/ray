@@ -1154,11 +1154,10 @@ class ServeController:
         else:
             logger.info("Applying config (replace)")
 
-        # Check route prefix conflicts in merge mode
-        if is_merge:
-            self.application_state_manager.check_route_prefix_conflicts(
-                config.applications
-            )
+        # Check route prefix conflicts
+        self.application_state_manager.check_route_prefix_conflicts(
+            config.applications, is_merge
+        )
 
         if not deployment_time:
             deployment_time = time.time()
@@ -1174,7 +1173,7 @@ class ServeController:
                 for app in curr_config.applications
             }
 
-        # target_capacity cannot be set in merge mode
+        # target_capacity is preserved in merge mode
         if not is_merge:
             self._target_capacity_direction = calculate_target_capacity_direction(
                 curr_config=curr_config,
