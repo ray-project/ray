@@ -974,6 +974,77 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
   }
 }
 
+bool TaskManager::FailStreamingGeneratorReplayIfInconsistent(
+    const TaskID &task_id, const rpc::PushTaskReply &reply) {
+  ObjectID generator_id;
+  int64_t expected_count = 0;
+  int64_t actual_count = 0;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    if (it == submissible_tasks_.end() || !it->second.spec_.IsStreamingGenerator()) {
+      return false;
+    }
+    // Only a replay can be inconsistent: the first successful execution defines
+    // the expected object count, so there is nothing to compare against yet.
+    if (it->second.num_successful_executions_ == 0) {
+      return false;
+    }
+    expected_count = it->second.spec_.NumStreamingGeneratorReturns();
+    actual_count = reply.streaming_generator_return_ids_size();
+    // NumStreamingGeneratorReturns is only recorded when the first successful
+    // attempt yielded > 0 objects (see CompletePendingTask), so expected_count
+    // == 0 means the count is unknown; we cannot detect drift from it.
+    if (expected_count == 0 || expected_count == actual_count) {
+      return false;
+    }
+    // Defensive: a well-formed streaming generator reply always carries the
+    // generator id in return_objects(0), but guard against a malformed reply.
+    if (reply.return_objects_size() == 0) {
+      return false;
+    }
+    generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
+  }
+  FailStreamingGeneratorReplayInconsistency(
+      task_id, generator_id, expected_count, actual_count);
+  return true;
+}
+
+void TaskManager::FailStreamingGeneratorReplayInconsistency(const TaskID &task_id,
+                                                            const ObjectID &generator_id,
+                                                            int64_t expected_count,
+                                                            int64_t actual_count) {
+  const std::string error_message = absl::StrCat(
+      "Streaming generator task ",
+      task_id.Hex(),
+      " was re-executed and produced ",
+      actual_count,
+      " objects, expected ",
+      expected_count,
+      ". The generator output is non-deterministic, which can hang downstream "
+      "consumers (when fewer objects are produced) or silently truncate their "
+      "input (when more objects are produced).");
+
+  RAY_LOG(ERROR).WithField(task_id).WithField(generator_id)
+      << error_message
+      << " Failing the task instead of leaving the pipeline stuck or silently "
+         "dropping data.";
+
+  rpc::RayErrorInfo error_info;
+  error_info.set_error_message(error_message);
+  // Set the error type explicitly: FailPendingTask forwards this RayErrorInfo
+  // as-is to the task status event, where an unset error_type would default to
+  // WORKER_DIED instead of the actual cause.
+  error_info.set_error_type(rpc::ErrorType::STREAMING_GENERATOR_REPLAY_INCONSISTENT);
+  Status status = Status::Invalid(error_message);
+  FailOrRetryPendingTask(task_id,
+                         rpc::ErrorType::STREAMING_GENERATOR_REPLAY_INCONSISTENT,
+                         &status,
+                         &error_info,
+                         /*mark_task_object_failed=*/true,
+                         /*fail_immediately=*/true);
+}
+
 bool TaskManager::HandleReportGeneratorItemReturns(
     const rpc::ReportGeneratorItemReturnsRequest &request,
     const ExecutionSignalCallback &execution_signal_callback,
@@ -1108,6 +1179,17 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::Address &worker_addr,
                                       bool is_application_error) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
+
+  // Detect a streaming generator replay that produced a different number of
+  // objects than the first attempt, and fail before any return object is
+  // written to the store below — otherwise downstream consumers could observe
+  // the inconsistent objects before the failure propagates. Skipped on
+  // application-error completions, which already route through the failure
+  // path.
+  if (!is_application_error &&
+      FailStreamingGeneratorReplayIfInconsistent(task_id, reply)) {
+    return;
+  }
 
   bool first_execution = false;
   const auto store_in_plasma_ids =
