@@ -36,7 +36,6 @@ from ray.data._internal.stats import (
     OperatorStatsSummary,
     StatsSummary,
     Timer,
-    _create_iteration_tags,
     _StatsActor,
     get_or_create_stats_actor,
 )
@@ -1879,23 +1878,6 @@ def test_stats_actor_iter_metrics():
     assert f"dataset_{ds._uuid}_0" == update_fn.call_args_list[-1].args[1]
 
 
-def test_create_iteration_tags_extracts_rank():
-    assert _create_iteration_tags("train_abc_split_2") == {
-        "dataset": "train_abc_split_2",
-        "rank": "2",
-    }
-    assert _create_iteration_tags("dataset_without_split") == {
-        "dataset": "dataset_without_split",
-        "rank": "unknown",
-    }
-    # User-defined dataset name may contain split_<digits>; the trailing
-    # split index (from streaming split coordinator) should be used.
-    assert _create_iteration_tags("my_split_3_data_abc123_split_5") == {
-        "dataset": "my_split_3_data_abc123_split_5",
-        "rank": "5",
-    }
-
-
 def test_update_iteration_metrics_exports_new_iter_metrics():
     stats = DatasetStats(metadata={}, parent=None)
     stats.iter_total_s.add(11.0)
@@ -1960,7 +1942,7 @@ def test_update_iteration_metrics_exports_new_iter_metrics():
 
     actor.update_iteration_metrics(stats, "train_dataset_split_3")
 
-    expected_tags = {"dataset": "train_dataset_split_3", "rank": "3"}
+    expected_tags = {"dataset": "train_dataset_split_3"}
     assert recorded["iter_total_s"] == (11.0, expected_tags)
     assert recorded["iter_blocked_production_wait_s"] == (1.0, expected_tags)
     assert recorded["iter_blocked_data_transfer_s"] == (1.5, expected_tags)

@@ -1,7 +1,6 @@
 import collections
 import copy
 import logging
-import re
 import time
 from collections import defaultdict
 from contextlib import contextmanager
@@ -61,19 +60,6 @@ UNKNOWN_UUID = "unknown_uuid"
 
 
 StatsDict = Dict[str, List[BlockStats]]
-
-
-def _create_iteration_tags(dataset_tag: Optional[str]):
-    dataset_tag = dataset_tag or "unknown_dataset"
-    tags = {"dataset": dataset_tag, "rank": "unknown"}
-    # Use findall + last match: the streaming-split index is always the
-    # trailing ``split_<N>`` in the tag.  The user-defined dataset name may
-    # itself contain ``split_<digits>`` so re.search (first match) could
-    # pick up the wrong one.
-    matches = re.findall(r"split_(\d+)", dataset_tag)
-    if matches:
-        tags["rank"] = matches[-1]
-    return tags
 
 
 def fmt(seconds: float) -> str:
@@ -513,7 +499,12 @@ class _StatsActor:
         # Per Node metrics
         self.per_node_metrics = self._create_prometheus_metrics_for_per_node_metrics()
 
-        iter_tag_keys = ("dataset", "rank")
+        iter_tag_keys = ("dataset",)
+        # TODO: add a per-streaming-split-worker ``rank`` label to these
+        # iteration metrics (including the blocked-attribution gauges below)
+        # in a follow-up PR, so users can distinguish which split worker is
+        # blocked on which stage.  Deferred to keep this PR's scope focused
+        # on the blocked-attribution data model.
 
         self.time_to_first_batch_s = Gauge(
             "data_iter_time_to_first_batch_seconds",
@@ -837,7 +828,7 @@ class _StatsActor:
         stats: "DatasetStats",
         dataset_tag,
     ):
-        tags = self._create_iteration_tags(dataset_tag)
+        tags = self._create_tags(dataset_tag)
 
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
         self.iter_total_s.set(stats.iter_total_s.get(), tags)
@@ -1057,9 +1048,6 @@ class _StatsActor:
         if node_ip_tag is not None:
             tags["node_ip"] = node_ip_tag
         return tags
-
-    def _create_iteration_tags(self, dataset_tag: Optional[str]):
-        return _create_iteration_tags(dataset_tag)
 
 
 def get_or_create_stats_actor() -> ActorHandle[_StatsActor]:
