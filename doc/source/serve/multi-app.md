@@ -203,7 +203,7 @@ Each application's `route_prefix` must be unique across all applications on the 
 
 ### Per-application upsert with `--merge`
 
-The `--merge` flag changes `serve deploy` to upsert mode. Applications in the config are created or updated, and applications not in the config are left untouched:
+The `--merge` flag changes `serve deploy` to upsert mode. Applications in the config are created or updated, and applications not in the config are left untouched. You can't delete an application in this mode. Use a `replace` deploy instead.
 
 ```console
 $ serve deploy my_app.yaml --merge
