@@ -23,7 +23,6 @@ asynchronous-inference
 advanced-guides/index
 architecture
 examples
-api/index
 ```
 
 ```{image} logo.svg
