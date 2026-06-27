@@ -37,6 +37,7 @@ class FakeRayletClient : public RayletClientInterface {
   void PinObjectIDs(const Address &caller_address,
                     const std::vector<ObjectID> &object_ids,
                     const ObjectID &generator_id,
+                    bool spill_immediately,
                     const ClientCallback<PinObjectIDsReply> &callback) override {}
 
   void RequestWorkerLease(

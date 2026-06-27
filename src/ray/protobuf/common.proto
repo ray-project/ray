@@ -625,6 +625,10 @@ message TaskSpec {
   // Private streaming generator option. The number of ObjectRefs produced by
   // each generator yield. Defaults to 1.
   uint64 num_objects_per_yield = 46;
+  // If true, the return objects of this task are spilled to external storage
+  // immediately after they are created, instead of waiting for the object store
+  // to cross the spill threshold (reactive spilling).
+  optional bool spill_immediately = 47;
 }
 
 message TaskInfoEntry {

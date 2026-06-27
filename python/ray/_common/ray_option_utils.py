@@ -231,6 +231,13 @@ _task_only_options = {
         ),
         default_value=1,
     ),
+    "_spill_immediately": Option(
+        (bool, type(None)),
+        lambda x: None
+        if (x is None or isinstance(x, bool))
+        else "_spill_immediately must be a bool.",
+        default_value=False,
+    ),
 }
 
 _actor_only_options = {

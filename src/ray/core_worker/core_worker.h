@@ -588,7 +588,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   Status SealExisting(const ObjectID &object_id,
                       bool pin_object,
                       const ObjectID &generator_id = ObjectID::Nil(),
-                      const std::unique_ptr<rpc::Address> &owner_address = nullptr);
+                      const std::unique_ptr<rpc::Address> &owner_address = nullptr,
+                      bool spill_immediately = false);
 
   /// Experimental method for mutable objects. Acquires a write lock on the
   /// object that prevents readers from reading until we are done writing. Does
@@ -1475,7 +1476,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       const std::unordered_map<std::string, std::string> &labels = {},
       const LabelSelector &label_selector = {},
       const std::vector<FallbackOption> &fallback_strategy = {},
-      int64_t num_objects_per_yield = 1);
+      int64_t num_objects_per_yield = 1,
+      bool spill_immediately = false);
 
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,

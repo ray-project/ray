@@ -2656,6 +2656,23 @@ void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
                                 : ObjectID::Nil();
     local_object_manager_.PinObjectsAndWaitForFree(
         object_ids, std::move(results), request.owner_address(), generator_id);
+    // If the owner requested direct spilling for these objects, spill them to
+    // external storage immediately after pinning, instead of waiting for the
+    // object store to cross the spill threshold (reactive spilling). This is a
+    // no-op if spilling is not configured.
+    if (request.spill_immediately() && RayConfig::instance().enable_direct_spill() &&
+        !RayConfig::instance().object_spilling_config().empty() &&
+        !object_ids.empty()) {
+      RAY_LOG(DEBUG) << "Directly spilling " << object_ids.size()
+                     << " object(s) requested by the owner.";
+      local_object_manager_.SpillObjects(
+          object_ids, [num_objects = object_ids.size()](const Status &status) {
+            if (!status.ok()) {
+              RAY_LOG(DEBUG) << "Direct spill request failed for " << num_objects
+                             << " object(s): " << status.ToString();
+            }
+          });
+    }
   }
   RAY_CHECK_EQ(request.object_ids_size(), reply->successes_size());
   send_reply_callback(Status::OK(), nullptr, nullptr);

@@ -161,7 +161,8 @@ class TaskSpecBuilder {
       const LabelSelector &label_selector = {},
       const std::vector<FallbackOption> &fallback_strategy =
           std::vector<FallbackOption>(),
-      uint64_t num_objects_per_yield = 1) {
+      uint64_t num_objects_per_yield = 1,
+      bool spill_immediately = false) {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
     message_->set_language(language);
@@ -193,6 +194,7 @@ class TaskSpecBuilder {
     }
     message_->set_concurrency_group_name(concurrency_group_name);
     message_->set_enable_task_events(enable_task_events);
+    message_->set_spill_immediately(spill_immediately);
     message_->mutable_labels()->insert(labels.begin(), labels.end());
     label_selector.ToProto(message_->mutable_label_selector());
     *message_->mutable_fallback_strategy() = SerializeFallbackStrategy(fallback_strategy);

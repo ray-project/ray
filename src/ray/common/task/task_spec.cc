@@ -539,6 +539,10 @@ std::optional<std::string> TaskSpecification::TensorTransport() const {
   return std::nullopt;
 }
 
+bool TaskSpecification::SpillImmediately() const {
+  return message_->spill_immediately();
+}
+
 bool TaskSpecification::AllowOutOfOrderExecution() const {
   return IsActorCreationTask() &&
          message_->actor_creation_task_spec().allow_out_of_order_execution();

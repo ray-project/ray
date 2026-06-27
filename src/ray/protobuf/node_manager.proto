@@ -205,6 +205,10 @@ message PinObjectIDsRequest {
   // so that we can notify the owner about the nested ObjectRefs, in case the
   // owner does not know about them yet.
   optional bytes generator_id = 3;
+  // If true, the raylet spills these objects to external storage immediately
+  // after pinning them, instead of waiting for the spill threshold to be
+  // crossed (reactive spilling).
+  optional bool spill_immediately = 4;
 }
 
 message PinObjectIDsReply {

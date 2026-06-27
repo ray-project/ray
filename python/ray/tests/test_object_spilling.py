@@ -802,5 +802,85 @@ def test_recover_from_spill_worker_failure(ray_start_regular):
     )
 
 
+def _spilled_summary(address):
+    return memory_summary(address=address["address"], stats_only=True)
+
+
+def test_direct_spill_immediately(object_spilling_config, shutdown_only):
+    """Task returns tagged with ``_spill_immediately=True`` should be spilled to
+    disk right after creation, even though the object store stays well below the
+    reactive spilling threshold."""
+    import re
+
+    object_spilling_config, _ = object_spilling_config
+    address = ray.init(
+        num_cpus=1,
+        # Large store so a couple of 50 MiB objects never cross the threshold.
+        object_store_memory=500 * 1024 * 1024,
+        _system_config={
+            "automatic_object_spilling_enabled": True,
+            "max_io_workers": 2,
+            "min_spilling_size": 0,
+            # Set the reactive threshold very high so threshold-based spilling
+            # never fires for this workload. Only direct spill should.
+            "object_spilling_threshold": 0.99,
+            "enable_direct_spill": True,
+            "object_spilling_config": object_spilling_config,
+        },
+    )
+
+    @ray.remote
+    def big():
+        return np.zeros(50 * 1024 * 1024, dtype=np.uint8)  # 50 MiB
+
+    # Control: without the flag the object stays in plasma (nothing spilled).
+    ref_normal = big.remote()
+    ray.get(ref_normal)
+    assert "Spilled" not in _spilled_summary(address), _spilled_summary(address)
+
+    # With the flag: the return object is spilled immediately after creation.
+    ref_spill = big.options(_spill_immediately=True).remote()
+    ray.wait([ref_spill], fetch_local=False)
+
+    wait_for_condition(
+        lambda: re.search(r"Spilled \d+ MiB, 1 objects", _spilled_summary(address))
+        is not None,
+        timeout=60,
+    )
+
+    # The value is still readable; it is transparently restored from disk.
+    assert ray.get(ref_spill).shape == (50 * 1024 * 1024,)
+
+
+def test_direct_spill_disabled_by_config(object_spilling_config, shutdown_only):
+    """When ``enable_direct_spill=False`` the per-task hint is ignored and the
+    object follows the normal reactive path (i.e. it is not spilled here)."""
+    import time
+
+    object_spilling_config, _ = object_spilling_config
+    address = ray.init(
+        num_cpus=1,
+        object_store_memory=500 * 1024 * 1024,
+        _system_config={
+            "automatic_object_spilling_enabled": True,
+            "max_io_workers": 2,
+            "min_spilling_size": 0,
+            "object_spilling_threshold": 0.99,
+            "enable_direct_spill": False,
+            "object_spilling_config": object_spilling_config,
+        },
+    )
+
+    @ray.remote
+    def big():
+        return np.zeros(50 * 1024 * 1024, dtype=np.uint8)
+
+    ref_spill = big.options(_spill_immediately=True).remote()
+    ray.get(ref_spill)
+    # Give any (incorrect) async spill a chance to show up before asserting.
+    time.sleep(3)
+    assert "Spilled" not in _spilled_summary(address), _spilled_summary(address)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

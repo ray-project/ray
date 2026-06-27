@@ -394,6 +394,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::optional<std::string> TensorTransport() const;
 
+  // If true, the return objects of this task should be spilled to external
+  // storage immediately after creation instead of waiting for memory pressure.
+  bool SpillImmediately() const;
+
  private:
   void ComputeResources();
 

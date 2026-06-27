@@ -50,6 +50,7 @@ class RayletClientInterface {
       const rpc::Address &caller_address,
       const std::vector<ObjectID> &object_ids,
       const ObjectID &generator_id,
+      bool spill_immediately,
       const rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
 
   /// Requests a worker from the raylet. The callback will be sent via gRPC.

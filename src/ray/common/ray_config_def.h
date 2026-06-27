@@ -756,6 +756,11 @@ RAY_CONFIG(float, object_spilling_threshold, 0.8)
 /// Maximum number of objects that can be fused into a single file.
 RAY_CONFIG(int64_t, max_fused_object_count, 2000)
 
+/// Global kill-switch for per-object direct (proactive) spilling. When false,
+/// the per-task `_spill_immediately` hint is ignored and objects follow the
+/// normal reactive spilling path. Enabled by default.
+RAY_CONFIG(bool, enable_direct_spill, true)
+
 /// Grace period until we throw the OOM error to the application in seconds.
 /// In unlimited allocation mode, this is the time delay prior to fallback allocating.
 RAY_CONFIG(int64_t, oom_grace_period_s, 2)

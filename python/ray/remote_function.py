@@ -507,6 +507,7 @@ class RemoteFunction:
         labels = task_options.get("_labels")
         label_selector = task_options.get("label_selector")
         fallback_strategy = task_options.get("fallback_strategy")
+        spill_immediately = bool(task_options.get("_spill_immediately") or False)
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -537,6 +538,7 @@ class RemoteFunction:
                 labels,
                 label_selector,
                 fallback_strategy,
+                spill_immediately,
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).

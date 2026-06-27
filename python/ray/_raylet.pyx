@@ -3590,7 +3590,8 @@ cdef class CoreWorker:
                     c_bool enable_task_events,
                     labels,
                     label_selector,
-                    fallback_strategy):
+                    fallback_strategy,
+                    c_bool spill_immediately=False):
         cdef:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, c_string] c_labels
@@ -3640,7 +3641,8 @@ cdef class CoreWorker:
                 c_label_selector,
                 # `tensor_transport` is currently only supported in Ray Actor tasks.
                 NULL_TENSOR_TRANSPORT,
-                c_fallback_strategy)
+                c_fallback_strategy,
+                spill_immediately)
 
             current_c_task_id = current_task.native()
 
@@ -3929,7 +3931,9 @@ cdef class CoreWorker:
                         c_labels,
                         c_label_selector,
                         c_tensor_transport,
-                        c_fallback_strategy),
+                        c_fallback_strategy,
+                        # Direct spill is only supported for normal tasks for now.
+                        False),
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,

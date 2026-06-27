@@ -256,9 +256,9 @@ bool LocalObjectManager::TryToSpillObjects() {
           auto now = clock_.NowUnixNanos();
           RAY_LOG(DEBUG) << "Spilled " << bytes_to_spill << " bytes in "
                          << (now - start_time) / 1e6 << "ms";
-          // Adjust throughput timing to account for concurrent spill operations.
-          spill_time_total_s_ +=
-              (now - std::max(start_time, last_spill_finish_ns_)) / 1e9;
+          // NOTE: spill_time_total_s_ / last_spill_finish_ns_ are now updated in
+          // SpillObjectsInternal so that both reactive and direct spills are
+          // accounted for. Here we only emit the throughput log line.
           if (now - last_spill_log_ns_ > 1e9) {
             last_spill_log_ns_ = now;
             std::stringstream msg;
@@ -284,7 +284,6 @@ bool LocalObjectManager::TryToSpillObjects() {
               RAY_LOG(INFO) << msg.str();
             }
           }
-          last_spill_finish_ns_ = now;
         }
       });
   return true;
@@ -340,7 +339,11 @@ void LocalObjectManager::SpillObjectsInternal(
     return;
   }
   num_active_workers_ += 1;
-  io_worker_pool_.PopSpillWorker([this, objects_to_spill, callback = std::move(callback)](
+  const auto spill_start_time = clock_.NowUnixNanos();
+  io_worker_pool_.PopSpillWorker([this,
+                                  objects_to_spill,
+                                  spill_start_time,
+                                  callback = std::move(callback)](
                                      std::shared_ptr<WorkerInterface> io_worker) mutable {
     rpc::SpillObjectsRequest request;
     std::vector<ObjectID> requested_objects_to_spill;
@@ -372,6 +375,7 @@ void LocalObjectManager::SpillObjectsInternal(
         request,
         [this,
          requested_objects_to_spill = std::move(requested_objects_to_spill),
+         spill_start_time,
          callback = std::move(callback),
          io_worker](const ray::Status &status, const rpc::SpillObjectsReply &r) {
           num_active_workers_ -= 1;
@@ -397,6 +401,15 @@ void LocalObjectManager::SpillObjectsInternal(
                            << status.ToString();
           } else {
             OnObjectSpilled(requested_objects_to_spill, r);
+            // Account for spill throughput here (shared by both the reactive
+            // threshold-based path and the direct/proactive spill path) so that
+            // all spills are reflected in spill_time_total_s_ and surfaced in
+            // stats. Use max(start, last_finish) to avoid double-counting
+            // concurrent spill operations.
+            auto now = clock_.NowUnixNanos();
+            spill_time_total_s_ +=
+                (now - std::max(spill_start_time, last_spill_finish_ns_)) / 1e9;
+            last_spill_finish_ns_ = now;
           }
           if (callback) {
             callback(status);

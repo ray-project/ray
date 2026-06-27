@@ -1054,6 +1054,7 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
           rpc_address_,
           {object_id},
           /*generator_id=*/ObjectID::Nil(),
+          /*spill_immediately=*/false,
           [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
             // RPC to the local raylet should never fail.
             if (!status.ok()) {
@@ -1193,7 +1194,8 @@ Status CoreWorker::SealOwned(const ObjectID &object_id, bool pin_object) {
 Status CoreWorker::SealExisting(const ObjectID &object_id,
                                 bool pin_object,
                                 const ObjectID &generator_id,
-                                const std::unique_ptr<rpc::Address> &owner_address) {
+                                const std::unique_ptr<rpc::Address> &owner_address,
+                                bool spill_immediately) {
   RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
@@ -1202,6 +1204,7 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
         owner_address != nullptr ? *owner_address : rpc_address_,
         {object_id},
         generator_id,
+        spill_immediately,
         [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
           // RPC to the local raylet should never fail.
           if (!status.ok()) {
@@ -1883,7 +1886,8 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::unordered_map<std::string, std::string> &labels,
     const LabelSelector &label_selector,
     const std::vector<FallbackOption> &fallback_strategy,
-    int64_t num_objects_per_yield) {
+    int64_t num_objects_per_yield,
+    bool spill_immediately) {
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -1934,7 +1938,8 @@ void CoreWorker::BuildCommonTaskSpec(
       labels,
       label_selector,
       fallback_strategy,
-      num_objects_per_yield);
+      num_objects_per_yield,
+      spill_immediately);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -2016,7 +2021,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       task_options.labels,
                       task_options.label_selector,
                       task_options.fallback_strategy,
-                      task_options.num_objects_per_yield);
+                      task_options.num_objects_per_yield,
+                      /*spill_immediately=*/task_options.spill_immediately);
   ActorID root_detached_actor_id;
   if (!worker_context_->GetRootDetachedActorID().IsNil()) {
     root_detached_actor_id = worker_context_->GetRootDetachedActorID();
@@ -3053,8 +3059,18 @@ Status CoreWorker::SealReturnObject(const ObjectID &return_id,
   Status status = Status::OK();
   auto owner_address_ptr = std::make_unique<rpc::Address>(owner_address);
 
+  // If the currently executing task opted into direct spilling, request that the
+  // raylet spill this return object to external storage immediately after pinning
+  // it, instead of waiting for the object store to cross the spill threshold.
+  bool spill_immediately = false;
+  auto current_task_spec = worker_context_->GetCurrentTask();
+  if (current_task_spec != nullptr) {
+    spill_immediately = current_task_spec->SpillImmediately();
+  }
+
   if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
-    status = SealExisting(return_id, true, generator_id, owner_address_ptr);
+    status = SealExisting(
+        return_id, true, generator_id, owner_address_ptr, spill_immediately);
     if (!status.ok()) {
       RAY_LOG(FATAL).WithField(return_id)
           << "Failed to seal object in store: " << status.message();
@@ -3157,6 +3173,7 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
         owner_address,
         {return_id},
         generator_id,
+        /*spill_immediately=*/false,
         [return_id, pinned_return_object](const Status &pin_object_status,
                                           const rpc::PinObjectIDsReply &reply) {
           // RPC to the local raylet should never fail.

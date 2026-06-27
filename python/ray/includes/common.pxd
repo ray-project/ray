@@ -401,7 +401,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      const unordered_map[c_string, c_string] &labels,
                      CLabelSelector label_selector,
                      optional[c_string] tensor_transport,
-                     c_vector[CFallbackOption] fallback_strategy)
+                     c_vector[CFallbackOption] fallback_strategy,
+                     c_bool spill_immediately)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()
