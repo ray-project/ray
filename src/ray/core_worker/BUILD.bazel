@@ -40,7 +40,6 @@ ray_cc_library(
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/gcs_rpc_client:gcs_client",
         "//src/ray/protobuf:pubsub_cc_proto",
-        "//src/ray/pubsub:posting_publisher",
         "//src/ray/pubsub:publisher",
         "//src/ray/pubsub:subscriber",
         "//src/ray/raylet_ipc_client",
