@@ -180,6 +180,20 @@ class ObjectRefGenerator:
         self.worker.check_connected()
         return self.worker.core_worker.peek_next_object_id_binary(self._generator_ref)
 
+    def _stream_exhausted(self) -> bool:
+        """Whether the stream's end-of-stream marker has been reached and all
+        yielded refs consumed.
+
+        Non-blocking, in-memory check (unlike ``is_finished``, this does not
+        ``ray.get`` the generator return object). When True, the only thing
+        left is the end-of-stream ``ray.get`` of the return object that
+        ``_next_sync`` performs to surface ``StopIteration`` / task errors.
+        """
+        self.worker.check_connected()
+        return self.worker.core_worker.is_object_ref_stream_finished(
+            self._generator_ref
+        )
+
     def _next_sync(self, timeout_s: Optional[int | float] = None) -> "ray.ObjectRef":
         """Waits for timeout_s and returns the object ref if available.
 
