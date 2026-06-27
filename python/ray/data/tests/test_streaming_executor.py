@@ -185,12 +185,17 @@ def _process_completed_tasks_sync(
     )
 
 
-def _drain_completed_tasks_threaded(
+def _process_completed_tasks_threaded(
     topo, backpressure_policies, max_errored_blocks, output_backpressure_guard
 ):
-    """Run ``process_completed_tasks`` with the threaded fetcher and pump it
-    until the background metadata fetches have all emitted, so test
-    post-conditions hold once it returns."""
+    """Run ``process_completed_tasks`` in the threaded mode (the executor
+    default) and pump the fetcher until every background metadata fetch has
+    emitted, so test post-conditions hold once it returns — the threaded
+    counterpart of ``_process_completed_tasks_sync``.
+
+    Most executor-level tests drive the threaded mode through this helper;
+    ``_process_completed_tasks_sync`` is kept for the few inline-mode tests.
+    """
     fetcher = ThreadedMetadataFetcher()
     fetcher.start()
     try:
@@ -227,7 +232,7 @@ def test_process_completed_tasks_threaded(ray_start_regular_shared):
     topo = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
 
     assert len(topo[o1].output_queue) == 0, topo
-    _drain_completed_tasks_threaded(topo, [], 0, _make_disabled_guard())
+    _process_completed_tasks_threaded(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     assert len(topo[o1].output_queue) == 20, topo
 
@@ -353,7 +358,7 @@ def test_update_operator_states_drains_upstream(ray_start_regular_shared):
     topo = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
 
     # First, populate the upstream output queues by processing some tasks
-    _process_completed_tasks_sync(topo, [], 0, _make_disabled_guard())
+    _process_completed_tasks_threaded(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
 
     # Verify that o1 (upstream) has output in its queue
@@ -587,14 +592,14 @@ def test_output_backpressure_policy_tracking(ray_start_regular_shared):
     policies = [LimitingPolicy(), NonLimitingPolicy(), NoLimitPolicy()]
 
     # Call process_completed_tasks which tracks output policies
-    _process_completed_tasks_sync(topo, policies, 0, _make_disabled_guard())
+    _process_completed_tasks_threaded(topo, policies, 0, _make_disabled_guard())
 
     # Check that o2 has the first limiting policy tracked
     assert o2._in_task_output_backpressure is True
     assert o2._task_output_backpressure_policy == "Limiting"
 
     # Now test with no output backpressure
-    _process_completed_tasks_sync(
+    _process_completed_tasks_threaded(
         topo, [NonLimitingPolicy()], 0, _make_disabled_guard()
     )
 
@@ -637,7 +642,7 @@ def test_process_completed_tasks_unblocks_when_non_resource_budget_policy_zeros_
         def max_task_output_bytes_to_read(self, op):
             return 0 if op is o2 else None
 
-    _process_completed_tasks_sync(topo, [ZeroLimitPolicy()], 0, guard)
+    _process_completed_tasks_threaded(topo, [ZeroLimitPolicy()], 0, guard)
 
     # o2 is terminal with no downstream eligible ops and no external
     # consumer — the guard's terminal-op branch should unblock, bumping
