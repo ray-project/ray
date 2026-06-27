@@ -140,8 +140,9 @@ async def test_http_request_udf_with_retry(mock_response):
 
 @pytest.mark.asyncio
 async def test_http_request_udf_multipart(mock_session):
-    """multipart/form-data requests are sent as an aiohttp.FormData body and do
-    not set the Content-Type header manually (aiohttp adds the boundary)."""
+    """A payload with file-like values is auto-detected and sent as an
+    aiohttp.FormData body, and does not set the Content-Type header manually
+    (aiohttp adds the boundary)."""
     udf = HttpRequestUDF(
         data_column="__data",
         expected_input_keys=["payload"],
@@ -149,7 +150,6 @@ async def test_http_request_udf_multipart(mock_session):
         additional_header={"Authorization": "Bearer 1234567890"},
         qps=None,
         session_factory=lambda: mock_session,  # noqa: E731
-        content_type="multipart/form-data",
     )
 
     batch = {
@@ -179,19 +179,36 @@ async def test_http_request_udf_multipart(mock_session):
     assert isinstance(kwargs["data"], aiohttp.FormData)
 
 
-def test_http_request_udf_invalid_content_type():
-    with pytest.raises(ValueError, match="Unsupported content_type"):
-        HttpRequestUDF(
-            data_column="__data",
-            expected_input_keys=["payload"],
-            url="http://test.com/api",
-            content_type="text/plain",
-        )
+@pytest.mark.parametrize(
+    "payload, expected",
+    [
+        # File-like values -> multipart.
+        ({"file": {"content": b"x"}}, True),
+        ({"file": b"raw-bytes"}, True),
+        ({"file": bytearray(b"raw-bytes")}, True),
+        ({"model": "whisper-1", "file": {"content": b"x"}}, True),
+        # No file-like values -> JSON.
+        ({"text": "hello", "metadata": "test"}, False),
+        # A nested dict without a "content" key is not a file field.
+        ({"file": {"filename": "audio.mp3"}}, False),
+        ({}, False),
+        # Non-dict payloads are always JSON.
+        (["not", "a", "dict"], False),
+        ("plain string", False),
+        (None, False),
+    ],
+)
+def test_is_multipart_payload(payload, expected):
+    """Multipart is auto-detected from the payload: a dict with a bytes value
+    or a nested dict with a 'content' key is a file upload; everything else is
+    sent as JSON."""
+    assert HttpRequestUDF._is_multipart_payload(payload) is expected
 
 
 def test_http_request_udf_multipart_drops_user_content_type():
-    """A user-supplied Content-Type must be dropped for multipart requests so
-    aiohttp can generate the multipart boundary itself."""
+    """A user-supplied Content-Type must be dropped from the multipart headers
+    so aiohttp can generate the multipart boundary itself, while the JSON
+    headers keep it."""
     udf = HttpRequestUDF(
         data_column="__data",
         expected_input_keys=["payload"],
@@ -200,22 +217,34 @@ def test_http_request_udf_multipart_drops_user_content_type():
             "Content-Type": "application/json",
             "Authorization": "Bearer 1234567890",
         },
-        content_type="multipart/form-data",
     )
-    assert udf.headers == {"Authorization": "Bearer 1234567890"}
+    assert udf.multipart_headers == {"Authorization": "Bearer 1234567890"}
+    assert udf.json_headers == {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer 1234567890",
+    }
 
 
-def test_http_request_udf_multipart_rejects_non_dict_payload():
-    """A non-dict payload for multipart requests raises a clear TypeError
-    instead of a cryptic AttributeError from FormData construction."""
+def test_http_request_udf_build_request_selects_encoding():
+    """_build_request returns a JSON string + JSON headers for plain payloads,
+    and an aiohttp.FormData body + multipart headers for file payloads."""
     udf = HttpRequestUDF(
         data_column="__data",
         expected_input_keys=["payload"],
         url="http://test.com/api",
-        content_type="multipart/form-data",
+        additional_header={"Authorization": "Bearer 1234567890"},
     )
-    with pytest.raises(TypeError, match="must be a dict"):
-        udf._build_request_body(["not", "a", "dict"])
+
+    body, headers = udf._build_request({"text": "hello"})
+    assert body == json.dumps({"text": "hello"})
+    assert headers == {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer 1234567890",
+    }
+
+    body, headers = udf._build_request({"file": {"content": b"audio-bytes"}})
+    assert isinstance(body, aiohttp.FormData)
+    assert headers == {"Authorization": "Bearer 1234567890"}
 
 
 @pytest.mark.asyncio
@@ -430,8 +459,8 @@ async def multipart_server():
 
 @pytest.mark.asyncio
 async def test_http_request_udf_multipart_server(multipart_server):
-    """End-to-end test that multipart file uploads reach the server, exercising
-    the HttpRequestProcessorConfig.content_type wiring."""
+    """End-to-end test that file-upload payloads are auto-detected and reach the
+    server as multipart/form-data."""
     data = [
         {
             "payload": {
@@ -446,7 +475,6 @@ async def test_http_request_udf_multipart_server(multipart_server):
     ]
     config = HttpRequestProcessorConfig(
         url=str(multipart_server.make_url("/")),
-        content_type="multipart/form-data",
         qps=None,
     )
 

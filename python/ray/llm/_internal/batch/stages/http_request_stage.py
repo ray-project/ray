@@ -4,7 +4,7 @@ import asyncio
 import json
 import time
 import traceback
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Type
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple, Type
 
 import aiohttp
 import aiohttp.web_exceptions
@@ -30,8 +30,6 @@ class HttpRequestUDF(StatefulStageUDF):
     RETRYABLE_STATUS_CODES = [429, 408, 504, 502, 503]
 
     JSON_CONTENT_TYPE = "application/json"
-    MULTIPART_CONTENT_TYPE = "multipart/form-data"
-    SUPPORTED_CONTENT_TYPES = (JSON_CONTENT_TYPE, MULTIPART_CONTENT_TYPE)
 
     def __init__(
         self,
@@ -43,7 +41,6 @@ class HttpRequestUDF(StatefulStageUDF):
         max_retries: int = 0,
         base_retry_wait_time_in_s: float = 1.0,
         session_factory: Optional[Callable[[], aiohttp.ClientSession]] = None,
-        content_type: Optional[str] = None,
     ):
         """
         Initialize the HttpRequestUDF.
@@ -57,12 +54,6 @@ class HttpRequestUDF(StatefulStageUDF):
             max_retries: The maximum number of retries per request in the event of failures. We retry with exponential backoff upto this specific maximum retries.
             base_retry_wait_time_in_s: The base retry wait time during exponential backoff.
             session_factory: Optional session factory to be used for initializing a client session.
-            content_type: The content type of the request body. Either
-                "application/json" (default), in which case each row's "payload"
-                is serialized to a JSON body, or "multipart/form-data", in which
-                case each row's "payload" is sent as a multipart form. The latter
-                is required to upload files (e.g. OpenAI's audio transcription
-                API). See ``_build_form_data`` for the expected payload schema.
         """
         super().__init__(data_column, expected_input_keys)
         self.url = url
@@ -72,29 +63,45 @@ class HttpRequestUDF(StatefulStageUDF):
         self.base_retry_wait_time_in_s = base_retry_wait_time_in_s
         self.session_factory = session_factory or aiohttp.ClientSession
 
-        self.content_type = content_type or self.JSON_CONTENT_TYPE
-        if self.content_type not in self.SUPPORTED_CONTENT_TYPES:
-            raise ValueError(
-                f"Unsupported content_type {self.content_type!r}. Supported "
-                f"content types are {self.SUPPORTED_CONTENT_TYPES}."
-            )
-        self.is_multipart = self.content_type == self.MULTIPART_CONTENT_TYPE
+        # Whether a request is sent as JSON or multipart/form-data is detected
+        # per row from its payload (see ``_is_multipart_payload``), so we
+        # precompute the headers for both cases here.
+        # For JSON requests we default "Content-Type" to application/json (a
+        # user-supplied value in additional_header still wins).
+        self.json_headers = {
+            "Content-Type": self.JSON_CONTENT_TYPE,
+            **self.additional_header,
+        }
         # For multipart requests, aiohttp sets the "Content-Type" header
         # (including the boundary) from the FormData object, so we must not set
         # it ourselves. We also drop any user-supplied "Content-Type" from
         # additional_header: aiohttp only auto-generates the multipart boundary
         # when no Content-Type is set, so leaving one in would break uploads.
-        if self.is_multipart:
-            self.headers = {
-                k: v
-                for k, v in self.additional_header.items()
-                if k.lower() != "content-type"
-            }
-        else:
-            self.headers = {
-                "Content-Type": self.JSON_CONTENT_TYPE,
-                **self.additional_header,
-            }
+        self.multipart_headers = {
+            k: v
+            for k, v in self.additional_header.items()
+            if k.lower() != "content-type"
+        }
+
+    @staticmethod
+    def _is_multipart_payload(payload: Any) -> bool:
+        """Whether a payload should be sent as ``multipart/form-data``.
+
+        A payload is treated as a file upload (and thus sent as multipart) when
+        it is a dict with at least one "file-like" value: ``bytes`` /
+        ``bytearray``, or a nested dict with a ``"content"`` key (see
+        ``_build_form_data`` for the field schema). Everything else is sent as a
+        JSON body. This mirrors how ``requests``/``httpx`` switch to a multipart
+        encoding when files are passed, so callers never have to select a
+        content type by hand.
+        """
+        if not isinstance(payload, dict):
+            return False
+        return any(
+            isinstance(value, (bytes, bytearray))
+            or (isinstance(value, dict) and "content" in value)
+            for value in payload.values()
+        )
 
     @staticmethod
     def _build_form_data(payload: Dict[str, Any]) -> "aiohttp.FormData":
@@ -129,18 +136,18 @@ class HttpRequestUDF(StatefulStageUDF):
                 form.add_field(key, json.dumps(value, cls=NumpyEncoder))
         return form
 
-    def _build_request_body(self, payload: Dict[str, Any]) -> Any:
-        """Build the ``data`` argument for a single request from its payload."""
-        if self.is_multipart:
-            if not isinstance(payload, dict):
-                raise TypeError(
-                    'For multipart/form-data, each row\'s "payload" must be a '
-                    f"dict, but got {type(payload).__name__}: {payload!r}"
-                )
-            # A FormData object is consumed when the request is sent, so a fresh
-            # one must be built for every (re)try.
-            return self._build_form_data(payload)
-        return json.dumps(payload, cls=NumpyEncoder)
+    def _build_request(self, payload: Any) -> Tuple[Any, Dict[str, Any]]:
+        """Build the ``(data, headers)`` for a single request from its payload.
+
+        Multipart payloads (file uploads) are encoded as an ``aiohttp.FormData``
+        body and use the multipart headers; everything else is serialized to a
+        JSON string with the JSON headers. A fresh body is built on every call
+        because an ``aiohttp.FormData`` object is consumed when the request is
+        sent and cannot be reused on retries.
+        """
+        if self._is_multipart_payload(payload):
+            return self._build_form_data(payload), self.multipart_headers
+        return json.dumps(payload, cls=NumpyEncoder), self.json_headers
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
@@ -167,7 +174,6 @@ class HttpRequestUDF(StatefulStageUDF):
             start_time = time.time()
             request_count = 0
             pending_requests = []
-            headers = self.headers
 
             # First send all requests based on QPS
             for row in batch:
@@ -180,7 +186,9 @@ class HttpRequestUDF(StatefulStageUDF):
                         await asyncio.sleep(expected_time - elapsed)
 
                 # self.IDX_IN_BATCH_COLUMN is the index of row in the batch
-                body = self._build_request_body(payloads[row[self.IDX_IN_BATCH_COLUMN]])
+                body, headers = self._build_request(
+                    payloads[row[self.IDX_IN_BATCH_COLUMN]]
+                )
                 # Create request but don't await it yet
                 request = session.post(
                     self.url,
@@ -196,7 +204,9 @@ class HttpRequestUDF(StatefulStageUDF):
                 last_exception_traceback = None
                 for retry_count in range(self.max_retries + 1):
                     if retry_count > 0:
-                        body = self._build_request_body(payloads[idx_in_batch_column])
+                        body, headers = self._build_request(
+                            payloads[idx_in_batch_column]
+                        )
                         request = session.post(
                             self.url,
                             headers=headers,
