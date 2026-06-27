@@ -12,6 +12,7 @@ from ray.data._internal.block_batching.interfaces import (
     Batch,
     BatchMetadata,
     BatchTimings,
+    BlockFetchTiming,
     BlockPrefetcher,
 )
 from ray.data._internal.block_batching.iter_batches import (
@@ -435,6 +436,76 @@ class TestMergeFetch:
         dst.merge_fetch(src)
         assert dst.production_wait.start_s == 10.0
         assert dst.production_wait.end_s == 20.0
+
+    def test_merge_data_transfer_multiple_blocks(self):
+        """data_transfer windows are unioned across multiple blocks."""
+        dst = BatchTimings()
+
+        src1 = BlockFetchTiming(
+            data_transfer=TimeSpan(start_s=1.0, end_s=2.0)
+        )
+        dst.merge_fetch(src1)
+
+        src2 = BlockFetchTiming(
+            data_transfer=TimeSpan(start_s=3.0, end_s=4.0)
+        )
+        dst.merge_fetch(src2)
+
+        # Union: [1.0, 4.0]
+        assert dst.data_transfer.start_s == 1.0
+        assert dst.data_transfer.end_s == 4.0
+
+    def test_merge_data_transfer_overlapping_blocks(self):
+        """Overlapping data_transfer windows are correctly merged."""
+        dst = BatchTimings()
+
+        dst.merge_fetch(
+            BlockFetchTiming(data_transfer=TimeSpan(start_s=1.0, end_s=5.0))
+        )
+        dst.merge_fetch(
+            BlockFetchTiming(data_transfer=TimeSpan(start_s=3.0, end_s=7.0))
+        )
+
+        assert dst.data_transfer.start_s == 1.0
+        assert dst.data_transfer.end_s == 7.0
+
+    def test_merge_both_stages_independent(self):
+        """production_wait and data_transfer merge independently."""
+        dst = BatchTimings()
+
+        # Block 1: prod [1,2], xfer [2,3]
+        dst.merge_fetch(
+            BlockFetchTiming(
+                production_wait=TimeSpan(start_s=1.0, end_s=2.0),
+                data_transfer=TimeSpan(start_s=2.0, end_s=3.0),
+            )
+        )
+        # Block 2: prod [5,6], xfer [6,7]
+        dst.merge_fetch(
+            BlockFetchTiming(
+                production_wait=TimeSpan(start_s=5.0, end_s=6.0),
+                data_transfer=TimeSpan(start_s=6.0, end_s=7.0),
+            )
+        )
+
+        # Each stage unions independently.
+        assert dst.production_wait.start_s == 1.0
+        assert dst.production_wait.end_s == 6.0
+        assert dst.data_transfer.start_s == 2.0
+        assert dst.data_transfer.end_s == 7.0
+
+    def test_merge_data_transfer_none_preserves_destination(self):
+        """Merging a block with no data_transfer timing leaves dst unchanged."""
+        dst = BatchTimings()
+        dst.data_transfer = TimeSpan(start_s=2.0, end_s=3.0)
+
+        # src has only production_wait, data_transfer is None
+        dst.merge_fetch(
+            BlockFetchTiming(production_wait=TimeSpan(start_s=1.0, end_s=2.0))
+        )
+
+        assert dst.data_transfer.start_s == 2.0
+        assert dst.data_transfer.end_s == 3.0
 
 
 class TestEndToEndTimingPropagation:

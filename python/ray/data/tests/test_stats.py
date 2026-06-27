@@ -34,9 +34,12 @@ from ray.data._internal.stats import (
     DatasetStatsSummary,
     NodeMetrics,
     OperatorStatsSummary,
+    PipelineStage,
     StatsSummary,
     Timer,
+    TimeSpan,
     _StatsActor,
+    _timed,
     get_or_create_stats_actor,
 )
 from ray.data._internal.util import MemoryProfiler
@@ -2644,6 +2647,73 @@ class TestTimerPercentile:
         assert t._total_count == 0.0
         assert t.min() == float("inf")
         assert t.max() == 0.0
+
+
+class TestTimerTimerSpan:
+    """Tests for Timer.timer() returning a TimeSpan and accumulating."""
+
+    def test_timer_yields_timespan(self):
+        """timer() yields a fresh TimeSpan whose duration is accumulated."""
+        t = Timer()
+        with t.timer() as span:
+            time.sleep(0.01)
+        assert isinstance(span, TimeSpan)
+        assert span.duration > 0
+        # The span's duration is accumulated into the Timer.
+        assert t.get() == pytest.approx(span.duration, rel=0.5)
+        assert t.max() > 0
+        assert t.min() == pytest.approx(span.duration, rel=0.5)
+
+    def test_each_call_returns_fresh_span(self):
+        """Each timer() call yields a distinct TimeSpan instance."""
+        t = Timer()
+        spans = []
+        with t.timer() as s1:
+            spans.append(s1)
+        with t.timer() as s2:
+            spans.append(s2)
+        assert spans[0] is not spans[1]
+        assert t.get() == pytest.approx(spans[0].duration + spans[1].duration, rel=0.5)
+
+    def test_timed_skips_when_timer_none(self):
+        """_timed(None) yields None and skips perf_counter entirely."""
+        with _timed(None) as span:
+            assert span is None
+        assert span is None
+
+    def test_timed_yields_span_when_timer_given(self):
+        """_timed(Timer) yields a TimeSpan backed by the Timer."""
+        t = Timer()
+        with _timed(t) as span:
+            time.sleep(0.01)
+        assert isinstance(span, TimeSpan)
+        assert span.duration > 0
+        assert t.get() == pytest.approx(span.duration, rel=0.5)
+
+
+@pytest.mark.parametrize(
+    "stage,attr",
+    [
+        (PipelineStage.PRODUCTION_WAIT, "iter_blocked_production_wait_s"),
+        (PipelineStage.DATA_TRANSFER, "iter_blocked_data_transfer_s"),
+        (PipelineStage.BATCHING, "iter_blocked_batching_s"),
+        (PipelineStage.FORMAT, "iter_blocked_format_s"),
+        (PipelineStage.COLLATE, "iter_blocked_collate_s"),
+        (PipelineStage.FINALIZE, "iter_blocked_finalize_s"),
+    ],
+)
+class TestGetBlockedTimer:
+    """Tests for DatasetStats.get_blocked_timer() stage->Timer mapping."""
+
+    def test_get_blocked_timer_returns_correct_attribute(self, stage, attr):
+        """get_blocked_timer(stage) returns the Timer matching the stage."""
+        stats = DatasetStats(metadata={}, parent=None)
+        assert stats.get_blocked_timer(stage) is getattr(stats, attr)
+
+    def test_get_blocked_timer_returns_timer_instance(self, stage, attr):
+        """get_blocked_timer returns a real Timer (not None)."""
+        stats = DatasetStats(metadata={}, parent=None)
+        assert isinstance(stats.get_blocked_timer(stage), Timer)
 
 
 def test_streaming_exec_schedule_percentiles_populated(ray_start_regular_shared):
