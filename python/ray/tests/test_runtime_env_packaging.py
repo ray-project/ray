@@ -728,50 +728,72 @@ class TestParseUri:
         assert package_name == parsed_package_name
 
     @pytest.mark.parametrize(
-        "raw_uri",
+        "parsing_tuple",
         [
-            "https://username:PAT@github.com/repo/archive/commit_hash.zip",
             (
-                "https://un:pwd@gitlab.com/user/repo/-/"
-                "archive/commit_hash/repo-commit_hash.zip"
+                "https://username:PAT@github.com/repo/archive/commit_hash.zip",
+                f"https_{_sha1_hex('https://username:PAT@github.com/repo/archive/commit_hash.zip')}.zip",
+            ),
+            (
+                (
+                    "https://un:pwd@gitlab.com/user/repo/-/"
+                    "archive/commit_hash/repo-commit_hash.zip"
+                ),
+                f"https_{_sha1_hex('https://un:pwd@gitlab.com/user/repo/-/archive/commit_hash/repo-commit_hash.zip')}.zip",
             ),
         ],
     )
-    def test_parse_private_git_https_uris(self, raw_uri):
-        """Private git HTTPS URIs (with embedded credentials) round-trip
-        through parse_uri without error and are hashed like any other remote
-        URI."""
+    def test_parse_private_git_https_uris(self, parsing_tuple):
+        raw_uri, parsed_uri = parsing_tuple
         parsed_protocol, parsed_package_name = parse_uri(raw_uri)
         assert parsed_protocol == Protocol.HTTPS
-        assert parsed_package_name == f"https_{_sha1_hex(raw_uri)}.zip"
+        assert parsed_package_name == parsed_uri
 
     @pytest.mark.parametrize(
-        "raw_uri,protocol",
+        "parsing_tuple",
         [
             (
                 "https://username:PAT@github.com/repo/archive:2/commit_hash.zip",
                 Protocol.HTTPS,
+                f"https_{_sha1_hex('https://username:PAT@github.com/repo/archive:2/commit_hash.zip')}.zip",
             ),
-            ("gs://fake/2022-10-21T13:11:35+00:00/package.zip", Protocol.GS),
-            ("s3://fake/2022-10-21T13:11:35+00:00/package.zip", Protocol.S3),
-            ("azure://fake/2022-10-21T13:11:35+00:00/package.zip", Protocol.AZURE),
+            (
+                "gs://fake/2022-10-21T13:11:35+00:00/package.zip",
+                Protocol.GS,
+                f"gs_{_sha1_hex('gs://fake/2022-10-21T13:11:35+00:00/package.zip')}.zip",
+            ),
+            (
+                "s3://fake/2022-10-21T13:11:35+00:00/package.zip",
+                Protocol.S3,
+                f"s3_{_sha1_hex('s3://fake/2022-10-21T13:11:35+00:00/package.zip')}.zip",
+            ),
+            (
+                "azure://fake/2022-10-21T13:11:35+00:00/package.zip",
+                Protocol.AZURE,
+                f"azure_{_sha1_hex('azure://fake/2022-10-21T13:11:35+00:00/package.zip')}.zip",
+            ),
             (
                 "abfss://container@account.dfs.core.windows.net/2022-10-21T13:11:35+00:00/package.zip",
                 Protocol.ABFSS,
+                f"abfss_{_sha1_hex('abfss://container@account.dfs.core.windows.net/2022-10-21T13:11:35+00:00/package.zip')}.zip",
             ),
-            ("file:///fake/2022-10-21T13:11:35+00:00/package.zip", Protocol.FILE),
-            ("file:///fake/2022-10-21T13:11:35+00:00/(package).zip", Protocol.FILE),
+            (
+                "file:///fake/2022-10-21T13:11:35+00:00/package.zip",
+                Protocol.FILE,
+                f"file_{_sha1_hex('file:///fake/2022-10-21T13:11:35+00:00/package.zip')}.zip",
+            ),
+            (
+                "file:///fake/2022-10-21T13:11:35+00:00/(package).zip",
+                Protocol.FILE,
+                f"file_{_sha1_hex('file:///fake/2022-10-21T13:11:35+00:00/(package).zip')}.zip",
+            ),
         ],
     )
-    def test_parse_uris_with_disallowed_chars(self, raw_uri, protocol):
-        """URIs containing characters that would historically be escaped
-        (`:`, `@`, `+`, `(`, `)`) round-trip through parse_uri without error.
-        Under the always-hash design these chars are absorbed by the hash, but
-        the test still guards against `urlparse` / hashing failures on such
-        URIs."""
+    def test_parse_uris_with_disallowed_chars(self, parsing_tuple):
+        raw_uri, protocol, parsed_uri = parsing_tuple
         parsed_protocol, parsed_package_name = parse_uri(raw_uri)
         assert parsed_protocol == protocol
-        assert parsed_package_name == f"{protocol.value}_{_sha1_hex(raw_uri)}.zip"
+        assert parsed_package_name == parsed_uri
 
     @pytest.mark.parametrize(
         "parsing_tuple",
