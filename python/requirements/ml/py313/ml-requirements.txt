@@ -1,2 +1,6 @@
 tf-keras
 transformers
+# keras 3.13 dropped py3.10 support; pin explicitly so pip-compile preserves
+# a py_version marker on the lock entry (tensorflow pulls keras transitively).
+keras==3.12.1; python_version < '3.11'
+keras==3.14.0; python_version >= '3.11'

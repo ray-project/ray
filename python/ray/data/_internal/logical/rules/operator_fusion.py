@@ -1,6 +1,6 @@
 import itertools
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -257,17 +257,7 @@ class FuseOperators(Rule):
             return False
 
         # Only fuse if the ops' remote arguments are compatible.
-        if not are_remote_args_compatible(
-            getattr(up_logical_op, "ray_remote_args", {}),
-            getattr(down_logical_op, "ray_remote_args", {}),
-        ):
-            return False
-
-        # Do not fuse if either op specifies a `ray_remote_args_fn`,
-        # since it is not known whether the generated args will be compatible.
-        if getattr(up_logical_op, "ray_remote_args_fn", None) or getattr(
-            down_logical_op, "ray_remote_args_fn", None
-        ):
+        if not are_op_remote_args_compatible(up_logical_op, down_logical_op):
             return False
 
         if not self._can_merge_target_max_block_size(
@@ -384,10 +374,10 @@ class FuseOperators(Rule):
         ):
             op.add_map_task_kwargs_fn(map_task_kwargs_fn)
 
-        input_op = up_logical_op.input_dependency
+        input_op = up_logical_op.input_dependencies[0]
         logical_op = AbstractUDFMap(
             name,
-            input_op,
+            [input_op],
             up_logical_op.fn,
             can_modify_num_rows=up_logical_op.can_modify_num_rows,
             fn_args=up_logical_op.fn_args,
@@ -522,6 +512,10 @@ class FuseOperators(Rule):
         ):
             ref_bundler = down_op._block_ref_bundler
 
+        isolate_workers = (
+            isinstance(up_op, TaskPoolMapOperator) and up_op.isolate_workers
+        ) or (isinstance(down_op, TaskPoolMapOperator) and down_op.isolate_workers)
+
         # Fused physical map operator.
         assert up_op.data_context is down_op.data_context
         op = MapOperator.create(
@@ -539,6 +533,7 @@ class FuseOperators(Rule):
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
             on_start=on_start,
+            isolate_workers=isolate_workers,
         )
         op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
         for map_task_kwargs_fn in itertools.chain(
@@ -550,7 +545,7 @@ class FuseOperators(Rule):
         # TODO(Scott): This is hacky, remove this once we push fusion to be purely based
         # on a lower-level operator spec.
         if isinstance(up_logical_op, AbstractUDFMap):
-            input_op = up_logical_op.input_dependency
+            input_op = up_logical_op.input_dependencies[0]
         else:
             # Bottom out at the source logical op (e.g. Read()).
             input_op = up_logical_op
@@ -561,7 +556,7 @@ class FuseOperators(Rule):
         if isinstance(down_logical_op, AbstractUDFMap):
             logical_op = AbstractUDFMap(
                 name,
-                input_op,
+                [input_op],
                 down_logical_op.fn,
                 fn_args=down_logical_op.fn_args,
                 fn_kwargs=down_logical_op.fn_kwargs,
@@ -577,7 +572,7 @@ class FuseOperators(Rule):
             # The downstream op is AbstractMap instead of AbstractUDFMap.
             logical_op = AbstractMap(
                 name,
-                input_op,
+                [input_op],
                 can_modify_num_rows=can_modify_num_rows,
                 min_rows_per_bundled_input=min_rows_per_bundled_input,
                 ray_remote_args_fn=ray_remote_args_fn,
@@ -666,14 +661,14 @@ class FuseOperators(Rule):
 
         if isinstance(down_logical_op, RandomShuffle):
             logical_op = RandomShuffle(
-                input_op,
                 name=name,
+                input_dependencies=[input_op],
                 ray_remote_args=ray_remote_args,
             )
         elif isinstance(down_logical_op, Repartition):
             logical_op = Repartition(
-                input_op,
                 num_outputs=down_logical_op.num_outputs,
+                input_dependencies=[input_op],
                 shuffle=down_logical_op.shuffle,
             )
         self._op_map[op] = logical_op
@@ -729,6 +724,31 @@ class FuseOperators(Rule):
             return False
 
         return True
+
+
+def are_op_remote_args_compatible(
+    up_logical_op: AbstractMap,
+    down_logical_op: Union[AbstractMap, AbstractAllToAll],
+) -> bool:
+    """Check whether two logical ops can be fused based on their Ray remote args.
+
+    Two ops are compatible only if their ``ray_remote_args`` are mergeable and
+    neither op specifies a ``ray_remote_args_fn``, since the args it generates
+    are not known ahead of time.
+    """
+    # Do not fuse if either op specifies a `ray_remote_args_fn`,
+    # since it is not known whether the generated args will be compatible.
+    # Only `AbstractMap` ops carry a `ray_remote_args_fn`.
+    if up_logical_op.ray_remote_args_fn or (
+        isinstance(down_logical_op, AbstractMap) and down_logical_op.ray_remote_args_fn
+    ):
+        return False
+
+    # Only fuse if the ops' remote arguments are compatible.
+    return are_remote_args_compatible(
+        up_logical_op.ray_remote_args,
+        down_logical_op.ray_remote_args,
+    )
 
 
 @DeveloperAPI

@@ -150,6 +150,16 @@ To view the full list of supported file formats, see the
             petal.width   float
             sepal.length  float
 
+    .. tab-item:: Zarr
+
+        To read a Zarr v2 store, call :func:`~ray.data.read_zarr`.
+
+        .. code-block:: python
+
+            import ray
+
+            ds = ray.data.read_zarr("s3://anonymous@ray-example-data/mnist-tiny.zarr")
+
 
 Reading files from local disk
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -350,6 +360,8 @@ The following example shows how to download a batch of images from URLs listed i
 
 .. testcode::
 
+    import pyarrow.fs
+
     import ray
     from ray.data.expressions import download
 
@@ -360,7 +372,10 @@ The following example shows how to download a batch of images from URLs listed i
     # This creates a new column 'bytes' with the downloaded file contents.
     ds = ds.with_column(
         "bytes",
-        download("image_url"),
+        download(
+            "image_url",
+            filesystem=pyarrow.fs.S3FileSystem(anonymous=True, region="us-west-2"),
+        ),
     )
 
     ds.take(1)
@@ -809,7 +824,10 @@ Ray Data interoperates with PyTorch and TensorFlow datasets.
 
         To convert a PyTorch dataset to a Ray Dataset, call :func:`~ray.data.from_torch`.
 
+        .. The mirror for CIFAR10 has historically been unreliable, so we skip the test.
+
         .. testcode::
+            :skipif: True
 
             import ray
             from torch.utils.data import Dataset
@@ -839,6 +857,7 @@ Ray Data interoperates with PyTorch and TensorFlow datasets.
             function with small datasets like MNIST or CIFAR.
 
         .. testcode::
+            :skipif: True
 
             import ray
             import tensorflow_datasets as tfds

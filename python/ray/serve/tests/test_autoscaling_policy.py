@@ -152,7 +152,6 @@ class TestAutoscalingMetrics:
                 "aggregation_function": aggregation_function,
             },
             max_ongoing_requests=25,
-            version="v1",
             # To make the test run faster, we set the graceful_shutdown_timeout_s to 0.1
             graceful_shutdown_timeout_s=0.1,
         )
@@ -561,7 +560,6 @@ def test_e2e_scale_up_down_with_0_replica(
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
         max_ongoing_requests=1000,
-        version="v1",
     )
     class A:
         def __call__(self):
@@ -684,7 +682,6 @@ def test_e2e_bursty(serve_instance_with_signal, aggregation_function):
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
         max_ongoing_requests=1000,
-        version="v1",
     )
     class A:
         def __init__(self):

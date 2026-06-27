@@ -3,6 +3,7 @@ The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
 
+import asyncio
 import logging
 import os
 import random
@@ -14,20 +15,24 @@ import httpx
 import pytest
 
 import ray
+import ray._private.state as state
 from ray import serve
 from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
+from ray.serve._private.api import serve_start_async
 from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_util import set_socket_reuse_port
+from ray.serve._private.test_utils import expected_proxy_actors
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import (
-    DeploymentMode,
+    ControllerOptions,
     GangSchedulingConfig,
     HTTPOptions,
     ProxyLocation,
@@ -255,6 +260,12 @@ def test_multiple_routers(ray_cluster):
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY,
+    reason="HAProxy ingress: user HTTP middleware runs on the replica, but the "
+    "/-/routes endpoint is served by HAProxy, so middleware-injected headers "
+    "are absent there.",
+)
 def test_middleware(ray_shutdown):
     from starlette.middleware import Middleware
     from starlette.middleware.cors import CORSMiddleware
@@ -363,10 +374,19 @@ def test_http_head_only(ray_cluster):
 
     serve.start(http_options={"port": _get_random_port(), "location": "HeadOnly"})
 
-    # Only the controller and head node proxy should be started, both on the head node.
-    actors = list_actors(address=head_node.address)
-    assert len(actors) == 2
-    assert all([actor.node_id == head_node.node_id for actor in actors])
+    # Controller and proxy on the head node. Under HAProxy the proxy is the
+    # HAProxyManager alongside the fallback ProxyActor, which registers asynchronously.
+    expected_classes = {"ServeController", *expected_proxy_actors()}
+
+    def check_head_only_actors():
+        actors = list_actors(
+            address=head_node.address, filters=[("state", "=", "ALIVE")]
+        )
+        assert {actor.class_name for actor in actors} == expected_classes
+        assert all(actor.node_id == head_node.node_id for actor in actors)
+        return True
+
+    wait_for_condition(check_head_only_actors)
 
 
 def test_instance_in_non_anonymous_namespace(ray_shutdown):
@@ -587,19 +607,69 @@ def test_build_app_task_uses_zero_cpus(ray_shutdown):
     ray.shutdown()
 
 
+def _deploy_flaky_app(counter_file, fail_count: int):
+    os.environ["FLAKY_BUILD_COUNTER_FILE"] = str(counter_file)
+    os.environ["FLAKY_BUILD_FAIL_COUNT"] = str(fail_count)
+    counter_file.write_text("0")
+    ray.init(num_cpus=1)
+    serve.start()
+    _get_global_client().deploy_apps(
+        ServeDeploySchema(
+            applications=[
+                ServeApplicationSchema(
+                    name="flaky_app",
+                    route_prefix="/flaky",
+                    import_path="ray.serve.tests.test_config_files.flaky_build.node",
+                )
+            ]
+        )
+    )
+
+
+def test_build_app_retries_until_success(ray_shutdown, tmp_path):
+    """A flaky build that succeeds on the 4th attempt deploys cleanly."""
+    counter_file = tmp_path / "counter.txt"
+    try:
+        _deploy_flaky_app(counter_file, fail_count=3)
+        wait_for_condition(
+            lambda: serve.status().applications["flaky_app"].status == "RUNNING",
+            timeout=60,
+        )
+        assert int(counter_file.read_text()) == 4
+    finally:
+        os.environ.pop("FLAKY_BUILD_COUNTER_FILE", None)
+        os.environ.pop("FLAKY_BUILD_FAIL_COUNT", None)
+
+
+def test_build_app_fails_after_retries_exhausted(ray_shutdown, tmp_path):
+    """If the build keeps failing, the app status surfaces the user error."""
+    counter_file = tmp_path / "counter.txt"
+    try:
+        _deploy_flaky_app(counter_file, fail_count=10)
+        wait_for_condition(
+            lambda: serve.status().applications["flaky_app"].status == "DEPLOY_FAILED",
+            timeout=60,
+        )
+        assert "flaky build failure" in serve.status().applications["flaky_app"].message
+        assert int(counter_file.read_text()) == 4
+    finally:
+        os.environ.pop("FLAKY_BUILD_COUNTER_FILE", None)
+        os.environ.pop("FLAKY_BUILD_FAIL_COUNT", None)
+
+
 @pytest.mark.parametrize(
     "options",
     [
         {
             "proxy_location": None,
             "http_options": None,
-            "expected": HTTPOptions(location=DeploymentMode.EveryNode),
+            "expected": HTTPOptions(location=ProxyLocation.EveryNode),
         },
         {
             "proxy_location": None,
             "http_options": {"test": "test"},  # location is not specified
             "expected": HTTPOptions(
-                location=DeploymentMode.EveryNode
+                location=ProxyLocation.EveryNode
             ),  # using default proxy_location (to align with the case when `http_options` are None)
         },
         {
@@ -608,58 +678,58 @@ def test_build_app_task_uses_zero_cpus(ray_shutdown):
                 "location": "NoServer"
             },  # `location` is specified, but `proxy_location` is not
             "expected": HTTPOptions(
-                location=DeploymentMode.NoServer
+                location=ProxyLocation.Disabled
             ),  # using `location` value
         },
         {
             "proxy_location": None,
             "http_options": HTTPOptions(location=None),
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": None,
             "http_options": HTTPOptions(),
-            "expected": HTTPOptions(location=DeploymentMode.HeadOnly),
+            "expected": HTTPOptions(location=ProxyLocation.HeadOnly),
         },  # using default location from HTTPOptions
         {
             "proxy_location": None,
             "http_options": HTTPOptions(location="NoServer"),
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": None,
             "http_options": {"location": "NoServer"},
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": "Disabled",
             "http_options": None,
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": "Disabled",
             "http_options": {},
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": "Disabled",
             "http_options": HTTPOptions(host="foobar"),
-            "expected": HTTPOptions(location=DeploymentMode.NoServer, host="foobar"),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled, host="foobar"),
         },
         {
             "proxy_location": "Disabled",
             "http_options": {"host": "foobar"},
-            "expected": HTTPOptions(location=DeploymentMode.NoServer, host="foobar"),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled, host="foobar"),
         },
         {
             "proxy_location": "Disabled",
             "http_options": {"location": "HeadOnly"},
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": ProxyLocation.Disabled,
-            "http_options": HTTPOptions(location=DeploymentMode.HeadOnly),
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "http_options": HTTPOptions(location=ProxyLocation.HeadOnly),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
     ],
 )
@@ -668,6 +738,134 @@ def test_serve_start_proxy_location(ray_shutdown, options):
     serve.start(**options)
     client = _get_global_client()
     assert ray.get(client._controller.get_http_config.remote()) == expected_options
+
+
+@pytest.mark.parametrize(
+    "controller_options",
+    [
+        ControllerOptions(
+            runtime_env={
+                "env_vars": {
+                    "RAY_SERVE_TEST_CONTROLLER_ENV": "from-model",
+                    "RAY_SERVE_TEST_CONTROLLER_ENV_2": "second",
+                }
+            }
+        ),
+        # Same options passed as a plain dict -- the API coerces it
+        # through ``ControllerOptions.model_validate``.
+        {
+            "runtime_env": {
+                "env_vars": {
+                    "RAY_SERVE_TEST_CONTROLLER_ENV": "from-model",
+                    "RAY_SERVE_TEST_CONTROLLER_ENV_2": "second",
+                }
+            }
+        },
+    ],
+)
+def test_serve_start_controller_options(ray_shutdown, controller_options):
+    """``ControllerOptions.runtime_env.env_vars`` lands on the controller actor.
+
+    Uses a custom RAY_SERVE_TEST_CONTROLLER_ENV var (not a real Serve knob)
+    so the assertion is decoupled from whatever the Anyscale env hook
+    auto-injects. The merge semantics are the env_hook's contract; this
+    test only asserts that *our* requested env_vars made it through.
+    """
+    serve.start(controller_options=controller_options)
+    client = _get_global_client()
+
+    # Reach into the controller actor to read its own os.environ; the
+    # controller is a singleton named actor on the head node, so a remote
+    # task on the same handle runs in the same process.
+    def _read_env(self, *, keys):
+        import os as _os
+
+        return {k: _os.environ.get(k) for k in keys}
+
+    env_seen = ray.get(
+        client._controller.__ray_call__.remote(
+            _read_env,
+            keys=[
+                "RAY_SERVE_TEST_CONTROLLER_ENV",
+                "RAY_SERVE_TEST_CONTROLLER_ENV_2",
+            ],
+        )
+    )
+    assert env_seen["RAY_SERVE_TEST_CONTROLLER_ENV"] == "from-model"
+    assert env_seen["RAY_SERVE_TEST_CONTROLLER_ENV_2"] == "second"
+
+
+def test_serve_start_controller_options_rejects_disallowed_runtime_env(
+    ray_shutdown,
+):
+    """Bad runtime_env fails at the caller, not from a Ray task."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError) as exc:
+        serve.start(controller_options={"runtime_env": {"pip": ["numpy"]}})
+    assert "only supports ['env_vars']" in str(exc.value)
+
+
+def test_serve_start_does_not_leak_idle_worker(ray_shutdown):
+    """Regression test for #63596 / PR #63597.
+
+    Before the fix, ``serve_start_async`` ran ``_start_controller`` as a remote
+    Ray task and returned the controller ``ActorHandle`` cross-process to the
+    caller (the Dashboard Agent). That transfer inserted the handle's
+    ObjectRefs into the executor worker's ``stored_in_objects``, pinning the
+    worker IDLE forever (it could never drain). Accumulated across calls in a
+    long-lived caller, this eventually OOM'd the head node.
+
+    With the inline fix, controller creation runs in the caller process — there
+    is no executor worker to pin. This test drives ``serve_start_async`` (the
+    exact #63596 path the Dashboard Agent uses) and asserts the symptom.
+
+    ``ray._private.state.workers()`` reports all WORKER-type processes, which
+    includes the actor-hosting workers for the controller and HTTP proxies.
+    Those are created on ``serve_start_async`` and reaped on ``serve.shutdown()``
+    each cycle, so they do not accumulate. The leaked ``_start_controller``
+    executor, by contrast, was pinned IDLE and SURVIVED ``serve.shutdown()``
+    (its ``object_id_refs_`` never drained) — so it accumulated across cycles
+    and grew the count. The non-growth assertion below catches exactly that.
+    """
+
+    def _worker_count() -> int:
+        return len(state.workers())
+
+    def _settled_worker_count() -> int:
+        # ``state.workers()`` reflects the GCS worker table, which updates
+        # asynchronously after processes exit and the raylet deregisters them.
+        # A fixed sleep is unsafe under CI contention: a not-yet-deregistered
+        # worker would false-fail the fixed code. Settle by polling until two
+        # consecutive reads agree, so reaping of the controller/proxy workers
+        # is complete before sampling. After shutdown only a leaked (pinned)
+        # executor survives.
+        seen = {"prev": None, "stable": False}
+
+        def _stable() -> bool:
+            cur = _worker_count()
+            if seen["prev"] is not None and cur == seen["prev"]:
+                seen["stable"] = True
+            seen["prev"] = cur
+            return seen["stable"]
+
+        wait_for_condition(_stable, timeout=30)
+        return _worker_count()
+
+    cycles = 3
+    counts = []
+    for _ in range(cycles):
+        asyncio.run(serve_start_async())
+        serve.shutdown()
+        counts.append(_settled_worker_count())
+
+    # The count must not grow across cycles — that growth was the leak.
+    # Allow equal-or-fewer (reaping may reduce it); forbid growth.
+    assert counts[-1] <= counts[0], (
+        f"Idle WORKER count grew across {cycles} serve_start_async()/shutdown() "
+        f"cycles: {counts}. Growth indicates a pinned (leaked) executor worker "
+        f"— the #63596 regression."
+    )
 
 
 if __name__ == "__main__":

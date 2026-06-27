@@ -50,6 +50,7 @@ def test_simple_imputer():
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
     )
+    expected_df = expected_df.astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df)
 
@@ -170,6 +171,7 @@ def test_simple_imputer():
         {"A": constant_processed_col_a, "B": constant_processed_col_b}
     )
     constant_expected_df["B"] = constant_expected_df["B"].astype("category")
+    constant_expected_df = constant_expected_df.astype(constant_out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(
         constant_out_df, constant_expected_df, check_like=True

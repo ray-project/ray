@@ -18,11 +18,12 @@ from ray.data._internal.planner._obstore_download import (
     StoreRegistry,
     _extract_credentials_from_filesystem,
     _is_obstore_supported_url,
+    _split_obstore_uri,
 )
 from ray.data._internal.util import RetryingPyFileSystem, _arrow_batcher
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource.path_util import _resolve_paths_and_filesystem, _split_uri
+from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
 logger = logging.getLogger(__name__)
 
@@ -236,6 +237,20 @@ class AsyncPartitionActor(PartitionActor):
     ):
         super().__init__(uri_column_names, data_context, filesystem)
         fs_kwargs = _extract_credentials_from_filesystem(filesystem)
+        if fs_kwargs is None:
+            # Fail closed. ``plan_download_op`` routes filesystems we can't
+            # extract credentials from to ``PartitionActor`` (PyArrow path),
+            # so reaching ``AsyncPartitionActor`` with an unextractable FS is
+            # a bug. Silently seeding an empty kwargs dict would hand the
+            # user's filesystem over to obstore's ambient credential chain
+            # (IMDS / env), which is exactly the silent-drop behavior the
+            # routing was designed to prevent.
+            raise RuntimeError(
+                "AsyncPartitionActor was constructed with a filesystem whose "
+                f"credentials cannot be statically extracted ({type(filesystem).__name__}). "
+                "This indicates a dispatch bug: use PartitionActor for such "
+                "filesystems so the user's credentials are not silently dropped."
+            )
         self._registry = StoreRegistry(retry_config={"max_retries": 10}, **fs_kwargs)
 
     def __call__(self, block: pa.Table) -> Iterator[pa.Table]:
@@ -288,11 +303,11 @@ class AsyncPartitionActor(PartitionActor):
 
         async def _head_one(uri: str) -> int:
             try:
-                store_url, path = _split_uri(uri)
+                store_url, path = _split_obstore_uri(uri)
                 store = self._registry.get(store_url)
                 async with sem:
                     meta = await obs.head_async(store, path)
-                return meta["size"] if isinstance(meta, dict) else meta.size
+                return meta["size"]
             except Exception:
                 return 0
 

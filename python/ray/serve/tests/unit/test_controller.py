@@ -9,11 +9,11 @@ from ray.serve._private.controller import (
 )
 from ray.serve._private.controller_health_metrics_tracker import (
     _HEALTH_METRICS_HISTORY_SIZE,
-    ControllerHealthMetrics,
     ControllerHealthMetricsTracker,
-    DurationStats,
 )
 from ray.serve.schema import (
+    ControllerHealthMetrics,
+    DurationStats,
     HTTPOptionsSchema,
     ServeApplicationSchema,
     ServeDeploySchema,
@@ -390,6 +390,7 @@ class TestControllerHealthMetrics:
         assert metrics.controller_start_time == 0.0
         assert metrics.uptime_s == 0.0
         assert metrics.num_control_loops == 0
+        assert metrics.last_control_loop_time == 0.0
         assert metrics.loop_duration_s is None
         assert metrics.event_loop_delay_s == 0.0
         assert metrics.num_asyncio_tasks == 0
@@ -424,6 +425,7 @@ class TestControllerHealthMetrics:
             "controller_start_time",
             "uptime_s",
             "num_control_loops",
+            "last_control_loop_time",
             "loop_duration_s",
             "loops_per_second",
             "last_sleep_duration_s",
@@ -544,6 +546,25 @@ class TestCollectHealthMetrics:
 
         # Should be approximately 0.5 loops per second
         assert 0.4 < loops_per_second < 0.6
+
+    def test_last_control_loop_time_propagated(self):
+        """Test that last_control_loop_time on the tracker is propagated through
+        collect_metrics."""
+        tracker = ControllerHealthMetricsTracker()
+
+        # Default: tracker has not recorded a control loop yet.
+        metrics = tracker.collect_metrics()
+        assert metrics.last_control_loop_time == 0.0
+
+        # Set a specific timestamp and verify it is reflected in collected metrics.
+        tracker.last_control_loop_time = 12345.6789
+        metrics = tracker.collect_metrics()
+        assert metrics.last_control_loop_time == 12345.6789
+
+        # Update it again and verify the latest value is returned.
+        tracker.last_control_loop_time = 99999.0
+        metrics = tracker.collect_metrics()
+        assert metrics.last_control_loop_time == 99999.0
 
     def test_component_update_durations_tracked(self):
         """Test that component update durations are tracked with DurationStats."""

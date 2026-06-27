@@ -41,7 +41,7 @@ def _concatenate_extension_column(
     )
 
     if not _is_pa_extension_type(ca.type):
-        raise ValueError("Chunked array isn't an extension array: {ca}")
+        raise ValueError(f"Chunked array isn't an extension array: {ca.type}")
 
     tensor_extension_types = get_arrow_extension_tensor_types()
 

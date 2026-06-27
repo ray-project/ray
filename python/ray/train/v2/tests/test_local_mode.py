@@ -27,6 +27,7 @@ from ray.train.huggingface.transformers import (
 from ray.train.lightgbm import (
     LightGBMTrainer,
     RayTrainReportCallback as LightGBMRayTrainReportCallback,
+    normalize_pandas_for_lightgbm,
 )
 from ray.train.lightning import (
     RayDDPStrategy,
@@ -129,14 +130,19 @@ def test_lightgbm_trainer_local_mode(ray_start_6_cpus):
     ):
         remaining_iters = num_boost_round
         train_ds_iter = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
-        train_df = train_ds_iter.materialize().to_pandas()
+        train_df = normalize_pandas_for_lightgbm(
+            train_ds_iter.materialize().to_pandas()
+        )
 
         eval_ds_iters = {
             k: ray.train.get_dataset_shard(k)
             for k in dataset_keys
             if k != TRAIN_DATASET_KEY
         }
-        eval_dfs = {k: d.materialize().to_pandas() for k, d in eval_ds_iters.items()}
+        eval_dfs = {
+            k: normalize_pandas_for_lightgbm(d.materialize().to_pandas())
+            for k, d in eval_ds_iters.items()
+        }
 
         train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
         train_set = lightgbm.Dataset(train_X, label=train_y)
@@ -390,7 +396,7 @@ def test_e2e_hf_local_mode(ray_start_4_cpus, use_ray_data):
         # HF Transformers Trainer
         training_args = TrainingArguments(
             f"{HF_MODEL_NAME}-wikitext2",
-            evaluation_strategy=config["evaluation_strategy"],
+            eval_strategy=config["evaluation_strategy"],
             logging_strategy=config["logging_strategy"],
             save_strategy=config["save_strategy"],
             eval_steps=config["eval_steps"],
@@ -403,7 +409,7 @@ def test_e2e_hf_local_mode(ray_start_4_cpus, use_ray_data):
             per_device_eval_batch_size=HF_BATCH_SIZE_PER_WORKER,
             weight_decay=0.01,
             disable_tqdm=True,
-            no_cuda=config["no_cuda"],
+            use_cpu=config["no_cuda"],
             report_to="none",
         )
         trainer = Trainer(

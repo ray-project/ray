@@ -19,7 +19,7 @@ These can be used directly on a Dataset or a GroupedData object, as shown below:
 
     # Create a sample dataset
     ds = ray.data.range(100)
-    ds = ds.add_column("group_key", lambda x: x % 3)
+    ds = ds.add_column("group_key", lambda x: x["id"].to_numpy() % 3)
     # Schema: {'id': int64, 'group_key': int64}
 
     # Find the max
@@ -43,7 +43,7 @@ Aggregation objects can be used directly with a Dataset like shown below:
 
     # Create a sample dataset
     ds = ray.data.range(100)
-    ds = ds.add_column("group_key", lambda x: x % 3)
+    ds = ds.add_column("group_key", lambda x: x["id"].to_numpy() % 3)
 
     # Count all rows
     result = ds.aggregate(Count())
@@ -67,7 +67,7 @@ Multiple aggregations can also be computed at once:
     from ray.data.aggregate import Count, Mean, Min, Max, Std
 
     ds = ray.data.range(100)
-    ds = ds.add_column("group_key", lambda x: x % 3)
+    ds = ds.add_column("group_key", lambda x: x["id"].to_numpy() % 3)
 
     # Compute multiple aggregations at once
     result = ds.groupby("group_key").aggregate(

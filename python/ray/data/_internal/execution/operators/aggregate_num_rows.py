@@ -1,6 +1,10 @@
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.interfaces import (
+    BlockEntry,
+    PhysicalOperator,
+    RefBundle,
+)
 from ray.data._internal.stats import StatsDict
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
@@ -45,7 +49,9 @@ class AggregateNumRows(PhysicalOperator):
 
         metadata = BlockAccessor.for_block(block).get_metadata()
         schema = BlockAccessor.for_block(block).schema()
-        bundle = RefBundle([(block_ref, metadata)], owns_blocks=True, schema=schema)
+        bundle = RefBundle(
+            [BlockEntry(block_ref, metadata)], owns_blocks=True, schema=schema
+        )
 
         self._has_outputted = True
         return bundle

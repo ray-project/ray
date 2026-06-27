@@ -6,8 +6,10 @@ from unittest.mock import Mock, PropertyMock, patch
 
 import cloudpickle
 import pytest
+from fastapi import FastAPI
 from pydantic import ValidationError
 
+from ray import serve
 from ray.exceptions import RayTaskError
 from ray.serve._private.application_state import (
     CHECKPOINT_KEY,
@@ -16,9 +18,11 @@ from ray.serve._private.application_state import (
     ApplicationStatusInfo,
     BuildAppStatus,
     StatusOverview,
+    build_serve_application,
     override_deployment_info,
 )
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
+from ray.serve._private.build_app import CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
@@ -40,12 +44,15 @@ from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.test_utils import MockKVStore
 from ray.serve._private.utils import get_random_string
+from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentActorConfig,
     GangSchedulingConfig,
+    RequestRouterConfig,
 )
 from ray.serve.exceptions import RayServeException
+from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.generated.serve_pb2 import (
     ApplicationArgs as ApplicationArgsProto,
     ApplicationStatusInfo as ApplicationStatusInfoProto,
@@ -225,6 +232,7 @@ def deployment_params(
     route_prefix: str = None,
     autoscaling_config: AutoscalingConfig = None,
     num_replicas: int = 1,
+    ingress_request_router: bool = False,
 ):
     return {
         "deployment_name": name,
@@ -240,6 +248,7 @@ def deployment_params(
         "deployer_job_id": "random",
         "route_prefix": route_prefix,
         "ingress": route_prefix is not None,
+        "ingress_request_router": ingress_request_router,
         "serialized_autoscaling_policy_def": None,
         "serialized_request_router_cls": None,
     }
@@ -250,9 +259,132 @@ def deployment_info(
     route_prefix: str = None,
     autoscaling_config: AutoscalingConfig = None,
     num_replicas: int = 1,
+    ingress_request_router: bool = False,
 ):
-    params = deployment_params(name, route_prefix, autoscaling_config, num_replicas)
+    params = deployment_params(
+        name,
+        route_prefix,
+        autoscaling_config,
+        num_replicas,
+        ingress_request_router,
+    )
     return deploy_args_to_deployment_info(**params, app_name="test_app")
+
+
+class TestGracefulShutdownTimeoutFloor:
+    """deploy_args_to_deployment_info floors graceful_shutdown_timeout_s to the
+    direct-ingress min draining period (plus buffer) for ingress deployments, so
+    the controller's force-kill deadline can't cut the replica's drain short."""
+
+    @staticmethod
+    def _params(*, graceful_shutdown_timeout_s, ingress):
+        return {
+            "deployment_name": "d",
+            "deployment_config_proto_bytes": DeploymentConfig(
+                graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
+                version=get_random_string(),
+            ).to_proto_bytes(),
+            "replica_config_proto_bytes": ReplicaConfig.create(
+                lambda x: x
+            ).to_proto_bytes(),
+            "deployer_job_id": "random",
+            "route_prefix": "/" if ingress else None,
+            "ingress": ingress,
+        }
+
+    def _timeout(self, **kwargs):
+        info = deploy_args_to_deployment_info(**self._params(**kwargs), app_name="app")
+        return info.deployment_config.graceful_shutdown_timeout_s
+
+    @patch.multiple(
+        "ray.serve._private.deploy_utils",
+        RAY_SERVE_ENABLE_DIRECT_INGRESS=True,
+        RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=30,
+        RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S=5,
+    )
+    def test_ingress_below_floor_is_raised(self):
+        # max(10, 30 + 5) == 35
+        assert self._timeout(graceful_shutdown_timeout_s=10, ingress=True) == 35
+
+    @patch.multiple(
+        "ray.serve._private.deploy_utils",
+        RAY_SERVE_ENABLE_DIRECT_INGRESS=True,
+        RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=30,
+        RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S=5,
+    )
+    def test_ingress_above_floor_is_unchanged(self):
+        assert self._timeout(graceful_shutdown_timeout_s=60, ingress=True) == 60
+
+    @patch.multiple(
+        "ray.serve._private.deploy_utils",
+        RAY_SERVE_ENABLE_DIRECT_INGRESS=True,
+        RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=30,
+        RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S=5,
+    )
+    def test_non_ingress_is_not_floored(self):
+        assert self._timeout(graceful_shutdown_timeout_s=10, ingress=False) == 10
+
+    @patch.multiple(
+        "ray.serve._private.deploy_utils",
+        RAY_SERVE_ENABLE_DIRECT_INGRESS=False,
+        RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=30,
+        RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S=5,
+    )
+    def test_not_floored_when_direct_ingress_disabled(self):
+        assert self._timeout(graceful_shutdown_timeout_s=10, ingress=True) == 10
+
+
+def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
+    ingress_api = FastAPI()
+    router_api = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(ingress_api)
+    class LLMServer:
+        pass
+
+    @serve.deployment
+    @serve.ingress(router_api)
+    class IngressRequestRouter:
+        pass
+
+    llm_server = LLMServer.bind()
+    app = llm_server._with_ingress_request_router(
+        IngressRequestRouter.bind(llm_deployment=llm_server)
+    )
+    runtime_context = Mock()
+    runtime_context.runtime_env = {}
+    runtime_context.get_job_id.return_value = "job-id"
+
+    with (
+        patch("ray.serve._private.application_state.import_attr", return_value=app),
+        patch(
+            "ray.serve._private.application_state.ray.get_runtime_context",
+            return_value=runtime_context,
+        ),
+        patch("ray.serve._private.application_state.configure_component_logger"),
+        patch("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True),
+    ):
+        _, deploy_args, error = build_serve_application._function(
+            "module.app",
+            "code-version",
+            "default",
+            {},
+            LoggingConfig(),
+            None,
+            {},
+            {},
+            {},
+        )
+
+    assert error is None
+    assert [
+        (args["deployment_name"], args["ingress_request_router"])
+        for args in deploy_args
+    ] == [
+        ("LLMServer", False),
+        ("IngressRequestRouter", True),
+    ]
 
 
 @pytest.fixture
@@ -269,6 +401,28 @@ def mocked_application_state() -> Tuple[ApplicationState, MockDeploymentStateMan
         external_scaler_enabled=False,
     )
     yield application_state, deployment_state_manager
+
+
+def test_application_state_clears_stale_ingress_request_router(
+    mocked_application_state,
+):
+    application_state, _ = mocked_application_state
+
+    application_state._set_target_state(
+        {"Router": deployment_info("Router", ingress_request_router=True)},
+        api_type=APIType.IMPERATIVE,
+        code_version="1",
+        target_config=None,
+    )
+    assert application_state.ingress_request_router_deployment == "Router"
+
+    application_state._set_target_state(
+        {"Main": deployment_info("Main")},
+        api_type=APIType.IMPERATIVE,
+        code_version="2",
+        target_config=None,
+    )
+    assert application_state.ingress_request_router_deployment is None
 
 
 class TestApplicationStatusInfo:
@@ -1343,6 +1497,19 @@ class TestOverrideDeploymentInfo:
             deployer_job_id="",
         )
 
+    @staticmethod
+    def _make_info(ingress=False, ingress_request_router=False):
+        return DeploymentInfo(
+            route_prefix="/" if ingress else None,
+            version="123",
+            deployment_config=DeploymentConfig(num_replicas=1),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+            ingress=ingress,
+            ingress_request_router=ingress_request_router,
+        )
+
     def test_override_deployment_config(self, info):
         config = ServeApplicationSchema(
             name="default",
@@ -1371,6 +1538,32 @@ class TestOverrideDeploymentInfo:
         assert updated_info.deployment_config.graceful_shutdown_timeout_s == 40
         assert updated_info.deployment_config.health_check_period_s == 20
         assert updated_info.deployment_config.health_check_timeout_s == 60
+
+    def test_noop_deployment_override_keeps_actor_options(self, info):
+        original_actor_options = dict(info.replica_config.ray_actor_options)
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[DeploymentSchema(name="A")],
+        )
+
+        updated_infos = override_deployment_info({"A": info}, config)
+        updated_info = updated_infos["A"]
+        assert updated_info.replica_config.ray_actor_options == original_actor_options
+        assert "runtime_env" not in updated_info.replica_config.ray_actor_options
+
+        old_version = DeploymentVersion(
+            info.version,
+            info.deployment_config,
+            info.replica_config.ray_actor_options,
+        )
+        new_version = DeploymentVersion(
+            updated_info.version,
+            updated_info.deployment_config,
+            updated_info.replica_config.ray_actor_options,
+        )
+        assert old_version.ray_actor_options_hash == new_version.ray_actor_options_hash
+        assert not old_version.requires_actor_restart(new_version)
 
     def test_override_autoscaling_config(self, info):
         config = ServeApplicationSchema(
@@ -1412,6 +1605,83 @@ class TestOverrideDeploymentInfo:
         updated_info = updated_infos["A"]
         assert updated_info.route_prefix == "/bob"
         assert updated_info.version == "123"
+
+    @pytest.mark.parametrize(
+        "haproxy_enabled, attach_ingress_request_router, rejected",
+        [
+            # A custom router added by config override is rejected only under
+            # HAProxy, since build_app cannot see the override...
+            (True, False, True),
+            (False, False, False),
+            # ...unless an ingress request router is attached (direct streaming),
+            # where routing flows through the Serve router.
+            (True, True, False),
+        ],
+    )
+    def test_override_custom_ingress_request_router_under_haproxy(
+        self, monkeypatch, haproxy_enabled, attach_ingress_request_router, rejected
+    ):
+        monkeypatch.setattr(
+            "ray.serve._private.application_state.RAY_SERVE_ENABLE_HA_PROXY",
+            haproxy_enabled,
+        )
+
+        infos = {"Ingress": self._make_info(ingress=True)}
+        if attach_ingress_request_router:
+            infos["Router"] = self._make_info(ingress_request_router=True)
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="Ingress",
+                    request_router_config=RequestRouterConfig(
+                        request_router_class=RoundRobinRouter
+                    ),
+                )
+            ],
+        )
+
+        if rejected:
+            with pytest.raises(
+                RayServeException, match=CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR
+            ):
+                override_deployment_info(infos, config)
+        else:
+            router_config = override_deployment_info(infos, config)[
+                "Ingress"
+            ].deployment_config.request_router_config
+            assert not router_config.is_default_request_router()
+
+    def test_override_allows_custom_router_on_non_ingress_under_haproxy(
+        self, monkeypatch
+    ):
+        """The guard targets only the ingress, so a custom router on a downstream
+        deployment is honored under HAProxy."""
+        monkeypatch.setattr(
+            "ray.serve._private.application_state.RAY_SERVE_ENABLE_HA_PROXY", True
+        )
+        infos = {
+            "Ingress": self._make_info(ingress=True),
+            "Downstream": self._make_info(ingress=False),
+        }
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="Downstream",
+                    request_router_config=RequestRouterConfig(
+                        request_router_class=RoundRobinRouter
+                    ),
+                )
+            ],
+        )
+
+        router_config = override_deployment_info(infos, config)[
+            "Downstream"
+        ].deployment_config.request_router_config
+        assert not router_config.is_default_request_router()
 
     def test_override_ray_actor_options_1(self, info):
         """Test runtime env specified in config at deployment level."""

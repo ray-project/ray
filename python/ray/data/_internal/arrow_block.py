@@ -15,6 +15,7 @@ from typing import (
 )
 
 import numpy as np
+import pandas as pd
 from packaging.version import parse as parse_version
 
 from ray._common.utils import env_integer
@@ -58,6 +59,10 @@ logger = logging.getLogger(__name__)
 
 _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
 _BATCH_SIZE_PRESERVING_STUB_COL_NAME = "__bsp_stub"
+
+
+def _is_user_visible_column(name: str) -> bool:
+    return name != _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 
 
 # Set the max chunk size in bytes for Arrow to Batches conversion in
@@ -174,7 +179,9 @@ class ArrowBlockBuilder(TableBlockBuilder):
     @staticmethod
     def _combine_tables(tables: List[Block]) -> Block:
         if len(tables) > 1:
-            return transform_pyarrow.concat(tables, promote_types=True)
+            return transform_pyarrow.concat(
+                tables, promote_types=True, preserve_order=True
+            )
         else:
             return tables[0]
 
@@ -274,7 +281,26 @@ class ArrowBlockAccessor(TableBlockAccessor):
         # We specify ignore_metadata=True because pyarrow will use the metadata
         # to build the Table. This is handled incorrectly for older pyarrow versions
         ctx = DataContext.get_current()
-        df = self._table.to_pandas(ignore_metadata=ctx.pandas_block_ignore_metadata)
+
+        # types_mapper preserves Arrow dtypes through the pandas round-trip:
+        # - Standard Arrow types become pd.ArrowDtype, so pa.Table.from_pandas()
+        #   can reconstruct them exactly without lossy numpy conversion.
+        # - Extension types (Ray's ArrowTensorType / ArrowPythonObjectType and
+        #   pyarrow's native FixedShapeTensorType) return None, falling back to
+        #   their own to_pandas_dtype() hooks. Note: native FixedShapeTensorType
+        #   subclasses BaseExtensionType but not ExtensionType, so we check the
+        #   broader BaseExtensionType.
+        def _types_mapper(t):
+            if isinstance(t, pyarrow.BaseExtensionType) or pyarrow.types.is_dictionary(
+                t
+            ):
+                return None
+            return pd.ArrowDtype(t)
+
+        df = self._table.to_pandas(
+            ignore_metadata=ctx.pandas_block_ignore_metadata,
+            types_mapper=_types_mapper,
+        )
         if ctx.enable_tensor_extension_casting:
             df = _cast_tensor_columns_to_ndarrays(df, arrow_schema=self._table.schema)
         return df
@@ -387,9 +413,18 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 f"Arrow blocks, but got: {columns}."
             )
         if len(columns) == 0:
-            # Applicable for count which does an empty projection.
-            # Pyarrow returns a table with 0 columns and num_rows rows.
-            return self.fill_column(_BATCH_SIZE_PRESERVING_STUB_COL_NAME, None)
+            # Empty projection (e.g. count or ``select_columns([])``).
+            # Drop every existing column, then append the stub so row
+            # counts survive downstream ``pa.concat_tables`` calls (which
+            # collapse num_rows to 0 when all inputs have 0 columns).
+            # ``pa.Table`` tracks num_rows as metadata independent of
+            # columns, so ``select([])`` preserves it here. The stub is
+            # filtered out of the user-visible schema; it's a physical
+            # placeholder only.
+            narrowed = self._table.select([])
+            return ArrowBlockAccessor(narrowed).fill_column(
+                _BATCH_SIZE_PRESERVING_STUB_COL_NAME, None
+            )
         return self._table.select(columns)
 
     def rename_columns(self, columns_rename: Dict[str, str]) -> "pyarrow.Table":
@@ -476,7 +511,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 _is_native_tensor_type(column.type) for column in table.columns
             )
             for batch in table.to_batches(max_chunksize=self._max_chunk_size):
-
                 if contains_native_tensor_columns:
                     # HACK: For v1 and v2 tensors, we can control what is returned
                     # by overriding ExtensionScalar.as_py (see ArrowTensorScalar).

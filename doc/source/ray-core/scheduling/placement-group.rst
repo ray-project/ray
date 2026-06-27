@@ -729,6 +729,171 @@ Fault Tolerance of Actors and Tasks that Use the Bundle
 
 Ray reschedules Actors and tasks that use the bundle (reserved resources) based on their :ref:`fault tolerant policy <fault-tolerance>` once Ray recovers the bundle.
 
+.. _pgroup-topology-strategy:
+
+[Alpha] Topology aware scheduling
+---------------------------------
+
+.. warning::
+
+  Topology aware scheduling is an **alpha** feature. It's actively being iterated on and
+  the API surface may change. Ray currently only supports defining one topology label and 
+  one node level strategy (described below). For topology labels, Ray currently supports 
+  only ``STRICT_PACK``. Support for additional strategies and multi-level topologies is planned.
+
+Why topology aware scheduling?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The placement strategies above (PACK, STRICT_PACK, SPREAD, STRICT_SPREAD) operate purely on a
+per-node basis. For multi-node GPU domains such as GB200 or GB300 NVL racks where nodes share
+fast interconnects, there's no native way to ensure all bundles land within the same GPU
+domain.
+
+For example, consider a cluster with 2 racks of 18 nodes each, where each node has
+``{"GPU": 4, "CPU": 2}``. You want to schedule ``[{"GPU": 4, "CPU": 2}] * 18`` within a single rack:
+
+- **STRICT_PACK** tries to place all 18 bundles onto a single *node*, which is infeasible because
+  a single node only has 4 GPUs and 2 CPUs.
+- **PACK** spreads bundles across nodes but it has no concept of racks and bundles may land on nodes
+  across *both* racks.
+
+You could work around this with static :ref:`label selectors <labels>` (such as
+``bundle_label_selector=[{"my_custom_gpu_domain_label": "rack-1"}] * 18``), but that approach doesn't support
+fault tolerance. If all nodes in ``rack-1`` go down, the placement group can't automatically move
+to a different rack. Furthermore, you have to manually specify a domain when you really just want
+any domain and this becomes cumbersome if you have many GPU domains.
+
+Topology aware scheduling currently solves this by letting you express a topology strategy for the placement 
+group, which allows specifying a topology label within the cluster. Ray picks a value for this topology label
+that can satisfy all bundles (for example, a specific rack) and then applies your node-level strategy 
+within that value.
+
+How it works
+~~~~~~~~~~~~
+
+Pass ``topology_strategy=`` to :func:`ray.util.placement_group` to enable topology-aware
+placement. The argument is a dict that maps a label key to the placement strategy used at that level.
+
+Currently, ``topology_strategy`` is a dictionary that may contain up to two keys:
+
+- The special key ``ray.io/node-id`` sets the **node-level** strategy and accepts any value
+  in ``{"PACK", "STRICT_PACK", "SPREAD", "STRICT_SPREAD"}``. If you omit it, the node-level
+  strategy defaults to ``PACK``.
+- Any other key is a **topology label** that nodes have set (via ``ray start --labels`` or
+  your cluster configuration). Only ``STRICT_PACK`` is supported for these labels today.
+
+.. code-block:: python
+
+  from ray.util.placement_group import placement_group
+
+  bundles = [{"GPU": 4, "CPU": 2}] * 18
+
+  pg = placement_group(
+      bundles=bundles,
+      topology_strategy={"ray.io/gpu-domain": "STRICT_PACK"},
+  )
+
+  ray.get(pg.ready())
+
+With this, Ray accomplishes the following:
+
+1. Groups candidate nodes by the value of the topology label you named
+   (``ray.io/gpu-domain`` in the example above).
+2. Selects a value for that label that can satisfy all bundles.
+3. Applies the node-level scheduling strategy within the selected value.
+
+Here is a following example to STRICT_SPREAD bundles across distinct nodes while still 
+STRICT_PACKing them onto a single rack (``ray.io/gpu-domain`` is each rack's **topology label**):
+
+.. code-block:: python
+
+  pg = placement_group(
+      bundles=[{"CPU": 1}] * 4,
+      topology_strategy={
+          "ray.io/node-id": "STRICT_SPREAD",
+          "ray.io/gpu-domain": "STRICT_PACK",
+      },
+  )
+
+``topology_strategy`` is mutually exclusive with the ``strategy=`` parameter, and passing both
+raises ``ValueError``. To override the default node-level strategy alongside a topology label,
+put the node-level strategy under ``ray.io/node-id`` in the same dict, as shown above.
+
+.. note::
+
+  Ray doesn't automatically set topology labels such as ``ray.io/gpu-domain`` on nodes.
+  Configure these labels through ``ray start --labels`` or your cluster configuration.
+  For example:
+
+  .. code-block:: bash
+
+    ray start --labels="ray.io/gpu-domain=rack-1"
+
+Fault tolerance
+~~~~~~~~~~~~~~~
+
+Topology aware scheduling improves on static label selectors by providing automatic
+fault tolerance at the topology-label level:
+
+- **Partial failure** (some nodes within the selected value of the topology label die):
+  Ray reschedules the lost bundles onto surviving nodes **within the same value** (for
+  example, the same rack). Actors and tasks on the remaining bundles keep running. If
+  the selected value doesn't have enough resources to reschedule the lost bundles,
+  those bundles stay infeasible and queued until resources free up in the same value.
+  To force the placement group onto a different value, call
+  :func:`ray.util.remove_placement_group <ray.util.remove_placement_group>` and create
+  a new one. Removing the placement group forcefully kills every actor and task still
+  using its bundles and doesn't restart them, so you must re-create them yourself on
+  the new placement group.
+- **Total failure** (all nodes with the selected value die): Ray clears the topology
+  assignment and reschedules the entire placement group onto a different value.
+
+Observability
+~~~~~~~~~~~~~
+
+You can inspect topology-aware placement groups using the existing placement group
+observability tools:
+
+- **Dashboard**: The placement group table shows a ``Topology`` column, which displays the
+  strategy you requested and the value Ray selected for each topology label.
+- **State API**: ``ray list placement-groups --detail`` returns the requested strategy in
+  ``topology_strategy`` and the value Ray selected in ``topology_assignments``.
+
+The following ``ray list placement-groups --detail`` output shows the two topology fields,
+``topology_strategy`` and ``topology_assignments``, populated for a placement group that
+packs onto a single ``ray.io/gpu-domain``:
+
+.. code-block:: yaml
+
+  - placement_group_id: 237f47c3235ac1a96ad423c3f74501000000
+    name: gpu-domain-pg
+    state: CREATED
+    bundles:
+    - bundle_id:
+        placement_group_id: 237f47c3235ac1a96ad423c3f74501000000
+        bundle_index: 0
+      unit_resources:
+        CPU: 1.0
+      node_id: 0fd7eecf6335633ba39ab66f5a26b18eeb35c70c15a9563a29ee2bce
+    - bundle_id:
+        placement_group_id: 237f47c3235ac1a96ad423c3f74501000000
+        bundle_index: 1
+      unit_resources:
+        CPU: 1.0
+      node_id: 0fd7eecf6335633ba39ab66f5a26b18eeb35c70c15a9563a29ee2bce
+    is_detached: false
+    stats: ...
+    topology_strategy:
+    - entries:
+        ray.io/gpu-domain: STRICT_PACK
+    topology_assignments:
+    - assignments:
+        ray.io/gpu-domain: rack-2
+
+For placement groups that don't use topology-aware scheduling, ``topology_strategy`` and
+``topology_assignments`` are both empty lists. Both fields appear only when you pass
+``--detail``.
+
 API Reference
 -------------
 :ref:`Placement Group API reference <ray-placement-group-ref>`

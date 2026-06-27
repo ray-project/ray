@@ -23,6 +23,7 @@ from ray import serve
 from ray.llm._internal.common.dict_utils import (
     maybe_apply_llm_deployment_config_defaults,
 )
+from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
 from ray.llm._internal.serve.core.ingress.builder import LLMServingArgs
 from ray.llm._internal.serve.core.ingress.ingress import (
     DEFAULT_ENDPOINTS,
@@ -109,7 +110,13 @@ def build_dev_openai_app(builder_config: Dict) -> Application:
     config = LLMServingArgs.model_validate(builder_config)
     llm_configs = config.llm_configs
 
-    llm_deployments = [build_llm_deployment(c) for c in llm_configs]
+    llm_deployments = {c.model_id: build_llm_deployment(c) for c in llm_configs}
+    model_cards = {c.model_id: to_model_metadata(c.model_id, c) for c in llm_configs}
+    lora_paths = {
+        c.model_id: c.lora_config.dynamic_lora_loading_path
+        for c in llm_configs
+        if c.lora_config is not None
+    }
 
     ingress_cls_config = config.ingress_cls_config
     default_ingress_options = DevIngress.get_deployment_options(llm_configs)
@@ -124,5 +131,8 @@ def build_dev_openai_app(builder_config: Dict) -> Application:
     logger.info(pprint.pformat(ingress_options))
 
     return serve.deployment(ingress_cls, **ingress_options).bind(
-        llm_deployments=llm_deployments, **ingress_cls_config.ingress_extra_kwargs
+        llm_deployments=llm_deployments,
+        model_cards=model_cards,
+        lora_paths=lora_paths,
+        **ingress_cls_config.ingress_extra_kwargs,
     )

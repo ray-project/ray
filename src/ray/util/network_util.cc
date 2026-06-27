@@ -254,6 +254,40 @@ std::shared_ptr<absl::flat_hash_map<std::string, std::string>> ParseURL(std::str
   return result;
 }
 
+std::string GetLocalhostIP() {
+  static const std::string localhost_ip = []() {
+    // Try IPv4 first, then IPv6 localhost resolution
+    for (auto family : {boost::asio::ip::tcp::v4(), boost::asio::ip::tcp::v6()}) {
+      try {
+        boost::asio::io_context io_context;
+        boost::asio::ip::tcp::resolver resolver(io_context);
+        boost::asio::ip::tcp::resolver::query query(family, "localhost", "");
+        auto endpoints = resolver.resolve(query);
+        if (endpoints != boost::asio::ip::tcp::resolver::iterator()) {
+          return endpoints->endpoint().address().to_string();
+        }
+      } catch (const boost::system::system_error &) {
+        // Continue to next family
+        continue;
+      }
+    }
+    // Final fallback to IPv4 loopback
+    return std::string("127.0.0.1");
+  }();
+  return localhost_ip;
+}
+
+std::string GetAllInterfacesIP() {
+  static const std::string all_interfaces_ip = []() {
+    std::string localhost = GetLocalhostIP();
+    if (localhost == "::1" || localhost.find(':') != std::string::npos) {
+      return std::string("::");
+    }
+    return std::string("0.0.0.0");
+  }();
+  return all_interfaces_ip;
+}
+
 std::string GetNodeIpAddressFromPerspective(const std::optional<std::string> &address) {
   std::vector<std::pair<std::string, boost::asio::ip::udp>> test_addresses;
   if (address.has_value()) {

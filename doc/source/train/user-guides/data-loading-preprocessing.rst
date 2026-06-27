@@ -605,7 +605,7 @@ For example, the following code prefetches 10 batches at a time for each trainin
 Avoid heavy transformation in collate_fn
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``collate_fn`` parameter in :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` allows you to transform data before feeding it to the model. This operation happens locally in the training workers. Avoid adding a heavy transformation in this function as it may become the bottleneck. Instead, :ref:`apply the transformation with map or map_batches <transforming_data>` before passing the dataset to the Trainer. When your expensive transformation requires batch_size as input, such as text tokenization, you can :ref:`scale it out to Ray Data <train-scaling-collation-functions>` for better performance.
+The ``collate_fn`` parameter in :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` allows you to transform data before feeding it to the model. This operation happens locally in the training workers. Avoid adding a heavy transformation in this function as it may become the bottleneck. Instead, :ref:`apply the transformation with map or map_batches <transforming_data>` before passing the dataset to the Trainer. When your expensive transformation requires batch_size as input, such as text tokenization, you can :ref:`scale it out to Ray Data <scaling_collation_functions>` for better performance.
 
 
 .. _dataset_cache_performance:
@@ -689,3 +689,9 @@ tuning the following:
       )
 
 See :ref:`data_performance_tips` for more info on how to tune Ray Data.
+
+More data ingest guides
+-----------------------
+
+- :ref:`Weighted Dataset Mixing <mixing_data>` — combine multiple datasets with target row ratios for training.
+- :ref:`Scaling Collation Functions <scaling_collation_functions>` — scale out expensive collation functions to Ray Data.

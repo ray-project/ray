@@ -6,7 +6,7 @@ import pyarrow as pa
 import pytest
 
 from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
-from ray.data._internal.tensor_extensions.pandas import TensorArray
+from ray.data._internal.tensor_extensions.pandas import TensorArray, TensorDtype
 from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.util.data_batch_conversion import (
     BatchFormat,
@@ -294,6 +294,65 @@ def test_arrow_tensor_pandas(cast_tensor_columns):
         actual_output, type=BatchFormat.ARROW, cast_tensor_columns=cast_tensor_columns
     )
     assert arrow_output.equals(input_data)
+
+
+def _make_object_column(arrays):
+    """Build a 1-D object-dtype ndarray whose elements are the given ndarrays.
+
+    ``np.array([...], dtype=object)`` would build a 2-D array, so we fill an
+    empty object array element-by-element to keep each ndarray as a cell value.
+    """
+    out = np.empty(len(arrays), dtype=object)
+    for i, arr in enumerate(arrays):
+        out[i] = arr
+    return out
+
+
+def test_cast_ndarray_columns_duplicate_names():
+    """
+    Casting ndarray to tensor columns must handle duplicate column names,
+    keeping each column's data intact.
+    """
+    col_a = [np.array([1, 2, 3]), np.array([4, 5, 6]), np.array([7, 8, 9])]
+    col_b = [np.array([10, 20]), np.array([30, 40]), np.array([50, 60])]
+    df = pd.DataFrame(
+        {"_a": _make_object_column(col_a), "_b": _make_object_column(col_b)}
+    )
+    df.columns = ["x", "x"]
+
+    actual = _cast_ndarray_columns_to_tensor_extension(df)
+
+    # Both physical columns must be cast to the tensor extension type.
+    assert [isinstance(dt, TensorDtype) for _, dt in actual.dtypes.items()] == [
+        True,
+        True,
+    ]
+    # Values must be preserved per physical column (no write-back broadcasting
+    # one column's data across both duplicate labels).
+    np.testing.assert_array_equal(np.array(list(actual.iloc[:, 0])), col_a)
+    np.testing.assert_array_equal(np.array(list(actual.iloc[:, 1])), col_b)
+
+
+def test_cast_tensor_columns_duplicate_names():
+    """
+    Casting tensor columns back to ndarrays must handle duplicate names,
+    keeping each column's data intact.
+    """
+    col_a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    col_b = np.array([[10, 20], [30, 40], [50, 60]])
+    df = pd.DataFrame({"_a": TensorArray(col_a), "_b": TensorArray(col_b)})
+    df.columns = ["x", "x"]
+
+    actual = _cast_tensor_columns_to_ndarrays(df)
+
+    # Neither physical column should remain a tensor extension column.
+    assert [isinstance(dt, TensorDtype) for _, dt in actual.dtypes.items()] == [
+        False,
+        False,
+    ]
+    # Each physical column must retain its own original data.
+    np.testing.assert_array_equal(np.array(list(actual.iloc[:, 0])), col_a)
+    np.testing.assert_array_equal(np.array(list(actual.iloc[:, 1])), col_b)
 
 
 if __name__ == "__main__":

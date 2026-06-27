@@ -28,7 +28,7 @@
 #include "absl/time/clock.h"
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/plasma/client.h"
-#include "ray/common/asio/fake_periodical_runner.h"
+#include "ray/asio/fake_periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/actor_management/actor_creator.h"
@@ -52,6 +52,7 @@
 #include "ray/pubsub/publisher.h"
 #include "ray/raylet_ipc_client/fake_raylet_ipc_client.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace core {
@@ -64,8 +65,7 @@ class CoreWorkerTest : public ::testing::Test {
  public:
   CoreWorkerTest()
       : io_work_(io_service_.get_executor()),
-        task_execution_service_work_(task_execution_service_.get_executor()),
-        current_time_ms_(0.0) {
+        task_execution_service_work_(task_execution_service_.get_executor()) {
     CoreWorkerOptions options;
     options.worker_type = WorkerType::WORKER;
     options.language = Language::PYTHON;
@@ -93,6 +93,7 @@ class CoreWorkerTest : public ::testing::Test {
            bool is_streaming_generator,
            bool retry_exception,
            int64_t generator_backpressure_num_objects,
+           int64_t num_objects_per_yield,
            const std::optional<std::string> &tensor_transport) -> Status {
       return Status::OK();
     };
@@ -138,7 +139,7 @@ class CoreWorkerTest : public ::testing::Test {
                                       rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                       rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
         /*periodical_runner=*/*fake_periodical_runner_,
-        /*get_time_ms=*/[this]() { return current_time_ms_; },
+        /*clock=*/clock_,
         /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
         /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
         worker_context->GetWorkerID());
@@ -152,13 +153,14 @@ class CoreWorkerTest : public ::testing::Test {
         object_info_publisher.get(),
         fake_object_info_subscriber.get(),
         [](const NodeID &) { return false; },
+        [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
         fake_owned_object_count_gauge_,
         fake_owned_object_size_gauge_,
         false);
 
     // Mock reference counter as enabled
     memory_store_ = std::make_shared<CoreWorkerMemoryStore>(
-        io_service_, reference_counter_ != nullptr, nullptr);
+        io_service_, clock_, reference_counter_ != nullptr, nullptr);
 
     auto future_resolver = std::make_unique<FutureResolver>(
         memory_store_,
@@ -173,7 +175,8 @@ class CoreWorkerTest : public ::testing::Test {
         std::make_unique<gcs::MockGcsClient>(),
         std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager_),
         "test_session",
-        NodeID::Nil());
+        NodeID::Nil(),
+        clock_);
 
     task_manager_ = std::make_shared<TaskManager>(
         *memory_store_,
@@ -194,7 +197,8 @@ class CoreWorkerTest : public ::testing::Test {
         fake_task_by_state_gauge_,
         fake_total_lineage_bytes_gauge_,
         /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
-        /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
+        /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
+        /*clock=*/clock_);
 
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
         rpc_address_,
@@ -231,7 +235,8 @@ class CoreWorkerTest : public ::testing::Test {
         lease_request_rate_limiter,
         [](const ObjectID &object_id) { return std::nullopt; },
         io_service_,
-        fake_scheduler_placement_time_ms_histogram_);
+        fake_scheduler_placement_time_ms_histogram_,
+        /*clock=*/clock_);
 
     auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *core_worker_client_pool,
@@ -244,7 +249,8 @@ class CoreWorkerTest : public ::testing::Test {
         [](const ObjectID &object_id) { return std::nullopt; },
         [](const ActorID &actor_id, const std::string &, uint64_t num_queued) {},
         io_service_,
-        reference_counter_);
+        reference_counter_,
+        /*clock=*/clock_);
     actor_task_submitter_ = actor_task_submitter.get();
 
     auto actor_manager = std::make_unique<ActorManager>(
@@ -284,10 +290,12 @@ class CoreWorkerTest : public ::testing::Test {
                                                 std::move(task_event_buffer),
                                                 getpid(),
                                                 fake_task_by_state_gauge_,
-                                                fake_actor_by_state_gauge_);
+                                                fake_actor_by_state_gauge_,
+                                                clock_);
   }
 
  protected:
+  FakeClock clock_;
   instrumented_io_context io_service_;
   instrumented_io_context task_execution_service_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
@@ -313,9 +321,6 @@ class CoreWorkerTest : public ::testing::Test {
   ray::observability::FakeGauge fake_owned_object_count_gauge_;
   ray::observability::FakeGauge fake_owned_object_size_gauge_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
-
-  // Controllable time for testing publisher timeouts
-  double current_time_ms_;
 };
 
 std::shared_ptr<RayObject> MakeRayObject(const std::string &data_str,
@@ -650,10 +655,13 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   rpc::Address addr;
   addr.set_ip_address("127.0.0.1");
   auto is_node_dead = [](const NodeID &) { return false; };
+  auto free_object_on_nodes_async = [](const ObjectID &,
+                                       const absl::flat_hash_set<NodeID> &) {};
   ReferenceCounter ref_counter(addr,
                                /*object_info_publisher=*/nullptr,
                                /*object_info_subscriber=*/nullptr,
                                is_node_dead,
+                               free_object_on_nodes_async,
                                *std::make_shared<ray::observability::FakeGauge>(),
                                *std::make_shared<ray::observability::FakeGauge>());
 
@@ -685,6 +693,7 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
 
   auto fake_plasma = std::make_shared<RecordingPlasmaGetClient>(&observed_batches);
 
+  Clock clock;
   CoreWorkerPlasmaStoreProvider provider(
       /*store_socket=*/"",
       fake_raylet,
@@ -692,6 +701,7 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
       /*warmup=*/false,
       /*store_client=*/fake_plasma,
       /*fetch_batch_size=*/2,
+      /*clock=*/clock,
       /*get_current_call_site=*/nullptr);
 
   // Build a set of 5 object ids.
@@ -708,6 +718,42 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   EXPECT_EQ(observed_batches[0].size(), 2U);
   EXPECT_EQ(observed_batches[1].size(), 2U);
   EXPECT_EQ(observed_batches[2].size(), 1U);
+}
+
+// Given 5 ids with 3 already local in plasma, Get() should send only the 2
+// remote ids to the raylet to pull from remote node.
+TEST(CoreWorkerPlasmaStoreProviderFastPath, SendsOnlyRemoteIdsToRayletOnMixed) {
+  std::vector<ObjectID> ids;
+  for (int i = 0; i < 5; i++) ids.push_back(ObjectID::FromRandom());
+
+  auto fake_plasma = std::make_shared<plasma::FakePlasmaClient>();
+  fake_plasma->MarkLocal({ids[0], ids[2], ids[4]});
+
+  auto fake_raylet = std::make_shared<ipc::FakeRayletIpcClient>();
+
+  Clock clock;
+  CoreWorkerPlasmaStoreProvider provider(
+      /*store_socket=*/"",
+      fake_raylet,
+      /*check_signals=*/[] { return Status::OK(); },
+      /*warmup=*/false,
+      /*store_client=*/fake_plasma,
+      /*fetch_batch_size=*/10,
+      /*clock=*/clock,
+      /*get_current_call_site=*/nullptr);
+
+  std::vector<rpc::Address> owner_addresses(ids.size());
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
+  // timeout=0 since this test verifies only what's sent to the raylet, not
+  // whether polling resolves the remote objects.
+  auto status = provider.Get(ids, owner_addresses, /*timeout_ms=*/0, &results);
+  EXPECT_TRUE(status.IsTimedOut());
+  EXPECT_EQ(results.size(), 3U);
+
+  ASSERT_EQ(fake_raylet->async_get_object_calls.size(), 1U);
+  absl::flat_hash_set<ObjectID> pulled(fake_raylet->async_get_object_calls[0].begin(),
+                                       fake_raylet->async_get_object_calls[0].end());
+  EXPECT_EQ(pulled, (absl::flat_hash_set<ObjectID>{ids[1], ids[3]}));
 }
 
 class CoreWorkerPubsubWorkerObjectEvictionChannelTest
@@ -810,7 +856,7 @@ TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest, HandlePubsubCommandBatch
     // reply, here we allocate the reply on the stack. Hence the normal order of
     // destruction is: reply goes out of scope -> publisher is destructed -> flushes the
     // reply which access freed memory
-    current_time_ms_ += RayConfig::instance().subscriber_timeout_ms();
+    clock_.AdvanceTime(absl::Milliseconds(RayConfig::instance().subscriber_timeout_ms()));
     object_info_publisher_->CheckDeadSubscribers();
   }
 }
@@ -1000,7 +1046,7 @@ TEST_P(CoreWorkerPubsubWorkerRefRemovedChannelTest, HandlePubsubCommandBatchRetr
   }
   if (!should_remove_ref) {
     // See the above comment in the worker object eviction channel test
-    current_time_ms_ += RayConfig::instance().subscriber_timeout_ms();
+    clock_.AdvanceTime(absl::Milliseconds(RayConfig::instance().subscriber_timeout_ms()));
     object_info_publisher_->CheckDeadSubscribers();
   }
 }

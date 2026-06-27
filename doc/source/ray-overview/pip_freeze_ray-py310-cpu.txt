@@ -103,7 +103,7 @@ opentelemetry-sdk==1.34.1
 opentelemetry-semantic-conventions==0.55b1
 ormsgpack==1.7.0
 packaging @ file:///home/conda/feedstock_root/build_artifacts/packaging_1733203243479/work
-pandas==1.5.3
+pandas==2.3.3
 platformdirs==3.11.0
 pluggy @ file:///home/conda/feedstock_root/build_artifacts/pluggy_1733222765875/work
 portalocker==2.8.2

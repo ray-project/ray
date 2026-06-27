@@ -61,7 +61,7 @@ class TokenizeUDF(StatefulStageUDF):
             batch: A list of rows to send.
 
         Yields:
-            A generator of rows with the tokenized prompt.
+            Dict[str, Any]: A generator of rows with the tokenized prompt.
         """
         for row, prompt_token_ids in zip(
             batch,
@@ -133,7 +133,7 @@ class DetokenizeUDF(StatefulStageUDF):
             batch: A list of rows to send.
 
         Yields:
-            A generator of rows with the detokenized generated text.
+            Dict[str, Any]: A generator of rows with the detokenized generated text.
         """
         for row, generated_text in zip(
             batch,

@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Tuple
 from ray._common.pydantic_compat import PYDANTIC_INSTALLED, BaseModel
 
 if PYDANTIC_INSTALLED:
+    from pydantic import field_validator
 
     # TODO(aguo): Use these pydantic models in the dashboard API as well.
     class ProcessGPUInfo(BaseModel):
@@ -52,9 +53,9 @@ if PYDANTIC_INSTALLED:
         name: str
         tpuType: str
         tpuTopology: str
-        tensorcoreUtilization: int  # percentage
-        hbmUtilization: int  # percentage
-        dutyCycle: int  # percentage
+        tensorcoreUtilization: float  # percentage
+        hbmUtilization: float  # percentage
+        dutyCycle: float  # percentage
         memoryUsed: int  # in bytes
         memoryTotal: int  # in bytes
 
@@ -109,13 +110,18 @@ if PYDANTIC_INSTALLED:
         pid: int
         createTime: float
         cpuPercent: float
-        cpuTimes: Optional[CpuTimes]  # psutil._pslinux.scputimes object
+        cpuTimes: Optional[CpuTimes] = None  # psutil._pslinux.scputimes object
         cmdline: List[str]
-        memoryInfo: Optional[MemoryInfo]  # psutil._pslinux.svmem object
-        memoryFullInfo: Optional[MemoryFullInfo]  # psutil._pslinux.smem object
+        memoryInfo: Optional[MemoryInfo] = None  # psutil._pslinux.svmem object
+        memoryFullInfo: Optional[MemoryFullInfo] = None  # psutil._pslinux.smem object
         numFds: Optional[int] = None  # Not available on Windows
         gpuMemoryUsage: Optional[int] = None  # in MB, added by _get_workers
         gpuUtilization: Optional[int] = None  # percentage, added by _get_workers
+
+        @field_validator("cmdline", mode="before")
+        @classmethod
+        def _normalize_cmdline(cls, value):
+            return [] if value is None else value
 
     # Note: The actual data structure uses tuples for some fields, not structured objects
     # These are type aliases to document the tuple structure
@@ -163,6 +169,10 @@ if PYDANTIC_INSTALLED:
         cpu: float  # CPU usage percentage
         cpus: Tuple[int, int]  # (logicalCpuCount, physicalCpuCount)
         mem: MemoryUsage  # (total, available, percent, used) in bytes
+        hostMem: Tuple[int, int]  # host physical memory (used, totall) in bytes
+        cgroupMem: Optional[
+            Tuple[int, int]
+        ] = None  # (used, total) from cgroup, or None
         shm: Optional[int] = None  # shared memory in bytes, None if not available
         workers: List[ProcessInfo]
         raylet: Optional[ProcessInfo] = None
@@ -178,6 +188,11 @@ if PYDANTIC_INSTALLED:
         networkSpeed: NetworkSpeed  # (sendSpeed, receiveSpeed) in bytes/sec
         cmdline: List[str]  # deprecated field from raylet
         gcs: Optional[ProcessInfo] = None  # only present on head node
+
+        @field_validator("cmdline", mode="before")
+        @classmethod
+        def _normalize_cmdline(cls, value):
+            return [] if value is None else value
 
 else:
     StatsPayload = None
