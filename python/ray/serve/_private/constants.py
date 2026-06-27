@@ -547,6 +547,10 @@ RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = get_env_bool(
     "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1"
 )
 
+# Feature flag: serialize autoscaling metric reports columnarly (flat float64
+# arrays) + ingest natively (numpy) instead of cloudpickle. Off = today.
+RAY_SERVE_COLUMNAR_METRICS = get_env_bool("RAY_SERVE_COLUMNAR_METRICS", "0")
+
 RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S = get_env_float_non_negative(
     "RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S", 10.0
 )
@@ -584,6 +588,17 @@ RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY = get_env_bool(
     "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY",
     os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0"),
 )
+
+# Reconciler optimizations (incremental (state,version) counts + batched ray.wait
+# readiness). Off -> original O(num_replicas) paths.
+RAY_SERVE_RECON_OPT = get_env_bool("RAY_SERVE_RECON_OPT", "1")
+RAY_SERVE_RECON_COUNTS = get_env_bool("RAY_SERVE_RECON_COUNTS", "1")
+RAY_SERVE_AUTOSCALE_AGG_CACHE = get_env_bool("RAY_SERVE_AUTOSCALE_AGG_CACHE", "1")
+RAY_SERVE_AUTOSCALE_AGG_CACHE_TTL_S = float(
+    os.environ.get("RAY_SERVE_AUTOSCALE_AGG_CACHE_TTL_S", "1.0")
+)
+RAY_SERVE_RECON_DIRTYSET = get_env_bool("RAY_SERVE_RECON_DIRTYSET", "1")
+RAY_SERVE_RECON_DIRTYSET_MIN = int(os.environ.get("RAY_SERVE_RECON_DIRTYSET_MIN", "64"))
 
 # Comma-separated list of custom resources prioritized in scheduling. Sorted from highest to lowest priority.
 # Example: "customx,customy"

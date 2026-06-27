@@ -853,6 +853,7 @@ if __name__ == "__main__":
         },
         package_data={
             "ray": [
+                "serve/_private/*.so",
                 "includes/*.pxd",
                 "*.pxd",
                 "serve/_private/ingress_request_router.lua.tmpl",

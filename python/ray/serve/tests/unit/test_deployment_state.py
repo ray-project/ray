@@ -5145,7 +5145,7 @@ class TestAutoscaling:
                 )
 
     def test_replicas_fail_during_subsequent_scale_from_zero(
-        self, mock_deployment_state_manager
+        self, mock_deployment_state_manager, monkeypatch
     ):
         """Test the following case:
 
@@ -5161,6 +5161,17 @@ class TestAutoscaling:
         successfully started in the past, meaning we don't know if it is
         an unrecoverable user code error.
         """
+        # Frozen-time logic test: run the autoscale aggregation cache in
+        # version-only mode (TTL=0) so it refreshes the instant metrics change.
+        # The default 1s TTL is a real-time bounded-staleness perf optimization;
+        # with the timer frozen here it would otherwise serve the first total for
+        # the whole test (see test_autoscale_agg_cache.py for the TTL behavior).
+        monkeypatch.setattr(
+            "ray.serve._private.autoscaling_state."
+            "RAY_SERVE_AUTOSCALE_AGG_CACHE_TTL_S",
+            0,
+        )
+
         create_dsm, timer, _, asm = mock_deployment_state_manager
         dsm: DeploymentStateManager = create_dsm()
         asm: AutoscalingStateManager = asm
@@ -5363,8 +5374,21 @@ class TestAutoscaling:
         not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
         reason="Testing handle metrics behavior.",
     )
-    def test_handle_metrics_on_dead_serve_actor(self, mock_deployment_state_manager):
+    def test_handle_metrics_on_dead_serve_actor(
+        self, mock_deployment_state_manager, monkeypatch
+    ):
         """Metrics for handles on dead serve actors should be dropped."""
+
+        # Frozen-time logic test: run the autoscale aggregation cache in
+        # version-only mode (TTL=0) so it refreshes the instant metrics change.
+        # The default 1s TTL is a real-time bounded-staleness perf optimization;
+        # with the timer frozen here it would otherwise serve the first total for
+        # the whole test (see test_autoscale_agg_cache.py for the TTL behavior).
+        monkeypatch.setattr(
+            "ray.serve._private.autoscaling_state."
+            "RAY_SERVE_AUTOSCALE_AGG_CACHE_TTL_S",
+            0,
+        )
 
         create_dsm, timer, _, asm = mock_deployment_state_manager
         dsm: DeploymentStateManager = create_dsm()
@@ -8083,7 +8107,9 @@ def test_routing_stats_change_triggers_broadcast(mock_deployment_state_manager):
     assert ds._request_routing_info_updated is False
 
     # Simulate routing stats changing on the replica actor.
-    ds._replicas.get()[0]._actor.get_routing_stats = lambda: {"new_key": 42}
+    ds._replicas.get()[0]._actor.get_routing_stats = lambda ready_set=None: {
+        "new_key": 42
+    }
 
     # Run health checks (STEP 1 of update loop).
     ds.check_and_update_replicas()
@@ -9562,3 +9588,80 @@ class TestGangDraining:
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
+
+
+class TestDirtySet:
+    """Lever-1 dirty-set: _dirtyset_active_pairs selects only replicas needing work
+    this tick (round-robin sweep + in-flight polls + pending-migration), not all N."""
+
+    def _shim(self, container):
+        s = type("Shim", (), {})()
+        s._replicas = container
+        s._ds_outstanding = set()
+        s._ds_rr_cursor = 0
+        s._target_state = object()  # .info access raises -> DEFAULT health period
+        return s
+
+    def test_covers_all_running_within_one_sweep(self):
+        c = ReplicaStateContainer()
+        reps = [replica() for _ in range(100)]
+        for r in reps:
+            c.add(ReplicaState.RUNNING, r)
+        shim = self._shim(c)
+        covered = set()
+        for _ in range(50):  # ticks = 0.5*period(10)/loop(0.1)
+            covered.update(
+                p[0].replica_id for p in DeploymentState._dirtyset_active_pairs(shim)
+            )
+        assert covered == {r.replica_id for r in reps}  # no starvation
+
+    def test_always_polls_outstanding(self):
+        c = ReplicaStateContainer()
+        reps = [replica() for _ in range(100)]
+        for r in reps:
+            c.add(ReplicaState.RUNNING, r)
+        shim = self._shim(c)
+        target = reps[42].replica_id
+        for _ in range(20):
+            shim._ds_outstanding = {target}
+            pairs = DeploymentState._dirtyset_active_pairs(shim)
+            assert any(p[0].replica_id == target for p in pairs)
+
+    def test_always_includes_pending_migration(self):
+        c = ReplicaStateContainer()
+        for r in [replica() for _ in range(100)]:
+            c.add(ReplicaState.RUNNING, r)
+        pm = replica()
+        c.add(ReplicaState.PENDING_MIGRATION, pm)
+        shim = self._shim(c)
+        for _ in range(10):
+            pairs = DeploymentState._dirtyset_active_pairs(shim)
+            assert any(
+                p[0].replica_id == pm.replica_id
+                and p[1] == ReplicaState.PENDING_MIGRATION
+                for p in pairs
+            )
+
+    def test_active_set_is_sublinear(self):
+        c = ReplicaStateContainer()
+        for r in [replica() for _ in range(1000)]:
+            c.add(ReplicaState.RUNNING, r)
+        shim = self._shim(c)
+        pairs = DeploymentState._dirtyset_active_pairs(shim)
+        assert len(pairs) <= 50  # slice ceil(1000/50)=20; NOT 1000
+
+    def test_outstanding_dropped_when_replica_removed(self):
+        """An outstanding id whose replica has left the container is pruned;
+        a still-RUNNING one is retained. The stop chokepoint that feeds this
+        (_stop_replica discards from _ds_outstanding) is exercised by the
+        stop-heavy autoscaling tests under RAY_SERVE_RECON_DIRTYSET."""
+        c = ReplicaStateContainer()
+        live = replica()
+        c.add(ReplicaState.RUNNING, live)
+        shim = self._shim(c)
+        gone = replica()  # never added -> get_by_id returns None
+        shim._ds_outstanding = {live.replica_id, gone.replica_id}
+        pairs = DeploymentState._dirtyset_active_pairs(shim)
+        assert gone.replica_id not in shim._ds_outstanding
+        assert live.replica_id in shim._ds_outstanding
+        assert any(p[0].replica_id == live.replica_id for p in pairs)

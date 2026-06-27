@@ -43,6 +43,7 @@ from ray.actor import ActorClass, ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
+from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentID,
@@ -63,6 +64,7 @@ from ray.serve._private.constants import (
     HEALTHY_MESSAGE,
     RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_COLUMNAR_METRICS,
     RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
@@ -936,7 +938,9 @@ class ReplicaMetricsManager:
                     return  # Previous push still in flight, skip and try again later
             self._pending_metrics_push_ref = (
                 self._controller_handle.record_autoscaling_metrics_from_replica.remote(
-                    compress_metric_report(replica_metric_report)
+                    autoscaling_metrics_codec.encode(replica_metric_report)
+                    if RAY_SERVE_COLUMNAR_METRICS
+                    else compress_metric_report(replica_metric_report)
                 )
             )
 

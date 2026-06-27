@@ -1673,6 +1673,44 @@ class ControllerHealthMetrics(BaseModel):
         default=0, description="Number of pending asyncio tasks."
     )
 
+    # Ingestion-path metrics (autoscaling metrics fan-in)
+    handle_ingest_duration_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Per-call processing time inside "
+            "record_autoscaling_metrics_from_handle (rolling window, ms)."
+        ),
+    )
+    replica_ingest_duration_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Per-call processing time inside "
+            "record_autoscaling_metrics_from_replica (rolling window, ms)."
+        ),
+    )
+    metrics_decompress_duration_ms: Optional[DurationStats] = Field(
+        default=None,
+        description="Per-call decompress time for metric reports (rolling window, ms).",
+    )
+    handle_reports_received: int = Field(
+        default=0, description="Total handle metric reports ingested since start."
+    )
+    replica_reports_received: int = Field(
+        default=0, description="Total replica metric reports ingested since start."
+    )
+    ingest_reports_received: int = Field(
+        default=0,
+        description="Total autoscaling metric reports ingested since start.",
+    )
+    ingest_cpu_fraction: float = Field(
+        default=0.0,
+        description=(
+            "Average fraction of one event-loop core consumed by the metrics "
+            "ingestion path (cumulative ingest seconds / uptime). Approaches "
+            "1.0 as ingestion monopolizes the single control-loop thread."
+        ),
+    )
+
     # Component update durations (rolling window stats)
     deployment_state_update_duration_s: Optional[DurationStats] = Field(
         default=None,

@@ -2,6 +2,18 @@ import inspect
 import logging
 import math
 import time
+
+import numpy as np
+
+from ray.serve._private import autoscaling_metrics_merge
+
+try:
+    from ray.serve._private import autoscaling_merge_cy as _cy
+
+    _HAVE_CY = True
+except Exception:  # pragma: no cover - kernel optional; numpy fallback below
+    _cy = None
+    _HAVE_CY = False
 from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
@@ -18,6 +30,9 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
+    RAY_SERVE_AUTOSCALE_AGG_CACHE,
+    RAY_SERVE_AUTOSCALE_AGG_CACHE_TTL_S,
+    RAY_SERVE_COLUMNAR_METRICS,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
@@ -74,9 +89,17 @@ class DeploymentAutoscalingState:
         # are removed from this dict when a replica is stopped.
         # Prometheus + Custom metrics from each replica are also included
         self._replica_metrics: Dict[ReplicaID, ReplicaMetricReport] = dict()
+        # Columnar (flag-gated) per-replica running-requests arrays: (ts, val, timestamp).
+        self._replica_running_arrays: Dict[ReplicaID, tuple] = dict()
+        # Columnar (flag-gated) per-handle arrays: metadata + per-replica running + queued.
+        self._handle_arrays: Dict[str, dict] = dict()
         # Async inference task queue length (from QueueMonitor).
         # QueueMonitor is a singleton per deployment i.e. we run a single QueueMonitor actor per task consumer (deployment).
         self._total_pending_async_requests: int = 0
+        # Autoscale aggregation cache (RAY_SERVE_AUTOSCALE_AGG_CACHE): memoize
+        # get_total_num_requests on a metrics-version counter.
+        self._metrics_version: int = 0
+        self._gtnr_cache = None
 
         self._deployment_info = None
         self._config = None
@@ -182,6 +205,8 @@ class DeploymentAutoscalingState:
     def on_replica_stopped(self, replica_id: ReplicaID):
         if replica_id in self._replica_metrics:
             del self._replica_metrics[replica_id]
+        self._replica_running_arrays.pop(replica_id, None)
+        self._metrics_version += 1
 
     def get_num_replicas_lower_bound(self) -> int:
         if self._config.initial_replicas is not None and (
@@ -209,6 +234,7 @@ class DeploymentAutoscalingState:
         self._cached_running_replica_strs = {
             r.to_full_id_str() for r in running_replicas
         }
+        self._metrics_version += 1
 
     def record_scale_up(self):
         """Record a scale up event by updating the timestamp."""
@@ -254,6 +280,95 @@ class DeploymentAutoscalingState:
             or send_timestamp > self._replica_metrics[replica_id].timestamp
         ):
             self._replica_metrics[replica_id] = replica_metric_report
+            self._metrics_version += 1
+
+    def record_columnar_metrics_for_replica(
+        self, replica_id, ts, val, timestamp
+    ) -> None:
+        """Store columnar running-requests arrays for a replica (no per-point objects)."""
+        existing = self._replica_running_arrays.get(replica_id)
+        if existing is None or timestamp > existing[2]:
+            self._replica_running_arrays[replica_id] = (ts, val, timestamp)
+            self._metrics_version += 1
+
+    def _columnar_aggregate_total_requests(self) -> float:
+        """Aggregate-mode total. Direct-ingress (replica) sources use the array-concat
+        numpy merge; pure handle-collection uses the FUSED Cython decode->merge kernel
+        over flat per-handle arrays (no per-replica Python objects). Exact-equivalent."""
+        if self._replica_running_arrays:
+            segments = []
+            for replica_id in self._running_replicas:
+                a = self._replica_running_arrays.get(replica_id)
+                if a is not None and a[0].size:
+                    segments.append((a[0], a[1]))
+            for hm in self._handle_arrays.values():
+                qts, qval = hm["q_ts"], hm["q_val"]
+                if qts.size:
+                    segments.append((qts, qval))
+            if not segments:
+                return 0.0
+            offs, ts_parts, val_parts = [0], [], []
+            for tarr, varr in segments:
+                ts_parts.append(tarr)
+                val_parts.append(varr)
+                offs.append(offs[-1] + tarr.size)
+            return autoscaling_metrics_merge.merge_and_aggregate_arrays(
+                np.concatenate(ts_parts),
+                np.concatenate(val_parts),
+                np.array(offs, dtype="<i8"),
+                time.time(),
+                self._config.aggregation_function.value,
+            )
+        if not self._handle_arrays:
+            return 0.0
+        running = self._cached_running_replica_strs
+        handles = []
+        for hm in self._handle_arrays.values():
+            rk = hm["replica_keys"]
+            mask = np.fromiter(
+                (1 if k in running else 0 for k in rk), dtype=np.uint8, count=len(rk)
+            )
+            handles.append(
+                (
+                    hm["ts"],
+                    hm["val"],
+                    hm["entries"],
+                    hm["mi"],
+                    mask,
+                    hm["q_ts"],
+                    hm["q_val"],
+                )
+            )
+        agg = self._config.aggregation_function.value
+        now = time.time()
+        if _HAVE_CY:
+            return _cy.fused_aggregate(handles, now, agg)
+        return self._fused_fallback(handles, now, agg)
+
+    def _fused_fallback(self, handles, now, agg) -> float:
+        """Pure-numpy equivalent of fused_aggregate (used if the Cython kernel is absent)."""
+        segments = []
+        for ts, val, entries, mi, mask, q_ts, q_val in handles:
+            for row in entries:
+                if int(row[0]) == mi and int(row[3]) > 0 and mask[int(row[1])]:
+                    off, n = int(row[2]), int(row[3])
+                    segments.append((ts[off : off + n], val[off : off + n]))
+            if q_ts.size:
+                segments.append((q_ts, q_val))
+        if not segments:
+            return 0.0
+        offs, tp, vp = [0], [], []
+        for t, v in segments:
+            tp.append(t)
+            vp.append(v)
+            offs.append(offs[-1] + t.size)
+        return autoscaling_metrics_merge.merge_and_aggregate_arrays(
+            np.concatenate(tp),
+            np.concatenate(vp),
+            np.array(offs, dtype="<i8"),
+            now,
+            agg,
+        )
 
     def record_request_metrics_for_handle(
         self,
@@ -269,12 +384,33 @@ class DeploymentAutoscalingState:
             or send_timestamp > self._handle_requests[handle_id].timestamp
         ):
             self._handle_requests[handle_id] = handle_metric_report
+            self._metrics_version += 1
+
+    def record_columnar_metrics_for_handle(self, d) -> None:
+        """Store columnar handle metrics (no per-point objects)."""
+        hid = d["handle_id"]
+        existing = self._handle_arrays.get(hid)
+        if existing is None or d["timestamp"] > existing["timestamp"]:
+            self._handle_arrays[hid] = {
+                "actor_id": d["actor_id"],
+                "is_component": d["handle_source"] in ("PROXY", "REPLICA"),
+                "timestamp": d["timestamp"],
+                "ts": d["ts"],
+                "val": d["val"],
+                "entries": d["entries"],
+                "mi": d["mi"],
+                "replica_keys": d["replica_keys"],
+                "q_ts": d["q_ts"],
+                "q_val": d["q_val"],
+            }
+            self._metrics_version += 1
 
     def record_async_inference_task_queue_metrics(
         self, report: AsyncInferenceTaskQueueMetricReport
     ) -> None:
         """Records task queue length from QueueMonitor for async inference."""
         self._total_pending_async_requests = report.queue_length
+        self._metrics_version += 1
 
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         """Drops handle metrics that are no longer valid.
@@ -288,6 +424,16 @@ class DeploymentAutoscalingState:
             2 * self._config.metrics_interval_s,
             RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
         )
+        _stale_n0 = len(self._handle_arrays) + len(self._handle_requests)
+        for _hid, _hm in list(self._handle_arrays.items()):
+            if (
+                _hm["is_component"]
+                and _hm["actor_id"] is not None
+                and _hm["actor_id"] not in alive_serve_actor_ids
+            ):
+                del self._handle_arrays[_hid]
+            elif time.time() - _hm["timestamp"] >= timeout_s:
+                del self._handle_arrays[_hid]
         for handle_id, handle_metric in list(self._handle_requests.items()):
             # Drop metrics for handles that are on Serve proxy/replica
             # actors that have died
@@ -316,6 +462,8 @@ class DeploymentAutoscalingState:
                         f"because no update was received for {timeout_s:.1f}s. "
                         f"Ongoing requests was: {handle_metric.total_requests}."
                     )
+        if len(self._handle_arrays) + len(self._handle_requests) != _stale_n0:
+            self._metrics_version += 1
 
     def record_autoscaling_metrics(
         self,
@@ -600,6 +748,11 @@ class DeploymentAutoscalingState:
             Total number of requests (average running + queued) calculated from
             timeseries data aggregation.
         """
+        if RAY_SERVE_COLUMNAR_METRICS and (
+            self._replica_running_arrays or self._handle_arrays
+        ):
+            return self._columnar_aggregate_total_requests()
+
         # Collect replica-based running requests (returns List[TimeSeries])
         replica_timeseries = self._collect_replica_running_requests()
         metrics_collected_on_replicas = len(replica_timeseries) > 0
@@ -725,6 +878,22 @@ class DeploymentAutoscalingState:
         or on replicas, but not both. Its the responsibility of the writer
         to ensure enclusivity of the metrics.
         """
+        if RAY_SERVE_AUTOSCALE_AGG_CACHE:
+            c = self._gtnr_cache
+            if c is not None and (
+                c[0] == self._metrics_version
+                or (
+                    RAY_SERVE_AUTOSCALE_AGG_CACHE_TTL_S > 0
+                    and (time.time() - c[2]) < RAY_SERVE_AUTOSCALE_AGG_CACHE_TTL_S
+                )
+            ):
+                return c[1]
+            v = self._compute_total_num_requests()
+            self._gtnr_cache = (self._metrics_version, v, time.time())
+            return v
+        return self._compute_total_num_requests()
+
+    def _compute_total_num_requests(self) -> float:
         if self._should_aggregate_metrics_at_controller():
             return self._calculate_total_requests_aggregate_mode()
         else:
@@ -1052,6 +1221,15 @@ class ApplicationAutoscalingState:
                 dep_id
             ].record_request_metrics_for_replica(replica_metric_report)
 
+    def record_columnar_metrics_for_replica(
+        self, replica_id, ts, val, timestamp
+    ) -> None:
+        dep_id = replica_id.deployment_id
+        if dep_id in self._deployment_autoscaling_states:
+            self._deployment_autoscaling_states[
+                dep_id
+            ].record_columnar_metrics_for_replica(replica_id, ts, val, timestamp)
+
     def record_request_metrics_for_handle(
         self, handle_metric_report: HandleMetricReport
     ):
@@ -1060,6 +1238,13 @@ class ApplicationAutoscalingState:
             self._deployment_autoscaling_states[
                 dep_id
             ].record_request_metrics_for_handle(handle_metric_report)
+
+    def record_columnar_metrics_for_handle(self, d) -> None:
+        dep_id = d["deployment_id"]
+        if dep_id in self._deployment_autoscaling_states:
+            self._deployment_autoscaling_states[
+                dep_id
+            ].record_columnar_metrics_for_handle(d)
 
     def record_async_inference_task_queue_metrics(
         self, report: AsyncInferenceTaskQueueMetricReport
@@ -1241,6 +1426,15 @@ class AutoscalingStateManager:
         if app_state:
             app_state.record_request_metrics_for_replica(replica_metric_report)
 
+    def record_columnar_metrics_for_replica(
+        self, replica_id, ts, val, timestamp
+    ) -> None:
+        app_state = self._app_autoscaling_states.get(replica_id.deployment_id.app_name)
+        if app_state:
+            app_state.record_columnar_metrics_for_replica(
+                replica_id, ts, val, timestamp
+            )
+
     def record_request_metrics_for_handle(
         self,
         handle_metric_report: HandleMetricReport,
@@ -1251,6 +1445,11 @@ class AutoscalingStateManager:
         )
         if app_state:
             app_state.record_request_metrics_for_handle(handle_metric_report)
+
+    def record_columnar_metrics_for_handle(self, d) -> None:
+        app_state = self._app_autoscaling_states.get(d["deployment_id"].app_name)
+        if app_state:
+            app_state.record_columnar_metrics_for_handle(d)
 
     def record_async_inference_task_queue_metrics(
         self,

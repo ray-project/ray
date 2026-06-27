@@ -755,11 +755,14 @@ class MockReplicaActorWrapper:
     def force_stop(self, log_shutdown_message: bool = False):
         self.force_stopped_counter += 1
 
-    def check_health(self):
+    def check_health(self, ready_set=None):
         self.health_check_called = True
         return self.healthy
 
-    def get_routing_stats(self) -> Dict[str, Any]:
+    def outstanding_check_refs(self):
+        return []
+
+    def get_routing_stats(self, ready_set=None) -> Dict[str, Any]:
         return {}
 
     def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
