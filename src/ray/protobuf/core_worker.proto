@@ -177,9 +177,10 @@ message PushTaskReply {
 message ActorCallArgWaitCompleteRequest {
   // The ID of the worker this message is intended for.
   bytes intended_worker_id = 1;
-  // Id used to uniquely identify this request. This is sent back to the core
-  // worker to notify the wait has completed.
-  int64 tag = 2;
+  // The (task_id, attempt_number) of the task whose args wait completed. Echoed
+  // back from the WaitForActorCallArgs request to identify the completed wait.
+  bytes task_id = 2;
+  int32 attempt_number = 3;
 }
 
 message ActorCallArgWaitCompleteReply {}

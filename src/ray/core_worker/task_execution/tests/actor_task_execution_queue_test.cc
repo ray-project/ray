@@ -37,42 +37,49 @@ class MockWaiter : public ActorTaskExecutionArgWaiterInterface {
  public:
   MockWaiter() {}
 
-  // Each call returns a fresh sequential tag. Index used by tests is the
-  // 0-based call index, which equals the tag.
-  int64_t BeginArgsFetch(const std::vector<rpc::ObjectReference> &dependencies) override {
-    return next_tag_++;
+  // Record the (task_id, attempt_number) of each fetch in call order so tests
+  // can refer to a fetch by its 0-based call index via Complete().
+  void BeginArgsFetch(const std::vector<rpc::ObjectReference> &dependencies,
+                      const TaskID &task_id,
+                      int32_t attempt_number) override {
+    fetch_order_.push_back(TaskAttempt{task_id, attempt_number});
   }
 
-  void OnArgsReady(int64_t tag, std::function<void()> on_args_ready) override {
-    callbacks_.emplace(tag, std::move(on_args_ready));
+  void OnArgsReady(const TaskAttempt &task_attempt,
+                   std::function<void()> on_args_ready) override {
+    callbacks_.emplace(task_attempt, std::move(on_args_ready));
   }
 
-  // Test helper. Simulates MarkReady for the given tag/index.
-  void Complete(int64_t tag) {
-    auto it = callbacks_.find(tag);
-    ASSERT_NE(it, callbacks_.end()) << "Complete() called for unknown tag " << tag;
+  // Test helper. Simulates MarkReady for the index-th args-fetch (0-based, in
+  // BeginArgsFetch call order).
+  void Complete(size_t index) {
+    ASSERT_LT(index, fetch_order_.size())
+        << "Complete() called for unknown index " << index;
+    auto it = callbacks_.find(fetch_order_[index]);
+    ASSERT_NE(it, callbacks_.end())
+        << "Complete() called before OnArgsReady for index " << index;
     auto cb = std::move(it->second);
     callbacks_.erase(it);
     cb();
   }
 
  private:
-  int64_t next_tag_ = 0;
-  absl::flat_hash_map<int64_t, std::function<void()>> callbacks_;
+  std::vector<TaskAttempt> fetch_order_;
+  absl::flat_hash_map<TaskAttempt, std::function<void()>> callbacks_;
 };
 
 // Helper that mirrors what CoreWorker::HandlePushTask does on the gRPC thread:
-// reserves a tag from the waiter for tasks with deps, then enqueues. Returns
-// the tag (or -1).
-int64_t EnqueueWithFetch(ActorTaskExecutionQueueInterface &queue,
-                         MockWaiter &waiter,
-                         int64_t seq_no,
-                         int64_t client_processed_up_to,
-                         TaskToExecute task) {
+// fires the args-fetch for tasks with deps, then enqueues.
+void EnqueueWithFetch(ActorTaskExecutionQueueInterface &queue,
+                      MockWaiter &waiter,
+                      int64_t seq_no,
+                      int64_t client_processed_up_to,
+                      TaskToExecute task) {
   auto deps = task.TaskSpec().GetDependencies();
-  int64_t tag = deps.empty() ? -1 : waiter.BeginArgsFetch(deps);
-  queue.EnqueueTask(seq_no, client_processed_up_to, std::move(task), tag);
-  return tag;
+  if (!deps.empty()) {
+    waiter.BeginArgsFetch(deps, task.TaskID(), task.TaskSpec().AttemptNumber());
+  }
+  queue.EnqueueTask(seq_no, client_processed_up_to, std::move(task));
 }
 
 class MockTaskEventBuffer : public worker::TaskEventBuffer {

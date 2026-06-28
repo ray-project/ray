@@ -62,26 +62,28 @@ ActorTaskExecutionArgWaiter::ActorTaskExecutionArgWaiter(
     AsyncWaitForArgs async_wait_for_args)
     : async_wait_for_args_(std::move(async_wait_for_args)) {}
 
-int64_t ActorTaskExecutionArgWaiter::BeginArgsFetch(
-    const std::vector<rpc::ObjectReference> &args) {
-  int64_t tag = next_tag_.fetch_add(1, std::memory_order_relaxed);
-  async_wait_for_args_(args, tag);
-  return tag;
+void ActorTaskExecutionArgWaiter::BeginArgsFetch(
+    const std::vector<rpc::ObjectReference> &args,
+    const TaskID &task_id,
+    int32_t attempt_number) {
+  async_wait_for_args_(args, task_id, attempt_number);
 }
 
-void ActorTaskExecutionArgWaiter::OnArgsReady(int64_t tag,
+void ActorTaskExecutionArgWaiter::OnArgsReady(const TaskAttempt &task_attempt,
                                               std::function<void()> on_args_ready) {
   RAY_CHECK(static_cast<bool>(on_args_ready))
-      << "OnArgsReady called with empty callback for tag " << tag;
-  auto it = in_flight_waits_.find(tag);
+      << "OnArgsReady called with empty callback for task " << task_attempt.first
+      << " attempt " << task_attempt.second;
+  auto it = in_flight_waits_.find(task_attempt);
   if (it != in_flight_waits_.end()) {
     // The only valid state we can find an existing entry in here is one parked
     // by MarkReady arriving first: callback empty + execute_immediate true.
     RAY_CHECK(it->second.execute_immediate &&
               !static_cast<bool>(it->second.on_args_ready))
-        << "OnArgsReady called twice for tag " << tag;
+        << "OnArgsReady called twice for task " << task_attempt.first << " attempt "
+        << task_attempt.second;
 
-    // Remove the entry and  run the callback immediately
+    // Remove the entry and run the callback immediately
     in_flight_waits_.erase(it);
     on_args_ready();
     return;
@@ -90,27 +92,27 @@ void ActorTaskExecutionArgWaiter::OnArgsReady(int64_t tag,
   // No prior entry: store the callback. Invariant — exactly one of `on_args_ready`
   // or `execute_immediate` is set on every entry. Here the callback is set.
   auto [_, inserted] = in_flight_waits_.emplace(
-      tag, WaitEntry{std::move(on_args_ready), /*execute_immediate=*/false});
+      task_attempt, WaitEntry{std::move(on_args_ready), /*execute_immediate=*/false});
   RAY_CHECK(inserted);
 }
 
-void ActorTaskExecutionArgWaiter::MarkReady(int64_t tag) {
-  auto it = in_flight_waits_.find(tag);
+void ActorTaskExecutionArgWaiter::MarkReady(const TaskAttempt &task_attempt) {
+  auto it = in_flight_waits_.find(task_attempt);
   if (it == in_flight_waits_.end()) {
     // OnArgsReady hasn't been called yet (deferred-attempt path in the unordered
     // queue, or the worker began exiting between BeginArgsFetch and the
     // bookkeeping post). Park the "ready" flag; OnArgsReady will pick it up.
     // Invariant — exactly one of `on_args_ready` or `execute_immediate` is set.
     auto [_, inserted] = in_flight_waits_.emplace(
-        tag, WaitEntry{/*on_args_ready=*/{}, /*execute_immediate=*/true});
+        task_attempt, WaitEntry{/*on_args_ready=*/{}, /*execute_immediate=*/true});
     RAY_CHECK(inserted);
     return;
   }
 
-  // The only valid state we can find here is one parked by OnArgsReady arriving
-  // first: callback set + execute_immediate false.
+  // A duplicate (task_id, attempt_number) at the executor is not possible.
   RAY_CHECK(static_cast<bool>(it->second.on_args_ready) && !it->second.execute_immediate)
-      << "MarkReady called twice for tag " << tag;
+      << "MarkReady called twice for task " << task_attempt.first << " attempt "
+      << task_attempt.second;
   auto callback = std::move(it->second.on_args_ready);
   in_flight_waits_.erase(it);
   callback();

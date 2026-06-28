@@ -66,8 +66,7 @@ void OrderedActorTaskExecutionQueue::Stop() {
 
 void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
                                                  int64_t client_processed_up_to,
-                                                 TaskToExecute task,
-                                                 int64_t arg_fetch_tag) {
+                                                 TaskToExecute task) {
   // A seq_no of -1 means no ordering constraint. Non-retry Actor tasks must be executed
   // in order.
   RAY_CHECK(seq_no != -1);
@@ -93,10 +92,6 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
 
   const bool is_retry = task_spec.IsRetry();
 
-  // arg_fetch_tag must be -1 only if there are no dependencies and vice versa
-  RAY_CHECK_EQ(arg_fetch_tag != -1, !task_spec.GetDependencies().empty())
-      << "arg_fetch_tag must be -1 iff the task has no dependencies";
-
   TaskToExecute *retry_task = nullptr;
   if (is_retry) {
     retry_task = &group_state.pending_retry_tasks.emplace_back(std::move(task));
@@ -113,9 +108,10 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
   }
 
   // Set the OnArgsReady callback. In the general case, this should be called
-  // before MarkReady is called on the waiter for the same tag.
-  // But in the other case, the callback is executed immediately.
-  if (arg_fetch_tag != -1) {
+  // before MarkReady is called on the waiter for the same (task_id,
+  // attempt_number). But in the other case, the callback is executed
+  // immediately.
+  if (!task_spec.GetDependencies().empty()) {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),
         task_spec.JobId(),
@@ -123,37 +119,39 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
-    waiter_.OnArgsReady(arg_fetch_tag, [this, seq_no, is_retry, retry_task, group]() {
-      TaskToExecute *ready_task = nullptr;
-      if (is_retry) {
-        // retry_task is guaranteed to be a valid pointer for retries
-        // because it won't be erased from the retry list until its
-        // dependencies are fetched and ExecuteRequest happens.
-        ready_task = retry_task;
-      } else {
-        auto &group_state_in = group_states_.at(group);
-        auto it = group_state_in.pending_tasks.find(seq_no);
-        if (it != group_state_in.pending_tasks.end()) {
-          // For non-retry tasks, we need to check if the task is
-          // still in the map because it can be erased due to being
-          // canceled via a higher `client_processed_up_to`.
-          ready_task = &it->second;
-        }
-      }
+    waiter_.OnArgsReady(
+        TaskAttempt{task_spec.TaskId(), task_spec.AttemptNumber()},
+        [this, seq_no, is_retry, retry_task, group]() {
+          TaskToExecute *ready_task = nullptr;
+          if (is_retry) {
+            // retry_task is guaranteed to be a valid pointer for retries
+            // because it won't be erased from the retry list until its
+            // dependencies are fetched and ExecuteRequest happens.
+            ready_task = retry_task;
+          } else {
+            auto &group_state_in = group_states_.at(group);
+            auto it = group_state_in.pending_tasks.find(seq_no);
+            if (it != group_state_in.pending_tasks.end()) {
+              // For non-retry tasks, we need to check if the task is
+              // still in the map because it can be erased due to being
+              // canceled via a higher `client_processed_up_to`.
+              ready_task = &it->second;
+            }
+          }
 
-      if (ready_task != nullptr) {
-        const auto &ready_task_spec = ready_task->TaskSpec();
-        RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-            ready_task_spec.TaskId(),
-            ready_task_spec.JobId(),
-            ready_task_spec.AttemptNumber(),
-            ready_task_spec,
-            rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
-            /* include_task_info */ false));
-        ready_task->MarkDependenciesResolved();
-        ExecuteQueuedTasks();
-      }
-    });
+          if (ready_task != nullptr) {
+            const auto &ready_task_spec = ready_task->TaskSpec();
+            RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+                ready_task_spec.TaskId(),
+                ready_task_spec.JobId(),
+                ready_task_spec.AttemptNumber(),
+                ready_task_spec,
+                rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+                /* include_task_info */ false));
+            ready_task->MarkDependenciesResolved();
+            ExecuteQueuedTasks();
+          }
+        });
   } else {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),
