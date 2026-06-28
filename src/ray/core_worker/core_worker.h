@@ -422,9 +422,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param[in] callback Function to invoke when the object goes out of scope. Called
   ///            with (object_id, callback_context).
   /// \param[in] callback_context Opaque pointer forwarded unchanged to `callback`.
-  ///            In the Cython overload, this is a pointer to a Python `bytes` object
-  ///            containing the object ID binary, used as the key into the callback
-  ///            registry.
   /// \return true if registered; false if the object is already out of scope or freed
   ///         (callback will never fire).
   bool AddObjectOutOfScopeOrFreedCallback(const ObjectID &object_id,
