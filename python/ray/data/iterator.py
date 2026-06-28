@@ -295,10 +295,14 @@ class DataIterator(abc.ABC):
 
             try:
                 yield from batch_iterator
+            finally:
+                # Runs on both normal completion and early exit (e.g. `break`
+                # in the training loop). `iter_total_s` and the final metrics
+                # flush must happen here so partial iteration is still
+                # recorded; `_on_iteration_end` shuts down the executor after.
                 if stats:
                     stats.iter_total_s.add(time.perf_counter() - time_start)
                     _StatsManager.update_iteration_metrics(stats, dataset_tag)
-            finally:
                 # On early exit (e.g. ``break`` in the for-loop), the inner
                 # ``_ClosingIterator`` would only shut down the executor via
                 # its ``__del__``, which is non-deterministic. The hook
