@@ -225,11 +225,11 @@ class Timer:
 
     @contextmanager
     def timer(self) -> Iterator[TimeSpan]:
-        """Time a block, yielding a fresh :class:`TimeSpan` per call.
+        """Time a block, yielding a fresh ``TimeSpan`` per call.
 
         The returned span is a distinct instance each call, so multiple
         threads sharing the same ``Timer`` don't race on span fields.
-        The duration is also accumulated into ``self`` via :meth:`add`.
+        The duration is also accumulated into ``self`` via ``add``.
         """
         span = TimeSpan(start_s=time.perf_counter())
         try:
