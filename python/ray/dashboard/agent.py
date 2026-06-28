@@ -261,7 +261,18 @@ class DashboardAgent:
 
             await asyncio.gather(put_by_node_id, put_by_ip)
 
-        tasks = [m.run(self.server) for m in modules]
+        async def run_module_supervised(m):
+            try:
+                await m.run(self.server)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception(
+                    "Dashboard module task '%s' exited unexpectedly.",
+                    m.__class__.__name__,
+                )
+
+        tasks = [run_module_supervised(m) for m in modules]
 
         if sys.platform not in ["win32", "cygwin"]:
 
