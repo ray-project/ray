@@ -116,8 +116,7 @@ SchedulingResult TopologyStrictPackSchedulingPolicy::Schedule(
     SchedulingResult result =
         node_schedule_fn(resource_request_list, options, std::move(topology_nodes));
     if (result.status.IsSuccess()) {
-      result.selected_topology_assignment =
-          std::make_pair(label_key, topology_value);
+      result.selected_topology_assignment = std::make_pair(label_key, topology_value);
       return result;
     }
     if (!result.status.IsInfeasible()) {

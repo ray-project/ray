@@ -777,9 +777,9 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
 
   SchedulingResult result_2 =
       topology_policy.Schedule(req_list_2,
-                                   options,
-                                   GetCandidateNodes(*cluster_resource_manager),
-                                   node_schedule_fn);
+                               options,
+                               GetCandidateNodes(*cluster_resource_manager),
+                               node_schedule_fn);
 
   ASSERT_TRUE(result_2.status.IsSuccess());
   ASSERT_TRUE(result_2.selected_topology_assignment.has_value());

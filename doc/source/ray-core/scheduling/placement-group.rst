@@ -583,17 +583,17 @@ child tasks and actors to the same placement group, specify ``PlacementGroupSche
 --------------------------------
 
 Within a :ref:`namespace <namespaces-guide>`, you can *name* a placement group.
-You can use the name of a placement group to retrieve the placement group from any job 
+You can use the name of a placement group to retrieve the placement group from any job
 in the Ray cluster, as long as the job is within the same namespace.
 This is useful if you can't directly pass the placement group handle to
 the actor or task that needs it, or if you are trying to
-access a placement group launched by another driver. 
+access a placement group launched by another driver.
 
-The placement group is destroyed when the original creation job completes if its 
+The placement group is destroyed when the original creation job completes if its
 lifetime isn't `detached`. You can avoid this by using a :ref:`detached placement group <placement-group-detached>`
 
-Note that this feature requires that you specify a 
-:ref:`namespace <namespaces-guide>` associated with it, or else you can't retrieve the 
+Note that this feature requires that you specify a
+:ref:`namespace <namespaces-guide>` associated with it, or else you can't retrieve the
 placement group across jobs.
 
 .. tab-set::
@@ -737,8 +737,8 @@ Ray reschedules Actors and tasks that use the bundle (reserved resources) based 
 .. warning::
 
   Topology strategy scheduling is an **alpha** feature. It's actively being iterated on and
-  the API surface may change. Ray currently only supports defining one topology label and 
-  one node level strategy (described below). For topology labels, Ray currently supports 
+  the API surface may change. Ray currently only supports defining one topology label and
+  one node level strategy (described below). For topology labels, Ray currently supports
   only ``STRICT_PACK``. Support for additional strategies and multi-level topologies is planned.
 
 Why topology strategy scheduling?
@@ -765,7 +765,7 @@ any domain and this becomes cumbersome if you have many GPU domains.
 
 Topology strategy scheduling currently solves this by letting you express a topology strategy for the placement
 group, which allows specifying a topology label within the cluster. Ray picks a value for this topology label
-that can satisfy all bundles (for example, a specific rack) and then applies your node-level strategy 
+that can satisfy all bundles (for example, a specific rack) and then applies your node-level strategy
 within that value.
 
 How it works
@@ -802,7 +802,7 @@ With this, Ray accomplishes the following:
 2. Selects a value for that label that can satisfy all bundles.
 3. Applies the node-level scheduling strategy within the selected value.
 
-Here is a following example to STRICT_SPREAD bundles across distinct nodes while still 
+Here is a following example to STRICT_SPREAD bundles across distinct nodes while still
 STRICT_PACKing them onto a single rack (``ray.io/gpu-domain`` is each rack's **topology label**):
 
 .. code-block:: python

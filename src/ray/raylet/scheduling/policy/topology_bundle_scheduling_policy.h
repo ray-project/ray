@@ -86,8 +86,7 @@ class TopologySchedulingPolicyInterface {
  *
  * @details Ensures that each bundle is placed on a node with the same topology value.
  */
-class TopologyStrictPackSchedulingPolicy
-    : public TopologySchedulingPolicyInterface {
+class TopologyStrictPackSchedulingPolicy : public TopologySchedulingPolicyInterface {
  public:
   using TopologySchedulingPolicyInterface::TopologySchedulingPolicyInterface;
   SchedulingResult Schedule(
