@@ -705,7 +705,7 @@ def process_completed_tasks(
         # (block_ref, meta_ref) pair becomes an emitted RefBundle:
         # - inline mode: ``on_data_ready`` fetches + emits each pair inline and
         #   fires the task's done-callback at end-of-stream (submit/
-        #   check_if_drained are no-ops).
+        #   register_if_drained are no-ops).
         # - threaded mode: every pulled pair is deferred (budget arithmetic uses
         #   the block's local ``object_size``, no per-ref ``ray.get``) and handed
         #   to the background fetcher by ``submit``; emission and the postponed
@@ -741,7 +741,7 @@ def process_completed_tasks(
                 # ``finally`` so a thrown error can't strand pairs already
                 # deferred into the fetcher this iteration.
                 metadata_fetcher.submit(state)
-                metadata_fetcher.check_if_drained(op_data_tasks)
+                metadata_fetcher.register_if_drained(op_data_tasks)
 
     # Emit whatever's ready, in per-op order, then fire any postponed done
     # callbacks — UNCONDITIONALLY, even when there are no active tasks this

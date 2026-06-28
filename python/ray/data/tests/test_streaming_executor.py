@@ -1612,7 +1612,7 @@ class TestDataOpTask:
                     task.on_data_ready(None, fetcher)
                     time.sleep(0.01)
                 fetcher.submit(op_key)
-                fetcher.check_if_drained([task])
+                fetcher.register_if_drained([task])
             assert task_a.is_drained() and task_b.is_drained()
 
             deadline = time.time() + 30
@@ -1656,7 +1656,7 @@ class TestDataOpTask:
         assert len(deferred) == 2
         first, second = deferred
         fetcher.submit("op")
-        fetcher.check_if_drained([task])
+        fetcher.register_if_drained([task])
         meta_bytes_first, meta_bytes_second = ray.get([first.meta_ref, second.meta_ref])
 
         # Only the LATER pair's metadata is available: it must be held.
@@ -1700,7 +1700,7 @@ class TestDataOpTask:
         assert len(deferred) == 2
         first, second = deferred
         fetcher.submit("op")
-        fetcher.check_if_drained([task])
+        fetcher.register_if_drained([task])
         good_bytes = ray.get(first.meta_ref)
         boom = ValueError("metadata fetch boom")
         # First pair fetches fine; the second resolves to an exception.

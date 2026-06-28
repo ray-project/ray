@@ -404,7 +404,7 @@ class DataOpTask(OpTask):
     def has_pending_emits(self) -> bool:
         return self._pending_emit_count > 0
 
-    def mark_pending(self) -> None:
+    def add_pending_metadata_ref(self) -> None:
         self._pending_emit_count += 1
 
     def mark_emitted(self) -> None:

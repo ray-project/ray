@@ -85,7 +85,7 @@ class MetadataFetcher(ABC):
     def submit(self, op_key: Hashable) -> None:
         """Hand the operator's deferred pairs off for processing."""
 
-    def check_if_drained(self, tasks: List[DataOpTask]) -> None:
+    def register_if_drained(self, tasks: List[DataOpTask]) -> None:
         """Record any end-of-stream/failed tasks whose completion is postponed."""
 
     def after_loop_batch(self) -> List[Tuple[str, BaseException]]:
@@ -162,10 +162,24 @@ class ThreadedMetadataFetcher(MetadataFetcher):
     refs ``ray.wait(fetch_local=True)`` reports ready; a ref stuck on a bad node
     merely stays pending instead of wedging the thread.
 
-    Ordering: per-operator FIFOs are emitted front-first and stop at the first
-    pair whose metadata isn't back yet — so each operator's ``RefBundle``
-    emission order is preserved exactly. Operators are independent, so one
-    operator waiting on metadata never blocks another.
+    Data flow (for a single operator)::
+
+        Executor thread                              Fetch thread
+        ---------------                              ------------
+        on_data_ready  --defer-->  _pending_deferred
+        submit(op)     --meta_refs-->  _request_q  ----->  ray.wait(ready)
+                                                                + ray.get
+                                                                   |
+                            _results  <----- fetched bytes --------+
+        after_loop_batch():
+            _fifos[op]:  head [d0] -> [d1] -> [d2] tail   (append = yield order)
+                              |
+                              `- emit front-first while its bytes are in
+                                 _results; stop at the first pair not back yet,
+                                 so this op's RefBundle order is preserved.
+
+    Operators each get their own FIFO and are independent, so one operator
+    waiting on metadata never blocks another.
     """
 
     def __init__(self):
@@ -264,11 +278,11 @@ class ThreadedMetadataFetcher(MetadataFetcher):
             return
         fifo = self._fifos[op_key]
         for d in deferred:
-            d.task.mark_pending()
+            d.task.add_pending_metadata_ref()
             fifo.append(d)
         self._request_q.put([d.meta_ref for d in deferred])
 
-    def check_if_drained(self, tasks: List[DataOpTask]) -> None:
+    def register_if_drained(self, tasks: List[DataOpTask]) -> None:
         """Record end-of-stream/failed tasks so their done-callback fires once
         all of their deferred pairs have emitted. Must run on the executor
         thread."""
