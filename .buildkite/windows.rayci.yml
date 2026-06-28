@@ -42,8 +42,12 @@ steps:
       # RELEASE-BUILD OVERRIDE (DO NOT MERGE): stamp the wheels with the real 2.56.0
       # release commit, even though this branch's HEAD carries the windowsbuild fix.
       # build-wheel-windows.sh reads BUILDKITE_COMMIT for ray.__commit__; the env is
-      # forwarded into the container via _DOCKER_ENV. Drop this line for the clean PR.
+      # forwarded into the container via _DOCKER_ENV. Drop these lines for the clean PR.
+      # BUILDKITE_BRANCH routes the broker upload (copy_files.py key is
+      # {BUILDKITE_BRANCH}/{BUILDKITE_COMMIT}/{fn}) to the release prefix the PyPI
+      # upload reads from, so no post-hoc S3 copy is needed.
       - export BUILDKITE_COMMIT=637fd062205393b9e1929996bfe1d49bd3f8469d
+      - export BUILDKITE_BRANCH=releases/2.56.0
       - bash ci/ray_ci/windows/install_tools.sh
       - bazel run //ci/ray_ci:build_in_docker_windows -- wheel --python-version {{matrix}} --operating-system windows --upload
     matrix:
