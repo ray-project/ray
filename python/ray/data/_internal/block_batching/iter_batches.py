@@ -243,6 +243,12 @@ class BatchIterator:
         yield from batch_iter
 
     def _iter_batches(self) -> Iterator[DataBatch]:
+        """Pull batches from the pipeline and yield batch data.
+
+        Captures the training thread's blocked window around each ``next()``
+        call and attributes it to pipeline stages via
+        ``_attribute_blocked_time``.
+        """
         batch_iter = iter_threaded(self._ref_bundles, fn=self._pipeline)
 
         self.before_epoch_start()
@@ -266,23 +272,19 @@ class BatchIterator:
     ) -> None:
         """Attribute per-stage blocked time via overlap with the training window.
 
-        Each stage's window ``[timing.start_s, timing.end_s]`` (recorded by
-        background threads onto ``batch.metadata.timings``) is intersected
-        with the training thread's blocked window ``[blocked_start_s,
-        blocked_end_s]`` (captured around ``next()`` in ``_iter_batches``)::
+        Each stage's window on ``batch.metadata.timings`` is intersected with
+        the training thread's blocked window ``[blocked_start_s, blocked_end_s]``::
 
             overlap = min(timing.end, blocked_end) - max(timing.start, blocked_start)
 
-        TODO: ``sum(iter_blocked_*)`` only approximates
-        ``iter_total_blocked_s`` — split fetch stages overlap for
-        multi-block batches, and reorder buffer wait under
-        ``preserve_order`` is unattributed. Interval lists would give
-        precise non-overlapping attribution.
+        TODO: ``sum(iter_blocked_*)`` only approximates ``iter_total_blocked_s``
+        — split fetch stages overlap for multi-block batches, and reorder
+        buffer wait under ``preserve_order`` is unattributed.
 
         Args:
-            batch: The batch whose per-stage timings should be attributed.
-            blocked_start_s: ``perf_counter()`` just before ``next()``.
-            blocked_end_s: ``perf_counter()`` just after ``next()`` returned.
+            batch: Batch whose per-stage timings should be attributed.
+            blocked_start_s: perf_counter() just before next().
+            blocked_end_s: perf_counter() just after next() returned.
         """
         if self._stats is None:
             return
@@ -316,6 +318,8 @@ class BatchIterator:
 
     @contextmanager
     def get_next_batch_context(self):
+        """Context around ``next(batch_iter)``: tracks total blocked time
+        and time-to-first-batch."""
         try:
             if self._stats:
                 # Always track total blocked time
@@ -335,6 +339,8 @@ class BatchIterator:
 
     @contextmanager
     def yield_batch_context(self, batch: Batch):
+        """Context around yielding a batch to the user: tracks user time
+        and periodically flushes metrics."""
         with self._stats.iter_user_s.timer() if self._stats else nullcontext():
             yield
 

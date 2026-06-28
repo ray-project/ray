@@ -163,12 +163,8 @@ class _StatsAccumulator:
 
 
 class IterationStage(Enum):
-    """Stages of the iter_batches pipeline used to attribute training-thread
-    blocked time. Each stage's wall-clock window is overlapped with the
-    training thread's ``next()`` blocked window to credit stall to the
-    responsible stage (see ``_attribute_blocked_time``).
-
-    Each value is the Prometheus label for the corresponding
+    """Stages of the iter_batches pipeline, used to attribute training-thread
+    blocked time. Each value is the Prometheus label for the corresponding
     ``data_iter_blocked_<stage>_seconds`` gauge.
     """
 
@@ -182,12 +178,7 @@ class IterationStage(Enum):
 
 @dataclass
 class TimeSpan:
-    """A measured wall-clock interval.
-
-    Created by :meth:`Timer.timer` and carried per-batch for overlap-based
-    blocked attribution. ``None`` (when used as ``Optional[TimeSpan]``)
-    indicates the stage did not execute.
-    """
+    """A measured wall-clock interval (start_s, end_s)."""
 
     start_s: float = 0.0
     end_s: float = 0.0
@@ -199,11 +190,7 @@ class TimeSpan:
 
 @contextmanager
 def _maybe_time(timer: Optional["Timer"]) -> Iterator[Optional[TimeSpan]]:
-    """Time a block of code, yielding a :class:`TimeSpan` (or ``None``).
-
-    When *timer* is ``None`` (e.g. ``stats`` is not configured), yields
-    ``None`` and skips timing entirely — no ``perf_counter`` calls.
-    """
+    """Time a block, yielding a TimeSpan (or None if timer is None)."""
     if timer is None:
         yield None
     else:

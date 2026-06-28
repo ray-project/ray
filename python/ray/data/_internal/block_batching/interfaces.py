@@ -9,11 +9,7 @@ from ray.types import ObjectRef
 
 @dataclass
 class BlockFetchTiming:
-    """Fetch timing for a single block (production_wait + data_transfer).
-
-    Produced by :func:`resolve_block_refs` and merged into
-    :class:`BatchTimings` by :class:`_BatchingIterator`.
-    """
+    """Fetch timing for a single block (production_wait + data_transfer)."""
 
     production_wait: Optional[TimeSpan] = None
     data_transfer: Optional[TimeSpan] = None
@@ -23,8 +19,8 @@ class BlockFetchTiming:
 class BlockFetchResult:
     """A resolved block paired with its per-block fetch timing.
 
-    When ``fetch`` is ``None``, no fetch timing was recorded (e.g. blocks
-    that were already resolved before entering the pipeline).
+    ``fetch`` is None when no timing was recorded (e.g. blocks already
+    resolved before entering the pipeline).
     """
 
     block: Block
@@ -33,16 +29,11 @@ class BlockFetchResult:
 
 @dataclass
 class BatchTimings:
-    """Per-batch iteration-stage timing windows for overlap-based attribution.
+    """Per-batch timing windows for each iteration stage.
 
-    Each field records the ``(start_s, end_s)`` wall-clock window during which
-    a particular iteration stage was active for this batch.  The training thread
-    later compares these windows against its own blocked window to determine
-    how much each stage contributed to training-thread stall (see
-    :meth:`BatchIterator._attribute_blocked_time`).
-
-    A field value of ``None`` indicates the stage did not execute for this
-    batch (e.g. no ``collate_fn`` provided).
+    Each field is the ``(start_s, end_s)`` window a stage was active, or
+    None if the stage didn't run. Compared against the training thread's
+    blocked window to attribute stall (see ``_attribute_blocked_time``).
     """
 
     production_wait: Optional[TimeSpan] = None
@@ -53,7 +44,7 @@ class BatchTimings:
     finalize: Optional[TimeSpan] = None
 
     def stages(self) -> Iterable[Tuple[IterationStage, Optional[TimeSpan]]]:
-        """Iterate over ``(stage, timing)`` pairs for all iteration stages."""
+        """Yield (stage, timing) pairs."""
         return (
             (IterationStage.PRODUCTION_WAIT, self.production_wait),
             (IterationStage.DATA_TRANSFER, self.data_transfer),
@@ -70,12 +61,7 @@ class BatchTimings:
 
 
 def _merge_span(dst: Optional[TimeSpan], src: Optional[TimeSpan]) -> Optional[TimeSpan]:
-    """Merge two optional ``TimeSpan`` windows into a spanning window.
-
-    Returns ``dst`` unchanged if ``src`` is ``None`` (stage didn't run).
-    Returns a copy of ``src`` if ``dst`` is ``None`` (first block).
-    Otherwise returns a new ``TimeSpan`` spanning both windows.
-    """
+    """Return the union of two optional windows (or the non-None one)."""
     if src is None:
         return dst
     if dst is None:
@@ -94,7 +80,7 @@ class BatchMetadata:
         batch_idx: The global index of this batch so that downstream operations can
             maintain ordering.
         num_rows: Number of rows in this batch (for ``iter_rows_total``).
-        timings: Iteration-stage timing windows for this batch.
+        timings: Per-stage timing windows.
     """
 
     batch_idx: int

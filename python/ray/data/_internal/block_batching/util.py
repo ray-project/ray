@@ -179,17 +179,17 @@ def resolve_block_refs(
 ) -> Iterator[BlockFetchResult]:
     """Resolves the block references for each logical batch.
 
-    Each resolved block is wrapped in a :class:`BlockFetchResult` that carries
-    the per-block fetch window.  The fetch window spans from the moment we
+    Each resolved block is wrapped in a ``BlockFetchResult`` that carries
+    the per-block fetch window. The fetch window spans from the moment we
     start waiting for the upstream iterator (blocked on the data pipeline or
     cross-node transfer) until ``ray.get()`` returns the resolved block.
     When *stats* is provided, the cumulative fetch time is also recorded in
     ``stats.iter_get_s``.
 
-    Note: ``production_wait`` is captured for overlap attribution only
-    and does not accumulate into ``iter_get_ref_bundles_s`` — that
-    Timer is driven by :func:`prefetch_batches_locally.get_next_ref_bundle`
-    when prefetching is enabled; accumulating here would double-count.
+    ``production_wait`` is captured for attribution only and not accumulated
+    into ``iter_get_ref_bundles_s`` — that Timer is driven by
+    ``prefetch_batches_locally.get_next_ref_bundle`` when prefetch is enabled;
+    accumulating here would double-count.
 
     Args:
         block_ref_iter: An iterator over block object references.
@@ -204,7 +204,7 @@ def resolve_block_refs(
     unknowns = 0
 
     while True:
-        # (1) production_wait: upstream wait (not accumulated; see docstring).
+        # production_wait: upstream wait (not accumulated; see docstring).
         prod_start_s = time.perf_counter() if stats else 0.0
         try:
             block_ref = next(block_ref_iter)
@@ -219,9 +219,8 @@ def resolve_block_refs(
         misses += current_miss
         unknowns += current_unknown
 
-        # (2) data_transfer: cross-node transfer via ray.get().
-        # TODO(amogkam): Optimized further by batching multiple references
-        # in a single `ray.get()` call.
+        # data_transfer: cross-node transfer via ray.get().
+        # TODO(amogkam): batch multiple references in one ray.get() call.
         with _maybe_time(stats.iter_get_s if stats else None) as xfer_span:
             block = ray.get(block_ref)
 
