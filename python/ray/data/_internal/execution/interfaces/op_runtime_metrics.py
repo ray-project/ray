@@ -566,6 +566,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._per_node_metrics: Dict[str, NodeMetrics] = defaultdict(NodeMetrics)
         self._per_node_metrics_enabled: bool = op.data_context.enable_per_node_metrics
 
+        # Per-node live object store bytes for this operator's outputs.
+        # Incremented when outputs are queued, decremented when dequeued.
+        self._per_node_obj_store_bytes: Dict[str, int] = defaultdict(int)
+        self._per_node_obj_store_bytes_peak: Dict[str, int] = defaultdict(int)
+
         self._issue_detector_hanging = 0
         self._issue_detector_high_memory = 0
 
@@ -946,6 +951,16 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.obj_store_mem_internal_inqueue_blocks -= len(input.blocks)
         input_size = input.size_bytes()
         self._internal_inqueues[input_index].remove(input)
+        # Decrement per-node bytes on the producing operator, since the
+        # block is now being consumed by this operator's task.
+        if input_index < len(self._op.input_dependencies):
+            from ray.data._internal.execution.operators.input_data_buffer import (
+                InputDataBuffer,
+            )
+
+            upstream_op = self._op.input_dependencies[input_index]
+            if not isinstance(upstream_op, InputDataBuffer):
+                upstream_op.metrics._update_per_node_obj_store_bytes(input, -1)
         assert self.obj_store_mem_internal_inqueue >= 0, (
             self._op,
             self.obj_store_mem_internal_inqueue,
@@ -956,6 +971,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         """Callback when an output is queued by the operator."""
         self.obj_store_mem_internal_outqueue_blocks += len(output.blocks)
         self._internal_outqueue.add(output)
+        self._update_per_node_obj_store_bytes(output, 1)
 
     def on_output_dequeued(self, output: RefBundle):
         """Callback when an output is dequeued by the operator."""
@@ -967,6 +983,21 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             self.obj_store_mem_internal_outqueue,
             output_size,
         )
+
+    def _update_per_node_obj_store_bytes(self, bundle: RefBundle, sign: int):
+        for entry in bundle.blocks:
+            node_id = node_id_from_block_metadata(entry.metadata)
+            size = entry.metadata.size_bytes or 0
+            current = self._per_node_obj_store_bytes[node_id] + sign * size
+            self._per_node_obj_store_bytes[node_id] = current
+            if current > self._per_node_obj_store_bytes_peak[node_id]:
+                self._per_node_obj_store_bytes_peak[node_id] = current
+
+    def get_per_node_obj_store_bytes(self) -> Dict[str, int]:
+        return dict(self._per_node_obj_store_bytes)
+
+    def get_per_node_obj_store_bytes_peak(self) -> Dict[str, int]:
+        return dict(self._per_node_obj_store_bytes_peak)
 
     def on_toggle_task_submission_backpressure(self, in_backpressure):
         if in_backpressure and self._task_submission_backpressure_start_time == -1:
