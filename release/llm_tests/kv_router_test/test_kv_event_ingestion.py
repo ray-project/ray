@@ -10,6 +10,7 @@ from vllm.distributed.kv_events import (
 )
 
 import ray
+from ray import cloudpickle
 from ray._common.test_utils import async_wait_for_condition
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     _MODEL_NAME,
@@ -23,6 +24,11 @@ from ray.serve._private.common import (
     ReplicaID,
     RunningReplicaInfo,
 )
+
+# Actors defined in a test module are pickled by reference, so a worker on
+# another node would have to import this module to load them, which fails.
+# Pickle it by value so the actor classes ship in full and run on any node.
+cloudpickle.register_pickle_by_value(sys.modules[__name__])
 
 BLOCK_SIZE = 16
 MAX_NUM_BATCHED_TOKENS = 8192

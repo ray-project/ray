@@ -148,14 +148,7 @@ constexpr char kLabelKeyTpuWorkerId[] = RAY_LABEL_KEY_PREFIX "tpu-worker-id";
 // A string representing the current TPU pod type, e.g. v6e-32.
 constexpr char kLabelKeyTpuPodType[] = RAY_LABEL_KEY_PREFIX "tpu-pod-type";
 
-// The GPU domain label key used for rack-aware placement group scheduling.
-constexpr char kGpuDomainLabelKey[] = RAY_LABEL_KEY_PREFIX "gpu-domain";
-
 #undef RAY_LABEL_KEY_PREFIX
-
-/// GPU accelerator type identifiers for rack-aware scheduling.
-constexpr char kGB200[] = "GB200";
-constexpr char kGB300[] = "GB300";
 
 /// All nodes implicitly have resources with this prefix and the quantity is 1.
 /// NOTE: DON'T CHANGE THIS since autoscaler depends on it.
