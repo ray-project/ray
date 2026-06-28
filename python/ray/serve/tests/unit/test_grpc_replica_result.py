@@ -2,10 +2,12 @@ import asyncio
 import sys
 import threading
 
+import grpc
 import pytest
 
 from ray import ActorID, cloudpickle
 from ray._common.test_utils import wait_for_condition
+from ray.exceptions import ActorUnavailableError
 from ray.serve._private.common import RequestMetadata
 from ray.serve._private.replica_result import gRPCReplicaResult
 from ray.serve.generated import serve_pb2
@@ -385,6 +387,87 @@ class TestSeparateLoop:
 
         with pytest.raises(RuntimeError, match="oh no!"):
             await replica_result.__anext__()
+
+
+class FakegRPCCallWithStatus:
+    """Minimal fake of a completed ``grpc.aio.Call`` for done-callback tests.
+
+    ``grpc.aio`` invokes done-callbacks with the call object itself and exposes
+    the final status only via the async ``code()`` method, so we mirror that.
+    """
+
+    def __init__(self, code: grpc.StatusCode):
+        self._loop = asyncio.get_running_loop()
+        self._code = code
+        self._done_callbacks = []
+
+    def add_done_callback(self, cb):
+        self._done_callbacks.append(cb)
+
+    async def code(self) -> grpc.StatusCode:
+        return self._code
+
+    def complete(self):
+        # grpc invokes done-callbacks with the call object itself.
+        for cb in self._done_callbacks:
+            cb(self)
+
+
+@pytest.mark.asyncio
+class TestDoneCallbackNormalization:
+    """gRPCReplicaResult.add_done_callback must normalize a failed call into the
+    same shape the actor transport delivers, so the router's completion handler
+    can invalidate its queue-length cache for the dead replica. See
+    https://github.com/ray-project/ray/issues/63261.
+    """
+
+    def make_result(self, code: grpc.StatusCode):
+        fake_call = FakegRPCCallWithStatus(code)
+        result = gRPCReplicaResult(
+            fake_call,
+            metadata=RequestMetadata(
+                request_id="",
+                internal_request_id="",
+                is_streaming=False,
+                _on_separate_loop=False,
+            ),
+            actor_id=ActorID(b"2" * 16),
+            loop=asyncio.get_running_loop(),
+        )
+        return result, fake_call
+
+    async def _fire_and_capture(self, code: grpc.StatusCode):
+        result, fake_call = self.make_result(code)
+        received = []
+        result.add_done_callback(lambda r: received.append(r))
+        fake_call.complete()
+        # Normalization resolves the status code on the call's loop, so yield
+        # control until the callback has been invoked.
+        for _ in range(100):
+            if received:
+                break
+            await asyncio.sleep(0.01)
+        assert received, "done-callback was never invoked"
+        return received[0], fake_call
+
+    async def test_unavailable_normalized_to_actor_unavailable(self):
+        """A failed (UNAVAILABLE) call is surfaced as ActorUnavailableError so the
+        router invalidates its cache instead of silently ignoring the failure."""
+        received, _ = await self._fire_and_capture(grpc.StatusCode.UNAVAILABLE)
+        assert isinstance(received, ActorUnavailableError)
+
+    async def test_ok_passes_through_call(self):
+        """A successful call preserves the previous behavior: the callback
+        receives the call object, not a synthesized error."""
+        received, fake_call = await self._fire_and_capture(grpc.StatusCode.OK)
+        assert received is fake_call
+
+    async def test_cancelled_not_treated_as_failure(self):
+        """CANCELLED (typically a client-initiated cancellation) must NOT be
+        converted into a retryable ActorUnavailableError."""
+        received, fake_call = await self._fire_and_capture(grpc.StatusCode.CANCELLED)
+        assert not isinstance(received, ActorUnavailableError)
+        assert received is fake_call
 
 
 if __name__ == "__main__":
