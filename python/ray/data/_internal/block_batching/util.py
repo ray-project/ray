@@ -204,7 +204,7 @@ def resolve_block_refs(
     unknowns = 0
 
     while True:
-        # production_wait: upstream wait (not accumulated; see docstring).
+        # production_wait: upstream wait (not accumulated here).
         prod_start_s = time.perf_counter() if stats else 0.0
         try:
             block_ref = next(block_ref_iter)
