@@ -33,10 +33,10 @@ class BlockFetchResult:
 
 @dataclass
 class BatchTimings:
-    """Per-batch pipeline-stage timing windows for overlap-based attribution.
+    """Per-batch iteration-stage timing windows for overlap-based attribution.
 
     Each field records the ``(start_s, end_s)`` wall-clock window during which
-    a particular pipeline stage was active for this batch.  The training thread
+    a particular iteration stage was active for this batch.  The training thread
     later compares these windows against its own blocked window to determine
     how much each stage contributed to training-thread stall (see
     :meth:`BatchIterator._attribute_blocked_time`).
@@ -53,7 +53,7 @@ class BatchTimings:
     finalize: Optional[TimeSpan] = None
 
     def stages(self) -> Iterable[Tuple[IterationStage, Optional[TimeSpan]]]:
-        """Iterate over ``(stage, timing)`` pairs for all pipeline stages."""
+        """Iterate over ``(stage, timing)`` pairs for all iteration stages."""
         return (
             (IterationStage.PRODUCTION_WAIT, self.production_wait),
             (IterationStage.DATA_TRANSFER, self.data_transfer),
@@ -94,7 +94,7 @@ class BatchMetadata:
         batch_idx: The global index of this batch so that downstream operations can
             maintain ordering.
         num_rows: Number of rows in this batch (for ``iter_rows_total``).
-        timings: Pipeline-stage timing windows for this batch.
+        timings: Iteration-stage timing windows for this batch.
     """
 
     batch_idx: int

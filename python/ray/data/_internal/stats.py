@@ -1298,7 +1298,7 @@ class DatasetStats:
         self.streaming_split_coordinator_s: Timer = Timer()
 
     def get_blocked_timer(self, stage: IterationStage) -> Timer:
-        """Return the blocked-attribution Timer for the given pipeline stage."""
+        """Return the blocked-attribution Timer for the given iteration stage."""
         match stage:
             case IterationStage.PRODUCTION_WAIT:
                 return self.iter_blocked_production_wait_s

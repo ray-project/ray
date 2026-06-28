@@ -266,39 +266,23 @@ class BatchIterator:
     ) -> None:
         """Attribute per-stage blocked time via overlap with the training window.
 
-        For each pipeline stage we know when it ran ``[timing.start_s,
-        timing.end_s]`` (recorded by background threads onto
-        ``batch.metadata.timings``).  We also know when the training thread
-        was blocked ``[blocked_start_s, blocked_end_s]`` (captured in
-        ``_iter_batches`` around ``next()``).
-
-        The attribution for a stage is the length of the intersection::
+        Each stage's window ``[timing.start_s, timing.end_s]`` (recorded by
+        background threads onto ``batch.metadata.timings``) is intersected
+        with the training thread's blocked window ``[blocked_start_s,
+        blocked_end_s]`` (captured around ``next()`` in ``_iter_batches``)::
 
             overlap = min(timing.end, blocked_end) - max(timing.start, blocked_start)
 
-        This correctly handles all prefetch configurations:
-
-        * Stage finished before training blocked → overlap ≤ 0 → zero credit.
-        * Stage fully inside blocked window → full stage duration credited.
-        * Partial overlap → partial credit.
-
-        **Invariant**: ``sum(iter_blocked_*)`` approximates
-        ``iter_total_blocked_s`` (``≤ total`` in the common case).
-        TODO: two cases violate it by design — split fetch stages overlap
-        for multi-block batches, and reorder buffer wait under
-        ``preserve_order`` is unattributed. Consider interval lists for
+        TODO: ``sum(iter_blocked_*)`` only approximates
+        ``iter_total_blocked_s`` — split fetch stages overlap for
+        multi-block batches, and reorder buffer wait under
+        ``preserve_order`` is unattributed. Interval lists would give
         precise non-overlapping attribution.
-
-        Runs in the training thread; no locks needed because background
-        threads finished writing ``batch.metadata.timings`` before the batch
-        was enqueued.
 
         Args:
             batch: The batch whose per-stage timings should be attributed.
-            blocked_start_s: ``perf_counter()`` value just before the
-                training thread called ``next(batch_iter)``.
-            blocked_end_s: ``perf_counter()`` value just after ``next()``
-                returned.
+            blocked_start_s: ``perf_counter()`` just before ``next()``.
+            blocked_end_s: ``perf_counter()`` just after ``next()`` returned.
         """
         if self._stats is None:
             return
