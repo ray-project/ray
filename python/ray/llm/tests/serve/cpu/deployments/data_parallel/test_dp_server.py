@@ -176,7 +176,7 @@ class TestBundleIndices:
             ),
             # Out-of-order sorted_indices: bundles reordered by node
             ({"tensor_parallel_size": 2}, None, 1, [0, 2, 1, 3], "1,3"),
-            ({"tensor_parallel_size": 1}, None, 0, [2, 0, 3, 1], "2"),
+            ({"tensor_parallel_size": 1}, None, 0, [2, 0, 3, 1], "0"),
         ],
     )
     def test_bundle_indices(

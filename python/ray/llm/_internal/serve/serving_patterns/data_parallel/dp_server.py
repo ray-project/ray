@@ -235,7 +235,13 @@ class DPServer(LLMServer):
         Returns:
             Comma-separated bundle indices, e.g. "0,2".
         """
-        start = dp_rank * bundles_per_replica
+        dp_size = len(sorted_indices) // bundles_per_replica
+        sorted_ranks = sorted(
+            range(dp_size),
+            key=lambda rank: sorted_indices.index(rank * bundles_per_replica),
+        )
+        rank_idx = sorted_ranks.index(dp_rank)
+        start = rank_idx * bundles_per_replica
         return ",".join(
             str(sorted_indices[start + i]) for i in range(bundles_per_replica)
         )
