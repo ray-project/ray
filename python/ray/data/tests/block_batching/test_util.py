@@ -27,6 +27,7 @@ from ray.data._internal.block_batching.util import (
     iter_threaded,
     resolve_block_refs,
 )
+from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import make_async_gen
 
 logger = logging.getLogger(__file__)
@@ -49,16 +50,8 @@ def test_resolve_block_refs(ray_start_regular_shared):
 def test_resolve_block_refs_does_not_accumulate_ref_bundles_timer(
     ray_start_regular_shared,
 ):
-    """Regression test for nested-timer double-counting.
-
-    ``resolve_block_refs`` must NOT accumulate into
-    ``iter_get_ref_bundles_s``.  When prefetching is enabled, that Timer is
-    already driven by ``prefetch_batches_locally.get_next_ref_bundle``;
-    accumulating here too would double-count the upstream wait.  The
-    ``production_wait`` TimeSpan is still captured per block for overlap
-    attribution.
-    """
-    from ray.data._internal.stats import DatasetStats
+    """Regression test: resolve_block_refs must not accumulate into
+    iter_get_ref_bundles_s (prefetch_batches_locally owns that Timer)."""
 
     def slow_block_ref_iter():
         for i in range(3):
@@ -83,15 +76,8 @@ def test_resolve_block_refs_does_not_accumulate_ref_bundles_timer(
 def test_resolve_block_refs_accumulates_data_transfer_timer(
     ray_start_regular_shared,
 ):
-    """``resolve_block_refs`` accumulates ``ray.get()`` time into
-    ``iter_get_s`` (the data_transfer stage) and captures a per-block
-    ``data_transfer`` TimeSpan for overlap attribution.
-
-    Pairs with ``test_resolve_block_refs_does_not_accumulate_ref_bundles_timer``
-    which verifies the production_wait path does NOT accumulate.
-    """
-    from ray.data._internal.stats import DatasetStats
-
+    """resolve_block_refs accumulates ray.get() time into iter_get_s and
+    captures a per-block data_transfer TimeSpan."""
     block_refs = [ray.put(i) for i in range(3)]
 
     stats = DatasetStats(metadata={}, parent=None)
@@ -104,9 +90,6 @@ def test_resolve_block_refs_accumulates_data_transfer_timer(
         assert r.fetch is not None
         assert r.fetch.data_transfer is not None
         assert r.fetch.data_transfer.duration >= 0.0
-
-    # iter_get_s (ray.get time) IS accumulated by resolve_block_refs.
-    assert stats.iter_get_s.get() >= 0.0
 
 
 @pytest.mark.parametrize("block_size", [1, 10])

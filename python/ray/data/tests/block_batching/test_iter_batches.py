@@ -184,20 +184,20 @@ def _make_batch_with_timings(
     return Batch(BatchMetadata(batch_idx=0, num_rows=num_rows, timings=timings), None)
 
 
-def _make_report_iterator(stats):
+def _make_test_iterator(stats):
     """Create a BatchIterator wired to the given stats without a real pipeline."""
     it = BatchIterator.__new__(BatchIterator)
     it._stats = stats
     return it
 
 
-class TestReportBatchTimingsEdgeCases:
+class TestAttributeBlockedTimeEdgeCases:
     """Edge case tests for overlap-based blocked attribution."""
 
     def test_zero_overlap_stage_finished_before_blocked(self):
         """Fetch [0, 1.5] finished before training blocked at t=2 → 0 attribution."""
         stats = DatasetStats(metadata={}, parent=None)
-        it = _make_report_iterator(stats)
+        it = _make_test_iterator(stats)
         batch = _make_batch_with_timings(
             production_wait_start=0.0, production_wait_end=1.5
         )
@@ -207,7 +207,7 @@ class TestReportBatchTimingsEdgeCases:
     def test_zero_overlap_blocked_before_stage(self):
         """Training blocked [0, 1], stage ran [2, 3] → 0 attribution."""
         stats = DatasetStats(metadata={}, parent=None)
-        it = _make_report_iterator(stats)
+        it = _make_test_iterator(stats)
         batch = _make_batch_with_timings(format_start=2.0, format_end=3.0)
         it._attribute_blocked_time(batch, blocked_start_s=0.0, blocked_end_s=1.0)
         assert stats.iter_blocked_format_s.get() == 0.0
@@ -215,7 +215,7 @@ class TestReportBatchTimingsEdgeCases:
     def test_partial_overlap(self):
         """Fetch [0, 2], blocked [1, 3] → overlap = min(2,3)-max(0,1) = 1.0."""
         stats = DatasetStats(metadata={}, parent=None)
-        it = _make_report_iterator(stats)
+        it = _make_test_iterator(stats)
         batch = _make_batch_with_timings(
             production_wait_start=0.0, production_wait_end=2.0
         )
@@ -225,7 +225,7 @@ class TestReportBatchTimingsEdgeCases:
     def test_full_overlap_stage_inside_blocked(self):
         """Stage [1, 2] entirely inside blocked [0, 3] → full 1.0 credit."""
         stats = DatasetStats(metadata={}, parent=None)
-        it = _make_report_iterator(stats)
+        it = _make_test_iterator(stats)
         batch = _make_batch_with_timings(batching_start=1.0, batching_end=2.0)
         it._attribute_blocked_time(batch, blocked_start_s=0.0, blocked_end_s=3.0)
         assert stats.iter_blocked_batching_s.get() == pytest.approx(1.0)
@@ -233,7 +233,7 @@ class TestReportBatchTimingsEdgeCases:
     def test_no_collate_fn_zero_attribution(self):
         """collate stage has start_s=0 → skipped, 0 attribution."""
         stats = DatasetStats(metadata={}, parent=None)
-        it = _make_report_iterator(stats)
+        it = _make_test_iterator(stats)
         batch = _make_batch_with_timings(format_start=1.0, format_end=2.0)
         it._attribute_blocked_time(batch, blocked_start_s=0.0, blocked_end_s=3.0)
         assert stats.iter_blocked_format_s.get() == pytest.approx(1.0)
@@ -242,7 +242,7 @@ class TestReportBatchTimingsEdgeCases:
     def test_no_finalize_fn_zero_attribution(self):
         """finalize stage has start_s=0 → skipped, 0 attribution."""
         stats = DatasetStats(metadata={}, parent=None)
-        it = _make_report_iterator(stats)
+        it = _make_test_iterator(stats)
         batch = _make_batch_with_timings(collate_start=1.0, collate_end=2.0)
         it._attribute_blocked_time(batch, blocked_start_s=0.0, blocked_end_s=3.0)
         assert stats.iter_blocked_collate_s.get() == pytest.approx(1.0)
@@ -251,7 +251,7 @@ class TestReportBatchTimingsEdgeCases:
     def test_prefetch_hides_fetch_from_training(self):
         """Effective prefetch: fetch done before training blocks → 0 fetch attribution."""
         stats = DatasetStats(metadata={}, parent=None)
-        it = _make_report_iterator(stats)
+        it = _make_test_iterator(stats)
         batch = _make_batch_with_timings(
             production_wait_start=0.0,
             production_wait_end=1.5,
@@ -266,7 +266,7 @@ class TestReportBatchTimingsEdgeCases:
     def test_accumulation_across_batches(self):
         """Two batches each contribute to fetch — values accumulate."""
         stats = DatasetStats(metadata={}, parent=None)
-        it = _make_report_iterator(stats)
+        it = _make_test_iterator(stats)
         # Batch 1: fetch [0,1], blocked [0,2] → overlap 1.0
         b1 = _make_batch_with_timings(
             production_wait_start=0.0, production_wait_end=1.0, num_rows=10
@@ -285,7 +285,7 @@ class TestReportBatchTimingsEdgeCases:
     def test_overlap_invariant_sum_leq_total(self):
         """sum(iter_blocked_*) <= iter_total_blocked_s holds for non-overlapping stages."""
         stats = DatasetStats(metadata={}, parent=None)
-        it = _make_report_iterator(stats)
+        it = _make_test_iterator(stats)
         stats.iter_total_blocked_s.add(5.0)
         batch = _make_batch_with_timings(
             production_wait_start=0.0,
@@ -311,7 +311,7 @@ class TestReportBatchTimingsEdgeCases:
     def test_blocked_inside_stage(self):
         """Stage [0, 10] fully contains blocked [3, 5] → overlap = 2.0."""
         stats = DatasetStats(metadata={}, parent=None)
-        it = _make_report_iterator(stats)
+        it = _make_test_iterator(stats)
         batch = _make_batch_with_timings(
             production_wait_start=0.0, production_wait_end=10.0
         )
@@ -321,7 +321,7 @@ class TestReportBatchTimingsEdgeCases:
     def test_all_stages_simultaneous_overlap(self):
         """Multiple stages overlap with blocked window simultaneously."""
         stats = DatasetStats(metadata={}, parent=None)
-        it = _make_report_iterator(stats)
+        it = _make_test_iterator(stats)
         batch = _make_batch_with_timings(
             production_wait_start=0.0,
             production_wait_end=1.0,
@@ -527,7 +527,7 @@ class TestEndToEndTimingPropagation:
     def test_full_pipeline_attribution(self):
         """End-to-end: all 5 stages with realistic timing, full overlap."""
         stats = DatasetStats(metadata={}, parent=None)
-        it = _make_report_iterator(stats)
+        it = _make_test_iterator(stats)
         stats.iter_total_blocked_s.add(5.0)
 
         batch = _make_batch_with_timings(

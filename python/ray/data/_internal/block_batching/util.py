@@ -205,13 +205,15 @@ def resolve_block_refs(
 
     while True:
         # production_wait: upstream wait (not accumulated here).
-        prod_start_s = time.perf_counter() if stats else 0.0
+        production_wait_start = time.perf_counter() if stats else 0.0
         try:
             block_ref = next(block_ref_iter)
         except StopIteration:
             break
-        prod_span = (
-            TimeSpan(start_s=prod_start_s, end_s=time.perf_counter()) if stats else None
+        production_wait_span = (
+            TimeSpan(start_s=production_wait_start, end_s=time.perf_counter())
+            if stats
+            else None
         )
 
         current_hit, current_miss, current_unknown = _calculate_ref_hits([block_ref])
@@ -221,10 +223,13 @@ def resolve_block_refs(
 
         # data_transfer: cross-node transfer via ray.get().
         # TODO(amogkam): batch multiple references in one ray.get() call.
-        with _maybe_time(stats.iter_get_s if stats else None) as xfer_span:
+        with _maybe_time(stats.iter_get_s if stats else None) as data_transfer_span:
             block = ray.get(block_ref)
 
-        fetch = BlockFetchTiming(production_wait=prod_span, data_transfer=xfer_span)
+        fetch = BlockFetchTiming(
+            production_wait=production_wait_span,
+            data_transfer=data_transfer_span,
+        )
         yield BlockFetchResult(block=block, fetch=fetch)
 
     if stats:

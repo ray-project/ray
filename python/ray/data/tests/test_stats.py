@@ -2660,16 +2660,15 @@ class TestTimerSpan:
     def test_each_call_returns_fresh_span(self):
         """Each timer() call yields a distinct TimeSpan instance."""
         t = Timer()
-        spans = []
         with t.timer() as s1:
-            spans.append(s1)
+            pass
         with t.timer() as s2:
-            spans.append(s2)
-        assert spans[0] is not spans[1]
-        assert t.get() == pytest.approx(spans[0].duration + spans[1].duration, rel=0.5)
+            pass
+        assert s1 is not s2
+        assert t.get() == pytest.approx(s1.duration + s2.duration, rel=0.5)
 
     def test_maybe_time_skips_when_timer_none(self):
-        """_maybe_time(None) yields None and skips perf_counter entirely."""
+        """_maybe_time(None) yields None."""
         with _maybe_time(None) as span:
             assert span is None
         assert span is None
