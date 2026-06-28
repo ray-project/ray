@@ -36,6 +36,7 @@ from ray.serve._private.constants import (
     DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S,
     DEFAULT_TARGET_ONGOING_REQUESTS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
+    RAY_SERVE_ROUTER_MAX_REQUEST_RETRIES,
     RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
     RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
     RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
@@ -279,6 +280,26 @@ class RequestRouterConfig(BaseModel):
         ),
     )
 
+    max_request_retries: int = Field(
+        default=RAY_SERVE_ROUTER_MAX_REQUEST_RETRIES,
+        description=(
+            "Maximum number of times the router retries routing a request "
+            "after a replica rejects it. -1 means unlimited retries "
+            "(the default, for backwards compatibility). When the limit is "
+            "exceeded, the request is dropped with a BackPressureError (503)."
+        ),
+    )
+
+    @field_validator("max_request_retries")
+    @classmethod
+    def validate_max_request_retries(cls, v):
+        if v < -1:
+            raise ValueError(
+                "max_request_retries must be -1 (unlimited) "
+                "or a non-negative integer."
+            )
+        return v
+
     @field_validator("request_router_kwargs")
     @classmethod
     def request_router_kwargs_json_serializable(cls, v):
@@ -313,6 +334,7 @@ class RequestRouterConfig(BaseModel):
             and self.initial_backoff_s == other.initial_backoff_s
             and self.backoff_multiplier == other.backoff_multiplier
             and self.max_backoff_s == other.max_backoff_s
+            and self.max_request_retries == other.max_request_retries
         )
 
     def __hash__(self):
@@ -334,6 +356,7 @@ class RequestRouterConfig(BaseModel):
                 self.initial_backoff_s,
                 self.backoff_multiplier,
                 self.max_backoff_s,
+                self.max_request_retries,
             )
         )
 
