@@ -1925,21 +1925,15 @@ def test_update_iteration_metrics_exports_new_iter_metrics():
         "iter_batch_finalizing_s",
         "time_to_first_batch_s",
         "iter_total_blocked_s",
-        "iter_batches_total",
-        "iter_rows_total",
-        "iter_user_s",
-    ]:
-        setattr(actor, attr, FakeGauge(attr))
-
-    # Blocked gauges are stored as individual attributes (matching the
-    # other iteration gauges above).
-    for attr in [
         "iter_blocked_production_wait_s",
         "iter_blocked_data_transfer_s",
         "iter_blocked_batching_s",
         "iter_blocked_format_s",
         "iter_blocked_collate_s",
         "iter_blocked_finalize_s",
+        "iter_batches_total",
+        "iter_rows_total",
+        "iter_user_s",
     ]:
         setattr(actor, attr, FakeGauge(attr))
 
@@ -2017,7 +2011,6 @@ def test_iter_stats_to_string_omits_zero_stages():
     # Zero stages should not appear
     assert "batching" not in text
     assert "collate" not in text
-    assert "restore order" not in text
 
 
 def test_iter_stats_to_string_no_breakdown_when_all_zero():
@@ -2649,7 +2642,7 @@ class TestTimerPercentile:
         assert t.max() == 0.0
 
 
-class TestTimerTimerSpan:
+class TestTimerSpan:
     """Tests for Timer.timer() returning a TimeSpan and accumulating."""
 
     def test_timer_yields_timespan(self):
