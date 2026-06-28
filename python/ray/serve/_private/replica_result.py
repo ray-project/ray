@@ -595,18 +595,31 @@ class gRPCReplicaResult(ReplicaResult):
 
         def _on_done(call: grpc.aio.Call):
             # The status code is only available via a coroutine, so resolve it
-            # on the call's loop before invoking ``callback``. The call is
-            # already complete here, so this resolves without blocking.
+            # before invoking ``callback``. The call is already complete here, so
+            # the coroutine resolves without blocking.
             async def _invoke():
                 callback(await self._normalize_done_result(call))
 
+            # grpc.aio fires done-callbacks on the call's own loop, so in the
+            # common case schedule directly there and avoid the thread-safe
+            # queue/locking overhead of run_coroutine_threadsafe.
+            try:
+                current_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                current_loop = None
+
+            if current_loop is self._grpc_call_loop and current_loop.is_running():
+                current_loop.create_task(_invoke())
+                return
+
+            # Called from a different thread, or no running loop (e.g.
+            # interpreter shutdown): hop onto the call's loop, falling back to
+            # the previous behavior if that loop is gone rather than dropping
+            # the callback entirely.
             coro = _invoke()
             try:
                 run_coroutine_threadsafe(coro, self._grpc_call_loop)
             except RuntimeError:
-                # Event loop is no longer running (e.g. interpreter shutdown);
-                # fall back to the previous behavior rather than dropping the
-                # callback entirely.
                 coro.close()
                 callback(call)
 

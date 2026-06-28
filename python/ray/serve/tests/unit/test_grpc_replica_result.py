@@ -438,16 +438,21 @@ class TestDoneCallbackNormalization:
 
     async def _fire_and_capture(self, code: grpc.StatusCode):
         result, fake_call = self.make_result(code)
+        event = asyncio.Event()
         received = []
-        result.add_done_callback(lambda r: received.append(r))
+
+        def callback(r):
+            received.append(r)
+            event.set()
+
+        result.add_done_callback(callback)
         fake_call.complete()
-        # Normalization resolves the status code on the call's loop, so yield
-        # control until the callback has been invoked.
-        for _ in range(100):
-            if received:
-                break
-            await asyncio.sleep(0.01)
-        assert received, "done-callback was never invoked"
+        # Normalization resolves the status code asynchronously on the call's
+        # loop; wait deterministically for the callback to be invoked.
+        try:
+            await asyncio.wait_for(event.wait(), timeout=2.0)
+        except asyncio.TimeoutError:
+            pytest.fail("done-callback was never invoked")
         return received[0], fake_call
 
     async def test_unavailable_normalized_to_actor_unavailable(self):
