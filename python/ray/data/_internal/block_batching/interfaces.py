@@ -33,7 +33,7 @@ class BatchTimings:
 
     Each field is the ``(start_s, end_s)`` window a stage was active, or
     None if the stage didn't run. Compared against the training thread's
-    blocked window to attribute stall (see ``_attribute_blocked_time``).
+    blocked window to attribute stall.
     """
 
     production_wait: Optional[TimeSpan] = None
