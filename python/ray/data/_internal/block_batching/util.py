@@ -28,7 +28,7 @@ from ray.data._internal.block_batching.interfaces import (
     BlockPrefetcher,
     CollatedBatch,
 )
-from ray.data._internal.stats import DatasetStats, TimeSpan, _timed
+from ray.data._internal.stats import DatasetStats, TimeSpan, _maybe_time
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.types import ObjectRef
 
@@ -186,13 +186,10 @@ def resolve_block_refs(
     When *stats* is provided, the cumulative fetch time is also recorded in
     ``stats.iter_get_s``.
 
-    Note: ``production_wait`` is captured as a :class:`TimeSpan` for
-    per-batch overlap attribution only — it does **not** accumulate into
-    ``stats.iter_get_ref_bundles_s``.  When prefetching is enabled, that
-    cumulative Timer is already driven by
-    :func:`prefetch_batches_locally.get_next_ref_bundle`; accumulating here
-    too would double-count the upstream wait.  When prefetching is off,
-    ``iter_get_ref_bundles_s`` is not tracked, matching master behavior.
+    Note: ``production_wait`` is captured for overlap attribution only
+    and does not accumulate into ``iter_get_ref_bundles_s`` — that
+    Timer is driven by :func:`prefetch_batches_locally.get_next_ref_bundle`
+    when prefetching is enabled; accumulating here would double-count.
 
     Args:
         block_ref_iter: An iterator over block object references.
@@ -207,11 +204,7 @@ def resolve_block_refs(
     unknowns = 0
 
     while True:
-        # (1) production_wait: blocked on upstream data pipeline.
-        # Captured as a TimeSpan for overlap attribution only — do not
-        # accumulate into ``iter_get_ref_bundles_s`` here, because
-        # ``prefetch_batches_locally.get_next_ref_bundle`` already times
-        # the same ``next()`` call when prefetch is enabled.
+        # (1) production_wait: upstream wait (not accumulated; see docstring).
         prod_start_s = time.perf_counter() if stats else 0.0
         try:
             block_ref = next(block_ref_iter)
@@ -229,7 +222,7 @@ def resolve_block_refs(
         # (2) data_transfer: cross-node transfer via ray.get().
         # TODO(amogkam): Optimized further by batching multiple references
         # in a single `ray.get()` call.
-        with _timed(stats.iter_get_s if stats else None) as xfer_span:
+        with _maybe_time(stats.iter_get_s if stats else None) as xfer_span:
             block = ray.get(block_ref)
 
         fetch = BlockFetchTiming(production_wait=prod_span, data_transfer=xfer_span)
@@ -284,6 +277,7 @@ class _BatchingIterator(Iterator[Batch]):
         self._drop_last = drop_last
         self._global_counter = 0
         self._done_adding = False
+        # Accumulates per-block fetch timings until a batch is yielded.
         self._pending_timings = BatchTimings()
 
         if shuffle_buffer_min_size is not None:
@@ -306,7 +300,7 @@ class _BatchingIterator(Iterator[Batch]):
             )
 
             if can_yield:
-                with _timed(
+                with _maybe_time(
                     self._stats.iter_next_batch_s if self._stats else None
                 ) as span:
                     next_batch = self._batcher.next_batch()
@@ -351,7 +345,7 @@ def _format_batch(
     stats: Optional[DatasetStats],
     ensure_copy: bool = False,
 ) -> Batch:
-    with _timed(stats.iter_format_batch_s if stats else None) as span:
+    with _maybe_time(stats.iter_format_batch_s if stats else None) as span:
         formatted_data = BlockAccessor.for_block(batch.data).to_batch_format(
             batch_format
         )
@@ -405,7 +399,7 @@ def _collate_batch(
     collate_fn: Callable[[DataBatch], Any],
     stats: Optional[DatasetStats],
 ) -> CollatedBatch:
-    with _timed(stats.iter_collate_batch_s if stats else None) as span:
+    with _maybe_time(stats.iter_collate_batch_s if stats else None) as span:
         collated_data = collate_fn(batch.data)
     batch.metadata.timings.collate = span
     return CollatedBatch(metadata=batch.metadata, data=collated_data)
@@ -431,7 +425,7 @@ def _finalize_batch(
     finalize_fn: Callable[[Any], Any],
     stats: Optional[DatasetStats],
 ) -> CollatedBatch:
-    with _timed(stats.iter_finalize_batch_s if stats else None) as span:
+    with _maybe_time(stats.iter_finalize_batch_s if stats else None) as span:
         finalized_data = finalize_fn(batch.data)
     batch.metadata.timings.finalize = span
     return dataclasses.replace(batch, data=finalized_data)

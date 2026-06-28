@@ -34,12 +34,12 @@ from ray.data._internal.stats import (
     DatasetStatsSummary,
     NodeMetrics,
     OperatorStatsSummary,
-    PipelineStage,
+    IterationStage,
     StatsSummary,
     Timer,
     TimeSpan,
     _StatsActor,
-    _timed,
+    _maybe_time,
     get_or_create_stats_actor,
 )
 from ray.data._internal.util import MemoryProfiler
@@ -1931,17 +1931,17 @@ def test_update_iteration_metrics_exports_new_iter_metrics():
     ]:
         setattr(actor, attr, FakeGauge(attr))
 
-    # Set up the blocked gauges dict (now stored as Dict[PipelineStage, Gauge])
-    from ray.data._internal.stats import PipelineStage
-
-    actor._blocked_gauges = {
-        PipelineStage.PRODUCTION_WAIT: FakeGauge("iter_blocked_production_wait_s"),
-        PipelineStage.DATA_TRANSFER: FakeGauge("iter_blocked_data_transfer_s"),
-        PipelineStage.BATCHING: FakeGauge("iter_blocked_batching_s"),
-        PipelineStage.FORMAT: FakeGauge("iter_blocked_format_s"),
-        PipelineStage.COLLATE: FakeGauge("iter_blocked_collate_s"),
-        PipelineStage.FINALIZE: FakeGauge("iter_blocked_finalize_s"),
-    }
+    # Blocked gauges are stored as individual attributes (matching the
+    # other iteration gauges above).
+    for attr in [
+        "iter_blocked_production_wait_s",
+        "iter_blocked_data_transfer_s",
+        "iter_blocked_batching_s",
+        "iter_blocked_format_s",
+        "iter_blocked_collate_s",
+        "iter_blocked_finalize_s",
+    ]:
+        setattr(actor, attr, FakeGauge(attr))
 
     actor.update_iteration_metrics(stats, "train_dataset_split_3")
 
@@ -2675,16 +2675,16 @@ class TestTimerTimerSpan:
         assert spans[0] is not spans[1]
         assert t.get() == pytest.approx(spans[0].duration + spans[1].duration, rel=0.5)
 
-    def test_timed_skips_when_timer_none(self):
-        """_timed(None) yields None and skips perf_counter entirely."""
-        with _timed(None) as span:
+    def test_maybe_time_skips_when_timer_none(self):
+        """_maybe_time(None) yields None and skips perf_counter entirely."""
+        with _maybe_time(None) as span:
             assert span is None
         assert span is None
 
-    def test_timed_yields_span_when_timer_given(self):
-        """_timed(Timer) yields a TimeSpan backed by the Timer."""
+    def test_maybe_time_yields_span_when_timer_given(self):
+        """_maybe_time(Timer) yields a TimeSpan backed by the Timer."""
         t = Timer()
-        with _timed(t) as span:
+        with _maybe_time(t) as span:
             time.sleep(0.01)
         assert isinstance(span, TimeSpan)
         assert span.duration > 0
@@ -2694,12 +2694,12 @@ class TestTimerTimerSpan:
 @pytest.mark.parametrize(
     "stage,attr",
     [
-        (PipelineStage.PRODUCTION_WAIT, "iter_blocked_production_wait_s"),
-        (PipelineStage.DATA_TRANSFER, "iter_blocked_data_transfer_s"),
-        (PipelineStage.BATCHING, "iter_blocked_batching_s"),
-        (PipelineStage.FORMAT, "iter_blocked_format_s"),
-        (PipelineStage.COLLATE, "iter_blocked_collate_s"),
-        (PipelineStage.FINALIZE, "iter_blocked_finalize_s"),
+        (IterationStage.PRODUCTION_WAIT, "iter_blocked_production_wait_s"),
+        (IterationStage.DATA_TRANSFER, "iter_blocked_data_transfer_s"),
+        (IterationStage.BATCHING, "iter_blocked_batching_s"),
+        (IterationStage.FORMAT, "iter_blocked_format_s"),
+        (IterationStage.COLLATE, "iter_blocked_collate_s"),
+        (IterationStage.FINALIZE, "iter_blocked_finalize_s"),
     ],
 )
 class TestGetBlockedTimer:

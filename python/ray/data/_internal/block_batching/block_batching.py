@@ -35,14 +35,8 @@ def batch_blocks(
     # Use map() instead of a generator expression to avoid holding
     # references to blocks.
     #
-    # TODO: this BlockFetchResult wrapping is a typing shim —
-    # `batch_blocks` receives already-resolved `Block`s with no fetch
-    # timing, but `blocks_to_batches` consumes `Iterator[BlockFetchResult]`
-    # to keep a uniform type across the prefetch and non-prefetch paths.
-    # A future refactor could make fetch timing optional at the
-    # `_BatchingIterator` level (e.g. accept `Union[Block, BlockFetchResult]`
-    # or move the merge_fetch call site behind a capability check) so this
-    # shim can be removed. Out of scope for this PR.
+    # TODO: make fetch timing optional at the _BatchingIterator level so
+    # this BlockFetchResult wrapping shim can be removed.
     wrapped_blocks = map(lambda b: BlockFetchResult(block=b), blocks)
 
     # Build the processing pipeline

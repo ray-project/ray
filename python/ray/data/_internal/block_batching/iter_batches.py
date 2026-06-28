@@ -283,29 +283,11 @@ class BatchIterator:
         * Partial overlap → partial credit.
 
         **Invariant**: ``sum(iter_blocked_*)`` approximates
-        ``iter_total_blocked_s``. It is a lower bound in the common case
-        (``sum ≤ total``), but two known cases can push ``sum`` above
-        ``total`` by design — both reflect real blocking the training
-        thread experienced:
-
-        * **Split fetch stages overlap.**  For multi-block batches,
-          ``production_wait`` and ``data_transfer`` are merged into
-          spanning windows per stage across blocks.  In a pipelined
-          system those windows can overlap (data_transfer for block N
-          concurrent with production_wait for block N+1), so the same
-          blocked interval may be credited to both stages.  Using
-          interval lists instead of spanning windows would restore
-          ``sum ≤ total`` but significantly increase complexity.
-        * **Reorder buffer wait is unattributed.**  Under
-          ``preserve_order=True`` with a multi-worker format threadpool
-          (``prefetch_batches ≥ 1``), per-stage ``TimeSpan`` values are
-          recorded when format/collate finish — often before the batch
-          is released from ``restore_original_order``.  The wait inside
-          the reorder buffer is part of the blocked window but covered
-          by no stage ``TimeSpan``, so it shows up as an unattributed
-          gap (lowers ``sum`` relative to ``total``).  This is expected;
-          users seeing a high unattributed ratio should investigate
-          ordering-related stall.
+        ``iter_total_blocked_s`` (``≤ total`` in the common case).
+        TODO: two cases violate it by design — split fetch stages overlap
+        for multi-block batches, and reorder buffer wait under
+        ``preserve_order`` is unattributed. Consider interval lists for
+        precise non-overlapping attribution.
 
         Runs in the training thread; no locks needed because background
         threads finished writing ``batch.metadata.timings`` before the batch

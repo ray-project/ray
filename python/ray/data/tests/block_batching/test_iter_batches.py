@@ -22,7 +22,7 @@ from ray.data._internal.block_batching.iter_batches import (
 )
 from ray.data._internal.block_batching.util import WaitBlockPrefetcher
 from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry, RefBundle
-from ray.data._internal.stats import DatasetStats, PipelineStage, TimeSpan
+from ray.data._internal.stats import DatasetStats, IterationStage, TimeSpan
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
 
@@ -521,11 +521,11 @@ class TestEndToEndTimingPropagation:
         # Verify all stages are accessible via stages() iterator
         stage_dict = dict(batch.metadata.timings.stages())
         assert len(stage_dict) == 6
-        assert stage_dict[PipelineStage.PRODUCTION_WAIT].start_s == 1.0
-        assert stage_dict[PipelineStage.BATCHING].end_s == 3.0
-        assert stage_dict[PipelineStage.FORMAT].start_s == 3.0
-        assert stage_dict[PipelineStage.COLLATE].end_s == 5.0
-        assert stage_dict[PipelineStage.FINALIZE].start_s == 5.0
+        assert stage_dict[IterationStage.PRODUCTION_WAIT].start_s == 1.0
+        assert stage_dict[IterationStage.BATCHING].end_s == 3.0
+        assert stage_dict[IterationStage.FORMAT].start_s == 3.0
+        assert stage_dict[IterationStage.COLLATE].end_s == 5.0
+        assert stage_dict[IterationStage.FINALIZE].start_s == 5.0
         assert batch.metadata.num_rows == 50
 
     def test_full_pipeline_attribution(self):
