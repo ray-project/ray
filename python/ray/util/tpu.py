@@ -243,7 +243,7 @@ def get_tpu_slice_name_from_node(node: Dict[str, Any]) -> Optional[str]:
         node: A dictionary representing a Ray node (returned by ray.nodes()).
 
     Returns:
-        The TPU slice name if the node belongs to a slice, otherwise None.
+        The TPU slice name if the node belongs to a multi-host slice, otherwise None.
     """
     return node.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
 
@@ -274,6 +274,74 @@ def get_tpu_nodes_for_slice(
     ]
 
 
+def _get_intact_tpu_slices(
+    topology: str,
+    accelerator_type: str,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Returns a mapping of slice names to lists of node dictionaries for all
+    TPU slices of the specified topology that are physically intact (alive,
+    matching total chip count, and having a head worker).
+    """
+    if not ray.is_initialized():
+        return {}
+
+    try:
+        pod_type = infer_tpu_pod_type_from_topology(topology, accelerator_type)
+        if not pod_type:
+            return {}
+
+        total_chips_expected = get_num_chips_from_topology(topology)
+        if total_chips_expected <= 0:
+            return {}
+    except Exception as e:
+        logger.warning(f"Failed to parse TPU topology for integrity check: {e}")
+        return {}
+
+    slice_to_nodes = {}
+    for node in ray.nodes():
+        if node.get("Alive"):
+            labels = node.get("Labels") or {}
+            if labels.get(ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY) == pod_type:
+                is_single_host = total_chips_expected <= (
+                    node.get("Resources") or {}
+                ).get("TPU", 0)
+                if is_single_host:
+                    # Single-host TPUs run on a single Ray node.
+                    slice_name = node.get("NodeID")
+                else:
+                    slice_name = get_tpu_slice_name_from_node(node)
+
+                if slice_name:
+                    slice_to_nodes.setdefault(slice_name, []).append(node)
+
+    intact_slices = {}
+    for slice_name, nodes in slice_to_nodes.items():
+        slice_tpu_chips = sum(
+            (node.get("Resources") or {}).get("TPU", 0) for node in nodes
+        )
+
+        # Validate the slice has all its physical chips.
+        if slice_tpu_chips != total_chips_expected:
+            continue
+
+        # TPU slices must have a head worker (rank 0).
+        # Single-host TPUs are inherently their own head.
+        has_head = any(
+            (n.get("Labels") or {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) == "0"
+            for n in nodes
+        )
+        if not has_head and len(nodes) == 1:
+            has_head = True
+
+        if not has_head:
+            continue
+
+        intact_slices[slice_name] = nodes
+
+    return intact_slices
+
+
 @PublicAPI(stability="alpha")
 def get_num_ready_tpu_slices(
     topology: str,
@@ -290,20 +358,8 @@ def get_num_ready_tpu_slices(
     Returns:
         The integer count of fully ready and available TPU slices.
     """
-    if not ray.is_initialized():
-        return 0
-
-    try:
-        pod_type = infer_tpu_pod_type_from_topology(topology, accelerator_type)
-        if not pod_type:
-            return 0
-
-        total_chips_expected = get_num_chips_from_topology(topology)
-        if total_chips_expected <= 0:
-            return 0
-
-    except Exception as e:
-        logger.warning(f"Failed to parse TPU topology for readiness check: {e}")
+    intact_slices = _get_intact_tpu_slices(topology, accelerator_type)
+    if not intact_slices:
         return 0
 
     # Fetch live resource usage via the State API to ensure slices are idle.
@@ -311,32 +367,8 @@ def get_num_ready_tpu_slices(
 
     node_avail_resources = available_resources_per_node()
 
-    slice_to_nodes = {}
-    for node in ray.nodes():
-        # Build a mapping of currently alive Ray nodes and the TPU slice they belong to.
-        if node.get("Alive"):
-            labels = node.get("Labels", {})
-            if labels.get(ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY) == pod_type:
-                slice_name = get_tpu_slice_name_from_node(node)
-                if slice_name:
-                    slice_to_nodes.setdefault(slice_name, []).append(node)
-
     ready_and_available_slices = 0
-    for slice_name, nodes in slice_to_nodes.items():
-        slice_tpu_chips = sum(node.get("Resources", {}).get("TPU", 0) for node in nodes)
-
-        # Validate the slice has all its physical chips.
-        if slice_tpu_chips != total_chips_expected:
-            continue
-
-        # TPU slices must have a head worker (rank 0).
-        has_head = any(
-            n.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) == "0"
-            for n in nodes
-        )
-        if not has_head:
-            continue
-
+    for slice_name, nodes in intact_slices.items():
         # Validate all nodes in this slice are completely idle to avoid
         # scheduling on multi-tenant slices currently in use.
         slice_is_idle = True
@@ -381,39 +413,7 @@ def get_num_tpu_slices(
     Returns:
         The integer count of physically intact TPU slices.
     """
-    if not ray.is_initialized():
-        return 0
-
-    try:
-        pod_type = infer_tpu_pod_type_from_topology(topology, accelerator_type)
-        total_chips_expected = get_num_chips_from_topology(topology)
-    except Exception as e:
-        logger.warning(f"Failed to parse TPU topology for integrity check: {e}")
-        return 0
-
-    if not pod_type or total_chips_expected <= 0:
-        return 0
-
-    slice_to_nodes = {}
-    for node in ray.nodes():
-        if node.get("Alive"):
-            labels = node.get("Labels", {})
-            if labels.get(ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY) == pod_type:
-                slice_name = get_tpu_slice_name_from_node(node)
-                if slice_name:
-                    slice_to_nodes.setdefault(slice_name, []).append(node)
-
-    intact_slices = 0
-    for slice_name, nodes in slice_to_nodes.items():
-        slice_tpu_chips = sum(node.get("Resources", {}).get("TPU", 0) for node in nodes)
-        has_head = any(
-            n.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) == "0"
-            for n in nodes
-        )
-        if slice_tpu_chips == total_chips_expected and has_head:
-            intact_slices += 1
-
-    return intact_slices
+    return len(_get_intact_tpu_slices(topology, accelerator_type))
 
 
 @PublicAPI(stability="alpha")
@@ -577,31 +577,57 @@ class SlicePlacementGroup:
         bundles = []
         bundles_per_slice = self._num_bundles // self._num_slices
 
-        # Construct accelerator format for reserve_tpu_slice. e.g. From "v6e" to "TPU-V6E", "v5p" to "TPU-V5P".
-        accelerator_type = "TPU-" + self.accelerator_version.upper()
+        total_chips = get_num_chips_from_topology(self._topology)
+        is_single_host = total_chips <= self._chips_per_host
 
         try:
+            accelerator_type = "TPU-" + self.accelerator_version.upper()
+
             for slice_idx in range(self.num_slices):
-                reservation = reserve_tpu_slice(
-                    self._topology,
-                    accelerator_type,
-                    timeout_s=self._head_reservation_timeout_s,
-                )
-                if not reservation:
-                    raise RuntimeError(
-                        f"Failed to reserve TPU slice. Requested {self.num_slices} "
-                        f"slice(s) of topology '{self._topology}' with accelerator type "
-                        f"'{accelerator_type}'. Ensure that sufficient TPU resources are "
-                        "available in the cluster."
-                    )
+                tpu_slice_name_label = {}
 
-                # Store the head placement group for clean-up when un-reserving the slice.
-                slice_name, head_pg = reservation
-                self._head_pgs.append(head_pg)
+                if not is_single_host:
+                    # Reserve a multi-host TPU slice by gang-scheduling using the unique `ray.io/tpu-slice-name`.
+                    # Check if user explicitly requested a slice name for this slice
+                    user_slice_name = None
+                    for bundle_idx in range(bundles_per_slice):
+                        global_bundle_idx = slice_idx * bundles_per_slice + bundle_idx
+                        user_labels = (
+                            self._user_bundle_label_selector[global_bundle_idx]
+                            if global_bundle_idx < len(self._user_bundle_label_selector)
+                            else {}
+                        ) or {}
+                        if ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY in user_labels:
+                            user_slice_name = user_labels[
+                                ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY
+                            ]
+                            break
 
-                tpu_slice_name_label = {
-                    ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name
-                }
+                    if user_slice_name:
+                        tpu_slice_name_label = {
+                            ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: user_slice_name
+                        }
+                    else:
+                        reservation = reserve_tpu_slice(
+                            self._topology,
+                            accelerator_type,
+                            timeout_s=self._head_reservation_timeout_s,
+                        )
+                        if not reservation:
+                            raise RuntimeError(
+                                f"Failed to reserve TPU slice. Requested {self.num_slices} "
+                                f"slice(s) of topology '{self._topology}' with accelerator type "
+                                f"'{accelerator_type}'. Ensure that sufficient TPU resources are "
+                                "available in the cluster."
+                            )
+
+                        # Store the head placement group for clean-up when un-reserving the slice.
+                        slice_name, head_pg = reservation
+                        self._head_pgs.append(head_pg)
+
+                        tpu_slice_name_label = {
+                            ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name
+                        }
 
                 for bundle_idx in range(bundles_per_slice):
                     global_bundle_idx = slice_idx * bundles_per_slice + bundle_idx
