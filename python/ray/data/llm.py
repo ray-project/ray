@@ -49,7 +49,7 @@ class ProcessorConfig(_ProcessorConfig):
 
 
 @PublicAPI(stability="beta")
-class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
+class HttpRequestProcessorConfig(_HttpRequestProcessorConfig, ProcessorConfig):
     """The configuration for the HTTP request processor.
 
     Args:
@@ -101,7 +101,7 @@ class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
 
 
 @PublicAPI(stability="beta")
-class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
+class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig, ProcessorConfig):
     """The configuration for the vLLM engine processor.
 
     Args:
@@ -235,7 +235,7 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
 
 
 @PublicAPI(stability="beta")
-class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
+class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig, ProcessorConfig):
     """The configuration for the SGLang engine processor.
 
     Args:
@@ -329,7 +329,7 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
 
 
 @PublicAPI(stability="beta")
-class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
+class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig, ProcessorConfig):
     """The configuration for the serve deployment processor.
 
     This processor enables sharing serve deployments across multiple processors. This is useful

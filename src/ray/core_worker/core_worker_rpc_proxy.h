@@ -56,6 +56,7 @@ class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
   RAY_CORE_WORKER_RPC_PROXY(UpdateObjectLocationBatch)
   RAY_CORE_WORKER_RPC_PROXY(GetObjectLocationsOwner)
   RAY_CORE_WORKER_RPC_PROXY(ReportGeneratorItemReturns)
+  RAY_CORE_WORKER_RPC_PROXY(UpdateGeneratorBackpressureConsumed)
   RAY_CORE_WORKER_RPC_PROXY(KillActor)
   RAY_CORE_WORKER_RPC_PROXY(CancelTask)
   RAY_CORE_WORKER_RPC_PROXY(RequestOwnerToCancelTask)
