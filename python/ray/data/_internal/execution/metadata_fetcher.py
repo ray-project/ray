@@ -27,6 +27,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray
+import ray.exceptions
 from ray._common.utils import env_bool
 from ray.data._internal.execution.interfaces.physical_operator import (
     METADATA_WAIT_TIMEOUT_S,
