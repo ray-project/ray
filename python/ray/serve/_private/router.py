@@ -673,6 +673,7 @@ class AsyncioRouter:
         self._initial_backoff_s: Optional[float] = None
         self._backoff_multiplier: Optional[float] = None
         self._max_backoff_s: Optional[float] = None
+        self._max_request_retries: int = -1
 
         # Initializing `self._metrics_manager` before `self.long_poll_client` is
         # necessary to avoid race condition where `self.update_deployment_config()`
@@ -848,6 +849,9 @@ class AsyncioRouter:
             deployment_config.request_router_config.backoff_multiplier
         )
         self._max_backoff_s = deployment_config.request_router_config.max_backoff_s
+        self._max_request_retries = (
+            deployment_config.request_router_config.max_request_retries
+        )
 
         if self._request_router:
             self._request_router.update_backoff_params(
@@ -1117,6 +1121,20 @@ class AsyncioRouter:
 
         return None
 
+    def _check_retry_limit(self, num_retries: int) -> None:
+        """Raise BackPressureError if the retry limit has been exceeded."""
+        max_retries = self._max_request_retries
+        if max_retries >= 0 and num_retries > max_retries:
+            deployment_config = self._metrics_manager._deployment_config
+            raise BackPressureError(
+                num_queued_requests=self._metrics_manager.num_queued_requests,
+                max_queued_requests=(
+                    deployment_config.max_queued_requests
+                    if deployment_config is not None
+                    else -1
+                ),
+            )
+
     async def route_and_send_request(
         self,
         pr: PendingRequest,
@@ -1126,11 +1144,13 @@ class AsyncioRouter:
 
         This will block indefinitely if no replicas are available to handle the
         request, so it's up to the caller to time out or cancel the request.
+        If max_request_retries is configured (>= 0), retries are bounded.
         """
         # Wait for the router to be initialized before sending the request.
         await self._request_router_initialized.wait()
 
         is_retry = False
+        num_retries = 0
         while True:
             result = await self._route_and_send_request_once(
                 pr,
@@ -1145,6 +1165,8 @@ class AsyncioRouter:
             # TODO(edoakes): this retry procedure is not perfect because it'll reset the
             # process of choosing candidates replicas (i.e., for locality-awareness).
             is_retry = True
+            num_retries += 1
+            self._check_retry_limit(num_retries)
 
     @tracing_decorator_factory(
         trace_name="route_to_replica",
@@ -1473,8 +1495,10 @@ class AsyncioRouter:
         capacity rejection, replica actor death, or transient
         unavailability. Updates the queue-length cache from the replica's
         reported count.
+        If max_request_retries is configured (>= 0), retries are bounded.
         """
         is_retry = False
+        num_retries = 0
         while True:
             num_curr_replicas = len(self.request_router.curr_replicas)
             with self._metrics_manager.wrap_queued_request(
@@ -1490,11 +1514,15 @@ class AsyncioRouter:
                         replica.replica_id, replica.actor_id, e
                     )
                     is_retry = True
+                    num_retries += 1
+                    self._check_retry_limit(num_retries)
                     continue
                 except ActorUnavailableError:
                     self.request_router.on_replica_actor_unavailable(replica.replica_id)
                     logger.warning(f"{replica.replica_id} is temporarily unavailable.")
                     is_retry = True
+                    num_retries += 1
+                    self._check_retry_limit(num_retries)
                     continue
 
                 self.request_router.on_new_queue_len_info(
@@ -1504,6 +1532,8 @@ class AsyncioRouter:
                     return replica, slot_token
 
             is_retry = True
+            num_retries += 1
+            self._check_retry_limit(num_retries)
 
     def _register_completion_callback(
         self, result: ReplicaResult, replica: RunningReplica, pr: PendingRequest

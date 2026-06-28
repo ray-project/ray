@@ -536,6 +536,12 @@ RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S = get_env_float(
     "RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S", 0.5
 )
 
+# Maximum number of times the router retries routing a request after a replica
+# rejects it. -1 means unlimited retries (default, for backwards compatibility).
+RAY_SERVE_ROUTER_MAX_REQUEST_RETRIES = get_env_int(
+    "RAY_SERVE_ROUTER_MAX_REQUEST_RETRIES", -1
+)
+
 # The default autoscaling policy to use if none is specified.
 DEFAULT_AUTOSCALING_POLICY_NAME = (
     "ray.serve.autoscaling_policy:default_autoscaling_policy"
