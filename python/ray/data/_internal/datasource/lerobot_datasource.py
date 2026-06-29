@@ -265,8 +265,12 @@ def _resolve_filesystem(
                 f"filesystem must be a pyarrow.fs.FileSystem or an "
                 f"fsspec.spec.AbstractFileSystem, got {type(filesystem).__name__}"
             )
-        _, fs_root = split_protocol(root_uri)
-        fs_root = (fs_root or root_uri).rstrip("/")
+        # Derive fs_root from the anonymous@-stripped URI (video_root_uri), not
+        # root_uri: otherwise an explicit filesystem opens metadata/parquet at
+        # "anonymous@bucket/..." instead of the real bucket path. Matches the
+        # storage_options and default branches, which already strip the marker.
+        _, fs_root = split_protocol(video_root_uri)
+        fs_root = (fs_root or video_root_uri).rstrip("/")
     elif storage_options:
         # Explicit fsspec options (credentials / endpoint_url / …): resolve via
         # fsspec so the same options cover metadata, parquet, and video.

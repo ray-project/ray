@@ -1002,6 +1002,22 @@ def test_resolve_filesystem_anonymous_uri_strips_and_sets_anon():
     assert video_opts.get("anon") is True
 
 
+def test_resolve_filesystem_anonymous_uri_with_explicit_filesystem_strips_fs_root():
+    """With an explicit ``filesystem`` AND an ``s3://anonymous@...`` URI, the
+    metadata/parquet root must also drop the ``anonymous@`` marker -- otherwise
+    opens hit ``anonymous@bucket/...`` instead of the real bucket path (the
+    by-URI video path is covered separately above)."""
+    import pyarrow.fs as pafs
+
+    from ray.data._internal.datasource.lerobot_datasource import _resolve_filesystem
+
+    _, fs_root, _, _ = _resolve_filesystem(
+        "s3://anonymous@my-bucket/path", filesystem=pafs.LocalFileSystem()
+    )
+    assert "anonymous@" not in fs_root
+    assert fs_root == "my-bucket/path"
+
+
 def test_resolve_filesystem_storage_options_only(tmp_path):
     """With ``storage_options`` but no ``filesystem``, resolution goes through
     fsspec so the same options cover metadata, parquet, and video."""
