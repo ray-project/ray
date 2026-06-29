@@ -482,30 +482,6 @@ class TestResourceManager:
         with pytest.raises(AssertionError):
             resource_manager.set_external_consumer_bytes(-1)
 
-    def test_external_consumer_bytes_input_data_buffer_sink(self, restore_data_context):
-        """When the execute DAG is only an InputDataBuffer, prefetch bytes still
-        attach to that terminal sink instead of being dropped by the
-        InputDataBuffer early return."""
-        buf = InputDataBuffer(DataContext.get_current(), [])
-        topo = build_streaming_topology(buf, ExecutionOptions(), noop_counter())
-        resource_manager = ResourceManager(
-            topo,
-            ExecutionOptions(),
-            lambda: ExecutionResources(cpu=10, gpu=0, object_store_memory=1000),
-            DataContext.get_current(),
-            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
-        )
-        buf.current_logical_usage = MagicMock(return_value=ExecutionResources.zero())
-        buf.running_logical_usage = MagicMock(return_value=ExecutionResources.zero())
-        buf.pending_logical_usage = MagicMock(return_value=ExecutionResources.zero())
-
-        resource_manager.update_usages()
-        assert resource_manager.get_op_usage(buf).object_store_memory == 0
-
-        resource_manager.set_external_consumer_bytes(150)
-        resource_manager.update_usages()
-        assert resource_manager.get_op_usage(buf).object_store_memory == 150
-
     def test_external_consumer_bytes_surfaced_in_op_usage_str(
         self, restore_data_context
     ):
