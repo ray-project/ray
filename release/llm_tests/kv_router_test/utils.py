@@ -5,6 +5,20 @@ from ray.serve._private.constants import (
     SERVE_DEPLOYMENT_ACTOR_PREFIX,
     SERVE_NAMESPACE,
 )
+from ray.serve.experimental.round_robin_router import RoundRobinRouter
+from ray.serve.llm.request_router import KVAwareRouter
+
+
+class _TestKVAwareRouter(RoundRobinRouter, KVAwareRouter):
+    """A ``KVAwareRouter`` subclass that borrows ``RoundRobinRouter``'s selection.
+
+    KVAwareRouter's own routing (scoring by KV-cache overlap) is not implemented
+    yet, so this inherits RoundRobinRouter's ``choose_replicas`` (via MRO) while
+    remaining a KVAwareRouter subclass.
+
+    TODO (jeffreywang): Remove RoundRobinRouter base class once KVAwareRouter's selection
+    is implemented.
+    """
 
 
 def discover_deployment_actor(app_name, deployment_name, actor_name):

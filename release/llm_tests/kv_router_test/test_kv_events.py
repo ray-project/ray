@@ -18,11 +18,10 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     KVRouterActor,
 )
 from ray.serve.config import RequestRouterConfig
-from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_openai_app
 from ray.serve.llm.request_router import KVAwareRouter
 
-from utils import discover_deployment_actor
+from utils import _TestKVAwareRouter, discover_deployment_actor
 
 MODEL_ID = "qwen3-0.6b"
 MODEL_SOURCE = "Qwen/Qwen3-0.6B"
@@ -94,16 +93,6 @@ class _TestKVRouterActor(KVRouterActor):
             }
         )
         return {w["worker_id"]: w["device_blocks"] for w in scores["workers"]}
-
-
-class _TestKVAwareRouter(RoundRobinRouter, KVAwareRouter):
-    """KVAwareRouter routes by KV-cache overlap, which is not implemented yet.
-
-    Inherit RoundRobinRouter's routing (which ``_discover_replicas`` relies on to
-    cycle through replicas) while remaining a ``KVAwareRouter`` subclass, so the
-    deployment selects the KV-aware code paths under test (engine KV events,
-    per-replica event ports). MRO resolves ``choose_replicas`` to RoundRobinRouter.
-    """
 
 
 def post_chat(endpoint, messages=MESSAGES, max_tokens=MAX_TOKENS):

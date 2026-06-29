@@ -249,6 +249,23 @@ async def test_non_streaming_reports_full_output_once(build_token_tracking_engin
 
 
 @pytest.mark.asyncio
+async def test_cumulative_skips_tracking(build_token_tracking_engine):
+    """CUMULATIVE repeats output-so-far each chunk; tracking is skipped (not
+    summed) to avoid over-counting, so no lifecycle events are reported."""
+    actor = RecordingKVRouterActor.remote(block_size=16)
+    engine = build_token_tracking_engine(delta_steps(3), actor)
+
+    outputs = await consume(
+        engine.generate(
+            PROMPT, SamplingParams(output_kind=RequestOutputKind.CUMULATIVE), "r"
+        )
+    )
+
+    assert len(outputs) == 3  # stream still passes through untouched
+    assert ray.get(actor.get_event_log.remote()) == []
+
+
+@pytest.mark.asyncio
 async def test_empty_steps_ignored(build_token_tracking_engine):
     """Token-less outputs (e.g. a finish-only chunk) emit no progress hooks."""
     actor = RecordingKVRouterActor.remote(block_size=16)

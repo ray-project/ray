@@ -1,26 +1,21 @@
 import asyncio
 import json
 import sys
+from unittest import mock
 
 import pytest
 import requests
 
 import ray
 from ray import serve
-from ray.llm._internal.serve.core.ingress.builder import (
-    _build_direct_streaming_llm_deployment,
-)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     KV_ROUTER_ACTOR_NAME,
     KVRouterActor,
 )
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
-    derive_kv_event_block_size,
-)
-from ray.serve.config import DeploymentActorConfig
-from ray.serve.llm import LLMConfig, ModelLoadingConfig
+from ray.serve.config import RequestRouterConfig
+from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_openai_app
 
-from utils import discover_deployment_actor
+from utils import _TestKVAwareRouter, discover_deployment_actor
 
 MODEL_ID = "Qwen/Qwen3-0.6B"
 APP_NAME = "lifecycle_tracking_gpu_test"
@@ -32,14 +27,12 @@ PROMPT_TEXT = "Describe the water cycle in detail, stage by stage."
 LIFECYCLE_REQUEST_ID = REQUEST_ID
 
 
-@ray.remote(num_cpus=0)
 class RecordingKVRouterActor(KVRouterActor):
     """The real KVRouterActor, additionally recording every lifecycle event it
-    receives so the test can assert reporting order and arguments (the hooks
-    themselves are no-ops on this branch)."""
+    receives so the test can assert reporting order and arguments."""
 
-    def __init__(self, block_size):
-        super().__init__(block_size=block_size)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._event_log = []
 
     async def on_lifecycle_events(self, events):
@@ -56,7 +49,7 @@ class TestLifecycleTracking:
         """Deploy a direct-streaming LLMServer with the recording actor."""
         if not ray.is_initialized():
             ray.init(address="auto")
-        serve.shutdown()  # ensure no prior app is holding GPU memory
+        serve.shutdown()
 
         engine_kwargs = dict(
             max_model_len=2048,
@@ -71,27 +64,27 @@ class TestLifecycleTracking:
             ),
             deployment_config=dict(
                 autoscaling_config=dict(min_replicas=1, max_replicas=1),
-                deployment_actors=[
-                    DeploymentActorConfig(
-                        name=KV_ROUTER_ACTOR_NAME,
-                        actor_class=RecordingKVRouterActor,
-                        init_kwargs={
-                            "block_size": derive_kv_event_block_size(engine_kwargs)
-                        },
-                        actor_options={"num_cpus": 0},
-                    )
-                ],
+                # KVAwareRouter gates engine token tracking and the KV-events
+                # plane; the builder auto-attaches the KV router actor.
+                request_router_config=RequestRouterConfig(
+                    request_router_class=_TestKVAwareRouter
+                ),
             ),
             engine_kwargs=engine_kwargs,
             placement_group_config={"bundles": [{"GPU": 1}]},
-            # The replica worker needs the vLLM compile-cache flag at import
-            # time; direct ingress/streaming come from the cluster runtime_env.
+            experimental_configs={"KV_EVENTS_PORT_BASE": 21600},
             runtime_env=dict(env_vars={"VLLM_DISABLE_COMPILE_CACHE": "1"}),
             log_engine_metrics=False,
         )
 
-        app = _build_direct_streaming_llm_deployment(llm_config)
-        handle = serve.run(app, name=APP_NAME)
+        # Patch in the recording subclass so the builder-attached, deployment-
+        # scoped KV router actor exposes the received lifecycle events.
+        with mock.patch(
+            "ray.llm._internal.serve.routing_policies.kv_aware.utils.KVRouterActor",
+            RecordingKVRouterActor,
+        ):
+            app = build_openai_app({"llm_configs": [llm_config]})
+            handle = serve.run(app, name=APP_NAME)
         yield handle
         serve.shutdown()
 

@@ -2,6 +2,7 @@ import asyncio
 from typing import Any, List, Optional, Type
 
 from vllm.outputs import RequestOutput
+from vllm.sampling_params import RequestOutputKind
 from vllm.v1.engine.async_llm import AsyncLLM
 
 from ray import serve
@@ -37,6 +38,7 @@ class LifecycleEventForwarder:
         self.worker_id = worker_id
         self._events: asyncio.Queue = asyncio.Queue()
         self._delivery_task: Optional[asyncio.Task] = None
+        self._drop_warned = False
 
     def report(self, method_name: str, *args) -> None:
         if self._delivery_task is None or self._delivery_task.done():
@@ -55,9 +57,9 @@ class LifecycleEventForwarder:
             try:
                 await self.actor.on_lifecycle_events.remote(batch)
             except Exception as e:
-                logger.debug(
-                    "Dropped a batch of %d KV lifecycle events: %s", len(batch), e
-                )
+                if not self._drop_warned:
+                    self._drop_warned = True
+                    logger.warning("Dropping KV lifecycle events: %s", e)
             finally:
                 for _ in batch:
                     self._events.task_done()
@@ -65,6 +67,12 @@ class LifecycleEventForwarder:
     async def flush(self) -> None:
         """Wait until every reported event has been delivered."""
         await self._events.join()
+
+    def close(self) -> None:
+        """Cancel the delivery task on engine shutdown."""
+        if self._delivery_task is not None:
+            self._delivery_task.cancel()
+            self._delivery_task = None
 
 
 class RequestTokenTracker:
@@ -114,6 +122,7 @@ def enable_token_tracking(engine_cls: Type[AsyncLLM]) -> Type[AsyncLLM]:
 
     class TokenTrackingEngine(engine_cls):
         _lifecycle_forwarder: Optional[LifecycleEventForwarder] = None
+        _resolve_warned: bool = False
 
         def _resolve_lifecycle_forwarder(self) -> Optional[LifecycleEventForwarder]:
             if self._lifecycle_forwarder is None:
@@ -126,15 +135,29 @@ def enable_token_tracking(engine_cls: Type[AsyncLLM]) -> Type[AsyncLLM]:
                         actor, worker_id
                     )
                 except Exception as e:
-                    logger.debug("KV token tracking disabled: %s", e)
+                    # Warn once: resolution is retried per request until it succeeds.
+                    if not self._resolve_warned:
+                        self._resolve_warned = True
+                        logger.warning("KV token tracking disabled: %s", e)
             return self._lifecycle_forwarder
+
+        def shutdown(self, *args, **kwargs):
+            if self._lifecycle_forwarder is not None:
+                self._lifecycle_forwarder.close()
+            return super().shutdown(*args, **kwargs)
 
         async def generate(self, prompt, sampling_params, request_id, *args, **kwargs):
             stream = super().generate(
                 prompt, sampling_params, request_id, *args, **kwargs
             )
             forwarder = self._resolve_lifecycle_forwarder()
-            if forwarder is None:
+            # CUMULATIVE repeats output-so-far per chunk; our accounting sums
+            # deltas, so skip it rather than over-count. vLLM's OpenAI layer only
+            # uses DELTA/FINAL_ONLY (*Request.to_sampling_params):
+            # https://github.com/vllm-project/vllm/tree/main/vllm/entrypoints/openai
+            if forwarder is None or (
+                sampling_params.output_kind == RequestOutputKind.CUMULATIVE
+            ):
                 async for output in stream:
                     yield output
                 return
