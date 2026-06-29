@@ -59,20 +59,30 @@ class TotalCounter {
   }
 };
 
-TEST(FiberStateTest, CanStopInfiniteTasks) {
+TEST(FiberStateTest, DrainsInFlightFibersBeforeStopping) {
+  // Stop()/Join() drains in-flight fibers: it keeps the scheduler running and
+  // waits for them to finish before returning, instead of abandoning them. This
+  // is what lets async actors deliver in-flight task results during graceful
+  // shutdown. (A fiber that never finishes therefore blocks Join() until the
+  // process is force killed, matching threaded actors.)
   FiberState fiber_state(2);
 
+  std::atomic<bool> task_completed{false};
   fiber_state.EnqueueFiber([&]() {
-    while (true) {
-      boost::this_fiber::sleep_for(std::chrono::milliseconds(10));
-      boost::this_fiber::yield();
-    }
+    // Still running when Stop() is called below: Join() must wait for it.
+    boost::this_fiber::sleep_for(std::chrono::milliseconds(200));
+    task_completed.store(true);
   });
 
-  boost::this_fiber::sleep_for(std::chrono::seconds(1));
+  // EnqueueFiber blocks until the runner accepts the fiber, so it is in flight
+  // (started, not yet finished) at this point.
+  EXPECT_FALSE(task_completed.load());
+
   fiber_state.Stop();
   fiber_state.Join();
-  // Can exit normally even if the fiber did not stop.
+
+  // Join() returned only after the in-flight fiber ran to completion.
+  EXPECT_TRUE(task_completed.load());
 }
 
 TEST(FiberStateTest, RespectsConcurrencyLimit) {
