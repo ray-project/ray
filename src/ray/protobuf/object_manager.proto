@@ -39,11 +39,6 @@ message PushRequest {
 }
 
 message PullRequest {
-  // Field 2 was `bytes object_id`. They are reserved so
-  // the tag is never silently reused.
-  reserved 2;
-  reserved "object_id";
-
   bytes node_id = 1;
   repeated bytes object_ids = 3;
 }
