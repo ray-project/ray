@@ -120,27 +120,26 @@ class FiberState {
           // but before it starts execution, num_in_flight_fibers_ value is checked and
           // observed to be 0 and thread shuts down.
           {
-            std::unique_lock<boost::fibers::mutex> lock(drain_mutex_);
+            std::unique_lock<boost::fibers::mutex> lock(mutex_);
             num_in_flight_fibers_ += 1;
           }
-          boost::fibers::fiber(
-              boost::fibers::launch::dispatch,
-              std::allocator_arg,
-              allocator_,
-              [this, func = std::move(func)]() {
-                func();
-                // Decrement the in-flight counter once the
-                // fiber body has finished and notify the
-                // graceful drain. `func` (the EnqueueFiber
-                // wrapper) does not throw -- an uncaught
-                // exception in a fiber would terminate the
-                // process -- so this always runs.
-                std::unique_lock<boost::fibers::mutex> lock(drain_mutex_);
-                num_in_flight_fibers_ -= 1;
-                if (num_in_flight_fibers_ == 0) {
-                  drain_cond_.notify_all();
-                }
-              })
+          boost::fibers::fiber(boost::fibers::launch::dispatch,
+                               std::allocator_arg,
+                               allocator_,
+                               [this, func = std::move(func)]() {
+                                 func();
+                                 // Decrement the in-flight counter once the
+                                 // fiber body has finished and notify the
+                                 // graceful drain. `func` (the EnqueueFiber
+                                 // wrapper) does not throw -- an uncaught
+                                 // exception in a fiber would terminate the
+                                 // process -- so this always runs.
+                                 std::unique_lock<boost::fibers::mutex> lock(mutex_);
+                                 num_in_flight_fibers_ -= 1;
+                                 if (num_in_flight_fibers_ == 0) {
+                                   fibers_drained_event_.notify_all();
+                                 }
+                               })
               .detach();
         } else if (op_status == boost::fibers::channel_op_status::closed) {
           // The channel was closed. We will just exit the loop and finish
@@ -167,14 +166,14 @@ class FiberState {
       // if an in-flight task never completes the worker hangs here until the
       // raylet force-kills it (matching threaded-actor behavior).
       {
-        std::unique_lock<boost::fibers::mutex> lock(drain_mutex_);
+        std::unique_lock<boost::fibers::mutex> lock(mutex_);
         if (num_in_flight_fibers_ > 0) {
           RAY_LOG(INFO) << "Async actor is draining " << num_in_flight_fibers_
                         << " in-flight task(s) before exiting. If this message is the "
                            "last one printed, the worker is probably hanging because an "
                            "in-flight async task never completes.";
         }
-        drain_cond_.wait(lock, [this]() { return num_in_flight_fibers_ == 0; });
+        fibers_drained_event_.wait(lock, [this]() { return num_in_flight_fibers_ == 0; });
       }
 
       // All fibers have completed, so no fiber can run after this point and it
