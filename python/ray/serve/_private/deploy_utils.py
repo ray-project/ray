@@ -81,23 +81,22 @@ def deploy_args_to_deployment_info(
     constructs a DeploymentInfo object.
     """
 
-    # Model multiplexing relies on the multiplexed model ID being propagated through
-    # the proxy, which direct ingress bypasses (the model ID is never populated).
-    # This runs in the controller, so RAY_SERVE_ENABLE_DIRECT_INGRESS is the cluster's
-    # authoritative view. Only the *statically* detectable case is caught here;
-    # dynamically-initialized multiplexing is caught at replica initialization.
-    if ingress and uses_multiplexing and RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        raise RayServeException(
-            f'Ingress deployment "{deployment_name}" in application "{app_name}" uses '
-            "model multiplexing (`@serve.multiplexed`), which is not supported on the "
-            "ingress deployment when direct ingress or HAProxy is enabled."
-        )
-
     deployment_config = DeploymentConfig.from_proto_bytes(deployment_config_proto_bytes)
 
-    # Floor the timeout so the controller's force-kill can't cut the
-    # direct-ingress drain (min draining period) short.
     if ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        # Model multiplexing relies on the multiplexed model ID being propagated through
+        # the proxy, which direct ingress bypasses (the model ID is never populated).
+        # Only the *statically* detectable case is caught here; dynamically-initialized
+        # multiplexing is caught at replica initialization.
+        if uses_multiplexing:
+            raise RayServeException(
+                f'Ingress deployment "{deployment_name}" in application "{app_name}" uses '
+                "model multiplexing (`@serve.multiplexed`), which is not supported on the "
+                "ingress deployment when direct ingress or HAProxy is enabled."
+            )
+
+        # Floor the timeout so the controller's force-kill can't cut the
+        # direct-ingress drain (min draining period) short.
         floor_s = (
             RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S
             + RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S

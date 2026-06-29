@@ -1770,18 +1770,16 @@ class Replica:
         `self._load_model = serve.multiplexed(...)(fn)`), which is invisible to the
         static check performed at deploy time.
         """
-        if not (self._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS):
-            return
+        if self._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+            # Imported lazily to avoid a circular import at module load time.
+            from ray.serve.multiplex import _callable_uses_multiplexing
 
-        # Imported lazily to avoid a circular import at module load time.
-        from ray.serve.multiplex import _callable_uses_multiplexing
-
-        if _callable_uses_multiplexing(self._user_callable_wrapper._callable):
-            raise RuntimeError(
-                "Model multiplexing (`@serve.multiplexed`) is not supported on the "
-                "ingress deployment when direct ingress or HAProxy is enabled "
-                "(RAY_SERVE_ENABLE_DIRECT_INGRESS)."
-            )
+            if _callable_uses_multiplexing(self._user_callable_wrapper._callable):
+                raise RuntimeError(
+                    "Model multiplexing (`@serve.multiplexed`) is not supported on the "
+                    "ingress deployment when direct ingress or HAProxy is enabled "
+                    "(RAY_SERVE_ENABLE_DIRECT_INGRESS)."
+                )
 
     async def initialize(
         self,
