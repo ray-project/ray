@@ -188,6 +188,24 @@ class API:
         except (AttributeError, ValueError):
             return AnnotationType.UNKNOWN
 
+    @staticmethod
+    def canonical_name_of(obj: object, fallback_name: str) -> str:
+        """
+        Canonical name of an already-resolved object.
+
+        Mirrors get_canonical_name()'s output rule (a class or function gives
+        ``module.qualname``; anything else keeps the documented name) but takes
+        the object resolve() found, so identity and annotation are derived from
+        the same import-first walk. Computing identity with get_canonical_name()
+        (a getattr-only walk) while reading the annotation off resolve()'s
+        object can disagree when a name is shadowed -- e.g. a re-exported
+        function sharing a dotted segment with a submodule -- so the two must
+        not be combined.
+        """
+        if inspect.isclass(obj) or inspect.isfunction(obj):
+            return f"{obj.__module__}.{obj.__qualname__}"
+        return fallback_name
+
     def _is_private_name(self) -> bool:
         """
         Check if this API has a private name. Private names are those that start with
@@ -269,14 +287,21 @@ class API:
         non_public = []
 
         for api in api_in_docs:
-            canonical_name = api.get_canonical_name()
-
-            if canonical_name in white_list_apis or api.name in white_list_apis:
+            # A doc entry may be white-listed by its documented (raw) name even
+            # when it does not resolve, so honor that before resolving.
+            if api.name in white_list_apis:
                 continue
 
             obj = api.resolve()
             if obj is None:
                 unresolved.append(api.name)
+                continue
+
+            # Identity and annotation both come from this single resolved
+            # object; see canonical_name_of() for why they must not be split
+            # across get_canonical_name()'s separate walk.
+            canonical_name = API.canonical_name_of(obj, api.name)
+            if canonical_name in white_list_apis:
                 continue
 
             annotation_type = API.introspect_annotation_type(obj)
@@ -307,7 +332,13 @@ class API:
         """
         counts = {}
         for api in api_in_docs:
-            canonical_name = api.get_canonical_name()
+            # Resolve the same (import-first) way Policy 02 does, so two doc
+            # entries that name the same object collapse to one canonical key
+            # even when one spelling goes through a shadowed segment.
+            obj = api.resolve()
+            canonical_name = (
+                api.name if obj is None else API.canonical_name_of(obj, api.name)
+            )
             counts[canonical_name] = counts.get(canonical_name, 0) + 1
 
         return sorted(

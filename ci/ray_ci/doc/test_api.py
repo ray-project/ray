@@ -249,6 +249,23 @@ def test_introspect_annotation_type():
     assert API.introspect_annotation_type(object()) == AnnotationType.UNKNOWN
 
 
+def test_canonical_name_of():
+    # Classes and functions canonicalize to module.qualname; the object comes
+    # from the same resolve() walk used to read the annotation.
+    assert (
+        API.canonical_name_of(mock_w00t, "ignored")
+        == f"{mock_w00t.__module__}.{mock_w00t.__qualname__}"
+    )
+    assert (
+        API.canonical_name_of(MockClass, "ignored")
+        == f"{MockClass.__module__}.{MockClass.__qualname__}"
+    )
+    # Anything that is not a class or function keeps the documented name.
+    assert API.canonical_name_of(object(), "some.documented.name") == (
+        "some.documented.name"
+    )
+
+
 def test_split_resolvable_and_broken_doc_apis():
     api_in_docs = [
         # public, resolves -> accepted
