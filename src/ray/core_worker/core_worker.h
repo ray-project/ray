@@ -341,7 +341,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
    * \param[in] num_items The number of indexes to advance past, starting from
    * the current head of the stream.
    * \return Status ObjectRefEndOfStream if the stream has already reached EoF.
-   * OK otherwise.
+   * InvalidArgument if the last requested ref is not ready. OK otherwise.
    */
   Status TryReadObjectRefStreamN(const ObjectID &generator_id, int64_t num_items);
 

@@ -170,22 +170,34 @@ Status ObjectRefStream::TryReadNextItems(int64_t num_items,
     return Status::ObjectRefEndOfStream("");
   }
 
+  // Reject if the caller has not confirmed the last requested ref is ready;
+  // otherwise we would silently advance past unwritten objects and drop them.
+  // Earlier refs may be unwritten (out-of-order reports) and are not checked.
+  const int64_t last_requested_index = next_index_ + num_items - 1;
+  if (last_requested_index >=
+      static_cast<int64_t>(RayConfig::instance().max_num_generator_returns())) {
+    return Status::InvalidArgument(absl::StrFormat(
+        "TryReadObjectRefStreamN cannot consume %d items: it would exceed the "
+        "maximum number of generator returns. generator id: %s",
+        num_items,
+        generator_id_.Hex()));
+  }
+  const bool last_ref_ready =
+      (end_of_stream_index_ != -1 && last_requested_index >= end_of_stream_index_) ||
+      refs_written_to_stream_.contains(GetObjectRefAtIndex(last_requested_index));
+  if (!last_ref_ready) {
+    return Status::InvalidArgument(absl::StrFormat(
+        "TryReadObjectRefStreamN called before the last requested ref (index %d) "
+        "is ready. generator id: %s",
+        last_requested_index,
+        generator_id_.Hex()));
+  }
+
   auto num_items_to_consume = num_items;
   if (end_of_stream_index_ != -1) {
     num_items_to_consume = std::min(num_items, end_of_stream_index_ - next_index_);
   }
 
-  // Unlike TryReadNextItem, this does not check refs_written_to_stream_ before
-  // advancing. TryReadNextItem returns a Nil id (without advancing) when the
-  // next index has not been written yet, signaling the caller to retry; this
-  // bulk API has no such retry path and advances unconditionally. That is safe
-  // only because the caller is required to have already confirmed the requested
-  // refs are ready (e.g. via ray.wait on the deterministic refs) before calling
-  // this. Since a generator produces objects in stream order, a ready last ref
-  // implies all earlier refs are written, so it is safe to advance past all of
-  // them at once and only mark them as consumed. If this is ever called without
-  // first confirming readiness, it would silently advance past unwritten
-  // objects and drop them.
   consumed_object_ids->reserve(num_items_to_consume);
   for (int64_t i = 0; i < num_items_to_consume; i++) {
     const ObjectID object_id = GetObjectRefAtIndex(next_index_ + i);

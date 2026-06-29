@@ -241,6 +241,43 @@ def test__wait_generators_bulk_validation(ray_start_regular):
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
+def test__consume_next_ref_n_rejects_unready(ray_start_regular):
+    """Consuming before the last requested ref is ready must raise rather than
+    silently advancing past (and dropping) the not-yet-produced object."""
+
+    @ray.remote(num_cpus=0, max_concurrency=2)
+    class Signal:
+        def __init__(self):
+            self.ready = False
+
+        def wait(self):
+            while not self.ready:
+                time.sleep(0.01)
+
+        def send(self):
+            self.ready = True
+
+    @ray.remote
+    def slow_gen(signal):
+        ray.get(signal.wait.remote())
+        yield 1
+
+    signal = Signal.remote()
+    gen = slow_gen.remote(signal)
+
+    # Peek without waiting: the ref isn't produced yet, so consuming it is rejected.
+    gen._get_next_ref_n(1)
+    with pytest.raises(ValueError):
+        gen._consume_next_ref_n(1)
+
+    # After the value is produced, the same generator consumes normally.
+    ray.get(signal.send.remote())
+    ready = _wait_generators_bulk([(gen, [False])], timeout=10)
+    assert len(ready) == 1
+    assert ray.get(ready[0][1]) == [1]
+
+
+@pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
 def test__wait_generators_bulk_after_eof_raise_EndOfStreamError(ray_start_regular):
     @ray.remote
     def empty_gen():

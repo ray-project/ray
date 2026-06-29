@@ -183,6 +183,9 @@ class ObjectRefGenerator:
     def _get_next_ref_n(self, num_refs: int) -> list["ray.ObjectRef"]:
         """Return the next num_refs references from a generator without consuming them.
 
+        The returned refs are not consumed; wait for the last one to become ready
+        before calling ``_consume_next_ref_n`` to advance the stream.
+
         Args:
             num_refs: The number of references to return, starting from the
                 current head of the stream. Must be positive.
@@ -204,6 +207,10 @@ class ObjectRefGenerator:
 
     def _consume_next_ref_n(self, num_refs: int) -> None:
         """Consume (advance) the next num_refs references from a generator.
+
+        The caller must have waited for the last requested ref to become ready
+        (see ``_get_next_ref_n``); otherwise this raises ``ValueError`` instead
+        of silently advancing past unwritten objects.
 
         If fewer than num_refs references remain before the end of the stream,
         only the remaining references are consumed and the call returns

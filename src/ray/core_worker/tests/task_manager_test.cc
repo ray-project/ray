@@ -2346,28 +2346,46 @@ TEST_F(TaskManagerTest, TestObjectRefStreamReadIgnoredWhenNothingWritten) {
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamBulkReadAdvancesUnwrittenRefs) {
+  // When the last requested ref is ready, the bulk read may advance past an
+  // earlier ref that is still unwritten (out-of-order reports).
   auto spec =
       CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
   auto generator_id = spec.ReturnId(0);
   rpc::Address caller_address;
   manager_.AddPendingTask(caller_address, spec, "", 0);
 
-  auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
-  auto peeked = manager_.PeekObjectRefStreamN(generator_id, 1);
-  ASSERT_EQ(peeked.size(), 1UL);
-  ASSERT_EQ(peeked[0].first, dynamic_return_id);
-  ASSERT_FALSE(peeked[0].second);
-  ASSERT_TRUE(reference_counter_->HasReference(dynamic_return_id));
+  auto first_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto second_id = ObjectID::FromIndex(spec.TaskId(), 3);
 
-  auto status = manager_.TryReadObjectRefStreamN(generator_id, 1);
-  ASSERT_TRUE(status.ok());
+  auto peeked = manager_.PeekObjectRefStreamN(generator_id, 2);
+  ASSERT_EQ(peeked.size(), 2UL);
+  ASSERT_EQ(peeked[0].first, first_id);
+  ASSERT_EQ(peeked[1].first, second_id);
+  ASSERT_TRUE(reference_counter_->HasReference(first_id));
+  ASSERT_TRUE(reference_counter_->HasReference(second_id));
 
+  // Report only the last requested ref (index 1); index 0 stays unwritten.
   auto data = GenerateRandomBuffer();
   auto req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ second_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}));
+
+  auto status = manager_.TryReadObjectRefStreamN(generator_id, 2);
+  ASSERT_TRUE(status.ok()) << status;
+
+  // A late report for the already-consumed earlier ref is ignored.
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
       /*idx*/ 0,
       /*finished*/ false,
       generator_id,
-      /*dynamic_return_id*/ dynamic_return_id,
+      /*dynamic_return_id*/ first_id,
       /*data*/ data,
       /*set_in_plasma*/ false);
   bool signal_called = false;
@@ -2379,15 +2397,53 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBulkReadAdvancesUnwrittenRefs) {
       }));
   ASSERT_TRUE(signal_called);
 
-  reference_counter_->RemoveLocalReference(dynamic_return_id, nullptr);
-  ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id));
-  manager_.TemporarilyOwnGeneratorReturnRefIfNeeded(dynamic_return_id, generator_id);
-  ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id));
+  // A late location update must not re-own the consumed ref.
+  reference_counter_->RemoveLocalReference(first_id, nullptr);
+  ASSERT_FALSE(reference_counter_->HasReference(first_id));
+  manager_.TemporarilyOwnGeneratorReturnRefIfNeeded(first_id, generator_id);
+  ASSERT_FALSE(reference_counter_->HasReference(first_id));
 
-  ObjectID obj_id;
-  status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.ok());
-  ASSERT_EQ(obj_id, ObjectID::Nil());
+  CompletePendingStreamingTask(spec, caller_address, 2);
+}
+
+TEST_F(TaskManagerTest, TestObjectRefStreamBulkReadRejectsUnreadyLastRef) {
+  // Consuming before the last requested ref is ready is rejected without
+  // advancing, instead of silently dropping the unwritten objects.
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  auto first_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto second_id = ObjectID::FromIndex(spec.TaskId(), 3);
+
+  // Make only the first ref ready; the last requested ref is not.
+  auto peeked = manager_.PeekObjectRefStreamN(generator_id, 2);
+  ASSERT_EQ(peeked.size(), 2UL);
+  ASSERT_EQ(peeked[0].first, first_id);
+  ASSERT_EQ(peeked[1].first, second_id);
+
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ first_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}));
+
+  auto status = manager_.TryReadObjectRefStreamN(generator_id, 2);
+  ASSERT_TRUE(status.IsInvalidArgument()) << status;
+
+  // The cursor did not advance: the head is still the first ref.
+  auto peeked_after = manager_.PeekObjectRefStreamN(generator_id, 1);
+  ASSERT_EQ(peeked_after.size(), 1UL);
+  ASSERT_EQ(peeked_after[0].first, first_id);
+  ASSERT_TRUE(peeked_after[0].second);
+
   CompletePendingStreamingTask(spec, caller_address, 1);
 }
 

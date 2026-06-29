@@ -110,7 +110,8 @@ class ObjectRefStream {
    * \param[out] consumed_object_ids Appended with the object ids actually
    * advanced past (capped at the end of the stream). The caller is responsible
    * for releasing the owner-side references held for these objects.
-   * \return KeyError if it reaches to EoF before consuming any item. Ok otherwise.
+   * \return KeyError if it reaches to EoF before consuming any item.
+   * InvalidArgument if the last requested ref is not ready. Ok otherwise.
    */
   Status TryReadNextItems(int64_t num_items, std::vector<ObjectID> *consumed_object_ids);
 
@@ -461,7 +462,7 @@ class TaskManager : public TaskManagerInterface {
    * \param[in] num_items The number of indexes to advance past, starting from
    * the current head of the stream.
    * \return Status ObjectRefEndOfStream if the stream has already reached EoF.
-   * OK otherwise.
+   * InvalidArgument if the last requested ref is not ready. OK otherwise.
    */
   Status TryReadObjectRefStreamN(const ObjectID &generator_id, int64_t num_items)
       ABSL_LOCKS_EXCLUDED(mu_);
