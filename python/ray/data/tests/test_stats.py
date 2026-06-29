@@ -1,16 +1,18 @@
 import gc
 import logging
+import pickle
 import platform
 import re
 import threading
 import time
 from collections import Counter, defaultdict
 from contextlib import contextmanager
-from dataclasses import fields
+from dataclasses import dataclass, fields
 from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pyarrow as pa
 import pytest
 
 import ray
@@ -28,6 +30,13 @@ from ray.data._internal.execution.backpressure_policy.backpressure_policy import
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
+from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data._internal.execution.operators.map_operator import _map_task
+from ray.data._internal.execution.operators.map_transformer import (
+    BlockMapTransformFn,
+    CustomOpStatsReporter,
+    MapTransformer,
+)
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import (
     DatasetStats,
@@ -40,10 +49,16 @@ from ray.data._internal.stats import (
     get_or_create_stats_actor,
 )
 from ray.data._internal.util import MemoryProfiler
-from ray.data.block import BlockExecStats, BlockStats
+from ray.data.block import BlockExecStats, BlockStats, CustomOpStats
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
+
+
+@dataclass(frozen=True)
+class _ReadTaskStats(CustomOpStats):
+    num_rows: int
+    num_columns: int
 
 
 def get_operator(
@@ -177,6 +192,127 @@ def test_block_exec_stats_max_uss_bytes_without_polling(ray_start_regular_shared
         _ = np.random.randint(0, 256, size=(array_nbytes,), dtype=np.uint8)
 
         assert profiler.estimate_max_uss() > array_nbytes
+
+
+def test_map_transformer_custom_op_stats():
+    expected = _ReadTaskStats(num_rows=4, num_columns=1)
+
+    def set_stats(blocks, ctx, report_custom_op_stats):
+        report_custom_op_stats(expected)
+        yield from blocks
+
+    transformer = MapTransformer(
+        [
+            BlockMapTransformFn(
+                set_stats, disable_block_shaping=True, reports_custom_op_stats=True
+            )
+        ]
+    )
+
+    reporter = CustomOpStatsReporter()
+    # Nothing reported until a task runs.
+    assert reporter.get_stats() == []
+
+    ctx = TaskContext(task_idx=0, op_name="test")
+    block = pa.table({"id": list(range(expected.num_rows))})
+    # apply_transform takes the report callback, not the reporter object.
+    list(transformer.apply_transform([block], ctx, reporter.report))
+    assert reporter.get_stats() == [expected]
+
+
+def _drive_map_task_metadata(transformer, ctx, block):
+    """Run ``_map_task`` to completion and return the per-block metadata.
+
+    ``_map_task`` yields each block, then (after a ``send``) the pickled
+    ``BlockMetadataWithSchema`` for that block.
+    """
+    gen = _map_task(transformer, DataContext.get_current(), ctx, block)
+    metas = []
+    try:
+        next(gen)  # first block
+        while True:
+            metas.append(pickle.loads(gen.send(None)))  # that block's metadata
+            next(gen)  # next block; StopIteration when exhausted
+    except StopIteration:
+        pass
+    return metas
+
+
+def test_map_task_carries_custom_op_stats_to_block_metadata(ray_start_regular_shared):
+    """End-to-end wiring: a reporting transform's stats reach the per-block
+    TaskExecWorkerStats that ``_map_task`` emits back to the driver.
+
+    Guards the ``_map_task`` -> ``TaskExecWorkerStats.custom_op_stats`` plumbing
+    so a future edit there can't silently drop the field.
+    """
+    expected = _ReadTaskStats(num_rows=2, num_columns=1)
+
+    def set_stats(blocks, ctx, report_custom_op_stats):
+        report_custom_op_stats(expected)
+        yield from blocks
+
+    transformer = MapTransformer(
+        [
+            BlockMapTransformFn(
+                set_stats, disable_block_shaping=True, reports_custom_op_stats=True
+            )
+        ]
+    )
+    ctx = TaskContext(task_idx=0, op_name="test")
+    metas = _drive_map_task_metadata(transformer, ctx, pa.table({"id": [0, 1]}))
+
+    # custom_op_stats is a List[CustomOpStats] per block; flatten across blocks.
+    reported_stats = [
+        stats
+        for m in metas
+        if m.metadata.task_exec_stats is not None
+        for stats in m.metadata.task_exec_stats.custom_op_stats
+    ]
+    assert expected in reported_stats, reported_stats
+
+
+def test_custom_op_stats_survives_operator_fusion(ray_start_regular_shared):
+    """A reporting transform's stats survive operator fusion.
+
+    Because ``_map_task`` owns the reporter (rather than the transformer), a
+    reporting upstream transform fused with a downstream transform still carries
+    its stats back: both run under the fused operator's single reporter. This is
+    a regression guard — when stats lived on the transformer, fusion built a new
+    transformer and the closure-captured original was orphaned, silently
+    dropping the stats.
+    """
+    expected = _ReadTaskStats(num_rows=2, num_columns=1)
+
+    def report_stats(blocks, ctx, report_custom_op_stats):
+        report_custom_op_stats(expected)
+        yield from blocks
+
+    def passthrough(blocks, ctx):
+        yield from blocks
+
+    upstream = MapTransformer(
+        [
+            BlockMapTransformFn(
+                report_stats, disable_block_shaping=True, reports_custom_op_stats=True
+            )
+        ]
+    )
+    downstream = MapTransformer(
+        [BlockMapTransformFn(passthrough, disable_block_shaping=True)]
+    )
+    fused = upstream.fuse(downstream)
+
+    ctx = TaskContext(task_idx=0, op_name="test")
+    metas = _drive_map_task_metadata(fused, ctx, pa.table({"id": [0, 1]}))
+
+    # custom_op_stats is a List[CustomOpStats] per block; flatten across blocks.
+    reported_stats = [
+        stats
+        for m in metas
+        if m.metadata.task_exec_stats is not None
+        for stats in m.metadata.task_exec_stats.custom_op_stats
+    ]
+    assert expected in reported_stats, reported_stats
 
 
 def gen_expected_metrics(
