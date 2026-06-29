@@ -871,8 +871,8 @@ TEST_P(PullManagerTest, TestDuplicateObjectsAreActivatedAndCleanedUp) {
 // single batched Pull RPC.
 TEST_P(PullManagerTest, TestCoalesceBatchedPullRequests) {
   BundlePriority prio = GetParam();
-  auto refs = CreateObjectRefs(3);
-  auto oids = ObjectRefsToIds(refs);
+  std::vector<rpc::ObjectReference> refs = CreateObjectRefs(3);
+  std::vector<ObjectID> oids = ObjectRefsToIds(refs);
   std::vector<rpc::ObjectReference> objects_to_locate;
   pull_manager_.Pull(refs, prio, {"", false}, &objects_to_locate);
 
@@ -906,8 +906,8 @@ TEST_P(PullManagerTest, TestCoalesceBatchedPullRequests) {
 // Tick-driven retries should also coalesce per destination node.
 TEST_P(PullManagerTest, TestCoalesceTickRetries) {
   BundlePriority prio = GetParam();
-  auto refs = CreateObjectRefs(3);
-  auto oids = ObjectRefsToIds(refs);
+  std::vector<rpc::ObjectReference> refs = CreateObjectRefs(3);
+  std::vector<ObjectID> oids = ObjectRefsToIds(refs);
   std::vector<rpc::ObjectReference> objects_to_locate;
   pull_manager_.Pull(refs, prio, {"", false}, &objects_to_locate);
 
@@ -936,8 +936,8 @@ TEST_P(PullManagerTest, TestCoalesceTickRetries) {
 // local spill restore path instead.
 TEST_P(PullManagerTest, TestBatchActivationWithLocalSpillOnly) {
   BundlePriority prio = GetParam();
-  auto refs = CreateObjectRefs(3);
-  auto oids = ObjectRefsToIds(refs);
+  std::vector<rpc::ObjectReference> refs = CreateObjectRefs(3);
+  std::vector<ObjectID> oids = ObjectRefsToIds(refs);
   std::vector<rpc::ObjectReference> objects_to_locate;
   pull_manager_.Pull(refs, prio, {"", false}, &objects_to_locate);
 
@@ -962,8 +962,8 @@ TEST_P(PullManagerTest, TestBatchActivationWithLocalSpillOnly) {
 // batched RPC while the locally-spilled ones trigger restore inline.
 TEST_P(PullManagerTest, TestBatchActivationWithMixedSources) {
   BundlePriority prio = GetParam();
-  auto refs = CreateObjectRefs(4);
-  auto oids = ObjectRefsToIds(refs);
+  std::vector<rpc::ObjectReference> refs = CreateObjectRefs(4);
+  std::vector<ObjectID> oids = ObjectRefsToIds(refs);
   std::vector<rpc::ObjectReference> objects_to_locate;
   pull_manager_.Pull(refs, prio, {"", false}, &objects_to_locate);
 

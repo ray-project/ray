@@ -534,11 +534,12 @@ void PullManager::TryToMakeObjectsLocal(const std::vector<ObjectID> &object_ids)
     if (active_object_pull_requests_.count(object_id) == 0) {
       continue;
     }
-    auto &request = map_find_or_die(object_pull_requests_, object_id);
+    ObjectPullRequest &request = map_find_or_die(object_pull_requests_, object_id);
     if (request.next_pull_time > now) {
       continue;
     }
-    if (auto node_id = PickRandomPullLocation(object_id); node_id.has_value()) {
+    if (std::optional<NodeID> node_id = PickRandomPullLocation(object_id);
+        node_id.has_value()) {
       batch_by_node[*node_id].push_back(object_id);
       UpdateRetryTimer(request, object_id);
     } else {

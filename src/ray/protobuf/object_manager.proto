@@ -40,7 +40,7 @@ message PushRequest {
 
 message PullRequest {
   bytes node_id = 1;
-  repeated bytes object_ids = 3;
+  repeated bytes object_ids = 2;
 }
 
 message FreeObjectsRequest {
