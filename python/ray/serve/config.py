@@ -823,7 +823,8 @@ class HTTPOptions(BaseModel):
         - "Disabled": disable HTTP server.
 
     - num_cpus: [DEPRECATED] The number of CPU cores to reserve for each
-      internal Serve HTTP proxy actor.
+      internal Serve HTTP proxy actor. Passing a non-zero value raises an
+      error.
     """
 
     host: Optional[str] = DEFAULT_HTTP_HOST or get_localhost_ip()
@@ -875,11 +876,12 @@ class HTTPOptions(BaseModel):
 
     @field_validator("num_cpus")
     @classmethod
-    def warn_for_num_cpus(cls, v):
+    def raise_for_num_cpus_assignment(cls, v):
         if v:
-            warnings.warn(
-                "Passing `num_cpus` to HTTPOptions is deprecated and will be "
-                "removed in a future version."
+            raise ValueError(
+                "`num_cpus` in HTTPOptions has been removed. Serve no longer "
+                "supports configuring CPU reservations for HTTP proxy actors "
+                "via HTTPOptions."
             )
         return v
 
