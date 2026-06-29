@@ -14,9 +14,7 @@ import socket
 from dataclasses import dataclass
 from typing import Optional
 
-from ray.serve._private.common import RequestProtocol
 from ray.serve._private.haproxy import HAProxyApi
-from ray.serve._private.request_ingress_metrics import RequestIngressMetrics
 from ray.util import metrics
 
 logger = logging.getLogger(__name__)
@@ -30,11 +28,9 @@ _SD_ID = "serve@1"
 # `key="value"` pairs.
 _SD_SECTION_RE = re.compile(r"\[" + re.escape(_SD_ID) + r"(?P<body>[^\]]*)\]")
 
-# Capture `key=value` pairs where the value is either RFC 5424 quoted (may
-# contain spaces; backslash escapes allowed) or a bare token. HAProxy quotes
-# sample-fetch values (`%[var(...)]`) and string aliases like `%HM`, but renders
-# numeric aliases (`%ST`, `%Ta`) unquoted, so the parser must accept both.
-_KV_RE = re.compile(r'(\w+)=(?:"((?:[^"\\]|\\.)*)"|(\S+))')
+# Quoted values may contain spaces; backslash escapes are allowed per RFC 5424.
+# Capture the key="value" pairs.
+_KV_RE = re.compile(r'(\w+)="((?:[^"\\]|\\.)*)"')
 
 # HAProxy renders unset txn vars as an empty string in log-format. We map
 # that to None so callers don't have to distinguish "unset" from "empty".
@@ -43,30 +39,15 @@ _UNSET = ""
 
 @dataclass
 class ParsedMetrics:
-    """One per-request observation, parsed from the SD section.
-
-    The first group of fields is the general per-request ingress data present
-    on every request matched to a Serve app backend; it feeds the
-    ``serve_num_http_*`` / ``serve_http_request_latency_ms`` families. The
-    router-specific fields are only populated when ingress-request-router
-    metrics are enabled and the request went through (or attempted) the router.
-    """
+    """One per-request observation, parsed from the SD section."""
 
     app: Optional[str]
-    intended_server: Optional[str]
-    actual_server: Optional[str]
-    router_latency_us: Optional[int]
-    body_truncated_full_length: Optional[int]
-    via_router: bool
-    failed: Optional[str]
-    # General per-request ingress fields. Default to None so existing callers /
-    # tests that only build the router fields keep working; parse_line populates
-    # them from the general SD fields when present.
-    route: Optional[str] = None
-    method: Optional[str] = None
-    status_code: Optional[str] = None
-    latency_ms: Optional[int] = None
-    deployment: Optional[str] = None
+    ingress_request_intended_server: Optional[str]
+    ingress_request_actual_server: Optional[str]
+    ingress_request_router_latency_us: Optional[int]
+    ingress_request_body_truncated_full_length: Optional[int]
+    ingress_request_via_router: bool
+    ingress_request_failed: Optional[str]
 
 
 class HAProxyMetricsCollector:
@@ -107,7 +88,6 @@ class HAProxyMetricsCollector:
         self,
         haproxy_api: HAProxyApi,
         node_id: str,
-        node_ip_address: str = "",
     ) -> None:
         self._transport: Optional[asyncio.DatagramTransport] = None
         self._socket_path: Optional[str] = None
@@ -116,20 +96,6 @@ class HAProxyMetricsCollector:
         self._haproxy_api = haproxy_api
         self._node_id = node_id
         self._node_metrics_task: Optional[asyncio.Task] = None
-
-        # Per-request ingress metrics (serve_num_http_requests etc.). In HAProxy
-        # mode these are emitted here from HAProxy log datagrams rather than by a
-        # Python proxy, so that requests HAProxy terminates itself (e.g. 503 on a
-        # router failure) are still counted. HTTP only -- HAProxy does not proxy
-        # gRPC, whose direct-ingress replicas keep emitting their own metrics.
-        # The ongoing-requests gauge is intentionally not driven here: it can't
-        # be derived from per-request log lines.
-        self.request_ingress_metrics = RequestIngressMetrics(
-            RequestProtocol.HTTP,
-            source="proxy",
-            node_id=node_id,
-            node_ip_address=node_ip_address,
-        )
 
         self.truncated_bodies_counter = metrics.Counter(
             "serve_haproxy_ingress_router_truncations",
@@ -228,10 +194,7 @@ class HAProxyMetricsCollector:
             return None
 
         kv: dict = {}
-        for key, quoted, bare in _KV_RE.findall(match.group("body")):
-            # A bare token never matches empty; an empty quoted value ("") maps
-            # to None so callers don't distinguish "unset" from "empty".
-            value = bare if bare else quoted
+        for key, value in _KV_RE.findall(match.group("body")):
             kv[key] = value if value != _UNSET else None
 
         def as_int(key: str) -> Optional[int]:
@@ -245,104 +208,64 @@ class HAProxyMetricsCollector:
 
         return ParsedMetrics(
             app=kv.get("app"),
-            intended_server=kv.get("intended"),
-            actual_server=kv.get("actual"),
-            router_latency_us=as_int("router_latency_us"),
-            body_truncated_full_length=as_int("body_truncated_full_length"),
+            ingress_request_intended_server=kv.get("intended"),
+            ingress_request_actual_server=kv.get("actual"),
+            ingress_request_router_latency_us=as_int("router_latency_us"),
+            ingress_request_body_truncated_full_length=as_int("body_truncated_full_length"),
             # HAProxy renders booleans as "1"/"0"; absence as "" -> False.
-            via_router=kv.get("via_router") == "1",
-            failed=kv.get("failed"),
-            route=kv.get("route"),
-            method=kv.get("method"),
-            status_code=kv.get("status"),
-            latency_ms=as_int("latency_ms"),
-            deployment=kv.get("deployment"),
-        )
-
-    def _record_ingress_request(self, parsed: ParsedMetrics) -> None:
-        """Emit the per-request RequestIngressMetrics for one observation.
-
-        Mirrors what the Python proxy records per request (the
-        ``serve_num_http_*`` and ``serve_http_request_latency_ms`` families).
-        Lines that didn't match a Serve app backend carry no application
-        context (no ``app`` / ``status``) -- e.g. HAProxy-terminated
-        ``/-/routes`` or 404s -- and are skipped.
-        """
-        if parsed.app is None or parsed.status_code is None:
-            return
-
-        try:
-            is_error = int(parsed.status_code) >= 400
-        except ValueError:
-            # Non-numeric status (shouldn't happen for HTTP); treat as non-error.
-            is_error = False
-
-        self.request_ingress_metrics.record_request(
-            route=parsed.route or "",
-            method=parsed.method or "",
-            application=parsed.app,
-            status_code=parsed.status_code,
-            # %Ta is integer-ms resolution; sub-ms requests round to 0.
-            latency_ms=float(parsed.latency_ms or 0),
-            is_error=is_error,
-            deployment_name=parsed.deployment or "",
+            ingress_request_via_router=kv.get("via_router") == "1",
+            ingress_request_failed=kv.get("failed"),
         )
 
     def record(self, parsed: ParsedMetrics) -> None:
         """Update metrics from one parsed observation.
 
-        First records the general per-request ingress metrics (every request
-        matched to a Serve app backend). Then records the router-specific
-        metrics, which only apply to requests that went through (or attempted)
-        the ingress request router:
-        - `failed` set: the Lua action set `txn.ingress_request_router_failed`
+        Three disjoint cases:
+        - `ingress_request_failed` set: the Lua action set `txn.ingress_request_router_failed`
           and returned early. Bump the failures counter with the reason; no
-          replica was pinned, so other router metrics don't apply.
-        - `via_router` true: the Lua action successfully pinned a replica.
+          replica was pinned, so other metrics don't apply.
+        - `ingress_request_via_router` true: the Lua action successfully pinned a replica.
           Record latency, truncation, and replica-mismatch as applicable.
         - Neither: the request didn't go through the router path at all
           (no router-bearing app matched, or router state not yet pushed).
-          No router metrics to record.
+          Nothing to record.
         """
-        # General per-request ingress metrics, independent of the router path.
-        self._record_ingress_request(parsed)
-
         # `application` tag is required by the metric definitions; default
         # to "unknown" rather than dropping the observation, so misconfigured
         # frontends still show up in the data.
         app_tag = parsed.app or "unknown"
         tags = {"application": app_tag}
 
-        if parsed.via_router and not parsed.failed:
+        if parsed.ingress_request_via_router and not parsed.ingress_request_failed:
             self.requests_counter.inc(tags=tags)
 
-            if parsed.body_truncated_full_length is not None:
+            if parsed.ingress_request_body_truncated_full_length is not None:
                 self.truncated_bodies_counter.inc(tags=tags)
 
             # Only count mismatch when we have both sides AND the request actually
-            # reached a server (actual_server is not None / "<NOSRV>"). If the
+            # reached a server (ingress_request_actual_server is not None / "<NOSRV>"). If the
             # router pinned a replica but the request was rejected upstream of
             # server selection (e.g. queued and aborted), HAProxy logs "<NOSRV>"
             # for %s — we treat that as "not a mismatch, not a match".
             if (
-                parsed.intended_server
-                and parsed.actual_server
-                and parsed.actual_server != "<NOSRV>"
-                and parsed.intended_server != parsed.actual_server
+                parsed.ingress_request_intended_server
+                and parsed.ingress_request_actual_server
+                and parsed.ingress_request_actual_server != "<NOSRV>"
+                and parsed.ingress_request_intended_server != parsed.ingress_request_actual_server
             ):
                 self.replica_mismatches_counter.inc(tags=tags)
-        elif parsed.failed:
+        elif parsed.ingress_request_failed:
             self.requests_counter.inc(tags=tags)
-            self.failures_counter.inc(tags={**tags, "reason": parsed.failed})
+            self.failures_counter.inc(tags={**tags, "reason": parsed.ingress_request_failed})
         else:
             return
 
-        if parsed.router_latency_us is not None:
+        if parsed.ingress_request_router_latency_us is not None:
             self.latency_histogram.observe(
-                parsed.router_latency_us / 1_000.0,
+                parsed.ingress_request_router_latency_us / 1_000.0,
                 tags={
                     **tags,
-                    "outcome": "failure" if parsed.failed else "success",
+                    "outcome": "failure" if parsed.ingress_request_failed else "success",
                 },
             )
 
@@ -388,25 +311,21 @@ class HAProxyMetricsCollector:
         loop: asyncio.AbstractEventLoop,
         *,
         poll_interval_s: float,
-        enable_per_request_metrics: bool,
         metrics_socket_path: Optional[str] = None,
-    ) -> Optional[asyncio.Task]:
+    ) -> asyncio.Task:
         """Start all metric collection for this proxy node.
 
-        Always starts the node-level gauge poll loop. When
-        `enable_per_request_metrics` is set, also creates the dgram socket
-        directory and binds the per-request reader at `metrics_socket_path`,
-        returning the bind task so the caller can await it (e.g. to surface
-        bind failures at actor-readiness time). The reader feeds both the
-        per-request ingress metrics and, when enabled, the ingress-request-
-        router metrics. Returns `None` when the dgram reader is disabled.
+        Always starts the node-level gauge poll loop. Also always creates the
+        dgram socket directory and binds the per-request reader at `metrics_socket_path`
+        (where HAProxy writes one RFC 5424 line per request), returning the
+        bind task so the caller can await it (e.g. to surface bind failures at
+        actor-readiness time).
         """
         self.start_node_metrics_polling(loop, poll_interval_s)
-        if enable_per_request_metrics:
-            os.makedirs(os.path.dirname(metrics_socket_path), exist_ok=True)
-            return loop.create_task(
-                self.bind_and_attach(metrics_socket_path, loop=loop)
-            )
+        os.makedirs(os.path.dirname(metrics_socket_path), exist_ok=True)
+        return loop.create_task(
+            self.bind_and_attach(metrics_socket_path, loop=loop)
+        )
 
     async def bind_and_attach(
         self,

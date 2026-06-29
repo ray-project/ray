@@ -492,9 +492,9 @@ class BackendConfig:
     # The app name for this backend.
     app_name: str = field(default_factory=str)
 
-    # Name of the app's ingress deployment. Rendered into the per-request
+    # Name of the app's ingress deployment. Rendered into the per-request HTTP
     # metrics log line so HAProxy-emitted ingress metrics carry the deployment
-    # tag (matches what the Python proxy records). Empty when unknown.
+    # tag (matching what the Python proxy records). Empty when unknown.
     ingress_deployment_name: str = field(default_factory=str)
 
     # Protocol of this backend. HTTP backends are path-routed and use HTTP/1.1;
@@ -664,12 +664,13 @@ class HAProxyConfig:
         RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED
     )
 
-    # Per-request ingress metrics (serve_num_http_requests, latency, errors)
-    # emitted from HAProxy log datagrams. On by default whenever HAProxy metrics
-    # are enabled; these replace the metrics the Python proxy used to emit. When
-    # enabled, the frontend renders a per-request RFC 5424 log line to
-    # metrics_socket_path and HAProxyManager binds the dgram reader.
-    request_ingress_metrics_enabled: bool = RAY_SERVE_HAPROXY_METRICS_ENABLED
+    # Per-request HTTP ingress metrics (serve_num_http_requests, latency,
+    # errors) emitted from HAProxy log datagrams -- the metrics the Python proxy
+    # emits in non-HAProxy mode. On by default whenever HAProxy metrics are
+    # enabled. When set, the http_frontend renders a per-request RFC 5424 log
+    # line to metrics_socket_path. gRPC is intentionally excluded due to
+    # limitations in parsing trailers.
+    metrics_enabled: bool = RAY_SERVE_HAPROXY_METRICS_ENABLED
     metrics_socket_path: str = RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH
 
     balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
@@ -1293,7 +1294,7 @@ class HAProxyApi(ProxyApi):
                         RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
                     ),
                     "ingress_request_router_metrics_enabled": self.cfg.ingress_request_router_metrics_enabled,
-                    "request_ingress_metrics_enabled": self.cfg.request_ingress_metrics_enabled,
+                    "metrics_enabled": self.cfg.metrics_enabled,
                     "metrics_socket_path": self.cfg.metrics_socket_path,
                     "grpc_fallback_backend_with_health_config": grpc_fallback_backend_with_health_config,
                     "healthy_message": HEALTHY_MESSAGE,  # the message in the response body for healthy replicas
@@ -1702,28 +1703,23 @@ class HAProxyManager(ProxyActorInterface):
 
             # The metrics collector owns all serve_haproxy_* metrics for this proxy.
             # It is constructed if haproxy metrics are enabled. start() always begins
-            # node-level polling and, when ingress-request-router metrics are enabled,
-            # also binds the per-request dgram reader and returns its bind task (which
+            # node-level polling and binds the per-request dgram reader (where
+            # HAProxy writes one line per request). It returns its bind task (which
             # ready() awaits to surface bind failures).
             self._metrics_collector = HAProxyMetricsCollector(
-                haproxy_api=self._haproxy,
-                node_id=self._node_id,
-                node_ip_address=self._node_ip_address,
+                haproxy_api=self._haproxy, node_id=self._node_id
             )
             try:
                 self._metrics_attach_task = self._metrics_collector.start(
                     self.event_loop,
                     poll_interval_s=RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S,
-                    enable_per_request_metrics=(
-                        self._haproxy.cfg.request_ingress_metrics_enabled
-                    ),
                     metrics_socket_path=self._haproxy.cfg.metrics_socket_path,
                 )
             except Exception:
                 logger.exception(
-                    "Failed to start the ingress-request-router datagram reader; "
-                    "per-request router metrics will not be emitted. Node-level "
-                    "metrics and HAProxy continue normally."
+                    "Failed to start the per-request metrics datagram reader; "
+                    "per-request metrics will not be emitted. Node-level metrics "
+                    "and HAProxy continue normally."
                 )
 
         self._haproxy_start_task = self.event_loop.create_task(self._haproxy.start())

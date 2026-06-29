@@ -6,15 +6,11 @@ as a replacement for the default Serve HTTP proxy.
 
 Key differences from the default Serve proxy:
 1. When HAProxy is enabled, RAY_SERVE_ENABLE_DIRECT_INGRESS is automatically set.
-2. HTTP proxy metrics (serve_num_http_requests, etc.) are emitted by the
-   HAProxyMetricsCollector, which parses per-request HAProxy log datagrams (see
-   haproxy_metrics.py). The replica direct-ingress path suppresses these HTTP
-   metrics in HAProxy mode to avoid double-counting; gRPC, which HAProxy does not
-   proxy, is still emitted from replicas.
-3. 404 errors for non-existent routes are handled by HAProxy itself and do not
-   match a Serve app backend, so they carry no application context and are not
-   counted. Tests that need to verify 404 metrics must deploy an application that
-   returns 404s (which does match a backend and is counted).
+2. HTTP proxy metrics (serve_num_http_requests, etc.) are emitted from replicas when
+   they receive direct ingress requests from HAProxy.
+3. 404 errors for non-existent routes are handled by HAProxy itself (not forwarded to
+   replicas), so these won't generate Serve metrics. Tests that need to verify 404
+   metrics must deploy an application that returns 404s.
 4. HAProxy has its own metrics exposed on a separate port (default 9101), but these
    tests focus on Serve metrics exposed via the Ray metrics port (9999).
 """

@@ -1,7 +1,13 @@
 HAPROXY_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint
     acl healthcheck path -i {{ config.health_check_endpoint }}
-    # Suppress logging for health checks
-    http-request set-log-level silent if healthcheck
+    # Keep health checks out of the access log but still record their metric:
+    # tag them `debug` so the access-log target (level info) drops them while the
+    # metrics socket (level debug) keeps them. Mirrors the proxy, which records
+    # the healthz metric with should_record_access_log=False.
+    http-request set-log-level debug if healthcheck
+    {%- if config.metrics_enabled %}
+    http-request set-var(txn.serve_route) str({{ config.health_check_endpoint }}) if healthcheck
+    {%- endif %}
 {%- if not health_info.healthy %}
     # Override: force health checks to fail (used by drain/disable)
     http-request return status {{ health_info.status }} content-type text/plain string "{{ health_info.health_message }}" if healthcheck
@@ -43,7 +49,11 @@ HAPROXY_GRPC_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint (gRPC `Heal
 """
 
 HAPROXY_CONFIG_TEMPLATE = """global
-    log {{ config.log_target }} local0 debug
+    # Access/event log at `info`. The system endpoints (/-/healthz, /-/routes)
+    # tag their logs `debug` so they are dropped here but still reach the
+    # rfc5424 metrics socket (level `debug`) when metrics are enabled -- mirroring
+    # the proxy, which records their metric but not their access log.
+    log {{ config.log_target }} local0 info
     stats socket {{ config.socket_path }} mode 666 level admin expose-fd listeners
     stats timeout 30s
     maxconn {{ config.maxconn }}
@@ -117,18 +127,18 @@ frontend prometheus
     no log
 frontend http_frontend
     bind {{ config.frontend_host }}:{{ config.frontend_port }}
-    {%- if config.request_ingress_metrics_enabled %}
+    {%- if config.metrics_enabled %}
     log global
-    # Per-request ingress metrics. Emitted for every request matched to a Serve
-    # app backend and parsed by HAProxyMetricsCollector into the
-    # serve_num_http_* / serve_http_request_latency_ms families (the metrics the
-    # Python proxy emits in non-HAProxy mode). Goes only to the rfc5424 target
-    # below; the inherited rfc3164 targets do not include the SD section, so
-    # their byte stream is unchanged. When ingress-request-router metrics are
-    # also enabled, the router-specific fields are appended to the same line.
-    # %ST/%Ta render unquoted (HAProxy does not quote those aliases); the parser
-    # accepts both quoted and bare values.
-    log {{ metrics_socket_path }} len 8192 format rfc5424 local1 info
+    # Per-request HTTP ingress metrics. One RFC 5424 line per request matched to
+    # a Serve app backend, scraped into the serve_num_http_* /
+    # serve_http_request_latency_ms families (the metrics the Python proxy emits
+    # in non-HAProxy mode). Goes only to the rfc5424 target below; the inherited
+    # rfc3164 targets do not include the SD section, so their byte stream is
+    # unchanged. The general fields come from txn.serve_* vars set per backend
+    # below; %ST/%Ta render unquoted (HAProxy does not quote those aliases). When
+    # ingress-request-router metrics are also enabled, the router-specific fields
+    # are appended to the same line.
+    log {{ metrics_socket_path }} len 8192 format rfc5424 local1 debug
     log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.serve_app)] route=%[var(txn.serve_route)] method=%HM status=%ST latency_ms=%Ta deployment=%[var(txn.serve_deployment)]{% if ingress_request_router_metrics_enabled and has_ingress_request_router %} intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)]{% endif %}]"
     {%- endif %}
     {%- if config.root_path %}
@@ -143,6 +153,12 @@ frontend http_frontend
 {{ healthz_rules|safe }}
     # Routes endpoint
     acl routes path -i /-/routes
+    # Like health checks: kept out of the access log (tagged `debug`); its metric
+    # is recorded (route=/-/routes, app unset) when metrics are enabled.
+    http-request set-log-level debug if routes
+    {%- if config.metrics_enabled %}
+    http-request set-var(txn.serve_route) str(/-/routes) if routes
+    {%- endif %}
     http-request return status {{ route_info.status }} content-type {{ route_info.routes_content_type }} string "{{ route_info.routes_message }}" if routes
 
     {%- if config.inject_process_id_header and config.reload_id %}
@@ -155,12 +171,12 @@ frontend http_frontend
     acl is_{{ backend.name or 'unknown' }} path_beg {{ '/' if not backend.path_prefix or backend.path_prefix == '/' else backend.path_prefix ~ '/' }}
     acl is_{{ backend.name or 'unknown' }} path {{ backend.path_prefix or '/' }}
 {%- endfor %}
-    {%- if config.request_ingress_metrics_enabled %}
-    # Per-request metric vars (app / route / ingress deployment), set on the
+    {%- if config.metrics_enabled %}
+    # Per-request HTTP metric vars (app / route / ingress deployment), set on the
     # first matching backend. Backends are sorted longest-prefix-first and the
     # !found guard makes the longest match win, mirroring the use_backend rules
     # below. Requests that match no app backend (e.g. /-/routes, 404s) leave
-    # these unset, so HAProxyMetricsCollector skips them.
+    # these unset, so the collector can skip them.
     {%- for backend in backends %}
     http-request set-var(txn.serve_app) str({{ backend.app_name or 'unknown' }}) if is_{{ backend.name or 'unknown' }} !{ var(txn.serve_app) -m found }
     http-request set-var(txn.serve_route) str({{ backend.path_prefix or '/' }}) if is_{{ backend.name or 'unknown' }} !{ var(txn.serve_route) -m found }
@@ -303,6 +319,10 @@ frontend grpc_frontend
     bind {{ config.grpc_frontend_host }}:{{ config.grpc_frontend_port }} proto h2
     mode http
     log global
+    # No per-request ingress-metrics log line here (unlike http_frontend): a
+    # gRPC call's real status is `grpc-status`, sent in HTTP/2 trailers on
+    # success, and HAProxy cannot read trailers in log-format (haproxy/haproxy#112).
+    # gRPC ingress metrics are therefore emitted by the replica instead.
 
 {{ grpc_healthz_rules|safe }}
 
