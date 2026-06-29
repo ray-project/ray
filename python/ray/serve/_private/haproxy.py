@@ -1092,7 +1092,6 @@ class HAProxyApi(ProxyApi):
     ) -> None:
         start_time = time.time()
 
-        # TODO: update this to use health checks
         while time.time() - start_time < timeout_s:
             if proc.returncode is not None:
                 # Both streams were redirected to files at spawn; tail them.
