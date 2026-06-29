@@ -76,6 +76,10 @@ def test_gpu_info_parsing(patch_mock_pynvml):
         # 'e' in "GeForce"), so we fall back to a hyphen-joined product name.
         ("NVIDIA GeForce RTX 5090", "GeForce-RTX-5090"),
         ("NVIDIA GeForce RTX 4090", "GeForce-RTX-4090"),
+        # RTX PRO cards: "RTX" alone is just a brand prefix, so the model is
+        # captured through the first digit-containing token instead of
+        # collapsing to the ambiguous "RTX".
+        ("NVIDIA RTX PRO 6000 Blackwell Server Edition", "RTX-PRO-6000"),
         # Edge cases.
         (None, None),
         ("", None),
