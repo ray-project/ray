@@ -89,3 +89,21 @@ steps:
       - oss
       - skip-on-premerge
     soft_fail: true
+
+  # Credential-free PR-time gate for doc/redirects/*.yaml. Selected by the
+  # `doc_redirects` tag (see .buildkite/test.rules.txt), so a redirect-only PR runs
+  # only this step and skips docbuild, the API checks, linkcheck, and team doc tests.
+  # Runs in forge (no doc image), installs the pinned PyPI package, and uses no RtD
+  # token, so it's safe on fork PRs.
+  - label: ":book: doc: validate redirects"
+    key: doc_redirects
+    depends_on: forge
+    tags:
+      - oss
+      - doc_redirects
+    commands:
+      - pip install --no-cache-dir anyscale-rtd-redirects==0.2.0
+      # diff-file reads the base via `git show origin/master:<path>`; ensure the ref is present.
+      - git fetch -q origin master
+      - rtd-redirects validate doc/redirects/current.yaml
+      - rtd-redirects diff-file --file doc/redirects/current.yaml --base origin/master --head HEAD --repo .
