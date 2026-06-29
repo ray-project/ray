@@ -395,6 +395,10 @@ class RequestRouterConfig(BaseModel):
         # Update the request_router_class field to be the string path
         self.request_router_class = request_router_path
 
+    def is_default_request_router(self) -> bool:
+        """Whether the configured request router is Serve's default."""
+        return self.request_router_class == DEFAULT_REQUEST_ROUTER_PATH
+
     def get_request_router_class(self) -> Callable:
         """Deserialize the request router from cloudpickled bytes."""
         try:

@@ -6,8 +6,7 @@ myst:
 
 # Tips for testing Ray programs
 
-Ray programs can be a little tricky to test due to the nature of parallel programs.
-We've put together a list of tips and tricks for common testing practices for Ray programs.
+Ray programs can be a little tricky to test due to the nature of parallel programs. We've put together a list of tips and tricks for common testing practices for Ray programs.
 
 ```{contents}
 :local:
@@ -72,8 +71,7 @@ Depending on your application, there are certain cases where it may be unsafe to
 If writing an application for a cluster setting, you may want to mock a multi-node Ray cluster. This can be done with the `ray.cluster_utils.Cluster` utility.
 
 :::{note}
-On Windows, support for multi-node Ray clusters is currently experimental and untested.
-If you run into issues please file a report at <https://github.com/ray-project/ray/issues>.
+On Windows, support for multi-node Ray clusters is currently experimental and untested. If you run into issues please file a report at <https://github.com/ray-project/ray/issues>.
 :::
 
 ```{testcode}

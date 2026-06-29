@@ -21,12 +21,12 @@ This example uses a text-translation model:
 
 The Python file, called `model.py`, uses the `Translator` class to translate English text to French.
 
-- The `self.model` variable inside the `Translator`'s `__init__` method
-  stores a function that uses the [t5-small](https://huggingface.co/t5-small)
-  model to translate text.
-- When `self.model` is called on English text, it returns translated French text
-  inside a dictionary formatted as `[{"translation_text": "..."}]`.
-- The `Translator`'s `translate` method extracts the translated text by indexing into the dictionary.
+- The `Translator`'s `__init__` method loads the [t5-small](https://huggingface.co/t5-small)
+  tokenizer and model. `t5-small` is a text-to-text model that performs a task
+  when its input is prefixed with a description of that task.
+- The `translate` method prefixes the input with `"translate English to French: "`,
+  calls `model.generate()` to produce the output tokens, and decodes them back into
+  a translated string.
 
 Copy and paste the script and run it locally. It translates `"Hello world!"`
 into `"Bonjour Monde!"`.

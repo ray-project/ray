@@ -1563,7 +1563,7 @@
   group: Serve tests
   working_dir: serve_tests
 
-  frequency: nightly
+  frequency: weekly
   team: serve
 
   cluster:
@@ -1588,13 +1588,6 @@
         byod:
           runtime_env:
             - RAY_SERVE_ENABLE_HA_PROXY=1
-    - __suffix__: aws.pip_haproxy
-      cluster:
-        byod:
-          post_build_script: byod_install_ray_haproxy.sh
-          runtime_env:
-            - RAY_SERVE_ENABLE_HA_PROXY=1
-            - RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY=1
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -1633,20 +1626,13 @@
         byod:
           runtime_env:
             - RAY_SERVE_ENABLE_HA_PROXY=1
-    - __suffix__: aws.pip_haproxy
-      cluster:
-        byod:
-          post_build_script: byod_install_ray_haproxy.sh
-          runtime_env:
-            - RAY_SERVE_ENABLE_HA_PROXY=1
-            - RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY=1
 
 - name: serve_controller_benchmark_haproxy
   python: "3.10"
   group: Serve tests
   working_dir: serve_tests
 
-  frequency: nightly
+  frequency: weekly
   team: serve
 
   cluster:
@@ -1672,14 +1658,6 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: aws.pip_haproxy
-      cluster:
-        byod:
-          post_build_script: byod_install_ray_haproxy.sh
-          runtime_env:
-            - RAY_SERVE_ENABLE_HA_PROXY=1
-            - RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY=1
-            - RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -1779,7 +1757,7 @@
   group: Serve tests
   working_dir: serve_tests
 
-  frequency: nightly
+  frequency: weekly
   team: serve
 
   cluster:
@@ -4349,6 +4327,33 @@
     long_running: false
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1.yaml --run-vllm-profiler --run-serve-llm-profiler
 
+# Direct streaming with the prefix-cache-aware request router. Guards #64326,
+# where a body-aware router got no routing key on the direct-streaming path.
+- name: llm_serve_llama_3dot1_8B_quantized_tp_1_direct_streaming_prefix_cache
+  frequency: nightly
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu130
+      runtime_env:
+        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
+        - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
+    anyscale_sdk_2026: true
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1_prefix_cache.yaml
+
 # Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_tp_2
   frequency: nightly
@@ -4757,6 +4762,30 @@
   run:
     timeout: 3600
     script: pytest -vs test_llm_serve_sglang.py
+
+- name: llm_serve_kv_router
+  frequency: manual
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/kv_router_test
+
+  cluster:
+    byod:
+      type: llm-cu130
+      runtime_env:
+        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
+        - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
+      post_build_script: byod_llm_kv_router_test.sh
+    anyscale_sdk_2026: true
+    # Kept in this working_dir rather than referenced across dirs
+    # so it ships in the test's runfiles.
+    cluster_compute: llm_4xl4.yaml
+
+  run:
+    timeout: 3600
+    script: pytest -vs .
 
 ##############
 # LLM Batch

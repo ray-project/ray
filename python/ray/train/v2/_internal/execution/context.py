@@ -22,6 +22,7 @@ from ray.train.v2._internal.execution.checkpoint.sync_actor import (
     SynchronizationActor,
     SynchronizationBarrierResetError,
 )
+from ray.train.v2._internal.execution.preemption import PreemptionContext
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
 from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
@@ -125,6 +126,7 @@ class TrainContext:
     distributed_context: DistributedContext
     execution_context: ExecutionContext
     storage_context: StorageContext
+    preemption_context: PreemptionContext
     controller_actor: ActorHandle
 
     dataset_shard_provider: "DatasetShardProvider"
