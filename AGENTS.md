@@ -72,11 +72,12 @@ Ray's existing guides rather than duplicating them here:
   git commit -s -m "Your commit message"
   ```
 
-- **Pre-commit hooks.** Install and run pre-commit before pushing:
+- **Pre-commit hooks.** Install pre-commit. With `pre-commit install`, the hooks
+  run automatically on staged files at commit time:
 
   ```bash
-  pip install pre-commit && pre-commit install
-  pre-commit run --all-files
+  pip install -U pre-commit==3.5.0 && pre-commit install
+  pre-commit run
   ```
 
 - **Python environments.** Use a virtual environment for all Python work. Never
