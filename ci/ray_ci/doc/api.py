@@ -123,6 +123,60 @@ class API:
             return f"{attribute.__module__}.{attribute.__qualname__}"
         return self.name
 
+    def resolve(self) -> Optional[object]:
+        """
+        Strictly resolve this API's name to the live object it refers to.
+
+        Walks the dotted name token by token, importing submodules as needed.
+        Returns the resolved object, or None if any token fails to resolve.
+
+        Unlike get_canonical_name(), which swallows a resolution miss by
+        returning the raw name string, this reports the miss as None. That is
+        what lets Policy 02 catch a documented entry pointing at a deleted,
+        renamed, or misspelled symbol -- the failure mode that today only the
+        Sphinx render notices (as an autosummary import warning).
+        """
+        tokens = self.name.split(".")
+        try:
+            attribute = importlib.import_module(tokens[0])
+        except ImportError:
+            return None
+
+        walked = tokens[0]
+        for token in tokens[1:]:
+            walked = f"{walked}.{token}"
+            if hasattr(attribute, token):
+                attribute = getattr(attribute, token)
+                continue
+            # The token may be a submodule that has not been imported yet;
+            # importing it explicitly mirrors how Sphinx resolves the name.
+            try:
+                attribute = importlib.import_module(walked)
+            except ImportError:
+                return None
+        return attribute
+
+    @staticmethod
+    def introspect_annotation_type(obj: object) -> AnnotationType:
+        """
+        Read an object's *live* annotation type from the module.
+
+        from_autosummary/from_autoclass stamp every parsed doc-side entry as
+        PUBLIC_API unconditionally; those fields are placeholders, not
+        observations. Policy 02 must learn a documented name's real annotation
+        from the object the name resolves to, which is what this reads from the
+        ``_annotated_type`` attribute the @PublicAPI/@Deprecated decorators set.
+        Objects that carry no annotation (for example methods of an annotated
+        class) resolve to UNKNOWN.
+        """
+        annotated_type = getattr(obj, "_annotated_type", None)
+        if annotated_type is None:
+            return AnnotationType.UNKNOWN
+        try:
+            return AnnotationType(annotated_type.value)
+        except (AttributeError, ValueError):
+            return AnnotationType.UNKNOWN
+
     def _is_private_name(self) -> bool:
         """
         Check if this API has a private name. Private names are those that start with
@@ -175,3 +229,78 @@ class API:
                 bad_apis.append(name)
 
         return good_apis, bad_apis
+
+    @staticmethod
+    def split_resolvable_and_broken_doc_apis(
+        api_in_docs: List["API"], white_list_apis: Set[str]
+    ) -> Tuple[List[str], List[str]]:
+        """
+        Policy 02 (docs subset of code): classify each documented API by whether
+        it points at a real, public object.
+
+        Returns ``(unresolved, non_public)``:
+
+        - ``unresolved``: documented names that do not import to a live object
+          -- a deleted, renamed, or misspelled autosummary / autoclass entry.
+          This is the gap A breakage that today only the Sphinx render catches.
+        - ``non_public``: documented names that resolve, but whose *live*
+          annotation is non-public (``@Deprecated``) or whose canonical name is
+          private (``_foo`` / ``._internal.``).
+
+        Objects that resolve but carry no annotation are accepted -- the Sphinx
+        autosummary import check only warns on import failure, and documented
+        methods (``Dataset.map_batches``) are public by virtue of their
+        annotated class even though the method itself is not decorated. The
+        annotation is read live from the resolved object rather than trusting
+        the placeholder fields stamped on the parsed doc-side API.
+        """
+        unresolved = []
+        non_public = []
+
+        for api in api_in_docs:
+            canonical_name = api.get_canonical_name()
+
+            if canonical_name in white_list_apis or api.name in white_list_apis:
+                continue
+
+            obj = api.resolve()
+            if obj is None:
+                unresolved.append(api.name)
+                continue
+
+            annotation_type = API.introspect_annotation_type(obj)
+            resolved_api = API(
+                name=canonical_name,
+                annotation_type=annotation_type,
+                code_type=api.code_type,
+            )
+            if resolved_api.is_deprecated() or resolved_api._is_private_name():
+                non_public.append(canonical_name)
+
+        return unresolved, non_public
+
+    @staticmethod
+    def find_duplicate_doc_apis(
+        api_in_docs: List["API"], intentional_duplicate_apis: Set[str]
+    ) -> List[str]:
+        """
+        Policy 04 (no duplicate documentation): return the canonical names that
+        appear in more than one autosummary / autoclass block across the walked
+        doc surface, excluding names in ``intentional_duplicate_apis``.
+
+        A documented API rendered from two places produces a Sphinx "duplicate
+        object description" warning; today that is masked by a hardcoded log
+        filter (the ``DuplicateObjectFilter`` in conf.py) seeded for the one
+        intentional case, ``ray.actor.ActorMethod.bind``. Enforcing the
+        invariant here lets the masking move to an explicit, reviewed allowlist.
+        """
+        counts = {}
+        for api in api_in_docs:
+            canonical_name = api.get_canonical_name()
+            counts[canonical_name] = counts.get(canonical_name, 0) + 1
+
+        return sorted(
+            name
+            for name, count in counts.items()
+            if count > 1 and name not in intentional_duplicate_apis
+        )

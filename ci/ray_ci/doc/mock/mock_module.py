@@ -31,7 +31,13 @@ class MockClass:
     This class is used for testing purpose only. It should not be used in production.
     """
 
-    pass
+    def mock_method(self):
+        """
+        A method that is documented (for example in an autosummary) but is not
+        itself annotated -- it is public by virtue of its annotated class.
+        Policy 02 must accept it as long as it resolves.
+        """
+        pass
 
 
 @Deprecated
