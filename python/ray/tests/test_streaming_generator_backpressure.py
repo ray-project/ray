@@ -2,6 +2,7 @@ import asyncio
 import gc
 import os
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -18,6 +19,20 @@ from ray.util.state import list_tasks
 def _list_tasks(**kwargs):
     """Same as ``list_tasks`` but pinned to this test's cluster. When several local Ray instances exist"""
     return list_tasks(address=ray.get_runtime_context().gcs_address, **kwargs)
+
+
+_WINDOWS_STATUS_ACCESS_VIOLATION = 0xC0000005
+
+
+def _run_driver_that_exits_ungracefully(driver):
+    try:
+        run_string_as_driver(driver)
+    except subprocess.CalledProcessError as exc:
+        if (
+            sys.platform != "win32"
+            or exc.returncode != _WINDOWS_STATUS_ACCESS_VIOLATION
+        ):
+            raise
 
 
 @pytest.mark.parametrize("actor", [False, True])
@@ -872,10 +887,11 @@ assert ray.get(a.ping.remote(), timeout=10) == "ok"
 os._exit(0)
 """
 
-    run_string_as_driver(driver)
+    _run_driver_that_exits_ungracefully(driver)
     a = ray.get_actor(actor_name, namespace=namespace)
     reporter = ray.get_actor(reporter_name, namespace=namespace)
     try:
+        assert ray.get(reporter.count.remote("first")) == 1
         g = a.gen.remote(reporter, "second", 2)
         wait_for_condition(
             lambda: ray.get(reporter.count.remote("second")) == 2,
@@ -941,10 +957,11 @@ wait_for_condition(lambda: ray.get(reporter.count.remote("first")) == 1, timeout
 os._exit(0)
 """
 
-    run_string_as_driver(driver)
+    _run_driver_that_exits_ungracefully(driver)
     a = ray.get_actor(actor_name, namespace=namespace)
     reporter = ray.get_actor(reporter_name, namespace=namespace)
     try:
+        assert ray.get(reporter.count.remote("first")) == 1
         assert ray.get(a.ping.remote(), timeout=_ACTOR_GEN_BP_WAIT_S) == "ok"
     finally:
         ray.kill(a)
@@ -1012,7 +1029,7 @@ wait_for_condition(lambda: ray.get(reporter.count.remote()) == 1, timeout=10)
 os._exit(0)
 """
 
-    run_string_as_driver(driver)
+    _run_driver_that_exits_ungracefully(driver)
     a = ray.get_actor(actor_name, namespace=namespace)
     reporter = ray.get_actor(reporter_name, namespace=namespace)
     try:
