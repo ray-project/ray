@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
@@ -146,16 +147,16 @@ def _widen_offset_overflowing_columns(
         return schema
 
     # `.nbytes` is O(1) buffer metadata, so summing across blocks is cheap.
-    combined_nbytes: Dict[str, int] = {name: 0 for name in candidate_types}
+    overflowing: set = set()
+    combined_nbytes: Dict[str, int] = defaultdict(int)
     for table in tables:
         for name in candidate_types:
             idx = table.schema.get_field_index(name)
             if idx != -1:
                 combined_nbytes[name] += table.column(idx).nbytes
+                if combined_nbytes[name] > INT32_MAX:
+                    overflowing.add(name)
 
-    overflowing = {
-        name for name, nbytes in combined_nbytes.items() if nbytes > INT32_MAX
-    }
     if not overflowing:
         return schema
 
