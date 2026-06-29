@@ -6,9 +6,12 @@ FROM "$BASE_IMAGE"
 COPY python/deplocks/llm/rayllm_*.lock ./
 COPY python/requirements/llm/patches/vllm-cuda-visible-devices-patch ./
 
-# vLLM version tag to use for EP kernel and DeepGEMM install scripts
-# Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
-ARG VLLM_SCRIPTS_REF="v0.23.0"
+# vLLM version tag to use for EP kernel and DeepGEMM install scripts.
+# This image is py3.14-only, where llm-requirements.txt pins vllm 0.22.0, so
+# fetch the install scripts from the matching v0.22.0 tag.
+# Keep in sync with the py3.14 vllm version in
+# python/requirements/llm/llm-requirements.txt.
+ARG VLLM_SCRIPTS_REF="v0.22.0"
 
 RUN <<EOF
 #!/bin/bash

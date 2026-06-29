@@ -8,15 +8,15 @@ build_arg_sets:
     PYTHON_VERSION: py314
     PYTHON_VERSION_STR: "3.14"
     # The py3.14 LLM image is built on the CUDA 12.8 base container, but vLLM
-    # 0.22.0's default PyPI wheel is compiled against the CUDA 12.9 (cu129)
-    # public torch release (torch 2.11.0). Resolve the torch family
-    # (torch/torchvision/torchaudio + nixl-cu12) from the cu129 index so the
-    # prebuilt _C.abi3.so links against the matching libtorch; pulling from
-    # cu128 ships a torch built differently from vLLM's wheel and the abi3 .so
-    # fails to load with an undefined libtorch symbol. The lock filenames keep
-    # the cu128 tag because the base container is still cu128.
+    # 0.22.0 and flashinfer-python 0.6.11.post2 ship CUDA-13 wheels: their
+    # compiled extensions (e.g. vllm._C) link libcudart.so.13. Resolve the
+    # torch family (torch/torchvision/torchaudio) from the cu130 index so torch
+    # brings the matching CUDA-13 runtime; pulling torch from cu129 ships the
+    # CUDA-12 runtime, leaving libcudart.so.13 unsatisfied so vLLM fails to
+    # import with "libcudart.so.13: cannot open shared object file". The lock
+    # filenames keep the cu128 tag because the base container is still cu128.
     CUDA_CODE: cu128
-    TORCH_CUDA_CODE: cu129
+    TORCH_CUDA_CODE: cu130
 
 
 .common_settings: &common_settings
