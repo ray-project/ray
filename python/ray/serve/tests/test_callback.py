@@ -239,9 +239,9 @@ def test_http_proxy_return_aribitary_objects(ray_instance):
     indirect=True,
 )
 @skip_if_haproxy(
-    "http_proxy_callback injects ASGI middleware into the native Serve HTTP proxy "
-    "app via configure_http_middlewares, but HAProxy serves ingress with no Serve "
-    "ASGI app to attach it to"
+    "under direct ingress the http_proxy_callback middleware runs on the replica "
+    "HTTP server, not a native proxy, so a failing callback restarts the replica "
+    "and this test's assertion that the proxy keeps restarting no longer applies"
 )
 def test_http_proxy_callback_failures(ray_instance, capsys):
     """Test http proxy keeps restarting when callback function fails"""
