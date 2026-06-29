@@ -75,7 +75,8 @@ using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                const std::string &type,
                                                const std::string &error_message,
                                                double timestamp)>;
-using ExecutionSignalCallback = std::function<void(Status, int64_t)>;
+using ExecutionSignalCallback = std::function<void(Status)>;
+using ConsumptionUpdateCallback = std::function<void(Status, int64_t)>;
 
 /// When the streaming generator tasks are submitted,
 /// the intermediate return objects are streamed
@@ -97,10 +98,40 @@ class ObjectRefStream {
   /// \return KeyError if it reaches to EoF. Ok otherwise.
   Status TryReadNextItem(ObjectID *object_id_out);
 
+  /**
+   * Advance the stream by num_items without checking whether each item has
+   * already been written to the stream.
+   *
+   * This is intended for callers that have already waited on deterministic
+   * generated ObjectIDs and need to mark those indexes as consumed.
+   *
+   * \param[in] num_items The number of indexes to advance past, starting from
+   * the current head of the stream.
+   * \param[out] consumed_object_ids Appended with the object ids actually
+   * advanced past (capped at the end of the stream). The caller is responsible
+   * for releasing the owner-side references held for these objects.
+   * \return KeyError if it reaches to EoF before consuming any item.
+   * InvalidArgument if the last requested ref is not ready. Ok otherwise.
+   */
+  Status TryReadNextItems(int64_t num_items, std::vector<ObjectID> *consumed_object_ids);
+
   /// Return True if there's no more object to read. False otherwise.
   bool IsFinished() const;
 
   std::pair<ObjectID, bool> PeekNextItem();
+
+  /**
+   * Read multiple upcoming indexes without consuming them.
+   *
+   * Returned refs start at the next unconsumed index and are deterministic.
+   *
+   * \param[in] num_items The number of indexes to peek at, starting from the
+   * current head of the stream.
+   * \return A list of num_items object ids for the next indexes, each paired
+   * with a bool indicating whether the corresponding index has been written to
+   * the stream.
+   */
+  std::vector<std::pair<ObjectID, bool>> PeekNextItems(int64_t num_items);
 
   /// Return True if the item_index is already consumed.
   bool IsObjectConsumed(int64_t item_index) const;
@@ -132,16 +163,18 @@ class ObjectRefStream {
   /// \return True if object ID is temporarily written. False otherwise.
   bool TemporarilyInsertToStreamIfNeeded(const ObjectID &object_id);
 
-  /// Mark that after a given item_index, the stream cannot be written
-  /// anymore.
-  ///
-  /// \param[in] item_index The item index for the end of the stream. The
-  /// caller should pass 1 past the highest index that the generator is
-  /// guaranteed to return. The EOF index will be set to the max of this index
-  /// and the next index for the caller to consume.
-  /// \param[out] The ObjectID for the EOF index. If non-nil, then the caller
-  /// should store a sentinel value for this object in the in-memory store.
-  void MarkEndOfStream(int64_t item_index, ObjectID *object_id_in_last_index);
+  /**
+   * Mark that after a given item_index, the stream cannot be written anymore.
+   *
+   * \param[in] item_index The item index for the end of the stream. The
+   * caller should pass 1 past the highest index that the generator is
+   * guaranteed to return. The EOF index will be set to the max of this index
+   * and the next index for the caller to consume.
+   * \param[out] object_ids_to_eof The ObjectIDs that should be marked with the
+   * EOF sentinel. This includes the EOF index itself and any already-peeked
+   * refs after EOF.
+   */
+  void MarkEndOfStream(int64_t item_index, std::vector<ObjectID> *object_ids_to_eof);
 
   /// Get all the ObjectIDs that are not read yet via TryReadNextItem.
   ///
@@ -165,6 +198,7 @@ class ObjectRefStream {
 
  private:
   ObjectID GetObjectRefAtIndex(int64_t generator_index) const;
+  bool IsObjectRefAfterEndOfStream(const ObjectID &object_id) const;
 
   TaskID generator_task_id_;
   ObjectID generator_id_;
@@ -291,20 +325,22 @@ class TaskManager : public TaskManagerInterface {
    * Executor Side:
    * - When a new object is yielded, executor sends a gRPC request that
    *   contains an object size and records total_object_generated.
+   * - The report RPC is acknowledged once the owner has accepted the yielded
+   *   ObjectRef into the stream. This only tracks visibility, not consumption.
    * - If a total_object_generated - total_object_consumed > threshold,
    *   it blocks a thread and pauses execution. The consumer communicates
-   *   `object_consumed` (via gRPC reply) when objects are consumed from it,
+   *   `object_consumed` (via a separate owner->executor RPC) when objects are consumed,
    *   and the execution resumes.
    * - If a gRPC request fails, the executor assumes all the objects are
    *   consumed and resume execution. (alternatively, we can fail execution).
    *
    * Client Side:
-   * - If object_generated - object_consumed < threshold, it sends a reply that
-   *   contains `object_consumed` to an executor immediately.
-   * - If object_generated - object_consumed > threshold, it doesn't reply
-   *   until objects are consumed via TryReadObjectRefStream.
-   * - If objects are not going to be consumed (e.g., generator is deleted
-   *   or objects are already consumed), it replies immediately.
+   * - Report visibility is acknowledged immediately after inserting the ref
+   *   into the stream.
+   * - If a yielded ObjectRef is consumed via TryReadObjectRefStream, it sends
+   *   consumed progress to the executor.
+   * - If objects are not going to be consumed (e.g., generator is deleted), it
+   *   sends a consumed-progress failure update so the executor can unblock.
    *
    * Reference implementation of streaming generator using the following APIs
    * is available from `_raylet.ObjectRefGenerator`.
@@ -319,18 +355,18 @@ class TaskManager : public TaskManagerInterface {
   ///
   /// \param[in] request The request that contains reported objects.
   /// \param[in] execution_signal_callback Note: this callback is NOT GUARANTEED
-  /// to run in the same thread as the caller.
-  /// The callback that receives arguments "status" and
-  /// "total_num_object_consumed". status: OK if the object will be consumed/already
-  /// consumed. NotFound if the stream is already deleted or the object is from the
-  /// previous attempt. total_num_object_consumed: total objects consumed from the
-  /// generator. The executor can receive the value to decide to resume execution or keep
-  /// being backpressured. If status is not OK, this must be -1.
+  /// to run in the same thread as the caller. It acknowledges report visibility.
+  /// Status is OK if the report was accepted and NotFound if the stream was
+  /// already deleted or the object is from a previous attempt.
+  /// \param[in] consumption_update_callback Called when consumed progress changes
+  /// or when the stream is deleted before consumption can continue.
   ///
   /// \return True if a task return is registered. False otherwise.
   bool HandleReportGeneratorItemReturns(
       const rpc::ReportGeneratorItemReturnsRequest &request,
-      const ExecutionSignalCallback &execution_signal_callback) ABSL_LOCKS_EXCLUDED(mu_);
+      const ExecutionSignalCallback &execution_signal_callback,
+      const ConsumptionUpdateCallback &consumption_update_callback = nullptr)
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Temporarily register a given generator return reference.
   ///
@@ -415,6 +451,22 @@ class TaskManager : public TaskManagerInterface {
   Status TryReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out)
       ABSL_LOCKS_EXCLUDED(mu_);
 
+  /**
+   * Advance the ObjectRefStream cursor by num_items.
+   *
+   * Unlike TryReadObjectRefStream, this does not require each index to be
+   * present in refs_written_to_stream_. This is intended for bulk consumers
+   * that have already waited for the deterministic refs to become ready.
+   *
+   * \param[in] generator_id The object ref id of the streaming generator task.
+   * \param[in] num_items The number of indexes to advance past, starting from
+   * the current head of the stream.
+   * \return Status ObjectRefEndOfStream if the stream has already reached EoF.
+   * InvalidArgument if the last requested ref is not ready. OK otherwise.
+   */
+  Status TryReadObjectRefStreamN(const ObjectID &generator_id, int64_t num_items)
+      ABSL_LOCKS_EXCLUDED(mu_);
+
   /// Returns true if there are no more objects to read from the streaming
   /// generator task.
   ///
@@ -436,6 +488,20 @@ class TaskManager : public TaskManagerInterface {
   /// It should not be nil.
   std::pair<ObjectID, bool> PeekObjectRefStream(const ObjectID &generator_id)
       ABSL_LOCKS_EXCLUDED(mu_);
+
+  /**
+   * Read multiple next indexes of an ObjectRefStream of generator_id without
+   * consuming them.
+   *
+   * This API must be idempotent.
+   *
+   * \param[in] generator_id The object ref id of the streaming generator task.
+   * \param[in] num_items Number of next refs to peek.
+   * \return Object references for the next indexes and whether each object is
+   * ready.
+   */
+  std::vector<std::pair<ObjectID, bool>> PeekObjectRefStreamN(
+      const ObjectID &generator_id, int64_t num_items) ABSL_LOCKS_EXCLUDED(mu_);
 
   void MarkGeneratorFailedAndResubmit(const TaskID &task_id) override;
 
@@ -742,9 +808,9 @@ class TaskManager : public TaskManagerInterface {
                                                         const ObjectID &generator_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
-  /// Helper method for TryDelObjectRefStream. Triggers execution signal
-  /// callbacks and releases unconsumed refs. Return true if it is safe to
-  /// delete the stream and task metadata for the generator.
+  /// Helper method for TryDelObjectRefStream. Fails any pending callbacks,
+  /// sends consumed-progress teardown, and releases unconsumed refs. Return true if it is
+  /// safe to delete the stream and task metadata for the generator.
   bool TryDelObjectRefStreamInternal(const ObjectID &generator_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
@@ -765,11 +831,16 @@ class TaskManager : public TaskManagerInterface {
   absl::flat_hash_map<ObjectID, ObjectRefStream> object_ref_streams_
       ABSL_GUARDED_BY(object_ref_stream_ops_mu_);
 
-  /// The consumer side of object ref stream should signal the executor
-  /// to resume execution via signal callbacks (i.e., RPC reply).
-  /// This data structure maintains the mapping of ObjectRefStreamID -> signal_callbacks
+  /// Tracks active streams that may receive backpressured generator reports.
+  /// Erasing an entry marks the stream deleted while the ObjectRefStream may
+  /// remain around until EOF/lineage cleanup.
   absl::flat_hash_map<ObjectID, std::vector<ExecutionSignalCallback>>
       ref_stream_execution_signal_callbacks_ ABSL_GUARDED_BY(object_ref_stream_ops_mu_);
+
+  /// Report visibility is acknowledged immediately and consumed progress is
+  /// pushed separately to the executor.
+  absl::flat_hash_map<ObjectID, ConsumptionUpdateCallback>
+      ref_stream_consumption_update_callbacks_ ABSL_GUARDED_BY(object_ref_stream_ops_mu_);
 
   /// Callback to store objects in plasma. This is used for objects that were
   /// originally stored in plasma. During reconstruction, we ensure that these
