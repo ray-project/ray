@@ -1,5 +1,4 @@
 import os
-import pickle
 import subprocess
 import sys
 import tempfile
@@ -11,6 +10,28 @@ ENVIRONMENT_PICKLE = "_build/doctrees/environment.pickle"
 
 _BUILD_CACHE_S3_BUCKET = "ray-ci-results"
 _BUILD_CACHE_PATH_PREFIX = "doc_build/"
+
+# Strips build-environment-local dependencies from the Sphinx environment pickle.
+# Run as a standalone script under the doc-build environment's Python (see
+# BuildCache._massage_cache) so the pickle is read by the same Sphinx that wrote
+# it; it intentionally imports only the standard library.
+_STRIP_LOCAL_DEPS_SCRIPT = """\
+import pickle
+import sys
+
+environment_cache_path = sys.argv[1]
+with open(environment_cache_path, "rb") as f:
+    environment_cache = pickle.load(f)
+
+for doc, dependencies in environment_cache.dependencies.items():
+    # site-packages paths are local to the build machine and would mark every
+    # doc that imports them as outdated when the cache is restored elsewhere.
+    for dependency in [d for d in dependencies if "site-packages" in d]:
+        environment_cache.dependencies[doc].remove(dependency)
+
+with open(environment_cache_path, "wb") as f:
+    pickle.dump(environment_cache, f, pickle.HIGHEST_PROTOCOL)
+"""
 
 
 class BuildCache:
@@ -38,25 +59,36 @@ class BuildCache:
 
         self._upload_cache(doc_tarball)
 
-    def _massage_cache(self, environment_cache_file: str) -> None:
+    def _massage_cache(
+        self, environment_cache_file: str, python_executable: str = "python"
+    ) -> None:
         """
-        Massage the build artifacts, remove the unnecessary files so that they can
-        be used as a global cache
+        Strip build-environment-local dependencies from the Sphinx environment
+        pickle so the artifacts can be reused as a global cache.
+
+        This must run under the doc-build environment's Python -- the same
+        interpreter that built the docs and wrote the pickle, not this script's
+        Bazel-pinned Python. A pickled Sphinx environment can only be loaded by a
+        matching Sphinx; loading a Sphinx 8.x pickle under an older Sphinx raises
+        e.g. ``ModuleNotFoundError: No module named 'sphinx.util._files'``. So we
+        shell out with PYTHONPATH unset, mirroring how _build() runs ``make html``.
+
+        Args:
+            environment_cache_file: Path to the environment pickle, relative to
+                the cache directory.
+            python_executable: Interpreter to run the massage with. Defaults to the
+                environment ``python``; tests override it with their own.
         """
         environment_cache_path = os.path.join(self._cache_dir, environment_cache_file)
-        environment_cache = None
-
-        with open(environment_cache_path, "rb") as f:
-            environment_cache = pickle.load(f)
-            for doc, dependencies in environment_cache.dependencies.items():
-                # Remove the site-packages dependencies because they are local to the
-                # build environment and cannot be used as a global cache
-                local_dependencies = [d for d in dependencies if "site-packages" in d]
-                for dependency in local_dependencies:
-                    environment_cache.dependencies[doc].remove(dependency)
-
-        with open(environment_cache_path, "wb+") as f:
-            pickle.dump(environment_cache, f, pickle.HIGHEST_PROTOCOL)
+        env = os.environ.copy()
+        # Unset PYTHONPATH so the environment Python (with the Sphinx that wrote
+        # the pickle) is used instead of the Bazel runfiles Python.
+        env["PYTHONPATH"] = ""
+        subprocess.run(
+            [python_executable, "-c", _STRIP_LOCAL_DEPS_SCRIPT, environment_cache_path],
+            env=env,
+            check=True,
+        )
 
     def _get_cache(self) -> Set[str]:
         """
