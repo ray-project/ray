@@ -2561,57 +2561,60 @@ class Replica:
                     status_code_callback(status.code.name)
                     set_grpc_code_and_details(context, status)
 
+    async def _maybe_handle_builtin_grpc_service(
+        self,
+        service_method: str,
+        context: grpc._cython.cygrpc._ServicerContext,
+    ) -> Optional[bytes]:
+        """Handle the built-in RayServeAPIService unary-unary methods.
+
+        `Healthz` and `ListApplications` are health-check-style endpoints that do
+        not dispatch to user code; both run the dataplane health check, set the
+        gRPC status, and record ingress metrics identically -- only the response
+        message differs. Returns the serialized response bytes if `service_method`
+        is one of them, otherwise None (the request targets a user-defined method).
+        """
+        if service_method not in (
+            "/ray.serve.RayServeAPIService/Healthz",
+            "/ray.serve.RayServeAPIService/ListApplications",
+        ):
+            return None
+
+        start_time = time.time()
+        healthy, message = await self._dataplane_health_check()
+        code = grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
+        context.set_code(code)
+        context.set_details(message)
+        self._metrics_manager.record_ingress_request_metrics(
+            protocol=RequestProtocol.GRPC,
+            method=service_method,
+            route=self._deployment_id.app_name,
+            app_name=self._deployment_id.app_name,
+            deployment_name=self._deployment_id.name,
+            latency_ms=(time.time() - start_time) * 1000.0,
+            is_error=not healthy,
+            status_code=code.name,
+        )
+
+        if service_method == "/ray.serve.RayServeAPIService/Healthz":
+            return HealthzResponse(message=message).SerializeToString()
+        # NOTE(edoakes): ListApplications may be used for health checking. It
+        # returns only the app name this replica is serving.
+        return ListApplicationsResponse(
+            application_names=[self._deployment_id.app_name]
+        ).SerializeToString()
+
     async def _direct_ingress_unary_unary(
         self,
         service_method: str,
         request_proto: Any,
         context: grpc._cython.cygrpc._ServicerContext,
     ) -> bytes:
-        start_time = time.time()
-        if service_method == "/ray.serve.RayServeAPIService/Healthz":
-            healthy, message = await self._dataplane_health_check()
-            context.set_code(
-                grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
-            )
-            context.set_details(message)
-            self._metrics_manager.record_ingress_request_metrics(
-                protocol=RequestProtocol.GRPC,
-                method=service_method,
-                route=self._deployment_id.app_name,
-                app_name=self._deployment_id.app_name,
-                deployment_name=self._deployment_id.name,
-                latency_ms=(time.time() - start_time) * 1000.0,
-                is_error=not healthy,
-                status_code=(
-                    grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
-                ).name,
-            )
-            return HealthzResponse(message=message).SerializeToString()
-
-        if service_method == "/ray.serve.RayServeAPIService/ListApplications":
-            # NOTE(edoakes): ListApplications may be used for health checking.
-            healthy, message = await self._dataplane_health_check()
-            context.set_code(
-                grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
-            )
-            context.set_details(message)
-            # ListApplications returns only the app name the replica is serving.
-            application_names = [self._deployment_id.app_name]
-            self._metrics_manager.record_ingress_request_metrics(
-                protocol=RequestProtocol.GRPC,
-                method=service_method,
-                route=self._deployment_id.app_name,
-                app_name=self._deployment_id.app_name,
-                deployment_name=self._deployment_id.name,
-                latency_ms=(time.time() - start_time) * 1000.0,
-                is_error=not healthy,
-                status_code=(
-                    grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
-                ).name,
-            )
-            return ListApplicationsResponse(
-                application_names=application_names
-            ).SerializeToString()
+        builtin_response = await self._maybe_handle_builtin_grpc_service(
+            service_method, context
+        )
+        if builtin_response is not None:
+            return builtin_response
 
         response_generator = self._gen_direct_ingress_grpc_response(
             service_method,
@@ -2647,17 +2650,12 @@ class Replica:
     ) -> Tuple[gRPCInputStream, Optional[gRPCDIReceiveStream]]:
         """Build the gRPCInputStream the user method iterates over.
 
-        When user code runs on the replica's server event loop (i.e.
-        RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0), the two loops are the same
-        and the native request iterator can be consumed directly -- no bridging.
+        The native request iterator is bound to the replica's server event loop, so
+        a `gRPCDIReceiveStream` drains it on the server loop and forwards messages to
+        the user method.
 
-        Otherwise the native iterator is bound to the server loop while user code
-        runs on a separate thread's loop, so a `gRPCDIReceiveStream` drains it on the
-        server loop (where this handler runs, so `start()` must be called here) and
-        forwards messages to a queue the user method consumes.
-
-        In both cases the gRPCInputStream is built with a `cancel_event` that is set
-        when the client disconnects/errors mid-stream, so the user method sees
+        The gRPCInputStream is built with a `cancel_event` that is set when the
+        client disconnects/errors mid-stream, so the user method sees
         `is_cancelled()` and a graceful end (matching the proxy path) rather than a
         raw gRPC error.
 
@@ -2666,17 +2664,10 @@ class Replica:
                 event loop) for this client/bidirectional streaming request.
 
         Returns:
-            (input_stream, receive_stream) where receive_stream is None when no
-            bridge is needed (and so nothing needs to be torn down afterwards).
+            (input_stream, receive_stream) where receive_stream is the bridge draining
+            the native iterator, to be torn down after the request completes.
         """
         cancel_event = asyncio.Event()
-        if self._user_callable_wrapper.event_loop is self._event_loop:
-            input_stream = gRPCInputStream(
-                self._grpc_request_iterator_with_cancel(request_iterator, cancel_event),
-                cancel_event=cancel_event,
-            )
-            return input_stream, None
-
         receive_stream = gRPCDIReceiveStream(
             request_iterator,
             self._user_callable_wrapper.event_loop,
@@ -2687,32 +2678,6 @@ class Replica:
             gRPCInputStream(receive_stream, cancel_event=cancel_event),
             receive_stream,
         )
-
-    async def _grpc_request_iterator_with_cancel(
-        self, request_iterator: Any, cancel_event: asyncio.Event
-    ) -> AsyncGenerator[Any, None]:
-        """Yield from the native gRPC iterator, signaling cancellation on error.
-
-        Used when user code shares the server loop (no cross-loop bridging). A
-        stream error (e.g. client disconnect) sets the cancel event and ends the
-        stream gracefully instead of surfacing the raw gRPC error to user code,
-        matching the bridge and proxy paths.
-
-        Args:
-            request_iterator: The native gRPC request iterator to consume.
-            cancel_event: Event set when the stream errors so the consuming
-                gRPCInputStream reports `is_cancelled()` and ends gracefully.
-
-        Yields:
-            Any: Each request message read from the native gRPC iterator.
-        """
-        try:
-            async for message in request_iterator:
-                yield message
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            cancel_event.set()
 
     async def _direct_ingress_stream_unary(
         self,

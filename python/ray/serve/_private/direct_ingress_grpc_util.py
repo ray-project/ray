@@ -1,6 +1,8 @@
 import asyncio
 from typing import Any, AsyncIterator, Optional, TypeVar
 
+from ray._common.utils import get_or_create_event_loop
+
 T = TypeVar("T")
 
 # Sentinel placed on the queue to signal that the request stream has ended.
@@ -8,17 +10,12 @@ _STREAM_END = object()
 
 
 class gRPCDIReceiveStream(AsyncIterator[T]):
-    """Bridges a native gRPC request iterator across event loops for direct ingress.
+    """Exposes a native gRPC request iterator to user code for direct ingress.
 
-    For direct ingress, the replica's gRPC server runs on the replica's main event
-    loop, so the request iterator it produces is bound to that loop. Client- and
-    bidirectional-streaming user methods, however, run on the user-code event loop
-    (a separate thread by default).
-
-    A single fetch task drives the native iterator entirely on the server loop and
-    forwards each message to a queue on the user-code loop via `call_soon_threadsafe`
-    (mirroring `ASGIDIReceiveProxy`). User code iterates this stream on the user-code
-    loop, only ever touching the queue.
+    The native iterator is bound to the replica's server event loop, but user code
+    may run on a separate event loop. When the loops differ, a fetch task drains the
+    iterator on the server loop and hands messages to user code across loops; when
+    they're the same, user code iterates the native iterator directly.
     """
 
     def __init__(
@@ -30,6 +27,7 @@ class gRPCDIReceiveStream(AsyncIterator[T]):
     ):
         self._request_iterator = request_iterator
         self._user_event_loop = user_event_loop
+        self._same_event_loop = user_event_loop is get_or_create_event_loop()
         # Set when the client disconnects/errors mid-stream so the consumer's
         # gRPCInputStream reports is_cancelled() and ends gracefully.
         self._cancel_event = cancel_event
@@ -47,8 +45,13 @@ class gRPCDIReceiveStream(AsyncIterator[T]):
     def _put(self, item: Any):
         self._message_queue.put_nowait(item)
 
-    def start(self) -> asyncio.Task:
+    def start(self) -> Optional[asyncio.Task]:
         """Start draining the native iterator. Must be called on the server loop."""
+        # We don't create another task to consume the input stream if we run on the
+        # same event loop.
+        if self._same_event_loop:
+            return
+
         self._fetch_task = asyncio.ensure_future(self._fetch_until_done())
         return self._fetch_task
 
@@ -86,6 +89,16 @@ class gRPCDIReceiveStream(AsyncIterator[T]):
 
     async def __anext__(self) -> T:
         """Return the next request message. Runs on the user-code loop."""
+        if self._same_event_loop:
+            try:
+                return await anext(self._request_iterator)
+            except (asyncio.CancelledError, StopAsyncIteration):
+                raise
+            except Exception:
+                if self._cancel_event is not None:
+                    self._cancel_event.set()
+                raise StopAsyncIteration
+
         item = await self._message_queue.get()
         if item is _STREAM_END:
             raise StopAsyncIteration
