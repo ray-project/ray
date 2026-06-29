@@ -1042,6 +1042,12 @@ def test_queue_wait_time_metric(metrics_start_shutdown):
 
 def test_router_queue_len_metric(metrics_start_shutdown):
     """Test that router queue length metric is recorded correctly per replica."""
+    # TODO(eicherseiji): serve_request_router_queue_len's value is set by the
+    # Python proxy router data path, which direct ingress bypasses, so under
+    # HAProxy the gauge stays at the registration-probe value of 0 and never
+    # reaches 1. #64329 declines to synthesize it from HAProxy logs.
+    if RAY_SERVE_ENABLE_HA_PROXY:
+        pytest.skip("direct ingress bypasses the proxy router, queue-len gauge stays 0")
     signal = SignalActor.remote()
 
     @serve.deployment(max_ongoing_requests=10)
