@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 from typing import List
+from unittest import mock
 
 import pytest
 
@@ -48,7 +49,7 @@ def get_kv_actor_configs(deployment):
     ]
 
 
-def build_test_llm_config() -> LLMConfig:
+def build_test_llm_config(experimental_configs=None) -> LLMConfig:
     return LLMConfig(
         model_loading_config={
             "model_id": "qwen3-0.6b",
@@ -59,6 +60,22 @@ def build_test_llm_config() -> LLMConfig:
             "autoscaling_config": {"min_replicas": 1, "max_replicas": 1},
             "request_router_config": {"request_router_class": KVAwareRouter},
         },
+        experimental_configs=experimental_configs or {},
+    )
+
+
+def build_non_kv_llm_config(**engine_kwargs) -> LLMConfig:
+    """An LLMConfig whose request router is the default (not a KVAwareRouter)."""
+    return LLMConfig(
+        model_loading_config={
+            "model_id": "qwen3-0.6b",
+            "model_source": "Qwen/Qwen3-0.6B",
+        },
+        accelerator_type=None,
+        deployment_config={
+            "autoscaling_config": {"min_replicas": 1, "max_replicas": 1}
+        },
+        engine_kwargs=engine_kwargs,
     )
 
 
@@ -131,6 +148,37 @@ def test_build_openai_app_attaches_kv_actor():
     actor_cfg = configs[0]
     assert actor_cfg.get_actor_class().__ray_actor_class__ is KVRouterActor
     assert actor_cfg.actor_options["num_cpus"] == 0
+    assert actor_cfg.init_kwargs == {"indexer_threads": 4}
+
+
+def test_configurable_indexer_threads():
+    llm_config = build_test_llm_config(experimental_configs={"KV_INDEXER_THREADS": 8})
+    app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
+
+    actor_cfg = get_kv_actor_configs(app._bound_deployment)[0]
+    assert actor_cfg.init_kwargs["indexer_threads"] == 8
+
+
+def test_non_kv_router_warns_kv_events_config():
+    """Without a KVAwareRouter no KVRouterActor is attached and a user-provided
+    kv_events_config is left untouched (just unused), with a warning pointing at
+    how to consume the engine's KV events."""
+    kv_events_config = {
+        "enable_kv_cache_events": True,
+        "publisher": "zmq",
+        "endpoint": "tcp://*:5557",
+    }
+    llm_config = build_non_kv_llm_config(kv_events_config=kv_events_config)
+
+    with mock.patch(
+        "ray.llm._internal.serve.routing_policies.kv_aware.utils.logger"
+    ) as logger:
+        app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
+
+    assert get_kv_actor_configs(app._bound_deployment) == []
+    assert llm_config.engine_kwargs["kv_events_config"] == kv_events_config
+    logger.warning.assert_called_once()
+    assert "KVAwareRouter" in logger.warning.call_args.args[0]
 
 
 def test_yaml_config_attaches_kv_actor(serve_instance):
@@ -166,14 +214,30 @@ class _TestKVRouterActor(KVRouterActor):
             name=KV_ROUTER_ACTOR_NAME,
             actor_class=ray.remote(_TestKVRouterActor),
             actor_options={"num_cpus": 0},
+            init_kwargs={},
         ),
     ],
 )
 class ReplicaTrackingDeployment:
-    """Dummy deployment with a KVRouterActor deployment actor."""
+    """Dummy deployment with a KVRouterActor deployment actor.
+
+    Advertises a per-replica KV-events endpoint via ``record_routing_stats`` as a
+    real engine would, so the selection service tracks each replica as a worker.
+    """
 
     async def __call__(self) -> str:
         return "ok"
+
+    async def record_routing_stats(self) -> dict:
+        rank = serve.get_replica_context().rank.local_rank
+        return {
+            "kv_event_metadata": {
+                "endpoint": f"tcp://{ray.util.get_node_ip_address()}:{25000 + rank}",
+                "block_size": 16,
+                "max_num_batched_tokens": 8192,
+                "dp_rank": 0,
+            }
+        }
 
 
 class TestReplicaTrackingIntegration:
@@ -230,17 +294,23 @@ class TestReplicaTrackingIntegration:
 
 
 class _LocalKVRouterActor(_TestKVRouterActor):
-    """In-process KVRouterActor with LongPoll disabled, to drive
-    ``_on_deployment_targets`` directly with synthetic snapshots.
+    """In-process KVRouterActor with the selection service and LongPoll disabled,
+    to drive ``_on_deployment_targets`` directly with synthetic snapshots.
     """
+
+    def _create_selection_service(self) -> None:
+        self._svc = None  # reconcile membership without dynamo
 
     def _start_replica_tracking(self) -> None:
         pass
 
+    def _schedule(self, coro) -> None:
+        coro.close()  # _svc is None, so the scheduled upsert is a no-op
+
 
 def make_target_info(unique_ids):
-    """A DeploymentTargetInfo with one running replica per id, exactly as the
-    controller broadcasts it over LongPoll."""
+    """A DeploymentTargetInfo whose replicas advertise a KV-events endpoint via
+    routing_stats, exactly as the controller broadcasts it over LongPoll."""
     deployment_id = DeploymentID(name="d", app_name="app")
     running_replicas = [
         RunningReplicaInfo(
@@ -250,6 +320,14 @@ def make_target_info(unique_ids):
             availability_zone="az",
             actor_name=f"actor-{uid}",
             max_ongoing_requests=1,
+            routing_stats={
+                "kv_event_metadata": {
+                    "endpoint": "tcp://10.0.0.1:25000",
+                    "block_size": 16,
+                    "max_num_batched_tokens": 8192,
+                    "dp_rank": 0,
+                }
+            },
         )
         for uid in unique_ids
     ]
