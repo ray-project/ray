@@ -1396,7 +1396,9 @@ def test_actor_generator_backpressure_mixed_sync_async(shutdown_only):
     g_sync = a.sync_gen.remote(reporter, "sync")
     g_async = a.async_gen.remote(reporter, "async")
 
-    # Together the two producers fill the shared cap of 6, then both park.
+    # The two streams share one cap of 6 (not 6 each): collectively they park at
+    # 6 produced. The split between the streams is nondeterministic -- one stream
+    # may grab the whole budget -- so we only assert the shared total here.
     wait_for_condition(
         lambda: ray.get(reporter.total_len.remote()) == 6,
         timeout=_ACTOR_GEN_BP_WAIT_S,
@@ -1404,24 +1406,106 @@ def test_actor_generator_backpressure_mixed_sync_async(shutdown_only):
     time.sleep(1)
     assert ray.get(reporter.total_len.remote()) == 6
 
-    # Consuming from the async stream frees one shared slot.
-    ray.get(next(g_async))
-    wait_for_condition(
-        lambda: ray.get(reporter.total_len.remote()) == 7,
-        timeout=_ACTOR_GEN_BP_WAIT_S,
-    )
+    # Drain both streams concurrently and assert each completes: consuming from
+    # either stream frees shared budget for whichever needs it (sync producers
+    # are woken via the condition variable, async via the asyncio.Event). They
+    # must be drained concurrently because, under an uneven split, one stream can
+    # hold the whole budget until the other is consumed.
+    results = {}
 
-    # Consuming from the sync stream frees one shared slot too.
-    ray.get(next(g_sync))
-    wait_for_condition(
-        lambda: ray.get(reporter.total_len.remote()) == 8,
-        timeout=_ACTOR_GEN_BP_WAIT_S,
-    )
+    def drain(gen, tag):
+        results[tag] = [ray.get(ref) for ref in gen]
 
-    _drain_all([g_sync, g_async])
-    assert ray.get(reporter.count_tag.remote("sync")) == 5
-    assert ray.get(reporter.count_tag.remote("async")) == 5
+    threads = [
+        threading.Thread(target=drain, args=(g_sync, "sync"), daemon=True),
+        threading.Thread(target=drain, args=(g_async, "async"), daemon=True),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=_ACTOR_GEN_BP_WAIT_S)
+    assert all(not t.is_alive() for t in threads), "mixed generators deadlocked"
+    assert results["sync"] == list(range(5))
+    assert results["async"] == list(range(5))
     assert ray.get(reporter.total_len.remote()) == 10
+
+
+def test_actor_generator_backpressure_async_owner_death_skips_between_yield_work(
+    shutdown_only,
+):
+    """Async analog of the sync owner-death test: after the owner dies, the async
+    executor must not run another iteration of between-yield user code before
+    exiting. HandleOwnerDied marks the task canceled; the async loop bails on the
+    IsTaskCanceled check before the next gen.asend (otherwise the reserve/wait
+    completes for the now-dead task and one more gen body runs)."""
+    namespace = "actor_generator_backpressure_async_owner_death_skip"
+    actor_name = (
+        f"actor_generator_backpressure_async_owner_death_skip_actor_{os.getpid()}"
+    )
+    reporter_name = (
+        f"actor_generator_backpressure_async_owner_death_skip_reporter_{os.getpid()}"
+    )
+    address = ray.init(num_cpus=2, namespace=namespace).address_info["address"]
+
+    driver = f"""
+import os
+
+import ray
+from ray._common.test_utils import wait_for_condition
+
+ray.init(address="{address}", namespace="{namespace}")
+
+
+@ray.remote(name="{reporter_name}", lifetime="detached")
+class Reporter:
+    def __init__(self):
+        self.between_yield_count = 0
+
+    def between_yield(self):
+        self.between_yield_count += 1
+
+    def count(self):
+        return self.between_yield_count
+
+
+@ray.remote(
+    name="{actor_name}",
+    lifetime="detached",
+    _actor_generator_backpressure_num_objects=10,
+)
+class A:
+    @ray.method(_generator_backpressure_num_objects=1)
+    async def gen(self, reporter):
+        for i in range(10):
+            await reporter.between_yield.remote()
+            yield i
+
+    async def ping(self):
+        return "ok"
+
+
+reporter = Reporter.remote()
+a = A.remote()
+g = a.gen.remote(reporter)
+# After this returns, the executor has run the between-yield call exactly once
+# and is parked awaiting consumption for yield 0.
+wait_for_condition(lambda: ray.get(reporter.count.remote()) == 1, timeout=10)
+
+os._exit(0)
+"""
+
+    run_string_as_driver(driver)
+    a = ray.get_actor(actor_name, namespace=namespace)
+    reporter = ray.get_actor(reporter_name, namespace=namespace)
+    try:
+        # The actor must accept new tasks (the gen task drained).
+        assert ray.get(a.ping.remote(), timeout=_ACTOR_GEN_BP_WAIT_S) == "ok"
+        # The between-yield code must not have run another iteration after owner
+        # death — the count stays at the one call made before the driver exited.
+        assert ray.get(reporter.count.remote()) == 1
+    finally:
+        ray.kill(a)
+        ray.kill(reporter)
 
 
 if __name__ == "__main__":

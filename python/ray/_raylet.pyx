@@ -1528,6 +1528,15 @@ async def execute_streaming_generator_async(
                 # objects. Returns immediately when the actor option is disabled.
                 if context.actor_backpressure_metadata.get() != NULL:
                     await _async_reserve_actor_generator_slot(context)
+                # Bail before running any more user code if the task has been
+                # canceled (e.g. the owner died and HandleOwnerDied marked it
+                # canceled and tore down the actor metadata, so the reserve above
+                # returns for the now-dead task). Mirrors the sync path: without
+                # this the actor would run the gen body once more between yields,
+                # causing side effects and delaying the actor slot release.
+                if CCoreWorkerProcess.GetCoreWorker().IsTaskCanceled(
+                        context.task_id.native()):
+                    break
                 output = await gen.asend(stats)
                 # NOTE: Report of streaming generator output is done in a
                 # standalone thread-pool to avoid blocking the event loop,
