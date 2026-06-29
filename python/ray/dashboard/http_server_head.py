@@ -95,6 +95,7 @@ class HttpServerDashboardHead:
         session_name: str,
         metrics: DashboardPrometheusMetrics,
         proxy_server_url: str | None = None,
+        gcs_client=None,
     ):
         self.ip = ip
         self.http_host = http_host
@@ -104,6 +105,7 @@ class HttpServerDashboardHead:
         self.metrics = metrics
         self._session_name = session_name
         self.proxy_server_url = proxy_server_url
+        self.gcs_client = gcs_client
 
         # Below attirubtes are filled after `run` API is invoked.
         self.runner = None
@@ -286,6 +288,27 @@ class HttpServerDashboardHead:
         return await handler(request)
 
     @aiohttp.web.middleware
+    async def gcs_leader_gating_middleware(self, request, handler):
+        # Health checks and readiness probes should remain open
+        bypass_paths = {
+            "/api/healthz",
+            "/api/gcs_healthz",
+            "/api/gcs_readiness",
+            "/api/local_raylet_healthz",
+            "/-/healthz",
+        }
+        if request.path in bypass_paths:
+            return await handler(request)
+
+        # Reject all requests with 503 if local GCS is passive
+        if self.gcs_client and not self.gcs_client.is_gcs_leader_local():
+            return aiohttp.web.Response(
+                text="GCS is in passive mode. This head node is standby.",
+                status=aiohttp.web.HTTPServiceUnavailable.status_code,
+            )
+        return await handler(request)
+
+    @aiohttp.web.middleware
     async def proxy_server_middleware(self, request, handler):
         """Redirects the request to the proxy server if the related proxy server
         url env var is set.
@@ -446,6 +469,7 @@ class HttpServerDashboardHead:
         app = aiohttp.web.Application(
             client_max_size=ray_constants.DASHBOARD_CLIENT_MAX_SIZE,
             middlewares=[
+                self.gcs_leader_gating_middleware,
                 self.metrics_middleware,
                 get_token_auth_middleware(
                     aiohttp, public_exact_paths, public_path_prefixes
