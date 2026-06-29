@@ -2105,6 +2105,64 @@ class TestOverrideDeploymentInfo:
         assert actors[0]._serialized_actor_class == serialized_1
         assert actors[1]._serialized_actor_class == b""  # Not in map, stays empty
 
+    def test_override_deployment_info_preserves_serialized_actor_on_reapply(self):
+        """Re-applying a config (no build task / no serialized map) must keep the
+        already-serialized actor class.
+
+        On a config re-apply with an unchanged code version (e.g. controller
+        restart, or re-submitting the same config), ``override_deployment_info``
+        runs without ``deployment_to_serialized_deployment_actors``. Since
+        ``_serialized_actor_class`` is a Pydantic PrivateAttr dropped by
+        ``model_dump()``, the bytes must be carried over from the in-memory
+        config; otherwise ``get_actor_class()`` later fails with
+        ``EOFError: Ran out of input`` when the deployment actor is recreated.
+        """
+
+        class _ReapplyActor:
+            pass
+
+        serialized = cloudpickle.dumps(_ReapplyActor)
+        initial_info = DeploymentInfo(
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig(
+                num_replicas=1,
+                deployment_actors=[
+                    DeploymentActorConfig(
+                        name="counter",
+                        actor_class="test.module:_ReapplyActor",
+                        _serialized_actor_class=serialized,
+                        init_kwargs={"start": 0},
+                    ),
+                ],
+            ),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    num_replicas=2,
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info(
+            {"A": initial_info},
+            config,
+            deployment_to_serialized_deployment_actors=None,
+        )
+        actor_cfg = updated_infos["A"].deployment_config.deployment_actors[0]
+        assert actor_cfg._serialized_actor_class == serialized
+        # Must round-trip without EOFError.
+        assert actor_cfg.get_actor_class().__name__ == "_ReapplyActor"
+        assert updated_infos["A"].deployment_config.num_replicas == 2
+
 
 @patch(
     "ray.serve._private.application_state.get_app_code_version",
