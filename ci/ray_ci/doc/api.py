@@ -137,9 +137,13 @@ class API:
         Sphinx render notices (as an autosummary import warning).
         """
         tokens = self.name.split(".")
+        if not tokens[0]:
+            # A malformed doc entry (empty or leading-dot name) is unresolvable;
+            # importlib.import_module("") would otherwise raise ValueError.
+            return None
         try:
             attribute = importlib.import_module(tokens[0])
-        except ImportError:
+        except (ImportError, ValueError):
             return None
 
         walked = tokens[0]
@@ -155,7 +159,7 @@ class API:
             try:
                 attribute = importlib.import_module(walked)
                 continue
-            except ImportError:
+            except (ImportError, ValueError):
                 pass
             if hasattr(attribute, token):
                 attribute = getattr(attribute, token)
