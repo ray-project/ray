@@ -38,6 +38,7 @@ from ray.serve._private.test_utils import (
     get_metric_float,
     ping_grpc_call_method,
     ping_grpc_list_applications,
+    skip_if_haproxy,
 )
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.config import RequestRouterConfig
@@ -735,6 +736,7 @@ def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
     )
 
 
+@skip_if_haproxy("exercises the native Serve HTTP proxy, which HAProxy replaces")
 def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
     """Verify that status codes aisde from 1000 or 1001 are errors."""
 
