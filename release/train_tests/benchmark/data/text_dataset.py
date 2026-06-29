@@ -133,10 +133,18 @@ def _build_hf_loader(
     dataset = load_dataset(**load_kwargs)
 
     if spec.get("streaming"):
-        texts = [row["text"] for row in dataset.take(n)]
+        raw = (row["text"] for row in dataset.take(n))
     else:
         dataset = dataset.select(range(min(n, len(dataset))))
-        texts = dataset["text"]
+        raw = dataset["text"]
+
+    # Materialize a clean list[str]: drop blank lines (wikitext is line-based
+    # with many empty rows) and coerce to str. Non-streaming `dataset[col]` can
+    # return a column object the tokenizer won't treat as a batch, so the
+    # explicit list comprehension is also what makes batched encoding work.
+    texts = [str(t) for t in raw if t and str(t).strip()]
+    if not texts:
+        raise ValueError(f"Dataset '{dataset_name}' yielded no non-empty rows.")
 
     encodings = tokenizer(
         texts,
