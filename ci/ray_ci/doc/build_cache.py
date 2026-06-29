@@ -11,29 +11,6 @@ ENVIRONMENT_PICKLE = "_build/doctrees/environment.pickle"
 _BUILD_CACHE_S3_BUCKET = "ray-ci-results"
 _BUILD_CACHE_PATH_PREFIX = "doc_build/"
 
-# Strips build-environment-local dependencies from the Sphinx environment pickle.
-# Run as a standalone script under the doc-build environment's Python (see
-# BuildCache._massage_cache) so the pickle is read by the same Sphinx that wrote
-# it; it intentionally imports only the standard library.
-_STRIP_LOCAL_DEPS_SCRIPT = """\
-import pickle
-import sys
-
-environment_cache_path = sys.argv[1]
-with open(environment_cache_path, "rb") as f:
-    environment_cache = pickle.load(f)
-
-for doc, dependencies in environment_cache.dependencies.items():
-    # site-packages paths are local to the build machine and would mark every
-    # doc that imports them as outdated when the cache is restored elsewhere.
-    environment_cache.dependencies[doc] = type(dependencies)(
-        d for d in dependencies if "site-packages" not in d
-    )
-
-with open(environment_cache_path, "wb") as f:
-    pickle.dump(environment_cache, f, pickle.HIGHEST_PROTOCOL)
-"""
-
 
 class BuildCache:
     """
@@ -72,7 +49,8 @@ class BuildCache:
         Bazel-pinned Python. A pickled Sphinx environment can only be loaded by a
         matching Sphinx; loading a Sphinx 8.x pickle under an older Sphinx raises
         e.g. ``ModuleNotFoundError: No module named 'sphinx.util._files'``. So we
-        shell out with PYTHONPATH unset, mirroring how _build() runs ``make html``.
+        run massage_cache.py with PYTHONPATH unset, mirroring how _build() runs
+        ``make html``.
 
         Args:
             environment_cache_file: Path to the environment pickle, relative to
@@ -81,12 +59,15 @@ class BuildCache:
                 environment ``python``; tests override it with their own.
         """
         environment_cache_path = os.path.join(self._cache_dir, environment_cache_file)
+        massage_script = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "massage_cache.py"
+        )
         env = os.environ.copy()
         # Drop PYTHONPATH so the environment Python (with the Sphinx that wrote
         # the pickle) is used instead of the Bazel runfiles Python.
         env.pop("PYTHONPATH", None)
         subprocess.run(
-            [python_executable, "-c", _STRIP_LOCAL_DEPS_SCRIPT, environment_cache_path],
+            [python_executable, massage_script, environment_cache_path],
             env=env,
             check=True,
         )
