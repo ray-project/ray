@@ -1,4 +1,3 @@
-import gc
 import json
 import os
 import threading
@@ -26,47 +25,48 @@ def consume_block(block_ref):
 def test_callback_pipeline(num_blocks, timeout_s=60):
     core_worker = ray._private.worker.global_worker.core_worker
 
-    remaining = [num_blocks]
+    latencies = []
+    drop_times = {}
     lock = threading.Lock()
     done = threading.Event()
 
-    def on_freed(_id_bytes):
+    def on_freed(id_bytes):
         with lock:
-            remaining[0] -= 1
-            if remaining[0] == 0:
+            latencies.append(time.perf_counter() - drop_times[id_bytes])
+            if len(latencies) == num_blocks:
                 done.set()
 
-    start = time.perf_counter()
-
-    # Produce blocks (models MapOperator submitting tasks).
     refs = [
         produce_block.options(scheduling_strategy="SPREAD").remote()
         for _ in range(num_blocks)
     ]
     ray.wait(refs, num_returns=len(refs))
 
-    # Register callbacks (models BlockRefCounter.on_block_produced).
-    assert all(
-        core_worker.add_object_out_of_scope_callback(ref, on_freed) for ref in refs
-    )
-
-    # Pass to consumers (models downstream operator receiving blocks).
-    consumer_futures = [consume_block.remote(ref) for ref in refs]
-    ray.get(consumer_futures)
-
-    # Drop all references (models blocks going out of scope after consumption).
+    # live_refs keeps each block ref alive until its consumer completes.
+    live_refs = {}
+    for ref in refs:
+        assert core_worker.add_object_out_of_scope_callback(ref, on_freed)
+        consumer = consume_block.remote(ref)
+        live_refs[consumer] = ref
     del refs
-    gc.collect()
+
+    # Release each ref as its consumer completes.
+    pending = list(live_refs.keys())
+    while pending:
+        done_list, pending = ray.wait(pending, num_returns=1)
+        for consumer in done_list:
+            ref = live_refs.pop(consumer)
+            drop_times[ref.binary()] = time.perf_counter()
+            del ref
 
     if not done.wait(timeout=timeout_s):
-        fired = num_blocks - remaining[0]
         raise TimeoutError(
-            f"Only {fired}/{num_blocks} callbacks fired within {timeout_s}s"
+            f"Only {len(latencies)}/{num_blocks} callbacks fired within {timeout_s}s"
         )
 
-    total_s = time.perf_counter() - start
-    print(f"  {num_blocks} blocks: {total_s:.3f}s")
-    return total_s
+    avg_latency = sum(latencies) / len(latencies)
+    print(f"  {num_blocks} blocks: avg={avg_latency:.4f}s")
+    return avg_latency
 
 
 ray.init(address="auto")
