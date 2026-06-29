@@ -495,6 +495,12 @@ class ObjectManager : public ObjectManagerInterface,
   size_t num_bytes_pushed_from_disk_ = 0;
   size_t num_bytes_pushed_from_plasma_ = 0;
 
+  /// Snapshots taken on the previous RecordMetrics() call, used only to compute
+  /// instantaneous push/receive throughput for the [MR_PROF] profiling logs.
+  int64_t last_profiled_time_ms_ = 0;
+  size_t last_profiled_bytes_received_ = 0;
+  size_t last_profiled_bytes_pushed_ = 0;
+
   /// Running total of received chunks.
   size_t num_chunks_received_total_ = 0;
 

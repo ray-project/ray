@@ -139,6 +139,17 @@ bool PullManager::ActivateNextBundlePullRequest(BundlePullRequestQueue &bundles,
 
     // Quota check.
     if (respect_quota && num_active_bundles_ >= 1 && bytes_to_pull > RemainingQuota()) {
+      if (RayConfig::instance().enable_mapreduce_profiling()) {
+        RAY_LOG_EVERY_MS(INFO, 1000)
+            << "[MR_PROF] pull.blocked_by_quota request=" << next_request_id
+            << " bytes_to_pull=" << bytes_to_pull
+            << " remaining_quota=" << RemainingQuota()
+            << " bytes_being_pulled=" << num_bytes_being_pulled_
+            << " bytes_available=" << num_bytes_available_
+            << " active_bundles=" << num_active_bundles_
+            << " (a queued pull bundle cannot start because the pull memory window is "
+               "full; reduce-side fetch is memory-window-bound, not network-bound)";
+      }
       RAY_LOG(DEBUG) << "Bundle would exceed quota: "
                      << "num_bytes_being_pulled(" << num_bytes_being_pulled_
                      << ") + "
@@ -617,13 +628,26 @@ bool PullManager::TryPinObject(const ObjectID &object_id) {
 
     auto it = object_pull_requests_.find(object_id);
     RAY_CHECK(it != object_pull_requests_.end());
-    pull_manager_object_request_time_ms_histogram_.Record(
-        current_time_ns() / 1e3 - it->second.request_start_time_ms,
-        {{"Type", "StartToPin"}});
+    const double now_us = current_time_ns() / 1e3;
+    const double start_to_pin_ms = (now_us - it->second.request_start_time_ms) / 1e3;
+    pull_manager_object_request_time_ms_histogram_.Record(now_us -
+                                                              it->second.request_start_time_ms,
+                                                          {{"Type", "StartToPin"}});
+    double activate_to_pin_ms = -1;
     if (it->second.activate_time_ms > 0) {
+      activate_to_pin_ms = (now_us - it->second.activate_time_ms) / 1e3;
       pull_manager_object_request_time_ms_histogram_.Record(
-          current_time_ns() / 1e3 - it->second.activate_time_ms,
-          {{"Type", "MemoryAvailableToPin"}});
+          now_us - it->second.activate_time_ms, {{"Type", "MemoryAvailableToPin"}});
+    }
+    if (RayConfig::instance().enable_mapreduce_profiling()) {
+      // Per-object fetch latency on the receiver. start_to_pin spans from when
+      // the pull was requested to when the object became local; activate_to_pin
+      // excludes time spent waiting for the pull memory window to free up, so it
+      // is closer to the actual network fetch time.
+      RAY_LOG(INFO) << "[MR_PROF] pull.object_local object=" << object_id
+                    << " start_to_pin_ms=" << start_to_pin_ms
+                    << " activate_to_pin_ms=" << activate_to_pin_ms
+                    << " object_bytes=" << it->second.object_size;
     }
     return true;
   }
@@ -759,6 +783,23 @@ void PullManager::RecordMetrics() const {
                                              {{"Type", "Success"}});
   pull_manager_num_object_pins_gauge_.Record(num_failed_pins_total_,
                                              {{"Type", "Failure"}});
+
+  if (RayConfig::instance().enable_mapreduce_profiling()) {
+    // The pull memory window: if being_pulled is pinned against available
+    // (i.e. available - (being_pulled - pinned) is ~0) while bundles remain
+    // queued/inactive, the reduce side is gated by the pull memory budget, not
+    // the network. active_bundles is how many pull bundles are being fetched
+    // concurrently.
+    RAY_LOG(INFO) << "[MR_PROF] pull.window bytes_available=" << num_bytes_available_
+                  << " bytes_being_pulled=" << num_bytes_being_pulled_
+                  << " bytes_pinned=" << pinned_objects_size_
+                  << " active_bundles=" << num_active_bundles_
+                  << " objects_queued=" << object_pull_requests_.size()
+                  << " objects_active=" << active_object_pull_requests_.size()
+                  << " objects_pinned=" << pinned_objects_.size()
+                  << " get_bundles=" << get_request_bundles_.requests.size()
+                  << " taskargs_bundles=" << task_argument_bundles_.requests.size();
+  }
 }
 
 std::string PullManager::DebugString() const {

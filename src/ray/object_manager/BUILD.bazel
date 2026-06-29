@@ -34,7 +34,9 @@ ray_cc_library(
     deps = [
         ":metrics",
         "//src/ray/common:id",
+        "//src/ray/common:ray_config",
         "//src/ray/stats:stats_metric",
+        "//src/ray/util:time",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

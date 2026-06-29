@@ -17,6 +17,9 @@
 #include <string>
 #include <utility>
 
+#include "ray/common/ray_config.h"
+#include "ray/util/time.h"
+
 namespace ray {
 
 void PushManager::StartPush(const NodeID &dest_id,
@@ -30,12 +33,22 @@ void PushManager::StartPush(const NodeID &dest_id,
   auto it = dest_map.find(obj_id);
   if (it == dest_map.end()) {
     chunks_remaining_ += num_chunks;
-    dest_map[obj_id] = push_requests_with_chunks_to_send_.emplace(
+    auto state_it = push_requests_with_chunks_to_send_.emplace(
         push_requests_with_chunks_to_send_.end(),
         dest_id,
         obj_id,
         num_chunks,
         std::move(send_chunk_fn));
+    if (RayConfig::instance().enable_mapreduce_profiling()) {
+      state_it->created_time_ms_ = current_time_ms();
+      RAY_LOG(INFO) << "[MR_PROF] push.start object=" << obj_id << " dest=" << dest_id
+                    << " num_chunks=" << num_chunks
+                    << " chunks_in_flight=" << chunks_in_flight_ << "/"
+                    << max_chunks_in_flight_
+                    << " chunks_remaining=" << chunks_remaining_
+                    << " active_pushes=" << push_requests_with_chunks_to_send_.size();
+    }
+    dest_map[obj_id] = state_it;
   } else {
     RAY_LOG(DEBUG) << "Duplicate push request " << push_id.first << ", " << push_id.second
                    << ", resending all the chunks.";
@@ -72,6 +85,17 @@ void PushManager::ScheduleRemainingPushes() {
       push_state.SendOneChunk();
       chunks_in_flight_ += 1;
       if (push_state.num_chunks_to_send_ == 0) {
+        if (RayConfig::instance().enable_mapreduce_profiling() &&
+            push_state.created_time_ms_ > 0) {
+          RAY_LOG(INFO) << "[MR_PROF] push.dispatched object=" << push_state.object_id_
+                        << " dest=" << push_state.node_id_
+                        << " num_chunks=" << push_state.num_chunks_
+                        << " dispatch_latency_ms="
+                        << (current_time_ms() - push_state.created_time_ms_)
+                        << " (time from push.start until all chunks handed to the "
+                           "RPC layer; high values => send throttled by the "
+                           "chunks_in_flight window)";
+        }
         auto push_state_map_iter = push_state_map_.find(push_state.node_id_);
         RAY_CHECK(push_state_map_iter != push_state_map_.end());
 
@@ -90,6 +114,22 @@ void PushManager::ScheduleRemainingPushes() {
       }
     }
   }
+
+  // If we exited the loop with the in-flight window full while there is still
+  // outbound work queued, the sender is being throttled by max_chunks_in_flight_
+  // (i.e. object_manager_max_bytes_in_flight / object_manager_default_chunk_size)
+  // rather than by the network. This is the primary signal to look at when the
+  // reduce phase appears network-underutilized.
+  if (RayConfig::instance().enable_mapreduce_profiling() &&
+      chunks_in_flight_ >= max_chunks_in_flight_ &&
+      !push_requests_with_chunks_to_send_.empty()) {
+    RAY_LOG_EVERY_MS(INFO, 1000)
+        << "[MR_PROF] push.window_full chunks_in_flight=" << chunks_in_flight_ << "/"
+        << max_chunks_in_flight_ << " chunks_remaining=" << chunks_remaining_
+        << " queued_pushes=" << push_requests_with_chunks_to_send_.size()
+        << " (outbound chunk-in-flight window is saturated; raise "
+           "object_manager_max_bytes_in_flight to send more concurrently)";
+  }
 }
 
 void PushManager::HandleNodeRemoved(const NodeID &node_id) {
@@ -107,6 +147,13 @@ void PushManager::RecordMetrics() const {
   push_manager_num_pushes_remaining_gauge_.Record(NumPushRequestsWithChunksToSend());
   push_manager_chunks_gauge_.Record(NumChunksInFlight(), {{"Type", "InFlight"}});
   push_manager_chunks_gauge_.Record(NumChunksRemaining(), {{"Type", "Remaining"}});
+  if (RayConfig::instance().enable_mapreduce_profiling()) {
+    RAY_LOG(INFO) << "[MR_PROF] push.window chunks_in_flight=" << chunks_in_flight_ << "/"
+                  << max_chunks_in_flight_ << " chunks_remaining=" << chunks_remaining_
+                  << " active_pushes=" << push_requests_with_chunks_to_send_.size()
+                  << " (in_flight near max => window-bound; in_flight far below max with "
+                     "chunks_remaining>0 => starved upstream of the send)";
+  }
 }
 
 std::string PushManager::DebugString() const {

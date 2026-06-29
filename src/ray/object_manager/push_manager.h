@@ -91,6 +91,9 @@ class PushManager {
     int64_t next_chunk_id_ = 0;
     /// The number of chunks remaining to send.
     int64_t num_chunks_to_send_;
+    /// Wall-clock time (ms) when this push was created. Used only by the
+    /// [MR_PROF] profiling logs to report per-object chunk-dispatch latency.
+    int64_t created_time_ms_ = 0;
 
     PushState(NodeID node_id,
               ObjectID object_id,

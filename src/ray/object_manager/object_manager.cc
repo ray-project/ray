@@ -507,6 +507,14 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
       << chunk_reader->GetNumChunks()
       << ", total data size: " << chunk_reader->GetObject().GetObjectSize();
 
+  if (RayConfig::instance().enable_mapreduce_profiling()) {
+    RAY_LOG(INFO) << "[MR_PROF] objmgr.push_object object=" << object_id
+                  << " dest=" << node_id
+                  << " num_chunks=" << chunk_reader->GetNumChunks()
+                  << " object_bytes=" << chunk_reader->GetObject().GetObjectSize()
+                  << " from_disk=" << from_disk;
+  }
+
   auto push_id = UniqueID::FromRandom();
   push_manager_->StartPush(
       node_id, object_id, chunk_reader->GetNumChunks(), [=](int64_t chunk_id) {
@@ -569,10 +577,23 @@ void ObjectManager::SendObjectChunk(
     num_bytes_pushed_from_plasma_ += push_request.data().length();
   }
 
+  // Time spent reading the chunk out of plasma/disk and serializing it into the
+  // request, vs. the gRPC send + ack that follows. Captured only for [MR_PROF].
+  const bool mr_profiling = RayConfig::instance().enable_mapreduce_profiling();
+  const size_t chunk_num_bytes = push_request.data().size();
+  const double send_start_time = absl::GetCurrentTimeNanos() / 1e9;
+
   // record the time cost between send chunk and receive reply
   rpc::ClientCallback<rpc::PushReply> callback =
-      [this, start_time, object_id, node_id, chunk_index, on_complete](
-          const Status &status, const rpc::PushReply &reply) {
+      [this,
+       start_time,
+       send_start_time,
+       mr_profiling,
+       chunk_num_bytes,
+       object_id,
+       node_id,
+       chunk_index,
+       on_complete](const Status &status, const rpc::PushReply &reply) {
         // TODO(Eric Liang): Just print warning here, should we try to resend this chunk?
         if (!status.ok()) {
           RAY_LOG(WARNING).WithField(object_id).WithField(node_id)
@@ -580,6 +601,23 @@ void ObjectManager::SendObjectChunk(
               << ", chunk index: " << chunk_index;
         }
         double end_time = absl::GetCurrentTimeNanos() / 1e9;
+        if (mr_profiling) {
+          const int64_t send_ms =
+              static_cast<int64_t>((end_time - send_start_time) * 1e3);
+          const int64_t read_ms =
+              static_cast<int64_t>((send_start_time - start_time) * 1e3);
+          const int64_t slow_ms =
+              RayConfig::instance().mapreduce_profiling_slow_chunk_send_ms();
+          if (send_ms >= slow_ms) {
+            RAY_LOG(INFO) << "[MR_PROF] objmgr.send_chunk object=" << object_id
+                          << " dest=" << node_id << " chunk_index=" << chunk_index
+                          << " chunk_bytes=" << chunk_num_bytes
+                          << " send_ms=" << send_ms << " read_serialize_ms=" << read_ms
+                          << " ok=" << status.ok()
+                          << " (send_ms is the gRPC Push round-trip; large values point "
+                             "at send-buffer / HTTP2 flow-control backpressure)";
+          }
+        }
         HandleSendFinished(object_id, node_id, chunk_index, start_time, end_time, status);
         on_complete(status);
       };
@@ -775,6 +813,33 @@ void ObjectManager::RecordMetrics() {
                                                {{"Type", "FailedCancelled"}});
   object_manager_received_chunks_gauge_.Record(num_chunks_received_failed_due_to_plasma_,
                                                {{"Type", "FailedPlasmaFull"}});
+
+  if (RayConfig::instance().enable_mapreduce_profiling()) {
+    const int64_t now_ms = current_time_ms();
+    const size_t bytes_pushed_total =
+        num_bytes_pushed_from_plasma_ + num_bytes_pushed_from_disk_;
+    if (last_profiled_time_ms_ > 0 && now_ms > last_profiled_time_ms_) {
+      const double interval_s = (now_ms - last_profiled_time_ms_) / 1e3;
+      const double recv_mibps =
+          (num_bytes_received_total_ - last_profiled_bytes_received_) /
+          (1024.0 * 1024.0) / interval_s;
+      const double push_mibps = (bytes_pushed_total - last_profiled_bytes_pushed_) /
+                                (1024.0 * 1024.0) / interval_s;
+      // Receive throughput is the receiver-side (reduce) network utilization;
+      // push throughput is the sender-side (map output) utilization. Compare
+      // against the link bandwidth to see how underutilized the network is.
+      RAY_LOG(INFO) << "[MR_PROF] objmgr.throughput interval_s=" << interval_s
+                    << " recv_MiB/s=" << recv_mibps << " push_MiB/s=" << push_mibps
+                    << " recv_bytes_total=" << num_bytes_received_total_
+                    << " push_bytes_total=" << bytes_pushed_total
+                    << " chunks_received=" << num_chunks_received_total_
+                    << " chunks_failed=" << num_chunks_received_total_failed_
+                    << " chunks_cancelled=" << num_chunks_received_cancelled_;
+    }
+    last_profiled_time_ms_ = now_ms;
+    last_profiled_bytes_received_ = num_bytes_received_total_;
+    last_profiled_bytes_pushed_ = bytes_pushed_total;
+  }
 }
 
 void ObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {

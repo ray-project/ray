@@ -397,6 +397,23 @@ RAY_CONFIG(uint64_t,
            object_manager_max_bytes_in_flight,
            ((uint64_t)2) * 1024 * 1024 * 1024)
 
+/// If true, emit verbose INFO-level profiling logs (each prefixed with
+/// "[MR_PROF]") along the object transfer (push/pull) and task submission hot
+/// paths. These exist to diagnose map/reduce (Ray Data shuffle) bottlenecks --
+/// e.g. whether the reduce phase is bound by the outbound chunk-in-flight
+/// window, plasma reads, gRPC send latency, the pull memory window, or task
+/// dependency resolution. They are chatty and add overhead, so keep this off
+/// (the default) outside of profiling runs. Enable via
+/// RAY_enable_mapreduce_profiling=1.
+RAY_CONFIG(bool, enable_mapreduce_profiling, false)
+
+/// When enable_mapreduce_profiling is set, outbound object chunk sends whose
+/// gRPC round-trip (measured from just before rpc_client->Push() to its reply)
+/// exceeds this many milliseconds are logged individually. This surfaces
+/// send-buffer / HTTP2 flow-control backpressure on the sender side. Set <= 0
+/// to log every chunk send (very chatty).
+RAY_CONFIG(int64_t, mapreduce_profiling_slow_chunk_send_ms, 200)
+
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
 

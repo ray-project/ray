@@ -35,7 +35,10 @@ void NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_CHECK(task_spec.IsNormalTask());
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
 
-  resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) mutable {
+  const int64_t dep_resolution_start_ms =
+      RayConfig::instance().enable_mapreduce_profiling() ? clock_.NowUnixMillis() : 0;
+  resolver_.ResolveDependencies(
+      task_spec, [this, task_spec, dep_resolution_start_ms](Status status) mutable {
     task_manager_.MarkDependenciesResolved(task_spec.TaskId());
     if (!status.ok()) {
       // TODO(https://github.com/ray-project/ray/issues/54871): There is a potential
@@ -53,6 +56,16 @@ void NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       return;
     }
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
+
+    if (RayConfig::instance().enable_mapreduce_profiling()) {
+      // For a Data shuffle reduce task this is the wall time spent waiting for
+      // all of its map-output (plasma) inputs to be fetched and inlined before
+      // it can even be queued for a worker lease.
+      RAY_LOG(INFO) << "[MR_PROF] submit.deps_resolved task=" << task_spec.TaskId()
+                    << " resolution_ms=" << (clock_.NowUnixMillis() - dep_resolution_start_ms)
+                    << " num_args=" << task_spec.NumArgs()
+                    << " num_plasma_deps=" << task_spec.GetDependencyIds().size();
+    }
 
     absl::MutexLock lock(&mu_);
     if (cancelled_tasks_.erase(task_spec.TaskId()) > 0) {
@@ -336,6 +349,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
   request.set_grant_or_reject(is_spillback);
   request.set_backlog_size(task_queue.size());
   request.set_is_selected_based_on_locality(is_selected_based_on_locality);
+  const int64_t lease_request_time_ms = clock_.NowUnixMillis();
   raylet_client->RequestWorkerLease(
       std::move(request),
       [this,
@@ -343,6 +357,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
        lease_id,
        function_or_actor_name,
        is_spillback,
+       lease_request_time_ms,
        raylet_address = *raylet_address](const Status &status,
                                          const rpc::RequestWorkerLeaseReply &reply) {
         std::deque<TaskSpecification> tasks_to_fail;
@@ -427,6 +442,15 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                              << NodeID::FromBinary(reply.worker_address().node_id())
                              << " with worker "
                              << WorkerID::FromBinary(reply.worker_address().worker_id());
+              if (RayConfig::instance().enable_mapreduce_profiling()) {
+                RAY_LOG(INFO)
+                    << "[MR_PROF] submit.lease_granted lease=" << lease_id
+                    << " lease_latency_ms="
+                    << (clock_.NowUnixMillis() - lease_request_time_ms) << " node="
+                    << NodeID::FromBinary(reply.worker_address().node_id())
+                    << " (time from requesting a worker lease until the raylet granted "
+                       "one; high values => scheduling/worker-startup bound)";
+              }
               AddWorkerLeaseClient(reply.worker_address(),
                                    raylet_address,
                                    reply.resource_mapping(),
