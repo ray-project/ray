@@ -32,14 +32,14 @@ from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import (
     DatasetStats,
     DatasetStatsSummary,
+    IterationStage,
     NodeMetrics,
     OperatorStatsSummary,
-    IterationStage,
     StatsSummary,
     Timer,
     TimeSpan,
-    _StatsActor,
     _maybe_time,
+    _StatsActor,
     get_or_create_stats_actor,
 )
 from ray.data._internal.util import MemoryProfiler
