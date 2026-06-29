@@ -675,64 +675,49 @@ def test_ingress_validation_excludes_ingress_request_router_fastapi_app(monkeypa
     )
 
     client = object.__new__(ServeControllerClient)
-    client._check_ingress_deployments([built_app], direct_ingress_enabled=False)
+    client._check_ingress_deployments([built_app])
 
 
-def test_build_app_rejects_multiplexing_on_ingress_with_direct_ingress():
-    @serve.deployment
-    class MultiplexedIngress:
+def test_callable_uses_multiplexing_static():
+    """Detects `@serve.multiplexed` on a method/function statically (class input)."""
+    from ray.serve.multiplex import _callable_uses_multiplexing
+
+    class MultiplexedClass:
         @serve.multiplexed(max_num_models_per_replica=2)
         async def load_model(self, model_id: str) -> str:
             return model_id
 
+    @serve.multiplexed
+    async def standalone(model_id: str) -> str:
+        return model_id
+
+    class Plain:
         async def __call__(self, request) -> str:
-            return await self.load_model(serve.get_multiplexed_model_id())
+            return "ok"
 
-    built_app: BuiltApplication = build_app(
-        MultiplexedIngress.bind(),
-        name="default",
-        make_deployment_handle=FakeDeploymentHandle.from_deployment,
-    )
-
-    # Not rejected when direct ingress is disabled.
-    built_app.validate_multiplexing_with_direct_ingress(direct_ingress_enabled=False)
-
-    # Rejected when direct ingress is enabled.
-    with pytest.raises(RayServeException, match="model multiplexing"):
-        built_app.validate_multiplexing_with_direct_ingress(direct_ingress_enabled=True)
+    assert _callable_uses_multiplexing(MultiplexedClass)
+    assert _callable_uses_multiplexing(standalone)
+    assert not _callable_uses_multiplexing(Plain)
 
 
-def test_build_app_allows_multiplexing_on_non_ingress_with_direct_ingress():
-    """Only the ingress deployment is served via direct ingress; downstream
-    deployments are reached through the proxy/router, so multiplexing on them is
-    still supported."""
+def test_callable_uses_multiplexing_dynamic_instance():
+    """Detects multiplexing wired up dynamically at init (e.g. LLMServer LoRA).
 
-    @serve.deployment
-    class MultiplexedDownstream:
-        @serve.multiplexed(max_num_models_per_replica=2)
-        async def load_model(self, model_id: str) -> str:
-            return model_id
+    This is only visible on a constructed instance, not on the class statically.
+    """
+    from ray.serve.multiplex import _callable_uses_multiplexing
 
-        async def __call__(self, request) -> str:
-            return await self.load_model(serve.get_multiplexed_model_id())
+    class DynamicMultiplexed:
+        def __init__(self):
+            async def _load(model_id: str) -> str:
+                return model_id
 
-    @serve.deployment
-    class Ingress:
-        def __init__(self, downstream: DeploymentHandle):
-            self._downstream = downstream
+            self._load_model = serve.multiplexed(max_num_models_per_replica=2)(_load)
 
-        async def __call__(self, request) -> str:
-            return await self._downstream.remote(request)
-
-    built_app: BuiltApplication = build_app(
-        Ingress.bind(MultiplexedDownstream.bind()),
-        name="default",
-        make_deployment_handle=FakeDeploymentHandle.from_deployment,
-    )
-
-    # Should not raise even with direct ingress enabled: the ingress deployment
-    # ("Ingress") is not multiplexed.
-    built_app.validate_multiplexing_with_direct_ingress(direct_ingress_enabled=True)
+    # Not detectable on the class (the wrapper only exists after construction)...
+    assert not _callable_uses_multiplexing(DynamicMultiplexed)
+    # ...but detectable on the constructed instance.
+    assert _callable_uses_multiplexing(DynamicMultiplexed())
 
 
 @pytest.mark.parametrize(

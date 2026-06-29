@@ -30,11 +30,7 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_REQUEST_ROUTER_PATH,
-<<<<<<< HEAD
-    RAY_SERVE_ENABLE_DIRECT_INGRESS,
-=======
     RAY_SERVE_ENABLE_HA_PROXY,
->>>>>>> master
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     SERVE_LOGGER_NAME,
@@ -1640,11 +1636,10 @@ def build_serve_application(
             default_runtime_env=ray.get_runtime_context().runtime_env,
         )
         built_app.validate_single_fastapi_ingress()
-        # This task runs on the cluster, so its view of the direct-ingress flag
-        # mirrors the replicas' (they inherit this task's runtime_env).
-        built_app.validate_multiplexing_with_direct_ingress(
-            RAY_SERVE_ENABLE_DIRECT_INGRESS
-        )
+
+        # Imported lazily to avoid a circular import at module load time
+        # (multiplex -> metrics -> context -> client -> application_state).
+        from ray.serve.multiplex import _callable_uses_multiplexing
 
         def _get_serialized_def(attr_path: str) -> bytes:
             module, attr = import_module_and_attr(attr_path)
@@ -1704,6 +1699,9 @@ def build_serve_application(
                     serialized_autoscaling_policy_def=deployment_to_serialized_autoscaling_policy_def,
                     serialized_request_router_cls=deployment_to_serialized_request_router_cls,
                     serialized_deployment_actors=serialized_deployment_actors,
+                    uses_multiplexing=_callable_uses_multiplexing(
+                        deployment.func_or_class
+                    ),
                 )
             )
 

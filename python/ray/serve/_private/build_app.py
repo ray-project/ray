@@ -96,27 +96,6 @@ class BuiltApplication:
                 "in your application to avoid this issue."
             )
 
-    def validate_multiplexing_with_direct_ingress(
-        self, direct_ingress_enabled: bool
-    ) -> None:
-        """Reject model multiplexing on the ingress deployment under direct ingress."""
-        if not direct_ingress_enabled:
-            return
-
-        # Imported lazily to avoid a circular import at module load time
-        from ray.serve.multiplex import _callable_uses_multiplexing
-
-        for deployment in self.deployments:
-            if deployment.name == self.ingress_deployment_name and (
-                _callable_uses_multiplexing(deployment.func_or_class)
-            ):
-                raise RayServeException(
-                    f'Ingress deployment "{deployment.name}" in application '
-                    f'"{self.name}" uses model multiplexing (`@serve.multiplexed`), '
-                    "which is not supported on the ingress deployment when direct "
-                    "ingress or HAProxy is enabled."
-                )
-
 
 def _has_custom_request_router(deployment: Deployment) -> bool:
     """Whether the deployment configures a non-default request router class."""

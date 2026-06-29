@@ -1759,6 +1759,30 @@ class Replica:
         if self._initialization_latency is None:
             self._initialization_latency = time.time() - self._initialization_start_time
 
+    def _raise_if_multiplexing_with_direct_ingress(self):
+        """Reject model multiplexing on the ingress deployment under direct ingress.
+
+        Model multiplexing relies on the multiplexed model ID being propagated through
+        the proxy, which direct ingress bypasses (the model ID is never populated).
+
+        This runs after the user callable is initialized so it also catches
+        multiplexing that is wired up dynamically in the constructor (e.g.
+        `self._load_model = serve.multiplexed(...)(fn)`), which is invisible to the
+        static check performed at deploy time.
+        """
+        if not (self._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS):
+            return
+
+        # Imported lazily to avoid a circular import at module load time.
+        from ray.serve.multiplex import _callable_uses_multiplexing
+
+        if _callable_uses_multiplexing(self._user_callable_wrapper._callable):
+            raise RuntimeError(
+                "Model multiplexing (`@serve.multiplexed`) is not supported on the "
+                "ingress deployment when direct ingress or HAProxy is enabled "
+                "(RAY_SERVE_ENABLE_DIRECT_INGRESS)."
+            )
+
     async def initialize(
         self,
         deployment_config: Optional[DeploymentConfig],
@@ -1781,6 +1805,7 @@ class Replica:
                     self._user_callable_asgi_app = (
                         await self._user_callable_wrapper.initialize_callable()
                     )
+                    self._raise_if_multiplexing_with_direct_ingress()
                     self._user_callable_wrapper.start_user_loop_watchdog(
                         self._event_loop
                     )

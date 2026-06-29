@@ -31,6 +31,11 @@ def _callable_uses_multiplexing(callable_obj: Any) -> bool:
     Accepts a standalone function, a class, or a class instance, so it can be used
     both at build time (where the deployment's `func_or_class` is available) and at
     runtime (where an initialized instance is available).
+
+    For an instance it also inspects instance attributes, so multiplexing that is
+    wired up dynamically at init time (e.g. ``self._load_model =
+    serve.multiplexed(...)(fn)``) is detected. This case can only be caught at
+    runtime, since it is not visible on the class statically.
     """
     # Standalone function deployment decorated with `@serve.multiplexed`.
     if getattr(callable_obj, MULTIPLEXED_FUNCTION_MARKER_ATTR, False):
@@ -40,6 +45,12 @@ def _callable_uses_multiplexing(callable_obj: Any) -> bool:
     klass = callable_obj if isinstance(callable_obj, type) else type(callable_obj)
     for base in klass.__mro__:
         for attr in base.__dict__.values():
+            if getattr(attr, MULTIPLEXED_FUNCTION_MARKER_ATTR, False):
+                return True
+
+    # An instance that stored a multiplexed wrapper as an instance attribute.
+    if not isinstance(callable_obj, type):
+        for attr in getattr(callable_obj, "__dict__", {}).values():
             if getattr(attr, MULTIPLEXED_FUNCTION_MARKER_ATTR, False):
                 return True
 
