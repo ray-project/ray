@@ -22,6 +22,7 @@
 namespace ray {
 
 std::vector<std::unique_ptr<MemoryMonitorInterface>> MemoryMonitorFactory::Create(
+    PeriodicalRunnerInterface &runner,
     KillWorkersCallback kill_workers_callback,
     bool resource_isolation_enabled,
     const CgroupManagerInterface &cgroup_manager) {

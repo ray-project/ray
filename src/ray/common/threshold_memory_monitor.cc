@@ -17,11 +17,11 @@
 #include "absl/strings/str_format.h"
 #include "ray/common/memory_monitor_utils.h"
 #include "ray/util/logging.h"
-#include "ray/util/thread_utils.h"
 
 namespace ray {
 
-ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_callback,
+ThresholdMemoryMonitor::ThresholdMemoryMonitor(PeriodicalRunnerInterface &runner,
+                                               KillWorkersCallback kill_workers_callback,
                                                int64_t memory_usage_threshold_bytes,
                                                uint64_t monitor_interval_ms,
                                                bool resource_isolation_enabled,
@@ -35,15 +35,7 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_
       root_cgroup_path_(root_cgroup_path),
       user_cgroup_path_(user_cgroup_path),
       system_cgroup_path_(system_cgroup_path),
-      io_service_(/*enable_metrics=*/false,
-                  /*running_on_single_thread=*/true,
-                  "MemoryMonitor.IOContext"),
-      work_guard_(boost::asio::make_work_guard(io_service_.get_executor())),
-      thread_([this] {
-        SetThreadName("MemoryMonitor.IOContextThread");
-        io_service_.run();
-      }),
-      runner_(PeriodicalRunner::Create(io_service_)) {
+      runner_(runner) {
   int64_t total_memory_bytes =
       MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(root_cgroup_path_).total_bytes;
   float computed_threshold_fraction = static_cast<float>(memory_usage_threshold_bytes_) /
@@ -60,7 +52,11 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_
           ? ", resource isolation enabled, monitoring only user slice memory usage"
           : "");
 
-  runner_->RunFnPeriodically(
+  RegisterPeriodicCheck(monitor_interval_ms);
+}
+
+void ThresholdMemoryMonitor::RegisterPeriodicCheck(uint64_t monitor_interval_ms) {
+  runner_.RunFnPeriodically(
       [this] {
         std::optional<MemoryUsageSnapshot> exceeded_snapshot;
         if (resource_isolation_enabled_) {
@@ -86,14 +82,6 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_
       },
       monitor_interval_ms,
       "MemoryMonitor.CheckIsMemoryUsageAboveThreshold");
-}
-
-ThresholdMemoryMonitor::~ThresholdMemoryMonitor() {
-  runner_.reset();
-  io_service_.stop();
-  if (thread_.joinable()) {
-    thread_.join();
-  }
 }
 
 void ThresholdMemoryMonitor::Enable() { worker_killing_in_progress_.store(false); }

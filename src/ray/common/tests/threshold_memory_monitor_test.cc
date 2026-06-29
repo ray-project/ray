@@ -14,33 +14,42 @@
 
 #include "ray/common/threshold_memory_monitor.h"
 
-#include <atomic>
-#include <boost/thread/latch.hpp>
-#include <chrono>
 #include <memory>
 #include <string>
-#include <thread>
 #include <utility>
 
+#include "absl/time/time.h"
 #include "gtest/gtest.h"
+#include "ray/asio/fake_periodical_runner.h"
 #include "ray/common/cgroup2/noop_cgroup_manager.h"
 #include "ray/common/memory_monitor_interface.h"
 #include "ray/common/memory_monitor_test_fixture.h"
 #include "ray/common/memory_monitor_utils.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 
+// These tests drive the monitor's periodic memory check deterministically by
+// injecting a FakePeriodicalRunner backed by a FakeClock. Advancing the clock by
+// one monitor interval runs the check exactly once, so there is no need to spawn
+// a real IO thread or sleep waiting for a wall-clock timer to fire.
 class ThresholdMemoryMonitorTest : public MemoryMonitorTestFixture {
  protected:
-  void TearDown() override { instance.reset(); }
+  void TearDown() override {
+    // Destroy the monitor (which holds a callback registered with the runner)
+    // before the runner and clock are torn down.
+    instance.reset();
+  }
 
   ThresholdMemoryMonitor &MakeThresholdMemoryMonitor(
       int64_t memory_usage_threshold_bytes,
       uint64_t monitor_interval_ms,
       KillWorkersCallback kill_workers_callback,
       const std::string &root_cgroup_path) {
+    monitor_interval_ms_ = monitor_interval_ms;
     instance =
-        std::make_unique<ThresholdMemoryMonitor>(std::move(kill_workers_callback),
+        std::make_unique<ThresholdMemoryMonitor>(runner_,
+                                                 std::move(kill_workers_callback),
                                                  memory_usage_threshold_bytes,
                                                  monitor_interval_ms,
                                                  /*resource_isolation_enabled=*/false,
@@ -55,8 +64,10 @@ class ThresholdMemoryMonitorTest : public MemoryMonitorTestFixture {
       const std::string &root_cgroup_path,
       const std::string &user_cgroup_path,
       const std::string &system_cgroup_path) {
+    monitor_interval_ms_ = monitor_interval_ms;
     instance =
-        std::make_unique<ThresholdMemoryMonitor>(std::move(kill_workers_callback),
+        std::make_unique<ThresholdMemoryMonitor>(runner_,
+                                                 std::move(kill_workers_callback),
                                                  memory_usage_threshold_bytes,
                                                  monitor_interval_ms,
                                                  /*resource_isolation_enabled=*/true,
@@ -66,18 +77,29 @@ class ThresholdMemoryMonitorTest : public MemoryMonitorTestFixture {
     return *instance;
   }
 
+  // Advances the fake clock by `num_intervals` monitor intervals, running the
+  // periodic memory check once per interval.
+  void RunMemoryChecks(int num_intervals = 1) {
+    clock_.AdvanceTime(absl::Milliseconds(monitor_interval_ms_ * num_intervals));
+  }
+
+  FakeClock clock_;
+  FakePeriodicalRunner runner_{clock_};
+  uint64_t monitor_interval_ms_ = 1;
   std::unique_ptr<ThresholdMemoryMonitor> instance;
 };
 
 TEST_F(ThresholdMemoryMonitorTest, TestMonitorTriggerCanDetectMemoryUsage) {
-  std::shared_ptr<boost::latch> has_checked_once = std::make_shared<boost::latch>(1);
+  bool callback_triggered = false;
 
   MakeThresholdMemoryMonitor(
       0 /*memory_usage_threshold_bytes*/,
       1 /*refresh_interval_ms*/,
-      [has_checked_once](std::string) { has_checked_once->count_down(); },
+      [&callback_triggered](std::string) { callback_triggered = true; },
       "" /*root_cgroup_path*/);
-  has_checked_once->wait();
+
+  RunMemoryChecks();
+  ASSERT_TRUE(callback_triggered);
 }
 
 TEST_F(ThresholdMemoryMonitorTest,
@@ -97,7 +119,7 @@ TEST_F(ThresholdMemoryMonitorTest,
                                                    inactive_file_bytes,
                                                    active_file_bytes);
 
-  std::shared_ptr<boost::latch> has_checked_once = std::make_shared<boost::latch>(1);
+  bool callback_triggered = false;
 
   NoopCgroupManager noop_cgroup_manager;
   int64_t memory_usage_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
@@ -105,10 +127,11 @@ TEST_F(ThresholdMemoryMonitorTest,
   MakeThresholdMemoryMonitor(
       memory_usage_threshold_bytes,  // (70%)
       1 /*refresh_interval_ms*/,
-      [has_checked_once](std::string) { has_checked_once->count_down(); },
+      [&callback_triggered](std::string) { callback_triggered = true; },
       cgroup_dir /*root_cgroup_path*/);
 
-  has_checked_once->wait();
+  RunMemoryChecks();
+  ASSERT_TRUE(callback_triggered);
 }
 
 TEST_F(ThresholdMemoryMonitorTest,
@@ -128,8 +151,7 @@ TEST_F(ThresholdMemoryMonitorTest,
                                                    inactive_file_bytes,
                                                    active_file_bytes);
 
-  std::shared_ptr<std::atomic<bool>> callback_triggered =
-      std::make_shared<std::atomic<bool>>(false);
+  bool callback_triggered = false;
 
   NoopCgroupManager noop_cgroup_manager;
   int64_t memory_usage_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
@@ -137,12 +159,14 @@ TEST_F(ThresholdMemoryMonitorTest,
   MakeThresholdMemoryMonitor(
       memory_usage_threshold_bytes,  // (70%)
       1 /*refresh_interval_ms*/,
-      [callback_triggered](std::string) { callback_triggered->store(true); },
+      [&callback_triggered](std::string) { callback_triggered = true; },
       cgroup_dir /*root_cgroup_path*/);
 
-  std::this_thread::sleep_for(std::chrono::seconds(5));
+  // Run the check several times; it should never trigger since usage is below
+  // the threshold.
+  RunMemoryChecks(/*num_intervals=*/5);
 
-  ASSERT_FALSE(callback_triggered->load())
+  ASSERT_FALSE(callback_triggered)
       << "Callback should not have been triggered when memory is below threshold. "
          "Are is the memory monitor correctly reading memory from the system?";
 }
@@ -167,17 +191,18 @@ TEST_F(ThresholdMemoryMonitorTest,
       total_memory_bytes, 0, 0 /*anon*/, 0, 0 /*inactive_file*/, 0 /*active_file*/);
 
   // Total monitored = user_anon + user_shmem = 600+200 = 800 MB > threshold
-  std::shared_ptr<boost::latch> has_checked_once = std::make_shared<boost::latch>(1);
+  bool callback_triggered = false;
 
   MakeResourceIsolatedThresholdMemoryMonitor(
       threshold_bytes,
       1 /*refresh_interval_ms*/,
-      [has_checked_once](std::string) { has_checked_once->count_down(); },
+      [&callback_triggered](std::string) { callback_triggered = true; },
       "" /*root_cgroup_path*/,
       user_cgroup_dir,
       system_cgroup_dir);
 
-  has_checked_once->wait();
+  RunMemoryChecks();
+  ASSERT_TRUE(callback_triggered);
 }
 
 TEST_F(
@@ -208,17 +233,18 @@ TEST_F(
 
   // Total monitored = user_anon + user_shmem + system_shmem = 400+200+200 = 800 MB >
   // threshold
-  std::shared_ptr<boost::latch> has_checked_once = std::make_shared<boost::latch>(1);
+  bool callback_triggered = false;
 
   MakeResourceIsolatedThresholdMemoryMonitor(
       threshold_bytes,
       1 /*refresh_interval_ms*/,
-      [has_checked_once](std::string) { has_checked_once->count_down(); },
+      [&callback_triggered](std::string) { callback_triggered = true; },
       "" /*root_cgroup_path*/,
       user_cgroup_dir,
       system_cgroup_dir);
 
-  has_checked_once->wait();
+  RunMemoryChecks();
+  ASSERT_TRUE(callback_triggered);
 }
 
 TEST_F(ThresholdMemoryMonitorTest,
@@ -247,20 +273,21 @@ TEST_F(ThresholdMemoryMonitorTest,
                                                           0 /*active_file*/);
 
   // Total monitored = 200+100+100 = 400 MB < threshold
-  std::shared_ptr<std::atomic<bool>> callback_triggered =
-      std::make_shared<std::atomic<bool>>(false);
+  bool callback_triggered = false;
 
   MakeResourceIsolatedThresholdMemoryMonitor(
       threshold_bytes,
       1 /*refresh_interval_ms*/,
-      [callback_triggered](std::string) { callback_triggered->store(true); },
+      [&callback_triggered](std::string) { callback_triggered = true; },
       "" /*root_cgroup_path*/,
       user_cgroup_dir,
       system_cgroup_dir);
 
-  std::this_thread::sleep_for(std::chrono::seconds(5));
+  // Run the check several times; it should never trigger since usage is below
+  // the threshold.
+  RunMemoryChecks(/*num_intervals=*/5);
 
-  ASSERT_FALSE(callback_triggered->load())
+  ASSERT_FALSE(callback_triggered)
       << "Callback should not have been triggered when user slice memory is below "
          "threshold.";
 }

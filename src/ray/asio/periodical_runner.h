@@ -55,14 +55,13 @@ class PeriodicalRunner : public PeriodicalRunnerInterface,
 
   void DoRunFnPeriodically(std::function<void()> fn,
                            boost::posix_time::milliseconds period,
-                           std::shared_ptr<boost::asio::deadline_timer> timer) override
+                           std::shared_ptr<boost::asio::deadline_timer> timer)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void DoRunFnPeriodicallyInstrumented(std::function<void()> fn,
                                        boost::posix_time::milliseconds period,
                                        std::shared_ptr<boost::asio::deadline_timer> timer,
-                                       std::string name) override
-      ABSL_LOCKS_EXCLUDED(mutex_);
+                                       std::string name) ABSL_LOCKS_EXCLUDED(mutex_);
 
   instrumented_io_context &io_service_;
   mutable absl::Mutex mutex_;

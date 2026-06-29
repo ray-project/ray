@@ -66,6 +66,12 @@ class CoreWorkerTest : public ::testing::Test {
   CoreWorkerTest()
       : io_work_(io_service_.get_executor()),
         task_execution_service_work_(task_execution_service_.get_executor()) {
+    // Workers schedule a periodic CoreWorker.ExitIfParentRayletDies task. Advancing
+    // the FakeClock in these tests fires it, which requires RAYLET_PID to be set and
+    // shuts the worker down if that process is dead. Point it at the current (alive)
+    // test process so the check passes and the worker is not torn down.
+    RayConfig::instance().RAYLET_PID() = std::to_string(getpid());
+
     CoreWorkerOptions options;
     options.worker_type = WorkerType::WORKER;
     options.language = Language::PYTHON;
@@ -131,7 +137,7 @@ class CoreWorkerTest : public ::testing::Test {
     rpc_address_.set_node_id(NodeID::FromRandom().Binary());
     rpc_address_.set_worker_id(worker_context->GetWorkerID().Binary());
 
-    fake_periodical_runner_ = std::make_unique<FakePeriodicalRunner>();
+    fake_periodical_runner_ = std::make_unique<FakePeriodicalRunner>(clock_);
 
     auto object_info_publisher = std::make_unique<pubsub::Publisher>(
         /*channels=*/
@@ -256,7 +262,7 @@ class CoreWorkerTest : public ::testing::Test {
     auto actor_manager = std::make_unique<ActorManager>(
         mock_gcs_client_, *actor_task_submitter, *reference_counter_);
 
-    auto periodical_runner = std::make_unique<FakePeriodicalRunner>();
+    auto periodical_runner = std::make_unique<FakePeriodicalRunner>(clock_);
 
     // TODO(joshlee): Dependency inject socket into plasma_store_provider_ so we can
     // create a real plasma_store_provider_ and mutable_object_provider_

@@ -162,9 +162,8 @@ ray_cc_library(
     deps = [
         ":memory_monitor_interface",
         ":memory_monitor_utils",
-        "//src/ray/asio:periodical_runner",
+        "//src/ray/asio:periodical_runner_interface",
         "//src/ray/util:logging",
-        "//src/ray/util:thread_utils",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -244,6 +243,7 @@ ray_cc_library(
     ],
     deps = [
         ":memory_monitor_interface",
+        "//src/ray/asio:periodical_runner_interface",
         "//src/ray/common/cgroup2:cgroup_manager_interface",
     ] + select({
         "//bazel:is_linux": [
