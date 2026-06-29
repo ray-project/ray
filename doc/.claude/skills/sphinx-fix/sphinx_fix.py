@@ -467,12 +467,24 @@ def detect_abort(text: str, state: BuildState) -> AbortSignal | None:
     complete -- i.e. there is no "build finished/succeeded" summary and the
     state does not report success. Guards against false-firing on a healthy
     build whose text merely quotes "Extension error" etc.
+
+    A line that parses as an ordinary Sphinx warning is never an abort. A hard
+    abort happens *before* the warning pass and is printed as free text
+    ("Extension error:", a traceback, "Sphinx error:"), never as the
+    "path:line: LEVEL: msg" form. So skip warning-formatted lines here --
+    otherwise a normal SEVERE/ERROR warning, or one whose message merely
+    contains "Extension error", masquerades as an abort. This matters most for
+    warnings-only input (a `-w` file or a pasted subset) that carries no build
+    summary, where the completion guard above can't help.
     """
     completed = bool(SUMMARY_RE.search(text))
     if completed or state.success is True:
         return None
     lines = text.splitlines()
     for i, raw in enumerate(lines):
+        s = raw.strip()
+        if WARN_RE.match(s) or BARE_RE.match(s):
+            continue
         for name, rx in ABORT_RES:
             if rx.search(raw):
                 excerpt = [ln.rstrip() for ln in lines[i : i + 5]]
