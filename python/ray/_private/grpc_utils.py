@@ -66,10 +66,16 @@ def init_grpc_channel(
         base_args = (address, credentials)
     elif os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
         # Use TLS from environment variables
-        server_cert_chain, private_key, ca_cert = load_certs_from_env()
+        client_auth = os.environ.get("RAY_TLS_CLIENT_AUTH", "1").lower() in (
+            "1",
+            "true",
+        )
+        server_cert_chain, private_key, ca_cert = load_certs_from_env(
+            server_side=False, client_auth=client_auth
+        )
         tls_credentials = grpc.ssl_channel_credentials(
-            certificate_chain=server_cert_chain,
-            private_key=private_key,
+            certificate_chain=server_cert_chain if client_auth else None,
+            private_key=private_key if client_auth else None,
             root_certificates=ca_cert,
         )
         channel_creator = grpc_module.secure_channel
