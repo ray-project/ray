@@ -35,6 +35,15 @@ class PrepareMultimodalUDF(StatefulStageUDF):
                 "`pip install ray[llm]` to install required dependencies."
             ) from e
 
+        # On CPU-only nodes or CPU-only stages, disable GPU memory utilization to avoid GPU detection crash.
+        # Since this stage only prepares multimodal data and does not run the engine on GPU, we can safely
+        # default gpu_memory_utilization to 0.0 if not specified.
+        if "gpu_memory_utilization" not in model_config_kwargs:
+            model_config_kwargs = {
+                **model_config_kwargs,
+                "gpu_memory_utilization": 0.0,
+            }
+
         self.model_config = ModelConfig(**model_config_kwargs)
         self.chat_template_content_format = chat_template_content_format
         self.apply_sys_msg_formatting = apply_sys_msg_formatting
