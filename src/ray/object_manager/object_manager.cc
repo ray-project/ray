@@ -303,7 +303,7 @@ void ObjectManager::SendPullRequest(const std::vector<ObjectID> &object_ids,
   if (object_ids.empty()) {
     return;
   }
-  auto rpc_client = GetRpcClient(client_id);
+  std::shared_ptr<rpc::ObjectManagerClientInterface> rpc_client = GetRpcClient(client_id);
   if (rpc_client) {
     rpc_service_.post(
         [this, object_ids, client_id, rpc_client]() {
