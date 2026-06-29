@@ -112,7 +112,6 @@ py_test_module_list(
         "test_controller_benchmark.py",
         "test_controller_recovery.py",
         "test_deploy_2.py",
-        "test_deployment_scheduler.py",
         "test_deployment_scheduler_downscale.py",
         "test_deployment_topology.py",
         "test_failure.py",
@@ -145,6 +144,23 @@ py_test_module_list(
         "test_task_consumer_autoscaling.py",
         "test_task_processor.py",
         "test_util.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# Large tests.
+py_test_module_list(
+    size = "large",
+    files = [
+        "test_deployment_scheduler.py",
     ],
     tags = [
         "exclusive",

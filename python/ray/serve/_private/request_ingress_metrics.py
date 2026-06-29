@@ -5,7 +5,7 @@ from ray.serve._private.constants import REQUEST_LATENCY_BUCKETS_MS
 from ray.util import metrics
 
 
-class ProxyMetrics:
+class RequestIngressMetrics:
     """E2E request metrics shared by the proxies and direct-ingress replicas.
 
     Defines and emits the standard ``serve_num_{protocol}_requests`` family of

@@ -103,18 +103,18 @@ Before committing any changes, make sure you run the [linter](https://docs.ray.i
 `make local` and `make develop` are for fast iteration while you author. Before you push, verify your changes the way Read the Docs builds them, so you catch failures locally instead of waiting on a Read the Docs build:
 
 ```shell
-make rtd
+make rtd-build
 ```
 
-`make rtd` reproduces the command Read the Docs runs: a full build with `fail_on_warning` enabled, so any Sphinx warning fails the build exactly as it does on Read the Docs. It first runs a preflight check that your environment matches Read the Docs — the Python version Read the Docs builds with (3.11) and the dependency versions pinned in `requirements-doc.lock.txt` — and stops with an explanation if it finds drift. Run that check on its own at any time with:
+`make rtd-build` reproduces the full build Read the Docs runs from a fresh checkout, with `fail_on_warning` enabled, so any Sphinx warning fails the build exactly as it does on Read the Docs. It first runs a preflight check that your environment matches Read the Docs — the Python version Read the Docs builds with (3.11) and the dependency versions pinned in `requirements-doc.lock.txt` — and stops with an explanation if it finds drift. Run that check on its own at any time with:
 
 ```shell
 make rtd-doctor
 ```
 
-A full build matters most when you add, remove, or rename files. The incremental `make local` build reuses cached pages, so a rename that breaks a cross-reference in an otherwise-unchanged page can pass locally and only fail on Read the Docs. `make rtd` always does a full build, so it catches these.
+A full build matters most when you add, remove, or rename files. The incremental `make local` build reuses cached pages, so a rename that breaks a cross-reference in an otherwise-unchanged page can pass locally and only fail on Read the Docs. `make rtd-build` always does a full build, so it catches these.
 
-If you intend to build on an environment that doesn't match Read the Docs, run `make rtd RTD_DOCTOR_ARGS=--warn-only` to downgrade the preflight check from an error to a warning.
+If you intend to build on an environment that doesn't match Read the Docs, run `make rtd-build RTD_DOCTOR_ARGS=--warn-only` to downgrade the preflight check from an error to a warning.
 
 ### Code completion and other developer tooling
 
