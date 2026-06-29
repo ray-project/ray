@@ -64,9 +64,10 @@ def test_callback_pipeline(num_blocks, timeout_s=60):
             f"Only {len(latencies)}/{num_blocks} callbacks fired within {timeout_s}s"
         )
 
-    avg_latency = sum(latencies) / len(latencies)
-    print(f"  {num_blocks} blocks: avg={avg_latency:.4f}s")
-    return avg_latency
+    latencies.sort()
+    p95 = latencies[int(len(latencies) * 0.95)]
+    print(f"  {num_blocks} blocks: p95={p95:.4f}s")
+    return p95
 
 
 ray.init(address="auto")
@@ -79,27 +80,27 @@ ray.get(
     ]
 )
 
-time_100 = test_callback_pipeline(100)
-time_1k = test_callback_pipeline(1000)
+p95_100 = test_callback_pipeline(100)
+p95_1k = test_callback_pipeline(1000)
 
 print("\nSummary:")
-print(f"  100 blocks: {time_100:.3f}s")
-print(f"  1k blocks: {time_1k:.3f}s")
+print(f"  100 blocks: p95={p95_100:.4f}s")
+print(f"  1k blocks: p95={p95_1k:.4f}s")
 
 if "TEST_OUTPUT_JSON" in os.environ:
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_file:
         results = {
-            "time_100": time_100,
-            "time_1k": time_1k,
+            "p95_100": p95_100,
+            "p95_1k": p95_1k,
             "perf_metrics": [
                 {
-                    "perf_metric_name": "callback_pipeline_100_blocks_s",
-                    "perf_metric_value": time_100,
+                    "perf_metric_name": "callback_p95_latency_100_blocks_s",
+                    "perf_metric_value": p95_100,
                     "perf_metric_type": "LATENCY",
                 },
                 {
-                    "perf_metric_name": "callback_pipeline_1k_blocks_s",
-                    "perf_metric_value": time_1k,
+                    "perf_metric_name": "callback_p95_latency_1k_blocks_s",
+                    "perf_metric_value": p95_1k,
                     "perf_metric_type": "LATENCY",
                 },
             ],
