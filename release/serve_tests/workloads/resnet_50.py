@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from io import BytesIO
+import os
 import PIL
 from PIL import Image
 import requests
@@ -29,7 +30,10 @@ class Model:
                 ),
             ]
         )
-        with open("imagenet_classes.txt", "r") as f:
+        classes_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "imagenet_classes.txt"
+        )
+        with open(classes_path, "r") as f:
             self.categories = [s.strip() for s in f.readlines()]
 
         self.model_thread_pool = ThreadPoolExecutor(max_workers=5)
