@@ -103,7 +103,8 @@ steps:
       - doc_redirects
     commands:
       - pip install --no-cache-dir anyscale-rtd-redirects==0.2.0
-      # diff-file reads the base via `git show origin/master:<path>`; ensure the ref is present.
-      - git fetch -q origin master
+      # diff-file reads the base via `git show origin/<base>:<path>`, so resolve the
+      # PR's base branch (falling back to master for non-PR builds) and ensure it's present.
+      - git fetch -q origin "${BUILDKITE_PULL_REQUEST_BASE_BRANCH:-master}"
       - rtd-redirects validate doc/redirects/current.yaml
-      - rtd-redirects diff-file --file doc/redirects/current.yaml --base origin/master --head HEAD --repo .
+      - rtd-redirects diff-file --file doc/redirects/current.yaml --base "origin/${BUILDKITE_PULL_REQUEST_BASE_BRANCH:-master}" --head HEAD --repo .
