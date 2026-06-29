@@ -1,7 +1,9 @@
 (npu-ascend-guide)=
 # Recipe for DeepSeek-V4 on NPU via Ray Serve + vLLM
 
-This guide provides a step-by-step recipe for deploying DeepSeek-V4-Flash-w8a8-mtp (w8a8 quantized with multi-token prediction) on Huawei Ascend NPUs using [Ray Serve LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html) and [vLLM-Ascend](https://github.com/vllm-project/vllm-ascend), enabling scalable, efficient, and OpenAI-compatible LLM serving on Ascend NPU hardware.
+This guide provides a step-by-step recipe for deploying DeepSeek-V4-Flash-w8a8-mtp (w8a8 quantized with multi-token prediction) on Huawei Ascend NPUs using [Ray Serve LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html) and [vLLM-Ascend](https://github.com/vllm-project/vllm-ascend), enabling scalable, efficient, and OpenAI-compatible LLM serving on Ascend NPU hardware. If you want to deploy other large language models, you can combine the approach in this guide with the deployment solutions for other models provided in the [vLLM-Ascend documentation](https://docs.vllm.ai/projects/ascend/en/latest/tutorials/models/index.html).
+
+Ray Serve LLM cannot recognize NPU as an accelerator type. To deploy LLM inference services on Ascend NPU clusters, the latest version of Ray with NPU support is required. However, the latest Ray depends on vllm ≥ 0.22.0, while vllm-ascend's current latest version is 0.21.0, which has not yet been adapted for vllm ≥ 0.22.0. Through testing, vllm 0.22.0 works with vllm-ascend 0.21.0, barely satisfying the new Ray's dependency requirement, but vllm 0.22.0 lacks NPU platform adaptation (already addressed in vllm 0.24.0), requiring manual patching during deployment. The long-term solution is to wait for vllm-ascend to complete adaptation for vllm 0.24.0, enabling a one-time upgrade with no additional patches needed. The immediate deployment plan is described below.
 
 ## Step 1: Download Model Weights
 
@@ -13,19 +15,18 @@ It is recommended to download the model weights to a shared directory accessible
 
 This guide demonstrates deployment on an Atlas 800 A2 node. For A3 series deployment, refer to the [vLLM-Ascend DeepSeek-V4-Flash tutorial](https://docs.vllm.ai/projects/ascend/en/v0.18.0/tutorials/models/DeepSeek-V4-Flash.html).
 
-You can use our official Docker image to run `DeepSeek-V4` directly. The image includes the following key dependencies:
-
+You can use our official Docker image to run `DeepSeek-V4` directly. Adjust the component versions in the image as follows:
 | Package | Version |
 |---------|---------|
-| vllm | 0.18.0 |
-| vllm-ascend | 0.17.0 |
-| torch | 2.9.0 |
-| torch-npu | 2.9.0 |
-| transformers | 4.57.6 |
-| ray | 2.55.1 |
+| vllm | 0.22.0 |
+| vllm-ascend | 0.21.0 |
+| torch | 2.10.0 |
+| torch-npu | 2.10.0 |
+| torchvision | 2.25.0 |
+| cann | 9.0.0 |
 
 ```sh
-export IMAGE=quay.io/ascend/vllm-ascend:deepseekv4
+export IMAGE=quay.io/ascend/vllm-ascend:v0.21.0rc1
 export NAME=vllm-ascend
 
 docker run --rm \
@@ -58,28 +59,14 @@ docker run --rm \
 Set the following environment variables inside the Docker container:
 
 ```sh
-export LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libjemalloc.so.2:$LD_PRELOAD
 export OMP_PROC_BIND=false
-export OMP_NUM_THREADS=8
+export OMP_NUM_THREADS=10
 export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
-export ACL_OP_INIT_MODE=1
+export LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libjemalloc.so.2:$LD_PRELOAD
+export HCCL_BUFFSIZE=1024
 export VLLM_ASCEND_ENABLE_FLASHCOMM1=1
-
-export USE_MULTI_GROUPS_KV_CACHE=1
-
 export TASK_QUEUE_ENABLE=1
 export HCCL_OP_EXPANSION_MODE="AIV"
-export HCCL_BUFFSIZE=512
-
-export USE_MULTI_BLOCK_POOL=1
-```
-
-> **Optional:** For better NPU performance, run the following kernel parameter tuning commands on the **host machine**:
-
-```sh
-sysctl -w vm.swappiness=0
-sysctl -w kernel.numa_balancing=0
-sysctl kernel.sched_migration_cost_ns=50000
 ```
 
 ## Step 4: Install Ray Serve and Start the Ray Cluster
@@ -89,15 +76,66 @@ pip install "ray[serve]"
 ray start --head
 ```
 
-> **Note:** Make sure to install the latest version of Ray Serve to ensure compatibility with vLLM-Ascend.
+> **Note:** The image includes Ray version 2.48.0, which does not support NPU. You need to install the latest version of Ray Serve to enable NPU accelerator type support. Daily builds can be obtained from [Daily Releases](https://docs.ray.io/en/latest/ray-overview/installation.html#daily-releases-nightlies). Before installing, confirm that the version includes NPU support.
 
 Verify that the Ray cluster is running:
 
 ```sh
 ray status
 ```
+## Step 5: Patching
 
-## Step 5: Configure Ray Serve LLM
+File to modify: vllm/model_executor/layers/rotary_embedding/common.py
+
+Source code:
+```python
+# --8<-- [start:apply_rotary_emb]
+@CustomOp.register("apply_rotary_emb")
+class ApplyRotaryEmb(CustomOp):
+    # --8<-- [end:apply_rotary_emb]
+
+    def __init__(
+        self,
+        enforce_enable: bool = False,
+        is_neox_style: bool = True,
+        enable_fp32_compute: bool = False,
+    ) -> None:
+        super().__init__(enforce_enable=enforce_enable)
+        self.is_neox_style = is_neox_style
+        self.enable_fp32_compute = enable_fp32_compute
+
+        self.apply_rotary_emb_flash_attn = None
+        if not current_platform.is_cpu() and find_spec("flash_attn") is not None:
+            from flash_attn.ops.triton.rotary import apply_rotary
+
+            self.apply_rotary_emb_flash_attn = apply_rotary
+```
+Modified code:
+```python
+# --8<-- [start:apply_rotary_emb]
+@CustomOp.register("apply_rotary_emb")
+class ApplyRotaryEmb(CustomOp):
+    # --8<-- [end:apply_rotary_emb]
+
+    def __init__(
+        self,
+        enforce_enable: bool = False,
+        is_neox_style: bool = True,
+        enable_fp32_compute: bool = False,
+    ) -> None:
+        super().__init__(enforce_enable=enforce_enable)
+        self.is_neox_style = is_neox_style
+        self.enable_fp32_compute = enable_fp32_compute
+
+        self.apply_rotary_emb_flash_attn = None
+        if not current_platform.is_cpu():
+            with suppress(ModuleNotFoundError):
+                self.apply_rotary_emb_flash_attn = import_module(
+                    "flash_attn.ops.triton.rotary"
+                ).apply_rotary
+```
+
+## Step 6: Configure Ray Serve LLM
 
 Create a Python script (e.g., `serve_npu.py`) with the following content. For more details on how to use Ray Serve LLM to deploy LLMs, refer to the [Ray Serve LLM documentation](https://docs.ray.io/en/latest/serve/llm/index.html).
 
@@ -110,14 +148,10 @@ llm_config = LLMConfig(
         model_id="deepseek-v4-flash",
         model_source="/root/.cache/DeepSeek-V4-Flash-w8a8-mtp",
     ),
-    use_cpu=True,
     deployment_config={
         "autoscaling_config": {
             "min_replicas": 1,
             "max_replicas": 1,
-        },
-        "ray_actor_options": {
-            "resources": {"NPU": 8}
         },
     },
     runtime_env={  
@@ -125,6 +159,7 @@ llm_config = LLMConfig(
             "VLLM_USE_V1": "1"
         }  
     },
+    accelerator_config={"kind":"npu"},
     engine_kwargs=dict(
         tensor_parallel_size=8,
         data_parallel_size=1,
@@ -144,7 +179,7 @@ Run the deployment:
 python serve_npu.py
 ```
 
-## Step 6: Send Requests
+## Step 7: Send Requests
 
 You can query the deployed model with cURL:
 
