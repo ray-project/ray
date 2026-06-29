@@ -26,6 +26,7 @@ from ray.llm._internal.batch.benchmark.benchmark_processor import (
 # Benchmark constants
 NUM_REQUESTS = 1000
 MODEL_ID = "facebook/opt-1.3b"
+DATASET_ID = "Crystalcareai/Code-feedback-sharegpt-renamed"
 BATCH_SIZE = 64
 CONCURRENCY = 1
 
@@ -242,7 +243,7 @@ def test_single_node_baseline_benchmark():
     dataset = ShareGPTDataset(
         dataset_path=dataset_path,
         seed=0,
-        hf_dataset_id="Crystalcareai/Code-feedback-sharegpt-renamed",
+        hf_dataset_id=DATASET_ID,
         hf_split="train",
         truncate_prompt=2048,
     )
@@ -298,7 +299,7 @@ def test_single_node_baseline_benchmark():
         print(
             "Warning: no vLLM engine Prometheus metrics were scraped. "
             "Install Ray dashboard metrics deps (see "
-            "python/requirements/llm/llm-test-requirements.txt) and ensure "
+            "release/llm_tests/batch/requirements.in) and ensure "
             "RAY_DATA_LLM_BENCHMARK_METRICS_EXPORT_PORT is reachable."
         )
     engine_metrics = _build_engine_metrics(
@@ -340,7 +341,7 @@ def test_single_node_baseline_benchmark():
     print("=" * 60)
 
     # Optional thresholds to fail on regressions
-    min_throughput = _get_float_env("RAY_DATA_LLM_BENCHMARK_MIN_THROUGHPUT", 4)
+    min_throughput = _get_float_env("RAY_DATA_LLM_BENCHMARK_MIN_THROUGHPUT", 5)
     max_latency_s = _get_float_env("RAY_DATA_LLM_BENCHMARK_MAX_LATENCY_S", 150)
     if min_throughput is not None:
         assert (
@@ -356,6 +357,7 @@ def test_single_node_baseline_benchmark():
     if artifact_path:
         metrics = {
             "model": MODEL_ID,
+            "dataset": DATASET_ID,
             "batch_size": BATCH_SIZE,
             "concurrency": CONCURRENCY,
             "samples": int(result.samples),
