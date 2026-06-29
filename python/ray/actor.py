@@ -1097,6 +1097,8 @@ class ActorMethod:
             _generator_backpressure_num_objects = (
                 self._generator_backpressure_num_objects
             )
+        if _generator_backpressure_num_objects is None:
+            _generator_backpressure_num_objects = -1
         if _num_objects_per_yield is None:
             _num_objects_per_yield = self._num_objects_per_yield
         ray_option_utils.task_options["_num_objects_per_yield"].validate(
@@ -2174,6 +2176,12 @@ class ActorClass(Generic[T]):
                 "out-of-order execution."
             )
 
+        actor_generator_backpressure_num_objects = actor_options.get(
+            "_actor_generator_backpressure_num_objects"
+        )
+        if actor_generator_backpressure_num_objects is None:
+            actor_generator_backpressure_num_objects = -1
+
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,
@@ -2199,6 +2207,9 @@ class ActorClass(Generic[T]):
             fallback_strategy=actor_options.get("fallback_strategy"),
             allow_out_of_order_execution=allow_out_of_order_execution,
             enable_tensor_transport=meta.enable_tensor_transport,
+            actor_generator_backpressure_num_objects=(
+                actor_generator_backpressure_num_objects
+            ),
         )
 
         if _actor_launch_hook:
@@ -2227,6 +2238,9 @@ class ActorClass(Generic[T]):
             worker.current_cluster_and_job,
             original_handle=True,
             allow_out_of_order_execution=allow_out_of_order_execution,
+            actor_generator_backpressure_num_objects=(
+                actor_generator_backpressure_num_objects
+            ),
         )
 
         if meta.enable_tensor_transport:
@@ -2329,6 +2343,7 @@ class ActorHandle(Generic[T]):
         original_handle: bool = False,
         weak_ref: bool = False,
         allow_out_of_order_execution: Optional[bool] = None,
+        actor_generator_backpressure_num_objects: int = -1,
     ):
         """Initialize an ActorHandle.
 
@@ -2357,6 +2372,10 @@ class ActorHandle(Generic[T]):
             original_handle: Whether this is the original actor handle.
             weak_ref: Whether this is a weak reference to the actor.
             allow_out_of_order_execution: Whether the actor can execute tasks out of order.
+            actor_generator_backpressure_num_objects: Actor-wide cap on unconsumed
+                streaming generator objects across concurrent generator tasks; ``-1`` means
+                disabled. Mirrors ``_actor_generator_backpressure_num_objects`` on actor
+                creation.
         """
         self._ray_actor_language = language
         self._ray_actor_id = actor_id
@@ -2365,6 +2384,9 @@ class ActorHandle(Generic[T]):
         self._ray_weak_ref = weak_ref
         self._ray_enable_task_events = enable_task_events
         self._ray_allow_out_of_order_execution = allow_out_of_order_execution
+        self._ray_actor_generator_backpressure_num_objects = (
+            actor_generator_backpressure_num_objects
+        )
 
         self._ray_method_is_generator = method_is_generator
         self._ray_method_decorators = method_decorators
@@ -2419,7 +2441,7 @@ class ActorHandle(Generic[T]):
                 retry_exceptions=self._ray_method_retry_exceptions.get(method_name),
                 is_generator=self._ray_method_is_generator.get(method_name),
                 generator_backpressure_num_objects=self._ray_method_generator_backpressure_num_objects.get(
-                    method_name
+                    method_name, -1
                 ),
                 num_objects_per_yield=self._ray_method_num_objects_per_yield.get(
                     method_name, 1
@@ -2608,7 +2630,7 @@ class ActorHandle(Generic[T]):
 
         if not self._ray_is_cross_language:
             raise AttributeError(
-                f"'{type(self).__name__}' object has " f"no attribute '{item}'"
+                f"'{type(self).__name__}' object has no attribute '{item}'"
             )
         if item in ["__ray_terminate__"]:
 
@@ -2807,7 +2829,69 @@ def _modify_class(cls):
         def __ray_ready__(self):
             return True
 
-        def __ray_call__(self, fn, *args, **kwargs):
+        @DeveloperAPI
+        def __ray_call__(
+            self, fn: "Callable[..., Any]", *args: Any, **kwargs: Any
+        ) -> Any:
+            """Run a closure remotely on this actor instance.
+
+            Provides a standard way to execute an arbitrary callable on a remote
+            actor without pre-defining a dedicated method. The callable receives
+            the actor instance as its first argument, followed by any additional
+            positional and keyword arguments passed to ``__ray_call__``.
+
+            This is useful when you want to:
+
+            * Access or modify actor state without defining a getter/setter method.
+            * Run ad-hoc operations on an actor for debugging or testing.
+            * Integrate with libraries that produce callables dynamically
+            (e.g., vLLM's worker dispatch pattern).
+
+            Args:
+                fn: A callable that accepts the actor instance as its first
+                    argument. The callable is serialized with cloudpickle and
+                    executed on the remote actor process.
+                *args: Additional positional arguments forwarded to ``fn``
+                    after the actor instance.
+                **kwargs: Additional keyword arguments forwarded to ``fn``.
+
+            Returns:
+                The return value of ``fn(self, *args, **kwargs)``.
+
+            Examples:
+                .. testcode::
+
+                    import ray
+
+                    @ray.remote
+                    class Counter:
+                        def __init__(self):
+                            self.count = 0
+
+                        def increment(self):
+                            self.count += 1
+
+                    counter = Counter.remote()
+                    ray.get(counter.increment.remote())
+
+                    # Access state without a dedicated getter method
+                    value = ray.get(counter.__ray_call__.remote(
+                        lambda self: self.count
+                    ))
+                    assert value == 1
+
+                    # Pass extra arguments to the closure
+                    result = ray.get(counter.__ray_call__.remote(
+                        lambda self, x: self.count + x, 10
+                    ))
+                    assert result == 11
+
+            .. note::
+
+                ``fn`` must be serializable by cloudpickle. Lambda functions
+                and top-level functions are typically supported. Closures over
+                large objects may incur serialization overhead.
+            """
             return fn(self, *args, **kwargs)
 
         def __ray_terminate__(self):

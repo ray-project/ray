@@ -780,6 +780,35 @@ class TestConnectorProtocolHook:
         assert chunks == [prefill_error]
         assert decode_aborted["value"] is True
 
+    @pytest.mark.asyncio
+    async def test_prewarm_skipped_for_peer_binding_backend(self):
+        """Pre-warm broadcasts a peerless prefill request, which a peer-binding
+        connector (e.g. MoRIIO) cannot shape -- so it must be skipped rather
+        than crash decode-replica init."""
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+            BaseConnectorBackend,
+        )
+
+        class _PeerBindingBackend(BaseConnectorBackend):
+            requires_peer_binding = True
+
+            def prepare_prefill_request(self, *, request, peer):
+                raise AssertionError("prepare_prefill_request must not be called")
+
+            def prepare_decode_request(self, *, request, peer, prefill_response):
+                raise AssertionError("prepare_decode_request must not be called")
+
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model"),
+            experimental_configs={"_prewarm_prefill_decode": True},
+        )
+        server._llm_config._kv_connector_backend = _PeerBindingBackend(
+            server._llm_config
+        )
+        # Must return without raising (and without touching prepare_*).
+        await server._maybe_prewarm()
+
 
 class TestBuildPDOpenaiApp:
     """Test suite for build_pd_openai_app function."""

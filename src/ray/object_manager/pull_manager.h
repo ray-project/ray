@@ -30,6 +30,7 @@
 #include "ray/object_manager/metrics.h"
 #include "ray/util/container_util.h"
 #include "ray/util/counter_map.h"
+#include "ray/util/time.h"
 
 namespace ray {
 
@@ -190,7 +191,7 @@ class PullManager {
     // the object.
     double expiration_time_seconds = 0;
     int64_t activate_time_ms = 0;
-    int64_t request_start_time_ms = absl::GetCurrentTimeNanos() / 1e3;
+    int64_t request_start_time_ms = current_time_ns() / 1e3;
     uint8_t num_retries = 0;
     bool object_size_set = false;
     size_t object_size = 0;

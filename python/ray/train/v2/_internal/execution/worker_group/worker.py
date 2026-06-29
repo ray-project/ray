@@ -28,6 +28,10 @@ from ray.train.v2._internal.execution.context import (
     get_train_context,
     set_train_context,
 )
+from ray.train.v2._internal.execution.preemption import (
+    PreemptionContext,
+    PreemptionInfo,
+)
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.train_fn_utils import (
     DistributedTrainFnUtils,
@@ -180,8 +184,27 @@ class RayTrainWorker:
             accelerator_ids=ray.get_runtime_context().get_accelerator_ids(),
         )
 
+    def mark_preempt(self, info: PreemptionInfo) -> None:
+        """Store an incoming preemption signal for the UDF to read.
+
+        Called by the PreemptionWatcher on every worker when a preemption
+        affecting the worker group is detected.
+        """
+        train_context = get_train_context()
+        rank = train_context.get_world_rank()
+        train_context.preemption_context.set(info)
+        logger.info(
+            "Rank %d received preemption signal "
+            "(this_worker_preempted=%s, preempted_ranks=%s, deadline_ms=%s).",
+            rank,
+            rank in info.preempted_ranks,
+            info.preempted_ranks,
+            info.deadline_ms,
+        )
+
     def poll_status(self) -> WorkerStatus:
-        execution_context = get_train_context().execution_context
+        train_context = get_train_context()
+        execution_context = train_context.execution_context
 
         # TODO: We can implement two phase commit here.
         # Only mark the task done when the result has been processed by the controller.
@@ -212,6 +235,7 @@ class RayTrainWorker:
             error=error,
             training_report=training_report,
             return_value=return_value,
+            preemption_info=train_context.preemption_context.get(),
         )
 
     def clear_result_queue(self) -> bool:
@@ -272,6 +296,7 @@ class RayTrainWorker:
                 train_context_callbacks=context_callbacks_to_propagate,
             ),
             storage_context=storage_context,
+            preemption_context=PreemptionContext(),
             controller_actor=controller_actor,
             checkpoint=checkpoint,
             dataset_shard_provider=dataset_shard_provider,
