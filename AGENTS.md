@@ -54,8 +54,17 @@ missing instead.
 
 ## 2. Development Workflow
 
-This file covers contribution policy. For build, test, and lint details, follow
-Ray's existing guides rather than duplicating them here:
+Ray is a unified framework for scaling AI and Python applications. Its source is
+laid out as:
+
+- `src/ray/`: C++ core runtime
+- `python/ray/`: Python API and libraries (data, serve, train, tune)
+- `rllib/`: RLlib (symlinked from `python/ray/rllib`)
+- `doc/source/`: Sphinx documentation
+
+The default test timeout is 180s (`pytest.ini`). For build, test, lint, and
+code-style details, follow Ray's existing guides rather than duplicating them
+here:
 
 - Setting up a dev environment and code style:
   [`doc/source/ray-contribute/getting-involved.md`](doc/source/ray-contribute/getting-involved.md)

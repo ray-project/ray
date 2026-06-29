@@ -1,37 +1,10 @@
 <!-- Version-controlled. Personal config → CLAUDE.local.md -->
 <!-- Library-specific guidance → each library's .claude/CLAUDE.md -->
 
-# Ray
+@../AGENTS.md
 
-Ray is a unified framework for scaling AI and Python applications.
+## Claude Code workflow
 
-## Building & Linting
-
-Refer to doc/source/ray-contribute/development.md for the most up-to date information.
-Use the /rebuild skill for guided rebuilds and the /lint skill for linting.
-
-## Testing
-
-See per-library .claude/CLAUDE.md for library-specific test paths.
-Default test timeout: 180s (pytest.ini).
-
-## Structure
-
-- src/ray/ — C++ core runtime
-- python/ray/ — Python API and AI libraries (data, serve, train, tune)
-- rllib/ — RLlib (symlinked from python/ray/rllib)
-- doc/source/ — Sphinx documentation
-
-## Development Workflow
-
-- After making C++ or Cython changes, use /rebuild to determine the correct build steps
-- After making code changes, use /lint to fix lint issues on modified files
-- When investigating CI failures, use /fetch-buildkite-logs to fetch and analyze build logs
-
-## Contributing
-
-Read the contribution policy in @AGENTS.md before opening any PR. It is mandatory
-for AI-assisted contributions (duplicate-work checks, no busywork PRs, human
-accountability).
-
-See also @CONTRIBUTING.rst and @doc/source/ray-contribute/getting-involved.md
+- After C++ or Cython changes, use the /rebuild skill to determine the build steps.
+- After code changes, use the /lint skill to fix lint issues on modified files.
+- When investigating CI failures, use the /fetch-buildkite-logs skill.
