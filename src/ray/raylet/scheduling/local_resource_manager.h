@@ -165,6 +165,16 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   bool IsLocalNodeIdle() const { return GetResourceIdleTime() != absl::nullopt; }
 
+  /// Returns whether the local node is idle for an idle-termination drain decision.
+  ///
+  /// Refreshes the object store memory usage. This is needed since pinning/unpinning
+  /// doesn't update the usage eagerly and if not refreshed here, might lead to reading
+  /// a stale value, draining a node with an object's primary copy.
+  bool IsLocalNodeIdleForDrain() {
+    UpdateAvailableObjectStoreMemResource();
+    return IsLocalNodeIdle();
+  }
+
   /// Change the local node to the draining state.
   /// After that, no new tasks can be scheduled onto the local node.
   void SetLocalNodeDraining(const rpc::DrainRayletRequest &drain_request);
