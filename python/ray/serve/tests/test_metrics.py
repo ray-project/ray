@@ -1127,9 +1127,7 @@ def test_multiplexed_metrics(metrics_start_shutdown):
         async def __call__(self, model_id: str):
             await self._model.remote(model_id)
 
-    handle = serve.run(
-        Ingress.bind(Model.bind()), name="app", route_prefix="/app"
-    )
+    handle = serve.run(Ingress.bind(Model.bind()), name="app", route_prefix="/app")
     handle.remote("model1")
     handle.remote("model2")
     # Trigger model eviction.
