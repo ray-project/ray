@@ -11,7 +11,7 @@ from ray import ObjectRef
 from ray._common.network_utils import build_address
 from ray._common.utils import Timer, TimerBase
 from ray.actor import ActorHandle
-from ray.exceptions import GetTimeoutError, RayActorError
+from ray.exceptions import ActorUnschedulableError, GetTimeoutError, RayActorError
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import NodeId, RequestProtocol
 from ray.serve._private.constants import (
@@ -288,8 +288,9 @@ class ActorProxyWrapper(ProxyWrapper):
         """
         try:
             ray.get(self._actor_handle.check_health.remote(), timeout=0)
-        except RayActorError:
-            # The actor is dead, so it's ready for shutdown.
+        except (RayActorError, ActorUnschedulableError):
+            # The actor is dead or permanently unschedulable (e.g. hard-pinned
+            # to a node that no longer exists), so it's ready for shutdown.
             return True
         except GetTimeoutError:
             pass
