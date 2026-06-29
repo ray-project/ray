@@ -206,9 +206,14 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus TryReadObjectRefStream(
             const CObjectID &generator_id,
             CObjectReference *object_ref_out)
+        CRayStatus TryReadObjectRefStreamN(
+            const CObjectID &generator_id,
+            int64_t num_items)
         c_bool StreamingGeneratorIsFinished(const CObjectID &generator_id) const
         pair[CObjectReference, c_bool] PeekObjectRefStream(
             const CObjectID &generator_id)
+        c_vector[pair[CObjectReference, c_bool]] PeekObjectRefStreamN(
+            const CObjectID &generator_id, int64_t num_items)
         CObjectID PeekObjectIdStream(
             const CObjectID &generator_id)
         CObjectID AllocateDynamicReturnId(
