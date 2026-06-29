@@ -57,9 +57,12 @@ TEAM_API_CONFIGS = {
         # Canonical names that are intentionally documented in more than one
         # place (Policy 04). ActorMethod.bind is documented once in the Ray Core
         # API and once in the Compiled Graph API; conf.py's DuplicateObjectFilter
-        # mirrors this exemption for the Sphinx render.
+        # mirrors this exemption for the Sphinx render. ray.remote (canonical
+        # ray._private.worker.remote) is cross-listed under both Tasks and
+        # Actors in ray-core/api/core.rst, since @ray.remote defines both.
         "intentional_duplicate_apis": {
             "ray.actor.ActorMethod.bind",
+            "ray._private.worker.remote",
         },
     },
     "train": {
