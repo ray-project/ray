@@ -24,6 +24,23 @@ from ray.util.placement_group import get_current_placement_group, placement_grou
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
+def _get_running_replicas(deployment_id: DeploymentID):
+    """Return RUNNING replicas for a deployment from controller state."""
+    controller = _get_global_client()._controller
+    replicas = ray.get(
+        controller._dump_replica_states_for_testing.remote(deployment_id)
+    )
+    return replicas.get([ReplicaState.RUNNING])
+
+
+def _get_gang_ids_from_running(running) -> set:
+    return {r.gang_context.gang_id for r in running if r.gang_context is not None}
+
+
+def _get_node_ids_from_running(running) -> set:
+    return {r.actor_node_id for r in running if r.actor_node_id}
+
+
 class TestGangScheduling:
     """Tests for gang scheduling with placement groups."""
 
@@ -159,11 +176,14 @@ class TestGangScheduling:
             timeout=60,
         )
 
-        # Verify all 12 replicas serve traffic.
-        results = set()
-        for _ in range(100):
-            results.add(handle.remote().result())
-        assert len(results) == 3
+        # Verify all 12 replicas are running across 3 nodes (controller state,
+        # not handle routing, which may only hit local replicas).
+        dep_id = DeploymentID(
+            name="IncompleteGangDeployment", app_name="gang_partial_app"
+        )
+        running = _get_running_replicas(dep_id)
+        assert len(running) == 12
+        assert len(_get_node_ids_from_running(running)) == 3
 
         serve.delete("gang_partial_app")
         serve.shutdown()
@@ -301,17 +321,14 @@ class TestGangScheduling:
             ),
         ).bind()
 
-        handle = serve.run(app, name="gang_spread_app")
+        serve.run(app, name="gang_spread_app")
         wait_for_condition(check_apps_running, apps=["gang_spread_app"])
 
-        # Query multiple times to hit all replicas and collect node IDs
-        node_ids = set()
-        for _ in range(40):
-            result = handle.remote().result()
-            node_ids.add(result)
-
-        # With SPREAD strategy, 2 replicas should be on 2 different nodes
-        assert len(node_ids) == 2
+        # With SPREAD strategy, 2 replicas should be on 2 different nodes.
+        dep_id = DeploymentID(name="SpreadDeployment", app_name="gang_spread_app")
+        running = _get_running_replicas(dep_id)
+        assert len(running) == 2
+        assert len(_get_node_ids_from_running(running)) == 2
 
         serve.delete("gang_spread_app")
         serve.shutdown()
@@ -1481,14 +1498,11 @@ class TestGangScaling:
         wait_for_condition(check_apps_running, apps=["app"])
 
         initial_num_gangs = initial_num_replicas // GANG_SIZE
+        deployment_id = DeploymentID(name="D", app_name="app")
 
-        # Collect the initial gang_ids.
-        initial_gang_ids = set()
-        # Hit the deployment with enough requests to collect all initial gang_ids
-        for _ in range(initial_num_replicas * 10):
-            resp = handle.remote().result()
-            if resp["gang_id"] is not None:
-                initial_gang_ids.add(resp["gang_id"])
+        initial_running = _get_running_replicas(deployment_id)
+        assert len(initial_running) == initial_num_replicas
+        initial_gang_ids = _get_gang_ids_from_running(initial_running)
         assert len(initial_gang_ids) == initial_num_gangs
 
         # Monitor requests during scaling to ensure zero downtime
@@ -1525,17 +1539,9 @@ class TestGangScaling:
 
         final_num_gangs = final_num_replicas // GANG_SIZE
 
-        # Verify that the final replicas form complete gangs and the
-        # preserved gangs are a subset relationship
-        final_gang_ids = set()
-        seen_pids = set()
-        for _ in range(final_num_replicas * 10):
-            resp = handle.remote().result()
-            if resp["gang_id"] is not None:
-                final_gang_ids.add(resp["gang_id"])
-            seen_pids.add(resp["pid"])
-            if len(seen_pids) >= final_num_replicas:
-                break
+        final_running = _get_running_replicas(deployment_id)
+        assert len(final_running) == final_num_replicas
+        final_gang_ids = _get_gang_ids_from_running(final_running)
         assert len(final_gang_ids) == final_num_gangs
 
         smaller, larger = sorted([initial_gang_ids, final_gang_ids], key=len)
@@ -1932,15 +1938,13 @@ class TestGangMigration:
                 }
 
         D = D.options(_internal=True, version="v1")
-        handle = serve.run(D.bind(), name="app")
+        serve.run(D.bind(), name="app")
         wait_for_condition(check_apps_running, apps=["app"])
 
-        gang_ids = set()
-        for _ in range(40):
-            resp = handle.remote().result()
-            if resp["gang_id"] is not None:
-                gang_ids.add(resp["gang_id"])
-        assert len(gang_ids) == 2
+        deployment_id = DeploymentID(name="D", app_name="app")
+        running = _get_running_replicas(deployment_id)
+        assert len(running) == 4
+        assert len(_get_gang_ids_from_running(running)) == 2
 
         # Add another node for replicas to migrate to, then drain a node
         cluster.add_node(num_cpus=1)
@@ -1951,14 +1955,8 @@ class TestGangMigration:
         deployment = list(serve.status().applications["app"].deployments.values())[0]
         assert deployment.replica_states.get("RUNNING", 0) == 4
 
-        deployment_id = DeploymentID(name="D", app_name="app")
-        controller = serve.context._get_global_client()._controller
-
         def check_complete_gangs():
-            replicas = ray.get(
-                controller._dump_replica_states_for_testing.remote(deployment_id)
-            )
-            running = replicas.get([ReplicaState.RUNNING])
+            running = _get_running_replicas(deployment_id)
             assert len(running) == 4
             gang_ids = {
                 r.gang_context.gang_id for r in running if r.gang_context is not None
