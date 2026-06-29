@@ -385,9 +385,9 @@ if setup_spec.type == SetupType.RAY:
                 "vllm[audio]==0.23.0; python_version < '3.14'",
                 "vllm[audio]==0.22.0; python_version >= '3.14'",
                 "nixl==1.2.0",
-                # cu12 binary to match the cu128-resolved torch family; see
+                # cu13 binary to match the cu130-resolved torch family; see
                 # ci/raydepsets/configs/rayllm.depsets.yaml.
-                "nixl-cu12==1.2.0",
+                "nixl-cu13==1.2.0",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",

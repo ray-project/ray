@@ -2579,17 +2579,17 @@ nixl==1.2.0 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py314_cu130.lock
     #   -r python/requirements/llm/llm-requirements.txt
-nixl-cu12==1.2.0 \
-    --hash=sha256:0e69cefe4ff7dd3829845f7b84306b1807fb3a2610bb6e81b9712f28ca1717fd \
-    --hash=sha256:2dca720380d516762109541fd71ee8d75482ffc625751cac2d2506ac97c49c09 \
-    --hash=sha256:6bc7a06228c608c86af3861848875369fb64b09e385deda6e0d249bc4a0af100 \
-    --hash=sha256:8d8c2c94e125532ef9212ecde3dabf387db75c251db7ecb6d4c2449660d91187 \
-    --hash=sha256:a3429cdb2e01114c8cde805e0551f3e65a3bd14337926a19f3f207a3202dcf78 \
-    --hash=sha256:af1b3622caf5850b0b8618118090d50921d9ec3dbe506484886045a7c8108417 \
-    --hash=sha256:b89e1dbfa9c54a76bd0ecfbc0ea091ccb88ff5908917c453244bbd1f98ec9f64 \
-    --hash=sha256:bb513081106c024d5c0c4dcf9b9ebf10779f485457916b3fa97df7819c86b693 \
-    --hash=sha256:ca2f2c387e0bb7f448922212cf0d6485e051289cf9c1b67f1ee4cb2ffd327c51 \
-    --hash=sha256:d92c4ef63ee16d521da81acb21f3ef0e3db92e716cb2bc0146dcb1b504ff1a14
+nixl-cu13==1.2.0 \
+    --hash=sha256:02d99185e5d243b2fedf5fbf75ccec7b2df51addca5377a396d0ea52b8bdd022 \
+    --hash=sha256:071952e71852ea17b4b83425fe086baa0c17a5074dec31106875cc3107f086f8 \
+    --hash=sha256:331535d8873b50fed26d76fc73007bbb51808c545f23d75c027cee4b9905d57f \
+    --hash=sha256:3e1bc99e0e2b6411a4c4bf97af8ee1a79a45e9e37684f3fe4e3359a2b80a49c1 \
+    --hash=sha256:7b2a2300493f74965e1805699a854fc1cb7e4c97b9d9e1ec80be88afa62ade7a \
+    --hash=sha256:893dfb8e0b037db265df119caf3d437f98b71201d666bb828e41a2edf9f2246f \
+    --hash=sha256:abcb82e7ae99b24f9db486d4e792a09db496fa6d76d4184a7d0a390299adc840 \
+    --hash=sha256:acfe519beeb212a4deb893394257ae1c6d49e9267604d6615f37e0f31ef92a42 \
+    --hash=sha256:dae1330fd5eeecd23b252b556fb1a528c22ea02ee2019cae92a5a3fad7e8f401 \
+    --hash=sha256:eef2b116d0d127761b814cb1aef03fdbfc55ea5e44f3c43048f2e046f3dfc641
     # via
     #   -c python/deplocks/llm/rayllm_test_py314_cu130.lock
     #   -r python/requirements/llm/llm-requirements.txt
@@ -5922,4 +5922,4 @@ zipp==3.23.1 \
 
 # The following packages were excluded from the output:
 # setuptools
-# nixl-cu13
+# nixl-cu12

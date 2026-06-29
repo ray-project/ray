@@ -11,10 +11,12 @@ prometheus-fastapi-instrumentator>=8.0.0  # for starlette v1.0.1+
 # Keep NIXL in sync with vLLM's kv_connectors requirements.
 # https://github.com/vllm-project/vllm/blob/v0.23.0/requirements/kv_connectors.txt#L2
 nixl==1.2.0
-# cu12 binary: the torch family is resolved from the cu128 index (see
-# ci/raydepsets/configs/rayllm.depsets.yaml), so nixl-cu12 is the matching
-# CUDA runtime for the cu128-based LLM image.
-nixl-cu12==1.2.0
+# cu13 binary: the torch family is resolved from the cu130 index (see
+# ci/raydepsets/configs/rayllm.depsets.yaml), so nixl-cu13 is the matching
+# CUDA runtime for the cu130-based LLM image. nixl-cu13's nixl_ep_cpp.so links
+# libcudart.so.13; the cu12 wheel links libcudart.so.12, which the cu130 image
+# does not provide, breaking vLLM's eager `import nixl_ep` on the EP path.
+nixl-cu13==1.2.0
 anyio>=4.5.0
 # For json mode
 jsonref>=1.1.0

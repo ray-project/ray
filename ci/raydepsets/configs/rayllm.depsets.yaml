@@ -23,15 +23,17 @@ build_arg_sets:
   append_flags:
     - --python-version=${PYTHON_VERSION_STR}
     - --unsafe-package ray
-    # Omit the nixl-cu13 binary wheel from the compiled lockfiles. nixl-cu12
+    # Omit the nixl-cu12 binary wheel from the compiled lockfiles. nixl-cu12
     # and nixl-cu13 1.x wheels both install a top-level nixl_ep/ package with
     # an identically named nixl_ep_cpp.so but different libcudart
-    # requirements. The torch family is resolved from the cu130 index; nixl-cu12
-    # is the pinned binary and nixl-cu13 is excluded so the cuda13 wheel
-    # can't win the file race and break vLLM's eager `import nixl_ep`. The
-    # nixl meta-package (pure Python) is still required so examples like
+    # requirements. The torch family is resolved from the cu130 index, so the
+    # image only provides libcudart.so.13; nixl-cu13 is the pinned binary (its
+    # nixl_ep_cpp.so links libcudart.so.13) and nixl-cu12 is excluded so the
+    # cuda12 wheel can't win the file race and break vLLM's eager
+    # `import nixl_ep` with `ImportError: libcudart.so.12`. The nixl
+    # meta-package (pure Python) is still required so examples like
     # dp_pd_example can `import nixl` to gate optional features.
-    - --unsafe-package nixl-cu13
+    - --unsafe-package nixl-cu12
     - --python-platform=x86_64-manylinux_2_31
     - --index https://download.pytorch.org/whl/${TORCH_CUDA_CODE}
   build_arg_sets:
