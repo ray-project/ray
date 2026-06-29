@@ -38,12 +38,6 @@ describe("memoryConverter", () => {
     expect(memoryConverter(input)).toEqual(expected);
   });
 
-  // The reporter agent serializes psutil process stats with as_dict(), which
-  // emits null for fields that psutil cannot read (e.g. pfaults/pageins on
-  // some platforms or when AccessDenied is raised). memoryConverter must not
-  // crash on null/undefined/NaN, otherwise the Worker table fails to render.
-  // See: https://github.com/ray-project/ray/issues (Cannot read properties of
-  // null (reading 'toFixed') at converter.ts)
   describe("edge cases", () => {
     test("returns '-' for null", () => {
       expect(memoryConverter(null)).toEqual("-");
