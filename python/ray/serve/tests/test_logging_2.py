@@ -16,7 +16,10 @@ from ray.serve._private.utils import get_component_file_name
 from ray.util.state import list_nodes
 
 
-@skip_if_haproxy("HAProxy does not write to the native Serve proxy log file")
+@skip_if_haproxy(
+    "access logs are emitted by HAProxy via option httplog to "
+    "RAY_SERVE_HAPROXY_LOG_TARGET, not the native Serve proxy log file this reads"
+)
 def test_http_access_log_in_proxy_logs_file(serve_instance):
     name = "deployment_name"
     fastapi_app = FastAPI()

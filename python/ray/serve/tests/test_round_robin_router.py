@@ -24,7 +24,9 @@ ROUTER_CLASS = "ray.serve.experimental.round_robin_router:RoundRobinRouter"
 
 # Every test sets a custom ingress request router, rejected under HAProxy per #64211.
 pytestmark = skip_if_haproxy(
-    "custom request router on the ingress deployment is unsupported (see #64211)"
+    "HAProxy load-balances ingress itself and never calls the Serve request "
+    "router, so a custom request_router_class on the ingress deployment cannot "
+    "take effect and is rejected at serve.run()"
 )
 
 

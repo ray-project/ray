@@ -383,8 +383,9 @@ def check_model_id_in_replicas(handle: DeploymentHandle, model_id: str) -> bool:
 
 
 @skip_if_haproxy(
-    "multiplexed model routing is unsupported on a HAProxy ingress deployment "
-    "because HAProxy bypasses the Serve request router"
+    "multiplex needs the Serve router to route by model id to a replica that has "
+    "the model loaded, but HAProxy load-balances ingress and never calls the "
+    "router, so requests reach replicas missing the model"
 )
 def test_multiplexed_e2e(serve_instance):
     """Test multiplexed function end to end"""
@@ -422,8 +423,9 @@ def test_multiplexed_e2e(serve_instance):
 
 
 @skip_if_haproxy(
-    "multiplexed model routing is unsupported on a HAProxy ingress deployment "
-    "because HAProxy bypasses the Serve request router"
+    "multiplex needs the Serve router to route by model id to a replica that has "
+    "the model loaded, but HAProxy load-balances ingress and never calls the "
+    "router, so requests reach replicas missing the model"
 )
 def test_multiplexed_lru_policy(serve_instance):
     """Test multiplexed function LRU policy"""
@@ -524,8 +526,9 @@ def test_setting_model_id_on_handle_does_not_set_it_locally(serve_instance):
 
 
 @skip_if_haproxy(
-    "multiplexed model routing is unsupported on a HAProxy ingress deployment "
-    "because HAProxy bypasses the Serve request router"
+    "multiplex needs the Serve router to route by model id to a replica that has "
+    "the model loaded, but HAProxy load-balances ingress and never calls the "
+    "router, so requests reach replicas missing the model"
 )
 def test_replica_upgrade_to_cleanup_resource(serve_instance):
     """When replica is upgraded, we need to make sure model resources are released."""
