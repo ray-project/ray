@@ -21,6 +21,7 @@ def validate_uri(uri: str):
     try:
         from ray._common.runtime_env_uri import parse_uri
         from ray._private.runtime_env.protocol import Protocol
+
         protocol, path = parse_uri(uri)
     except ValueError:
         raise ValueError(
