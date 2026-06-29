@@ -4860,6 +4860,9 @@
     byod:
       runtime_env:
         - VLLM_DISABLE_COMPILE_CACHE=1
+        - HF_HOME=/home/ray/.cache/huggingface
+        - RAY_LLM_BENCHMARK_DATASET_PATH=/tmp/ray_llm_benchmark_dataset
+        - RAY_LLM_BENCHMARK_ARTIFACT_PATH=/tmp/ray_llm_benchmark.json
       type: llm-cu130
       post_build_script: byod_llm_single_node_baseline_benchmark.sh
       python_depset: llm_batch/llm_batch_single_node_benchmark_py312_cu130.lock
@@ -4868,6 +4871,7 @@
 
   run:
     timeout: 3600
+    artifact_path: /tmp/ray_llm_benchmark.json
     script: pytest -v test_batch_single_node_vllm.py::test_single_node_baseline_benchmark
 
 

@@ -132,13 +132,16 @@ aiohttp==3.13.3 \
     --hash=sha256:fee0c6bc7db1de362252affec009707a17478a00ec69f797d23ca256e36d5940
     # via
     #   -r python/requirements.txt
+    #   -r release/llm_tests/batch/requirements.in
     #   aiohttp-cors
     #   fsspec
     #   taskiq
 aiohttp-cors==0.8.1 \
     --hash=sha256:3180cf304c5c712d626b9162b195b1db7ddf976a2a25172b35bb2448b890a80d \
     --hash=sha256:ccacf9cb84b64939ea15f859a146af1f662a6b1d68175754a07315e305fb1403
-    # via -r python/requirements.txt
+    # via
+    #   -r python/requirements.txt
+    #   -r release/llm_tests/batch/requirements.in
 aiorwlock==1.5.1 \
     --hash=sha256:2729c77ec736c8d85ec305aa3827a50394fd8c6d823f4404d301cc8c59a4b7f5 \
     --hash=sha256:a28e534a5fce4dabe437055db141369a0803c69fe61c406b6fc5cdfa8f3dda13
@@ -1409,7 +1412,9 @@ numpy==2.4.2 \
 opencensus==0.11.4 \
     --hash=sha256:a18487ce68bc19900336e0ff4655c5a116daf10c1b3685ece8d971bddad6a864 \
     --hash=sha256:cbef87d8b8773064ab60e5c2a1ced58bbaa38a6d052c41aec224958ce544eff2
-    # via -r python/requirements.txt
+    # via
+    #   -r python/requirements.txt
+    #   -r release/llm_tests/batch/requirements.in
 opencensus-context==0.1.3 \
     --hash=sha256:073bb0590007af276853009fac7e4bab1d523c3f03baf4cb4511ca38967c6039 \
     --hash=sha256:a03108c3c10d8c80bb5ddf5c8a1f033161fa61972a9917f9b9b3a18517f0088c
@@ -1419,13 +1424,16 @@ opentelemetry-api==1.39.1 \
     --hash=sha256:fbde8c80e1b937a2c61f20347e91c0c18a1940cecf012d62e65a7caf08967c9c
     # via
     #   -r python/requirements.txt
+    #   -r release/llm_tests/batch/requirements.in
     #   opentelemetry-exporter-prometheus
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
 opentelemetry-exporter-prometheus==0.60b1 \
     --hash=sha256:49f59178de4f4590e3cef0b8b95cf6e071aae70e1f060566df5546fad773b8fd \
     --hash=sha256:a4011b46906323f71724649d301b4dc188aaa068852e814f4df38cc76eac616b
-    # via -r python/requirements.txt
+    # via
+    #   -r python/requirements.txt
+    #   -r release/llm_tests/batch/requirements.in
 opentelemetry-proto==1.39.1 \
     --hash=sha256:22cdc78efd3b3765d09e68bfbd010d4fc254c9818afd0b6b423387d9dee46007 \
     --hash=sha256:6c8e05144fc0d3ed4d22c2289c6b126e03bcd0e6a7da0f16cedd2e1c2772e2c8
@@ -1435,6 +1443,7 @@ opentelemetry-sdk==1.39.1 \
     --hash=sha256:cf4d4563caf7bff906c9f7967e2be22d0d6b349b908be0d90fb21c8e9c995cc6
     # via
     #   -r python/requirements.txt
+    #   -r release/llm_tests/batch/requirements.in
     #   opentelemetry-exporter-prometheus
 opentelemetry-semantic-conventions==0.60b1 \
     --hash=sha256:87c228b5a0669b748c76d76df6c364c369c28f1c465e50f661e39737e84bc953 \
@@ -1565,6 +1574,7 @@ prometheus-client==0.24.1 \
     --hash=sha256:7e0ced7fbbd40f7b84962d5d2ab6f17ef88a72504dcf7c0b40737b43b2a461f9
     # via
     #   -r python/requirements.txt
+    #   -r release/llm_tests/batch/requirements.in
     #   opentelemetry-exporter-prometheus
 prompt-toolkit==3.0.52 \
     --hash=sha256:28cde192929c8e7321de85de1ddbe736f1375148b02f2e17edd840042b1be855 \
