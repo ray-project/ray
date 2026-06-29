@@ -63,7 +63,6 @@ from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
 from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data._internal.datasource.torch_datasource import TorchDatasource
-from ray.data._internal.datasource.uc_datasource import UnityCatalogConnector
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.datasource.zarrv2_datasource import ZarrV2Datasource
@@ -116,7 +115,12 @@ from ray.data.datasource.util import (
     _validate_head_node_resources_for_local_scheduling,
 )
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, PublicAPI, RayDeprecationWarning
+from ray.util.annotations import (
+    Deprecated,
+    DeveloperAPI,
+    PublicAPI,
+    RayDeprecationWarning,
+)
 
 if TYPE_CHECKING:
     import daft
@@ -133,6 +137,8 @@ if TYPE_CHECKING:
     import torch
     from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
+
+    from ray.data.catalog import Catalog
 
 T = TypeVar("T")
 
@@ -1268,6 +1274,7 @@ def read_parquet(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    catalog: Optional["Catalog"] = None,
     columns: Optional[List[str]] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
@@ -1359,8 +1366,8 @@ def read_parquet(
         pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment>`_.
 
     Args:
-        paths: A single file path or directory, or a list of file paths. Multiple
-            directories are not supported.
+        paths: A single file path, directory, a list of file paths, or a table name
+            (when used with ``catalog``). Multiple directories/tables are not supported.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
@@ -1369,6 +1376,11 @@ def read_parquet(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
             used. If ``None``, this function uses a system-chosen implementation.
+        catalog: An optional :class:`~ray.data.Catalog` (e.g.
+            :class:`~ray.data.DatabricksUnityCatalog`) used to authenticate access.
+            When provided, ``paths`` is interpreted as a catalog table identifier
+            (e.g. ``"catalog.schema.table"``) rather than a filesystem path, and
+            the catalog resolves the physical location and credentials.
         columns: A list of column names to read. Only the specified columns are
             read during the file scan. Deprecated — use
             :meth:`~ray.data.Dataset.select_columns` on the returned dataset
@@ -1444,6 +1456,23 @@ def read_parquet(
         restart more workers.
     """
     _validate_shuffle_arg(shuffle)
+
+    if catalog is not None:
+        if not isinstance(paths, str):
+            raise ValueError("Specifying multiple table identifiers is not supported.")
+
+        from ray.data.catalog import ReaderFormat
+
+        resolved = catalog.resolve(paths, reader=ReaderFormat.PARQUET)
+        paths = resolved.path
+        if resolved.filesystem is not None:
+            if filesystem is not None:
+                logger.warning(
+                    "Both `filesystem` and `catalog` were specified. Overriding "
+                    "the provided `filesystem` with the catalog-resolved "
+                    "credentials."
+                )
+            filesystem = resolved.filesystem
 
     # Check for deprecated filter parameter
     if "filter" in arrow_parquet_args:
@@ -4298,6 +4327,7 @@ def read_iceberg(
     snapshot_id: Optional[int] = None,
     scan_kwargs: Optional[Dict[str, str]] = None,
     catalog_kwargs: Optional[Dict[str, str]] = None,
+    catalog: Optional["Catalog"] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -4348,6 +4378,11 @@ def read_iceberg(
              `pyiceberg catalog
              <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
              #pyiceberg.catalog.load_catalog>`_.
+        catalog: An optional :class:`~ray.data.Catalog` (e.g.
+            :class:`~ray.data.DatabricksUnityCatalog`) used to authenticate access.
+            When provided, the catalog supplies ``catalog_kwargs`` pointing at its
+            Iceberg REST endpoint. ``catalog`` will be ignored if ``catalog_kwargs``
+            is specified.
         ray_remote_args: Optional arguments to pass to :func:`ray.remote` in the
             read tasks.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
@@ -4385,6 +4420,20 @@ def read_iceberg(
             DeprecationWarning,
             stacklevel=2,
         )
+
+    if catalog is not None:
+        if catalog_kwargs:
+            logger.warning(
+                "`catalog` and `catalog_kwargs` are both specified. "
+                "Ignoring `catalog` and using `catalog_kwargs` instead."
+            )
+        else:
+            from ray.data.catalog import ReaderFormat
+
+            resolved = catalog.resolve(table_identifier, reader=ReaderFormat.ICEBERG)
+            catalog_kwargs = resolved.catalog_kwargs or {}
+            if resolved.table_identifier is not None:
+                table_identifier = resolved.table_identifier
 
     # Setup the Datasource
     datasource = IcebergDatasource(
@@ -4596,7 +4645,16 @@ def read_clickhouse(
     )
 
 
-@PublicAPI(stability="alpha")
+@Deprecated(
+    message=(
+        "``read_unity_catalog`` is deprecated. Use ``read_delta``, "
+        "``read_parquet``, or ``read_iceberg`` with a "
+        "``catalog=ray.data.DatabricksUnityCatalog(...)`` instead. For example::\n\n"
+        "    catalog = ray.data.DatabricksUnityCatalog(url=..., token=..., region=...)\n"
+        "    ds = ray.data.read_delta('main.sales.transactions', catalog=catalog)"
+    ),
+    warning=True,
+)
 def read_unity_catalog(
     table: str,
     url: Optional[str] = None,
@@ -4615,10 +4673,6 @@ def read_unity_catalog(
     REST API (Unity Catalog credential vending for external system access, `Databricks Docs <https://docs.databricks.com/en/external-access/credential-vending.html>`_),
     ensuring that permissions are enforced at the Databricks principal (user, group, or service principal) making the request.
     The function supports reading data directly from AWS S3, Azure Data Lake, or GCP GCS in standard formats including Delta and Parquet.
-
-    .. note::
-
-       This function is experimental and under active development.
 
     Examples:
         Read a Unity Catalog Delta table:
@@ -4670,25 +4724,33 @@ def read_unity_catalog(
     Returns:
         A :class:`~ray.data.Dataset` containing the data from Unity Catalog.
     """  # noqa: E501
-    from ray.data._internal.datasource.databricks_credentials import (
-        UnityCatalogCredentialConfig,
-        resolve_credential_provider,
-    )
+    from ray.data.catalog import DatabricksUnityCatalog, ReaderFormat
 
-    resolved_provider = resolve_credential_provider(
-        UnityCatalogCredentialConfig(
-            credential_provider=credential_provider, url=url, token=token
-        )
-    )
-
-    connector = UnityCatalogConnector(
-        table_full_name=table,
-        credential_provider=resolved_provider,
-        data_format=data_format,
+    catalog = DatabricksUnityCatalog(
+        url=url,
+        token=token,
+        credential_provider=credential_provider,
         region=region,
-        reader_kwargs=reader_kwargs,
     )
-    return connector.read()
+    reader_kwargs = reader_kwargs or {}
+
+    fmt = ReaderFormat(data_format.lower()) if data_format else None
+    if fmt is None:
+        fmt = catalog.infer_format(table)
+        if fmt is None:
+            raise ValueError(
+                f"Could not infer the data format for table {table!r}. Pass "
+                f"`data_format` explicitly (one of: "
+                f"{', '.join(f.value for f in ReaderFormat)})."
+            )
+
+    if fmt is ReaderFormat.DELTA:
+        return read_delta(table, catalog=catalog, **reader_kwargs)
+    if fmt is ReaderFormat.PARQUET:
+        return read_parquet(table, catalog=catalog, **reader_kwargs)
+    if fmt is ReaderFormat.ICEBERG:
+        return read_iceberg(table_identifier=table, catalog=catalog, **reader_kwargs)
+    raise ValueError(f"Unsupported data_format for read_unity_catalog: {fmt!r}")
 
 
 @PublicAPI(stability="alpha")
@@ -4698,6 +4760,7 @@ def read_delta(
     *,
     storage_options: Optional[Dict[str, Any]] = None,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    catalog: Optional["Catalog"] = None,
     columns: Optional[List[str]] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
@@ -4767,6 +4830,11 @@ def read_delta(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
             used. If ``None``, this function uses a system-chosen implementation.
+        catalog: An optional :class:`~ray.data.Catalog` (e.g.
+            :class:`~ray.data.DatabricksUnityCatalog`) used to authenticate access.
+            When provided, ``path`` is interpreted as a catalog table identifier
+            (e.g. ``"catalog.schema.table"``) rather than a filesystem path, and
+            the catalog resolves the physical location and credentials.
         columns: A list of column names to read. Only the specified columns are
             read during the file scan.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
@@ -4819,8 +4887,41 @@ def read_delta(
     if not isinstance(path, str):
         raise ValueError("Only a single Delta Lake table path is supported.")
 
+    if catalog is not None:
+        from ray.data.catalog import ReaderFormat
+
+        resolved = catalog.resolve(path, reader=ReaderFormat.DELTA)
+        path = resolved.path
+        if resolved.storage_options:
+            storage_options = {**resolved.storage_options, **(storage_options or {})}
+        if resolved.filesystem is not None:
+            if filesystem is not None:
+                logger.warning(
+                    "Both `filesystem` and `catalog` were specified. Overriding "
+                    "the provided `filesystem` with the catalog-resolved "
+                    "credentials."
+                )
+            # `to_pyarrow_dataset` emits table-relative file paths and requires
+            # the filesystem to be rooted at the table directory. The catalog
+            # vends a bucket-rooted filesystem, so wrap it in a SubTreeFileSystem
+            # rooted at the table path (see `DeltaTable.to_pyarrow_dataset`).
+            import pyarrow.fs as pafs
+
+            _, normalized_path = pafs.FileSystem.from_uri(path)
+            filesystem = pafs.SubTreeFileSystem(normalized_path, resolved.filesystem)
+
     dt = DeltaTable(path, version=version, storage_options=storage_options)
-    pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)
+    try:
+        pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)
+    except Exception as e:
+        error_msg = str(e)
+        # from: https://github.com/delta-io/delta-rs/blob/main/python/deltalake/table.py
+        if "deletionVectors" in error_msg:
+            raise RuntimeError(
+                f"Delta table uses Deletion Vectors, which requires deltalake>=0.10.0. "
+                f"Error: {error_msg}\n"
+            ) from e
+        raise
 
     datasource = ParquetDatasource.from_pyarrow_dataset(
         pa_dataset,
