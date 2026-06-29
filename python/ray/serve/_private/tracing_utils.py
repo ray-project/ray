@@ -62,6 +62,40 @@ def get_tracer():
     return _tracer
 
 
+class _LazySpanFile:
+    """File-like span sink that opens the file on the first write.
+
+    A component can set up tracing yet never emit a span. The fallback
+    ProxyActor under HAProxy direct ingress is one such case. Defer opening the
+    file until the first write so no empty span file is left behind.
+    """
+
+    def __init__(self, path: str):
+        self._path = path
+        self._file = None
+        self._lock = threading.Lock()
+
+    def write(self, data):
+        with self._lock:
+            if self._file is None:
+                self._file = open(self._path, "a")
+            return self._file.write(data)
+
+    def flush(self):
+        with self._lock:
+            if self._file is not None:
+                self._file.flush()
+
+    def close(self):
+        with self._lock:
+            if self._file is not None:
+                self._file.close()
+
+    @property
+    def closed(self):
+        return self._file is None or self._file.closed
+
+
 # Default tracing exporter needs to map to DEFAULT_TRACING_EXPORTER_IMPORT_PATH
 # defined in "python/ray/serve/_private/constants.py"
 def default_tracing_exporter(tracing_file_name):
@@ -72,7 +106,7 @@ def default_tracing_exporter(tracing_file_name):
     os.makedirs(spans_dir, exist_ok=True)
     spans_file = os.path.join(spans_dir, tracing_file_name)
 
-    out_file = open(spans_file, "a")
+    out_file = _LazySpanFile(spans_file)
 
     class FileConsoleSpanExporter(ConsoleSpanExporter):
         def shutdown(self):

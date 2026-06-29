@@ -462,13 +462,14 @@ def test_tracing_e2e(
     spans_dir = os.path.join(serve_logs_dir, "spans")
     files = os.listdir(spans_dir)
 
-    # proxy, replica, and upstream span files. Under HAProxy the proxy file is
-    # still written by the fallback ProxyActor but holds no request spans under
-    # direct ingress.
-    assert len(files) == 3
+    if RAY_SERVE_ENABLE_HA_PROXY:
+        # We don't currently trace HAProxy.
+        assert len(files) == 2
+    else:
+        assert len(files) == 3
 
     replica_filename = None
-    proxy_filename = None
+    proxy_filename = None or RAY_SERVE_ENABLE_HA_PROXY
     upstream_filename = None
     for file in files:
         if "replica" in file:
@@ -661,13 +662,14 @@ def test_tracing_e2e_with_errors(
     spans_dir = os.path.join(serve_logs_dir, "spans")
     files = os.listdir(spans_dir)
 
-    # proxy, replica, and upstream span files. Under HAProxy the proxy file is
-    # still written by the fallback ProxyActor but holds no request spans under
-    # direct ingress.
-    assert len(files) == 3
+    if RAY_SERVE_ENABLE_HA_PROXY:
+        # We don't currently trace HAProxy.
+        assert len(files) == 2
+    else:
+        assert len(files) == 3  # proxy, replica, and upstream spans
 
     replica_filename = None
-    proxy_filename = None
+    proxy_filename = None or RAY_SERVE_ENABLE_HA_PROXY
     upstream_filename = None
     for file in files:
         if "replica" in file:
