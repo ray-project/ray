@@ -1933,12 +1933,19 @@ class Replica:
 
     @contextmanager
     def _track_queued_request(self) -> Generator[Callable[[], None], None, None]:
-        """Count a queued direct-ingress request for the duration of the block.
+        """Count this request against max_queued_requests while it waits for a slot.
 
-        Increments _num_queued_requests on entry and yields a release callback.
-        The counter is decremented once, when release runs after a slot is
-        acquired or when the block exits. This keeps a request cancelled while
-        queued from leaking its count and wedging backpressure.
+        A direct-ingress request is queued from admission until it acquires an
+        ongoing-request slot. Use this as a `with` block around that wait.
+        Entering adds the request to the count. There are two ways it is removed.
+
+        1. The caller invokes the yielded callback once the slot is acquired, so
+           a running request does not keep occupying a queue slot.
+        2. The block exit removes it when the slot was never acquired, for
+           example a cancellation while the request is still queued.
+
+        The callback is idempotent, so both happening is safe and a cancelled
+        request cannot leak its count and wedge backpressure.
         """
         self._num_queued_requests += 1
         released = False
@@ -2581,7 +2588,7 @@ class Replica:
             self._track_queued_request() as release_queue_slot,
         ):
             async with self._start_request(request_metadata):
-                # No longer queued once a running slot is held.
+                # Acquired an ongoing-request slot, so it's running, not queued.
                 release_queue_slot()
                 # Use the generic disconnect detecting wrapper
                 result_gen = call_unary()
@@ -2861,7 +2868,7 @@ class Replica:
 
             async def call_asgi():
                 async with self._start_request(request_metadata):
-                    # No longer queued once a running slot is held.
+                    # Acquired an ongoing-request slot, so it's running, not queued.
                     release_queue_slot()
                     if (
                         not self._user_callable_wrapper._run_user_code_in_separate_thread
