@@ -59,7 +59,10 @@ def create_cluster_autoscaler(
             total_gpu += bundle.get("GPU", 0)
             total_mem += bundle.get("memory", 0)
         pg_resources = ExecutionResources(
-            cpu=total_cpu, gpu=total_gpu, memory=total_mem
+            cpu=total_cpu,
+            gpu=total_gpu,
+            memory=total_mem if total_mem > 0 else float("inf"),
+            object_store_memory=float("inf"),
         )
         if resource_limits != ExecutionResources.inf():
             pg_resources = pg_resources.min(resource_limits)

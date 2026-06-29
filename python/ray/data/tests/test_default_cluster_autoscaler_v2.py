@@ -1003,6 +1003,8 @@ def test_create_cluster_autoscaler_with_pg_strategy():
     resources = autoscaler.get_total_resources()
     assert resources.cpu == 2
     assert resources.gpu == 0
+    assert resources.memory == float("inf")
+    assert resources.object_store_memory == float("inf")
 
 
 def test_pg_autoscaler_respects_resource_limits():
