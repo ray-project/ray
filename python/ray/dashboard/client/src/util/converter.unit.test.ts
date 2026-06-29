@@ -45,18 +45,15 @@ describe("memoryConverter", () => {
   // See: https://github.com/ray-project/ray/issues (Cannot read properties of
   // null (reading 'toFixed') at converter.ts)
   describe("edge cases", () => {
-    test("returns '-' for null instead of throwing", () => {
-      expect(() => memoryConverter(null)).not.toThrow();
+    test("returns '-' for null", () => {
       expect(memoryConverter(null)).toEqual("-");
     });
 
-    test("returns '-' for undefined instead of throwing", () => {
-      expect(() => memoryConverter(undefined)).not.toThrow();
+    test("returns '-' for undefined", () => {
       expect(memoryConverter(undefined)).toEqual("-");
     });
 
-    test("returns '-' for NaN instead of throwing", () => {
-      expect(() => memoryConverter(NaN)).not.toThrow();
+    test("returns '-' for NaN", () => {
       expect(memoryConverter(NaN)).toEqual("-");
     });
   });
