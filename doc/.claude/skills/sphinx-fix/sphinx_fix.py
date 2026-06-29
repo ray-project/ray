@@ -85,6 +85,7 @@ class AbortSignal:
     signature: str
     excerpt: list[str]
     warning_tail_present: bool
+    hint: str | None = None
 
 
 @dataclass
@@ -434,6 +435,31 @@ def parse_build_state(text: str) -> BuildState:
     return st
 
 
+# A decoy-aware hint for the autosummary import abort. autosummary imports every
+# documented object at builder-inited, so the module the error names is usually
+# NOT the culprit: an unrelated module's import chain broke (commonly a dep that
+# autodoc_mock_imports mocks for the doc build but that runs at import time), and
+# the named object is just the first to trip it. See build-troubleshooter-design.md.
+AUTOSUMMARY_ABORT_HINT = (
+    "the named module is usually a DECOY. autosummary imports every documented "
+    "object at builder-inited, so the real cause is typically an unrelated module "
+    "whose import chain breaks under autodoc_mock_imports (a dep mocked for the doc "
+    "build -- numpy/pandas/etc. -- but used at import time), aborting a shared "
+    "import (in Ray, ray.air imports ray.data). Trace the import to the offending "
+    "eager import and make it lazy; the named module is just the first to trip it."
+)
+
+
+def _abort_hint(name: str, text: str) -> str | None:
+    if (
+        name == "extension-error"
+        and "autosummary" in text
+        and ("no module named" in text or "ImportExceptionGroup" in text)
+    ):
+        return AUTOSUMMARY_ABORT_HINT
+    return None
+
+
 def detect_abort(text: str, state: BuildState) -> AbortSignal | None:
     """Detect a hard-broken build that aborted before the warning pass.
 
@@ -450,7 +476,12 @@ def detect_abort(text: str, state: BuildState) -> AbortSignal | None:
         for name, rx in ABORT_RES:
             if rx.search(raw):
                 excerpt = [ln.rstrip() for ln in lines[i : i + 5]]
-                return AbortSignal(name, excerpt, warning_tail_present=completed)
+                return AbortSignal(
+                    name,
+                    excerpt,
+                    warning_tail_present=completed,
+                    hint=_abort_hint(name, text),
+                )
     return None
 
 
@@ -642,6 +673,8 @@ def render_human(report: Report) -> str:
         out.append(f"  signal: {report.abort.signature}")
         for ln in report.abort.excerpt:
             out.append(f"    {ln}")
+        if report.abort.hint:
+            out.append(f"  hint: {report.abort.hint}")
         out.append("  The warning list below is incomplete until this is fixed.")
         out.append("")
 
@@ -744,6 +777,7 @@ def render_json(report: Report) -> str:
             else {
                 "signature": report.abort.signature,
                 "excerpt": report.abort.excerpt,
+                "hint": report.abort.hint,
             }
         ),
         "build_state": {

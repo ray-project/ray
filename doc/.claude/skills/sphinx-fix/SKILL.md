@@ -66,7 +66,7 @@ Stdlib-only — no install. It prefers PyYAML to read `rules.yaml` but falls bac
 
 The report has four parts, in priority order:
 
-1. **Abort banner** (only if present) — a hard-broken build (a `conf.py`/extension error, a traceback, or `SEVERE:` with no completion summary) aborted before the warning pass. **Fix this first; the rest of the log is unreliable.**
+1. **Abort banner** (only if present) — a hard-broken build (a `conf.py`/extension error, a traceback, or `SEVERE:` with no completion summary) aborted before the warning pass. **Fix this first; the rest of the log is unreliable.** For an autosummary import abort, the banner adds a `hint:` — the named module is usually a decoy for an unrelated module whose import chain broke (often a dep mocked by `autodoc_mock_imports` but used at import time); trace it and make the eager import lazy.
 2. **Findings**, grouped by tier (1 → 2 → 3). Each row is `[T2] <rule-id> <path:line>` plus the warning message, the canonical `fix:` (with a `Suggested:` rewrite for mechanical rules), and a `safety:` flag. `judgment` findings need your decision.
 3. **Unclassified** — warnings no rule matched. **Never silently dropped.** Resolve each with the user, then file a skill-improvement ticket so `rules.yaml` gains a rule (see below).
 4. **Suppressed** — known-benign classes the build already filters; not actionable.
