@@ -8,21 +8,27 @@ run under both launchers: ``ray`` (Ray Train TorchTrainer) and ``torchrun``
 import json
 import logging
 import os
+import shutil
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-# Where rank-0 workers drop their final metrics for the driver to pick up.
-# Anyscale clusters have /mnt/cluster_storage; fall back to /tmp for local runs.
-def default_metrics_path(experiment_name: str) -> str:
+
+def _shared_root() -> str:
+    """Shared cluster storage root (visible to all nodes), or /tmp locally."""
     root = (
         "/mnt/cluster_storage"
         if os.path.isdir("/mnt/cluster_storage")
         else "/tmp/train_benchmark"
     )
     os.makedirs(root, exist_ok=True)
-    return os.path.join(root, f"{experiment_name}_metrics.json")
+    return root
+
+
+# Where rank-0 workers drop their final metrics for the driver to pick up.
+def default_metrics_path(experiment_name: str) -> str:
+    return os.path.join(_shared_root(), f"{experiment_name}_metrics.json")
 
 
 class TrainContext(ABC):
@@ -113,6 +119,15 @@ class TorchrunContext(TrainContext):
         else:
             self._device = torch.device("cpu")
 
+        # Durable checkpoint destination on shared storage, so the torchrun
+        # baseline exercises the same save+persist work as the Ray path (for an
+        # apples-to-apples e2e comparison). Counter advances in lockstep across
+        # ranks since every rank calls report() the same number of times.
+        self._checkpoint_base = os.path.join(
+            _shared_root(), experiment_name, "checkpoints"
+        )
+        self._checkpoint_counter = 0
+
     @property
     def world_rank(self) -> int:
         return self._world_rank
@@ -129,14 +144,30 @@ class TorchrunContext(TrainContext):
         return self._device
 
     def report(self, metrics: Dict[str, Any], checkpoint_dir: Optional[str] = None):
-        # Torchrun baseline only measures perf parity; checkpoints stay local
-        # and metrics go to the shared results file for the driver to read.
+        # Persist the checkpoint on EVERY rank — DeepSpeed shards are per-rank,
+        # so all ranks must write their shard into the shared destination.
+        if checkpoint_dir is not None:
+            self._persist_checkpoint(checkpoint_dir)
+        # Metrics are identical across ranks; rank 0 writes the results file.
         if self.world_rank == 0:
             logger.info(f"[torchrun] report: {metrics}")
             with open(default_metrics_path(self._experiment_name), "w") as f:
                 json.dump(metrics, f)
 
+    def _persist_checkpoint(self, checkpoint_dir: str) -> None:
+        dest = os.path.join(
+            self._checkpoint_base, f"checkpoint_{self._checkpoint_counter:06d}"
+        )
+        self._checkpoint_counter += 1
+        # dirs_exist_ok so all ranks merge their distinct shard files into one
+        # checkpoint directory without colliding.
+        shutil.copytree(checkpoint_dir, dest, dirs_exist_ok=True)
+        if self.world_rank == 0:
+            logger.info(f"[torchrun] persisted checkpoint -> {dest}")
+
     def get_checkpoint_dir(self) -> Optional[str]:
+        # Restore-from-checkpoint is not wired for the torchrun baseline yet;
+        # the save path above is what the e2e comparison needs.
         return None
 
 

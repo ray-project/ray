@@ -39,17 +39,15 @@ def run_experiment(cfg: ExperimentConfig) -> Dict[str, Any]:
         from core.launchers.ray_launcher import run_with_ray
 
         return run_with_ray(cfg)
-    elif cfg.launcher == "torchrun":
-        from core.launchers.torchrun_launcher import run_with_torchrun
-
-        return run_with_torchrun(cfg)
     elif cfg.launcher == "torchrun_ray":
-        # torch.distributed (env:// rendezvous) placed by Ray actors — the
-        # torchrun parity baseline without ssh-ing into GPU nodes.
+        # The torch.distributed parity baseline: vanilla init_process_group
+        # ("env://") with Ray actors as the launcher (placement + rank/master
+        # env vars). This is exactly how the legacy air_benchmarks ran "vanilla
+        # torch" — Ray actors stand up the process group, no ssh/srun needed.
         from core.launchers.torchrun_ray_launcher import run_with_torchrun_ray
 
         return run_with_torchrun_ray(cfg)
-    raise ValueError(f"Unknown launcher: {cfg.launcher}")
+    raise ValueError(f"Unknown launcher: {cfg.launcher}. Use 'ray' or 'torchrun_ray'.")
 
 
 def main() -> None:

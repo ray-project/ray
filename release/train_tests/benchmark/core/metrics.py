@@ -11,6 +11,7 @@ import statistics
 import threading
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -87,36 +88,49 @@ def get_gpu_peak_bandwidth_gbps(device_name: str) -> Optional[float]:
     return None
 
 
-def transformer_flops_per_token(
-    num_params: int,
-    num_layers: int,
-    hidden_size: int,
-    seq_len: int,
-    include_backward: bool = True,
-) -> float:
-    """Approximate train FLOPs per token for a decoder-only transformer.
+@dataclass
+class FlopsSpec:
+    """Inputs to the train-FLOPs-per-token estimate.
 
-    Uses the standard 6N approximation (forward 2N + backward 4N) plus the
-    attention score/value matmuls which the parameter-count term misses:
-    12 * num_layers * hidden_size * seq_len  (= 6 * 2 * L * d * T).
-    Matches the accounting used by PaLM (Appendix B) and llm-foundry's MFU
-    tables, so results are comparable across benchmark reports.
+    ``active_params`` is the params that fire per token: for a dense model this
+    is the total; for MoE it's the non-expert params + top_k expert params
+    (+ always-on shared experts). Total experts must NOT be included — they
+    don't execute per token. This matches Megatron-LM and llm-foundry, which
+    both put *active* params in the param term and keep attention on the full
+    (dense) model. (HF Trainer is the outlier that uses total params and
+    overcounts MoE — we deliberately don't follow it.)
     """
-    factor = 6 if include_backward else 2
-    attn_factor = 12 if include_backward else 4
-    return factor * num_params + attn_factor * num_layers * hidden_size * seq_len
+
+    active_params: int
+    num_layers: int
+    hidden_size: int
+    seq_len: int
+    # "quadratic" (standard softmax attention), "linear" (Gated DeltaNet / SSM /
+    # RWKV-style — O(seq), negligible per-token, omitted), or "none".
+    attention: str = "quadratic"
+    include_backward: bool = True
 
 
-def model_flops_per_token_from_hf_config(
-    num_params: int, hf_config: Any, seq_len: int
-) -> float:
-    """Convenience wrapper reading layer/hidden dims off a HF PretrainedConfig."""
-    return transformer_flops_per_token(
-        num_params=num_params,
-        num_layers=hf_config.num_hidden_layers,
-        hidden_size=hf_config.hidden_size,
-        seq_len=seq_len,
-    )
+def flops_per_token(spec: FlopsSpec) -> float:
+    """Approximate train FLOPs per token.
+
+    Param term: 6 * active_params (forward 2N + backward 4N). Attention term for
+    quadratic attention: 12 * L * hidden * seq (the score/value matmuls the
+    param term misses) — equals llm-foundry's `4*L*d*s^2` per sequence times the
+    x3 fwd+bwd factor, divided by seq. Aligns with PaLM Appendix B / llm-foundry,
+    so MFU is comparable across published reports.
+    """
+    factor = 6 if spec.include_backward else 2
+    total = factor * spec.active_params
+    if spec.attention == "quadratic":
+        attn_factor = 12 if spec.include_backward else 4
+        total += attn_factor * spec.num_layers * spec.hidden_size * spec.seq_len
+    elif spec.attention == "linear":
+        # Linear attention is O(seq) per sequence -> ~O(1) per token and
+        # architecture-specific; omitted, so MFU is a slight (conservative)
+        # underestimate. TODO: model the recurrent-state-update FLOPs per family.
+        pass
+    return total
 
 
 class GpuMonitor:

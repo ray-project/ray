@@ -17,8 +17,9 @@ model:
   adapter: deepspeed
   name: Qwen/Qwen3-0.6B          # HF model id; AutoModelForCausalLM.from_pretrained
   parallelism:
-    zero_stage: 2                # 0.6B fits easily; stage 2 shards optimizer+grads,
-                                 # avoids the extra param-gather comms of stage 3
+    zero_stage: 1                # 0.6B fits easily; stage 1 shards only optimizer
+                                 # state. Full sharding (stage 3) / grad sharding
+                                 # (stage 2) add comms with no memory benefit here.
   precision: bf16                # A10G supports bf16 natively
   attn_implementation: sdpa      # avoid eager attention's O(S^2) score matrix
   gradient_checkpointing: true   # fit activations on 24GB; trades ~30% recompute

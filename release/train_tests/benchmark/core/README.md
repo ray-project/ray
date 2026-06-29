@@ -16,8 +16,8 @@ core/
   sinks.py               write results (release-test json + local mirror)
   launchers/
     ray_launcher.py            Ray Train TorchTrainer wiring
-    torchrun_launcher.py       runs inside a torchrun-spawned process (env:// rendezvous)
-    torchrun_ray_launcher.py   torch.distributed placed by Ray actors (no ssh needed)
+    torchrun_ray_launcher.py   vanilla torch.distributed placed by Ray actors (baseline)
+    torchrun_launcher.py       internal: the per-process env:// body torchrun_ray runs
   prepare.py             prefetch model + dataset into a shared HF cache
 frameworks/
   base_adapter.py        FrameworkAdapter ABC
@@ -59,48 +59,34 @@ variance from the measured loop):
 python -m core.runner --experiment experiments/qwen3_06b_deepspeed.yaml --prepare-data
 ```
 
-### Torchrun parity baseline
+### Torchrun parity baseline (`torchrun_ray`)
 
-The point of the baseline is to run the **same adapter** under vanilla
-`torch.distributed` (env:// rendezvous) so the Ray-vs-torch delta on one
-experiment quantifies Ray Train's *orchestration* overhead (controller, health
-checks, worker-group management, checkpoint reporting). There are two launchers
-for this, since torchrun has no single controller — it runs the same script on
-every process.
+The baseline runs the **same adapter** under vanilla `torch.distributed`
+(`init_process_group("env://")`), so the Ray-vs-torch delta on one experiment
+quantifies Ray Train's *orchestration* overhead (controller, health checks,
+worker-group management, checkpoint reporting).
 
-**`torchrun_ray` (recommended on a Ray cluster — no ssh):** Ray places one actor
-per GPU (using its scheduler) and the harness sets the torch.distributed env
-vars itself, then each actor runs the adapter via `init_process_group("env://")`.
-You launch it the same way as the Ray run — a single submission from the head:
+Ray places one actor per GPU (using its scheduler), the harness sets the
+torch.distributed env vars (rank/world_size/master) itself, and each actor runs
+the adapter. This is exactly how the legacy `air_benchmarks` ran "vanilla
+torch" — Ray actors stand up the process group, no ssh/srun needed — so it's the
+single baseline we keep. Launch it like the Ray run, from the head:
 
 ```bash
 python -m core.runner --experiment experiments/qwen3_06b_deepspeed.yaml \
     --set launcher=torchrun_ray
 ```
 
-This holds the launch substrate (Ray) constant and isolates Ray Train's control
-plane. For a *fully* Ray-free number, use real `torchrun`, launched on the GPU
-node(s) — one process per GPU:
-
-```bash
-# Single GPU node: --standalone handles rendezvous automatically.
-torchrun --standalone --nproc_per_node=8 -m core.runner \
-    --experiment experiments/qwen3_06b_deepspeed.yaml --launcher torchrun
-
-# Multi-node: start on EVERY node with a shared rendezvous endpoint.
-torchrun --nnodes=2 --nproc_per_node=8 --node_rank=$NODE_RANK \
-    --rdzv_backend=c10d --rdzv_endpoint=$HEAD_IP:29500 \
-    -m core.runner --experiment <exp>.yaml --launcher torchrun
-```
-
 | Launcher | Control plane | Launch substrate | Needs node ssh? |
 |---|---|---|---|
 | `ray` | Ray Train controller | Ray | no |
 | `torchrun_ray` | none (raw torch.distributed) | Ray actors | no |
-| `torchrun` | none (raw torch.distributed) | torchrun/srun | yes (run on GPU node) |
 
-All three collect metrics identically: rank 0 writes the results JSON to shared
-storage (`/mnt/cluster_storage` when present), and `collect.py` reads it.
+Both collect metrics identically: rank 0 writes the results JSON to shared
+storage (`/mnt/cluster_storage` when present), and `collect.py` reads it. (A
+*fully* Ray-free run would need real `torchrun` via ssh/srun on the GPU nodes;
+we don't keep that variant — `torchrun_ray` already isolates the Train control
+plane, which is the comparison that matters.)
 
 ## Metrics collected
 
@@ -133,11 +119,27 @@ Steady-state metrics exclude `training.warmup_steps` so model download,
 compilation, and allocator warmup don't skew throughput. View any run with
 `python collect.py`.
 
-## MFU accounting
+## MFU / FLOPs accounting (dense + MoE)
 
-`transformer_flops_per_token` uses the standard `6N + 12·L·d·T` approximation
-(forward 2N + backward 4N, plus attention score/value matmuls), matching PaLM
-Appendix B and llm-foundry's tables so numbers are comparable across reports.
+`core/metrics.flops_per_token(FlopsSpec)` computes train FLOPs/token as
+`6·N_active + (attention term)`:
+
+- **Param term** `6·N_active` — forward 2N + backward 4N. For **dense**,
+  `N_active = total params`. For **MoE**, `N_active = non-expert params +
+  (top_k / num_experts)·routed-expert params` (+ always-on shared experts).
+  Total experts never enter the count. This matches Megatron-LM and llm-foundry;
+  HF Trainer (total params, no attention) is deliberately *not* followed.
+- **Attention term**, picked automatically from the HF config:
+  - `quadratic` → `12·L·hidden·seq` (standard softmax attention).
+  - `linear` → omitted (Gated DeltaNet / SSM / RWKV are O(seq); conservative
+    underestimate, logged as such).
+
+The adapter derives `N_active` by counting expert tensors on the loaded model
+and the attention kind from `config.model_type` / layer types — no per-model
+hardcoding. Results carry `config/model_kind` (dense|moe), `active_params`, and
+`config/attention_flops` so the table can treat dense vs MoE as its own axis.
+Peak FLOP/s uses dense (de-sparsified) values from `GPU_PEAK_FLOPS`, as Composer
+does, keeping MFU comparable to llm-foundry and NeMo.
 
 ## Adding a workload
 

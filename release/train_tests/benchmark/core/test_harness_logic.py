@@ -14,10 +14,11 @@ import pytest
 from core.experiment_config import load_experiment
 from core.launchers.torchrun_ray_launcher import assign_topology
 from core.metrics import (
+    FlopsSpec,
     _physical_gpu_index,
+    flops_per_token,
     get_gpu_peak_bandwidth_gbps,
     get_gpu_peak_flops,
-    transformer_flops_per_token,
 )
 
 _EXPERIMENTS = os.path.join(
@@ -29,7 +30,7 @@ def test_load_qwen_experiment():
     cfg = load_experiment(os.path.join(_EXPERIMENTS, "qwen3_06b_deepspeed.yaml"))
     assert cfg.name == "qwen3_06b_deepspeed"
     assert cfg.model.adapter == "deepspeed"
-    assert cfg.model.parallelism["zero_stage"] == 2
+    assert cfg.model.parallelism["zero_stage"] == 1
     assert cfg.data.seq_len == 2048
     assert cfg.training.num_steps == 200
     assert cfg.launcher == "ray"
@@ -68,18 +69,39 @@ def test_requires_steps_or_epochs(tmp_path):
         load_experiment(str(bad))
 
 
-def test_flops_per_token_matches_6n_approx():
-    # For a model where the attention term is negligible, train FLOPs/token
-    # should be ~6 * num_params.
+def test_flops_per_token_dense_quadratic():
+    # Dense: 6N param term + 12*L*d*s quadratic-attention term.
     num_params = 600_000_000
-    flops = transformer_flops_per_token(
-        num_params=num_params, num_layers=28, hidden_size=1024, seq_len=2048
+    flops = flops_per_token(
+        FlopsSpec(
+            active_params=num_params, num_layers=28, hidden_size=1024, seq_len=2048
+        )
     )
-    # 6N term dominates; attention term = 12 * 28 * 1024 * 2048.
     expected_6n = 6 * num_params
     attn = 12 * 28 * 1024 * 2048
     assert flops == expected_6n + attn
-    assert flops > expected_6n
+
+
+def test_flops_per_token_moe_uses_active_params():
+    # MoE charges only active params in the 6N term; total experts never enter.
+    spec = FlopsSpec(
+        active_params=3_000_000_000,  # 3B active of a 35B model
+        num_layers=40,
+        hidden_size=2048,
+        seq_len=4096,
+        attention="linear",  # Gated DeltaNet -> no quadratic term
+    )
+    flops = flops_per_token(spec)
+    # Linear attention omits the attention term -> pure 6 * active_params.
+    assert flops == 6 * 3_000_000_000
+
+
+def test_flops_per_token_linear_vs_quadratic():
+    base = dict(active_params=10**9, num_layers=10, hidden_size=1024, seq_len=2048)
+    quad = flops_per_token(FlopsSpec(attention="quadratic", **base))
+    lin = flops_per_token(FlopsSpec(attention="linear", **base))
+    none = flops_per_token(FlopsSpec(attention="none", **base))
+    assert quad > lin == none == 6 * 10**9
 
 
 def test_gpu_peak_flops_lookup():
@@ -123,6 +145,30 @@ def test_assign_topology_multi_node():
     assert [t["node_rank"] for t in topo] == [0, 1, 0, 1]
     assert [t["local_rank"] for t in topo] == [0, 0, 1, 1]
     assert all(t["local_world_size"] == 2 for t in topo)
+
+
+def test_expand_axes_cartesian():
+    from sweep import cell_name, expand_axes
+
+    cells = expand_axes(
+        {"data.seq_len": ["1024", "2048"], "data.batch_size": ["1", "2"]}
+    )
+    assert len(cells) == 4
+    assert {"data.seq_len": "1024", "data.batch_size": "2"} in cells
+    assert cell_name("qwen", cells[0]) == "qwen__seq_len1024_batch_size1"
+
+
+def test_megatron_view_defaults_parallelism():
+    # DeepSpeed rows have no TP/PP/CP/EP -> Megatron view shows 1 (VP -> "-").
+    from collect import _MEGATRON_COLUMNS, _format_cell
+
+    row = {"config/model": "Qwen/Qwen3-0.6B", "world_size": 8}
+    by_header = {c[0]: _format_cell(row, c) for c in _MEGATRON_COLUMNS}
+    assert by_header["TP"] == "1"
+    assert by_header["PP"] == "1"
+    assert by_header["EP"] == "1"
+    assert by_header["VP"] == "-"
+    assert by_header["#-GPUs"] == "8"
 
 
 def test_physical_gpu_index_maps_via_cvd(monkeypatch):

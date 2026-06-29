@@ -19,10 +19,11 @@ import torch
 
 from core.experiment_config import ExperimentConfig
 from core.metrics import (
+    FlopsSpec,
     TrainMetricsCollector,
+    flops_per_token,
     get_gpu_peak_bandwidth_gbps,
     get_gpu_peak_flops,
-    model_flops_per_token_from_hf_config,
 )
 from core.train_context import TrainContext
 from data.text_dataset import build_text_dataloader
@@ -31,12 +32,75 @@ from frameworks.base_adapter import FrameworkAdapter
 logger = logging.getLogger(__name__)
 
 
+# Config attribute aliases across HF MoE model families.
+_NUM_EXPERTS_ATTRS = ("num_experts", "num_local_experts", "n_routed_experts")
+_TOP_K_ATTRS = ("num_experts_per_tok", "moe_topk", "num_experts_per_token", "topk")
+# model_type substrings that indicate non-quadratic (linear/recurrent) attention.
+_LINEAR_ATTENTION_HINTS = ("deltanet", "mamba", "rwkv", "retnet", "linear", "lightning")
+
+
+def _first_attr(config, names):
+    for name in names:
+        value = getattr(config, name, None)
+        if value:
+            return value
+    return None
+
+
+def _count_active_params(model, config) -> int:
+    """Params that fire per token: total for dense; for MoE, non-expert params +
+    top_k/num_experts of the routed-expert params (shared experts stay active).
+
+    Counts expert tensors from the model by name (robust across SwiGLU/GQA/expert
+    sizing) rather than re-deriving shapes from config.
+    """
+    total = sum(p.numel() for p in model.parameters())
+    num_experts = _first_attr(config, _NUM_EXPERTS_ATTRS)
+    top_k = _first_attr(config, _TOP_K_ATTRS)
+    if not num_experts or not top_k:
+        return total  # dense
+
+    # Routed experts are named like "...experts.<i>...". Shared experts use a
+    # different name (e.g. "shared_expert") so they're excluded here and stay
+    # fully counted in non-expert params — correct, since they're always active.
+    routed_expert_params = sum(
+        p.numel() for n, p in model.named_parameters() if ".experts." in n
+    )
+    if routed_expert_params == 0:
+        return total
+    active_expert_params = routed_expert_params * top_k / num_experts
+    return int(total - routed_expert_params + active_expert_params)
+
+
+def _detect_attention_kind(config) -> str:
+    """Pick the FLOPs attention term automatically from the HF config.
+
+    Defaults to "quadratic"; returns "linear" for DeltaNet/SSM/RWKV-style
+    families (where the quadratic seq term would be wrong).
+    """
+    model_type = (getattr(config, "model_type", "") or "").lower()
+    if any(hint in model_type for hint in _LINEAR_ATTENTION_HINTS):
+        return "linear"
+    if getattr(config, "linear_attention", False):
+        return "linear"
+    # Hybrid models may list per-layer types; if any are linear, treat as linear
+    # (approximate — the quadratic term would over-count these).
+    layer_types = getattr(config, "layer_types", None)
+    if layer_types and any(
+        ("linear" in str(t).lower() or "delta" in str(t).lower()) for t in layer_types
+    ):
+        return "linear"
+    return "quadratic"
+
+
 class DeepSpeedAdapter(FrameworkAdapter):
     def __init__(self, cfg: ExperimentConfig, ctx: TrainContext):
         super().__init__(cfg, ctx)
         self._tokenizer = None
         self._hf_config = None
         self._num_params: Optional[int] = None
+        self._active_params: Optional[int] = None
+        self._attention_kind: str = "quadratic"
 
     # ---- config construction -------------------------------------------------
 
@@ -96,12 +160,22 @@ class DeepSpeedAdapter(FrameworkAdapter):
             model.gradient_checkpointing_enable()
 
         self._num_params = sum(p.numel() for p in model.parameters())
+        self._active_params = _count_active_params(model, self._hf_config)
+        self._attention_kind = _detect_attention_kind(self._hf_config)
         if self.ctx.world_rank == 0:
+            moe = self._active_params != self._num_params
             logger.info(
-                f"Loaded {model_name}: {self._num_params/1e9:.3f}B params "
-                f"(attn={self.cfg.model.attn_implementation}, "
-                f"grad_ckpt={self.cfg.model.gradient_checkpointing})"
+                f"Loaded {model_name}: {self._num_params/1e9:.3f}B params"
+                + (f" ({self._active_params/1e9:.3f}B active, MoE)" if moe else "")
+                + f" | attn_flops={self._attention_kind}, "
+                f"attn_impl={self.cfg.model.attn_implementation}, "
+                f"grad_ckpt={self.cfg.model.gradient_checkpointing}"
             )
+            if self._attention_kind == "linear":
+                logger.warning(
+                    "Linear-attention model: attention FLOPs omitted from MFU "
+                    "(conservative underestimate)."
+                )
 
         opt = self.cfg.training.optimizer
         optimizer = torch.optim.AdamW(
@@ -130,10 +204,16 @@ class DeepSpeedAdapter(FrameworkAdapter):
     # ---- FrameworkAdapter API ------------------------------------------------
 
     def flops_per_token(self) -> Optional[float]:
-        if self._num_params is None or self._hf_config is None:
+        if self._active_params is None or self._hf_config is None:
             return None
-        return model_flops_per_token_from_hf_config(
-            self._num_params, self._hf_config, self.cfg.data.seq_len
+        return flops_per_token(
+            FlopsSpec(
+                active_params=self._active_params,
+                num_layers=self._hf_config.num_hidden_layers,
+                hidden_size=self._hf_config.hidden_size,
+                seq_len=self.cfg.data.seq_len,
+                attention=self._attention_kind,
+            )
         )
 
     def _maybe_checkpoint(self, engine, step: int) -> None:
@@ -227,6 +307,11 @@ class DeepSpeedAdapter(FrameworkAdapter):
         metrics = collector.summary()
         metrics["loss"] = loss.item()
         metrics["num_params"] = self._num_params
+        metrics["active_params"] = self._active_params
+        # dense vs MoE is an explicit benchmark dimension.
+        is_moe = self._active_params != self._num_params
+        metrics["config/model_kind"] = "moe" if is_moe else "dense"
+        metrics["config/attention_flops"] = self._attention_kind
 
         # Self-describing config echo so results JSON renders into a table
         # (collect.py) and archives without needing the source YAML.

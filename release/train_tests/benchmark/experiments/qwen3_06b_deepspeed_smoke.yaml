@@ -9,7 +9,7 @@ model:
   adapter: deepspeed
   name: Qwen/Qwen3-0.6B
   parallelism:
-    zero_stage: 2
+    zero_stage: 1
   precision: bf16
 data:
   dataloader: framework_default

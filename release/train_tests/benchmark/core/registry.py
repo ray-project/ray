@@ -19,6 +19,4 @@ def get_adapter_cls(adapter_name: str) -> Type[FrameworkAdapter]:
     #   "torchtitan" -> frameworks.torchtitan.adapter.TorchTitanAdapter
     #   "maxtext"    -> frameworks.maxtext.adapter.MaxTextAdapter
     #   "image_classification" / "recsys" -> legacy BenchmarkFactory wrappers
-    raise ValueError(
-        f"Unknown adapter '{adapter_name}'. Registered: ['deepspeed']."
-    )
+    raise ValueError(f"Unknown adapter '{adapter_name}'. Registered: ['deepspeed'].")
