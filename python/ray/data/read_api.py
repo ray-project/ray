@@ -952,23 +952,17 @@ def read_zarr(
 ):
     """Creates a :class:`~ray.data.Dataset` from a Zarr v2 store.
 
-    Reads `Zarr v2 <https://zarr.readthedocs.io/>`_ stores -- chunked,
-    compressed, N-dimensional arrays on local disk or cloud object storage
-    (``zarr-python`` 2.x / Zarr v2 stores).
-
     **Output schemas.** ``read_zarr`` produces one of two schemas, selected by
-    ``align_axis_0``.
+    ``align_axis_0``: long-form or wide-form.
 
     *Long-form* (default) -- each output row is one chunk of one array, with
     columns:
 
-    * ``array`` -- the array's path in the store (for example
-      ``"data/camera0_rgb"``, or ``""`` for a root-level array).
+    * ``array`` -- the array's path in the store.
     * ``chunk_index`` -- the N-D index of the chunk in its array's chunk grid.
     * ``chunk_slices`` -- per-axis ``(start, stop)`` of the chunk in the
       array's coordinate space.
-    * ``chunk`` -- the chunk's data at its natural shape (trailing-edge chunks
-      may be shorter; no padding).
+    * ``chunk`` -- the chunk's data at its natural shape.
 
     Arrays read in the same call need not share any dimension -- different
     ranks, shapes, dtypes, and native chunk sizes coexist as separate rows.
@@ -984,7 +978,7 @@ def read_zarr(
     *Aligned wide-form* (``align_axis_0=True``) -- each row is one axis-0 chunk
     shared across the selected arrays, with columns:
 
-    * ``t_start``, ``t_stop`` -- the global axis-0 range of the row.
+    * ``t_start``, ``t_stop`` (the global axis-0 range of the row).
     * one column per selected array, holding that array's
       ``[t_start:t_stop, ...]`` slice.
 
@@ -1026,7 +1020,7 @@ def read_zarr(
 
     **Custom codecs.** Stores compressed with non-stdlib codecs (for example
     ``imagecodecs`` JPEG-XL) need the codec package imported and registered
-    *in every Ray worker*, not just the driver. Register it with a
+    *in every Ray worker*, not just the driver process. Register it with a
     ``worker_process_setup_hook`` -- pass an importable callable or its dotted
     path (a string is interpreted as an import path, not as a string of code)::
 
