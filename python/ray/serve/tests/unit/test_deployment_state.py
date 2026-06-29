@@ -2898,32 +2898,32 @@ def _get_deployment_actor_wrapper(
 
 
 def test_get_deployment_actors_configs_handles_legacy_deployment_config():
-    """Regression: legacy DeploymentConfig must not crash recovery.
+    """Regression: recovery from a checkpoint predating ``deployment_actors``
+    must not crash.
 
-    Background:
-        ``_get_deployment_actors_configs`` is invoked during
-        ``ServeController.__init__`` while recovering deployment state from a
-        GCS-FT checkpoint. If the checkpoint was produced by a Ray version
-        predating the ``deployment_actors`` field on ``DeploymentConfig``, the
-        deserialized instance may not carry that attribute. Accessing it raised
-        ``AttributeError`` from pydantic's ``__getattr__`` and propagated out of
-        ``ServeController.__init__``, causing repeated ``ActorDiedError`` on
-        every restart attempt and effectively wedging the controller's GCS-FT
-        recovery path.
-
-    Expected behavior after fix:
-        ``getattr(..., None) or []`` returns an empty list instead of raising
-        when the attribute is absent, allowing recovery to proceed.
+    ``_get_deployment_actors_configs`` is invoked during ``ServeController``
+    recovery from a GCS-FT checkpoint. A ``DeploymentConfig`` cloudpickled by a
+    Ray version before the ``deployment_actors`` field existed deserializes
+    without that attribute; reading it raised ``AttributeError`` from pydantic's
+    ``__getattr__`` and propagated out of ``ServeController.__init__``, causing
+    repeated ``ActorDiedError`` on every restart and wedging recovery.
+    ``DeploymentConfig.__setstate__`` (via ``_ForwardCompatModel``) now backfills
+    missing fields with their defaults, so the helper returns ``[]`` instead of
+    raising.
     """
     from types import SimpleNamespace
 
-    # Simulate a DeploymentConfig deserialized from an older checkpoint that
-    # does not include the ``deployment_actors`` attribute.
-    class LegacyDeploymentConfig:
-        pass
+    # Simulate a DeploymentConfig restored from a checkpoint written before the
+    # ``deployment_actors`` field existed: drop it from the pickled state and let
+    # __setstate__ backfill it to the default.
+    config = DeploymentConfig(num_replicas=1)
+    state = config.__getstate__()
+    state["__dict__"].pop("deployment_actors", None)
+    legacy_config = DeploymentConfig.__new__(DeploymentConfig)
+    legacy_config.__setstate__(state)
+    assert legacy_config.deployment_actors is None
 
-    legacy_version = SimpleNamespace(deployment_config=LegacyDeploymentConfig())
-
+    legacy_version = SimpleNamespace(deployment_config=legacy_config)
     # ``self`` is not used when ``version`` is provided explicitly.
     self_stub = SimpleNamespace(_target_state=None)
 
