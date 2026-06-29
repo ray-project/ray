@@ -12,6 +12,7 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.test_utils import get_application_url
+from ray.serve.config import RequestRouterConfig
 from ray.serve.exceptions import BackPressureError
 
 
@@ -234,22 +235,8 @@ def test_model_composition_backpressure_with_fastapi(serve_instance, request_typ
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
 
 
-def test_max_request_retries_config_validation():
-    """max_request_retries accepts -1 and non-negative ints, rejects < -1."""
-    from ray.serve.config import RequestRouterConfig
-
-    RequestRouterConfig(max_request_retries=-1)
-    RequestRouterConfig(max_request_retries=0)
-    RequestRouterConfig(max_request_retries=10)
-
-    with pytest.raises(ValueError):
-        RequestRouterConfig(max_request_retries=-2)
-
-
 def test_handle_retry_limit(serve_instance):
     """Requests should get 503 when max_request_retries is exhausted."""
-    from ray.serve.config import RequestRouterConfig
-
     signal_actor = SignalActor.remote()
 
     @serve.deployment(

@@ -1666,6 +1666,16 @@ class TestProtoToDict:
         assert "initial_replicas" not in result
 
 
+def test_max_request_retries_config_validation():
+    """max_request_retries accepts -1 and non-negative ints, rejects < -1."""
+    RequestRouterConfig(max_request_retries=-1)
+    RequestRouterConfig(max_request_retries=0)
+    RequestRouterConfig(max_request_retries=10)
+
+    with pytest.raises(ValueError):
+        RequestRouterConfig(max_request_retries=-2)
+
+
 if __name__ == "__main__":
     import sys
 
