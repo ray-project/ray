@@ -677,6 +677,7 @@ class AsyncioRouter:
         self._backoff_multiplier: Optional[float] = None
         self._max_backoff_s: Optional[float] = None
         self._max_request_retries: int = -1
+        self._max_queued_requests: int = -1
 
         # Initializing `self._metrics_manager` before `self.long_poll_client` is
         # necessary to avoid race condition where `self.update_deployment_config()`
@@ -855,6 +856,7 @@ class AsyncioRouter:
         self._max_request_retries = (
             deployment_config.request_router_config.max_request_retries
         )
+        self._max_queued_requests = deployment_config.max_queued_requests
 
         if self._request_router:
             self._request_router.update_backoff_params(
@@ -1128,14 +1130,9 @@ class AsyncioRouter:
         """Raise BackPressureError if the retry limit has been exceeded."""
         max_retries = self._max_request_retries
         if max_retries >= 0 and num_retries > max_retries:
-            deployment_config = self._metrics_manager._deployment_config
             raise BackPressureError(
                 num_queued_requests=self._metrics_manager.num_queued_requests,
-                max_queued_requests=(
-                    deployment_config.max_queued_requests
-                    if deployment_config is not None
-                    else -1
-                ),
+                max_queued_requests=self._max_queued_requests,
             )
 
     async def route_and_send_request(
