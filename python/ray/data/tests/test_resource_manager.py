@@ -36,20 +36,14 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import noop_counter
 
 
-class StubBlockRefCounter:
+class StubBlockRefCounter(BlockRefCounter):
     """Test double for BlockRefCounter with directly settable per-operator usage."""
 
     def __init__(self):
-        self._usage = {}
+        super().__init__(add_object_out_of_scope_callback=lambda *_: True)
 
     def set_usage(self, producer_id: str, bytes: int) -> None:
-        self._usage[producer_id] = bytes
-
-    def get_object_store_memory_usage(self, producer_id: str) -> int:
-        return self._usage.get(producer_id, 0)
-
-    def clear(self) -> None:
-        self._usage.clear()
+        self._bytes_by_producer[producer_id] = bytes
 
 
 def mock_map_op(
