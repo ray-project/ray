@@ -566,6 +566,19 @@ cdef class Language:
     JAVA = Language.from_native(LANGUAGE_JAVA)
 
 
+cdef CPlacementStrategy prepare_c_strategy(c_string strategy) except *:
+    # Called by CoreWorker.create_placement_group(..., c_string strategy, ...).
+    # The Python placement_group wrapper validates `strategy` to be one of the
+    # strategies below beforehand.
+    if strategy == b"PACK":
+        return PLACEMENT_STRATEGY_PACK
+    elif strategy == b"SPREAD":
+        return PLACEMENT_STRATEGY_SPREAD
+    elif strategy == b"STRICT_PACK":
+        return PLACEMENT_STRATEGY_STRICT_PACK
+    else:
+        return PLACEMENT_STRATEGY_STRICT_SPREAD
+
 def raise_sys_exit_with_custom_error_message(
         ray_terminate_msg: str,
         exit_code: int = 0) -> None:
@@ -949,7 +962,7 @@ cdef class StreamingGeneratorExecutionContext:
         c_bool actor_backpressure_state_owned_by_core_worker
         int64_t num_objects_per_yield
 
-    cdef _teardown_actor_backpressure_state_if_needed(self):
+    cdef teardown_actor_backpressure_state_if_needed(self):
         """Release the actor-wide BP slot held by this task.
 
         Idempotent and safe to invoke multiple times. Skipped when
@@ -980,9 +993,6 @@ cdef class StreamingGeneratorExecutionContext:
         )
         if not state_found:
             self.actor_backpressure_metadata.get().Teardown()
-
-    def __dealloc__(self):
-        self._teardown_actor_backpressure_state_if_needed()
 
     def initialize(self, generator: Union[Generator, AsyncGenerator]):
         # We couldn't make this a part of `make` method because
@@ -1338,7 +1348,7 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
             # Streaming execution has completed. The C++ CoreWorker keeps actor-wide state alive until downstream
             # consumers release the remaining generator items.
             context.actor_backpressure_state_owned_by_core_worker = True
-    context._teardown_actor_backpressure_state_if_needed()
+    context.teardown_actor_backpressure_state_if_needed()
 
 
 async def execute_streaming_generator_async(
@@ -1471,7 +1481,7 @@ async def execute_streaming_generator_async(
             # Streaming execution has completed. The C++ CoreWorker keeps actor-wide state alive until downstream
             # consumers release the remaining generator items.
             context.actor_backpressure_state_owned_by_core_worker = True
-    context._teardown_actor_backpressure_state_if_needed()
+    context.teardown_actor_backpressure_state_if_needed()
 
 
 cdef create_generator_return_objs(
@@ -3770,23 +3780,18 @@ cdef class CoreWorker:
                             c_string strategy,
                             c_bool is_detached,
                             soft_target_node_id,
-                            c_vector[unordered_map[c_string, c_string]] bundle_label_selector):
+                            c_vector[unordered_map[c_string, c_string]] bundle_label_selector,
+                            dict topology_strategy):
         cdef:
             CPlacementGroupID c_placement_group_id
             CPlacementStrategy c_strategy
             CNodeID c_soft_target_node_id = CNodeID.Nil()
+            unordered_map[c_string, CPlacementStrategy] c_topology_strategy
 
-        if strategy == b"PACK":
-            c_strategy = PLACEMENT_STRATEGY_PACK
-        elif strategy == b"SPREAD":
-            c_strategy = PLACEMENT_STRATEGY_SPREAD
-        elif strategy == b"STRICT_PACK":
-            c_strategy = PLACEMENT_STRATEGY_STRICT_PACK
-        else:
-            if strategy == b"STRICT_SPREAD":
-                c_strategy = PLACEMENT_STRATEGY_STRICT_SPREAD
-            else:
-                raise TypeError(strategy)
+        c_strategy = prepare_c_strategy(strategy)
+
+        for label, level_strategy in topology_strategy.items():
+            c_topology_strategy[label] = prepare_c_strategy(level_strategy)
 
         if soft_target_node_id is not None:
             c_soft_target_node_id = CNodeID.FromHex(soft_target_node_id)
@@ -3801,7 +3806,8 @@ cdef class CoreWorker:
                                 bundles,
                                 is_detached,
                                 c_soft_target_node_id,
-                                bundle_label_selector),
+                                bundle_label_selector,
+                                c_topology_strategy),
                             &c_placement_group_id))
 
         return PlacementGroupID(c_placement_group_id.Binary())
