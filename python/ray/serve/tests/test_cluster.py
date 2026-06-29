@@ -18,7 +18,10 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_state import ReplicaStartupStatus
-from ray.serve._private.test_utils import check_deployment_status
+from ray.serve._private.test_utils import (
+    check_deployment_status,
+    expected_proxy_actors,
+)
 from ray.serve._private.utils import calculate_remaining_timeout, get_head_node_id
 from ray.serve.config import GangSchedulingConfig
 from ray.serve.context import _get_global_client
@@ -630,9 +633,15 @@ class TestHealthzAndRoutes:
 
         wait_for_condition(check_replicas_on_worker_nodes)
 
-        # Ensure total actors of 2 proxies, 1 controller, and 2 replicas,
-        # and 2 nodes exist.
-        wait_for_condition(lambda: len(list_actors(address=cluster.address)) == 5)
+        # Total alive actors: EveryNode proxies on both nodes + 1 controller +
+        # 2 replicas. Under HAProxy each proxy node runs an HAProxyManager and
+        # the head node adds a fallback ProxyActor.
+        expected_num_actors = (
+            sum(expected_proxy_actors(num_proxy_nodes=2).values()) + 1 + 2
+        )
+        wait_for_condition(
+            lambda: len(list_actors(address=cluster.address)) == expected_num_actors
+        )
         assert len(ray.nodes()) == 2
 
         # Ensure `/-/healthz` and `/-/routes` return 200 and expected responses
