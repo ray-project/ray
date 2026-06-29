@@ -1,9 +1,9 @@
 cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
 head_node:
-    instance_type: m5.8xlarge
+    instance_type: m5.4xlarge
     resources:
-      # Assume the node has 64 CPU instead of 32.
+      # Assume the node has 64 CPU instead of 16.
       # This should be fine since each task has little
       # computation in scheduling tests.
       CPU: 64
