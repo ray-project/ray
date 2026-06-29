@@ -801,8 +801,6 @@ def download_bytes_async(
         column = output_block.column(uri_column_name)
 
         if is_uri_list_column(column.type):
-            # Flatten every row's URIs into one flat list, download it through
-            # the same concurrent engine, then re-nest preserving per-row shape.
             # List columns carry no __ray_file_size__ column (see
             # AsyncPartitionActor), so no precomputed sizes are passed.
             flat_uris, row_lengths = flatten_uri_list(column)

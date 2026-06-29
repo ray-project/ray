@@ -215,9 +215,8 @@ def download_bytes_threaded(
     for uri_column_name, output_bytes_column_name in zip(
         uri_column_names, output_bytes_column_names
     ):
-        # Extract URIs from PyArrow table. For a list<string> column, flatten
-        # every row's URIs into one flat list (tracked by row_lengths) so they
-        # all run through the same concurrent pool, then re-nest below.
+        # For a list<string> column, flatten all rows' URIs into one list so a
+        # single pool covers them, then re-nest below (via row_lengths).
         column = output_block.column(uri_column_name)
         is_list = is_uri_list_column(column.type)
         if is_list:
@@ -226,12 +225,9 @@ def download_bytes_threaded(
             uris = column.to_pylist()
 
         if len(uris) == 0:
-            # `row_lengths` is non-empty only when the block has rows whose list
-            # cells are all empty/null: append the re-nested (empty/null)
-            # list<binary> column so the schema matches blocks that downloaded
-            # bytes. A truly empty (0-row) block appends nothing and yields the
-            # input schema, exactly like the scalar path, keeping empty and
-            # non-empty blocks schema-consistent.
+            # Rows whose list cells are all empty/null still need the
+            # list<binary> column for schema parity; a 0-row block appends
+            # nothing, like the scalar path.
             if is_list and row_lengths:
                 output_block = output_block.append_column(
                     output_bytes_column_name,
@@ -266,10 +262,8 @@ def download_bytes_threaded(
                 f"{uri_column_name!r} ({len(uris)} URIs). Yielding None for "
                 "all rows."
             )
-            # For a list column the output must be list<binary> with one inner
-            # list per row (every download failed -> None in place), not a flat
-            # scalar binary column sized to the flattened URI count (which would
-            # mis-shape or raise on append).
+            # List columns need list<binary> here too (one inner list per row,
+            # all None), not a flat scalar column sized to the URI count.
             none_column = (
                 renest_downloaded_bytes([None] * len(uris), row_lengths)
                 if is_list
@@ -329,9 +323,8 @@ def download_bytes_threaded(
             )
         )
 
-        # Add the new column to the PyArrow table. For a list column, re-nest
-        # the flat bytes back into one inner list per row (preserving length and
-        # order); failed downloads stay None in place.
+        # List columns re-nest the flat bytes into one inner list per row;
+        # failed downloads stay None in place.
         new_column = (
             renest_downloaded_bytes(uri_bytes, row_lengths)
             if is_list
