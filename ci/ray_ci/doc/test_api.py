@@ -232,6 +232,11 @@ def test_resolve():
     assert _doc_api(f"{_MOCK}.MockClass.no_such_method").resolve() is None
     assert _doc_api("ci.ray_ci.doc.no_such_submodule.thing").resolve() is None
     assert _doc_api("totally_missing_top_level_module.thing").resolve() is None
+    # Malformed names must not crash (importlib.import_module("") raises
+    # ValueError); they resolve to None.
+    assert _doc_api("").resolve() is None
+    assert _doc_api(".leading.dot").resolve() is None
+    assert _doc_api(f"{_MOCK}..double.dot").resolve() is None
 
 
 def test_introspect_annotation_type():
