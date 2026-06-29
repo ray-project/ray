@@ -76,6 +76,13 @@ class KVAwareRouter(RequestRouter):
         the chosen worker's replica. With direct streaming enabled, HAProxy
         then forwards the original request to that replica.
 
+        Requests with no prompt token ids have nothing to score on, so they load
+        balance over all candidates instead of failing. This covers the pre-routing
+        ``/tokenize`` RPC (routed before token ids exist) and token-less fallbacks
+        (batch prompts, truncated/unparseable bodies).
+        TODO (jeffreywang): Move pre-routing tokenization to KVRouterActor while
+        ensuring tokenization correctness.
+
         Args:
             candidate_replicas: The replicas eligible to serve the request.
             pending_request: The request being routed.
@@ -83,25 +90,13 @@ class KVAwareRouter(RequestRouter):
         Returns:
             Ranked groups of replicas.
         """
-        if pending_request is None:
-            # Serve may call after route metadata is gone but before lazy queue cleanup.
-            logger.debug(
-                "choose_replicas called without a pending request; routing "
-                "load-based over all candidates."
-            )
+        token_ids = (
+            pending_request.kwargs.get(REQUEST_TOKEN_IDS_KWARG)
+            if pending_request is not None
+            else None
+        )
+        if not token_ids:
             return [candidate_replicas]
-
-        token_ids = pending_request.kwargs.get(REQUEST_TOKEN_IDS_KWARG)
-        if token_ids is None:
-            raise ValueError(
-                "KV-aware routing requires prompt token ids; request "
-                "tokenization did not produce token ids."
-            )
-        if len(token_ids) == 0:
-            raise ValueError(
-                "KV-aware routing received an empty prompt; request "
-                "tokenization did not produce token ids."
-            )
 
         worker_id_to_replica = {
             get_worker_id(replica.replica_id.unique_id): replica

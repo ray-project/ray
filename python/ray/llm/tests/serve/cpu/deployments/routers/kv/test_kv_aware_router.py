@@ -435,8 +435,9 @@ async def test_choose_replicas_routes_to_selected_worker():
 
 
 @pytest.mark.asyncio
-async def test_requires_token_ids():
-    """Real routed requests must carry prompt token ids."""
+async def test_missing_token_ids_load_balances():
+    """Requests without prompt token ids degrade to load balancing,
+    e.g. token-less fallbacks (batch prompts, truncated bodies)."""
     replicas = [_StubReplica("r1"), _StubReplica("r2")]
 
     router = _build_kv_aware_router(get_worker_id("r2"))
@@ -446,14 +447,18 @@ async def test_requires_token_ids():
         metadata=RequestMetadata(request_id="req-2", internal_request_id="int-2"),
     )
 
-    with pytest.raises(ValueError, match="requires prompt token ids"):
-        await router.choose_replicas(replicas, pending)
+    groups = await router.choose_replicas(replicas, pending)
+
+    # No token ids to score on, so return all candidates.
+    assert groups == [replicas]
     assert router._kv_router_actor.select_worker.token_ids is None
 
 
 @pytest.mark.asyncio
-async def test_tokenize_requires_token_ids():
-    """Method-specific calls still need explicit prompt token ids."""
+async def test_tokenize_call_load_balances():
+    """The pre-routing /tokenize RPC is routed through choose_replicas before any
+    token ids exist, so it must load-balance -- otherwise KV routing can never
+    bootstrap (the tokenize call can't be routed to produce the token ids)."""
     replicas = [_StubReplica("r1"), _StubReplica("r2")]
 
     router = _build_kv_aware_router(get_worker_id("r2"))
@@ -467,14 +472,16 @@ async def test_tokenize_requires_token_ids():
         ),
     )
 
-    with pytest.raises(ValueError, match="requires prompt token ids"):
-        await router.choose_replicas(replicas, pending)
+    groups = await router.choose_replicas(replicas, pending)
+
+    assert groups == [replicas]
     assert router._kv_router_actor.select_worker.token_ids is None
 
 
 @pytest.mark.asyncio
-async def test_rejects_empty_token_ids():
-    """Dynamo selection service requires a positive prompt length."""
+async def test_empty_token_ids_load_balances():
+    """Empty token ids carry no KV signal, so load-balance instead of handing an
+    empty prompt to the Dynamo selection service (which rejects it)."""
     replicas = [_StubReplica("r1"), _StubReplica("r2")]
 
     router = _build_kv_aware_router(get_worker_id("r2"))
@@ -486,8 +493,9 @@ async def test_rejects_empty_token_ids():
         ),
     )
 
-    with pytest.raises(ValueError, match="empty prompt"):
-        await router.choose_replicas(replicas, pending)
+    groups = await router.choose_replicas(replicas, pending)
+
+    assert groups == [replicas]
     assert router._kv_router_actor.select_worker.token_ids is None
 
 
