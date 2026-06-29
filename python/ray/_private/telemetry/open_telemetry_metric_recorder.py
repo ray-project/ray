@@ -1,7 +1,9 @@
 import logging
+import os
 import threading
 from collections import defaultdict
 from typing import Callable, List
+from urllib.parse import unquote
 
 from opentelemetry import metrics
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
@@ -15,6 +17,21 @@ from ray._private.telemetry.metric_types import MetricType
 logger = logging.getLogger(__name__)
 
 NAMESPACE = "ray"
+
+
+def _get_service_name(default_name: str) -> str:
+    otel_service_name = os.environ.get("OTEL_SERVICE_NAME")
+    if otel_service_name:
+        return otel_service_name
+
+    otel_resource_attributes = os.environ.get("OTEL_RESOURCE_ATTRIBUTES", "")
+
+    for attribute in otel_resource_attributes.split(","):
+        key, sep, value = attribute.partition("=")
+        if sep and key.strip() == "service.name" and value.strip():
+            return unquote(value.strip())
+
+    return default_name
 
 
 class OpenTelemetryMetricRecorder:
@@ -111,8 +128,17 @@ class OpenTelemetryMetricRecorder:
         with OpenTelemetryMetricRecorder._metrics_initialized_lock:
             if OpenTelemetryMetricRecorder._metrics_initialized:
                 return
+            from opentelemetry.sdk.resources import Resource
+
             prometheus_reader = PrometheusMetricReader()
-            provider = MeterProvider(metric_readers=[prometheus_reader])
+            provider = MeterProvider(
+                resource=Resource.create(
+                    {
+                        "service.name": _get_service_name("ray-dashboard-agent"),
+                    }
+                ),
+                metric_readers=[prometheus_reader],
+            )
             metrics.set_meter_provider(provider)
             OpenTelemetryMetricRecorder._metrics_initialized = True
 

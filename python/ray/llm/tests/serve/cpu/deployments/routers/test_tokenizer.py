@@ -48,50 +48,57 @@ def _handle_returning(response):
 
 class TestTokenizer:
     @pytest.mark.parametrize(
-        "body, body_truncated",
+        "payload",
         [
-            (b'{"model": "m", "prompt": "hi"}', True),  # truncated prefix
-            (b"", False),  # empty
-            (b'{"model": "m", "prompt": ["a", "b"]}', False),  # multi-prompt batch
-            (b"not json {", False),  # invalid JSON
-            (b"[1, 2, 3]", False),  # not a JSON object
-            (b'{"model": "m"}', False),  # neither messages nor prompt
+            {"model": "m", "prompt": ["a", "b"]},  # batch of prompts
+            {"model": "m", "prompt": [1, 2, 3]},  # pre-tokenized token ids
+            {"model": "m"},  # neither messages nor prompt
         ],
     )
     @pytest.mark.asyncio
-    async def test_untokenizable_body_returns_none(self, body, body_truncated):
-        assert await Tokenizer(MagicMock()).tokenize(body, body_truncated) is None
+    async def test_untokenizable_payload_returns_none(self, payload):
+        """A parsed payload with no single-string prompt yields None."""
+        assert await Tokenizer(MagicMock()).tokenize(payload) is None
 
     @pytest.mark.parametrize(
-        "body, expected_request_type",
+        "payload, expected_request_type",
         [
             (
-                b'{"model": "m", "messages": [{"role": "user", "content": "hi"}]}',
+                {"model": "m", "messages": [{"role": "user", "content": "hi"}]},
                 TokenizeChatRequest,
             ),
-            (b'{"model": "m", "prompt": "hello"}', TokenizeCompletionRequest),
+            ({"model": "m", "prompt": "hello"}, TokenizeCompletionRequest),
         ],
     )
     @pytest.mark.asyncio
-    async def test_tokenizes_chat_and_completion(self, body, expected_request_type):
-        """A chat or completion body is sent to /tokenize as the right Tokenize*
-        request and its returned token ids are surfaced."""
+    async def test_tokenizes_chat_and_completion(self, payload, expected_request_type):
+        """A chat or completion payload is sent to /tokenize as the right
+        Tokenize* request and its returned token ids are surfaced."""
         handle, captured = _handle_returning(_TokenizeResponse([5, 6, 7]))
-        tokens = await Tokenizer(handle).tokenize(body, body_truncated=False)
+        tokens = await Tokenizer(handle).tokenize(payload)
         assert tokens == [5, 6, 7]
         assert isinstance(captured["request"], expected_request_type)
 
     @pytest.mark.parametrize(
-        "body, expected",
+        "payload, expected",
         [
             (  # chat: template-rendering fields + request-provided prompt flags
-                b'{"model": "m", "messages": [{"role": "user", "content": "hi"}], '
-                b'"tools": [{"type": "function", "function": {"name": "f", "parameters": {}}}], '
-                b'"chat_template": "TEMPLATE", '
-                b'"chat_template_kwargs": {"enable_thinking": false}, '
-                b'"mm_processor_kwargs": {"num_crops": 4}, '
-                b'"add_generation_prompt": false, "continue_final_message": true, '
-                b'"temperature": 0.7}',
+                {
+                    "model": "m",
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "tools": [
+                        {
+                            "type": "function",
+                            "function": {"name": "f", "parameters": {}},
+                        }
+                    ],
+                    "chat_template": "TEMPLATE",
+                    "chat_template_kwargs": {"enable_thinking": False},
+                    "mm_processor_kwargs": {"num_crops": 4},
+                    "add_generation_prompt": False,
+                    "continue_final_message": True,
+                    "temperature": 0.7,
+                },
                 {
                     "chat_template": "TEMPLATE",
                     "chat_template_kwargs": {"enable_thinking": False},
@@ -101,18 +108,22 @@ class TestTokenizer:
                 },
             ),
             (  # completion: add_special_tokens comes from the request
-                b'{"model": "m", "prompt": "hi", '
-                b'"add_special_tokens": false, "temperature": 0.7}',
+                {
+                    "model": "m",
+                    "prompt": "hi",
+                    "add_special_tokens": False,
+                    "temperature": 0.7,
+                },
                 {"add_special_tokens": False},
             ),
         ],
     )
     @pytest.mark.asyncio
-    async def test_forwards_prompt_fields_only(self, body, expected):
+    async def test_forwards_prompt_fields_only(self, payload, expected):
         """Prompt-rendering fields come from the request (not hardcoded) and
         sampling params are dropped, so routing ids match prefill."""
         handle, captured = _handle_returning(_TokenizeResponse([1, 2]))
-        await Tokenizer(handle).tokenize(body, body_truncated=False)
+        await Tokenizer(handle).tokenize(payload)
         request = captured["request"]
         for attr, value in expected.items():
             assert getattr(request, attr) == value
@@ -127,9 +138,7 @@ class TestTokenizer:
         )
         handle, _ = _handle_returning(err)
         with pytest.raises(TokenizeError) as exc_info:
-            await Tokenizer(handle).tokenize(
-                b'{"model": "m", "prompt": "hi"}', body_truncated=False
-            )
+            await Tokenizer(handle).tokenize({"model": "m", "prompt": "hi"})
         assert exc_info.value.status_code == 404
         assert exc_info.value.message == "bad model"
         assert exc_info.value.type == "NotFoundError"
@@ -145,9 +154,7 @@ class TestTokenizer:
         handle = MagicMock()
         handle.options.return_value.tokenize.remote = _empty
         with pytest.raises(TokenizeError) as exc_info:
-            await Tokenizer(handle).tokenize(
-                b'{"model": "m", "prompt": "hi"}', body_truncated=False
-            )
+            await Tokenizer(handle).tokenize({"model": "m", "prompt": "hi"})
         assert exc_info.value.status_code == 500
 
 
@@ -155,8 +162,6 @@ class TestRoute:
     @pytest.mark.asyncio
     async def test_no_tokenizer_forwards_none(self):
         # A non-KV router has no tokenizer, so route forwards request_token_ids=None.
-        # (The tokenizer-present-yields-None path is covered by test_router.py's
-        # truncated-body test with a real Tokenizer.)
         router = LLMRouter.__new__(LLMRouter)
         router._handle = MagicMock()
         router._tokenizer = None
@@ -182,6 +187,25 @@ class TestRoute:
         request.headers = Headers({})
         await router.route(request)
         assert router._pick_replica.call_args.kwargs["request_token_ids"] == [5, 6, 7]
+
+    @pytest.mark.asyncio
+    async def test_unparseable_body_skips_tokenization(self):
+        # A truncated/unparseable body derives no routing payload, so the
+        # tokenizer is never called and request_token_ids stays None.
+        router = LLMRouter.__new__(LLMRouter)
+        router._handle = MagicMock()
+        router._tokenizer = MagicMock()
+        router._tokenizer.tokenize = AsyncMock(return_value=[5, 6, 7])
+        router._pick_replica = AsyncMock(return_value=("h", 1, "rid"))
+
+        request = MagicMock()
+        # Truncated prefix: not valid JSON, so it can't be parsed or tokenized.
+        request.body = AsyncMock(return_value=b'{"model": "m", "prompt": "' + b"x" * 8)
+        request.headers = Headers({"x-body-truncated": "8/90000"})
+        await router.route(request)
+
+        router._tokenizer.tokenize.assert_not_called()
+        assert router._pick_replica.call_args.kwargs["request_token_ids"] is None
 
     @pytest.mark.asyncio
     async def test_tokenize_error_becomes_http_error(self):

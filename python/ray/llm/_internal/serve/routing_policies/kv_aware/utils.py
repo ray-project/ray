@@ -1,34 +1,25 @@
 """Helpers for wiring KV-aware routing into an LLM deployment."""
 
+import logging
+
 import ray
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    DEFAULT_KV_INDEXER_THREADS,
+    KV_INDEXER_THREADS_KEY,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     KV_ROUTER_ACTOR_NAME,
     KVRouterActor,
 )
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
-    KVAwareRouter,
-)
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     configure_kv_events_for_kv_routing,
-    derive_kv_event_block_size,
+    is_kv_aware_routing,
 )
-from ray.serve.config import DeploymentActorConfig, RequestRouterConfig
+from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve.config import DeploymentActorConfig
 
-
-def is_kv_aware_routing(request_router_config) -> bool:
-    """Whether ``request_router_config`` (a dict, a ``RequestRouterConfig``, or
-    ``None``) selects a ``KVAwareRouter``.
-
-    KV-aware routing is the only policy that consumes prompt token IDs, so it
-    gates both the pre-routing /tokenize call on the ingress router and the
-    engine's token-lifecycle tracking.
-    """
-    if isinstance(request_router_config, dict):
-        request_router_config = RequestRouterConfig(**request_router_config)
-    if not isinstance(request_router_config, RequestRouterConfig):
-        return False
-    return issubclass(request_router_config.get_request_router_class(), KVAwareRouter)
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def _maybe_setup_kv_aware_routing(
@@ -41,6 +32,13 @@ def _maybe_setup_kv_aware_routing(
     tree, and enables the engine KV events that feed it.
     """
     if not is_kv_aware_routing(deployment_options.get("request_router_config")):
+        if llm_config.engine_kwargs.get("kv_events_config") is not None:
+            logger.warning(
+                "engine_kwargs['kv_events_config'] is set but the deployment's "
+                "request router is not a KVAwareRouter, so the engine's KV events "
+                "will not be consumed. To use them, configure KVAwareRouter via "
+                "deployment_config.request_router_config."
+            )
         return
 
     deployment_options["deployment_actors"] = [
@@ -50,7 +48,9 @@ def _maybe_setup_kv_aware_routing(
             actor_class=ray.remote(KVRouterActor),
             actor_options={"num_cpus": 0},
             init_kwargs={
-                "block_size": derive_kv_event_block_size(llm_config.engine_kwargs)
+                "indexer_threads": llm_config.experimental_configs.get(
+                    KV_INDEXER_THREADS_KEY, DEFAULT_KV_INDEXER_THREADS
+                ),
             },
         ),
     ]

@@ -481,6 +481,7 @@ py_test_module_list(
         "test_minimal_install.py",
         "test_path_utils.py",
         "test_runtime_env_ray_minimal.py",
+        "test_topology_strategy.py",
     ],
     tags = [
         "exclusive",
@@ -631,6 +632,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
+        "rdt/test_nixl_backend_selection.py",
         "rdt/test_nixl_memory_pool.py",
         "rdt/test_rdt_custom.py",
         "rdt/test_rdt_gloo.py",
@@ -653,9 +655,28 @@ py_test_module_list(
     files = [
         "rdt/test_rdt_ipc.py",
         "rdt/test_rdt_nccl.py",
-        "rdt/test_rdt_nixl.py",
         "test_gpu_provider_on_gpu.py",
         "test_gpu_tensor_zero_copy_serialization.py",
+    ],
+    tags = [
+        "custom_setup",
+        "exclusive",
+        "multi_gpu",
+        "no_windows",
+        "rdt",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "large",
+    env = {"RAY_PYTEST_USE_GPU": "1"},
+    files = [
+        "rdt/test_rdt_nixl.py",
     ],
     tags = [
         "custom_setup",
