@@ -26,8 +26,9 @@ with open(environment_cache_path, "rb") as f:
 for doc, dependencies in environment_cache.dependencies.items():
     # site-packages paths are local to the build machine and would mark every
     # doc that imports them as outdated when the cache is restored elsewhere.
-    for dependency in [d for d in dependencies if "site-packages" in d]:
-        environment_cache.dependencies[doc].remove(dependency)
+    environment_cache.dependencies[doc] = type(dependencies)(
+        d for d in dependencies if "site-packages" not in d
+    )
 
 with open(environment_cache_path, "wb") as f:
     pickle.dump(environment_cache, f, pickle.HIGHEST_PROTOCOL)
@@ -81,9 +82,9 @@ class BuildCache:
         """
         environment_cache_path = os.path.join(self._cache_dir, environment_cache_file)
         env = os.environ.copy()
-        # Unset PYTHONPATH so the environment Python (with the Sphinx that wrote
+        # Drop PYTHONPATH so the environment Python (with the Sphinx that wrote
         # the pickle) is used instead of the Bazel runfiles Python.
-        env["PYTHONPATH"] = ""
+        env.pop("PYTHONPATH", None)
         subprocess.run(
             [python_executable, "-c", _STRIP_LOCAL_DEPS_SCRIPT, environment_cache_path],
             env=env,
