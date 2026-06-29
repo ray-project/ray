@@ -211,7 +211,9 @@ class HAProxyMetricsCollector:
             ingress_request_intended_server=kv.get("intended"),
             ingress_request_actual_server=kv.get("actual"),
             ingress_request_router_latency_us=as_int("router_latency_us"),
-            ingress_request_body_truncated_full_length=as_int("body_truncated_full_length"),
+            ingress_request_body_truncated_full_length=as_int(
+                "body_truncated_full_length"
+            ),
             # HAProxy renders booleans as "1"/"0"; absence as "" -> False.
             ingress_request_via_router=kv.get("via_router") == "1",
             ingress_request_failed=kv.get("failed"),
@@ -251,12 +253,15 @@ class HAProxyMetricsCollector:
                 parsed.ingress_request_intended_server
                 and parsed.ingress_request_actual_server
                 and parsed.ingress_request_actual_server != "<NOSRV>"
-                and parsed.ingress_request_intended_server != parsed.ingress_request_actual_server
+                and parsed.ingress_request_intended_server
+                != parsed.ingress_request_actual_server
             ):
                 self.replica_mismatches_counter.inc(tags=tags)
         elif parsed.ingress_request_failed:
             self.requests_counter.inc(tags=tags)
-            self.failures_counter.inc(tags={**tags, "reason": parsed.ingress_request_failed})
+            self.failures_counter.inc(
+                tags={**tags, "reason": parsed.ingress_request_failed}
+            )
         else:
             return
 
@@ -265,7 +270,9 @@ class HAProxyMetricsCollector:
                 parsed.ingress_request_router_latency_us / 1_000.0,
                 tags={
                     **tags,
-                    "outcome": "failure" if parsed.ingress_request_failed else "success",
+                    "outcome": "failure"
+                    if parsed.ingress_request_failed
+                    else "success",
                 },
             )
 
@@ -323,9 +330,7 @@ class HAProxyMetricsCollector:
         """
         self.start_node_metrics_polling(loop, poll_interval_s)
         os.makedirs(os.path.dirname(metrics_socket_path), exist_ok=True)
-        return loop.create_task(
-            self.bind_and_attach(metrics_socket_path, loop=loop)
-        )
+        return loop.create_task(self.bind_and_attach(metrics_socket_path, loop=loop))
 
     async def bind_and_attach(
         self,
