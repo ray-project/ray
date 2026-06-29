@@ -115,8 +115,32 @@ class FiberState {
         std::function<void()> func;
         auto op_status = channel_.pop(func);
         if (op_status == boost::fibers::channel_op_status::success) {
+          // Increment in-flight count before launching a fiber, this is called on
+          // the main runner thread as this way we avoid a race where a fiber is submitted
+          // but before it starts execution, num_in_flight_fibers_ value is checked and
+          // observed to be 0 and thread shuts down.
+          {
+            std::unique_lock<boost::fibers::mutex> lock(drain_mutex_);
+            num_in_flight_fibers_ += 1;
+          }
           boost::fibers::fiber(
-              boost::fibers::launch::dispatch, std::allocator_arg, allocator_, func)
+              boost::fibers::launch::dispatch,
+              std::allocator_arg,
+              allocator_,
+              [this, func = std::move(func)]() {
+                func();
+                // Decrement the in-flight counter once the
+                // fiber body has finished and notify the
+                // graceful drain. `func` (the EnqueueFiber
+                // wrapper) does not throw -- an uncaught
+                // exception in a fiber would terminate the
+                // process -- so this always runs.
+                std::unique_lock<boost::fibers::mutex> lock(drain_mutex_);
+                num_in_flight_fibers_ -= 1;
+                if (num_in_flight_fibers_ == 0) {
+                  drain_cond_.notify_all();
+                }
+              })
               .detach();
         } else if (op_status == boost::fibers::channel_op_status::closed) {
           // The channel was closed. We will just exit the loop and finish
@@ -131,22 +155,33 @@ class FiberState {
         }
       }
 
-      // Boost fiber thread cannot be terminated and joined
-      // if there are still running detached fibers.
-      // When we exit async actor, we stop running coroutines
-      // which means the corresponding waiting boost fibers
-      // will never be resumed by done callbacks of those coroutines.
-      // As a result, those fibers will never exit and the fiber
-      // runner thread cannot be joined.
-      // The hack here is that we rely on the process exit to clean up
-      // the fiber runner thread. What we guarantee here is that
-      // no fibers can run after this point as we don't yield here.
-      // This makes sure this thread won't accidentally
-      // access being destructed core worker.
-      fiber_stopped_event->Notify();
-      while (true) {
-        std::this_thread::sleep_for(std::chrono::hours(1));
+      // Graceful drain: wait for all in-flight fibers to finish before stopping.
+      // This keeps the fiber scheduler running so that in-flight coroutines can
+      // complete on their (still-running) asyncio event loops, resume their
+      // parked boost fibers, and store their task outputs -- so callers receive
+      // results instead of ActorDiedError during graceful shutdown.
+      //
+      // The wait uses boost fiber primitives so it yields to the scheduler,
+      // letting parked fibers be resumed as their coroutines complete. Like
+      // BoundedExecutor::Join() for threaded actors, this waits indefinitely;
+      // if an in-flight task never completes the worker hangs here until the
+      // raylet force-kills it (matching threaded-actor behavior).
+      {
+        std::unique_lock<boost::fibers::mutex> lock(drain_mutex_);
+        if (num_in_flight_fibers_ > 0) {
+          RAY_LOG(INFO) << "Async actor is draining " << num_in_flight_fibers_
+                        << " in-flight task(s) before exiting. If this message is the "
+                           "last one printed, the worker is probably hanging because an "
+                           "in-flight async task never completes.";
+        }
+        drain_cond_.wait(lock, [this]() { return num_in_flight_fibers_ == 0; });
       }
+
+      // All fibers have completed, so no fiber can run after this point and it
+      // is safe for this thread to return (and be treated as stopped). This
+      // makes sure this thread won't accidentally access a being-destructed
+      // core worker.
+      fiber_stopped_event->Notify();
     });
 
     fiber_runner_thread.detach();
@@ -176,6 +211,11 @@ class FiberState {
   /// The fiber semaphore used to limit the number of concurrent fibers
   /// running at once.
   FiberRateLimiter rate_limiter_;
+  /// Synchronization and bookkeeping for tracking the number of in-flight fibers and
+  /// waiting for them to finish during graceful shutdown.
+  boost::fibers::mutex mutex_;
+  boost::fibers::condition_variable fibers_drained_event_;
+  int num_in_flight_fibers_ = 0;
   /// The fiber event used to notify that the event loop in fiber_runner_thread
   /// have stopped running.
   /// Since we don't join the fiber threads, it's possible that the

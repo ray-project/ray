@@ -8,20 +8,24 @@ import pytest
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
 
+# Concurrency models that allow already-running tasks to keep executing after a
+# graceful exit is requested. Single-threaded actors are excluded: they run
+# tasks one at a time, so there is never a concurrently in-flight task to drain.
+CONCURRENT_ACTOR_TYPES = ["asyncio", "threaded"]
+
 
 @pytest.mark.skipif(
     sys.platform == "win32", reason="Windows doesn't handle SIGTERM gracefully."
 )
-@pytest.mark.parametrize("actor_type", ["asyncio", "threaded"])
+@pytest.mark.parametrize("actor_type", CONCURRENT_ACTOR_TYPES)
 def test_ray_get_during_graceful_shutdown(ray_start_regular_shared, actor_type: str):
     """Test that ray.get works as expected when draining tasks during shutdown.
 
-    This currently only applies to concurrent actors, because single-threaded actors do
-    not allow tasks to finish exiting after SIGTERM.
+    This only applies to concurrent actors (threaded and asyncio); single-threaded
+    actors do not allow tasks to finish executing after SIGTERM.
     """
     signal_actor = SignalActor.remote()
 
-    assert actor_type in {"asyncio", "threaded"}
     if actor_type == "asyncio":
 
         @ray.remote
@@ -65,26 +69,38 @@ def test_ray_get_during_graceful_shutdown(ray_start_regular_shared, actor_type: 
     sys.platform == "win32",
     reason="Graceful shutdown draining is unreliable on Windows.",
 )
-def test_exit_actor_delivers_inflight_task_results(ray_start_regular_shared):
-    """In-flight tasks (already executing) on a threaded actor finish and
-    deliver their results when exit_actor() is called from another thread,
-    instead of failing with ActorDiedError.
-
-    Asyncio actors are not covered: exit_actor() on an asyncio actor goes
-    through a different (AsyncioActorExit) path that does not deliver in-flight
-    results.
-    """
+@pytest.mark.parametrize("actor_type", CONCURRENT_ACTOR_TYPES)
+def test_exit_actor_delivers_inflight_task_results(
+    ray_start_regular_shared, actor_type: str
+):
+    """In-flight tasks (already executing) on a concurrent actor finish and
+    deliver their results when exit_actor() is called from another task,
+    instead of failing with ActorDiedError. Covers both threaded actors (tasks
+    on a thread pool) and asyncio actors (coroutines on the event loop)."""
     signal_actor = SignalActor.remote()
     num_tasks = 3
 
-    @ray.remote(max_concurrency=num_tasks + 1)
-    class A:
-        def exit(self):
-            ray.actor.exit_actor()
+    if actor_type == "asyncio":
 
-        def wait_then_return(self, value):
-            ray.get(signal_actor.wait.remote())
-            return value
+        @ray.remote
+        class A:
+            async def exit(self):
+                ray.actor.exit_actor()
+
+            async def wait_then_return(self, value):
+                await signal_actor.wait.remote()
+                return value
+
+    else:
+
+        @ray.remote(max_concurrency=num_tasks + 1)
+        class A:
+            def exit(self):
+                ray.actor.exit_actor()
+
+            def wait_then_return(self, value):
+                ray.get(signal_actor.wait.remote())
+                return value
 
     a = A.remote()
     refs = [a.wait_then_return.remote(i) for i in range(num_tasks)]
@@ -107,20 +123,36 @@ def test_exit_actor_delivers_inflight_task_results(ray_start_regular_shared):
     sys.platform == "win32",
     reason="Graceful shutdown draining is unreliable on Windows.",
 )
-def test_exit_actor_delivers_inflight_task_errors(ray_start_regular_shared):
-    """An in-flight task on a threaded actor that raises an application
+@pytest.mark.parametrize("actor_type", CONCURRENT_ACTOR_TYPES)
+def test_exit_actor_delivers_inflight_task_errors(
+    ray_start_regular_shared, actor_type: str
+):
+    """An in-flight task on a concurrent actor that raises an application
     exception while the actor is gracefully exiting delivers that exception,
     not ActorDiedError."""
     signal_actor = SignalActor.remote()
 
-    @ray.remote(max_concurrency=2)
-    class A:
-        def exit(self):
-            ray.actor.exit_actor()
+    if actor_type == "asyncio":
 
-        def wait_then_raise(self):
-            ray.get(signal_actor.wait.remote())
-            raise ValueError("application error")
+        @ray.remote
+        class A:
+            async def exit(self):
+                ray.actor.exit_actor()
+
+            async def wait_then_raise(self):
+                await signal_actor.wait.remote()
+                raise ValueError("application error")
+
+    else:
+
+        @ray.remote(max_concurrency=2)
+        class A:
+            def exit(self):
+                ray.actor.exit_actor()
+
+            def wait_then_raise(self):
+                ray.get(signal_actor.wait.remote())
+                raise ValueError("application error")
 
     a = A.remote()
     ref = a.wait_then_raise.remote()
@@ -138,21 +170,39 @@ def test_exit_actor_delivers_inflight_task_errors(ray_start_regular_shared):
     sys.platform == "win32",
     reason="Graceful shutdown draining is unreliable on Windows.",
 )
-def test_exit_actor_fails_queued_tasks(ray_start_regular_shared):
+@pytest.mark.parametrize("actor_type", CONCURRENT_ACTOR_TYPES)
+def test_exit_actor_fails_queued_tasks(ray_start_regular_shared, actor_type: str):
     """Methods queued (submitted but not yet started executing) when
-    exit_actor() is called fail with ActorDiedError."""
+    exit_actor() is called fail with ActorDiedError, for both threaded and
+    asyncio actors. ``max_concurrency`` bounds how many methods may run at once,
+    so the ``work`` calls cannot start while the blocking methods hold every
+    slot and are failed when the actor exits."""
     signal_actor = SignalActor.remote()
     max_concurrency = 2
 
-    @ray.remote(max_concurrency=max_concurrency)
-    class A:
-        def block_then_exit(self):
-            # Hold the concurrency slot until released, then exit the actor.
-            ray.get(signal_actor.wait.remote())
-            ray.actor.exit_actor()
+    if actor_type == "asyncio":
 
-        def work(self, value):
-            return value
+        @ray.remote(max_concurrency=max_concurrency)
+        class A:
+            async def block_then_exit(self):
+                # Hold the concurrency slot until released, then exit the actor.
+                await signal_actor.wait.remote()
+                ray.actor.exit_actor()
+
+            async def work(self, value):
+                return value
+
+    else:
+
+        @ray.remote(max_concurrency=max_concurrency)
+        class A:
+            def block_then_exit(self):
+                # Hold the concurrency slot until released, then exit the actor.
+                ray.get(signal_actor.wait.remote())
+                ray.actor.exit_actor()
+
+            def work(self, value):
+                return value
 
     a = A.remote()
     # Fill every concurrency slot with a blocking task so later calls can't
