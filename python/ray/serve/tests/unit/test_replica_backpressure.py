@@ -39,32 +39,30 @@ class TestTrackQueuedRequest:
     def test_release_decrements_exactly_once(self):
         fake = _make_fake_replica(max_ongoing_requests=1)
 
-        release = fake._track_queued_request()
-        assert fake._num_queued_requests == 1
+        with fake._track_queued_request() as release:
+            assert fake._num_queued_requests == 1
+            release()
+            assert fake._num_queued_requests == 0
+            # Extra calls are a no-op.
+            release()
+            assert fake._num_queued_requests == 0
 
-        release()
-        assert fake._num_queued_requests == 0
-
-        release()
+        # Exiting the block must not decrement below zero.
         assert fake._num_queued_requests == 0
 
     @pytest.mark.asyncio
     async def test_count_released_when_cancelled_while_waiting(self):
-        """A request cancelled while blocked on the slot is released by a finally,
-        as the direct-ingress handlers wire it up."""
+        """A request cancelled while blocked on the slot is released on block
+        exit, as the direct-ingress handlers wire it up."""
         fake = _make_fake_replica(max_ongoing_requests=1)
 
         # Hold the only slot so the request blocks while queued.
         await fake._semaphore.acquire()
 
-        release = fake._track_queued_request()
-
         async def handler():
-            try:
+            with fake._track_queued_request() as release:
                 async with fake._start_request(_make_metadata()):
                     release()
-            finally:
-                release()
 
         task = asyncio.ensure_future(handler())
         await _wait_for_semaphore_waiter(fake._semaphore)
