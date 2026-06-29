@@ -1,5 +1,4 @@
-(npu-ascend-guide)=
-# Recipe for DeepSeek-V4 on NPU via Ray Serve + vLLM
+# Deploy an LLM on Ascend NPU
 
 This guide provides a step-by-step recipe for deploying DeepSeek-V4-Flash-w8a8-mtp (w8a8 quantized with multi-token prediction) on Huawei Ascend NPUs using [Ray Serve LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html) and [vLLM-Ascend](https://github.com/vllm-project/vllm-ascend), enabling scalable, efficient, and OpenAI-compatible LLM serving on Ascend NPU hardware. If you want to deploy other large language models, you can combine the approach in this guide with the deployment solutions for other models provided in the [vLLM-Ascend documentation](https://docs.vllm.ai/projects/ascend/en/latest/tutorials/models/index.html).
 
@@ -15,7 +14,8 @@ It is recommended to download the model weights to a shared directory accessible
 
 This guide demonstrates deployment on an Atlas 800 A2 node. For A3 series deployment, refer to the [vLLM-Ascend DeepSeek-V4-Flash tutorial](https://docs.vllm.ai/projects/ascend/en/v0.18.0/tutorials/models/DeepSeek-V4-Flash.html).
 
-You can use our official Docker image to run `DeepSeek-V4` directly. Adjust the component versions in the image as follows:
+You can use the official Docker image to run `DeepSeek-V4` directly. Adjust the component versions in the image as follows:
+
 | Package | Version |
 |---------|---------|
 | vllm | 0.22.0 |
@@ -54,6 +54,7 @@ docker run --rm \
   -v /root/.cache:/root/.cache \
   -it $IMAGE bash
 ```
+
 ## Step 3: Set Environment Variables
 
 Set the following environment variables inside the Docker container:
@@ -83,16 +84,15 @@ Verify that the Ray cluster is running:
 ```sh
 ray status
 ```
+
 ## Step 5: Patching
 
 File to modify: vllm/model_executor/layers/rotary_embedding/common.py
 
 Source code:
 ```python
-# --8<-- [start:apply_rotary_emb]
 @CustomOp.register("apply_rotary_emb")
 class ApplyRotaryEmb(CustomOp):
-    # --8<-- [end:apply_rotary_emb]
 
     def __init__(
         self,
@@ -110,12 +110,11 @@ class ApplyRotaryEmb(CustomOp):
 
             self.apply_rotary_emb_flash_attn = apply_rotary
 ```
+
 Modified code:
 ```python
-# --8<-- [start:apply_rotary_emb]
 @CustomOp.register("apply_rotary_emb")
 class ApplyRotaryEmb(CustomOp):
-    # --8<-- [end:apply_rotary_emb]
 
     def __init__(
         self,

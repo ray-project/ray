@@ -13,6 +13,7 @@ Complete end-to-end tutorials for deploying different types of LLMs:
 - {doc}`Deploy a reasoning LLM </_collections/serve/tutorials/deployment-serve-llm/reasoning-llm/README>`
 - {doc}`Deploy a hybrid reasoning LLM </_collections/serve/tutorials/deployment-serve-llm/hybrid-reasoning-llm/README>`
 - {doc}`Deploy gpt-oss </_collections/serve/tutorials/deployment-serve-llm/gpt-oss/README>`
+- {doc}`Deploy an LLM on Ascend NPU </_collections/serve/tutorials/deployment-serve-llm/npu-ascend/README>`
 
 ```{toctree}
 :hidden:
@@ -24,5 +25,6 @@ Complete end-to-end tutorials for deploying different types of LLMs:
 /_collections/serve/tutorials/deployment-serve-llm/reasoning-llm/README
 /_collections/serve/tutorials/deployment-serve-llm/hybrid-reasoning-llm/README
 /_collections/serve/tutorials/deployment-serve-llm/gpt-oss/README
+/_collections/serve/tutorials/deployment-serve-llm/npu-ascend/README
 ```
 

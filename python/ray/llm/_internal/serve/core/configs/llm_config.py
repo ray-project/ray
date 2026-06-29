@@ -533,43 +533,8 @@ class LLMConfig(BaseModelExtended):
             self.accelerator_config = GPUConfig(kind="gpu")
             return
 
-        # Auto-detect from cluster resources
-        inferred_kind = self._detect_cluster_accelerator_kind()
-        if inferred_kind:
-            self.accelerator_config = self._kind_to_config(inferred_kind)
-        else:
-            # Default to GPUConfig if not otherwise specified
-            self.accelerator_config = GPUConfig(kind="gpu")
-
-    @staticmethod
-    def _detect_cluster_accelerator_kind() -> Optional[str]:
-        """Detect accelerator kind from cluster resources (NPU/TPU/GPU)."""
-        try:
-            import ray
-
-            if not ray.is_initialized():
-                return None
-            cluster_resources = ray.cluster_resources()
-            if cluster_resources.get("NPU", 0) > 0:
-                return "npu"
-            if cluster_resources.get("TPU", 0) > 0:
-                return "tpu"
-            if cluster_resources.get("GPU", 0) > 0:
-                return "gpu"
-        except Exception:
-            logger.debug("Could not detect cluster accelerator kind.")
-        return None
-
-    @staticmethod
-    def _kind_to_config(kind: str) -> AnyAcceleratorConfig:
-        """Map a hardware kind string to the corresponding AcceleratorConfig."""
-        mapping = {
-            "tpu": TPUConfig(kind="tpu"),
-            "gpu": GPUConfig(kind="gpu"),
-            "npu": NPUConfig(kind="npu"),
-            "cpu": CPUConfig(kind="cpu"),
-        }
-        return mapping[kind]
+        # Default to GPUConfig if not otherwise specified
+        self.accelerator_config = GPUConfig(kind="gpu")
 
     def _check_accelerator_type_matches_hardware(self) -> None:
         """Validate that accelerator_type aligns with the hardware configuration."""

@@ -38,7 +38,7 @@ def format_ray_accelerator_resource(accelerator_type_str: str) -> str:
 
 
 def infer_hardware_kind_from_bundles(
-    placement_group_config: Optional[Dict[str, Any]],
+    placement_group_config: Optional[Dict[str, Any]]
 ) -> Optional[str]:
     """Inspects placement group bundles and returns the inferred hardware kind."""
     if not placement_group_config:
