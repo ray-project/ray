@@ -16,6 +16,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.request_router.common import PendingRequest
 from ray.serve._private.request_router.replica_wrapper import RunningReplica
 from ray.serve._private.request_router.request_router import RequestRouter
+from ray.serve.config import RequestRouterConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -112,3 +113,12 @@ class KVAwareRouter(RequestRouter):
             list(worker_id_to_replica),
         )
         return [[worker_id_to_replica[selection["worker_id"]]]]
+
+
+def is_kv_aware(request_router_config) -> bool:
+    """Whether ``request_router_config`` selects a ``KVAwareRouter``."""
+    if isinstance(request_router_config, dict):
+        request_router_config = RequestRouterConfig(**request_router_config)
+    return isinstance(request_router_config, RequestRouterConfig) and issubclass(
+        request_router_config.get_request_router_class(), KVAwareRouter
+    )

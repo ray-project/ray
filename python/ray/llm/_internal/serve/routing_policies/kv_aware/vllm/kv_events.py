@@ -10,24 +10,11 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_EVENTS_PORT_BASE_KEY,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
-    KVAwareRouter,
+    is_kv_aware,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve.config import RequestRouterConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-def is_kv_aware_routing(request_router_config) -> bool:
-    """Whether ``request_router_config`` (a dict, a ``RequestRouterConfig``, or
-    ``None``) selects a ``KVAwareRouter`` -- the only consumer of the engine's
-    KV events. Engine KV events are otherwise dead weight, so all KV-events
-    wiring is gated on this."""
-    if isinstance(request_router_config, dict):
-        request_router_config = RequestRouterConfig(**request_router_config)
-    return isinstance(request_router_config, RequestRouterConfig) and issubclass(
-        request_router_config.get_request_router_class(), KVAwareRouter
-    )
 
 
 def configure_kv_events_for_kv_routing(llm_config: LLMConfig) -> None:
@@ -77,9 +64,7 @@ def assign_replica_kv_events_endpoint(llm_config: LLMConfig) -> None:
     replicas would otherwise bind the same ZMQ port. Offsets the configured
     base port by the replica's rank.
     """
-    if not is_kv_aware_routing(
-        llm_config.deployment_config.get("request_router_config")
-    ):
+    if not is_kv_aware(llm_config.deployment_config.get("request_router_config")):
         return
     kv_events_config = llm_config.engine_kwargs.get("kv_events_config")
     if kv_events_config is None:
@@ -105,9 +90,7 @@ def resolve_kv_event_source_endpoint(llm_config: LLMConfig) -> Optional[str]:
     The engine's KV-events endpoint at the replica's node IP; ``None`` when
     KV-cache events are not enabled.
     """
-    if not is_kv_aware_routing(
-        llm_config.deployment_config.get("request_router_config")
-    ):
+    if not is_kv_aware(llm_config.deployment_config.get("request_router_config")):
         return None
     kv_events_config = llm_config.engine_kwargs.get("kv_events_config")
     if kv_events_config is None:
@@ -120,9 +103,7 @@ def get_kv_event_routing_stats(
 ) -> Dict[str, Any]:
     """Returns this replica's routing-stats payload advertising its KV-events
     endpoint and the engine's resolved KV-cache block size."""
-    if not is_kv_aware_routing(
-        llm_config.deployment_config.get("request_router_config")
-    ):
+    if not is_kv_aware(llm_config.deployment_config.get("request_router_config")):
         return {}
     kv_events_config = llm_config.engine_kwargs.get("kv_events_config")
     if kv_events_config is None:
