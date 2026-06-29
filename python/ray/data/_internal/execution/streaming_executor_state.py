@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
+from ray._common.utils import env_bool
+from ray._private.worker import _wait_generators_bulk
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import ActorPoolInfo
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.bundle_queue import (
@@ -52,8 +54,15 @@ logger = logging.getLogger(__name__)
 # operator to tracked streaming exec state.
 Topology = Dict[PhysicalOperator, "OpState"]
 
-# Maximum time `process_completed_tasks` will block in `ray.wait()` waiting for tasks to complete.
+# Maximum time `process_completed_tasks` will block waiting for tasks to complete.
 WAIT_FOR_TASK_COMPLETION_TIMEOUT_S = 0.1
+
+# Set this env var to 0/false to restore the old per-generator consumption path.
+RAY_DATA_WAIT_GENERATORS_BULK_ENV_VAR = "RAY_DATA_WAIT_GENERATORS_BULK"
+
+
+def _use_wait_generators_bulk() -> bool:
+    return env_bool(RAY_DATA_WAIT_GENERATORS_BULK_ENV_VAR, True)
 
 
 class IdleDetector:
@@ -603,7 +612,7 @@ def process_completed_tasks(
         The number of errored blocks.
     """
 
-    # All active tasks, keyed by their waitables.
+    # All active tasks, keyed by their refs.
     active_tasks: Dict[Waitable, Tuple[OpState, OpTask]] = {}
     for op, state in topology.items():
         for task in op.get_active_tasks():
@@ -647,6 +656,7 @@ def process_completed_tasks(
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
     if active_tasks:
+        use_wait_generators_bulk = _use_wait_generators_bulk()
         ready, _ = ray.wait(
             list(active_tasks.keys()),
             num_returns=len(active_tasks),
@@ -660,9 +670,28 @@ def process_completed_tasks(
         # per operator. In this case, we want to have fewer tasks finish quickly and
         # yield resources, instead of having all tasks output blocks together.
         ready_tasks_by_op = defaultdict(list)
+        ready_data_refs = []
+
         for ref in ready:
             state, task = active_tasks[ref]
             ready_tasks_by_op[state].append(task)
+            if (
+                use_wait_generators_bulk
+                and isinstance(task, DataOpTask)
+                and not task.has_pending_output
+                and remaining_output_budget.get(state, None) != 0
+            ):
+                ready_data_refs.append(
+                    (task.get_waitable(), task.get_next_ref_fetch_local_pattern())
+                )
+
+        ready_data_refs_by_ref = {}
+        if ready_data_refs:
+            ready_data_results = _wait_generators_bulk(
+                ready_data_refs,
+                num_return=len(ready_data_refs),
+            )
+            ready_data_refs_by_ref = dict(ready_data_results)
 
         for state, ready_tasks in ready_tasks_by_op.items():
             # TODO elaborate why sorting (helps preserve_order case)
@@ -670,9 +699,15 @@ def process_completed_tasks(
             for task in ready_tasks:
                 if isinstance(task, DataOpTask):
                     try:
-                        bytes_read = task.on_data_ready(
-                            remaining_output_budget.get(state, None)
-                        )
+                        max_bytes_to_read = remaining_output_budget.get(state, None)
+                        refs = None
+                        if use_wait_generators_bulk and not task.has_pending_output:
+                            ref = task.get_waitable()
+                            if ref in ready_data_refs_by_ref:
+                                refs = ready_data_refs_by_ref[ref]
+                            elif max_bytes_to_read != 0:
+                                continue
+                        bytes_read = task.on_data_ready(max_bytes_to_read, refs)
                         if state in remaining_output_budget:
                             # Clamp remaining output budget at 0
                             remaining_output_budget[state] = max(

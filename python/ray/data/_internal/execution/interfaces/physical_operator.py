@@ -188,22 +188,67 @@ class DataOpTask(OpTask):
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
 
-    def on_data_ready(self, max_bytes_to_read: Optional[int]) -> int:
+    @staticmethod
+    def get_next_ref_fetch_local_pattern() -> List[bool]:
+        """Return fetch-local settings for the next block/metadata pair."""
+        return [False, True]
+
+    @property
+    def has_pending_output(self) -> bool:
+        return not self._pending_block_ref.is_nil()
+
+    def _set_pending_refs(self, refs: List[ray.ObjectRef]) -> None:
+        if len(refs) != 2:
+            raise ValueError(
+                "DataOpTask expected a block and metadata ref pair, "
+                f"got {len(refs)} refs."
+            )
+        if self.has_pending_output:
+            raise ValueError("DataOpTask already has a pending output ref pair.")
+        self._pending_block_ref = refs[0]
+        self._pending_meta_ref = refs[1]
+        self._block_ready_callback(self._pending_block_ref)
+        self._metadata_ready_callback(self._pending_meta_ref)
+
+    def _mark_task_finished(self) -> None:
+        self._task_done_callback(
+            None,  # exception
+            self._last_block_meta.task_exec_stats
+            if self._last_block_meta is not None
+            else None,
+            TaskExecDriverStats(
+                task_output_backpressure_s=self._total_output_backpressure_s,
+            ),
+        )
+        self._has_finished = True
+
+    def on_data_ready(
+        self,
+        max_bytes_to_read: Optional[int],
+        refs: Optional[List[ray.ObjectRef]] = None,
+    ) -> int:
         """Callback when data is ready to be read from the streaming generator.
 
         Args:
             max_bytes_to_read: Max bytes of blocks to read. If None, all available
                 will be read.
-
-        Returns:
-            The number of blocks read.
+            refs: Optional block and metadata ref pair that has already been consumed
+                from the streaming generator.
+        Returns: The number of bytes read.
         """
         bytes_read = 0
+        use_prefetched_refs = refs is not None
 
         self._track_task_output_backpressure(max_bytes_to_read)
 
+        if refs is not None:
+            self._set_pending_refs(refs)
+
         while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
             if self._pending_block_ref.is_nil():
+                if use_prefetched_refs:
+                    break
+
                 assert self._pending_meta_ref.is_nil(), (
                     "This method expects streaming generators to yield blocks then "
                     "metadata. So, if we have a reference to metadata but not the "
@@ -215,17 +260,7 @@ class DataOpTask(OpTask):
                         timeout_s=0
                     )
                 except StopIteration:
-                    self._task_done_callback(
-                        None,  # exception
-                        self._last_block_meta.task_exec_stats
-                        if self._last_block_meta is not None
-                        else None,
-                        TaskExecDriverStats(
-                            task_output_backpressure_s=self._total_output_backpressure_s,
-                        ),
-                    )
-
-                    self._has_finished = True
+                    self._mark_task_finished()
                     break
 
                 if self._pending_block_ref.is_nil():
@@ -236,6 +271,9 @@ class DataOpTask(OpTask):
                 self._block_ready_callback(self._pending_block_ref)
 
             if self._pending_meta_ref.is_nil():
+                if use_prefetched_refs:
+                    break
+
                 try:
                     self._pending_meta_ref = self._streaming_gen._next_sync(
                         timeout_s=METADATA_WAIT_TIMEOUT_S
@@ -267,6 +305,10 @@ class DataOpTask(OpTask):
 
                 self._metadata_ready_callback(self._pending_meta_ref)
 
+            assert (
+                not self._pending_meta_ref.is_nil()
+            ), "DataOpTask expects a block and metadata ref pair."
+
             try:
                 # The timeout for `ray.get` includes the time required to ship the
                 # block metadata to this node. So, if we set the timeout to 0, `ray.get`
@@ -275,6 +317,24 @@ class DataOpTask(OpTask):
                 meta_with_schema_bytes: bytes = ray.get(
                     self._pending_meta_ref, timeout=METADATA_GET_TIMEOUT_S
                 )
+            except ray.exceptions.ObjectRefStreamEndOfStreamError:
+                try:
+                    ray.get(self._pending_block_ref)
+                    assert False, "Above ray.get should raise an exception."
+                except ray.exceptions.ObjectRefStreamEndOfStreamError:
+                    self._pending_block_ref = ray.ObjectRef.nil()
+                    self._pending_meta_ref = ray.ObjectRef.nil()
+                    self._mark_task_finished()
+                    break
+                except Exception as ex:
+                    self._task_done_callback(
+                        ex,
+                        None,  # TaskExecStats
+                        None,  # TaskExecDriverStats
+                    )
+
+                    self._has_finished = True
+                    raise ex from None
             except ray.exceptions.GetTimeoutError:
                 # We have a reference to the block and its metadata, but the metadata
                 # object isn't available. This can happen if the node dies.

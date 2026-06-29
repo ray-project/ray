@@ -473,7 +473,8 @@ class StreamingExecutor(Executor, threading.Thread):
         """Run one step of the scheduling loop.
 
         This runs a few general phases:
-            1. Waiting for the next task completion using `ray.wait()`.
+            1. Waiting for the next task completion. Streaming generator tasks use
+               `_wait_generators_bulk`; ordinary tasks use `ray.wait()`.
             2. Pulling completed refs into operator outqueues.
             3. Selecting and dispatching new inputs to operators.
 
@@ -484,8 +485,8 @@ class StreamingExecutor(Executor, threading.Thread):
             True if we should continue running the scheduling loop.
         """
         self._resource_manager.update_usages()
-        # Note: calling process_completed_tasks() is expensive since it incurs
-        # ray.wait() overhead, so make sure to allow multiple dispatch per call for
+        # Note: calling process_completed_tasks() is expensive since it waits for
+        # task output refs, so make sure to allow multiple dispatch per call for
         # greater parallelism.
         num_errored_blocks = process_completed_tasks(
             topology,

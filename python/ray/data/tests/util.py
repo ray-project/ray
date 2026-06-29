@@ -7,6 +7,7 @@ from typing import Any, Callable, Iterable, List, Optional
 import pandas as pd
 
 import ray
+from ray._private.worker import _wait_generators_bulk
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
@@ -100,6 +101,26 @@ def assert_exprs_equal(actual: List[Expr], expected: List[Expr]):
     )
 
 
+def drain_data_task_outputs(task: DataOpTask, *, drain_all: bool = True) -> int:
+    bytes_read = 0
+    while not task.has_finished:
+        ready = _wait_generators_bulk(
+            [(task.get_waitable(), task.get_next_ref_fetch_local_pattern())],
+            timeout=0,
+        )
+        if not ready:
+            bytes_read += task.on_data_ready(max_bytes_to_read=None)
+            break
+        _, refs = ready[0]
+        bytes_read += task.on_data_ready(
+            max_bytes_to_read=None,
+            refs=refs,
+        )
+        if not drain_all:
+            break
+    return bytes_read
+
+
 def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
     """Run tasks of a PhysicalOperator synchronously.
 
@@ -120,7 +141,7 @@ def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
             task = ref_to_task[ref]
             if isinstance(task, DataOpTask):
                 # Read all currently available output from the streaming generator
-                task.on_data_ready(max_bytes_to_read=None)
+                drain_data_task_outputs(task)
                 # Only remove the task when the generator has been fully exhausted
                 if task.has_finished:
                     tasks.remove(task)
@@ -154,7 +175,7 @@ def run_one_op_task(op):
         tasks = [task]
 
         if isinstance(task, DataOpTask):
-            task.on_data_ready(None)
+            drain_data_task_outputs(task, drain_all=False)
             if task.has_finished:
                 tasks.remove(task)
         else:
