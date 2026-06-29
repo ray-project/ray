@@ -102,7 +102,9 @@ def _build_openai_ingress_request_router(*, server: Application) -> Application:
     )
     return deployment.bind(
         server=server,
-        pre_routing_tokenization=is_kv_aware_routing(server),
+        pre_routing_tokenization=is_kv_aware_routing(
+            server._bound_deployment._deployment_config.request_router_config
+        ),
     )
 
 

@@ -53,7 +53,7 @@ from ray.llm._internal.serve.engines.vllm.vllm_models import (
     VLLMEngineConfig,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     assign_replica_kv_events_endpoint,
     get_kv_event_routing_stats,
 )
@@ -404,6 +404,7 @@ class VLLMEngine(LLMEngine):
 
         self._routing_stats = get_kv_event_routing_stats(
             self.llm_config,
+            vllm_engine_config.cache_config.block_size,
             vllm_engine_config.scheduler_config.max_num_batched_tokens,
         )
 

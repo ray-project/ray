@@ -156,6 +156,14 @@ class RayServegRPCContext:
         """
         return self._invocation_metadata_dict.get("request_id")
 
+    def application(self) -> Optional[str]:
+        """Accesses the target application name for the RPC, if provided.
+
+        Returns:
+          The application name from the request metadata, or None if not set.
+        """
+        return self._invocation_metadata_dict.get("application")
+
     def traceparent(self) -> Optional[str]:
         """Accesses the traceparent for the RPC.
 

@@ -1,6 +1,7 @@
 import asyncio
 import sys
 from typing import Dict, List
+from unittest import mock
 
 import pytest
 import requests
@@ -10,21 +11,16 @@ from transformers import AutoTokenizer
 import ray
 from ray import serve
 from ray._common.test_utils import async_wait_for_condition
-from ray.llm._internal.serve.core.ingress.builder import (
-    _build_direct_streaming_llm_deployment,
-)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     _MODEL_NAME,
     _TENANT_ID,
     KV_ROUTER_ACTOR_NAME,
     KVRouterActor,
 )
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
-    configure_kv_events_for_kv_routing,
-)
 from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX, SERVE_NAMESPACE
-from ray.serve.config import DeploymentActorConfig
-from ray.serve.llm import LLMConfig, ModelLoadingConfig
+from ray.serve.config import RequestRouterConfig
+from ray.serve.experimental.round_robin_router import RoundRobinRouter
+from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_openai_app
 from ray.serve.llm.request_router import KVAwareRouter
 
 MODEL_ID = "qwen3-0.6b"
@@ -97,6 +93,16 @@ class _TestKVRouterActor(KVRouterActor):
             }
         )
         return {w["worker_id"]: w["device_blocks"] for w in scores["workers"]}
+
+
+class _TestKVAwareRouter(RoundRobinRouter, KVAwareRouter):
+    """KVAwareRouter routes by KV-cache overlap, which is not implemented yet.
+
+    Inherit RoundRobinRouter's routing (which ``_discover_replicas`` relies on to
+    cycle through replicas) while remaining a ``KVAwareRouter`` subclass, so the
+    deployment selects the KV-aware code paths under test (engine KV events,
+    per-replica event ports). MRO resolves ``choose_replicas`` to RoundRobinRouter.
+    """
 
 
 def discover_deployment_actor(app_name, deployment_name, actor_name):
@@ -181,14 +187,16 @@ class TestKvEvents:
                 autoscaling_config=dict(
                     min_replicas=NUM_REPLICAS, max_replicas=NUM_REPLICAS
                 ),
-                deployment_actors=[
-                    DeploymentActorConfig(
-                        name=KV_ROUTER_ACTOR_NAME,
-                        actor_class=ray.remote(_TestKVRouterActor),
-                        actor_options={"num_cpus": 0},
-                        init_kwargs={"block_size": BLOCK_SIZE},
-                    )
-                ],
+                # This test validates the KV-events plane (engine events ->
+                # selection service indexer), not routing: requests are sent
+                # directly to each replica's endpoint. KVAwareRouter's own routing
+                # is unimplemented, so this subclass borrows RoundRobinRouter's
+                # selection purely so replica discovery can enumerate both.
+                # TODO (jeffreywang): use KVAwareRouter directly once it
+                # implements routing.
+                request_router_config=RequestRouterConfig(
+                    request_router_class=_TestKVAwareRouter
+                ),
             ),
             engine_kwargs=dict(
                 max_model_len=2048,
@@ -206,10 +214,14 @@ class TestKvEvents:
             ),
             log_engine_metrics=False,
         )
-        configure_kv_events_for_kv_routing(llm_config)
-
-        app = _build_direct_streaming_llm_deployment(llm_config)
-        handle = serve.run(app, name=APP_NAME)
+        # The builder auto-attaches the KVRouterActor; patch in the test
+        # subclass so the deployment-scoped actor exposes test introspection.
+        with mock.patch(
+            "ray.llm._internal.serve.routing_policies.kv_aware.utils.KVRouterActor",
+            _TestKVRouterActor,
+        ):
+            app = build_openai_app({"llm_configs": [llm_config]})
+            handle = serve.run(app, name=APP_NAME)
         yield handle
         serve.shutdown()
 
@@ -390,7 +402,9 @@ class TestKvScoring:
                 autoscaling_config=dict(
                     min_replicas=NUM_REPLICAS, max_replicas=NUM_REPLICAS
                 ),
-                request_router_config={"request_router_class": KVAwareRouter},
+                request_router_config=RequestRouterConfig(
+                    request_router_class=KVAwareRouter
+                ),
             ),
             engine_kwargs=dict(
                 max_model_len=2048,
@@ -406,7 +420,7 @@ class TestKvScoring:
             ),
             log_engine_metrics=False,
         )
-        app = _build_direct_streaming_llm_deployment(llm_config)
+        app = build_openai_app({"llm_configs": [llm_config]})
         handle = serve.run(app, name="kv_scoring_gpu_test")
         yield handle
         serve.shutdown()
@@ -417,8 +431,6 @@ class TestKvScoring:
         """An overlapping prompt routes back to the replica that cached it,
         scored through the full KVAwareRouter path."""
         async with kv_aware_handle.choose_replica(
-            request_body=b"",
-            body_truncated=False,
             _reserve=False,
             request_token_ids=[1],  # KV-aware routing requires token ids
         ) as selection:
@@ -434,8 +446,6 @@ class TestKvScoring:
             picks = set()
             for _ in range(3):
                 async with kv_aware_handle.choose_replica(
-                    request_body=b"",
-                    body_truncated=False,
                     _reserve=False,
                     request_token_ids=prompt_token_ids,
                 ) as selection:
