@@ -596,6 +596,27 @@ def test_map_not_fused_into_shuffle_reduce_with_downstream_limit(
     assert len(ds.take_all()) == 10
 
 
+def test_concurrency_capped_map_not_fused_into_shuffle_reduce(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    """A map with a ``concurrency=`` cap is NOT fused into the reduce. The
+    reduce runs one task per partition with no concurrency cap, so fusing would
+    silently ignore the user's limit; keeping the map separate honors it."""
+    DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+
+    ds = (
+        ray.data.range(100)
+        .repartition(4, keys=["id"])
+        .map_batches(lambda b: b, concurrency=2)
+    )
+    dag = get_execution_plan(ds._logical_plan)[0].dag
+
+    assert dag.name == "MapBatches(<lambda>)"
+    reduce_op = dag.input_dependencies[0]
+    assert reduce_op.name == "HashShuffleReduce(keys=('id',), partitions=4)"
+    assert reduce_op._fused_output_map_transformer is None
+
+
 def test_non_file_datasink_write_not_fused_into_shuffle_reduce(
     ray_start_regular_shared_2_cpus, restore_data_context
 ):
