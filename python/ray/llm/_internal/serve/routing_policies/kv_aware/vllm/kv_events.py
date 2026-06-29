@@ -64,7 +64,7 @@ def assign_replica_kv_events_endpoint(llm_config: LLMConfig) -> None:
     replicas would otherwise bind the same ZMQ port. Offsets the configured
     base port by the replica's rank.
     """
-    if not is_kv_aware(llm_config.deployment_config.get("request_router_config")):
+    if not is_kv_aware(llm_config):
         return
     kv_events_config = llm_config.engine_kwargs.get("kv_events_config")
     if kv_events_config is None:
@@ -90,7 +90,7 @@ def resolve_kv_event_source_endpoint(llm_config: LLMConfig) -> Optional[str]:
     The engine's KV-events endpoint at the replica's node IP; ``None`` when
     KV-cache events are not enabled.
     """
-    if not is_kv_aware(llm_config.deployment_config.get("request_router_config")):
+    if not is_kv_aware(llm_config):
         return None
     kv_events_config = llm_config.engine_kwargs.get("kv_events_config")
     if kv_events_config is None:
@@ -103,7 +103,7 @@ def get_kv_event_routing_stats(
 ) -> Dict[str, Any]:
     """Returns this replica's routing-stats payload advertising its KV-events
     endpoint and the engine's resolved KV-cache block size."""
-    if not is_kv_aware(llm_config.deployment_config.get("request_router_config")):
+    if not is_kv_aware(llm_config):
         return {}
     kv_events_config = llm_config.engine_kwargs.get("kv_events_config")
     if kv_events_config is None:

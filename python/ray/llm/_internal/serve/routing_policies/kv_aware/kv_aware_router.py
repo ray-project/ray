@@ -3,6 +3,7 @@ from typing import List, Optional
 
 import ray
 from ray.actor import ActorHandle
+from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.ingress.tokenizer import REQUEST_TOKEN_IDS_KWARG
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     KV_ROUTER_ACTOR_NAME,
@@ -110,8 +111,9 @@ class KVAwareRouter(RequestRouter):
         return [[worker_id_to_replica[selection["worker_id"]]]]
 
 
-def is_kv_aware(request_router_config) -> bool:
-    """Whether ``request_router_config`` selects a ``KVAwareRouter``."""
+def is_kv_aware(llm_config: LLMConfig) -> bool:
+    """Whether ``llm_config`` selects a ``KVAwareRouter`` for replica selection."""
+    request_router_config = llm_config.deployment_config.get("request_router_config")
     if isinstance(request_router_config, dict):
         request_router_config = RequestRouterConfig(**request_router_config)
     return isinstance(request_router_config, RequestRouterConfig) and issubclass(

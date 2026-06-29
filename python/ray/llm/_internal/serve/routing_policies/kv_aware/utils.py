@@ -33,7 +33,7 @@ def _maybe_setup_kv_aware_routing(
     Attaches the KVRouterActor, which owns the deployment's global KV radix
     tree, and enables the engine KV events that feed it.
     """
-    if not is_kv_aware(deployment_options.get("request_router_config")):
+    if not is_kv_aware(llm_config):
         if llm_config.engine_kwargs.get("kv_events_config") is not None:
             logger.warning(
                 "engine_kwargs['kv_events_config'] is set but the deployment's "
