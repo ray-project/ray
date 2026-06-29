@@ -51,7 +51,6 @@ from ray.data._internal.datasource.kafka_datasource import (
     PerPartitionOffsets,
 )
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
-from ray.data._internal.datasource.lerobot_datasource import LeRobotDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
@@ -2831,6 +2830,11 @@ def read_lerobot(
         :class:`~ray.data.Dataset` of fully-decoded frames with state, action,
         camera, task, and metadata columns.
     """
+    # Imported lazily: LeRobotDatasource pulls ray.data.extensions into the import
+    # graph, which breaks the docs build if imported at module load (see the note
+    # in ray/data/datasource/__init__.py).
+    from ray.data._internal.datasource.lerobot_datasource import LeRobotDatasource
+
     datasource = LeRobotDatasource(
         root=root,
         group_by_episode=group_by_episode,

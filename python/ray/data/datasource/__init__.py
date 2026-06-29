@@ -1,7 +1,6 @@
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
-from ray.data._internal.datasource.lerobot_datasource import LeRobotDatasource
 from ray.data._internal.datasource.mcap_datasource import (
     MCAPDatasource,
     TimeRange,
@@ -48,6 +47,24 @@ from ray.data.datasource.partitioning import (
 # Note: HuggingFaceDatasource should NOT be imported here, because
 # we want to only import the Hugging Face datasets library when we use
 # ray.data.from_huggingface() or HuggingFaceDatasource() directly.
+#
+# Note: LeRobotDatasource is likewise resolved lazily via __getattr__ below.
+# Importing it eagerly pulls ray.data.extensions (tensor_extension) into the
+# import graph at package-load time, which breaks the docs build (autodoc mocks
+# pandas, so TensorArrayElement's class-body setup raises). Lazy resolution keeps
+# `from ray.data.datasource import LeRobotDatasource` working without that cost.
+
+
+def __getattr__(name):
+    if name == "LeRobotDatasource":
+        from ray.data._internal.datasource.lerobot_datasource import (
+            LeRobotDatasource,
+        )
+
+        return LeRobotDatasource
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__ = [
     "BaseFileMetadataProvider",
     "Connection",
