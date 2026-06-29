@@ -131,14 +131,14 @@ class FuseOperators(Rule):
 
         # Don't fuse a map with a `concurrency=` cap: the reduce runs one task
         # per partition with no concurrency cap, so fusing would silently ignore
-        # the limit. (map->map fusion likewise only fuses matching caps.)
+        # the limit.
         if dag.get_max_concurrency_limit() is not None:
             return False
 
         # Don't fuse under a downstream limit. A standalone map is throttled at
-        # task admission (so a `take(n)` only runs ~n tasks), but a fused reduce
-        # task runs the map over its whole partition before the limit can stop
-        # it -- materializing far more than requested.
+        # task admission , but a fused reduce task runs the map over its whole
+        # partition before the limit can stop it this could materializing far
+        # more than requested.
         if has_downstream_limit:
             return False
 
