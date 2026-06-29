@@ -182,8 +182,28 @@ class AutoscalingContext:
         return self._total_pending_async_requests
 
 
+class _ForwardCompatModel(BaseModel):
+    """Base for config models that are cloudpickled into Serve checkpoints.
+
+    pydantic v2 restores ``__dict__`` exactly as pickled and does not re-apply
+    field defaults on unpickle, so a field added to a model after a checkpoint
+    was written is absent from the restored object and raises ``AttributeError``
+    on first access (e.g. during ``ServeController`` recovery). Backfilling
+    missing fields with their defaults keeps recovery from older checkpoints
+    forward-compatible as new fields are added.
+    """
+
+    def __setstate__(self, state):
+        super().__setstate__(state)
+        for name, field in type(self).model_fields.items():
+            if name not in self.__dict__:
+                object.__setattr__(
+                    self, name, field.get_default(call_default_factory=True)
+                )
+
+
 @PublicAPI(stability="alpha")
-class RequestRouterConfig(BaseModel):
+class RequestRouterConfig(_ForwardCompatModel):
     """Config for the Serve request router.
 
     This class configures how Ray Serve routes requests to deployment replicas. The router is
@@ -423,7 +443,7 @@ class AggregationFunction(str, Enum):
 
 
 @PublicAPI(stability="stable")
-class AutoscalingPolicy(BaseModel):
+class AutoscalingPolicy(_ForwardCompatModel):
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
     # Cached deserialized policy to avoid repeated cloudpickle.loads() calls.
@@ -549,7 +569,7 @@ class AutoscalingPolicy(BaseModel):
 
 
 @PublicAPI(stability="stable")
-class AutoscalingConfig(BaseModel):
+class AutoscalingConfig(_ForwardCompatModel):
     """Config for the Serve Autoscaler."""
 
     # Please keep these options in sync with those in
@@ -988,7 +1008,7 @@ class GangRuntimeFailurePolicy(str, Enum):
 
 
 @PublicAPI(stability="alpha")
-class DeploymentActorConfig(BaseModel):
+class DeploymentActorConfig(_ForwardCompatModel):
     """Configuration for a deployment-scoped actor.
 
     Deployment-scoped actors are long-lived actors managed by the Serve controller
@@ -1126,7 +1146,7 @@ class DeploymentActorConfig(BaseModel):
 
 
 @PublicAPI(stability="alpha")
-class GangSchedulingConfig(BaseModel):
+class GangSchedulingConfig(_ForwardCompatModel):
     """Configuration for gang scheduling of deployment replicas."""
 
     # Please keep these options in sync with those in `src/ray/protobuf/serve.proto`.

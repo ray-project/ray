@@ -5,7 +5,6 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 from google.protobuf.descriptor import FieldDescriptor
 from google.protobuf.message import Message
 from pydantic import (
-    BaseModel,
     ConfigDict,
     Field,
     NonNegativeFloat,
@@ -41,6 +40,7 @@ from ray.serve.config import (
     HTTPOptions,
     ProxyLocation,
     RequestRouterConfig,
+    _ForwardCompatModel,
 )
 from ray.serve.generated.serve_pb2 import (
     AutoscalingConfig as AutoscalingConfigProto,
@@ -109,7 +109,7 @@ def _proto_to_dict(proto: Message) -> Dict:
     return data
 
 
-class DeploymentConfig(BaseModel):
+class DeploymentConfig(_ForwardCompatModel):
     """Internal datastructure wrapping config options for a deployment.
 
     Args:
