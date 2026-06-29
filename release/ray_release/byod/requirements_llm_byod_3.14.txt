@@ -1,29 +1,17 @@
 # Pin the torch family to the build that the ray-llm base layer (and vLLM
 # 0.22.0's prebuilt wheels) are compiled against. sentence-transformers pulls
 # torch transitively, and this depset is otherwise unconstrained, so without
-# these pins it resolves to the latest PyPI torch (e.g. 2.12.0 + CUDA 13). That
-# lock is layered onto the -base-extra-testdeps image, overwriting the base
-# layer's 2.11.0+cu129 and breaking vLLM/torchvision prebuilt extensions
-# (undefined libtorch symbol _RegisterOrVerify / missing torchvision::nms op).
-# Keep in sync with the rayllm deplock + llm-requirements.
---extra-index-url https://download.pytorch.org/whl/cu129
-torch==2.11.0+cu129
-torchvision==0.26.0+cu129
-torchaudio==2.11.0+cu129
-
-# vLLM 0.22.0's prebuilt _C extension (and its flashinfer-python /
-# humming-kernels deps) is built against CUDA 13 and dlopens libcudart.so.13 at
-# import. torch==2.11.0+cu129 only ships the cu12 runtime, and this testdeps
-# depset has no vLLM in its closure to pull the cu13 packages, so without these
-# the layered lock drops libcudart.so.13 and `import vllm._C` fails. These are
-# the exact cu13 versions carried by the ray-llm base lock (rayllm_py314_cu128).
-nvidia-cuda-runtime==13.3.29
-nvidia-cuda-nvrtc==13.3.33
-nvidia-cuda-nvcc==13.3.33
-nvidia-cuda-crt==13.3.33
-nvidia-cuda-cccl==13.3.3.3.1
-nvidia-nvvm==13.3.33
-nvidia-ml-py==13.610.43
+# these pins it resolves to the latest PyPI torch, overwriting the base layer's
+# 2.11.0+cu130 and breaking vLLM/torchvision prebuilt extensions (undefined
+# libtorch symbol _RegisterOrVerify / missing torchvision::nms op).
+# torch 2.11.0+cu130 also brings the CUDA-13 runtime (libcudart.so.13) that vLLM
+# 0.22.0's _C extension dlopens, so the cu13 nvidia-* packages no longer need to
+# be pinned by hand (they did when torch was cu129 and only shipped the cu12
+# runtime). Keep in sync with the rayllm deplock + llm-requirements.
+--extra-index-url https://download.pytorch.org/whl/cu130
+torch==2.11.0+cu130
+torchvision==0.26.0+cu130
+torchaudio==2.11.0+cu130
 
 pytest-asyncio==0.21.2
 pytest-timeout==2.1.0

@@ -21,7 +21,7 @@ set -euo pipefail
 PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.minor}')")"
 
 if [[ "${PYTHON_CODE}" == "py314" ]]; then
-    CUDA_CODE=cu128
+    CUDA_CODE=cu130
     # Use nvshmem 3.3.24 which is the default for vLLM (supports CUDA 12.x).
     # https://github.com/vllm-project/vllm/blob/64ac1395e8d52e3e38910a62c7eb8524126730d8/tools/ep_kernels/install_python_libraries.sh#L14
     NVSHMEM_VER=3.3.24

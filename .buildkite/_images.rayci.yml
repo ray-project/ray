@@ -119,7 +119,7 @@ steps:
       python:
         - "3.14"
       cuda:
-        - "12.8.1-cudnn"
+        - "13.0.0-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"
@@ -131,7 +131,7 @@ steps:
       python:
         - "3.14"
       cuda:
-        - "12.8.1-cudnn"
+        - "13.0.0-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"

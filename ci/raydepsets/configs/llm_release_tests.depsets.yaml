@@ -1,14 +1,13 @@
 build_arg_sets:
-  cu128:
+  cu130:
     PYTHON_VERSION: py314
     PYTHON_VERSION_STR: "3.14"
-    CUDA_CODE: cu128
-    # vLLM 0.22.0's default PyPI wheel is built against the CUDA 12.9 (cu129)
-    # public torch release, so resolve the torch family from the cu129 index to
-    # keep the prebuilt _C.abi3.so linkable. The lock filename keeps the cu128
-    # tag because the base container is still cu128. Must match
-    # rayllm.depsets.yaml's TORCH_CUDA_CODE.
-    TORCH_CUDA_CODE: cu129
+    CUDA_CODE: cu130
+    # Resolve the torch family from the cu130 index so the whole CUDA-13 stack
+    # (torch 2.11.0+cu130, vLLM 0.22.0, flashinfer 0.6.11.post2) is consistent
+    # and vllm._C finds libcudart.so.13. Must match rayllm.depsets.yaml's
+    # TORCH_CUDA_CODE.
+    TORCH_CUDA_CODE: cu130
 
 
 .common_settings: &common_settings
@@ -18,7 +17,7 @@ build_arg_sets:
     - --python-platform=x86_64-manylinux_2_31
     - --index https://download.pytorch.org/whl/${TORCH_CUDA_CODE}
   build_arg_sets:
-    - cu128
+    - cu130
 
 depsets:
   - name: subset_rayllm_depset_${PYTHON_VERSION}_${CUDA_CODE}
