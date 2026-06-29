@@ -7,6 +7,7 @@ import pytest
 
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.test_utils import wait_for_pid_to_exit
 
 # Concurrency models that allow already-running tasks to keep executing after a
 # graceful exit is requested. Single-threaded actors are excluded: they run
@@ -221,6 +222,68 @@ def test_exit_actor_fails_queued_tasks(ray_start_regular_shared, actor_type: str
     for ref in blocking_refs + queued_refs:
         with pytest.raises(ray.exceptions.RayActorError):
             ray.get(ref, timeout=30)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Graceful shutdown draining is unreliable on Windows.",
+)
+def test_exit_actor_drains_inflight_across_concurrency_groups(ray_start_regular_shared):
+    """exit_actor() on an async actor drains in-flight tasks running in *other*
+    concurrency groups before the actor exits.
+
+    Tasks in flight when exit_actor() is called (here in the "io" and "compute"
+    groups, while exit() runs in the default group) run to completion and
+    deliver their results.
+    """
+    signal_actor = SignalActor.remote()
+    num_io_tasks = 2
+
+    @ray.remote(concurrency_groups={"io": num_io_tasks, "compute": 1})
+    class A:
+        async def getpid(self):
+            return os.getpid()
+
+        async def exit(self):
+            ray.actor.exit_actor()
+
+        @ray.method(concurrency_group="io")
+        async def wait_then_return(self, value):
+            await signal_actor.wait.remote()
+            return value
+
+        @ray.method(concurrency_group="compute")
+        async def wait_then_raise(self):
+            await signal_actor.wait.remote()
+            raise ValueError("application error")
+
+    a = A.remote()
+    pid = ray.get(a.getpid.remote())
+
+    # Start in-flight tasks in two different concurrency groups; all block on
+    # the signal so they are still executing when exit_actor() is called.
+    return_refs = [a.wait_then_return.remote(i) for i in range(num_io_tasks)]
+    raise_ref = a.wait_then_raise.remote()
+    num_inflight = num_io_tasks + 1
+    wait_for_condition(
+        lambda: ray.get(signal_actor.cur_num_waiters.remote()) == num_inflight
+    )
+
+    # Request exit from the default concurrency group (which has a free slot)
+    # while the io/compute tasks are in flight, then unblock them.
+    exit_ref = a.exit.remote()
+    ray.get(signal_actor.send.remote())
+
+    # In-flight tasks across both concurrency groups deliver their results and
+    # errors before the actor exits.
+    assert ray.get(return_refs, timeout=30) == list(range(num_io_tasks))
+    with pytest.raises(ValueError, match="application error"):
+        ray.get(raise_ref, timeout=30)
+    # The task that called exit_actor() observes the actor's death.
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(exit_ref, timeout=30)
+    # The actor exits after draining (no process leak).
+    wait_for_pid_to_exit(pid)
 
 
 if __name__ == "__main__":
