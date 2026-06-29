@@ -13,7 +13,7 @@ import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
-from ray.serve._private.test_utils import get_application_url
+from ray.serve._private.test_utils import get_application_url, skip_if_haproxy
 from ray.serve._private.utils import call_function_from_import_path
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client
@@ -237,6 +237,9 @@ def test_http_proxy_return_aribitary_objects(ray_instance):
         },
     ],
     indirect=True,
+)
+@skip_if_haproxy(
+    "http_proxy_callback runs in the native Serve HTTP proxy, which HAProxy replaces"
 )
 def test_http_proxy_callback_failures(ray_instance, capsys):
     """Test http proxy keeps restarting when callback function fails"""
