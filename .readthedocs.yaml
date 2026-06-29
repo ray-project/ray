@@ -53,8 +53,8 @@ build:
       html:
         - |
           if [ "${READTHEDOCS_VERSION_TYPE:-}" = "external" ]; then
-            if git diff --no-renames --name-only --diff-filter=D origin/master...HEAD -- doc/source/ 2>/dev/null | grep -q .; then
-              echo "PR deletes or moves doc sources; the incremental cache can't prune their stale pages, so building clean (DOC-1314)."
+            if ! git diff --quiet --no-renames --diff-filter=D origin/master...HEAD -- doc/source/ 2>/dev/null; then
+              echo "PR deletes or moves doc sources; the incremental cache cannot prune their stale pages, so building clean (DOC-1314)."
               make -C doc rtd-fallback HTMLDIR="$READTHEDOCS_OUTPUT/html"
             else
               echo "PR build; attempting incremental build from the master doc cache."
