@@ -7,11 +7,14 @@ All Ray actor calls are mocked so the tests run on a standard CPU cluster.
 from typing import List
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pyarrow as pa
 import pytest
 
 import ray
+import ray.data._internal.gpu_shuffle.hash_shuffle as hash_shuffle
 from ray.data._internal.execution.interfaces import (
+    BlockEntry,
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
@@ -55,7 +58,10 @@ def _make_input_op_mock(num_blocks=None, size_bytes=None):
 def _make_bundle(num_blocks: int = 1) -> RefBundle:
     """Return a RefBundle with *num_blocks* placeholder block refs."""
     meta = BlockMetadata(num_rows=10, size_bytes=100, exec_stats=None, input_files=None)
-    blocks = [(ray.ObjectRef(bytes([i % 256]) * 28), meta) for i in range(num_blocks)]
+    blocks = [
+        BlockEntry(ray.ObjectRef(bytes([i % 256]) * 28), meta)
+        for i in range(num_blocks)
+    ]
     return RefBundle(blocks, schema=None, owns_blocks=False)
 
 
@@ -174,11 +180,15 @@ class TestGPURankPool:
         return GPURankPool(
             nranks=nranks,
             total_nparts=total_nparts,
-            key_columns=["user_id"],
-            columns=None,
-            rmm_pool_size="auto",
-            spill_memory_limit="auto",
             setup_timeout_s=60.0,
+            actor_cls_factory=lambda: hash_shuffle.GPUShuffleActor,
+            actor_kwargs={
+                "key_columns": ["user_id"],
+                "columns": None,
+                "rmm_pool_size": "auto",
+                "spill_memory_limit": "auto",
+            },
+            log_label="GPUShufflePool",
         )
 
     def test_actors_empty_before_start(self):
@@ -518,7 +528,7 @@ class TestGPUShuffleOperatorFinalization:
                 num_rows=1, size_bytes=8, exec_stats=None, input_files=None
             )
             bundle = RefBundle(
-                [(ray.ObjectRef(bytes([partition_id]) * 28), meta)],
+                [BlockEntry(ray.ObjectRef(bytes([partition_id]) * 28), meta)],
                 schema=None,
                 owns_blocks=False,
             )
@@ -592,24 +602,25 @@ class TestPlanAllToAllOpRouting:
 
         assert isinstance(op, GPUShuffleOperator)
 
-    def test_hash_shuffle_still_routes_to_hash_operator(self):
-        from ray.data._internal.execution.operators.hash_shuffle import (
-            HashShuffleOperator,
+    def test_hash_shuffle_routes_to_shuffle_reduce_op(self):
+        """V2 hash shuffle is a two-op DAG; planner returns the ShuffleReduceOp
+        with the ShuffleMapOp as its upstream input dependency."""
+        from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
+            ShuffleMapOp,
+        )
+        from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
+            ShuffleReduceOp,
         )
 
         ctx = DataContext()
         ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
-        with patch(
-            "ray.data._internal.execution.operators.hash_shuffle"
-            "._get_total_cluster_resources",
-            return_value=ExecutionResources(cpu=4, gpu=0),
-        ):
-            logical_op = self._make_repartition_op(keys=["user_id"], num_outputs=8)
-            input_physical_op = _make_input_op_mock()
-            op = plan_all_to_all_op(logical_op, [input_physical_op], ctx)
+        logical_op = self._make_repartition_op(keys=["user_id"], num_outputs=8)
+        input_physical_op = _make_input_op_mock()
+        op = plan_all_to_all_op(logical_op, [input_physical_op], ctx)
 
-        assert isinstance(op, HashShuffleOperator)
+        assert isinstance(op, ShuffleReduceOp)
+        assert isinstance(op.input_dependencies[0], ShuffleMapOp)
 
     def test_unsupported_strategy_with_keys_raises(self):
         ctx = DataContext()
@@ -762,7 +773,6 @@ class TestGPUShuffleActorReal:
 
     def test_insert_batch_large_table(self, ray_with_gpu):
         """insert_batch handles a larger Arrow Table without error."""
-        import numpy as np
 
         n = 5_000
         actor = self._make_setup_actor(total_nparts=4)
@@ -942,11 +952,15 @@ class TestGPURankPoolReal:
         return GPURankPool(
             nranks=nranks,
             total_nparts=total_nparts,
-            key_columns=["id"],
-            columns=None,
-            rmm_pool_size="auto",
-            spill_memory_limit="auto",
             setup_timeout_s=60.0,
+            actor_cls_factory=lambda: hash_shuffle.GPUShuffleActor,
+            actor_kwargs={
+                "key_columns": ["id"],
+                "columns": None,
+                "rmm_pool_size": "auto",
+                "spill_memory_limit": "auto",
+            },
+            log_label="GPUShufflePool",
         )
 
     def test_pool_start_creates_actors(self, ray_with_gpu):

@@ -731,14 +731,14 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
             iter->second->GetPlacementGroupTableData(),
             {[this](Status status) { SchedulePendingPlacementGroups(); }, io_context_});
       } else if (iter->second->GetState() == rpc::PlacementGroupTableData::RESCHEDULING) {
-        // For label-domain PGs that are stuck in the infeasible queue: if ALL bundles
-        // are now unplaced (total domain failure), move the PG back to the pending queue
-        // so the scheduler can clear the stale domain assignment and retry on a new
-        // domain. The manager here is just reponsible for rescheduling the
-        // placment group, clearing the domain is handled by
+        // For topology-aware PGs that are stuck in the infeasible queue: if ALL
+        // bundles are now unplaced (total failure), move the PG back to the
+        // pending queue so the scheduler can clear the stale topology
+        // assignments and retry on a fresh selection. The manager here is just
+        // responsible for rescheduling; clearing the assignments is handled by
         // ScheduleUnplacedBundles within the scheduler.
         if (iter->second->AllUnplacedBundles() &&
-            iter->second->GetLabelDomainKey().has_value()) {
+            iter->second->GetTopologyStrategyKeys().has_value()) {
           auto infeasible_pg_iter =
               std::find_if(infeasible_placement_groups_.begin(),
                            infeasible_placement_groups_.end(),
@@ -846,7 +846,7 @@ std::shared_ptr<rpc::PlacementGroupLoad> GcsPlacementGroupManager::GetPlacementG
     const {
   std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load =
       std::make_shared<rpc::PlacementGroupLoad>();
-  int total_cnt = 0;
+  int total_count = 0;
   for (const auto &elem : pending_placement_groups_) {
     const auto pending_pg_spec = elem.second.second;
     auto placement_group_table_data = pending_pg_spec->GetPlacementGroupTableData();
@@ -861,8 +861,8 @@ std::shared_ptr<rpc::PlacementGroupLoad> GcsPlacementGroupManager::GetPlacementG
     auto placement_group_data = placement_group_load->add_placement_group_data();
     placement_group_data->Swap(&placement_group_table_data);
 
-    total_cnt += 1;
-    if (total_cnt >= RayConfig::instance().max_placement_group_load_report_size()) {
+    total_count += 1;
+    if (total_count >= RayConfig::instance().max_placement_group_load_report_size()) {
       break;
     }
   }
@@ -881,8 +881,8 @@ std::shared_ptr<rpc::PlacementGroupLoad> GcsPlacementGroupManager::GetPlacementG
     auto placement_group_data = placement_group_load->add_placement_group_data();
     placement_group_data->Swap(&placement_group_table_data);
 
-    total_cnt += 1;
-    if (total_cnt >= RayConfig::instance().max_placement_group_load_report_size()) {
+    total_count += 1;
+    if (total_count >= RayConfig::instance().max_placement_group_load_report_size()) {
       break;
     }
   }

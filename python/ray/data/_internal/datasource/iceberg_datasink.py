@@ -841,8 +841,9 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             **self._overwrite_kwargs,
         )
 
-        # Append new data files and commit
-        self._append_and_commit(txn, data_files)
+        # Append on the same branch the delete targeted (defaults to "main").
+        branch = self._overwrite_kwargs.get("branch", "main")
+        self._append_and_commit(txn, data_files, branch=branch)
 
     def on_write_complete(self, write_result: WriteResult) -> None:
         """

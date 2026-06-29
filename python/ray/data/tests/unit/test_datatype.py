@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pytest
 from packaging import version
@@ -172,6 +173,36 @@ class TestDataTypeFactories:
         assert dt.is_numpy_type()
         assert dt._physical_dtype == expected_dtype
 
+    @pytest.mark.parametrize(
+        "cudf_dtype,expected_dtype",
+        [
+            ("int32", np.dtype("int32")),
+            ("uint64", np.dtype("uint64")),
+            ("float32", np.dtype("float32")),
+            ("float64", np.dtype("float64")),
+            ("bool", np.dtype("bool")),
+            ("datetime64[ns]", np.dtype("datetime64[ns]")),
+        ],
+    )
+    def test_from_cudf_primitives(self, cudf_dtype, expected_dtype):
+        """Test from_cudf handles primitive cuDF dtypes."""
+        cudf = pytest.importorskip("cudf")
+
+        dt = DataType.from_cudf(cudf.dtype(cudf_dtype))
+
+        assert dt.is_numpy_type()
+        assert dt._physical_dtype == expected_dtype
+
+    def test_from_cudf_extension_dtype(self):
+        """Test from_cudf handles cuDF dtypes with Arrow representations."""
+        pytest.importorskip("cudf")
+        from cudf.core import dtypes
+
+        dt = DataType.from_cudf(dtypes.ListDtype("int32"))
+
+        assert dt.is_arrow_type()
+        assert dt.to_arrow_dtype() == pa.list_(pa.int32())
+
 
 class TestDataTypeConversions:
     """Test type conversion methods."""
@@ -233,6 +264,49 @@ class TestDataTypeConversions:
         result = complex_dt.to_numpy_dtype()
         assert result == np.dtype("object")
 
+    def test_to_cudf_type(self):
+        """Test conversion to cuDF-compatible dtypes."""
+        cudf = pytest.importorskip("cudf")
+        from cudf.core import dtypes as cudf_dtypes
+
+        assert DataType.from_numpy("int32").to_cudf_type() == cudf.dtype("int32")
+        assert DataType.int32().to_cudf_type() == cudf.dtype("int32")
+        assert DataType.from_numpy("uint64").to_cudf_type() == cudf.dtype("uint64")
+        assert DataType.from_numpy("float64").to_cudf_type() == cudf.dtype("float64")
+        assert DataType.from_numpy("bool").to_cudf_type() == cudf.dtype("bool")
+        assert DataType.string().to_cudf_type() == "str"
+        assert DataType.from_arrow(pa.decimal32(7, 2)).to_cudf_type() == (
+            cudf_dtypes.Decimal32Dtype(7, 2)
+        )
+        assert DataType.from_arrow(pa.decimal64(18, 2)).to_cudf_type() == (
+            cudf_dtypes.Decimal64Dtype(18, 2)
+        )
+        assert DataType.from_arrow(pa.decimal128(38, 2)).to_cudf_type() == (
+            cudf_dtypes.Decimal128Dtype(38, 2)
+        )
+
+        with pytest.raises(TypeError):
+            DataType.from_arrow(pa.decimal256(40, 2)).to_cudf_type()
+
+    def test_cudf_methods_require_cudf(self, monkeypatch):
+        """Test cuDF conversion methods fail clearly without cuDF installed."""
+        import builtins
+
+        real_import = builtins.__import__
+
+        def import_without_cudf(name, *args, **kwargs):
+            if name == "cudf" or name.startswith("cudf."):
+                raise ImportError("No module named 'cudf'")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", import_without_cudf)
+
+        with pytest.raises(ImportError, match="requires cuDF"):
+            DataType.from_cudf("int32")
+
+        with pytest.raises(ImportError, match="requires cuDF"):
+            DataType.from_numpy("int32").to_cudf_type()
+
     @pytest.mark.parametrize("python_type", [int, str, float, bool, list])
     def test_to_python_type_success(self, python_type):
         """Test to_python_type returns the original Python type."""
@@ -251,6 +325,53 @@ class TestDataTypeConversions:
         """Test to_python_type raises ValueError for non-Python types."""
         with pytest.raises(ValueError, match="is not backed by a Python type"):
             non_python_dt.to_python_type()
+
+
+class TestDataTypeFromDtype:
+    """Test conversion from dtype descriptors."""
+
+    def test_from_dtype_dispatch(self):
+        assert DataType.from_dtype(pa.int32()) == DataType.from_arrow(pa.int32())
+        assert DataType.from_dtype(np.dtype("int32")) == DataType.from_numpy("int32")
+        assert DataType.from_dtype("float32") == DataType.from_numpy("float32")
+        assert DataType.from_dtype(np.int64) == DataType.from_numpy("int64")
+        assert DataType.from_dtype(int) == DataType(int)
+        assert DataType.from_dtype(pd.StringDtype()) == DataType.from_arrow(pa.string())
+
+    def test_from_dtype_pandas_extension_dtypes(self):
+        test_cases = [
+            (pd.ArrowDtype(pa.int32()), DataType.from_arrow(pa.int32())),
+            (pd.Int8Dtype(), DataType.from_numpy("int8")),
+            (pd.UInt64Dtype(), DataType.from_numpy("uint64")),
+            (pd.Float32Dtype(), DataType.from_numpy("float32")),
+            (pd.BooleanDtype(), DataType.from_numpy("bool")),
+            (pd.StringDtype(), DataType.from_arrow(pa.string())),
+        ]
+        for pandas_dtype, expected_dtype in test_cases:
+            assert DataType.from_dtype(pandas_dtype) == expected_dtype
+
+    def test_from_dtype_passthrough_and_unknown(self):
+        dt = DataType.from_numpy("int64")
+        assert DataType.from_dtype(dt) is dt
+        assert DataType.from_dtype(None) is None
+        assert DataType.from_dtype(object()) is None
+
+    def test_from_dtype_unsupported_strings_return_none(self, monkeypatch):
+        def raise_import_error(cls, dtype):
+            raise ImportError("No module named 'cudf'")
+
+        monkeypatch.setattr(DataType, "from_cudf", classmethod(raise_import_error))
+
+        assert DataType.from_dtype("string") is None
+        assert DataType.from_dtype("category") is None
+
+    def test_from_dtype_ignores_cudf_runtime_failure(self, monkeypatch):
+        def raise_runtime_error(cls, dtype):
+            raise RuntimeError("CUDA runtime unavailable")
+
+        monkeypatch.setattr(DataType, "from_cudf", classmethod(raise_runtime_error))
+
+        assert DataType.from_dtype(object()) is None
 
 
 class TestDataTypeInference:
@@ -523,6 +644,79 @@ class TestNestedTypeFactories:
 
 class TestTypePredicates:
     """Test type predicate methods (is_list_type, is_struct_type, etc.)."""
+
+    @pytest.mark.parametrize(
+        "datatype,expected",
+        [
+            (
+                DataType.from_arrow(pa.null()),
+                {
+                    "null": True,
+                    "boolean": False,
+                    "integer": False,
+                    "floating": False,
+                    "uint64": False,
+                },
+            ),
+            (
+                DataType.bool(),
+                {
+                    "null": False,
+                    "boolean": True,
+                    "integer": False,
+                    "floating": False,
+                    "uint64": False,
+                },
+            ),
+            (
+                DataType.int64(),
+                {
+                    "null": False,
+                    "boolean": False,
+                    "integer": True,
+                    "floating": False,
+                    "uint64": False,
+                },
+            ),
+            (
+                DataType.from_numpy("uint64"),
+                {
+                    "null": False,
+                    "boolean": False,
+                    "integer": True,
+                    "floating": False,
+                    "uint64": True,
+                },
+            ),
+            (
+                DataType.float32(),
+                {
+                    "null": False,
+                    "boolean": False,
+                    "integer": False,
+                    "floating": True,
+                    "uint64": False,
+                },
+            ),
+            (
+                DataType(bool),
+                {
+                    "null": False,
+                    "boolean": True,
+                    "integer": False,
+                    "floating": False,
+                    "uint64": False,
+                },
+            ),
+        ],
+    )
+    def test_scalar_dtype_predicates(self, datatype, expected):
+        """Test scalar dtype predicate helpers."""
+        assert datatype.is_null_type() == expected["null"]
+        assert datatype.is_boolean_type() == expected["boolean"]
+        assert datatype.is_integer_type() == expected["integer"]
+        assert datatype.is_floating_type() == expected["floating"]
+        assert datatype.is_uint64_type() == expected["uint64"]
 
     @pytest.mark.parametrize(
         "datatype,expected_result",

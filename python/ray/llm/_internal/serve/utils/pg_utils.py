@@ -1,7 +1,7 @@
 """Placement group utilities for Ray LLM Serve."""
 
 from collections import defaultdict
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from ray.serve._private.utils import get_head_node_id
 from ray.util.placement_group import PlacementGroup, placement_group_table
@@ -38,6 +38,7 @@ def _sort_bundle_indices_by_node(
 
 def get_bundle_indices_sorted_by_node(
     pg: PlacementGroup,
+    driver_node_id: Optional[str] = None,
 ) -> List[int]:
     """Return bundle indices sorted such that same-node bundles are adjacent, driver node first.
 
@@ -45,15 +46,23 @@ def get_bundle_indices_sorted_by_node(
     necessarily map to the same physical node. This utility reorders bundle
     indices so that bundles on the same node are grouped together.
 
-    The driver node's bundles come first so that rank 0 is co-located with the driver.
+    The driver node's bundles come first so that global rank 0 (which hosts the
+    distributed rendezvous store) is co-located with the driver.
 
     Args:
         pg: A ready placement group.
+        driver_node_id: Node ID whose bundles should be ordered first. Callers
+            should pass the node that advertises the distributed master address
+            so that global rank 0 is co-located with it. Defaults to the cluster
+            head node, which may not own any of the placement group's bundles
+            (e.g. a CPU-only head node in a GPU cluster), in which case rank 0
+            falls back to the lexicographically-first node.
 
     Returns:
         List of bundle indices sorted such that same-node bundles are adjacent, driver node first.
     """
     table = placement_group_table(pg)
     bundles_to_node_id = table["bundles_to_node_id"]
-    driver_node_id = get_head_node_id()
+    if driver_node_id is None:
+        driver_node_id = get_head_node_id()
     return _sort_bundle_indices_by_node(bundles_to_node_id, driver_node_id)

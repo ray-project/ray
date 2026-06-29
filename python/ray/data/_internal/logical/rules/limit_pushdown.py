@@ -9,6 +9,7 @@ from ray.data._internal.logical.operators import (
     AbstractOneToOne,
     Download,
     Limit,
+    Project,
     Read,
     ReadFiles,
     Union,
@@ -140,7 +141,7 @@ class LimitPushdownRule(Rule):
                 pushed_tail = self._push_limit_down(raw_limit)
             branch_tails.append(pushed_tail)
 
-        new_union = Union(*branch_tails)
+        new_union = Union(branch_tails)
         return Limit(limit_op.limit, input_dependencies=[new_union])
 
     def _push_limit_down(self, limit_op: Limit) -> LogicalOperator:
@@ -156,6 +157,12 @@ class LimitPushdownRule(Rule):
             isinstance(current_op, AbstractOneToOne)
             and not current_op.can_modify_num_rows
         ):
+            if isinstance(current_op, Project) and not current_op.is_idempotent():
+                # Do not push the limit past a projection producing a non-idempotent
+                # column (e.g. monotonically_increasing_id): its value depends on row
+                # position / cardinality, which a reordered limit would change.
+                break
+
             if isinstance(current_op, AbstractMap):
                 min_rows = current_op.min_rows_per_bundled_input
                 if min_rows is not None and min_rows > limit_op.limit:

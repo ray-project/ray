@@ -1,3 +1,4 @@
+import contextlib
 import os
 import pathlib
 import pickle
@@ -201,7 +202,10 @@ def test_include_paths(
 
 
 def test_include_paths_with_column_projection(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+    ray_start_regular_shared,
+    tmp_path,
+    target_max_block_size_infinite_or_default,
+    use_datasource_v2,
 ):
     path = os.path.join(tmp_path, "test.parquet")
     table = pa.Table.from_pydict({"animals": ["cat", "dog"], "id": [1, 2]})
@@ -209,8 +213,15 @@ def test_include_paths_with_column_projection(
 
     # Exercises the deprecated ``columns=`` arg: V1 retained ``"path"``
     # implicitly under ``include_paths=True``, and read_api preserves that
-    # by appending it to the projection on the caller's behalf.
-    with pytest.warns(DeprecationWarning, match="`columns=` on `read_parquet`"):
+    # by appending it to the projection on the caller's behalf. The
+    # deprecation warning is emitted only on the V2 path.
+    if ray.data.DataContext.get_current().use_datasource_v2:
+        warn_ctx = pytest.warns(
+            DeprecationWarning, match="`columns=` on `read_parquet`"
+        )
+    else:
+        warn_ctx = contextlib.nullcontext()
+    with warn_ctx:
         ds = ray.data.read_parquet(path, columns=["id"], include_paths=True)
 
     schema_names = ds.schema().names
@@ -295,7 +306,10 @@ def test_include_row_hash_same_data_different_files(
 
 
 def test_include_row_hash_with_column_projection(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+    ray_start_regular_shared,
+    tmp_path,
+    target_max_block_size_infinite_or_default,
+    use_datasource_v2,
 ):
     path = os.path.join(tmp_path, "test.parquet")
     table = pa.Table.from_pydict({"a": [1, 2], "b": [3, 4]})
@@ -303,8 +317,15 @@ def test_include_row_hash_with_column_projection(
 
     # Exercises the deprecated ``columns=`` arg: V1 retained ``"row_hash"``
     # implicitly under ``include_row_hash=True``, and read_api preserves
-    # that by appending it to the projection on the caller's behalf.
-    with pytest.warns(DeprecationWarning, match="`columns=` on `read_parquet`"):
+    # that by appending it to the projection on the caller's behalf. The
+    # deprecation warning is emitted only on the V2 path.
+    if ray.data.DataContext.get_current().use_datasource_v2:
+        warn_ctx = pytest.warns(
+            DeprecationWarning, match="`columns=` on `read_parquet`"
+        )
+    else:
+        warn_ctx = contextlib.nullcontext()
+    with warn_ctx:
         ds = ray.data.read_parquet(path, columns=["a"], include_row_hash=True)
     schema_names = ds.schema().names
     assert "a" in schema_names
@@ -1274,8 +1295,11 @@ def test_parquet_roundtrip(
     assert read_data == written_data
 
     # Test metadata ops.
-    for block, meta in ds2._execute().blocks:
-        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes  # type: ignore[call-overload]
+    for entry in ds2._execute().blocks:
+        # pyrefly: ignore[no-matching-overload]
+        BlockAccessor.for_block(
+            ray.get(entry.ref)
+        ).size_bytes() == entry.metadata.size_bytes
 
     if fs is None:
         shutil.rmtree(path)
@@ -1781,9 +1805,10 @@ def test_read_null_data_in_first_file(
 
 
 def test_read_parquet_does_not_call_infer_schema(
-    tmp_path, monkeypatch, ray_start_regular_shared
+    tmp_path, monkeypatch, ray_start_regular_shared, use_datasource_v2
 ):
-    """read_parquet should not call _infer_schema, which can cause O(N) metadata reads."""
+    """The V2 read path should not call _infer_schema, which can cause O(N)
+    metadata reads. V1 still calls it to reconcile per-file schemas."""
 
     num_files = 10
     for i in range(num_files):
@@ -1801,7 +1826,10 @@ def test_read_parquet_does_not_call_infer_schema(
     )
     mock.return_value = pa.schema({"data": pa.int64()})
     ray.data.read_parquet(str(tmp_path))
-    mock.assert_not_called()
+    if ray.data.DataContext.get_current().use_datasource_v2:
+        mock.assert_not_called()
+    else:
+        mock.assert_called()
 
 
 def test_parquet_row_group_size_001(ray_start_regular_shared, tmp_path):
@@ -3223,6 +3251,30 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
         assert total_rows == num_rows
         # The fallback batch-size helper should never have been called.
         mock_safe.assert_not_called()
+
+
+def test_parquet_sampling_fails_on_permanent_error(ray_start_regular_shared, tmp_path):
+    """Test that parquet sampling does not hang on permanent OSError (e.g.,
+    permission denied). Instead, it should fail with a clear error after
+    limited retries. Regression test for #57278."""
+    from unittest.mock import patch
+
+    # Write a valid parquet file so that fragment discovery succeeds.
+    table = pa.table({"col": [1, 2, 3]})
+    pq.write_table(table, os.path.join(tmp_path, "data.parquet"))
+
+    # Patch the remote sampling function to always raise PermissionError
+    # (a subclass of OSError), simulating invalid credentials.
+    original_fn = (
+        "ray.data._internal.datasource.parquet_datasource._fetch_parquet_file_info"
+    )
+
+    def _raise_permission_error(*args, **kwargs):
+        raise PermissionError("Access Denied: invalid credentials")
+
+    with patch(original_fn, new=_raise_permission_error):
+        with pytest.raises(Exception, match="Access Denied"):
+            ray.data.read_parquet(str(tmp_path)).materialize()
 
 
 if __name__ == "__main__":
