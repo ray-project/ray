@@ -1,6 +1,6 @@
 import itertools
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -30,7 +30,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_ope
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
-from ray.data._internal.logical.interfaces import LogicalOperator, PhysicalPlan, Rule
+from ray.data._internal.logical.interfaces import PhysicalPlan, Rule
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
     AbstractMap,
@@ -833,8 +833,8 @@ class FuseOperators(Rule):
 
 
 def are_op_remote_args_compatible(
-    up_logical_op: LogicalOperator,
-    down_logical_op: LogicalOperator,
+    up_logical_op: Union[AbstractMap, AbstractAllToAll],
+    down_logical_op: Union[AbstractMap, AbstractAllToAll],
 ) -> bool:
     """Check whether two logical ops can be fused based on their Ray remote args.
 
