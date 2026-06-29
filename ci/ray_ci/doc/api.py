@@ -145,15 +145,22 @@ class API:
         walked = tokens[0]
         for token in tokens[1:]:
             walked = f"{walked}.{token}"
+            # Prefer importing the submodule over getattr. A package often
+            # re-exports a same-named function into its parent namespace (for
+            # example ray.util.placement_group, the function, shadows the
+            # ray.util.placement_group submodule); getattr would then return the
+            # function and the remaining tokens would fail to resolve. Importing
+            # the dotted path first yields the module, matching how Sphinx
+            # autosummary resolves the name.
+            try:
+                attribute = importlib.import_module(walked)
+                continue
+            except ImportError:
+                pass
             if hasattr(attribute, token):
                 attribute = getattr(attribute, token)
                 continue
-            # The token may be a submodule that has not been imported yet;
-            # importing it explicitly mirrors how Sphinx resolves the name.
-            try:
-                attribute = importlib.import_module(walked)
-            except ImportError:
-                return None
+            return None
         return attribute
 
     @staticmethod
