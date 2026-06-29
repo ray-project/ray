@@ -21,7 +21,6 @@ from ray.serve._private.test_utils import (
     get_application_url,
     ping_fruit_stand,
     ping_grpc_call_method,
-    skip_if_haproxy,
 )
 from ray.serve.handle import DeploymentHandle
 from ray.serve.metrics import Counter, Gauge, Histogram
@@ -92,7 +91,6 @@ class TestRequestContextMetrics:
         for key in expected_output:
             assert metric[key] == expected_output[key]
 
-    @skip_if_haproxy("exercises the native Serve HTTP proxy, which HAProxy replaces")
     def test_request_context_pass_for_http_proxy(self, metrics_start_shutdown):
         """Test HTTP proxy passing request context"""
 
@@ -751,7 +749,6 @@ class TestHandleMetrics:
             expected=0,
         )
 
-    @skip_if_haproxy("exercises the native Serve HTTP proxy, which HAProxy replaces")
     def test_queued_queries_disconnected(self, metrics_start_shutdown):
         """Check that disconnected queued queries are tracked correctly."""
 
