@@ -305,6 +305,35 @@ class TestSchedulingNode:
         assert node.labels == {"foo": "foo"}
 
     @staticmethod
+    def test_new_running_instance_without_ray_node_returns_none():
+        # Regression test: a RAY_RUNNING instance whose ray_node is missing in
+        # GCS used to crash SchedulingNode.new with an AssertionError. The
+        # defensive guard returns None instead.
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 1},
+                min_worker_nodes=0,
+                max_worker_nodes=10,
+            ),
+        }
+        instance = make_autoscaler_instance(
+            ray_node=None,
+            im_instance=Instance(
+                instance_type="type_1",
+                status=Instance.RAY_RUNNING,
+                instance_id="i-stale",
+                node_id="r-gone",
+            ),
+        )
+        node = SchedulingNode.new(
+            instance,
+            node_type_configs,
+            disable_launch_config_check=False,
+        )
+        assert node is None
+
+    @staticmethod
     def test_new_head_node():
         # An allocated head node.
         node_type_configs = {

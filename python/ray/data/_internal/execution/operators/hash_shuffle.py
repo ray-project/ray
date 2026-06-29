@@ -32,6 +32,7 @@ import pyarrow as pa
 import ray
 from ray import ObjectRef
 from ray._private.ray_constants import (
+    env_float,
     env_integer,
 )
 from ray._raylet import StreamingGeneratorStats
@@ -93,6 +94,21 @@ DEFAULT_HASH_SHUFFLE_AGGREGATOR_MAX_CONCURRENCY = env_integer(
 
 DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION = env_integer(
     "RAY_DATA_DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION", 1 * GiB
+)
+
+# Online-sampling bounds for sizing the aggregator pool from the first few
+# input bundles. We start the shuffle after observing
+# ~MEMORY_ESTIMATION_SAMPLE_RATIO of expected upstream bundles, clamped to
+# [MIN_BUNDLES, MAX_BUNDLES], or once the sample hits the byte ceiling (see
+# ``_sample_byte_limit``). A small window bounds buffering and preserves streaming.
+MEMORY_ESTIMATION_SAMPLE_MIN_BUNDLES = env_integer(
+    "RAY_DATA_MEMORY_ESTIMATION_SAMPLE_MIN_BUNDLES", 8
+)
+MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES = env_integer(
+    "RAY_DATA_MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES", 16
+)
+MEMORY_ESTIMATION_SAMPLE_RATIO = env_float(
+    "RAY_DATA_MEMORY_ESTIMATION_SAMPLE_RATIO", 0.05
 )
 
 
@@ -212,7 +228,10 @@ class ConcatAggregation(ShuffleAggregation):
         result = _combine(blocks)
 
         if self._should_sort and result.num_rows > 0:
-            result = result.sort_by([(k, "ascending") for k in self._key_columns])
+            from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+
+            sort_key = SortKey(key=list(self._key_columns), descending=False)
+            result = BlockAccessor.for_block(result).sort(sort_key)
 
         yield result
 
@@ -248,13 +267,13 @@ def _shuffle_block(
         key_columns: Columns to be used by hash-partitioning algorithm
         pool: Hash-shuffling operator's pool of aggregators that are due to receive
               corresponding partitions (of the block)
+        block_transformer: Block transformer that will be applied to every block prior
+            to shuffling
         send_empty_blocks: If set to true, empty blocks will NOT be filtered and
             still be fanned out to individual aggregators to distribute schemas
             (only known once we receive incoming block)
         override_partition_id: Target (overridden) partition id that input block will be
             assigned to
-        block_transformer: Block transformer that will be applied to every block prior
-            to shuffling
 
     Returns:
         A tuple of
@@ -492,6 +511,12 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
     _DEFAULT_SHUFFLE_BLOCK_NUM_CPUS = 1.0
     _DEFAULT_AGGREGATORS_MIN_CPUS = 0.01
 
+    # TODO: remove once we migrate to shuffle V2 architecture.
+    # See module-level ``MEMORY_ESTIMATION_SAMPLE_*`` constants for details.
+    _MEMORY_ESTIMATION_SAMPLE_MIN_BUNDLES = MEMORY_ESTIMATION_SAMPLE_MIN_BUNDLES
+    _MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES = MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES
+    _MEMORY_ESTIMATION_SAMPLE_RATIO = MEMORY_ESTIMATION_SAMPLE_RATIO
+
     def __init__(
         self,
         name_factory: Callable[[int], str],
@@ -512,6 +537,8 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         input_logical_ops = [
             input_physical_op._logical_operators[0] for input_physical_op in input_ops
         ]
+
+        self._input_logical_ops = input_logical_ops
 
         estimated_input_blocks = [
             input_op.estimated_num_outputs() for input_op in input_logical_ops
@@ -534,6 +561,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         )
 
         assert partition_size_hint is None or partition_size_hint > 0
+        self._partition_size_hint = partition_size_hint
 
         if shuffle_progress_bar_name is None:
             shuffle_progress_bar_name = "Shuffle"
@@ -561,40 +589,31 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         # Cap number of aggregators to not exceed max configured
         num_aggregators = min(target_num_partitions, max_shuffle_aggregators)
 
-        # Target dataset's size estimated as either of
-        #   1. ``partition_size_hint`` multiplied by target number of partitions
-        #   2. Estimation of input ops' outputs bytes
-        if partition_size_hint is not None:
-            # TODO replace with dataset-byte-size hint
-            estimated_dataset_bytes = partition_size_hint * target_num_partitions
-        else:
-            estimated_dataset_bytes = _try_estimate_output_bytes(
-                input_logical_ops,
-            )
-
-        ray_remote_args = self._get_default_aggregator_ray_remote_args(
-            num_partitions=target_num_partitions,
-            num_aggregators=num_aggregators,
-            total_available_cluster_resources=total_available_cluster_resources,
-            estimated_dataset_bytes=estimated_dataset_bytes,
+        self._num_input_seqs = num_input_seqs
+        self._num_aggregators = num_aggregators
+        self._partition_aggregation_factory = partition_aggregation_factory
+        self._aggregator_ray_remote_args_override = aggregator_ray_remote_args_override
+        self._aggregator_target_max_block_size = (
+            None if disallow_block_splitting else data_context.target_max_block_size
+        )
+        self._aggregator_pool: Optional[AggregatorPool] = None
+        self._shuffle_started: bool = False
+        self._buffered_input_bundles: DefaultDict[int, Deque[RefBundle]] = defaultdict(
+            deque
         )
 
-        if aggregator_ray_remote_args_override is not None:
-            # Set default values missing for configs missing in the override
-            ray_remote_args.update(aggregator_ray_remote_args_override)
+        # Online sample of arriving input bundles used to size the aggregator
+        # pool before it is started. Tracked in *bundles* to match the unit of
+        # ``upstream_op_num_outputs()`` (estimated output bundle count). The byte
+        # limit caps how much we buffer while sampling, guaranteeing we never
+        # hold the whole dataset (a single oversized bundle trips it immediately).
+        self._sample_bytes: int = 0
+        self._sample_bundles: int = 0
 
-        self._aggregator_pool: AggregatorPool = AggregatorPool(
-            num_input_seqs=num_input_seqs,
-            num_partitions=target_num_partitions,
-            num_aggregators=num_aggregators,
-            aggregation_factory=partition_aggregation_factory,
-            aggregator_ray_remote_args=ray_remote_args,
-            target_max_block_size=(
-                None if disallow_block_splitting else data_context.target_max_block_size
-            ),
-            min_max_shards_compaction_thresholds=(
-                self._get_min_max_partition_shards_compaction_thresholds()
-            ),
+        self._sample_bytes_by_input: DefaultDict[int, int] = defaultdict(int)
+        self._sample_bundles_by_input: DefaultDict[int, int] = defaultdict(int)
+        self._sample_byte_limit: int = (
+            data_context.target_max_block_size or DEFAULT_TARGET_MAX_BLOCK_SIZE
         )
 
         # We track the running usage total because iterating
@@ -657,8 +676,6 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
     def start(self, options: ExecutionOptions) -> None:
         super().start(options)
 
-        self._aggregator_pool.start()
-
     @property
     def shuffle_name(self) -> str:
         return self._shuffle_name
@@ -671,9 +688,29 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
         # TODO move to base class
         self._shuffle_metrics.on_input_received(input_bundle)
+
+        if not self._shuffle_started:
+            self._buffered_input_bundles[input_index].append(input_bundle)
+            self._shuffle_metrics.on_input_queued(input_bundle, input_index=input_index)
+            # Accumulate an online sample (across all input sequences) used to
+            # size the aggregator pool. Once we've seen a small, bounded window
+            # we start the shuffle and stream the remainder.
+            bundle_bytes = input_bundle.size_bytes()
+            self._sample_bytes += bundle_bytes
+            self._sample_bundles += 1
+            self._sample_bytes_by_input[input_index] += bundle_bytes
+            self._sample_bundles_by_input[input_index] += 1
+            if self._should_start_shuffle_from_sample():
+                self._start_shuffle(
+                    estimated_dataset_bytes=self._extrapolate_dataset_bytes()
+                )
+            return
+
         self._do_add_input_inner(input_bundle, input_index)
 
     def _do_add_input_inner(self, input_bundle: RefBundle, input_index: int):
+        assert self._aggregator_pool is not None
+
         input_blocks_refs: List[ObjectRef[Block]] = input_bundle.block_refs
         input_blocks_metadata: List[BlockMetadata] = input_bundle.metadata
 
@@ -819,6 +856,160 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         self._try_finalize()
         return len(self._output_queue) > 0
 
+    def all_inputs_done(self) -> None:
+        super().all_inputs_done()
+        if not self._shuffle_started:
+            self._start_shuffle(
+                estimated_dataset_bytes=self._extrapolate_dataset_bytes()
+            )
+
+    def _should_start_shuffle_from_sample(self) -> bool:
+        """Whether the online sample is large enough to size the aggregator pool.
+
+        Bounded by both a bundle count and a byte ceiling so that a handful of
+        large bundles trips the window immediately, keeping buffering small and
+        preserving streaming.
+        """
+        if self._partition_size_hint is not None:
+            # The estimate is exact; no need to sample.
+            return True
+
+        if self._sample_bytes >= self._sample_byte_limit:
+            return True
+
+        # Gate on per-input counts, not their sum: the memory estimate
+        # (``_estimate_dataset_bytes_from_sample``) drops inputs whose count
+        # hasn't materialized, so opening the window with one side still at 0
+        # (e.g. a join with a DataSource V2 side that hasn't finished a task)
+        # would size memory off the visible side(s) and risk OOM. Use the
+        # ratio window only once every input reports a count; until then keep
+        # sampling, bounded by the bundle cap.
+        per_input_num_outputs = [
+            input_op.num_outputs_total() or 0 for input_op in self.input_dependencies
+        ]
+        if any(num_outputs <= 0 for num_outputs in per_input_num_outputs):
+            # At least one input's output count hasn't materialized yet (e.g.
+            # DataSource V2, whose count only appears once upstream read tasks
+            # finish). Wait until the bundle cap to give it a chance to appear
+            # before falling back to a worse estimate, but stay bounded.
+            return self._sample_bundles >= self._MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES
+
+        expected_total_bundles = sum(per_input_num_outputs)
+        target_bundles = int(
+            self._MEMORY_ESTIMATION_SAMPLE_RATIO * expected_total_bundles
+        )
+        target_bundles = min(
+            max(target_bundles, self._MEMORY_ESTIMATION_SAMPLE_MIN_BUNDLES),
+            self._MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES,
+        )
+        return self._sample_bundles >= target_bundles
+
+    def _extrapolate_dataset_bytes(self) -> Optional[int]:
+        """Estimate total dataset bytes used to size the aggregator pool.
+
+        Combines two signals and takes their max (under-sizing aggregators leads
+        to OOM, over-sizing is safe):
+
+        - The online ratio estimate from the sampled bundles. Accurate when the
+          upstream output count is reliable, but it can severely under-estimate
+          early in execution -- especially for a shuffle fed by a back-loaded
+          upstream (e.g. another join/aggregate) that emits most of its output
+          during finalization, so the sampled count/sizes are tiny.
+        - The logical (planning-time) estimate. Accurate for the legacy
+          datasource path; ``None`` for DataSource V2 (empty ``infer_metadata``).
+
+        When neither signal is available but we've already buffered a sample,
+        fall back to the observed ``_sample_bytes`` as a floor, which beats the
+        modest default. Returns ``None`` only when nothing has been observed yet,
+        in which case ``_get_default_aggregator_ray_remote_args`` uses a modest
+        default.
+        """
+        if self._partition_size_hint is not None:
+            return self._partition_size_hint * self._num_partitions
+
+        if self._inputs_complete:
+            # Every input is buffered, so the sample is the exact dataset size.
+            return self._sample_bytes
+
+        sampled_estimate = self._estimate_dataset_bytes_from_sample()
+        logical_estimate = _try_estimate_output_bytes(self._input_logical_ops)
+
+        candidates = [
+            estimate
+            for estimate in (sampled_estimate, logical_estimate)
+            if estimate is not None
+        ]
+        if candidates:
+            return max(candidates)
+        # No extrapolated estimate, but the bytes we've physically buffered are a
+        # better floor than the modest default when the sample is non-empty.
+        if self._sample_bytes > 0:
+            return self._sample_bytes
+        return None
+
+    def _estimate_dataset_bytes_from_sample(self) -> Optional[int]:
+        """Bundle-ratio estimate of total dataset bytes from the online sample,
+        or ``None`` if no reliable estimate can be derived yet.
+
+        Each input sequence is extrapolated against *its own* output count using
+        its own sampled per-bundle average; the contributions are then summed.
+        This avoids skewing the estimate when the sample window is dominated by
+        one input (e.g. one side of a join that streams in first) while the
+        total bundle count spans every input. Inputs not yet sampled fall back
+        to the global average bundle size.
+        """
+        if self._sample_bundles == 0:
+            return None
+
+        global_avg_bytes_per_bundle = self._sample_bytes / self._sample_bundles
+
+        total_estimate = 0.0
+        saw_output_count = False
+        for input_index, input_op in enumerate(self.input_dependencies):
+            expected_bundles = input_op.num_outputs_total() or 0
+            if expected_bundles <= 0:
+                # This input's output count hasn't materialized yet (e.g.
+                # DataSource V2 before any read task finished).
+                continue
+            saw_output_count = True
+
+            sampled_bundles = self._sample_bundles_by_input.get(input_index, 0)
+            # Never extrapolate below what we've already observed for this input.
+            expected_bundles = max(expected_bundles, sampled_bundles)
+            if sampled_bundles > 0:
+                avg_bytes_per_bundle = (
+                    self._sample_bytes_by_input[input_index] / sampled_bundles
+                )
+            else:
+                avg_bytes_per_bundle = global_avg_bytes_per_bundle
+            total_estimate += avg_bytes_per_bundle * expected_bundles
+
+        if not saw_output_count:
+            # No input has a materialized output count yet.
+            return None
+
+        # Never extrapolate below the bytes we've already physically observed.
+        return max(math.ceil(total_estimate), self._sample_bytes)
+
+    def _start_shuffle(self, *, estimated_dataset_bytes: Optional[int]) -> None:
+        if self._shuffle_started:
+            return
+
+        self._shuffle_started = True
+
+        self._aggregator_pool = self._create_aggregator_pool(
+            estimated_dataset_bytes=estimated_dataset_bytes,
+        )
+        self._aggregator_pool.start()
+
+        for input_index, bundles in list(self._buffered_input_bundles.items()):
+            while bundles:
+                input_bundle = bundles.popleft()
+                self._shuffle_metrics.on_input_dequeued(
+                    input_bundle, input_index=input_index
+                )
+                self._do_add_input_inner(input_bundle, input_index)
+
     def _get_next_inner(self) -> RefBundle:
         bundle: RefBundle = self._output_queue.popleft()
 
@@ -924,6 +1115,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
         # NOTE: Unless explicitly set finalization batch size defaults to the #
         #       of shuffle aggregators
+        assert self._aggregator_pool is not None
         max_batch_size = (
             self.data_context.max_hash_shuffle_finalization_batch_size
             or self._aggregator_pool.num_aggregators
@@ -1019,11 +1211,13 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             )
 
     def _do_shutdown(self, force: bool = False) -> None:
-        self._aggregator_pool.shutdown(force=True)
+        if self._aggregator_pool is not None:
+            self._aggregator_pool.shutdown(force=True)
         # NOTE: It's critical for Actor Pool to release actors before calling into
         #       the base method that will attempt to cancel and join pending.
         super()._do_shutdown(force)
         # Release any pending refs
+        self._buffered_input_bundles.clear()
         self._shuffling_tasks.clear()
         self._finalizing_tasks.clear()
 
@@ -1061,6 +1255,9 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
     @property
     def base_resource_usage(self) -> ExecutionResources:
+        if self._aggregator_pool is None:
+            return ExecutionResources.zero()
+
         return ExecutionResources(
             cpu=(
                 self._aggregator_pool.num_aggregators
@@ -1072,6 +1269,48 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 * self._aggregator_pool._aggregator_ray_remote_args.get("memory", 0)
             ),
             object_store_memory=0,
+        )
+
+    def _build_aggregator_ray_remote_args(
+        self,
+        *,
+        total_available_cluster_resources: ExecutionResources,
+        estimated_dataset_bytes: Optional[int],
+    ) -> Dict[str, Any]:
+        """Build per-aggregator ``ray_remote_args`` from the default sizing,
+        with the override applied on top (if any)."""
+        ray_remote_args = self._get_default_aggregator_ray_remote_args(
+            num_partitions=self._num_partitions,
+            num_aggregators=self._num_aggregators,
+            total_available_cluster_resources=total_available_cluster_resources,
+            estimated_dataset_bytes=estimated_dataset_bytes,
+        )
+
+        if self._aggregator_ray_remote_args_override is not None:
+            # Set default values missing for configs missing in the override.
+            ray_remote_args.update(self._aggregator_ray_remote_args_override)
+
+        return ray_remote_args
+
+    def _create_aggregator_pool(
+        self, *, estimated_dataset_bytes: Optional[int]
+    ) -> "AggregatorPool":
+        total_available_cluster_resources = _get_total_cluster_resources()
+        ray_remote_args = self._build_aggregator_ray_remote_args(
+            total_available_cluster_resources=total_available_cluster_resources,
+            estimated_dataset_bytes=estimated_dataset_bytes,
+        )
+
+        return AggregatorPool(
+            num_input_seqs=self._num_input_seqs,
+            num_partitions=self._num_partitions,
+            num_aggregators=self._num_aggregators,
+            aggregation_factory=self._partition_aggregation_factory,
+            aggregator_ray_remote_args=ray_remote_args,
+            target_max_block_size=self._aggregator_target_max_block_size,
+            min_max_shards_compaction_thresholds=(
+                self._get_min_max_partition_shards_compaction_thresholds()
+            ),
         )
 
     def per_task_resource_allocation(self) -> ExecutionResources:
@@ -1157,6 +1396,22 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
     ):
         assert num_partitions >= num_aggregators
 
+        # Conservative floor applied to every aggregator's ``memory`` reservation:
+        #   - 50% of an even share of total cluster memory, but
+        #   - no more than ``DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION``.
+        # This is also the reservation used when we can't estimate the dataset
+        # size at all. Flooring the estimate-derived value here guards against a
+        # weak/early runtime estimate (e.g. a shuffle fed by a back-loaded
+        # upstream join whose output count is ~0 when sampled) sizing aggregators
+        # so small they OOM once real data arrives.
+        max_memory_per_aggregator = (
+            total_available_cluster_resources.memory / num_aggregators
+        )
+        modest_memory_per_aggregator = min(
+            max_memory_per_aggregator / 2,
+            DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION,
+        )
+
         if estimated_dataset_bytes is not None:
             estimated_aggregator_memory_required = self._estimate_aggregator_memory_allocation(
                 num_aggregators=num_aggregators,
@@ -1165,22 +1420,40 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 #       max block size specified as the best partition size estimate
                 estimated_dataset_bytes=estimated_dataset_bytes,
             )
+
+            # Never reserve less than the modest default, even if the estimate is
+            # tiny -- under-sizing leads to OOM, over-sizing is safe.
+            estimated_aggregator_memory_required = max(
+                estimated_aggregator_memory_required,
+                math.ceil(modest_memory_per_aggregator),
+            )
+
+            # A per-aggregator ``memory`` request must fit on a single node,
+            # otherwise the actor is unschedulable. For low-partition shuffles
+            # over large datasets (e.g. a global aggregation with
+            # ``num_partitions=1``) the estimate can exceed the largest node's
+            # memory. In that case clamp it: aggregators hold shuffle data in the
+            # (spillable) object store, so reserving more heap ``memory`` than a
+            # node has would only make the actor unschedulable, not faster.
+            max_node_memory = _get_max_single_node_memory()
+            if (
+                max_node_memory is not None
+                and estimated_aggregator_memory_required > max_node_memory
+            ):
+                logger.warning(
+                    f"Estimated per-aggregator memory requirement "
+                    f"({estimated_aggregator_memory_required / GiB:.1f}GiB) exceeds "
+                    f"the largest node's memory ({max_node_memory / GiB:.1f}GiB); "
+                    f"clamping the reservation to fit on a single node and relying "
+                    f"on object-store spilling for the remainder. Consider "
+                    f"increasing the number of partitions or the cluster's node "
+                    f"size to reduce spilling."
+                )
+                estimated_aggregator_memory_required = max_node_memory
         else:
-            # NOTE: In cases when we're unable to estimate dataset size,
-            #       we simply fallback to request the minimum of:
-            #       - conservative 50% of total available memory for a join operation.
-            #       - ``DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION`` worth of
-            #       memory for every Aggregator.
-
-            max_memory_per_aggregator = (
-                total_available_cluster_resources.memory / num_aggregators
-            )
-            modest_memory_per_aggregator = max_memory_per_aggregator / 2
-
-            estimated_aggregator_memory_required = min(
-                modest_memory_per_aggregator,
-                DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION,
-            )
+            # No dataset-size estimate available: fall back to the modest
+            # default reservation computed above.
+            estimated_aggregator_memory_required = modest_memory_per_aggregator
 
         remote_args = {
             "num_cpus": self._get_aggregator_num_cpus(
@@ -1880,16 +2153,10 @@ def _shape_blocks(
 
     for block in blocks:
         output_buffer.add_block(block)
-
-        while output_buffer.has_next():
-            block = output_buffer.next()
-            yield block
+        yield from output_buffer.iter_ready_blocks()
 
     output_buffer.finalize()
-
-    while output_buffer.has_next():
-        block = output_buffer.next()
-        yield block
+    yield from output_buffer.iter_ready_blocks()
 
 
 def _get_total_cluster_resources() -> ExecutionResources:
@@ -1907,10 +2174,39 @@ def _get_total_cluster_resources() -> ExecutionResources:
     )
 
 
+def _get_max_single_node_memory() -> Optional[int]:
+    """Largest ``memory`` capacity available on any single node, or ``None`` if
+    it can't be determined.
+
+    A per-actor ``memory`` request must fit on a single node, so this is the
+    ceiling for an individual aggregator's memory reservation: requesting more
+    than the largest node has makes the actor unschedulable.
+    """
+    try:
+        per_node_resources = ray._private.state.total_resources_per_node()
+    except Exception:
+        return None
+
+    max_node_memory = max(
+        (res.get("memory", 0) for res in per_node_resources.values()),
+        default=0,
+    )
+    return int(max_node_memory) if max_node_memory > 0 else None
+
+
 # TODO rebase on generic operator output estimation
 def _try_estimate_output_bytes(
     input_logical_ops: List[LogicalOperator],
 ) -> Optional[int]:
+    """Best-effort estimate of input ops' total output bytes from logical
+    metadata, or ``None`` if any input op can't provide an estimate.
+
+    Used only as a fallback when the runtime online sample lacks a reliable
+    upstream output count (e.g. the legacy datasource path before any sizing
+    signal is available). DataSource V2 reads return ``None`` here by design
+    (their logical ``infer_metadata()`` is empty), so they rely on the online
+    sample instead.
+    """
     inferred_op_output_bytes = [
         op.infer_metadata().size_bytes for op in input_logical_ops
     ]

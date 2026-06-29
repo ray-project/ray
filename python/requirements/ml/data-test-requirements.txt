@@ -26,3 +26,4 @@ pybase64
 hudi==0.4.0
 datasketches
 testcontainers[kafka]
+obstore

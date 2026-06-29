@@ -262,10 +262,10 @@ class RequestRouterConfig(_ForwardCompatModel):
     request_routing_stats_period_s: PositiveFloat = Field(
         default=DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
         description=(
-            "Duration between record scheduling stats calls for the replica. "
-            "Defaults to 10s. The health check is by default a no-op Actor call "
-            "to the replica, but you can define your own request scheduling stats "
-            "using the 'record_scheduling_stats' method in your deployment."
+            "Duration between record routing stats calls for the replica. "
+            "Defaults to 10s. Recording routing stats is by default a no-op Actor "
+            "call to the replica, but you can define your own routing stats "
+            "using the 'record_routing_stats' method in your deployment."
         ),
     )
 
@@ -414,6 +414,10 @@ class RequestRouterConfig(_ForwardCompatModel):
 
         # Update the request_router_class field to be the string path
         self.request_router_class = request_router_path
+
+    def is_default_request_router(self) -> bool:
+        """Whether the configured request router is Serve's default."""
+        return self.request_router_class == DEFAULT_REQUEST_ROUTER_PATH
 
     def get_request_router_class(self) -> Callable:
         """Deserialize the request router from cloudpickled bytes."""
@@ -570,17 +574,63 @@ class AutoscalingPolicy(_ForwardCompatModel):
 
 @PublicAPI(stability="stable")
 class AutoscalingConfig(_ForwardCompatModel):
-    """Config for the Serve Autoscaler."""
+    """Config for the Serve Autoscaler.
+
+    This class configures how Ray Serve scales a deployment's replicas up and down
+    in response to traffic. The autoscaler periodically aggregates request metrics
+    over a look-back window, compares them to ``target_ongoing_requests``, and
+    adjusts the replica count between ``min_replicas`` and ``max_replicas``.
+    ``upscale_delay_s`` and ``downscale_delay_s`` control how quickly the autoscaler
+    reacts to traffic changes, while ``upscaling_factor`` and ``downscaling_factor``
+    dampen the magnitude of each scaling decision.
+
+    For an end-to-end guide, see the
+    `Serve autoscaling guide <https://docs.ray.io/en/latest/serve/autoscaling-guide.html>`_
+    and the
+    `advanced autoscaling guide <https://docs.ray.io/en/latest/serve/advanced-guides/advanced-autoscaling.html>`_.
+    """
 
     # Please keep these options in sync with those in
     # `src/ray/protobuf/serve.proto`.
 
     # Publicly exposed options
-    min_replicas: NonNegativeInt = 1
-    initial_replicas: Optional[NonNegativeInt] = None
-    max_replicas: PositiveInt = 1
+    min_replicas: NonNegativeInt = Field(
+        default=1,
+        description=(
+            "The minimum number of replicas for the deployment. Set this to a "
+            "positive value to keep replicas ready for traffic at all times, or "
+            "set it to 0 to allow scaling to zero when there is no traffic. "
+            "Scaling to zero reduces cost but introduces cold-start latency when "
+            "traffic resumes."
+        ),
+    )
+    initial_replicas: Optional[NonNegativeInt] = Field(
+        default=None,
+        description=(
+            "The number of replicas started when the deployment is first deployed. "
+            "If not set, defaults to the value of ``min_replicas``."
+        ),
+    )
+    max_replicas: PositiveInt = Field(
+        default=1,
+        description=(
+            "The maximum number of replicas for the deployment. Must be greater "
+            "than or equal to ``min_replicas``. Ray Serve relies on the Ray "
+            "Autoscaler to add cluster nodes when existing nodes lack the "
+            "resources (CPUs, GPUs, etc.) needed to schedule additional replicas."
+        ),
+    )
 
-    target_ongoing_requests: Optional[PositiveFloat] = DEFAULT_TARGET_ONGOING_REQUESTS
+    target_ongoing_requests: Optional[PositiveFloat] = Field(
+        default=DEFAULT_TARGET_ONGOING_REQUESTS,
+        description=(
+            "The target number of requests being processed and queued per replica. "
+            "Serve scales the replica count up or down to keep each replica close "
+            "to this value. Lower values reduce per-replica load and tail latency "
+            "at the cost of running more replicas; higher values pack more traffic "
+            "onto each replica. Defaults to 2."
+        ),
+    )
 
     metrics_interval_s: PositiveFloat = Field(
         default=DEFAULT_METRICS_INTERVAL_S,

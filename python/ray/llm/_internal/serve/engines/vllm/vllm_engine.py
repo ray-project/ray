@@ -7,6 +7,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     AsyncGenerator,
+    Dict,
     List,
     Literal,
     Optional,
@@ -52,6 +53,10 @@ from ray.llm._internal.serve.engines.vllm.vllm_models import (
     VLLMEngineConfig,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
+    assign_replica_kv_events_endpoint,
+    get_kv_event_routing_stats,
+)
 from ray.llm._internal.serve.utils.node_initialization_utils import (
     initialize_node,
 )
@@ -73,6 +78,34 @@ if TYPE_CHECKING:
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
+
+
+def _canonicalize_request_id_header(
+    request: Any, raw_request_info: Optional[RawRequestInfo]
+) -> Optional[RawRequestInfo]:
+    """Ensure raw_request_info carries X-Request-Id == request.request_id so vLLM's
+    OpenAI layer (which prefers the header) sees the authoritative request id.
+
+    Returns a RawRequestInfo (new or mutated) with a single, correctly-cased header.
+    If the request has no request_id, this is a no-op and returns raw_request_info
+    unchanged (so embeddings/score/transcription requests are unaffected).
+    """
+    rid = getattr(request, "request_id", None)
+    if not rid:
+        return raw_request_info
+    headers = dict(raw_request_info.headers) if raw_request_info is not None else {}
+    # Drop any existing variant of the header (case- and separator-insensitive,
+    # e.g. "X-Request-Id" or "x_request_id") before setting the canonical one.
+    headers = {
+        k: v
+        for k, v in headers.items()
+        if k.replace("_", "-").lower() != "x-request-id"
+    }
+    headers["x-request-id"] = str(rid)
+    if raw_request_info is None:
+        return RawRequestInfo(headers=headers)
+    # Preserve any non-header fields RawRequestInfo carries (now or in the future).
+    return dataclasses.replace(raw_request_info, headers=headers)
 
 
 def _convert_config_dicts(merged: dict) -> dict:
@@ -253,9 +286,13 @@ class VLLMEngine(LLMEngine):
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."
             )
+        assign_replica_kv_events_endpoint(self.llm_config)
         self.llm_config.setup_engine_backend()
 
         self._running = False
+        # Routing stats advertised to Serve's request router; populated in
+        # start() once the engine's KV-events endpoint is bound.
+        self._routing_stats: Dict[str, Any] = {}
 
         # vLLM Integration points. Will be set through .start()
         self._engine_client = None
@@ -365,9 +402,19 @@ class VLLMEngine(LLMEngine):
         self._validate_openai_serving_models()
         self._validate_engine_client()
 
+        self._routing_stats = get_kv_event_routing_stats(
+            self.llm_config,
+            vllm_engine_config.cache_config.block_size,
+            vllm_engine_config.scheduler_config.max_num_batched_tokens,
+        )
+
         self._running = True
 
         logger.info("Started vLLM engine.")
+
+    def routing_stats(self) -> Dict[str, Any]:
+        """Returns KV event and replay endpoints for KV-aware routing."""
+        return self._routing_stats
 
     def _validate_openai_serving_models(self):
         assert self._oai_models is not None, "oai_models is not initialized"
@@ -556,6 +603,7 @@ class VLLMEngine(LLMEngine):
             yield error
             return
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
@@ -590,6 +638,7 @@ class VLLMEngine(LLMEngine):
             yield error
             return
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
@@ -626,6 +675,7 @@ class VLLMEngine(LLMEngine):
             yield error
             return
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
@@ -654,6 +704,7 @@ class VLLMEngine(LLMEngine):
         # Extract audio data from the request file
         audio_data = await request.file.read()
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
@@ -691,6 +742,7 @@ class VLLMEngine(LLMEngine):
             yield error
             return
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
@@ -716,6 +768,7 @@ class VLLMEngine(LLMEngine):
             yield error
             return
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
@@ -742,6 +795,7 @@ class VLLMEngine(LLMEngine):
             yield error
             return
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )

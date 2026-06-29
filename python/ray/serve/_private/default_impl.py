@@ -18,7 +18,6 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
-    RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
     RAY_SERVE_PROXY_USE_GRPC,
@@ -270,16 +269,3 @@ def get_controller_impl(controller_options: Optional[ControllerOptions] = None):
         actor_options["runtime_env"] = controller_options.runtime_env
 
     return ray.remote(**actor_options)(ServeController)
-
-
-def get_proxy_actor_class():
-    # These imports are lazy to avoid circular imports
-
-    if RAY_SERVE_ENABLE_HA_PROXY:
-        from ray.serve._private.haproxy import HAProxyManager
-
-        return HAProxyManager
-    else:
-        from ray.serve._private.proxy import ProxyActor
-
-        return ProxyActor

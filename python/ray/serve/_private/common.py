@@ -660,6 +660,7 @@ class RunningReplicaInfo:
     is_cross_language: bool = False
     multiplexed_model_ids: List[str] = field(default_factory=list)
     routing_stats: Dict[str, Any] = field(default_factory=dict)
+    replica_metadata: Dict[str, Any] = field(default_factory=dict)
     port: Optional[int] = None
     backend_http_port: Optional[int] = None
 
@@ -681,6 +682,7 @@ class RunningReplicaInfo:
                     str(self.is_cross_language),
                     str(self.multiplexed_model_ids),
                     str(self.routing_stats),
+                    str(self.replica_metadata),
                     str(self.port),
                     str(self.backend_http_port),
                 ]
@@ -798,6 +800,10 @@ class RequestMetadata:
 
     _http_method: str = ""
 
+    # Full gRPC service method (e.g. "/pkg.Service/Method") for direct-ingress gRPC
+    # requests. Mirrors the proxy's `method` metric tag (`gRPCProxyRequest.method`).
+    _grpc_service_method: str = ""
+
     # The client address in "host:port" format, if available.
     _client: str = ""
 
@@ -831,6 +837,10 @@ class RequestMetadata:
     @property
     def is_grpc_request(self) -> bool:
         return self._request_protocol == RequestProtocol.GRPC
+
+    @property
+    def protocol(self) -> RequestProtocol:
+        return self._request_protocol
 
 
 class StreamingHTTPRequest:

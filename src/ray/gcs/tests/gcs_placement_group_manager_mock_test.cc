@@ -22,6 +22,7 @@
 #include "mock/ray/gcs/gcs_placement_group_scheduler.h"
 #include "mock/ray/gcs/gcs_resource_manager.h"
 #include "mock/ray/gcs/store_client/store_client.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_placement_group_manager.h"
 #include "ray/observability/fake_metric.h"
@@ -37,7 +38,8 @@ namespace gcs {
 
 class GcsPlacementGroupManagerMockTest : public Test {
  public:
-  GcsPlacementGroupManagerMockTest() : cluster_resource_manager_(io_context_) {}
+  GcsPlacementGroupManagerMockTest()
+      : cluster_resource_manager_(PeriodicalRunner::Create(io_context_)) {}
 
   void SetUp() override {
     store_client_ = std::make_shared<MockStoreClient>();

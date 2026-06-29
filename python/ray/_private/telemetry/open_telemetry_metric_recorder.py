@@ -1,7 +1,9 @@
 import logging
+import os
 import threading
 from collections import defaultdict
 from typing import Callable, List
+from urllib.parse import unquote
 
 from opentelemetry import metrics
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
@@ -15,6 +17,21 @@ from ray._private.telemetry.metric_types import MetricType
 logger = logging.getLogger(__name__)
 
 NAMESPACE = "ray"
+
+
+def _get_service_name(default_name: str) -> str:
+    otel_service_name = os.environ.get("OTEL_SERVICE_NAME")
+    if otel_service_name:
+        return otel_service_name
+
+    otel_resource_attributes = os.environ.get("OTEL_RESOURCE_ATTRIBUTES", "")
+
+    for attribute in otel_resource_attributes.split(","):
+        key, sep, value = attribute.partition("=")
+        if sep and key.strip() == "service.name" and value.strip():
+            return unquote(value.strip())
+
+    return default_name
 
 
 class OpenTelemetryMetricRecorder:
@@ -85,10 +102,22 @@ class OpenTelemetryMetricRecorder:
                 agg_fn = MetricCardinality.get_aggregation_function(
                     metric_name, metric_type
                 )
-                return [
-                    Observation(agg_fn(values), attributes=dict(filtered))
-                    for filtered, values in values_by_filtered_tags.items()
-                ]
+                # Keep a single label schema for each metric before passing
+                # observations to the Prometheus exporter.
+                all_keys = sorted(
+                    {k for filtered in values_by_filtered_tags for k, _ in filtered}
+                )
+
+                observations = []
+                for filtered, values in values_by_filtered_tags.items():
+                    attrs = dict(filtered)
+                    observations.append(
+                        Observation(
+                            agg_fn(values),
+                            attributes={k: attrs.get(k, "") for k in all_keys},
+                        )
+                    )
+                return observations
 
         return callback
 
@@ -99,8 +128,17 @@ class OpenTelemetryMetricRecorder:
         with OpenTelemetryMetricRecorder._metrics_initialized_lock:
             if OpenTelemetryMetricRecorder._metrics_initialized:
                 return
+            from opentelemetry.sdk.resources import Resource
+
             prometheus_reader = PrometheusMetricReader()
-            provider = MeterProvider(metric_readers=[prometheus_reader])
+            provider = MeterProvider(
+                resource=Resource.create(
+                    {
+                        "service.name": _get_service_name("ray-dashboard-agent"),
+                    }
+                ),
+                metric_readers=[prometheus_reader],
+            )
             metrics.set_meter_provider(provider)
             OpenTelemetryMetricRecorder._metrics_initialized = True
 
