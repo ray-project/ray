@@ -75,6 +75,7 @@ class RequestTokenTracker:
         forwarder: LifecycleEventForwarder,
         request_id: str,
         prompt_token_ids: List[int],
+        expected_output_tokens: Optional[int],
     ):
         self._forwarder = forwarder
         self._request_id = request_id
@@ -82,7 +83,11 @@ class RequestTokenTracker:
         self._prefill_marked = False
         self._finished = False
         forwarder.report(
-            "on_request_added", request_id, forwarder.worker_id, prompt_token_ids
+            "on_request_added",
+            request_id,
+            forwarder.worker_id,
+            prompt_token_ids,
+            expected_output_tokens,
         )
 
     def on_output(self, output: RequestOutput) -> None:
@@ -144,6 +149,11 @@ def enable_token_tracking(engine_cls: Type[AsyncLLM]) -> Type[AsyncLLM]:
                 forwarder,
                 lifecycle_request_id,
                 _get_prompt_token_ids(prompt),
+                # The request's own output cap is its expected length; weights
+                # the selection service's decode-block decay.
+                # TODO(jeffreywang): Use an agent-provided expected-OSL hint for
+                # more accurate decode-load estimation.
+                sampling_params.max_tokens,
             )
             try:
                 async for output in stream:
