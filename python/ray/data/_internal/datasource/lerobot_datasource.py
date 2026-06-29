@@ -502,14 +502,18 @@ class _LeRobotReadTask(ReadTask):
         if root.video_keys:
             video_meta = self._video_episode_meta(ep_slice, root.video_keys)
             cache = new_decoder_cache(root.storage_options)
+            # Per-frame timestamp tolerance for the video decoder, needed only
+            # when there are video cameras. Default to half a frame interval
+            # (0.5 / fps). Computed inside this branch -- not unconditionally --
+            # so image-only and tabular-only datasets never divide by fps.
+            if root.frame_tolerance_s is not None:
+                tolerance_s = root.frame_tolerance_s
+            else:
+                tolerance_s = 0.5 / float(root.fps)
         else:
             video_meta = {}
             cache = None
-
-        if root.frame_tolerance_s is not None:
-            tolerance_s = root.frame_tolerance_s
-        else:
-            tolerance_s = 0.5 / float(root.fps)
+            tolerance_s = None
 
         task_idx_pylist = full.column("task_index").to_pylist()
         missing_tasks = {ti for ti in task_idx_pylist if ti not in root.tasks_dict}
