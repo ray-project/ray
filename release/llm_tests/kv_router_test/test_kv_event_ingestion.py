@@ -325,7 +325,7 @@ class TestKvEventIngestion:
     async def test_select_worker_prefers_overlap(self, ray_instance):
         """select_worker scores via the selection service and picks the worker
         whose cached blocks overlap the prompt, within the allowed candidate set."""
-        actor = LocalKVRouterActor.remote(block_size=BLOCK_SIZE)
+        actor = LocalKVRouterActor.remote()
         a = FakeReplica.remote(23905)
         b = FakeReplica.remote(23906)
         worker_a = get_worker_id("replica-A")
