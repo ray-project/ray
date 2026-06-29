@@ -158,6 +158,7 @@ class DashboardHead:
             self.session_name,
             self.metrics,
             self.proxy_server_url,
+            gcs_client=self.gcs_client,
         )
         await self.http_server.run(dashboard_head_modules, subprocess_module_handles)
 

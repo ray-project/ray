@@ -1,8 +1,9 @@
-# e2e integration test for Active-Passive standby nodes:
+# e2e integration test for Active-Passive head nodes:
 # 1. When two head nodes start pointing to the same shared Redis storage, only the active leader registers itself.
 # 2. The passive head node's GCS remains in passive mode (holding off on table registrations and RPC handlers).
 # 3. The passive head node's dashboard health/readiness check fails with a 503 Service Unavailable.
 # 4. Both nodes remain healthy and running without crashing.
+# 5. Job submission to passive head fails with 503.
 
 import os
 import sys
@@ -33,7 +34,6 @@ def test_passive_head_e2e(external_redis):
 
     # Define parameters for Primary Head Node A (Bootstraps cluster ID and session)
     params_A = RayParams(
-        node_ip_address="127.0.0.1",
         redis_address=f"{redis_ip}:{redis_port}",
         gcs_server_port=gcs_port_A,
         dashboard_port=dashboard_port_A,
@@ -49,7 +49,6 @@ def test_passive_head_e2e(external_redis):
 
     # Define parameters for Head Node B (Starts second -> Loses election -> Passive Standby)
     params_B = RayParams(
-        node_ip_address="127.0.0.1",
         redis_address=f"{redis_ip}:{redis_port}",
         gcs_server_port=gcs_port_B,
         dashboard_port=dashboard_port_B,
@@ -90,6 +89,24 @@ def test_passive_head_e2e(external_redis):
         )
         if autoscaler_metrics_in_kv:
             assert str(dashboard_port_B).encode() not in autoscaler_metrics_in_kv
+
+        # Verify job submission behavior
+        # 1. Job submission to Node A (Active Head) should succeed
+        res_job_A = requests.post(
+            f"http://localhost:{dashboard_port_A}/api/jobs/",
+            json={"entrypoint": "python3 -c \"print('Hello from Active Node A')\""},
+        )
+        assert res_job_A.status_code == 200
+        job_id_A = res_job_A.json()["job_id"]
+        assert job_id_A.startswith("raysubmit_")
+
+        # 2. Job submission to Node B (Passive Head) should fail with 503 immediately due to isolation middleware
+        res_job_B = requests.post(
+            f"http://localhost:{dashboard_port_B}/api/jobs/",
+            json={"entrypoint": "python3 -c \"print('Hello from Passive Node B')\""},
+        )
+        assert res_job_B.status_code == 503
+        assert "GCS is in passive mode" in res_job_B.text
 
     finally:
         node_B.kill_all_processes(check_alive=False)
