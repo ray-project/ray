@@ -30,4 +30,8 @@ Default test timeout: 180s (pytest.ini).
 
 ## Contributing
 
-See @CONTRIBUTING.rst and @doc/source/ray-contribute/getting-involved.md
+Read the contribution policy in @AGENTS.md before opening any PR. It is mandatory
+for AI-assisted contributions (duplicate-work checks, no busywork PRs, human
+accountability).
+
+See also @CONTRIBUTING.rst and @doc/source/ray-contribute/getting-involved.md
