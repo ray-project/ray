@@ -2,7 +2,6 @@ import asyncio
 import gc
 import os
 import signal
-import subprocess
 import sys
 import threading
 import time
@@ -12,7 +11,8 @@ import numpy as np
 import pytest
 
 import ray
-from ray._common.test_utils import run_string_as_driver, wait_for_condition
+from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.util.state import list_tasks
 
 
@@ -21,18 +21,14 @@ def _list_tasks(**kwargs):
     return list_tasks(address=ray.get_runtime_context().gcs_address, **kwargs)
 
 
-_WINDOWS_STATUS_ACCESS_VIOLATION = 0xC0000005
-
-
-def _run_driver_that_exits_ungracefully(driver):
+def _run_driver_until_condition_then_kill(driver, condition):
+    proc = run_string_as_driver_nonblocking(driver)
     try:
-        run_string_as_driver(driver)
-    except subprocess.CalledProcessError as exc:
-        if (
-            sys.platform != "win32"
-            or exc.returncode != _WINDOWS_STATUS_ACCESS_VIOLATION
-        ):
-            raise
+        wait_for_condition(condition, timeout=_ACTOR_GEN_BP_WAIT_S)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait(timeout=10)
 
 
 @pytest.mark.parametrize("actor", [False, True])
@@ -841,7 +837,7 @@ def test_actor_generator_backpressure_reclaim_on_owner_death(shutdown_only):
     address = ray.init(num_cpus=2, namespace=namespace).address_info["address"]
 
     driver = f"""
-import os
+import time
 
 import ray
 from ray._common.test_utils import wait_for_condition
@@ -882,12 +878,22 @@ a = A.remote()
 g = a.gen.remote(reporter, "first", 1)
 wait_for_condition(lambda: ray.get(reporter.count.remote("first")) == 1, timeout=10)
 assert ray.get(a.ping.remote(), timeout=10) == "ok"
+ray.get(reporter.report.remote("ready_to_die"))
 
-# Exit
-os._exit(0)
+# Stay alive until the parent kills this driver to simulate owner death.
+while True:
+    time.sleep(1)
 """
 
-    _run_driver_that_exits_ungracefully(driver)
+    _run_driver_until_condition_then_kill(
+        driver,
+        lambda: ray.get(
+            ray.get_actor(reporter_name, namespace=namespace).count.remote(
+                "ready_to_die"
+            )
+        )
+        == 1,
+    )
     a = ray.get_actor(actor_name, namespace=namespace)
     reporter = ray.get_actor(reporter_name, namespace=namespace)
     try:
@@ -912,7 +918,7 @@ def test_actor_generator_backpressure_owner_death_unblocks_task_waiter(shutdown_
     address = ray.init(num_cpus=2, namespace=namespace).address_info["address"]
 
     driver = f"""
-import os
+import time
 
 import ray
 from ray._common.test_utils import wait_for_condition
@@ -953,11 +959,22 @@ reporter = Reporter.remote()
 a = A.remote()
 g = a.gen.remote(reporter, "first")
 wait_for_condition(lambda: ray.get(reporter.count.remote("first")) == 1, timeout=10)
+ray.get(reporter.report.remote("ready_to_die"))
 
-os._exit(0)
+# Stay alive until the parent kills this driver to simulate owner death.
+while True:
+    time.sleep(1)
 """
 
-    _run_driver_that_exits_ungracefully(driver)
+    _run_driver_until_condition_then_kill(
+        driver,
+        lambda: ray.get(
+            ray.get_actor(reporter_name, namespace=namespace).count.remote(
+                "ready_to_die"
+            )
+        )
+        == 1,
+    )
     a = ray.get_actor(actor_name, namespace=namespace)
     reporter = ray.get_actor(reporter_name, namespace=namespace)
     try:
@@ -982,7 +999,7 @@ def test_actor_generator_backpressure_owner_death_skips_between_yield_work(
     address = ray.init(num_cpus=2, namespace=namespace).address_info["address"]
 
     driver = f"""
-import os
+import time
 
 import ray
 from ray._common.test_utils import wait_for_condition
@@ -994,12 +1011,19 @@ ray.init(address="{address}", namespace="{namespace}")
 class Reporter:
     def __init__(self):
         self.between_yield_count = 0
+        self.ready_to_die = False
 
     def between_yield(self):
         self.between_yield_count += 1
 
     def count(self):
         return self.between_yield_count
+
+    def mark_ready_to_die(self):
+        self.ready_to_die = True
+
+    def is_ready_to_die(self):
+        return self.ready_to_die
 
 
 @ray.remote(
@@ -1025,11 +1049,20 @@ g = a.gen.remote(reporter)
 # After this returns, the executor has run the between-yield call exactly
 # once and is parked in WaitUntilObjectConsumed for yield 0.
 wait_for_condition(lambda: ray.get(reporter.count.remote()) == 1, timeout=10)
+ray.get(reporter.mark_ready_to_die.remote())
 
-os._exit(0)
+# Stay alive until the parent kills this driver to simulate owner death.
+while True:
+    time.sleep(1)
 """
 
-    _run_driver_that_exits_ungracefully(driver)
+    _run_driver_until_condition_then_kill(
+        driver,
+        lambda: ray.get(
+            ray.get_actor(reporter_name, namespace=namespace).is_ready_to_die.remote()
+        )
+        is True,
+    )
     a = ray.get_actor(actor_name, namespace=namespace)
     reporter = ray.get_actor(reporter_name, namespace=namespace)
     try:
