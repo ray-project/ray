@@ -2,7 +2,6 @@
 
 import logging
 import math
-import pickle
 import time
 from dataclasses import replace
 from typing import Callable, Dict, Generator, Iterable, List, Optional, Tuple, Union
@@ -11,9 +10,7 @@ import pyarrow as pa
 
 import ray
 from ray import ObjectRef
-from ray._raylet import (
-    StreamingGeneratorStats,  # pyrefly: ignore[missing-module-attribute]
-)
+from ray.data._internal.execution.util import yield_block_with_stats
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.block import (
@@ -244,22 +241,20 @@ def _shuffle_reduce_task(
     output_buffer: Optional[BlockOutputBuffer] = None
 
     def _yield_with_stats(block: Block):
-        """Yield (block, pickled metadata) following the streaming-gen protocol."""
-        exec_stats_builder = BlockExecStats.builder()
-        exec_stats_builder.finish()
-        gen_stats: StreamingGeneratorStats = yield block
-        exec_stats = exec_stats_builder.build(
-            block_ser_time_s=(gen_stats.object_creation_dur_s if gen_stats else None),
-        )
-        yield pickle.dumps(
-            BlockMetadataWithSchema.from_block(
+        """Yield a block then its pickled metadata (streaming-gen protocol)."""
+
+        def build_metadata(block_ser_time_s):
+            exec_stats = BlockExecStats.builder()
+            exec_stats.finish()
+            return BlockMetadataWithSchema.from_block(
                 block,
-                block_exec_stats=exec_stats,
+                block_exec_stats=exec_stats.build(block_ser_time_s=block_ser_time_s),
                 task_exec_stats=TaskExecWorkerStats(
                     task_wall_time_s=time.perf_counter() - start_time_s,
                 ),
             )
-        )
+
+        yield from yield_block_with_stats(block, build_metadata)
 
     def _flush(tables: List[pa.Table]):
         nonlocal output_buffer
@@ -271,8 +266,8 @@ def _shuffle_reduce_task(
             )
         for block in reduce_fn(partition_id, tables):
             output_buffer.add_block(block)
-            while output_buffer.has_next():
-                yield from _yield_with_stats(output_buffer.next())
+            for ready_block in output_buffer.iter_ready_blocks():
+                yield from _yield_with_stats(ready_block)
 
     # Step 1: fetch shard refs in batches, decompress, accumulate.  In
     # streaming mode, when the accumulator reaches target_max_block_size,
@@ -313,5 +308,5 @@ def _shuffle_reduce_task(
     # any partial block.
     if output_buffer is not None:
         output_buffer.finalize()
-        while output_buffer.has_next():
-            yield from _yield_with_stats(output_buffer.next())
+        for ready_block in output_buffer.iter_ready_blocks():
+            yield from _yield_with_stats(ready_block)

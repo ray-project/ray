@@ -2275,7 +2275,8 @@ Status CoreWorker::CreatePlacementGroup(
                                 worker_context_->GetCurrentJobID(),
                                 worker_context_->GetCurrentActorID(),
                                 worker_context_->CurrentActorDetached(),
-                                placement_group_creation_options.bundle_label_selector_);
+                                placement_group_creation_options.bundle_label_selector_,
+                                placement_group_creation_options.topology_strategy_);
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO).WithField(placement_group_id)
@@ -3102,6 +3103,11 @@ Status CoreWorker::TryReadObjectRefStream(const ObjectID &generator_id,
   return status;
 }
 
+Status CoreWorker::TryReadObjectRefStreamN(const ObjectID &generator_id,
+                                           int64_t num_items) {
+  return task_manager_->TryReadObjectRefStreamN(generator_id, num_items);
+}
+
 bool CoreWorker::StreamingGeneratorIsFinished(const ObjectID &generator_id) const {
   return task_manager_->StreamingGeneratorIsFinished(generator_id);
 }
@@ -3113,6 +3119,21 @@ std::pair<rpc::ObjectReference, bool> CoreWorker::PeekObjectRefStream(
   object_ref.set_object_id(object_id.Binary());
   object_ref.mutable_owner_address()->CopyFrom(rpc_address_);
   return {object_ref, ready};
+}
+
+std::vector<std::pair<rpc::ObjectReference, bool>> CoreWorker::PeekObjectRefStreamN(
+    const ObjectID &generator_id, int64_t num_items) {
+  auto object_ids_and_ready =
+      task_manager_->PeekObjectRefStreamN(generator_id, num_items);
+  std::vector<std::pair<rpc::ObjectReference, bool>> results;
+  results.reserve(object_ids_and_ready.size());
+  for (const auto &[object_id, ready] : object_ids_and_ready) {
+    rpc::ObjectReference object_ref;
+    object_ref.set_object_id(object_id.Binary());
+    object_ref.mutable_owner_address()->CopyFrom(rpc_address_);
+    results.emplace_back(std::move(object_ref), ready);
+  }
+  return results;
 }
 
 ObjectID CoreWorker::PeekObjectIdStream(const ObjectID &generator_id) {

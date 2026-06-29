@@ -31,6 +31,7 @@
 #include "ray/asio/fake_periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_management/actor_creator.h"
 #include "ray/core_worker/actor_management/actor_manager.h"
 #include "ray/core_worker/context.h"
@@ -334,6 +335,35 @@ std::shared_ptr<RayObject> MakeRayObject(const std::string &data_str,
       metadata_str.size(),
       true);
   return std::make_shared<RayObject>(data, metadata, std::vector<rpc::ObjectReference>());
+}
+
+TaskSpecification CreateStreamingGeneratorTaskSpec() {
+  TaskSpecification task;
+  task.GetMutableMessage().set_task_id(TaskID::FromRandom(JobID::FromInt(1)).Binary());
+  task.GetMutableMessage().set_num_returns(1);
+  task.GetMutableMessage().set_returns_dynamic(true);
+  task.GetMutableMessage().set_streaming_generator(true);
+  task.GetMutableMessage().set_generator_backpressure_num_objects(-1);
+  return task;
+}
+
+TEST_F(CoreWorkerTest, PeekObjectRefStreamNReturnsExpectedRefs) {
+  auto spec = CreateStreamingGeneratorTaskSpec();
+  auto generator_id = spec.ReturnId(0);
+  task_manager_->AddPendingTask(rpc_address_, spec, "call_site");
+
+  auto refs = core_worker_->PeekObjectRefStreamN(generator_id, 2);
+  ASSERT_EQ(refs.size(), 2);
+  ASSERT_EQ(ObjectID::FromBinary(refs[0].first.object_id()),
+            ObjectID::FromIndex(spec.TaskId(), 2));
+  ASSERT_FALSE(refs[0].second);
+  ASSERT_EQ(ObjectID::FromBinary(refs[1].first.object_id()),
+            ObjectID::FromIndex(spec.TaskId(), 3));
+  ASSERT_FALSE(refs[1].second);
+  ASSERT_EQ(WorkerID::FromBinary(refs[0].first.owner_address().worker_id()),
+            core_worker_->GetWorkerID());
+  ASSERT_EQ(WorkerID::FromBinary(refs[1].first.owner_address().worker_id()),
+            core_worker_->GetWorkerID());
 }
 
 TEST_F(CoreWorkerTest, RecordMetrics) {
