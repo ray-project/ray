@@ -21,6 +21,7 @@ from ray.serve._private.test_utils import (
     get_application_url,
     ping_fruit_stand,
     ping_grpc_call_method,
+    skip_if_haproxy,
 )
 from ray.serve.handle import DeploymentHandle
 from ray.serve.metrics import Counter, Gauge, Histogram
@@ -749,6 +750,10 @@ class TestHandleMetrics:
             expected=0,
         )
 
+    @skip_if_haproxy(
+        "asserts num_scheduling_tasks, a proxy-router metric that direct ingress "
+        "bypasses so the gauge stays at 0"
+    )
     def test_queued_queries_disconnected(self, metrics_start_shutdown):
         """Check that disconnected queued queries are tracked correctly."""
 
