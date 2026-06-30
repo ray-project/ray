@@ -19,12 +19,9 @@ logger = logging.getLogger(__name__)
 
 def _flatten_dict(d: Dict, parent_key: str = "", sep: str = "/") -> Dict:
     """Flatten a nested dictionary."""
-
     items = []
-
     for k, v in d.items():
         new_key = f"{parent_key}{sep}{k}" if parent_key else k
-
         if isinstance(v, dict):
             items.extend(_flatten_dict(v, new_key, sep=sep).items())
         else:
