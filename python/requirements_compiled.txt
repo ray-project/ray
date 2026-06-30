@@ -1907,7 +1907,7 @@ pyzmq==27.1.0
     #   jupyter-server
 qpd==0.4.4
     # via fugue
-ray-haproxy==2.8.20 ; sys_platform == "linux"
+ray-haproxy==2.8.25 ; sys_platform == "linux"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/serve/serve-test-requirements.txt
