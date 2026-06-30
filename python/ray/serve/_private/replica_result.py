@@ -12,7 +12,12 @@ from typing import Any, AsyncIterator, Callable, Coroutine, Iterator, Optional, 
 import grpc
 
 import ray
-from ray.exceptions import ActorUnavailableError, RayTaskError, TaskCancelledError
+from ray.exceptions import (
+    ActorUnavailableError,
+    ObjectRefStreamEndOfStreamError,
+    RayTaskError,
+    TaskCancelledError,
+)
 from ray.serve._private.common import (
     OBJ_REF_NOT_SUPPORTED_ERROR,
     ReplicaQueueLengthInfo,
@@ -199,7 +204,15 @@ class ActorReplicaResult(ReplicaResult):
             start_time_s=start_time_s,
             curr_time_s=time.time(),
         )
-        return ray.get(object_ref, timeout=remaining_timeout_s)
+        try:
+            return ray.get(object_ref, timeout=remaining_timeout_s)
+        except ObjectRefStreamEndOfStreamError:
+            # The underlying generator task ended (e.g. was cancelled or raised)
+            # without producing the unary return value, so the peeked value ref is
+            # past the end of the stream. Surface the task's real exception (e.g.
+            # TaskCancelledError) from the generator's completion ref instead.
+            self._raise_generator_task_exception(timeout_s=remaining_timeout_s)
+            raise
 
     @_process_response
     async def get_async(self):
@@ -207,7 +220,15 @@ class ActorReplicaResult(ReplicaResult):
             not self._is_streaming
         ), "get_async() can only be called on a unary ActorReplicaResult."
 
-        return await (await self.to_object_ref_async())
+        object_ref = await self.to_object_ref_async()
+        try:
+            return await object_ref
+        except ObjectRefStreamEndOfStreamError:
+            # See the comment in get(): the generator task ended without producing
+            # the unary value, so surface its real exception from the completion ref.
+            if self._obj_ref_gen is not None:
+                await self._obj_ref_gen.completed()
+            raise
 
     @_process_response
     def __next__(self):
@@ -226,6 +247,17 @@ class ActorReplicaResult(ReplicaResult):
 
         next_obj_ref = await self._obj_ref_gen.__anext__()
         return await next_obj_ref
+
+    def _raise_generator_task_exception(self, *, timeout_s: Optional[float] = None):
+        """Surface the underlying generator task's exception, if any.
+
+        Used when reading the unary value ref hits end-of-stream: the value was
+        never produced because the task was cancelled or raised. The generator's
+        completion ref carries that exception, so ray.get on it re-raises it (e.g.
+        TaskCancelledError). No-op if there is no generator or it did not raise.
+        """
+        if self._obj_ref_gen is not None:
+            ray.get(self._obj_ref_gen.completed(), timeout=timeout_s)
 
     def add_done_callback(self, callback: Callable):
         if self._obj_ref_gen is not None:
