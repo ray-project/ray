@@ -292,7 +292,7 @@ void SubscriberState::ConnectToSubscriber(
   RAY_CHECK(!long_polling_connection_);
   long_polling_connection_ = std::make_unique<LongPollConnection>(
       publisher_id, pub_messages, std::move(send_reply_callback));
-  last_connection_update_time_ms_ = get_time_ms_();
+  last_connection_update_time_ms_ = clock_.SteadyNowMillis();
   PublishIfPossible(/*force_noop=*/false);
 }
 
@@ -344,7 +344,7 @@ void SubscriberState::PublishIfPossible(bool force_noop) {
   // Clean up & update metadata.
   long_polling_connection_.reset();
   // Clean up & update metadata.
-  last_connection_update_time_ms_ = get_time_ms_();
+  last_connection_update_time_ms_ = clock_.SteadyNowMillis();
 }
 
 bool SubscriberState::CheckNoLeaks() const {
@@ -357,7 +357,8 @@ bool SubscriberState::ConnectionExists() const {
 }
 
 bool SubscriberState::IsActive() const {
-  return get_time_ms_() - last_connection_update_time_ms_ < connection_timeout_ms_;
+  return clock_.SteadyNowMillis() - last_connection_update_time_ms_ <
+         connection_timeout_ms_;
 }
 
 void Publisher::ConnectToSubscriber(
@@ -376,7 +377,7 @@ void Publisher::ConnectToSubscriber(
     it = subscribers_
              .emplace(subscriber_id,
                       std::make_unique<SubscriberState>(subscriber_id,
-                                                        get_time_ms_,
+                                                        clock_,
                                                         subscriber_timeout_ms_,
                                                         publish_batch_size_,
                                                         publisher_id_))
@@ -406,7 +407,7 @@ StatusSet<StatusT::InvalidArgument> Publisher::RegisterSubscription(
     it = subscribers_
              .emplace(subscriber_id,
                       std::make_unique<SubscriberState>(subscriber_id,
-                                                        get_time_ms_,
+                                                        clock_,
                                                         subscriber_timeout_ms_,
                                                         publish_batch_size_,
                                                         publisher_id_))

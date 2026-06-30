@@ -46,7 +46,7 @@ class PubSubHandlerTest : public ::testing::Test {
             rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
             rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL},
         /*periodical_runner=*/*fake_periodical_runner_,
-        /*get_time_ms=*/[]() { return 0.0; },
+        /*clock=*/clock_,
         /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
         /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
         /*publisher_id=*/NodeID::FromRandom());
@@ -59,7 +59,7 @@ class PubSubHandlerTest : public ::testing::Test {
                                       rpc::ChannelType::RAY_LOG_CHANNEL,
                                       rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL},
         /*periodical_runner=*/*fake_obs_periodical_runner_,
-        /*get_time_ms=*/[]() { return 0.0; },
+        /*clock=*/clock_,
         /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
         /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
         /*publisher_id=*/NodeID::FromRandom());
@@ -79,6 +79,9 @@ class PubSubHandlerTest : public ::testing::Test {
 
  private:
   instrumented_io_context io_service_;
+  // Declared before the publishers so it outlives the Publishers that hold a
+  // ClockInterface& to it.
+  ray::Clock clock_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
   std::unique_ptr<FakePeriodicalRunner> fake_obs_periodical_runner_;
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;

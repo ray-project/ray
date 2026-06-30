@@ -61,6 +61,16 @@ const WORKER: Worker = {
 
 const DEAD_NODE = { ...NODE, state: "DEAD" };
 
+const ACTOR_WORKER: Worker = {
+  ...WORKER,
+  cmdline: ["actor process"],
+  coreWorkerStats: [
+    {
+      workerId: "worker-67890",
+      actorId: "actor-123",
+    } as CoreWorkerStats,
+  ],
+} as Worker;
 describe("NodeRow", () => {
   it("renders", async () => {
     render(
@@ -118,5 +128,26 @@ describe("WorkerRow", () => {
     expect(screen.getByText(/14%/)).toBeVisible();
     // Memory Usage
     expect(screen.getByText(/75\.0000B\/100\.0000B\(75\.0%\)/)).toBeVisible();
+  });
+
+  it("renders a link to the Actor Detail page if the worker is an actor", async () => {
+    render(<WorkerRow node={NODE} worker={ACTOR_WORKER} />, {
+      wrapper: TEST_APP_WRAPPER,
+    });
+
+    const link = await screen.findByText("actor process");
+    expect(link.closest("a")).toHaveAttribute("href", "/actors/actor-123");
+  });
+
+  it("renders a link to the Node Detail page if the worker is not an actor", async () => {
+    render(<WorkerRow node={NODE} worker={WORKER} />, {
+      wrapper: TEST_APP_WRAPPER,
+    });
+
+    const link = await screen.findByText("echo hi");
+    expect(link.closest("a")).toHaveAttribute(
+      "href",
+      "/cluster/nodes/1234567890ab",
+    );
   });
 });
