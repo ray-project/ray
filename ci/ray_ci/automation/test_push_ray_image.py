@@ -877,6 +877,64 @@ class TestPipFreezeArtifact:
         # ...but the pip-freeze artifact was still exported.
         assert mock_export.call_count == 1
 
+    @mock.patch("ci.ray_ci.automation.push_ray_image._export_pip_freeze")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.ci_init")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.ecr_docker_login")
+    @mock.patch("ci.ray_ci.automation.push_ray_image._copy_image")
+    @mock.patch("ci.ray_ci.automation.push_ray_image._image_exists")
+    @mock.patch("ci.ray_ci.automation.push_ray_image.get_global_config")
+    def test_main_export_failure_does_not_break_pipeline(
+        self,
+        mock_config,
+        mock_exists,
+        mock_copy,
+        mock_ecr_login,
+        mock_ci_init,
+        mock_export,
+    ):
+        # A failure while staging the pip-freeze artifact must NOT fail the
+        # publish step -- image pushes are the critical path, and this code
+        # path cannot be validated until it runs in postmerge.
+        from click.testing import CliRunner
+
+        from ci.ray_ci.automation.push_ray_image import main
+
+        pipeline_id = "test-postmerge-pipeline-id"
+        work_repo = "123456789.dkr.ecr.us-west-2.amazonaws.com/rayci-work"
+        mock_config.return_value = {"ci_pipeline_postmerge": [pipeline_id]}
+        mock_exists.return_value = True
+        mock_export.side_effect = RuntimeError("crane export blew up")
+
+        result = CliRunner().invoke(
+            main,
+            [
+                "--python-version",
+                "3.10",
+                "--platform",
+                "cpu",
+                "--image-type",
+                "ray",
+                "--architecture",
+                "x86_64",
+                "--rayci-work-repo",
+                work_repo,
+                "--rayci-build-id",
+                "build123",
+                "--pipeline-id",
+                pipeline_id,
+                "--branch",
+                "releases/2.56.0",
+                "--commit",
+                "d7951f63abcd",
+            ],
+        )
+
+        # The export raised, but the publish step still succeeded...
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        assert mock_export.call_count == 1
+        # ...and image copying still happened.
+        mock_copy.assert_called()
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))

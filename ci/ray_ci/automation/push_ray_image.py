@@ -371,10 +371,21 @@ def main(
         # Downstream consumer: anyscale/product
         # devprod/rayrelease/releaser.py:update_doc_with_latest_docker_dependencies.
         # Runs regardless of dry_run: the shipped-deps record is independent of
-        # whether we push to Docker Hub, and PR builds (dry_run) are how we
-        # verify this artifact on CI.
+        # whether we push to Docker Hub.
+        #
+        # Best-effort by design: this publish step is skip-on-premerge, so the
+        # path only ever runs in postmerge and cannot be validated pre-merge.
+        # A failure here must never break image publishing (the critical path),
+        # so swallow and log any error rather than propagating it.
         if plat == "cpu":
-            _export_pip_freeze(src_ref, ctx)
+            try:
+                _export_pip_freeze(src_ref, ctx)
+            except Exception as e:
+                logger.error(
+                    f"Failed to stage pip-freeze artifact for {src_ref}; "
+                    f"continuing without it: {e}",
+                    exc_info=True,
+                )
 
         destination_tags = ctx.destination_tags()
         for tag in destination_tags:
