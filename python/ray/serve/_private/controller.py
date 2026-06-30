@@ -1387,6 +1387,7 @@ class ServeController:
                     targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
                     app_name="",
                     ingress_request_router_targets=[],
+                    ingress_deployment_name="",
                 )
             )
             if is_grpc_enabled(self.get_grpc_config()):
@@ -1399,6 +1400,7 @@ class ServeController:
                         ),
                         app_name="",
                         ingress_request_router_targets=[],
+                        ingress_deployment_name="",
                     )
                 )
         return target_groups

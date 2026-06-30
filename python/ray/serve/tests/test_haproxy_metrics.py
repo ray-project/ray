@@ -194,7 +194,7 @@ def test_parse_line_extracts_general_http_fields() -> None:
     assert parsed.latency_ms == 42
     assert parsed.deployment == "LLMDeployment"
     # %ts renders unquoted, like %ST/%Ta.
-    assert parsed.term_state == "--"
+    assert parsed.termination_state == "--"
     # Router fields are absent on a non-router line.
     assert parsed.ingress_request_via_router is False
     assert parsed.ingress_request_router_latency_us is None
@@ -496,7 +496,7 @@ def _http(
     latency_ms: Optional[int] = 42,
     deployment: Optional[str] = "D",
     via_router: bool = False,
-    term_state: Optional[str] = None,
+    termination_state: Optional[str] = None,
 ) -> ParsedMetrics:
     return ParsedMetrics(
         app=app,
@@ -506,7 +506,7 @@ def _http(
         status_code=status,
         latency_ms=latency_ms,
         deployment=deployment,
-        term_state=term_state,
+        termination_state=termination_state,
     )
 
 
@@ -548,7 +548,7 @@ def test_record_http_ingress_client_abort_recorded_as_499(collector) -> None:
     """A client abort (HAProxy term_state starting with "C") is recorded as
     status 499, matching the Python proxy's client-disconnect convention -- even
     though HAProxy logged its own status (here 400)."""
-    collector.record(_http(status="400", term_state="CH"))
+    collector.record(_http(status="400", termination_state="CH"))
     call = collector.request_ingress_metrics.calls[0]
     assert call["status_code"] == "499"
     assert call["is_error"] is True
@@ -557,10 +557,10 @@ def test_record_http_ingress_client_abort_recorded_as_499(collector) -> None:
 def test_record_http_ingress_non_client_term_state_keeps_status(collector) -> None:
     """A genuine 400 (no client abort) keeps its status; only leading-"C"
     termination states are remapped to 499."""
-    collector.record(_http(status="400", term_state="--"))
+    collector.record(_http(status="400", termination_state="--"))
     assert collector.request_ingress_metrics.calls[0]["status_code"] == "400"
     # Server-side termination ("S...") is also left untouched.
-    collector.record(_http(status="502", term_state="SH"))
+    collector.record(_http(status="502", termination_state="SH"))
     assert collector.request_ingress_metrics.calls[1]["status_code"] == "502"
 
 
