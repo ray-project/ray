@@ -1,10 +1,13 @@
+import signal
 import sys
 import time
 from collections import Counter
+from unittest import mock
 
 import pytest
 
 import ray
+import ray._private.node as ray_node
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._raylet import GcsClient
 from ray.core.generated import autoscaler_pb2, common_pb2
@@ -628,6 +631,206 @@ def test_leases_rescheduling_during_draining(ray_start_cluster):
     # The task should be rescheduled on another node.
     worker2 = cluster.add_node(num_cpus=1)
     assert ray.get(obj_ref) == worker2.node_id
+
+
+class _FakeNode:
+    """Minimal stand-in for Node to exercise _drain_node_before_shutdown."""
+
+    def __init__(self, node_id, gcs_client, dead_processes):
+        self._node_id = node_id
+        self._gcs_client = gcs_client
+        self.dead_processes = dead_processes
+
+    def get_gcs_client(self):
+        return self._gcs_client
+
+
+def _run_drain(
+    monkeypatch,
+    *,
+    timeout_s,
+    node_id,
+    drain_return=(True, ""),
+    drain_side_effect=None,
+    raylet_dead_after_polls=None,
+    poll_interval=0.5,
+):
+    """Invoke Node._drain_node_before_shutdown against a fake clock + raylet.
+
+    Returns (gcs_client_mock, sleep_durations, poll_count). A fake monotonic
+    clock advances only when the code sleeps, so waits are deterministic.
+    ``raylet_dead_after_polls=k`` makes dead_processes() report the raylet gone
+    (self-terminated after draining) on its k-th call.
+    """
+    monkeypatch.setattr(
+        ray_node.ray_constants, "RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S", timeout_s
+    )
+    monkeypatch.setattr(
+        ray_node.ray_constants, "RAY_GRACEFUL_SHUTDOWN_POLL_INTERVAL_S", poll_interval
+    )
+
+    clock = {"t": 1000.0}
+    sleeps = []
+
+    def fake_sleep(s):
+        sleeps.append(s)
+        clock["t"] += s
+
+    monkeypatch.setattr(ray_node.time, "monotonic", lambda: clock["t"])
+    monkeypatch.setattr(ray_node.time, "sleep", fake_sleep)
+
+    gcs = mock.MagicMock()
+    if drain_side_effect is not None:
+        gcs.drain_node.side_effect = drain_side_effect
+    else:
+        gcs.drain_node.return_value = drain_return
+
+    polls = {"n": 0}
+
+    def dead_processes():
+        polls["n"] += 1
+        if (
+            raylet_dead_after_polls is not None
+            and polls["n"] >= raylet_dead_after_polls
+        ):
+            return [(ray_node.ray_constants.PROCESS_TYPE_RAYLET, object())]
+        return []
+
+    fake = _FakeNode(node_id, gcs, dead_processes)
+    ray_node.Node._drain_node_before_shutdown(fake)
+    return gcs, sleeps, polls["n"]
+
+
+def test_drain_marks_node_draining_then_polls(monkeypatch):
+    node_id = ray.NodeID.from_random().hex()
+    before_ms = int(time.time() * 1000)
+    gcs, sleeps, polls = _run_drain(
+        monkeypatch, timeout_s=5.0, node_id=node_id, raylet_dead_after_polls=None
+    )
+    after_ms = int(time.time() * 1000)
+
+    gcs.drain_node.assert_called_once()
+    args = gcs.drain_node.call_args.args
+    # drain_node takes the *hex* node id (it decodes via FromHex); passing binary
+    # yields a nil id that the GCS silently accepts without draining the raylet.
+    assert args[0] == node_id
+    assert args[1] == autoscaler_pb2.DrainNodeReason.DRAIN_NODE_REASON_PREEMPTION
+    assert before_ms + 5000 <= args[3] <= after_ms + 5000
+    # Raylet never exits -> we poll and wait up to (not beyond) the cap.
+    assert polls > 1
+    assert sum(sleeps) == pytest.approx(5.0)
+
+
+def test_drain_exits_early_when_raylet_self_terminates(monkeypatch):
+    node_id = ray.NodeID.from_random().hex()
+    gcs, sleeps, polls = _run_drain(
+        monkeypatch, timeout_s=30.0, node_id=node_id, raylet_dead_after_polls=3
+    )
+    gcs.drain_node.assert_called_once()
+    # Raylet self-terminates (draining+idle) by the 3rd poll -> stop, not 30s.
+    assert polls == 3
+    assert sum(sleeps) == pytest.approx(1.0)
+    assert sum(sleeps) < 30.0
+
+
+def test_drain_disabled_when_timeout_non_positive(monkeypatch):
+    node_id = ray.NodeID.from_random().hex()
+    gcs, sleeps, polls = _run_drain(monkeypatch, timeout_s=0.0, node_id=node_id)
+    gcs.drain_node.assert_not_called()
+    assert sleeps == []
+    assert polls == 0
+
+
+def test_drain_failure_does_not_block_shutdown(monkeypatch):
+    node_id = ray.NodeID.from_random().hex()
+    gcs, sleeps, polls = _run_drain(
+        monkeypatch,
+        timeout_s=5.0,
+        node_id=node_id,
+        drain_side_effect=RuntimeError("gcs unreachable"),
+    )
+    gcs.drain_node.assert_called_once()
+    assert sleeps == []
+    assert polls == 0
+
+
+def test_drain_rejected_skips_wait(monkeypatch):
+    node_id = ray.NodeID.from_random().hex()
+    gcs, sleeps, polls = _run_drain(
+        monkeypatch, timeout_s=5.0, node_id=node_id, drain_return=(False, "rejected")
+    )
+    gcs.drain_node.assert_called_once()
+    assert sleeps == []
+    assert polls == 0
+
+
+def test_sigterm_handler_drains_then_kills(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        "ray._private.utils.set_sigterm_handler",
+        lambda handler: captured.__setitem__("handler", handler),
+    )
+    monkeypatch.setattr(ray_node.atexit, "register", lambda *a, **k: None)
+
+    calls = []
+    fake = mock.MagicMock()
+    fake._drain_node_before_shutdown.side_effect = lambda: calls.append("drain")
+    fake.kill_all_processes.side_effect = lambda **kw: calls.append("kill")
+
+    ray_node.Node._register_shutdown_hooks(fake)
+    handler = captured["handler"]
+
+    with pytest.raises(SystemExit):
+        handler(signal.SIGTERM, None)
+    assert calls == ["drain", "kill"]
+    fake.kill_all_processes.assert_called_once_with(
+        check_alive=False, allow_graceful=True
+    )
+
+    calls.clear()
+    handler(signal.SIGTERM, None)
+    assert calls == []
+
+
+def test_drain_skipped_when_node_id_unset(monkeypatch):
+    # SIGTERM can arrive mid-Node.__init__, before _node_id is assigned (the
+    # shutdown hooks are registered first). The drain must be skipped rather
+    # than raise AttributeError, so teardown can still proceed.
+    monkeypatch.setattr(
+        ray_node.ray_constants, "RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S", 30.0
+    )
+    gcs = mock.MagicMock()
+
+    class _NodeWithoutId:
+        def get_gcs_client(self):
+            return gcs
+
+        def dead_processes(self):
+            return []
+
+    # Returns without raising and without attempting a drain.
+    ray_node.Node._drain_node_before_shutdown(_NodeWithoutId())
+    gcs.drain_node.assert_not_called()
+
+
+def test_sigterm_handler_shuts_down_even_if_drain_raises(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        "ray._private.utils.set_sigterm_handler",
+        lambda handler: captured.__setitem__("handler", handler),
+    )
+    monkeypatch.setattr(ray_node.atexit, "register", lambda *a, **k: None)
+
+    fake = mock.MagicMock()
+    fake._drain_node_before_shutdown.side_effect = RuntimeError("boom")
+
+    ray_node.Node._register_shutdown_hooks(fake)
+    with pytest.raises(SystemExit):
+        captured["handler"](signal.SIGTERM, None)
+    # Drain raised, but local processes were still torn down.
+    fake.kill_all_processes.assert_called_once_with(
+        check_alive=False, allow_graceful=True
+    )
 
 
 if __name__ == "__main__":
