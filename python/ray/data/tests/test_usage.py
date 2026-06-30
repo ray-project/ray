@@ -26,6 +26,7 @@ def mock_record(monkeypatch):
 def reset_collector(monkeypatch):
     collector.reset_for_testing()
     monkeypatch.setattr(collector, "_cluster_spilled_bytes", lambda: 0)
+    monkeypatch.setattr(collector, "_cluster_dead_node_count", lambda: 0)
     monkeypatch.delenv("RAY_DATA_USAGE_DISABLED", raising=False)
     # ``ray.init()`` force-sets # RAY_USAGE_STATS_ENABLED=0 for driver-created clusters, so the env var can't
     # keep the collector's opt-out gate open. Patch the gate directly instead.
@@ -61,6 +62,37 @@ def test_round_trip_payload_shape(reset_collector, mock_record):
     assert "pyarrow" in entry["env"]
     # No issues detected in this run; the key is present and empty.
     assert entry["detected_issues"] == []
+
+
+def test_performance_deltas_in_payload(reset_collector, mock_record, monkeypatch):
+    """``bytes_spilled`` and ``node_deaths`` are recorded as the (clamped)
+    increase between execution start and end."""
+    monkeypatch.setattr(
+        collector, "_cluster_spilled_bytes", MagicMock(side_effect=[100, 250])
+    )
+    monkeypatch.setattr(
+        collector, "_cluster_dead_node_count", MagicMock(side_effect=[1, 3])
+    )
+    ds = ray.data.range(1).map_batches(lambda b: b)
+    collector.record_workload("exec-1", ds._logical_plan)
+    collector.record_execution_result("exec-1")
+
+    _, payload_json = mock_record[-1]
+    entry = json.loads(payload_json)["executions"][0]
+    assert entry["performance"]["bytes_spilled"] == 150
+    assert entry["performance"]["node_deaths"] == 2
+
+
+def test_node_deaths_none_when_unavailable(reset_collector, mock_record, monkeypatch):
+    """A failed read (None) at either end leaves ``node_deaths`` as None."""
+    monkeypatch.setattr(collector, "_cluster_dead_node_count", lambda: None)
+    ds = ray.data.range(1).map_batches(lambda b: b)
+    collector.record_workload("exec-1", ds._logical_plan)
+    collector.record_execution_result("exec-1")
+
+    _, payload_json = mock_record[-1]
+    entry = json.loads(payload_json)["executions"][0]
+    assert entry["performance"]["node_deaths"] is None
 
 
 def test_detected_issues_in_payload(reset_collector, mock_record):
