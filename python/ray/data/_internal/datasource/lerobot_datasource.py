@@ -39,7 +39,6 @@ from ray.data._internal.util import (
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, ReadTask
-from ray.data.extensions import ArrowVariableShapedTensorType
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -129,6 +128,11 @@ def _build_schema(
     output schema: in-parquet ``image`` columns (HF ``struct<bytes, path>``) are
     replaced by decoded uint8 tensor columns, ``video`` columns are appended as
     decoded tensors, plus ``task``, ``dataset_index`` and ``stats``."""
+
+    # Note(Artur): Imported here rather than at module top so importing this module stays
+    # docs-safe: an eager ``ray.data.extensions`` import pulls in pandas' tensor
+    # extension, whose class body breaks under the docs build's mocked pandas.
+    from ray.data.extensions import ArrowVariableShapedTensorType
 
     ep = episodes_table.slice(0, 1).to_pylist()[0]
     path = (
