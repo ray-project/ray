@@ -110,7 +110,7 @@ class ActorReplicaResult(ReplicaResult):
             ), "An ObjectRefGenerator must be passed for streaming requests."
 
             if self._with_rejection:
-                self._rejection_response_ref = self._obj_ref_gen._get_next_ref_n(1)
+                [self._rejection_response_ref] = self._obj_ref_gen._get_next_ref_n(1)
                 self._rejection_response_ref._on_completed(
                     lambda _: self._obj_ref_gen._consume_next_ref_n(1)
                 )
@@ -127,7 +127,7 @@ class ActorReplicaResult(ReplicaResult):
                     lambda _: self._obj_ref_gen._consume_next_ref_n(1)
                 )
             else:
-                self._obj_ref = self._obj_ref_gen._get_next_ref_n(1)
+                [self._obj_ref] = self._obj_ref_gen._get_next_ref_n(1)
                 self._obj_ref._on_completed(
                     lambda _: self._obj_ref_gen._consume_next_ref_n(1)
                 )
