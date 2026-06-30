@@ -64,6 +64,9 @@ class ParsedMetrics:
     status_code: Optional[str] = None
     latency_ms: Optional[int] = None
     deployment: Optional[str] = None
+    # HAProxy 2-char session termination state (%ts). A leading "C" means the
+    # client aborted the connection; the recorder maps that to status 499.
+    termination_state: Optional[str] = None
 
 
 class HAProxyMetricsCollector:
@@ -257,6 +260,7 @@ class HAProxyMetricsCollector:
             status_code=kv.get("status"),
             latency_ms=as_int("latency_ms"),
             deployment=kv.get("deployment"),
+            termination_state=kv.get("term_state"),
         )
 
     def _record_ingress_request(self, parsed: ParsedMetrics) -> None:
@@ -272,8 +276,15 @@ class HAProxyMetricsCollector:
         if parsed.status_code is None:
             return
 
+        # A client abort (HAProxy termination state with a leading "C") is
+        # recorded as 499, matching the Python proxy's client-disconnect
+        # convention.
+        status_code = parsed.status_code
+        if parsed.termination_state and parsed.termination_state.startswith("C"):
+            status_code = "499"
+
         try:
-            is_error = int(parsed.status_code) >= 400
+            is_error = int(status_code) >= 400
         except ValueError:
             # Non-numeric status (shouldn't happen for HTTP); treat as non-error.
             is_error = False
@@ -282,7 +293,7 @@ class HAProxyMetricsCollector:
             route=parsed.route or "",
             method=parsed.method or "",
             application=parsed.app or "",
-            status_code=parsed.status_code,
+            status_code=status_code,
             # %Ta is integer-ms resolution; sub-ms requests round to 0.
             latency_ms=float(parsed.latency_ms or 0),
             is_error=is_error,

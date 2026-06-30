@@ -327,11 +327,14 @@ frontend http_frontend
     # in non-HAProxy mode). Goes only to the rfc5424 target below; the inherited
     # rfc3164 targets do not include the SD section, so their byte stream is
     # unchanged. The general fields come from txn.serve_* vars set per backend
-    # below; %ST/%Ta render unquoted (HAProxy does not quote those aliases). When
-    # ingress-request-router metrics are also enabled, the router-specific fields
-    # are appended to the same line.
+    # below; %ST/%Ta/%ts render unquoted (HAProxy does not quote those aliases).
+    # term_state (%ts) is HAProxy's 2-char session termination state; a leading "C"
+    # means the client aborted, which the collector maps to status 499 to match the
+    # Python proxy's client-disconnect convention. When ingress-request-router
+    # metrics are also enabled, the router-specific fields are appended to the same
+    # line.
     log /tmp/haproxy-serve/metrics.sock len 8192 format rfc5424 local1 debug
-    log-format-sd "%{{+Q,+E}}o [serve@1 app=%[var(txn.serve_app)] route=%[var(txn.serve_route)] method=%HM status=%ST latency_ms=%Ta deployment=%[var(txn.serve_deployment)]]"
+    log-format-sd "%{{+Q,+E}}o [serve@1 app=%[var(txn.serve_app)] route=%[var(txn.serve_route)] method=%HM status=%ST latency_ms=%Ta deployment=%[var(txn.serve_deployment)] term_state=%ts]"
     # Health check endpoint
     acl healthcheck path -i /-/healthz
     # Keep health checks out of the access log but still record their metric:

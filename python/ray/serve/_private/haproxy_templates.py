@@ -135,11 +135,14 @@ frontend http_frontend
     # in non-HAProxy mode). Goes only to the rfc5424 target below; the inherited
     # rfc3164 targets do not include the SD section, so their byte stream is
     # unchanged. The general fields come from txn.serve_* vars set per backend
-    # below; %ST/%Ta render unquoted (HAProxy does not quote those aliases). When
-    # ingress-request-router metrics are also enabled, the router-specific fields
-    # are appended to the same line.
+    # below; %ST/%Ta/%ts render unquoted (HAProxy does not quote those aliases).
+    # term_state (%ts) is HAProxy's 2-char session termination state; a leading "C"
+    # means the client aborted, which the collector maps to status 499 to match the
+    # Python proxy's client-disconnect convention. When ingress-request-router
+    # metrics are also enabled, the router-specific fields are appended to the same
+    # line.
     log {{ metrics_socket_path }} len 8192 format rfc5424 local1 debug
-    log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.serve_app)] route=%[var(txn.serve_route)] method=%HM status=%ST latency_ms=%Ta deployment=%[var(txn.serve_deployment)]{% if ingress_request_router_metrics_enabled and has_ingress_request_router %} intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)]{% endif %}]"
+    log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.serve_app)] route=%[var(txn.serve_route)] method=%HM status=%ST latency_ms=%Ta deployment=%[var(txn.serve_deployment)] term_state=%ts{% if ingress_request_router_metrics_enabled and has_ingress_request_router %} intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)]{% endif %}]"
     {%- endif %}
     {%- if config.root_path %}
     # Strip the configured global root_path so the health/routes endpoints, the

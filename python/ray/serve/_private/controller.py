@@ -1587,6 +1587,7 @@ class ServeController:
                         targets=grpc_targets,
                         app_name=app_name,
                         ingress_request_router_targets=[],
+                        ingress_deployment_name=ingress_deployment_name,
                     )
                 )
 
@@ -1600,6 +1601,12 @@ class ServeController:
         for proxy. This will allow applications to be discoverable via the
         proxy in situations where their replicas have scaled down to 0.
         """
+        # Ingress deployment name, threaded into the target groups so HAProxy can
+        # tag per-request ingress metrics with it (matching the Python proxy).
+        ingress_deployment_name = (
+            self.application_state_manager.get_ingress_deployment_name(app_name) or ""
+        )
+
         if self._ha_proxy_enabled:
             http_targets = []
             grpc_targets = []
@@ -1620,6 +1627,7 @@ class ServeController:
                     targets=http_targets,
                     app_name=app_name,
                     ingress_request_router_targets=[],
+                    ingress_deployment_name=ingress_deployment_name,
                 )
             )
         if include_grpc:
@@ -1630,6 +1638,7 @@ class ServeController:
                     targets=grpc_targets,
                     app_name=app_name,
                     ingress_request_router_targets=[],
+                    ingress_deployment_name=ingress_deployment_name,
                 )
             )
 
