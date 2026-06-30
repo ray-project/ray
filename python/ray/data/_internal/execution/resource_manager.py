@@ -130,18 +130,7 @@ class ResourceManager:
         # downstream operators' input buffers (inqueue + pending task inputs).
         self._mem_op_outputs: Dict[PhysicalOperator, int] = defaultdict(int)
 
-        # Bytes buffered by external consumers (iterators) consuming Batches
-        # (including the prefetched blocks). For example,
-        # - ds.iter_batches -> one iterator
-        # - streaming_split -> multiple iterators
-        self._external_consumer_bytes: int = 0
         self._has_external_consumer: bool = False
-
-        # Executor sink (DAG root: unique op with no output_dependencies).
-        # Iterator/streaming_split prefetch bytes are charged on this
-        # operator's output usage.
-        self._output_operator = terminal_operator_from_topology(topology)
-
         self._block_ref_counter = block_ref_counter
 
         self._op_resource_allocator: Optional[
@@ -160,20 +149,12 @@ class ResourceManager:
 
     @property
     def has_external_consumer(self) -> bool:
-        """Return whether there is any external consumer."""
+        """Whether an external consumer (iter_batches, streaming_split) exists."""
         return self._has_external_consumer
 
-    def set_external_consumer_bytes(self, num_bytes: int) -> None:
-        """Set the bytes buffered by external consumers."""
-        assert (
-            num_bytes >= 0
-        ), f"external consumer bytes must be non-negative, got {num_bytes}"
-        self._external_consumer_bytes = num_bytes
+    def set_external_consumer(self) -> None:
+        """Mark that an external consumer is attached to this executor."""
         self._has_external_consumer = True
-
-    def get_external_consumer_bytes(self) -> int:
-        """Get the bytes buffered by external consumers."""
-        return self._external_consumer_bytes
 
     def _estimate_object_store_memory_usage(
         self, op: "PhysicalOperator", state: "OpState"
@@ -367,15 +348,6 @@ class ResourceManager:
                 f" (in={memory_string(self.get_mem_op_internal(op))},"
                 f"out={memory_string(self.get_mem_op_outputs(op))}"
             )
-            # External-consumer bytes (iterator / streaming_split prefetch) are
-            # only attached to the output operator. Surface them in its line so
-            # users can see how much of `out` is held by the downstream iterator
-            # vs. the operator's own output queues.
-            if op is self._output_operator and self._has_external_consumer:
-                usage_str += (
-                    f",external_consumer="
-                    f"{memory_string(self._external_consumer_bytes)}"
-                )
             usage_str += ")"
             if self._op_resource_allocator is not None:
                 allocation = self._op_resource_allocator.get_allocation(op)
