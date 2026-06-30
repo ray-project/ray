@@ -242,13 +242,22 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
 
                 max_seq_len = sa_module.model_config["max_seq_len"]
 
+                state_outs_buffer = sa_episode.extra_model_outputs.get(
+                    Columns.STATE_OUT
+                )
                 # look_back_state.shape=([state-dim],)
                 look_back_state = (
                     # Episode has a (reset) beginning -> Prepend initial
                     # state.
                     convert_to_numpy(sa_module.get_initial_state())
-                    if sa_episode.t_started == 0
-                    or (Columns.STATE_OUT not in sa_episode.extra_model_outputs)
+                    if sa_episode.t_started == 0 or state_outs_buffer is None
+                    # Episode chunk has no STATE_OUT lookback data. This may happen
+                    # in multi-agent setups with sequentially acting agents, where
+                    # an agent's last STATE_OUT before the cut lies further back
+                    # than the (env timestep based) lookback horizon and is thus
+                    # not part of this continuation chunk anymore. In this case,
+                    # fall back to the initial state.
+                    or state_outs_buffer.lookback == 0
                     # Episode starts somewhere in the middle (is a cut
                     # continuation chunk) -> Use previous chunk's last
                     # STATE_OUT as initial state.

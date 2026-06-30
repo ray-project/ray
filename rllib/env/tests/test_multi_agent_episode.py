@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 
 import gymnasium as gym
 import numpy as np
+import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
@@ -2984,6 +2985,113 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Also assert that agent 1's action b uffer was emptied with the last
         # observations.
         self.assertTrue(episode_2.agent_buffers["agent_1"]["actions"].empty())
+
+    def test_cut_and_stateful_learner_connector(self):
+        # Multi-agent episode with sequentially acting agents and a stateful module
+        # (https://github.com/ray-project/ray/issues/56771): After a `cut()`, an
+        # agent's last STATE_OUT before the cut may lie further back than the (env
+        # timestep based) lookback horizon and is then NOT part of the continuation
+        # chunk anymore. The learner connector pipeline
+        # (`AddStatesFromEpisodesToBatch`) must fall back to the module's initial
+        # state in this case (instead of erroring out with an IndexError).
+        from ray.rllib.connectors.common import AddStatesFromEpisodesToBatch
+
+        class _StatefulModule:
+            model_config = {"max_seq_len": 2}
+
+            def __init__(self, initial_state):
+                self._initial_state = initial_state
+
+            def is_stateful(self):
+                return True
+
+            def get_initial_state(self):
+                return self._initial_state
+
+        class _MultiRLModule:
+            def __init__(self, initial_state):
+                self._module = _StatefulModule(initial_state)
+
+            def is_stateful(self):
+                return True
+
+            def __getitem__(self, module_id):
+                return self._module
+
+        # Test both a simple (ndarray) state and a nested (LSTM h/c-style) state.
+        for initial_state, state_fn in [
+            (
+                np.zeros((2,), dtype=np.float32),
+                lambda x: np.full((2,), x, dtype=np.float32),
+            ),
+            (
+                {
+                    "h": np.zeros((2,), dtype=np.float32),
+                    "c": np.zeros((2,), dtype=np.float32),
+                },
+                lambda x: {
+                    "h": np.full((2,), x, dtype=np.float32),
+                    "c": np.full((2,), x, dtype=np.float32),
+                },
+            ),
+        ]:
+            # Two agents acting in alternating (turn-based) order: a0 acts at even
+            # env timesteps, a1 at odd ones.
+            episode = MultiAgentEpisode(
+                agent_to_module_mapping_fn=lambda aid, eps: "p0",
+            )
+            episode.add_env_reset(observations={"a0": 0})
+            for env_t in range(2):
+                agent, next_agent = ("a0", "a1") if env_t % 2 == 0 else ("a1", "a0")
+                episode.add_env_step(
+                    observations={next_agent: env_t + 1},
+                    actions={agent: 0},
+                    rewards={agent: 0.0},
+                    extra_model_outputs={
+                        agent: {Columns.STATE_OUT: state_fn(env_t + 1.0)},
+                    },
+                )
+            # Cut with the default lookback horizon of 1 env timestep. a0 last acted
+            # 2 env timesteps ago -> its STATE_OUT lookback in the successor is
+            # empty (while its `t_started` is already 1).
+            successor = episode.cut(len_lookback_buffer=1)
+            for env_t in range(2, 6):
+                agent, next_agent = ("a0", "a1") if env_t % 2 == 0 else ("a1", "a0")
+                successor.add_env_step(
+                    observations={next_agent: env_t + 1},
+                    actions={agent: 0},
+                    rewards={agent: 0.0},
+                    extra_model_outputs={
+                        agent: {Columns.STATE_OUT: state_fn(env_t + 1.0)},
+                    },
+                )
+            check(successor.agent_episodes["a0"].t_started, 1)
+            check(
+                successor.agent_episodes["a0"]
+                .extra_model_outputs[Columns.STATE_OUT]
+                .lookback,
+                0,
+            )
+            successor.to_numpy()
+
+            # Run the learner connector piece on the continuation chunk. Before the
+            # fix, this raised an IndexError (nested state) or silently used the
+            # chunk's own last STATE_OUT as its first STATE_IN (simple state).
+            connector = AddStatesFromEpisodesToBatch(as_learner_connector=True)
+            batch = connector(
+                rl_module=_MultiRLModule(initial_state),
+                batch={},
+                episodes=[successor],
+                shared_data={},
+            )
+            # Both agents' first STATE_IN must be the module's initial state (the
+            # actual pre-cut state of a0 is no longer available in the chunk).
+            for agent_id in ["a0", "a1"]:
+                state_in = batch[Columns.STATE_IN][(successor.id_, agent_id, "p0")]
+                check(
+                    tree.map_structure(lambda s: s[0], state_in[0]),
+                    initial_state,
+                )
 
     def test_slice(self):
         # Generate a simple multi-agent episode.
