@@ -28,9 +28,21 @@ load("//bazel:ray_deps_setup.bzl", "ray_deps_setup")
 
 ray_deps_setup()
 
+load("@rules_jvm_external//:repositories.bzl", "rules_jvm_external_deps")
+
+rules_jvm_external_deps()
+
+load("@bazel_features//:deps.bzl", "bazel_features_deps")
+
+bazel_features_deps()
+
 load("//bazel:ray_deps_build_all.bzl", "ray_deps_build_all")
 
 ray_deps_build_all()
+
+load("@maven//:defs.bzl", "pinned_maven_install")
+
+pinned_maven_install()
 
 # This needs to be run after grpc_deps() in ray_deps_build_all() to make
 # sure all the packages loaded by grpc_deps() are available. However a

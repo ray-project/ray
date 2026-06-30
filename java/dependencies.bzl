@@ -42,4 +42,5 @@ def gen_java_deps():
         repositories = [
             "https://repo1.maven.org/maven2/",
         ],
+        maven_install_json = "//:maven_install.json",
     )
