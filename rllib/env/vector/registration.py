@@ -1,5 +1,6 @@
 import copy
 import logging
+from functools import partial
 from typing import Any, Dict, Optional
 
 import gymnasium as gym
@@ -58,8 +59,13 @@ def make_vec(
             )
     assert isinstance(vectorization_mode, VectorizeMode)
 
-    def create_single_env() -> MultiAgentEnv:
-        single_env = gym.make(env_spec, **env_spec_kwargs.copy())
+    def create_single_env(index: int) -> MultiAgentEnv:
+        single_env_kwargs = env_spec_kwargs.copy()
+        # Pass the sub-environment's index within the vector env into the
+        # entry point (through `gym.make`), such that each sub-environment
+        # can be created with its correct `vector_index`.
+        single_env_kwargs["vector_index"] = index
+        single_env = gym.make(env_spec, **single_env_kwargs)
 
         return single_env
 
@@ -67,7 +73,7 @@ def make_vec(
     if vectorization_mode == VectorizeMode.SYNC:
         # Create the synchronized vector environemnt.
         env = SyncVectorMultiAgentEnv(
-            env_fns=(create_single_env for _ in range(num_envs)),
+            env_fns=(partial(create_single_env, index) for index in range(num_envs)),
             **vector_kwargs,
         )
     # Other modes are not implemented, yet.

@@ -9,6 +9,15 @@ from ray.rllib.utils.metrics import (
     EPISODE_MODULE_RETURN_MEAN,
 )
 from ray.rllib.utils.test_utils import check
+from ray.tune.registry import register_env
+
+
+class CtxTrackingMultiAgentCartPole(MultiAgentCartPole):
+    """A MultiAgentCartPole that stores the config it was created with."""
+
+    def __init__(self, config=None):
+        super().__init__(config)
+        self._env_ctx = config
 
 
 class TestMultiAgentEnvRunner(unittest.TestCase):
@@ -159,6 +168,34 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
             == module_episode_returns_mean
             == sum_agent_episode_returns_mean
         )
+
+    def test_vector_index_in_env_context(self):
+        """Checks that each sub-env is created with its correct `vector_index`.
+
+        Related to https://github.com/ray-project/ray/issues/53419
+        """
+
+        # Register an env creator that stores the `EnvContext` on the created
+        # env instance.
+        def _env_creator(ctx):
+            env = MultiAgentCartPole(ctx)
+            env._env_ctx = ctx
+            return env
+
+        register_env("ctx_tracking_multi_agent_cartpole", _env_creator)
+
+        # Check both the registered env creator and the env class code paths.
+        for env in ["ctx_tracking_multi_agent_cartpole", CtxTrackingMultiAgentCartPole]:
+            config = self._build_config().environment(env)
+            config.env_runners(num_envs_per_env_runner=4)
+            # Create a `MultiAgentEnvRunner` instance.
+            env_runner = MultiAgentEnvRunner(config=config)
+            env_ctxs = [e.unwrapped._env_ctx for e in env_runner.env.envs]
+            # Each sub-environment must have been created with its own
+            # `vector_index` ...
+            check(sorted(ctx.vector_index for ctx in env_ctxs), [0, 1, 2, 3])
+            # ... while all other context contents are shared.
+            check([ctx["num_agents"] for ctx in env_ctxs], [2] * 4)
 
 
 if __name__ == "__main__":
