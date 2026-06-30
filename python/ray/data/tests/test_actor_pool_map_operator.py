@@ -28,7 +28,6 @@ from ray.data._internal.actor_autoscaler.default_actor_autoscaler import (
     _estimate_total_available_task_slots,
 )
 from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.bundle_queue import HashLinkedQueue
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -966,7 +965,7 @@ def test_setting_initial_size_for_actor_pool():
         ray_remote_args={"num_cpus": 1},
     )
 
-    op.start(ExecutionOptions(), BlockRefCounter())
+    op.start(ExecutionOptions(), noop_counter())
 
     assert op._actor_pool.get_actor_info() == ActorPoolInfo(
         running=0,
@@ -1007,7 +1006,7 @@ def test_internal_input_queue_is_empty_after_early_completion(
     )
 
     # NOTE: This is blocking, until actor pool is fully started up
-    op.start(ExecutionOptions(), BlockRefCounter())
+    op.start(ExecutionOptions(), noop_counter())
     # Complete init sequence by completing pending metadata tasks (performed
     # by the executor)
     run_op_tasks_sync(op)
@@ -1064,7 +1063,7 @@ def test_actor_pool_input_queue_draining(
     )
 
     # NOTE: This is blocking, until actor pool is fully started up
-    op.start(ExecutionOptions(), BlockRefCounter())
+    op.start(ExecutionOptions(), noop_counter())
 
     # Finalize operator initialization sequence and make it schedulable
     run_op_tasks_sync(op, only_existing=True)
@@ -1522,7 +1521,7 @@ def test_actor_pool_map_operator_init(ray_start_regular_shared, data_context_ove
     )
 
     with pytest.raises(RayActorError, match=r"init_failed"):
-        op.start(ExecutionOptions(), BlockRefCounter())
+        op.start(ExecutionOptions(), noop_counter())
 
 
 @pytest.mark.parametrize(
@@ -1575,7 +1574,7 @@ def test_actor_pool_map_operator_should_add_input(
         ray_remote_args={"max_concurrency": max_concurrency},
     )
 
-    op.start(ExecutionOptions(), BlockRefCounter())
+    op.start(ExecutionOptions(), noop_counter())
 
     # Cannot add input until actor has started.
     assert not op.can_add_input()
@@ -1618,7 +1617,7 @@ def test_actor_pool_map_operator_num_active_tasks_and_completed(shutdown_only):
     actor_pool = op._actor_pool
 
     # Wait for the op to scale up to the min size.
-    op.start(ExecutionOptions(), BlockRefCounter())
+    op.start(ExecutionOptions(), noop_counter())
     run_op_tasks_sync(op)
     assert actor_pool.num_running_actors() == num_actors
     assert op.num_active_tasks() == 0

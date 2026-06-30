@@ -5,7 +5,6 @@ import pandas as pd
 import pytest
 
 import ray
-from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     ExecutionOptions,
@@ -20,6 +19,7 @@ from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.progress.base_progress import NoopSubProgressBar
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
+from ray.data.tests.conftest import noop_counter
 from ray.data.tests.util import (
     _get_blocks,
     _mul2_transform,
@@ -100,7 +100,7 @@ def test_all_to_all_operator():
         op.set_sub_progress_bar(name, pg)
 
     # Feed data.
-    op.start(ExecutionOptions(), BlockRefCounter())
+    op.start(ExecutionOptions(), noop_counter())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
     op.all_inputs_done()
@@ -146,7 +146,7 @@ def test_num_outputs_total():
 
     # Feed data and implement streaming exec.
     output = []
-    op1.start(ExecutionOptions(actor_locality_enabled=True), BlockRefCounter())
+    op1.start(ExecutionOptions(actor_locality_enabled=True), noop_counter())
     while input_op.has_next():
         op1.add_input(input_op.get_next(), 0)
         while not op1.has_next():
@@ -183,8 +183,8 @@ def test_all_to_all_estimated_num_output_bundles():
         DataContext.get_current().target_max_block_size,
     )
 
-    op1.start(ExecutionOptions(), BlockRefCounter())
-    op2.start(ExecutionOptions(), BlockRefCounter())
+    op1.start(ExecutionOptions(), noop_counter())
+    op2.start(ExecutionOptions(), noop_counter())
     while input_op.has_next():
         op1.add_input(input_op.get_next(), 0)
     op1.all_inputs_done()
