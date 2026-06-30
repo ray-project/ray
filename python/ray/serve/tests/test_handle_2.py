@@ -727,12 +727,15 @@ def test_nested_deployment_response_error(serve_instance):
 def test_convert_to_object_ref(serve_instance):
     """Test converting deployment handle refs to Ray object refs."""
 
+    signal = SignalActor.remote()
+
     @ray.remote
     def identity_task(inp: Any):
         return inp
 
     @serve.deployment
     def downstream():
+        ray.get(signal.wait.remote())
         return "hello"
 
     @serve.deployment
@@ -741,13 +744,15 @@ def test_convert_to_object_ref(serve_instance):
             self._handle = handle
 
         async def __call__(self):
-            ref = self._handle.remote()
-            return await identity_task.remote(await ref._to_object_ref())
+            obj_ref = await self._handle.remote()._to_object_ref()
+            await signal.wait.remote()
+            return await identity_task.remote(obj_ref)
 
     handle = serve.run(Deployment.bind(downstream.bind()))
 
-    ref = handle.remote()
-    assert ray.get(identity_task.remote(ref._to_object_ref_sync())) == "hello"
+    obj_ref = handle.remote()._to_object_ref_sync()
+    ray.get(signal.send.remote())
+    assert ray.get(identity_task.remote(obj_ref)) == "hello"
 
 
 def test_generators(serve_instance):
