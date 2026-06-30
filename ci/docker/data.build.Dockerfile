@@ -36,6 +36,11 @@ echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gp
 sudo apt-get update
 sudo apt-get install -y mongodb-org
 
+# torchcodec (the decoder behind ray.data.read_lerobot's video path) loads
+# libtorchcodec against the system FFmpeg shared libraries; install ffmpeg so
+# video decoding works in the data CI image.
+sudo apt-get install -y ffmpeg
+
 if [[ $RAY_CI_JAVA_BUILD == 1 ]]; then
   # These packages increase the image size quite a bit, so we only install them
   # as needed.
