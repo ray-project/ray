@@ -311,6 +311,7 @@ class SplitCoordinator:
                     self._output_iterator = ds._build_bundle_iterator(
                         self._current_executor
                     )
+                    self._current_executor.set_external_consumer()
                     logger.debug(
                         f"Starting epoch {self._cur_epoch} (all {self._n} clients "
                         "synced)."
