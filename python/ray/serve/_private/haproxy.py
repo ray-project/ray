@@ -987,6 +987,40 @@ class HAProxyApi(ProxyApi):
         }
         return len(expected ^ reported)
 
+    async def count_ongoing_http_requests(self) -> int:
+        """Total in-flight HTTP requests across this node's HTTP app backends.
+
+        Sums each HTTP backend's aggregate `scur` (current sessions), which
+        counts request streams actively being served. Unlike the frontend scur
+        it does not count idle keep-alive connections, and unlike server-connection
+        counts it is unaffected by `http-reuse`. The aggregate row also includes
+        requests queued waiting for a server. The `-via-ingress-request-router`
+        backends are included (a router request lives in exactly one backend).
+        """
+        suffix = "-via-ingress-request-router"
+        stats = self._parse_haproxy_csv_stats(
+            await self._send_socket_command("show stat")
+        )
+        total = 0
+        for backend_name, servers in stats.items():
+            # The via-router backend is rendered from its app's BackendConfig but
+            # under a suffixed name; strip it to look the config (and protocol) up.
+            base = (
+                backend_name[: -len(suffix)]
+                if backend_name.endswith(suffix)
+                else backend_name
+            )
+            backend_config = self.backend_configs.get(base)
+            if (
+                backend_config is None
+                or backend_config.protocol != RequestProtocol.HTTP
+            ):
+                continue
+            backend_row = servers.get("BACKEND")
+            if backend_row is not None:
+                total += backend_row.current_sessions
+        return total
+
     def _retire_log_files(self, proc: asyncio.subprocess.Process) -> None:
         """Move an exited proc's std-stream logs into the bounded debug ring,
         deleting the oldest pair once the ring exceeds its cap. Only call this

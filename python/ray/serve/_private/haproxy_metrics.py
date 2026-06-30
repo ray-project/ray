@@ -368,6 +368,11 @@ class HAProxyMetricsCollector:
                 self.target_mismatch_gauge.set(
                     await self._haproxy_api.compute_target_mismatch()
                 )
+                # num_ongoing_requests can't be derived from the per-request log
+                # lines, so it's sampled here from HAProxy's backend `scur`.
+                self.request_ingress_metrics.set_num_ongoing_requests(
+                    await self._haproxy_api.count_ongoing_http_requests()
+                )
                 consecutive_errors = 0
             except Exception:
                 logger.exception("Unexpected error reporting HAProxy node metrics.")

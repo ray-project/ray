@@ -747,6 +747,51 @@ def test_compute_target_mismatch_treats_fallback_server_as_expected() -> None:
         assert asyncio.run(api.compute_target_mismatch()) == 0
 
 
+def test_count_ongoing_http_requests_sums_http_backend_scur() -> None:
+    """num_ongoing is sampled from each HTTP backend's aggregate `scur`,
+    including the `-via-ingress-request-router` backend; gRPC and internal
+    backends are excluded."""
+    from ray.serve._private.common import RequestProtocol
+    from ray.serve._private.haproxy import BackendConfig, HAProxyApi, HAProxyConfig
+
+    # `show stat` CSV: an HTTP app backend, its via-router variant, a gRPC app
+    # backend, and internal rows (frontend / stats). scur is what's summed.
+    show_stat = (
+        "# pxname,svname,scur,qcur,status\n"
+        "http_frontend,FRONTEND,9,0,OPEN\n"
+        "http-app,s1,3,0,UP\n"
+        "http-app,s2,2,0,UP\n"
+        "http-app,BACKEND,5,0,UP\n"
+        "http-app-via-ingress-request-router,r1,2,0,UP\n"
+        "http-app-via-ingress-request-router,BACKEND,2,0,UP\n"
+        "grpc-app,g1,3,0,UP\n"
+        "grpc-app,BACKEND,3,0,UP\n"
+        "stats,BACKEND,1,0,UP\n"
+    )
+    with tempfile.TemporaryDirectory() as td:
+        api = HAProxyApi(
+            cfg=HAProxyConfig(socket_path=os.path.join(td, "admin.sock")),
+            backend_configs={
+                "http-app": BackendConfig(
+                    name="http-app", path_prefix="/", protocol=RequestProtocol.HTTP
+                ),
+                "grpc-app": BackendConfig(
+                    name="grpc-app", path_prefix="/", protocol=RequestProtocol.GRPC
+                ),
+            },
+            config_file_path=os.path.join(td, "haproxy.cfg"),
+        )
+
+        async def fake_send(command):
+            assert command == "show stat"
+            return show_stat
+
+        api._send_socket_command = fake_send
+        # http-app BACKEND (5) + via-router BACKEND (2); gRPC (3) and the stats
+        # listener are excluded.
+        assert asyncio.run(api.count_ongoing_http_requests()) == 7
+
+
 @pytest.mark.asyncio
 async def test_start_polls_and_binds_dgram_reader(tmp_path) -> None:
     """start() begins node polling and always binds the per-request dgram
