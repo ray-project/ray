@@ -15,6 +15,7 @@
 #pragma once
 
 #include <array>
+#include <stdexcept>
 #include <string_view>
 #include <type_traits>
 
@@ -35,6 +36,10 @@ struct IOContextMetadata {
   std::string_view name;
   /// Whether to enable the asio lag probe on this io_context.
   bool enable_lag_probe;
+  /// Whether this io_context's health contributes to whether the GCS health
+  /// check returns SERVING or NOT_SERVING.
+  /// Non-critical io_contexts (e.g., observability event export) are excluded.
+  bool used_for_health_check;
 };
 
 struct GcsServerIOContextPolicy {
@@ -70,13 +75,30 @@ struct GcsServerIOContextPolicy {
   // can get runtime crashes when accessing a missing name, or get leaks by
   // creating unused threads.
   constexpr static std::array<IOContextMetadata, 7> kAllDedicatedIOContexts{{
-      {"task_io_context", /*enable_lag_probe=*/true},
-      {"pubsub_io_context", /*enable_lag_probe=*/true},
-      {"observability_pubsub_io_context", /*enable_lag_probe=*/true},
-      {"ray_syncer_io_context", /*enable_lag_probe=*/true},
-      {"ray_event_io_context", /*enable_lag_probe=*/true},
-      {"internal_kv_io_context", /*enable_lag_probe=*/true},
-      {"node_manager_io_context", /*enable_lag_probe=*/true},
+      // task_io_context only runs GcsTaskManager, which ingests and serves
+      // task-state events (observability) and drops events under load by design.
+      // It is not on the GCS control plane, so a backlog here (e.g. under a
+      // task-event flood) must not flip the server to NOT_SERVING. Excluded like
+      // the other observability loops below.
+      {"task_io_context",
+       /*enable_lag_probe=*/true,
+       /*used_for_health_check=*/false},
+      {"pubsub_io_context", /*enable_lag_probe=*/true, /*used_for_health_check=*/true},
+      {"observability_pubsub_io_context",
+       /*enable_lag_probe=*/true,
+       /*used_for_health_check=*/false},
+      {"ray_syncer_io_context",
+       /*enable_lag_probe=*/true,
+       /*used_for_health_check=*/true},
+      {"ray_event_io_context",
+       /*enable_lag_probe=*/true,
+       /*used_for_health_check=*/false},
+      {"internal_kv_io_context",
+       /*enable_lag_probe=*/true,
+       /*used_for_health_check=*/true},
+      {"node_manager_io_context",
+       /*enable_lag_probe=*/true,
+       /*used_for_health_check=*/true},
   }};
 
   // Returns int (not size_t) to match GetDedicatedIOContextIndex's return type and
@@ -88,7 +110,7 @@ struct GcsServerIOContextPolicy {
       }
     }
     // Throwing in constexpr context leads to a compile error.
-    throw "Value not found in kAllDedicatedIOContexts";
+    throw std::out_of_range("Value not found in kAllDedicatedIOContexts");
   }
 };
 
