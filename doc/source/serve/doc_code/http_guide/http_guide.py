@@ -91,6 +91,37 @@ resp = requests.get("http://localhost:8000/")
 assert resp.json() == "Hello from the root!"
 # __end_byo_fastapi__
 
+# __begin_fastapi_middleware__
+import requests
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from ray import serve
+
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://example.com"],
+    allow_methods=["GET", "POST"],
+)
+
+
+@serve.deployment
+@serve.ingress(app)
+class Ingress:
+    @app.get("/")
+    def root(self):
+        return "ok"
+
+
+serve.run(Ingress.bind())
+resp = requests.get(
+    "http://localhost:8000/",
+    headers={"Origin": "https://example.com"},
+)
+assert resp.json() == "ok"
+assert resp.headers["access-control-allow-origin"] == "https://example.com"
+# __end_fastapi_middleware__
+
 
 # __begin_fastapi_factory_pattern__
 import requests

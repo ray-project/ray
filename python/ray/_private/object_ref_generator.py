@@ -180,6 +180,55 @@ class ObjectRefGenerator:
         self.worker.check_connected()
         return self.worker.core_worker.peek_next_object_id_binary(self._generator_ref)
 
+    def _get_next_ref_n(self, num_refs: int) -> list["ray.ObjectRef"]:
+        """Return the next num_refs references from a generator without consuming them.
+
+        The returned refs are not consumed; wait for the last one to become ready
+        before calling ``_consume_next_ref_n`` to advance the stream.
+
+        Args:
+            num_refs: The number of references to return, starting from the
+                current head of the stream. Must be positive.
+
+        Returns:
+            A list of exactly num_refs ObjectRefs corresponding to the next
+            results in the stream, starting from the current head.
+        """
+        if num_refs <= 0:
+            raise ValueError("num_refs must be positive")
+        self.worker.check_connected()
+        core_worker = self.worker.core_worker
+        return [
+            ref
+            for ref, _ in core_worker.peek_object_ref_stream_n(
+                self._generator_ref, num_refs
+            )
+        ]
+
+    def _consume_next_ref_n(self, num_refs: int) -> None:
+        """Consume (advance) the next num_refs references from a generator.
+
+        The caller must have waited for the last requested ref to become ready
+        (see ``_get_next_ref_n``); otherwise this raises ``ValueError`` instead
+        of silently advancing past unwritten objects.
+
+        If fewer than num_refs references remain before the end of the stream,
+        only the remaining references are consumed and the call returns
+        without raising.
+
+        Args:
+            num_refs: The number of references to consume, starting from the
+                current head of the stream. Must be positive.
+        """
+        if num_refs <= 0:
+            raise ValueError("num_refs must be positive")
+        self.worker.check_connected()
+        core_worker = self.worker.core_worker
+        try:
+            core_worker.try_read_next_object_ref_stream_n(self._generator_ref, num_refs)
+        except ObjectRefStreamEndOfStreamError:
+            return
+
     def _next_sync(self, timeout_s: Optional[int | float] = None) -> "ray.ObjectRef":
         """Waits for timeout_s and returns the object ref if available.
 

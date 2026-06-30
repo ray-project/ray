@@ -26,6 +26,7 @@ from ray._common.test_utils import (
     wait_for_condition,
 )
 from ray.serve._private.constants import (
+    RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
 )
@@ -1297,6 +1298,179 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
     ), f"Latency metrics should use route patterns. Found: {latency_routes}"
 
 
+def _check_controller_high_cardinality_metric_tags(include_high_cardinality: bool):
+    """Test controller metrics respect high-cardinality tag config."""
+
+    @ray.remote
+    class ReplicaHealthState:
+        def __init__(self):
+            self.replica_ids = set()
+            self.failures_enabled = False
+            self.failing_replica_id = None
+
+        def get_num_registered_replicas(self) -> int:
+            return len(self.replica_ids)
+
+        def enable_failures(self):
+            self.failures_enabled = True
+
+        def register_and_should_fail_health_check(self, replica_id: str) -> bool:
+            self.replica_ids.add(replica_id)
+            if not self.failures_enabled:
+                return False
+            if self.failing_replica_id is None:
+                self.failing_replica_id = replica_id
+            return replica_id == self.failing_replica_id
+
+    signal = SignalActor.remote()
+    replica_health_state = ReplicaHealthState.remote()
+
+    @serve.deployment(
+        name="autoscaling_metrics_model",
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 5,
+            "target_ongoing_requests": 2,
+            "metrics_interval_s": 0.1,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 5,
+            "look_back_period_s": 1,
+        },
+        max_ongoing_requests=10,
+        graceful_shutdown_timeout_s=0.1,
+    )
+    class AutoscalingModel:
+        async def __call__(self):
+            await signal.wait.remote()
+            return "hello"
+
+        async def record_autoscaling_stats(self):
+            return {"custom_metric": 1}
+
+    @serve.deployment(
+        name="lifecycle_metrics_model",
+        num_replicas=2,
+        health_check_period_s=0.1,
+        health_check_timeout_s=1,
+        graceful_shutdown_timeout_s=0.1,
+    )
+    class LifecycleModel:
+        async def __call__(self):
+            return serve.get_replica_context().replica_tag
+
+        async def check_health(self):
+            replica_id = serve.get_replica_context().replica_tag
+            should_fail_health_check = (
+                await replica_health_state.register_and_should_fail_health_check.remote(
+                    replica_id
+                )
+            )
+            if should_fail_health_check:
+                raise RuntimeError("Intentional health check failure.")
+
+    autoscaling_app_name = "autoscaling_metrics_app"
+    autoscaling_deployment_name = "autoscaling_metrics_model"
+    lifecycle_app_name = "lifecycle_metrics_app"
+    lifecycle_deployment_name = "lifecycle_metrics_model"
+    serve.run(
+        AutoscalingModel.bind(),
+        name=autoscaling_app_name,
+        route_prefix="/autoscaling",
+    )
+    serve.run(
+        LifecycleModel.bind(),
+        name=lifecycle_app_name,
+        route_prefix="/lifecycle",
+    )
+
+    wait_for_condition(
+        lambda: ray.get(replica_health_state.get_num_registered_replicas.remote()) == 2,
+        timeout=60,
+    )
+    timeseries = PrometheusTimeseries()
+
+    def get_health_status_value(deployment: str, application: str) -> float:
+        return get_metric_float(
+            "ray_serve_deployment_replica_healthy",
+            {
+                "deployment": deployment,
+                "application": application,
+            },
+            timeseries=timeseries,
+            timeout=PROMETHEUS_METRICS_TIMEOUT_S,
+        )
+
+    if not include_high_cardinality:
+        wait_for_condition(
+            lambda: get_health_status_value(
+                lifecycle_deployment_name, lifecycle_app_name
+            )
+            == 2,
+            timeout=60,
+        )
+
+    ray.get(replica_health_state.enable_failures.remote())
+    handle = serve.get_deployment_handle(
+        autoscaling_deployment_name, autoscaling_app_name
+    )
+    [handle.remote() for _ in range(10)]
+
+    def get_matching_metrics(metric_name: str, deployment: str, application: str):
+        return [
+            metric
+            for metric in get_metric_dictionaries(
+                metric_name, timeseries=timeseries, wait=False
+            )
+            if metric.get("deployment") == deployment
+            and metric.get("application") == application
+        ]
+
+    def assert_high_cardinality_tag(metric, tag):
+        assert (tag in metric) is include_high_cardinality
+
+    def check_controller_metric_tags():
+        health_failure_metrics = get_matching_metrics(
+            "ray_serve_health_check_failures_total",
+            lifecycle_deployment_name,
+            lifecycle_app_name,
+        )
+        health_status_metrics = get_matching_metrics(
+            "ray_serve_deployment_replica_healthy",
+            lifecycle_deployment_name,
+            lifecycle_app_name,
+        )
+        if not health_failure_metrics or not health_status_metrics:
+            return False
+
+        for metric in health_failure_metrics:
+            assert_high_cardinality_tag(metric, "replica")
+        for metric in health_status_metrics:
+            assert_high_cardinality_tag(metric, "replica")
+
+        return True
+
+    try:
+        wait_for_condition(check_controller_metric_tags, timeout=60)
+    finally:
+        ray.get(signal.send.remote())
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS,
+    reason="controller metric high-cardinality tags are disabled",
+)
+def test_controller_high_cardinality_metric_tags(metrics_start_shutdown):
+    _check_controller_high_cardinality_metric_tags(include_high_cardinality=True)
+
+
+@pytest.mark.skipif(
+    RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS,
+    reason="controller metric high-cardinality tags are enabled",
+)
+def test_disable_high_cardinality_controller_metrics(metrics_start_shutdown):
+    _check_controller_high_cardinality_metric_tags(include_high_cardinality=False)
+
+
 def test_routing_stats_delay_metric(metrics_start_shutdown):
     """Test that routing stats delay metric is reported correctly."""
 
@@ -1744,4 +1918,4 @@ def test_objref_resolution_latency_metric(metrics_start_shutdown):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", "-s", __file__]))
+    sys.exit(pytest.main(["-v", "-s"] + sys.argv[1:] + [__file__]))
