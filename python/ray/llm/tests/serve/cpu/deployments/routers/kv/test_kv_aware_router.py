@@ -23,6 +23,7 @@ from ray.llm._internal.serve.core.ingress.builder import (
     LLMServingArgs,
     build_openai_app,
 )
+from ray.llm._internal.serve.core.ingress.tokenizer import REQUEST_TOKEN_IDS_KWARG
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     KV_ROUTER_ACTOR_NAME,
     KVRouterActor,
@@ -33,9 +34,11 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentTargetInfo,
     ReplicaID,
+    RequestMetadata,
     RunningReplicaInfo,
 )
 from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX, SERVE_NAMESPACE
+from ray.serve._private.request_router import PendingRequest
 from ray.serve.config import DeploymentActorConfig
 from ray.serve.llm.request_router import KVAwareRouter
 from ray.util.state import list_actors
@@ -348,6 +351,173 @@ class TestOnDeploymentTargets:
             get_worker_id("b"),
             get_worker_id("c"),
         }
+
+
+class _StubReplica:
+    """RunningReplica stand-in exposing only replica_id.unique_id."""
+
+    def __init__(self, unique_id: str):
+        self.replica_id = ReplicaID(
+            unique_id=unique_id, deployment_id=DeploymentID(name="d", app_name="app")
+        )
+
+
+class _SelectWorkerStub:
+    def __init__(self, worker_id: int):
+        self._worker_id = worker_id
+        self.token_ids = None
+        self.allowed = None
+
+    async def remote(self, request_id, token_ids, allowed_worker_ids):
+        self.token_ids = token_ids
+        self.allowed = allowed_worker_ids
+        return {"worker_id": self._worker_id, "dp_rank": 0, "overlap_tokens": 1}
+
+
+class _KVRouterActorStub:
+    def __init__(self, worker_id: int):
+        self.select_worker = _SelectWorkerStub(worker_id)
+
+
+class _StubKVAwareRouter(KVAwareRouter):
+    """KVAwareRouter with the scorer actor injected, bypassing actor discovery."""
+
+    def __init__(self, kv_router_actor):
+        self._kv_router_actor = kv_router_actor
+
+
+def _build_kv_aware_router(worker_id: int) -> KVAwareRouter:
+    return _StubKVAwareRouter(_KVRouterActorStub(worker_id))
+
+
+@pytest.mark.asyncio
+async def test_select_worker_requires_tokens():
+    actor = KVRouterActor.__new__(KVRouterActor)
+    actor._svc = object()
+
+    with pytest.raises(ValueError, match="non-empty token_ids"):
+        await actor.select_worker("req-empty", [], [get_worker_id("r1")])
+
+
+@pytest.mark.asyncio
+async def test_select_worker_without_dynamo_raises():
+    """Without ai-dynamo the actor cannot score, so it raises a clear error
+    instead of silently degrading to a non-KV-aware pick."""
+    actor = KVRouterActor.__new__(KVRouterActor)
+    actor._svc = None
+
+    with pytest.raises(RuntimeError, match="ai-dynamo is not installed"):
+        await actor.select_worker("req", [1, 2, 3], [get_worker_id("r1")])
+
+
+@pytest.mark.asyncio
+async def test_choose_replicas_routes_to_selected_worker():
+    """choose_replicas maps candidates to worker ids, asks the actor to select,
+    and returns the chosen worker's replica."""
+    replicas = [_StubReplica("r1"), _StubReplica("r2")]
+    worker_ids = [get_worker_id("r1"), get_worker_id("r2")]
+
+    router = _build_kv_aware_router(worker_ids[1])
+    pending = PendingRequest(
+        args=[],
+        kwargs={REQUEST_TOKEN_IDS_KWARG: [10, 11, 12]},
+        metadata=RequestMetadata(request_id="req-1", internal_request_id="int-1"),
+    )
+
+    groups = await router.choose_replicas(replicas, pending)
+
+    # The actor selected r2's worker, so r2 is returned.
+    assert groups == [[replicas[1]]]
+    # choose_replicas forwarded the prompt token ids and the full candidate set.
+    select = router._kv_router_actor.select_worker
+    assert select.token_ids == [10, 11, 12]
+    assert sorted(select.allowed) == sorted(worker_ids)
+
+
+@pytest.mark.asyncio
+async def test_missing_token_ids_picks_random_replica():
+    """Token-less requests (batch prompts, truncated bodies) route to a single
+    random replica so they spread."""
+    replicas = [_StubReplica("r1"), _StubReplica("r2")]
+    router = _build_kv_aware_router(get_worker_id("r1"))
+
+    picked = set()
+    for _ in range(50):
+        pending = PendingRequest(
+            args=[],
+            kwargs={},
+            metadata=RequestMetadata(request_id="req", internal_request_id="int"),
+        )
+        groups = await router.choose_replicas(replicas, pending)
+        assert len(groups) == 1 and len(groups[0]) == 1
+        assert groups[0][0] in replicas
+        picked.add(groups[0][0].replica_id.unique_id)
+
+    # The picked replica varies across calls, so load spreads (not stuck on one).
+    assert picked == {"r1", "r2"}
+    assert router._kv_router_actor.select_worker.token_ids is None
+
+
+@pytest.mark.asyncio
+async def test_tokenize_call_picks_random_replica():
+    """The pre-routing /tokenize RPC is routed through choose_replicas before any
+    token ids exist; it must resolve so KV routing can bootstrap, and picks a random
+    replica without scoring."""
+    replicas = [_StubReplica("r1"), _StubReplica("r2")]
+
+    router = _build_kv_aware_router(get_worker_id("r2"))
+    pending = PendingRequest(
+        args=[],
+        kwargs={},
+        metadata=RequestMetadata(
+            request_id="req-tokenize",
+            internal_request_id="int-tokenize",
+            call_method="tokenize",
+        ),
+    )
+
+    groups = await router.choose_replicas(replicas, pending)
+
+    assert len(groups) == 1 and len(groups[0]) == 1
+    assert groups[0][0] in replicas
+    assert router._kv_router_actor.select_worker.token_ids is None
+
+
+@pytest.mark.asyncio
+async def test_empty_token_ids_picks_random_replica():
+    """Empty token ids carry no KV signal, so pick a random replica instead of
+    handing an empty prompt to the Dynamo selection service (which rejects it)."""
+    replicas = [_StubReplica("r1"), _StubReplica("r2")]
+
+    router = _build_kv_aware_router(get_worker_id("r2"))
+    pending = PendingRequest(
+        args=[],
+        kwargs={REQUEST_TOKEN_IDS_KWARG: []},
+        metadata=RequestMetadata(
+            request_id="req-empty", internal_request_id="int-empty"
+        ),
+    )
+
+    groups = await router.choose_replicas(replicas, pending)
+
+    assert len(groups) == 1 and len(groups[0]) == 1
+    assert groups[0][0] in replicas
+    assert router._kv_router_actor.select_worker.token_ids is None
+
+
+@pytest.mark.asyncio
+async def test_no_pending_request_picks_random_replica():
+    """Serve may ask again after route metadata has been consumed; pick a random
+    replica (nothing to score on)."""
+    replicas = [_StubReplica("r1"), _StubReplica("r2")]
+
+    router = _build_kv_aware_router(get_worker_id("r1"))
+
+    groups = await router.choose_replicas(replicas, pending_request=None)
+
+    assert len(groups) == 1 and len(groups[0]) == 1
+    assert groups[0][0] in replicas
+    assert router._kv_router_actor.select_worker.token_ids is None
 
 
 if __name__ == "__main__":
