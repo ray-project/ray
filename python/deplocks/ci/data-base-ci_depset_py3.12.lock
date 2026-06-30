@@ -1189,6 +1189,16 @@ cupy-cuda12x==13.6.0 ; sys_platform != 'darwin' \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   ray
+daft==0.7.15 \
+    --hash=sha256:6f192c9e090a27f121855f2a4a4f5781569d7fe7f158a0ad3d8f161b50f92c08 \
+    --hash=sha256:70fac4183d2d68be8eed7e57534189fc35da269f231cba66ed1212d5907abf60 \
+    --hash=sha256:789a05490748befea2cb585b0b0527eb130a0b5888b73fbc8dcc93ce2112da0f \
+    --hash=sha256:b893e732db49020daeab500f636842d271eaa8d0a210e9b1a68e4b178da1e419 \
+    --hash=sha256:e4231a0d2512fa6a7a74eca1b8f5c1be3fba75901f3ab32f34914f020403f930 \
+    --hash=sha256:f7c7bfd5714eb5729cf9ce3362834cae2a8759a97bd7423b69ba2bfbba203bf5
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/data-requirements.txt
 dask==2026.3.0 \
     --hash=sha256:be614b9242b0b38288060fb2d7696125946469c98a1c30e174883fd199e0428d \
     --hash=sha256:f7d96c8274e8a900d217c1ff6ea8d1bbf0b4c2c21e74a409644498d925eb8f85
@@ -1690,11 +1700,11 @@ fsspec==2023.12.1 \
     --hash=sha256:c4da01a35ac65c853f833e43f67802c25213f560820d54ddf248f92eddd5e990
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   daft
     #   dask
     #   datasets
     #   delta-sharing
     #   etils
-    #   getdaft
     #   huggingface-hub
     #   modin
     #   pyiceberg
@@ -1708,16 +1718,6 @@ gast==0.7.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   tensorflow
     #   tensorflow-probability
-getdaft==0.4.3 \
-    --hash=sha256:01f95c2d75b680a8d7fab757cbefd756dea340526af3aabc8be709f6e002f05d \
-    --hash=sha256:2eb59124f3390103049d581afc1d8860cc07663f4928c46d4e88aad98bfea6c1 \
-    --hash=sha256:50d7c38c1fe0ce07a45c8beadc0a1742bb854e8ec0736d341dd8963481af2b21 \
-    --hash=sha256:94ad4a3b5dca650e5fe75b2db16b901fd7640e29af67f17fbcb213d90551a523 \
-    --hash=sha256:b8fa68769f95a71f63d38b12811d94c47dc4bc2a14654bb5e481a8adc3ae5cba \
-    --hash=sha256:e2c7ad0a47874f5af20168a437504e00c84fa8c2cffb9e32cb7d508484c6c0db
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/py313/data-requirements.txt
 gitdb==4.0.12 \
     --hash=sha256:5ef71f855d191a3326fcfbc0d5da835f26b13fbcba60c32c21091c349ffdb571 \
     --hash=sha256:67073e15955400952c6565cc3e707c554a4eea2e428946f7a4c162fab9bd9bcf
@@ -3329,6 +3329,7 @@ packaging==26.1 \
     #   --override python/requirements/ml/lerobot_overrides.txt
     #   accelerate
     #   bokeh
+    #   daft
     #   dask
     #   datasets
     #   distributed
@@ -3826,10 +3827,10 @@ pyarrow==23.0.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/data-test-requirements.txt
+    #   daft
     #   dask
     #   datasets
     #   delta-sharing
-    #   getdaft
     #   hudi
     #   pylance
     #   ray
@@ -4542,9 +4543,9 @@ pyyaml-include==1.4.1 \
     --hash=sha256:1a96e33a99a3e56235f5221273832464025f02ff3d8539309a3bf00dec624471 \
     --hash=sha256:323c7f3a19c82fbc4d73abbaab7ef4f793e146a13383866831631b26ccc7fb00
     # via draccus
-ray-haproxy==2.8.20 ; sys_platform == 'linux' \
-    --hash=sha256:a955cbb370c9b9a4dadecd265ddff3ac6d007ad70eae293f05ef753a22b5e1f2 \
-    --hash=sha256:da23d7d28c39247826466ddfe3c166db7cef5dcd44d8a64b8f9eb91e7089076c
+ray-haproxy==2.8.25 ; sys_platform == 'linux' \
+    --hash=sha256:51671f11afb571ed5b37042f9287daf48de235f2d32ad18b732ee9587e9ad076 \
+    --hash=sha256:a63902c2fe7eb51fbcb502980228d743b79da6cecab230c4c24674517b1ac3ac
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ray
@@ -5431,9 +5432,9 @@ tqdm==4.67.1 \
     --hash=sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   daft
     #   datasets
     #   etils
-    #   getdaft
     #   huggingface-hub
     #   tensorflow-datasets
     #   torch-geometric
