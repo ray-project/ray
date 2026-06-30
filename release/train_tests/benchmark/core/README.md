@@ -28,6 +28,14 @@ experiments/
 collect.py               render result JSONs into an llm-foundry-style table
 ```
 
+## Dependencies
+
+The `ray-ml` GPU image provides torch/ray. The DeepSpeed LLM adapter also needs
+`transformers>=4.51` (Qwen3), `deepspeed`, `datasets`, and `nvidia-ml-py` (for
+GPU/bandwidth metrics). On a release test these go through the `byod` block in
+`release_tests.yaml` (`post_build_script` / `python_depset`); for a manual run,
+`pip install "transformers>=4.51" deepspeed datasets nvidia-ml-py`.
+
 ## Running
 
 ```bash

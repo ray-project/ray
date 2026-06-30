@@ -28,9 +28,11 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.experiment_config import ExperimentConfig, load_experiment  # noqa: E402
-from core.train_context import shared_storage_root  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+# Shared cluster storage (visible to all nodes on the cluster).
+RESULTS_DIR = "/mnt/cluster_storage"
 
 
 def write_results(metrics: Dict[str, Any], experiment_name: str) -> None:
@@ -46,7 +48,7 @@ def write_results(metrics: Dict[str, Any], experiment_name: str) -> None:
     except Exception as e:  # local runs without the release-test harness
         logger.warning(f"safe_write_to_results_json unavailable ({e}).")
 
-    path = os.path.join(shared_storage_root(), f"{experiment_name}_results.json")
+    path = os.path.join(RESULTS_DIR, f"{experiment_name}_results.json")
     with open(path, "w") as f:
         json.dump(payload, f, indent=2)
     logger.info(f"Wrote results to {path}")
@@ -63,9 +65,9 @@ def run_experiment(cfg: ExperimentConfig) -> Dict[str, Any]:
         # ("env://") with Ray actors as the launcher (placement + rank/master
         # env vars). This is exactly how the legacy air_benchmarks ran "vanilla
         # torch" — Ray actors stand up the process group, no ssh/srun needed.
-        from core.launchers.torchrun_ray_launcher import run_with_torchrun_ray
+        from core.launchers.torchrun_ray_launcher import run_with_torchrun
 
-        return run_with_torchrun_ray(cfg)
+        return run_with_torchrun(cfg)
     raise ValueError(
         f"Unknown launcher: {cfg.launcher}. Use 'ray_train' or 'torchrun_ray'."
     )
