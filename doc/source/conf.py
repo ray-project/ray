@@ -81,11 +81,20 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx_docsearch",
     "sphinx_collections",
-    "sphinx_llms_txt",
+    "llms_txt",  # in-repo extension from _ext folder (replaces sphinx-llms-txt)
     "sphinxext.opengraph",
 ]
 
-# -- sphinx-llms-txt: agent-friendly summary and full corpus -----------
+# -- llms.txt: agent-friendly index + per-section full corpus -----------
+# Emitted by the in-repo `llms_txt` extension (doc/source/_ext/llms_txt.py),
+# which replaces the third-party `sphinx-llms-txt`.
+
+# H1 title for llms.txt / llms-full.txt.
+llms_txt_title = "Ray"
+
+# Nav sections to move under llms.txt's trailing `## Optional` heading (content
+# agents may skip to save context). Empty for v1.
+llms_txt_optional_sections = []
 
 llms_txt_summary = (
     "Ray is an open-source unified compute framework for scaling AI and "
@@ -105,6 +114,11 @@ llms_txt_exclude = [
     "genindex",
     "404",
     "_TableOfContents",
+    # Include-only fragments and template/example scaffolding — not standalone
+    # nav pages; keep them out of the per-section llms-full shards.
+    "_includes/*",
+    "_templates/*",
+    "templates/*",
     "cluster/running-applications/job-submission/doc/*",
     "ray-observability/reference/doc/*",
     "ray-core/api/doc/*",
@@ -115,7 +129,7 @@ llms_txt_exclude = [
     "rllib/package_ref/*",
 ]
 
-# Exclude Jupyter notebooks from llms-full.txt. sphinx-llms-txt reads each
+# Exclude Jupyter notebooks from llms-full.txt. The llms_txt extension reads each
 # docname's source verbatim from `_sources/`, so for `.ipynb` pages it
 # appends raw notebook JSON (cells, outputs, embedded base64 images) into
 # the corpus. `llms_txt_exclude` matches docnames (extension stripped) via

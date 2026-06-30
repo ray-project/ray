@@ -78,6 +78,17 @@ steps:
     commands:
       - bash ci/lint/lint.sh api_policy_check
 
+  - label: ":book: doc: test llms.txt extension"
+    key: doc_test_llms_txt
+    instance_type: small
+    commands:
+      - python doc/test_llms_txt.py
+    depends_on: docbuild
+    job_env: docbuild-py3.11
+    tags:
+      - oss
+      - doc
+
   - label: ":book: doc: linkcheck"
     key: doc_linkcheck
     instance_type: medium
