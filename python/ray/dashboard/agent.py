@@ -28,6 +28,10 @@ from ray._raylet import (
     GcsClient,
     persist_port,
 )
+from ray.dashboard.event_loop_monitor import (
+    EVENT_LOOP_MONITOR_ENABLED,
+    EventLoopMonitor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +86,8 @@ class DashboardAgent:
         self.server = None
         # http_server is None in minimal.
         self.http_server = None
+        # Event-loop stall monitor, started in run() for non-minimal agents.
+        self._event_loop_monitor = None
 
         # Used by the agent and sub-modules.
         self.gcs_client = GcsClient(
@@ -210,6 +216,13 @@ class DashboardAgent:
         if self.server:
             await self.server.start()
 
+        # Watch this agent's event loop for stalls; it also serves job
+        # submission and metric/event export. Minimal agents run neither; set
+        # RAY_DASHBOARD_AGENT_LOOP_MONITOR_ENABLED=0 to disable.
+        if not self.minimal and EVENT_LOOP_MONITOR_ENABLED:
+            self._event_loop_monitor = EventLoopMonitor()
+            self._event_loop_monitor.start()
+
         modules = self._load_modules()
 
         launch_http_server = True
@@ -285,7 +298,11 @@ class DashboardAgent:
 
             tasks.append(wait_forever())
 
-        await asyncio.gather(*tasks)
+        try:
+            await asyncio.gather(*tasks)
+        finally:
+            if self._event_loop_monitor is not None:
+                self._event_loop_monitor.stop()
 
         if self.http_server:
             await self.http_server.cleanup()
