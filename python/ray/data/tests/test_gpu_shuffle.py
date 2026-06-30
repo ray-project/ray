@@ -15,7 +15,6 @@ import ray
 import ray.data._internal.gpu_shuffle.hash_shuffle as hash_shuffle
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
-    ExecutionOptions,
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
@@ -435,7 +434,7 @@ class TestGPUShuffleOperatorFinalization:
             )
         op._rank_pool._actors = mock_actors
         op._rank_pool._nranks = nranks
-        op.start(ExecutionOptions(), noop_counter())
+        op._block_ref_counter = noop_counter()
         return op, mock_actors
 
     def test_finalization_not_started_until_inputs_complete(self):

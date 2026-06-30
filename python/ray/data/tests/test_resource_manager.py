@@ -476,10 +476,10 @@ class TestResourceManager:
         o4 = mock_map_op(o3)
         o5 = mock_map_op(o4)
 
+        topo = build_streaming_topology(o5, ExecutionOptions(), noop_counter())
+
         o1.mark_execution_finished()
         o2.mark_execution_finished()
-
-        topo = build_streaming_topology(o5, ExecutionOptions(), noop_counter())
 
         op_usages = {
             o1: ExecutionResources.zero(),
@@ -533,13 +533,13 @@ class TestResourceManager:
         o7 = InputDataBuffer(DataContext.get_current(), [])
         o8 = mock_join_op(o7, o6)
 
+        topo = build_streaming_topology(o8, ExecutionOptions(), noop_counter())
+
         o1.mark_execution_finished()
         o2.mark_execution_finished()
         o4.mark_execution_finished()
         o5.mark_execution_finished()
         o7.mark_execution_finished()
-
-        topo = build_streaming_topology(o8, ExecutionOptions(), noop_counter())
 
         op_usages = {
             o1: ExecutionResources.zero(),
@@ -579,10 +579,11 @@ class TestResourceManager:
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
 
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
+
         o1.mark_execution_finished()
         o2.mark_execution_finished()
 
-        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
