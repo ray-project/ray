@@ -496,7 +496,7 @@ docstring-parser==0.15
     # via yahp
 docutils==0.19
     # via -r python/requirements/lint-requirements.txt
-dulwich==0.21.6
+dulwich==1.2.5
     # via comet-ml
 einops==0.8.2
     # via deepspeed
