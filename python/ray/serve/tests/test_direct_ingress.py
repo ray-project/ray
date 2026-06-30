@@ -2625,6 +2625,14 @@ def test_get_serve_instance_details_json_serializable(
                     "protocol": "HTTP",
                     "app_name": "" if RAY_SERVE_ENABLE_HA_PROXY else "default",
                     "ingress_request_router_targets": [],
+                    # The direct-ingress HTTP target group carries the ingress
+                    # deployment name; the HAProxy-mode proxy target group leaves
+                    # it unset (and unset fields are excluded from the details).
+                    **(
+                        {}
+                        if RAY_SERVE_ENABLE_HA_PROXY
+                        else {"ingress_deployment_name": "autoscaling_app"}
+                    ),
                 },
                 {
                     "targets": [

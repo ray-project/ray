@@ -271,7 +271,11 @@ def test_generate_config_file_internal(haproxy_api_cleanup):
                 # Expected configuration stub (matching the actual template output)
                 expected_config = f"""
 global
-    log 127.0.0.1:514 local0 debug
+    # Access/event log at `info`. The system endpoints (/-/healthz, /-/routes)
+    # tag their logs `debug` so they are dropped here but still reach the
+    # rfc5424 metrics socket (level `debug`) when metrics are enabled -- mirroring
+    # the proxy, which records their metric but not their access log.
+    log 127.0.0.1:514 local0 info
     stats socket {socket_path} mode 666 level admin expose-fd listeners
     stats timeout 30s
     maxconn 1000
@@ -316,10 +320,26 @@ frontend prometheus
     no log
 frontend http_frontend
     bind *:8000
+    log global
+    # Per-request HTTP ingress metrics. One RFC 5424 line per request matched to
+    # a Serve app backend, scraped into the serve_num_http_* /
+    # serve_http_request_latency_ms families (the metrics the Python proxy emits
+    # in non-HAProxy mode). Goes only to the rfc5424 target below; the inherited
+    # rfc3164 targets do not include the SD section, so their byte stream is
+    # unchanged. The general fields come from txn.serve_* vars set per backend
+    # below; %ST/%Ta render unquoted (HAProxy does not quote those aliases). When
+    # ingress-request-router metrics are also enabled, the router-specific fields
+    # are appended to the same line.
+    log /tmp/haproxy-serve/metrics.sock len 8192 format rfc5424 local1 debug
+    log-format-sd "%{{+Q,+E}}o [serve@1 app=%[var(txn.serve_app)] route=%[var(txn.serve_route)] method=%HM status=%ST latency_ms=%Ta deployment=%[var(txn.serve_deployment)]]"
     # Health check endpoint
     acl healthcheck path -i /-/healthz
-    # Suppress logging for health checks
-    http-request set-log-level silent if healthcheck
+    # Keep health checks out of the access log but still record their metric:
+    # tag them `debug` so the access-log target (level info) drops them while the
+    # metrics socket (level debug) keeps them. Mirrors the proxy, which records
+    # the healthz metric with should_record_access_log=False.
+    http-request set-log-level debug if healthcheck
+    http-request set-var(txn.serve_route) str(/-/healthz) if healthcheck
     # 200 if any backend has at least one server UP
     acl backend_api_backend_server_up nbsrv(api_backend) ge 1
     acl backend_web_backend_server_up nbsrv(web_backend) ge 1
@@ -329,6 +349,10 @@ frontend http_frontend
     http-request return status 503 content-type text/plain string "Service Unavailable" if healthcheck
     # Routes endpoint
     acl routes path -i /-/routes
+    # Like health checks: kept out of the access log (tagged `debug`); its metric
+    # is recorded (route=/-/routes, app unset) when metrics are enabled.
+    http-request set-log-level debug if routes
+    http-request set-var(txn.serve_route) str(/-/routes) if routes
     http-request return status 200 content-type application/json string "{routes}" if routes
     # Per-backend path ACLs (used for both ingress-request-router dispatch
     # and static use_backend selection below).
@@ -336,6 +360,15 @@ frontend http_frontend
     acl is_api_backend path /api
     acl is_web_backend path_beg /web/
     acl is_web_backend path /web
+    # Per-request HTTP metric vars (app / route / ingress deployment), set on the
+    # first matching backend. Backends are sorted longest-prefix-first and the
+    # !found guard makes the longest match win, mirroring the use_backend rules
+    # below. Requests that match no app backend (e.g. /-/routes, 404s) leave
+    # these unset, so the collector can skip them.
+    http-request set-var(txn.serve_app) str(api_backend) if is_api_backend !{{ var(txn.serve_app) -m found }}
+    http-request set-var(txn.serve_route) str(/api) if is_api_backend !{{ var(txn.serve_route) -m found }}
+    http-request set-var(txn.serve_app) str(web_backend) if is_web_backend !{{ var(txn.serve_app) -m found }}
+    http-request set-var(txn.serve_route) str(/web) if is_web_backend !{{ var(txn.serve_route) -m found }}
     # Static routing based on path prefixes in decreasing length then alphabetical order
     use_backend api_backend if is_api_backend
     use_backend web_backend if is_web_backend
