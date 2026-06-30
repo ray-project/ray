@@ -296,10 +296,9 @@ class DataIterator(abc.ABC):
             try:
                 yield from batch_iterator
             finally:
-                # Runs on both normal completion and early exit (e.g. `break`
-                # in the training loop). `iter_total_s` and the final metrics
-                # flush must happen here so partial iteration is still
-                # recorded; `_on_iteration_end` shuts down the executor after.
+                # In `finally` so an early `break` in the training loop still
+                # records the partial iteration's total time and flushes its
+                # final metrics.
                 if stats:
                     stats.iter_total_s.add(time.perf_counter() - time_start)
                     _StatsManager.update_iteration_metrics(stats, dataset_tag)

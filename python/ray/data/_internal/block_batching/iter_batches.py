@@ -272,7 +272,7 @@ class BatchIterator:
     ) -> None:
         """Attribute per-stage blocked time via overlap with the training window.
 
-        Each stage's window on ``batch.metadata.timings`` is intersected with
+        Each stage's window on ``batch.metadata.stage_timings`` is intersected with
         the training thread's blocked window ``[blocked_start_s, blocked_end_s]``::
 
             overlap = min(timing.end, blocked_end) - max(timing.start, blocked_start)
@@ -288,7 +288,7 @@ class BatchIterator:
         """
         if self._stats is None:
             return
-        timings = batch.metadata.timings
+        timings = batch.metadata.stage_timings
         for stage, timing in timings.stages():
             if timing is None:
                 continue

@@ -11,9 +11,9 @@ import ray
 from ray.data._internal.block_batching.interfaces import (
     Batch,
     BatchMetadata,
-    BatchTimings,
-    BlockFetchTiming,
+    BatchStageTimings,
     BlockPrefetcher,
+    BlockStageTimings,
 )
 from ray.data._internal.block_batching.iter_batches import (
     BatchIterator,
@@ -131,12 +131,12 @@ def test_restore_original_order_stats():
 def test_attribute_blocked_time_overlap_attribution():
     stats = DatasetStats(metadata={}, parent=None)
     batch_iterator = BatchIterator(iter([]), stats=stats)
-    timings = BatchTimings()
+    timings = BatchStageTimings()
     timings.production_wait = TimeSpan(start_s=10.0, end_s=20.0)
     timings.batching = TimeSpan(start_s=20.0, end_s=30.0)
     timings.format = TimeSpan(start_s=30.0, end_s=40.0)
     timings.finalize = TimeSpan(start_s=50.0, end_s=60.0)
-    batch = Batch(BatchMetadata(batch_idx=0, num_rows=8, timings=timings), None)
+    batch = Batch(BatchMetadata(batch_idx=0, num_rows=8, stage_timings=timings), None)
 
     batch_iterator._attribute_blocked_time(
         batch, blocked_start_s=15.0, blocked_end_s=35.0
@@ -174,14 +174,16 @@ def _make_batch_with_timings(
     num_rows: int = 0,
 ):
     """Helper to construct a Batch with specific stage timing windows."""
-    timings = BatchTimings()
+    timings = BatchStageTimings()
     timings.production_wait = _make_span(production_wait_start, production_wait_end)
     timings.data_transfer = _make_span(data_transfer_start, data_transfer_end)
     timings.batching = _make_span(batching_start, batching_end)
     timings.format = _make_span(format_start, format_end)
     timings.collate = _make_span(collate_start, collate_end)
     timings.finalize = _make_span(finalize_start, finalize_end)
-    return Batch(BatchMetadata(batch_idx=0, num_rows=num_rows, timings=timings), None)
+    return Batch(
+        BatchMetadata(batch_idx=0, num_rows=num_rows, stage_timings=timings), None
+    )
 
 
 def _make_test_iterator(stats):
@@ -367,32 +369,32 @@ class TestTimeSpan:
 
 
 class TestMergeFetch:
-    """Tests for BatchTimings.merge_fetch() with multiple blocks per batch."""
+    """Tests for BatchStageTimings.accumulate_block_timings() with multiple blocks per batch."""
 
     def test_merge_single_block(self):
         """Merging a single block preserves its fetch window."""
-        dst = BatchTimings()
-        dst.merge_fetch(
-            BlockFetchTiming(production_wait=TimeSpan(start_s=1.0, end_s=2.0))
+        dst = BatchStageTimings()
+        dst.accumulate_block_timings(
+            BlockStageTimings(production_wait=TimeSpan(start_s=1.0, end_s=2.0))
         )
         assert dst.production_wait.start_s == 1.0
         assert dst.production_wait.end_s == 2.0
 
     def test_merge_multiple_blocks_expands_window(self):
         """Merging multiple blocks produces the union window."""
-        dst = BatchTimings()
+        dst = BatchStageTimings()
 
         # Block 1: fetched [1.0, 2.0]
-        dst.merge_fetch(
-            BlockFetchTiming(production_wait=TimeSpan(start_s=1.0, end_s=2.0))
+        dst.accumulate_block_timings(
+            BlockStageTimings(production_wait=TimeSpan(start_s=1.0, end_s=2.0))
         )
         # Block 2: fetched [3.0, 4.0]
-        dst.merge_fetch(
-            BlockFetchTiming(production_wait=TimeSpan(start_s=3.0, end_s=4.0))
+        dst.accumulate_block_timings(
+            BlockStageTimings(production_wait=TimeSpan(start_s=3.0, end_s=4.0))
         )
         # Block 3: fetched [5.0, 6.0]
-        dst.merge_fetch(
-            BlockFetchTiming(production_wait=TimeSpan(start_s=5.0, end_s=6.0))
+        dst.accumulate_block_timings(
+            BlockStageTimings(production_wait=TimeSpan(start_s=5.0, end_s=6.0))
         )
 
         # Union: [1.0, 6.0]
@@ -401,23 +403,25 @@ class TestMergeFetch:
 
     def test_merge_unrecorded_block_ignored(self):
         """Merging a block with no fetch timing (both fields None) is a no-op."""
-        dst = BatchTimings()
+        dst = BatchStageTimings()
         dst.production_wait = TimeSpan(start_s=2.0, end_s=3.0)
 
-        dst.merge_fetch(BlockFetchTiming())  # fetch fields default to None
+        dst.accumulate_block_timings(
+            BlockStageTimings()
+        )  # fetch fields default to None
 
         assert dst.production_wait.start_s == 2.0
         assert dst.production_wait.end_s == 3.0
 
     def test_merge_overlapping_blocks(self):
         """Overlapping fetch windows are correctly merged."""
-        dst = BatchTimings()
+        dst = BatchStageTimings()
 
-        dst.merge_fetch(
-            BlockFetchTiming(production_wait=TimeSpan(start_s=1.0, end_s=5.0))
+        dst.accumulate_block_timings(
+            BlockStageTimings(production_wait=TimeSpan(start_s=1.0, end_s=5.0))
         )
-        dst.merge_fetch(
-            BlockFetchTiming(production_wait=TimeSpan(start_s=3.0, end_s=7.0))
+        dst.accumulate_block_timings(
+            BlockStageTimings(production_wait=TimeSpan(start_s=3.0, end_s=7.0))
         )
 
         # Union: [1.0, 7.0]
@@ -425,23 +429,23 @@ class TestMergeFetch:
         assert dst.production_wait.end_s == 7.0
 
     def test_merge_into_empty_destination(self):
-        """Merging into an empty BatchTimings takes the source window."""
-        dst = BatchTimings()
-        dst.merge_fetch(
-            BlockFetchTiming(production_wait=TimeSpan(start_s=10.0, end_s=20.0))
+        """Merging into an empty BatchStageTimings takes the source window."""
+        dst = BatchStageTimings()
+        dst.accumulate_block_timings(
+            BlockStageTimings(production_wait=TimeSpan(start_s=10.0, end_s=20.0))
         )
         assert dst.production_wait.start_s == 10.0
         assert dst.production_wait.end_s == 20.0
 
     def test_merge_data_transfer_multiple_blocks(self):
         """data_transfer windows are unioned across multiple blocks."""
-        dst = BatchTimings()
+        dst = BatchStageTimings()
 
-        src1 = BlockFetchTiming(data_transfer=TimeSpan(start_s=1.0, end_s=2.0))
-        dst.merge_fetch(src1)
+        src1 = BlockStageTimings(data_transfer=TimeSpan(start_s=1.0, end_s=2.0))
+        dst.accumulate_block_timings(src1)
 
-        src2 = BlockFetchTiming(data_transfer=TimeSpan(start_s=3.0, end_s=4.0))
-        dst.merge_fetch(src2)
+        src2 = BlockStageTimings(data_transfer=TimeSpan(start_s=3.0, end_s=4.0))
+        dst.accumulate_block_timings(src2)
 
         # Union: [1.0, 4.0]
         assert dst.data_transfer.start_s == 1.0
@@ -449,13 +453,13 @@ class TestMergeFetch:
 
     def test_merge_data_transfer_overlapping_blocks(self):
         """Overlapping data_transfer windows are correctly merged."""
-        dst = BatchTimings()
+        dst = BatchStageTimings()
 
-        dst.merge_fetch(
-            BlockFetchTiming(data_transfer=TimeSpan(start_s=1.0, end_s=5.0))
+        dst.accumulate_block_timings(
+            BlockStageTimings(data_transfer=TimeSpan(start_s=1.0, end_s=5.0))
         )
-        dst.merge_fetch(
-            BlockFetchTiming(data_transfer=TimeSpan(start_s=3.0, end_s=7.0))
+        dst.accumulate_block_timings(
+            BlockStageTimings(data_transfer=TimeSpan(start_s=3.0, end_s=7.0))
         )
 
         assert dst.data_transfer.start_s == 1.0
@@ -463,18 +467,18 @@ class TestMergeFetch:
 
     def test_merge_both_stages_independent(self):
         """production_wait and data_transfer merge independently."""
-        dst = BatchTimings()
+        dst = BatchStageTimings()
 
         # Block 1: prod [1,2], xfer [2,3]
-        dst.merge_fetch(
-            BlockFetchTiming(
+        dst.accumulate_block_timings(
+            BlockStageTimings(
                 production_wait=TimeSpan(start_s=1.0, end_s=2.0),
                 data_transfer=TimeSpan(start_s=2.0, end_s=3.0),
             )
         )
         # Block 2: prod [5,6], xfer [6,7]
-        dst.merge_fetch(
-            BlockFetchTiming(
+        dst.accumulate_block_timings(
+            BlockStageTimings(
                 production_wait=TimeSpan(start_s=5.0, end_s=6.0),
                 data_transfer=TimeSpan(start_s=6.0, end_s=7.0),
             )
@@ -488,12 +492,12 @@ class TestMergeFetch:
 
     def test_merge_data_transfer_none_preserves_destination(self):
         """Merging a block with no data_transfer timing leaves dst unchanged."""
-        dst = BatchTimings()
+        dst = BatchStageTimings()
         dst.data_transfer = TimeSpan(start_s=2.0, end_s=3.0)
 
         # src has only production_wait, data_transfer is None
-        dst.merge_fetch(
-            BlockFetchTiming(production_wait=TimeSpan(start_s=1.0, end_s=2.0))
+        dst.accumulate_block_timings(
+            BlockStageTimings(production_wait=TimeSpan(start_s=1.0, end_s=2.0))
         )
 
         assert dst.data_transfer.start_s == 2.0
@@ -504,18 +508,20 @@ class TestEndToEndTimingPropagation:
     """Tests that stage timings propagate correctly through the full pipeline."""
 
     def test_batch_carries_timings_through_pipeline(self):
-        """A Batch's metadata.timings carries all stage windows."""
-        timings = BatchTimings()
+        """A Batch's metadata.stage_timings carries all stage windows."""
+        timings = BatchStageTimings()
         timings.production_wait = TimeSpan(start_s=1.0, end_s=2.0)
         timings.batching = TimeSpan(start_s=2.0, end_s=3.0)
         timings.format = TimeSpan(start_s=3.0, end_s=4.0)
         timings.collate = TimeSpan(start_s=4.0, end_s=5.0)
         timings.finalize = TimeSpan(start_s=5.0, end_s=6.0)
 
-        batch = Batch(BatchMetadata(batch_idx=0, num_rows=50, timings=timings), None)
+        batch = Batch(
+            BatchMetadata(batch_idx=0, num_rows=50, stage_timings=timings), None
+        )
 
         # Verify all stages are accessible via stages() iterator
-        stage_dict = dict(batch.metadata.timings.stages())
+        stage_dict = dict(batch.metadata.stage_timings.stages())
         assert len(stage_dict) == 6
         assert stage_dict[IterationStage.PRODUCTION_WAIT].start_s == 1.0
         assert stage_dict[IterationStage.BATCHING].end_s == 3.0

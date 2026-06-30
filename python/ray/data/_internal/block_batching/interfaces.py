@@ -8,27 +8,27 @@ from ray.types import ObjectRef
 
 
 @dataclass
-class BlockFetchTiming:
-    """Fetch timing for a single block (production_wait + data_transfer)."""
+class BlockStageTimings:
+    """Per-block timing for production_wait + data_transfer."""
 
     production_wait: Optional[TimeSpan] = None
     data_transfer: Optional[TimeSpan] = None
 
 
 @dataclass
-class BlockFetchResult:
-    """A resolved block paired with its per-block fetch timing.
+class ResolvedBlock:
+    """A resolved block paired with its per-block stage timings.
 
-    ``fetch`` is None when no timing was recorded (e.g. blocks already
-    resolved before entering the pipeline).
+    ``stage_timings`` is None when no timing was recorded (e.g. blocks
+    already resolved before entering the pipeline).
     """
 
     block: Block
-    fetch: Optional[BlockFetchTiming] = None
+    stage_timings: Optional[BlockStageTimings] = None
 
 
 @dataclass
-class BatchTimings:
+class BatchStageTimings:
     """Per-batch timing windows for each iteration stage.
 
     Each field is the ``(start_s, end_s)`` window a stage was active, or
@@ -54,22 +54,27 @@ class BatchTimings:
             (IterationStage.FINALIZE, self.finalize),
         )
 
-    def merge_fetch(self, src: BlockFetchTiming) -> None:
-        """Merge per-block fetch timings into this batch's fetch windows."""
-        self.production_wait = _merge_span(self.production_wait, src.production_wait)
-        self.data_transfer = _merge_span(self.data_transfer, src.data_transfer)
+    def accumulate_block_timings(self, src: BlockStageTimings) -> None:
+        """Accumulate a block's timings into this batch's windows.
 
+        A boundary block whose rows span multiple batches is attributed
+        to the first batch it lands in.
+        """
 
-def _merge_span(dst: Optional[TimeSpan], src: Optional[TimeSpan]) -> Optional[TimeSpan]:
-    """Return the union of two optional windows (or the non-None one)."""
-    if src is None:
-        return dst
-    if dst is None:
-        return TimeSpan(start_s=src.start_s, end_s=src.end_s)
-    return TimeSpan(
-        start_s=min(dst.start_s, src.start_s),
-        end_s=max(dst.end_s, src.end_s),
-    )
+        def merge_span(
+            dst: Optional[TimeSpan], src: Optional[TimeSpan]
+        ) -> Optional[TimeSpan]:
+            if src is None:
+                return dst
+            if dst is None:
+                return TimeSpan(start_s=src.start_s, end_s=src.end_s)
+            return TimeSpan(
+                start_s=min(dst.start_s, src.start_s),
+                end_s=max(dst.end_s, src.end_s),
+            )
+
+        self.production_wait = merge_span(self.production_wait, src.production_wait)
+        self.data_transfer = merge_span(self.data_transfer, src.data_transfer)
 
 
 @dataclass
@@ -80,12 +85,12 @@ class BatchMetadata:
         batch_idx: The global index of this batch so that downstream operations can
             maintain ordering.
         num_rows: Number of rows in this batch (for ``iter_rows_total``).
-        timings: Per-stage timing windows.
+        stage_timings: Per-stage timing windows.
     """
 
     batch_idx: int
     num_rows: int = 0
-    timings: BatchTimings = field(default_factory=BatchTimings)
+    stage_timings: BatchStageTimings = field(default_factory=BatchStageTimings)
 
 
 @dataclass
