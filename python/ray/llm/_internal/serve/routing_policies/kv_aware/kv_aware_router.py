@@ -1,4 +1,5 @@
 import logging
+import random
 from typing import List, Optional
 
 import ray
@@ -77,10 +78,10 @@ class KVAwareRouter(RequestRouter):
         the chosen worker's replica. With direct streaming enabled, HAProxy
         then forwards the original request to that replica.
 
-        Requests with no prompt token ids have nothing to score on, so they load
-        balance over all candidates instead of failing. This covers the pre-routing
-        ``/tokenize`` RPC (routed before token ids exist) and token-less fallbacks
-        (batch prompts, truncated/unparseable bodies).
+        Requests with no prompt token ids have nothing to score on, so they route
+        to a random candidate. This covers the pre-routing ``/tokenize`` RPC (routed
+        before token ids exist) and token-less fallbacks (batch prompts,
+        truncated/unparseable bodies).
         TODO (jeffreywang): Move pre-routing tokenization to KVRouterActor while
         ensuring tokenization correctness.
 
@@ -97,7 +98,7 @@ class KVAwareRouter(RequestRouter):
             else None
         )
         if not token_ids:
-            return [candidate_replicas]
+            return [[random.choice(candidate_replicas)]] if candidate_replicas else []
 
         worker_id_to_replica = {
             get_worker_id(replica.replica_id.unique_id): replica
