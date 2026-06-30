@@ -8,6 +8,7 @@ output is meant to be piped into `buildkite-agent pipeline upload`.
 
 import json
 import os
+import re
 import sys
 import urllib.request
 
@@ -15,6 +16,9 @@ import yaml
 
 BUILD_YAML_URL = "https://raw.githubusercontent.com/anyscale/templates/main/BUILD.yaml"
 FETCH_TIMEOUT_SEC = 30
+
+# Ray release versions are a simple major.minor.patch of digits, e.g. "2.55.0".
+RAY_VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 
 WEBHOOK_SECRET_ID = "oss-ci/cursor-template-upgrade-webhook-url"
 API_KEY_SECRET_ID = "oss-ci/cursor-template-upgrade-api-key"
@@ -67,6 +71,10 @@ def main() -> None:
     ray_version = os.environ.get("RAY_VERSION", "").strip()
     if not ray_version:
         raise SystemExit("RAY_VERSION must be set in the environment")
+    if not RAY_VERSION_RE.match(ray_version):
+        raise SystemExit(
+            f"RAY_VERSION {ray_version!r} is not a valid Ray version (e.g. 2.45.0)"
+        )
 
     names = fetch_template_names(BUILD_YAML_URL)
     print(
