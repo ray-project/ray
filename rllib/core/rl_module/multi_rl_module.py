@@ -577,11 +577,24 @@ class MultiRLModuleSpec:
         # Figure out global inference_only setting.
         # If not provided (None), only if all submodules are
         # inference_only, this MultiRLModule will be inference_only.
-        self.inference_only = (
-            self.inference_only
-            if self.inference_only is not None
-            else all(spec.inference_only for spec in self.rl_module_specs.values())
-        )
+        #
+        # ``rl_module_specs`` is documented to be either a single shared
+        # ``RLModuleSpec`` (applied to every module_id, see the shared
+        # policy net example in the RLlib RLModule docs) or a dict mapping
+        # ModuleID -> RLModuleSpec. The dict expansion for the single-spec
+        # case happens later in
+        # ``AlgorithmConfig.get_multi_rl_module_spec`` once the agent IDs
+        # are known. Here we only need to derive ``inference_only`` from
+        # whatever shape is provided so construction does not crash with
+        # ``AttributeError: 'RLModuleSpec' object has no attribute 'values'``
+        # on the documented shared-spec usage (#63616).
+        if self.inference_only is None:
+            if isinstance(self.rl_module_specs, RLModuleSpec):
+                self.inference_only = self.rl_module_specs.inference_only
+            else:
+                self.inference_only = all(
+                    spec.inference_only for spec in self.rl_module_specs.values()
+                )
 
     @OverrideToImplementCustomLogic
     def build(self, module_id: Optional[ModuleID] = None) -> RLModule:
@@ -697,33 +710,52 @@ class MultiRLModuleSpec:
 
     def to_dict(self) -> Dict[str, Any]:
         """Converts the MultiRLModuleSpec to a dictionary."""
+        if isinstance(self.rl_module_specs, RLModuleSpec):
+            # Single shared spec form: serialize as the single spec dict.
+            # ``from_dict`` discriminates by checking for the ``module_class``
+            # key (only present in single-spec dicts).
+            rl_module_specs_dict = self.rl_module_specs.to_dict()
+        else:
+            rl_module_specs_dict = {
+                module_id: rl_module_spec.to_dict()
+                for module_id, rl_module_spec in self.rl_module_specs.items()
+            }
         return {
             "multi_rl_module_class": serialize_type(self.multi_rl_module_class),
             "observation_space": gym_space_to_dict(self.observation_space),
             "action_space": gym_space_to_dict(self.action_space),
             "inference_only": self.inference_only,
             "model_config": self.model_config,
-            "rl_module_specs": {
-                module_id: rl_module_spec.to_dict()
-                for module_id, rl_module_spec in self.rl_module_specs.items()
-            },
+            "rl_module_specs": rl_module_specs_dict,
         }
 
     @classmethod
     def from_dict(cls, d) -> "MultiRLModuleSpec":
         """Creates a MultiRLModuleSpec from a dictionary."""
+        raw_specs = d.get("rl_module_specs", d.get("module_specs"))
+        # Discriminate single shared-spec vs per-module dict by VALUE type,
+        # not just key presence: ``RLModuleSpec.to_dict()`` writes
+        # ``"module_class": <serialized string>``, while a per-module dict
+        # ``{module_id: spec_dict}`` containing a module_id literally named
+        # ``"module_class"`` would also have that key but with a dict value
+        # (the nested spec). Checking ``isinstance(..., str)`` avoids that
+        # collision (#63616).
+        if isinstance(raw_specs, dict) and isinstance(
+            raw_specs.get("module_class"), str
+        ):
+            rl_module_specs = RLModuleSpec.from_dict(raw_specs)
+        else:
+            rl_module_specs = {
+                module_id: RLModuleSpec.from_dict(rl_module_spec)
+                for module_id, rl_module_spec in raw_specs.items()
+            }
         return MultiRLModuleSpec(
             multi_rl_module_class=deserialize_type(d["multi_rl_module_class"]),
             observation_space=gym_space_from_dict(d.get("observation_space")),
             action_space=gym_space_from_dict(d.get("action_space")),
             model_config=d.get("model_config"),
             inference_only=d["inference_only"],
-            rl_module_specs={
-                module_id: RLModuleSpec.from_dict(rl_module_spec)
-                for module_id, rl_module_spec in (
-                    d.get("rl_module_specs", d.get("module_specs")).items()
-                )
-            },
+            rl_module_specs=rl_module_specs,
         )
 
     def update(
@@ -746,8 +778,16 @@ class MultiRLModuleSpec:
             # `inference_only=False`.
             if not other.inference_only:
                 self.inference_only = False
-            for mid, spec in self.rl_module_specs.items():
-                self.rl_module_specs[mid].update(other, override=False)
+            if isinstance(self.rl_module_specs, RLModuleSpec):
+                # Shared single spec: update the shared spec in place so the
+                # update applies to every module_id. This is the path
+                # ``AlgorithmConfig._compute_rl_module_spec`` takes when
+                # merging the user-provided shared spec with the algorithm's
+                # default RLModuleSpec (#63616).
+                self.rl_module_specs.update(other, override=False)
+            else:
+                for mid, spec in self.rl_module_specs.items():
+                    self.rl_module_specs[mid].update(other, override=False)
         elif isinstance(other.module_specs, dict):
             self.add_modules(other.rl_module_specs, override=override)
         else:
@@ -766,10 +806,16 @@ class MultiRLModuleSpec:
 
     def __contains__(self, item) -> bool:
         """Returns whether the given `item` (ModuleID) is present in self."""
+        # A single shared RLModuleSpec applies to every module_id.
+        if isinstance(self.rl_module_specs, RLModuleSpec):
+            return True
         return item in self.rl_module_specs
 
     def __getitem__(self, item) -> RLModuleSpec:
         """Returns the RLModuleSpec under the ModuleID."""
+        # A single shared RLModuleSpec is returned for any module_id.
+        if isinstance(self.rl_module_specs, RLModuleSpec):
+            return self.rl_module_specs
         return self.rl_module_specs[item]
 
     @Deprecated(
