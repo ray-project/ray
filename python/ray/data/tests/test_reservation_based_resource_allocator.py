@@ -980,9 +980,6 @@ class TestReservationOpResourceAllocator:
                 return_value=(ExecutionResources.zero(), ExecutionResources.inf())
             )
 
-        o1.mark_execution_finished()
-        o2.mark_execution_finished()
-
         op_usages = {
             o1: ExecutionResources.zero(),
             o2: ExecutionResources(cpu=2, object_store_memory=50),
@@ -993,6 +990,9 @@ class TestReservationOpResourceAllocator:
         op_outputs_usages = dict.fromkeys([o1, o2, o3, o4], 0)
 
         topo = build_streaming_topology(o4, ExecutionOptions(), noop_counter())
+
+        o1.mark_execution_finished()
+        o2.mark_execution_finished()
 
         global_limits = ExecutionResources(cpu=10, object_store_memory=250)
 
@@ -1067,12 +1067,6 @@ class TestReservationOpResourceAllocator:
         o7 = InputDataBuffer(DataContext.get_current(), [])
         o8 = mock_join_op(o7, o6)
 
-        o1.mark_execution_finished()
-        o2.mark_execution_finished()
-        o4.mark_execution_finished()
-        o5.mark_execution_finished()
-        o7.mark_execution_finished()
-
         op_usages = {
             o1: ExecutionResources.zero(),
             o2: ExecutionResources(cpu=2, object_store_memory=150),
@@ -1087,6 +1081,12 @@ class TestReservationOpResourceAllocator:
         op_outputs_usages = dict.fromkeys([o1, o2, o3, o4, o5, o6, o7, o8], 0)
 
         topo = build_streaming_topology(o8, ExecutionOptions(), noop_counter())
+
+        o1.mark_execution_finished()
+        o2.mark_execution_finished()
+        o4.mark_execution_finished()
+        o5.mark_execution_finished()
+        o7.mark_execution_finished()
 
         global_limits = ExecutionResources.zero()
 
