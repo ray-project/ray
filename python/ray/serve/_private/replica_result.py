@@ -96,6 +96,11 @@ class ActorReplicaResult(ReplicaResult):
         self._object_ref_or_gen_sync_lock = threading.Lock()
         self._with_rejection = with_rejection
         self._rejection_response = None
+        self._rejection_response_ref = None
+
+        # Handle with_rejection vs. not.
+        # Handle unary vs. not.
+        # Need to `consume` afterwards. on_done_callback?
 
         if isinstance(obj_ref_or_gen, ray.ObjectRefGenerator):
             self._obj_ref_gen = obj_ref_or_gen
@@ -106,6 +111,18 @@ class ActorReplicaResult(ReplicaResult):
             assert (
                 self._obj_ref_gen is not None
             ), "An ObjectRefGenerator must be passed for streaming requests."
+
+            if self._with_rejection:
+                self._rejection_response_ref = self._obj_ref_gen._get_next_ref_n(1)
+                self._rejection_response_ref._on_completed(lambda: self._obj_ref_gen._consume_next_ref_n(1))
+        elif self._object_ref_gen is not None:
+            if self._with_rejection:
+                self._rejection_response_ref, self._obj_ref = self._obj_ref_gen._get_next_ref_n(2)
+                self._rejection_response_ref._on_completed(lambda: self._obj_ref_gen._consume_next_ref_n(1))
+                self._obj_ref._on_completed(lambda: self._obj_ref_gen._consume_next_ref_n(1))
+            else:
+                self._obj_ref = self._obj_ref_gen._get_next_ref_n(1)
+                self._obj_ref._on_completed(lambda: self._obj_ref_gen._consume_next_ref_n(1))
 
         request_context = ray.serve.context._get_serve_request_context()
         if request_context.cancel_on_parent_request_cancel:
@@ -149,7 +166,7 @@ class ActorReplicaResult(ReplicaResult):
 
         try:
             if self._rejection_response is None:
-                response = await (await self._obj_ref_gen.__anext__())
+                response = await self._rejection_response_ref
                 self._rejection_response = pickle.loads(response)
 
             return self._rejection_response
@@ -221,18 +238,6 @@ class ActorReplicaResult(ReplicaResult):
             not self._is_streaming
         ), "to_object_ref can only be called on a unary ReplicaActorResult."
 
-        # NOTE(edoakes): this section needs to be guarded with a lock and the resulting
-        # object ref cached in order to avoid calling `__next__()` to
-        # resolve to the underlying object ref more than once.
-        # See: https://github.com/ray-project/ray/issues/43879.
-        with self._object_ref_or_gen_sync_lock:
-            if self._obj_ref is None:
-                obj_ref = self._obj_ref_gen._next_sync(timeout_s=timeout_s)
-                if obj_ref.is_nil():
-                    raise TimeoutError("Timed out resolving to ObjectRef.")
-
-                self._obj_ref = obj_ref
-
         return self._obj_ref
 
     async def to_object_ref_async(self) -> ray.ObjectRef:
@@ -240,39 +245,7 @@ class ActorReplicaResult(ReplicaResult):
             not self._is_streaming
         ), "to_object_ref_async can only be called on a unary ReplicaActorResult."
 
-        # NOTE(edoakes): this section needs to be guarded with a lock and the resulting
-        # object ref cached in order to avoid calling `__anext__()` to
-        # resolve to the underlying object ref more than once.
-        # See: https://github.com/ray-project/ray/issues/43879.
-        #
-        # IMPORTANT: We use a threading lock instead of asyncio.Lock because this method
-        # can be called from multiple event loops concurrently:
-        # 1. From the user's code (on the replica's event loop) when awaiting a response
-        # 2. From the router's event loop when resolving a DeploymentResponse argument
-        # asyncio.Lock is NOT thread-safe and NOT designed for cross-loop usage, which
-        # causes deadlocks.
-        #
-        # We use a non-blocking acquire pattern to avoid blocking the event loop:
-        # - Try to acquire the lock without blocking
-        # - If already held, yield and retry (allows other async tasks to run)
-        # - Once acquired, check if result is already available (double-check pattern)
-        while True:
-            # Fast path: already computed
-            if self._obj_ref is not None:
-                return self._obj_ref
-
-            acquired = self._object_ref_or_gen_sync_lock.acquire(blocking=False)
-            if acquired:
-                try:
-                    # Double-check under lock
-                    if self._obj_ref is None:
-                        self._obj_ref = await self._obj_ref_gen.__anext__()
-                    return self._obj_ref
-                finally:
-                    self._object_ref_or_gen_sync_lock.release()
-            else:
-                # Lock is held by another task/thread, yield and retry
-                await asyncio.sleep(0)
+        return self._obj_ref
 
     def to_object_ref_gen(self) -> ray.ObjectRefGenerator:
         assert (
