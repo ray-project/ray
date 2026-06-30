@@ -367,6 +367,15 @@ def main(
         if not _image_exists(src_ref):
             raise PushRayImageError(f"Source image not found in Wanda cache: {src_ref}")
 
+        # Re-emit the per-image pip freeze as a Buildkite artifact (cpu only).
+        # Downstream consumer: anyscale/product
+        # devprod/rayrelease/releaser.py:update_doc_with_latest_docker_dependencies.
+        # Runs regardless of dry_run: the shipped-deps record is independent of
+        # whether we push to Docker Hub, and PR builds (dry_run) are how we
+        # verify this artifact on CI.
+        if plat == "cpu":
+            _export_pip_freeze(src_ref, ctx)
+
         destination_tags = ctx.destination_tags()
         for tag in destination_tags:
             dest_ref = f"{ctx.docker_hub_repo}:{tag}"
