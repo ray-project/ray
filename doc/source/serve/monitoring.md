@@ -710,6 +710,15 @@ These metrics track proxy health and lifecycle.
 | `ray_serve_proxy_status` | Gauge | `node_id`, `node_ip_address` | Current status of the proxy as a numeric value: `1` = STARTING, `2` = HEALTHY, `3` = UNHEALTHY, `4` = DRAINING, `5` = DRAINED. |
 | `ray_serve_proxy_shutdown_duration_ms` | Histogram | `node_id`, `node_ip_address` | Time taken for a proxy to shut down in milliseconds. |
 
+### HAProxy system metrics
+
+These node-level gauges observe the health of Serve's HAProxy proxy process on each node. They are sampled on a periodic poll loop and emitted whenever the HAProxy proxy is enabled (`RAY_SERVE_ENABLE_HA_PROXY=1`) with HAProxy metrics enabled (`RAY_SERVE_HAPROXY_METRICS_ENABLED`, on by default). The sampling interval is controlled by `RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S` (default: 10s).
+
+| Metric | Type | Tags | Description |
+|--------|------|------|-------------|
+| `serve_haproxy_process_count` | Gauge | `node_id` | Number of HAProxy processes running on the node for this proxy, spanning the live worker, draining workers from prior reloads, and any leaked or orphaned workers. A value persistently above `1` indicates HAProxy processes are not being reaped. |
+| `serve_haproxy_target_mismatch` | Gauge | `node_id` | Number of targets that differ between the controller's broadcasted target set and the targets HAProxy actually reports in its stats on this node (symmetric set difference). A non-zero value means the HAProxy config has not yet converged to the broadcasted targets. |
+
 ### HAProxy ingress request router metrics
 
 These metrics observe the **ingress request router** data path used by Serve's HAProxy proxy when a deployment opts in (e.g. the LLM ingress with `LLMRouter`). For each request that reaches a router-bearing app, HAProxy calls the router's `/internal/route` endpoint to pick a replica before forwarding traffic to it. The metrics below cover that consultation.
