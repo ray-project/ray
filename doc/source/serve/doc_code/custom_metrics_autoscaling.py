@@ -10,7 +10,6 @@ from ray import serve
     autoscaling_config={
         "min_replicas": 1,
         "max_replicas": 5,
-        "metrics_interval_s": 0.1,
         "policy": {
             "policy_function": "autoscaling_policy:custom_metrics_autoscaling_policy"
         },
