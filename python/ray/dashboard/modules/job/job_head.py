@@ -406,16 +406,21 @@ class JobHead(SubprocessModule):
             job_agent_client = await self.get_target_agent()
             resp = await job_agent_client.submit_job_internal(submit_request)
         except asyncio.TimeoutError:
+            logger.warning(
+                "Timed out waiting for an available job agent to submit the job."
+            )
             return Response(
                 text="No available agent to submit job, please try again later.",
                 status=aiohttp.web.HTTPInternalServerError.status_code,
             )
         except (TypeError, ValueError):
+            logger.warning("Failed to submit job due to an invalid request.")
             return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
         except Exception:
+            logger.exception("Failed to submit job.")
             return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code,
