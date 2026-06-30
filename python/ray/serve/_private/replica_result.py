@@ -98,15 +98,12 @@ class ActorReplicaResult(ReplicaResult):
         self._rejection_response = None
         self._rejection_response_ref = None
 
-        # Handle with_rejection vs. not.
-        # Handle unary vs. not.
-        # Need to `consume` afterwards. on_done_callback?
-
         if isinstance(obj_ref_or_gen, ray.ObjectRefGenerator):
             self._obj_ref_gen = obj_ref_or_gen
         else:
             self._obj_ref = obj_ref_or_gen
 
+        # XXX: add comments about WTF this is doing.
         if self._is_streaming:
             assert (
                 self._obj_ref_gen is not None
