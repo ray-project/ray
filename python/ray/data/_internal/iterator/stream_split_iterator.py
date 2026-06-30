@@ -311,8 +311,6 @@ class SplitCoordinator:
                     self._output_iterator = ds._build_bundle_iterator(
                         self._current_executor
                     )
-                    # Register the streaming split external consumers with the executor's resource manager.
-                    self._current_executor.set_external_consumer_bytes(0)
                     logger.debug(
                         f"Starting epoch {self._cur_epoch} (all {self._n} clients "
                         "synced)."
@@ -395,7 +393,6 @@ class SplitCoordinator:
                 self._client_prefetched_bytes[
                     output_split_idx
                 ] = client_prefetched_bytes
-                self._report_prefetched_bytes_to_executor()
 
                 # Track per-split row dispatch count.
                 self._num_rows_dispatched[output_split_idx] += (
@@ -438,8 +435,7 @@ class SplitCoordinator:
             if not returned_normally:
                 with self._lock:
                     self._client_prefetched_bytes[output_split_idx] = 0
-                    self._report_prefetched_bytes_to_executor()
-            # Track overhead time in the instance variable
+                # Track overhead time in the instance variable
             self._coordinator_overhead_s += time.perf_counter() - start_time
 
     def _get_total_prefetched_bytes(self) -> int:
@@ -452,15 +448,6 @@ class SplitCoordinator:
         # Bytes prefetched by each client's BatchIterator.
         total += sum(self._client_prefetched_bytes.values())
         return total
-
-    def _report_prefetched_bytes_to_executor(self) -> None:
-        """Report total prefetched bytes to the executor's resource manager.
-
-        Must be called while holding self._lock.
-        """
-        if self._current_executor is not None:
-            total_bytes = self._get_total_prefetched_bytes()
-            self._current_executor.set_external_consumer_bytes(total_bytes)
 
     def get_client_prefetched_bytes(self) -> Dict[int, int]:
         """Get prefetched bytes for each client (for testing)."""
