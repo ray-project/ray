@@ -32,8 +32,8 @@ class PipelinedFinalizeFn:
 
         # Lazily initialized: the transfer may not be needed (e.g. CPU device), and
         # the copy stream must be created on the finalize thread.
-        self._device: Optional[torch.device] = None
-        self._copy_stream: Optional[torch.cuda.Stream] = None
+        self._device: Optional["torch.device"] = None
+        self._copy_stream: Optional["torch.cuda.Stream"] = None
         self._init_lock = threading.Lock()
 
     @torch.no_grad()
@@ -42,12 +42,14 @@ class PipelinedFinalizeFn:
             return batch
 
         self._lazy_init()
+        assert self._device is not None
 
         # CPU target: no stream/event coordination needed. move_tensors_to_device
         # still handles the chunk concatenation and the shape dispatch.
         if not self._is_cuda():
             return move_tensors_to_device(batch, device=self._device)
 
+        assert self._copy_stream is not None
         compute_stream = torch.cuda.current_stream(self._device)
         with torch.cuda.stream(self._copy_stream):
             moved = move_tensors_to_device(batch, device=self._device)
@@ -82,7 +84,7 @@ def _record_stream(batch: Any, stream: "torch.cuda.Stream") -> None:
     ``move_tensors_to_device`` returns a tensor, a (list/tuple of) tensor(s), or a
     dict of tensors, so we recurse to cover all of them.
     """
-    if isinstance(batch, torch.Tensor):
+    if isinstance(batch, "torch.Tensor"):
         batch.record_stream(stream)
     elif isinstance(batch, dict):
         for value in batch.values():
