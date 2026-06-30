@@ -30,12 +30,12 @@ def batch_blocks(
     This function takes in an iterator of already fetched blocks. Consequently, this
     function doesn't support block prefetching.
     """
-    # Wrap raw blocks in ResolvedBlock with no fetch timing (these
+    # Wrap raw blocks in ResolvedBlock with no stage timings (these
     # blocks were already resolved before entering the pipeline).
     # Use map() instead of a generator expression to avoid holding
     # references to blocks.
     #
-    # TODO: make fetch timing optional at the _BatchingIterator level so
+    # TODO: make stage timings optional at the _BatchingIterator level so
     # this ResolvedBlock wrapping shim can be removed.
     wrapped_blocks = map(lambda b: ResolvedBlock(block=b), blocks)
 

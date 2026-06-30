@@ -45,11 +45,11 @@ class BatchStageTimings:
     """Per-batch timing windows for each iteration stage.
 
     Each field is a list of ``(start_s, end_s)`` windows the stage was
-    active. Fetch stages (production_wait, data_transfer) accumulate one
-    span per block; other stages have at most one span per batch. The
-    lists are compared against the training thread's blocked window to
-    attribute stall — spans within a list don't overlap, so summing
-    overlaps doesn't double-count.
+    active. production_wait and data_transfer accumulate one span per
+    block; other stages have at most one span per batch. The lists are
+    compared against the training thread's blocked window to attribute
+    stall. Spans within a list don't overlap, so summing overlaps
+    doesn't double-count.
     """
 
     production_wait: List[TimeSpan] = field(default_factory=list)
@@ -71,7 +71,7 @@ class BatchStageTimings:
         )
 
     def accumulate_block_timings(self, src: BlockStageTimings) -> None:
-        """Accumulate a block's fetch timings into this batch's lists.
+        """Accumulate a block's stage timings into this batch's lists.
 
         A boundary block whose rows span multiple batches is attributed
         to the first batch it lands in.

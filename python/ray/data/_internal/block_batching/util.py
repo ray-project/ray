@@ -261,7 +261,7 @@ class _BatchingIterator(Iterator[Batch]):
         self._drop_last = drop_last
         self._global_counter = 0
         self._done_adding = False
-        # Accumulates per-block fetch timings until a batch is yielded.
+        # Accumulates per-block stage timings until a batch is yielded.
         self._pending_timings = BatchStageTimings()
 
         if shuffle_buffer_min_size is not None:
