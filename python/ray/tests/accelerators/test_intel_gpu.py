@@ -135,14 +135,14 @@ def test_get_current_process_visible_accelerator_ids(clean_accelerator_env):
     "physical_ids, expected_ze, expected_oneapi",
     [
         # GPU0 only — physical and re-indexed are the same.
-        (["0"],       "0",   "level_zero:0"),
+        (["0"], "0", "level_zero:0"),
         # GPU0 + GPU1 — physical and re-indexed are the same.
-        (["0", "1"],  "0,1", "level_zero:0,1"),
+        (["0", "1"], "0,1", "level_zero:0,1"),
         # GPU1 only — ZE carries physical id 1, but ONEAPI must use re-indexed 0.
         # Without re-indexing: ZE=1 + ONEAPI=level_zero:1 -> 0 devices visible.
-        (["1"],       "1",   "level_zero:0"),
+        (["1"], "1", "level_zero:0"),
         # Non-contiguous physical ids — ONEAPI always sequential from 0.
-        (["1", "3"],  "1,3", "level_zero:0,1"),
+        (["1", "3"], "1,3", "level_zero:0,1"),
     ],
 )
 def test_set_current_process_visible_accelerator_ids(
