@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "absl/strings/match.h"
+#include "absl/strings/str_format.h"
 #include "ray/common/buffer.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/actor_management/actor_manager.h"
@@ -108,7 +109,12 @@ std::vector<ObjectID> ObjectRefStream::PopUnconsumedItems() {
     // End of stream index is never consumed by a caller
     // so we should add it here.
     const auto &object_id = GetObjectRefAtIndex(end_of_stream_index_);
-    unconsumed_ids.push_back(object_id);
+    // Skip if already temp-owned (e.g. peeked before EOF); the loop below
+    // releases it. The sentinel holds a single ref, so listing it twice would
+    // over-release and free a consumer's still-live peeked ref.
+    if (temporarily_owned_refs_.find(object_id) == temporarily_owned_refs_.end()) {
+      unconsumed_ids.push_back(object_id);
+    }
   }
 
   // Temporarily owned refs are not consumed.
@@ -152,21 +158,111 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
   return Status::OK();
 }
 
+Status ObjectRefStream::TryReadNextItems(int64_t num_items,
+                                         std::vector<ObjectID> *consumed_object_ids) {
+  RAY_CHECK_GT(num_items, 0);
+  RAY_CHECK(consumed_object_ids != nullptr);
+  if (IsFinished()) {
+    // next_index_ cannot be bigger than end_of_stream_index_.
+    RAY_CHECK(next_index_ == end_of_stream_index_);
+    RAY_LOG(DEBUG) << "ObjectRefStream of an id " << generator_id_
+                   << " has no more objects.";
+    return Status::ObjectRefEndOfStream("");
+  }
+
+  // Reject if the caller has not confirmed the last requested ref is ready;
+  // otherwise we would silently advance past unwritten objects and drop them.
+  // Earlier refs may be unwritten (out-of-order reports) and are not checked.
+  const int64_t last_requested_index = next_index_ + num_items - 1;
+  if (last_requested_index >=
+      static_cast<int64_t>(RayConfig::instance().max_num_generator_returns())) {
+    return Status::InvalidArgument(absl::StrFormat(
+        "TryReadObjectRefStreamN cannot consume %d items: it would exceed the "
+        "maximum number of generator returns. generator id: %s",
+        num_items,
+        generator_id_.Hex()));
+  }
+  const bool last_ref_ready =
+      (end_of_stream_index_ != -1 && last_requested_index >= end_of_stream_index_) ||
+      refs_written_to_stream_.contains(GetObjectRefAtIndex(last_requested_index));
+  if (!last_ref_ready) {
+    return Status::InvalidArgument(absl::StrFormat(
+        "TryReadObjectRefStreamN called before the last requested ref (index %d) "
+        "is ready. generator id: %s",
+        last_requested_index,
+        generator_id_.Hex()));
+  }
+
+  auto num_items_to_consume = num_items;
+  if (end_of_stream_index_ != -1) {
+    num_items_to_consume = std::min(num_items, end_of_stream_index_ - next_index_);
+  }
+
+  consumed_object_ids->reserve(num_items_to_consume);
+  for (int64_t i = 0; i < num_items_to_consume; i++) {
+    const ObjectID object_id = GetObjectRefAtIndex(next_index_ + i);
+    temporarily_owned_refs_.erase(object_id);
+    consumed_object_ids->push_back(object_id);
+  }
+  total_num_object_consumed_ += num_items_to_consume;
+  next_index_ += num_items_to_consume;
+  RAY_LOG_EVERY_MS(DEBUG, 10000)
+      << absl::StrFormat("Advanced ObjectRefStream by %d items. generator id: %s",
+                         num_items_to_consume,
+                         generator_id_.Hex());
+  return Status::OK();
+}
+
 bool ObjectRefStream::IsFinished() const {
   bool is_eof_set = end_of_stream_index_ != -1;
   return is_eof_set && next_index_ >= end_of_stream_index_;
 }
 
 std::pair<ObjectID, bool> ObjectRefStream::PeekNextItem() {
-  const auto &object_id = GetObjectRefAtIndex(next_index_);
-  if (refs_written_to_stream_.find(object_id) == refs_written_to_stream_.end()) {
-    return {object_id, false};
-  } else {
-    return {object_id, true};
+  // At or past the end of the stream the ref is the EOF sentinel, which holds
+  // an END_OF_STREAMING_GENERATOR error rather than a real value. That error is
+  // materialized in the in-memory store when the stream is marked ended, so the
+  // sentinel is already retrievable; report it as ready so callers can skip an
+  // otherwise no-op wait on it.
+  if (end_of_stream_index_ != -1 && next_index_ >= end_of_stream_index_) {
+    return {GetObjectRefAtIndex(next_index_), true};
   }
+
+  const auto &object_id = GetObjectRefAtIndex(next_index_);
+  return {object_id,
+          refs_written_to_stream_.find(object_id) != refs_written_to_stream_.end()};
+}
+
+std::vector<std::pair<ObjectID, bool>> ObjectRefStream::PeekNextItems(int64_t num_items) {
+  RAY_CHECK_GT(num_items, 0);
+  std::vector<std::pair<ObjectID, bool>> results;
+  results.reserve(num_items);
+  for (int64_t i = 0; i < num_items; i++) {
+    const int64_t index = next_index_ + i;
+    if (end_of_stream_index_ != -1 && index >= end_of_stream_index_) {
+      // At or past EOF the ref is the EOF sentinel (an
+      // END_OF_STREAMING_GENERATOR error) that is already materialized in the
+      // in-memory store, so report it as ready. See PeekNextItem for details.
+      results.emplace_back(GetObjectRefAtIndex(index), true);
+      continue;
+    }
+
+    const ObjectID object_id = GetObjectRefAtIndex(index);
+    results.emplace_back(
+        object_id,
+        refs_written_to_stream_.find(object_id) != refs_written_to_stream_.end());
+  }
+  return results;
 }
 
 bool ObjectRefStream::TemporarilyInsertToStreamIfNeeded(const ObjectID &object_id) {
+  if (object_id.TaskId() == generator_task_id_) {
+    const ObjectIDIndexType object_index = object_id.ObjectIndex();
+    if (object_index >= 2 && static_cast<int64_t>(object_index - 2) < next_index_) {
+      return false;
+    }
+  }
+
   // Write to a stream if the object ID is not consumed yet.
   if (refs_written_to_stream_.find(object_id) == refs_written_to_stream_.end()) {
     temporarily_owned_refs_.insert(object_id);
@@ -208,7 +304,8 @@ bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_ind
 }
 
 void ObjectRefStream::MarkEndOfStream(int64_t item_index,
-                                      ObjectID *object_id_in_last_index) {
+                                      std::vector<ObjectID> *object_ids_to_eof) {
+  RAY_CHECK(object_ids_to_eof != nullptr);
   if (end_of_stream_index_ != -1) {
     return;
   }
@@ -224,13 +321,25 @@ void ObjectRefStream::MarkEndOfStream(int64_t item_index,
   end_of_stream_index_ = std::max(next_index_, item_index);
 
   auto end_of_stream_id = GetObjectRefAtIndex(end_of_stream_index_);
-  *object_id_in_last_index = end_of_stream_id;
+  object_ids_to_eof->push_back(end_of_stream_id);
+  for (const ObjectID &object_id : temporarily_owned_refs_) {
+    if (IsObjectRefAfterEndOfStream(object_id)) {
+      object_ids_to_eof->push_back(object_id);
+    }
+  }
 }
 
 ObjectID ObjectRefStream::GetObjectRefAtIndex(int64_t generator_index) const {
   RAY_CHECK_LT(generator_index, RayConfig::instance().max_num_generator_returns());
   // Index 1 is reserved for the first task return from a generator task itself.
   return ObjectID::FromIndex(generator_task_id_, 2 + generator_index);
+}
+
+bool ObjectRefStream::IsObjectRefAfterEndOfStream(const ObjectID &object_id) const {
+  RAY_CHECK_NE(end_of_stream_index_, -1);
+  RAY_CHECK_EQ(object_id.TaskId(), generator_task_id_);
+  return object_id.ObjectIndex() >
+         GetObjectRefAtIndex(end_of_stream_index_).ObjectIndex();
 }
 
 std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
@@ -634,51 +743,93 @@ bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
 
 Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
                                            ObjectID *object_id_out) {
-  auto backpressure_threshold = 0;
+  Status read_status;
+  ConsumptionUpdateCallback consumption_update_callback;
+  int64_t consumption_total_consumed = 0;
+
   {
-    absl::MutexLock lock(&mu_);
-    auto it = submissible_tasks_.find(generator_id.TaskId());
-    if (it != submissible_tasks_.end()) {
-      backpressure_threshold = it->second.spec_.GeneratorBackpressureNumObjects();
-    }
-  }
+    absl::MutexLock lock(&object_ref_stream_ops_mu_);
+    RAY_CHECK(object_id_out != nullptr);
+    auto stream_it = object_ref_streams_.find(generator_id);
+    RAY_CHECK(stream_it != object_ref_streams_.end())
+        << "TryReadObjectRefStream API can be used only when the stream has been "
+           "created "
+           "and not removed.";
+    read_status = stream_it->second.TryReadNextItem(object_id_out);
 
-  absl::MutexLock lock(&object_ref_stream_ops_mu_);
-  RAY_CHECK(object_id_out != nullptr);
-  auto stream_it = object_ref_streams_.find(generator_id);
-  RAY_CHECK(stream_it != object_ref_streams_.end())
-      << "TryReadObjectRefStream API can be used only when the stream has been "
-         "created "
-         "and not removed.";
-  auto status = stream_it->second.TryReadNextItem(object_id_out);
-
-  /// If you could read the next item, signal the executor to resume
-  /// if necessary.
-  if (status.ok()) {
-    auto total_generated = stream_it->second.TotalNumObjectWritten();
-    auto total_consumed = stream_it->second.TotalNumObjectConsumed();
-    auto total_unconsumed = total_generated - total_consumed;
-    if (backpressure_threshold != -1 && total_unconsumed < backpressure_threshold) {
-      auto it = ref_stream_execution_signal_callbacks_.find(generator_id);
-      if (it != ref_stream_execution_signal_callbacks_.end()) {
-        for (const auto &execution_signal : it->second) {
-          RAY_LOG(DEBUG) << "The task for a stream " << generator_id
-                         << " should resume. total_generated: " << total_generated
-                         << ". total_consumed: " << total_consumed
-                         << ". threshold: " << backpressure_threshold;
-          execution_signal(Status::OK(), total_consumed);
-        }
-        it->second.clear();
+    /// If you could read the next item, signal the executor to resume
+    /// if necessary.
+    if (read_status.ok() && !object_id_out->IsNil()) {
+      auto total_consumed = stream_it->second.TotalNumObjectConsumed();
+      auto consumption_it = ref_stream_consumption_update_callbacks_.find(generator_id);
+      if (consumption_it != ref_stream_consumption_update_callbacks_.end()) {
+        consumption_update_callback = consumption_it->second;
+        consumption_total_consumed = total_consumed;
       }
     }
   }
 
+  if (consumption_update_callback) {
+    consumption_update_callback(Status::OK(), consumption_total_consumed);
+  }
+  return read_status;
+}
+
+Status TaskManager::TryReadObjectRefStreamN(const ObjectID &generator_id,
+                                            int64_t num_items) {
+  RAY_CHECK_GT(num_items, 0);
+
+  Status status;
+  std::vector<ObjectID> consumed_object_ids;
+  ConsumptionUpdateCallback consumption_update_callback;
+  int64_t consumption_total_consumed = 0;
+
+  {
+    absl::MutexLock lock(&object_ref_stream_ops_mu_);
+    absl::flat_hash_map<ObjectID, ObjectRefStream>::iterator stream_it =
+        object_ref_streams_.find(generator_id);
+    RAY_CHECK(stream_it != object_ref_streams_.end())
+        << "TryReadObjectRefStreamN API can be used only when the stream has been "
+           "created and not removed.";
+    status = stream_it->second.TryReadNextItems(num_items, &consumed_object_ids);
+
+    // If we consumed any items, notify the executor of the new consumed count so
+    // owner backpressure can release. This mirrors TryReadObjectRefStream; the
+    // callback is only registered when the generator has owner backpressure
+    // enabled, so streams without backpressure are unaffected.
+    if (status.ok() && !consumed_object_ids.empty()) {
+      auto consumption_it = ref_stream_consumption_update_callbacks_.find(generator_id);
+      if (consumption_it != ref_stream_consumption_update_callbacks_.end()) {
+        consumption_update_callback = consumption_it->second;
+        consumption_total_consumed = stream_it->second.TotalNumObjectConsumed();
+      }
+    }
+
+    // Release the owner-side reference held for each consumed object. Unlike
+    // TryReadObjectRefStream, whose returned ObjectRef reuses this reference (it
+    // is created with skip_adding_local_ref=True), the bulk API hands back the
+    // refs peeked via PeekObjectRefStreamN, which add their own local reference.
+    // Without releasing here, the owner-side reference taken at peek/report time
+    // would dangle for every consumed object (it is never reclaimed by the
+    // teardown path, which only releases unconsumed refs). The consumer's peeked
+    // ref governs the object lifetime from here on.
+    std::vector<ObjectID> deleted;
+    reference_counter_.TryReleaseLocalRefs(consumed_object_ids, &deleted);
+    in_memory_store_.Delete(deleted);
+  }
+
+  // Fire the consumption update outside the stream lock, matching
+  // TryReadObjectRefStream, since it issues an RPC to the executor.
+  if (consumption_update_callback) {
+    consumption_update_callback(Status::OK(), consumption_total_consumed);
+  }
   return status;
 }
 
 bool TaskManager::StreamingGeneratorIsFinished(const ObjectID &generator_id) const {
   absl::MutexLock lock(&object_ref_stream_ops_mu_);
-  auto stream_it = object_ref_streams_.find(generator_id);
+  absl::flat_hash_map<ObjectID, ObjectRefStream>::const_iterator stream_it =
+      object_ref_streams_.find(generator_id);
   RAY_CHECK(stream_it != object_ref_streams_.end())
       << "IsFinished API can be used only when the stream has been "
          "created "
@@ -694,7 +845,7 @@ bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
     RAY_LOG(DEBUG) << "Deleting execution signal callbacks for generator "
                    << generator_id;
     for (const auto &execution_signal : signal_it->second) {
-      execution_signal(Status::NotFound("Stream is deleted."), -1);
+      execution_signal(Status::NotFound("Stream is deleted."));
     }
     // We may still receive more generator return reports in the future, if the
     // generator task is still running or is retried. They will get the
@@ -704,7 +855,14 @@ bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
 
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
+    ref_stream_consumption_update_callbacks_.erase(generator_id);
     return true;
+  }
+
+  auto consumption_it = ref_stream_consumption_update_callbacks_.find(generator_id);
+  if (consumption_it != ref_stream_consumption_update_callbacks_.end()) {
+    consumption_it->second(Status::NotFound("Stream is deleted."), -1);
+    ref_stream_consumption_update_callbacks_.erase(consumption_it);
   }
 
   // Remove any unconsumed refs from the stream metadata in-memory store.
@@ -737,9 +895,50 @@ std::pair<ObjectID, bool> TaskManager::PeekObjectRefStream(const ObjectID &gener
 
   // Temporarily own the ref since the corresponding reference is probably
   // not reported yet.
-  TemporarilyOwnGeneratorReturnRefIfNeededInternal(result.first /*=object_id*/,
+  TemporarilyOwnGeneratorReturnRefIfNeededInternal(/*=object_id*/ result.first,
                                                    generator_id);
   return result;
+}
+
+std::vector<std::pair<ObjectID, bool>> TaskManager::PeekObjectRefStreamN(
+    const ObjectID &generator_id, int64_t num_items) {
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  absl::flat_hash_map<ObjectID, ObjectRefStream>::iterator stream_it =
+      object_ref_streams_.find(generator_id);
+  RAY_CHECK(stream_it != object_ref_streams_.end())
+      << "PeekObjectRefStream API can be used only when the stream has been "
+         "created and not removed.";
+  std::vector<std::pair<ObjectID, bool>> results =
+      stream_it->second.PeekNextItems(num_items);
+
+  // Temporarily own refs since the corresponding references are probably
+  // not reported yet.
+  RayObject error(rpc::ErrorType::END_OF_STREAMING_GENERATOR);
+  for (const std::pair<ObjectID, bool> &result : results) {
+    TemporarilyOwnGeneratorReturnRefIfNeededInternal(/*=object_id*/ result.first,
+                                                     generator_id);
+    // Materialize the EOF error for refs at or past EOF (ObjectIndex() is the
+    // raw index; EofIndex() + 2 is the sentinel's raw index. The +2 is because
+    // object return indexes are 1-based and index 1 is the generator task's own
+    // return, so stream item 0 is raw index 2). These are positions the
+    // generator never produces, so without this a waiter on them blocks forever.
+    //
+    // Example: a generator that only yields one object, and then
+    // _wait_generators_bulk([(gen, [True, True, True])]) peeks
+    //   refs = [value(idx0), sentinel(idx1=EOF), past_eof(idx2)]
+    // MarkEndOfStream never saw past_eof(idx2), and the bulk waiter waits on it
+    // (the last ref), so we put its EOF error here.
+    //
+    // The temporary ownership taken above keeps these alive; they are released
+    // on stream deletion and erased once unreferenced.
+    if (stream_it->second.EofIndex() != -1 &&
+        result.first.ObjectIndex() >=
+            static_cast<ObjectIDIndexType>(stream_it->second.EofIndex() + 2)) {
+      in_memory_store_.Put(
+          error, result.first, reference_counter_.HasReference(result.first));
+    }
+  }
+  return results;
 }
 
 bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {
@@ -751,7 +950,7 @@ bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {
 void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
                                   int64_t end_of_stream_index) {
   absl::MutexLock lock(&object_ref_stream_ops_mu_);
-  ObjectID last_object_id;
+  std::vector<ObjectID> object_ids_to_eof;
 
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
@@ -759,25 +958,26 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
     return;
   }
 
-  stream_it->second.MarkEndOfStream(end_of_stream_index, &last_object_id);
-  if (!last_object_id.IsNil()) {
-    RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: "
-                   << stream_it->second.EofIndex()
-                   << ". Last object id: " << last_object_id;
-
-    reference_counter_.OwnDynamicStreamingTaskReturnRef(last_object_id, generator_id);
+  stream_it->second.MarkEndOfStream(end_of_stream_index, &object_ids_to_eof);
+  if (!object_ids_to_eof.empty()) {
     RayObject error(rpc::ErrorType::END_OF_STREAMING_GENERATOR);
-    // Put a dummy object at the end of the stream. We don't need to check if
-    // the object should be stored in plasma because the end of the stream is a
-    // fake ObjectRef that should never be read by the application.
-    in_memory_store_.Put(
-        error, last_object_id, reference_counter_.HasReference(last_object_id));
+    for (const ObjectID &object_id : object_ids_to_eof) {
+      RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: "
+                     << stream_it->second.EofIndex() << ". Object id: " << object_id;
+
+      reference_counter_.OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
+      // Put a dummy object at the end of the stream and for any already-peeked
+      // refs after EOF. These fake ObjectRefs should raise EOF when read by
+      // the application.
+      in_memory_store_.Put(error, object_id, reference_counter_.HasReference(object_id));
+    }
   }
 }
 
 bool TaskManager::HandleReportGeneratorItemReturns(
     const rpc::ReportGeneratorItemReturnsRequest &request,
-    const ExecutionSignalCallback &execution_signal_callback) {
+    const ExecutionSignalCallback &execution_signal_callback,
+    const ConsumptionUpdateCallback &consumption_update_callback) {
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
   const auto &task_id = generator_id.TaskId();
   int64_t item_index = request.item_index();
@@ -791,14 +991,15 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     if (it != submissible_tasks_.end()) {
-      backpressure_threshold = it->second.spec_.GeneratorBackpressureNumObjects();
+      backpressure_threshold =
+          it->second.spec_.EffectiveStreamingGeneratorOwnerBackpressureThreshold();
       if (it->second.spec_.AttemptNumber() > attempt_number) {
         // Generator task reports can arrive at any time. If the first attempt
         // fails, we may receive a report from the first executor after the
         // second attempt has started. In this case, we should ignore the first
         // attempt.
         execution_signal_callback(
-            Status::NotFound("Stale object reports from the previous attempt."), -1);
+            Status::NotFound("Stale object reports from the previous attempt."));
         return false;
       }
     }
@@ -812,8 +1013,19 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
     // Stream has been already deleted. Do not handle it.
-    execution_signal_callback(Status::NotFound("Stream is already deleted"), -1);
+    execution_signal_callback(Status::NotFound("Stream is already deleted"));
     return false;
+  }
+  if (backpressure_threshold != -1) {
+    auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
+    if (signal_it == ref_stream_execution_signal_callbacks_.end()) {
+      execution_signal_callback(Status::NotFound("Stream is deleted."));
+      return false;
+    }
+    if (consumption_update_callback) {
+      ref_stream_consumption_update_callbacks_[generator_id] =
+          consumption_update_callback;
+    }
   }
   size_t num_objects_written = 0;
 
@@ -847,38 +1059,20 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   }
 
   // Handle backpressure if needed.
-  auto total_generated = stream_it->second.TotalNumObjectWritten();
   auto total_consumed = stream_it->second.TotalNumObjectConsumed();
   auto last_item_index = request.returned_objects_size() == 0
                              ? item_index
                              : item_index + request.returned_objects_size() - 1;
 
   if (stream_it->second.IsObjectConsumed(last_item_index)) {
-    execution_signal_callback(Status::OK(), total_consumed);
+    execution_signal_callback(Status::OK());
+    if (backpressure_threshold != -1 && consumption_update_callback) {
+      consumption_update_callback(Status::OK(), total_consumed);
+    }
     return false;
   }
 
-  // Otherwise, follow the regular backpressure logic.
-  // NOTE, here we check `last_item_index - last_consumed_index >=
-  // backpressure_threshold`, instead of the number of unconsumed items, because we may
-  // receive the `HandleReportGeneratorItemReturns` requests out of order.
-  if (backpressure_threshold != -1 &&
-      (last_item_index - stream_it->second.LastConsumedIndex()) >=
-          backpressure_threshold) {
-    RAY_LOG(DEBUG) << "Stream " << generator_id
-                   << " is backpressured. total_generated: " << total_generated
-                   << ". total_consumed: " << total_consumed
-                   << ". threshold: " << backpressure_threshold;
-    auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
-    if (signal_it == ref_stream_execution_signal_callbacks_.end()) {
-      execution_signal_callback(Status::NotFound("Stream is deleted."), -1);
-    } else {
-      signal_it->second.push_back(execution_signal_callback);
-    }
-  } else {
-    // No need to backpressure.
-    execution_signal_callback(Status::OK(), total_consumed);
-  }
+  execution_signal_callback(Status::OK());
   return num_objects_written != 0;
 }
 
