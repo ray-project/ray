@@ -112,7 +112,8 @@ TEST_F(MemoryMonitorUtilsTest, TestLinuxMemoryFoldsSwapIntoTotal) {
   std::string proc_dir =
       MockProcMeminfo(mem_total_kb, mem_available_kb, swap_total_kb, swap_free_kb);
 
-  auto system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot("", proc_dir);
+  auto system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
+      "", /*include_swap=*/true, proc_dir);
 
   int64_t expected_total = (mem_total_kb + swap_total_kb) * 1024;
   int64_t expected_used =
@@ -133,7 +134,8 @@ TEST_F(MemoryMonitorUtilsTest, TestLinuxSwapIgnoredWhenFlagDisabled) {
   std::string proc_dir =
       MockProcMeminfo(mem_total_kb, mem_available_kb, swap_total_kb, swap_free_kb);
 
-  auto system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot("", proc_dir);
+  auto system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
+      "", /*include_swap=*/true, proc_dir);
 
   ASSERT_EQ(system_memory.total_bytes, mem_total_kb * 1024);
   ASSERT_EQ(system_memory.used_bytes, (mem_total_kb - mem_available_kb) * 1024);
@@ -146,7 +148,8 @@ TEST_F(MemoryMonitorUtilsTest, TestLinuxMemoryWithoutSwapMatchesRamOnly) {
   std::string proc_dir =
       MockProcMeminfo(mem_total_kb, mem_available_kb, std::nullopt, std::nullopt);
 
-  auto system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot("", proc_dir);
+  auto system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
+      "", /*include_swap=*/true, proc_dir);
 
   ASSERT_EQ(system_memory.total_bytes, mem_total_kb * 1024);
   ASSERT_EQ(system_memory.used_bytes, (mem_total_kb - mem_available_kb) * 1024);
@@ -167,7 +170,8 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV2SwapAddedToTotalAndUsed) {
                                                    /*active_file_bytes=*/0);
   MockCgroupv2Swap(cgroup_dir, swap_max_bytes, swap_current_bytes);
 
-  auto [used_bytes, total_bytes] = MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir);
+  auto [used_bytes, total_bytes] =
+      MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir, /*include_swap=*/true);
 
   ASSERT_EQ(total_bytes, cgroup_total_bytes + swap_max_bytes);
   ASSERT_EQ(used_bytes, cgroup_current_bytes + swap_current_bytes);
@@ -188,7 +192,8 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV2SwapIgnoredWhenFlagDisabled) {
                                                    /*active_file_bytes=*/0);
   MockCgroupv2Swap(cgroup_dir, swap_max_bytes, swap_current_bytes);
 
-  auto [used_bytes, total_bytes] = MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir);
+  auto [used_bytes, total_bytes] =
+      MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir, /*include_swap=*/false);
 
   ASSERT_EQ(total_bytes, cgroup_total_bytes);
   ASSERT_EQ(used_bytes, cgroup_current_bytes);
@@ -283,7 +288,8 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV1MemswAddedToTotalAndUsed) {
       ram_limit_bytes, ram_usage_bytes, inactive_file_bytes, active_file_bytes);
   MockCgroupv1Memsw(cgroup_dir, memsw_limit_bytes, memsw_usage_bytes);
 
-  auto [used_bytes, total_bytes] = MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir);
+  auto [used_bytes, total_bytes] =
+      MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir, /*include_swap=*/true);
 
   ASSERT_EQ(total_bytes, memsw_limit_bytes);
   ASSERT_EQ(used_bytes, memsw_usage_bytes - inactive_file_bytes - active_file_bytes);
@@ -302,7 +308,8 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV1MemswIgnoredWhenFlagDisabled) {
       ram_limit_bytes, ram_usage_bytes, inactive_file_bytes, active_file_bytes);
   MockCgroupv1Memsw(cgroup_dir, memsw_limit_bytes, memsw_usage_bytes);
 
-  auto [used_bytes, total_bytes] = MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir);
+  auto [used_bytes, total_bytes] =
+      MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir, /*include_swap=*/false);
 
   ASSERT_EQ(total_bytes, ram_limit_bytes);
   ASSERT_EQ(used_bytes, ram_usage_bytes - inactive_file_bytes - active_file_bytes);
@@ -323,7 +330,8 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV1MemswFallsBackWhenUsageMissing) {
       ram_limit_bytes, ram_usage_bytes, inactive_file_bytes, active_file_bytes);
   std::ofstream(cgroup_dir + "/memory.memsw.limit_in_bytes") << memsw_limit_bytes;
 
-  auto [used_bytes, total_bytes] = MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir);
+  auto [used_bytes, total_bytes] =
+      MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir, /*include_swap=*/true);
 
   ASSERT_EQ(total_bytes, ram_limit_bytes);
   ASSERT_EQ(used_bytes, ram_usage_bytes - inactive_file_bytes - active_file_bytes);

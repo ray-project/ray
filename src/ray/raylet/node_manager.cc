@@ -3103,7 +3103,8 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
               MemoryMonitorUtils::TakePerProcessMemorySnapshot();
           MemoryUsageSnapshot memory_usage_snapshot =
               MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
-                  MemoryMonitorInterface::kDefaultCgroupPath);
+                  MemoryMonitorInterface::kDefaultCgroupPath,
+                  /*include_swap=*/true);
           if (initial_config_.enable_resource_isolation) {
             StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound>
                 user_slice_memory_snapshot_or =

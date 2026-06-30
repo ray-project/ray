@@ -45,7 +45,9 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_
       }),
       runner_(PeriodicalRunner::Create(io_service_)) {
   int64_t total_memory_bytes =
-      MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(root_cgroup_path_).total_bytes;
+      MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(root_cgroup_path_,
+                                                        /*include_swap=*/true)
+          .total_bytes;
   float computed_threshold_fraction = static_cast<float>(memory_usage_threshold_bytes_) /
                                       static_cast<float>(total_memory_bytes);
   RAY_LOG(INFO) << absl::StrFormat(
@@ -110,7 +112,8 @@ bool ThresholdMemoryMonitor::IsEnabled() const {
 std::optional<MemoryUsageSnapshot>
 ThresholdMemoryMonitor::IsHostMemoryThresholdExceeded() {
   MemoryUsageSnapshot cur_memory_snapshot =
-      MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(root_cgroup_path_);
+      MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(root_cgroup_path_,
+                                                        /*include_swap=*/true);
   int64_t used_memory_bytes = cur_memory_snapshot.used_bytes;
   int64_t total_memory_bytes = cur_memory_snapshot.total_bytes;
   if (total_memory_bytes == MemoryMonitorInterface::kNull ||

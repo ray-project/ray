@@ -77,19 +77,18 @@ class MemoryMonitorUtils {
    *
    * @param root_cgroup_path The path to the root cgroup
    *                         to read the memory usage from.
+   * @param include_swap When true, permit folding swap into the totals (still
+   *        gated by `count_swap_in_memory_monitor`, resolved here). Pass false
+   *        for a RAM-only view (e.g. the kernel's RAM-only `memory.high`
+   *        constraint in `LinuxCgroupManagerFactory`).
    * @param proc_dir The proc directory path
    *                 to read the OS level memory usage from.
-   * @param include_swap When true (default), fold cgroup `memory.swap.*` and
-   *        `/proc/meminfo` `Swap*` into the totals iff
-   *        `count_swap_in_memory_monitor` is on. Set to false when the caller
-   *        needs a RAM-only view (e.g. computing the kernel's RAM-only
-   *        `memory.high` constraint in `LinuxCgroupManagerFactory`).
    * @return The used and total memory in bytes.
    */
   static const MemoryUsageSnapshot TakeSystemMemoryUsageSnapshot(
       const std::string &root_cgroup_path,
-      const std::string &proc_dir = kProcDirectory,
-      bool include_swap = true);
+      bool include_swap = false,
+      const std::string &proc_dir = kProcDirectory);
 
   /**
    * @brief Takes a snapshot of user slice memory usage across the host
@@ -186,7 +185,7 @@ class MemoryMonitorUtils {
    */
   static std::tuple<int64_t, int64_t> GetCGroupMemoryBytes(
       const std::string root_cgroup_path,
-      bool include_swap = true,
+      bool include_swap = false,
       const std::string &proc_dir = kProcDirectory);
 
   /**
@@ -214,7 +213,7 @@ class MemoryMonitorUtils {
    * @return The used and total memory in bytes for Linux OS.
    */
   static std::tuple<int64_t, int64_t> GetLinuxMemoryBytes(const std::string proc_dir,
-                                                          bool include_swap = true);
+                                                          bool include_swap = false);
 
   /**
    * @brief Returns host (swap_total_bytes, swap_used_bytes).

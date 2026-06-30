@@ -86,11 +86,17 @@ int64_t ReadCgroupSwapCurrentBytes(const std::string &swap_current_path) {
 }  // namespace
 
 const MemoryUsageSnapshot MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
-    const std::string &root_cgroup_path, const std::string &proc_dir, bool include_swap) {
+    const std::string &root_cgroup_path, bool include_swap, const std::string &proc_dir) {
+  // Resolve the config flag once here (a high-level entry point) and hand the
+  // low-level helpers a single boolean. They stay pure / param-only so unit
+  // tests can mock swap inclusion without touching RayConfig. include_swap is
+  // the caller's intent (false forces a RAM-only view).
+  const bool count_swap =
+      include_swap && RayConfig::instance().count_swap_in_memory_monitor();
   auto [cgroup_used_bytes, cgroup_total_bytes] =
-      GetCGroupMemoryBytes(root_cgroup_path, include_swap, proc_dir);
+      GetCGroupMemoryBytes(root_cgroup_path, count_swap, proc_dir);
   auto [system_used_bytes, system_total_bytes] =
-      GetLinuxMemoryBytes(proc_dir, include_swap);
+      GetLinuxMemoryBytes(proc_dir, count_swap);
   /// cgroup memory limit can be higher than system memory limit when it is
   /// not used. We take its value only when it is less than or equal to system memory
   /// limit. TODO(clarng): find a better way to detect cgroup memory limit is used.
@@ -305,13 +311,11 @@ std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetCGroupMemoryBytes(
   std::string cgroupV2MemorySwapCurrentPath =
       root_cgroup_path + "/" + kCgroupsV2MemorySwapCurrentPath;
 
-  // Swap accounting is opt-in. When disabled, fall back to the RAM-only
-  // counters (memory.max / memory.limit_in_bytes / memory.current) regardless
-  // of whether memsw / memory.swap.* exist on the system. `include_swap=false`
-  // forces the RAM-only view even when the flag is on, used by callers that
-  // need to derive the kernel's RAM-only `memory.high` constraint.
-  const bool count_swap =
-      include_swap && RayConfig::instance().count_swap_in_memory_monitor();
+  // include_swap is the single gate: the caller (TakeSystemMemoryUsageSnapshot)
+  // has already AND-ed it with `count_swap_in_memory_monitor`. When false, fall
+  // back to the RAM-only counters (memory.max / memory.limit_in_bytes /
+  // memory.current) regardless of whether memsw / memory.swap.* exist.
+  const bool count_swap = include_swap;
 
   // Require both memsw files together. Otherwise total (RAM+swap) and used
   // (RAM-only) could come from different views, which would feed mismatched
@@ -528,10 +532,10 @@ std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetLinuxMemoryBytes(
     used_bytes = 0;
   }
   // Fold swap into the totals so the OOM killer treats it as overflow capacity.
-  // Off by default — see count_swap_in_memory_monitor in ray_config_def.h.
-  // `include_swap=false` is used by the user-slice path, which adds per-slice
-  // cgroup swap separately and would otherwise double-count host-level swap.
-  if (include_swap && RayConfig::instance().count_swap_in_memory_monitor()) {
+  // include_swap is the single gate (the caller already AND-ed it with
+  // count_swap_in_memory_monitor). The user-slice path passes false so it can
+  // add per-slice cgroup swap separately without double-counting host swap.
+  if (include_swap) {
     int64_t swap_used_bytes = swap_total_bytes - swap_free_bytes;
     if (swap_used_bytes < 0) {
       swap_used_bytes = 0;

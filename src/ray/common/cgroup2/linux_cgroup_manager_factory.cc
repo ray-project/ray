@@ -65,8 +65,8 @@ std::unique_ptr<CgroupManagerInterface> CgroupManagerFactory::Create(
   // pass to memory.high would push it past host RAM and disable the throttle.
   MemoryUsageSnapshot memory_snapshot = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
       cgroup_path,
-      MemoryMonitorUtils::kProcDirectory,
-      /*include_swap=*/false);
+      /*include_swap=*/false,
+      MemoryMonitorUtils::kProcDirectory);
   int64_t total_memory_bytes = memory_snapshot.total_bytes;
   float user_memory_proportion_high = RayConfig::instance().user_memory_proportion_high();
   float user_memory_proportion_max = RayConfig::instance().user_memory_proportion_max();
