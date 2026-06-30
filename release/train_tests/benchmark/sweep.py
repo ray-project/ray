@@ -1,14 +1,14 @@
 """Run a benchmark sweep over config axes (e.g. sequence length, batch size).
 
-For a small model the interesting surface is seq_len x batch_size, not sharding
-strategy. Each cell is one run with a unique name, so it writes its own
+For a small model the interesting surface is seq_len x micro_batch_size, not
+sharding strategy. Each cell is one run with a unique name, so it writes its own
 <name>_results.json and `collect.py` renders the whole grid.
 
 Usage:
     # 4 seq lengths x 3 batch sizes = 12 runs (OOM cells are skipped)
     python sweep.py --experiment experiments/qwen3_06b_deepspeed.yaml \
         --axis data.seq_len=1024,2048,4096,8192 \
-        --axis data.batch_size=1,2,4
+        --axis data.micro_batch_size=1,2,4
 
     # preview the matrix without running
     python sweep.py --experiment <exp>.yaml --axis data.seq_len=1024,2048 --dry-run
@@ -24,7 +24,7 @@ from typing import Dict, List
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from core.experiment_config import load_experiment  # noqa: E402
-from core.sinks import write_results  # noqa: E402
+from core.runner import run_experiment, write_results  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -82,8 +82,6 @@ def main() -> None:
         logger.info(f"  - {cell_name(base.name, combo)}: {combo}")
     if args.dry_run:
         return
-
-    from core.runner import run_experiment
 
     completed, failed = [], []
     for combo in cells:

@@ -5,10 +5,9 @@ Usage:
     # Ray schedules the workers across the cluster's GPU nodes.
     python -m core.runner --experiment experiments/qwen3_06b_deepspeed.yaml
 
-    # Torchrun parity baseline — launched ON the GPU node(s), one process per
-    # GPU. Single node:
-    torchrun --standalone --nproc_per_node=8 -m core.runner \
-        --experiment experiments/qwen3_06b_deepspeed.yaml --launcher torchrun
+    # torch.distributed parity baseline (Ray actors as the launcher)
+    python -m core.runner --experiment experiments/qwen3_06b_deepspeed.yaml \
+        --set launcher=torchrun_ray
 
     # Override any config field inline
     python -m core.runner --experiment experiments/qwen3_06b_deepspeed.yaml \
@@ -16,6 +15,7 @@ Usage:
 """
 
 import argparse
+import json
 import logging
 import os
 import pprint
@@ -28,14 +28,38 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.experiment_config import ExperimentConfig, load_experiment  # noqa: E402
-from core.sinks import write_results  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
 
+def write_results(metrics: Dict[str, Any], experiment_name: str) -> None:
+    """Persist final metrics: the release-test JSON (reuses Ray's
+    ``safe_write_to_results_json``) plus a per-experiment file that
+    ``collect.py`` aggregates into the comparison table.
+    """
+    payload = {"experiment": experiment_name, **metrics}
+    try:
+        from ray._private.test_utils import safe_write_to_results_json
+
+        safe_write_to_results_json(payload)
+    except Exception as e:  # local runs without the release-test harness
+        logger.warning(f"safe_write_to_results_json unavailable ({e}).")
+
+    root = (
+        "/mnt/cluster_storage"
+        if os.path.isdir("/mnt/cluster_storage")
+        else "/tmp/train_benchmark"
+    )
+    os.makedirs(root, exist_ok=True)
+    path = os.path.join(root, f"{experiment_name}_results.json")
+    with open(path, "w") as f:
+        json.dump(payload, f, indent=2)
+    logger.info(f"Wrote results to {path}")
+
+
 def run_experiment(cfg: ExperimentConfig) -> Dict[str, Any]:
     """Dispatch an experiment to its launcher and return final metrics."""
-    if cfg.launcher == "ray":
+    if cfg.launcher == "ray_train":
         from core.launchers.ray_launcher import run_with_ray
 
         return run_with_ray(cfg)
@@ -47,7 +71,9 @@ def run_experiment(cfg: ExperimentConfig) -> Dict[str, Any]:
         from core.launchers.torchrun_ray_launcher import run_with_torchrun_ray
 
         return run_with_torchrun_ray(cfg)
-    raise ValueError(f"Unknown launcher: {cfg.launcher}. Use 'ray' or 'torchrun_ray'.")
+    raise ValueError(
+        f"Unknown launcher: {cfg.launcher}. Use 'ray_train' or 'torchrun_ray'."
+    )
 
 
 def main() -> None:
@@ -57,7 +83,7 @@ def main() -> None:
     parser.add_argument(
         "--launcher",
         default=None,
-        help="Override the launcher from the YAML (ray | torchrun)",
+        help="Override the launcher from the YAML (ray_train | torchrun_ray)",
     )
     parser.add_argument(
         "--set",
@@ -66,12 +92,6 @@ def main() -> None:
         dest="overrides",
         help="Inline overrides, e.g. training.num_steps=20 data.dataset=synthetic",
     )
-    parser.add_argument(
-        "--prepare-data",
-        action="store_true",
-        help="Prefetch the model + dataset into a shared HF cache, then exit. "
-        "Run once before the distributed run so workers hit a warm cache.",
-    )
     args = parser.parse_args()
 
     cfg = load_experiment(args.experiment, overrides=args.overrides)
@@ -79,13 +99,6 @@ def main() -> None:
         cfg.launcher = args.launcher
 
     logger.info("Experiment config:\n" + pprint.pformat(cfg.to_dict()))
-
-    if args.prepare_data:
-        from core.prepare import prepare_experiment
-
-        prepare_experiment(cfg)
-        logger.info("Prepare complete. Re-run without --prepare-data to train.")
-        return
 
     metrics = run_experiment(cfg)
 

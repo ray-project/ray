@@ -29,33 +29,55 @@ _EXPERIMENTS = os.path.join(
 def test_load_qwen_experiment():
     cfg = load_experiment(os.path.join(_EXPERIMENTS, "qwen3_06b_deepspeed.yaml"))
     assert cfg.name == "qwen3_06b_deepspeed"
-    assert cfg.model.adapter == "deepspeed"
+    assert cfg.adapter == "deepspeed"
     assert cfg.model.parallelism["zero_stage"] == 1
     assert cfg.data.seq_len == 2048
+    assert cfg.data.micro_batch_size == 2
     assert cfg.training.num_steps == 200
-    assert cfg.launcher == "ray"
+    assert cfg.launcher == "ray_train"
+    assert cfg.scaling.num_workers == 8
+    assert cfg.checkpoint.every_n_steps == 100
 
 
 def test_load_smoke_experiment():
     cfg = load_experiment(os.path.join(_EXPERIMENTS, "qwen3_06b_deepspeed_smoke.yaml"))
     assert cfg.data.dataset == "synthetic"
-    assert cfg.num_workers == 1
+    assert cfg.scaling.num_workers == 1
 
 
 def test_overrides_apply():
     cfg = load_experiment(
         os.path.join(_EXPERIMENTS, "qwen3_06b_deepspeed.yaml"),
-        overrides=["training.num_steps=20", "data.dataset=synthetic", "num_workers=4"],
+        overrides=[
+            "training.num_steps=20",
+            "data.dataset=synthetic",
+            "scaling.num_workers=4",
+        ],
     )
     assert cfg.training.num_steps == 20
     assert cfg.data.dataset == "synthetic"
-    assert cfg.num_workers == 4
+    assert cfg.scaling.num_workers == 4
+
+
+def test_grad_accum_derivation():
+    cfg = load_experiment(
+        os.path.join(_EXPERIMENTS, "qwen3_06b_deepspeed.yaml"),
+        overrides=["training.global_batch_size=64", "data.micro_batch_size=2"],
+    )
+    # global 64 / (micro 2 x dp 8) = 4
+    assert cfg.grad_accum_steps(data_parallel_size=8) == 4
+    # unset global -> 1
+    cfg2 = load_experiment(os.path.join(_EXPERIMENTS, "qwen3_06b_deepspeed.yaml"))
+    assert cfg2.grad_accum_steps(data_parallel_size=8) == 1
+    # indivisible -> error
+    with pytest.raises(ValueError, match="not divisible"):
+        cfg.grad_accum_steps(data_parallel_size=5)
 
 
 def test_unknown_key_rejected(tmp_path):
     bad = tmp_path / "bad.yaml"
     bad.write_text(
-        "name: bad\nmodel:\n  adapter: deepspeed\n  name: x\n  bogus: 1\n"
+        "name: bad\nadapter: deepspeed\nmodel:\n  name: x\n  bogus: 1\n"
         "training:\n  num_steps: 1\n"
     )
     with pytest.raises(ValueError, match="bogus"):
@@ -64,7 +86,7 @@ def test_unknown_key_rejected(tmp_path):
 
 def test_requires_steps_or_epochs(tmp_path):
     bad = tmp_path / "bad.yaml"
-    bad.write_text("name: bad\nmodel:\n  adapter: deepspeed\n  name: x\n")
+    bad.write_text("name: bad\nadapter: deepspeed\nmodel:\n  name: x\n")
     with pytest.raises(ValueError, match="num_steps"):
         load_experiment(str(bad))
 
@@ -151,11 +173,11 @@ def test_expand_axes_cartesian():
     from sweep import cell_name, expand_axes
 
     cells = expand_axes(
-        {"data.seq_len": ["1024", "2048"], "data.batch_size": ["1", "2"]}
+        {"data.seq_len": ["1024", "2048"], "data.micro_batch_size": ["1", "2"]}
     )
     assert len(cells) == 4
-    assert {"data.seq_len": "1024", "data.batch_size": "2"} in cells
-    assert cell_name("qwen", cells[0]) == "qwen__seq_len1024_batch_size1"
+    assert {"data.seq_len": "1024", "data.micro_batch_size": "2"} in cells
+    assert cell_name("qwen", cells[0]) == "qwen__seq_len1024_micro_batch_size1"
 
 
 def test_megatron_view_defaults_parallelism():

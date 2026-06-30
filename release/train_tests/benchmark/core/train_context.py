@@ -5,7 +5,6 @@ run under both launchers: ``ray`` (Ray Train TorchTrainer) and ``torchrun``
 (the parity baseline from the benchmark modernization proposal).
 """
 
-import json
 import logging
 import os
 import shutil
@@ -24,11 +23,6 @@ def _shared_root() -> str:
     )
     os.makedirs(root, exist_ok=True)
     return root
-
-
-# Where rank-0 workers drop their final metrics for the driver to pick up.
-def default_metrics_path(experiment_name: str) -> str:
-    return os.path.join(_shared_root(), f"{experiment_name}_metrics.json")
 
 
 class TrainContext(ABC):
@@ -146,13 +140,12 @@ class TorchrunContext(TrainContext):
     def report(self, metrics: Dict[str, Any], checkpoint_dir: Optional[str] = None):
         # Persist the checkpoint on EVERY rank — DeepSpeed shards are per-rank,
         # so all ranks must write their shard into the shared destination.
+        # Final metrics are returned to the driver via the actor's run() value
+        # (see torchrun_ray_launcher), so there's no metrics file to write.
         if checkpoint_dir is not None:
             self._persist_checkpoint(checkpoint_dir)
-        # Metrics are identical across ranks; rank 0 writes the results file.
         if self.world_rank == 0:
             logger.info(f"[torchrun] report: {metrics}")
-            with open(default_metrics_path(self._experiment_name), "w") as f:
-                json.dump(metrics, f)
 
     def _persist_checkpoint(self, checkpoint_dir: str) -> None:
         dest = os.path.join(
@@ -169,11 +162,3 @@ class TorchrunContext(TrainContext):
         # Restore-from-checkpoint is not wired for the torchrun baseline yet;
         # the save path above is what the e2e comparison needs.
         return None
-
-
-def get_train_context(launcher: str, experiment_name: str) -> TrainContext:
-    if launcher == "ray":
-        return RayTrainContext()
-    elif launcher == "torchrun":
-        return TorchrunContext(experiment_name)
-    raise ValueError(f"Unknown launcher: {launcher}")

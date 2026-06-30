@@ -266,11 +266,13 @@ class StepTimer:
 
 
 class TrainMetricsCollector:
-    """Aggregates throughput / FLOPs / MFU / GPU stats for one training run.
+    """Device-agnostic throughput / FLOPs / MFU collector for one training run.
 
     Lives inside the training worker. Steady-state metrics (tokens/sec, MFU)
-    exclude the first ``warmup_steps`` steps so model download, compilation,
-    and allocator warmup don't skew steady-state throughput.
+    exclude the first ``warmup_steps`` steps so model download, compilation, and
+    allocator warmup don't skew them. Device-specific signals (GPU utilization,
+    memory) live in subclasses like ``GpuTrainMetricsCollector`` — a future
+    ``TpuTrainMetricsCollector`` would parallel it.
     """
 
     def __init__(
@@ -279,9 +281,6 @@ class TrainMetricsCollector:
         warmup_steps: int = 5,
         flops_per_token: Optional[float] = None,
         peak_flops_per_gpu: Optional[float] = None,
-        gpu_index: int = 0,
-        monitor_gpu: bool = True,
-        device: Optional[Any] = None,
     ):
         self.world_size = world_size
         self.flops_per_token = flops_per_token
@@ -289,60 +288,19 @@ class TrainMetricsCollector:
 
         self.step_timer = StepTimer(warmup_steps)
         self.data_timer = StepTimer(warmup_steps)
-        self._warmup_steps = warmup_steps
         self._tokens_per_step: List[float] = []
         self._rows_per_step: List[float] = []
         self._run_start = time.perf_counter()
-
-        # Static memory = what's resident before the training loop (model +
-        # optimizer + grad buffers). Capturing it here, after the engine is
-        # built, lets summary() separate it from activation/transient memory.
-        # Reset the allocator's peak so the reported peak reflects the loop.
-        self._device = device
-        self._static_memory_bytes: Optional[int] = None
-        if device is not None:
-            import torch
-
-            if torch.cuda.is_available():
-                torch.cuda.reset_peak_memory_stats(device)
-                self._static_memory_bytes = torch.cuda.memory_allocated(device)
-
-        self._gpu_monitor = GpuMonitor(device_index=gpu_index) if monitor_gpu else None
-        if self._gpu_monitor:
-            self._gpu_monitor.start()
-
-    def _memory_summary(self) -> Dict[str, float]:
-        """Torch allocator memory peaks for this worker (rank-local).
-
-        max_memory_allocated is the true peak working set (catches the transient
-        backward spike); max_memory_reserved is the allocator's footprint, the
-        number closest to the OOM threshold. activation ~= peak_allocated minus
-        static, an estimate of activation + transient memory.
-        """
-        if self._device is None:
-            return {}
-        import torch
-
-        if not torch.cuda.is_available():
-            return {}
-        peak_alloc = torch.cuda.max_memory_allocated(self._device)
-        out = {
-            "gpu/peak_memory_allocated_gb": peak_alloc / 1e9,
-            "gpu/peak_memory_reserved_gb": torch.cuda.max_memory_reserved(self._device)
-            / 1e9,
-        }
-        if self._static_memory_bytes is not None:
-            out["gpu/static_memory_gb"] = self._static_memory_bytes / 1e9
-            out["gpu/activation_memory_gb"] = (
-                max(0, peak_alloc - self._static_memory_bytes) / 1e9
-            )
-        return out
 
     def record_batch(self, num_rows: int, num_tokens: Optional[int] = None) -> None:
         """Record the per-device batch that the just-timed step consumed."""
         self._rows_per_step.append(num_rows)
         if num_tokens is not None:
             self._tokens_per_step.append(num_tokens)
+
+    def _device_summary(self) -> Dict[str, float]:
+        """Hook for subclasses to add device (GPU/TPU) metrics. None here."""
+        return {}
 
     def summary(self) -> Dict[str, float]:
         metrics: Dict[str, float] = {
@@ -378,9 +336,77 @@ class TrainMetricsCollector:
                     if self.peak_flops_per_gpu:
                         metrics["train/mfu"] = achieved / self.peak_flops_per_gpu
 
-        metrics.update(self._memory_summary())
-
-        if self._gpu_monitor:
-            metrics.update(self._gpu_monitor.stop())
-            self._gpu_monitor = None
+        metrics.update(self._device_summary())
         return metrics
+
+
+class GpuTrainMetricsCollector(TrainMetricsCollector):
+    """Adds NVIDIA GPU utilization + torch allocator memory peaks (rank-local).
+
+    ``device`` is the torch device for this worker; ``gpu_index`` is its logical
+    CUDA ordinal (the NVML sampler maps it to the physical GPU via CVD).
+    """
+
+    def __init__(
+        self,
+        world_size: int,
+        warmup_steps: int = 5,
+        flops_per_token: Optional[float] = None,
+        peak_flops_per_gpu: Optional[float] = None,
+        device: Optional[Any] = None,
+        gpu_index: int = 0,
+        monitor_gpu: bool = True,
+    ):
+        super().__init__(world_size, warmup_steps, flops_per_token, peak_flops_per_gpu)
+
+        # Static memory = what's resident before the training loop (model +
+        # optimizer + grad buffers). Capturing it here (after engine build) lets
+        # the summary separate it from activation/transient memory. Reset the
+        # allocator's peak so the reported peak reflects the loop.
+        self._device = device
+        self._static_memory_bytes: Optional[int] = None
+        if device is not None:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.reset_peak_memory_stats(device)
+                self._static_memory_bytes = torch.cuda.memory_allocated(device)
+
+        self._gpu_monitor = GpuMonitor(device_index=gpu_index) if monitor_gpu else None
+        if self._gpu_monitor:
+            self._gpu_monitor.start()
+
+    def _device_summary(self) -> Dict[str, float]:
+        out: Dict[str, float] = {}
+        out.update(self._memory_summary())
+        if self._gpu_monitor:
+            out.update(self._gpu_monitor.stop())
+            self._gpu_monitor = None
+        return out
+
+    def _memory_summary(self) -> Dict[str, float]:
+        """Torch allocator memory peaks for this worker (rank-local).
+
+        max_memory_allocated is the true peak working set (catches the transient
+        backward spike); max_memory_reserved is the allocator's footprint, the
+        number closest to the OOM threshold. activation ~= peak_allocated minus
+        static, an estimate of activation + transient memory.
+        """
+        if self._device is None:
+            return {}
+        import torch
+
+        if not torch.cuda.is_available():
+            return {}
+        peak_alloc = torch.cuda.max_memory_allocated(self._device)
+        out = {
+            "gpu/peak_memory_allocated_gb": peak_alloc / 1e9,
+            "gpu/peak_memory_reserved_gb": torch.cuda.max_memory_reserved(self._device)
+            / 1e9,
+        }
+        if self._static_memory_bytes is not None:
+            out["gpu/static_memory_gb"] = self._static_memory_bytes / 1e9
+            out["gpu/activation_memory_gb"] = (
+                max(0, peak_alloc - self._static_memory_bytes) / 1e9
+            )
+        return out

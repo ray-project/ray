@@ -9,16 +9,14 @@ case is normally a single new YAML unless a new framework is involved.
 ```
 core/
   experiment_config.py   ExperimentConfig schema + YAML loader (with --set overrides)
-  metrics.py             FLOPs/MFU + bandwidth tables, GPU/memory sampler, throughput collector
-  train_context.py       launcher-agnostic worker context (Ray Train | torchrun)
+  metrics.py             FLOPs/MFU + bandwidth tables; TrainMetricsCollector (+GPU subclass)
+  train_context.py       launcher-agnostic worker context (Ray Train | torchrun_ray)
   registry.py            adapter name -> FrameworkAdapter class
   runner.py              entrypoint: load YAML, dispatch to launcher
-  sinks.py               write results (release-test json + local mirror)
   launchers/
     ray_launcher.py            Ray Train TorchTrainer wiring
     torchrun_ray_launcher.py   vanilla torch.distributed placed by Ray actors (baseline)
-    torchrun_launcher.py       internal: the per-process env:// body torchrun_ray runs
-  prepare.py             prefetch model + dataset into a shared HF cache
+    ray_actor_utils.py         placement / rendezvous helpers for torchrun_ray
 frameworks/
   base_adapter.py        FrameworkAdapter ABC
   deepspeed/adapter.py   DeepSpeed ZeRO LLM adapter
@@ -44,20 +42,13 @@ python -m core.runner --experiment experiments/qwen3_06b_deepspeed_smoke.yaml
 
 # Inline overrides for quick iteration
 python -m core.runner --experiment experiments/qwen3_06b_deepspeed.yaml \
-    --set training.num_steps=20 data.dataset=synthetic num_workers=1
+    --set training.num_steps=20 data.dataset=synthetic scaling.num_workers=1
 ```
 
 Ray Train v2 is the default; no `RAY_TRAIN_V2_ENABLED` env var is needed.
-
-### Prepare data once (recommended)
-
-Prefetch the model + dataset into a shared HF cache so the workers hit a warm
-cache instead of each cold-fetching from the Hub (faster, and removes download
-variance from the measured loop):
-
-```bash
-python -m core.runner --experiment experiments/qwen3_06b_deepspeed.yaml --prepare-data
-```
+Model/dataset download happens before the timed loop (and warmup steps are
+excluded from steady-state metrics), so it doesn't affect throughput/MFU. Set
+`HF_TOKEN` as a cluster env var if you hit Hub rate limits.
 
 ### Torchrun parity baseline (`torchrun_ray`)
 
@@ -105,8 +96,13 @@ items the proposal flagged as missing:
 - `gpu/static_memory_gb` (model + optimizer) and `gpu/activation_memory_gb`
   (= peak − static)
 
-**GPU / bandwidth** (NVML sampling, no-ops without a GPU)
-- `gpu/utilization_mean_pct`, `gpu/utilization_max_pct`
+**GPU / bandwidth** (NVML sampling, no-ops without a GPU). These live in
+`GpuTrainMetricsCollector` (a subclass of the device-agnostic
+`TrainMetricsCollector`), so a future `TpuTrainMetricsCollector` can parallel it.
+- `gpu/utilization_mean_pct`, `gpu/utilization_max_pct` — nvidia-smi "GPU-Util":
+  the % of time ≥1 kernel was executing. A *busy* signal, **not** compute
+  efficiency (that's MFU) and not memory. So high util + low MFU = busy but
+  inefficient (memory-bound).
 - `gpu/memory_bw_util_{mean,max}_pct` — memory-controller active time, a coarse
   MBU proxy (time-active, *not* % of peak GB/s). High here + low MFU = the run
   is memory-bound. `gpu/peak_memory_bandwidth_gbps` records the denominator.

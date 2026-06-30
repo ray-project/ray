@@ -1,6 +1,6 @@
 """Render benchmark result JSONs into an llm-foundry-style comparison table.
 
-Each run writes <name>_results.json (see core/sinks.py). This aggregates one or
+Each run writes <name>_results.json (see runner.write_results). This aggregates one or
 more of them into a single table for eyeballing or pasting into the benchmark
 doc. Stdlib-only so it runs anywhere, no torch/ray needed.
 
@@ -21,7 +21,7 @@ import os
 import sys
 from typing import Any, Dict, List
 
-# Default locations core/sinks.py writes to.
+# Default locations runner.write_results writes to.
 _DEFAULT_GLOBS = [
     "/mnt/cluster_storage/*_results.json",
     "/tmp/train_benchmark/*_results.json",

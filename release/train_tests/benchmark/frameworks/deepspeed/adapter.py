@@ -20,6 +20,7 @@ import torch
 from core.experiment_config import ExperimentConfig
 from core.metrics import (
     FlopsSpec,
+    GpuTrainMetricsCollector,
     TrainMetricsCollector,
     flops_per_token,
     get_gpu_peak_bandwidth_gbps,
@@ -123,11 +124,14 @@ class DeepSpeedAdapter(FrameworkAdapter):
     def _build_ds_config(self) -> Dict[str, Any]:
         parallelism = self.cfg.model.parallelism or {}
         zero_stage = parallelism.get("zero_stage", 3)
-        training = self.cfg.training
 
         ds_config: Dict[str, Any] = {
-            "train_micro_batch_size_per_gpu": self.cfg.data.batch_size,
-            "gradient_accumulation_steps": training.gradient_accumulation_steps,
+            "train_micro_batch_size_per_gpu": self.cfg.data.micro_batch_size,
+            # DeepSpeed ZeRO is pure data-parallel, so data_parallel_size =
+            # world_size; grad-accum is derived from the target global batch.
+            "gradient_accumulation_steps": self.cfg.grad_accum_steps(
+                data_parallel_size=self.ctx.world_size
+            ),
             "zero_optimization": {
                 "stage": zero_stage,
                 "overlap_comm": True,
@@ -217,7 +221,7 @@ class DeepSpeedAdapter(FrameworkAdapter):
         )
 
     def _maybe_checkpoint(self, engine, step: int) -> None:
-        interval = self.cfg.checkpoint.interval
+        interval = self.cfg.checkpoint.every_n_steps
         if interval <= 0 or step % interval != 0:
             return
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -225,6 +229,23 @@ class DeepSpeedAdapter(FrameworkAdapter):
             os.makedirs(ckpt_dir, exist_ok=True)
             engine.save_checkpoint(ckpt_dir)
             self.ctx.report({"step": step}, checkpoint_dir=tmp_dir)
+
+    def _resolve_num_steps(self, dataloader) -> int:
+        """num_steps directly, else derive from num_epochs x steps-per-epoch.
+
+        Epoch mode needs a finite (map-style) dataset; the synthetic/streaming
+        loaders are infinite, so num_steps must be set for those.
+        """
+        if self.cfg.training.num_steps is not None:
+            return self.cfg.training.num_steps
+        try:
+            steps_per_epoch = len(dataloader)
+        except TypeError:
+            raise ValueError(
+                "num_epochs needs a finite dataset; set training.num_steps for "
+                "synthetic/streaming data."
+            )
+        return self.cfg.training.num_epochs * steps_per_epoch
 
     def run(self) -> None:
         torch.manual_seed(self.cfg.training.seed)
@@ -239,34 +260,39 @@ class DeepSpeedAdapter(FrameworkAdapter):
                 torch.cuda.get_device_name(device), self.cfg.model.precision
             )
 
-        # Logical CUDA index of this worker's device — 0 when CUDA_VISIBLE_DEVICES
-        # restricts the process to one GPU (Ray/torchrun); the monitor maps it
-        # back to the physical NVML index via CVD.
-        logical_gpu_index = getattr(device, "index", None) or 0
+        if torch.cuda.is_available():
+            # Logical CUDA index — 0 when CUDA_VISIBLE_DEVICES restricts the
+            # process to one GPU (Ray/torchrun); the NVML sampler maps it back to
+            # the physical index via CVD.
+            collector = GpuTrainMetricsCollector(
+                world_size=self.ctx.world_size,
+                warmup_steps=self.cfg.training.warmup_steps,
+                flops_per_token=self.flops_per_token(),
+                peak_flops_per_gpu=peak_flops,
+                device=device,
+                gpu_index=getattr(device, "index", None) or 0,
+            )
+        else:
+            collector = TrainMetricsCollector(
+                world_size=self.ctx.world_size,
+                warmup_steps=self.cfg.training.warmup_steps,
+                flops_per_token=self.flops_per_token(),
+                peak_flops_per_gpu=peak_flops,
+            )
 
-        collector = TrainMetricsCollector(
-            world_size=self.ctx.world_size,
-            warmup_steps=self.cfg.training.warmup_steps,
-            flops_per_token=self.flops_per_token(),
-            peak_flops_per_gpu=peak_flops,
-            gpu_index=logical_gpu_index,
-            monitor_gpu=torch.cuda.is_available(),
-            device=device if torch.cuda.is_available() else None,
-        )
-
+        batch_size = self.cfg.data.micro_batch_size
         dataloader = build_text_dataloader(
             dataset_name=self.cfg.data.dataset,
             dataset_path=self.cfg.data.dataset_path,
             tokenizer=self._tokenizer,
             seq_len=self.cfg.data.seq_len,
-            batch_size=self.cfg.data.batch_size,
+            batch_size=batch_size,
             seed=self.cfg.training.seed,
             limit_rows=self.cfg.data.limit_training_rows,
         )
 
-        num_steps = self.cfg.training.num_steps
+        num_steps = self._resolve_num_steps(dataloader)
         seq_len = self.cfg.data.seq_len
-        batch_size = self.cfg.data.batch_size
         engine.train()
 
         data_iter = iter(dataloader)
@@ -315,8 +341,9 @@ class DeepSpeedAdapter(FrameworkAdapter):
 
         # Self-describing config echo so results JSON renders into a table
         # (collect.py) and archives without needing the source YAML.
+        grad_accum = self.cfg.grad_accum_steps(data_parallel_size=self.ctx.world_size)
         metrics["config/model"] = self.cfg.model.name
-        metrics["config/adapter"] = self.cfg.model.adapter
+        metrics["config/adapter"] = self.cfg.adapter
         metrics["config/precision"] = self.cfg.model.precision
         metrics["config/zero_stage"] = (self.cfg.model.parallelism or {}).get(
             "zero_stage"
@@ -324,13 +351,9 @@ class DeepSpeedAdapter(FrameworkAdapter):
         metrics["config/gradient_checkpointing"] = self.cfg.model.gradient_checkpointing
         metrics["config/seq_len"] = seq_len
         metrics["config/micro_batch_size"] = batch_size
-        metrics[
-            "config/grad_accum_steps"
-        ] = self.cfg.training.gradient_accumulation_steps
+        metrics["config/grad_accum_steps"] = grad_accum
         metrics["config/global_batch_size"] = (
-            batch_size
-            * self.ctx.world_size
-            * self.cfg.training.gradient_accumulation_steps
+            batch_size * self.ctx.world_size * grad_accum
         )
         if torch.cuda.is_available():
             gpu_name = torch.cuda.get_device_name(device)

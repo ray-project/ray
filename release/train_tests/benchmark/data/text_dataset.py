@@ -14,7 +14,6 @@ Every batch is a dict with ``input_ids`` and ``attention_mask`` of shape
 """
 
 import logging
-import os
 from typing import Any, Dict, Iterator, Optional
 
 import torch
@@ -42,22 +41,6 @@ _HF_DATASETS: Dict[str, Dict[str, Any]] = {
     },
     "ag_news": {"path": "fancyzhx/ag_news", "split": "train", "streaming": False},
 }
-
-
-def shared_hf_cache() -> Optional[str]:
-    """Shared, persistent HF cache dir on cluster storage, if available.
-
-    Pointing every worker's HF_HOME here means the model + dataset are fetched
-    once into shared storage and reused — instead of N workers each making cold,
-    unauthenticated Hub requests concurrently. Returns None off-cluster (local
-    runs fall back to the default ~/.cache/huggingface).
-    """
-    base = "/mnt/cluster_storage"
-    if os.path.isdir(base):
-        cache = os.path.join(base, "hf_cache")
-        os.makedirs(cache, exist_ok=True)
-        return cache
-    return None
 
 
 class SyntheticTokenDataset(IterableDataset):
@@ -160,32 +143,6 @@ def _build_hf_loader(
     return DataLoader(
         TokenizedTextDataset(encodings), batch_size=batch_size, shuffle=shuffle
     )
-
-
-def prepare_text_dataset(dataset_name: str) -> None:
-    """Download a registered dataset into the HF cache (no tokenization).
-
-    Run once on the driver before launching workers so the distributed run hits
-    a warm cache. No-op for the synthetic dataset (no network needed).
-    """
-    if dataset_name == "synthetic":
-        return
-    from datasets import DownloadConfig, load_dataset
-
-    if dataset_name not in _HF_DATASETS:
-        raise ValueError(f"Unknown dataset '{dataset_name}'.")
-    spec = _HF_DATASETS[dataset_name]
-    load_kwargs = {
-        k: v for k, v in spec.items() if k in ("path", "name", "split", "streaming")
-    }
-    load_kwargs["download_config"] = DownloadConfig(disable_tqdm=True)
-    logger.info(f"Prefetching dataset '{dataset_name}' ({spec['path']}) into HF cache.")
-    dataset = load_dataset(**load_kwargs)
-    # For streaming datasets there's nothing to materialize; touch one row so any
-    # split/metadata resolution is cached.
-    if spec.get("streaming"):
-        next(iter(dataset.take(1)))
-    logger.info(f"Dataset '{dataset_name}' is cached.")
 
 
 def build_text_dataloader(
