@@ -171,19 +171,44 @@ class MemoryMonitorUtils {
   static StatusSetOr<int64_t, StatusT::NotFound> GetProcessUsedMemoryBytes(
       const ProcessesMemorySnapshot &snapshot, pid_t pid);
 
+ public:
+  /**
+   * @brief RAM and swap usage read from a cgroup, kept separate so the caller
+   *        can compose them with host-level fallbacks per dimension.
+   *
+   * For cgroup v2, used/total are RAM-only and swap_* hold the swap counters.
+   * For cgroup v1 memsw (which reports RAM+swap as one inseparable number),
+   * used/total already include swap and combined_ram_swap is true.
+   */
+  struct CgroupMemoryBytes {
+    // RAM used/total (or RAM+swap combined when combined_ram_swap is true).
+    int64_t used_bytes = MemoryMonitorInterface::kNull;
+    int64_t total_bytes = MemoryMonitorInterface::kNull;
+    // cgroup v2 swap counters, valid only when has_swap is true.
+    int64_t swap_used_bytes = 0;
+    int64_t swap_total_bytes = 0;
+    // True when the cgroup provided a v2 swap budget (bounded, host-resolved
+    // "unlimited", or an explicit 0). When false the caller falls back to host
+    // swap.
+    bool has_swap = false;
+    // True for cgroup v1 memsw: used/total already fold in swap, so the caller
+    // must not add swap on top (kept on the legacy combined path).
+    bool combined_ram_swap = false;
+  };
+
  private:
   /**
    * @brief Gets memory information from the given cgroup.
    *
    * @param root_cgroup_path The path to the root cgroup
    *                         to read the memory usage from.
-   * @param include_swap When true, add swap memory usage to total/used iff
+   * @param include_swap When true, read swap counters iff
    *        `count_swap_in_memory_monitor` is on. Set to false for a RAM-only
    *        view.
    * @param proc_dir The /proc directory, used for the host-swap fallback.
-   * @return The used and total memory in bytes from the cgroup.
+   * @return RAM (and, for v2, swap) usage from the cgroup. See CgroupMemoryBytes.
    */
-  static std::tuple<int64_t, int64_t> GetCGroupMemoryBytes(
+  static CgroupMemoryBytes GetCGroupMemoryBytes(
       const std::string root_cgroup_path,
       bool include_swap = false,
       const std::string &proc_dir = kProcDirectory);

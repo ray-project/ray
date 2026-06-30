@@ -93,19 +93,58 @@ const MemoryUsageSnapshot MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
   // the caller's intent (false forces a RAM-only view).
   const bool count_swap =
       include_swap && RayConfig::instance().count_swap_in_memory_monitor();
-  auto [cgroup_used_bytes, cgroup_total_bytes] =
-      GetCGroupMemoryBytes(root_cgroup_path, count_swap, proc_dir);
-  auto [system_used_bytes, system_total_bytes] =
-      GetLinuxMemoryBytes(proc_dir, count_swap);
-  /// cgroup memory limit can be higher than system memory limit when it is
-  /// not used. We take its value only when it is less than or equal to system memory
-  /// limit. TODO(clarng): find a better way to detect cgroup memory limit is used.
-  system_total_bytes = NullableMin(system_total_bytes, cgroup_total_bytes);
-  /// This assumes cgroup total bytes will look different than system (meminfo)
-  if (system_total_bytes == cgroup_total_bytes) {
-    system_used_bytes = cgroup_used_bytes;
+  CgroupMemoryBytes cgroup = GetCGroupMemoryBytes(root_cgroup_path, count_swap, proc_dir);
+
+  if (cgroup.combined_ram_swap) {
+    // cgroup v1 memsw reports RAM+swap as one inseparable number. Compare it
+    // against the host RAM+swap total (the legacy combined path) and take the
+    // cgroup view when its limit is the binding one.
+    auto [system_used_bytes, system_total_bytes] =
+        GetLinuxMemoryBytes(proc_dir, count_swap);
+    system_total_bytes = NullableMin(system_total_bytes, cgroup.total_bytes);
+    if (system_total_bytes == cgroup.total_bytes) {
+      system_used_bytes = cgroup.used_bytes;
+    }
+    return MemoryUsageSnapshot{system_used_bytes, system_total_bytes};
   }
-  return MemoryUsageSnapshot{system_used_bytes, system_total_bytes};
+
+  // cgroup v2 (and v1 RAM-only): compose the RAM and swap dimensions
+  // separately. The cgroup memory limit can be higher than host memory when it
+  // is not in use, so take the cgroup RAM limit only when it is the binding
+  // one. Composing swap separately lets a cgroup with an unlimited memory.max
+  // but a bounded memory.swap.max still contribute its swap budget (host RAM +
+  // cgroup swap), matching the scheduler's get_cgroup_aware_swap_memory rather
+  // than folding in host swap.
+  auto [host_ram_used_bytes, host_ram_total_bytes] =
+      GetLinuxMemoryBytes(proc_dir, /*include_swap=*/false);
+  int64_t ram_total_bytes = NullableMin(host_ram_total_bytes, cgroup.total_bytes);
+  int64_t ram_used_bytes = (cgroup.total_bytes != MemoryMonitorInterface::kNull &&
+                            ram_total_bytes == cgroup.total_bytes)
+                               ? cgroup.used_bytes
+                               : host_ram_used_bytes;
+
+  int64_t swap_total_bytes = 0;
+  int64_t swap_used_bytes = 0;
+  if (count_swap) {
+    if (cgroup.has_swap) {
+      // cgroup-scoped swap (including the host-resolved "unlimited" cap).
+      swap_total_bytes = cgroup.swap_total_bytes;
+      swap_used_bytes = cgroup.swap_used_bytes;
+    } else {
+      // No cgroup swap accounting — fall back to host swap.
+      auto [host_swap_total, host_swap_used] = GetHostSwapBytes(proc_dir);
+      swap_total_bytes = host_swap_total;
+      swap_used_bytes = host_swap_used;
+    }
+  }
+
+  int64_t total_bytes = (ram_total_bytes == MemoryMonitorInterface::kNull)
+                            ? MemoryMonitorInterface::kNull
+                            : ram_total_bytes + swap_total_bytes;
+  int64_t used_bytes = (ram_used_bytes == MemoryMonitorInterface::kNull)
+                           ? MemoryMonitorInterface::kNull
+                           : ram_used_bytes + swap_used_bytes;
+  return MemoryUsageSnapshot{used_bytes, total_bytes};
 }
 
 const StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound>
@@ -294,7 +333,7 @@ int64_t MemoryMonitorUtils::GetCGroupMemoryUsedBytes(const char *stat_path,
   return current_usage_bytes - inactive_file_bytes - active_file_bytes;
 }
 
-std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetCGroupMemoryBytes(
+MemoryMonitorUtils::CgroupMemoryBytes MemoryMonitorUtils::GetCGroupMemoryBytes(
     const std::string root_cgroup_path, bool include_swap, const std::string &proc_dir) {
   std::string cgroupV1MemoryMaxPath = root_cgroup_path + "/" + kCgroupsV1MemoryMaxPath;
   std::string cgroupV1MemoryUsagePath =
@@ -360,36 +399,6 @@ std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetCGroupMemoryBytes(
                                           kCgroupsV1MemoryStatActiveFileKey);
   }
 
-  // cgroup v2: add swap-only counters on top of memory.* values. swap.max can
-  // be the literal string "max" (unlimited) or an int64-overflowing number —
-  // both mean the cgroup imposes no swap cap, so the practical limit is the
-  // host's swap (matches the Python helper in ray._common.utils).
-  if (count_swap && total_bytes != MemoryMonitorInterface::kNull && total_bytes != 0 &&
-      std::filesystem::exists(cgroupV2MemorySwapMaxPath)) {
-    std::ifstream swap_max_ifs(cgroupV2MemorySwapMaxPath,
-                               std::ios::in | std::ios::binary);
-    std::string swap_max_str;
-    swap_max_ifs >> swap_max_str;
-    CgroupSwapMax swap_max = ParseCgroupSwapMax(swap_max_str);
-
-    // Bounded numeric cap: add the cgroup's own swap.max. Unlimited ("max" or
-    // an int64-overflowing sentinel): the cgroup imposes no cap, so the
-    // practical limit is the host's swap.
-    int64_t swap_max_add = swap_max.bytes;
-    if (swap_max.unlimited) {
-      auto [host_swap_total, _] = GetHostSwapBytes(proc_dir);
-      swap_max_add = host_swap_total;
-    }
-    if (swap_max_add > 0) {
-      total_bytes += swap_max_add;
-      // Per-cgroup swap usage from memory.swap.current — host SwapTotal-SwapFree
-      // would pick up other workloads' swap and inflate Ray's view.
-      if (used_bytes != MemoryMonitorInterface::kNull) {
-        used_bytes += ReadCgroupSwapCurrentBytes(cgroupV2MemorySwapCurrentPath);
-      }
-    }
-  }
-
   /// This can be zero if the memory limit is not set for cgroup v2.
   if (total_bytes == 0) {
     total_bytes = MemoryMonitorInterface::kNull;
@@ -414,7 +423,45 @@ std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetCGroupMemoryBytes(
     }
   }
 
-  return {used_bytes, total_bytes};
+  CgroupMemoryBytes result;
+  result.used_bytes = used_bytes;
+  result.total_bytes = total_bytes;
+  // cgroup v1 memsw folds RAM+swap into the counters above; the caller must not
+  // add swap on top (the legacy combined path). cgroup v2 keeps swap separate.
+  result.combined_ram_swap =
+      v1_memsw_usable && !std::filesystem::exists(cgroupV2MemoryMaxPath);
+
+  // cgroup v2 swap-only counters, kept separate from RAM so the caller can
+  // compose host RAM with cgroup swap even when memory.max is unlimited (the
+  // RAM total is kNull). swap.max can be the literal "max" / an int64-
+  // overflowing sentinel (unlimited → host swap is the practical cap, matching
+  // the Python helper) or an explicit 0 (swap disabled — has_swap stays true so
+  // the caller does not fall back to host swap).
+  if (count_swap && !result.combined_ram_swap &&
+      std::filesystem::exists(cgroupV2MemorySwapMaxPath)) {
+    std::ifstream swap_max_ifs(cgroupV2MemorySwapMaxPath,
+                               std::ios::in | std::ios::binary);
+    std::string swap_max_str;
+    swap_max_ifs >> swap_max_str;
+    CgroupSwapMax swap_max = ParseCgroupSwapMax(swap_max_str);
+
+    int64_t swap_max_bytes = swap_max.bytes;
+    if (swap_max.unlimited) {
+      auto [host_swap_total, _] = GetHostSwapBytes(proc_dir);
+      swap_max_bytes = host_swap_total;
+    }
+    result.has_swap = true;
+    result.swap_total_bytes = swap_max_bytes;
+    // Per-cgroup swap usage from memory.swap.current — host SwapTotal-SwapFree
+    // would pick up other workloads' swap and inflate Ray's view. Skip the read
+    // when there is no budget (swap.max == 0) so a stale swap.current can't
+    // surface as used > total.
+    if (swap_max_bytes > 0) {
+      result.swap_used_bytes = ReadCgroupSwapCurrentBytes(cgroupV2MemorySwapCurrentPath);
+    }
+  }
+
+  return result;
 }
 
 std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetHostSwapBytes(
