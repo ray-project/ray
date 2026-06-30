@@ -527,9 +527,13 @@ class GenericProxy(ABC):
                         "1006" if proxy_request.request_type == "websocket" else "499"
                     )
                     status = ResponseStatus(code=disconnect_code, is_error=True)
-                self._record_request_completion_metrics(
-                    proxy_request, response_handler_info, status, start_time
-                )
+                try:
+                    self._record_request_completion_metrics(
+                        proxy_request, response_handler_info, status, start_time
+                    )
+                except Exception:
+                    # A metrics error must not supplant the in-flight GeneratorExit.
+                    logger.exception("Failed to record metrics on client disconnect.")
             raise
         finally:
             # If anything during the request failed, we still want to ensure the ongoing
@@ -1452,13 +1456,8 @@ class HTTPProxy(GenericProxy):
                         "websocket.close",
                         "websocket.disconnect",
                     ]:
-                        status_code = str(asgi_message["code"])
-                        status = ResponseStatus(
-                            code=status_code,
-                            # All status codes are considered errors aside from:
-                            # 1000 (CLOSE_NORMAL), 1001 (CLOSE_GOING_AWAY).
-                            is_error=status_code not in ["1000", "1001"],
-                        )
+                        status = _terminal_status_from_asgi_message(asgi_message)
+                        status_code = status.code
                         response_generator.stop_checking_for_disconnect()
 
                     yield asgi_message
