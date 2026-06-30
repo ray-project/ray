@@ -176,6 +176,35 @@ class TestListNamespace:
         )
         assert result_table.select(["flattened"]).combine_chunks().equals(expected)
 
+    def test_list_union(self, ray_start_regular_shared, dataset_format):
+        """Test list.union() returns deduplicated elements in first-seen order."""
+        data = [{"a": [3, 1, 2], "b": [2, 3, 4]}, {"a": [1, 2], "b": [5]}]
+        ds = _create_dataset(data, dataset_format)
+        result = ds.with_column("u", col("a").list.union(col("b"))).to_pandas()
+        assert [list(v) for v in result["u"]] == [[3, 1, 2, 4], [1, 2, 5]]
+
+    def test_list_intersection(self, ray_start_regular_shared, dataset_format):
+        """Test list.intersection() returns elements present in both lists."""
+        data = [{"a": [1, 2, 3], "b": [2, 3, 4]}, {"a": [1, 2], "b": [5]}]
+        ds = _create_dataset(data, dataset_format)
+        result = ds.with_column("i", col("a").list.intersection(col("b"))).to_pandas()
+        assert [list(v) for v in result["i"]] == [[2, 3], []]
+
+    def test_list_difference(self, ray_start_regular_shared, dataset_format):
+        """Test list.difference() returns elements in the first list only."""
+        data = [{"a": [1, 2, 3], "b": [2, 3, 4]}, {"a": [1, 2], "b": [5]}]
+        ds = _create_dataset(data, dataset_format)
+        result = ds.with_column("d", col("a").list.difference(col("b"))).to_pandas()
+        assert [list(v) for v in result["d"]] == [[1], [1, 2]]
+
+    def test_list_set_op_null_row(self, ray_start_regular_shared, dataset_format):
+        """A null input row produces a null output row."""
+        data = [{"a": [1, 2], "b": [2, 3]}, {"a": None, "b": [4]}]
+        ds = _create_dataset(data, dataset_format)
+        result = ds.with_column("u", col("a").list.union(col("b"))).to_pandas()
+        assert list(result["u"][0]) == [1, 2, 3]
+        assert result["u"][1] is None
+
 
 if __name__ == "__main__":
     import sys
