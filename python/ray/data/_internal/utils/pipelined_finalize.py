@@ -84,7 +84,7 @@ def _record_stream(batch: Any, stream: "torch.cuda.Stream") -> None:
     ``move_tensors_to_device`` returns a tensor, a (list/tuple of) tensor(s), or a
     dict of tensors, so we recurse to cover all of them.
     """
-    if isinstance(batch, "torch.Tensor"):
+    if isinstance(batch, torch.Tensor):
         batch.record_stream(stream)
     elif isinstance(batch, dict):
         for value in batch.values():
