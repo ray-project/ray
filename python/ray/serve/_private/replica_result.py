@@ -114,15 +114,26 @@ class ActorReplicaResult(ReplicaResult):
 
             if self._with_rejection:
                 self._rejection_response_ref = self._obj_ref_gen._get_next_ref_n(1)
-                self._rejection_response_ref._on_completed(lambda: self._obj_ref_gen._consume_next_ref_n(1))
+                self._rejection_response_ref._on_completed(
+                    lambda: self._obj_ref_gen._consume_next_ref_n(1)
+                )
         elif self._object_ref_gen is not None:
             if self._with_rejection:
-                self._rejection_response_ref, self._obj_ref = self._obj_ref_gen._get_next_ref_n(2)
-                self._rejection_response_ref._on_completed(lambda: self._obj_ref_gen._consume_next_ref_n(1))
-                self._obj_ref._on_completed(lambda: self._obj_ref_gen._consume_next_ref_n(1))
+                (
+                    self._rejection_response_ref,
+                    self._obj_ref,
+                ) = self._obj_ref_gen._get_next_ref_n(2)
+                self._rejection_response_ref._on_completed(
+                    lambda: self._obj_ref_gen._consume_next_ref_n(1)
+                )
+                self._obj_ref._on_completed(
+                    lambda: self._obj_ref_gen._consume_next_ref_n(1)
+                )
             else:
                 self._obj_ref = self._obj_ref_gen._get_next_ref_n(1)
-                self._obj_ref._on_completed(lambda: self._obj_ref_gen._consume_next_ref_n(1))
+                self._obj_ref._on_completed(
+                    lambda: self._obj_ref_gen._consume_next_ref_n(1)
+                )
 
         request_context = ray.serve.context._get_serve_request_context()
         if request_context.cancel_on_parent_request_cancel:
