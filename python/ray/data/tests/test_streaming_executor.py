@@ -17,6 +17,7 @@ import pytest
 
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
+from ray._private.worker import _wait_generators_bulk
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -47,6 +48,7 @@ from ray.data._internal.execution.streaming_executor import (
     _debug_dump_topology,
 )
 from ray.data._internal.execution.streaming_executor_state import (
+    RAY_DATA_WAIT_GENERATORS_BULK_ENV_VAR,
     OpBufferQueue,
     OpState,
     OutputBackpressureGuard,
@@ -235,6 +237,119 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
     process_completed_tasks(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     o2.mark_execution_finished.assert_called_once()
+
+
+def test_process_completed_tasks_disable_wait_generators_bulk(
+    monkeypatch, ray_start_regular_shared
+):
+    streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB])
+    outputs = []
+    data_op_task = DataOpTask(
+        0,
+        streaming_gen,
+        output_ready_callback=outputs.append,
+    )
+
+    op = MagicMock()
+    op.name = "TestOp"
+    op.input_dependencies = []
+    op.num_output_splits.return_value = 1
+    op.get_active_tasks.return_value = [data_op_task]
+    op.has_next.return_value = False
+    state = OpState(op, [])
+
+    monkeypatch.setenv(RAY_DATA_WAIT_GENERATORS_BULK_ENV_VAR, "0")
+    ready, _ = ray.wait([streaming_gen], timeout=5, fetch_local=False)
+    assert ready
+
+    with patch(
+        "ray.data._internal.execution.streaming_executor_state._wait_generators_bulk",
+        side_effect=AssertionError("_wait_generators_bulk should be disabled"),
+    ):
+        process_completed_tasks({op: state}, [], 0, _make_disabled_guard())
+
+    assert len(outputs) == 1
+    assert outputs[0].size_bytes() == pytest.approx(128 * MiB)
+
+
+def test_process_completed_tasks_bulk_waits_only_allowed_data_tasks(
+    monkeypatch,
+    ray_start_regular_shared,
+):
+    monkeypatch.setenv(RAY_DATA_WAIT_GENERATORS_BULK_ENV_VAR, "1")
+
+    allowed_task = DataOpTask(0, object())
+    blocked_task = DataOpTask(0, object())
+    pending_task = DataOpTask(0, object())
+    pending_task._pending_block_ref = ray.put("pending")
+    metadata_ref = object()
+    metadata_callback = MagicMock()
+    metadata_task = MetadataOpTask(1, metadata_ref, metadata_callback)
+
+    def make_op(name, tasks):
+        op = MagicMock()
+        op.name = name
+        op.input_dependencies = []
+        op.num_output_splits.return_value = 1
+        op.get_active_tasks.return_value = tasks
+        op.has_next.return_value = False
+        return op
+
+    allowed_op = make_op("AllowedOp", [allowed_task, metadata_task])
+    blocked_op = make_op("BlockedOp", [blocked_task])
+    pending_op = make_op("PendingOp", [pending_task])
+
+    topology = {
+        allowed_op: OpState(allowed_op, []),
+        blocked_op: OpState(blocked_op, []),
+        pending_op: OpState(pending_op, []),
+    }
+
+    class BlockedOutputPolicy:
+        @property
+        def name(self):
+            return "BlockedOutput"
+
+        def can_add_input(self, op):
+            return True
+
+        def max_task_output_bytes_to_read(self, op):
+            return 0 if op is blocked_op or op is pending_op else None
+
+    waited_refs = []
+    bulk_wait_inputs = []
+
+    def fake_ray_wait(refs, **kwargs):
+        waited_refs.extend(refs)
+        return refs, []
+
+    def fake_wait_generators_bulk(refs, **kwargs):
+        bulk_wait_inputs.extend(refs)
+        return []
+
+    with patch(
+        "ray.data._internal.execution.streaming_executor_state.ray.wait",
+        side_effect=fake_ray_wait,
+    ), patch(
+        "ray.data._internal.execution.streaming_executor_state._wait_generators_bulk",
+        side_effect=fake_wait_generators_bulk,
+    ):
+        process_completed_tasks(
+            topology,
+            [BlockedOutputPolicy()],
+            max_errored_blocks=0,
+            output_backpressure_guard=_make_disabled_guard(),
+        )
+
+    assert allowed_task.get_waitable() in waited_refs
+    assert metadata_ref in waited_refs
+    assert blocked_task.get_waitable() in waited_refs
+    assert pending_task.get_waitable() in waited_refs
+
+    assert bulk_wait_inputs == [
+        (allowed_task.get_waitable(), allowed_task.get_next_ref_fetch_local_pattern())
+    ]
+    metadata_callback.assert_called_once()
 
 
 def test_update_operator_states_drains_upstream(ray_start_regular_shared):
@@ -1392,6 +1507,31 @@ def ensure_block_metadata_stored_in_plasma(monkeypatch):
 
 
 class TestDataOpTask:
+    def _wait_and_process_data(
+        self,
+        data_op_task: DataOpTask,
+        timeout: float = 5,
+        max_bytes_to_read: Optional[int] = None,
+    ) -> int:
+        ready = _wait_generators_bulk(
+            [
+                (
+                    data_op_task.get_waitable(),
+                    data_op_task.get_next_ref_fetch_local_pattern(),
+                )
+            ],
+            timeout=timeout,
+        )
+        if not ready:
+            return data_op_task.on_data_ready(max_bytes_to_read)
+
+        ready_gen, refs = ready[0]
+        assert ready_gen is data_op_task.get_waitable()
+        return data_op_task.on_data_ready(
+            max_bytes_to_read,
+            refs,
+        )
+
     def test_on_data_ready_single_output(self, ray_start_regular_shared):
         streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB])
 
@@ -1402,8 +1542,7 @@ class TestDataOpTask:
 
         bytes_read = 0
         while not data_op_task.has_finished:
-            ray.wait([streaming_gen], fetch_local=False)
-            nbytes_read = data_op_task.on_data_ready(None)
+            nbytes_read = self._wait_and_process_data(data_op_task)
             bytes_read += nbytes_read
 
         assert bytes_read == pytest.approx(128 * MiB)
@@ -1418,11 +1557,56 @@ class TestDataOpTask:
 
         bytes_read = 0
         while not data_op_task.has_finished:
-            ray.wait([streaming_gen], fetch_local=False)
-            nbytes_read = data_op_task.on_data_ready(None)
+            nbytes_read = self._wait_and_process_data(data_op_task)
             bytes_read += nbytes_read
 
         assert bytes_read == pytest.approx(256 * MiB)
+
+    def test_on_data_ready_with_prefetched_refs(self, ray_start_regular_shared):
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB])
+        outputs = []
+
+        data_op_task = DataOpTask(
+            0, streaming_gen, output_ready_callback=outputs.append
+        )
+
+        bytes_read = 0
+        while not data_op_task.has_finished:
+            ready = _wait_generators_bulk(
+                [(streaming_gen, DataOpTask.get_next_ref_fetch_local_pattern())],
+                timeout=5,
+            )
+            assert len(ready) == 1
+            ready_gen, refs = ready[0]
+            assert ready_gen is streaming_gen
+            bytes_read += data_op_task.on_data_ready(
+                None,
+                refs,
+            )
+
+        assert len(outputs) == 1
+        assert outputs[0].size_bytes() == pytest.approx(128 * MiB)
+        assert bytes_read == pytest.approx(128 * MiB)
+
+    def test_on_data_ready_consumes_from_generator(self, ray_start_regular_shared):
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB])
+        outputs = []
+
+        data_op_task = DataOpTask(
+            0,
+            streaming_gen,
+            output_ready_callback=outputs.append,
+        )
+
+        bytes_read = 0
+        while not data_op_task.has_finished:
+            ready, _ = ray.wait([streaming_gen], timeout=5, fetch_local=False)
+            assert ready
+            bytes_read += data_op_task.on_data_ready(None)
+
+        assert len(outputs) == 1
+        assert outputs[0].size_bytes() == pytest.approx(128 * MiB)
+        assert bytes_read == pytest.approx(128 * MiB)
 
     def test_on_data_ready_exception(self, ray_start_regular_shared):
         streaming_gen = create_stub_streaming_gen(
@@ -1443,8 +1627,35 @@ class TestDataOpTask:
 
         with pytest.raises(AssertionError, match="Block generation failed"):
             while not data_op_task.has_finished:
-                ray.wait([streaming_gen], fetch_local=False)
-                data_op_task.on_data_ready(None)
+                self._wait_and_process_data(data_op_task)
+
+    def test_on_data_ready_prefetched_refs_exception(self, ray_start_regular_shared):
+        streaming_gen = create_stub_streaming_gen(
+            block_nbytes=[128 * MiB],
+            raise_exception=AssertionError("Block generation failed"),
+        )
+
+        def verify_exception(exc, task_exec_stats, task_exec_driver_stats):
+            assert isinstance(exc, AssertionError)
+            assert task_exec_stats is None
+            assert task_exec_driver_stats is None
+
+        data_op_task = DataOpTask(
+            0,
+            streaming_gen,
+            task_done_callback=verify_exception,
+        )
+
+        with pytest.raises(AssertionError, match="Block generation failed"):
+            ready = _wait_generators_bulk(
+                [(streaming_gen, DataOpTask.get_next_ref_fetch_local_pattern())],
+                timeout=5,
+            )
+            assert len(ready) == 1
+            data_op_task.on_data_ready(
+                None,
+                ready[0][1],
+            )
 
     def test_operator_name_parameter(self, ray_start_regular_shared):
         streaming_gen = create_stub_streaming_gen(block_nbytes=[1])
@@ -1483,7 +1694,13 @@ class TestDataOpTask:
         # configure it so that it preempts the worker node in the specified callback.
         streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB])
 
+        removed_worker_node = False
+
         def remove_and_add_back_worker_node(_):
+            nonlocal removed_worker_node
+            if removed_worker_node:
+                return
+            removed_worker_node = True
             cluster.remove_node(worker_node)
 
             new_worker_node = cluster.add_node(num_cpus=1)  # noqa: F841
@@ -1496,8 +1713,7 @@ class TestDataOpTask:
         # Run the task to completion.
         bytes_read = 0
         while not data_op_task.has_finished:
-            ray.wait([streaming_gen], fetch_local=False)
-            bytes_read += data_op_task.on_data_ready(None)
+            bytes_read += self._wait_and_process_data(data_op_task)
 
         # Ensure that we read the expected amount of data. Since the streaming generator
         # yields a single 128 MiB block, we should read 128 MiB.
@@ -1522,20 +1738,24 @@ class TestDataOpTask:
         streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB])
         data_op_task = DataOpTask(0, streaming_gen)
 
-        # Wait for the block to be ready, then remove the worker node.
-        ray.wait([streaming_gen], fetch_local=False)
+        # Wait for the block and metadata to be ready, then remove the worker node.
+        ready = _wait_generators_bulk(
+            [(streaming_gen, DataOpTask.get_next_ref_fetch_local_pattern())],
+            timeout=5,
+        )
+        assert len(ready) == 1
         cluster.remove_node(worker_node)
 
-        # The block shouldn't be available anymore, so we shouldn't read any data.
-        bytes_read = data_op_task.on_data_ready(None)
-        assert bytes_read == 0
+        bytes_read = data_op_task.on_data_ready(
+            None,
+            ready[0][1],
+        )
 
         # Re-add the worker node, and run the task to completion.
         new_worker_node = cluster.add_node(num_cpus=1)  # noqa: F841
         cluster.wait_for_nodes()
         while not data_op_task.has_finished:
-            ray.wait([streaming_gen], fetch_local=False)
-            bytes_read += data_op_task.on_data_ready(None)
+            bytes_read += self._wait_and_process_data(data_op_task)
 
         # We should now be able to read the 128 MiB block.
         assert bytes_read == pytest.approx(128 * MiB)
@@ -1569,9 +1789,6 @@ class TestDataOpTask:
         clock = 0.0
         mock_perf_counter.return_value = clock
 
-        # Wait for data to become available
-        ray.wait([streaming_gen], fetch_local=False)
-
         # 1st backpressure period: 2.5s
         clock = 1.0
         mock_perf_counter.return_value = clock
@@ -1582,7 +1799,7 @@ class TestDataOpTask:
 
         # Resume: ends 1st BP period (2.5s), reads block 1 (limited to 1 byte
         # so it reads exactly one block and stops)
-        data_op_task.on_data_ready(None)
+        self._wait_and_process_data(data_op_task)
         assert not data_op_task.has_finished
 
         # 2nd backpressure period: 1.5s
@@ -1595,8 +1812,7 @@ class TestDataOpTask:
 
         # Drain to completion
         while not data_op_task.has_finished:
-            ray.wait([streaming_gen], fetch_local=False)
-            data_op_task.on_data_ready(None)
+            self._wait_and_process_data(data_op_task)
 
         # Verify stats were captured
         assert captured_stats["exc"] is None

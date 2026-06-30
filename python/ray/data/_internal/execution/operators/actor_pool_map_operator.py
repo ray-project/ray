@@ -668,6 +668,9 @@ class _MapWorker:
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()
 
+    # `_map_task` emits each block and its metadata in a single grouped yield
+    # (`yield block, pickle.dumps(bm)`), so each yield produces 2 objects.
+    @ray.method(_num_objects_per_yield=2)
     def submit(
         self,
         data_context: DataContext,

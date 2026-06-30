@@ -113,6 +113,10 @@ class TaskPoolMapOperator(MapOperator):
         ray_remote_static_args = {
             **(self._ray_remote_args or {}),
             "num_returns": "streaming",
+            # `_map_task` emits each block and its metadata in a single grouped
+            # yield (`yield block, pickle.dumps(bm)`), so each yield produces 2
+            # objects.
+            "_num_objects_per_yield": 2,
             "_labels": {self._OPERATOR_ID_LABEL_KEY: self.id},
         }
 
