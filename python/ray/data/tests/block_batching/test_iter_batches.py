@@ -132,10 +132,10 @@ def test_attribute_blocked_time_overlap_attribution():
     stats = DatasetStats(metadata={}, parent=None)
     batch_iterator = BatchIterator(iter([]), stats=stats)
     timings = BatchStageTimings()
-    timings.production_wait = TimeSpan(start_s=10.0, end_s=20.0)
-    timings.batching = TimeSpan(start_s=20.0, end_s=30.0)
-    timings.format = TimeSpan(start_s=30.0, end_s=40.0)
-    timings.finalize = TimeSpan(start_s=50.0, end_s=60.0)
+    timings.production_wait.append(TimeSpan(start_s=10.0, end_s=20.0))
+    timings.batching.append(TimeSpan(start_s=20.0, end_s=30.0))
+    timings.format.append(TimeSpan(start_s=30.0, end_s=40.0))
+    timings.finalize.append(TimeSpan(start_s=50.0, end_s=60.0))
     batch = Batch(BatchMetadata(batch_idx=0, num_rows=8, stage_timings=timings), None)
 
     batch_iterator._attribute_blocked_time(
@@ -151,11 +151,11 @@ def test_attribute_blocked_time_overlap_attribution():
     assert stats.iter_rows_total == 8
 
 
-def _make_span(start: Optional[float], end: Optional[float]) -> Optional[TimeSpan]:
-    """Create a TimeSpan, or None if the stage didn't execute (either is None)."""
+def _make_span(start: Optional[float], end: Optional[float]) -> List[TimeSpan]:
+    """Create a list with one TimeSpan, or empty list if the stage didn't run."""
     if start is None or end is None:
-        return None
-    return TimeSpan(start_s=start, end_s=end)
+        return []
+    return [TimeSpan(start_s=start, end_s=end)]
 
 
 def _make_batch_with_timings(
@@ -368,53 +368,55 @@ class TestTimeSpan:
         assert t.duration == 0.0
 
 
-class TestMergeFetch:
-    """Tests for BatchStageTimings.accumulate_block_timings() with multiple blocks per batch."""
+class TestAccumulateBlockTimings:
+    """Tests for BatchStageTimings.accumulate_block_timings().
 
-    def test_merge_single_block(self):
-        """Merging a single block preserves its fetch window."""
+    accumulate_block_timings appends each block's spans to the batch's lists
+    (no merging) so that overlap attribution can sum non-overlapping spans
+    without double-counting.
+    """
+
+    def test_single_block(self):
+        """Accumulating a single block appends its span."""
         dst = BatchStageTimings()
         dst.accumulate_block_timings(
             BlockStageTimings(production_wait=TimeSpan(start_s=1.0, end_s=2.0))
         )
-        assert dst.production_wait.start_s == 1.0
-        assert dst.production_wait.end_s == 2.0
+        assert len(dst.production_wait) == 1
+        assert dst.production_wait[0].start_s == 1.0
+        assert dst.production_wait[0].end_s == 2.0
 
-    def test_merge_multiple_blocks_expands_window(self):
-        """Merging multiple blocks produces the union window."""
+    def test_multiple_blocks_kept_separate(self):
+        """Multiple blocks produce a list of separate spans (no merge)."""
         dst = BatchStageTimings()
 
-        # Block 1: fetched [1.0, 2.0]
         dst.accumulate_block_timings(
             BlockStageTimings(production_wait=TimeSpan(start_s=1.0, end_s=2.0))
         )
-        # Block 2: fetched [3.0, 4.0]
         dst.accumulate_block_timings(
             BlockStageTimings(production_wait=TimeSpan(start_s=3.0, end_s=4.0))
         )
-        # Block 3: fetched [5.0, 6.0]
         dst.accumulate_block_timings(
             BlockStageTimings(production_wait=TimeSpan(start_s=5.0, end_s=6.0))
         )
 
-        # Union: [1.0, 6.0]
-        assert dst.production_wait.start_s == 1.0
-        assert dst.production_wait.end_s == 6.0
+        assert len(dst.production_wait) == 3
+        assert [s.start_s for s in dst.production_wait] == [1.0, 3.0, 5.0]
+        assert [s.end_s for s in dst.production_wait] == [2.0, 4.0, 6.0]
 
-    def test_merge_unrecorded_block_ignored(self):
-        """Merging a block with no fetch timing (both fields None) is a no-op."""
+    def test_unrecorded_block_ignored(self):
+        """A block with no fetch timing (both fields None) is a no-op."""
         dst = BatchStageTimings()
-        dst.production_wait = TimeSpan(start_s=2.0, end_s=3.0)
+        dst.production_wait.append(TimeSpan(start_s=2.0, end_s=3.0))
 
-        dst.accumulate_block_timings(
-            BlockStageTimings()
-        )  # fetch fields default to None
+        dst.accumulate_block_timings(BlockStageTimings())  # fields default to None
 
-        assert dst.production_wait.start_s == 2.0
-        assert dst.production_wait.end_s == 3.0
+        assert len(dst.production_wait) == 1
+        assert dst.production_wait[0].start_s == 2.0
+        assert dst.production_wait[0].end_s == 3.0
 
-    def test_merge_overlapping_blocks(self):
-        """Overlapping fetch windows are correctly merged."""
+    def test_overlapping_blocks_kept_separate(self):
+        """Overlapping windows are NOT merged — kept as separate spans."""
         dst = BatchStageTimings()
 
         dst.accumulate_block_timings(
@@ -424,49 +426,35 @@ class TestMergeFetch:
             BlockStageTimings(production_wait=TimeSpan(start_s=3.0, end_s=7.0))
         )
 
-        # Union: [1.0, 7.0]
-        assert dst.production_wait.start_s == 1.0
-        assert dst.production_wait.end_s == 7.0
+        assert len(dst.production_wait) == 2
+        assert dst.production_wait[0].start_s == 1.0
+        assert dst.production_wait[1].end_s == 7.0
 
-    def test_merge_into_empty_destination(self):
-        """Merging into an empty BatchStageTimings takes the source window."""
+    def test_into_empty_destination(self):
+        """Accumulating into an empty BatchStageTimings appends the span."""
         dst = BatchStageTimings()
         dst.accumulate_block_timings(
             BlockStageTimings(production_wait=TimeSpan(start_s=10.0, end_s=20.0))
         )
-        assert dst.production_wait.start_s == 10.0
-        assert dst.production_wait.end_s == 20.0
+        assert len(dst.production_wait) == 1
+        assert dst.production_wait[0].start_s == 10.0
 
-    def test_merge_data_transfer_multiple_blocks(self):
-        """data_transfer windows are unioned across multiple blocks."""
-        dst = BatchStageTimings()
-
-        src1 = BlockStageTimings(data_transfer=TimeSpan(start_s=1.0, end_s=2.0))
-        dst.accumulate_block_timings(src1)
-
-        src2 = BlockStageTimings(data_transfer=TimeSpan(start_s=3.0, end_s=4.0))
-        dst.accumulate_block_timings(src2)
-
-        # Union: [1.0, 4.0]
-        assert dst.data_transfer.start_s == 1.0
-        assert dst.data_transfer.end_s == 4.0
-
-    def test_merge_data_transfer_overlapping_blocks(self):
-        """Overlapping data_transfer windows are correctly merged."""
+    def test_data_transfer_multiple_blocks(self):
+        """data_transfer spans are kept separate across multiple blocks."""
         dst = BatchStageTimings()
 
         dst.accumulate_block_timings(
-            BlockStageTimings(data_transfer=TimeSpan(start_s=1.0, end_s=5.0))
+            BlockStageTimings(data_transfer=TimeSpan(start_s=1.0, end_s=2.0))
         )
         dst.accumulate_block_timings(
-            BlockStageTimings(data_transfer=TimeSpan(start_s=3.0, end_s=7.0))
+            BlockStageTimings(data_transfer=TimeSpan(start_s=3.0, end_s=4.0))
         )
 
-        assert dst.data_transfer.start_s == 1.0
-        assert dst.data_transfer.end_s == 7.0
+        assert len(dst.data_transfer) == 2
+        assert [s.start_s for s in dst.data_transfer] == [1.0, 3.0]
 
-    def test_merge_both_stages_independent(self):
-        """production_wait and data_transfer merge independently."""
+    def test_both_stages_independent(self):
+        """production_wait and data_transfer lists are independent."""
         dst = BatchStageTimings()
 
         # Block 1: prod [1,2], xfer [2,3]
@@ -484,24 +472,23 @@ class TestMergeFetch:
             )
         )
 
-        # Each stage unions independently.
-        assert dst.production_wait.start_s == 1.0
-        assert dst.production_wait.end_s == 6.0
-        assert dst.data_transfer.start_s == 2.0
-        assert dst.data_transfer.end_s == 7.0
+        assert len(dst.production_wait) == 2
+        assert len(dst.data_transfer) == 2
+        assert [s.start_s for s in dst.production_wait] == [1.0, 5.0]
+        assert [s.start_s for s in dst.data_transfer] == [2.0, 6.0]
 
-    def test_merge_data_transfer_none_preserves_destination(self):
-        """Merging a block with no data_transfer timing leaves dst unchanged."""
+    def test_data_transfer_none_preserves_destination(self):
+        """A block with no data_transfer leaves the list unchanged."""
         dst = BatchStageTimings()
-        dst.data_transfer = TimeSpan(start_s=2.0, end_s=3.0)
+        dst.data_transfer.append(TimeSpan(start_s=2.0, end_s=3.0))
 
         # src has only production_wait, data_transfer is None
         dst.accumulate_block_timings(
             BlockStageTimings(production_wait=TimeSpan(start_s=1.0, end_s=2.0))
         )
 
-        assert dst.data_transfer.start_s == 2.0
-        assert dst.data_transfer.end_s == 3.0
+        assert len(dst.data_transfer) == 1
+        assert dst.data_transfer[0].start_s == 2.0
 
 
 class TestEndToEndTimingPropagation:
@@ -510,11 +497,11 @@ class TestEndToEndTimingPropagation:
     def test_batch_carries_timings_through_pipeline(self):
         """A Batch's metadata.stage_timings carries all stage windows."""
         timings = BatchStageTimings()
-        timings.production_wait = TimeSpan(start_s=1.0, end_s=2.0)
-        timings.batching = TimeSpan(start_s=2.0, end_s=3.0)
-        timings.format = TimeSpan(start_s=3.0, end_s=4.0)
-        timings.collate = TimeSpan(start_s=4.0, end_s=5.0)
-        timings.finalize = TimeSpan(start_s=5.0, end_s=6.0)
+        timings.production_wait.append(TimeSpan(start_s=1.0, end_s=2.0))
+        timings.batching.append(TimeSpan(start_s=2.0, end_s=3.0))
+        timings.format.append(TimeSpan(start_s=3.0, end_s=4.0))
+        timings.collate.append(TimeSpan(start_s=4.0, end_s=5.0))
+        timings.finalize.append(TimeSpan(start_s=5.0, end_s=6.0))
 
         batch = Batch(
             BatchMetadata(batch_idx=0, num_rows=50, stage_timings=timings), None
@@ -523,11 +510,11 @@ class TestEndToEndTimingPropagation:
         # Verify all stages are accessible via stages() iterator
         stage_dict = dict(batch.metadata.stage_timings.stages())
         assert len(stage_dict) == 6
-        assert stage_dict[IterationStage.PRODUCTION_WAIT].start_s == 1.0
-        assert stage_dict[IterationStage.BATCHING].end_s == 3.0
-        assert stage_dict[IterationStage.FORMAT].start_s == 3.0
-        assert stage_dict[IterationStage.COLLATE].end_s == 5.0
-        assert stage_dict[IterationStage.FINALIZE].start_s == 5.0
+        assert stage_dict[IterationStage.PRODUCTION_WAIT][0].start_s == 1.0
+        assert stage_dict[IterationStage.BATCHING][0].end_s == 3.0
+        assert stage_dict[IterationStage.FORMAT][0].start_s == 3.0
+        assert stage_dict[IterationStage.COLLATE][0].end_s == 5.0
+        assert stage_dict[IterationStage.FINALIZE][0].start_s == 5.0
         assert batch.metadata.num_rows == 50
 
     def test_full_pipeline_attribution(self):

@@ -16,6 +16,8 @@ import ray
 from ray.data._internal.block_batching.interfaces import (
     Batch,
     BatchMetadata,
+    BlockStageTimings,
+    PendingBlock,
     ResolvedBlock,
 )
 from ray.data._internal.block_batching.util import (
@@ -38,10 +40,15 @@ def block_generator(num_rows: int, num_blocks: int):
         yield pa.table({"foo": [1] * num_rows})
 
 
+def _to_pending_blocks(refs):
+    """Wrap ObjectRefs as PendingBlocks with empty stage timings."""
+    return [PendingBlock(ref=r, stage_timings=BlockStageTimings()) for r in refs]
+
+
 def test_resolve_block_refs(ray_start_regular_shared):
     block_refs = [ray.put(0), ray.put(1), ray.put(2)]
 
-    resolved_iter = resolve_block_refs(iter(block_refs))
+    resolved_iter = resolve_block_refs(iter(_to_pending_blocks(block_refs)))
     resolved = list(resolved_iter)
     assert all(isinstance(b, ResolvedBlock) for b in resolved)
     assert [b.block for b in resolved] == [0, 1, 2]
@@ -51,23 +58,27 @@ def test_resolve_block_refs_does_not_accumulate_ref_bundles_timer(
     ray_start_regular_shared,
 ):
     """Regression test: resolve_block_refs must not accumulate into
-    iter_get_ref_bundles_s (prefetch_batches_locally owns that Timer)."""
+    iter_get_ref_bundles_s (prefetch_batches_locally owns that Timer).
+    resolve_block_refs only measures data_transfer, not production_wait.
+    """
 
-    def slow_block_ref_iter():
+    def slow_pending_block_iter():
         for i in range(3):
             time.sleep(0.05)
-            yield ray.put(i)
+            yield PendingBlock(ref=ray.put(i), stage_timings=BlockStageTimings())
 
     stats = DatasetStats(metadata={}, parent=None)
-    resolved = list(resolve_block_refs(slow_block_ref_iter(), stats=stats))
+    resolved = list(resolve_block_refs(slow_pending_block_iter(), stats=stats))
 
     assert len(resolved) == 3
 
-    # production_wait TimeSpan captured per block for overlap attribution.
+    # data_transfer TimeSpan captured per block; production_wait stays None
+    # (it's measured by prefetch_batches_locally, not here).
     for r in resolved:
         assert r.stage_timings is not None
-        assert r.stage_timings.production_wait is not None
-        assert r.stage_timings.production_wait.duration >= 0.0
+        assert r.stage_timings.data_transfer is not None
+        assert r.stage_timings.data_transfer.duration >= 0.0
+        assert r.stage_timings.production_wait is None
 
     # iter_get_ref_bundles_s must NOT be accumulated here.
     assert stats.iter_get_ref_bundles_s.get() == 0.0
@@ -81,7 +92,9 @@ def test_resolve_block_refs_accumulates_data_transfer_timer(
     block_refs = [ray.put(i) for i in range(3)]
 
     stats = DatasetStats(metadata={}, parent=None)
-    resolved = list(resolve_block_refs(iter(block_refs), stats=stats))
+    resolved = list(
+        resolve_block_refs(iter(_to_pending_blocks(block_refs)), stats=stats)
+    )
 
     assert len(resolved) == 3
 

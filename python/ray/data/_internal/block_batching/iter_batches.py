@@ -1,11 +1,16 @@
 import collections
 import time
 from contextlib import contextmanager, nullcontext
-from typing import Any, Callable, Dict, Iterator, Optional
+from typing import Any, Callable, Dict, Iterator, Optional, Tuple
 
 import ray
 from ray._common.utils import env_integer
-from ray.data._internal.block_batching.interfaces import Batch, BlockPrefetcher
+from ray.data._internal.block_batching.interfaces import (
+    Batch,
+    BlockPrefetcher,
+    BlockStageTimings,
+    PendingBlock,
+)
 from ray.data._internal.block_batching.util import (
     ActorBlockPrefetcher,
     WaitBlockPrefetcher,
@@ -18,10 +23,9 @@ from ray.data._internal.block_batching.util import (
 )
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_deallocation
-from ray.data._internal.stats import DatasetStats, _StatsManager
+from ray.data._internal.stats import DatasetStats, TimeSpan, _StatsManager
 from ray.data.block import Block, DataBatch
 from ray.data.context import DataContext
-from ray.types import ObjectRef
 
 DEFAULT_FORMAT_THREADPOOL_NUM_WORKERS = env_integer(
     "RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS", 4
@@ -163,7 +167,7 @@ class BatchIterator:
 
     def _prefetch_blocks(
         self, ref_bundles: Iterator[RefBundle]
-    ) -> Iterator[ObjectRef[Block]]:
+    ) -> Iterator[PendingBlock]:
         return prefetch_batches_locally(
             ref_bundles=ref_bundles,
             prefetcher=self._prefetcher,
@@ -173,9 +177,7 @@ class BatchIterator:
             stats=self._stats,
         )
 
-    def _resolve_block_refs(
-        self, block_refs: Iterator[ObjectRef[Block]]
-    ) -> Iterator[Any]:
+    def _resolve_block_refs(self, block_refs: Iterator[PendingBlock]) -> Iterator[Any]:
         return resolve_block_refs(block_ref_iter=block_refs, stats=self._stats)
 
     def _blocks_to_batches(self, blocks: Iterator[Block]) -> Iterator[Batch]:
@@ -272,14 +274,15 @@ class BatchIterator:
     ) -> None:
         """Attribute per-stage blocked time via overlap with the training window.
 
-        Each stage's window on ``batch.metadata.stage_timings`` is intersected with
-        the training thread's blocked window ``[blocked_start_s, blocked_end_s]``::
+        Each stage's spans on ``batch.metadata.stage_timings`` are intersected
+        with the training thread's blocked window ``[blocked_start_s,
+        blocked_end_s]`` and summed::
 
-            overlap = min(timing.end, blocked_end) - max(timing.start, blocked_start)
+            overlap = sum(max(0, min(s.end, blocked_end) - max(s.start, blocked_start)))
 
-        TODO: ``sum(iter_blocked_*)`` only approximates ``iter_total_blocked_s``
-        — split fetch stages overlap for multi-block batches, and reorder
-        buffer wait under ``preserve_order`` is unattributed.
+        TODO: reorder buffer wait under ``preserve_order`` is unattributed
+        (per-stage spans are recorded at format/collate completion, before
+        the batch leaves ``restore_original_order``).
 
         Args:
             batch: Batch whose per-stage timings should be attributed.
@@ -289,11 +292,10 @@ class BatchIterator:
         if self._stats is None:
             return
         timings = batch.metadata.stage_timings
-        for stage, timing in timings.stages():
-            if timing is None:
-                continue
-            overlap_s = min(timing.end_s, blocked_end_s) - max(
-                timing.start_s, blocked_start_s
+        for stage, spans in timings.stages():
+            overlap_s = sum(
+                max(0.0, min(s.end_s, blocked_end_s) - max(s.start_s, blocked_start_s))
+                for s in spans
             )
             if overlap_s > 0:
                 self._stats.get_blocked_timer(stage).add(overlap_s)
@@ -422,10 +424,14 @@ def prefetch_batches_locally(
     batch_size: Optional[int],
     eager_free: bool = False,
     stats: Optional[DatasetStats] = None,
-) -> Iterator[ObjectRef[Block]]:
-    """Given an iterator of batched RefBundles, returns an iterator over the
-    corresponding block references while prefetching `num_batches_to_prefetch`
-    batches in advance.
+) -> Iterator[PendingBlock]:
+    """Given an iterator of batched RefBundles, returns an iterator over
+    ``PendingBlock``s while prefetching `num_batches_to_prefetch` batches
+    in advance.
+
+    The production_wait TimeSpan is captured around ``next(ref_bundles)``
+    in ``get_next_ref_bundle`` and attached to the first block of each
+    ref bundle. Other blocks get ``production_wait=None``.
 
     Args:
         ref_bundles: An iterator over batched RefBundles.
@@ -437,19 +443,37 @@ def prefetch_batches_locally(
         stats: Dataset stats object used to store ref bundle retrieval time.
     """
 
-    def get_next_ref_bundle() -> RefBundle:
-        with stats.iter_get_ref_bundles_s.timer() if stats else nullcontext():
-            return next(ref_bundles)
+    def get_next_ref_bundle() -> Tuple[RefBundle, Optional[TimeSpan]]:
+        if stats:
+            with stats.iter_get_ref_bundles_s.timer() as span:
+                return next(ref_bundles), span
+        return next(ref_bundles), None
 
-    sliding_window = collections.deque()
+    def to_pending_blocks(
+        ref_bundle: RefBundle, production_wait: Optional[TimeSpan]
+    ) -> Iterator[PendingBlock]:
+        for i, entry in enumerate(ref_bundle.blocks):
+            yield PendingBlock(
+                ref=entry.ref,
+                stage_timings=BlockStageTimings(
+                    production_wait=production_wait if i == 0 else None
+                ),
+            )
+
+    sliding_window: collections.deque = (
+        collections.deque()
+    )  # of (BlockEntry, Optional[TimeSpan])
     current_window_size = 0
 
     if num_batches_to_prefetch <= 0:
         if stats:
             stats.iter_prefetched_bytes = 0
-        for ref_bundle in ref_bundles:
-            for block_ref in ref_bundle.block_refs:
-                yield block_ref
+        while True:
+            try:
+                ref_bundle, prod_span = get_next_ref_bundle()
+            except StopIteration:
+                break
+            yield from to_pending_blocks(ref_bundle, prod_span)
         return
 
     if batch_size is not None:
@@ -465,35 +489,41 @@ def prefetch_batches_locally(
         batch_size is None and len(sliding_window) < num_batches_to_prefetch
     ):
         try:
-            next_ref_bundle = get_next_ref_bundle()
-            sliding_window.extend(next_ref_bundle.blocks)
-            current_window_size += next_ref_bundle.num_rows()
+            ref_bundle, prod_span = get_next_ref_bundle()
+            for i, entry in enumerate(ref_bundle.blocks):
+                sliding_window.append((entry, prod_span if i == 0 else None))
+            current_window_size += ref_bundle.num_rows()
         except StopIteration:
             break
 
-    prefetcher.prefetch_blocks([entry.ref for entry in sliding_window])
+    prefetcher.prefetch_blocks([entry.ref for entry, _ in sliding_window])
     if stats:
         stats.iter_prefetched_bytes = sum(
-            entry.metadata.size_bytes or 0 for entry in sliding_window
+            entry.metadata.size_bytes or 0 for entry, _ in sliding_window
         )
 
     while sliding_window:
-        entry = sliding_window.popleft()
+        entry, prod_span = sliding_window.popleft()
         current_window_size -= entry.metadata.num_rows
         if batch_size is None or current_window_size < num_rows_to_prefetch:
             try:
-                next_ref_bundle = get_next_ref_bundle()
-                for next_entry in next_ref_bundle.blocks:
-                    sliding_window.append(next_entry)
+                ref_bundle, next_prod_span = get_next_ref_bundle()
+                for i, next_entry in enumerate(ref_bundle.blocks):
+                    sliding_window.append(
+                        (next_entry, next_prod_span if i == 0 else None)
+                    )
                     current_window_size += next_entry.metadata.num_rows
-                prefetcher.prefetch_blocks([entry.ref for entry in sliding_window])
+                prefetcher.prefetch_blocks([entry.ref for entry, _ in sliding_window])
             except StopIteration:
                 pass
         if stats:
             stats.iter_prefetched_bytes = sum(
-                entry.metadata.size_bytes or 0 for entry in sliding_window
+                entry.metadata.size_bytes or 0 for entry, _ in sliding_window
             )
-        yield entry.ref
+        yield PendingBlock(
+            ref=entry.ref,
+            stage_timings=BlockStageTimings(production_wait=prod_span),
+        )
         trace_deallocation(entry.ref, loc="iter_batches", free=eager_free)
     prefetcher.stop()
 
