@@ -1053,12 +1053,8 @@ class Algorithm(Checkpointable, Trainable):
                 # target the right placement group bundle indices
                 # (after main process, env runners, and eval env runners).
                 offline_eval_pg_offset = self.config.num_env_runners
-                if self._should_create_evaluation_env_runners(
-                    self.evaluation_config
-                ):
-                    offline_eval_pg_offset += (
-                        self.evaluation_config.num_env_runners
-                    )
+                if self._should_create_evaluation_env_runners(self.evaluation_config):
+                    offline_eval_pg_offset += self.evaluation_config.num_env_runners
                 self.offline_eval_runner_group: OfflineEvaluationRunnerGroup = OfflineEvaluationRunnerGroup(
                     config=self.evaluation_config,
                     # Do not create a local runner such that the dataset can be split.

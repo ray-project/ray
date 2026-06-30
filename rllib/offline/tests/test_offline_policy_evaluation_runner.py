@@ -377,10 +377,10 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
 
         # Clean up.
         algo.cleanup()
-    
+
     def test_evaluation_in_algorithm_train_with_remote_runners(self):
         """Test offline evaluation with remote runners and eval env runners.
-        
+
         Ensures that pg_offset is correctly computed for
         OfflineEvaluationRunnerGroup so that remote offline eval runners
         are assigned to distinct placement group bundles.
@@ -391,7 +391,7 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
             evaluation_interval=1,
             evaluation_num_env_runners=1,
             evaluation_parallel_to_training=False,
-            num_offline_eval_runners=1
+            num_offline_eval_runners=1,
         )
 
         algo = config.build()
@@ -400,7 +400,6 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
         self.assertEqual(algo.offline_eval_runner_group._pg_offset, 1)
 
         algo.cleanup()
-
 
 
 if __name__ == "__main__":
