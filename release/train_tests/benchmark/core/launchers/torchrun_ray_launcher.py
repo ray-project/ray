@@ -64,10 +64,14 @@ def _run_in_worker(
         dist.init_process_group(backend=backend)
 
     ctx = TorchrunContext(cfg.name)
-    metrics = get_adapter_cls(cfg.adapter)(cfg, ctx).run()
-
-    dist.barrier()
-    dist.destroy_process_group()
+    try:
+        metrics = get_adapter_cls(cfg.adapter)(cfg, ctx).run()
+    finally:
+        # Tear down in finally so a failing rank doesn't strand its group. NO
+        # final barrier: if one rank raised, a barrier would hang every healthy
+        # rank forever (ray.get would then never return). Each rank just
+        # destroys its own group and returns/raises independently.
+        dist.destroy_process_group()
     return metrics if ctx.world_rank == 0 else {}
 
 
@@ -83,9 +87,14 @@ def run_with_torchrun_ray(cfg: ExperimentConfig) -> Dict[str, Any]:
             return ray.util.get_node_ip_address()
 
         def free_port(self) -> int:
+            # Pick an ephemeral free port on rank 0's node for MASTER_PORT.
+            # There's an inherent TOCTOU window between releasing this socket and
+            # NCCL binding it (same as torchrun's own port selection); SO_REUSEADDR
+            # minimizes rebind failures. Acceptable for a benchmark harness.
             import socket
 
-            s = socket.socket()
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind(("", 0))
             port = s.getsockname()[1]
             s.close()

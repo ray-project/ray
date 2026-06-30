@@ -29,11 +29,14 @@ def train_fn_per_worker(train_loop_config: Dict[str, Any]) -> None:
 
 def run_with_ray(cfg: ExperimentConfig) -> Dict[str, Any]:
     import os
+    from datetime import datetime
 
     import ray.train
     from ray.train.torch import TorchTrainer
-    from ray.train.v2._internal.util import date_str
 
+    # Unique run name. Use a stdlib timestamp rather than Ray's private
+    # ray.train.v2._internal.util.date_str (no stability contract).
+    run_suffix = datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")
     storage_root = os.environ.get("ANYSCALE_ARTIFACT_STORAGE", "/mnt/cluster_storage")
     run_config_kwargs = {}
     # Experiment-declared env vars (if any) land in each worker process at
@@ -55,7 +58,7 @@ def run_with_ray(cfg: ExperimentConfig) -> Dict[str, Any]:
         scaling_config=ray.train.ScalingConfig(**scaling_kwargs),
         run_config=ray.train.RunConfig(
             storage_path=f"{storage_root}/train_benchmark/",
-            name=f"{cfg.name}-{date_str(include_ms=True)}",
+            name=f"{cfg.name}-{run_suffix}",
             failure_config=ray.train.FailureConfig(max_failures=cfg.max_failures),
             **run_config_kwargs,
         ),
