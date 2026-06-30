@@ -424,6 +424,8 @@ cycler==0.12.1
     # via matplotlib
 cython==0.29.37
     # via -r python/requirements/py313/test-requirements.txt
+daft==0.7.15
+    # via -r python/requirements/ml/py313/data-requirements.txt
 dask==2026.3.0
     # via
     #   -r python/requirements/ml/py313/data-requirements.txt
@@ -596,12 +598,12 @@ fsspec==2023.12.1
     # via
     #   -r python/requirements.txt
     #   adlfs
+    #   daft
     #   dask
     #   datasets
     #   delta-sharing
     #   etils
     #   evaluate
-    #   getdaft
     #   gradio-client
     #   huggingface-hub
     #   lightning
@@ -622,8 +624,6 @@ gast==0.7.0
     #   tensorflow-probability
 gcs-oauth2-boto-plugin==3.3
     # via gsutil
-getdaft==0.4.3
-    # via -r python/requirements/ml/py313/data-requirements.txt
 gitdb==4.0.12
     # via gitpython
 gitpython==3.1.47
@@ -1469,6 +1469,7 @@ packaging==26.1
     #   aim
     #   azure-cli-core
     #   bokeh
+    #   daft
     #   dask
     #   datasets
     #   deepspeed
@@ -1693,11 +1694,11 @@ pyarrow==23.0.1
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/py313/data-test-requirements.txt
+    #   daft
     #   dask
     #   datasets
     #   delta-sharing
     #   feather-format
-    #   getdaft
     #   hudi
     #   mlflow
     #   pylance
@@ -1972,7 +1973,7 @@ pyzmq==27.1.0
     #   ipykernel
     #   jupyter-client
     #   jupyter-server
-ray-haproxy==2.8.20 ; sys_platform == "linux"
+ray-haproxy==2.8.25 ; sys_platform == "linux"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/serve/serve-test-requirements.txt
@@ -2428,12 +2429,12 @@ tqdm==4.67.1
     #   -r python/requirements/py313/test-requirements.txt
     #   aim
     #   cmdstanpy
+    #   daft
     #   datasets
     #   deepspeed
     #   dm-control
     #   etils
     #   evaluate
-    #   getdaft
     #   huggingface-hub
     #   hyperopt
     #   lightning
@@ -2506,6 +2507,7 @@ typing-extensions==4.15.0
     #   botorch
     #   cfn-lint
     #   configspace
+    #   daft
     #   etils
     #   fastapi
     #   gradio

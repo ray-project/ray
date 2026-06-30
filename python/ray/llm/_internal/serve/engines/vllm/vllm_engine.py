@@ -53,11 +53,11 @@ from ray.llm._internal.serve.engines.vllm.vllm_models import (
     VLLMEngineConfig,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    is_kv_aware,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.token_tracking import (
     enable_token_tracking,
-)
-from ray.llm._internal.serve.routing_policies.kv_aware.utils import (
-    is_kv_aware_routing,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     assign_replica_kv_events_endpoint,
@@ -561,9 +561,7 @@ class VLLMEngine(LLMEngine):
         # but only on KV-aware deployments: elsewhere the actor never exists and
         # resolving it per request would block the engine's event loop.
         engine_cls = AsyncLLM
-        if is_kv_aware_routing(
-            self.llm_config.deployment_config.get("request_router_config")
-        ):
+        if is_kv_aware(self.llm_config):
             engine_cls = enable_token_tracking(AsyncLLM)
         engine_client = engine_cls(
             vllm_config=vllm_engine_config,

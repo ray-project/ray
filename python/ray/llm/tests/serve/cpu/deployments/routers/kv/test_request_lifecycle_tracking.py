@@ -7,16 +7,17 @@ from vllm.sampling_params import RequestOutputKind, SamplingParams
 
 import ray
 from ray import serve
+from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     KV_ROUTER_ACTOR_NAME,
     KVRouterActor,
     get_worker_id,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    is_kv_aware,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.token_tracking import (
     enable_token_tracking,
-)
-from ray.llm._internal.serve.routing_policies.kv_aware.utils import (
-    is_kv_aware_routing,
 )
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockAsyncLLM
 from ray.serve.llm.request_router import KVAwareRouter
@@ -395,10 +396,21 @@ async def test_passthrough_without_actor(monkeypatch):
         (None, False),  # no router configured
     ],
 )
-def test_is_kv_aware_routing(request_router_config, expected):
+def test_is_kv_aware(request_router_config, expected):
     """The engine wraps with token tracking only on KVAwareRouter deployments,
     so non-KV deployments never retry a missing actor lookup per request."""
-    assert is_kv_aware_routing(request_router_config) is expected
+    deployment_config = {}
+    if request_router_config is not None:
+        deployment_config["request_router_config"] = request_router_config
+    llm_config = LLMConfig(
+        model_loading_config={
+            "model_id": "qwen3-0.6b",
+            "model_source": "Qwen/Qwen3-0.6B",
+        },
+        accelerator_type=None,
+        deployment_config=deployment_config,
+    )
+    assert is_kv_aware(llm_config) is expected
 
 
 if __name__ == "__main__":

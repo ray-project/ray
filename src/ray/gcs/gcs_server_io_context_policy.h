@@ -75,7 +75,14 @@ struct GcsServerIOContextPolicy {
   // can get runtime crashes when accessing a missing name, or get leaks by
   // creating unused threads.
   constexpr static std::array<IOContextMetadata, 7> kAllDedicatedIOContexts{{
-      {"task_io_context", /*enable_lag_probe=*/true, /*used_for_health_check=*/true},
+      // task_io_context only runs GcsTaskManager, which ingests and serves
+      // task-state events (observability) and drops events under load by design.
+      // It is not on the GCS control plane, so a backlog here (e.g. under a
+      // task-event flood) must not flip the server to NOT_SERVING. Excluded like
+      // the other observability loops below.
+      {"task_io_context",
+       /*enable_lag_probe=*/true,
+       /*used_for_health_check=*/false},
       {"pubsub_io_context", /*enable_lag_probe=*/true, /*used_for_health_check=*/true},
       {"observability_pubsub_io_context",
        /*enable_lag_probe=*/true,

@@ -1,8 +1,10 @@
 import logging
+import random
 from typing import List, Optional
 
 import ray
 from ray.actor import ActorHandle
+from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.ingress.tokenizer import REQUEST_TOKEN_IDS_KWARG
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     KV_ROUTER_ACTOR_NAME,
@@ -16,6 +18,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.request_router.common import PendingRequest
 from ray.serve._private.request_router.replica_wrapper import RunningReplica
 from ray.serve._private.request_router.request_router import RequestRouter
+from ray.serve.config import RequestRouterConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -75,6 +78,13 @@ class KVAwareRouter(RequestRouter):
         the chosen worker's replica. With direct streaming enabled, HAProxy
         then forwards the original request to that replica.
 
+        Requests with no prompt token ids have nothing to score on, so they route
+        to a random candidate. This covers the pre-routing ``/tokenize`` RPC (routed
+        before token ids exist) and token-less fallbacks (batch prompts,
+        truncated/unparseable bodies).
+        TODO (jeffreywang): Move pre-routing tokenization to KVRouterActor while
+        ensuring tokenization correctness.
+
         Args:
             candidate_replicas: The replicas eligible to serve the request.
             pending_request: The request being routed.
@@ -82,25 +92,13 @@ class KVAwareRouter(RequestRouter):
         Returns:
             Ranked groups of replicas.
         """
-        if pending_request is None:
-            # Serve may call after route metadata is gone but before lazy queue cleanup.
-            logger.debug(
-                "choose_replicas called without a pending request; routing "
-                "load-based over all candidates."
-            )
-            return [candidate_replicas]
-
-        token_ids = pending_request.kwargs.get(REQUEST_TOKEN_IDS_KWARG)
-        if token_ids is None:
-            raise ValueError(
-                "KV-aware routing requires prompt token ids; request "
-                "tokenization did not produce token ids."
-            )
-        if len(token_ids) == 0:
-            raise ValueError(
-                "KV-aware routing received an empty prompt; request "
-                "tokenization did not produce token ids."
-            )
+        token_ids = (
+            pending_request.kwargs.get(REQUEST_TOKEN_IDS_KWARG)
+            if pending_request is not None
+            else None
+        )
+        if not token_ids:
+            return [[random.choice(candidate_replicas)]] if candidate_replicas else []
 
         worker_id_to_replica = {
             get_worker_id(replica.replica_id.unique_id): replica
@@ -112,3 +110,13 @@ class KVAwareRouter(RequestRouter):
             list(worker_id_to_replica),
         )
         return [[worker_id_to_replica[selection["worker_id"]]]]
+
+
+def is_kv_aware(llm_config: LLMConfig) -> bool:
+    """Whether ``llm_config`` selects a ``KVAwareRouter`` for replica selection."""
+    request_router_config = llm_config.deployment_config.get("request_router_config")
+    if isinstance(request_router_config, dict):
+        request_router_config = RequestRouterConfig(**request_router_config)
+    return isinstance(request_router_config, RequestRouterConfig) and issubclass(
+        request_router_config.get_request_router_class(), KVAwareRouter
+    )

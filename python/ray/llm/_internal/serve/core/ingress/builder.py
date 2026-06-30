@@ -22,8 +22,8 @@ from ray.llm._internal.serve.core.server.builder import (
 )
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.routing_policies.kv_aware.utils import (
-    is_kv_aware_routing,
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    is_kv_aware,
 )
 from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application
@@ -79,7 +79,9 @@ def _build_direct_streaming_llm_deployment(
     )
 
 
-def _build_openai_ingress_request_router(*, server: Application) -> Application:
+def _build_openai_ingress_request_router(
+    *, server: Application, llm_config: LLMConfig
+) -> Application:
     """Build the ingress request router peer for OpenAI compatible LLM apps.
 
     The returned Application is attached to the ingress application with
@@ -90,7 +92,7 @@ def _build_openai_ingress_request_router(*, server: Application) -> Application:
     these as a user-overridable IngressRequestRouterConfig once HAProxy
     supports multiple router replicas.
 
-    Pre-routing tokenization is wired on only when ``server`` uses a
+    Pre-routing tokenization is wired on only when ``llm_config`` configures a
     KVAwareRouter, the sole policy that scores replicas on prompt token IDs.
     """
     from ray.llm._internal.serve.core.ingress.router import LLMRouter
@@ -102,9 +104,7 @@ def _build_openai_ingress_request_router(*, server: Application) -> Application:
     )
     return deployment.bind(
         server=server,
-        pre_routing_tokenization=is_kv_aware_routing(
-            server._bound_deployment._deployment_config.request_router_config
-        ),
+        pre_routing_tokenization=is_kv_aware(llm_config),
     )
 
 
@@ -246,7 +246,9 @@ def build_openai_app(builder_config: dict) -> Application:
             "LLMServer=ingress, LLMRouter=ingress_request_router"
         )
         return direct_deployment._with_ingress_request_router(
-            _build_openai_ingress_request_router(server=direct_deployment)
+            _build_openai_ingress_request_router(
+                server=direct_deployment, llm_config=llm_configs[0]
+            )
         )
 
     llm_deployments = {c.model_id: build_llm_deployment(c) for c in llm_configs}

@@ -435,25 +435,34 @@ async def test_choose_replicas_routes_to_selected_worker():
 
 
 @pytest.mark.asyncio
-async def test_requires_token_ids():
-    """Real routed requests must carry prompt token ids."""
+async def test_missing_token_ids_picks_random_replica():
+    """Token-less requests (batch prompts, truncated bodies) route to a single
+    random replica so they spread."""
     replicas = [_StubReplica("r1"), _StubReplica("r2")]
+    router = _build_kv_aware_router(get_worker_id("r1"))
 
-    router = _build_kv_aware_router(get_worker_id("r2"))
-    pending = PendingRequest(
-        args=[],
-        kwargs={},
-        metadata=RequestMetadata(request_id="req-2", internal_request_id="int-2"),
-    )
+    picked = set()
+    for _ in range(50):
+        pending = PendingRequest(
+            args=[],
+            kwargs={},
+            metadata=RequestMetadata(request_id="req", internal_request_id="int"),
+        )
+        groups = await router.choose_replicas(replicas, pending)
+        assert len(groups) == 1 and len(groups[0]) == 1
+        assert groups[0][0] in replicas
+        picked.add(groups[0][0].replica_id.unique_id)
 
-    with pytest.raises(ValueError, match="requires prompt token ids"):
-        await router.choose_replicas(replicas, pending)
+    # The picked replica varies across calls, so load spreads (not stuck on one).
+    assert picked == {"r1", "r2"}
     assert router._kv_router_actor.select_worker.token_ids is None
 
 
 @pytest.mark.asyncio
-async def test_tokenize_requires_token_ids():
-    """Method-specific calls still need explicit prompt token ids."""
+async def test_tokenize_call_picks_random_replica():
+    """The pre-routing /tokenize RPC is routed through choose_replicas before any
+    token ids exist; it must resolve so KV routing can bootstrap, and picks a random
+    replica without scoring."""
     replicas = [_StubReplica("r1"), _StubReplica("r2")]
 
     router = _build_kv_aware_router(get_worker_id("r2"))
@@ -467,14 +476,17 @@ async def test_tokenize_requires_token_ids():
         ),
     )
 
-    with pytest.raises(ValueError, match="requires prompt token ids"):
-        await router.choose_replicas(replicas, pending)
+    groups = await router.choose_replicas(replicas, pending)
+
+    assert len(groups) == 1 and len(groups[0]) == 1
+    assert groups[0][0] in replicas
     assert router._kv_router_actor.select_worker.token_ids is None
 
 
 @pytest.mark.asyncio
-async def test_rejects_empty_token_ids():
-    """Dynamo selection service requires a positive prompt length."""
+async def test_empty_token_ids_picks_random_replica():
+    """Empty token ids carry no KV signal, so pick a random replica instead of
+    handing an empty prompt to the Dynamo selection service (which rejects it)."""
     replicas = [_StubReplica("r1"), _StubReplica("r2")]
 
     router = _build_kv_aware_router(get_worker_id("r2"))
@@ -486,22 +498,25 @@ async def test_rejects_empty_token_ids():
         ),
     )
 
-    with pytest.raises(ValueError, match="empty prompt"):
-        await router.choose_replicas(replicas, pending)
+    groups = await router.choose_replicas(replicas, pending)
+
+    assert len(groups) == 1 and len(groups[0]) == 1
+    assert groups[0][0] in replicas
     assert router._kv_router_actor.select_worker.token_ids is None
 
 
 @pytest.mark.asyncio
-async def test_no_pending_request_returns_candidates():
-    """Serve may ask again after route metadata has been consumed."""
+async def test_no_pending_request_picks_random_replica():
+    """Serve may ask again after route metadata has been consumed; pick a random
+    replica (nothing to score on)."""
     replicas = [_StubReplica("r1"), _StubReplica("r2")]
 
     router = _build_kv_aware_router(get_worker_id("r1"))
 
     groups = await router.choose_replicas(replicas, pending_request=None)
 
-    # No request metadata remains, so return all candidates.
-    assert groups == [replicas]
+    assert len(groups) == 1 and len(groups[0]) == 1
+    assert groups[0][0] in replicas
     assert router._kv_router_actor.select_worker.token_ids is None
 
 
