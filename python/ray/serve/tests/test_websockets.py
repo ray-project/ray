@@ -77,14 +77,7 @@ def test_client_disconnect(serve_instance):
 
 
 def test_client_disconnect_records_request_metric(serve_instance):
-    """A WebSocket client that disconnects mid-stream is still recorded in
-    ray_serve_num_http_requests_total.
-
-    Regression test: the proxy finalizes its response generator with
-    GeneratorExit when the client connection drops mid-stream, which previously
-    skipped the request-counter / access-log emission entirely, so the request
-    silently vanished from the proxy metrics.
-    """
+    """Test that a mid-stream WebSocket client disconnect is still counted in request metrics."""
     app = FastAPI()
 
     @serve.deployment
@@ -93,8 +86,7 @@ def test_client_disconnect_records_request_metric(serve_instance):
         @app.websocket("/")
         async def ws_handler(self, ws: WebSocket):
             await ws.accept()
-            # Stream densely so the proxy is mid-send when the client drops --
-            # this is what triggers the GeneratorExit finalization in the proxy.
+            # Stream densely so the proxy is mid-send when the client drops.
             try:
                 while True:
                     await ws.send_text("data")
@@ -105,21 +97,22 @@ def test_client_disconnect_records_request_metric(serve_instance):
     serve.run(WebSocketServer.bind(), name=app_name)
     url = f"{get_application_url(is_websocket=True, use_localhost=True, app_name=app_name)}/"
 
-    # Receive one frame (the stream is flowing), then drop the socket abruptly
-    # mid-stream -- no close handshake -- so the proxy's next send fails.
-    client = connect(url)
-    client.recv()
-    client.socket.close()
+    # Drain frames, then drop the socket abruptly to force a mid-send disconnect.
+    with connect(url) as client:
+        for _ in range(5):
+            client.recv()
+        client.socket.close()
 
-    # Filter to THIS app: ray_serve_num_http_requests_total is cumulative, so
-    # WS requests from other tests in the (session-scoped) fixture must not make
-    # the assertion pass spuriously.
+    # Metric is cumulative across the session fixture; require this app's 1006 count.
     def request_recorded() -> bool:
         reqs = get_metric_dictionaries("ray_serve_num_http_requests_total")
         ws_reqs = [
             m for m in reqs if m["method"] == "WS" and m["application"] == app_name
         ]
         assert ws_reqs, f"WS request for {app_name} not recorded: {reqs}"
+        assert any(
+            m["status_code"] == "1006" for m in ws_reqs
+        ), f"expected disconnect code 1006, got: {ws_reqs}"
         return True
 
     wait_for_condition(request_recorded, timeout=20)
