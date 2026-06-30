@@ -104,28 +104,8 @@ std::vector<ObjectID> FlatbufferToObjectIds(
 }
 
 #if !defined(_WIN32)
-// Graceful per-worker process-group cleanup polls for the worker process to exit
-// before sweeping its group, so it does not interrupt the worker's own shutdown.
+// Interval between polls for a gracefully-exiting worker process to exit.
 constexpr int kGracefulPgCleanupPollMs = 100;
-// Extra time beyond the graceful shutdown timeout to let a GCS force-kill land.
-constexpr int64_t kGracefulPgCleanupMarginMs = 5000;
-// Poll budget when actor_graceful_shutdown_timeout_ms is -1 (force-kill disabled):
-// the worker may run its shutdown indefinitely, and we cannot sweep the group
-// while it is alive (that would kill the worker mid-shutdown). Rather than poll
-// forever, cap the wait here and give up afterwards.
-constexpr int64_t kGracefulPgCleanupMaxBudgetMs = 5 * 60 * 1000;  // 5 min
-
-// Number of post-exit polls to wait for a gracefully-exiting worker, derived from
-// actor_graceful_shutdown_timeout_ms: the GCS force-kills a gracefully-exiting
-// worker once it overruns that timeout, so polling at least that long guarantees
-// the worker is dead before we give up (letting the post-exit sweep run instead
-// of leaking orphaned descendants).
-int GracefulPgCleanupPollBudget() {
-  const int64_t timeout_ms = RayConfig::instance().actor_graceful_shutdown_timeout_ms();
-  const int64_t budget_ms = timeout_ms < 0 ? kGracefulPgCleanupMaxBudgetMs
-                                           : timeout_ms + kGracefulPgCleanupMarginMs;
-  return static_cast<int>(budget_ms / kGracefulPgCleanupPollMs);
-}
 
 // Send a signal to the worker's saved process group with safety guards and logging.
 void CleanupProcessGroupSend(pid_t saved_pgid,
@@ -154,17 +134,14 @@ void CleanupProcessGroupSend(pid_t saved_pgid,
 }
 
 // Poll for a gracefully-exiting worker process to exit, then SIGKILL its process
-// group to reap any orphaned descendants. Reschedules itself on `timer`, counting
-// `polls_remaining` down from `total_polls`, until the worker exits or the budget
-// is exhausted, so per-worker process-group cleanup does not interrupt the
+// group to reap any orphaned descendants. Reschedules itself on `timer` until the
+// worker exits, so per-worker process-group cleanup does not interrupt the
 // worker's own shutdown sequence (atexit / __ray_shutdown__ handlers).
 void SchedulePostExitProcessGroupCleanup(
     std::shared_ptr<boost::asio::deadline_timer> timer,
     pid_t worker_pid,
     pid_t pgid,
-    WorkerID wid,
-    int polls_remaining,
-    int total_polls) {
+    WorkerID wid) {
   // If the worker process has exited, sweep its (now leaderless) process group
   // to reap any orphaned descendants it left behind, then stop.
   if (kill(worker_pid, 0) == -1 && errno == ESRCH) {
@@ -176,27 +153,15 @@ void SchedulePostExitProcessGroupCleanup(
     return;
   }
 
-  // The worker is still running its own shutdown. Because the budget is derived
-  // from actor_graceful_shutdown_timeout_ms (after which the GCS force-kills the
-  // worker), this is normally only reachable when that timeout is -1 (force-kill
-  // disabled), i.e. the user has explicitly allowed the actor to take as long as
-  // it needs. We must not SIGKILL the group while the worker is alive (that would
-  // kill it mid-shutdown), and we will not poll forever, so give up here.
-  if (polls_remaining <= 0) {
-    const int waited_s = total_polls * kGracefulPgCleanupPollMs / 1000;
-    RAY_LOG(WARNING).WithField(wid)
-        << "SchedulePostExitProcessGroupCleanup: worker pid=" << worker_pid
-        << " is still alive after waiting ~" << waited_s
-        << "s for its graceful shutdown; giving up process-group cleanup. Any "
-           "child processes it leaked will not be reaped.";
-    return;
-  }
+  // The worker is still running its own shutdown. We must not SIGKILL the group
+  // while it is alive (that would kill the worker mid-shutdown), so keep polling
+  // until it exits on its own. A worker that never exits is itself a bug; the
+  // 100ms poll is negligible overhead in that case (and stops when the raylet's
+  // io_context shuts down and cancels the timer).
   timer->expires_from_now(boost::posix_time::milliseconds(kGracefulPgCleanupPollMs));
-  timer->async_wait([timer, worker_pid, pgid, wid, polls_remaining, total_polls](
-                        const boost::system::error_code &ec) {
+  timer->async_wait([timer, worker_pid, pgid, wid](const boost::system::error_code &ec) {
     if (!ec) {
-      SchedulePostExitProcessGroupCleanup(
-          timer, worker_pid, pgid, wid, polls_remaining - 1, total_polls);
+      SchedulePostExitProcessGroupCleanup(timer, worker_pid, pgid, wid);
     }
   });
 }
@@ -1674,9 +1639,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
           // Poll for the worker process to exit, then sweep its process group.
           const pid_t worker_pid = worker->GetProcess().GetId();
           auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
-          const int budget = GracefulPgCleanupPollBudget();
-          SchedulePostExitProcessGroupCleanup(
-              std::move(timer), worker_pid, pgid, wid, budget, budget);
+          SchedulePostExitProcessGroupCleanup(std::move(timer), worker_pid, pgid, wid);
         }
       }
     }
