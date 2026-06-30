@@ -46,6 +46,7 @@
 //python/ray/serve/tests:test_per_request_headers
 //python/ray/serve/tests:test_per_request_headers_with_grpc
 //python/ray/serve/tests:test_persistence
+//python/ray/serve/tests:test_proxy
 //python/ray/serve/tests:test_proxy_response_generator
 //python/ray/serve/tests:test_queue_monitor
 //python/ray/serve/tests:test_ray_client
