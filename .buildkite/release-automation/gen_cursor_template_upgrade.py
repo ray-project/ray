@@ -41,8 +41,12 @@ def make_step(template_name: str, ray_version: str) -> dict:
         "label": f":cursor: Trigger Cursor upgrade: {template_name}",
         "key": f"cursor-upgrade-{template_name}".replace("_", "-"),
         "depends_on": [],
-        "instance_type": "small_branch",
-        "mount_buildkite_agent": True,
+        # These steps are uploaded directly via `buildkite-agent pipeline
+        # upload`, bypassing rayci compilation, so they must use raw Buildkite
+        # agent targeting. `instance_type`/`mount_buildkite_agent` are rayci-only
+        # properties and are rejected by raw Buildkite. small_branch maps to the
+        # runner_queue_small_branch queue (see config.yml).
+        "agents": {"queue": "runner_queue_small_branch"},
         "soft_fail": True,
         "commands": [
             'export CURSOR_WEBHOOK_URL="$(aws secretsmanager get-secret-value '
