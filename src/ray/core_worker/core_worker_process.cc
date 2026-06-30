@@ -31,6 +31,7 @@
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/object_manager/plasma/client.h"
+#include "ray/pubsub/posting_publisher.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client.h"
@@ -189,6 +190,26 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     RAY_LOG(INFO) << "Core worker main io service stopped.";
   });
 
+  // Start the dedicated callback thread for user-registered object-freed callbacks.
+  // Python code invoked from callbacks may call into numpy or other libraries that
+  // need a large stack; give it the same 16 MB as the IO thread on Mac.
+  boost::thread::attributes obj_freed_cb_thread_attrs;
+#if defined(__APPLE__)
+  obj_freed_cb_thread_attrs.set_stack_size(16777216);
+#endif
+  object_freed_callback_thread_ = boost::thread(obj_freed_cb_thread_attrs, [this]() {
+#ifndef _WIN32
+    sigset_t mask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGINT);
+    sigaddset(&mask, SIGTERM);
+    pthread_sigmask(SIG_BLOCK, &mask, nullptr);
+#endif
+    SetThreadName("worker.user_obj_freed_callback");
+    object_freed_callback_service_.run();
+    RAY_LOG(INFO) << "Object-freed callback service stopped.";
+  });
+
   if (options.worker_type == WorkerType::DRIVER &&
       !options.serialized_job_config.empty()) {
     // Driver populates the job config via initialization.
@@ -231,7 +252,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       std::make_unique<gcs::GcsClient>(options.gcs_options, options.node_ip_address),
       std::move(event_aggregator_client),
       options.session_name,
-      local_node_id);
+      local_node_id,
+      clock_);
 
   // Initialize raylet client.
   // NOTE(edoakes): the core_worker_server_ must be running before registering with
@@ -304,16 +326,19 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                 addr));
       });
 
-  auto object_info_publisher = std::make_unique<pubsub::Publisher>(
-      /*channels=*/
-      std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                    rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                                    rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
-      /*periodical_runner=*/*periodical_runner,
-      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
-      /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
-      worker_context->GetWorkerID());
+  auto object_info_publisher = std::make_unique<pubsub::PostingPublisher>(
+      std::make_shared<pubsub::Publisher>(
+          /*channels=*/
+          std::vector<rpc::ChannelType>{
+              rpc::ChannelType::WORKER_OBJECT_EVICTION,
+              rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+              rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
+          /*periodical_runner=*/*periodical_runner,
+          /*clock=*/clock_,
+          /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
+          /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
+          worker_context->GetWorkerID()),
+      io_service_);
   auto object_info_subscriber = std::make_unique<pubsub::Subscriber>(
       /*subscriber_id=*/worker_context->GetWorkerID(),
       /*channels=*/
@@ -335,6 +360,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*is_node_dead=*/
       [this](const NodeID &node_id) {
         return GetCoreWorker()->gcs_client_->Nodes().IsNodeDead(node_id);
+      },
+      /*free_object_on_nodes_async=*/
+      [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations) {
+        GetCoreWorker()->FreeObjectOnNodesAsync(object_id, locations);
       },
       *owned_objects_counter_,
       *owned_objects_size_counter_,
@@ -368,12 +397,14 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
        options.worker_type != WorkerType::RESTORE_WORKER),
       /*store_client=*/std::move(plasma_client),
       /*fetch_batch_size=*/RayConfig::instance().worker_fetch_request_size(),
+      /*clock=*/clock_,
       /*get_current_call_site=*/[this]() {
         auto core_worker = GetCoreWorker();
         return core_worker->CurrentCallSite();
       });
   auto memory_store = std::make_shared<CoreWorkerMemoryStore>(
       io_service_,
+      clock_,
       /*reference_counting_enabled=*/reference_counter != nullptr,
       raylet_ipc_client,
       options.check_signals,
@@ -495,14 +526,13 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
               set_direct_transport_metadata(object_id, direct_transport_metadata);
             },
             "CoreWorker.SetDirectTransportMetadata");
-      });
+      },
+      /*clock=*/clock_);
 
   auto on_excess_queueing = [this](const ActorID &actor_id,
                                    const std::string &actor_name,
                                    int64_t num_queued) {
-    auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
-                         std::chrono::system_clock::now().time_since_epoch())
-                         .count();
+    auto timestamp = clock_.NowUnixMillis() / 1000;
     auto core_worker = GetCoreWorker();
     auto message = absl::StrFormat(
         "Warning: More than %d tasks are pending submission to actor %s with actor_id "
@@ -530,7 +560,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       },
       on_excess_queueing,
       io_service_,
-      reference_counter);
+      reference_counter,
+      /*clock=*/clock_);
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     auto core_worker = GetCoreWorker();
@@ -574,7 +605,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         return std::nullopt;
       },
       io_service_,
-      *scheduler_placement_time_percentile_ms_);
+      *scheduler_placement_time_percentile_ms_,
+      /*clock=*/clock_);
 
   auto report_locality_data_callback = [this](
                                            const ObjectID &object_id,
@@ -678,6 +710,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       std::make_shared<CoreWorker>(std::move(options),
                                    std::move(worker_context),
                                    io_service_,
+                                   object_freed_callback_service_,
                                    std::move(core_worker_client_pool),
                                    std::move(raylet_client_pool),
                                    std::move(periodical_runner),
@@ -687,6 +720,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(raylet_ipc_client),
                                    std::move(local_raylet_rpc_client),
                                    io_thread_,
+                                   object_freed_callback_thread_,
                                    std::move(reference_counter),
                                    std::move(memory_store),
                                    std::move(plasma_store_provider),
@@ -705,7 +739,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(task_event_buffer),
                                    pid,
                                    *task_by_state_gauge_,
-                                   *actor_by_state_gauge_);
+                                   *actor_by_state_gauge_,
+                                   clock_);
 
   core_worker->InitializeShutdownExecutor();
 
@@ -718,6 +753,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
                      ? ComputeDriverIdFromJob(options_.job_id)
                      : options_.worker_id),
       io_work_(io_service_.get_executor()),
+      object_freed_callback_service_work_(object_freed_callback_service_.get_executor()),
       client_call_manager_(std::make_unique<rpc::ClientCallManager>(
           io_service_, /*record_stats=*/false, options.node_ip_address)),
       task_execution_service_work_(task_execution_service_.get_executor()),

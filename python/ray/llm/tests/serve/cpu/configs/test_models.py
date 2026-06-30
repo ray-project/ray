@@ -8,7 +8,9 @@ import pytest
 from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
 from ray.llm._internal.serve.core.configs.accelerators import (
     CPUAccelerator,
+    CPUConfig,
     GPUAccelerator,
+    GPUConfig,
     NPUAccelerator,
     TPUAccelerator,
     TPUConfig,
@@ -18,6 +20,7 @@ from ray.llm._internal.serve.core.configs.llm_config import (
     LoraConfig,
     ModelLoadingConfig,
 )
+from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
 
 CONFIG_DIRS_PATH = str(Path(__file__).parent / "configs")
 
@@ -178,6 +181,49 @@ class TestModelConfig:
         old_engine_config.hf_model_id = "fake_hf_model_id"
         new_engine_config = llm_config.get_engine_config()
         assert new_engine_config is old_engine_config
+
+    def test_remote_model_source_uses_model_id_as_hf_model_id(self):
+        """A remote model_source must not leak its URI into hf_model_id.
+
+        Using the URI verbatim propagates the scheme and slashes into the HF
+        cache directory name (e.g. ``models--s3:----bucket--...``). The URI
+        should instead be carried by mirror_config while hf_model_id falls back
+        to the user-supplied model_id.
+        """
+        bucket_uri = "s3://my-bucket/my-model"
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+                model_source=bucket_uri,
+            ),
+        )
+        engine_config = llm_config.get_engine_config()
+        assert engine_config.hf_model_id == "llm_model_id"
+        assert engine_config.mirror_config is not None
+        assert engine_config.mirror_config.bucket_uri == bucket_uri
+
+    def test_hf_model_source_used_as_hf_model_id(self):
+        """A plain HuggingFace model_source is used directly as hf_model_id."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+                model_source="facebook/opt-1.3b",
+            ),
+        )
+        engine_config = llm_config.get_engine_config()
+        assert engine_config.hf_model_id == "facebook/opt-1.3b"
+        assert engine_config.mirror_config is None
+
+    def test_no_model_source_falls_back_to_model_id(self):
+        """With no model_source, hf_model_id falls back to model_id."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+            ),
+        )
+        engine_config = llm_config.get_engine_config()
+        assert engine_config.hf_model_id == "llm_model_id"
+        assert engine_config.mirror_config is None
 
     def test_experimental_configs(self):
         """Test that `experimental_configs` can be used."""
@@ -378,6 +424,28 @@ class TestAcceleratorConfigLogic:
         )
         assert llm_config.accelerator_type == "L4"
         engine_config = llm_config.get_engine_config()
+        assert engine_config.accelerator_type == "L4"
+
+    def test_vllm_engine_config_accelerator_type_with_cpu_config_raises_error(self):
+        """Test that VLLMEngineConfig rejects accelerator_type with CPU config."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
+        ):
+            VLLMEngineConfig(
+                model_id="test-model",
+                accelerator_type="L4",
+                accelerator_config=CPUConfig(kind="cpu"),
+            )
+
+    def test_vllm_engine_config_accelerator_type_with_gpu_config_succeeds(self):
+        """Test that VLLMEngineConfig accepts accelerator_type with GPU config."""
+        engine_config = VLLMEngineConfig(
+            model_id="test-model",
+            accelerator_type="L4",
+            accelerator_config=GPUConfig(kind="gpu"),
+        )
+
         assert engine_config.accelerator_type == "L4"
 
     def test_llm_config_accelerator_type_hardware_mismatch(self):

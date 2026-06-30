@@ -1041,9 +1041,9 @@ defusedxml==0.7.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   nbconvert
-dill==0.3.7 \
-    --hash=sha256:76b122c08ef4ce2eedcd4d1abd8e641114bfc6c2867f49f3c41facf65bf19f5e \
-    --hash=sha256:cc1c8b182eb3013e24bd475ff2e9295af86c1a38eb1aff128dac8962a9ce3c03
+dill==0.3.8 \
+    --hash=sha256:3ebe3c479ad625c4553aca177444d89b486b1d84982eeacded644afc0cf797ca \
+    --hash=sha256:c36ca9ffb54365bdd2f8eb3eff7d2a21237f8452b57ace88b1ac615b7e815bd7
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   petastorm
@@ -4077,6 +4077,12 @@ pyzmq==27.1.0 \
     #   jupyter-server
     #   locust
     #   petastorm
+ray-haproxy==2.8.25 ; sys_platform == 'linux' \
+    --hash=sha256:51671f11afb571ed5b37042f9287daf48de235f2d32ad18b732ee9587e9ad076 \
+    --hash=sha256:a63902c2fe7eb51fbcb502980228d743b79da6cecab230c4c24674517b1ac3ac
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   ray
 referencing==0.36.2 \
     --hash=sha256:df2e89862cd09deabbdba16944cc3f10feb6b3e6f18e902f7cc25609a34775aa \
     --hash=sha256:e8699adbbf8b5c7de96d8ffa0eb5c158b3beafce084968e2ea8bb08c6794dcd0

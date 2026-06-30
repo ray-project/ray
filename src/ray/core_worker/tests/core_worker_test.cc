@@ -31,6 +31,7 @@
 #include "ray/asio/fake_periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_management/actor_creator.h"
 #include "ray/core_worker/actor_management/actor_manager.h"
 #include "ray/core_worker/context.h"
@@ -52,6 +53,7 @@
 #include "ray/pubsub/publisher.h"
 #include "ray/raylet_ipc_client/fake_raylet_ipc_client.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace core {
@@ -65,7 +67,8 @@ class CoreWorkerTest : public ::testing::Test {
   CoreWorkerTest()
       : io_work_(io_service_.get_executor()),
         task_execution_service_work_(task_execution_service_.get_executor()),
-        current_time_ms_(0.0) {
+        object_freed_callback_service_work_(
+            object_freed_callback_service_.get_executor()) {
     CoreWorkerOptions options;
     options.worker_type = WorkerType::WORKER;
     options.language = Language::PYTHON;
@@ -93,6 +96,7 @@ class CoreWorkerTest : public ::testing::Test {
            bool is_streaming_generator,
            bool retry_exception,
            int64_t generator_backpressure_num_objects,
+           int64_t num_objects_per_yield,
            const std::optional<std::string> &tensor_transport) -> Status {
       return Status::OK();
     };
@@ -138,7 +142,7 @@ class CoreWorkerTest : public ::testing::Test {
                                       rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                       rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
         /*periodical_runner=*/*fake_periodical_runner_,
-        /*get_time_ms=*/[this]() { return current_time_ms_; },
+        /*clock=*/clock_,
         /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
         /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
         worker_context->GetWorkerID());
@@ -152,13 +156,14 @@ class CoreWorkerTest : public ::testing::Test {
         object_info_publisher.get(),
         fake_object_info_subscriber.get(),
         [](const NodeID &) { return false; },
+        [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
         fake_owned_object_count_gauge_,
         fake_owned_object_size_gauge_,
         false);
 
     // Mock reference counter as enabled
     memory_store_ = std::make_shared<CoreWorkerMemoryStore>(
-        io_service_, reference_counter_ != nullptr, nullptr);
+        io_service_, clock_, reference_counter_ != nullptr, nullptr);
 
     auto future_resolver = std::make_unique<FutureResolver>(
         memory_store_,
@@ -173,7 +178,8 @@ class CoreWorkerTest : public ::testing::Test {
         std::make_unique<gcs::MockGcsClient>(),
         std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager_),
         "test_session",
-        NodeID::Nil());
+        NodeID::Nil(),
+        clock_);
 
     task_manager_ = std::make_shared<TaskManager>(
         *memory_store_,
@@ -194,7 +200,8 @@ class CoreWorkerTest : public ::testing::Test {
         fake_task_by_state_gauge_,
         fake_total_lineage_bytes_gauge_,
         /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
-        /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
+        /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
+        /*clock=*/clock_);
 
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
         rpc_address_,
@@ -231,7 +238,8 @@ class CoreWorkerTest : public ::testing::Test {
         lease_request_rate_limiter,
         [](const ObjectID &object_id) { return std::nullopt; },
         io_service_,
-        fake_scheduler_placement_time_ms_histogram_);
+        fake_scheduler_placement_time_ms_histogram_,
+        /*clock=*/clock_);
 
     auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *core_worker_client_pool,
@@ -244,7 +252,8 @@ class CoreWorkerTest : public ::testing::Test {
         [](const ObjectID &object_id) { return std::nullopt; },
         [](const ActorID &actor_id, const std::string &, uint64_t num_queued) {},
         io_service_,
-        reference_counter_);
+        reference_counter_,
+        /*clock=*/clock_);
     actor_task_submitter_ = actor_task_submitter.get();
 
     auto actor_manager = std::make_unique<ActorManager>(
@@ -257,6 +266,7 @@ class CoreWorkerTest : public ::testing::Test {
     core_worker_ = std::make_shared<CoreWorker>(std::move(options),
                                                 std::move(worker_context),
                                                 io_service_,
+                                                object_freed_callback_service_,
                                                 std::move(core_worker_client_pool),
                                                 std::move(raylet_client_pool),
                                                 std::move(periodical_runner),
@@ -266,6 +276,7 @@ class CoreWorkerTest : public ::testing::Test {
                                                 std::move(fake_raylet_ipc_client),
                                                 std::move(fake_local_raylet_rpc_client),
                                                 io_thread_,
+                                                object_freed_callback_thread_,
                                                 reference_counter_,
                                                 memory_store_,
                                                 nullptr,  // plasma_store_provider_
@@ -284,17 +295,27 @@ class CoreWorkerTest : public ::testing::Test {
                                                 std::move(task_event_buffer),
                                                 getpid(),
                                                 fake_task_by_state_gauge_,
-                                                fake_actor_by_state_gauge_);
+                                                fake_actor_by_state_gauge_,
+                                                clock_);
   }
 
  protected:
+  FakeClock clock_;
   instrumented_io_context io_service_;
   instrumented_io_context task_execution_service_;
+  instrumented_io_context object_freed_callback_service_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
       task_execution_service_work_;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      object_freed_callback_service_work_;
 
   boost::thread io_thread_;
+  boost::thread object_freed_callback_thread_;
+
+  /// Flush all pending object-freed callbacks. Call this in tests after an action
+  /// that should trigger a user-registered out-of-scope callback.
+  void FlushObjectFreedCallbacks() { object_freed_callback_service_.poll(); }
 
   rpc::Address rpc_address_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
@@ -313,9 +334,6 @@ class CoreWorkerTest : public ::testing::Test {
   ray::observability::FakeGauge fake_owned_object_count_gauge_;
   ray::observability::FakeGauge fake_owned_object_size_gauge_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
-
-  // Controllable time for testing publisher timeouts
-  double current_time_ms_;
 };
 
 std::shared_ptr<RayObject> MakeRayObject(const std::string &data_str,
@@ -329,6 +347,35 @@ std::shared_ptr<RayObject> MakeRayObject(const std::string &data_str,
       metadata_str.size(),
       true);
   return std::make_shared<RayObject>(data, metadata, std::vector<rpc::ObjectReference>());
+}
+
+TaskSpecification CreateStreamingGeneratorTaskSpec() {
+  TaskSpecification task;
+  task.GetMutableMessage().set_task_id(TaskID::FromRandom(JobID::FromInt(1)).Binary());
+  task.GetMutableMessage().set_num_returns(1);
+  task.GetMutableMessage().set_returns_dynamic(true);
+  task.GetMutableMessage().set_streaming_generator(true);
+  task.GetMutableMessage().set_generator_backpressure_num_objects(-1);
+  return task;
+}
+
+TEST_F(CoreWorkerTest, PeekObjectRefStreamNReturnsExpectedRefs) {
+  auto spec = CreateStreamingGeneratorTaskSpec();
+  auto generator_id = spec.ReturnId(0);
+  task_manager_->AddPendingTask(rpc_address_, spec, "call_site");
+
+  auto refs = core_worker_->PeekObjectRefStreamN(generator_id, 2);
+  ASSERT_EQ(refs.size(), 2);
+  ASSERT_EQ(ObjectID::FromBinary(refs[0].first.object_id()),
+            ObjectID::FromIndex(spec.TaskId(), 2));
+  ASSERT_FALSE(refs[0].second);
+  ASSERT_EQ(ObjectID::FromBinary(refs[1].first.object_id()),
+            ObjectID::FromIndex(spec.TaskId(), 3));
+  ASSERT_FALSE(refs[1].second);
+  ASSERT_EQ(WorkerID::FromBinary(refs[0].first.owner_address().worker_id()),
+            core_worker_->GetWorkerID());
+  ASSERT_EQ(WorkerID::FromBinary(refs[1].first.owner_address().worker_id()),
+            core_worker_->GetWorkerID());
 }
 
 TEST_F(CoreWorkerTest, RecordMetrics) {
@@ -650,10 +697,13 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   rpc::Address addr;
   addr.set_ip_address("127.0.0.1");
   auto is_node_dead = [](const NodeID &) { return false; };
+  auto free_object_on_nodes_async = [](const ObjectID &,
+                                       const absl::flat_hash_set<NodeID> &) {};
   ReferenceCounter ref_counter(addr,
                                /*object_info_publisher=*/nullptr,
                                /*object_info_subscriber=*/nullptr,
                                is_node_dead,
+                               free_object_on_nodes_async,
                                *std::make_shared<ray::observability::FakeGauge>(),
                                *std::make_shared<ray::observability::FakeGauge>());
 
@@ -685,6 +735,7 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
 
   auto fake_plasma = std::make_shared<RecordingPlasmaGetClient>(&observed_batches);
 
+  Clock clock;
   CoreWorkerPlasmaStoreProvider provider(
       /*store_socket=*/"",
       fake_raylet,
@@ -692,6 +743,7 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
       /*warmup=*/false,
       /*store_client=*/fake_plasma,
       /*fetch_batch_size=*/2,
+      /*clock=*/clock,
       /*get_current_call_site=*/nullptr);
 
   // Build a set of 5 object ids.
@@ -721,6 +773,7 @@ TEST(CoreWorkerPlasmaStoreProviderFastPath, SendsOnlyRemoteIdsToRayletOnMixed) {
 
   auto fake_raylet = std::make_shared<ipc::FakeRayletIpcClient>();
 
+  Clock clock;
   CoreWorkerPlasmaStoreProvider provider(
       /*store_socket=*/"",
       fake_raylet,
@@ -728,6 +781,7 @@ TEST(CoreWorkerPlasmaStoreProviderFastPath, SendsOnlyRemoteIdsToRayletOnMixed) {
       /*warmup=*/false,
       /*store_client=*/fake_plasma,
       /*fetch_batch_size=*/10,
+      /*clock=*/clock,
       /*get_current_call_site=*/nullptr);
 
   std::vector<rpc::Address> owner_addresses(ids.size());
@@ -844,7 +898,7 @@ TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest, HandlePubsubCommandBatch
     // reply, here we allocate the reply on the stack. Hence the normal order of
     // destruction is: reply goes out of scope -> publisher is destructed -> flushes the
     // reply which access freed memory
-    current_time_ms_ += RayConfig::instance().subscriber_timeout_ms();
+    clock_.AdvanceTime(absl::Milliseconds(RayConfig::instance().subscriber_timeout_ms()));
     object_info_publisher_->CheckDeadSubscribers();
   }
 }
@@ -1034,7 +1088,7 @@ TEST_P(CoreWorkerPubsubWorkerRefRemovedChannelTest, HandlePubsubCommandBatchRetr
   }
   if (!should_remove_ref) {
     // See the above comment in the worker object eviction channel test
-    current_time_ms_ += RayConfig::instance().subscriber_timeout_ms();
+    clock_.AdvanceTime(absl::Milliseconds(RayConfig::instance().subscriber_timeout_ms()));
     object_info_publisher_->CheckDeadSubscribers();
   }
 }
@@ -1305,6 +1359,186 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
 INSTANTIATE_TEST_SUITE_P(ActorRefDeletedForRegisteringActor,
                          HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
                          ::testing::Values(true, false));
+
+// Callback fires after the last local reference is dropped, and
+// FlushObjectFreedCallbacks drains the pending work.
+TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_FiresAfterRefDrop) {
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+
+  bool fired = false;
+  ObjectID received_id;
+  bool registered = core_worker_->AddObjectOutOfScopeOrFreedCallback(
+      object_id, [&fired, &received_id](const ObjectID &id) {
+        fired = true;
+        received_id = id;
+      });
+  ASSERT_TRUE(registered);
+  ASSERT_FALSE(fired);
+
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+  // Callback is posted to the dedicated service; flush it synchronously.
+  FlushObjectFreedCallbacks();
+  ASSERT_TRUE(fired);
+  EXPECT_EQ(received_id, object_id);
+}
+
+// Returns false when the object is already out of scope; callback never fires.
+TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_ReturnsFalseWhenAlreadyOutOfScope) {
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  // Add and immediately remove the reference so it goes out of scope.
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+
+  bool fired = false;
+  bool registered = core_worker_->AddObjectOutOfScopeOrFreedCallback(
+      object_id, [&fired](const ObjectID &) { fired = true; });
+  ASSERT_FALSE(registered);
+  FlushObjectFreedCallbacks();
+  ASSERT_FALSE(fired);
+}
+
+// The callback must run on the dedicated object_freed_callback_service_ thread,
+// not on the IO thread or the test thread.
+TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_RunsOnDedicatedThread) {
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+
+  std::promise<boost::thread::id> thread_id_promise;
+  bool registered = core_worker_->AddObjectOutOfScopeOrFreedCallback(
+      object_id, [&thread_id_promise](const ObjectID &) {
+        thread_id_promise.set_value(boost::this_thread::get_id());
+      });
+  ASSERT_TRUE(registered);
+
+  // RemoveLocalReference fires OnObjectOutOfScopeOrFreed inline (test thread), which
+  // calls the wrapped lambda that posts the real callback to
+  // object_freed_callback_service_.
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+
+  // Start the dedicated thread so the posted work can run.
+  object_freed_callback_thread_ =
+      boost::thread([this]() { object_freed_callback_service_.run(); });
+
+  auto tid = thread_id_promise.get_future().get();
+  auto expected_tid = object_freed_callback_thread_.get_id();
+
+  object_freed_callback_service_.stop();
+  if (object_freed_callback_thread_.joinable()) {
+    object_freed_callback_thread_.join();
+  }
+
+  EXPECT_EQ(tid, expected_tid) << "Callback must run on object_freed_callback_thread_";
+  EXPECT_NE(tid, boost::this_thread::get_id())
+      << "Callback must not run on the test thread";
+}
+
+// The C function-pointer overload (used by Cython) routes through the same
+// dedicated thread and delivers the correct object_id + user_data.
+TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_CFunctionPointerOverload) {
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+
+  struct Result {
+    ObjectID id;
+    bool fired = false;
+  } result;
+
+  auto c_callback = [](const ObjectID &id, void *data) {
+    auto *r = static_cast<Result *>(data);
+    r->id = id;
+    r->fired = true;
+  };
+
+  bool registered =
+      core_worker_->AddObjectOutOfScopeOrFreedCallback(object_id, c_callback, &result);
+  ASSERT_TRUE(registered);
+
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+  FlushObjectFreedCallbacks();
+
+  ASSERT_TRUE(result.fired);
+  EXPECT_EQ(result.id, object_id);
+}
+
+TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_MultipleCallbacksAllFire) {
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+
+  int fire_count = 0;
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_TRUE(core_worker_->AddObjectOutOfScopeOrFreedCallback(
+        object_id, [&fire_count](const ObjectID &) { ++fire_count; }));
+  }
+
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+  FlushObjectFreedCallbacks();
+
+  EXPECT_EQ(fire_count, 3);
+}
+
+TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_FiresExactlyOnce) {
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+
+  int fire_count = 0;
+  ASSERT_TRUE(core_worker_->AddObjectOutOfScopeOrFreedCallback(
+      object_id, [&fire_count](const ObjectID &) { ++fire_count; }));
+
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+  FlushObjectFreedCallbacks();
+  FlushObjectFreedCallbacks();  // second flush must not re-fire
+
+  EXPECT_EQ(fire_count, 1);
+}
 
 }  // namespace core
 }  // namespace ray

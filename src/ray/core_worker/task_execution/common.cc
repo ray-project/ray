@@ -21,43 +21,6 @@
 namespace ray {
 namespace core {
 
-TaskToExecute::TaskToExecute(
-    std::function<void(const TaskSpecification &)> execute_callback,
-    std::function<void(const TaskSpecification &, const Status &)> cancel_callback,
-    TaskSpecification task_spec)
-    : execute_callback_(std::move(execute_callback)),
-      cancel_callback_(std::move(cancel_callback)),
-      task_spec_(std::move(task_spec)),
-      pending_dependencies_(task_spec_.GetDependencies()) {}
-
-void TaskToExecute::Execute() { execute_callback_(task_spec_); }
-
-void TaskToExecute::Cancel(const Status &status) { cancel_callback_(task_spec_, status); }
-
-ray::TaskID TaskToExecute::TaskID() const { return task_spec_.TaskId(); }
-
-uint64_t TaskToExecute::AttemptNumber() const { return task_spec_.AttemptNumber(); }
-
-bool TaskToExecute::IsRetry() const { return task_spec_.IsRetry(); }
-
-const std::string &TaskToExecute::ConcurrencyGroupName() const {
-  return task_spec_.ConcurrencyGroupName();
-}
-
-ray::FunctionDescriptor TaskToExecute::FunctionDescriptor() const {
-  return task_spec_.FunctionDescriptor();
-}
-
-const std::vector<rpc::ObjectReference> &TaskToExecute::PendingDependencies() const {
-  return pending_dependencies_;
-};
-
-bool TaskToExecute::DependenciesResolved() const { return pending_dependencies_.empty(); }
-
-void TaskToExecute::MarkDependenciesResolved() { pending_dependencies_.clear(); }
-
-const TaskSpecification &TaskToExecute::TaskSpec() const { return task_spec_; }
-
 ActorTaskExecutionArgWaiter::ActorTaskExecutionArgWaiter(
     AsyncWaitForArgs async_wait_for_args)
     : async_wait_for_args_(async_wait_for_args) {}

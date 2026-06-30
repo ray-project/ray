@@ -46,53 +46,57 @@ def iter_threaded(
     output_buffer_size: int = 1,
 ) -> Generator[U, None, None]:
     """Apply ``fn`` to ``base_iterator`` across ``num_workers`` background
-    threads, yielding results through a single bounded queue.
+    threads, yielding results through a bounded queue.
 
     Workers share ``base_iterator`` under a lock (so it may be a stateful,
     non-thread-safe generator) and run ``fn`` concurrently. With
     ``num_workers > 1`` the output order is not preserved and must be restored
-    downstream if needed. In-flight items are bounded to roughly
-    ``num_workers + output_buffer_size``, keeping pinned resources small. When
-    the consumer stops early (``break``, ``.close()``, or GC), workers are
-    signaled to stop via an event so they do not leak.
+    downstream by the consumer.
+
+    Invariant: the number of output-queue items + items in-flight in workers is
+    bounded by ``output_buffer_size``.
+    Workers reserve an output buffer slot before pulling from ``fn``, ensuring
+    they don't run ``fn`` (and hold the result) while waiting for queue space.
+
+    When the consumer stops early (``break``, ``.close()``, or GC), workers
+    are signaled via a stop event so they don't leak. Note: a hanging
+    ``fn`` cannot be interrupted, so ``fn`` must terminate or raise within
+    bounded time per element. For example, the user function should have
+    timeouts if doing blocking I/O.
 
     Args:
         base_iterator: Iterator consumed (under a lock) by the workers.
         fn: Transform applied by each worker to its view of ``base_iterator``.
         num_workers: Number of background worker threads.
-        output_buffer_size: Max number of items buffered in the output queue.
-
-    Yields:
-        U: Items produced by ``fn``.
+        output_buffer_size: Max number of items held by the output-queue
+            + in-flight in the workers.
     """
     if num_workers < 1:
         raise ValueError("num_workers must be at least 1.")
+    if output_buffer_size < 1:
+        raise ValueError("output_buffer_size must be at least 1.")
 
     stopped = threading.Event()
-    result_queue: queue.Queue = queue.Queue(maxsize=output_buffer_size)
+    result_queue: queue.Queue = queue.Queue()
+    slots = threading.Semaphore(output_buffer_size)
     iter_lock = threading.Lock()
 
-    def _locked_next():
-        # Pull the next item under a lock so workers can safely share a
-        # stateful iterator. Returns _SENTINEL once exhausted or once the
-        # consumer has stopped (so workers don't pay for one more fetch
-        # before the next _put-side stop check).
-        with iter_lock:
-            if stopped.is_set():
-                return _SENTINEL
-            try:
-                return next(base_iterator)
-            except StopIteration:
-                return _SENTINEL
+    def _locked_iter() -> Iterator[T]:
+        while True:
+            with iter_lock:
+                if stopped.is_set():
+                    return
+                try:
+                    item = next(base_iterator)
+                except StopIteration:
+                    return
+            yield item
 
-    def _put(item) -> bool:
-        """Put with periodic stop checks. Returns False if interrupted."""
+    def _acquire_slot() -> bool:
+        # Block until a slot is acquired or the consumer has stopped.
         while not stopped.is_set():
-            try:
-                result_queue.put(item, timeout=0.1)
+            if slots.acquire(timeout=0.1):
                 return True
-            except queue.Full:
-                continue
         return False
 
     remaining_workers = num_workers
@@ -100,19 +104,35 @@ def iter_threaded(
 
     def _worker():
         nonlocal remaining_workers
+        slot_acquired = False
         try:
-            for item in fn(iter(_locked_next, _SENTINEL)):
-                if not _put(item):
-                    return
+            # Construct `fn_iter` inside the try so any exception during
+            # construction propagates to the consumer via the outer except.
+            fn_iter = fn(_locked_iter())
+            while True:
+                slot_acquired = _acquire_slot()
+                if not slot_acquired:
+                    break
+                item = next(fn_iter)
+                result_queue.put(item)
+                # The consumer pulling from the result_queue will release the slot.
+                # Resetting here prevents the finally block from double-releasing.
+                slot_acquired = False
+        except StopIteration:
+            pass
         except Exception as e:
+            # Handle errors in `fn` by propagating them to the consumer.
             if not stopped.is_set():
-                _put(e)
+                result_queue.put(e)
         finally:
+            if slot_acquired:
+                slots.release()
             with remaining_lock:
                 remaining_workers -= 1
                 is_last = remaining_workers == 0
+            # Signal the consumer that all thread workers have exhausted their input.
             if is_last and not stopped.is_set():
-                _put(_SENTINEL)
+                result_queue.put(_SENTINEL)
 
     worker_threads = [
         threading.Thread(target=_worker, name="iter_threaded", daemon=True)
@@ -128,6 +148,8 @@ def iter_threaded(
                 break
             if isinstance(item, Exception):
                 raise item
+            # Release one slot at yield time so a worker can run `fn` for the next item.
+            slots.release()
             yield item
     finally:
         stopped.set()
@@ -179,6 +201,9 @@ def resolve_block_refs(
     Args:
         block_ref_iter: An iterator over block object references.
         stats: An optional stats object to recording block hits and misses.
+
+    Yields:
+        Block: The resolved blocks for each block reference.
     """
     hits = 0
     misses = 0

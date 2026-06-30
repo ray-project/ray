@@ -60,6 +60,13 @@ class NodeProvider:
         (e.g. is_running(node_id)). This means that non_terminate_nodes() must
         be called again to refresh results.
 
+        Args:
+            tag_filters: Tag key/value pairs that nodes must match to be
+                included in the result.
+
+        Returns:
+            A list of node ids matching the given tag filters.
+
         Examples:
             >>> from ray.autoscaler.node_provider import NodeProvider
             >>> from ray.autoscaler.tags import TAG_RAY_NODE_KIND
@@ -117,6 +124,9 @@ class NodeProvider:
             ip_address: Address of node.
             use_internal_ip: Whether the ip address is
                 public or private.
+
+        Returns:
+            The node id corresponding to the given IP address.
 
         Raises:
             ValueError: If not found.
@@ -248,6 +258,9 @@ class NodeProvider:
                 or external ip.
             docker_config: If set, the docker information of the docker
                 container that commands should be run on.
+
+        Returns:
+            A CommandRunner instance for the node.
         """
         common_args = {
             "log_prefix": log_prefix,

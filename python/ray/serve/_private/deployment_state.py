@@ -49,6 +49,7 @@ from ray.serve._private.constants import (
     DEPLOYMENT_ACTOR_HEALTH_CHECK_TIMEOUT_S,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     MAX_PER_REPLICA_RETRY_COUNT,
+    RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS,
     RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_TASK_EVENTS,
@@ -779,6 +780,9 @@ class ActorReplicaWrapper:
         self._record_routing_stats_ref: Optional[ObjectRef] = None
         self._last_record_routing_stats_time: float = 0.0
         self._has_user_routing_stats_method: bool = False
+        # Static per-replica metadata captured once when the replica became
+        # ready (via the user's `record_replica_metadata` hook).
+        self._replica_metadata: Dict[str, Any] = {}
         self._ingress: bool = False
 
         # Outbound deployments polling state
@@ -833,6 +837,10 @@ class ActorReplicaWrapper:
     @property
     def gang_context(self) -> Optional[GangContext]:
         return self._gang_context
+
+    @property
+    def replica_metadata(self) -> Dict[str, Any]:
+        return self._replica_metadata
 
     @property
     def unrecoverable(self) -> bool:
@@ -1451,6 +1459,7 @@ class ActorReplicaWrapper:
                         self._outbound_deployments,
                         self._has_user_routing_stats_method,
                         self._gang_context,
+                        self._replica_metadata,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
@@ -1798,6 +1807,7 @@ class DeploymentReplica:
             is_cross_language=self._actor.is_cross_language,
             multiplexed_model_ids=self.multiplexed_model_ids,
             routing_stats=self.routing_stats,
+            replica_metadata=self.replica_metadata,
             port=self._actor._internal_grpc_port,
             backend_http_port=self._actor._http_port or None,
         )
@@ -1822,6 +1832,12 @@ class DeploymentReplica:
     @property
     def routing_stats(self) -> Dict[str, Any]:
         return self._routing_stats
+
+    @property
+    def replica_metadata(self) -> Dict[str, Any]:
+        # Captured by the actor wrapper from the ready handshake (and re-captured
+        # on a new replica incarnation), so no separate restore path is needed.
+        return getattr(self._actor, "replica_metadata", {})
 
     @property
     def actor_details(self) -> ReplicaDetails:
@@ -2158,6 +2174,9 @@ class ReplicaStateContainer:
         Args:
             states: states to consider. If not specified, all replicas
                 are considered.
+
+        Returns:
+            The matching replicas, in the same order as ``states``.
         """
         if states is None:
             return list(self._replica_id_index.values())
@@ -2197,6 +2216,9 @@ class ReplicaStateContainer:
                 are considered.
             max_replicas: max number of replicas to return. If not
                 specified, will pop all replicas matching the criteria.
+
+        Returns:
+            The removed replicas, in the same order as ``states``.
         """
         if states is None:
             states = ALL_REPLICA_STATES
@@ -2240,6 +2262,9 @@ class ReplicaStateContainer:
                 all versions are considered.
             states: states to consider. If not specified, all replicas
                 are considered.
+
+        Returns:
+            The number of replicas matching the criteria.
         """
         if states is None:
             states = ALL_REPLICA_STATES
@@ -2858,6 +2883,7 @@ class DeploymentState:
         # changes or the cache entry is older than _HEALTH_GAUGE_REPORT_INTERVAL_S
         # (to ensure the metric is re-exported within each Prometheus scrape window).
         self._health_gauge_cache: Dict[str, Tuple[int, float]] = {}
+        self._last_health_check_healthy_replica_ids: Set[str] = set()
 
         # Maintain gang membership bookkeeping to avoid O(num_replicas) lookups when stopping gangs.
         # Updated on replica creation during upscaling and permanent removal during downscaling.
@@ -2867,13 +2893,20 @@ class DeploymentState:
         # Deployment-scoped actor lifecycle (per deployment)
         self._deployment_actors = DeploymentActorContainer(self._id)
 
+        replica_lifecycle_metric_tag_keys = (
+            ("deployment", "replica", "application")
+            if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS
+            else ("deployment", "application")
+        )
+
         self.health_check_gauge = metrics.Gauge(
             "serve_deployment_replica_healthy",
             description=(
-                "Tracks whether this deployment replica is healthy. 1 means "
-                "healthy, 0 means unhealthy."
+                "Tracks healthy replicas. When source tags are enabled, each "
+                "replica series is 1 for healthy and 0 for unhealthy; otherwise, "
+                "the deployment/application series is the healthy replica count."
             ),
-            tag_keys=("deployment", "replica", "application"),
+            tag_keys=replica_lifecycle_metric_tag_keys,
         )
         self.health_check_gauge.set_default_tags(
             {"deployment": self._id.name, "application": self._id.app_name}
@@ -2928,7 +2961,7 @@ class DeploymentState:
         self.health_check_failures_counter = metrics.Counter(
             "serve_health_check_failures_total",
             description=("Count of failed health checks."),
-            tag_keys=("deployment", "replica", "application"),
+            tag_keys=replica_lifecycle_metric_tag_keys,
         )
         self.health_check_failures_counter.set_default_tags(
             {"deployment": self._id.name, "application": self._id.app_name}
@@ -3398,7 +3431,6 @@ class DeploymentState:
             target_info: The info with which to set the target state.
             target_num_replicas: The number of replicas that this deployment
                 should attempt to run.
-            status_trigger: The driver that triggered this change of state.
             updated_via_api: Whether the target state update was triggered via API.
         """
         new_target_state = DeploymentTargetState.create(
@@ -3433,6 +3465,9 @@ class DeploymentState:
         If the deployment already exists with the same version, config,
         target_capacity, and target_capacity_direction,
         this method returns False.
+
+        Args:
+            deployment_info: The target deployment info to apply.
 
         Returns:
             bool: Whether the target state has changed.
@@ -3609,7 +3644,9 @@ class DeploymentState:
             self._target_state.info, target_num_replicas, updated_via_api=True
         )
 
-    def _stop_or_update_outdated_version_replicas(self, max_to_stop=math.inf) -> bool:
+    def _stop_or_update_outdated_version_replicas(
+        self, max_to_stop: float = math.inf
+    ) -> bool:
         """Stop or update replicas with outdated versions.
 
         Stop replicas with versions that require the actor to be restarted, and
@@ -3622,6 +3659,9 @@ class DeploymentState:
         Args:
             max_to_stop: max number of replicas to stop, by default,
                          it stops all replicas with an outdated version.
+
+        Returns:
+            Whether any replicas were stopped or reconfigured.
         """
         replicas_to_update = self._replicas.pop(
             exclude_version=self._target_state.version,
@@ -4129,15 +4169,19 @@ class DeploymentState:
         return False, any_replicas_recovering
 
     def _check_startup_replicas(
-        self, original_state: ReplicaState, stop_on_slow=False
+        self, original_state: ReplicaState, stop_on_slow: bool = False
     ) -> List[Tuple[DeploymentReplica, ReplicaStartupStatus]]:
         """
         Common helper function for startup actions tracking and status
         transition: STARTING, UPDATING and RECOVERING.
 
         Args:
+            original_state: The state replicas are transitioning out of.
             stop_on_slow: If we consider a replica failed upon observing it's
                 slow to reach running state.
+
+        Returns:
+            The list of replicas considered slow, along with their startup status.
         """
         slow_replicas = []
         failed_gang_ids: Set[str] = set()
@@ -4330,6 +4374,9 @@ class DeploymentState:
         every control-loop iteration while still refreshing the metric often
         enough for Prometheus export.
         """
+        if not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+            return
+
         now = time.time()
         cached = self._health_gauge_cache.get(replica_unique_id)
         if (
@@ -4375,7 +4422,15 @@ class DeploymentState:
         replica.stop(graceful=graceful_stop)
         self._replicas.add(ReplicaState.STOPPING, replica)
         self._deployment_scheduler.on_replica_stopping(replica.replica_id)
-        self._set_health_gauge(replica.replica_id.unique_id, 0)
+        if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+            self._set_health_gauge(replica.replica_id.unique_id, 0)
+        else:
+            self._last_health_check_healthy_replica_ids.discard(
+                replica.replica_id.unique_id
+            )
+            self.health_check_gauge.set(
+                len(self._last_health_check_healthy_replica_ids)
+            )
 
     def _stop_replica_mark_unhealthy_if_target_version(
         self, replica: DeploymentReplica, graceful_stop: bool
@@ -4504,9 +4559,12 @@ class DeploymentState:
                     replica.last_health_check_latency_ms
                 )
             if replica.last_health_check_failed:
-                self.health_check_failures_counter.inc(
-                    tags={"replica": replica.replica_id.unique_id}
-                )
+                if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+                    self.health_check_failures_counter.inc(
+                        tags={"replica": replica.replica_id.unique_id}
+                    )
+                else:
+                    self.health_check_failures_counter.inc()
 
             if is_healthy:
                 healthy_replicas.append(replica)
@@ -4546,6 +4604,18 @@ class DeploymentState:
         # check below still runs (it has its own lightweight guard).
         if self._in_transition:
             self._check_and_update_transitioning_replicas()
+
+        if not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+            # When the replica tag is disabled, this is a single
+            # deployment/application series. Emit the count of replicas that
+            # passed health checks in this iteration so newly promoted replicas
+            # are not counted before their first successful health check.
+            self._last_health_check_healthy_replica_ids = {
+                replica.replica_id.unique_id for replica in healthy_replicas
+            }
+            self.health_check_gauge.set(
+                len(self._last_health_check_healthy_replica_ids)
+            )
 
         # After replica state updates, check rank consistency and perform minimal reassignment if needed
         # This ensures ranks are continuous after lifecycle events
@@ -4821,6 +4891,9 @@ class DeploymentState:
             replicas: The current list of replicas pending migration.
             deadlines: The current draining node deadlines.
             min_replicas_to_stop: The minimum number of replicas to stop.
+
+        Returns:
+            A tuple ``(replicas_to_stop, replicas_to_keep)``.
         """
         # Treat each replica as a group of one.
         groups = [[r] for r in replicas]
@@ -5376,6 +5449,13 @@ class DeploymentStateManager:
                     A: [A#zxc123, A#qwe234]
                     B: [B#xcv234]
                 }
+
+        Args:
+            all_current_actor_names: Actor names currently registered with Ray.
+
+        Returns:
+            A mapping from deployment ID to the list of replica actor names
+            associated with that deployment.
         """
         all_replica_names = [
             actor_name
@@ -5582,6 +5662,9 @@ class DeploymentStateManager:
     def get_deployment_details(self, id: DeploymentID) -> Optional[DeploymentDetails]:
         """Gets detailed info on a deployment.
 
+        Args:
+            id: The ID of the deployment to look up.
+
         Returns:
             DeploymentDetails: if the deployment is live.
             None: if the deployment is deleted.
@@ -5667,6 +5750,10 @@ class DeploymentStateManager:
 
         If the deployment already exists with the same version and config,
         this is a no-op and returns False.
+
+        Args:
+            deployment_id: The ID of the deployment to apply.
+            deployment_info: The target deployment info to apply.
 
         Returns:
             bool: Whether the target state has changed.

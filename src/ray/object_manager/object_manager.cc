@@ -25,6 +25,7 @@
 
 #include "absl/time/clock.h"
 #include "ray/asio/asio_util.h"
+#include "ray/common/filter_local_objects_util.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/spilled_object_reader.h"
@@ -680,6 +681,7 @@ void ObjectManager::HandleFreeObjects(rpc::FreeObjectsRequest request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+// TODO(#63213) will delete local_only=false and related dead code
 void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
                                 bool local_only) {
   buffer_pool_.FreeObjects(object_ids);
@@ -785,6 +787,22 @@ std::shared_ptr<rpc::ObjectManagerClientInterface> ObjectManager::GetRpcClient(
 void ObjectManager::HandleNodeRemoved(const NodeID &node_id) {
   push_manager_->HandleNodeRemoved(node_id);
   remote_object_manager_clients_.erase(node_id);
+}
+
+std::vector<ObjectID> ObjectManager::GetLocalObjectsOwnedBy(
+    const WorkerID &worker_id) const {
+  return GetLocalObjectsFilteredBy(local_objects_,
+                                   [&worker_id](const LocalObjectInfo &info) {
+                                     return info.object_info.owner_worker_id == worker_id;
+                                   });
+}
+
+std::vector<ObjectID> ObjectManager::GetLocalObjectsOwnedByOwnersOn(
+    const NodeID &node_id) const {
+  return GetLocalObjectsFilteredBy(local_objects_,
+                                   [&node_id](const LocalObjectInfo &info) {
+                                     return info.object_info.owner_node_id == node_id;
+                                   });
 }
 
 std::string ObjectManager::DebugString() const {

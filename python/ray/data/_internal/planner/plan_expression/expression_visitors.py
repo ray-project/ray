@@ -1,5 +1,6 @@
-from dataclasses import replace
-from typing import Dict, List, TypeVar
+from collections import Counter
+from dataclasses import dataclass, replace
+from typing import Dict, Hashable, List, TypeVar
 
 from ray.data.expressions import (
     AliasExpr,
@@ -17,6 +18,19 @@ from ray.data.expressions import (
     UUIDExpr,
     _CallableClassUDF,
     _ExprVisitor,
+)
+from ray.data.util.expression_utils import (
+    _alias_fingerprint_key,
+    _binary_fingerprint_key,
+    _column_fingerprint_key,
+    _download_fingerprint_key,
+    _literal_fingerprint_key,
+    _monotonically_increasing_id_fingerprint_key,
+    _random_fingerprint_key,
+    _star_fingerprint_key,
+    _udf_fingerprint_key,
+    _unary_fingerprint_key,
+    _uuid_fingerprint_key,
 )
 
 T = TypeVar("T")
@@ -99,29 +113,35 @@ class _ExprVisitorBase(_ExprVisitor[None]):
 class _ColumnReferenceCollector(_ExprVisitorBase):
     """Visitor that collects all column references from expression trees.
 
-    This visitor traverses expression trees and accumulates column names
-    referenced in ColumnExpr nodes.
+    Backed by a ``Counter`` so callers can take either:
+    - ``get_column_refs()`` -> ordered, de-duplicated column names, or
+    - ``get_counts()``      -> per-name reference multiplicity, counting repeats
+      *within* a single expression (``x + x`` -> ``{"x": 2}``).
+
+    ``Counter`` preserves first-insertion order, so ``get_column_refs()`` returns the
+    same ordered, de-duplicated list as a plain insertion-ordered ``dict`` would.
     """
 
     def __init__(self):
-        """Initialize with an empty set of referenced columns."""
-
-        # NOTE: We're using dict to maintain insertion ordering
-        self._col_refs: Dict[str, None] = dict()
+        """Initialize with an empty reference counter."""
+        self._col_refs: Counter = Counter()
 
     def get_column_refs(self) -> List[str]:
         return list(self._col_refs.keys())
 
+    def get_counts(self) -> Counter:
+        return self._col_refs
+
     def visit_column(self, expr: ColumnExpr) -> None:
-        """Visit a column expression and collect its name.
+        """Visit a column expression and count its name.
 
         Args:
             expr: The column expression.
 
         Returns:
-            None (only collects columns as a side effect).
+            None (only counts columns as a side effect).
         """
-        self._col_refs[expr.name] = None
+        self._col_refs[expr.name] += 1
 
     def visit_alias(self, expr: AliasExpr) -> None:
         """Visit an alias expression and collect from its inner expression.
@@ -133,6 +153,78 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
             None (only collects columns as a side effect).
         """
         self.visit(expr.expr)
+
+
+class _IdempotencyVisitor(_ExprVisitor[bool]):
+    """Reports whether an expression is safe to duplicate, reorder, or move.
+
+    Returns ``True`` only when every node in the tree is idempotent. The three
+    non-idempotent leaf types (``RandomExpr``, ``UUIDExpr``,
+    ``MonotonicallyIncreasingIdExpr``) return ``False`` and propagate upward: a
+    composite is idempotent iff all of its children are.
+
+    Optimizer rules consult this (via :func:`is_idempotent`) before any rewrite that
+    would change an expression's evaluation count, row set, or position.
+    """
+
+    # --- non-idempotent leaves ---
+    def visit_random(self, expr: RandomExpr) -> bool:
+        # Conservatively non-idempotent even when seeded: CSE matches structurally and
+        # ignores ``_instance_id``, while the runtime RNG counter keys on it, so a
+        # seeded RandomExpr cannot be safely de-duplicated in general.
+        return False
+
+    def visit_uuid(self, expr: UUIDExpr) -> bool:
+        return False
+
+    def visit_monotonically_increasing_id(
+        self, expr: MonotonicallyIncreasingIdExpr
+    ) -> bool:
+        return False
+
+    # --- idempotent leaves ---
+    def visit_column(self, expr: ColumnExpr) -> bool:
+        return True
+
+    def visit_literal(self, expr: LiteralExpr) -> bool:
+        return True
+
+    def visit_star(self, expr: StarExpr) -> bool:
+        return True
+
+    def visit_download(self, expr: DownloadExpr) -> bool:
+        # ``DownloadExpr`` is a leaf with no Expr children. It is idempotent (same URI
+        # yields the same bytes); CSE avoids re-fetching it for *cost* reasons, which
+        # is a separate concern from this correctness contract.
+        return True
+
+    # --- composites: idempotent iff all children are ---
+    #
+    # Children are visited via ``child.is_idempotent()`` (not ``self.visit(child)``)
+    # so each node's result is read from / written to its per-instance cache. This
+    # keeps an all-nodes query (e.g. CSE visiting every occurrence) linear overall
+    # instead of re-walking each subtree.
+    def visit_alias(self, expr: AliasExpr) -> bool:
+        return expr.expr.is_idempotent()
+
+    def visit_unary(self, expr: UnaryExpr) -> bool:
+        return expr.operand.is_idempotent()
+
+    def visit_binary(self, expr: BinaryExpr) -> bool:
+        return expr.left.is_idempotent() and expr.right.is_idempotent()
+
+    def visit_udf(self, expr: UDFExpr) -> bool:
+        # FUTURE EXTENSION POINT: today UDFs are assumed idempotent and we only recurse
+        # into their argument expressions. When per-UDF non-determinism is supported,
+        # gate this on the UDF's declared determinism as well.
+        return all(arg.is_idempotent() for arg in expr.args) and all(
+            value.is_idempotent() for value in expr.kwargs.values()
+        )
+
+
+# Stateless singleton: ``Expr.is_idempotent`` reuses this rather than allocating a
+# visitor per node during the initial (uncached) computation.
+_IDEMPOTENCY_VISITOR = _IdempotencyVisitor()
 
 
 class _CallableClassUDFCollector(_ExprVisitorBase):
@@ -577,6 +669,155 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
     def visit_uuid(self, expr: "UUIDExpr") -> str:
         """Visit a uuid expression and return its inline representation."""
         return "uuid()"
+
+
+class _StructuralFingerprintVisitor(_ExprVisitor[Hashable]):
+    """Visitor that computes a hashable structural fingerprint for an expression.
+
+    Two expressions that are structurally equivalent produce equal fingerprints,
+    so the fingerprint can be used as a cheap bucketing key before falling back to
+    full ``structurally_equals`` comparison (e.g. for common sub-expression
+    elimination).
+    """
+
+    def visit_column(self, expr: ColumnExpr) -> Hashable:
+        return _column_fingerprint_key(expr)
+
+    def visit_literal(self, expr: LiteralExpr) -> Hashable:
+        return _literal_fingerprint_key(expr)
+
+    def visit_binary(self, expr: BinaryExpr) -> Hashable:
+        return _binary_fingerprint_key(
+            expr,
+            self.visit(expr.left),
+            self.visit(expr.right),
+        )
+
+    def visit_unary(self, expr: UnaryExpr) -> Hashable:
+        return _unary_fingerprint_key(expr, self.visit(expr.operand))
+
+    def visit_udf(self, expr: UDFExpr) -> Hashable:
+        return _udf_fingerprint_key(
+            expr,
+            tuple(self.visit(arg) for arg in expr.args),
+            tuple(
+                (k, self.visit(v))
+                for k, v in sorted(expr.kwargs.items(), key=lambda item: item[0])
+            ),
+        )
+
+    def visit_alias(self, expr: AliasExpr) -> Hashable:
+        return _alias_fingerprint_key(expr, self.visit(expr.expr))
+
+    def visit_download(self, expr: DownloadExpr) -> Hashable:
+        return _download_fingerprint_key(expr)
+
+    def visit_star(self, expr: StarExpr) -> Hashable:
+        return _star_fingerprint_key()
+
+    def visit_monotonically_increasing_id(
+        self, expr: MonotonicallyIncreasingIdExpr
+    ) -> Hashable:
+        return _monotonically_increasing_id_fingerprint_key(expr)
+
+    def visit_random(self, expr: RandomExpr) -> Hashable:
+        return _random_fingerprint_key(expr)
+
+    def visit_uuid(self, expr: UUIDExpr) -> Hashable:
+        return _uuid_fingerprint_key(expr)
+
+
+@dataclass(frozen=True)
+class _ExpressionOccurrence:
+    expr: Expr
+    key: Hashable
+    depth: int
+
+
+class _StructuralFingerprintOccurrenceCollector(_ExprVisitor[Hashable]):
+    """Collect expression occurrences while computing structural keys bottom-up."""
+
+    def __init__(self):
+        self._occurrences: List[_ExpressionOccurrence] = []
+        self._depth = 0
+
+    def get_occurrences(self) -> List[_ExpressionOccurrence]:
+        return self._occurrences
+
+    def _visit_child(self, expr: Expr) -> Hashable:
+        self._depth += 1
+        try:
+            return self.visit(expr)
+        finally:
+            self._depth -= 1
+
+    def _record(self, expr: Expr, key: Hashable) -> Hashable:
+        self._occurrences.append(
+            _ExpressionOccurrence(
+                expr=expr,
+                key=key,
+                depth=self._depth,
+            )
+        )
+        return key
+
+    def visit_column(self, expr: ColumnExpr) -> Hashable:
+        return self._record(expr, _column_fingerprint_key(expr))
+
+    def visit_literal(self, expr: LiteralExpr) -> Hashable:
+        return self._record(expr, _literal_fingerprint_key(expr))
+
+    def visit_binary(self, expr: BinaryExpr) -> Hashable:
+        return self._record(
+            expr,
+            _binary_fingerprint_key(
+                expr,
+                self._visit_child(expr.left),
+                self._visit_child(expr.right),
+            ),
+        )
+
+    def visit_unary(self, expr: UnaryExpr) -> Hashable:
+        return self._record(
+            expr,
+            _unary_fingerprint_key(expr, self._visit_child(expr.operand)),
+        )
+
+    def visit_udf(self, expr: UDFExpr) -> Hashable:
+        return self._record(
+            expr,
+            _udf_fingerprint_key(
+                expr,
+                tuple(self._visit_child(arg) for arg in expr.args),
+                tuple(
+                    (k, self._visit_child(v))
+                    for k, v in sorted(expr.kwargs.items(), key=lambda item: item[0])
+                ),
+            ),
+        )
+
+    def visit_alias(self, expr: AliasExpr) -> Hashable:
+        return self._record(
+            expr,
+            _alias_fingerprint_key(expr, self._visit_child(expr.expr)),
+        )
+
+    def visit_download(self, expr: DownloadExpr) -> Hashable:
+        return self._record(expr, _download_fingerprint_key(expr))
+
+    def visit_star(self, expr: StarExpr) -> Hashable:
+        return self._record(expr, _star_fingerprint_key())
+
+    def visit_monotonically_increasing_id(
+        self, expr: MonotonicallyIncreasingIdExpr
+    ) -> Hashable:
+        return self._record(expr, _monotonically_increasing_id_fingerprint_key(expr))
+
+    def visit_random(self, expr: RandomExpr) -> Hashable:
+        return self._record(expr, _random_fingerprint_key(expr))
+
+    def visit_uuid(self, expr: UUIDExpr) -> Hashable:
+        return self._record(expr, _uuid_fingerprint_key(expr))
 
 
 def get_column_references(expr: Expr) -> List[str]:
