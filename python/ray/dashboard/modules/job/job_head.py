@@ -420,7 +420,7 @@ class JobHead(SubprocessModule):
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
         except Exception:
-            logger.exception("Failed to submit job.")
+            logger.exception("Failed to submit job due to unexpected exception.")
             return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code,
