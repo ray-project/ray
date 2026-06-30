@@ -448,6 +448,7 @@ steps:
     instance_type: gpu-large
     soft_fail: true
     commands:
+      - echo "=== NVIDIA driver version ===" && (cat /proc/driver/nvidia/version 2>/dev/null || cat /sys/module/nvidia/version 2>/dev/null || echo "driver version files unavailable at step level")
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //python/ray/dag/... //doc/... core
         --install-mask all-ray-libraries
         --run-flaky-tests
@@ -455,6 +456,10 @@ steps:
         --build-name coregpubuild-py3.10
         --python-version 3.10
         --only-tags multi_gpu
+        --test-env NCCL_DEBUG=INFO
+        --test-env NCCL_DEBUG_SUBSYS=INIT,GRAPH,ENV,TUNING,NET
+        --test-env CUDA_LAUNCH_BLOCKING=1
+        --test-env NCCL_CUMEM_HOST_ENABLE=0
     depends_on: coregpubuild-multipy(python=3.10)
 
   - label: ":ray: core: cpp worker tests"
@@ -559,6 +564,9 @@ steps:
         --python-version 3.10
         --only-tags multi_gpu
         --install-mask all-ray-libraries
+        --test-env NCCL_DEBUG=INFO
+        --test-env NCCL_DEBUG_SUBSYS=INIT,GRAPH,ENV,TUNING,NET
+        --test-env CUDA_LAUNCH_BLOCKING=1
     depends_on:
       - block-core-gpu-tests
       - coregpubuild-multipy(python=3.10)
