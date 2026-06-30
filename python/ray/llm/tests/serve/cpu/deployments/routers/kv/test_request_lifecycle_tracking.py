@@ -31,7 +31,7 @@ PROMPT = {"prompt_token_ids": [1, 2, 3]}
 @pytest.fixture(scope="module", autouse=True)
 def ray_cluster():
     if not ray.is_initialized():
-        ray.init(address="auto")
+        ray.init()
 
 
 def request_output(token_counts, prompt_len=5, finished=False):
