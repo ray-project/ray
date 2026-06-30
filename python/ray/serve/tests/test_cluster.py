@@ -699,18 +699,23 @@ class TestHealthzAndRoutes:
             expected_code=200,
             expected_text="success",
         )
-        assert httpx.get("http://127.0.0.1:8000/-/routes").status_code == 200
-        assert httpx.get("http://127.0.0.1:8000/-/routes").text == "{}"
+        wait_for_condition(
+            condition_predictor=check_request,
+            url="http://127.0.0.1:8000/-/routes",
+            expected_code=200,
+            expected_text="{}",
+        )
         wait_for_condition(
             condition_predictor=check_request,
             url="http://127.0.0.1:8001/-/healthz",
             expected_code=503,
             expected_text="This node is being drained.",
         )
-        assert httpx.get("http://127.0.0.1:8001/-/routes").status_code == 503
-        assert (
-            httpx.get("http://127.0.0.1:8001/-/routes").text
-            == "This node is being drained."
+        wait_for_condition(
+            condition_predictor=check_request,
+            url="http://127.0.0.1:8001/-/routes",
+            expected_code=503,
+            expected_text="This node is being drained.",
         )
 
 
