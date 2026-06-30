@@ -19,5 +19,4 @@ steps:
     mount_buildkite_agent: true
     commands:
       - export RAY_VERSION="$(buildkite-agent meta-data get ray-version)"
-      - uv pip install --system --break-system-packages pyyaml==6.0.3
       - python .buildkite/release-automation/gen_cursor_template_upgrade.py | buildkite-agent pipeline upload --no-interpolation

@@ -45,7 +45,7 @@ ln -s "$UV_PYTHON_BIN" /usr/local/bin/python
 
 # As a convention, we pin all python packages to a specific version. This
 # is to to make sure we can control version upgrades through code changes.
-uv pip install --system pip==25.2 cffi==1.16.0
+uv pip install --system pip==25.2 cffi==1.16.0 pyyaml==6.0.3
 
 EOF
 
