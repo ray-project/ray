@@ -1,10 +1,14 @@
 import logging
+import os
+import shutil
 import sys
+import tempfile
 from datetime import datetime
 from typing import List
 
 import click
 
+from ci.ray_ci.automation.crane_lib import call_crane_export
 from ci.ray_ci.automation.image_tags_lib import (
     ImageTagsError,
     copy_image,
@@ -34,6 +38,14 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 logger = logging.getLogger(__name__)
+
+# rayci auto-uploads everything under /artifact-mount as Buildkite artifacts.
+# Mirrors the old ci/build/build-ray-docker.sh staging location so the artifact
+# filename/layout is unchanged for downstream consumers.
+ARTIFACT_MOUNT_IMAGE_INFO_DIR = "/artifact-mount/.image-info"
+# Path of the pip freeze inside the image filesystem (no leading slash in the
+# crane-exported tar). Written by ci/docker/ray-image.Dockerfile.
+PIP_FREEZE_PATH_IN_IMAGE = os.path.join("home", "ray", "pip-freeze.txt")
 
 
 class PushRayImageError(Exception):
@@ -201,6 +213,43 @@ def _copy_image(reference: str, destination: str, dry_run: bool = False) -> None
         copy_image(reference, destination, dry_run)
     except ImageTagsError as e:
         raise PushRayImageError(str(e))
+
+
+def _export_pip_freeze(src_ref: str, ctx: RayImagePushContext) -> str:
+    """
+    Export the image's pip-freeze.txt and stage it as a Buildkite artifact.
+
+    Uses `crane export` (no docker daemon) to pull the image filesystem, reads
+    PIP_FREEZE_PATH_IN_IMAGE out of it, and copies it under
+    ARTIFACT_MOUNT_IMAGE_INFO_DIR using ctx.pip_freeze_artifact_filename().
+
+    Runs independently of whether images are pushed (dry_run), so the shipped
+    dependencies record is produced even on PR/dry-run builds -- mirroring the
+    old ci/build/build-ray-docker.sh behavior.
+
+    Returns the staged file path.
+
+    Raises:
+        PushRayImageError: if the image has no pip-freeze.txt.
+    """
+    with tempfile.TemporaryDirectory() as export_dir:
+        logger.info(f"Exporting pip freeze from {src_ref}")
+        call_crane_export(src_ref, export_dir)
+
+        freeze_src = os.path.join(export_dir, PIP_FREEZE_PATH_IN_IMAGE)
+        if not os.path.exists(freeze_src):
+            raise PushRayImageError(
+                f"pip-freeze.txt not found in image {src_ref} "
+                f"at /{PIP_FREEZE_PATH_IN_IMAGE}"
+            )
+
+        os.makedirs(ARTIFACT_MOUNT_IMAGE_INFO_DIR, exist_ok=True)
+        dest = os.path.join(
+            ARTIFACT_MOUNT_IMAGE_INFO_DIR, ctx.pip_freeze_artifact_filename()
+        )
+        shutil.copyfile(freeze_src, dest)
+        logger.info(f"Staged pip freeze Buildkite artifact at {dest}")
+        return dest
 
 
 def _should_upload(pipeline_id: str, branch: str, rayci_schedule: str) -> bool:
