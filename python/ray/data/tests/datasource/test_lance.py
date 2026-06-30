@@ -201,7 +201,12 @@ def test_lance_write_append_errors_if_missing(data_path):
     table_path = os.path.join(data_path, "missing_table")
     # APPEND surfaces Lance's own "not found" error. We don't pin the message,
     # since it can change across Lance versions.
-    with pytest.raises((ValueError, OSError, FileNotFoundError)):
+    expected_errors: tuple[type[Exception], ...] = (
+        ValueError,
+        OSError,
+        FileNotFoundError,
+    )
+    with pytest.raises(expected_errors):
         ray.data.range(5).write_lance(table_path, mode=SaveMode.APPEND)
     assert not os.path.exists(table_path)
 
