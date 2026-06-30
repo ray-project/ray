@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger(__name__)
 
 
-def _shared_root() -> str:
+def shared_storage_root() -> str:
     """Shared cluster storage root (visible to all nodes), or /tmp locally."""
     root = (
         "/mnt/cluster_storage"
@@ -60,8 +60,6 @@ class RayTrainContext(TrainContext):
 
         self._train = ray.train
         self._ctx = ray.train.get_context()
-        # Keep a checkpoint context manager alive for the duration of the run.
-        self._checkpoint_cm = None
 
     @property
     def world_rank(self) -> int:
@@ -92,8 +90,11 @@ class RayTrainContext(TrainContext):
         checkpoint = self._train.get_checkpoint()
         if checkpoint is None:
             return None
-        self._checkpoint_cm = checkpoint.as_directory()
-        return self._checkpoint_cm.__enter__()
+        # to_directory() returns a concrete path (downloaded once); unlike
+        # as_directory()'s context manager, there's no __enter__ left dangling
+        # without an __exit__. The dir persists for the run — fine for a
+        # one-time restore at startup.
+        return checkpoint.to_directory()
 
 
 class TorchrunContext(TrainContext):
@@ -118,7 +119,7 @@ class TorchrunContext(TrainContext):
         # apples-to-apples e2e comparison). Counter advances in lockstep across
         # ranks since every rank calls report() the same number of times.
         self._checkpoint_base = os.path.join(
-            _shared_root(), experiment_name, "checkpoints"
+            shared_storage_root(), experiment_name, "checkpoints"
         )
         self._checkpoint_counter = 0
 

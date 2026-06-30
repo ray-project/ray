@@ -41,9 +41,11 @@ _LINEAR_ATTENTION_HINTS = ("deltanet", "mamba", "rwkv", "retnet", "linear", "lig
 
 
 def _first_attr(config, names):
+    # `is not None` (not truthiness) so a legitimate 0 isn't skipped — a falsy
+    # check would silently fall through to the next alias / None.
     for name in names:
         value = getattr(config, name, None)
-        if value:
+        if value is not None:
             return value
     return None
 
@@ -247,8 +249,11 @@ class DeepSpeedAdapter(FrameworkAdapter):
             )
         return self.cfg.training.num_epochs * steps_per_epoch
 
-    def run(self) -> None:
+    def run(self) -> Dict[str, Any]:
         torch.manual_seed(self.cfg.training.seed)
+
+        if self.cfg.data.seq_len is None:
+            raise ValueError("data.seq_len is required for the deepspeed adapter.")
 
         self._tokenizer = self._build_tokenizer()
         engine = self._build_engine()
@@ -292,11 +297,14 @@ class DeepSpeedAdapter(FrameworkAdapter):
         )
 
         num_steps = self._resolve_num_steps(dataloader)
+        if num_steps < 1:
+            raise ValueError(f"num_steps must be >= 1, got {num_steps}.")
         seq_len = self.cfg.data.seq_len
         engine.train()
 
         data_iter = iter(dataloader)
         step = 0
+        last_loss = None
         while step < num_steps:
             with collector.data_timer.timer():
                 try:
@@ -319,6 +327,7 @@ class DeepSpeedAdapter(FrameworkAdapter):
                 engine.backward(loss)
                 engine.step()
 
+            last_loss = loss.item()
             collector.record_batch(num_rows=batch_size, num_tokens=batch_size * seq_len)
             step += 1
 
@@ -326,12 +335,13 @@ class DeepSpeedAdapter(FrameworkAdapter):
                 step % self.cfg.training.log_every_n_steps == 0
                 and self.ctx.world_rank == 0
             ):
-                logger.info(f"step {step}/{num_steps} loss={loss.item():.4f}")
+                logger.info(f"step {step}/{num_steps} loss={last_loss:.4f}")
 
             self._maybe_checkpoint(engine, step)
 
         metrics = collector.summary()
-        metrics["loss"] = loss.item()
+        if last_loss is not None:
+            metrics["loss"] = last_loss
         metrics["num_params"] = self._num_params
         metrics["active_params"] = self._active_params
         # dense vs MoE is an explicit benchmark dimension.
