@@ -114,12 +114,14 @@ class AggregateFn:
         init: Callable[[KeyType], AccumulatorType],
         merge: Callable[[AccumulatorType, AccumulatorType], AccumulatorType],
         name: str,
-        accumulate_row: Callable[
-            [AccumulatorType, Dict[str, Any]], AccumulatorType
+        accumulate_row: Optional[
+            Callable[[AccumulatorType, Dict[str, Any]], AccumulatorType]
         ] = None,
-        accumulate_block: Callable[[AccumulatorType, Block], AccumulatorType] = None,
+        accumulate_block: Optional[
+            Callable[[AccumulatorType, Block], AccumulatorType]
+        ] = None,
         finalize: Optional[Callable[[AccumulatorType], AggOutputType]] = None,
-    ):
+    ) -> None:
         if (accumulate_row is None and accumulate_block is None) or (
             accumulate_row is not None and accumulate_block is not None
         ):
@@ -230,7 +232,7 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         *,
         on: Optional[str],
         ignore_nulls: bool,
-    ):
+    ) -> None:
         if not name:
             raise ValueError(
                 f"Non-empty string has to be provided as name (got {name})"
@@ -432,7 +434,7 @@ class Count(AggregateFnV2[int, int]):
         on: Optional[str] = None,
         ignore_nulls: bool = False,
         alias_name: Optional[str] = None,
-    ):
+    ) -> None:
         super().__init__(
             alias_name if alias_name else f"count({on or ''})",
             on=on,
@@ -499,7 +501,7 @@ class AsList(AggregateFnV2[List, List]):
         on: str,
         alias_name: Optional[str] = None,
         ignore_nulls: bool = False,
-    ):
+    ) -> None:
         super().__init__(
             alias_name if alias_name else f"list({on or ''})",
             on=on,
@@ -558,7 +560,7 @@ class Sum(AggregateFnV2[Union[int, float], Union[int, float]]):
         on: Optional[str] = None,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
-    ):
+    ) -> None:
         super().__init__(
             alias_name if alias_name else f"sum({str(on)})",
             on=on,
@@ -622,7 +624,7 @@ class Min(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType])
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
         zero_factory: Callable[[], SupportsRichComparisonType] = lambda: float("+inf"),
-    ):
+    ) -> None:
         super().__init__(
             alias_name if alias_name else f"min({str(on)})",
             on=on,
@@ -688,7 +690,7 @@ class Max(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType])
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
         zero_factory: Callable[[], SupportsRichComparisonType] = lambda: float("-inf"),
-    ):
+    ) -> None:
         super().__init__(
             alias_name if alias_name else f"max({str(on)})",
             on=on,
@@ -749,7 +751,7 @@ class Mean(AggregateFnV2[List[Union[int, float]], float]):
         on: Optional[str] = None,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
-    ):
+    ) -> None:
         super().__init__(
             alias_name if alias_name else f"mean({str(on)})",
             on=on,
@@ -841,7 +843,7 @@ class Std(AggregateFnV2[List[Union[int, float]], float]):
         ddof: int = 1,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
-    ):
+    ) -> None:
         super().__init__(
             alias_name if alias_name else f"std({str(on)})",
             on=on,
@@ -947,7 +949,7 @@ class AbsMax(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonTyp
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
         zero_factory: Callable[[], SupportsRichComparisonType] = lambda: 0,
-    ):
+    ) -> None:
         if on is None or not isinstance(on, str):
             raise ValueError(f"Column to aggregate on has to be provided (got {on})")
 
@@ -1026,7 +1028,7 @@ class Quantile(AggregateFnV2[List[Any], List[Any]]):
         q: float = 0.5,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
-    ):
+    ) -> None:
         self._q = q
 
         super().__init__(
@@ -1152,7 +1154,7 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
         ignore_nulls: bool = False,
         alias_name: Optional[str] = None,
         encode_lists: Union[bool, ListEncodingMode, None] = None,
-    ):
+    ) -> None:
         super().__init__(
             alias_name if alias_name else f"unique({str(on)})",
             on=on,
@@ -1268,7 +1270,7 @@ class CountDistinct(Unique):
         on: str,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
-    ):
+    ) -> None:
         super().__init__(
             on=on,
             ignore_nulls=ignore_nulls,
@@ -1325,7 +1327,7 @@ class ValueCounter(AggregateFnV2):
         self,
         on: str,
         alias_name: Optional[str] = None,
-    ):
+    ) -> None:
         super().__init__(
             alias_name if alias_name else f"value_counter({str(on)})",
             on=on,
@@ -1531,7 +1533,7 @@ class MissingValuePercentage(AggregateFnV2[List[int], float]):
         self,
         on: str,
         alias_name: Optional[str] = None,
-    ):
+    ) -> None:
         # Initialize with a list accumulator [null_count, total_count]
         super().__init__(
             alias_name if alias_name else f"missing_pct({str(on)})",
@@ -1628,7 +1630,7 @@ class ZeroPercentage(AggregateFnV2[List[int], float]):
         on: str,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
-    ):
+    ) -> None:
         # Initialize with a list accumulator [zero_count, non_null_count]
         super().__init__(
             alias_name if alias_name else f"zero_pct({str(on)})",
@@ -1685,7 +1687,7 @@ class ApproximateQuantile(AggregateFnV2):
         quantiles: List[float],
         quantile_precision: int = 800,
         alias_name: Optional[str] = None,
-    ):
+    ) -> None:
         """
         Computes the approximate quantiles of a column by using a datasketches kll_floats_sketch.
         https://datasketches.apache.org/docs/KLL/KLLSketch.html
@@ -1784,7 +1786,7 @@ class ApproximateTopK(AggregateFnV2):
         log_capacity: int = 15,
         alias_name: Optional[str] = None,
         encode_lists: bool = False,
-    ):
+    ) -> None:
         """
         Computes the approximate top k items in a column by using a datasketches frequent_strings_sketch.
         https://datasketches.apache.org/docs/Frequency/FrequentItemsOverview.html
