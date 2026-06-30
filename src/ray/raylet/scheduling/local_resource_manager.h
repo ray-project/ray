@@ -163,7 +163,14 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Record the metrics.
   void RecordMetrics() const;
 
-  bool IsLocalNodeIdle() const { return GetResourceIdleTime() != absl::nullopt; }
+  /// Whether the local node is idle as of the most recently synced resource state.
+  ///
+  /// This might not be reflective of the node's current state since Object Store
+  /// usage is refreshed at periodic intervals. Therefore, this might be giving a
+  /// stale view of object store memory.
+  bool WasLastRecordedNodeStateIdle() const {
+    return GetResourceIdleTime() != absl::nullopt;
+  }
 
   /// Returns whether the local node is idle for an idle-termination drain decision.
   ///
@@ -172,7 +179,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// a stale value, draining a node with an object's primary copy.
   bool IsLocalNodeIdleForDrain() {
     UpdateAvailableObjectStoreMemResource();
-    return IsLocalNodeIdle();
+    return WasLastRecordedNodeStateIdle();
   }
 
   /// Change the local node to the draining state.
