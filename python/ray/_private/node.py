@@ -527,6 +527,49 @@ class Node:
             b"session_name",
         )
 
+    def _persist_rocksdb_session_name_file(self):
+        """Durably write session_name to the RocksDB GCS storage directory.
+
+        Companion to check_persisted_session_name(): on a head restart,
+        that method reads this marker file before GCS (and thus
+        internal_kv) is back up. The write is atomic and durable
+        (tmp + fsync + rename + dir fsync) so the file survives a
+        power-loss crash, matching the durability of the internal_kv_put
+        that follows it.
+        """
+        rocksdb_storage_path = self._resolve_ray_config("gcs_storage_path", "")
+        if not rocksdb_storage_path:
+            # Symmetric with check_persisted_session_name(); see
+            # there for the rationale. Without the marker file, the
+            # internal_kv_put would persist a session_name in rocksdb
+            # with no companion file, breaking restart recovery.
+            raise ValueError(
+                "RAY_gcs_storage=rocksdb requires RAY_gcs_storage_path "
+                "to be set to a writable directory."
+            )
+        session_name_file = os.path.join(rocksdb_storage_path, "session_name")
+        os.makedirs(rocksdb_storage_path, exist_ok=True)
+        tmp_fd, tmp_path = tempfile.mkstemp(
+            dir=rocksdb_storage_path,
+            prefix="session_name.",
+            suffix=".tmp",
+        )
+        try:
+            with os.fdopen(tmp_fd, "wb") as f:
+                f.write(self._session_name.encode("utf-8"))
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, session_name_file)
+            dir_fd = os.open(rocksdb_storage_path, os.O_DIRECTORY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except BaseException:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
+
     @staticmethod
     def validate_ip_port(ip_port):
         """Validates the address is in the ip:port format"""
@@ -1411,42 +1454,7 @@ class Node:
         # the storage path also holds RocksDB's own files, so an unwritable path
         # means GCS can't run anyway.
         if self._is_rocksdb_gcs():
-            rocksdb_storage_path = self._resolve_ray_config("gcs_storage_path", "")
-            if not rocksdb_storage_path:
-                # Symmetric with check_persisted_session_name(); see
-                # there for the rationale. Without the marker file, the
-                # internal_kv_put below would persist a session_name
-                # in rocksdb with no companion file, breaking restart
-                # recovery.
-                raise ValueError(
-                    "RAY_gcs_storage=rocksdb requires RAY_gcs_storage_path "
-                    "to be set to a writable directory."
-                )
-            session_name_file = os.path.join(rocksdb_storage_path, "session_name")
-            os.makedirs(rocksdb_storage_path, exist_ok=True)
-            # Atomic, durable write (tmp + fsync + rename + dir fsync) so the
-            # file survives a power-loss crash, matching the durability of the
-            # internal_kv_put below.
-            tmp_fd, tmp_path = tempfile.mkstemp(
-                dir=rocksdb_storage_path,
-                prefix="session_name.",
-                suffix=".tmp",
-            )
-            try:
-                with os.fdopen(tmp_fd, "wb") as f:
-                    f.write(self._session_name.encode("utf-8"))
-                    f.flush()
-                    os.fsync(f.fileno())
-                os.replace(tmp_path, session_name_file)
-                dir_fd = os.open(rocksdb_storage_path, os.O_DIRECTORY)
-                try:
-                    os.fsync(dir_fd)
-                finally:
-                    os.close(dir_fd)
-            except BaseException:
-                if os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
-                raise
+            self._persist_rocksdb_session_name_file()
 
         # Make sure GCS is up.
         added = self.get_gcs_client().internal_kv_put(
