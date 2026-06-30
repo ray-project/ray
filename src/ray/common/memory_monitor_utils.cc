@@ -69,13 +69,12 @@ MemoryMonitorUtils::TakeUserAndSystemSliceMemoryUsageSnapshot(
         absl::StrJoin(error_reasons, ", ")));
   }
 
-  MemoryUsageSnapshot host_level_memory_snapshot =
-      TakeSystemMemoryUsageSnapshot(MemoryMonitorInterface::kDefaultCgroupPath, proc_dir);
-  if (host_level_memory_snapshot.used_bytes == MemoryMonitorInterface::kNull ||
-      host_level_memory_snapshot.total_bytes == MemoryMonitorInterface::kNull) {
+  auto [host_level_used_bytes, host_level_total_bytes] = GetLinuxMemoryBytes(proc_dir);
+  if (host_level_total_bytes == MemoryMonitorInterface::kNull ||
+      host_level_used_bytes == MemoryMonitorInterface::kNull) {
     return StatusT::NotFound(absl::StrFormat(
         "Failed to take memory snapshot of user and system slice usage relative to "
-        "the system memory due to failure to get total memory bytes from host machine. "
+        "the system due to failure to get total memory bytes from host machine. "
         "Is %s/meminfo file accessible?",
         proc_dir));
   }
@@ -95,13 +94,11 @@ MemoryMonitorUtils::TakeUserAndSystemSliceMemoryUsageSnapshot(
   // We compute the system slice usage by subtracting the user slice usage from the total
   // system usage. This way, we can account for the memory usage of processes outside
   // ray's userspace and the kernel.
-  int64_t total_system_slice_used_bytes = std::max<int64_t>(
-      0, host_level_memory_snapshot.used_bytes - total_user_slice_used_bytes);
+  int64_t total_system_slice_used_bytes =
+      std::max<int64_t>(0, host_level_used_bytes - total_user_slice_used_bytes);
   return std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>{
-      MemoryUsageSnapshot{total_user_slice_used_bytes,
-                          host_level_memory_snapshot.total_bytes},
-      MemoryUsageSnapshot{total_system_slice_used_bytes,
-                          host_level_memory_snapshot.total_bytes}};
+      MemoryUsageSnapshot{total_user_slice_used_bytes, host_level_total_bytes},
+      MemoryUsageSnapshot{total_system_slice_used_bytes, host_level_total_bytes}};
 }
 
 const StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound>
