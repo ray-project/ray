@@ -42,7 +42,6 @@ class BuildCache:
     ) -> None:
         """
         TODO (elliot-barn): revert when upgrading bazel python toolchain
-        
         Strip build-environment-local dependencies from the Sphinx environment
         pickle so the artifacts can be reused as a global cache.
 
