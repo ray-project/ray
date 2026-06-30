@@ -14,7 +14,9 @@ import socket
 from dataclasses import dataclass
 from typing import Optional
 
+from ray.serve._private.common import RequestProtocol
 from ray.serve._private.haproxy import HAProxyApi
+from ray.serve._private.request_ingress_metrics import RequestIngressMetrics
 from ray.util import metrics
 
 logger = logging.getLogger(__name__)
@@ -28,9 +30,11 @@ _SD_ID = "serve@1"
 # `key="value"` pairs.
 _SD_SECTION_RE = re.compile(r"\[" + re.escape(_SD_ID) + r"(?P<body>[^\]]*)\]")
 
-# Quoted values may contain spaces; backslash escapes are allowed per RFC 5424.
-# Capture the key="value" pairs.
-_KV_RE = re.compile(r'(\w+)="((?:[^"\\]|\\.)*)"')
+# Capture `key=value` pairs where the value is either RFC 5424 quoted (may
+# contain spaces; backslash escapes allowed) or a bare token. HAProxy quotes
+# sample-fetch values (`%[var(...)]`) and string aliases like `%HM`, but renders
+# numeric aliases (`%ST`, `%Ta`) unquoted, so the parser must accept both.
+_KV_RE = re.compile(r'(\w+)=(?:"((?:[^"\\]|\\.)*)"|(\S+))')
 
 # HAProxy renders unset txn vars as an empty string in log-format. We map
 # that to None so callers don't have to distinguish "unset" from "empty".
@@ -39,15 +43,27 @@ _UNSET = ""
 
 @dataclass
 class ParsedMetrics:
-    """One per-request observation, parsed from the SD section."""
+    """One per-request observation, parsed from the SD section.
 
-    app: Optional[str]
-    ingress_request_intended_server: Optional[str]
-    ingress_request_actual_server: Optional[str]
-    ingress_request_router_latency_us: Optional[int]
-    ingress_request_body_truncated_full_length: Optional[int]
-    ingress_request_via_router: bool
-    ingress_request_failed: Optional[str]
+    The first group is the general per-request ingress data present on every
+    HTTP request through the frontend; it feeds the ``serve_num_http_*`` /
+    ``serve_http_request_latency_ms`` families. The ``ingress_request_*`` fields
+    are router-specific and only populated when ingress-request-router metrics
+    are enabled and the request went through (or attempted) the router.
+    """
+
+    app: Optional[str] = None
+    ingress_request_intended_server: Optional[str] = None
+    ingress_request_actual_server: Optional[str] = None
+    ingress_request_router_latency_us: Optional[int] = None
+    ingress_request_body_truncated_full_length: Optional[int] = None
+    ingress_request_via_router: bool = False
+    ingress_request_failed: Optional[str] = None
+    route: Optional[str] = None
+    method: Optional[str] = None
+    status_code: Optional[str] = None
+    latency_ms: Optional[int] = None
+    deployment: Optional[str] = None
 
 
 class HAProxyMetricsCollector:
@@ -88,6 +104,7 @@ class HAProxyMetricsCollector:
         self,
         haproxy_api: HAProxyApi,
         node_id: str,
+        node_ip_address: str = "",
     ) -> None:
         self._transport: Optional[asyncio.DatagramTransport] = None
         self._socket_path: Optional[str] = None
@@ -96,6 +113,21 @@ class HAProxyMetricsCollector:
         self._haproxy_api = haproxy_api
         self._node_id = node_id
         self._node_metrics_task: Optional[asyncio.Task] = None
+
+        # Per-request HTTP ingress metrics (serve_num_http_requests, latency,
+        # errors). In HAProxy mode these are emitted here from HAProxy log
+        # datagrams rather than by a Python proxy, so requests HAProxy terminates
+        # itself (e.g. 404, /-/routes, health checks) are still counted. HTTP
+        # only -- HAProxy does not expose gRPC status (it lives in HTTP/2
+        # trailers), so gRPC ingress metrics stay on the replica. The
+        # ongoing-requests gauge is not driven here: it can't be derived from
+        # per-request log lines.
+        self.request_ingress_metrics = RequestIngressMetrics(
+            RequestProtocol.HTTP,
+            source="proxy",
+            node_id=node_id,
+            node_ip_address=node_ip_address,
+        )
 
         self.truncated_bodies_counter = metrics.Counter(
             "serve_haproxy_ingress_router_truncations",
@@ -194,7 +226,10 @@ class HAProxyMetricsCollector:
             return None
 
         kv: dict = {}
-        for key, value in _KV_RE.findall(match.group("body")):
+        for key, quoted, bare in _KV_RE.findall(match.group("body")):
+            # A bare token never matches empty; an empty quoted value ("") maps
+            # to None so callers don't distinguish "unset" from "empty".
+            value = bare if bare else quoted
             kv[key] = value if value != _UNSET else None
 
         def as_int(key: str) -> Optional[int]:
@@ -217,21 +252,61 @@ class HAProxyMetricsCollector:
             # HAProxy renders booleans as "1"/"0"; absence as "" -> False.
             ingress_request_via_router=kv.get("via_router") == "1",
             ingress_request_failed=kv.get("failed"),
+            route=kv.get("route"),
+            method=kv.get("method"),
+            status_code=kv.get("status"),
+            latency_ms=as_int("latency_ms"),
+            deployment=kv.get("deployment"),
+        )
+
+    def _record_ingress_request(self, parsed: ParsedMetrics) -> None:
+        """Emit the per-request RequestIngressMetrics for one observation.
+
+        Mirrors what the Python proxy records per request (the
+        `serve_num_http_*` and `serve_http_request_latency_ms` families) --
+        for every request, including ones HAProxy terminates itself (404,
+        `/-/routes`, health checks), matching the proxy's tags (`application`
+        and `route` are empty for those). Skips lines with no status, which
+        aren't real request observations.
+        """
+        if parsed.status_code is None:
+            return
+
+        try:
+            is_error = int(parsed.status_code) >= 400
+        except ValueError:
+            # Non-numeric status (shouldn't happen for HTTP); treat as non-error.
+            is_error = False
+
+        self.request_ingress_metrics.record_request(
+            route=parsed.route or "",
+            method=parsed.method or "",
+            application=parsed.app or "",
+            status_code=parsed.status_code,
+            # %Ta is integer-ms resolution; sub-ms requests round to 0.
+            latency_ms=float(parsed.latency_ms or 0),
+            is_error=is_error,
+            deployment_name=parsed.deployment or "",
         )
 
     def record(self, parsed: ParsedMetrics) -> None:
         """Update metrics from one parsed observation.
 
-        Three disjoint cases:
+        First records the general per-request ingress metrics (every HTTP
+        request). Then records the router-specific metrics, which only apply to
+        requests that went through (or attempted) the ingress request router:
         - `ingress_request_failed` set: the Lua action set `txn.ingress_request_router_failed`
           and returned early. Bump the failures counter with the reason; no
-          replica was pinned, so other metrics don't apply.
+          replica was pinned, so other router metrics don't apply.
         - `ingress_request_via_router` true: the Lua action successfully pinned a replica.
           Record latency, truncation, and replica-mismatch as applicable.
         - Neither: the request didn't go through the router path at all
           (no router-bearing app matched, or router state not yet pushed).
-          Nothing to record.
+          No router metrics to record.
         """
+        # General per-request ingress metrics, independent of the router path.
+        self._record_ingress_request(parsed)
+
         # `application` tag is required by the metric definitions; default
         # to "unknown" rather than dropping the observation, so misconfigured
         # frontends still show up in the data.

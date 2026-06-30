@@ -503,7 +503,8 @@ class ReplicaMetricsManager:
             # gRPC ingress metrics are allocated lazily via
             # `enable_grpc_ingress_metrics()` once the gRPC config has been fetched from
             # the controller, which is not available at construction time.
-            self._add_ingress_metrics(RequestProtocol.HTTP)
+            if self._should_emit_request_ingress_metrics(RequestProtocol.HTTP):
+                self._add_ingress_metrics(RequestProtocol.HTTP)
 
             if self._cached_metrics_enabled:
                 # Mapping from protocol -> {request_tags -> value}.
@@ -523,6 +524,15 @@ class ReplicaMetricsManager:
     @property
     def _is_direct_ingress(self) -> bool:
         return self._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS
+
+    def _should_emit_request_ingress_metrics(self, protocol: RequestProtocol) -> bool:
+        # When HAProxy is enabled, http ingress request metrics are emitted by
+        # the HAProxyManager.
+        return self._is_direct_ingress and not (
+            RAY_SERVE_ENABLE_HA_PROXY
+            and RAY_SERVE_HAPROXY_METRICS_ENABLED
+            and protocol == RequestProtocol.HTTP
+        )
 
     def _add_ingress_metrics(self, protocol: RequestProtocol):
         """Allocate metric objects and ongoing-request counter for a protocol."""
@@ -862,22 +872,7 @@ class ReplicaMetricsManager:
         status_code: str,
     ):
         """Record per-request metrics."""
-        if not self._is_direct_ingress:
-            return
-
-        # In HAProxy mode, HTTP ingress requests flow through HAProxy, which
-        # emits these metrics from its per-request log datagrams (covering even
-        # requests it terminates itself, e.g. 404/503, that never reach a
-        # replica). Recording them here too would double-count, so the replica
-        # defers to HAProxy as the single source for HTTP -- but only when
-        # HAProxy metrics are actually enabled, otherwise nothing would emit
-        # them. gRPC is not proxied by HAProxy (it uses direct ingress), so the
-        # replica still emits it.
-        if (
-            RAY_SERVE_ENABLE_HA_PROXY
-            and RAY_SERVE_HAPROXY_METRICS_ENABLED
-            and protocol == RequestProtocol.HTTP
-        ):
+        if not self._should_emit_request_ingress_metrics(protocol):
             return
 
         if self._cached_metrics_enabled:

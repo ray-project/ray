@@ -1707,7 +1707,9 @@ class HAProxyManager(ProxyActorInterface):
             # HAProxy writes one line per request). It returns its bind task (which
             # ready() awaits to surface bind failures).
             self._metrics_collector = HAProxyMetricsCollector(
-                haproxy_api=self._haproxy, node_id=self._node_id
+                haproxy_api=self._haproxy,
+                node_id=self._node_id,
+                node_ip_address=self._node_ip_address,
             )
             try:
                 self._metrics_attach_task = self._metrics_collector.start(
