@@ -65,10 +65,10 @@
       row_group_size: [64MiB]
       compression_ratio: [5.0]
       read_memory: [2147483648, 4294967296, 8589934592]
-      max_bucket_size: [1GiB, 5GiB, 15GiB, 30GiB]
+      max_bucket_size: [30GiB]
       batch_target_bytes: [128MiB]
-      use_version: [v2]
-      trial: [1]
+      use_version: [v1]
+      trial: [1, 2, 3]
   run:
     timeout: 10800
     script: >
