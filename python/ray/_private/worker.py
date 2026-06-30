@@ -3220,6 +3220,197 @@ def wait(
         return ready_ids, remaining_ids
 
 
+@client_mode_hook
+def _wait_generators_bulk(
+    ray_generators: List[Tuple[ObjectRefGenerator, List[bool]]],
+    *,
+    num_return: int = 1,
+    timeout: Optional[float] = None,
+) -> List[Tuple[ObjectRefGenerator, List[ObjectRef]]]:
+    """Private API: wait for batches of next refs from streaming generators.
+
+    Each input element is ``(generator, fetch_local_per_ref)``. For each
+    generator, this waits for the last requested ref without fetching it
+    locally. The requested refs are deterministic stream positions, so once the
+    last ref is ready, the whole batch can be returned and consumed. It then
+    fetches only the refs whose corresponding ``fetch_local`` flag is true
+    before returning the batch.
+
+    Args:
+        ray_generators: A list of ``(generator, fetch_local_per_ref)`` tuples.
+            ``generator`` is an ``ObjectRefGenerator`` and
+            ``fetch_local_per_ref`` is a non-empty ``list[bool]`` whose length
+            is the number of next refs to request from that generator. The
+            i-th bool indicates whether the i-th requested ref should be
+            fetched to the local node before the batch is returned. All
+            generators must be unique.
+        num_return: The maximum number of generator batches to return. Must be
+            positive and no greater than ``len(ray_generators)``. Defaults to 1.
+        timeout: The maximum number of seconds to wait before returning. If
+            ``None`` (default), waits indefinitely. Must be nonnegative.
+
+    Returns:
+        A list of at most ``num_return`` ``(generator, refs)`` tuples, one per
+        ready generator batch. ``refs`` is the full list of requested refs for
+        that generator (length equal to its ``fetch_local_per_ref``). Returns
+        an empty list if no batch became ready within the timeout.
+
+    Raises:
+        TypeError: If ``ray_generators`` or any element has the wrong type.
+        ValueError: If a ``fetch_local_per_ref`` is empty, generators are not
+            unique, ``timeout`` is negative, or ``num_return`` is out of range.
+
+    Example:
+        >>> ready = _wait_generators_bulk(  # doctest: +SKIP
+        ...     [
+        ...         (gen1, [True, False]),
+        ...         (gen2, [False, True]),
+        ...     ],
+        ...     num_return=1,
+        ...     timeout=2,
+        ... )
+        >>> assert ready == [(gen1, [ref1, ref2])]  # doctest: +SKIP
+    """
+    worker = global_worker
+    worker.check_connected()
+
+    if (
+        hasattr(worker, "core_worker")
+        and worker.core_worker.current_actor_is_asyncio()
+        and timeout != 0
+    ):
+        global blocking_wait_inside_async_warned
+        if not blocking_wait_inside_async_warned:
+            logger.debug(
+                "Using blocking ray._private.worker._wait_generators_bulk inside "
+                "async method. This blocks the event loop. Please use `await` "
+                "on object ref with asyncio.wait. "
+            )
+            blocking_wait_inside_async_warned = True
+
+    if not isinstance(ray_generators, list):
+        raise TypeError(
+            "_wait_generators_bulk() expected a list of "
+            "(ray.ObjectRefGenerator, list[bool]) tuples, "
+            f"got {type(ray_generators)}"
+        )
+
+    if timeout is not None and timeout < 0:
+        raise ValueError(
+            "The 'timeout' argument must be nonnegative. " f"Received {timeout}"
+        )
+
+    for i, pair in enumerate(ray_generators):
+        if not isinstance(pair, tuple) or len(pair) != 2:
+            raise TypeError(
+                "_wait_generators_bulk() expected each element to be a "
+                "(generator, fetch_local_per_ref) tuple; "
+                f"got {type(pair)} at index {i}"
+            )
+        generator, fetch_locals = pair
+        if not isinstance(generator, ObjectRefGenerator):
+            raise TypeError(
+                "_wait_generators_bulk() tuple first element must be "
+                "ray.ObjectRefGenerator, "
+                f"got {type(generator)} at index {i}"
+            )
+        if not isinstance(fetch_locals, list):
+            raise TypeError(
+                "_wait_generators_bulk() tuple second element must be list[bool], "
+                f"got {type(fetch_locals)} at index {i}"
+            )
+        if len(fetch_locals) == 0:
+            raise ValueError(
+                "_wait_generators_bulk() fetch_local_per_ref must be non-empty "
+                f"at index {i}"
+            )
+        for j, fetch_local in enumerate(fetch_locals):
+            if not isinstance(fetch_local, bool):
+                raise TypeError(
+                    "_wait_generators_bulk() fetch_local_per_ref entries must be "
+                    f"bool, got {type(fetch_local)} at index {i}, ref {j}"
+                )
+
+    with profiling.profile("ray._wait_generators_bulk"):
+        if len(ray_generators) == 0:
+            return []
+
+        if len(ray_generators) != len({pair[0] for pair in ray_generators}):
+            raise ValueError(
+                "_wait_generators_bulk requires a list of unique generators."
+            )
+
+        if num_return <= 0:
+            raise ValueError("Invalid number of generators to return %d." % num_return)
+        if num_return > len(ray_generators):
+            raise ValueError(
+                "num_return cannot be greater than the number "
+                "of generators provided to _wait_generators_bulk."
+            )
+
+        generator_refs: List[List[ObjectRef]] = []
+        last_refs: List[ObjectRef] = []
+        last_ref_to_gen_index = {}
+        last_refs_fetch_local = True
+        for gen_index, (generator, fetch_locals) in enumerate(ray_generators):
+            refs = generator._get_next_ref_n(len(fetch_locals))
+            generator_refs.append(refs)
+            last_refs.append(refs[-1])
+            last_ref_to_gen_index[refs[-1]] = gen_index
+            last_refs_fetch_local = last_refs_fetch_local and fetch_locals[-1]
+
+        deadline = None if timeout is None else time.monotonic() + timeout
+
+        def timeout_remaining() -> Optional[float]:
+            if deadline is None:
+                return None
+            return max(0, deadline - time.monotonic())
+
+        ready_last_refs, _ = wait(
+            last_refs,
+            num_returns=num_return,
+            timeout=timeout_remaining(),
+            fetch_local=last_refs_fetch_local,
+        )
+        ready_last_indices = [
+            last_ref_to_gen_index[last_ref] for last_ref in ready_last_refs
+        ]
+
+        ready_local_ref_set = set(ready_last_refs) if last_refs_fetch_local else set()
+        ready_batch_infos = []
+        refs_to_fetch_local = []
+        for gen_index in ready_last_indices:
+            refs = generator_refs[gen_index]
+            fetch_locals = ray_generators[gen_index][1]
+            required_local_refs = []
+            for ref, fetch_local in zip(refs, fetch_locals):
+                if not fetch_local:
+                    continue
+                required_local_refs.append(ref)
+                if ref not in ready_local_ref_set:
+                    refs_to_fetch_local.append(ref)
+            ready_batch_infos.append((gen_index, refs, required_local_refs))
+
+        if refs_to_fetch_local:
+            ready_refs, _ = wait(
+                refs_to_fetch_local,
+                num_returns=len(refs_to_fetch_local),
+                timeout=timeout_remaining(),
+                fetch_local=True,
+            )
+            ready_local_ref_set.update(ready_refs)
+
+        result = []
+        for gen_index, refs, required_local_refs in ready_batch_infos:
+            if len(result) >= num_return:
+                break
+            generator = ray_generators[gen_index][0]
+            if all(ref in ready_local_ref_set for ref in required_local_refs):
+                generator._consume_next_ref_n(len(refs))
+                result.append((generator, refs))
+        return result
+
+
 @PublicAPI
 @client_mode_hook
 def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHandle":

@@ -271,35 +271,17 @@ def test_middleware(ray_shutdown):
     from starlette.middleware.cors import CORSMiddleware
 
     port = _get_random_port()
-    serve.start(
-        http_options=dict(
-            port=port,
-            middlewares=[
-                Middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
-            ],
+    # `middlewares` in HTTPOptions has been removed; passing it raises an error.
+    # Use Serve's FastAPI integration to configure middlewares instead.
+    with pytest.raises(ValueError, match="`middlewares` in HTTPOptions"):
+        serve.start(
+            http_options=dict(
+                port=port,
+                middlewares=[
+                    Middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
+                ],
+            )
         )
-    )
-
-    @serve.deployment
-    class Dummy:
-        pass
-
-    serve.run(Dummy.bind())
-    ray.get(block_until_http_ready.remote(f"http://127.0.0.1:{port}/-/routes"))
-
-    # Snatched several test cases from Starlette
-    # https://github.com/encode/starlette/blob/master/tests/
-    # middleware/test_cors.py
-    headers = {
-        "Origin": "https://example.org",
-        "Access-Control-Request-Method": "GET",
-    }
-    root = f"http://localhost:{port}"
-    resp = httpx.options(root, headers=headers)
-    assert resp.headers["access-control-allow-origin"] == "*"
-
-    resp = httpx.get(f"{root}/-/routes", headers=headers)
-    assert resp.headers["access-control-allow-origin"] == "*"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
