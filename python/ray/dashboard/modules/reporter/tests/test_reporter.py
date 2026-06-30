@@ -53,7 +53,7 @@ STATS_TEMPLATE = {
     "cpu": 57.4,
     "cpus": (8, 4),
     "mem": (17179869184, 5723353088, 66.7, 9234341888),
-    "swap": (0, 0, 0.0),
+    "swap": None,
     "shm": 456,
     "workers": [
         {
@@ -442,8 +442,9 @@ def test_report_stats(tmp_path):
     assert len(swap_used) == 1 and swap_used[0].value == 512 * 1024**2
     assert len(swap_total) == 1 and swap_total[0].value == 2 * 1024**3
     assert len(swap_util) == 1 and swap_util[0].value == 25.0
-    # Restore swap to zero so the downstream record-count assertions still hold.
-    stats["swap"] = (0, 0, 0.0)
+    # Restore swap to None (the off/unreadable state) so the downstream
+    # record-count assertions still hold.
+    stats["swap"] = None
 
     # Test stats without raylets
     stats["raylet"] = None

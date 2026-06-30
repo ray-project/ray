@@ -182,10 +182,6 @@ METRICS_GAUGES = {
         "bytes",
         NODE_TAG_KEYS,
     ),
-    # Swap metrics — populated when RAY_count_swap_in_memory_monitor=1.
-    # Reported separately from node_mem_* because swap usage signals perf
-    # degradation (pages spilling to disk), which is hidden when folded into
-    # the Node Memory graph.
     "node_swap_used": Gauge(
         "node_swap_used",
         "Swap usage on a ray node (cgroup-aware when in a container)",
@@ -972,46 +968,43 @@ class ReporterAgent(
 
     @staticmethod
     def _get_mem_usage() -> Tuple[int, int, float, int]:
-        # RAM-only. Swap (when RAY_count_swap_in_memory_monitor=1) is reported
-        # via _get_swap_usage as a separate metric — folding swap into Node
-        # Memory hides the perf-degradation signal an operator needs to see
-        # once pages start spilling.
+        """Return (total, available, percent, used) RAM bytes for the node.
+
+        RAM-only by design: swap (when RAY_count_swap_in_memory_monitor=1) is
+        reported separately via _get_swap_usage so swap activity, which signals
+        performance degradation, stays visible instead of being folded into the
+        Node Memory graph.
+        """
         total = get_system_memory()
         used = utils.get_used_memory()
-        # Clamp so the dashboard never reports impossible states (negative
-        # available, percent > 100%).
         used = max(0, min(used, total))
         available = total - used
-        # Guard against a degenerate cgroup that reports total == 0 — the C++
-        # side maps such a total to kNull, and the dashboard would otherwise
-        # raise ZeroDivisionError and kill the metrics path.
         percent = round(used / total, 3) * 100 if total > 0 else 0.0
         return total, available, percent, used
 
     @staticmethod
-    def _get_swap_usage() -> Tuple[int, int, float]:
-        """Return (swap_total_bytes, swap_used_bytes, swap_percent).
+    def _get_swap_usage() -> Optional[Tuple[int, int, float]]:
+        """Return (swap_total_bytes, swap_used_bytes, swap_percent), or None.
 
-        Returns zeros when RAY_count_swap_in_memory_monitor is off. The OOM
-        killer and scheduler `memory` resource still account for swap when
-        the flag is on — only the dashboard graph is split out, so swap
-        activity (which signals perf degradation) is visible distinctly
-        from RAM pressure.
+        Returns None when RAY_count_swap_in_memory_monitor is off or swap can't
+        be read — there is no swap information to report. The OOM killer and
+        scheduler `memory` resource still account for swap when the flag is on;
+        only the dashboard graph is split out so swap activity (which signals
+        perf degradation) is visible distinctly from RAM pressure.
         """
         if not env_bool("RAY_count_swap_in_memory_monitor", False):
-            return 0, 0, 0.0
+            return None
         try:
             swap_total, swap_used = get_cgroup_aware_swap_memory()
         except Exception as e:
             # Periodic loop, not startup — log and continue rather than take
-            # down the metrics path. `str(e)` goes into the message so it's
-            # visible in skim-style log review without expanding the traceback.
+            # down the metrics path.
             logger.warning(
                 "Failed to retrieve swap memory info for dashboard: %s",
                 e,
                 exc_info=True,
             )
-            return 0, 0, 0.0
+            return None
         swap_used = max(0, min(swap_used, swap_total))
         percent = round(swap_used / swap_total, 3) * 100 if swap_total > 0 else 0.0
         return swap_total, swap_used, percent
@@ -1694,10 +1687,12 @@ class ReporterAgent(
             ]
         )
 
-        # Emit swap gauges only when the flag is on — otherwise they'd be
-        # constant zeros and add noise to dashboards / Prometheus storage.
-        swap_total, swap_used, swap_percent = stats["swap"]
-        if swap_total > 0:
+        # Emit swap gauges only when there's swap to report (flag on and swap
+        # configured) — otherwise they'd be constant zeros and add noise to
+        # dashboards / Prometheus storage.
+        swap = stats["swap"]
+        if swap is not None and swap[0] > 0:
+            swap_total, swap_used, swap_percent = swap
             records_reported.extend(
                 [
                     Record(

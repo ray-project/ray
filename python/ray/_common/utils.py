@@ -505,6 +505,14 @@ def get_cgroup_aware_swap_memory() -> Tuple[int, int]:
                 return 0, 0
         except (OSError, ValueError):
             # Committed to cgroup v2; do not leak host swap on read/parse error.
+            # Swap accounting was requested, so warn rather than silently
+            # advertising zero swap when the cgroup files can't be read.
+            logger.warning(
+                "Failed to read cgroup v2 swap counters (%s); reporting no swap "
+                "even though swap accounting is enabled.",
+                _CGROUP_V2_SWAP_MAX,
+                exc_info=True,
+            )
             return 0, 0
         # Match C++: trust the cgroup limit as-is. Clamping by host swap
         # would silently under-report when cgroup_swap_max > host.total.
@@ -540,6 +548,14 @@ def get_cgroup_aware_swap_memory() -> Tuple[int, int]:
             return swap_total, swap_used
         except (OSError, ValueError):
             # Committed to cgroup v1; do not leak host swap on read/parse error.
+            # Swap accounting was requested, so warn rather than silently
+            # advertising zero swap when the memsw files can't be read.
+            logger.warning(
+                "Failed to read cgroup v1 memsw counters (%s); reporting no swap "
+                "even though swap accounting is enabled.",
+                _CGROUP_V1_MEMSW_LIMIT,
+                exc_info=True,
+            )
             return 0, 0
 
     # No cgroup swap files. Fall back to host-level psutil swap.
