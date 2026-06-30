@@ -258,20 +258,8 @@ class DataIterator(abc.ABC):
 
             dataset_tag = self._get_dataset_tag()
 
-            # Create a callback to report prefetched bytes to the executor's
-            # resource manager.
-            def make_prefetch_callback(exec):
-                def callback(num_bytes: int) -> None:
-                    exec.set_external_consumer_bytes(num_bytes)
-
-                return callback
-
-            prefetch_bytes_callback = (
-                make_prefetch_callback(executor) if executor is not None else None
-            )
-            if prefetch_bytes_callback is not None:
-                # Register the external consumer with the executor's resource manager.
-                prefetch_bytes_callback(0)
+            if executor is not None:
+                executor.set_external_consumer()
 
             batch_iterator = self._create_batch_iterator(
                 ref_bundles_iterator,
@@ -286,7 +274,6 @@ class DataIterator(abc.ABC):
                 shuffle_buffer_min_size=local_shuffle_buffer_size,
                 shuffle_seed=local_shuffle_seed,
                 prefetch_batches=prefetch_batches,
-                prefetch_bytes_callback=prefetch_bytes_callback,
                 preserve_order=self.get_context().execution_options.preserve_order,
             )
 
