@@ -31,6 +31,60 @@
 
 namespace ray {
 
+namespace {
+
+// Classification of a cgroup `memory.swap.max` (or `memory.memsw`) value.
+struct CgroupSwapMax {
+  // "max", empty, non-numeric, or a numeric value that overflows int64 (the
+  // kernel's ULLONG_MAX "unlimited" sentinel). The cgroup imposes no swap cap,
+  // so callers fall back to host swap.
+  bool unlimited = false;
+  // Explicit "0" — the kernel says swap is disabled for this cgroup.
+  bool zero = false;
+  // Parsed byte value when bounded (i.e. !unlimited).
+  int64_t bytes = 0;
+};
+
+// Classify a raw `memory.swap.max` string. The all-digit pre-check guarantees
+// std::stoll only ever sees numeric input, so std::invalid_argument is purely
+// defensive; an all-digit value that still overflows int64 is the kernel's
+// "unlimited" sentinel and is reported as unlimited.
+CgroupSwapMax ParseCgroupSwapMax(const std::string &swap_max_str) {
+  CgroupSwapMax result;
+  if (swap_max_str.empty() ||
+      !std::all_of(swap_max_str.begin(), swap_max_str.end(), [](unsigned char c) {
+        return std::isdigit(c);
+      })) {
+    result.unlimited = true;
+    return result;
+  }
+  try {
+    result.bytes = std::stoll(swap_max_str);
+    result.zero = (result.bytes == 0);
+  } catch (const std::out_of_range &) {
+    result.unlimited = true;
+  } catch (const std::invalid_argument &) {
+    result.unlimited = true;
+  }
+  return result;
+}
+
+// Read a cgroup `memory.swap.current` file. Returns the per-cgroup swap usage in
+// bytes, or 0 when the file is missing, unreadable, or non-positive.
+int64_t ReadCgroupSwapCurrentBytes(const std::string &swap_current_path) {
+  if (!std::filesystem::exists(swap_current_path)) {
+    return 0;
+  }
+  std::ifstream swap_cur_ifs(swap_current_path, std::ios::in | std::ios::binary);
+  int64_t swap_used_bytes = 0;
+  if (swap_cur_ifs && (swap_cur_ifs >> swap_used_bytes) && swap_used_bytes > 0) {
+    return swap_used_bytes;
+  }
+  return 0;
+}
+
+}  // namespace
+
 const MemoryUsageSnapshot MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
     const std::string &root_cgroup_path, const std::string &proc_dir, bool include_swap) {
   auto [cgroup_used_bytes, cgroup_total_bytes] =
@@ -151,40 +205,20 @@ MemoryMonitorUtils::TakeCgroupMemorySnapshot(const std::string &root_cgroup_path
       std::string swap_max_str;
       bool swap_max_present = bool(swap_max_ifs && (swap_max_ifs >> swap_max_str));
       if (swap_max_present) {
-        bool unlimited = swap_max_str.empty() ||
-                         !std::all_of(swap_max_str.begin(),
-                                      swap_max_str.end(),
-                                      [](unsigned char c) { return std::isdigit(c); });
-        bool zero = false;
-        if (!unlimited) {
-          try {
-            int64_t swap_max_bytes = std::stoll(swap_max_str);
-            snapshot.swap_max_bytes = swap_max_bytes;
-            zero = (swap_max_bytes == 0);
-          } catch (const std::out_of_range &) {
-            // ULLONG_MAX sentinel — treat as unlimited.
-            unlimited = true;
-          } catch (const std::invalid_argument &) {
-            // Defensive; pre-filtered by std::all_of.
-            unlimited = true;
-          }
-        }
-        if (unlimited) {
-          auto [host_swap_total, _host_swap_used] = GetHostSwapBytes(proc_dir);
+        CgroupSwapMax swap_max = ParseCgroupSwapMax(swap_max_str);
+        if (swap_max.unlimited) {
+          auto [host_swap_total, _] = GetHostSwapBytes(proc_dir);
           snapshot.swap_max_bytes = host_swap_total;
+        } else {
+          snapshot.swap_max_bytes = swap_max.bytes;
         }
         // Read swap.current whenever the cgroup has any swap budget (numeric
         // non-zero OR unlimited). When swap.max == 0 the kernel is saying
         // "no swap" — skip the read so a stale/transitioning swap.current
         // doesn't surface as used > total.
-        if (!zero && snapshot.swap_max_bytes > 0) {
-          std::string swap_cur_path =
-              root_cgroup_path + "/" + kCgroupsV2MemorySwapCurrentPath;
-          std::ifstream swap_cur_ifs(swap_cur_path, std::ios::in | std::ios::binary);
-          int64_t swap_used_bytes = 0;
-          if (swap_cur_ifs && (swap_cur_ifs >> swap_used_bytes) && swap_used_bytes > 0) {
-            snapshot.swap_used_bytes = swap_used_bytes;
-          }
+        if (!swap_max.zero && snapshot.swap_max_bytes > 0) {
+          snapshot.swap_used_bytes = ReadCgroupSwapCurrentBytes(
+              root_cgroup_path + "/" + kCgroupsV2MemorySwapCurrentPath);
         }
       }
     }
@@ -332,49 +366,22 @@ std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetCGroupMemoryBytes(
                                std::ios::in | std::ios::binary);
     std::string swap_max_str;
     swap_max_ifs >> swap_max_str;
-    bool unlimited = swap_max_str.empty() ||
-                     !std::all_of(swap_max_str.begin(),
-                                  swap_max_str.end(),
-                                  [](unsigned char c) { return std::isdigit(c); });
-    if (!unlimited) {
-      try {
-        int64_t swap_max_bytes = std::stoll(swap_max_str);
-        total_bytes += swap_max_bytes;
-        if (swap_max_bytes > 0 && used_bytes != MemoryMonitorInterface::kNull &&
-            std::filesystem::exists(cgroupV2MemorySwapCurrentPath)) {
-          std::ifstream swap_cur_ifs(cgroupV2MemorySwapCurrentPath,
-                                     std::ios::in | std::ios::binary);
-          int64_t swap_used_bytes = 0;
-          swap_cur_ifs >> swap_used_bytes;
-          if (swap_used_bytes > 0) {
-            used_bytes += swap_used_bytes;
-          }
-        }
-      } catch (const std::out_of_range &) {
-        // Numeric but overflows int64 — kernel's "unlimited" sentinel.
-        unlimited = true;
-      } catch (const std::invalid_argument &) {
-        // Unexpected non-numeric content; treat conservatively as unlimited
-        // so we don't silently zero-out swap when the kernel format changes.
-        unlimited = true;
-      }
+    CgroupSwapMax swap_max = ParseCgroupSwapMax(swap_max_str);
+
+    // Bounded numeric cap: add the cgroup's own swap.max. Unlimited ("max" or
+    // an int64-overflowing sentinel): the cgroup imposes no cap, so the
+    // practical limit is the host's swap.
+    int64_t swap_max_add = swap_max.bytes;
+    if (swap_max.unlimited) {
+      auto [host_swap_total, _] = GetHostSwapBytes(proc_dir);
+      swap_max_add = host_swap_total;
     }
-    if (unlimited) {
-      auto [host_swap_total, _host_swap_used] = GetHostSwapBytes(proc_dir);
-      if (host_swap_total > 0) {
-        total_bytes += host_swap_total;
-        // Per-cgroup swap usage from memory.swap.current — host SwapTotal-SwapFree
-        // would pick up other workloads' swap and inflate Ray's view.
-        if (used_bytes != MemoryMonitorInterface::kNull &&
-            std::filesystem::exists(cgroupV2MemorySwapCurrentPath)) {
-          std::ifstream swap_cur_ifs(cgroupV2MemorySwapCurrentPath,
-                                     std::ios::in | std::ios::binary);
-          int64_t swap_used_bytes = 0;
-          swap_cur_ifs >> swap_used_bytes;
-          if (swap_used_bytes > 0) {
-            used_bytes += swap_used_bytes;
-          }
-        }
+    if (swap_max_add > 0) {
+      total_bytes += swap_max_add;
+      // Per-cgroup swap usage from memory.swap.current — host SwapTotal-SwapFree
+      // would pick up other workloads' swap and inflate Ray's view.
+      if (used_bytes != MemoryMonitorInterface::kNull) {
+        used_bytes += ReadCgroupSwapCurrentBytes(cgroupV2MemorySwapCurrentPath);
       }
     }
   }
@@ -666,26 +673,11 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
       StatusOr<std::string> user_swap_max_or =
           cgroup_manager.GetUserCgroupConstraintValue(kCgroupsV2MemorySwapMaxPath);
       if (user_swap_max_or.ok()) {
-        const std::string &user_swap_max_str = user_swap_max_or.value();
-        bool unlimited = user_swap_max_str.empty() ||
-                         !std::all_of(user_swap_max_str.begin(),
-                                      user_swap_max_str.end(),
-                                      [](unsigned char c) { return std::isdigit(c); });
-        if (!unlimited) {
-          try {
-            int64_t user_swap_max_bytes = std::stoll(user_swap_max_str);
-            if (user_swap_max_bytes > 0) {
-              resolved_memory_threshold_bytes += user_swap_max_bytes;
-            }
-          } catch (const std::out_of_range &) {
-            // ULLONG_MAX sentinel — treat as unlimited.
-            fall_back_to_host_swap = true;
-          } catch (const std::invalid_argument &) {
-            // Defensive; pre-filtered by std::all_of.
-            fall_back_to_host_swap = true;
-          }
-        } else {
+        CgroupSwapMax user_swap_max = ParseCgroupSwapMax(user_swap_max_or.value());
+        if (user_swap_max.unlimited) {
           fall_back_to_host_swap = true;
+        } else if (user_swap_max.bytes > 0) {
+          resolved_memory_threshold_bytes += user_swap_max.bytes;
         }
       } else if (!user_swap_max_or.status().IsInvalidArgument()) {
         // InvalidArgument means the swap.max file doesn't exist (kernel
@@ -695,7 +687,7 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
         fall_back_to_host_swap = true;
       }
       if (fall_back_to_host_swap) {
-        auto [host_swap_total, _host_swap_used] = GetHostSwapBytes();
+        auto [host_swap_total, _] = GetHostSwapBytes();
         if (host_swap_total > 0) {
           resolved_memory_threshold_bytes += host_swap_total;
         }
