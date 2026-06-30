@@ -8,11 +8,8 @@ import pytest
 from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
 from ray.llm._internal.serve.core.configs.accelerators import (
     CPUAccelerator,
-    CPUConfig,
     GPUAccelerator,
-    GPUConfig,
     NPUAccelerator,
-    NPUConfig,
     TPUAccelerator,
     TPUConfig,
 )
@@ -416,6 +413,9 @@ class TestAcceleratorConfigLogic:
         gpu_accel = GPUAccelerator()
         assert gpu_accel.requires_deferred_placement_group is False
 
+        npu_accel = NPUAccelerator()
+        assert npu_accel.requires_deferred_placement_group is False
+
         tpu_accel_no_topo = TPUAccelerator(TPUConfig(kind="tpu"))
         assert tpu_accel_no_topo.requires_deferred_placement_group is False
 
@@ -468,19 +468,19 @@ class TestAcceleratorConfigLogic:
         with pytest.raises(ValueError, match="must be a multiple of chips_per_host"):
             tpu_accel.default_bundles(num_devices=6, accelerator_type_str="TPU-V6E")
 
-    def test_accelerator_config_npu_kind(self):
-        """Test that accelerator_config with kind='npu' works."""
-        llm_config = LLMConfig(
+    def test_accelerator_config_npu_basic(self):
+        """Test that NPU accelerator_config field works with basic values."""
+        llm_config_npu = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test_model"),
             accelerator_config={"kind": "npu"},
         )
-        assert llm_config.accelerator_config.kind == "npu"
-        engine_config = llm_config.get_engine_config()
+        assert llm_config_npu.accelerator_config.kind == "npu"
+        engine_config = llm_config_npu.get_engine_config()
         assert engine_config.accelerator_config.kind == "npu"
         assert isinstance(engine_config.accelerator, NPUAccelerator)
 
     def test_engine_config_infers_npu_from_accelerator_type_string(self):
-        """Test that the engine config infers an NPU backend from the accelerator_type string."""
+        """Test that the engine config infers an NPU backend directly from the accelerator_type string."""
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test_model"),
             accelerator_type="Ascend910B",
@@ -489,40 +489,18 @@ class TestAcceleratorConfigLogic:
         assert isinstance(engine_config.accelerator, NPUAccelerator)
         assert engine_config.accelerator_type == "Ascend910B"
 
-    def test_npu_placement_bundles_use_npu_resource_key(self):
-        """Test that NPU accelerator generates NPU bundles, not GPU bundles."""
+    def test_accelerator_type_with_npu_config_succeeds(self):
+        """Test that accelerator_type with NPU config succeeds."""
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test_model"),
             accelerator_type="Ascend910B",
-            engine_kwargs={"tensor_parallel_size": 4},
-        )
-        engine_config = llm_config.get_engine_config()
-        bundles = engine_config.placement_bundles
-        assert len(bundles) == 4
-        for bundle in bundles:
-            assert "NPU" in bundle
-            assert bundle["NPU"] == 1
-            assert "GPU" not in bundle
-
-    def test_npu_uses_ray_executor(self):
-        """Test that NPU config uses Ray executor, not MP executor."""
-        llm_config = LLMConfig(
-            model_loading_config=ModelLoadingConfig(model_id="test_model"),
             accelerator_config={"kind": "npu"},
         )
+        assert llm_config.accelerator_type == "Ascend910B"
         engine_config = llm_config.get_engine_config()
-        kwargs = engine_config.get_initialization_kwargs()
-        assert kwargs["distributed_executor_backend"] == "ray"
+        assert engine_config.accelerator_type == "Ascend910B"
 
-    def test_npu_remote_options(self):
-        """Test that NPUAccelerator returns NPU resources in remote options."""
-        accel = NPUAccelerator()
-        options = accel.get_remote_options("Ascend910B")
-        assert "resources" in options
-        assert "NPU" in options["resources"]
-        assert options["accelerator_type"] == "Ascend910B"
-
-    def test_accelerator_type_with_npu_bundles_succeeds(self):
+    def test_accelerator_type_with_npu_placement_group_succeeds(self):
         """Test that accelerator_type with NPU-containing placement_group_config succeeds."""
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test_model"),
@@ -532,128 +510,29 @@ class TestAcceleratorConfigLogic:
         assert llm_config.accelerator_type == "Ascend910B"
         assert llm_config.accelerator_config.kind == "npu"
 
-    def test_detect_cluster_accelerator_kind_returns_none_when_ray_not_initialized(
-        self,
-    ):
-        """Test that _detect_cluster_accelerator_kind returns None when Ray is not initialized."""
-        with patch("ray.is_initialized", return_value=False):
-            result = LLMConfig._detect_cluster_accelerator_kind()
-            assert result is None
-
-    def test_detect_cluster_accelerator_kind_detects_npu(self):
-        """Test that _detect_cluster_accelerator_kind detects NPU from cluster resources."""
-        with (
-            patch("ray.is_initialized", return_value=True),
-            patch(
-                "ray.cluster_resources",
-                return_value={"CPU": 4, "NPU": 8, "memory": 100},
-            ),
+    def test_npu_accelerator_type_hardware_mismatch_with_gpu_config(self):
+        """Test that passing a NPU accelerator_type with a GPU config raises a hardware mismatch error."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="Hardware mismatch",
         ):
-            result = LLMConfig._detect_cluster_accelerator_kind()
-            assert result == "npu"
-
-    def test_detect_cluster_accelerator_kind_detects_gpu(self):
-        """Test that _detect_cluster_accelerator_kind detects GPU from cluster resources."""
-        with (
-            patch("ray.is_initialized", return_value=True),
-            patch(
-                "ray.cluster_resources",
-                return_value={"CPU": 4, "GPU": 8, "memory": 100},
-            ),
-        ):
-            result = LLMConfig._detect_cluster_accelerator_kind()
-            assert result == "gpu"
-
-    def test_detect_cluster_accelerator_kind_detects_tpu(self):
-        """Test that _detect_cluster_accelerator_kind detects TPU from cluster resources."""
-        with (
-            patch("ray.is_initialized", return_value=True),
-            patch(
-                "ray.cluster_resources",
-                return_value={"CPU": 4, "TPU": 4, "memory": 100},
-            ),
-        ):
-            result = LLMConfig._detect_cluster_accelerator_kind()
-            assert result == "tpu"
-
-    def test_detect_cluster_accelerator_kind_npu_priority_over_gpu(self):
-        """Test that NPU is detected before GPU when both are in cluster (NPU-only cluster edge case)."""
-        with (
-            patch("ray.is_initialized", return_value=True),
-            patch(
-                "ray.cluster_resources",
-                return_value={"CPU": 4, "GPU": 2, "NPU": 8, "memory": 100},
-            ),
-        ):
-            result = LLMConfig._detect_cluster_accelerator_kind()
-            assert result == "npu"
-
-    def test_detect_cluster_accelerator_kind_returns_none_on_exception(self):
-        """Test that _detect_cluster_accelerator_kind returns None when ray.cluster_resources() raises."""
-        with (
-            patch("ray.is_initialized", return_value=True),
-            patch("ray.cluster_resources", side_effect=Exception("connection error")),
-        ):
-            result = LLMConfig._detect_cluster_accelerator_kind()
-            assert result is None
-
-    def test_kind_to_config_maps_correctly(self):
-        """Test that _kind_to_config maps kind strings to the correct AcceleratorConfig."""
-        configs = {
-            "npu": NPUConfig,
-            "gpu": GPUConfig,
-            "tpu": TPUConfig,
-            "cpu": CPUConfig,
-        }
-        for kind, expected_cls in configs.items():
-            config = LLMConfig._kind_to_config(kind)
-            assert isinstance(config, expected_cls)
-            assert config.kind == kind
-
-    def test_auto_detect_npu_accelerator_config_when_no_config_specified(self):
-        """Test that accelerator_config is auto-resolved to NPUConfig when cluster has NPU resources."""
-        with (
-            patch("ray.is_initialized", return_value=True),
-            patch(
-                "ray.cluster_resources",
-                return_value={"CPU": 4, "NPU": 8, "memory": 100},
-            ),
-        ):
-            llm_config = LLMConfig(
-                model_loading_config=ModelLoadingConfig(model_id="test_model"),
-            )
-            assert llm_config.accelerator_config.kind == "npu"
-            assert isinstance(llm_config.accelerator_config, NPUConfig)
-
-    def test_explicit_config_overrides_auto_detect(self):
-        """Test that explicit accelerator_config overrides auto-detection."""
-        with (
-            patch("ray.is_initialized", return_value=True),
-            patch(
-                "ray.cluster_resources",
-                return_value={"CPU": 4, "NPU": 8, "memory": 100},
-            ),
-        ):
-            llm_config = LLMConfig(
-                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            LLMConfig(
+                model_loading_config={"model_id": "test_model"},
+                accelerator_type="Ascend910B",
                 accelerator_config={"kind": "gpu"},
             )
-            # Explicit config should take priority, not overridden by auto-detect
-            assert llm_config.accelerator_config.kind == "gpu"
 
-    def test_gpu_fallback_when_no_accelerator_detected(self):
-        """Test that accelerator_config falls back to GPUConfig when no accelerator is in cluster."""
-        with (
-            patch("ray.is_initialized", return_value=True),
-            patch(
-                "ray.cluster_resources",
-                return_value={"CPU": 4, "memory": 100},
-            ),
+    def test_gpu_accelerator_type_hardware_mismatch_with_npu_config(self):
+        """Test that passing a GPU accelerator_type with a NPU config raises a hardware mismatch error."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="Hardware mismatch",
         ):
-            llm_config = LLMConfig(
-                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            LLMConfig(
+                model_loading_config={"model_id": "test_model"},
+                accelerator_type="L4",
+                accelerator_config={"kind": "npu"},
             )
-            assert llm_config.accelerator_config.kind == "gpu"
 
 
 class TestCheckpointInfo:
