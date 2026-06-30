@@ -68,7 +68,6 @@ class CombineShuffles(Rule):
                 aggs=op.aggs,
                 input_dependencies=[input_op.input_dependencies[0]],
                 num_partitions=op.num_partitions,
-                batch_format=op.batch_format,
             )
         elif isinstance(input_op, StreamingRepartition) and isinstance(op, Repartition):
             return Repartition(
@@ -82,7 +81,6 @@ class CombineShuffles(Rule):
             return Sort(
                 sort_key=op.sort_key,
                 input_dependencies=[input_op.input_dependencies[0]],
-                batch_format=op.batch_format,
             )
 
         return op

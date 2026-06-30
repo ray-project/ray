@@ -38,7 +38,11 @@ from ray._common.test_utils import (
 from ray._common.utils import reset_ray_address
 from ray.serve import HTTPOptions
 from ray.serve._private.long_poll import LongPollHost, UpdatedObject
-from ray.serve._private.test_utils import get_application_url, get_metric_dictionaries
+from ray.serve._private.test_utils import (
+    expected_proxy_actors,
+    get_application_url,
+    get_metric_dictionaries,
+)
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.tests.conftest import (
     TEST_METRICS_EXPORT_PORT,
@@ -1051,7 +1055,7 @@ def test_actor_summary(serve_instance):
     actors = list_actors(filters=[("state", "=", "ALIVE")])
     class_names = {actor["class_name"] for actor in actors}
     assert class_names.issuperset(
-        {"ServeController", "HAProxyManager", "ServeReplica:app:f"}
+        {"ServeController", *expected_proxy_actors(), "ServeReplica:app:f"}
     )
 
 

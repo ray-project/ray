@@ -1159,7 +1159,13 @@ def test_config_schemas_forward_compatible():
 
 def test_http_options():
     HTTPOptions()
-    HTTPOptions(host="8.8.8.8", middlewares=[object()])
+
+    # `middlewares` is removed: a non-empty list raises, but an empty list is
+    # a no-op (matches the prior warn-on-non-empty behavior) so internal
+    # normalization via model_copy/defaults does not break.
+    HTTPOptions(middlewares=[])
+    with pytest.raises(ValueError, match="`middlewares` in HTTPOptions"):
+        HTTPOptions(host="8.8.8.8", middlewares=[object()])
 
     # Test configs ignoring unknown keys (required for forward-compatibility)
     HTTPOptions(new_version_config_key="this config is from newer version of Ray")

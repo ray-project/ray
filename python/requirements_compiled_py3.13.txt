@@ -20,7 +20,7 @@ absl-py==2.4.0
     #   tensorflow-datasets
     #   tensorflow-metadata
     #   tensorflow-probability
-accelerate==0.28.0
+accelerate==1.14.0
     # via
     #   -r python/requirements/ml/py313/core-requirements.txt
     #   -r python/requirements/ml/py313/train-requirements.txt
@@ -124,6 +124,8 @@ arro3-core==0.8.0
     # via deltalake
 arrow==1.4.0
     # via isoduration
+asciitree==0.3.3
+    # via zarr
 asgiref==3.9.2
     # via
     #   -r python/requirements/py313/test-requirements.txt
@@ -422,6 +424,8 @@ cycler==0.12.1
     # via matplotlib
 cython==0.29.37
     # via -r python/requirements/py313/test-requirements.txt
+daft==0.7.15
+    # via -r python/requirements/ml/py313/data-requirements.txt
 dask==2026.3.0
     # via
     #   -r python/requirements/ml/py313/data-requirements.txt
@@ -430,7 +434,7 @@ databricks-sdk==0.103.0
     # via
     #   mlflow-skinny
     #   mlflow-tracing
-datasets==3.6.0
+datasets==4.8.5
     # via
     #   -r python/requirements/ml/py313/data-test-requirements.txt
     #   -r python/requirements/ml/py313/train-requirements.txt
@@ -462,8 +466,9 @@ deltalake==1.5.0
 deprecated==1.3.1
     # via
     #   deltalake
+    #   numcodecs
     #   pymoo
-dill==0.3.8
+dill==0.4.1
     # via
     #   datasets
     #   evaluate
@@ -514,7 +519,7 @@ etils==1.5.2 ; python_version < "3.12"
     #   array-record
     #   mujoco
     #   tensorflow-datasets
-evaluate==0.4.3
+evaluate==0.4.6
     # via -r python/requirements/ml/py313/train-test-requirements.txt
 everett==3.1.0
     # via comet-ml
@@ -541,6 +546,7 @@ fasteners==0.20
     # via
     #   google-apitools
     #   gsutil
+    #   zarr
 fastjsonschema==2.21.2
     # via nbformat
 fastrlock==0.8.3 ; sys_platform != "darwin"
@@ -560,7 +566,6 @@ filelock==3.29.0
     #   ray
     #   snowflake-connector-python
     #   torch
-    #   transformers
     #   virtualenv
 flask==2.1.3
     # via
@@ -593,12 +598,12 @@ fsspec==2023.12.1
     # via
     #   -r python/requirements.txt
     #   adlfs
+    #   daft
     #   dask
     #   datasets
     #   delta-sharing
     #   etils
     #   evaluate
-    #   getdaft
     #   gradio-client
     #   huggingface-hub
     #   lightning
@@ -619,8 +624,6 @@ gast==0.7.0
     #   tensorflow-probability
 gcs-oauth2-boto-plugin==3.3
     # via gsutil
-getdaft==0.4.3
-    # via -r python/requirements/ml/py313/data-requirements.txt
 gitdb==4.0.12
     # via gitpython
 gitpython==3.1.47
@@ -771,7 +774,7 @@ halo==0.0.31
     # via -r python/requirements/cloud-requirements.txt
 hf-gradio==0.4.1
     # via gradio
-hf-xet==1.4.3
+hf-xet==1.5.1
     # via huggingface-hub
 hjson==3.1.0
     # via deepspeed
@@ -797,8 +800,10 @@ httpx==0.28.1
     # via
     #   -r python/requirements/py313/test-requirements.txt
     #   -r python/requirements/serve/serve-test-requirements.txt
+    #   datasets
     #   gradio
     #   gradio-client
+    #   huggingface-hub
     #   jupyterlab
     #   openlineage-python
     #   safehttpx
@@ -806,7 +811,7 @@ hudi==0.4.0
     # via -r python/requirements/ml/py313/data-test-requirements.txt
 huey==2.6.0
     # via mlflow
-huggingface-hub==0.36.2
+huggingface-hub==1.16.1
     # via
     #   -r python/requirements/ml/py313/train-requirements.txt
     #   accelerate
@@ -1107,6 +1112,8 @@ ml-dtypes==0.5.4
     #   jax
     #   jaxlib
     #   keras
+    #   onnx-ir
+    #   onnxscript
     #   tensorflow
 mlflow==3.11.1
     # via
@@ -1177,7 +1184,7 @@ multidict==6.7.1
     #   yarl
 multipledispatch==1.0.0
     # via botorch
-multiprocess==0.70.16
+multiprocess==0.70.19
     # via
     #   datasets
     #   evaluate
@@ -1233,6 +1240,10 @@ numba==0.61.2
     # via
     #   -r python/requirements/py313/test-requirements.txt
     #   statsforecast
+numcodecs==0.15.1 ; python_version >= "3.11"
+    # via
+    #   -r python/requirements/ml/py313/data-test-requirements.txt
+    #   zarr
 numexpr==2.14.1
     # via
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
@@ -1288,9 +1299,12 @@ numpy==2.2.6
     #   mujoco
     #   nevergrad
     #   numba
+    #   numcodecs
     #   numexpr
     #   onnx
+    #   onnx-ir
     #   onnxruntime
+    #   onnxscript
     #   open-spiel
     #   opencv-python-headless
     #   optuna
@@ -1328,6 +1342,7 @@ numpy==2.2.6
     #   utilsforecast
     #   webdataset
     #   xgboost
+    #   zarr
     #   zoopt
 nvidia-nccl-cu12==2.27.5 ; platform_system == "Linux" and platform_machine != "aarch64"
     # via
@@ -1343,9 +1358,16 @@ oauthlib==3.3.1
 obstore==0.10.0
     # via -r python/requirements/ml/py313/data-test-requirements.txt
 onnx==1.16.0 ; sys_platform != "darwin" or platform_machine != "arm64"
-    # via -r python/requirements/ml/py313/rllib-requirements.txt
+    # via
+    #   -r python/requirements/ml/py313/rllib-test-requirements.txt
+    #   onnx-ir
+    #   onnxscript
+onnx-ir==0.2.1
+    # via onnxscript
 onnxruntime==1.24.4 ; (sys_platform != "darwin" or platform_machine != "arm64") and python_version > "3.10"
-    # via -r python/requirements/ml/py313/rllib-requirements.txt
+    # via -r python/requirements/ml/py313/rllib-test-requirements.txt
+onnxscript==0.5.7 ; sys_platform != "darwin" or platform_machine != "arm64"
+    # via -r python/requirements/ml/py313/rllib-test-requirements.txt
 open-spiel==1.4
     # via -r python/requirements/ml/py313/rllib-test-requirements.txt
 openapi-schema-validator==0.6.3
@@ -1447,6 +1469,7 @@ packaging==26.1
     #   aim
     #   azure-cli-core
     #   bokeh
+    #   daft
     #   dask
     #   datasets
     #   deepspeed
@@ -1474,6 +1497,7 @@ packaging==26.1
     #   modin
     #   nbconvert
     #   onnxruntime
+    #   onnxscript
     #   openlineage-python
     #   opentelemetry-instrumentation
     #   optuna
@@ -1670,11 +1694,11 @@ pyarrow==23.0.1
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/py313/data-test-requirements.txt
+    #   daft
     #   dask
     #   datasets
     #   delta-sharing
     #   feather-format
-    #   getdaft
     #   hudi
     #   mlflow
     #   pylance
@@ -1949,8 +1973,10 @@ pyzmq==27.1.0
     #   ipykernel
     #   jupyter-client
     #   jupyter-server
-ray-haproxy==2.8.20
-    # via -r python/requirements/serve/serve-test-requirements.txt
+ray-haproxy==2.8.25 ; sys_platform == "linux"
+    # via
+    #   -r python/requirements.txt
+    #   -r python/requirements/serve/serve-test-requirements.txt
 raydp==1.7.0b20250423.dev0
     # via -r python/requirements/ml/py313/data-test-requirements.txt
 redis==4.5.4
@@ -1964,7 +1990,7 @@ referencing==0.36.2
     #   jsonschema-path
     #   jsonschema-specifications
     #   jupyter-events
-regex==2026.4.4
+regex==2026.5.9
     # via
     #   cfn-lint
     #   transformers
@@ -1990,7 +2016,6 @@ requests==2.33.1
     #   google-auth
     #   google-cloud-bigquery
     #   google-cloud-storage
-    #   huggingface-hub
     #   jsonschema-path
     #   jupyterlab-server
     #   kubernetes
@@ -2012,7 +2037,6 @@ requests==2.33.1
     #   tensorflow-datasets
     #   torch-geometric
     #   torchtext
-    #   transformers
     #   wandb
 requests-oauthlib==2.0.0
     # via
@@ -2076,7 +2100,7 @@ s3transfer==0.8.0
     # via boto3
 safehttpx==0.1.7
     # via gradio
-safetensors==0.7.0
+safetensors==0.8.0
     # via
     #   accelerate
     #   timm
@@ -2228,6 +2252,7 @@ sympy==1.14.0
     # via
     #   ax-platform
     #   cfn-lint
+    #   onnx-ir
     #   onnxruntime
     #   torch
 tabulate==0.10.0
@@ -2322,7 +2347,7 @@ tinyscaler==1.2.8
     # via
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   supersuit
-tokenizers==0.15.2
+tokenizers==0.22.2
     # via transformers
 toml==0.10.2
     # via tensorflow-datasets
@@ -2404,12 +2429,12 @@ tqdm==4.67.1
     #   -r python/requirements/py313/test-requirements.txt
     #   aim
     #   cmdstanpy
+    #   daft
     #   datasets
     #   deepspeed
     #   dm-control
     #   etils
     #   evaluate
-    #   getdaft
     #   huggingface-hub
     #   hyperopt
     #   lightning
@@ -2439,7 +2464,7 @@ traitlets==5.14.3
     #   nbclient
     #   nbconvert
     #   nbformat
-transformers==4.36.2
+transformers==5.11.0
     # via
     #   -r python/requirements/ml/py313/core-requirements.txt
     #   -r python/requirements/ml/py313/ml-requirements.txt
@@ -2455,6 +2480,8 @@ typer==0.24.1
     #   -r python/requirements.txt
     #   gradio
     #   hf-gradio
+    #   huggingface-hub
+    #   transformers
 types-pycurl==7.45.3.20240421
     # via -r python/requirements/lint-requirements.txt
 types-pyyaml==6.0.12.2
@@ -2480,6 +2507,7 @@ typing-extensions==4.15.0
     #   botorch
     #   cfn-lint
     #   configspace
+    #   daft
     #   etils
     #   fastapi
     #   gradio
@@ -2497,6 +2525,8 @@ typing-extensions==4.15.0
     #   mypy
     #   nevergrad
     #   obstore
+    #   onnx-ir
+    #   onnxscript
     #   opentelemetry-api
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-sdk
@@ -2665,6 +2695,8 @@ yq==3.2.2
     # via
     #   -r python/requirements/lint-requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
+zarr==2.18.7 ; python_version >= "3.11"
+    # via -r python/requirements/ml/py313/data-test-requirements.txt
 zict==3.0.0
     # via distributed
 zipp==3.23.1
