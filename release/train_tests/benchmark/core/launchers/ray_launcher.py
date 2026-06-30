@@ -1,12 +1,18 @@
 """Ray Train launcher: runs an experiment on a TorchTrainer.
 
-The per-worker body is adapter-driven; final metrics come back natively through
-Ray Train's Result (``ray.train.report`` -> ``result.metrics``) rather than a
-side file. Storage is the cluster's via ``RunConfig.storage_path``.
+The per-worker body is adapter-driven. Final metrics are collected from rank 0's
+returned value via a shared file — NOT ``trainer.fit().metrics``, which in Ray
+Train v2 binds to the last *checkpointed* report (a mid-run checkpoint carrying
+only ``{"step": N}`` would otherwise shadow the final full metrics).
 """
 
+import json
 import logging
+from datetime import datetime
 from typing import Any, Dict
+
+import ray.train
+from ray.train.torch import TorchTrainer
 
 from core.experiment_config import ExperimentConfig
 from core.registry import get_adapter_cls
@@ -14,54 +20,48 @@ from core.train_context import RayTrainContext
 
 logger = logging.getLogger(__name__)
 
+# Shared cluster storage (visible to all nodes). Follows train_benchmark.py's
+# constant pattern rather than reading ANYSCALE_ARTIFACT_STORAGE.
+STORAGE_PATH = "/mnt/cluster_storage/train_benchmark"
+METRICS_OUTPUT_PATH = "/mnt/cluster_storage/train_benchmark_metrics.json"
+
 
 def train_fn_per_worker(train_loop_config: Dict[str, Any]) -> None:
-    """Ray Train entrypoint: run the adapter on each worker.
-
-    Metrics are surfaced via ``ray.train.report`` inside the adapter, so the
-    driver reads them off ``trainer.fit().metrics`` — no shared file needed.
-    """
+    """Ray Train entrypoint: run the adapter; rank 0 writes its final metrics."""
     cfg: ExperimentConfig = train_loop_config["cfg"]
     ctx = RayTrainContext()
-    adapter = get_adapter_cls(cfg.adapter)(cfg, ctx)
-    adapter.run()
+    metrics = get_adapter_cls(cfg.adapter)(cfg, ctx).run()
+
+    if ctx.world_rank == 0 and metrics:
+        with open(METRICS_OUTPUT_PATH, "w") as f:
+            json.dump(metrics, f)
 
 
 def run_with_ray(cfg: ExperimentConfig) -> Dict[str, Any]:
-    import os
-    from datetime import datetime
-
-    import ray.train
-    from ray.train.torch import TorchTrainer
-
-    # Unique run name. Use a stdlib timestamp rather than Ray's private
-    # ray.train.v2._internal.util.date_str (no stability contract).
-    run_suffix = datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")
-    storage_root = os.environ.get("ANYSCALE_ARTIFACT_STORAGE", "/mnt/cluster_storage")
     run_config_kwargs = {}
-    # Experiment-declared env vars (if any) land in each worker process at
-    # launch — before torch/CUDA init, which matters for e.g.
-    # PYTORCH_CUDA_ALLOC_CONF. Anything cluster-wide should be set on the cluster.
+    # Experiment-declared env vars (if any) land in each worker process at launch
+    # (before torch/CUDA init). Anything cluster-wide should be set on the cluster.
     if cfg.env_vars:
         run_config_kwargs["worker_runtime_env"] = {"env_vars": dict(cfg.env_vars)}
-
-    scaling = cfg.scaling
-    scaling_kwargs = {"num_workers": scaling.num_workers, "use_gpu": scaling.use_gpu}
-    if scaling.resources_per_worker:
-        scaling_kwargs["resources_per_worker"] = scaling.resources_per_worker
-    if scaling.accelerator_type:
-        scaling_kwargs["accelerator_type"] = scaling.accelerator_type
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn_per_worker,
         train_loop_config={"cfg": cfg},
-        scaling_config=ray.train.ScalingConfig(**scaling_kwargs),
+        # cfg.scaling mirrors ray.train.ScalingConfig field-for-field.
+        scaling_config=ray.train.ScalingConfig(
+            num_workers=cfg.scaling.num_workers,
+            use_gpu=cfg.scaling.use_gpu,
+            resources_per_worker=cfg.scaling.resources_per_worker,
+            accelerator_type=cfg.scaling.accelerator_type,
+        ),
         run_config=ray.train.RunConfig(
-            storage_path=f"{storage_root}/train_benchmark/",
-            name=f"{cfg.name}-{run_suffix}",
+            storage_path=STORAGE_PATH,
+            name=f"{cfg.name}-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S-%f')}",
             failure_config=ray.train.FailureConfig(max_failures=cfg.max_failures),
             **run_config_kwargs,
         ),
     )
-    result = trainer.fit()
-    return dict(result.metrics) if result.metrics else {}
+    trainer.fit()
+
+    with open(METRICS_OUTPUT_PATH, "r") as f:
+        return json.load(f)

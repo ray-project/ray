@@ -2,12 +2,11 @@
 
 Provides a single ``build_text_dataloader`` entrypoint used by the deepspeed,
 torchtitan, and (later) megatron adapters so token accounting and batching are
-consistent across frameworks. Supports:
+consistent across frameworks. Two sources, kept deliberately minimal:
 
-  - "synthetic": random token ids, no network. Used for smoke tests and for
-    isolating framework/compute throughput from data-ingest effects.
-  - HF dataset ids (e.g. "wikitext", "ag_news") or "c4": streamed and tokenized
-    with the model's tokenizer.
+  - "synthetic": random token ids, no network. Smoke tests + isolating
+    framework/compute throughput from data-ingest effects.
+  - "wikitext": a real corpus tokenized with the model's tokenizer.
 
 Every batch is a dict with ``input_ids`` and ``attention_mask`` of shape
 [batch_size, seq_len], matching what HF ``AutoModelForCausalLM`` expects.
@@ -22,24 +21,17 @@ from torch.utils.data import DataLoader, Dataset, IterableDataset
 logger = logging.getLogger(__name__)
 
 
-# Registered HF dataset ids + the split/config needed to load them.
-# NOTE: use fully namespaced, parquet-backed repos (namespace/name). Bare ids
-# like "wikitext"/"ag_news" are legacy *script* datasets — newer
-# datasets/huggingface_hub reject them with HfUriError ("Repository id must be
-# 'namespace/name'") because the loading-script path isn't a valid repo id.
-#
-# streaming=False for bounded datasets so they cache to disk once and are
-# reused across workers/runs (streaming re-pulls every run and across workers).
-# Keep streaming=True only for unbounded corpora like c4.
+# Registered HF datasets. Just one for now (add more only when a workload needs
+# it). NOTE: use the fully namespaced, parquet-backed repo (namespace/name) —
+# the bare "wikitext" id is a legacy *script* dataset that newer
+# datasets/huggingface_hub reject with HfUriError ("Repository id must be
+# 'namespace/name'").
 _HF_DATASETS: Dict[str, Dict[str, Any]] = {
-    "c4": {"path": "allenai/c4", "name": "en", "split": "train", "streaming": True},
     "wikitext": {
         "path": "Salesforce/wikitext",
         "name": "wikitext-103-raw-v1",
         "split": "train",
-        "streaming": False,
     },
-    "ag_news": {"path": "fancyzhx/ag_news", "split": "train", "streaming": False},
 }
 
 
@@ -105,27 +97,17 @@ def _build_hf_loader(
             f"{sorted(_HF_DATASETS) + ['synthetic']}"
         )
     spec = _HF_DATASETS[dataset_name]
-    # Cap the number of raw rows we tokenize. For streaming datasets a 1% slice
-    # syntax isn't available, so we take() from the stream instead.
+    # Cap the number of raw rows we tokenize.
     n = limit_rows if limit_rows > 0 else 2000
 
-    load_kwargs = {
-        k: v for k, v in spec.items() if k in ("path", "name", "split", "streaming")
-    }
-    load_kwargs["download_config"] = DownloadConfig(disable_tqdm=True)
-    dataset = load_dataset(**load_kwargs)
-
-    if spec.get("streaming"):
-        raw = (row["text"] for row in dataset.take(n))
-    else:
-        dataset = dataset.select(range(min(n, len(dataset))))
-        raw = dataset["text"]
+    dataset = load_dataset(**spec, download_config=DownloadConfig(disable_tqdm=True))
+    dataset = dataset.select(range(min(n, len(dataset))))
 
     # Materialize a clean list[str]: drop blank lines (wikitext is line-based
-    # with many empty rows) and coerce to str. Non-streaming `dataset[col]` can
-    # return a column object the tokenizer won't treat as a batch, so the
-    # explicit list comprehension is also what makes batched encoding work.
-    texts = [str(t) for t in raw if t and str(t).strip()]
+    # with many empty rows) and coerce to str. `dataset[col]` can return a
+    # column object the tokenizer won't treat as a batch, so the explicit list
+    # comprehension is also what makes batched encoding work.
+    texts = [str(t) for t in dataset["text"] if t and str(t).strip()]
     if not texts:
         raise ValueError(f"Dataset '{dataset_name}' yielded no non-empty rows.")
 

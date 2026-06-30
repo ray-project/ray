@@ -75,7 +75,7 @@ def _run_in_worker(
     return metrics if ctx.world_rank == 0 else {}
 
 
-def run_with_torchrun_ray(cfg: ExperimentConfig) -> Dict[str, Any]:
+def run_with_torchrun(cfg: ExperimentConfig) -> Dict[str, Any]:
     import ray
     from ray.util.placement_group import remove_placement_group
 

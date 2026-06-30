@@ -52,7 +52,7 @@ class ScalingConfig:
 class DataConfig:
     # "native" (the adapter builds its own loader) | "ray_data" | "torch".
     dataloader: str = "native"
-    # Registered dataset name: "c4" | "wikitext" | "ag_news" | "synthetic" | ...
+    # Registered dataset name: "synthetic" | "wikitext" (see data/text_dataset).
     dataset: str = "synthetic"
     dataset_path: str = ""
     # Per-device micro-batch size (= train_micro_batch_size_per_gpu / MBS). The
