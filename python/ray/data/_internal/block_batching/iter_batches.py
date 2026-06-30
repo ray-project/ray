@@ -441,6 +441,9 @@ def prefetch_batches_locally(
         batch_size: User specified batch size, or None to let the system pick.
         eager_free: Whether to eagerly free the object reference from the object store.
         stats: Dataset stats object used to store ref bundle retrieval time.
+
+    Yields:
+        PendingBlock: Each block reference with its partial stage timings.
     """
 
     def get_next_ref_bundle() -> Tuple[RefBundle, Optional[TimeSpan]]:
