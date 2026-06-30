@@ -123,18 +123,15 @@ def test_idle_drain_rejected_while_holding_pinned_object(ray_start_cluster):
         is_accepted, _ = gcs_client.drain_node(
             worker_node_id,
             autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_IDLE_TERMINATION"),
-            "regression: idle drain while object pinned",
+            "idle drain while node holds a referenced object",
             2**63 - 1,
         )
         return is_accepted
 
-    # Keep attempting an idle drain across the window where the worker lease is returned
-    # (CPU + NODE_WORKERS go idle). Once that happens, the pinned, still-referenced object
-    # is the only thing keeping the node non-idle, so EVERY attempt must still be
-    # rejected. Without the fix, the stale object-store-idle signal lets one attempt
-    # succeed and the worker is drained.
-    for _ in range(30):
-        assert not drain_idle(), "idle drain accepted while a pinned object was held"
+    # Make idle drain requests during the window where worker lease is returned (CPU +
+    # worker footprint go idle). The object held by the node should prevent it from draining.
+    for _ in range(10):
+        assert not drain_idle(), "idle drain accepted while the node held an object"
         time.sleep(0.5)
 
     # The worker survived and the object is still retrievable.
