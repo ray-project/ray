@@ -3,7 +3,6 @@ import concurrent.futures
 import inspect
 import logging
 import pickle
-import threading
 import time
 from abc import ABC, abstractmethod
 from asyncio import run_coroutine_threadsafe
