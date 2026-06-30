@@ -374,6 +374,8 @@ def _cluster_spilled_bytes() -> Optional[int]:
 
     Returns None on any failure — usage collection must never break execution.
     """
+    if not ray.is_initialized():
+        return None
     try:
         reply = get_memory_info_reply(
             get_state_from_address(ray.get_runtime_context().gcs_address),
@@ -390,6 +392,8 @@ def _cluster_dead_node_count() -> Optional[int]:
 
     Reads via ``ray.nodes()``. Returns None on any failure.
     """
+    if not ray.is_initialized():
+        return None
     try:
         return sum(1 for node in ray.nodes() if not node["Alive"])
     except Exception:
