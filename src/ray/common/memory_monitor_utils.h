@@ -178,12 +178,10 @@ class MemoryMonitorUtils {
    *
    * @param root_cgroup_path The path to the root cgroup
    *                         to read the memory usage from.
-   * @param include_swap When true (default), add cgroup `memory.swap.*` /
-   *        memsw counters to total/used iff `count_swap_in_memory_monitor` is
-   *        on. Set to false when the caller needs the RAM-only view.
-   * @param proc_dir The /proc directory; used to fall back to host
-   *        SwapTotal/SwapFree when cgroup v2 `memory.swap.max` is the kernel's
-   *        "unlimited" sentinel ("max" or an int64-overflowing number).
+   * @param include_swap When true, add swap memory usage to total/used iff
+   *        `count_swap_in_memory_monitor` is on. Set to false for a RAM-only
+   *        view.
+   * @param proc_dir The /proc directory, used for the host-swap fallback.
    * @return The used and total memory in bytes from the cgroup.
    */
   static std::tuple<int64_t, int64_t> GetCGroupMemoryBytes(
@@ -211,22 +209,19 @@ class MemoryMonitorUtils {
    * @brief Gets memory information for Linux OS.
    *
    * @param proc_dir The proc directory path to read the memory usage from.
-   * @param include_swap When true (default), fold /proc/meminfo Swap{Total,Free}
-   *        into the returned totals iff count_swap_in_memory_monitor is on.
-   *        The user-slice path passes false so that per-slice cgroup swap is
-   *        not double-counted against the host-level swap reported here.
+   * @param include_swap When true, fold host swap into the returned totals iff
+   *        count_swap_in_memory_monitor is on. Set to false for a RAM-only view.
    * @return The used and total memory in bytes for Linux OS.
    */
   static std::tuple<int64_t, int64_t> GetLinuxMemoryBytes(const std::string proc_dir,
                                                           bool include_swap = true);
 
   /**
-   * @brief Returns (swap_total_bytes, swap_used_bytes) from /proc/meminfo.
+   * @brief Returns host (swap_total_bytes, swap_used_bytes).
    *
-   * Used as the fallback when cgroup v2 `memory.swap.max` is the kernel's
-   * "unlimited" sentinel — the cgroup imposes no swap cap, so the practical
-   * limit is whatever the host actually has. Returns (0, 0) when SwapTotal is
-   * missing (system without swap) or /proc/meminfo cannot be read.
+   * Used as the fallback when a cgroup imposes no swap cap (the kernel's
+   * "unlimited" sentinel), so the practical limit is whatever the host has.
+   * Returns (0, 0) on a system without swap or if the values can't be read.
    *
    * @param proc_dir The /proc directory path.
    * @return Host swap total and used in bytes; (0, 0) if unavailable.
