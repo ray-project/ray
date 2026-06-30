@@ -274,9 +274,38 @@ def test_llms_txt():
     return True
 
 
+def test_notebook_exclusion():
+    """Notebooks are dropped by source suffix (so build-time-fetched notebooks a
+    conf-load scan would miss are also caught), independent of llms_txt_exclude.
+
+    Unit-level so the test needs no myst-nb / notebook execution: the extension
+    decides via ``env.doc2path(docname)``, which we stub.
+    """
+    import sys
+
+    sys.path.insert(0, _EXT_DIR)
+    import llms_txt
+
+    class FakeEnv:
+        def doc2path(self, docname):
+            suffix = ".ipynb" if docname.endswith("-nb") else ".rst"
+            return f"/src/{docname}{suffix}"
+
+    env = FakeEnv()
+    _check(llms_txt._is_notebook(env, "guide-nb"), "notebook not detected by suffix")
+    _check(not llms_txt._is_notebook(env, "guide"), "non-notebook misdetected")
+    # _excluded drops notebooks even when no glob matches them...
+    _check(llms_txt._excluded(env, "guide-nb", []), "notebook not excluded")
+    # ...and still honors glob excludes for non-notebook pages.
+    _check(llms_txt._excluded(env, "api/foo", ["api/*"]), "glob exclude regressed")
+    _check(not llms_txt._excluded(env, "guide", ["api/*"]), "false exclusion")
+    return True
+
+
 if __name__ == "__main__":
     test_llms_txt()
+    test_notebook_exclusion()
     print(
         "PASS: llms_txt extension produced a correct index, Optional section, "
-        "and llms-full shards."
+        "llms-full shards, and excludes notebooks by source type."
     )

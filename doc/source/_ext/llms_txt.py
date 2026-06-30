@@ -31,7 +31,8 @@ A page's description resolves in three steps: the ``description`` key in
 front-matter/docinfo (``env.metadata``), then a ``<meta name="description">``
 node (MyST ``html_meta`` or an RST ``.. meta::`` directive), then the page's
 first real paragraph. ``llms_txt_exclude`` (fnmatch globs over docnames) drops
-auto-generated API reference and notebooks.
+low-signal pages such as auto-generated API reference; Jupyter notebooks are
+dropped automatically (by source suffix), so they need no exclude entry.
 
 Config values (set generic defaults here; Ray specifics live in ``conf.py``):
 
@@ -184,6 +185,27 @@ def _is_excluded(docname: str, patterns) -> bool:
     return any(fnmatch.fnmatch(docname, pat) for pat in patterns)
 
 
+def _is_notebook(env, docname) -> bool:
+    """True if the page's source is a Jupyter notebook.
+
+    Tested by source suffix at build time, so it catches notebooks fetched into
+    the build (e.g. by sphinx-collections) as well as checked-in ones — a
+    conf-load-time file scan can't see build-time-generated files. Raw notebook
+    JSON (cells, outputs, embedded base64 images) is high-bytes, low-signal for
+    an agent corpus, so notebooks are dropped from all output.
+    """
+    try:
+        return str(env.doc2path(docname)).endswith(".ipynb")
+    except Exception:  # pragma: no cover - defensive
+        return False
+
+
+def _excluded(env, docname, patterns) -> bool:
+    """Whether to drop a page from llms output: it matches an exclude glob or
+    its source is a notebook."""
+    return _is_excluded(docname, patterns) or _is_notebook(env, docname)
+
+
 def _top_dir(docname: str) -> str:
     return docname.split("/", 1)[0] if "/" in docname else docname
 
@@ -215,12 +237,12 @@ def _build_sections(app, env, exclude, cache):
     )
     sections = []
     for label, landing in _toctree_children(env, root_doc, cache):
-        if _is_excluded(landing, exclude):
+        if _excluded(env, landing, exclude):
             continue
         children = [
             (child_label, child)
             for child_label, child in _toctree_children(env, landing, cache)
-            if not _is_excluded(child, exclude)
+            if not _excluded(env, child, exclude)
         ]
         sections.append((label, landing, children))
     return sections
@@ -470,7 +492,7 @@ def _write_full_files(
     # Group every in-scope page by its top-level directory.
     groups: dict[str, list[str]] = {}
     for docname in env.all_docs:
-        if docname == root_doc or _is_excluded(docname, exclude):
+        if docname == root_doc or _excluded(env, docname, exclude):
             continue
         groups.setdefault(_top_dir(docname), []).append(docname)
 
