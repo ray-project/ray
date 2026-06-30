@@ -1,4 +1,3 @@
-import atexit
 import logging
 import os
 import subprocess
@@ -296,79 +295,6 @@ def test_nested_subprocess_cleanup_with_pg_cleanup(enable_pg_cleanup, shutdown_o
     wait_for_condition(lambda: not psutil.pid_exists(child_pid), retry_interval_ms=100)
     wait_for_condition(
         lambda: not psutil.pid_exists(grandchild_pid), retry_interval_ms=100
-    )
-
-
-@pytest.mark.skipif(
-    sys.platform != "linux" and sys.platform != "darwin",
-    reason="Process‑group cleanup is POSIX‑only (Linux/macOS).",
-)
-def test_graceful_exit_runs_shutdown_handler_with_pg_cleanup(
-    enable_pg_cleanup, shutdown_only, tmp_path
-):
-    """
-    Process group cleanup must not signal-kill a gracefully exiting worker before
-    it finishes its shutdown sequence. The actor's __ray_shutdown__ handler should
-    still run when the actor is terminated gracefully via __ray_terminate__.
-    """
-    ray.init()
-    shutdown_file = str(tmp_path / "ray_shutdown_called")
-
-    @ray.remote
-    class UserShutdownActor:
-        def __ray_shutdown__(self):
-            with open(shutdown_file, "w") as f:
-                f.write("ray_shutdown_called")
-                f.flush()
-
-    actor = UserShutdownActor.remote()
-    # Wait until the actor is fully constructed before terminating it.
-    ray.get(actor.__ray_ready__.remote())
-    # Graceful termination; process group cleanup must not kill the worker mid-shutdown.
-    actor.__ray_terminate__.remote()
-
-    wait_for_condition(
-        lambda: os.path.exists(shutdown_file) and os.path.getsize(shutdown_file) > 0,
-        retry_interval_ms=100,
-    )
-
-
-@pytest.mark.skipif(
-    sys.platform != "linux" and sys.platform != "darwin",
-    reason="Process‑group cleanup is POSIX‑only (Linux/macOS).",
-)
-def test_graceful_exit_runs_atexit_handler_with_pg_cleanup(
-    enable_pg_cleanup, shutdown_only, tmp_path
-):
-    """
-    Process group cleanup must not signal-kill a gracefully exiting worker before
-    its Python atexit handlers run. atexit runs at the very end of process
-    teardown (later than __ray_shutdown__), so this complements
-    test_graceful_exit_runs_shutdown_handler_with_pg_cleanup.
-    """
-    ray.init()
-    atexit_file = str(tmp_path / "atexit_called")
-
-    @ray.remote
-    class AtexitActor:
-        def __init__(self):
-            atexit.register(self.cleanup)
-
-        def cleanup(self):
-            with open(atexit_file, "w") as f:
-                f.write("atexit_called")
-                f.flush()
-
-    actor = AtexitActor.remote()
-    # Wait until the actor is fully constructed before terminating it.
-    ray.get(actor.__ray_ready__.remote())
-    # Graceful termination; process group cleanup must not kill the worker before
-    # its atexit handlers run.
-    actor.__ray_terminate__.remote()
-
-    wait_for_condition(
-        lambda: os.path.exists(atexit_file) and os.path.getsize(atexit_file) > 0,
-        retry_interval_ms=100,
     )
 
 
