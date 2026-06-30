@@ -725,7 +725,13 @@ def test_nested_deployment_response_error(serve_instance):
     reason="local_testing_mode doesn't support _to_object_ref",
 )
 def test_convert_to_object_ref(serve_instance):
-    """Test converting deployment handle refs to Ray object refs."""
+    """Test converting deployment handle refs to Ray object refs.
+
+    Converting a deployment handle ref to a Ray object ref should be async and
+    *not* block until the downstream result has been produced. This test enforces
+    the behavior by blocking the downstream tasks using a signal actor until after
+    the object refs have been produced.
+    """
 
     signal = SignalActor.remote()
 
