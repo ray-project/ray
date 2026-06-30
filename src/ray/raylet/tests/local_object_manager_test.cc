@@ -32,7 +32,7 @@
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/object_manager/ownership_object_directory.h"
 #include "ray/observability/fake_metric.h"
-#include "ray/pubsub/subscriber.h"
+#include "ray/pubsub/fake_subscriber.h"
 #include "ray/raylet/metrics.h"
 #include "ray/raylet/tests/util.h"
 #include "ray/raylet/worker_pool.h"
@@ -46,30 +46,6 @@ namespace ray {
 namespace raylet {
 
 using ::testing::_;
-
-class MockSubscriber : public pubsub::SubscriberInterface {
- public:
-  void Subscribe(
-      const std::unique_ptr<rpc::SubMessage> sub_message,
-      rpc::ChannelType channel_type,
-      const rpc::Address &owner_address,
-      const std::optional<std::string> &key_id_binary,
-      pubsub::SubscribeDoneCallback subscribe_done_callback,
-      pubsub::SubscriptionItemCallback subscription_callback,
-      pubsub::SubscriptionFailureCallback subscription_failure_callback) override {}
-
-  MOCK_METHOD3(Unsubscribe,
-               void(rpc::ChannelType channel_type,
-                    const rpc::Address &publisher_address,
-                    const std::optional<std::string> &key_id_binary));
-
-  MOCK_CONST_METHOD3(IsSubscribed,
-                     bool(rpc::ChannelType channel_type,
-                          const rpc::Address &publisher_address,
-                          const std::string &key_id_binary));
-
-  MOCK_CONST_METHOD0(DebugString, std::string());
-};
 
 class MockWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
@@ -286,7 +262,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
   LocalObjectManagerTestWithMinSpillingSize(int64_t min_spilling_size,
                                             int64_t max_fused_object_count,
                                             int64_t max_spilling_file_size_bytes = -1)
-      : subscriber_(std::make_shared<MockSubscriber>()),
+      : subscriber_(std::make_shared<pubsub::FakeSubscriber>()),
         owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
         manager_node_id_(NodeID::FromRandom()),
@@ -369,7 +345,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
   instrumented_io_context io_service_;
   size_t free_objects_batch_size = 3;
   size_t object_size = 4;
-  std::shared_ptr<MockSubscriber> subscriber_;
+  std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
   std::shared_ptr<MockWorkerClient> owner_client;
   rpc::CoreWorkerClientPool client_pool;
   MockIOWorkerPool worker_pool;

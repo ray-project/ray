@@ -40,7 +40,6 @@ class PublisherTest : public ::testing::Test {
     publisher_ = std::make_shared<Publisher>(
         /*channels=*/
         std::vector<rpc::ChannelType>{
-            rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
             rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
             rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
             rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
