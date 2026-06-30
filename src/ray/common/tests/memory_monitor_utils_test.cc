@@ -312,8 +312,8 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV2UnlimitedRamBoundedSwapCountsCgroupSw
   // Overwrite memory.max with the unlimited sentinel.
   std::ofstream(cgroup_dir + "/memory.max") << "max";
   MockCgroupv2Swap(cgroup_dir, cgroup_swap_max, cgroup_swap_current);
-  std::string proc_dir =
-      MockProcMeminfo(mem_total_kb, mem_available_kb, host_swap_total_kb, host_swap_free_kb);
+  std::string proc_dir = MockProcMeminfo(
+      mem_total_kb, mem_available_kb, host_swap_total_kb, host_swap_free_kb);
 
   auto system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
       cgroup_dir, /*include_swap=*/true, proc_dir);
@@ -579,6 +579,9 @@ TEST_F(MemoryMonitorUtilsTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues) 
 TEST_F(
     MemoryMonitorUtilsTest,
     TestGetMemoryThresholdWithResourceIsolationUsesUpperBoundConstraintToComputeThreshold) {
+  // Pin swap accounting off so the threshold is just memory.high, independent
+  // of whichever swap-related test ran before (RayConfig is process-global).
+  SetCountSwapFlag(false);
   // Create a fake cgroup directory using MockCgroupv2MemoryUsage.
   std::string cgroup_dir = MockCgroupv2MemoryUsage(
       /*total_bytes=*/16LL * 1024 * 1024 * 1024,
@@ -615,6 +618,52 @@ TEST_F(
                 /*resource_isolation_enabled=*/true,
                 *cgroup_manager),
             expected_default_mode_threshold);
+}
+
+TEST_F(MemoryMonitorUtilsTest, TestGetMemoryThresholdResourceIsolationAddsRootSwap) {
+  // B1: under resource isolation the threshold's swap budget comes from the
+  // ROOT cgroup's swap.max (the slice's effective inherited cap, and the same
+  // path the scheduler's get_cgroup_aware_swap_memory reads), added on top of
+  // the user slice's memory.high.
+  SetCountSwapFlag(true);
+  int64_t root_swap_max = 2LL * 1024 * 1024 * 1024;  // 2 GiB
+  std::string cgroup_dir = MockCgroupv2MemoryUsage(
+      /*total_bytes=*/16LL * 1024 * 1024 * 1024,
+      /*current_bytes=*/5LL * 1024 * 1024 * 1024,
+      /*anon_memory_bytes=*/0,
+      /*shmem_memory_bytes=*/0,
+      /*inactive_file_bytes=*/0,
+      /*active_file_bytes=*/0);
+  // Root cgroup swap budget read by GetMemoryThreshold via the filesystem.
+  MockCgroupv2Swap(cgroup_dir, root_swap_max, /*swap_current_bytes=*/0);
+
+  std::shared_ptr<std::unordered_map<std::string, FakeCgroup>> cgroups =
+      std::make_shared<std::unordered_map<std::string, FakeCgroup>>();
+  cgroups->emplace(cgroup_dir, FakeCgroup{cgroup_dir, {5}, {}, {"cpu", "memory"}, {}});
+  std::unique_ptr<FakeCgroupDriver> driver = FakeCgroupDriver::Create(cgroups);
+
+  int64_t user_memory_max_bytes = 10LL * 1024 * 1024 * 1024;
+  int64_t user_memory_high_bytes = 8LL * 1024 * 1024 * 1024;
+  StatusOr<std::unique_ptr<CgroupManager>> result =
+      CgroupManager::Create(cgroup_dir,
+                            "node_id_123",
+                            /*system_reserved_cpu_weight=*/100,
+                            /*system_memory_bytes_min=*/1LL * 1024 * 1024 * 1024,
+                            /*system_memory_bytes_low=*/1LL * 1024 * 1024 * 1024,
+                            user_memory_high_bytes,
+                            user_memory_max_bytes,
+                            std::move(driver));
+  std::unique_ptr<CgroupManager> cgroup_manager = std::move(result.value());
+
+  // Threshold = user slice memory.high + root cgroup swap.max.
+  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(
+                /*total_memory_bytes=*/16LL * 1024 * 1024 * 1024,
+                /*usage_threshold=*/0.5,
+                /*min_memory_free_bytes=*/MemoryMonitorInterface::kNull,
+                /*resource_isolation_enabled=*/true,
+                *cgroup_manager,
+                /*root_cgroup_path=*/cgroup_dir),
+            user_memory_high_bytes + root_swap_max);
 }
 
 TEST_F(MemoryMonitorUtilsTest, TestGetPidsFromDirOnlyReturnsNumericFilenames) {

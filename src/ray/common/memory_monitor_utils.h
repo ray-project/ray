@@ -151,13 +151,19 @@ class MemoryMonitorUtils {
    * constraints.
    * @param cgroup_manager The cgroup manager to fetch the upper bound memory constraints
    * from.
+   * @param root_cgroup_path The root cgroup whose `memory.swap.max` is the
+   *        user slice's effective swap budget (the leaf inherits it). Read to
+   *        keep the OOM threshold aligned with the scheduler's
+   *        get_cgroup_aware_swap_memory, which reads the same root path.
    * @return The memory threshold.
    */
-  static int64_t GetMemoryThreshold(int64_t total_memory_bytes,
-                                    float usage_threshold,
-                                    int64_t min_memory_free_bytes,
-                                    bool resource_isolation_enabled,
-                                    const CgroupManagerInterface &cgroup_manager);
+  static int64_t GetMemoryThreshold(
+      int64_t total_memory_bytes,
+      float usage_threshold,
+      int64_t min_memory_free_bytes,
+      bool resource_isolation_enabled,
+      const CgroupManagerInterface &cgroup_manager,
+      const std::string &root_cgroup_path = MemoryMonitorInterface::kDefaultCgroupPath);
 
   /**
    * @brief Gets the used memory for a process from the process memory snapshot.

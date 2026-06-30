@@ -453,12 +453,11 @@ def get_cgroup_aware_swap_memory() -> Tuple[int, int]:
     result, which would otherwise let "used" exceed "total".
 
     Note: this reads from the **root** cgroup (/sys/fs/cgroup/memory.swap.*).
-    Under --enable-resource-isolation the raylet's user-slice OOM monitor
-    reads memory.swap.* on the **user leaf** cgroup; in default deployments
-    the leaf inherits from the root so the two views agree. If an operator
-    explicitly writes memory.swap.max on the user/system leaves to a value
-    different from the root, this helper's advertised swap budget will
-    diverge from what the user-slice OOM monitor enforces.
+    Under --enable-resource-isolation the raylet's user-slice OOM threshold
+    reads memory.swap.max from the **same root cgroup** (see
+    GetMemoryThreshold in memory_monitor_utils.cc), so the advertised swap
+    budget and the OOM threshold agree. Per-tick usage on the OOM side still
+    comes from the user leaf's memory.swap.current, which is per-slice exact.
 
       - cgroup v2 with numeric memory.swap.max
             -> (swap.max, swap.current if present else 0); matches C++ which

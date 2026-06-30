@@ -656,7 +656,8 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
     float usage_threshold,
     int64_t min_memory_free_bytes,
     bool resource_isolation_enabled,
-    const CgroupManagerInterface &cgroup_manager) {
+    const CgroupManagerInterface &cgroup_manager,
+    const std::string &root_cgroup_path) {
   RAY_CHECK_GE(total_memory_bytes, MemoryMonitorInterface::kNull);
   RAY_CHECK_GE(min_memory_free_bytes, MemoryMonitorInterface::kNull);
   RAY_CHECK_GE(usage_threshold, 0)
@@ -700,47 +701,31 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
 
     // Under the isolation override above, the threshold is `memory.high` —
     // a RAM-only kernel constraint. Per-tick `used_bytes` from
-    // TakeUserSliceMemoryUsageSnapshot includes user-slice swap when the
-    // flag is on, so add the user cgroup's swap.max budget to keep the
-    // comparison apples-to-apples. "max" / overflow means the user slice
-    // inherits the parent's swap budget (typically unlimited at the root),
-    // so fall back to host swap — same semantics as GetCGroupMemoryBytes
-    // and the Python helper in ray._common.utils.
+    // TakeUserSliceMemoryUsageSnapshot includes user-slice swap.current when the
+    // flag is on, so add the swap budget to keep the comparison
+    // apples-to-apples.
+    //
+    // Read swap.max from the ROOT cgroup (the same path the scheduler's
+    // get_cgroup_aware_swap_memory reads), not the user leaf: Ray does not write
+    // swap.max on the user slice, so the leaf reports "max" and would over-state
+    // the budget as host swap. The root cap is the slice's real effective swap.
+    // "max"/overflow at the root means genuinely unlimited, so fall back to host
+    // swap; an absent file means no swap support, so add nothing.
     if (RayConfig::instance().count_swap_in_memory_monitor()) {
-      // The per-tick snapshot reads memory.swap.current directly via the
-      // filesystem; the constraint lookup here goes through CgroupManager. To
-      // keep the two paths in sync:
-      //   - lookup ok, value parses to a positive int64 → use it as the budget
-      //   - lookup ok, value == 0 → no swap budget (matches snapshot's
-      //                             swap.max==0 short-circuit)
-      //   - lookup ok, unlimited sentinel / parse failure → host swap
-      //   - lookup fails because the file doesn't exist (InvalidArgument) →
-      //       treat as no swap support, matching the snapshot which leaves
-      //       swap_max_bytes at 0 when swap.max is absent
-      //   - lookup fails with any other status (IOError, etc.) → host swap, so
-      //       we don't end up with snapshot including swap.current while the
-      //       threshold ignores it
-      bool fall_back_to_host_swap = false;
-      StatusOr<std::string> user_swap_max_or =
-          cgroup_manager.GetUserCgroupConstraintValue(kCgroupsV2MemorySwapMaxPath);
-      if (user_swap_max_or.ok()) {
-        CgroupSwapMax user_swap_max = ParseCgroupSwapMax(user_swap_max_or.value());
-        if (user_swap_max.unlimited) {
-          fall_back_to_host_swap = true;
-        } else if (user_swap_max.bytes > 0) {
-          resolved_memory_threshold_bytes += user_swap_max.bytes;
-        }
-      } else if (!user_swap_max_or.status().IsInvalidArgument()) {
-        // InvalidArgument means the swap.max file doesn't exist (kernel
-        // built without CONFIG_MEMCG_SWAP, etc.). Any other status (IOError,
-        // ...) is a transient/unexpected failure where falling back keeps the
-        // threshold aligned with the snapshot.
-        fall_back_to_host_swap = true;
-      }
-      if (fall_back_to_host_swap) {
-        auto [host_swap_total, _] = GetHostSwapBytes();
-        if (host_swap_total > 0) {
-          resolved_memory_threshold_bytes += host_swap_total;
+      std::string root_swap_max_path =
+          root_cgroup_path + "/" + kCgroupsV2MemorySwapMaxPath;
+      std::ifstream root_swap_max_ifs(root_swap_max_path,
+                                      std::ios::in | std::ios::binary);
+      std::string root_swap_max_str;
+      if (root_swap_max_ifs && (root_swap_max_ifs >> root_swap_max_str)) {
+        CgroupSwapMax root_swap_max = ParseCgroupSwapMax(root_swap_max_str);
+        if (root_swap_max.unlimited) {
+          auto [host_swap_total, _] = GetHostSwapBytes();
+          if (host_swap_total > 0) {
+            resolved_memory_threshold_bytes += host_swap_total;
+          }
+        } else if (root_swap_max.bytes > 0) {
+          resolved_memory_threshold_bytes += root_swap_max.bytes;
         }
       }
     }
