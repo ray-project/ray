@@ -377,6 +377,30 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
 
         # Clean up.
         algo.cleanup()
+    
+    def test_evaluation_in_algorithm_train_with_remote_runners(self):
+        """Test offline evaluation with remote runners and eval env runners.
+        
+        Ensures that pg_offset is correctly computed for
+        OfflineEvaluationRunnerGroup so that remote offline eval runners
+        are assigned to distinct placement group bundles.
+        """
+        config = self.config.copy(copy_frozen=False)
+        config.environment("CartPole-v1")
+        config.evaluation(
+            evaluation_interval=1,
+            evaluation_num_env_runners=1,
+            evaluation_parallel_to_training=False,
+            num_offline_eval_runners=1
+        )
+
+        algo = config.build()
+
+        # pg_offset should be num_env_runners (0) + evaluation_num_env_runners (1) = 1
+        self.assertEqual(algo.offline_eval_runner_group._pg_offset, 1)
+
+        algo.cleanup()
+
 
 
 if __name__ == "__main__":
