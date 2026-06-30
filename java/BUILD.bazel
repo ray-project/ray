@@ -13,9 +13,10 @@ load("@rules_python//python:defs.bzl", "py_binary")
 load("//bazel:ray.bzl", "define_java_module", "native_java_library")
 
 exports_files([
-    "testng.xml",
     "checkstyle.xml",
     "checkstyle-suppressions.xml",
+    "dependencies.bzl",
+    "testng.xml",
 ])
 
 all_modules = [

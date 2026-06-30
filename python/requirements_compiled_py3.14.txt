@@ -50,7 +50,7 @@ aiofiles==24.1.0
     #   gradio
 aiohappyeyeballs==2.6.1
     # via aiohttp
-aiohttp==3.13.5
+aiohttp==3.14.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -828,7 +828,7 @@ hyperopt @ git+https://github.com/hyperopt/hyperopt.git@2504ee61419737e814e2dec2
     # via -r python/requirements/ml/py313/tune-requirements.txt
 identify==2.6.19
     # via pre-commit
-idna==3.12
+idna==3.15
     # via
     #   -r python/requirements/security-requirements.txt
     #   anyio
