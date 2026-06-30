@@ -105,12 +105,12 @@
 # ==== Build and CI ====
 
 # Bazel.
-#/BUILD.bazel @ray-project/ray-core @ray-project/ray-ci
-#/WORKSPACE @ray-project/ray-core @ray-project/ray-ci
-#/bazel/ @ray-project/ray-core @ray-project/ray-ci
+/BUILD.bazel @ray-project/ray-core @ray-project/ray-ci
+/WORKSPACE @ray-project/ray-core @ray-project/ray-ci
+/bazel/ @ray-project/ray-core @ray-project/ray-ci
 
-# CI scripts.
-#/ci/ @ray-project/ray-core @ray-project/ray-ci
+# CI scripts. More specific /ci/ rules below override this catch-all.
+/ci/ @ray-project/ray-core @ray-project/ray-ci
 
 # CI
 /ci/docker @ray-project/ray-ci
@@ -123,7 +123,21 @@
 # Buildkite pipeline management
 .buildkite/hooks @ray-project/ray-ci
 
+# Buildkite pipeline definitions and the change-detection rules that decide
+# what CI runs for every PR. Editing these changes what runs for everyone.
+/.buildkite/*.rayci.yml @ray-project/ray-ci
+/.buildkite/test.rules.txt @ray-project/ray-ci
+/.buildkite/always.rules.txt @ray-project/ray-ci
+
+# Compiled dependency lockfile. Gates the build and test environment.
+/python/requirements_compiled.txt @ray-project/ray-ci
+
+# Read the Docs build configuration. ray-docs owns the docs build; ray-ci
+# co-owns, and ray-docs-reviewers is a silent fallback for backup approval.
+/.readthedocs.yaml @ray-project/ray-docs @ray-project/ray-ci @ray-project/ray-docs-reviewers
+
 /release/ray_release @ray-project/ray-ci
+/release/release_tests.yaml @ray-project/ray-ci
 
 # Allow people to add BYOD post-installation shell scripts
 # on their own.
