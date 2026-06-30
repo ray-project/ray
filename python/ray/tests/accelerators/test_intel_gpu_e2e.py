@@ -7,7 +7,6 @@ serve as an approved method to verify Intel GPU-based Ray deployments.
 """
 
 import os
-import re
 from typing import Any, Dict, List
 
 import pytest
@@ -137,22 +136,6 @@ def _validate_gpu_binding_common(
     assert (
         primary_gpu_id in ze_gpu_ids
     ), f"ZE_AFFINITY_MASK does not reference bound GPU id for {label}: {ze_mask}."
-
-    # ONEAPI_DEVICE_SELECTOR carries re-indexed sequential IDs (e.g. "level_zero:0")
-    # because ZE_AFFINITY_MASK has already re-indexed devices before it applies.
-    # Check it is present and has the correct format — but do not compare its IDs
-    # to the physical gpu_ids since they are intentionally different.
-    selector = result.get("selector")
-    if selector is not None:
-        assert (
-            "level_zero:" in selector.lower()
-        ), f"ONEAPI_DEVICE_SELECTOR should target GPU devices for {label}, got: {selector}."
-        expected_count = len(gpu_ids)
-        selector_ids = re.findall(r"\b\d+\b", selector)
-        assert len(selector_ids) == expected_count, (
-            f"ONEAPI_DEVICE_SELECTOR should have {expected_count} re-indexed id(s) "
-            f"for {label}, got: {selector}."
-        )
 
     return primary_gpu_id
 

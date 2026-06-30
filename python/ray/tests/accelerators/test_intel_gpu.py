@@ -19,7 +19,6 @@ def clean_accelerator_env():
         "ZE_AFFINITY_MASK",
         "ONEAPI_DEVICE_SELECTOR",
         "RAY_EXPERIMENTAL_NOSET_ZE_AFFINITY_MASK",
-        "RAY_EXPERIMENTAL_NOSET_ONEAPI_DEVICE_SELECTOR",
     )
     saved = {k: os.environ.get(k) for k in keys}
     yield
@@ -132,41 +131,33 @@ def test_get_current_process_visible_accelerator_ids(clean_accelerator_env):
 
 
 @pytest.mark.parametrize(
-    "physical_ids, expected_ze, expected_oneapi",
+    "physical_ids, expected_ze",
     [
-        # GPU0 only — physical and re-indexed are the same.
-        (["0"],       "0",   "level_zero:0"),
-        # GPU0 + GPU1 — physical and re-indexed are the same.
-        (["0", "1"],  "0,1", "level_zero:0,1"),
-        # GPU1 only — ZE carries physical id 1, but ONEAPI must use re-indexed 0.
-        # Without re-indexing: ZE=1 + ONEAPI=level_zero:1 -> 0 devices visible.
-        (["1"],       "1",   "level_zero:0"),
-        # Non-contiguous physical ids — ONEAPI always sequential from 0.
-        (["1", "3"],  "1,3", "level_zero:0,1"),
+        # GPU0 only.
+        (["0"],       "0"),
+        # GPU0 + GPU1.
+        (["0", "1"],  "0,1"),
+        # GPU1 only — physical id, no re-indexing needed since ONEAPI is not written.
+        (["1"],       "1"),
+        # Non-contiguous physical ids.
+        (["1", "3"],  "1,3"),
     ],
 )
 def test_set_current_process_visible_accelerator_ids(
-    clean_accelerator_env, physical_ids, expected_ze, expected_oneapi
+    clean_accelerator_env, physical_ids, expected_ze
 ):
     Accelerator.set_current_process_visible_accelerator_ids(physical_ids)
     assert os.environ["ZE_AFFINITY_MASK"] == expected_ze
-    assert os.environ["ONEAPI_DEVICE_SELECTOR"] == expected_oneapi
+    # ONEAPI_DEVICE_SELECTOR is no longer written — re-indexing bug is impossible.
+    assert "ONEAPI_DEVICE_SELECTOR" not in os.environ
 
 
 def test_set_visible_accelerator_ids_noset_ze(clean_accelerator_env):
-    # RAY_EXPERIMENTAL_NOSET_ZE_AFFINITY_MASK suppresses only ZE_AFFINITY_MASK.
+    # RAY_EXPERIMENTAL_NOSET_ZE_AFFINITY_MASK suppresses ZE_AFFINITY_MASK.
     os.environ["RAY_EXPERIMENTAL_NOSET_ZE_AFFINITY_MASK"] = "1"
     Accelerator.set_current_process_visible_accelerator_ids(["0", "1"])
     assert "ZE_AFFINITY_MASK" not in os.environ
-    assert os.environ["ONEAPI_DEVICE_SELECTOR"] == "level_zero:0,1"
-
-
-def test_set_visible_accelerator_ids_noset_oneapi(clean_accelerator_env):
-    # RAY_EXPERIMENTAL_NOSET_ONEAPI_DEVICE_SELECTOR suppresses only ONEAPI_DEVICE_SELECTOR.
-    os.environ["RAY_EXPERIMENTAL_NOSET_ONEAPI_DEVICE_SELECTOR"] = "1"
-    Accelerator.set_current_process_visible_accelerator_ids(["0", "1"])
     assert "ONEAPI_DEVICE_SELECTOR" not in os.environ
-    assert os.environ["ZE_AFFINITY_MASK"] == "0,1"
 
 
 if __name__ == "__main__":

@@ -102,14 +102,7 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
     def set_current_process_visible_accelerator_ids(
         visible_xpu_devices: List[str],
     ) -> None:
-        ids_bare = ",".join([str(i) for i in visible_xpu_devices])
-        # ONEAPI_DEVICE_SELECTOR applies after ZE_AFFINITY_MASK has already re-indexed
-        # devices, so it must use sequential 0,1,2... not the original physical IDs.
-        ids_reindexed = ",".join([str(i) for i in range(len(visible_xpu_devices))])
-        ids_prefixed = ONEAPI_DEVICE_BACKEND_TYPE + ":" + ids_reindexed
-
         if not env_bool(NOSET_ZE_AFFINITY_MASK_ENV_VAR, False):
-            os.environ[ZE_AFFINITY_MASK_ENV_VAR] = ids_bare
-
-        if not env_bool(NOSET_ONEAPI_DEVICE_SELECTOR_ENV_VAR, False):
-            os.environ[ONEAPI_DEVICE_SELECTOR_ENV_VAR] = ids_prefixed
+            os.environ[ZE_AFFINITY_MASK_ENV_VAR] = ",".join(
+                [str(i) for i in visible_xpu_devices]
+            )
