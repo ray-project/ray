@@ -167,7 +167,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
   ///
   /// This might not be reflective of the node's current state since Object Store
   /// usage is refreshed at periodic intervals. Therefore, this might be giving a
-  /// stale view of object store memory.
+  /// stale view of object store memory. Other resources (WorkFootprints and Resources)
+  /// are updated eagerly on allocation/release.
   bool WasLastRecordedNodeStateIdle() const {
     return GetResourceIdleTime() != absl::nullopt;
   }
