@@ -1028,6 +1028,13 @@ autosummary_filename_map = {
 
 # Mock out external dependencies here.
 
+# Prefer not to mock libraries that are actually installed in the docs build
+# environment (doc/requirements-doc.lock.txt). Mocking an installed library
+# shadows the real module: an eager import in a documented class body then hits
+# the mock and aborts the whole package import as a misleading error. numpy and
+# pyarrow are installed, so they are not mocked. tensorflow is also installed (a
+# direct requirements-doc entry), but importing it for real breaks the autodoc
+# import of ray.rllib.algorithms.algorithm at build time, so it stays mocked.
 autodoc_mock_imports = [
     "aiohttp",
     "async_timeout",
@@ -1052,10 +1059,7 @@ autodoc_mock_imports = [
     "lightgbm_ray",
     "mlflow",
     "nevergrad",
-    "numpy",
     "pandas",
-    "pyarrow",
-    "pyarrow.compute",
     "pytorch_lightning",
     "scipy",
     "setproctitle",
