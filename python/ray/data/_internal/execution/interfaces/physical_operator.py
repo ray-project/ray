@@ -218,9 +218,24 @@ class DataOpTask(OpTask):
                     "block, it means there's an error in the implementation."
                 )
 
+                # Poll for the next block non-blockingly (timeout_s=0) while the
+                # task is still producing. Once the stream is exhausted, the same
+                # `_next_sync` call must `ray.get` the generator's return object
+                # to surface StopIteration / task errors. A 0 timeout there
+                # issues and then immediately cancels the pull of a
+                # plasma-resident return object on every poll, so it would never
+                # arrive and the task would never be observed as finished. In
+                # that end-of-stream case only, use a bounded blocking timeout so
+                # the return object can be pulled; on timeout (e.g. lost to a
+                # dead node) we still fall through and retry on a later call.
+                next_timeout_s = (
+                    METADATA_GET_TIMEOUT_S
+                    if self._streaming_gen._stream_exhausted()
+                    else 0
+                )
                 try:
                     self._pending_block_ref = self._streaming_gen._next_sync(
-                        timeout_s=0
+                        timeout_s=next_timeout_s
                     )
                 except StopIteration:
                     self._task_done_callback(
