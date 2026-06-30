@@ -170,7 +170,7 @@ Ray Train Utilities
     ~train.get_checkpoint
     ~train.get_context
     ~train.get_dataset_shard
-    ~train.preemption_info
+    ~train.get_preemption_info
     ~train.report
 
 **Collective**
