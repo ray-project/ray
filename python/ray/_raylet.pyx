@@ -2898,6 +2898,37 @@ cdef class GcsClient:
                 ray._private.utils._CALLED_FREQ[name] += 1
         return getattr(self.inner, name)
 
+cdef void _invoke_object_out_of_scope_callback(
+        const CObjectID &c_object_id, void *user_callback) noexcept nogil:
+    """Invoked on the object_freed_callback_service_ thread when an object goes
+    out of scope. Calls the registered Python callback with the object ID as
+    ``bytes``, then releases the Py_INCREF taken at registration.
+
+    Args:
+        c_object_id: The C++ ObjectID of the object that went out of scope.
+        user_callback: The Python callable registered by the caller, kept
+            alive by the Py_INCREF in ``add_object_out_of_scope_callback``.
+    """
+    with gil:
+        try:
+            callback = <object>user_callback
+            id_binary = c_object_id.Binary()
+            callback(id_binary)
+        except BaseException:
+            # Invoked from C++ through a C function pointer, so a propagating
+            # exception would be undefined behavior; that is why we catch
+            # everything here, including KeyboardInterrupt/SystemExit.
+            logger.exception(
+                "Exception in the callback registered via "
+                "CoreWorker.add_object_out_of_scope_callback for object %s. The "
+                "callback must be non-blocking and exception-free, so check it "
+                "for I/O, blocking calls, or bugs that raise.",
+                c_object_id.Hex().decode("ascii"),
+            )
+        finally:
+            cpython.Py_DECREF(<object>user_callback)
+
+
 cdef class CoreWorker:
 
     def __cinit__(self, worker_type, store_socket, raylet_socket,
@@ -4251,6 +4282,56 @@ cdef class CoreWorker:
             CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
                 c_object_id)
 
+    def add_object_out_of_scope_callback(
+            self, ObjectRef object_ref, callback: Callable[[bytes], None]):
+        """Register a Python callable to fire when object_ref goes out of scope.
+
+        .. warning::
+            This is an internal Ray API. Do not use it outside of Ray libraries.
+
+        Can only be called on the worker that owns object_ref. Raises
+        ValueError if object_ref is not owned by this worker.
+
+        The callback runs on a dedicated background thread concurrent with the
+        main Python thread. It must be thread-safe; use a lock if it ever accesses
+        state shared with the main thread.
+
+        .. warning::
+            The callback runs on a single thread shared by every out-of-scope
+            notification for this worker, so it MUST be O(1) and non-blocking.
+            Anything that blocks here serializes every subsequent callback on
+            this worker. Please do not register any hanging/failing operations
+            here.
+
+        If the callback raises, the exception is logged and swallowed so that
+        subsequent callbacks are not affected.
+
+        Args:
+            object_ref: The owned object to watch.
+            callback: Called with the object ID as ``bytes`` when the last
+                reference is released.
+
+        Returns:
+            True if registered; False if the object is already out of scope
+            (the callback will never fire).
+        """
+        if not callable(callback):
+            raise TypeError(
+                f"callback must be callable, got {type(callback).__name__!r}"
+            )
+        cdef CObjectID c_object_id = object_ref.native()
+        check_status(CCoreWorkerProcess.GetCoreWorker().CheckObjectOwnedByUs(
+            c_object_id))
+        cpython.Py_INCREF(callback)
+        registered = CCoreWorkerProcess.GetCoreWorker() \
+            .AddObjectOutOfScopeOrFreedCallback(
+                c_object_id,
+                _invoke_object_out_of_scope_callback,
+                <void *>callback)
+        if not registered:
+            cpython.Py_DECREF(callback)
+        return registered
+
     def get_owner_address(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
@@ -4914,6 +4995,28 @@ cdef class CoreWorker:
             # Already added when the ref is updated.
             skip_adding_local_ref=True)
 
+    def try_read_next_object_ref_stream_n(
+            self, ObjectRef generator_id, int64_t num_items):
+        """
+        Advance the ObjectRefStream cursor by num_items.
+
+        Args:
+            generator_id: The object ref id of the streaming generator task.
+            num_items: The number of indexes to advance past, starting from
+                the current head of the stream.
+        """
+
+        cdef:
+            CObjectID c_generator_id = generator_id.native()
+
+        if num_items <= 0:
+            raise ValueError("num_items must be positive")
+
+        with nogil:
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().TryReadObjectRefStreamN(
+                    c_generator_id, num_items))
+
     def is_object_ref_stream_finished(self, ObjectRef generator_id):
         cdef:
             CObjectID c_generator_id = generator_id.native()
@@ -4938,6 +5041,42 @@ cdef class CoreWorker:
                     c_object_ref_and_is_ready_pair.first.object_id(),
                     c_object_ref_and_is_ready_pair.first.owner_address().SerializeAsString()), # noqa
                 c_object_ref_and_is_ready_pair.second)
+
+    def peek_object_ref_stream_n(self, ObjectRef generator_id, int64_t num_items):
+        """
+        Read multiple next indexes of an ObjectRefStream of generator_id without
+        consuming them.
+
+        Args:
+            generator_id: The object ref id of the streaming generator task.
+            num_items: Number of next refs to peek.
+
+        Returns:
+            Object references for the next indexes and whether each object is
+            ready.
+        """
+        cdef:
+            CObjectID c_generator_id = generator_id.native()
+            c_vector[pair[CObjectReference, c_bool]] c_object_refs_and_ready
+            CObjectReference c_object_ref
+
+        if num_items <= 0:
+            raise ValueError("num_items must be positive")
+
+        with nogil:
+            c_object_refs_and_ready = (
+                    CCoreWorkerProcess.GetCoreWorker().PeekObjectRefStreamN(
+                        c_generator_id, num_items))
+
+        refs_and_ready = []
+        for i in range(c_object_refs_and_ready.size()):
+            c_object_ref = c_object_refs_and_ready[i].first
+            refs_and_ready.append(
+                (ObjectRef(
+                    c_object_ref.object_id(),
+                    c_object_ref.owner_address().SerializeAsString()),
+                 c_object_refs_and_ready[i].second))
+        return refs_and_ready
 
     def peek_next_object_id_binary(self, ObjectRef generator_id):
         """Return the binary form of the next object id in the stream."""
