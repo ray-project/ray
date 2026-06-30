@@ -93,7 +93,6 @@ class ActorReplicaResult(ReplicaResult):
         self._obj_ref_gen: Optional[ray.ObjectRefGenerator] = None
         self._is_streaming: bool = metadata.is_streaming
         self._request_id: str = metadata.request_id
-        self._object_ref_or_gen_sync_lock = threading.Lock()
         self._with_rejection = with_rejection
         self._rejection_response = None
         self._rejection_response_ref = None
