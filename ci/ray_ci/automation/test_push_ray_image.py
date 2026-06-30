@@ -581,5 +581,68 @@ class TestMultiplePlatforms:
         assert "Source image not found" in str(result.exception)
 
 
+class TestPipFreezeArtifact:
+    """Tests for pip-freeze canonical tag + Buildkite artifact filename."""
+
+    def test_release_branch_cpu_default_python(self):
+        ctx = make_ctx(
+            ray_type=RayType.RAY,
+            python_version="3.10",
+            platform="cpu",
+            architecture=DEFAULT_ARCHITECTURE,
+            branch="releases/2.56.0",
+            commit="d7951f63abcd",
+        )
+        assert ctx.pip_freeze_canonical_tag() == "2.56.0.d7951f-py310-cpu"
+        assert (
+            ctx.pip_freeze_artifact_filename()
+            == "ray:2.56.0.d7951f-py310-cpu_pip-freeze.txt"
+        )
+
+    def test_master_branch_uses_bare_sha(self):
+        ctx = make_ctx(
+            ray_type=RayType.RAY,
+            python_version="3.10",
+            platform="cpu",
+            architecture=DEFAULT_ARCHITECTURE,
+            branch="master",
+            commit="d7951f63abcd",
+        )
+        assert ctx.pip_freeze_canonical_tag() == "d7951f-py310-cpu"
+        assert (
+            ctx.pip_freeze_artifact_filename() == "ray:d7951f-py310-cpu_pip-freeze.txt"
+        )
+
+    def test_pr_branch_uses_bare_sha(self):
+        # PR / feature branch: not master, not releases/* -> bare sha (the form
+        # this change is verified against on the PR's own release-pipeline CI).
+        ctx = make_ctx(
+            ray_type=RayType.RAY,
+            python_version="3.10",
+            platform="cpu",
+            architecture=DEFAULT_ARCHITECTURE,
+            branch="ci-publish-step-pip-freeze-artifact",
+            commit="d7951f63abcd",
+        )
+        assert (
+            ctx.pip_freeze_artifact_filename() == "ray:d7951f-py310-cpu_pip-freeze.txt"
+        )
+
+    def test_extra_variation_and_aarch64_suffix(self):
+        ctx = make_ctx(
+            ray_type=RayType.RAY_EXTRA,
+            python_version="3.11",
+            platform="cpu",
+            architecture="aarch64",
+            branch="releases/2.56.0",
+            commit="d7951f63abcd",
+        )
+        assert ctx.pip_freeze_canonical_tag() == "2.56.0.d7951f-extra-py311-cpu-aarch64"
+        assert (
+            ctx.pip_freeze_artifact_filename()
+            == "ray-extra:2.56.0.d7951f-extra-py311-cpu-aarch64_pip-freeze.txt"
+        )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))

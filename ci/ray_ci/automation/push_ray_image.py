@@ -161,6 +161,34 @@ class RayImagePushContext:
         """Get platform suffixes (includes aliases like -gpu for GPU_PLATFORM)."""
         return get_platform_suffixes(self.platform, self.ray_type.value)
 
+    def pip_freeze_canonical_tag(self) -> str:
+        """
+        Canonical image tag used to name the pip-freeze Buildkite artifact.
+
+        Mirrors the old RayDockerContainer._get_image_tags(external=False)[0]
+        contract: the *internal* version tag (bare "<sha6>" on master/PR/other,
+        "<release_name>.<sha6>" on releases/* branches) -- NOT the external
+        "nightly.*" tag. Format: "<version><variation>-py<NN>-cpu<arch_suffix>".
+
+        This is the source-of-truth filename consumed by the anyscale/product
+        repo at devprod/rayrelease/releaser.py:
+        update_doc_with_latest_docker_dependencies. Keep the two in sync.
+        """
+        sha = self.commit[:6]
+        if self.branch and self.branch.startswith("releases/"):
+            version = f"{self.branch[len('releases/'):]}.{sha}"
+        else:
+            version = sha
+        py_tag = f"-py{self.python_version.replace('.', '')}"
+        return f"{version}{self._variation_suffix()}{py_tag}-cpu{self.arch_suffix}"
+
+    def pip_freeze_artifact_filename(self) -> str:
+        """Buildkite artifact basename: "<image_type>:<canonical_tag>_pip-freeze.txt"."""
+        return (
+            f"{self.ray_image.image_type}:"
+            f"{self.pip_freeze_canonical_tag()}_pip-freeze.txt"
+        )
+
 
 def _image_exists(tag: str) -> bool:
     """Check if a container image manifest exists using crane."""
