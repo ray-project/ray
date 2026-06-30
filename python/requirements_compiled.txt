@@ -420,6 +420,8 @@ cycler==0.12.1
     # via matplotlib
 cython==0.29.37
     # via -r python/requirements/test-requirements.txt
+daft==0.7.15
+    # via -r python/requirements/ml/data-requirements.txt
 dask==2023.6.1 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/data-requirements.txt
@@ -584,12 +586,12 @@ fsspec==2023.12.1
     # via
     #   -r python/requirements.txt
     #   adlfs
+    #   daft
     #   dask
     #   datasets
     #   delta-sharing
     #   etils
     #   evaluate
-    #   getdaft
     #   gradio-client
     #   huggingface-hub
     #   lightning
@@ -612,8 +614,6 @@ gast==0.7.0
     #   tensorflow-probability
 gcs-oauth2-boto-plugin==3.0
     # via gsutil
-getdaft==0.4.3
-    # via -r python/requirements/ml/data-requirements.txt
 gitdb==4.0.11
     # via gitpython
 gitpython==3.1.44
@@ -1415,6 +1415,7 @@ packaging==24.2
     #   azure-cli-core
     #   bokeh
     #   build
+    #   daft
     #   dask
     #   datasets
     #   deepspeed
@@ -1628,11 +1629,11 @@ py4j==0.10.9.7
 pyarrow==19.0.1
     # via
     #   -r python/requirements.txt
+    #   daft
     #   dask
     #   datasets
     #   delta-sharing
     #   feather-format
-    #   getdaft
     #   hudi
     #   mlflow
     #   pylance
@@ -2368,12 +2369,12 @@ tqdm==4.67.1
     #   -r python/requirements/test-requirements.txt
     #   aim
     #   cmdstanpy
+    #   daft
     #   datasets
     #   deepspeed
     #   dm-control
     #   etils
     #   evaluate
-    #   getdaft
     #   huggingface-hub
     #   hyperopt
     #   lightning
@@ -2450,6 +2451,7 @@ typing-extensions==4.15.0
     #   bokeh
     #   botorch
     #   configspace
+    #   daft
     #   etils
     #   fastapi
     #   gradio
