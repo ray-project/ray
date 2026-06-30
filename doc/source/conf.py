@@ -96,6 +96,13 @@ llms_txt_title = "Ray"
 # agents may skip to save context). Empty for v1.
 llms_txt_optional_sections = []
 
+# Only generate the agent manifests on published builds (master, release tags,
+# local); skip on Read the Docs PR previews, where they aren't review-critical
+# and the full-source read is wasted work. `external` is RtD's version type for
+# PR builds — the same signal `.readthedocs.yaml` keys the incremental vs. full
+# build off of. (DOC-1048)
+llms_txt_build = os.getenv("READTHEDOCS_VERSION_TYPE") != "external"
+
 llms_txt_summary = (
     "Ray is an open-source unified compute framework for scaling AI and "
     "Python workloads, including data processing, model training, model "

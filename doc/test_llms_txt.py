@@ -110,13 +110,15 @@ FILES = {
 }
 
 
-def _build(tmp: Path) -> Path:
+def _build(tmp: Path, extra_conf: str = "") -> Path:
     from sphinx.application import Sphinx
 
     srcdir = tmp / "src"
     outdir = tmp / "out"
     doctreedir = tmp / "doctrees"
     for relpath, content in FILES.items():
+        if relpath == "conf.py":
+            content = content + extra_conf
         path = srcdir / relpath
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
@@ -302,10 +304,29 @@ def test_notebook_exclusion():
     return True
 
 
+def test_build_gate():
+    """No output is generated when `llms_txt_build` is False — the switch RtD PR
+    previews use to skip the agent corpus (DOC-1048)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        out = _build(Path(tmp), extra_conf="\nllms_txt_build = False\n")
+        _check(not (out / "llms.txt").exists(), "llms.txt written despite gate off")
+        _check(
+            not (out / "llms-full.txt").exists(),
+            "manifest written despite gate off",
+        )
+        _check(
+            not (out / "secA" / "llms-full.txt").exists(),
+            "shard written despite gate off",
+        )
+    return True
+
+
 if __name__ == "__main__":
     test_llms_txt()
     test_notebook_exclusion()
+    test_build_gate()
     print(
         "PASS: llms_txt extension produced a correct index, Optional section, "
-        "llms-full shards, and excludes notebooks by source type."
+        "llms-full shards, excludes notebooks by source type, and honors the "
+        "llms_txt_build gate."
     )

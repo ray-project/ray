@@ -50,6 +50,10 @@ Config values (set generic defaults here; Ray specifics live in ``conf.py``):
 ``llms_txt_full_max_shard_tokens``
     Approximate token budget above which a section shard is split into
     per-subdirectory sub-shards (default ``200000``; ~4 chars/token).
+``llms_txt_build``
+    Master switch (default ``True``). Set to ``False`` to skip all generation —
+    e.g. on RtD PR previews, where the agent corpus isn't review-critical and
+    the full-source read is wasted work.
 
 All work happens in ``build-finished`` so it is parallel-safe, and the module
 sticks to APIs that survive the Sphinx 8 -> 9 jump (``findall`` not
@@ -555,8 +559,14 @@ def on_build_finished(app, exception):
     if app.builder.name not in ("html", "dirhtml"):
         return
 
-    env = app.env
     config = app.config
+    if not getattr(config, "llms_txt_build", True):
+        logger.info(
+            "[llms_txt] skipped (llms_txt_build is False; e.g. a PR preview build)"
+        )
+        return
+
+    env = app.env
     exclude = list(getattr(config, "llms_txt_exclude", None) or [])
     optional = set(getattr(config, "llms_txt_optional_sections", None) or [])
     title = getattr(config, "llms_txt_title", None) or getattr(
@@ -587,6 +597,7 @@ def setup(app):
     app.add_config_value("llms_txt_optional_sections", [], "html")
     app.add_config_value("llms_txt_full", True, "html")
     app.add_config_value("llms_txt_full_max_shard_tokens", 200000, "html")
+    app.add_config_value("llms_txt_build", True, "html")
 
     app.connect("build-finished", on_build_finished)
 
