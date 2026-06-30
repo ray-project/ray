@@ -712,6 +712,26 @@ class TestPipFreezeArtifact:
             with pytest.raises(PushRayImageError, match="pip-freeze.txt not found"):
                 _export_pip_freeze("work-repo:tag", ctx)
 
+    @mock.patch("ci.ray_ci.automation.push_ray_image.call_crane_export")
+    def test_export_pip_freeze_wraps_crane_error(self, mock_export, tmp_path):
+        from ci.ray_ci.automation.crane_lib import CraneError
+        from ci.ray_ci.automation.push_ray_image import (
+            PushRayImageError,
+            _export_pip_freeze,
+        )
+
+        # crane export itself fails -> wrapped as PushRayImageError (mirrors how
+        # _copy_image wraps ImageTagsError), not propagated as a raw CraneError.
+        mock_export.side_effect = CraneError("crane export failed (rc=1)")
+
+        with mock.patch(
+            "ci.ray_ci.automation.push_ray_image.ARTIFACT_MOUNT_IMAGE_INFO_DIR",
+            str(tmp_path / "image-info"),
+        ):
+            ctx = make_ctx(platform="cpu", branch="releases/2.56.0")
+            with pytest.raises(PushRayImageError, match="Failed to export pip-freeze"):
+                _export_pip_freeze("work-repo:tag", ctx)
+
     @mock.patch("ci.ray_ci.automation.push_ray_image._export_pip_freeze")
     @mock.patch("ci.ray_ci.automation.push_ray_image.ci_init")
     @mock.patch("ci.ray_ci.automation.push_ray_image.ecr_docker_login")
