@@ -291,6 +291,7 @@ CoreWorker::CoreWorker(
     CoreWorkerOptions options,
     std::unique_ptr<WorkerContext> worker_context,
     instrumented_io_context &io_service,
+    instrumented_io_context &object_freed_callback_service,
     std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
     std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
     std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
@@ -300,6 +301,7 @@ CoreWorker::CoreWorker(
     std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
     std::shared_ptr<RayletClientInterface> local_raylet_rpc_client,
     boost::thread &io_thread,
+    boost::thread &object_freed_callback_thread,
     std::shared_ptr<ReferenceCounterInterface> reference_counter,
     std::shared_ptr<CoreWorkerMemoryStore> memory_store,
     std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
@@ -327,6 +329,7 @@ CoreWorker::CoreWorker(
                          : nullptr),
       worker_context_(std::move(worker_context)),
       io_service_(io_service),
+      object_freed_callback_service_(object_freed_callback_service),
       core_worker_client_pool_(std::move(core_worker_client_pool)),
       raylet_client_pool_(std::move(raylet_client_pool)),
       periodical_runner_(std::move(periodical_runner)),
@@ -336,6 +339,7 @@ CoreWorker::CoreWorker(
       raylet_ipc_client_(std::move(raylet_ipc_client)),
       local_raylet_rpc_client_(std::move(local_raylet_rpc_client)),
       io_thread_(io_thread),
+      object_freed_callback_thread_(object_freed_callback_thread),
       reference_counter_(std::move(reference_counter)),
       memory_store_(std::move(memory_store)),
       plasma_store_provider_(std::move(plasma_store_provider)),
@@ -2530,6 +2534,38 @@ bool CoreWorker::IsTaskCanceled(const TaskID &task_id) const {
   return canceled_tasks_.find(task_id) != canceled_tasks_.end();
 }
 
+bool CoreWorker::AddObjectOutOfScopeOrFreedCallback(
+    const ObjectID &object_id, const std::function<void(const ObjectID &)> &callback) {
+  auto wrapped = [&object_freed_callback_service = object_freed_callback_service_,
+                  callback](const ObjectID &id) {
+    object_freed_callback_service.post([callback, id]() { callback(id); },
+                                       "CoreWorker.ObjFreedCb");
+  };
+  return reference_counter_->AddObjectOutOfScopeOrFreedCallback(object_id, wrapped);
+}
+
+bool CoreWorker::AddObjectOutOfScopeOrFreedCallback(const ObjectID &object_id,
+                                                    void (*callback)(const ObjectID &,
+                                                                     void *),
+                                                    void *callback_context) {
+  RAY_CHECK(callback != nullptr) << "callback must not be null";
+  return AddObjectOutOfScopeOrFreedCallback(
+      object_id, [callback, callback_context](const ObjectID &id) {
+        callback(id, callback_context);
+      });
+}
+
+Status CoreWorker::CheckObjectOwnedByUs(const ObjectID &object_id) const {
+  if (reference_counter_->OwnedByUs(object_id)) {
+    return Status::OK();
+  }
+  return Status::InvalidArgument(absl::StrFormat(
+      "Cannot register an out-of-scope/freed callback for object %s: it is not "
+      "owned by this worker (it may be owned by another worker, or have no "
+      "ownership record). These callbacks can only be registered by the owner.",
+      object_id.Hex()));
+}
+
 bool CoreWorker::ShouldInterruptTaskForCancellation() const {
   if (worker_context_->GetCurrentJobID().IsNil()) {
     return false;
@@ -3103,6 +3139,11 @@ Status CoreWorker::TryReadObjectRefStream(const ObjectID &generator_id,
   return status;
 }
 
+Status CoreWorker::TryReadObjectRefStreamN(const ObjectID &generator_id,
+                                           int64_t num_items) {
+  return task_manager_->TryReadObjectRefStreamN(generator_id, num_items);
+}
+
 bool CoreWorker::StreamingGeneratorIsFinished(const ObjectID &generator_id) const {
   return task_manager_->StreamingGeneratorIsFinished(generator_id);
 }
@@ -3114,6 +3155,21 @@ std::pair<rpc::ObjectReference, bool> CoreWorker::PeekObjectRefStream(
   object_ref.set_object_id(object_id.Binary());
   object_ref.mutable_owner_address()->CopyFrom(rpc_address_);
   return {object_ref, ready};
+}
+
+std::vector<std::pair<rpc::ObjectReference, bool>> CoreWorker::PeekObjectRefStreamN(
+    const ObjectID &generator_id, int64_t num_items) {
+  auto object_ids_and_ready =
+      task_manager_->PeekObjectRefStreamN(generator_id, num_items);
+  std::vector<std::pair<rpc::ObjectReference, bool>> results;
+  results.reserve(object_ids_and_ready.size());
+  for (const auto &[object_id, ready] : object_ids_and_ready) {
+    rpc::ObjectReference object_ref;
+    object_ref.set_object_id(object_id.Binary());
+    object_ref.mutable_owner_address()->CopyFrom(rpc_address_);
+    results.emplace_back(std::move(object_ref), ready);
+  }
+  return results;
 }
 
 ObjectID CoreWorker::PeekObjectIdStream(const ObjectID &generator_id) {
