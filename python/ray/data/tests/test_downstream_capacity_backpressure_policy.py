@@ -167,7 +167,6 @@ class TestDownstreamCapacityBackpressurePolicy:
         self,
         internal_usage=100,
         outputs_usage=100,
-        external_bytes=100,
     ):
         """Helper to create a resource manager mock with common settings."""
         rm = MagicMock()
@@ -183,7 +182,6 @@ class TestDownstreamCapacityBackpressurePolicy:
         rm.get_op_outputs_object_store_usage_with_downstream.return_value = (
             outputs_usage
         )
-        rm.get_external_consumer_bytes.return_value = external_bytes
         return rm
 
     def _set_utilized_budget_fraction(self, rm, fraction):
