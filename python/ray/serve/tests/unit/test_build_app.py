@@ -720,6 +720,30 @@ def test_callable_uses_multiplexing_dynamic_instance():
     assert _callable_uses_multiplexing(DynamicMultiplexed())
 
 
+def test_callable_uses_multiplexing_ignores_handle_attrs():
+    """A composed ingress holding DeploymentHandles must not be flagged.
+
+    `DeploymentHandle.__getattr__` returns a (truthy) handle for any attribute name,
+    so the instance-attribute scan must check the marker by identity (`is True`) to
+    avoid false positives that would break every composed app under direct ingress.
+    """
+    from ray.serve.multiplex import _callable_uses_multiplexing
+
+    class FakeHandle:
+        # Mirrors DeploymentHandle: returns a truthy object for any attribute.
+        def __getattr__(self, name):
+            return self
+
+    class Ingress:
+        def __init__(self):
+            self._backend = FakeHandle()
+
+        async def __call__(self, request):
+            return await self._backend.remote()
+
+    assert not _callable_uses_multiplexing(Ingress())
+
+
 @pytest.mark.parametrize(
     "haproxy_enabled, request_router_class, rejected",
     [

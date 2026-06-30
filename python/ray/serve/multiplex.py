@@ -37,21 +37,29 @@ def _callable_uses_multiplexing(callable_obj: Any) -> bool:
     serve.multiplexed(...)(fn)``) is detected. This case can only be caught at
     runtime, since it is not visible on the class statically.
     """
+    # NOTE: the marker is checked with `is True` rather than truthiness because some
+    # objects (e.g. `DeploymentHandle`, whose `__getattr__` returns a handle for any
+    # name) return a truthy value for an arbitrary attribute. The decorator always
+    # sets the marker to the literal `True`, so this stays exact without false
+    # positives.
+    def _has_marker(obj: Any) -> bool:
+        return getattr(obj, MULTIPLEXED_FUNCTION_MARKER_ATTR, False) is True
+
     # Standalone function deployment decorated with `@serve.multiplexed`.
-    if getattr(callable_obj, MULTIPLEXED_FUNCTION_MARKER_ATTR, False):
+    if _has_marker(callable_obj):
         return True
 
     # A class (or instance of one) with a method decorated with `@serve.multiplexed`.
     klass = callable_obj if isinstance(callable_obj, type) else type(callable_obj)
     for base in klass.__mro__:
         for attr in base.__dict__.values():
-            if getattr(attr, MULTIPLEXED_FUNCTION_MARKER_ATTR, False):
+            if _has_marker(attr):
                 return True
 
     # An instance that stored a multiplexed wrapper as an instance attribute.
     if not isinstance(callable_obj, type):
         for attr in getattr(callable_obj, "__dict__", {}).values():
-            if getattr(attr, MULTIPLEXED_FUNCTION_MARKER_ATTR, False):
+            if _has_marker(attr):
                 return True
 
     return False
