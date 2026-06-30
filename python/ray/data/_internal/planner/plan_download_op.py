@@ -15,6 +15,11 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.logical.operators import Download
 from ray.data._internal.output_buffer import OutputBlockSizeOption
+from ray.data._internal.planner._download_list_utils import (
+    flatten_uri_list,
+    is_uri_list_column,
+    renest_downloaded_bytes,
+)
 from ray.data._internal.planner._obstore_download import (
     OBSTORE_AVAILABLE,
     _log_fallback_warning,
@@ -210,10 +215,24 @@ def download_bytes_threaded(
     for uri_column_name, output_bytes_column_name in zip(
         uri_column_names, output_bytes_column_names
     ):
-        # Extract URIs from PyArrow table
-        uris = output_block.column(uri_column_name).to_pylist()
+        # For a list<string> column, flatten all rows' URIs into one list so a
+        # single pool covers them, then re-nest below (via row_lengths).
+        column = output_block.column(uri_column_name)
+        is_list = is_uri_list_column(column.type)
+        if is_list:
+            uris, row_lengths = flatten_uri_list(column)
+        else:
+            uris = column.to_pylist()
 
         if len(uris) == 0:
+            # Rows whose list cells are all empty/null still need the
+            # list<binary> column for schema parity; a 0-row block appends
+            # nothing, like the scalar path.
+            if is_list and row_lengths:
+                output_block = output_block.append_column(
+                    output_bytes_column_name,
+                    renest_downloaded_bytes([], row_lengths),
+                )
             continue
 
         # Resolve the filesystem once before spawning workers; otherwise each
@@ -243,10 +262,15 @@ def download_bytes_threaded(
                 f"{uri_column_name!r} ({len(uris)} URIs). Yielding None for "
                 "all rows."
             )
-            output_block = output_block.add_column(
-                len(output_block.column_names),
-                output_bytes_column_name,
-                pa.array([None] * len(uris), type=pa.binary()),
+            # List columns need list<binary> here too (one inner list per row,
+            # all None), not a flat scalar column sized to the URI count.
+            none_column = (
+                renest_downloaded_bytes([None] * len(uris), row_lengths)
+                if is_list
+                else pa.array([None] * len(uris), type=pa.binary())
+            )
+            output_block = output_block.append_column(
+                output_bytes_column_name, none_column
             )
             continue
 
@@ -299,11 +323,16 @@ def download_bytes_threaded(
             )
         )
 
-        # Add the new column to the PyArrow table
-        output_block = output_block.add_column(
-            len(output_block.column_names),
+        # List columns re-nest the flat bytes into one inner list per row;
+        # failed downloads stay None in place.
+        new_column = (
+            renest_downloaded_bytes(uri_bytes, row_lengths)
+            if is_list
+            else pa.array(uri_bytes)
+        )
+        output_block = output_block.append_column(
             output_bytes_column_name,
-            pa.array(uri_bytes),
+            new_column,
         )
 
     yield from _iter_arrow_table_for_target_max_block_size(

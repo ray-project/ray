@@ -1126,6 +1126,63 @@ class TestObstoreDownloadPath:
         assert out.column("bytes")[0].as_py() == content
         assert size_col not in out.column_names
 
+    def test_download_bytes_threaded_empty_block_consistent_schema(self):
+        # Regression: a zero-row block with a list<string> column first and a
+        # scalar string column second must not gain a partial bytes-column
+        # schema. The list column used to append an empty list<binary> while
+        # the trailing scalar column appended nothing, leaving the empty block
+        # with a different schema than blocks that have rows. An empty block
+        # now yields the input schema unchanged (bytes columns come as a set).
+        ctx = DataContext.get_current()
+        table = pa.Table.from_arrays(
+            [
+                pa.array([], type=pa.list_(pa.string())),
+                pa.array([], type=pa.string()),
+            ],
+            names=["frames", "uri"],
+        )
+
+        results = list(
+            download_bytes_threaded(
+                table, ["frames", "uri"], ["frames_bytes", "uri_bytes"], ctx
+            )
+        )
+
+        assert sum(t.num_rows for t in results) == 0
+        for t in results:
+            cols = set(t.column_names)
+            # Bytes columns appear together or not at all, never partially.
+            assert ("frames_bytes" in cols) == ("uri_bytes" in cols)
+
+    def test_download_bytes_threaded_list_unresolvable_filesystem(self):
+        # Regression: when no filesystem can be inferred for a list<string>
+        # column, the fallback must still emit list<binary> with one inner list
+        # per row (every download -> None), not a flat scalar binary column
+        # sized to the flattened URI count (which would mis-shape or raise on
+        # append). Patch path resolution to fail so the fallback is hit.
+        ctx = DataContext.get_current()
+        table = pa.Table.from_arrays(
+            [
+                pa.array(
+                    [["x://a", "x://b"], ["x://c"], []], type=pa.list_(pa.string())
+                ),
+                pa.array(["r0", "r1", "r2"], type=pa.string()),
+            ],
+            names=["frames", "row_id"],
+        )
+
+        with patch(
+            "ray.data._internal.planner.plan_download_op._resolve_paths_and_filesystem",
+            side_effect=Exception("no filesystem"),
+        ):
+            results = list(
+                download_bytes_threaded(table, ["frames"], ["frames_bytes"], ctx)
+            )
+
+        out = pa.concat_tables(results)
+        assert pa.types.is_list(out.schema.field("frames_bytes").type)
+        assert out.column("frames_bytes").to_pylist() == [[None, None], [None], []]
+
 
 class TestObstoreRangeSplitDownload:
     """Tests for the range-split download path (get_range_async).
