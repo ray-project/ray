@@ -135,18 +135,38 @@ ThresholdMemoryMonitor::IsHostMemoryThresholdExceeded() {
 
 std::optional<MemoryUsageSnapshot>
 ThresholdMemoryMonitor::IsResourceIsolationThresholdExceeded() {
-  StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound> user_slice_memory_snapshot_or =
-      MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(user_cgroup_path_,
-                                                           system_cgroup_path_);
-  if (!user_slice_memory_snapshot_or.has_value()) {
+  StatusSetOr<std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>, StatusT::NotFound>
+      user_and_system_slice_memory_snapshot_or =
+          MemoryMonitorUtils::TakeUserAndSystemSliceMemoryUsageSnapshot(
+              user_cgroup_path_, system_cgroup_path_);
+
+  if (!user_and_system_slice_memory_snapshot_or.has_value()) {
     RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs) << absl::StrFormat(
-        "Failed to take user slice memory snapshot due to: %s. "
+        "Failed to take user and system slice memory snapshot due to: %s. "
         "The threshold memory monitor will not be able to provide resource isolation "
         "protection.",
-        user_slice_memory_snapshot_or.message());
+        user_and_system_slice_memory_snapshot_or.message());
     return std::nullopt;
   }
-  MemoryUsageSnapshot user_slice_memory_snapshot = user_slice_memory_snapshot_or.value();
+  auto [user_slice_memory_snapshot, system_slice_memory_snapshot] =
+      user_and_system_slice_memory_snapshot_or.value();
+
+  if (system_slice_memory_snapshot.used_bytes >
+      system_slice_memory_snapshot.total_bytes - memory_usage_threshold_bytes_) {
+    RAY_LOG_EVERY_MS(ERROR, MemoryMonitorInterface::kErrorLogIntervalMs)
+        << absl::StrFormat(
+               "System slice memory usage %d bytes has exceeded the reserved system "
+               "memory of %d bytes. "
+               "This can prevent Ray from being able to provide the proper protection to "
+               "critical system processes "
+               "and can lead to node deaths and significant loss of progress. "
+               "Please consider passing a system reserved memory value that is higher "
+               "than the current system slice memory usage "
+               "via the --system-reserved-memory flag when starting the raylet.",
+               system_slice_memory_snapshot.used_bytes,
+               system_slice_memory_snapshot.total_bytes - memory_usage_threshold_bytes_);
+  }
+
   bool is_usage_above_threshold =
       user_slice_memory_snapshot.used_bytes > memory_usage_threshold_bytes_;
   if (is_usage_above_threshold) {

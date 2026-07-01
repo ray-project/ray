@@ -20,6 +20,7 @@
 #include <optional>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
@@ -78,9 +79,13 @@ class MemoryMonitorUtils {
       const std::string &root_cgroup_path, const std::string &proc_dir = kProcDirectory);
 
   /**
-   * @brief Takes a snapshot of user slice memory usage across the host
-   *        machine. This includes the heap usage of all worker processes
+   * @brief Takes a snapshot of user and system slice memory usage across the
+   *        host machine.
+   *
+   *        For user slice, this includes the heap usage of all worker processes
    *        and the object store usage shared across the raylet and workers.
+   *        For system slice, this includes the memory usage of all ray system
+   *        processes, the kernel, and all non-ray processes outside ray's userspace.
    *
    * @param user_cgroup_path The path to the user cgroup
    *                         to read the memory usage from.
@@ -88,14 +93,16 @@ class MemoryMonitorUtils {
                                to read the object store memory usage from.
    * @param proc_dir The proc directory path
    *                 to read the OS level memory usage from.
-   * @return The user application memory usage and total memory of the host in bytes.
+   * @return A pair of memory usage snapshots in the form of
+   *         <user application memory usage, system memory usage>.
    *         Returns StatusT::NotFound if the memory values could not be successfully
-   retrieved.
+   *         retrieved.
    */
-  static const StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound>
-  TakeUserSliceMemoryUsageSnapshot(const std::string &user_cgroup_path,
-                                   const std::string &system_cgroup_path,
-                                   const std::string &proc_dir = kProcDirectory);
+  static const StatusSetOr<std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>,
+                           StatusT::NotFound>
+  TakeUserAndSystemSliceMemoryUsageSnapshot(const std::string &user_cgroup_path,
+                                            const std::string &system_cgroup_path,
+                                            const std::string &proc_dir = kProcDirectory);
 
   /**
    * @brief Takes a snapshot of the memory usage for the given cgroupv2 path.
