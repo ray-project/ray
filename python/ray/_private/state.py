@@ -191,9 +191,7 @@ class GlobalState:
         """
         accessor = self._connect_and_get_accessor()
 
-        job_table = accessor.get_job_table(
-            skip_submission_job_info_field=True, skip_is_running_tasks_field=True
-        )
+        job_table = accessor.get_job_table(skip_submission_job_info_field=True)
 
         results = []
         for i in range(len(job_table)):

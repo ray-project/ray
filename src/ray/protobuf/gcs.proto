@@ -712,9 +712,8 @@ message JobTableData {
   string entrypoint = 9;
   // The optional JobInfo from the Ray Job API.
   optional JobsAPIInfo job_info = 10;
-  // Whether this job has running tasks.
-  // In GetAllJobInfo, if GCS can't reach the driver, it will be unset.
-  optional bool is_running_tasks = 11;
+  reserved 11;
+  reserved "is_running_tasks";
   // Address of the driver that started this job.
   Address driver_address = 12;
 }

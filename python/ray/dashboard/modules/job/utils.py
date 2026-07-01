@@ -152,7 +152,6 @@ async def get_driver_jobs(
     job_infos = await gcs_client.async_get_all_job_info(
         job_or_submission_id=job_or_submission_id,
         skip_submission_job_info_field=True,
-        skip_is_running_tasks_field=True,
         timeout=timeout,
     )
     # Sort jobs from GCS to follow convention of returning only last driver
