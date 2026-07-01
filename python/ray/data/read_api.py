@@ -4390,6 +4390,8 @@ def read_iceberg(
     parallelism: int = -1,
     selected_fields: Tuple[str, ...] = ("*",),
     snapshot_id: Optional[int] = None,
+    start_snapshot_id: Optional[int] = None,
+    end_snapshot_id: Optional[int] = None,
     scan_kwargs: Optional[Dict[str, str]] = None,
     catalog_kwargs: Optional[Dict[str, str]] = None,
     catalog: Optional["Catalog"] = None,
@@ -4424,6 +4426,13 @@ def read_iceberg(
         ... ).filter(col("column_name") == "literal_value")
         >>> # Select specific columns
         >>> ds = ds.select_columns(["col1", "col2"])  #doctest: +SKIP
+        >>> # Incrementally read only rows appended between two snapshots
+        >>> ds = ray.data.read_iceberg( #doctest: +SKIP
+        ...     table_identifier="db_name.table_name",
+        ...     start_snapshot_id=1234567890,  # exclusive
+        ...     end_snapshot_id=9876543210,  # inclusive
+        ...     catalog_kwargs={"name": "default", "type": "glue"},
+        ... )
 
     Args:
         table_identifier: Fully qualified table identifier (``db_name.table_name``)
@@ -4435,7 +4444,16 @@ def read_iceberg(
             Which columns from the data to read, passed directly to
             PyIceberg's load functions. Should be an tuple of string column names.
         snapshot_id: Optional snapshot ID for the Iceberg table, by default the latest
-            snapshot is used
+            snapshot is used. Mutually exclusive with ``start_snapshot_id`` /
+            ``end_snapshot_id``.
+        start_snapshot_id: Optional snapshot ID to start an incremental read from,
+            *exclusively*. When set, only rows appended after this snapshot are read
+            (via PyIceberg's ``Table.incremental_append_scan``). Requires a PyIceberg
+            version that supports incremental append scans. Mutually exclusive with
+            ``snapshot_id``.
+        end_snapshot_id: Optional snapshot ID to end an incremental read at,
+            *inclusively*. Defaults to the table's current snapshot when only
+            ``start_snapshot_id`` is provided. Mutually exclusive with ``snapshot_id``.
         scan_kwargs: Optional arguments to pass to PyIceberg's Table.scan() function
              (e.g., case_sensitive, limit, etc.)
         catalog_kwargs: Optional arguments to pass to PyIceberg's catalog.load_catalog()
@@ -4506,6 +4524,8 @@ def read_iceberg(
         row_filter=row_filter,
         selected_fields=selected_fields,
         snapshot_id=snapshot_id,
+        start_snapshot_id=start_snapshot_id,
+        end_snapshot_id=end_snapshot_id,
         scan_kwargs=scan_kwargs,
         catalog_kwargs=catalog_kwargs,
     )

@@ -77,7 +77,7 @@ if TYPE_CHECKING:
     from pyiceberg.io import FileIO
     from pyiceberg.manifest import DataFile
     from pyiceberg.schema import Schema
-    from pyiceberg.table import DataScan, FileScanTask, Table
+    from pyiceberg.table import DataScan, FileScanTask, IncrementalAppendScan, Table
     from pyiceberg.table.metadata import TableMetadata
 
     from ray.data.context import DataContext
@@ -272,6 +272,8 @@ class IcebergDatasource(Datasource):
         row_filter: Union[str, "BooleanExpression"] = None,
         selected_fields: Tuple[str, ...] = ("*",),
         snapshot_id: Optional[int] = None,
+        start_snapshot_id: Optional[int] = None,
+        end_snapshot_id: Optional[int] = None,
         scan_kwargs: Optional[Dict[str, Any]] = None,
         catalog_kwargs: Optional[Dict[str, Any]] = None,
     ):
@@ -285,7 +287,17 @@ class IcebergDatasource(Datasource):
                  to reading
             selected_fields: Which columns from the data to read, passed directly to
                 PyIceberg's load functions
-            snapshot_id: Optional snapshot ID for the Iceberg table
+            snapshot_id: Optional snapshot ID for the Iceberg table. Reads a single
+                snapshot as of the given ID. Mutually exclusive with
+                ``start_snapshot_id`` / ``end_snapshot_id``.
+            start_snapshot_id: Optional snapshot ID to start an incremental append scan
+                from, *exclusively* (maps to PyIceberg's
+                ``from_snapshot_id_exclusive``). When set, only rows appended after this
+                snapshot are read.
+            end_snapshot_id: Optional snapshot ID to end an incremental append scan at,
+                *inclusively* (maps to PyIceberg's ``to_snapshot_id_inclusive``).
+                Defaults to the table's current snapshot when only
+                ``start_snapshot_id`` is given.
             scan_kwargs: Optional arguments to pass to PyIceberg's Table.scan()
                 function
             catalog_kwargs: Optional arguments to use when setting up the Iceberg
@@ -296,6 +308,17 @@ class IcebergDatasource(Datasource):
 
         _check_import(self, module="pyiceberg", package="pyiceberg")
         from pyiceberg.expressions import AlwaysTrue
+
+        # An incremental (append) scan is requested when either snapshot bound is set.
+        self._incremental = start_snapshot_id is not None or end_snapshot_id is not None
+        if snapshot_id is not None and self._incremental:
+            raise ValueError(
+                "`snapshot_id` is mutually exclusive with `start_snapshot_id` / "
+                "`end_snapshot_id`. Pass `snapshot_id` to read a single snapshot, or "
+                "the start/end pair to read data appended between two snapshots."
+            )
+        self._start_snapshot_id = start_snapshot_id
+        self._end_snapshot_id = end_snapshot_id
 
         self._scan_kwargs = scan_kwargs if scan_kwargs is not None else {}
         self._catalog_kwargs = catalog_kwargs if catalog_kwargs is not None else {}
@@ -367,13 +390,16 @@ class IcebergDatasource(Datasource):
 
         return combined_filter
 
-    def _get_data_scan(self) -> "DataScan":
+    def _get_data_scan(self) -> Union["DataScan", "IncrementalAppendScan"]:
         # Get the combined filter
         combined_filter = self._get_combined_filter()
 
         # Convert back to tuple for PyIceberg API (None -> ("*",))
         data_columns = self._get_data_columns()
         selected_fields = ("*",) if data_columns is None else tuple(data_columns)
+
+        if self._incremental:
+            return self._get_incremental_scan(combined_filter, selected_fields)
 
         data_scan = self.table.scan(
             row_filter=combined_filter,
@@ -382,6 +408,41 @@ class IcebergDatasource(Datasource):
         )
 
         return data_scan
+
+    def _get_incremental_scan(
+        self,
+        combined_filter: "BooleanExpression",
+        selected_fields: Tuple[str, ...],
+    ) -> "IncrementalAppendScan":
+        """Build a PyIceberg incremental append scan between the requested snapshots.
+
+        Reads only the rows appended between ``start_snapshot_id`` (exclusive) and
+        ``end_snapshot_id`` (inclusive). The resulting scan exposes the same
+        ``plan_files()`` / ``projection()`` interface as a regular ``DataScan``, so the
+        rest of the read path is unchanged.
+        """
+        table = self.table
+        # Incremental append scans landed in PyIceberg after 0.11.0
+        # (apache/iceberg-python#3512). Guard on the capability rather than a version
+        # string so backports are picked up automatically.
+        if not hasattr(table, "incremental_append_scan"):
+            import pyiceberg
+
+            raise ValueError(
+                "Incremental Iceberg reads (`start_snapshot_id` / `end_snapshot_id`) "
+                "require a PyIceberg version that provides "
+                "`Table.incremental_append_scan(...)` (see apache/iceberg-python#3512). "
+                f"The installed PyIceberg version ({pyiceberg.__version__}) does not "
+                "expose it; please upgrade PyIceberg."
+            )
+
+        return table.incremental_append_scan(
+            from_snapshot_id_exclusive=self._start_snapshot_id,
+            to_snapshot_id_inclusive=self._end_snapshot_id,
+            row_filter=combined_filter,
+            selected_fields=selected_fields,
+            **self._scan_kwargs,
+        )
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         # Approximate the size by using the plan files - this will not
