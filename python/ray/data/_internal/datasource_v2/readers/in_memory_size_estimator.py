@@ -1,3 +1,4 @@
+import logging
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -8,6 +9,9 @@ from ray.data._internal.datasource_v2.readers.file_reader import FileReader
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import BlockAccessor
 from ray.util.annotations import DeveloperAPI
+from ray.util.debug import log_once
+
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -187,9 +191,16 @@ class ParquetFooterDerivedInMemorySizeEstimator(InMemorySizeEstimator):
         for i in range(len(file_sizes)):
             md = chunk_metadatas[i]
             hint = md.get("in_memory_size") if isinstance(md, dict) else None
-            out[i] = (
-                float(hint)
-                if hint is not None
-                else _as_finite_float(file_sizes[i]) * self._fallback_ratio
-            )
+            if hint is not None:
+                out[i] = float(hint)
+            else:
+                path = manifest.paths[i]
+                if log_once(f"parquet_footer_hint_missing_v2:{path}"):
+                    logger.debug(
+                        "No footer-derived in_memory_size hint for '%s'; "
+                        "falling back to on_disk_size * %s.",
+                        path,
+                        self._fallback_ratio,
+                    )
+                out[i] = _as_finite_float(file_sizes[i]) * self._fallback_ratio
         return out
