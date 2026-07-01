@@ -102,7 +102,7 @@ rules:
     categories:
       - myst.xref_ambiguous
     signatures:
-      - "(?:not unique|matches more than one|ambiguous)"
+      - "(?:not unique|matches more than one)"
     cause: "An extensionless [text](name) link where `name` is both a document and a (name)= label, so MyST cannot tell which you meant."
     fix: "Use the {doc} role for the whole-doc link so it always resolves to the document."
     fix_template: "{doc}`text <{target_stem}>`"

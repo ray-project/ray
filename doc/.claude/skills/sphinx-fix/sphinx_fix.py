@@ -684,7 +684,9 @@ def render_human(report: Report) -> str:
         )
         out.append(f"  signal: {report.abort.signature}")
         for ln in report.abort.excerpt:
-            out.append(f"    {ln}")
+            # rstrip so a blank excerpt line doesn't emit the 4-space indent as
+            # trailing whitespace (the trailing-whitespace pre-commit hook fails on it).
+            out.append(f"    {ln}".rstrip())
         if report.abort.hint:
             out.append(f"  hint: {report.abort.hint}")
         out.append("  The warning list below is incomplete until this is fixed.")
@@ -920,10 +922,15 @@ def run_selftest(rules_path: Path, update_golden: bool) -> int:
             )
             errs.append(f"golden mismatch {fx.name}:\n{diff}")
 
-    if update_golden:
+    if update_golden and not errs:
         print(f"Wrote {len(fixtures)} golden file(s).")
         return 0
     if errs:
+        # Even in --update-golden mode, YAML cross-check or schema errors are
+        # real failures: regenerating goldens must not paper over a broken
+        # rules.yaml.
+        if update_golden:
+            print(f"Wrote {len(fixtures)} golden file(s), but:")
         print("SELFTEST FAILED:")
         for e in errs:
             print(f"  - {e}")
