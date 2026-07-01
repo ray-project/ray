@@ -932,7 +932,7 @@ joblib==1.2.0
     # via
     #   -r python/requirements/py313/test-requirements.txt
     #   scikit-learn
-joserfc==1.5.0
+joserfc==1.6.7
     # via moto
 json5==0.14.0
     # via jupyterlab-server
