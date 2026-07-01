@@ -11,6 +11,7 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray.data import FileShuffleConfig
 from ray.data._internal.datasource_v2.scanners.parquet_scanner import ParquetScanner
 from ray.data._internal.logical.operators import ListFiles, ReadFiles
 from ray.data.context import DataContext
@@ -51,6 +52,35 @@ def test_read_parquet_builds_list_files_read_files_chain(tmp_path, restore_ctx):
     assert schema is not None
     assert "a" in schema.names
     assert "b" in schema.names
+
+
+def test_read_parquet_v2_shuffle_files_randomizes_row_order(tmp_path, restore_ctx):
+    # Regression test: FileAffinityPartitioner.finalize() used to sort emitted
+    # partitions by path "for determinism," which silently discarded any
+    # upstream shuffle for datasets small enough to never hit the
+    # max_bucket_size overflow path (i.e. most small-file datasets) -- shuffle
+    # had no effect at all, not even on the first execution. Fixed by
+    # preserving arrival order instead of re-sorting.
+    num_files = 15
+    for i in range(num_files):
+        _write(tmp_path / f"f{i}.parquet", pa.table({"file_id": [i]}))
+
+    restore_ctx.use_datasource_v2 = True
+    unshuffled_order = [
+        r["file_id"] for r in ray.data.read_parquet(str(tmp_path)).iter_rows()
+    ]
+    shuffled_order = [
+        r["file_id"]
+        for r in ray.data.read_parquet(
+            str(tmp_path), shuffle=FileShuffleConfig(seed=42)
+        ).iter_rows()
+    ]
+
+    assert sorted(shuffled_order) == list(range(num_files))
+    assert shuffled_order != unshuffled_order
+    # The pre-fix bug produced exactly the lexicographic path order
+    # (f0, f1, f10, f11, ..., f2, f3, ...), not a random permutation.
+    assert shuffled_order != sorted(range(num_files), key=lambda i: f"f{i}.parquet")
 
 
 def test_read_parquet_v2_hive_partitioned(tmp_path, restore_ctx):
