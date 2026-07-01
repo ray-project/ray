@@ -76,24 +76,34 @@ def _build_direct_streaming_llm_deployment(
     )
 
 
-def _build_openai_ingress_request_router(*, server: Application) -> Application:
+# Default @serve.deployment options for the ingress request router.
+# max_replicas_per_node caps the router at one replica per node so each replica
+# co-locates with that node's HAProxy. Scale num_replicas (or set
+# autoscaling_config) to place a router on every node.
+DEFAULT_INGRESS_REQUEST_ROUTER_OPTIONS = {
+    "max_ongoing_requests": 1000,
+    "max_replicas_per_node": 1,
+}
+
+
+def _build_openai_ingress_request_router(
+    *,
+    server: Application,
+    deployment_options: Optional[Dict[str, Any]] = None,
+) -> Application:
     """Build the ingress request router peer for OpenAI compatible LLM apps.
 
     The returned Application is attached to the ingress application with
     ``Application._with_ingress_request_router``.
 
-    ``num_replicas`` is pinned to 1 because HAProxy's ingress request router
-    backend currently expects a single endpoint. TODO(eicherseiji): expose
-    these as a user-overridable IngressRequestRouterConfig once HAProxy
-    supports multiple router replicas.
+    Deployment options default to one replica per node so each router
+    co-locates with the per-node HAProxy that calls it. Callers override via
+    ``LLMServingArgs.ingress_request_router_config``.
     """
     from ray.llm._internal.serve.core.ingress.router import LLMRouter
 
-    return serve.deployment(
-        LLMRouter,
-        num_replicas=1,
-        max_ongoing_requests=1000,
-    ).bind(server=server)
+    options = {**DEFAULT_INGRESS_REQUEST_ROUTER_OPTIONS, **(deployment_options or {})}
+    return serve.deployment(LLMRouter, **options).bind(server=server)
 
 
 class IngressClsConfig(BaseModelExtended):
@@ -130,6 +140,15 @@ class LLMServingArgs(BaseModelExtended):
         description="""
             The Ray @server.deployment options for the ingress server.
         """,
+    )
+    ingress_request_router_config: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Ray @serve.deployment options for the ingress request router in "
+            "direct streaming mode. Merged over defaults that cap the router at "
+            "one replica per node (max_replicas_per_node=1). Set num_replicas or "
+            "autoscaling_config to place a router on every node."
+        ),
     )
 
     @field_validator("ingress_cls_config")
@@ -234,7 +253,10 @@ def build_openai_app(builder_config: dict) -> Application:
             "LLMServer=ingress, LLMRouter=ingress_request_router"
         )
         return direct_deployment._with_ingress_request_router(
-            _build_openai_ingress_request_router(server=direct_deployment)
+            _build_openai_ingress_request_router(
+                server=direct_deployment,
+                deployment_options=builder_config.ingress_request_router_config,
+            )
         )
 
     llm_deployments = {c.model_id: build_llm_deployment(c) for c in llm_configs}
