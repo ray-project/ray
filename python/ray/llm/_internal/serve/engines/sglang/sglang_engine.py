@@ -86,7 +86,14 @@ _SLEEP_TAGS: frozenset[str] = frozenset({"kv_cache", "weights", "cuda_graph"})
 
 
 class SGLangServer:
-    def __init__(self, llm_config: LLMConfig):
+    def __init__(self, llm_config: LLMConfig, engine_cls: Optional[type] = None):
+        """Initialize SGLang server.
+
+        Args:
+            llm_config: The LLM configuration.
+            engine_cls: Optional engine class to use. Defaults to sglang.Engine.
+                Can be sglang.RayEngine for distributed execution.
+        """
 
         self._llm_config = llm_config
         self.engine_kwargs = llm_config.engine_kwargs
@@ -112,7 +119,8 @@ class SGLangServer:
         try:
             # Override signal.signal with our no-op function
             signal.signal = noop_signal_handler
-            self.engine = sglang.Engine(**self.engine_kwargs)
+            engine_cls = engine_cls or sglang.Engine
+            self.engine = engine_cls(**self.engine_kwargs)
         finally:
             signal.signal = original_signal_func
 
