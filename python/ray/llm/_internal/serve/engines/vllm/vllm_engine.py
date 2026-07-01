@@ -56,12 +56,12 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
 )
-from ray.llm._internal.serve.routing_policies.kv_aware.token_tracking import (
-    enable_token_tracking,
-)
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     assign_replica_kv_events_endpoint,
     get_kv_event_routing_stats,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.token_tracking import (
+    enable_token_tracking,
 )
 from ray.llm._internal.serve.utils.node_initialization_utils import (
     initialize_node,

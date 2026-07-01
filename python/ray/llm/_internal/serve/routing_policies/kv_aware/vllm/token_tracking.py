@@ -7,6 +7,7 @@ from vllm.v1.engine.async_llm import AsyncLLM
 
 from ray import serve
 from ray.actor import ActorHandle
+from ray.exceptions import RayActorError, RayTaskError
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     KV_ROUTER_ACTOR_NAME,
@@ -19,7 +20,13 @@ logger = get_logger(__name__)
 
 def _get_prompt_token_ids(prompt: Any) -> List[int]:
     """The prompt's pre-tokenized token ids."""
-    return list(prompt["prompt_token_ids"])
+    try:
+        return list(prompt["prompt_token_ids"])
+    except (KeyError, TypeError) as e:
+        raise ValueError(
+            "KV-aware token tracking requires a pre-tokenized prompt "
+            f"(dict with 'prompt_token_ids'); got {type(prompt).__name__}"
+        ) from e
 
 
 class LifecycleEventForwarder:
@@ -56,7 +63,10 @@ class LifecycleEventForwarder:
                 batch.append(self._events.get_nowait())
             try:
                 await self.actor.on_lifecycle_events.remote(batch)
-            except Exception as e:
+                # Re-arm the warning so a fresh failure surfaces if the actor
+                # recovers and then fails again.
+                self._drop_warned = False
+            except (RayActorError, RayTaskError) as e:
                 if not self._drop_warned:
                     self._drop_warned = True
                     logger.warning("Dropping KV lifecycle events: %s", e)

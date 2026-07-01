@@ -16,7 +16,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
 )
-from ray.llm._internal.serve.routing_policies.kv_aware.token_tracking import (
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.token_tracking import (
     enable_token_tracking,
 )
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockAsyncLLM
