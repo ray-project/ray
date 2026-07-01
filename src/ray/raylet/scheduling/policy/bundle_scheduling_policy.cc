@@ -180,6 +180,9 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
   while (!required_resources_list_copy.empty()) {
     const auto &required_resources_index = required_resources_list_copy.front().first;
     const auto &required_resources = required_resources_list_copy.front().second;
+    if (!BundleRequiresGpu(*required_resources)) {
+      break;
+    }
     auto best_node_id = GetBestNode(*required_resources, candidate_nodes, options);
     if (best_node_id.IsNil()) {
       // There is no node to meet the scheduling requirements.
@@ -227,10 +230,23 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
     while (!required_resources_list_copy.empty()) {
       const auto &required_resources_index = required_resources_list_copy.front().first;
       const auto &required_resources = required_resources_list_copy.front().second;
-      auto best_node_id = GetBestNode(*required_resources, candidate_nodes, options);
+
+      // Prefer non-GPU nodes; fall back to GPU nodes only when no non-GPU capacity
+      // remains.
+      absl::flat_hash_set<scheduling::NodeID> non_gpu_candidates;
+      for (const auto &id : candidate_nodes) {
+        if (!NodeHasGpu(id)) {
+          non_gpu_candidates.insert(id);
+        }
+      }
+      auto best_node_id = GetBestNode(*required_resources, non_gpu_candidates, options);
+      if (best_node_id.IsNil()) {
+        best_node_id = GetBestNode(*required_resources, candidate_nodes, options);
+      }
       if (best_node_id.IsNil()) {
         break;
       }
+
       RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
           best_node_id, *required_resources));
       result_nodes[required_resources_index] = best_node_id;

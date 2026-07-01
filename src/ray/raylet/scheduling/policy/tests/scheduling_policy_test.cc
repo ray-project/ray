@@ -945,6 +945,85 @@ TEST_F(SchedulingPolicyTest, PackBundleCpuOnlyOverflowsToGpuNodeWhenNeeded) {
   ASSERT_EQ(result.selected_nodes.size(), 4);
 }
 
+TEST_F(SchedulingPolicyTest, PackBundleGpuBundleUnplaceableReturnsFailed) {
+  // 1 GPU node with 1 GPU, 2 GPU bundles each needing 1 GPU.
+  // IsRequestFeasible passes (each bundle fits in isolation). Scheduling fails at
+  // placement and must return Failed (retryable) not Infeasible (permanent).
+  nodes.emplace(local_node, CreateNodeResources(2, 2, 0, 0, 1, 1));
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  ResourceRequest gpu_bundle = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}, {"GPU", 1}}}, false);
+  std::vector<const ResourceRequest *> req_list = {&gpu_bundle, &gpu_bundle};
+
+  raylet_scheduling_policy::BundlePackSchedulingPolicy policy(*cluster_resource_manager);
+  SchedulingResult result = policy.Schedule(req_list,
+                                            SchedulingOptions::BundlePack(),
+                                            GetCandidateNodes(*cluster_resource_manager));
+
+  ASSERT_TRUE(result.status.IsFailed());
+}
+
+TEST_F(SchedulingPolicyTest, PackBundleCustomResourceBundleFallsBackToGpuNode) {
+  // A bundle with a custom resource only present on the GPU node must be placed there
+  // even though it does not itself require GPU. The GPU pass skips it (BundleRequiresGpu
+  // is false); the overflow pass must route it to the GPU node via the fallback path.
+  NodeResources gpu_node_resources = CreateNodeResources(2, 2, 0, 0, 1, 1);
+  gpu_node_resources.available.Set(ResourceID("NvidiaLib"), 1);
+  gpu_node_resources.total.Set(ResourceID("NvidiaLib"), 1);
+  nodes.emplace(local_node, gpu_node_resources);
+  nodes.emplace(remote_node, CreateNodeResources(2, 2, 0, 0, 0, 0));
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  ResourceRequest gpu_bundle = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}, {"GPU", 1}}}, false);
+  ResourceRequest custom_bundle = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}, {"NvidiaLib", 1}}}, false);
+  std::vector<const ResourceRequest *> req_list = {&gpu_bundle, &custom_bundle};
+
+  raylet_scheduling_policy::BundlePackSchedulingPolicy policy(*cluster_resource_manager);
+  SchedulingResult result = policy.Schedule(req_list,
+                                            SchedulingOptions::BundlePack(),
+                                            GetCandidateNodes(*cluster_resource_manager));
+
+  ASSERT_TRUE(result.status.IsSuccess());
+  for (const auto &node_id : result.selected_nodes) {
+    ASSERT_EQ(node_id, local_node);
+  }
+}
+
+TEST_F(SchedulingPolicyTest, PackBundlePacksCpuOnlyBundlesOnGpuNodesWhenNoCpuNodes) {
+  // When there are no CPU-only nodes, CPU-only bundles must still be packed onto as
+  // few GPU nodes as possible rather than spread across all of them.
+  // local_node {CPU:4, GPU:1}, remote_node {CPU:4, GPU:1}
+  nodes.emplace(local_node, CreateNodeResources(4, 4, 0, 0, 1, 1));
+  nodes.emplace(remote_node, CreateNodeResources(4, 4, 0, 0, 1, 1));
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  ResourceRequest cpu_bundle = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
+  std::vector<const ResourceRequest *> req_list = {&cpu_bundle, &cpu_bundle, &cpu_bundle};
+
+  raylet_scheduling_policy::BundlePackSchedulingPolicy policy(*cluster_resource_manager);
+  SchedulingResult result = policy.Schedule(req_list,
+                                            SchedulingOptions::BundlePack(),
+                                            GetCandidateNodes(*cluster_resource_manager));
+
+  ASSERT_TRUE(result.status.IsSuccess());
+
+  int local_node_count = 0;
+  int remote_node_count = 0;
+  for (const auto &node_id : result.selected_nodes) {
+    if (node_id == local_node) {
+      local_node_count++;
+    } else {
+      remote_node_count++;
+    }
+  }
+  ASSERT_TRUE((local_node_count == 3 && remote_node_count == 0) ||
+              (local_node_count == 0 && remote_node_count == 3));
+}
+
 }  // namespace raylet
 
 }  // namespace ray
