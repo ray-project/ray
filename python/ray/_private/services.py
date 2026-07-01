@@ -1658,6 +1658,7 @@ def start_raylet(
     env_updates: Optional[dict] = None,
     node_name: Optional[str] = None,
     webui: Optional[str] = None,
+    config: Optional[dict] = None,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1741,6 +1742,10 @@ def start_raylet(
         env_updates: Environment variable overrides.
         node_name: The name of the node.
         webui: The url of the UI.
+        config: Optional configuration that will override defaults in RayConfig.
+            Passed as --config_list to the raylet binary so that user-supplied
+            _system_config values (e.g. gcs_rpc_server_reconnect_timeout_s) are
+            in effect before the first GCS connection attempt.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1988,6 +1993,7 @@ def start_raylet(
         f"--session-name={session_name}",
         f"--labels={labels_json_str}",
         f"--cluster-id={cluster_id}",
+        f"--config_list={serialize_config(config or {})}",
     ]
 
     if resource_isolation_config.is_enabled():

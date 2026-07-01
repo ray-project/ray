@@ -1320,5 +1320,39 @@ def test_concurrent_mark_job_finished(shutdown_only):
     assert results == expected
 
 
+def test_raylets_respect_reconnect_timeout_config(ray_start_cluster):
+    """Raylets should honor reconnect timeout config after GCS crashes.
+
+    This is a regression test for https://github.com/ray-project/ray/issues/62074.
+    The configured timeout must be available before each raylet creates its first
+    GCS client. Otherwise, the raylets use the default 60 s timeout and do not
+    exit within this test's configured 5 s window.
+    """
+
+    cluster = ray_start_cluster
+    head = cluster.add_node(
+        num_cpus=0,
+        _system_config={"gcs_rpc_server_reconnect_timeout_s": 5},
+    )
+    worker = cluster.add_node(num_cpus=0)
+    cluster.wait_for_nodes()
+
+    gcs_server_process = head.all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+    raylet_pids = [
+        head.all_processes["raylet"][0].process.pid,
+        worker.all_processes["raylet"][0].process.pid,
+    ]
+
+    start = time.time()
+    os.kill(gcs_server_pid, signal.SIGKILL)
+    wait_for_pid_to_exit(gcs_server_pid, 30)
+
+    for raylet_pid in raylet_pids:
+        wait_for_pid_to_exit(raylet_pid, 10)
+
+    assert time.time() - start < 15
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
