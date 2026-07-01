@@ -6,6 +6,7 @@ This section helps you debug and monitor your Serve applications by:
 
 * viewing the Ray dashboard
 * viewing the `serve status` output
+  * implementing custom application-level health checks 
 * using Ray logging and Loki
 * inspecting built-in Ray Serve metrics
 * exporting metrics into Arize platform
@@ -153,6 +154,34 @@ Call the `serve.status()` API to get Serve application details in Python. `serve
 :start-after: __monitor_start__
 :end-before: __monitor_end__
 :language: python
+```
+
+## Application-level Health Checks (Custom Health Checks)
+
+By default, Ray Serve checks the health of replicas at the **process level**. If the Ray Actor process is running and responding to internal heartbeats, the replica is marked as `HEALTHY`.
+
+However, in some cases, your application logic might fail while the process remains alive (e.g., a vLLM background loop crashes or a database connection is lost). This can lead to "zombie replicas" that appear healthy in the dashboard but fail every request.
+
+To catch these failures, you can define a `check_health` method in your deployment class.
+
+### Implementing `check_health`
+
+When you define an `async def check_health(self)` method, Ray Serve calls it periodically (defaulting to every 10 seconds). If this method raises an exception, Ray marks the replica as `UNHEALTHY`, stops routing traffic to it, and attempts to restart it.
+
+```python
+@serve.deployment
+class MyModelDeployment:
+    def __init__(self):
+        # Initialize your engine (e.g., vLLM or a DB connection)
+        self.engine = MyEngine()
+
+    async def check_health(self):
+        # Check internal state that Ray cannot see from the outside
+        if not self.engine.is_running():
+            raise RuntimeError("Internal engine loop has failed.")
+
+    def __call__(self, request):
+        return self.engine.generate(request)
 ```
 
 (serve-logging)=
