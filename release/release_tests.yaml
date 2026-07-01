@@ -2121,6 +2121,29 @@
         timeout: 1200
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=ray_data --num_workers=8 --train_batch_size=8192 --validation_batch_size=16384 --num_epochs=1
 
+- name: train_benchmark-qwen3_32b_deepspeed
+  python: "3.12"
+  group: Train tests
+  working_dir: train_tests/benchmark
+
+  # Manual for now: 2x p4de.24xlarge (16x A100-80GB) is expensive, so run it
+  # on demand rather than on a schedule.
+  frequency: manual
+  team: ml
+
+  cluster:
+    byod:
+      # 'type: gpu' selects the ray-ml image (CUDA toolkit + compilers), which
+      # DeepSpeed needs to JIT-build its ops.
+      type: gpu
+      post_build_script: byod_train_benchmark_deepspeed.sh
+    anyscale_sdk_2026: true
+    cluster_compute: compute_configs/compute_gpu_16xA100_aws.yaml
+
+  run:
+    timeout: 3600
+    script: RAY_TRAIN_V2_ENABLED=1 python -m core.runner --experiment experiments/qwen3_32b_deepspeed.yaml
+
 - name: training_ingest_benchmark-soak_test
   python: "3.10"
   group: Train tests

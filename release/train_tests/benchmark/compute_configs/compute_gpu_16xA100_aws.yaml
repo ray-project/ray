@@ -1,0 +1,10 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+head_node:
+    instance_type: m5.4xlarge
+
+worker_nodes:
+    - instance_type: p4de.24xlarge   # 8x A100-80GB per node
+      min_nodes: 2
+      max_nodes: 2
+      market_type: ON_DEMAND
