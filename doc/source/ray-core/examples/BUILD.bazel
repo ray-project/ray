@@ -1,7 +1,32 @@
+load("//bazel:python.bzl", "py_test_run_all_notebooks")
+
 filegroup(
     name = "core_examples",
     srcs = glob(["*.ipynb"]),
     visibility = ["//doc:__subpackages__"]
+)
+
+# --------------------------------------------------------------------
+# Test the lightweight, CPU-only Ray Core example notebooks. The
+# excluded notebooks need GPU, long-running training, or live network
+# access and aren't runnable in the standard CPU CI job.
+# --------------------------------------------------------------------
+
+py_test_run_all_notebooks(
+    size = "large",
+    include = ["*.ipynb"],
+    exclude = [
+        "batch_prediction.ipynb",  # Requires GPU (num_gpus=1) and torch.
+        "plot_hyperparameter.ipynb",  # Model-training loop.
+        "plot_parameter_server.ipynb",  # Torch training loop; slow/non-deterministic.
+        "plot_pong_example.ipynb",  # Long-running RL (Pong) training.
+        "web_crawler.ipynb",  # Makes live network requests.
+    ],
+    data = ["//doc/source/ray-core/examples:core_examples"],
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
 )
 
 filegroup(
