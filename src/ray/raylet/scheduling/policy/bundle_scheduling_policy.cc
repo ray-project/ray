@@ -168,6 +168,15 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
     required_resources_list_copy.emplace_back(index++, resource_request);
   }
 
+  auto NodeHasGpu = [&](const scheduling::NodeID &node_id) {
+    return cluster_resource_manager_.GetNodeResources(node_id).total.Get(
+               ResourceID::GPU()) > 0;
+  };
+  auto BundleRequiresGpu = [](const ResourceRequest &req) {
+    return req.Get(ResourceID::GPU()) > 0;
+  };
+
+  absl::flat_hash_set<scheduling::NodeID> used_gpu_nodes;
   while (!required_resources_list_copy.empty()) {
     const auto &required_resources_index = required_resources_list_copy.front().first;
     const auto &required_resources = required_resources_list_copy.front().second;
@@ -177,6 +186,7 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
       break;
     }
 
+    const bool best_is_gpu_node = NodeHasGpu(best_node_id);
     RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
         best_node_id, *required_resources));
     result_nodes[required_resources_index] = best_node_id;
@@ -185,6 +195,11 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
     // We try to schedule more resources on one node.
     for (auto iter = required_resources_list_copy.begin();
          iter != required_resources_list_copy.end();) {
+      // Defer CPU-only bundles off GPU nodes so non-GPU nodes get first access.
+      if (best_is_gpu_node && !BundleRequiresGpu(*iter->second)) {
+        ++iter;
+        continue;
+      }
       // If the node has sufficient resources, allocate it.
       if (cluster_resource_manager_.HasAvailableResources(
               best_node_id, *iter->second, false)) {
@@ -197,7 +212,44 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
         ++iter;
       }
     }
+    if (best_is_gpu_node) {
+      used_gpu_nodes.insert(best_node_id);
+    }
     candidate_nodes.erase(best_node_id);
+  }
+
+  // Place any remaining CPU-only bundles, falling back to GPU nodes if CPU-only
+  // nodes are exhausted.
+  if (!required_resources_list_copy.empty()) {
+    for (const auto &node_id : used_gpu_nodes) {
+      candidate_nodes.insert(node_id);
+    }
+    while (!required_resources_list_copy.empty()) {
+      const auto &required_resources_index = required_resources_list_copy.front().first;
+      const auto &required_resources = required_resources_list_copy.front().second;
+      auto best_node_id = GetBestNode(*required_resources, candidate_nodes, options);
+      if (best_node_id.IsNil()) {
+        break;
+      }
+      RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
+          best_node_id, *required_resources));
+      result_nodes[required_resources_index] = best_node_id;
+      required_resources_list_copy.pop_front();
+
+      for (auto iter = required_resources_list_copy.begin();
+           iter != required_resources_list_copy.end();) {
+        if (cluster_resource_manager_.HasAvailableResources(
+                best_node_id, *iter->second, false)) {
+          RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
+              best_node_id, *iter->second));
+          result_nodes[iter->first] = best_node_id;
+          required_resources_list_copy.erase(iter++);
+        } else {
+          ++iter;
+        }
+      }
+      candidate_nodes.erase(best_node_id);
+    }
   }
 
   // Releasing the resources temporarily deducted from `cluster_resource_manager_`.
