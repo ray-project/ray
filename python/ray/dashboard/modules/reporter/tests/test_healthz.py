@@ -1,12 +1,16 @@
 import signal
 import sys
+from unittest.mock import MagicMock
 
 import pytest
 import requests
 
 import ray._private.ray_constants as ray_constants
+from ray import NodeID
 from ray._common.network_utils import find_free_port
 from ray._common.test_utils import wait_for_condition
+from ray.core.generated.gcs_service_pb2 import GetAllTotalResourcesReply
+from ray.dashboard.modules.reporter.utils import HealthChecker
 from ray.tests.conftest import *  # noqa: F401 F403
 
 
@@ -115,6 +119,37 @@ def test_unified_healthz_worker_gcs_down(monkeypatch, ray_start_cluster):
 
     # Worker health check should still succeed.
     assert requests.get(uri).status_code == 200
+
+
+def _reply_with_node_ids(*node_ids: NodeID) -> GetAllTotalResourcesReply:
+    reply = GetAllTotalResourcesReply()
+    for node_id in node_ids:
+        reply.resources_list.add().node_id = node_id.binary()
+    return reply
+
+
+@pytest.mark.asyncio
+async def test_check_head_node_schedulable_not_in_view():
+    head_node_id = NodeID.from_random()
+    gcs_client = MagicMock()
+    gcs_client.get_all_total_resources.return_value = _reply_with_node_ids(
+        NodeID.from_random()
+    )
+    checker = HealthChecker(gcs_client)
+
+    assert await checker.check_head_node_schedulable(head_node_id) is False
+
+
+@pytest.mark.asyncio
+async def test_check_head_node_schedulable_in_view():
+    head_node_id = NodeID.from_random()
+    gcs_client = MagicMock()
+    gcs_client.get_all_total_resources.return_value = _reply_with_node_ids(
+        NodeID.from_random(), head_node_id
+    )
+    checker = HealthChecker(gcs_client)
+
+    assert await checker.check_head_node_schedulable(head_node_id) is True
 
 
 if __name__ == "__main__":

@@ -553,6 +553,13 @@ Status NodeResourceInfoAccessor::GetAllResourceUsage(
       std::move(request), &reply, timeout_ms);
 }
 
+Status NodeResourceInfoAccessor::GetAllTotalResources(
+    int64_t timeout_ms, rpc::GetAllTotalResourcesReply &reply) {
+  rpc::GetAllTotalResourcesRequest request;
+  return client_impl_->GetGcsRpcClient().SyncGetAllTotalResources(
+      std::move(request), &reply, timeout_ms);
+}
+
 void TaskInfoAccessor::AsyncAddTaskEventData(std::unique_ptr<rpc::TaskEventData> data_ptr,
                                              rpc::StatusCallback callback) {
   rpc::AddTaskEventDataRequest request;
