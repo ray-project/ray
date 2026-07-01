@@ -75,6 +75,30 @@ inline ray::stats::Gauge GetTotalLineageBytesGaugeMetric() {
   };
 }
 
+inline ray::stats::Gauge GetNumSubmissibleTasksGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"num_submissible_tasks",
+      /*description=*/
+      "Number of tasks currently in TaskManager's submissible_tasks_ map. "
+      "Includes both pending-execution tasks and completed tasks retained for "
+      "lineage reconstruction. High values indicate many task specs are buffered.",
+      /*unit=*/"",
+      /*tag_keys=*/{},
+  };
+}
+
+inline ray::stats::Gauge GetSubmissibleTaskSpecBytesGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"submissible_task_spec_bytes",
+      /*description=*/
+      "Total serialized protobuf byte size of TaskSpecifications currently held in "
+      "TaskManager's submissible_tasks_ map. This is a proxy for task-spec payload "
+      "size and does not include C++ object, allocator, or hash-map overhead.",
+      /*unit=*/"",
+      /*tag_keys=*/{},
+  };
+}
+
 inline std::unique_ptr<ray::stats::PercentileMetric>
 GetSchedulerPlacementTimePercentileMsMetric() {
   return std::make_unique<ray::stats::PercentileMetric>(
