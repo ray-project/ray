@@ -15,6 +15,7 @@
 #include "ray/core_worker/task_execution/task_receiver.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,6 +27,77 @@
 
 namespace ray {
 namespace core {
+
+namespace {
+
+bool HasPendingDirectTransportMetadata(const TaskExecutionResult &result) {
+  for (const auto &return_object : result.return_objects) {
+    if (return_object.second != nullptr &&
+        return_object.second->HasPendingDirectTransportMetadata()) {
+      return true;
+    }
+  }
+  for (const auto &return_object : result.dynamic_return_objects) {
+    if (return_object.second != nullptr &&
+        return_object.second->HasPendingDirectTransportMetadata()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::optional<std::string> WaitForDirectTransportMetadataError(
+    const TaskExecutionResult &result) {
+  std::optional<std::string> first_error;
+  auto check_return_object =
+      [](const std::pair<ObjectID, std::shared_ptr<RayObject>> &return_object)
+      -> std::optional<std::string> {
+    if (return_object.second == nullptr) {
+      return std::nullopt;
+    }
+    return_object.second->WaitForDirectTransportMetadata();
+    return return_object.second->GetDirectTransportMetadataError();
+  };
+
+  for (const auto &return_object : result.return_objects) {
+    auto error = check_return_object(return_object);
+    if (!first_error.has_value() && error.has_value()) {
+      first_error = std::move(error);
+    }
+  }
+  for (const auto &return_object : result.dynamic_return_objects) {
+    auto error = check_return_object(return_object);
+    if (!first_error.has_value() && error.has_value()) {
+      first_error = std::move(error);
+    }
+  }
+  return first_error;
+}
+
+}  // namespace
+
+TaskReceiver::~TaskReceiver() { StopAsyncReplyExecutor(); }
+
+std::shared_ptr<BoundedExecutor> TaskReceiver::GetAsyncReplyExecutor() {
+  absl::MutexLock lock(&async_reply_executor_mu_);
+  if (async_reply_executor_ == nullptr) {
+    async_reply_executor_ = std::make_shared<BoundedExecutor>(4);
+  }
+  return async_reply_executor_;
+}
+
+void TaskReceiver::StopAsyncReplyExecutor() {
+  std::shared_ptr<BoundedExecutor> async_reply_executor;
+  {
+    absl::MutexLock lock(&async_reply_executor_mu_);
+    async_reply_executor = std::move(async_reply_executor_);
+    async_reply_executor_ = nullptr;
+  }
+  if (async_reply_executor != nullptr) {
+    // Drain queued replies so every task still invokes send_reply_callback.
+    async_reply_executor->Join();
+  }
+}
 
 void TaskReceiver::HandleTaskExecutionResult(
     Status status,
@@ -45,6 +117,15 @@ void TaskReceiver::HandleTaskExecutionResult(
       task_execution_error += "\n\n";
     }
     task_execution_error += "System error:\n" + status.ToString();
+  }
+  auto direct_transport_metadata_error = WaitForDirectTransportMetadataError(result);
+  if (direct_transport_metadata_error.has_value()) {
+    if (!task_execution_error.empty()) {
+      task_execution_error += "\n\n";
+    }
+    task_execution_error +=
+        "System error:\nFailed to extract RDT metadata asynchronously: " +
+        *direct_transport_metadata_error;
   }
 
   if (!task_execution_error.empty()) {
@@ -307,6 +388,8 @@ void TaskReceiver::Stop() {
   if (normal_task_execution_queue_) {
     normal_task_execution_queue_->Stop();
   }
+  // Async replies already queued for completed tasks must continue to run; the
+  // executor is drained in the destructor.
 }
 
 }  // namespace core

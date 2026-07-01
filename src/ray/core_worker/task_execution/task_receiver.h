@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
@@ -73,6 +74,8 @@ class TaskReceiver {
         pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()),
         fiber_state_manager_(nullptr) {}
 
+  ~TaskReceiver();
+
   /// Enqueue a task for execution that was received via `PushTask`.
   ///
   /// For actor tasks: the task will be enqueued and requests will be scheduled to begin
@@ -115,6 +118,8 @@ class TaskReceiver {
                                  const TaskExecutionResult &result,
                                  const rpc::SendReplyCallback &send_reply_callback,
                                  rpc::PushTaskReply *reply);
+  std::shared_ptr<BoundedExecutor> GetAsyncReplyExecutor();
+  void StopAsyncReplyExecutor();
 
   /// Execute a task that was queued for execution. Invoked by the execution queues via
   /// `execute_task_callback_`. Reads all per-request state from `task`.
@@ -155,6 +160,12 @@ class TaskReceiver {
 
   // Queue of normal (non-actor) tasks waiting to execute.
   std::unique_ptr<NormalTaskExecutionQueue> normal_task_execution_queue_;
+
+  // Replies that need to wait for async RDT metadata should not occupy actor
+  // execution slots.
+  absl::Mutex async_reply_executor_mu_;
+  std::shared_ptr<BoundedExecutor> async_reply_executor_
+      ABSL_GUARDED_BY(async_reply_executor_mu_);
 
   /// The max number of concurrent calls to allow for fiber mode.
   /// 0 indicates that the value is not set yet.

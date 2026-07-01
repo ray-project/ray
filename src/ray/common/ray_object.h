@@ -14,7 +14,16 @@
 
 #pragma once
 
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
@@ -132,14 +141,113 @@ class RayObject {
   }
 
   void SetDirectTransportMetadata(std::string direct_transport_metadata) {
-    direct_transport_metadata_.emplace(std::move(direct_transport_metadata));
+    auto state = GetOrCreateDirectTransportMetadataState();
+    absl::MutexLock lock(&state->mutex);
+    // Timeout/error is terminal; ignore late async callbacks so reply metadata
+    // and serialized return objects stay consistent.
+    if (!state->pending && state->error.has_value()) {
+      return;
+    }
+    state->metadata.emplace(std::move(direct_transport_metadata));
+    state->error.reset();
+    state->pending = false;
+    state->cv.SignalAll();
   }
 
-  const std::optional<std::string> &GetDirectTransportMetadata() const {
-    return direct_transport_metadata_;
+  void SetDirectTransportMetadataPending() {
+    auto state = GetOrCreateDirectTransportMetadataState();
+    absl::MutexLock lock(&state->mutex);
+    state->pending = true;
+    state->metadata.reset();
+    state->error.reset();
+  }
+
+  void SetDirectTransportMetadataError(std::string error) {
+    auto state = GetOrCreateDirectTransportMetadataState();
+    absl::MutexLock lock(&state->mutex);
+    // Timeout/error is terminal; ignore late async callbacks so reply metadata
+    // and serialized return objects stay consistent.
+    if (!state->pending && state->error.has_value()) {
+      return;
+    }
+    state->error.emplace(std::move(error));
+    state->pending = false;
+    state->cv.SignalAll();
+  }
+
+  bool HasPendingDirectTransportMetadata() const {
+    auto state = GetDirectTransportMetadataState();
+    if (state == nullptr) {
+      return false;
+    }
+    absl::MutexLock lock(&state->mutex);
+    return state->pending;
+  }
+
+  void WaitForDirectTransportMetadata() const {
+    auto state = GetDirectTransportMetadataState();
+    if (state == nullptr) {
+      return;
+    }
+    absl::MutexLock lock(&state->mutex);
+
+    const auto deadline = absl::Now() + absl::Seconds(30);
+    while (state->pending) {
+      if (state->cv.WaitWithDeadline(&state->mutex, deadline)) {
+        state->error.emplace(
+            "Timed out waiting for direct transport metadata extraction");
+        state->pending = false;
+        break;
+      }
+    }
+  }
+
+  std::optional<std::string> GetDirectTransportMetadata() const {
+    auto state = GetDirectTransportMetadataState();
+    if (state == nullptr) {
+      return std::nullopt;
+    }
+    absl::MutexLock lock(&state->mutex);
+    return state->metadata;
+  }
+
+  std::optional<std::string> GetDirectTransportMetadataError() const {
+    auto state = GetDirectTransportMetadataState();
+    if (state == nullptr) {
+      return std::nullopt;
+    }
+    absl::MutexLock lock(&state->mutex);
+    return state->error;
   }
 
  private:
+  struct DirectTransportMetadataState {
+    mutable absl::Mutex mutex;
+    mutable absl::CondVar cv;
+    bool pending ABSL_GUARDED_BY(mutex) = false;
+    std::optional<std::string> metadata ABSL_GUARDED_BY(mutex);
+    std::optional<std::string> error ABSL_GUARDED_BY(mutex);
+  };
+
+  static absl::Mutex &DirectTransportMetadataStateMutex() {
+    static absl::Mutex mutex;
+    return mutex;
+  }
+
+  std::shared_ptr<DirectTransportMetadataState>
+  GetOrCreateDirectTransportMetadataState() {
+    absl::MutexLock lock(&DirectTransportMetadataStateMutex());
+    if (direct_transport_metadata_state_ == nullptr) {
+      direct_transport_metadata_state_ = std::make_shared<DirectTransportMetadataState>();
+    }
+    return direct_transport_metadata_state_;
+  }
+
+  std::shared_ptr<DirectTransportMetadataState> GetDirectTransportMetadataState() const {
+    absl::MutexLock lock(&DirectTransportMetadataStateMutex());
+    return direct_transport_metadata_state_;
+  }
+
   void Init(const std::shared_ptr<Buffer> &data,
             const std::shared_ptr<Buffer> &metadata,
             const std::vector<rpc::ObjectReference> &nested_refs,
@@ -186,7 +294,7 @@ class RayObject {
   std::optional<std::string> tensor_transport_;
   /// The direct transport metadata for the object if the object is a direct transport
   /// object.
-  std::optional<std::string> direct_transport_metadata_;
+  std::shared_ptr<DirectTransportMetadataState> direct_transport_metadata_state_;
 };
 
 }  // namespace ray

@@ -1,3 +1,4 @@
+import concurrent.futures
 import logging
 import threading
 import traceback
@@ -220,7 +221,6 @@ class SerializationContext:
             if self.is_in_band_serialization() and worker.rdt_manager.is_managed_object(
                 obj.hex()
             ):
-
                 rdt_manager = ray._private.worker.global_worker.rdt_manager
                 rdt_meta = rdt_manager.get_rdt_metadata(obj.hex())
                 if rdt_meta.tensor_transport_meta is None:
@@ -447,7 +447,7 @@ class SerializationContext:
                 error_type = int(metadata_fields[0])
             except Exception:
                 raise Exception(
-                    f"Can't deserialize object: {object_ref}, " f"metadata: {metadata}"
+                    f"Can't deserialize object: {object_ref}, metadata: {metadata}"
                 )
 
             # RayTaskError is serialized with pickle5 in the data field.
@@ -767,6 +767,54 @@ class SerializationContext:
             obj_id, tensors, tensor_transport
         )
         return pickle.dumps(tensor_transport_meta)
+
+    def store_rdt_objects_async(
+        self,
+        obj_id: str,
+        tensors: List[Any],
+        tensor_transport: str,
+    ) -> "concurrent.futures.Future":
+        """Like :meth:`store_rdt_objects` but returns a Future for the
+        pickled metadata instead of blocking until extraction is complete.
+
+        This allows ``store_task_output`` (writing to plasma) to run
+        concurrently with ``extract_tensor_transport_metadata``, overlapping
+        the two operations and reducing blocking time on the task execution
+        thread.  See https://github.com/ray-project/ray/issues/63150.
+
+        Args:
+            obj_id: The object ID of the RDT object.
+            tensors: The tensors to store.
+            tensor_transport: The tensor transport backend name.
+
+        Returns:
+            A Future that resolves to the pickled
+            :class:`TensorTransportMetadata` bytes.
+        """
+        assert obj_id is not None, (
+            "`obj_id` is required, and it is the key to retrieve "
+            "corresponding tensors from the RDT store."
+        )
+        worker = ray._private.worker.global_worker
+        rdt_manager = worker.rdt_manager
+        # add_object_primary_async stores the tensors synchronously and
+        # returns a Future for the (potentially expensive) metadata extraction.
+        meta_future = rdt_manager.rdt_store.add_object_primary_async(
+            obj_id, tensors, tensor_transport
+        )
+        # Wrap so the caller receives pickled bytes, matching the return type
+        # of store_rdt_objects.
+
+        pickled_future = concurrent.futures.Future()
+
+        def _on_done(fut):
+            try:
+                pickled_future.set_result(pickle.dumps(fut.result()))
+            except BaseException as exc:
+                pickled_future.set_exception(exc)
+
+        meta_future.add_done_callback(_on_done)
+        return pickled_future
 
     def serialize(
         self, value: Any
