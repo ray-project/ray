@@ -13,6 +13,7 @@ import pytest
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
@@ -44,8 +45,13 @@ def mock_all_to_all_op(input_op, name="MockAllToAll"):
         data_context=ray.data.DataContext.get_current(),
         name=name,
     )
-    op.start = MagicMock(side_effect=lambda _: None)
+    op.start = MagicMock(side_effect=lambda *_: None)
     return op
+
+
+def noop_counter():
+    """BlockRefCounter that works without a Ray cluster."""
+    return BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True)
 
 
 @pytest.fixture(scope="module")

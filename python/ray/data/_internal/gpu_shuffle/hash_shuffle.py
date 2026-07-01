@@ -40,7 +40,7 @@ from ray.data.block import Block, BlockAccessor, BlockStats, to_stats
 from ray.data.context import DataContext
 
 if typing.TYPE_CHECKING:
-
+    from ray.data._internal.execution.block_ref_counter import BlockRefCounter
     from ray.data._internal.execution.interfaces.physical_operator import ActorPoolInfo
     from ray.data._internal.progress.base_progress import BaseProgressBar
 
@@ -490,8 +490,12 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     # Lifecycle
     # ------------------------------------------------------------------
 
-    def start(self, options: ExecutionOptions) -> None:
-        super().start(options)
+    def start(
+        self,
+        options: ExecutionOptions,
+        block_ref_counter: "BlockRefCounter",
+    ) -> None:
+        super().start(options, block_ref_counter)
         self._rank_pool.start()
 
     def _add_input_inner(self, bundle: RefBundle, input_index: int) -> None:
@@ -625,6 +629,8 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             data_task = DataOpTask(
                 task_index=rank_idx,
                 streaming_gen=block_gen,
+                block_ref_counter=self._block_ref_counter,
+                producer_id=self.id,
                 output_ready_callback=_on_bundle_ready,
                 task_done_callback=functools.partial(
                     _on_extraction_done, rank=rank_idx

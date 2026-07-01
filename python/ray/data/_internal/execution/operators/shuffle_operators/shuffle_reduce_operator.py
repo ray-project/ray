@@ -201,6 +201,8 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         data_task = DataOpTask(
             task_index=partition_id,
             streaming_gen=block_gen,
+            block_ref_counter=self._block_ref_counter,
+            producer_id=self.id,
             output_ready_callback=functools.partial(
                 self._handle_reduce_output_ready, partition_id
             ),
@@ -244,6 +246,12 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         )
         refs.destroy_if_owned()
 
+        # Empty partition creates a new block; register it for memory tracking.
+        self._block_ref_counter.on_block_produced(
+            out_bundle.blocks[0].ref,  # pyrefly: ignore[bad-argument-type]
+            block_meta.size_bytes or 0,
+            self.id,
+        )
         self._num_reduce_tasks_submitted += 1
         self._output_queue.append(out_bundle)
         self._metrics.on_output_queued(out_bundle)
