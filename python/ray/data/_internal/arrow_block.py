@@ -1,3 +1,4 @@
+import collections
 import logging
 import random
 from typing import (
@@ -51,6 +52,7 @@ if TYPE_CHECKING:
     import pandas
 
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+    from ray.data.aggregate import AggregateFn
 
 
 T = TypeVar("T")
@@ -538,6 +540,89 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         # Use PyArrow's built-in filter method
         return self._table.filter(mask)
+
+    def _aggregate(self, sort_key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
+        # Fall back to original way when not all aggregations support pyarrow kernel
+        use_pyarrow_kernel = all(agg.support_pyarrow_kernel() for agg in aggs)
+        if use_pyarrow_kernel:
+            keys = sort_key.get_columns()
+            tables = []
+            count = collections.defaultdict(int)
+            for agg in aggs:
+                name = agg.name
+                # Check for conflicts with existing aggregation name.
+                if count[name] > 0:
+                    name = self._munge_conflict(name, count[name])
+                count[name] += 1
+                agg_table = agg.aggregate_block_pyarrow_kernel(self.to_block(), keys)
+                # Use aggregation name as column prefix to avoid duplicate column name
+                columns_rename = {
+                    column: name + "|" + column
+                    for column in set(agg_table.column_names) - set(keys)
+                }
+                tables.append(agg_table.rename_columns(columns_rename))
+
+            if len(tables) == 1:
+                ret = tables[0]
+            else:
+                ret = tables[0]
+                for table in tables[1:]:
+                    ret = ret.join(table, keys=keys, join_type="inner")
+            return ret
+        else:
+            return super()._aggregate(sort_key, aggs)
+
+    @classmethod
+    def _combine_aggregated_blocks(
+        cls,
+        blocks: List[Block],
+        sort_key: "SortKey",
+        aggs: Tuple["AggregateFn"],
+        finalize: bool = True,
+    ) -> Tuple[Block, "BlockMetadataWithSchema"]:
+        # Fall back to original way when not all aggregations support pyarrow kernel
+        use_pyarrow_kernel = all(agg.support_pyarrow_kernel() for agg in aggs)
+        if use_pyarrow_kernel:
+            keys = sort_key.get_columns()
+            combined = pyarrow.concat_tables(blocks) if len(blocks) > 1 else blocks[0]
+            tables = []
+
+            count = collections.defaultdict(int)
+
+            for agg in aggs:
+                name = agg.name
+                # Check for conflicts with existing aggregation name.
+                if count[name] > 0:
+                    name = TableBlockAccessor._munge_conflict(name, count[name])
+                count[name] += 1
+                # Retrieve only the columns needed for current aggregation
+                need_columns = [
+                    column
+                    for column in combined.column_names
+                    if column.startswith(name + "|")
+                ] + keys
+                # The aggregation is unaware of the actual prefix name that may
+                # be modified due to aggregation's name conflicts, so recover
+                # the column name by remove prefix
+                columns_rename = {
+                    column: column.removeprefix(name + "|") for column in need_columns
+                }
+
+                tables.append(
+                    agg.combine_and_finalize_pyarrow_kernel(
+                        combined.select(need_columns).rename_columns(columns_rename),
+                        keys,
+                    ).rename_columns({agg.name: name})
+                )
+            if len(tables) == 1:
+                ret = tables[0]
+            else:
+                ret = tables[0]
+                for table in tables[1:]:
+                    ret = ret.join(table, keys=keys, join_type="inner")
+            return ret, BlockMetadataWithSchema.from_block(ret)
+        else:
+            return super()._combine_aggregated_blocks(blocks, sort_key, aggs, finalize)
 
 
 def _iter_rows_from_batch_with_tensors(
