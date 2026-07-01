@@ -1801,14 +1801,11 @@ class Dataset:
             target_num_rows_per_block: [Experimental] The target number of rows per block to
                 repartition. Performs streaming repartitioning of the dataset (no shuffling).
                 Note that either `num_blocks` or
-                `target_num_rows_per_block` must be set, but not both. When
-                `target_num_rows_per_block` is set, it only repartitions
+                `target_num_rows_per_block` must be set, but not both. By default
+                (when ``strict=False``), it uses best-effort bundling and only splits
                 :class:`Dataset` :ref:`blocks <dataset_concept>` that are larger than
-                `target_num_rows_per_block`. Note that the system will internally
-                figure out the number of rows per :ref:`blocks <dataset_concept>` for
-                optimal execution, based on the `target_num_rows_per_block`. This is
-                the current behavior because of the implementation and may change in
-                the future.
+                ``target_num_rows_per_block``. To merge smaller blocks into larger ones
+                (e.g., to increase the output file size), you must set ``strict=True``.
             strict: If ``True``, ``repartition`` guarantees that all output blocks,
                 except for the last one, will have exactly ``target_num_rows_per_block`` rows.
                 If ``False``, ``repartition`` uses best-effort bundling and may produce at most
