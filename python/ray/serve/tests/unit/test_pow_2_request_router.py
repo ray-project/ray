@@ -2161,5 +2161,27 @@ def test_request_router_backoff_params_custom():
     assert router.max_backoff_s == custom_max_backoff
 
 
+def test_request_router_update_locality_routing_params():
+    """Test that locality routing params can be updated at runtime."""
+    router = PowerOfTwoChoicesRequestRouter(
+        deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
+        handle_source=DeploymentHandleSource.REPLICA,
+        self_node_id=ROUTER_NODE_ID,
+        self_actor_id="fake-actor-id",
+        self_actor_handle=None,
+        get_curr_time_s=TIMER.time,
+        prefer_local_node_routing=False,
+        prefer_local_az_routing=False,
+    )
+
+    router.update_locality_routing_params(
+        prefer_local_node_routing=True,
+        prefer_local_az_routing=True,
+    )
+
+    assert router._prefer_local_node_routing is True
+    assert router._prefer_local_az_routing is True
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

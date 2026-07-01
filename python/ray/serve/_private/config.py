@@ -29,6 +29,8 @@ from ray.serve._private.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_ROLLING_UPDATE_PERCENTAGE,
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
+    RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+    RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import (
@@ -159,6 +161,16 @@ class DeploymentConfig(BaseModel):
         rolling_update_percentage: The fraction of replicas (of
             ``target_num_replicas``) to update at a time during a rolling
             update. Must be in ``(0.0, 1.0]``. Defaults to 0.2 (20%).
+        prefer_local_node_routing: Feature flag to turn on node locality
+            routing. Applies to both proxy-to-replica and replica-to-replica
+            routing. Defaults to the value of
+            ``RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING`` (on by default).
+            Explicit deployment config overrides the env var.
+        prefer_local_az_routing: Feature flag to turn on AZ locality routing.
+            Applies to both proxy-to-replica and replica-to-replica routing.
+            Defaults to the value of
+            ``RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING`` (on by default).
+            Explicit deployment config overrides the env var.
     """
 
     num_replicas: Optional[NonNegativeInt] = Field(
@@ -233,6 +245,16 @@ class DeploymentConfig(BaseModel):
     deployment_actors: Optional[List[DeploymentActorConfig]] = Field(
         default=None,
         update_type=DeploymentOptionUpdateType.HeavyWeight,
+    )
+
+    prefer_local_node_routing: bool = Field(
+        default=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+        update_type=DeploymentOptionUpdateType.LightWeight,
+    )
+
+    prefer_local_az_routing: bool = Field(
+        default=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+        update_type=DeploymentOptionUpdateType.LightWeight,
     )
 
     rolling_update_percentage: float = Field(
