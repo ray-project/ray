@@ -675,6 +675,16 @@ These metrics track request routing and queueing behavior.
 | `ray_serve_num_scheduling_tasks_in_backoff` **[H][†]** | Gauge | `deployment`, `actor_id` | Current number of scheduling tasks in exponential backoff (waiting before retry). |
 | `ray_serve_router_args_resolution_latency_ms` **[H][D]** | Histogram | `deployment`, `application`, `handle`, `actor_id` | Time in milliseconds spent resolving upstream `ObjectRef` or `DeploymentResponse` arguments before a request enters the routing queue.|
 
+### CapacityQueueRouter metrics (experimental)
+
+These metrics track the behavior of the experimental `CapacityQueueRouter`.
+
+| Metric | Type | Tags | Description |
+|--------|------|------|-------------|
+| `ray_serve_cq_routing_requests_total` | Counter | `deployment`, `application`, `routing_strategy` | Total requests routed by `CapacityQueueRouter`, tagged by `routing_strategy` (`cq` or `pow2_fallback`). |
+| `ray_serve_cq_acquire_duration_ms` | Histogram | `deployment`, `application` | Time in milliseconds to acquire a capacity token from the CQ actor. |
+| `ray_serve_cq_retry_total` | Counter | `deployment`, `application`, `reason` | Total retry attempts in `CapacityQueueRouter`, tagged by `reason` (`fault` or `capacity_depleted`). |
+
 ### Request processing metrics
 
 These metrics track request throughput, errors, and latency at the replica level.
