@@ -4,7 +4,7 @@ import queue
 import socket
 import sys
 from dataclasses import dataclass
-from functools import cached_property
+from functools import cached_property, wraps
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, TypeVar, Union
 
 import ray
@@ -148,6 +148,7 @@ class RayTrainWorker:
             logger.error(f"Error deserializing the training function: {e}")
             raise
 
+        @wraps(train_fn)
         def train_fn_with_final_checkpoint_flush():
             result = train_fn()
             get_train_context().checkpoint_upload_threadpool.shutdown()
