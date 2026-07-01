@@ -349,9 +349,23 @@ def test_zip_streaming_partial_progress_mismatch_raises(
         zip_op.all_inputs_done()
 
 
-def test_zip_streaming_empty_leading_block(ray_start_regular_shared):
-    """Verify that a leading zero-row block is skipped (via the min_rows==0
-    path) without stalling, and the remaining rows still zip correctly."""
+@pytest.mark.parametrize(
+    "a_blocks,b_blocks",
+    [
+        # Leading empty block on one side.
+        ([[], [1, 2]], [[10, 11]]),
+        # Trailing empty block after the last real block (Bugbot regression:
+        # equal total rows must not raise a false mismatch).
+        ([[0, 1]], [[10, 11], []]),
+        # Multiple trailing empty blocks on one side.
+        ([[0, 1]], [[10, 11], [], []]),
+        # Empty blocks on both sides, interleaved.
+        ([[], [0, 1]], [[10, 11], []]),
+    ],
+)
+def test_zip_streaming_empty_blocks(ray_start_regular_shared, a_blocks, b_blocks):
+    """Zero-row blocks carry no rows, so they must be skipped without stalling or
+    tripping row-count validation, even when totals already match."""
     from ray.data._internal.execution.interfaces import ExecutionOptions
     from ray.data._internal.execution.operators.input_data_buffer import (
         InputDataBuffer,
@@ -364,9 +378,8 @@ def test_zip_streaming_empty_leading_block(ray_start_regular_shared):
 
     ctx = DataContext.get_current()
 
-    # A: an empty block followed by [1, 2] (2 rows total). B: [10, 11] (2 rows).
-    input_a = InputDataBuffer(ctx, make_ref_bundles([[], [1, 2]]))
-    input_b = InputDataBuffer(ctx, make_ref_bundles([[10, 11]]))
+    input_a = InputDataBuffer(ctx, make_ref_bundles(a_blocks))
+    input_b = InputDataBuffer(ctx, make_ref_bundles(b_blocks))
     zip_op = ZipOperator(ctx, input_a, input_b)
 
     zip_op.start(ExecutionOptions())
@@ -394,8 +407,9 @@ def test_zip_streaming_empty_leading_block(ray_start_regular_shared):
             id_values.extend(df["id"].tolist())
             id_1_values.extend(df["id_1"].tolist())
 
-    assert id_values == [1, 2]
-    assert id_1_values == [10, 11]
+    # Rows are paired positionally, ignoring the (row-less) empty blocks.
+    assert id_values == [v for block in a_blocks for v in block]
+    assert id_1_values == [v for block in b_blocks for v in block]
 
 
 def test_zip_streaming_unknown_row_count_resolved_async(ray_start_regular_shared):

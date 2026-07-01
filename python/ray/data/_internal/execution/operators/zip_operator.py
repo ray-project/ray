@@ -197,27 +197,36 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         if self._awaiting_count[input_index]:
             return
 
-        # Refill staging from input bundles until we have something to process
-        # or the buffer is exhausted (skips any bundles that contribute no
-        # blocks, so an empty bundle can't stall the input).
-        while (
-            not self._staging[input_index]
-            and self._input_buffers[input_index].has_next()
-        ):
-            bundle = self._input_buffers[input_index].get_next()
-            self._metrics.on_input_dequeued(bundle, input_index=input_index)
-            self._staging[input_index].extend(bundle.blocks)
+        while True:
+            # Refill staging from input bundles until we have something to
+            # process or the buffer is exhausted (skips any bundles that
+            # contribute no blocks, so an empty bundle can't stall the input).
+            while (
+                not self._staging[input_index]
+                and self._input_buffers[input_index].has_next()
+            ):
+                bundle = self._input_buffers[input_index].get_next()
+                self._metrics.on_input_dequeued(bundle, input_index=input_index)
+                self._staging[input_index].extend(bundle.blocks)
 
-        # Move staged entries with a known row count into the block deque,
-        # pausing at the first entry whose row count must be fetched.
-        while self._staging[input_index]:
+            if not self._staging[input_index]:
+                return
+
             entry = self._staging[input_index][0]
             num_rows = entry.metadata.num_rows
             if num_rows is None:
+                # Row count unknown; resolve it asynchronously and pause staging
+                # for this input (to preserve order) until it comes back.
                 self._submit_count_task(input_index, entry.ref)
                 return
             self._staging[input_index].popleft()
+            # Zero-row blocks carry no rows, so they never need to be paired or
+            # zipped. Drop them here (rather than staging them) so they can't
+            # linger as phantom leftovers and trip row-count validation.
+            if num_rows == 0:
+                continue
             self._block_deques[input_index].append((entry.ref, num_rows))
+            return
 
     def _submit_count_task(self, input_index: int, block_ref: ray.ObjectRef) -> None:
         """
@@ -241,7 +250,9 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             # task completes), so this get is a local, non-blocking fetch.
             num_rows = ray.get(count_ref)
             entry = self._staging[input_index].popleft()
-            self._block_deques[input_index].append((entry.ref, num_rows))
+            # Skip zero-row blocks (see `_fill_block_deque`); they carry no rows.
+            if num_rows > 0:
+                self._block_deques[input_index].append((entry.ref, num_rows))
             # Resume making progress now that the row count is known.
             self._dispatch_ready_zips()
             self._validate_if_settled()
@@ -298,13 +309,11 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
                 block_refs.append(ref)
                 block_rows.append(num_rows)
 
+            # Zero-row blocks are dropped in `_fill_block_deque`/`_on_count_ready`
+            # and leftovers always carry >0 rows, so every popped block is
+            # non-empty and `min_rows` is always positive.
             min_rows = min(block_rows)
-            if min_rows == 0:
-                # Some block is empty; carry the non-empty ones forward and skip.
-                for i in range(len(block_refs)):
-                    if block_rows[i] > 0:
-                        self._leftovers[i] = (block_refs[i], block_rows[i])
-                continue
+            assert min_rows > 0, block_rows
 
             # Align blocks to min_rows by splitting any larger blocks, carrying
             # the tail forward as a leftover for the next alignment round.
