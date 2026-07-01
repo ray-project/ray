@@ -23,6 +23,7 @@ from ray._common.usage.usage_lib import (
     usage_stats_enabled,
 )
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import MapBatches
 from ray.data._internal.logical.util import anonymize_op_name
@@ -36,6 +37,9 @@ if TYPE_CHECKING:
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 
 logger = logging.getLogger(__name__)
+
+# Bounded timeout for the GCS node-info query used to count dead nodes.
+_NODE_INFO_RPC_TIMEOUT_S = 5.0
 
 
 @dataclass(frozen=True)
@@ -146,12 +150,18 @@ def _cluster_spilled_bytes() -> Optional[int]:
 def _cluster_dead_node_count() -> Optional[int]:
     """Number of dead nodes in the GCS node table.
 
-    Reads via ``ray.nodes()``. Returns None on any failure.
+    Queries GCS with a bounded timeout and a server-side DEAD state filter.
+    Returns None on any failure.
     """
     if not ray.is_initialized():
         return None
     try:
-        return sum(1 for node in ray.nodes() if not node["Alive"])
+        gcs_client = ray._private.worker.global_worker.gcs_client
+        dead_nodes = gcs_client.get_all_node_info(
+            timeout=_NODE_INFO_RPC_TIMEOUT_S,
+            state_filter=GcsNodeInfo.GcsNodeState.DEAD,
+        )
+        return len(dead_nodes)
     except Exception:
         logger.debug("Failed to read cluster dead node count", exc_info=True)
         return None
