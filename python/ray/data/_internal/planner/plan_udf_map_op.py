@@ -260,8 +260,8 @@ def plan_filter_op(
             compute=compute,
         )
 
-        transform_fn = RowMapTransformFn(
-            _generate_transform_fn_for_filter(filter_fn),
+        transform_fn = BlockMapTransformFn(
+            _generate_block_transform_fn_for_filter(filter_fn),
             is_udf=True,
             output_block_size_option=output_block_size_option,
         )
@@ -744,13 +744,33 @@ def _generate_transform_fn_for_flat_map(
     return transform_fn
 
 
-def _generate_transform_fn_for_filter(
+def _generate_block_transform_fn_for_filter(
     fn: UserDefinedFunction,
-) -> MapTransformCallable[Row, Row]:
-    def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
-        for row in rows:
-            if fn(row):
-                yield row
+) -> MapTransformCallable[Block, Block]:
+    # Select the surviving rows from the input block directly instead of
+    # re-emitting them. Rebuilding a block from re-emitted rows re-infers column
+    # types from Python values, which drops Arrow encodings such as dictionary
+    # and changes the schema (#51217).
+    def transform_fn(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
+        for block in blocks:
+            block_accessor = BlockAccessor.for_block(block)
+            num_rows = 0
+            indices = []
+            for i, row in enumerate(
+                block_accessor.iter_rows(public_row_format=True)
+            ):
+                num_rows = i + 1
+                if fn(row):
+                    indices.append(i)
+            if len(indices) == num_rows:
+                # Every row passed; pass the block through without copying. The
+                # row count comes from the iteration above rather than
+                # num_rows(), which reports 0 for 0-column blocks.
+                yield block
+            else:
+                # Keep the indices typed so an empty result doesn't make take()
+                # infer a null-typed index array.
+                yield block_accessor.take(np.array(indices, dtype=np.int64))
 
     return transform_fn
 
