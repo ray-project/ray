@@ -259,22 +259,23 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
       }
     }
 
-    // Populate locality_requirement if this PG uses label-domain scheduling.
-    // TODO(#61777): Add support for multiple tiers of label domains.
-    const auto &label_domain_key = pg_data.label_domain_key();
-    if (!label_domain_key.empty()) {
+    // Populate locality_requirement if this PG uses topology-aware scheduling.
+    const auto &topology_strategy = pg_data.topology_strategy();
+    if (!topology_strategy.empty()) {
+      const auto &[topology_label_key, _strategy] = *topology_strategy.begin();
+
       auto *locality_req = bundle_selector->mutable_locality_requirement();
       auto *locality_constraint = locality_req->mutable_locality_constraint();
-      locality_constraint->set_label_name(label_domain_key);
+      locality_constraint->set_label_name(topology_label_key);
       locality_constraint->set_placement_strategy(rpc::PlacementStrategy::STRICT_PACK);
 
-      // If the PG already has a domain assignment (rescheduling case),
-      // add a label selector to constrain to that specific domain.
-      const auto &assignments = pg_data.label_domain_assignments();
-      if (auto it = assignments.find(label_domain_key); it != assignments.end()) {
+      // If the scheduler has already picked a value for this topology label
+      // (rescheduling case), pin the autoscaler request to that value.
+      const auto &assignments = pg_data.topology_assignments();
+      if (auto it = assignments.find(topology_label_key); it != assignments.end()) {
         auto *label_constraint =
             locality_req->mutable_label_selector()->add_label_constraints();
-        label_constraint->set_label_key(label_domain_key);
+        label_constraint->set_label_key(topology_label_key);
         label_constraint->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
         label_constraint->add_label_values(it->second);
       }

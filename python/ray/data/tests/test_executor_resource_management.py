@@ -1,3 +1,5 @@
+import operator
+
 import pytest
 
 import ray
@@ -709,39 +711,41 @@ def test_execution_resources_to_resource_dict():
     }
 
 
-def test_execution_resources_init_preserves_fractional_cpu():
-    # ExecutionResources no longer quantizes inputs in __init__; the boundary
-    # (to_resource_dict) does that.
-    raw_cpu = 0.5 / 3  # 0.16666666666666666...
-    r = ExecutionResources(cpu=raw_cpu)
-    assert r._cpu == raw_cpu
-    assert r.cpu == raw_cpu
-    # to_resource_dict() quantizes for Ray Core: cpu/gpu to 5 digits.
-    assert r.to_resource_dict()["CPU"] == round(raw_cpu, 5)
+def test_execution_resources_combine_sum_empty_reuses_zero():
+    # An empty fold returns the shared zero singleton instead of allocating.
+    assert ExecutionResources.combine_sum([]) is ExecutionResources.zero()
+    # Works for a one-shot generator (can't be len()'d or re-iterated).
+    assert ExecutionResources.combine_sum(iter([])) is ExecutionResources.zero()
 
 
-def test_execution_resources_to_resource_dict_rounds_memory_to_int():
-    # Internal arithmetic can leave fractional bytes; to_resource_dict()
-    # rounds them to integer bytes for Ray Core.
-    r = ExecutionResources(memory=112.5, object_store_memory=257.5)
-    d = r.to_resource_dict()
-    # Python round() uses banker's rounding (round-half-to-even).
-    assert d["memory"] == round(112.5, 0)
-    assert d["object_store_memory"] == round(257.5, 0)
+def test_execution_resources_combine_sum():
+    rs = [
+        ExecutionResources(cpu=1, gpu=2, object_store_memory=3, memory=4),
+        ExecutionResources(cpu=10, gpu=20, object_store_memory=30, memory=40),
+    ]
+    expected = ExecutionResources(cpu=11, gpu=22, object_store_memory=33, memory=44)
+    assert ExecutionResources.combine_sum(rs) == expected
+    # Same result from a one-shot generator.
+    assert ExecutionResources.combine_sum(r for r in rs) == expected
 
 
-def test_execution_resources_is_zero_under_drift():
-    # 1M add/subtract pairs of mixed magnitudes should leave is_zero() True
-    # despite any accumulated float drift.
-    acc = ExecutionResources.zero()
-    delta = ExecutionResources(
-        cpu=1.0 / 7, gpu=1.0 / 9, memory=12345.6789, object_store_memory=98765.4321
+def test_execution_resources_combine():
+    rs = [
+        ExecutionResources(cpu=1, gpu=5, object_store_memory=3, memory=40),
+        ExecutionResources(cpu=10, gpu=2, object_store_memory=30, memory=4),
+    ]
+    # Per-dimension fold with an arbitrary float op.
+    assert ExecutionResources.combine(rs, operator.add) == ExecutionResources(
+        11, 7, 33, 44
     )
-    for _ in range(1_000_000):
-        acc = acc.add(delta).subtract(delta)
-    assert acc.is_zero()
-    assert acc == ExecutionResources.zero()
-    assert acc.is_non_negative()
+    assert ExecutionResources.combine(rs, max) == ExecutionResources(10, 5, 30, 40)
+    assert ExecutionResources.combine(rs, min) == ExecutionResources(1, 2, 3, 4)
+    # Single-pass over a one-shot generator.
+    assert ExecutionResources.combine((r for r in rs), max) == ExecutionResources(
+        10, 5, 30, 40
+    )
+    # Empty -> None (no identity to seed a general fn with).
+    assert ExecutionResources.combine([], operator.add) is None
 
 
 if __name__ == "__main__":

@@ -43,16 +43,10 @@ message PullRequest {
   repeated bytes object_ids = 2;
 }
 
-message FreeObjectsRequest {
-  repeated bytes object_ids = 1;
-}
-
 // Reply for request
 message PushReply {
 }
 message PullReply {
-}
-message FreeObjectsReply {
 }
 
 service ObjectManagerService {
@@ -62,7 +56,4 @@ service ObjectManagerService {
   // Try to pull object from remote object manager
   // Failure: Retries, it's idempotent. TODO: Failure behavior needs more tests.
   rpc Pull(PullRequest) returns (PullReply);
-  // Tell remote object manager to free some objects
-  // Failure: Retries, it's idempotent.
-  rpc FreeObjects(FreeObjectsRequest) returns (FreeObjectsReply);
 }

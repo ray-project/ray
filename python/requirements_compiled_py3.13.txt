@@ -124,6 +124,8 @@ arro3-core==0.8.0
     # via deltalake
 arrow==1.4.0
     # via isoduration
+asciitree==0.3.3
+    # via zarr
 asgiref==3.9.2
     # via
     #   -r python/requirements/py313/test-requirements.txt
@@ -422,6 +424,8 @@ cycler==0.12.1
     # via matplotlib
 cython==0.29.37
     # via -r python/requirements/py313/test-requirements.txt
+daft==0.7.15
+    # via -r python/requirements/ml/py313/data-requirements.txt
 dask==2026.3.0
     # via
     #   -r python/requirements/ml/py313/data-requirements.txt
@@ -462,6 +466,7 @@ deltalake==1.5.0
 deprecated==1.3.1
     # via
     #   deltalake
+    #   numcodecs
     #   pymoo
 dill==0.4.1
     # via
@@ -541,6 +546,7 @@ fasteners==0.20
     # via
     #   google-apitools
     #   gsutil
+    #   zarr
 fastjsonschema==2.21.2
     # via nbformat
 fastrlock==0.8.3 ; sys_platform != "darwin"
@@ -592,12 +598,12 @@ fsspec==2023.12.1
     # via
     #   -r python/requirements.txt
     #   adlfs
+    #   daft
     #   dask
     #   datasets
     #   delta-sharing
     #   etils
     #   evaluate
-    #   getdaft
     #   gradio-client
     #   huggingface-hub
     #   lightning
@@ -618,8 +624,6 @@ gast==0.7.0
     #   tensorflow-probability
 gcs-oauth2-boto-plugin==3.3
     # via gsutil
-getdaft==0.4.3
-    # via -r python/requirements/ml/py313/data-requirements.txt
 gitdb==4.0.12
     # via gitpython
 gitpython==3.1.47
@@ -1108,6 +1112,7 @@ ml-dtypes==0.5.4
     #   jax
     #   jaxlib
     #   keras
+    #   onnx
     #   onnx-ir
     #   onnxscript
     #   tensorflow
@@ -1236,6 +1241,10 @@ numba==0.61.2
     # via
     #   -r python/requirements/py313/test-requirements.txt
     #   statsforecast
+numcodecs==0.15.1 ; python_version >= "3.11"
+    # via
+    #   -r python/requirements/ml/py313/data-test-requirements.txt
+    #   zarr
 numexpr==2.14.1
     # via
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
@@ -1291,6 +1300,7 @@ numpy==2.2.6
     #   mujoco
     #   nevergrad
     #   numba
+    #   numcodecs
     #   numexpr
     #   onnx
     #   onnx-ir
@@ -1333,6 +1343,7 @@ numpy==2.2.6
     #   utilsforecast
     #   webdataset
     #   xgboost
+    #   zarr
     #   zoopt
 nvidia-nccl-cu12==2.27.5 ; platform_system == "Linux" and platform_machine != "aarch64"
     # via
@@ -1347,7 +1358,7 @@ oauthlib==3.3.1
     # via requests-oauthlib
 obstore==0.10.0
     # via -r python/requirements/ml/py313/data-test-requirements.txt
-onnx==1.16.0 ; sys_platform != "darwin" or platform_machine != "arm64"
+onnx==1.22.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   onnx-ir
@@ -1356,7 +1367,7 @@ onnx-ir==0.2.1
     # via onnxscript
 onnxruntime==1.24.4 ; (sys_platform != "darwin" or platform_machine != "arm64") and python_version > "3.10"
     # via -r python/requirements/ml/py313/rllib-test-requirements.txt
-onnxscript==0.5.7 ; sys_platform != "darwin" or platform_machine != "arm64"
+onnxscript==0.7.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r python/requirements/ml/py313/rllib-test-requirements.txt
 open-spiel==1.4
     # via -r python/requirements/ml/py313/rllib-test-requirements.txt
@@ -1459,6 +1470,7 @@ packaging==26.1
     #   aim
     #   azure-cli-core
     #   bokeh
+    #   daft
     #   dask
     #   datasets
     #   deepspeed
@@ -1683,11 +1695,11 @@ pyarrow==23.0.1
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/py313/data-test-requirements.txt
+    #   daft
     #   dask
     #   datasets
     #   delta-sharing
     #   feather-format
-    #   getdaft
     #   hudi
     #   mlflow
     #   pylance
@@ -1962,7 +1974,7 @@ pyzmq==27.1.0
     #   ipykernel
     #   jupyter-client
     #   jupyter-server
-ray-haproxy==2.8.20 ; sys_platform == "linux"
+ray-haproxy==2.8.25 ; sys_platform == "linux"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/serve/serve-test-requirements.txt
@@ -2418,12 +2430,12 @@ tqdm==4.67.1
     #   -r python/requirements/py313/test-requirements.txt
     #   aim
     #   cmdstanpy
+    #   daft
     #   datasets
     #   deepspeed
     #   dm-control
     #   etils
     #   evaluate
-    #   getdaft
     #   huggingface-hub
     #   hyperopt
     #   lightning
@@ -2496,6 +2508,7 @@ typing-extensions==4.15.0
     #   botorch
     #   cfn-lint
     #   configspace
+    #   daft
     #   etils
     #   fastapi
     #   gradio
@@ -2513,6 +2526,7 @@ typing-extensions==4.15.0
     #   mypy
     #   nevergrad
     #   obstore
+    #   onnx
     #   onnx-ir
     #   onnxscript
     #   opentelemetry-api
@@ -2683,6 +2697,8 @@ yq==3.2.2
     # via
     #   -r python/requirements/lint-requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
+zarr==2.18.7 ; python_version >= "3.11"
+    # via -r python/requirements/ml/py313/data-test-requirements.txt
 zict==3.0.0
     # via distributed
 zipp==3.23.1
