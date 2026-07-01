@@ -27,14 +27,15 @@ def find_latest_master_commit():
     origin/master is unavailable (e.g. a local checkout without that
     remote-tracking ref).
     """
-    try:
-        subprocess.check_output(
+    has_origin_master = (
+        subprocess.run(
             ["git", "rev-parse", "--verify", "origin/master"],
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-        )
-        ref = "origin/master"
-    except subprocess.CalledProcessError:
-        ref = "HEAD"
+        ).returncode
+        == 0
+    )
+    ref = "origin/master" if has_origin_master else "HEAD"
 
     latest_commits = (
         subprocess.check_output(["git", "log", "-n", "100", "--format=%H", ref])
