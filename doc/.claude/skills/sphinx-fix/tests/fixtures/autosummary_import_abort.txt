@@ -1,0 +1,17 @@
+Build: 4154865   State: Finished   Success: False   Duration: 113s
+Failing command: python -m sphinx -T -W --keep-going -j auto -b html -d _build/doctrees -D language=en . $READTHEDOCS_OUTPUT/html
+Exit code: 1
+
+Running Sphinx v8.2.3
+[autosummary] generating autosummary for: data/api/loading_data.rst, train/api/doc/ray.train.Trainer.rst
+
+Extension error (sphinx.ext.autosummary)!
+
+Traceback
+=========
+
+    sphinx.ext.autosummary.ImportExceptionGroup: no module named ray.air.integrations.comet.CometLoggerCallback
+
+    sphinx.ext.autosummary.ImportExceptionGroup: no module named ray.air.integrations.comet
+
+    sphinx.errors.ExtensionError: Handler <function process_generate_options at 0x7f00> for event 'builder-inited' threw an exception (exception: no module named ray.air.integrations.comet)
