@@ -265,7 +265,9 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
             f"{decode_cls.__name__}=ingress, LLMRouter=ingress_request_router"
         )
         return decode_deployment._with_ingress_request_router(
-            _build_openai_ingress_request_router(server=decode_deployment)
+            _build_openai_ingress_request_router(
+                server=decode_deployment, llm_config=pd_config.decode_config
+            )
         )
 
     decode_builder = build_dp_deployment if decode_dp_size > 1 else build_llm_deployment

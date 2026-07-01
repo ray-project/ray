@@ -1,7 +1,9 @@
+import functools
 import math
+import operator
 import os
 import warnings
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 
 from .common import NodeIdStr
 from ray.data._internal.execution.util import memory_string
@@ -14,6 +16,12 @@ class ExecutionResources:
     By default this class represents resource usage. Use `for_limits` or
     set `default_to_inf` to True to create an object that represents resource limits.
     """
+
+    # ``__slots__`` keeps instances small and makes attribute access go through
+    # slot descriptors instead of a per-instance ``__dict__``. The scheduler
+    # constructs many of these per iteration (every ``add``/``subtract``/
+    # ``max``/``copy`` returns a new object), so this is a hot-path win.
+    __slots__ = ("_cpu", "_gpu", "_object_store_memory", "_memory")
 
     def __init__(
         self,
@@ -128,14 +136,74 @@ class ExecutionResources:
         )
 
     @classmethod
+    @functools.cache
     def zero(cls) -> "ExecutionResources":
-        """Returns an ExecutionResources object with zero resources."""
+        """Returns an ExecutionResources object with zero resources.
+
+        Returns a cached, shared singleton (``functools.cache`` keyed on ``cls``)
+        -- ``zero()`` is called all over the scheduler hot path (e.g.
+        ``.max(zero())``) and instances are immutable in practice (every
+        arithmetic op returns a new object and there are no setters), so sharing
+        one instance is safe and avoids the per-call allocation.
+        """
         return ExecutionResources(0.0, 0.0, 0.0, 0.0)
 
     @classmethod
+    @functools.cache
     def inf(cls) -> "ExecutionResources":
-        """Returns an ExecutionResources object with infinite resources."""
+        """Returns an ExecutionResources object with infinite resources.
+
+        Returns a cached, shared singleton (see :meth:`zero` for why this is
+        safe).
+        """
         return ExecutionResources.for_limits()
+
+    @classmethod
+    def combine(
+        cls,
+        resources: Iterable["ExecutionResources"],
+        fn: Callable[[float, float], float],
+    ) -> Optional["ExecutionResources"]:
+        """Fold an iterable of ``ExecutionResources`` per dimension with ``fn``.
+
+        ``fn(acc, value)`` combines two per-dimension floats -- e.g.
+        ``operator.add`` for a sum, or ``max``/``min`` for an element-wise
+        max/min. Accumulates raw floats in a single pass and allocates a single
+        result object, instead of one intermediate per element as
+        ``reduce(lambda a, b: a.<op>(b), resources)`` would.
+
+        Seeds with the first element (so no per-``fn`` identity is needed) and
+        returns ``None`` for an empty iterable, which may be a one-shot
+        generator (so it's consumed exactly once).
+        """
+        iterator = iter(resources)
+        first = next(iterator, None)
+        if first is None:
+            return None
+        cpu = first.cpu
+        gpu = first.gpu
+        object_store_memory = first.object_store_memory
+        memory = first.memory
+        for r in iterator:
+            cpu = fn(cpu, r.cpu)
+            gpu = fn(gpu, r.gpu)
+            object_store_memory = fn(object_store_memory, r.object_store_memory)
+            memory = fn(memory, r.memory)
+        return ExecutionResources(cpu, gpu, object_store_memory, memory)
+
+    @classmethod
+    def combine_sum(
+        cls, resources: Iterable["ExecutionResources"]
+    ) -> "ExecutionResources":
+        """Sum an iterable of ``ExecutionResources`` in a single pass.
+
+        Thin wrapper over :meth:`combine` with addition. Empty folds are common
+        (e.g. completed-ops / downstream-ineligible usage rollups on most
+        iterations), so an empty input reuses the shared ``zero()`` singleton
+        instead of allocating.
+        """
+        result = cls.combine(resources, operator.add)
+        return result if result is not None else cls.zero()
 
     def is_zero(self) -> bool:
         """Returns True if all resources are zero."""
