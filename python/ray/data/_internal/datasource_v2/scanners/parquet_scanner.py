@@ -33,6 +33,7 @@ class ParquetScanner(ArrowFileScanner):
     target_block_size: Optional[int] = None
     include_paths: bool = False
     include_row_hash: bool = False
+    path_column: Optional[str] = None
     # Extra kwargs forwarded to ``pds.ParquetFileFormat(**kwargs)`` inside
     # the per-task ``ParquetFileReader`` (e.g. ``coerce_int96_timestamp_unit``,
     # ``pre_buffer``, ``dictionary_columns``). Carries the deprecated
@@ -50,8 +51,13 @@ class ParquetScanner(ArrowFileScanner):
         only append when no projection is active or when it survives.
         """
         schema = super().read_schema()
+        path_col = (
+            self.path_column
+            if self.path_column is not None
+            else INCLUDE_PATHS_COLUMN_NAME
+        )
         synthesized = (
-            (self.include_paths, INCLUDE_PATHS_COLUMN_NAME, pa.string()),
+            (self.include_paths, path_col, pa.string()),
             (self.include_row_hash, ROW_HASH_COLUMN_NAME, pa.uint64()),
         )
         for enabled, name, dtype in synthesized:
@@ -83,6 +89,7 @@ class ParquetScanner(ArrowFileScanner):
             target_block_size=self.target_block_size,
             include_paths=self.include_paths,
             include_row_hash=self.include_row_hash,
+            path_column=self.path_column,
             schema=self.schema,
             parquet_format_kwargs=dict(self.parquet_format_kwargs),
         )

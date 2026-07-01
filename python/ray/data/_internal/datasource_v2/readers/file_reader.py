@@ -77,6 +77,7 @@ class FileReader(Reader[FileManifest]):
         ignore_prefixes: Optional[List[str]] = None,
         include_paths: bool = False,
         include_row_hash: bool = False,
+        path_column: Optional[str] = None,
         schema: Optional[pa.Schema] = None,
     ):
         """Initialize the reader.
@@ -95,13 +96,16 @@ class FileReader(Reader[FileManifest]):
                 batch is read, producing string-typed columns (V1 parity).
             ignore_prefixes: Prefixes to ignore when reading files. Default is ['.', '_'] set by PyArrow.
             include_paths: If True, include the source file path in a
-                ``'path'`` column for each row.
+                ``'path'`` column (or the column specified by ``path_column``)
+                for each row.
             include_row_hash: If True, include a deterministic uint64 hash
                 per row in a ``'row_hash'`` column. The hash is derived from
                 the source file path and the row's post-filter output
                 position within the fragment, matching V1 semantics. If a
                 ``'row_hash'`` column already exists in the file, it is
                 overwritten.
+            path_column: The name of the column to store file paths when
+                ``include_paths`` is True. Defaults to ``'path'``.
             schema: Caller-supplied unified schema used both to override
                 pyarrow's per-fragment inference (so a file whose column
                 is all-null doesn't pin the type to ``null``) and to cast
@@ -121,6 +125,7 @@ class FileReader(Reader[FileManifest]):
         self._ignore_prefixes = ignore_prefixes
         self._include_paths = include_paths
         self._include_row_hash = include_row_hash
+        self._path_column = path_column
         self._schema = schema
 
     @cached_property
@@ -156,7 +161,12 @@ class FileReader(Reader[FileManifest]):
             if self._partition_parser is not None
             else set()
         )
-        synthesized = {INCLUDE_PATHS_COLUMN_NAME}
+        path_col = (
+            self._path_column
+            if self._path_column is not None
+            else INCLUDE_PATHS_COLUMN_NAME
+        )
+        synthesized = {path_col}
         if self._include_row_hash:
             # ``row_hash`` is synthesized post-read, and the schema's type
             # (``uint64``) may not match the on-disk column's type when a
@@ -263,12 +273,17 @@ class FileReader(Reader[FileManifest]):
                     table = table.slice(0, self._limit - rows_read)
 
             # Build the list of (name, value) pairs to synthesize from
-            # the fragment path: hive partitions + optional ``path``.
+            # the fragment path: hive partitions + optional path column.
             derived_items: List[Tuple[str, Any]] = []
             if self._partition_parser is not None:
                 derived_items.extend(self._partition_parser(fragment_path).items())
             if self._include_paths:
-                derived_items.append((INCLUDE_PATHS_COLUMN_NAME, fragment_path))
+                path_col = (
+                    self._path_column
+                    if self._path_column is not None
+                    else INCLUDE_PATHS_COLUMN_NAME
+                )
+                derived_items.append((path_col, fragment_path))
 
             for name, value in derived_items:
                 if (

@@ -393,6 +393,7 @@ class ParquetDatasource(Datasource):
         shuffle: "FileShuffleConfig" | Literal["files"] | None = None,
         include_paths: bool = False,
         include_row_hash: bool = False,
+        path_column: Optional[str] = None,
         file_extensions: Optional[List[str]] = None,
     ):
         super().__init__()
@@ -536,6 +537,7 @@ class ParquetDatasource(Datasource):
             shuffle=shuffle,
             include_paths=include_paths,
             include_row_hash=include_row_hash,
+            path_column=path_column,
         )
 
     def _init_state(
@@ -559,6 +561,7 @@ class ParquetDatasource(Datasource):
         shuffle: Union["FileShuffleConfig", Literal["files"], None],
         include_paths: bool,
         include_row_hash: bool = False,
+        path_column: Optional[str] = None,
     ):
         """Shared initialization for all instance state and sampling estimates.
 
@@ -592,6 +595,8 @@ class ParquetDatasource(Datasource):
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
         self._include_row_hash = include_row_hash
+        # Normalize path_column to default value 'path' if not specified
+        self._path_column = path_column if path_column is not None else "path"
         self._partitioning = partitioning
         _validate_shuffle_arg(shuffle)
         self._shuffle = shuffle
@@ -651,6 +656,7 @@ class ParquetDatasource(Datasource):
         shuffle: "FileShuffleConfig" | Literal["files"] | None = None,
         include_paths: bool = False,
         include_row_hash: bool = False,
+        path_column: Optional[str] = None,
     ) -> "ParquetDatasource":
         """Create a ParquetDatasource from a pre-built PyArrow dataset.
 
@@ -711,14 +717,15 @@ class ParquetDatasource(Datasource):
             partition_columns_selected=False,
             partition_schema=pa.schema([]),
             partitioning=None,
-            projection_map={col: col for col in columns}
-            if columns is not None
-            else None,
+            projection_map=(
+                {col: col for col in columns} if columns is not None else None
+            ),
             to_batch_kwargs=to_batch_kwargs,
             _block_udf=_block_udf,
             shuffle=shuffle,
             include_paths=include_paths,
             include_row_hash=include_row_hash,
+            path_column=path_column,
         )
 
     @property
@@ -797,6 +804,7 @@ class ParquetDatasource(Datasource):
             _block_udf=self._block_udf,
             include_paths=self._include_paths,
             include_row_hash=self._include_row_hash,
+            path_column=self._path_column,
         )
 
         read_tasks = []
@@ -831,6 +839,7 @@ class ParquetDatasource(Datasource):
                 read_schema,
                 include_paths,
                 include_row_hash,
+                path_column,
                 partitioning,
             ) = (
                 self._block_udf,
@@ -840,6 +849,7 @@ class ParquetDatasource(Datasource):
                 self._read_schema,
                 self._include_paths,
                 self._include_row_hash,
+                self._path_column,
                 self._partitioning,
             )
 
@@ -859,6 +869,7 @@ class ParquetDatasource(Datasource):
                         filter_expr,
                         filter_columns,
                         allow_pickle,
+                        path_column,
                     ),
                     meta,
                     schema=target_schema,
@@ -898,8 +909,8 @@ class ParquetDatasource(Datasource):
             # If include_paths is True, make sure to include the path column in the projection
             # NOTE: When result is None (no projection), the path column is already added
             #       via _derive_schema, so we only need to add it when there is a projection.
-            if self._include_paths and "path" not in result:
-                result = result + ["path"]
+            if self._include_paths and self._path_column not in result:
+                result = result + [self._path_column]
             if self._include_row_hash and "row_hash" not in result:
                 result = result + ["row_hash"]
 
@@ -965,7 +976,7 @@ class ParquetDatasource(Datasource):
         # added after reading from the file
         cols_to_filter = set(partition_cols)
         if self._include_paths:
-            cols_to_filter.add("path")
+            cols_to_filter.add(self._path_column)
         if self._include_row_hash:
             cols_to_filter.add("row_hash")
         data_cols = [
@@ -1056,6 +1067,7 @@ class ParquetDatasource(Datasource):
         _block_udf,
         include_paths: bool = False,
         include_row_hash: bool = False,
+        path_column: Optional[str] = None,
     ) -> "pyarrow.Schema":
         """Derives target schema for read operation"""
 
@@ -1085,9 +1097,13 @@ class ParquetDatasource(Datasource):
                 metadata=file_schema.metadata,
             )
 
-        # Add path column if include_paths is True and path column is not already present
-        if include_paths and target_schema.get_field_index("path") == -1:
-            target_schema = target_schema.append(pa.field("path", pa.string()))
+        # Add path column if include_paths is True
+        # Use custom path_column name if provided, otherwise default to "path"
+        if include_paths:
+            path_col = path_column if path_column is not None else "path"
+            # Only add the path column if it doesn't already exist in the schema
+            if target_schema.get_field_index(path_col) == -1:
+                target_schema = target_schema.append(pa.field(path_col, pa.string()))
 
         if include_row_hash:
             idx = target_schema.get_field_index("row_hash")
@@ -1157,6 +1173,7 @@ def read_fragments(
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
     filter_columns: Optional[List[str]] = None,
     allow_pickle: bool = False,
+    path_column: Optional[str] = None,
 ) -> Iterator["pyarrow.Table"]:
     """Yield Arrow tables from Parquet fragments via ``to_batches_kwargs``."""
     # This import is necessary to load the tensor extension type.
@@ -1179,6 +1196,7 @@ def read_fragments(
                 partitioning=partitioning,
                 include_path=include_paths,
                 include_row_hash=include_row_hash,
+                path_column=path_column,
                 filter_expr=filter_expr,
                 filter_columns=filter_columns,
                 to_batches_kwargs=to_batches_kwargs,
@@ -1544,6 +1562,7 @@ def _read_batches_from(
     filter_columns: Optional[List[str]] = None,
     include_path: bool = False,
     include_row_hash: bool = False,
+    path_column: Optional[str] = None,
     use_threads: bool = False,
     to_batches_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Iterable["pyarrow.Table"]:
@@ -1552,6 +1571,7 @@ def _read_batches_from(
     Row batching is controlled via ``to_batches_kwargs["batch_size"]`` (when
     present), which is coerced to values PyArrow accepts as a C ``int``.
     """
+    path_column = path_column or "path"
 
     import pyarrow as pa
 
@@ -1593,7 +1613,7 @@ def _read_batches_from(
 
             if include_path:
                 table = ArrowBlockAccessor.for_block(table).fill_column(
-                    "path", fragment.path
+                    path_column, fragment.path
                 )
 
             # ``ParquetFileFragment.to_batches`` returns ``RecordBatch``,

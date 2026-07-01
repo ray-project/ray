@@ -76,6 +76,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         ignore_missing_paths: bool = False,
         include_paths: bool = False,
         include_row_hash: bool = False,
+        path_column: Optional[str] = None,
         shuffle: Optional[Union[Literal["files"], "FileShuffleConfig"]] = None,
         arrow_parquet_args: Optional[dict] = None,
         schema: Optional[pa.Schema] = None,
@@ -100,6 +101,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         self._ignore_missing_paths = ignore_missing_paths
         self._include_paths = include_paths
         self._include_row_hash = include_row_hash
+        self._path_column = path_column
         self._shuffle = shuffle
         self._arrow_parquet_args = arrow_parquet_args or {}
         # ``pds.ParquetFileFormat`` kwargs forwarded from the deprecated
@@ -143,6 +145,10 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
     @property
     def include_paths(self) -> bool:
         return self._include_paths
+
+    @property
+    def path_column(self) -> Optional[str]:
+        return self._path_column
 
     @property
     def shuffle(self) -> Optional[Union[Literal["files"], "FileShuffleConfig"]]:
@@ -266,11 +272,13 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
                     pa_type = partition_pa_schema.field(field_name).type
                     schema = schema.append(pa.field(field_name, pa_type))
 
-        if (
-            self._include_paths
-            and schema.get_field_index(INCLUDE_PATHS_COLUMN_NAME) == -1
-        ):
-            schema = schema.append(pa.field(INCLUDE_PATHS_COLUMN_NAME, pa.string()))
+        path_col = (
+            self._path_column
+            if self._path_column is not None
+            else INCLUDE_PATHS_COLUMN_NAME
+        )
+        if self._include_paths and schema.get_field_index(path_col) == -1:
+            schema = schema.append(pa.field(path_col, pa.string()))
 
         if self._include_row_hash:
             # ``row_hash`` is synthesized post-read as ``uint64``. Replace
@@ -302,6 +310,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
             partitioning=partitioning,
             include_paths=self._include_paths,
             include_row_hash=self._include_row_hash,
+            path_column=self._path_column,
             shuffle=self._shuffle,
             ignore_prefixes=options.get("ignore_prefixes"),
             target_block_size=DataContext.get_current().target_max_block_size,
