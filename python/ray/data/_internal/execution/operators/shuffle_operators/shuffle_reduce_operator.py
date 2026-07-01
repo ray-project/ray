@@ -48,14 +48,8 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         data_context: Runtime configuration.
         num_partitions: Total number of output partitions.  Must match the
             value used by the paired `ShuffleMapOp`.
-        reduce_fn: Function called once per partition (in blocking mode)
-            or incrementally (in streaming mode) to combine input shards
-            into output blocks.
-        streaming_reduce: If True, `reduce_fn` is called whenever a
-            partition's accumulator reaches `target_max_block_size`.  If
-            False, wait for all shards before calling once (required for
-            sort or stateful aggregation).  Forced to False when
-            `disallow_block_splitting=True`.
+        reduce_fn: Function called once per partition, with the full shard
+            list, to combine input shards into output blocks.
         disallow_block_splitting: If True, output blocks are emitted as-is
             without being reshaped to `target_max_block_size` — required
             for hash-shuffle's "partition = block" contract.
@@ -80,7 +74,6 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         *,
         num_partitions: int,
         reduce_fn: ReduceFn,
-        streaming_reduce: bool = True,
         disallow_block_splitting: bool = False,
         reduce_cpus: Optional[float] = None,
         name: str = "ShuffleReduce",
@@ -97,9 +90,6 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         self._num_partitions: int = num_partitions
         self._reduce_fn: ReduceFn = reduce_fn
         self._disallow_block_splitting: bool = disallow_block_splitting
-        # Block-splitting disallowed → reducer must see entire partition
-        # before emitting, so force blocking mode regardless of the flag.
-        self._streaming_reduce: bool = streaming_reduce and not disallow_block_splitting
 
         # -- Reduce task config & tracking -----------------------------------
         self._shuffle_reduce_task_num_cpus: float = (
@@ -190,7 +180,6 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             partition_id,
             self._reduce_fn,
             target_max_block_size,
-            self._streaming_reduce,
             self.data_context.hash_shuffle_reduce_batch_size,
             self.data_context.hash_shuffle_reduce_get_timeout_s,
             self._fused_output_map_transformer,
