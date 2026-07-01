@@ -1095,7 +1095,7 @@ ml-dtypes==0.3.2
     #   onnx-ir
     #   onnxscript
     #   tensorflow
-mlflow==3.1.4
+mlflow==3.11.1
     # via
     #   -r python/requirements/ml/core-requirements.txt
     #   -r python/requirements/test-requirements.txt
