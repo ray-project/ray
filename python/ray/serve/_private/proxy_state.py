@@ -598,6 +598,7 @@ class ProxyStateManager:
         cluster_node_info_cache: ClusterNodeInfoCache,
         logging_config: LoggingConfig,
         grpc_options: Optional[gRPCOptions] = None,
+        proxy_location: Optional[ProxyLocation] = None,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
         actor_proxy_wrapper_class: Type[ProxyWrapper] = ActorProxyWrapper,
         timer: TimerBase = Timer(),
@@ -606,6 +607,7 @@ class ProxyStateManager:
         self.logging_config = logging_config
         self._http_options = http_options or HTTPOptions()
         self._grpc_options = grpc_options or gRPCOptions()
+        self._proxy_location = proxy_location
         self._proxy_states: Dict[NodeId, ProxyState] = dict()
         self._proxy_restart_counts: Dict[NodeId, int] = dict()
         self._head_node_id: str = head_node_id
@@ -657,6 +659,19 @@ class ProxyStateManager:
 
     def get_grpc_config(self) -> gRPCOptions:
         return self._grpc_options
+
+    def _resolved_proxy_location(self) -> ProxyLocation:
+        # `location` on HTTPOptions is a deprecated override; `proxy_location`
+        # is the authority. Default to EveryNode when neither is set.
+        location = self._http_options.location
+        if location is None:
+            location = self._proxy_location
+        if location is None:
+            location = ProxyLocation.EveryNode
+        return location
+
+    def get_proxy_location(self) -> ProxyLocation:
+        return self._resolved_proxy_location()
 
     def get_proxy_handles(self) -> Dict[str, ActorHandle]:
         handles = {
@@ -786,7 +801,7 @@ class ProxyStateManager:
     def _get_target_nodes(self, proxy_nodes) -> List[Tuple[str, str, str]]:
         """Return the list of (node_id, ip_address) to deploy HTTP and gRPC servers
         on."""
-        location = self._http_options.location
+        location = self._resolved_proxy_location()
 
         if location == ProxyLocation.Disabled:
             return []

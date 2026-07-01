@@ -821,9 +821,12 @@ class HTTPOptions(BaseModel):
 
         - "HeadOnly": start one HTTP server on the head node. Serve
           assumes the head node is the node you executed serve.start
-          on. This is the default.
+          on.
         - "EveryNode": start one HTTP server per node.
         - "Disabled": disable HTTP server.
+
+      This field defaults to None; Serve uses `proxy_location` when location
+      is unset. If `host` is None, Serve disables proxy startup.
 
     - num_cpus: [DEPRECATED] The number of CPU cores to reserve for each
       internal Serve HTTP proxy actor. Passing a non-zero value raises an
@@ -833,7 +836,7 @@ class HTTPOptions(BaseModel):
     host: Optional[str] = DEFAULT_HTTP_HOST or get_localhost_ip()
     port: int = DEFAULT_HTTP_PORT
     middlewares: List[Any] = []
-    location: Optional[ProxyLocation] = ProxyLocation.HeadOnly
+    location: Optional[ProxyLocation] = None
     num_cpus: int = 0
     root_url: str = ""
     root_path: str = ""
@@ -849,11 +852,18 @@ class HTTPOptions(BaseModel):
     @field_validator("location", mode="before")
     @classmethod
     def normalize_location(cls, v):
+        warnings.warn(
+            "`location` in HTTPOptions is deprecated and will be removed in a "
+            "future version. Use the `proxy_location` argument to `serve.start` "
+            "or the top-level `proxy_location` field in the Serve config instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return ProxyLocation._normalize(v)
 
     @model_validator(mode="after")
     def location_backfill_no_server(self):
-        if self.host is None or self.location is None:
+        if self.host is None:
             # Use object.__setattr__ since the model may have frozen=True behavior
             object.__setattr__(self, "location", ProxyLocation.Disabled)
         return self
