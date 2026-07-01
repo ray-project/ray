@@ -1,28 +1,70 @@
-"""
-Multi-agent RLlib Footsies Example (PPO)
+"""Example showing how to train PPO with self-play on a two-player fighting game.
 
-About:
-    - Example is based on the Footsies environment (https://github.com/chasemcd/FootsiesGym).
-    - Footsies is a two-player fighting game where each player controls a character and tries to hit the opponent while avoiding being hit.
-    - Footsies is a zero-sum game, when one player wins (+1 reward) the other loses (-1 reward).
+This example demonstrates multi-agent reinforcement learning with self-play using
+the Footsies environment (https://github.com/chasemcd/FootsiesGym). Footsies is
+a zero-sum two-player fighting game where agents learn to hit opponents while
+avoiding being hit. The training uses curriculum learning with progressively
+stronger opponents.
 
-Summary:
-    - Main policy is an LSTM-based policy.
-    - Training algorithm is PPO.
+This example:
+- Trains on the Footsies two-player fighting game environment
+- Uses an LSTM-based policy network for temporal reasoning
+- Implements self-play with curriculum learning (opponents get harder over time)
+- Starts with simple fixed opponents (noop, back) then adds frozen policy copies
+- Uses custom callbacks (MetricsLoggerCallback, MixManagerCallback) for opponent
+  management
+- Expects to reach target mix size of 5 opponents within 5 million timesteps
 
-Training:
-    - Training is governed by adding new, more complex opponents to the mix as the main policy reaches a certain win rate threshold against the current opponent.
-    - Current opponent is always the newest opponent added to the mix.
-    - Training starts with a very simple opponent: "noop" (does nothing), then progresses to "back" (only moves backwards). These are the fixed (very simple) policies that are used to kick off the training.
-    - After "random", new opponents are frozen copies of the main policy at different training stages. They will be added to the mix as "lstm_v0", "lstm_v1", etc.
-    - In this way - after kick-starting the training with fixed simple opponents - the main policy will play against a version of itself from an earlier training stage.
-    - The main policy has to achieve the win rate threshold against the current opponent to add a new opponent to the mix.
-    - Training concludes when the target mix size is reached.
+Training progression:
+- Training starts against the "noop" fixed opponent, then adds "back" as part of the curriculum
+- When main policy achieves win rate threshold (default 80%) against current
+  opponent, a new frozen copy of the main policy is added to the opponent mix
+- Training concludes when the target mix size is reached
 
-Evaluation:
-    - Evaluation is performed against the current (newest) opponent.
-    - Evaluation runs for a fixed number of episodes at the end of each training iteration.
+Evaluation process:
+- Evaluation runs after every training iteration (not in parallel with training)
+- Each evaluation plays 10 episodes to estimate the main policy's win rate
+- The MixManagerCallback checks the win rate after evaluation to decide whether
+  to add a new opponent to the mix
+- Evaluation must complete before training resumes because new RLModules may be
+  added to the mix based on evaluation results
 
+How to run this script
+----------------------
+`python multi_agent_footsies_ppo.py`
+
+Key command-line options:
+- `--win-rate-threshold=0.8`: Win rate needed to advance to next opponent
+- `--target-mix-size=5`: Number of opponent policies to add before stopping
+- `--render`: Enable game rendering (uses windowed binary instead of headless)
+- `--train-start-port=45001`: Starting port for training environment servers
+- `--eval-start-port=55001`: Starting port for evaluation environment servers
+
+To run with different configuration:
+`python multi_agent_footsies_ppo.py --win-rate-threshold=0.7 --target-mix-size=4`
+
+To scale up with distributed learning using multiple learners and env-runners:
+`python multi_agent_footsies_ppo.py --num-learners=2 --num-env-runners=8`
+
+To use a GPU-based learner add the number of GPUs per learners:
+`python multi_agent_footsies_ppo.py --num-learners=1 --num-gpus-per-learner=1`
+
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0 --evaluation-num-env-runners=0 --num-learners=0`
+which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+ --wandb-run-name=[optional: WandB run name (within the defined project)]`
+
+Results to expect
+-----------------
+With the default settings, the main policy should progressively defeat each
+opponent (noop, back, then frozen copies of itself) and reach a mix size of 5
+within 5 million environment timesteps. Success is determined by reaching the
+target mix size, indicating the policy learned to beat increasingly skilled
+opponents.
 """
 import functools
 from pathlib import Path
@@ -173,9 +215,9 @@ config = (
         train_batch_size_per_learner=args.rollout_fragment_length
         * (args.num_env_runners or 1),
         lr=1e-4,
-        entropy_coeff=0.01,
+        entropy_coeff=0.025,
         num_epochs=10,
-        minibatch_size=128,
+        minibatch_size=256,
     )
     .multi_agent(
         policies={
@@ -258,7 +300,5 @@ if __name__ == "__main__":
         base_config=config,
         args=args,
         stop=stop,
-        success_metric={
-            "mix_size": args.target_mix_size
-        },  # pass the success metric for RLlib's testing framework
+        success_metric={"mix_size": args.target_mix_size},
     )
