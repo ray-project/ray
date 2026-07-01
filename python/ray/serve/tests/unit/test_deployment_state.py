@@ -2897,6 +2897,74 @@ def _get_deployment_actor_wrapper(
     return wrapper
 
 
+def test_get_deployment_actors_configs_handles_legacy_deployment_config():
+    """Regression: recovery from a checkpoint predating ``deployment_actors``
+    must not crash.
+
+    ``_get_deployment_actors_configs`` is invoked during ``ServeController``
+    recovery from a GCS-FT checkpoint. A ``DeploymentConfig`` cloudpickled by a
+    Ray version before the ``deployment_actors`` field existed deserializes
+    without that attribute; reading it raised ``AttributeError`` from pydantic's
+    ``__getattr__`` and propagated out of ``ServeController.__init__``, causing
+    repeated ``ActorDiedError`` on every restart and wedging recovery.
+    ``DeploymentConfig.__setstate__`` (via ``_ForwardCompatModel``) now backfills
+    missing fields with their defaults, so the helper returns ``[]`` instead of
+    raising.
+    """
+    from types import SimpleNamespace
+
+    # Simulate a DeploymentConfig restored from a checkpoint written before the
+    # ``deployment_actors`` field existed: drop it from the pickled state and let
+    # __setstate__ backfill it to the default.
+    config = DeploymentConfig(num_replicas=1)
+    state = config.__getstate__()
+    state["__dict__"].pop("deployment_actors", None)
+    legacy_config = DeploymentConfig.__new__(DeploymentConfig)
+    legacy_config.__setstate__(state)
+    assert legacy_config.deployment_actors is None
+
+    legacy_version = SimpleNamespace(deployment_config=legacy_config)
+    # ``self`` is not used when ``version`` is provided explicitly.
+    self_stub = SimpleNamespace(_target_state=None)
+
+    result = DeploymentState._get_deployment_actors_configs(
+        self_stub, version=legacy_version
+    )
+    assert result == []
+
+
+def test_get_deployment_actors_configs_returns_field_when_present():
+    """Sanity: when the field is present on the config, it is returned as-is."""
+    from types import SimpleNamespace
+
+    expected = _deployment_actors_config()
+    fake_config = SimpleNamespace(deployment_actors=expected)
+    fake_version = SimpleNamespace(deployment_config=fake_config)
+    self_stub = SimpleNamespace(_target_state=None)
+
+    result = DeploymentState._get_deployment_actors_configs(
+        self_stub, version=fake_version
+    )
+    assert result == expected
+
+
+def test_get_deployment_actors_configs_returns_empty_for_falsy_field():
+    """Sanity: ``None`` or empty list on the field still maps to ``[]``."""
+    from types import SimpleNamespace
+
+    self_stub = SimpleNamespace(_target_state=None)
+
+    for falsy in (None, []):
+        fake_config = SimpleNamespace(deployment_actors=falsy)
+        fake_version = SimpleNamespace(deployment_config=fake_config)
+        assert (
+            DeploymentState._get_deployment_actors_configs(
+                self_stub, version=fake_version
+            )
+            == []
+        )
+
+
 class TestDeploymentActors:
     """Deployment actor tests using setter methods on wrapper instances."""
 

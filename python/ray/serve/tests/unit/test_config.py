@@ -26,6 +26,7 @@ from ray.serve._private.utils import DEFAULT
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.config import (
     AutoscalingConfig,
+    AutoscalingPolicy,
     ControllerOptions,
     DeploymentActorConfig,
     GangPlacementStrategy,
@@ -34,6 +35,7 @@ from ray.serve.config import (
     HTTPOptions,
     ProxyLocation,
     RequestRouterConfig,
+    _ForwardCompatModel,
     gRPCOptions,
 )
 from ray.serve.generated.serve_pb2 import (
@@ -451,6 +453,28 @@ class TestDeploymentConfig:
         underlying = resolved.__ray_actor_class__
         instance = underlying()
         assert instance.ping() == "pong"
+
+    def test_setstate_backfills_fields_missing_from_legacy_checkpoint(self):
+        # Checkpoints cloudpickle live DeploymentConfig instances. A checkpoint
+        # written before a field existed restores without that field, so
+        # __setstate__ must backfill it from the default; otherwise the first
+        # access raises AttributeError (e.g. during ServeController recovery or
+        # to_proto).
+        config = DeploymentConfig(num_replicas=2)
+
+        state = config.__getstate__()
+        # Simulate a checkpoint written before `deployment_actors` was added.
+        state["__dict__"].pop("deployment_actors", None)
+
+        restored = DeploymentConfig.__new__(DeploymentConfig)
+        restored.__setstate__(state)
+
+        # Missing field is backfilled to its default instead of being absent.
+        assert restored.deployment_actors is None
+        # Existing fields are preserved.
+        assert restored.num_replicas == 2
+        # Downstream read sites that access the field no longer crash.
+        restored.to_proto()
 
 
 class TestReplicaConfig:
@@ -1670,6 +1694,43 @@ class TestProtoToDict:
 
         # Optional field should not be filled.
         assert "initial_replicas" not in result
+
+
+@pytest.mark.parametrize(
+    "model_cls",
+    [
+        DeploymentConfig,
+        AutoscalingConfig,
+        AutoscalingPolicy,
+        RequestRouterConfig,
+        GangSchedulingConfig,
+        DeploymentActorConfig,
+    ],
+)
+def test_config_models_backfill_fields_missing_from_legacy_checkpoint(model_cls):
+    """Config models cloudpickled into Serve checkpoints must backfill fields
+    added after a checkpoint was written, so ServeController recovery from an
+    older checkpoint does not crash with AttributeError (see _ForwardCompatModel).
+    """
+    assert issubclass(model_cls, _ForwardCompatModel)
+
+    instance = model_cls.model_construct()
+    state = instance.__getstate__()
+    defaulted = [
+        name
+        for name, field in model_cls.model_fields.items()
+        if not field.is_required() and name in state["__dict__"]
+    ]
+    assert defaulted, f"{model_cls.__name__} has no defaulted field to exercise"
+    field_name = defaulted[0]
+    expected = model_cls.model_fields[field_name].get_default(call_default_factory=True)
+
+    # Simulate a checkpoint written before `field_name` existed on the model.
+    state["__dict__"].pop(field_name)
+    restored = model_cls.__new__(model_cls)
+    restored.__setstate__(state)
+
+    assert getattr(restored, field_name) == expected
 
 
 if __name__ == "__main__":
