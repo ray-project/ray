@@ -36,7 +36,12 @@ CHECKPOINT_RECOVERY_MAX_BACKOFF_S = int(
 
 
 def _numpy_size(array: np.ndarray) -> int:
-    """Calculate the size of a numpy ndarray."""
+    """Calculate the size of a numpy ndarray.
+
+    For object-dtype arrays larger than the sample threshold, elements are
+    sampled uniformly across the array so that the estimate's accuracy
+    does not depend on the input ordering.
+    """
     total_size = array.nbytes
     if array.dtype == object:
         sample_count = 10**4
@@ -45,8 +50,10 @@ def _numpy_size(array: np.ndarray) -> int:
             for item in array.flat:
                 total_size += sys.getsizeof(item)
         else:
+            indices = np.linspace(0, len(array) - 1, sample_count, dtype=int)
+            sample = array[indices]
             sample_total_size = 0
-            for item in array[:sample_count].flat:
+            for item in sample.flat:
                 sample_total_size += sys.getsizeof(item)
             total_size += int(sample_total_size / sample_count * len(array))
     return total_size
