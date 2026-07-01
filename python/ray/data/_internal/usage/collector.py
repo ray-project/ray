@@ -14,7 +14,7 @@ import time
 from collections import OrderedDict
 from dataclasses import asdict, dataclass, field
 from functools import cache
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple
 
 import ray
 from ray._common.usage.usage_lib import (
@@ -125,14 +125,51 @@ def _usage_collection_disabled() -> bool:
     return not usage_stats_enabled() or os.environ.get("RAY_DATA_USAGE_DISABLED") == "1"
 
 
+def _cluster_spilled_bytes() -> Optional[int]:
+    """Cluster-wide cumulative spilled bytes from Ray core's store_stats.
+
+    Returns None on any failure — usage collection must never break execution.
+    """
+    if not ray.is_initialized():
+        return None
+    try:
+        reply = get_memory_info_reply(
+            get_state_from_address(ray.get_runtime_context().gcs_address),
+            timeout_seconds=10.0,
+        )
+        return int(reply.store_stats.spilled_bytes_total)
+    except Exception:
+        logger.debug("Failed to read cluster spilled bytes", exc_info=True)
+        return None
+
+
+def _cluster_dead_node_count() -> Optional[int]:
+    """Number of dead nodes in the GCS node table.
+
+    Reads via ``ray.nodes()``. Returns None on any failure.
+    """
+    if not ray.is_initialized():
+        return None
+    try:
+        return sum(1 for node in ray.nodes() if not node["Alive"])
+    except Exception:
+        logger.debug("Failed to read cluster dead node count", exc_info=True)
+        return None
+
+
 def record_workload(
     execution_id: str,
     logical_plan: "LogicalPlan",
+    get_cluster_spilled_bytes: Callable[[], Optional[int]] = _cluster_spilled_bytes,
+    get_dead_node_count: Callable[[], Optional[int]] = _cluster_dead_node_count,
 ) -> None:
     """Record the planning-time workload entry for an execution.
     This consists of the DAG, env, and configs for each operator.
     Flushes eagerly so that attempted executions are captured even if
     the execution fails.
+
+    ``get_cluster_spilled_bytes`` and ``get_dead_node_count`` are seams
+    exposed for testing; they default to the cluster readers.
 
     Short-circuits when the user has opted out of Ray usage stats (via
     ``RAY_USAGE_STATS_ENABLED=0``, ``ray disable-usage-stats``, or
@@ -147,8 +184,8 @@ def record_workload(
             env=_collect_env(),
             workload=_collect_workload(logical_plan),
         )
-        spilled_at_start = _cluster_spilled_bytes()
-        dead_at_start = _cluster_dead_node_count()
+        spilled_at_start = get_cluster_spilled_bytes()
+        dead_at_start = get_dead_node_count()
         with _lock:
             if len(_executions) >= _MAX_EXECUTIONS_TO_TRACK:
                 evicted_id, _ = _executions.popitem(last=False)
@@ -213,12 +250,17 @@ def _logical_op_name_with_id(
 def record_execution_result(
     execution_id: str,
     detected_issues: Optional[List[Tuple["IssueType", str]]] = None,
+    get_cluster_spilled_bytes: Callable[[], Optional[int]] = _cluster_spilled_bytes,
+    get_dead_node_count: Callable[[], Optional[int]] = _cluster_dead_node_count,
 ) -> None:
     """Fill in performance and detected issues for a previously recorded
     execution and flush.
 
     ``detected_issues`` is a list of ``(issue_type, anonymized_operator_name)``
     pairs surfaced by the issue detectors during execution.
+
+    ``get_cluster_spilled_bytes`` and ``get_dead_node_count`` are seams
+    exposed for testing; they default to the cluster readers.
 
     Short-circuits when the user has opted out of Ray usage stats (via
     ``RAY_USAGE_STATS_ENABLED=0``, ``ray disable-usage-stats``, or
@@ -227,8 +269,8 @@ def record_execution_result(
     if _usage_collection_disabled():
         return
     try:
-        spilled_now = _cluster_spilled_bytes()
-        dead_now = _cluster_dead_node_count()
+        spilled_now = get_cluster_spilled_bytes()
+        dead_now = get_dead_node_count()
         with _lock:
             entry = _executions.get(execution_id)
             if entry is None:  # if the execution was not found (could be evicted)
@@ -367,38 +409,6 @@ def _compute_delta(start: Optional[int], end: Optional[int]) -> Optional[int]:
     if start is None or end is None:
         return None
     return max(0, end - start)
-
-
-def _cluster_spilled_bytes() -> Optional[int]:
-    """Cluster-wide cumulative spilled bytes from Ray core's store_stats.
-
-    Returns None on any failure — usage collection must never break execution.
-    """
-    if not ray.is_initialized():
-        return None
-    try:
-        reply = get_memory_info_reply(
-            get_state_from_address(ray.get_runtime_context().gcs_address),
-            timeout_seconds=10.0,
-        )
-        return int(reply.store_stats.spilled_bytes_total)
-    except Exception:
-        logger.debug("Failed to read cluster spilled bytes", exc_info=True)
-        return None
-
-
-def _cluster_dead_node_count() -> Optional[int]:
-    """Number of dead nodes in the GCS node table.
-
-    Reads via ``ray.nodes()``. Returns None on any failure.
-    """
-    if not ray.is_initialized():
-        return None
-    try:
-        return sum(1 for node in ray.nodes() if not node["Alive"])
-    except Exception:
-        logger.debug("Failed to read cluster dead node count", exc_info=True)
-        return None
 
 
 def reset_for_testing() -> None:
