@@ -359,10 +359,6 @@ class NixlTensorTransport(TensorTransportManager):
             create_empty_tensors_from_metadata,
         )
 
-        tensors = target_buffers or create_empty_tensors_from_metadata(
-            tensor_transport_metadata
-        )
-
         assert isinstance(tensor_transport_metadata, NixlTransportMetadata)
         assert isinstance(communicator_metadata, NixlCommunicatorMetadata)
 
@@ -377,15 +373,31 @@ class NixlTensorTransport(TensorTransportManager):
         remote_name = None
         xfer_handle = None
         added_tensor_descs = False
-
-        assert tensors
+        tensors = None
 
         try:
             nixl_agent = self.get_nixl_agent()
             remote_xfer_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
-            # This creates a placeholder for the tensor in the tensor_desc_cache even though it doesn't have an object ref for caching purposes.
-            self._add_tensor_descs(tensors)
-            added_tensor_descs = True
+
+            recv_pool_eligible = (
+                target_buffers is None
+                and self._memory_pool is not None
+                and tensor_transport_metadata.tensor_device
+                == self._memory_pool.get_pool_tensor().device.type
+            )
+            if recv_pool_eligible:
+                tensors = self._memory_pool.allocate_for_tensor_meta(
+                    tensor_transport_metadata.tensor_meta
+                )
+            else:
+                tensors = target_buffers or create_empty_tensors_from_metadata(
+                    tensor_transport_metadata
+                )
+                # This creates a placeholder for the tensor in the tensor_desc_cache even though it doesn't have an object ref for caching purposes.
+                self._add_tensor_descs(tensors)
+                added_tensor_descs = True
+
+            assert tensors
             local_xfer_descs = nixl_agent.get_xfer_descs(tensors)
 
             remote_name = tensor_transport_metadata.nixl_agent_name
@@ -433,9 +445,10 @@ class NixlTensorTransport(TensorTransportManager):
                 transport=self,
             )
         except Exception:
-            self._cleanup_transfer(
-                obj_id, tensors, xfer_handle, remote_name, added_tensor_descs
-            )
+            if tensors is not None:
+                self._cleanup_transfer(
+                    obj_id, tensors, xfer_handle, remote_name, added_tensor_descs
+                )
             # TODO(swang): There is a circular import error because ray.util
             # currently depends on ray.experimental.internal_kv.
             from ray.exceptions import RayDirectTransportError

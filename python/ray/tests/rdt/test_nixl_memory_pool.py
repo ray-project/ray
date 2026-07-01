@@ -327,18 +327,68 @@ class TestEdgeCases:
         assert views[0].shape == (3, 2)
         assert torch.equal(views[0], t)
 
-    def test_allocate_multiple_preserves_request_order(self):
-        """_allocate_multiple should return blocks in the same order as the
+    def test_allocate_memory_blocks_preserves_request_order(self):
+        """_allocate_memory_blocks should return blocks in the same order as the
         input sizes, even though it allocates largest-first internally."""
         pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
         # Sizes in non-sorted order.
         sizes = [10, 50, 20, 40]
-        result = pool._allocate_multiple(sizes)
+        result = pool._allocate_memory_blocks(sizes)
 
-        assert result is not None
         # Each result block should match the requested size, in order.
         for i, size in enumerate(sizes):
             assert result[i].size == size
+
+
+# ---------------------------------------------------------------------------
+# allocate_for_tensor_meta / _allocate_memory_blocks / _free_multiple_blocks
+# ---------------------------------------------------------------------------
+
+
+class TestAllocateMemoryBlocks:
+    def test_multiple_blocks_in_order(self):
+        pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
+        sizes = [10, 20, 8]
+        blocks = pool._allocate_memory_blocks(sizes)
+        assert len(blocks) == 3
+        for block, size in zip(blocks, sizes):
+            assert block.size == size
+
+    def test_atomic_allocation_failure(self):
+        pool = MemoryPoolManager(pool_size=16, device=torch.device("cpu"))
+        with pytest.raises(NixlOutOfMemoryError):
+            pool._allocate_memory_blocks([8, 12])
+        # Pool state unchanged — a single 16-byte allocation should still work.
+        blocks = pool._allocate_memory_blocks([16])
+        assert blocks[0].size == 16
+        pool._free_multiple_blocks(blocks)
+        blocks = pool._allocate_memory_blocks([16])
+        assert blocks[0].size == 16
+
+
+class TestAllocateForTensorMeta:
+    def test_view_backed_by_pool_tensor(self):
+        pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
+        views = pool.allocate_for_tensor_meta([((3,), torch.float32)])
+        assert len(views) == 1
+        assert views[0].shape == (3,)
+        assert views[0].dtype == torch.float32
+        assert (
+            views[0].untyped_storage().data_ptr()
+            == pool.get_pool_tensor().untyped_storage().data_ptr()
+        )
+
+    def test_finalizer_frees_block_on_gc(self):
+        import gc
+
+        pool = MemoryPoolManager(pool_size=12, device=torch.device("cpu"))
+        views = pool.allocate_for_tensor_meta([((3,), torch.float32)])
+
+        del views
+        gc.collect()
+
+        # Previously OOM'd allocation should now succeed.
+        pool.allocate_for_tensor_meta([((3,), torch.float32)])
 
 
 if __name__ == "__main__":

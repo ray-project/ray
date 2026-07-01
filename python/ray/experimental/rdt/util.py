@@ -296,8 +296,9 @@ def register_nixl_memory_pool(size: int, device: "torch.device") -> None:
 
     This enables pool-based memory management for NIXL transfers, which can improve
     performance by avoiding repeated memory registration/deregistration. The pool is
-    registered once with NIXL and individual tensors are copied into it on ``ray.put``.
+    registered once with NIXL.
 
+    On the sender side, individual tensors are copied into the pool on ``ray.put``.
     Within a single ``ray.put`` call, tensors sharing the same underlying storage
     (including views) are automatically deduplicated — only one copy of each unique
     storage is allocated. Across multiple ``ray.put`` calls, if the same storage
@@ -305,6 +306,12 @@ def register_nixl_memory_pool(size: int, device: "torch.device") -> None:
     As a result, data can be potentially stale once you ``ray.put`` the storage
     tensor — subsequent mutations to that storage may not be reflected in outstanding refs.
     Clone the tensor before ``ray.put`` if snapshot semantics are required.
+
+    On the receiver side, incoming tensors are read directly into the pool when
+    ``ray.get`` fetches via NIXL. Each received tensor pins its pool
+    block until the tensor is garbage-collected. If user-supplied target buffers
+    are used instead, the pool is bypassed and the traditional register/deregister
+    path is used.
 
     If the pool has insufficient space for an allocation,
     :class:`NixlOutOfMemoryError` is raised.
