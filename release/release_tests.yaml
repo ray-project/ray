@@ -290,7 +290,7 @@
         anyscale_sdk_2026: true
     - __suffix__: gce
       env: gce
-      frequency: manual
+      frequency: weekly
       cluster:
         anyscale_sdk_2026: true
         cluster_compute: cpt_autoscaling_1-3_gce.yaml
@@ -394,8 +394,7 @@
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
-  # https://github.com/ray-project/ray/issues/46687
-  frequency: manual
+  frequency: weekly
   team: ml
 
   cluster:
@@ -449,8 +448,7 @@
   group: AIR examples
   working_dir: air_examples/dreambooth
 
-  # https://github.com/ray-project/ray/issues/49847
-  frequency: manual
+  frequency: weekly
   team: ml
 
   cluster:
@@ -471,8 +469,7 @@
   group: AIR examples
   working_dir: air_examples/dreambooth
 
-  # https://github.com/ray-project/ray/issues/49846
-  frequency: manual
+  frequency: weekly
   team: ml
 
   cluster:
@@ -490,7 +487,7 @@
   python: "3.10"
   group: AIR examples
   working_dir: air_examples/gptj_deepspeed_finetuning
-  frequency: manual
+  frequency: weekly
   team: ml
   cluster:
     anyscale_sdk_2026: true
@@ -503,22 +500,22 @@
     timeout: 4500
     script: RAY_TRAIN_V2_ENABLED=1 python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
 
-- name: air_example_dolly_v2_lightning_fsdp_finetuning
+- name: air_example_pythia_lightning_fsdp_finetuning
   python: "3.10"
   group: AIR examples
-  working_dir: air_examples/dolly_v2_lightning_fsdp_finetuning
-  frequency: manual
+  working_dir: air_examples/pythia_lightning_fsdp_finetuning
+  frequency: weekly
   team: ml
   cluster:
     anyscale_sdk_2026: true
     byod:
       type: gpu
-      post_build_script: byod_dolly_test.sh
-    cluster_compute: dolly_v2_fsdp_compute_aws.yaml
+      post_build_script: byod_pythia_test.sh
+    cluster_compute: pythia_fsdp_compute_aws.yaml
 
   run:
     timeout: 4700
-    script: RAY_TRAIN_V2_ENABLED=1 python test_myst_doc.py --path lightning-llm-finetuning-7b.ipynb
+    script: RAY_TRAIN_V2_ENABLED=1 python test_myst_doc.py --path pythia_lightning_fsdp_finetuning.ipynb
 
   # variations: TODO(jungong): add GCP variation.
 
@@ -526,7 +523,7 @@
   python: "3.10"
   group: AIR examples
   working_dir: air_examples/vicuna_13b_lightning_deepspeed_finetuning
-  frequency: manual
+  frequency: weekly
   team: ml
   cluster:
     anyscale_sdk_2026: true
@@ -1883,7 +1880,7 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --image_classification_data_format=parquet --preserve_order=True
 
     - __suffix__: full_training.parquet.torch_dataloader
-      frequency: manual
+      frequency: weekly
       run:
         timeout: 2000
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=torch --num_workers=16 --image_classification_data_format=parquet
@@ -1900,7 +1897,7 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step=True --skip_validation_at_epoch_end=True --image_classification_data_format=parquet --preserve_order=True
 
     - __suffix__: skip_training.parquet.torch_dataloader
-      frequency: manual
+      frequency: weekly
       run:
         timeout: 1200
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=torch --num_workers=16 --skip_train_step=True --skip_validation_at_epoch_end=True --image_classification_data_format=parquet
@@ -1945,7 +1942,7 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=ray_data --num_workers=16 --preserve_order=True
 
     - __suffix__: full_training.jpeg.torch_dataloader
-      frequency: manual
+      frequency: weekly
       run:
         timeout: 2000
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=torch --num_workers=16 --num_torch_workers=16
@@ -1962,7 +1959,7 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=ray_data --num_workers=16 --skip_train_step=True --skip_validation_at_epoch_end=True --preserve_order=True
 
     - __suffix__: skip_training.jpeg.torch_dataloader
-      frequency: manual
+      frequency: weekly
       run:
         timeout: 1200
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=torch --num_workers=16 --num_torch_workers=16 --skip_train_step=True --skip_validation_at_epoch_end=True
@@ -1975,7 +1972,7 @@
         cluster_compute: compute_configs/compute_gpu_1x1_aws.yaml
 
     - __suffix__: skip_training.jpeg.local_fs.preserve_order
-      frequency: manual
+      frequency: weekly
       run:
         timeout: 1200
         script: bash image_classification/jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --image_classification_local_dataset=True --dataloader_type=ray_data --num_workers=1 --skip_train_step=True --skip_validation_at_epoch_end=True --preserve_order=True
@@ -1983,7 +1980,7 @@
         cluster_compute: compute_configs/compute_gpu_1x1_aws.yaml
 
     - __suffix__: skip_training.jpeg.local_fs.torch_dataloader
-      frequency: manual
+      frequency: weekly
       run:
         timeout: 1200
         script: bash image_classification/jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --image_classification_local_dataset=True --dataloader_type=torch --num_workers=1 --num_torch_workers=32 --skip_train_step=True --skip_validation_at_epoch_end=True
@@ -1998,7 +1995,7 @@
         cluster_compute: compute_configs/compute_gpu_1x4_aws.yaml
 
     - __suffix__: skip_training.jpeg.local_fs_multi_gpus.preserve_order
-      frequency: manual
+      frequency: weekly
       run:
         timeout: 1200
         script: bash image_classification/jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --image_classification_local_dataset=True --dataloader_type=ray_data --num_workers=4 --skip_train_step=True --skip_validation_at_epoch_end=True --preserve_order=True
@@ -2006,7 +2003,7 @@
         cluster_compute: compute_configs/compute_gpu_1x4_aws.yaml
 
     - __suffix__: skip_training.jpeg.local_fs_multi_gpus.torch_dataloader
-      frequency: manual
+      frequency: weekly
       run:
         timeout: 1200
         script: bash image_classification/jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --image_classification_local_dataset=True --dataloader_type=torch --num_workers=4 --num_torch_workers=9 --skip_train_step=True --skip_validation_at_epoch_end=True
@@ -2086,8 +2083,7 @@
   group: Train tests
   working_dir: train_tests/benchmark
 
-  # TODO: Keep these manual for now -- there are a still a few issues to resolve.
-  frequency: manual
+  frequency: nightly
   team: ml
 
   cluster:
@@ -2198,30 +2194,6 @@
     wait_for_nodes:
       num_nodes: 2
   alert: default
-
-- name: train_colocate_trainer
-  python: "3.10"
-  group: Train tests
-  working_dir: train_tests/colocate_trainer
-
-  # Ray Train V2 doesn't support colocation.
-  # TODO: Decide whether to remove this test or re-enable it if we add support again.
-  frequency: manual
-  team: ml
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: compute_aws.yaml
-
-  run:
-    timeout: 3000
-    script: pytest -v test_colocate_trainer.py -s
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  alert: default
-
 
 - name: torch_local_mode
   python: "3.10"

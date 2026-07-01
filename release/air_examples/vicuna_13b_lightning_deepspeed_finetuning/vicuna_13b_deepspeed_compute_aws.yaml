@@ -1,12 +1,17 @@
 cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+# Pin to zones that offer the g5 instance types.
+zones:
+    - us-west-2a
+    - us-west-2b
+    - us-west-2c
 
 head_node:
     instance_type: g5.16xlarge
 
 worker_nodes:
     - instance_type: g5.4xlarge
-      min_nodes: 15
-      max_nodes: 15
+      min_nodes: 8
+      max_nodes: 8
       market_type: ON_DEMAND
 
 advanced_instance_config:

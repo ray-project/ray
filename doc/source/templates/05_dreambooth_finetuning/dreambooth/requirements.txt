@@ -1,12 +1,12 @@
-accelerate==0.20.3
-bitsandbytes==0.39.1
-diffusers==0.19.3
-flax==0.6.11
+# NumPy 2.x compatible stack. The HuggingFace libraries below all support
+# numpy>=2 and use the PEFT-based LoRA API (see train.py / generate_utils.py).
+numpy>=2.0.0
+torch>=2.4.0
+torchvision>=0.19.0
+diffusers==0.31.0
+transformers==4.46.3
+accelerate==1.1.1
+peft==0.13.2
+huggingface_hub==0.26.2
 ipywidgets
-huggingface_hub==0.19.4
-jax==0.4.17
-jaxlib==0.4.17
-numpy==1.24.4
-torch==2.0.1
-torchvision==0.15.2
-transformers==4.30.2
+pydantic>=2

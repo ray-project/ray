@@ -214,7 +214,7 @@ examples:
       - large language models
       - generative ai
     link: examples/lightning/vicuna_13b_lightning_deepspeed_finetune
-  - title: Fine-tune a dolly-v2-7b text generation model with PyTorch Lightning and FSDP
+  - title: Fine-tune a pythia-6.9b text generation model with PyTorch Lightning and FSDP
     frameworks:
       - lightning
     skill_level: advanced
@@ -222,7 +222,7 @@ examples:
       - large language models
       - generative ai
       - natural language processing
-    link: examples/lightning/dolly_lightning_fsdp_finetuning
+    link: examples/lightning/pythia_lightning_fsdp_finetuning
   - title: Train a tabular model with XGBoost
     frameworks:
       - xgboost

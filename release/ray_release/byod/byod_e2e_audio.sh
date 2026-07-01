@@ -9,5 +9,5 @@ pip3 install --no-cache-dir \
     flashinfer-python==0.2.2.post1 \
     huggingface-hub[hf_xet]==0.32.6 \
     pydantic==2.9.2 \
-    transformers==4.52.4 \
+    transformers==5.8.0 \
     xgrammar==0.1.19

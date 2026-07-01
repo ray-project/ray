@@ -1,5 +1,3 @@
-from typing import Dict
-
 import itertools
 from diffusers import (
     AutoencoderKL,
@@ -9,18 +7,10 @@ from diffusers import (
 )
 
 # LoRA related imports begin ##
-from diffusers.loaders import (
-    LoraLoaderMixin,
-    text_encoder_lora_state_dict,
-)
-from diffusers.models.attention_processor import (
-    AttnAddedKVProcessor,
-    AttnAddedKVProcessor2_0,
-    LoRAAttnAddedKVProcessor,
-    LoRAAttnProcessor,
-    LoRAAttnProcessor2_0,
-    SlicedAttnAddedKVProcessor,
-)
+from diffusers.loaders import StableDiffusionLoraLoaderMixin
+from diffusers.utils import convert_state_dict_to_diffusers
+from peft import LoraConfig
+from peft.utils import get_peft_model_state_dict
 
 # LoRA related imports end ##
 from diffusers.utils.import_utils import is_xformers_available
@@ -67,55 +57,34 @@ def get_target(scheduler, noise, latents, timesteps):
 
 
 def add_lora_layers(unet, text_encoder):
-    """Add LoRA layers for unet and text encoder.
+    """Add LoRA adapters to the unet and text encoder.
 
-    `unet` and `text_encoder` will be modified in place.
+    `unet` and `text_encoder` will be modified in place: PEFT freezes the
+    base weights and only the injected LoRA adapter parameters stay trainable.
 
     Returns:
         The LoRA parameters for unet and text encoder correspondingly.
     """
-    unet_lora_attn_procs = {}
-    unet_lora_parameters = []
-    for name, attn_processor in unet.attn_processors.items():
-        cross_attention_dim = (
-            None
-            if name.endswith("attn1.processor")
-            else unet.config.cross_attention_dim
-        )
-        if name.startswith("mid_block"):
-            hidden_size = unet.config.block_out_channels[-1]
-        elif name.startswith("up_blocks"):
-            block_id = int(name[len("up_blocks.")])
-            hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
-        elif name.startswith("down_blocks"):
-            block_id = int(name[len("down_blocks.")])
-            hidden_size = unet.config.block_out_channels[block_id]
-
-        if isinstance(
-            attn_processor,
-            (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0),
-        ):
-            lora_attn_processor_class = LoRAAttnAddedKVProcessor
-        else:
-            lora_attn_processor_class = (
-                LoRAAttnProcessor2_0
-                if hasattr(F, "scaled_dot_product_attention")
-                else LoRAAttnProcessor
-            )
-
-        module = lora_attn_processor_class(
-            hidden_size=hidden_size,
-            cross_attention_dim=cross_attention_dim,
-            rank=LORA_RANK,
-        )
-        unet_lora_attn_procs[name] = module
-        unet_lora_parameters.extend(module.parameters())
-
-    unet.set_attn_processor(unet_lora_attn_procs)
-
-    text_lora_parameters = LoraLoaderMixin._modify_text_encoder(
-        text_encoder, dtype=torch.float32, rank=LORA_RANK
+    # Attention projection layers of the UNet.
+    unet_lora_config = LoraConfig(
+        r=LORA_RANK,
+        lora_alpha=LORA_RANK,
+        init_lora_weights="gaussian",
+        target_modules=["to_k", "to_q", "to_v", "to_out.0"],
     )
+    unet.add_adapter(unet_lora_config)
+
+    # Attention projection layers of the CLIP text encoder.
+    text_lora_config = LoraConfig(
+        r=LORA_RANK,
+        lora_alpha=LORA_RANK,
+        init_lora_weights="gaussian",
+        target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
+    )
+    text_encoder.add_adapter(text_lora_config)
+
+    unet_lora_parameters = [p for p in unet.parameters() if p.requires_grad]
+    text_lora_parameters = [p for p in text_encoder.parameters() if p.requires_grad]
 
     return unet_lora_parameters, text_lora_parameters
 
@@ -297,31 +266,19 @@ def train_fn(config):
             save_lora_weights(unet.module, text_encoder.module, config["output_dir"])
 
 
-def unet_attn_processors_state_dict(unet) -> Dict[str, torch.tensor]:
-    """
-    Returns:
-        a state dict containing just the attention processor parameters.
-    """
-    attn_processors = unet.attn_processors
-
-    attn_processors_state_dict = {}
-
-    for attn_processor_key, attn_processor in attn_processors.items():
-        for parameter_key, parameter in attn_processor.state_dict().items():
-            param_name = f"{attn_processor_key}.{parameter_key}"
-            attn_processors_state_dict[param_name] = parameter
-    return attn_processors_state_dict
-
-
 def save_lora_weights(unet, text_encoder, output_dir):
-    unet_lora_layers_to_save = None
-    text_encoder_lora_layers_to_save = None
+    # Extract the LoRA adapter weights from each model and convert them to the
+    # diffusers naming convention so the saved checkpoint can be reloaded with
+    # `pipeline.load_lora_weights(...)` (see generate_utils.py).
+    unet_lora_layers_to_save = convert_state_dict_to_diffusers(
+        get_peft_model_state_dict(unet)
+    )
+    text_encoder_lora_layers_to_save = convert_state_dict_to_diffusers(
+        get_peft_model_state_dict(text_encoder)
+    )
 
-    unet_lora_layers_to_save = unet_attn_processors_state_dict(unet)
-    text_encoder_lora_layers_to_save = text_encoder_lora_state_dict(text_encoder)
-
-    LoraLoaderMixin.save_lora_weights(
-        output_dir,
+    StableDiffusionLoraLoaderMixin.save_lora_weights(
+        save_directory=output_dir,
         unet_lora_layers=unet_lora_layers_to_save,
         text_encoder_lora_layers=text_encoder_lora_layers_to_save,
     )
