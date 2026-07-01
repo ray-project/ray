@@ -522,7 +522,6 @@ class SplitCoordinator:
             # Drop any blocks buffered for this split — the consumer won't
             # read them and they'd otherwise pin memory until the next epoch.
             self._next_bundle.pop(split_idx, None)
-            self._report_prefetched_bytes_to_executor()
 
             if (
                 len(self._finished_splits) == self._n

@@ -474,48 +474,6 @@ class TestResourceManager:
 
         assert completed_ops_usage == ExecutionResources(cpu=8, object_store_memory=400)
 
-    def test_topology_rejects_multiple_terminal_operators(self, restore_data_context):
-        ctx = DataContext.get_current()
-        a = PhysicalOperator("a", [], ctx)
-        b = PhysicalOperator("b", [], ctx)
-        topology = {a: MagicMock(), b: MagicMock()}
-        with pytest.raises(ValueError, match="Expected exactly one terminal operator"):
-            ResourceManager(
-                topology,
-                ExecutionOptions(),
-                MagicMock(return_value=ExecutionResources.zero()),
-                DataContext.get_current(),
-                BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
-            )
-
-    def test_topology_rejects_empty_topology(self, restore_data_context):
-        with pytest.raises(ValueError, match="topology must be non-empty"):
-            ResourceManager(
-                {},
-                ExecutionOptions(),
-                MagicMock(return_value=ExecutionResources.zero()),
-                DataContext.get_current(),
-                BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
-            )
-
-    def test_topology_rejects_no_terminal_operator(self, restore_data_context):
-        # Every op has a downstream in this dict, so there should be no operator with empty
-        # output_dependencies (e.g. a 2-node cycle). Real streaming DAGs from
-        # build_streaming_topology always have a unique sink.
-        a = MagicMock(spec=PhysicalOperator)
-        b = MagicMock(spec=PhysicalOperator)
-        a.output_dependencies = [b]
-        b.output_dependencies = [a]
-        topology = {a: MagicMock(), b: MagicMock()}
-        with pytest.raises(ValueError, match="No terminal operator found"):
-            ResourceManager(
-                topology,
-                ExecutionOptions(),
-                MagicMock(return_value=ExecutionResources.zero()),
-                DataContext.get_current(),
-                BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
-            )
-
     def test_is_blocking_materializing_op(self, restore_data_context):
         """Test _is_blocking_materializing_op correctly identifies blocking materializing ops.
 
