@@ -6,6 +6,7 @@ import tarfile
 from typing import Dict, Generator, List, Optional, Tuple, Union
 
 import ray
+from ray._private.tar_utils import safe_extract_tar
 from ray.air._internal.filelock import TempFileLock
 from ray.air.util.node import _force_on_node, _get_node_id_from_node_ip
 from ray.util.annotations import DeveloperAPI
@@ -387,7 +388,7 @@ def _unpack_dir(stream: io.BytesIO, target_dir: str, *, _retry: bool = True) -> 
         # will be thrown.
         with TempFileLock(f"{target_dir}.lock", timeout=0):
             with tarfile.open(fileobj=stream) as tar:
-                tar.extractall(target_dir)
+                safe_extract_tar(tar, target_dir)
     except TimeoutError:
         # wait, but do not do anything
         with TempFileLock(f"{target_dir}.lock"):
