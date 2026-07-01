@@ -8,6 +8,7 @@ Community SGLang support is in early development. Track progress and
 provide feedback at https://github.com/ray-project/ray/issues/61114.
 """
 
+import asyncio
 import copy
 import json
 import signal
@@ -445,22 +446,53 @@ class SGLangServer:
         if request.stream:
             gen_id = f"sglang-gen-{uuid.uuid4().hex}"
             created = int(time.time())
-            for i, prompt_string in enumerate(prompts_to_process):
-                async for delta_text, finish_reason in self._stream_generate(
-                    request, prompt_string
-                ):
-                    yield self._build_sse_chunk(
-                        gen_id,
-                        "text_completion",
-                        created,
-                        request.model,
-                        {
-                            "index": i,
-                            "text": delta_text,
-                            "logprobs": None,
-                            "finish_reason": finish_reason,
-                        },
-                    )
+
+            queue: asyncio.Queue = asyncio.Queue()
+            active_tasks = len(prompts_to_process)
+
+            async def _produce_stream(i: int, prompt_string: str) -> None:
+                try:
+                    async for delta_text, finish_reason in self._stream_generate(
+                        request, prompt_string
+                    ):
+                        await queue.put(
+                            self._build_sse_chunk(
+                                gen_id,
+                                "text_completion",
+                                created,
+                                request.model,
+                                {
+                                    "index": i,
+                                    "text": delta_text,
+                                    "logprobs": None,
+                                    "finish_reason": finish_reason,
+                                },
+                            )
+                        )
+                except Exception as e:
+                    await queue.put(e)
+                finally:
+                    await queue.put(None)
+
+            tasks = [
+                asyncio.create_task(_produce_stream(i, p))
+                for i, p in enumerate(prompts_to_process)
+            ]
+            finished_tasks = 0
+            try:
+                while finished_tasks < active_tasks:
+                    item = await queue.get()
+                    if item is None:
+                        finished_tasks += 1
+                    elif isinstance(item, Exception):
+                        for t in tasks:
+                            t.cancel()
+                        raise item
+                    else:
+                        yield item
+            finally:
+                for t in tasks:
+                    t.cancel()
             return
 
         results = await self._generate_and_extract_metadata(request, prompts_to_process)
