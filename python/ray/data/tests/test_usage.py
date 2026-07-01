@@ -84,27 +84,17 @@ def test_round_trip_payload_shape(reset_collector, mock_record):
 def test_performance_deltas_in_payload(reset_collector, mock_record):
     """``bytes_spilled`` and ``node_deaths`` are recorded as the (clamped)
     increase between execution start and end."""
-    metrics = {"spilled": 100, "dead": 1}
-
-    def get_spilled_bytes() -> int:
-        return metrics["spilled"]
-
-    def get_dead_node_count() -> int:
-        return metrics["dead"]
-
     ds = ray.data.range(1).map_batches(lambda b: b)
     collector.record_workload(
         "exec-1",
         ds._logical_plan,
-        get_cluster_spilled_bytes=get_spilled_bytes,
-        get_dead_node_count=get_dead_node_count,
+        get_cluster_spilled_bytes=lambda: 100,
+        get_dead_node_count=lambda: 1,
     )
-    metrics["spilled"] += 150
-    metrics["dead"] += 2
     collector.record_execution_result(
         "exec-1",
-        get_cluster_spilled_bytes=get_spilled_bytes,
-        get_dead_node_count=get_dead_node_count,
+        get_cluster_spilled_bytes=lambda: 250,
+        get_dead_node_count=lambda: 3,
     )
 
     _, payload_json = mock_record[-1]
