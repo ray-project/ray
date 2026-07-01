@@ -53,9 +53,15 @@ from ray.llm._internal.serve.engines.vllm.vllm_models import (
     VLLMEngineConfig,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    is_kv_aware,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     assign_replica_kv_events_endpoint,
     get_kv_event_routing_stats,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.token_tracking import (
+    enable_token_tracking,
 )
 from ray.llm._internal.serve.utils.node_initialization_utils import (
     initialize_node,
@@ -551,7 +557,13 @@ class VLLMEngine(LLMEngine):
 
         executor_class = Executor.get_class(vllm_engine_config)
         logger.info(f"Using executor class: {executor_class}")
-        engine_client = AsyncLLM(
+        # Report per-request token progress to the deployment's KV router actor,
+        # but only on KV-aware deployments: elsewhere the actor never exists and
+        # resolving it per request would block the engine's event loop.
+        engine_cls = AsyncLLM
+        if is_kv_aware(self.llm_config):
+            engine_cls = enable_token_tracking(AsyncLLM)
+        engine_client = engine_cls(
             vllm_config=vllm_engine_config,
             executor_class=executor_class,
             log_requests=vllm_engine_args.enable_log_requests,
