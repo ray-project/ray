@@ -329,6 +329,11 @@ class ReferenceCounterInterface {
       const ObjectID &object_id,
       const std::function<void(const ObjectID &)> callback) = 0;
 
+  /// Removes and fires all out-of-scope/freed callbacks for `object_id`.
+  /// Firing allows per-callback cleanup (e.g. Py_DECREF on the Python side).
+  /// After this call, no further out-of-scope callbacks will fire for this object.
+  virtual void RemoveObjectOutOfScopeOrFreedCallbacks(const ObjectID &object_id) = 0;
+
   /// Stores the callback that will be run when the object reference is deleted
   /// from the reference table (all refs including lineage ref count go to 0).
   /// There could be multiple callbacks for the same object due to retries and we store

@@ -2555,6 +2555,10 @@ bool CoreWorker::AddObjectOutOfScopeOrFreedCallback(const ObjectID &object_id,
       });
 }
 
+void CoreWorker::RemoveObjectOutOfScopeOrFreedCallbacks(const ObjectID &object_id) {
+  reference_counter_->RemoveObjectOutOfScopeOrFreedCallbacks(object_id);
+}
+
 Status CoreWorker::CheckObjectOwnedByUs(const ObjectID &object_id) const {
   if (reference_counter_->OwnedByUs(object_id)) {
     return Status::OK();

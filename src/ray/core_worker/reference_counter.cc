@@ -886,6 +886,18 @@ bool ReferenceCounter::AddObjectRefDeletedCallback(
   return true;
 }
 
+void ReferenceCounter::RemoveObjectOutOfScopeOrFreedCallbacks(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return;
+  }
+  for (const auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
+    callback(object_id);
+  }
+  it->second.on_object_out_of_scope_or_freed_callbacks.clear();
+}
+
 bool ReferenceCounter::AddObjectOutOfScopeOrFreedCallback(
     const ObjectID &object_id, const std::function<void(const ObjectID &)> callback) {
   absl::MutexLock lock(&mutex_);
