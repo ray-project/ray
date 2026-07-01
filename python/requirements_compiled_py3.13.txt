@@ -1112,6 +1112,7 @@ ml-dtypes==0.5.4
     #   jax
     #   jaxlib
     #   keras
+    #   onnx
     #   onnx-ir
     #   onnxscript
     #   tensorflow
@@ -1357,7 +1358,7 @@ oauthlib==3.3.1
     # via requests-oauthlib
 obstore==0.10.0
     # via -r python/requirements/ml/py313/data-test-requirements.txt
-onnx==1.16.0 ; sys_platform != "darwin" or platform_machine != "arm64"
+onnx==1.22.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   onnx-ir
@@ -1366,7 +1367,7 @@ onnx-ir==0.2.1
     # via onnxscript
 onnxruntime==1.24.4 ; (sys_platform != "darwin" or platform_machine != "arm64") and python_version > "3.10"
     # via -r python/requirements/ml/py313/rllib-test-requirements.txt
-onnxscript==0.5.7 ; sys_platform != "darwin" or platform_machine != "arm64"
+onnxscript==0.7.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r python/requirements/ml/py313/rllib-test-requirements.txt
 open-spiel==1.4
     # via -r python/requirements/ml/py313/rllib-test-requirements.txt
@@ -2525,6 +2526,7 @@ typing-extensions==4.15.0
     #   mypy
     #   nevergrad
     #   obstore
+    #   onnx
     #   onnx-ir
     #   onnxscript
     #   opentelemetry-api
