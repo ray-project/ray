@@ -206,9 +206,14 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus TryReadObjectRefStream(
             const CObjectID &generator_id,
             CObjectReference *object_ref_out)
+        CRayStatus TryReadObjectRefStreamN(
+            const CObjectID &generator_id,
+            int64_t num_items)
         c_bool StreamingGeneratorIsFinished(const CObjectID &generator_id) const
         pair[CObjectReference, c_bool] PeekObjectRefStream(
             const CObjectID &generator_id)
+        c_vector[pair[CObjectReference, c_bool]] PeekObjectRefStreamN(
+            const CObjectID &generator_id, int64_t num_items)
         CObjectID PeekObjectIdStream(
             const CObjectID &generator_id)
         CObjectID AllocateDynamicReturnId(
@@ -248,6 +253,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_bool all_namespaces)
         void AddLocalReference(const CObjectID &object_id)
         void RemoveLocalReference(const CObjectID &object_id)
+        c_bool AddObjectOutOfScopeOrFreedCallback(
+            const CObjectID &object_id,
+            void (*callback)(const CObjectID &, void *) nogil,
+            void *callback_context)
+        CRayStatus CheckObjectOwnedByUs(const CObjectID &object_id) const
         void PutObjectIntoPlasma(const CRayObject &object,
                                  const CObjectID &object_id)
         const CAddress &GetRpcAddress() const
