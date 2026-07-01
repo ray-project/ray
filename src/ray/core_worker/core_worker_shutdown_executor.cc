@@ -104,6 +104,15 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
     core_worker->object_freed_callback_thread_.join();
   }
 
+  // Post stop() as a handler so pending object-info publishes drain before stopping.
+  core_worker->object_info_publish_service_.post(
+      [&svc = core_worker->object_info_publish_service_]() { svc.stop(); },
+      "CoreWorker.StopObjectInfoPublishService");
+  RAY_LOG(INFO) << "Waiting for joining the object-info publish thread.";
+  if (core_worker->object_info_publish_thread_.joinable()) {
+    core_worker->object_info_publish_thread_.join();
+  }
+
   core_worker->core_worker_server_->Shutdown();
 
   // GCS client is safe to disconnect now that io_service has stopped.

@@ -210,6 +210,22 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     RAY_LOG(INFO) << "Object-freed callback service stopped.";
   });
 
+  // Start the dedicated thread that drains object_info_publish_service_ (object-info
+  // pubsub publishes). Unlike the object-freed callback thread, this runs only C++
+  // publish work (no user Python), so it needs no enlarged stack.
+  object_info_publish_thread_ = boost::thread([this]() {
+#ifndef _WIN32
+    sigset_t mask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGINT);
+    sigaddset(&mask, SIGTERM);
+    pthread_sigmask(SIG_BLOCK, &mask, nullptr);
+#endif
+    SetThreadName("worker.object_info_publish");
+    object_info_publish_service_.run();
+    RAY_LOG(INFO) << "Object-info publish service stopped.";
+  });
+
   if (options.worker_type == WorkerType::DRIVER &&
       !options.serialized_job_config.empty()) {
     // Driver populates the job config via initialization.
@@ -337,7 +353,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
           /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
           /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
           worker_context->GetWorkerID()),
-      io_service_);
+      // Post object-info publishes on a dedicated thread instead of io_service_
+      // (worker.io); see object_info_publish_service_'s declaration for the rationale.
+      object_info_publish_service_);
   auto object_info_subscriber = std::make_unique<pubsub::Subscriber>(
       /*subscriber_id=*/worker_context->GetWorkerID(),
       /*channels=*/
@@ -709,6 +727,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(worker_context),
                                    io_service_,
                                    object_freed_callback_service_,
+                                   object_info_publish_service_,
                                    std::move(core_worker_client_pool),
                                    std::move(raylet_client_pool),
                                    std::move(periodical_runner),
@@ -719,6 +738,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(local_raylet_rpc_client),
                                    io_thread_,
                                    object_freed_callback_thread_,
+                                   object_info_publish_thread_,
                                    std::move(reference_counter),
                                    std::move(memory_store),
                                    std::move(plasma_store_provider),
@@ -752,6 +772,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
                      : options_.worker_id),
       io_work_(io_service_.get_executor()),
       object_freed_callback_service_work_(object_freed_callback_service_.get_executor()),
+      object_info_publish_service_work_(object_info_publish_service_.get_executor()),
       client_call_manager_(std::make_unique<rpc::ClientCallManager>(
           io_service_, /*record_stats=*/false, options.node_ip_address)),
       task_execution_service_work_(task_execution_service_.get_executor()),
