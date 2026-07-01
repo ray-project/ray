@@ -682,6 +682,9 @@ class Trial:
             self._default_result_or_future = ray_actor.get_auto_filled_metrics.remote(
                 debug_metrics_only=True
             )
+        else:
+            if isinstance(self._default_result_or_future, ray.ObjectRef):
+                self._default_result_or_future = None
 
     def set_location(self, location):
         """Sets the location of the trial."""
