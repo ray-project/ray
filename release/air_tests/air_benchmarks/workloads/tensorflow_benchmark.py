@@ -108,7 +108,7 @@ def train_tf_ray_air(
     use_gpu: bool = False,
 ) -> Tuple[float, float, float]:
     from ray.train.tensorflow import TensorflowTrainer
-    from ray.train import ScalingConfig
+    from ray.train import RunConfig, ScalingConfig
 
     def train_loop(config):
         train_func(use_ray=True, config=config)
@@ -122,6 +122,7 @@ def train_tf_ray_air(
             resources_per_worker={"CPU": cpus_per_worker},
             use_gpu=use_gpu,
         ),
+        run_config=RunConfig(storage_path="/mnt/cluster_storage"),
     )
     result = trainer.fit()
     time_taken = time.monotonic() - start_time
