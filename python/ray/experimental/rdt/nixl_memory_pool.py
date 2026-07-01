@@ -200,10 +200,18 @@ class MemoryPoolManager:
 
         blocks = self._allocate_memory_blocks(sizes)
         views: List["torch.Tensor"] = []
-        for block, (shape, dtype) in zip(blocks, tensor_meta):
-            view = self._view_for_block(block, shape, dtype)
-            weakref.finalize(view, self._free_multiple_blocks, [block])
-            views.append(view)
+        handed_off = 0
+        try:
+            for block, (shape, dtype) in zip(blocks, tensor_meta):
+                view = self._view_for_block(block, shape, dtype)
+                weakref.finalize(view, self._free_multiple_blocks, [block])
+                views.append(view)
+                handed_off += 1
+        except Exception:
+            unowned = blocks[handed_off:]
+            if unowned:
+                self._free_multiple_blocks(unowned)
+            raise
         return views
 
     def _view_for_block(
@@ -274,6 +282,8 @@ class MemoryPoolManager:
             try:
                 import torch
 
+                pool_ptr = self._pool_tensor.untyped_storage().data_ptr()
+
                 # Deduplicate storages: group tensors by storage data_ptr so
                 # views of the same storage share one pool allocation.
                 # Maps storage data_ptr -> index in alloc_sizes/new_allocations,
@@ -285,6 +295,9 @@ class MemoryPoolManager:
 
                 for tensor in tensors:
                     ptr = tensor.untyped_storage().data_ptr()
+                    if ptr == pool_ptr:
+                        # Already pool-backed; nothing to allocate or copy.
+                        continue
                     if ptr in storage_idx:
                         continue
                     ptr_to_tensor[ptr] = tensor
@@ -321,6 +334,10 @@ class MemoryPoolManager:
                 pool_views: List["torch.Tensor"] = []
                 for tensor in tensors:
                     ptr = tensor.untyped_storage().data_ptr()
+                    if ptr == pool_ptr:
+                        # Already pool-backed; return the tensor as-is.
+                        pool_views.append(tensor)
+                        continue
                     blk = self._allocated_blocks[ptr]
                     byte_offset = tensor.storage_offset() * tensor.element_size()
                     view_block = MemoryBlock(
