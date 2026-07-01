@@ -567,7 +567,11 @@ class ArrowBlockAccessor(TableBlockAccessor):
             else:
                 ret = tables[0]
                 for table in tables[1:]:
-                    ret = ret.join(table, keys=keys, join_type="inner")
+                    if keys:
+                        ret = ret.join(table, keys=keys, join_type="inner")
+                    else:
+                        for col_name in table.column_names:
+                            ret = ret.append_column(col_name, table.column(col_name))
             return ret
         else:
             return super()._aggregate(sort_key, aggs)
@@ -580,6 +584,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
         aggs: Tuple["AggregateFn"],
         finalize: bool = True,
     ) -> Tuple[Block, "BlockMetadataWithSchema"]:
+        # Handle blocks of different types.
+        blocks = TableBlockAccessor.normalize_block_types(blocks)
+
         # Fall back to original way when not all aggregations support pyarrow kernel
         use_pyarrow_kernel = all(agg.support_pyarrow_kernel() for agg in aggs)
         if use_pyarrow_kernel:
@@ -608,18 +615,33 @@ class ArrowBlockAccessor(TableBlockAccessor):
                     column: column.removeprefix(name + "|") for column in need_columns
                 }
 
-                tables.append(
-                    agg.combine_and_finalize_pyarrow_kernel(
-                        combined.select(need_columns).rename_columns(columns_rename),
-                        keys,
-                    ).rename_columns({agg.name: name})
+                compacted_table = agg.combine_pyarrow_kernel(
+                    combined.select(need_columns).rename_columns(columns_rename),
+                    keys,
                 )
+
+                if finalize:
+                    tables.append(
+                        agg.finalize_pyarrow_kernel(compacted_table).rename_columns(
+                            {agg.name: name}
+                        )
+                    )
+                else:
+                    columns_rename = {
+                        column: name + "|" + column
+                        for column in set(compacted_table.column_names) - set(keys)
+                    }
+                    tables.append(compacted_table.rename_columns(columns_rename))
             if len(tables) == 1:
                 ret = tables[0]
             else:
                 ret = tables[0]
                 for table in tables[1:]:
-                    ret = ret.join(table, keys=keys, join_type="inner")
+                    if keys:
+                        ret = ret.join(table, keys=keys, join_type="inner")
+                    else:
+                        for col_name in table.column_names:
+                            ret = ret.append_column(col_name, table.column(col_name))
             return ret, BlockMetadataWithSchema.from_block(ret)
         else:
             return super()._combine_aggregated_blocks(blocks, sort_key, aggs, finalize)
