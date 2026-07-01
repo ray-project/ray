@@ -37,6 +37,10 @@ class MemoryMonitorUtils {
   static constexpr char kCgroupsV1MemoryStatPath[] = "memory/memory.stat";
   static constexpr char kCgroupsV1MemoryStatInactiveFileKey[] = "total_inactive_file";
   static constexpr char kCgroupsV1MemoryStatActiveFileKey[] = "total_active_file";
+  // memsw counters report RAM+swap combined (limit and usage). When present they
+  // override the RAM-only counters above so swap is counted toward the OOM killer.
+  static constexpr char kCgroupsV1MemswMaxPath[] = "memory/memory.memsw.limit_in_bytes";
+  static constexpr char kCgroupsV1MemswUsagePath[] = "memory/memory.memsw.usage_in_bytes";
   static constexpr char kCgroupsV2MemoryMaxPath[] = "memory.max";
   static constexpr char kCgroupsV2MemoryHighPath[] = "memory.high";
   static constexpr char kCgroupsV2MemoryUsagePath[] = "memory.current";
@@ -45,6 +49,9 @@ class MemoryMonitorUtils {
   static constexpr char kCgroupsV2MemoryStatActiveFileKey[] = "active_file";
   static constexpr char kCgroupsV2MemoryAnonKey[] = "anon";
   static constexpr char kCgroupsV2MemoryShmemKey[] = "shmem";
+  // Swap-only counters in cgroup v2. Added to memory.max / memory.current.
+  static constexpr char kCgroupsV2MemorySwapMaxPath[] = "memory.swap.max";
+  static constexpr char kCgroupsV2MemorySwapCurrentPath[] = "memory.swap.current";
   static constexpr char kProcDirectory[] = "/proc";
   static constexpr char kCommandlinePath[] = "cmdline";
 
@@ -72,10 +79,17 @@ class MemoryMonitorUtils {
    *                         to read the memory usage from.
    * @param proc_dir The proc directory path
    *                 to read the OS level memory usage from.
+   * @param include_swap When true (default), fold cgroup `memory.swap.*` and
+   *        `/proc/meminfo` `Swap*` into the totals iff
+   *        `count_swap_in_memory_monitor` is on. Set to false when the caller
+   *        needs a RAM-only view (e.g. computing the kernel's RAM-only
+   *        `memory.high` constraint in `LinuxCgroupManagerFactory`).
    * @return The used and total memory in bytes.
    */
   static const MemoryUsageSnapshot TakeSystemMemoryUsageSnapshot(
-      const std::string &root_cgroup_path, const std::string &proc_dir = kProcDirectory);
+      const std::string &root_cgroup_path,
+      const std::string &proc_dir = kProcDirectory,
+      bool include_swap = true);
 
   /**
    * @brief Takes a snapshot of user slice memory usage across the host
@@ -101,12 +115,18 @@ class MemoryMonitorUtils {
    * @brief Takes a snapshot of the memory usage for the given cgroupv2 path.
    *
    * @param root_cgroup_path The path to the cgroup to take the snapshot of.
+   * @param proc_dir Used to read /proc/meminfo SwapTotal when memory.swap.max
+   *        is the kernel's "unlimited" sentinel — the cgroup imposes no cap,
+   *        so the practical budget is host swap. Same fallback as
+   *        GetCGroupMemoryBytes; keeps the OOM threshold and per-tick
+   *        used/total in the same units.
    * @return The cgroup memory snapshot.
    *         Returns StatusT::NotFound if the memory values could not be found,
    *         or if the path is a cgroupv1 path.
    */
   static const StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound>
-  TakeCgroupMemorySnapshot(const std::string &root_cgroup_path);
+  TakeCgroupMemorySnapshot(const std::string &root_cgroup_path,
+                           const std::string &proc_dir = kProcDirectory);
 
   /**
    * @brief Takes a snapshot of per-process memory usage.
@@ -158,10 +178,18 @@ class MemoryMonitorUtils {
    *
    * @param root_cgroup_path The path to the root cgroup
    *                         to read the memory usage from.
+   * @param include_swap When true (default), add cgroup `memory.swap.*` /
+   *        memsw counters to total/used iff `count_swap_in_memory_monitor` is
+   *        on. Set to false when the caller needs the RAM-only view.
+   * @param proc_dir The /proc directory; used to fall back to host
+   *        SwapTotal/SwapFree when cgroup v2 `memory.swap.max` is the kernel's
+   *        "unlimited" sentinel ("max" or an int64-overflowing number).
    * @return The used and total memory in bytes from the cgroup.
    */
   static std::tuple<int64_t, int64_t> GetCGroupMemoryBytes(
-      const std::string root_cgroup_path);
+      const std::string root_cgroup_path,
+      bool include_swap = true,
+      const std::string &proc_dir = kProcDirectory);
 
   /**
    * @brief Gets the current memory usage for the cgroup
@@ -183,9 +211,28 @@ class MemoryMonitorUtils {
    * @brief Gets memory information for Linux OS.
    *
    * @param proc_dir The proc directory path to read the memory usage from.
+   * @param include_swap When true (default), fold /proc/meminfo Swap{Total,Free}
+   *        into the returned totals iff count_swap_in_memory_monitor is on.
+   *        The user-slice path passes false so that per-slice cgroup swap is
+   *        not double-counted against the host-level swap reported here.
    * @return The used and total memory in bytes for Linux OS.
    */
-  static std::tuple<int64_t, int64_t> GetLinuxMemoryBytes(const std::string proc_dir);
+  static std::tuple<int64_t, int64_t> GetLinuxMemoryBytes(const std::string proc_dir,
+                                                          bool include_swap = true);
+
+  /**
+   * @brief Returns (swap_total_bytes, swap_used_bytes) from /proc/meminfo.
+   *
+   * Used as the fallback when cgroup v2 `memory.swap.max` is the kernel's
+   * "unlimited" sentinel — the cgroup imposes no swap cap, so the practical
+   * limit is whatever the host actually has. Returns (0, 0) when SwapTotal is
+   * missing (system without swap) or /proc/meminfo cannot be read.
+   *
+   * @param proc_dir The /proc directory path.
+   * @return Host swap total and used in bytes; (0, 0) if unavailable.
+   */
+  static std::tuple<int64_t, int64_t> GetHostSwapBytes(
+      const std::string &proc_dir = kProcDirectory);
 
   /**
    * @brief Gets the used memory from the smap file.
@@ -258,6 +305,19 @@ class MemoryMonitorUtils {
       uint32_t top_n, const ProcessesMemorySnapshot &all_usage);
 
   FRIEND_TEST(MemoryMonitorUtilsTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV2SwapAddedToTotalAndUsed);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV2SwapIgnoredWhenFlagDisabled);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV2UnlimitedSwapFallsBackToHostSwap);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV2OverflowSwapFallsBackToHostSwap);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV1MemswAddedToTotalAndUsed);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV1MemswIgnoredWhenFlagDisabled);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV1MemswFallsBackWhenUsageMissing);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestUserSliceSwapAddedToTotalAndUsed);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestUserSliceSwapIgnoredWhenFlagDisabled);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestUserSliceUnlimitedSwapFallsBackToHostSwap);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestUserSliceOverflowSwapFallsBackToHostSwap);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestUserSliceZeroSwapMaxIgnoresCurrent);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestUserSliceMissingSwapFiles);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupFilesValidReturnsWorkingSet);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupFilesValidKeyLastReturnsWorkingSet);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupFilesValidNegativeWorkingSet);

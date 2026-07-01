@@ -14,9 +14,13 @@
 
 #include "ray/common/memory_monitor_utils.h"
 
+#include <algorithm>
 #include <boost/algorithm/string.hpp>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <stdexcept>
+#include <string>
 #include <tuple>
 
 #include "absl/strings/str_format.h"
@@ -28,9 +32,11 @@
 namespace ray {
 
 const MemoryUsageSnapshot MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
-    const std::string &root_cgroup_path, const std::string &proc_dir) {
-  auto [cgroup_used_bytes, cgroup_total_bytes] = GetCGroupMemoryBytes(root_cgroup_path);
-  auto [system_used_bytes, system_total_bytes] = GetLinuxMemoryBytes(proc_dir);
+    const std::string &root_cgroup_path, const std::string &proc_dir, bool include_swap) {
+  auto [cgroup_used_bytes, cgroup_total_bytes] =
+      GetCGroupMemoryBytes(root_cgroup_path, include_swap, proc_dir);
+  auto [system_used_bytes, system_total_bytes] =
+      GetLinuxMemoryBytes(proc_dir, include_swap);
   /// cgroup memory limit can be higher than system memory limit when it is
   /// not used. We take its value only when it is less than or equal to system memory
   /// limit. TODO(clarng): find a better way to detect cgroup memory limit is used.
@@ -48,9 +54,9 @@ MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
     const std::string &system_cgroup_path,
     const std::string &proc_dir) {
   StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound> user_cgroup_memory_snapshot_or =
-      TakeCgroupMemorySnapshot(user_cgroup_path);
+      TakeCgroupMemorySnapshot(user_cgroup_path, proc_dir);
   StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound> system_cgroup_memory_snapshot_or =
-      TakeCgroupMemorySnapshot(system_cgroup_path);
+      TakeCgroupMemorySnapshot(system_cgroup_path, proc_dir);
   if (!user_cgroup_memory_snapshot_or.has_value() ||
       !system_cgroup_memory_snapshot_or.has_value()) {
     std::vector<std::string> error_reasons;
@@ -68,7 +74,8 @@ MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
                         absl::StrJoin(error_reasons, ", ")));
   }
 
-  auto [_, host_level_total_bytes] = GetLinuxMemoryBytes(proc_dir);
+  auto [_, host_level_total_bytes] =
+      GetLinuxMemoryBytes(proc_dir, /*include_swap=*/false);
   if (host_level_total_bytes == MemoryMonitorInterface::kNull) {
     return StatusT::NotFound(absl::StrFormat(
         "Failed to take memory snapshot of user slice usage relative to "
@@ -85,15 +92,24 @@ MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
   // for approximating heap usage and the sum of user and system cgroup shmem bytes
   // for approximating object store usage since shared memory accounting between
   // the system and user slice is in-determinant per:
-  // https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-ownership
+  // https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-ownership.
+  // Anon swap is per-cgroup deterministic, so by analogy with system.anon we
+  // do NOT credit system-slice swap.{max,current} to the user slice's budget.
   int64_t total_used_bytes = user_cgroup_memory_snapshot.anon_memory_bytes +
                              user_cgroup_memory_snapshot.shmem_memory_bytes +
-                             system_cgroup_memory_snapshot.shmem_memory_bytes;
-  return MemoryUsageSnapshot{total_used_bytes, host_level_total_bytes};
+                             system_cgroup_memory_snapshot.shmem_memory_bytes +
+                             user_cgroup_memory_snapshot.swap_used_bytes;
+  // When swap accounting is on, expand the advertised total by the user-slice
+  // swap.max allowance so the threshold derived from `total_bytes` matches
+  // what the user-slice OOM killer actually has to spend before triggering.
+  int64_t total_bytes =
+      host_level_total_bytes + user_cgroup_memory_snapshot.swap_max_bytes;
+  return MemoryUsageSnapshot{total_used_bytes, total_bytes};
 }
 
 const StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound>
-MemoryMonitorUtils::TakeCgroupMemorySnapshot(const std::string &root_cgroup_path) {
+MemoryMonitorUtils::TakeCgroupMemorySnapshot(const std::string &root_cgroup_path,
+                                             const std::string &proc_dir) {
   std::string v2_stat_path = root_cgroup_path + "/" + kCgroupsV2MemoryStatPath;
   std::ifstream v2_stat_f(v2_stat_path, std::ios::in | std::ios::binary);
   if (v2_stat_f) {
@@ -121,6 +137,58 @@ MemoryMonitorUtils::TakeCgroupMemorySnapshot(const std::string &root_cgroup_path
                           "and cgroupv2 active?",
                           root_cgroup_path));
     }
+
+    // Mirror GetCGroupMemoryBytes / GetMemoryThreshold: when swap.max is the
+    // "unlimited" sentinel ("max", empty, garbage, or int64-overflowing), the
+    // cgroup imposes no cap and the practical budget is host swap. swap.current
+    // is read regardless of the cap — the kernel publishes it and it gives the
+    // per-cgroup actual usage, which is what the OOM monitor wants. Without
+    // this, GetMemoryThreshold inflates the trigger by host swap while the
+    // per-tick snapshot stays at zero, so kills fire late or not at all.
+    if (RayConfig::instance().count_swap_in_memory_monitor()) {
+      std::string swap_max_path = root_cgroup_path + "/" + kCgroupsV2MemorySwapMaxPath;
+      std::ifstream swap_max_ifs(swap_max_path, std::ios::in | std::ios::binary);
+      std::string swap_max_str;
+      bool swap_max_present = bool(swap_max_ifs && (swap_max_ifs >> swap_max_str));
+      if (swap_max_present) {
+        bool unlimited = swap_max_str.empty() ||
+                         !std::all_of(swap_max_str.begin(),
+                                      swap_max_str.end(),
+                                      [](unsigned char c) { return std::isdigit(c); });
+        bool zero = false;
+        if (!unlimited) {
+          try {
+            int64_t swap_max_bytes = std::stoll(swap_max_str);
+            snapshot.swap_max_bytes = swap_max_bytes;
+            zero = (swap_max_bytes == 0);
+          } catch (const std::out_of_range &) {
+            // ULLONG_MAX sentinel — treat as unlimited.
+            unlimited = true;
+          } catch (const std::invalid_argument &) {
+            // Defensive; pre-filtered by std::all_of.
+            unlimited = true;
+          }
+        }
+        if (unlimited) {
+          auto [host_swap_total, _host_swap_used] = GetHostSwapBytes(proc_dir);
+          snapshot.swap_max_bytes = host_swap_total;
+        }
+        // Read swap.current whenever the cgroup has any swap budget (numeric
+        // non-zero OR unlimited). When swap.max == 0 the kernel is saying
+        // "no swap" — skip the read so a stale/transitioning swap.current
+        // doesn't surface as used > total.
+        if (!zero && snapshot.swap_max_bytes > 0) {
+          std::string swap_cur_path =
+              root_cgroup_path + "/" + kCgroupsV2MemorySwapCurrentPath;
+          std::ifstream swap_cur_ifs(swap_cur_path, std::ios::in | std::ios::binary);
+          int64_t swap_used_bytes = 0;
+          if (swap_cur_ifs && (swap_cur_ifs >> swap_used_bytes) && swap_used_bytes > 0) {
+            snapshot.swap_used_bytes = swap_used_bytes;
+          }
+        }
+      }
+    }
+
     return snapshot;
   }
 
@@ -187,19 +255,47 @@ int64_t MemoryMonitorUtils::GetCGroupMemoryUsedBytes(const char *stat_path,
 }
 
 std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetCGroupMemoryBytes(
-    const std::string root_cgroup_path) {
+    const std::string root_cgroup_path, bool include_swap, const std::string &proc_dir) {
   std::string cgroupV1MemoryMaxPath = root_cgroup_path + "/" + kCgroupsV1MemoryMaxPath;
   std::string cgroupV1MemoryUsagePath =
       root_cgroup_path + "/" + kCgroupsV1MemoryUsagePath;
   std::string cgroupV1MemoryStatPath = root_cgroup_path + "/" + kCgroupsV1MemoryStatPath;
+  std::string cgroupV1MemswMaxPath = root_cgroup_path + "/" + kCgroupsV1MemswMaxPath;
+  std::string cgroupV1MemswUsagePath = root_cgroup_path + "/" + kCgroupsV1MemswUsagePath;
   std::string cgroupV2MemoryMaxPath = root_cgroup_path + "/" + kCgroupsV2MemoryMaxPath;
   std::string cgroupV2MemoryUsagePath =
       root_cgroup_path + "/" + kCgroupsV2MemoryUsagePath;
   std::string cgroupV2MemoryStatPath = root_cgroup_path + "/" + kCgroupsV2MemoryStatPath;
+  std::string cgroupV2MemorySwapMaxPath =
+      root_cgroup_path + "/" + kCgroupsV2MemorySwapMaxPath;
+  std::string cgroupV2MemorySwapCurrentPath =
+      root_cgroup_path + "/" + kCgroupsV2MemorySwapCurrentPath;
 
+  // Swap accounting is opt-in. When disabled, fall back to the RAM-only
+  // counters (memory.max / memory.limit_in_bytes / memory.current) regardless
+  // of whether memsw / memory.swap.* exist on the system. `include_swap=false`
+  // forces the RAM-only view even when the flag is on, used by callers that
+  // need to derive the kernel's RAM-only `memory.high` constraint.
+  const bool count_swap =
+      include_swap && RayConfig::instance().count_swap_in_memory_monitor();
+
+  // Require both memsw files together. Otherwise total (RAM+swap) and used
+  // (RAM-only) could come from different views, which would feed mismatched
+  // units to the OOM threshold check.
+  const bool v1_memsw_usable = count_swap &&
+                               std::filesystem::exists(cgroupV1MemswMaxPath) &&
+                               std::filesystem::exists(cgroupV1MemswUsagePath);
+
+  // cgroup v1 memsw counters report RAM+swap as a single combined value, so
+  // when swap accounting is on they replace the RAM-only counters. cgroup v2
+  // swap counters are swap-only and get added on top of memory.max /
+  // memory.current.
   int64_t total_bytes = MemoryMonitorInterface::kNull;
   if (std::filesystem::exists(cgroupV2MemoryMaxPath)) {
     std::ifstream mem_file(cgroupV2MemoryMaxPath, std::ios::in | std::ios::binary);
+    mem_file >> total_bytes;
+  } else if (v1_memsw_usable) {
+    std::ifstream mem_file(cgroupV1MemswMaxPath, std::ios::in | std::ios::binary);
     mem_file >> total_bytes;
   } else if (std::filesystem::exists(cgroupV1MemoryMaxPath)) {
     std::ifstream mem_file(cgroupV1MemoryMaxPath, std::ios::in | std::ios::binary);
@@ -213,12 +309,74 @@ std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetCGroupMemoryBytes(
                                           cgroupV2MemoryUsagePath.c_str(),
                                           kCgroupsV2MemoryStatInactiveFileKey,
                                           kCgroupsV2MemoryStatActiveFileKey);
+  } else if (v1_memsw_usable && std::filesystem::exists(cgroupV1MemoryStatPath)) {
+    used_bytes = GetCGroupMemoryUsedBytes(cgroupV1MemoryStatPath.c_str(),
+                                          cgroupV1MemswUsagePath.c_str(),
+                                          kCgroupsV1MemoryStatInactiveFileKey,
+                                          kCgroupsV1MemoryStatActiveFileKey);
   } else if (std::filesystem::exists(cgroupV1MemoryStatPath) &&
              std::filesystem::exists(cgroupV1MemoryUsagePath)) {
     used_bytes = GetCGroupMemoryUsedBytes(cgroupV1MemoryStatPath.c_str(),
                                           cgroupV1MemoryUsagePath.c_str(),
                                           kCgroupsV1MemoryStatInactiveFileKey,
                                           kCgroupsV1MemoryStatActiveFileKey);
+  }
+
+  // cgroup v2: add swap-only counters on top of memory.* values. swap.max can
+  // be the literal string "max" (unlimited) or an int64-overflowing number —
+  // both mean the cgroup imposes no swap cap, so the practical limit is the
+  // host's swap (matches the Python helper in ray._common.utils).
+  if (count_swap && total_bytes != MemoryMonitorInterface::kNull && total_bytes != 0 &&
+      std::filesystem::exists(cgroupV2MemorySwapMaxPath)) {
+    std::ifstream swap_max_ifs(cgroupV2MemorySwapMaxPath,
+                               std::ios::in | std::ios::binary);
+    std::string swap_max_str;
+    swap_max_ifs >> swap_max_str;
+    bool unlimited = swap_max_str.empty() ||
+                     !std::all_of(swap_max_str.begin(),
+                                  swap_max_str.end(),
+                                  [](unsigned char c) { return std::isdigit(c); });
+    if (!unlimited) {
+      try {
+        int64_t swap_max_bytes = std::stoll(swap_max_str);
+        total_bytes += swap_max_bytes;
+        if (swap_max_bytes > 0 && used_bytes != MemoryMonitorInterface::kNull &&
+            std::filesystem::exists(cgroupV2MemorySwapCurrentPath)) {
+          std::ifstream swap_cur_ifs(cgroupV2MemorySwapCurrentPath,
+                                     std::ios::in | std::ios::binary);
+          int64_t swap_used_bytes = 0;
+          swap_cur_ifs >> swap_used_bytes;
+          if (swap_used_bytes > 0) {
+            used_bytes += swap_used_bytes;
+          }
+        }
+      } catch (const std::out_of_range &) {
+        // Numeric but overflows int64 — kernel's "unlimited" sentinel.
+        unlimited = true;
+      } catch (const std::invalid_argument &) {
+        // Unexpected non-numeric content; treat conservatively as unlimited
+        // so we don't silently zero-out swap when the kernel format changes.
+        unlimited = true;
+      }
+    }
+    if (unlimited) {
+      auto [host_swap_total, _host_swap_used] = GetHostSwapBytes(proc_dir);
+      if (host_swap_total > 0) {
+        total_bytes += host_swap_total;
+        // Per-cgroup swap usage from memory.swap.current — host SwapTotal-SwapFree
+        // would pick up other workloads' swap and inflate Ray's view.
+        if (used_bytes != MemoryMonitorInterface::kNull &&
+            std::filesystem::exists(cgroupV2MemorySwapCurrentPath)) {
+          std::ifstream swap_cur_ifs(cgroupV2MemorySwapCurrentPath,
+                                     std::ios::in | std::ios::binary);
+          int64_t swap_used_bytes = 0;
+          swap_cur_ifs >> swap_used_bytes;
+          if (swap_used_bytes > 0) {
+            used_bytes += swap_used_bytes;
+          }
+        }
+      }
+    }
   }
 
   /// This can be zero if the memory limit is not set for cgroup v2.
@@ -248,8 +406,41 @@ std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetCGroupMemoryBytes(
   return {used_bytes, total_bytes};
 }
 
+std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetHostSwapBytes(
+    const std::string &proc_dir) {
+  std::string meminfo_path = proc_dir + "/meminfo";
+  std::ifstream meminfo_ifs(meminfo_path, std::ios::in | std::ios::binary);
+  if (!meminfo_ifs) {
+    return {0, 0};
+  }
+  // Absent SwapTotal means a system without swap — return zero, not kNull,
+  // so the caller can unconditionally add the result without a sentinel check.
+  int64_t swap_total_bytes = 0;
+  int64_t swap_free_bytes = 0;
+  bool saw_swap_total = false;
+  std::string line;
+  std::string title;
+  uint64_t value;
+  std::string unit;
+  while (std::getline(meminfo_ifs, line)) {
+    std::istringstream iss(line);
+    iss >> title >> value >> unit;
+    if (title == "SwapTotal:") {
+      swap_total_bytes = static_cast<int64_t>(value * 1024);
+      saw_swap_total = true;
+    } else if (title == "SwapFree:") {
+      swap_free_bytes = static_cast<int64_t>(value * 1024);
+    }
+  }
+  if (!saw_swap_total) {
+    return {0, 0};
+  }
+  int64_t swap_used_bytes = std::max<int64_t>(0, swap_total_bytes - swap_free_bytes);
+  return {swap_total_bytes, swap_used_bytes};
+}
+
 std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetLinuxMemoryBytes(
-    const std::string proc_dir) {
+    const std::string proc_dir, bool include_swap) {
   std::string meminfo_path = proc_dir + "/meminfo";
   std::ifstream meminfo_ifs(meminfo_path, std::ios::in | std::ios::binary);
   if (!meminfo_ifs) {
@@ -267,6 +458,10 @@ std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetLinuxMemoryBytes(
   int64_t mem_free_bytes = MemoryMonitorInterface::kNull;
   int64_t cached_bytes = MemoryMonitorInterface::kNull;
   int64_t buffer_bytes = MemoryMonitorInterface::kNull;
+  // Swap fields are absent on systems without swap; treat as zero in that case
+  // rather than kNull so we don't suppress the RAM-only total below.
+  int64_t swap_total_bytes = 0;
+  int64_t swap_free_bytes = 0;
   while (std::getline(meminfo_ifs, line)) {
     std::istringstream iss(line);
     iss >> title >> value >> unit;
@@ -282,6 +477,10 @@ std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetLinuxMemoryBytes(
       buffer_bytes = value;
     } else if (title == "MemTotal:") {
       mem_total_bytes = value;
+    } else if (title == "SwapTotal:") {
+      swap_total_bytes = value;
+    } else if (title == "SwapFree:") {
+      swap_free_bytes = value;
     } else {
       /// Skip other lines
       continue;
@@ -320,6 +519,18 @@ std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetLinuxMemoryBytes(
     RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs) << absl::StrFormat(
         "Got negative used memory for linux %d, setting it to zero", used_bytes);
     used_bytes = 0;
+  }
+  // Fold swap into the totals so the OOM killer treats it as overflow capacity.
+  // Off by default — see count_swap_in_memory_monitor in ray_config_def.h.
+  // `include_swap=false` is used by the user-slice path, which adds per-slice
+  // cgroup swap separately and would otherwise double-count host-level swap.
+  if (include_swap && RayConfig::instance().count_swap_in_memory_monitor()) {
+    int64_t swap_used_bytes = swap_total_bytes - swap_free_bytes;
+    if (swap_used_bytes < 0) {
+      swap_used_bytes = 0;
+    }
+    mem_total_bytes += swap_total_bytes;
+    used_bytes += swap_used_bytes;
   }
   return {used_bytes, mem_total_bytes};
 }
@@ -427,6 +638,68 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
                     user_slice_upper_bound_bytes_str.end(),
                     ::isdigit)) {
       resolved_memory_threshold_bytes = std::stoll(user_slice_upper_bound_bytes_str);
+    }
+
+    // Under the isolation override above, the threshold is `memory.high` —
+    // a RAM-only kernel constraint. Per-tick `used_bytes` from
+    // TakeUserSliceMemoryUsageSnapshot includes user-slice swap when the
+    // flag is on, so add the user cgroup's swap.max budget to keep the
+    // comparison apples-to-apples. "max" / overflow means the user slice
+    // inherits the parent's swap budget (typically unlimited at the root),
+    // so fall back to host swap — same semantics as GetCGroupMemoryBytes
+    // and the Python helper in ray._common.utils.
+    if (RayConfig::instance().count_swap_in_memory_monitor()) {
+      // The per-tick snapshot reads memory.swap.current directly via the
+      // filesystem; the constraint lookup here goes through CgroupManager. To
+      // keep the two paths in sync:
+      //   - lookup ok, value parses to a positive int64 → use it as the budget
+      //   - lookup ok, value == 0 → no swap budget (matches snapshot's
+      //                             swap.max==0 short-circuit)
+      //   - lookup ok, unlimited sentinel / parse failure → host swap
+      //   - lookup fails because the file doesn't exist (InvalidArgument) →
+      //       treat as no swap support, matching the snapshot which leaves
+      //       swap_max_bytes at 0 when swap.max is absent
+      //   - lookup fails with any other status (IOError, etc.) → host swap, so
+      //       we don't end up with snapshot including swap.current while the
+      //       threshold ignores it
+      bool fall_back_to_host_swap = false;
+      StatusOr<std::string> user_swap_max_or =
+          cgroup_manager.GetUserCgroupConstraintValue(kCgroupsV2MemorySwapMaxPath);
+      if (user_swap_max_or.ok()) {
+        const std::string &user_swap_max_str = user_swap_max_or.value();
+        bool unlimited = user_swap_max_str.empty() ||
+                         !std::all_of(user_swap_max_str.begin(),
+                                      user_swap_max_str.end(),
+                                      [](unsigned char c) { return std::isdigit(c); });
+        if (!unlimited) {
+          try {
+            int64_t user_swap_max_bytes = std::stoll(user_swap_max_str);
+            if (user_swap_max_bytes > 0) {
+              resolved_memory_threshold_bytes += user_swap_max_bytes;
+            }
+          } catch (const std::out_of_range &) {
+            // ULLONG_MAX sentinel — treat as unlimited.
+            fall_back_to_host_swap = true;
+          } catch (const std::invalid_argument &) {
+            // Defensive; pre-filtered by std::all_of.
+            fall_back_to_host_swap = true;
+          }
+        } else {
+          fall_back_to_host_swap = true;
+        }
+      } else if (!user_swap_max_or.status().IsInvalidArgument()) {
+        // InvalidArgument means the swap.max file doesn't exist (kernel
+        // built without CONFIG_MEMCG_SWAP, etc.). Any other status (IOError,
+        // ...) is a transient/unexpected failure where falling back keeps the
+        // threshold aligned with the snapshot.
+        fall_back_to_host_swap = true;
+      }
+      if (fall_back_to_host_swap) {
+        auto [host_swap_total, _host_swap_used] = GetHostSwapBytes();
+        if (host_swap_total > 0) {
+          resolved_memory_threshold_bytes += host_swap_total;
+        }
+      }
     }
   }
 

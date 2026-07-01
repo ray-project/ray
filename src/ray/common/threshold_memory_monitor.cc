@@ -72,8 +72,11 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_
         if (exceeded_snapshot.has_value() && IsEnabled()) {
           const MemoryUsageSnapshot &cur_memory_snapshot = exceeded_snapshot.value();
           Disable();
+          // Note: with count_swap_in_memory_monitor=true the "limit" here is
+          // RAM + cgroup swap.max (the budget the OOM killer enforces), not
+          // physical RAM. With the flag off it equals physical RAM.
           std::string trigger_reason = absl::StrFormat(
-              "Memory usage %dB exceeded threshold of %dB (%.1f%% of %dB total)",
+              "Memory usage %dB exceeded threshold of %dB (%.1f%% of %dB limit)",
               cur_memory_snapshot.used_bytes,
               memory_usage_threshold_bytes_,
               (cur_memory_snapshot.total_bytes > 0

@@ -82,6 +82,16 @@ RAY_CONFIG(float, memory_usage_threshold, 0.95)
 /// ThresholdMemoryMonitor is disabled when this value is 0.
 RAY_CONFIG(uint64_t, memory_monitor_refresh_ms, 250)
 
+/// When true, swap space is folded into the memory monitor's total/used
+/// accounting, the auto-computed Ray `memory` resource on each node, and the
+/// dashboard "Node Memory" graph. This lets tasks consume swap as overflow
+/// capacity before the OOM killer kicks in. Off by default because relying on
+/// swap can cause silent latency degradation (thrashing) rather than a loud
+/// failure, and most production deployments prefer the loud-failure mode.
+/// The Python `ray start` / `ray.init` paths also honor the
+/// `RAY_count_swap_in_memory_monitor` environment variable to set this.
+RAY_CONFIG(bool, count_swap_in_memory_monitor, false)
+
 /// The minimum amount of free space. If the memory is above the
 /// memory_usage_threshold and free space is below min_memory_free_bytes then it
 /// will start killing processes to free up the space. Disabled if it is -1.

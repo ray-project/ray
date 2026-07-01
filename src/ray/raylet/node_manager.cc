@@ -3354,8 +3354,11 @@ std::string NodeManager::CreateOomKillMessageDetails(
     }
   }
 
+  // Note: with count_swap_in_memory_monitor=true the second figure is the
+  // memory limit the OOM killer enforces (RAM + cgroup swap.max), not
+  // physical RAM. With the flag off it equals physical RAM.
   return absl::StrFormat(
-      "Memory on the node (IP: %s, ID: %s) was %sGB / %sGB (%f)\n"
+      "Memory on the node (IP: %s, ID: %s) was %sGB used / %sGB limit (%f)\n"
       "OOM kill reason: %s\n"
       "Object store memory usage: [%s]\n"
       "Ray killed %d worker(s) based on the killing policy\n"
