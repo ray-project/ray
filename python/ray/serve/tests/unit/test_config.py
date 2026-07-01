@@ -7,6 +7,7 @@ from pydantic import ValidationError
 import ray
 from ray import cloudpickle, serve
 from ray._common.utils import import_attr
+from ray.serve import config as config_module
 from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
@@ -26,6 +27,7 @@ from ray.serve._private.utils import DEFAULT
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.config import (
     AutoscalingConfig,
+    AutoscalingPolicy,
     ControllerOptions,
     DeploymentActorConfig,
     GangPlacementStrategy,
@@ -1530,6 +1532,38 @@ def test_default_autoscaling_policy_import_path():
     policy = import_attr(DEFAULT_AUTOSCALING_POLICY_NAME)
 
     assert policy == default_autoscaling_policy
+
+
+def test_autoscaling_policy_caches_deserialized_callable_globally(monkeypatch):
+    """Fresh ``AutoscalingPolicy`` instances share one deserialized callable
+    when the policy is the same; a different policy on a different import
+    path bypasses the cache.
+    """
+    monkeypatch.setattr(config_module, "_GLOBAL_POLICY_CACHE", {})
+    loads_calls = []
+    real_loads = config_module.cloudpickle.loads
+
+    def _counting_loads(data):
+        loads_calls.append(data)
+        return real_loads(data)
+
+    monkeypatch.setattr(config_module.cloudpickle, "loads", _counting_loads)
+
+    # Two instances of the default policy → one deserialization, one cache entry.
+    p1 = AutoscalingPolicy()
+    p2 = AutoscalingPolicy()
+    assert p1.get_policy() is p2.get_policy()
+    assert len(loads_calls) == 1
+    assert len(config_module._GLOBAL_POLICY_CACHE) == 1
+
+    # A different policy doesn't hit the cache and deserializes fresh.
+    p3 = AutoscalingPolicy(
+        policy_function="ray.serve.tests.unit.test_config:fake_policy"
+    )
+    assert p3.get_policy() is not p1.get_policy()
+    assert p3.get_policy()() == fake_policy_return_value
+    assert len(loads_calls) == 2
+    assert len(config_module._GLOBAL_POLICY_CACHE) == 2
 
 
 class TestGetControllerImpl:

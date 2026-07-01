@@ -1,3 +1,4 @@
+import hashlib
 import inspect
 import json
 import logging
@@ -426,6 +427,15 @@ class AggregationFunction(str, Enum):
     MIN = "min"
 
 
+# Process-global cache of deserialized autoscaling policy callables, keyed by
+# a hash of the serialized policy bytes. The bytes-hash key (rather than the
+# importable path) lets the cache invalidate automatically when a user
+# redeploys with updated policy code on the same import path, while still
+# deduplicating across the many ``AutoscalingPolicy`` instances Pydantic
+# rebuilds for the same policy.
+_GLOBAL_POLICY_CACHE: Dict[bytes, Callable] = {}
+
+
 @PublicAPI(stability="stable")
 class AutoscalingPolicy(BaseModel):
     # Cloudpickled policy definition.
@@ -530,11 +540,29 @@ class AutoscalingPolicy(BaseModel):
     def get_policy(self) -> Callable:
         """Deserialize policy from cloudpickled bytes.
 
-        The result is cached to avoid repeated cloudpickle deserialization on
-        every call (e.g. on every autoscaling tick).
+        Cached process-globally, keyed by a hash of the serialized bytes.
+        Every ``cloudpickle.loads`` rebuilds a fresh module namespace
+        (because ``serialize_policy`` uses ``register_pickle_by_value``)
+        whose function objects cycle through ``function.__globals__``;
+        deduplicating by content lets fresh instances of the same policy
+        reuse one callable while still picking up a redeploy on the same
+        import path that ships new code (different bytes → cache miss).
+        See https://github.com/ray-project/ray/issues/58815.
         """
         if self._cached_policy is not None:
             return self._cached_policy
+
+        cache_key = (
+            hashlib.sha256(self._serialized_policy_def).digest()
+            if self._serialized_policy_def
+            else None
+        )
+        if cache_key is not None:
+            cached = _GLOBAL_POLICY_CACHE.get(cache_key)
+            if cached is not None:
+                self._cached_policy = cached
+                return cached
+
         try:
             policy = cloudpickle.loads(self._serialized_policy_def)
         except (ModuleNotFoundError, ImportError) as e:
@@ -549,6 +577,8 @@ class AutoscalingPolicy(BaseModel):
                 "advanced-autoscaling.html#gotchas-and-limitations"
             ) from e
         self._cached_policy = policy
+        if cache_key is not None:
+            _GLOBAL_POLICY_CACHE[cache_key] = policy
         return policy
 
 
