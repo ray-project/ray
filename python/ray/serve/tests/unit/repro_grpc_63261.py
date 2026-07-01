@@ -110,12 +110,15 @@ async def main():
     def router_callback(value):
         received.append(value)
         if isinstance(value, ActorUnavailableError):
-            print("\n✅ FIX VERIFIED: Router callback received "
-                  "ActorUnavailableError.")
+            print(
+                "\n✅ FIX VERIFIED: Router callback received " "ActorUnavailableError."
+            )
             print("   Cache invalidation branch will fire correctly.")
         else:
-            print("\n🐛 BUG CONFIRMED: Router callback received "
-                  f"{type(value).__name__} (not ActorUnavailableError).")
+            print(
+                "\n🐛 BUG CONFIRMED: Router callback received "
+                f"{type(value).__name__} (not ActorUnavailableError)."
+            )
             print("   Stale cache entries would NOT be invalidated.")
 
     result.add_done_callback(router_callback)

@@ -509,7 +509,9 @@ class TestDoneCallbackTranslation:
         """Non-gRPC exceptions (e.g. RuntimeError from serialization)
         should be passed through without translation. Only gRPC
         transport failures get translated."""
-        fake_call = _ControllableFakeCall(exception=RuntimeError("serialization failed"))
+        fake_call = _ControllableFakeCall(
+            exception=RuntimeError("serialization failed")
+        )
         result = self._make_result(fake_call)
 
         received: List = []
