@@ -617,6 +617,21 @@ def format_memory(mem_bytes: Number) -> str:
     return f"{int(mem_bytes)}B"
 
 
+def format_resource(value):
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, Real):
+        try:
+            if float(value).is_integer():
+                return str(int(value))
+        except (ValueError, OverflowError):
+            pass
+        return f"{value:g}"
+    return str(value)
+
+
 def parse_usage(usage: Usage, verbose: bool) -> List[str]:
     # first collect resources used in placement groups
     placement_group_resource_usage = {}
@@ -670,10 +685,15 @@ def parse_usage(usage: Usage, verbose: bool) -> List[str]:
             # https://github.com/ray-project/ray/issues/33272
             pass
         else:
-            line = f"{used}/{total} {resource}"
+            formatted_used = format_resource(used)
+            formatted_total = format_resource(total)
+            line = f"{formatted_used}/{formatted_total} {resource}"
             if used_in_pg:
+                formatted_pg_used = format_resource(pg_used)
+                formatted_pg_total = format_resource(pg_total)
                 line += (
-                    f" ({pg_used} used of " f"{pg_total} reserved in placement groups)"
+                    f" ({formatted_pg_used} used of "
+                    f"{formatted_pg_total} reserved in placement groups)"
                 )
             usage_lines.append(line)
     return usage_lines
@@ -1006,10 +1026,12 @@ def format_no_node_type_string(node_type: dict):
 
     output_lines = [""]
     for resource, total in regular_resource_usage.items():
-        output_line = f"{resource}: {total}"
+        formatted_total = format_resource(total)
+        output_line = f"{resource}: {formatted_total}"
         if resource in placement_group_resource_usage:
             pg_resource = placement_group_resource_usage[resource]
-            output_line += f" ({pg_resource} reserved in placement groups)"
+            formatted_pg_resource = format_resource(pg_resource)
+            output_line += f" ({formatted_pg_resource} reserved in placement groups)"
         output_lines.append(output_line)
 
     return "\n  ".join(output_lines)
