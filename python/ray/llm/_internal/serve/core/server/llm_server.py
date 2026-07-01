@@ -786,6 +786,19 @@ class LLMServer(LLMServerProtocol):
             **ray_actor_options.get("runtime_env", {}),
             **(llm_config.runtime_env if llm_config.runtime_env else {}),
         }
+
+        # Seed replica env_vars from engine-derived vars (e.g. fractional-GPU
+        # VLLM_RAY_PER_WORKER_GPUS) so the engine subprocess inherits them; user
+        # values win. See #63875.
+        runtime_env = ray_actor_options["runtime_env"]
+        engine_env_vars = engine_config.get_runtime_env_with_local_env_vars().get(
+            "env_vars", {}
+        )
+        runtime_env["env_vars"] = {
+            **engine_env_vars,
+            **(runtime_env.get("env_vars") or {}),
+        }
+
         deployment_options["ray_actor_options"] = ray_actor_options
 
         return deployment_options
