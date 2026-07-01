@@ -16,6 +16,7 @@
 
 #include <boost/range/adaptor/map.hpp>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -311,7 +312,6 @@ class NodeResources {
   explicit NodeResources(const NodeResourceSet &resources)
       : total(resources), available(resources) {}
   NodeResourceSet total;
-  NodeResourceSet available;
   /// Only used by light resource report.
   ResourceSet load;
 
@@ -355,6 +355,37 @@ class NodeResources {
   std::string DebugString() const;
   /// Returns compact dict-like string.
   std::string DictString() const;
+
+  /// Get the scalar available amount for a resource.
+  FixedPoint GetAvailableSum(scheduling::ResourceID resource_id) const;
+
+  /// Get the set of resource IDs that have explicit available entries.
+  std::set<scheduling::ResourceID> GetAvailableResourceIds() const;
+
+  /// Subtract resources from available, clamping each entry to 0.
+  void SubtractAvailable(const ResourceSet &resource_set);
+
+  /// Set a single resource's available to an explicit scalar value.
+  void SetAvailableResource(scheduling::ResourceID resource_id, FixedPoint value);
+
+  /// Replace the entire available field from a NodeResourceSet.
+  void SetAvailable(NodeResourceSet resource_set);
+
+  /// Return available resources as a name->value map.
+  absl::flat_hash_map<std::string, double> GetAvailableResourceMap() const;
+
+  /// Returns true if the resource has an explicit available entry.
+  bool HasAvailableResource(scheduling::ResourceID resource_id) const;
+
+  /// Read-only access to the entire available resource set.
+  const NodeResourceSet &GetAvailable() const;
+
+  /// Transfer ownership of the available resource set (leaves available in a moved-from
+  /// state).
+  NodeResourceSet TakeAvailable();
+
+ private:
+  NodeResourceSet available;
 };
 
 /// Total and available capacities of each resource instance.
