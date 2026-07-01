@@ -385,21 +385,24 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
         OfflineEvaluationRunnerGroup so that remote offline eval runners
         are assigned to distinct placement group bundles.
         """
-        config = self.config.copy(copy_frozen=False)
-        config.environment("CartPole-v1")
-        config.evaluation(
-            evaluation_interval=1,
-            evaluation_num_env_runners=1,
-            evaluation_parallel_to_training=False,
-            num_offline_eval_runners=1,
-        )
+        for num_offline_eval_runners, expected_offset in [(None, 1), (1, 1), (3, 1)]:
+            with self.subTest(num_offline_eval_runners=num_offline_eval_runners):
+                config = self.config.copy(copy_frozen=False)
+                config.environment("CartPole-v1")
+                eval_kwargs = dict(
+                    evaluation_interval=1,
+                    evaluation_num_env_runners=1,
+                    evaluation_parallel_to_training=False,
+                )
+                if num_offline_eval_runners is not None:
+                    eval_kwargs["num_offline_eval_runners"] = num_offline_eval_runners
+                config.evaluation(**eval_kwargs)
 
-        algo = config.build()
-
-        # pg_offset should be num_env_runners (0) + evaluation_num_env_runners (1) = 1
-        self.assertEqual(algo.offline_eval_runner_group._pg_offset, 1)
-
-        algo.cleanup()
+                algo = config.build()
+                self.assertEqual(
+                    algo.offline_eval_runner_group._pg_offset, expected_offset
+                )
+                algo.cleanup()
 
 
 if __name__ == "__main__":
