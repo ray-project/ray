@@ -233,7 +233,7 @@ class ScalingConfig(ScalingConfigV1):
                 workers_per_slice, tpu_resources = get_tpu_worker_resources(
                     topology=self.topology,
                     accelerator_type=self.accelerator_type,
-                    resources_per_unit=self.resources_per_worker,
+                    resources_per_worker=self.resources_per_worker,
                     num_slices=1,
                 )
             except Exception as e:

@@ -121,7 +121,7 @@ class ElasticScalingPolicy(ScalingPolicy):
             workers_per_slice, _ = get_tpu_worker_resources(
                 topology=self.scaling_config.topology,
                 accelerator_type=self.scaling_config.accelerator_type,
-                resources_per_unit=single_worker_resources,
+                resources_per_worker=single_worker_resources,
                 num_slices=1,
             )
 
