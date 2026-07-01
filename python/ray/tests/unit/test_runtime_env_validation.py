@@ -8,7 +8,7 @@ import pytest
 import yaml
 
 from ray import job_config
-from ray._private.runtime_env import validation
+from ray._private.runtime_env import uv, validation
 from ray._private.runtime_env.pip import _get_pip_hash
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.runtime_env.validation import (
@@ -471,6 +471,75 @@ class TestValidateUV:
             "uv_pip_install_options": ["--no-cache"],
             "uv_version": "==0.4.30",
         }
+
+        # Empty packages are ignored unless custom uv install options may provide
+        # a dependency source such as a requirements file.
+        assert validation.parse_and_validate_uv({"packages": []}) is None
+        assert (
+            validation.parse_and_validate_uv(
+                {"packages": [], "uv_pip_install_options": []}
+            )
+            is None
+        )
+        result = validation.parse_and_validate_uv(
+            {
+                "packages": [],
+                "uv_pip_install_options": [
+                    "--requirement=${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/requirements.txt"
+                ],
+            }
+        )
+        assert result == {
+            "packages": [],
+            "uv_check": False,
+            "uv_pip_install_options": [
+                "--requirement=${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/requirements.txt"
+            ],
+        }
+
+    def test_uv_uri_includes_context_for_env_sensitive_options(self):
+        base_uv = {
+            "packages": [],
+            "uv_check": False,
+            "uv_pip_install_options": [
+                "--requirement=${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/requirements.txt"
+            ],
+        }
+        first_uri = uv.get_uri(
+            {
+                "working_dir": "gcs://first.zip",
+                "env_vars": {"CUSTOM_INDEX": "first"},
+                "uv": base_uv,
+            }
+        )
+        second_uri = uv.get_uri(
+            {
+                "working_dir": "gcs://second.zip",
+                "env_vars": {"CUSTOM_INDEX": "second"},
+                "uv": base_uv,
+            }
+        )
+        assert first_uri != second_uri
+
+        assert uv.get_uri({"working_dir": "gcs://first.zip", "uv": base_uv}) == (
+            uv.get_uri(
+                {
+                    "working_dir": "gcs://first.zip",
+                    "env_vars": None,
+                    "uv": base_uv,
+                }
+            )
+        )
+
+    def test_uv_uri_unchanged_for_options_without_env_vars(self):
+        uv_config = {
+            "packages": ["requests"],
+            "uv_check": False,
+            "uv_pip_install_options": ["--no-cache"],
+        }
+        assert uv.get_uri({"working_dir": "gcs://first.zip", "uv": uv_config}) == (
+            uv.get_uri({"working_dir": "gcs://second.zip", "uv": uv_config})
+        )
 
 
 class TestValidatePip:

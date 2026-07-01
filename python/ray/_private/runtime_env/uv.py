@@ -5,11 +5,13 @@ import hashlib
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 from asyncio import create_task, get_running_loop
 from typing import Dict, List, Optional
 
+import ray._private.ray_constants as ray_constants
 from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env import dependency_utils, virtualenv_utils
 from ray._private.runtime_env.packaging import Protocol, parse_uri
@@ -18,6 +20,26 @@ from ray._private.runtime_env.utils import check_output_cmd
 from ray._private.utils import get_directory_size_bytes
 
 default_logger = logging.getLogger(__name__)
+_ENV_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def _expand_runtime_env_vars(value: str, env: Dict[str, str]) -> str:
+    """Expand environment variables using runtime-env controlled values."""
+
+    def replace(match: re.Match) -> str:
+        env_var = match.group(1) or match.group(2)
+        return env.get(env_var, match.group(0))
+
+    return _ENV_VAR_PATTERN.sub(replace, value)
+
+
+def _get_uv_install_option_env(env_vars: Dict[str, str]) -> Dict[str, str]:
+    """Return the bounded env context used for uv install option expansion."""
+    uv_install_option_env = dict(env_vars)
+    working_dir_env_var = ray_constants.RAY_RUNTIME_ENV_CREATE_WORKING_DIR_ENV_VAR
+    if working_dir_env_var in os.environ:
+        uv_install_option_env[working_dir_env_var] = os.environ[working_dir_env_var]
+    return uv_install_option_env
 
 
 def _get_uv_hash(uv_dict: Dict) -> str:
@@ -27,12 +49,24 @@ def _get_uv_hash(uv_dict: Dict) -> str:
     return hash_val
 
 
+def _has_env_var(value: str) -> bool:
+    return _ENV_VAR_PATTERN.search(value) is not None
+
+
 def get_uri(runtime_env: Dict) -> Optional[str]:
     """Return `"uv://<hashed_dependencies>"`, or None if no GC required."""
     uv = runtime_env.get("uv")
     if uv is not None:
         if isinstance(uv, dict):
-            uri = "uv://" + _get_uv_hash(uv_dict=uv)
+            hash_input = uv
+            uv_pip_install_options = uv.get("uv_pip_install_options") or []
+            if any(_has_env_var(option) for option in uv_pip_install_options):
+                hash_input = {
+                    "uv": uv,
+                    "env_vars": runtime_env.get("env_vars") or {},
+                    "working_dir": runtime_env.get("working_dir"),
+                }
+            uri = "uv://" + _get_uv_hash(uv_dict=hash_input)
         elif isinstance(uv, list):
             uri = "uv://" + _get_uv_hash(uv_dict=dict(packages=uv))
         else:
@@ -71,6 +105,9 @@ class UvProcessor:
         self._uv_config = self._runtime_env.uv_config()
         self._uv_env = os.environ.copy()
         self._uv_env.update(self._runtime_env.env_vars())
+        self._uv_install_option_env = _get_uv_install_option_env(
+            self._runtime_env.env_vars()
+        )
 
     async def _install_uv(
         self, path: str, cwd: str, pip_env: dict, logger: logging.Logger
@@ -178,7 +215,10 @@ class UvProcessor:
 
         uv_opt_list = self._uv_config.get("uv_pip_install_options", ["--no-cache"])
         if uv_opt_list:
-            uv_install_cmd += uv_opt_list
+            uv_install_cmd += [
+                _expand_runtime_env_vars(option, self._uv_install_option_env)
+                for option in uv_opt_list
+            ]
 
         logger.info("Installing python requirements to %s", virtualenv_path)
         await check_output_cmd(uv_install_cmd, logger=logger, cwd=cwd, env=pip_env)

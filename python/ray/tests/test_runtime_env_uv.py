@@ -111,6 +111,34 @@ def test_package_install_with_requirements(shutdown_only, tmp_working_dir):
     assert ray.get(f.remote()) == "2.32.3"
 
 
+def test_working_dir_applies_for_uv_pip_install_options(shutdown_only):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        working_dir = Path(tmp_dir)
+        with open(working_dir / "requirements.txt", "w") as f:
+            f.write("pip-install-test==0.5")
+
+        ray.init(
+            runtime_env={
+                "working_dir": str(working_dir),
+                "uv": {
+                    "packages": [],
+                    "uv_pip_install_options": [
+                        "--requirement="
+                        "${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/requirements.txt"
+                    ],
+                },
+            }
+        )
+
+        @ray.remote
+        def test_import():
+            import pip_install_test
+
+            return pip_install_test.__name__
+
+        assert ray.get(test_import.remote()) == "pip_install_test"
+
+
 # Install different versions of the same package across different tasks, used to check
 # uv cache doesn't break runtime env requirement.
 def test_package_install_with_different_versions(shutdown_only):
