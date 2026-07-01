@@ -24,6 +24,7 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     ActorPoolInfo,
     AutoscalingActorPool,
 )
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -37,7 +38,6 @@ from ray.data.context import DataContext
 
 if TYPE_CHECKING:
 
-    from ray.data._internal.execution.streaming_executor_state import OpState
     from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
@@ -50,23 +50,6 @@ METADATA_WAIT_TIMEOUT_S = 0.1
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
 Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
-
-
-@dataclass(frozen=True)
-class ObjectStoreUsage:
-    """Per-op object store accounting.
-
-    Attributes:
-        internal: Bytes held by this op's currently-running tasks
-            (outputs not yet yielded to the object store).
-        outputs: Bytes this op has produced that are still live in
-            the object store — its internal output queue, its
-            ``OpState`` external output queue, and the downstream
-            eligible ops' inputs.
-    """
-
-    internal: int
-    outputs: int
 
 
 class OpTask(ABC):
@@ -134,6 +117,8 @@ class DataOpTask(OpTask):
         self,
         task_index: int,
         streaming_gen: ObjectRefGenerator,
+        block_ref_counter: BlockRefCounter,
+        producer_id: str,
         output_ready_callback: Callable[[RefBundle], None] = lambda bundle: None,
         task_done_callback: TaskDoneCallbackType = lambda exc, worker_stats, driver_stats: None,
         block_ready_callback: Callable[
@@ -149,6 +134,9 @@ class DataOpTask(OpTask):
         Args:
             task_index: Index of the task. Used for callbacks.
             streaming_gen: The streaming generator of this task. It should yield blocks.
+            block_ref_counter: The centralized block reference counter. on_block_produced
+                is called for each block yielded by this task.
+            producer_id: The id of the operator that produces the blocks from this task.
             output_ready_callback: The callback to call when a new RefBundle is output
                 from the generator.
             task_done_callback: The callback to call when the task is done.
@@ -171,6 +159,8 @@ class DataOpTask(OpTask):
         self._block_ready_callback = block_ready_callback
         self._metadata_ready_callback = metadata_ready_callback
         self._operator_name = operator_name
+        self._block_ref_counter: BlockRefCounter = block_ref_counter
+        self._producer_id: str = producer_id
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -307,6 +297,9 @@ class DataOpTask(OpTask):
                 meta_with_schema_bytes
             )
             meta = meta_with_schema.metadata
+            self._block_ref_counter.on_block_produced(
+                self._pending_block_ref, meta.size_bytes or 0, self._producer_id
+            )
             self._output_ready_callback(
                 RefBundle(
                     [BlockEntry(self._pending_block_ref, meta)],
@@ -758,12 +751,19 @@ class PhysicalOperator(Operator):
         """
         return self._num_output_splits
 
-    def start(self, options: ExecutionOptions) -> None:
+    def start(
+        self,
+        options: ExecutionOptions,
+        block_ref_counter: BlockRefCounter,
+    ) -> None:
         """Called by the executor when execution starts for an operator.
 
         Args:
             options: The global options used for the overall execution.
+            block_ref_counter: The executor-wide shared counter for tracking
+                object-store memory.
         """
+        self._block_ref_counter = block_ref_counter
         self._started = True
 
     def can_add_input(self) -> bool:
@@ -900,41 +900,6 @@ class PhysicalOperator(Operator):
         between different operators.
         """
         return ExecutionResources.zero()
-
-    def estimate_object_store_usage(self, state: "OpState") -> ObjectStoreUsage:
-        """Returns the bytes this operator contributes to the global object
-        store budget. Subclasses may override this when their object store
-        footprint doesn't match the generic model.
-        """
-        # Operator's internal Object Store usage
-        mem_op_internal = self.metrics.obj_store_mem_pending_task_outputs or 0
-
-        # Operator's outputs' Object Store usage
-        op_outputs_bytes = (
-            # Internal output queue
-            self.metrics.obj_store_mem_internal_outqueue
-            +
-            # External output queue
-            state.output_queue_bytes()
-        )
-
-        # TODO fix ineligible ops: this needs to include usage of all of OS
-        #      for ineligible ops
-        #
-        # Outputs of this operator used downstream
-        used_op_outputs_bytes = sum(
-            (
-                downstream_op.metrics.obj_store_mem_internal_inqueue_for_input(
-                    downstream_op.input_dependencies.index(self)
-                )
-                + downstream_op.metrics.obj_store_mem_pending_task_inputs
-            )
-            for downstream_op in self.output_dependencies
-        )
-        return ObjectStoreUsage(
-            internal=int(mem_op_internal),
-            outputs=int(op_outputs_bytes + used_op_outputs_bytes),
-        )
 
     def running_logical_usage(self) -> ExecutionResources:
         """Returns the estimated running CPU, GPU, and memory usage of this operator,
