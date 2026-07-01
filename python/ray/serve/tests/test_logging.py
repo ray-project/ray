@@ -1,6 +1,7 @@
 import io
 import json
 import logging
+import logging.handlers
 import os
 import re
 import string
@@ -26,6 +27,7 @@ from ray._common.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID, ReplicaID, ServeComponentType
 from ray.serve._private.constants import SERVE_LOG_EXTRA_FIELDS, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import (
+    IdleTimeoutMemoryHandler,
     ServeComponentFilter,
     ServeFormatter,
     StreamToLogger,
@@ -69,6 +71,305 @@ def serve_and_ray_shutdown():
 def set_logging_config(monkeypatch, max_bytes, backup_count):
     monkeypatch.setenv("RAY_ROTATION_MAX_BYTES", str(max_bytes))
     monkeypatch.setenv("RAY_ROTATION_BACKUP_COUNT", str(backup_count))
+
+
+class ListHandler(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.records = []
+
+    def emit(self, record: logging.LogRecord):
+        self.records.append(record)
+
+
+def _make_log_record(message: str, level: int = logging.INFO) -> logging.LogRecord:
+    return logging.LogRecord(
+        name=SERVE_LOGGER_NAME,
+        level=level,
+        pathname=__file__,
+        lineno=0,
+        msg=message,
+        args=(),
+        exc_info=None,
+    )
+
+
+def test_idle_timeout_memory_handler_disabled_preserves_buffering():
+    target = ListHandler()
+    handler = IdleTimeoutMemoryHandler(
+        capacity=10,
+        flushLevel=logging.ERROR,
+        target=target,
+        flush_timeout_s=0,
+    )
+
+    handler.handle(_make_log_record("buffered-info"))
+    time.sleep(0.1)
+    assert len(handler.buffer) == 1
+    assert target.records == []
+
+    handler.handle(_make_log_record("error-flush", level=logging.ERROR))
+    assert [record.getMessage() for record in target.records] == [
+        "buffered-info",
+        "error-flush",
+    ]
+
+    handler.close()
+
+
+def test_idle_timeout_memory_handler_flushes_after_idle_timeout():
+    target = ListHandler()
+    handler = IdleTimeoutMemoryHandler(
+        capacity=10,
+        flushLevel=logging.ERROR,
+        target=target,
+        flush_timeout_s=0.05,
+    )
+
+    handler.handle(_make_log_record("buffered-info"))
+    assert len(handler.buffer) == 1
+    assert target.records == []
+
+    wait_for_condition(lambda: len(target.records) == 1, timeout=5)
+    assert target.records[0].getMessage() == "buffered-info"
+    assert handler.buffer == []
+
+    handler.close()
+
+
+def test_idle_timeout_memory_handler_resets_idle_timeout(monkeypatch):
+    class FakeTimer:
+        timers = []
+
+        def __init__(self, delay_s, callback):
+            self.delay_s = delay_s
+            self.callback = callback
+            self.daemon = False
+            self.cancelled = False
+            FakeTimer.timers.append(self)
+
+        def start(self):
+            pass
+
+        def cancel(self):
+            self.cancelled = True
+
+    now = 0.0
+
+    def monotonic():
+        return now
+
+    monkeypatch.setattr("ray.serve._private.logging_utils.threading.Timer", FakeTimer)
+    monkeypatch.setattr("ray.serve._private.logging_utils.time.monotonic", monotonic)
+
+    target = ListHandler()
+    handler = IdleTimeoutMemoryHandler(
+        capacity=10,
+        flushLevel=logging.ERROR,
+        target=target,
+        flush_timeout_s=1,
+    )
+
+    handler.handle(_make_log_record("first"))
+    assert len(FakeTimer.timers) == 1
+
+    now = 0.75
+    handler.handle(_make_log_record("second"))
+
+    now = 1.0
+    FakeTimer.timers[0].callback()
+    assert target.records == []
+    assert len(FakeTimer.timers) == 2
+    assert FakeTimer.timers[1].delay_s == 0.75
+
+    now = 1.75
+    FakeTimer.timers[1].callback()
+    assert [record.getMessage() for record in target.records] == ["first", "second"]
+
+    handler.close()
+
+
+def test_idle_timeout_memory_handler_preserves_capacity_flush():
+    target = ListHandler()
+    handler = IdleTimeoutMemoryHandler(
+        capacity=2,
+        flushLevel=logging.ERROR,
+        target=target,
+        flush_timeout_s=10,
+    )
+
+    handler.handle(_make_log_record("first"))
+    assert target.records == []
+    handler.handle(_make_log_record("second"))
+
+    assert [record.getMessage() for record in target.records] == ["first", "second"]
+    assert handler.buffer == []
+
+    handler.close()
+
+
+def test_configure_component_logger_uses_idle_handler_by_default(tmp_path):
+    logger = logging.getLogger(SERVE_LOGGER_NAME)
+    configure_component_logger(
+        component_name="fake_component_name",
+        component_id="fake_component_id",
+        logging_config=LoggingConfig(logs_dir=str(tmp_path)),
+        component_type=ServeComponentType.REPLICA,
+        buffer_size=100,
+        max_bytes=100,
+        backup_count=3,
+    )
+
+    memory_handler = next(
+        handler
+        for handler in logger.handlers
+        if isinstance(handler, logging.handlers.MemoryHandler)
+    )
+    assert isinstance(memory_handler, IdleTimeoutMemoryHandler)
+    assert memory_handler.flush_timeout_s == 10
+
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+        handler.close()
+
+
+def test_configure_component_logger_uses_standard_memory_handler_when_timeout_disabled(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        "ray.serve._private.logging_utils."
+        "RAY_SERVE_REQUEST_PATH_LOG_FLUSH_TIMEOUT_S",
+        0,
+    )
+    logger = logging.getLogger(SERVE_LOGGER_NAME)
+    configure_component_logger(
+        component_name="fake_component_name",
+        component_id="fake_component_id",
+        logging_config=LoggingConfig(logs_dir=str(tmp_path)),
+        component_type=ServeComponentType.REPLICA,
+        buffer_size=100,
+        max_bytes=100,
+        backup_count=3,
+    )
+
+    memory_handler = next(
+        handler
+        for handler in logger.handlers
+        if isinstance(handler, logging.handlers.MemoryHandler)
+    )
+    assert not isinstance(memory_handler, IdleTimeoutMemoryHandler)
+
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+        handler.close()
+
+
+def test_configure_component_logger_closes_memory_handler_target_on_reconfigure(
+    tmp_path,
+):
+    logger = logging.getLogger(SERVE_LOGGER_NAME)
+    configure_component_logger(
+        component_name="fake_component_name",
+        component_id="fake_component_id",
+        logging_config=LoggingConfig(logs_dir=str(tmp_path)),
+        component_type=ServeComponentType.REPLICA,
+        buffer_size=100,
+        max_bytes=100,
+        backup_count=3,
+    )
+
+    old_memory_handler = next(
+        handler
+        for handler in logger.handlers
+        if isinstance(handler, logging.handlers.MemoryHandler)
+    )
+    old_file_handler = old_memory_handler.target
+
+    configure_component_logger(
+        component_name="fake_component_name",
+        component_id="fake_component_id",
+        logging_config=LoggingConfig(logs_dir=str(tmp_path)),
+        component_type=ServeComponentType.REPLICA,
+        buffer_size=100,
+        max_bytes=100,
+        backup_count=3,
+    )
+
+    assert old_file_handler.stream is None
+
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+        handler.close()
+
+
+def test_configure_component_logger_uses_configured_idle_handler_timeout(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        "ray.serve._private.logging_utils."
+        "RAY_SERVE_REQUEST_PATH_LOG_FLUSH_TIMEOUT_S",
+        0.05,
+    )
+    logger = logging.getLogger(SERVE_LOGGER_NAME)
+    configure_component_logger(
+        component_name="fake_component_name",
+        component_id="fake_component_id",
+        logging_config=LoggingConfig(logs_dir=str(tmp_path)),
+        component_type=ServeComponentType.REPLICA,
+        buffer_size=1,
+        max_bytes=100,
+        backup_count=3,
+    )
+
+    memory_handler = next(
+        handler
+        for handler in logger.handlers
+        if isinstance(handler, logging.handlers.MemoryHandler)
+    )
+    assert isinstance(memory_handler, IdleTimeoutMemoryHandler)
+    assert memory_handler.flush_timeout_s == 0.05
+
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+        handler.close()
+
+
+def test_configure_component_logger_idle_timeout_flushes_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "ray.serve._private.logging_utils."
+        "RAY_SERVE_REQUEST_PATH_LOG_FLUSH_TIMEOUT_S",
+        0.05,
+    )
+    logger = logging.getLogger(SERVE_LOGGER_NAME)
+    configure_component_logger(
+        component_name="fake_component_name",
+        component_id="fake_component_id",
+        logging_config=LoggingConfig(logs_dir=str(tmp_path)),
+        component_type=ServeComponentType.REPLICA,
+        buffer_size=100,
+        max_bytes=100,
+        backup_count=3,
+    )
+
+    memory_handler = next(
+        handler
+        for handler in logger.handlers
+        if isinstance(handler, logging.handlers.MemoryHandler)
+    )
+    assert isinstance(memory_handler, IdleTimeoutMemoryHandler)
+
+    log_file = memory_handler.target.baseFilename
+    logger.info("idle-timeout-file-flush")
+
+    def check_log_file():
+        with open(log_file, "r") as f:
+            return "idle-timeout-file-flush" in f.read()
+
+    wait_for_condition(check_log_file, timeout=5)
+
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+        handler.close()
 
 
 def _get_expected_replica_log_content(replica_id: ReplicaID):
