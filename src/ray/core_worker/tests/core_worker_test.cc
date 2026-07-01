@@ -68,7 +68,8 @@ class CoreWorkerTest : public ::testing::Test {
       : io_work_(io_service_.get_executor()),
         task_execution_service_work_(task_execution_service_.get_executor()),
         object_freed_callback_service_work_(
-            object_freed_callback_service_.get_executor()) {
+            object_freed_callback_service_.get_executor()),
+        object_info_publish_service_work_(object_info_publish_service_.get_executor()) {
     CoreWorkerOptions options;
     options.worker_type = WorkerType::WORKER;
     options.language = Language::PYTHON;
@@ -266,6 +267,7 @@ class CoreWorkerTest : public ::testing::Test {
                                                 std::move(worker_context),
                                                 io_service_,
                                                 object_freed_callback_service_,
+                                                object_info_publish_service_,
                                                 std::move(core_worker_client_pool),
                                                 std::move(raylet_client_pool),
                                                 std::move(periodical_runner),
@@ -276,6 +278,7 @@ class CoreWorkerTest : public ::testing::Test {
                                                 std::move(fake_local_raylet_rpc_client),
                                                 io_thread_,
                                                 object_freed_callback_thread_,
+                                                object_info_publish_thread_,
                                                 reference_counter_,
                                                 memory_store_,
                                                 nullptr,  // plasma_store_provider_
@@ -303,14 +306,18 @@ class CoreWorkerTest : public ::testing::Test {
   instrumented_io_context io_service_;
   instrumented_io_context task_execution_service_;
   instrumented_io_context object_freed_callback_service_;
+  instrumented_io_context object_info_publish_service_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
       task_execution_service_work_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
       object_freed_callback_service_work_;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      object_info_publish_service_work_;
 
   boost::thread io_thread_;
   boost::thread object_freed_callback_thread_;
+  boost::thread object_info_publish_thread_;
 
   /// Flush all pending object-freed callbacks. Call this in tests after an action
   /// that should trigger a user-registered out-of-scope callback.
