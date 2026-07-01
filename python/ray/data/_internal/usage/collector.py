@@ -23,6 +23,7 @@ from ray._common.usage.usage_lib import (
     usage_stats_enabled,
 )
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray._private.worker import global_worker
 from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import MapBatches
@@ -156,7 +157,7 @@ def _cluster_dead_node_count() -> Optional[int]:
     if not ray.is_initialized():
         return None
     try:
-        gcs_client = ray._private.worker.global_worker.gcs_client
+        gcs_client = global_worker.gcs_client  # pyrefly: ignore[missing-attribute]
         dead_nodes = gcs_client.get_all_node_info(
             timeout=_NODE_INFO_RPC_TIMEOUT_S,
             state_filter=GcsNodeInfo.GcsNodeState.DEAD,
