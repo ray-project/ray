@@ -171,6 +171,31 @@ def test_footer_derived_estimator_handles_none_file_size():
     assert list(sizes) == [0.0, 50 * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT]
 
 
+def test_file_affinity_accumulates_fractional_weights_without_truncation():
+    # Each chunk's estimated in-memory size is 1.6 (a float, as real estimators
+    # return -- e.g. on_disk_size * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT). With
+    # max_bucket_size=3, float accumulation flushes after the 2nd chunk
+    # (1.6 + 1.6 = 3.2 >= 3), yielding partitions of sizes [2, 1]. Truncating each
+    # chunk's weight to an int before accumulating (the pre-fix bug) would instead
+    # sum 1 + 1 + 1 = 3, flushing only after the 3rd chunk into a single partition.
+    class _FractionalEstimator(InMemorySizeEstimator):
+        def estimate_in_memory_sizes(self, manifest) -> np.ndarray:
+            return np.full(len(manifest), 1.6)
+
+    table = _affinity_table(["a", "a", "a"], [1, 1, 1], [None, None, None])
+    outputs = list(
+        partition_files(
+            iter([table]),
+            MagicMock(),
+            partitioner=FileAffinityPartitioner(
+                in_memory_size_estimator=_FractionalEstimator(), max_bucket_size=3
+            ),
+        )
+    )
+    partitions = [o[PATH_COLUMN_NAME].to_pylist() for o in outputs]
+    assert partitions == [["a", "a"], ["a"]]
+
+
 def test_file_affinity_handles_none_size_and_nan_estimate_without_raising():
     # None file sizes (HTTPFileSystem) and a NaN in-memory estimate must not
     # crash ``add_input``'s int(...) coercions; both are treated as 0 and the
