@@ -45,7 +45,6 @@ class LifecycleEventForwarder:
         self.worker_id = worker_id
         self._events: asyncio.Queue = asyncio.Queue()
         self._delivery_task: Optional[asyncio.Task] = None
-        self._drop_warned = False
 
     def report(self, method_name: str, *args) -> None:
         if self._delivery_task is None or self._delivery_task.done():
@@ -63,13 +62,8 @@ class LifecycleEventForwarder:
                 batch.append(self._events.get_nowait())
             try:
                 await self.actor.on_lifecycle_events.remote(batch)
-                # Re-arm the warning so a fresh failure surfaces if the actor
-                # recovers and then fails again.
-                self._drop_warned = False
             except (RayActorError, RayTaskError) as e:
-                if not self._drop_warned:
-                    self._drop_warned = True
-                    logger.warning("Dropping KV lifecycle events: %s", e)
+                logger.warning("Dropping KV lifecycle events: %s", e)
             finally:
                 for _ in batch:
                     self._events.task_done()
