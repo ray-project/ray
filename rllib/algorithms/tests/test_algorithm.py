@@ -702,9 +702,7 @@ class TestAlgorithm(unittest.TestCase):
         obs = policy.observation_space.sample()
 
         # sample action from compute_single_action
-        _, _, info_1 = algo.compute_single_action(
-            obs, explore=False, full_fetch=True
-        )
+        _, _, info_1 = algo.compute_single_action(obs, explore=False, full_fetch=True)
 
         # sample action from compute_actions
         obs = SampleBatch({SampleBatch.OBS: obs})
