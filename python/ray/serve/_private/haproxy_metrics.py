@@ -25,10 +25,11 @@ logger = logging.getLogger(__name__)
 # parser anchors on; only lines containing this section are processed.
 _SD_ID = "serve@1"
 
-# RFC 5424 SD element looks like `[serve@1 key="value" key="value"]`.
-# We extract the inside of the brackets after the SD-ID, then walk the
-# `key="value"` pairs.
-_SD_SECTION_RE = re.compile(r"\[" + re.escape(_SD_ID) + r"(?P<body>[^\]]*)\]")
+# RFC 5424 SD element looks like `[serve@1 key="value" key="value"]`. Capture
+# the body between the SD-ID and the closing `]`. A `]` inside a value is
+# escaped as `\]`, so the body matches escaped pairs and stops at the first
+# unescaped `]`.
+_SD_SECTION_RE = re.compile(r"\[" + re.escape(_SD_ID) + r"(?P<body>(?:[^\]\\]|\\.)*)\]")
 
 # Capture `key=value` pairs where the value is either RFC 5424 quoted (may
 # contain spaces; backslash escapes allowed) or a bare token. HAProxy quotes
@@ -40,14 +41,23 @@ _KV_RE = re.compile(r'(\w+)=(?:"((?:[^"\\]|\\.)*)"|(\S+))')
 # that to None so callers don't have to distinguish "unset" from "empty".
 _UNSET = ""
 
+# HAProxy escapes some characters in a quoted log value with a leading
+# backslash. Drop the backslash so the tag holds the original name.
+# Example: `a\"b` -> `a"b`.
+_UNESCAPE_RE = re.compile(r"\\(.)")
+
+
+def _unescape(value: str) -> str:
+    return _UNESCAPE_RE.sub(r"\1", value)
+
 
 @dataclass
 class ParsedMetrics:
     """One per-request observation, parsed from the SD section.
 
     The first group is the general per-request ingress data present on every
-    HTTP request through the frontend; it feeds the ``serve_num_http_*`` /
-    ``serve_http_request_latency_ms`` families. The ``ingress_request_*`` fields
+    HTTP request through the frontend; it feeds the `serve_num_http_*` /
+    `serve_http_request_latency_ms` families. The `ingress_request_*` fields
     are router-specific and only populated when ingress-request-router metrics
     are enabled and the request went through (or attempted) the router.
     """
@@ -230,9 +240,10 @@ class HAProxyMetricsCollector:
 
         kv: dict = {}
         for key, quoted, bare in _KV_RE.findall(match.group("body")):
-            # A bare token never matches empty; an empty quoted value ("") maps
-            # to None so callers don't distinguish "unset" from "empty".
-            value = bare if bare else quoted
+            # Bare tokens (numeric aliases) are used as-is; quoted values are
+            # unescaped so the tag holds the original string. An empty quoted
+            # value ("") becomes None.
+            value = bare if bare else _unescape(quoted)
             kv[key] = value if value != _UNSET else None
 
         def as_int(key: str) -> Optional[int]:

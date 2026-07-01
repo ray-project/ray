@@ -342,7 +342,7 @@ frontend http_frontend
     # metrics socket (level debug) keeps them. Mirrors the proxy, which records
     # the healthz metric with should_record_access_log=False.
     http-request set-log-level debug if healthcheck
-    http-request set-var(txn.serve_route) str(/-/healthz) if healthcheck
+    http-request set-var-fmt(txn.serve_route) "/-/healthz" if healthcheck
     # 200 if any backend has at least one server UP
     acl backend_api_backend_server_up nbsrv(api_backend) ge 1
     acl backend_web_backend_server_up nbsrv(web_backend) ge 1
@@ -355,7 +355,7 @@ frontend http_frontend
     # Like health checks: kept out of the access log (tagged `debug`); its metric
     # is recorded (route=/-/routes, app unset) when metrics are enabled.
     http-request set-log-level debug if routes
-    http-request set-var(txn.serve_route) str(/-/routes) if routes
+    http-request set-var-fmt(txn.serve_route) "/-/routes" if routes
     http-request return status 200 content-type application/json string "{routes}" if routes
     # Per-backend path ACLs (used for both ingress-request-router dispatch
     # and static use_backend selection below).
@@ -368,10 +368,10 @@ frontend http_frontend
     # !found guard makes the longest match win, mirroring the use_backend rules
     # below. Requests that match no app backend (e.g. /-/routes, 404s) leave
     # these unset, so the collector can skip them.
-    http-request set-var(txn.serve_app) str(api_backend) if is_api_backend !{{ var(txn.serve_app) -m found }}
-    http-request set-var(txn.serve_route) str(/api) if is_api_backend !{{ var(txn.serve_route) -m found }}
-    http-request set-var(txn.serve_app) str(web_backend) if is_web_backend !{{ var(txn.serve_app) -m found }}
-    http-request set-var(txn.serve_route) str(/web) if is_web_backend !{{ var(txn.serve_route) -m found }}
+    http-request set-var-fmt(txn.serve_app) "api_backend" if is_api_backend !{{ var(txn.serve_app) -m found }}
+    http-request set-var-fmt(txn.serve_route) "/api" if is_api_backend !{{ var(txn.serve_route) -m found }}
+    http-request set-var-fmt(txn.serve_app) "web_backend" if is_web_backend !{{ var(txn.serve_app) -m found }}
+    http-request set-var-fmt(txn.serve_route) "/web" if is_web_backend !{{ var(txn.serve_route) -m found }}
     # Static routing based on path prefixes in decreasing length then alphabetical order
     use_backend api_backend if is_api_backend
     use_backend web_backend if is_web_backend
@@ -431,6 +431,47 @@ listen stats
                             os.remove(temp_file)
                     except (FileNotFoundError, OSError):
                         pass  # File already removed or doesn't exist
+
+
+def test_config_escapes_special_characters_in_names(haproxy_api_cleanup):
+    """App / deployment names can contain any character (see
+    test_deploy_with_any_characters). They must be escaped when rendered into
+    the metric set-var-fmt values so a '#' (HAProxy comment char) or other
+    special character can't corrupt the config (regression for the
+    set-var(...) str(...) injection)."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file_path = os.path.join(temp_dir, "haproxy.cfg")
+        config = HAProxyConfig(
+            http_options=HTTPOptions(host="127.0.0.1", port=8000),
+            stats_port=8404,
+            socket_path=os.path.join(temp_dir, "admin.sock"),
+            metrics_enabled=True,
+            has_received_routes=True,
+            has_received_servers=True,
+        )
+        backend_configs = {
+            "http-test": BackendConfig(
+                name="http-test",
+                path_prefix="/test",
+                app_name="app#name",
+                ingress_deployment_name="dep#123",
+                servers=[ServerConfig(name="s1", host="127.0.0.1", port=8001)],
+            )
+        }
+        api = HAProxyApi(
+            cfg=config,
+            backend_configs=backend_configs,
+            config_file_path=config_file_path,
+        )
+        api._generate_config_file_internal()
+        with open(config_file_path, "r") as f:
+            cfg = f.read()
+        # Escaped set-var-fmt form (double-quoted), not the injection-prone
+        # unquoted str(...) form that treats '#' as a comment.
+        assert 'set-var-fmt(txn.serve_deployment) "dep#123"' in cfg
+        assert 'set-var-fmt(txn.serve_app) "app#name"' in cfg
+        assert "str(dep#123)" not in cfg
+        assert "str(app#name)" not in cfg
 
 
 def test_generate_backends_in_order(haproxy_api_cleanup):

@@ -6,7 +6,7 @@ HAPROXY_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint
     # the healthz metric with should_record_access_log=False.
     http-request set-log-level debug if healthcheck
     {%- if config.metrics_enabled %}
-    http-request set-var(txn.serve_route) str({{ config.health_check_endpoint }}) if healthcheck
+    http-request set-var-fmt(txn.serve_route) {{ config.health_check_endpoint | haproxy_fmt }} if healthcheck
     {%- endif %}
 {%- if not health_info.healthy %}
     # Override: force health checks to fail (used by drain/disable)
@@ -160,7 +160,7 @@ frontend http_frontend
     # is recorded (route=/-/routes, app unset) when metrics are enabled.
     http-request set-log-level debug if routes
     {%- if config.metrics_enabled %}
-    http-request set-var(txn.serve_route) str(/-/routes) if routes
+    http-request set-var-fmt(txn.serve_route) {{ '/-/routes' | haproxy_fmt }} if routes
     {%- endif %}
     http-request return status {{ route_info.status }} content-type {{ route_info.routes_content_type }} string "{{ route_info.routes_message }}" if routes
 
@@ -181,10 +181,10 @@ frontend http_frontend
     # below. Requests that match no app backend (e.g. /-/routes, 404s) leave
     # these unset, so the collector can skip them.
     {%- for backend in backends %}
-    http-request set-var(txn.serve_app) str({{ backend.app_name or 'unknown' }}) if is_{{ backend.name or 'unknown' }} !{ var(txn.serve_app) -m found }
-    http-request set-var(txn.serve_route) str({{ backend.path_prefix or '/' }}) if is_{{ backend.name or 'unknown' }} !{ var(txn.serve_route) -m found }
+    http-request set-var-fmt(txn.serve_app) {{ (backend.app_name or 'unknown') | haproxy_fmt }} if is_{{ backend.name or 'unknown' }} !{ var(txn.serve_app) -m found }
+    http-request set-var-fmt(txn.serve_route) {{ (backend.path_prefix or '/') | haproxy_fmt }} if is_{{ backend.name or 'unknown' }} !{ var(txn.serve_route) -m found }
     {%- if backend.ingress_deployment_name %}
-    http-request set-var(txn.serve_deployment) str({{ backend.ingress_deployment_name }}) if is_{{ backend.name or 'unknown' }} !{ var(txn.serve_deployment) -m found }
+    http-request set-var-fmt(txn.serve_deployment) {{ backend.ingress_deployment_name | haproxy_fmt }} if is_{{ backend.name or 'unknown' }} !{ var(txn.serve_deployment) -m found }
     {%- endif %}
     {%- endfor %}
     {%- endif %}

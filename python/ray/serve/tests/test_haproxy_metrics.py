@@ -200,6 +200,23 @@ def test_parse_line_extracts_general_http_fields() -> None:
     assert parsed.ingress_request_router_latency_us is None
 
 
+def test_parse_line_unescapes_plus_e_escaping() -> None:
+    """HAProxy's `+E` log-format flag escapes `"`, `\\` and `]` inside a quoted
+    value. The parser undoes that so the metric tag holds the original name --
+    and a value containing `]` must not truncate the SD section at the wrong
+    bracket."""
+    # deployment name `a]b"c\d` -> on the wire: a\]b\"c\\d
+    line = _line(
+        'app="app" route="/" method="GET" status=200 latency_ms=1 '
+        'deployment="a\\]b\\"c\\\\d" term_state=--'
+    )
+    parsed = HAProxyMetricsCollector.parse_line(line)
+    assert parsed is not None
+    # Section wasn't truncated at the escaped `]`; status still parsed.
+    assert parsed.status_code == "200"
+    assert parsed.deployment == 'a]b"c\\d'
+
+
 def test_parse_line_general_fields_empty_for_system_endpoints() -> None:
     """A 404 / system-endpoint line has empty app & deployment (-> None) but a
     real status; the route may be empty (404) or the system path."""

@@ -104,6 +104,26 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @functools.cache
+def _haproxy_fmt_literal(value: Any) -> str:
+    r"""Format a string as a double-quoted HAProxy log-format literal for a
+    `set-var-fmt` rule.
+
+    App, route, and deployment names can contain any character, so the value is
+    quoted and the characters that are special inside a HAProxy double-quoted
+    log-format string are escaped: `\` (escape), `"` (delimiter), `%`
+    (directive), and `$` (env var). HAProxy removes the escaping when it reads
+    the config, so the stored value is the original string.
+
+    Example: `a"b%c` becomes `"a\"b%%c"`.
+    """
+    s = str(value)
+    s = s.replace("\\", "\\\\")
+    s = s.replace('"', '\\"')
+    s = s.replace("%", "%%")
+    s = s.replace("$", "\\$")
+    return '"' + s + '"'
+
+
 def _load_lua_template() -> string.Template:
     path = Path(__file__).parent / "ingress_request_router.lua.tmpl"
     try:
@@ -1223,6 +1243,8 @@ class HAProxyApi(ProxyApi):
         """Internal config generation without locking (for use within locked sections)."""
         try:
             env = Environment()
+            # Escapes names before they are rendered into set-var-fmt values.
+            env.filters["haproxy_fmt"] = _haproxy_fmt_literal
 
             # Backends are sorted in decreasing order of length of path prefix
             # to ensure that the longest path prefix match is taken first.
