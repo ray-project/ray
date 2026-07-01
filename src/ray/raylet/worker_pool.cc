@@ -564,16 +564,21 @@ void WorkerPool::AdjustWorkerOomScore(pid_t pid) const {
   // than the operator configured.
   std::ifstream original_oom_score_file(filename, std::ifstream::in);
   if (!original_oom_score_file.is_open()) {
-    RAY_LOG(WARNING) << "Cannot read OOM score for worker with PID " << pid
-                     << "; skipping OOM score adjustment, error: "
-                     << strerror(errno);
+    RAY_LOG(WARNING) << absl::StrFormat(
+        "Cannot read OOM score for worker with PID %d, "
+        "error: %s, skipping OOM score adjustment",
+        pid,
+        strerror(errno));
     return;
   }
   int original_oom_score_adj = 0;
   original_oom_score_file >> original_oom_score_adj;
   if (original_oom_score_file.fail()) {
-    RAY_LOG(WARNING) << "Failed to parse OOM score for worker with PID " << pid
-                     << "; skipping OOM score adjustment";
+    RAY_LOG(WARNING) << absl::StrFormat(
+        "Failed to parse OOM score for worker with PID %d, "
+        "error: %s, skipping OOM score adjustment",
+        pid,
+        strerror(errno));
     return;
   }
   original_oom_score_file.close();
@@ -593,8 +598,11 @@ void WorkerPool::AdjustWorkerOomScore(pid_t pid) const {
     oom_score_file << std::to_string(oom_score_adj);
   }
   if (oom_score_file.fail()) {
-    RAY_LOG(INFO) << "Failed to set OOM score adjustment for worker with PID " << pid
-                  << ", error: " << strerror(errno);
+    RAY_LOG(WARNING) << absl::StrFormat(
+        "Failed to set OOM score adjustment for worker with PID %d, "
+        "error: %s, skipping OOM score adjustment",
+        pid,
+        strerror(errno));
   }
   oom_score_file.close();
 #endif
