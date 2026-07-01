@@ -532,7 +532,7 @@ TEST_F(MemoryMonitorUtilsTest,
 }
 
 TEST_F(MemoryMonitorUtilsTest,
-       TestTakeUserSliceMemoryUsageSnapshotOnCgroupV1ReturnsNotFound) {
+       TestTakeUserAndSystemSliceMemoryUsageSnapshotOnCgroupV1ReturnsNotFound) {
   std::string user_cgroup_dir = MockCgroupv1MemoryUsage(
       /*total_bytes=*/1LL * 1024 * 1024 * 1024,
       /*current_bytes=*/500 * 1024 * 1024,
@@ -543,15 +543,15 @@ TEST_F(MemoryMonitorUtilsTest,
       /*current_bytes=*/500 * 1024 * 1024,
       /*inactive_file_bytes=*/30 * 1024 * 1024,
       /*active_file_bytes=*/20 * 1024 * 1024);
-  StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound> result =
-      MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(user_cgroup_dir,
-                                                           system_cgroup_dir);
+  StatusSetOr<std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>, StatusT::NotFound>
+      result = MemoryMonitorUtils::TakeUserAndSystemSliceMemoryUsageSnapshot(
+          user_cgroup_dir, system_cgroup_dir);
   ASSERT_TRUE(result.has_error());
   ASSERT_TRUE(std::holds_alternative<StatusT::NotFound>(result.error()));
 }
 
 TEST_F(MemoryMonitorUtilsTest,
-       TestTakeUserSliceMemoryUsageSnapshotValidPathsReturnsCorrectUsedBytes) {
+       TestTakeUserAndSystemSliceMemoryUsageSnapshotValidPathsReturnsCorrectUsedBytes) {
   int64_t user_anon_bytes = 200 * 1024 * 1024;    // 200 MB
   int64_t user_shmem_bytes = 100 * 1024 * 1024;   // 100 MB
   int64_t system_shmem_bytes = 50 * 1024 * 1024;  // 50 MB
@@ -572,13 +572,18 @@ TEST_F(MemoryMonitorUtilsTest,
       /*active_file_bytes=*/10 * 1024 * 1024);
 
   int64_t expected_used_bytes = user_anon_bytes + user_shmem_bytes + system_shmem_bytes;
-  StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound> result =
-      MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(user_cgroup_dir,
-                                                           system_cgroup_dir);
+  StatusSetOr<std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>, StatusT::NotFound>
+      result = MemoryMonitorUtils::TakeUserAndSystemSliceMemoryUsageSnapshot(
+          user_cgroup_dir, system_cgroup_dir);
   MemoryUsageSnapshot host_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot("");
   ASSERT_TRUE(result.has_value());
-  ASSERT_EQ(result.value().used_bytes, expected_used_bytes);
-  ASSERT_EQ(result.value().total_bytes, host_memory.total_bytes);
+  auto [user_slice_memory, system_slice_memory] = result.value();
+  // The user slice approximates user application usage from cgroup anon + shmem.
+  ASSERT_EQ(user_slice_memory.used_bytes, expected_used_bytes);
+  ASSERT_EQ(user_slice_memory.total_bytes, host_memory.total_bytes);
+  // The system slice is the remaining host usage not attributed to the user slice.
+  ASSERT_EQ(system_slice_memory.total_bytes, host_memory.total_bytes);
+  ASSERT_EQ(system_slice_memory.used_bytes, host_memory.used_bytes - expected_used_bytes);
 }
 
 }  // namespace ray
