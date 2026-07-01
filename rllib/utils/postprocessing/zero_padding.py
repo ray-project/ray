@@ -96,6 +96,24 @@ def split_and_zero_pad(
         data as `item_list`, but split into sub-chunks of size `max_seq_len`.
         The last item in the returned list may be zero-padded, if necessary.
     """
+
+    # --- Handle the dict case ---
+    # If the items in the list are dicts, split each key's value sequence
+    # separately and then reassemble.
+    if isinstance(item_list[0], dict):
+        # split each leaf sequence into chunks
+        split_dict = tree.map_structure(
+            lambda *vals: split_and_zero_pad(list(vals), max_seq_len), *item_list
+        )
+        # All keys should now have the same number of chunks.
+        num_chunks = len(next(iter(split_dict.values())))
+        ret = []
+        for i in range(num_chunks):
+            # Reassemble the dict for chunk i.
+            ret.append({key: split_dict[key][i] for key in split_dict})
+        return ret
+
+    # --- Original processing for non-dict items ---
     zero_element = tree.map_structure(
         lambda s: np.zeros_like([s[0]] if isinstance(s, BatchedNdArray) else s),
         item_list[0],
