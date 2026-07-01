@@ -146,16 +146,20 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         """
         if not self._inputs_fully_delivered:
             return
+        # Defer only while row counts are still being fetched asynchronously; the
+        # check re-runs from the row-count task's completion callback. We must NOT
+        # defer on staged/buffered blocks here: once inputs are fully delivered
+        # and nothing is in flight, `_dispatch_ready_zips` has consumed everything
+        # it can, so any block still left in a buffer, staging deque, block deque,
+        # or leftover slot means the inputs had differing row counts.
         if any(self._awaiting_count) or self._pending_count_tasks:
             return
-        if any(len(s) > 0 for s in self._staging):
-            return
-        if any(buf.has_next() for buf in self._input_buffers):
-            return
 
-        has_leftover = any(leftover is not None for leftover in self._leftovers)
+        has_buffered = any(buf.has_next() for buf in self._input_buffers)
+        has_staged = any(len(s) > 0 for s in self._staging)
         has_remaining = any(len(d) > 0 for d in self._block_deques)
-        if has_leftover or has_remaining:
+        has_leftover = any(leftover is not None for leftover in self._leftovers)
+        if has_buffered or has_staged or has_remaining or has_leftover:
             # TODO(Clark): Support different number of rows via user-directed
             # dropping/padding instead of erroring out.
             raise ValueError("Cannot zip datasets of different number of rows")
