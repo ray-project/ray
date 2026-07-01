@@ -14,6 +14,7 @@ import socket
 from dataclasses import dataclass
 from typing import Optional
 
+from ray.serve._private.haproxy import HAProxyApi
 from ray.util import metrics
 
 logger = logging.getLogger(__name__)
@@ -50,12 +51,21 @@ class ParsedMetrics:
 
 
 class HAProxyMetricsCollector:
-    """Owns the three ingress-request-router Counter / Histogram objects
-    and the dgram socket that feeds them.
+    """Owns every `serve_haproxy_*` metric for one proxy node.
 
-    Exposes `parse_line` and `record` for unit tests that want to
-    drive metrics without binding anything. `bind_and_attach` wires an
-    `AF_UNIX` dgram socket to the loop; `close` tears it down.
+    Two families of metrics live here:
+
+    - Per-request, push-based ingress-request-router metrics (Counters /
+      Histogram), fed by HAProxy datagrams. `parse_line` and `record` are
+      exposed for unit tests that want to drive these without binding
+      anything; `bind_and_attach` wires an `AF_UNIX` dgram socket to the
+      loop and `close` tears it down.
+    - Node-level, poll-based gauges (process count and broadcasted-vs-reported
+      target mismatch), sampled from an `HAProxyApi` on a periodic loop started
+      by `start_node_metrics_polling`.
+
+    The node-level gauges are always emitted; the datagram reader is only
+    bound when ingress-request-router metrics are enabled.
     """
 
     # Sub-millisecond to 1s, biased toward the expected sub-10ms range for
@@ -74,9 +84,18 @@ class HAProxyMetricsCollector:
         1000.0,
     ]
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        haproxy_api: HAProxyApi,
+        node_id: str,
+    ) -> None:
         self._transport: Optional[asyncio.DatagramTransport] = None
         self._socket_path: Optional[str] = None
+
+        # Source for the node-level poll loop (process count + target mismatch).
+        self._haproxy_api = haproxy_api
+        self._node_id = node_id
+        self._node_metrics_task: Optional[asyncio.Task] = None
 
         self.truncated_bodies_counter = metrics.Counter(
             "serve_haproxy_ingress_router_truncations",
@@ -117,8 +136,9 @@ class HAProxyMetricsCollector:
                 "'unparseable_replica_id' (router 200 but response body "
                 "did not contain a string replica_id), "
                 "'unknown_replica_id' (router returned a replica_id not "
-                "present in the current replica map). Each failure causes "
-                "HAProxy to return 503 to the client."
+                "present in the current replica map). All reasons return 503 "
+                "to the client except 'unknown_replica_id', which routes to the "
+                "fallback proxy when one is available (otherwise 503)."
             ),
             tag_keys=("application", "reason"),
         )
@@ -131,6 +151,31 @@ class HAProxyMetricsCollector:
             ),
             tag_keys=("application",),
         )
+
+        # Node-level gauges, sampled by _report_node_metrics_forever.
+        self.process_count_gauge = metrics.Gauge(
+            "serve_haproxy_process_count",
+            description=(
+                "Number of HAProxy processes running on the node for this proxy, "
+                "spanning the live worker, draining workers from prior reloads, "
+                "and any leaked/orphaned workers. A value persistently above 1 "
+                "indicates HAProxy processes are not being reaped."
+            ),
+            tag_keys=("node_id",),
+        )
+        self.target_mismatch_gauge = metrics.Gauge(
+            "serve_haproxy_target_mismatch",
+            description=(
+                "Number of targets that differ between the controller's "
+                "broadcasted target set and the targets HAProxy actually reports "
+                "in its stats on this node (symmetric set difference). A non-zero "
+                "value means the HAProxy config has not yet converged to the "
+                "broadcasted targets."
+            ),
+            tag_keys=("node_id",),
+        )
+        self.process_count_gauge.set_default_tags({"node_id": node_id})
+        self.target_mismatch_gauge.set_default_tags({"node_id": node_id})
 
     @staticmethod
     def parse_line(line: bytes) -> Optional[ParsedMetrics]:
@@ -176,10 +221,10 @@ class HAProxyMetricsCollector:
         """Update metrics from one parsed observation.
 
         Three disjoint cases:
-        - ``failed`` set: the Lua action set ``txn.ingress_request_router_failed``
+        - `failed` set: the Lua action set `txn.ingress_request_router_failed`
           and returned early. Bump the failures counter with the reason; no
           replica was pinned, so other metrics don't apply.
-        - ``via_router`` true: the Lua action successfully pinned a replica.
+        - `via_router` true: the Lua action successfully pinned a replica.
           Record latency, truncation, and replica-mismatch as applicable.
         - Neither: the request didn't go through the router path at all
           (no router-bearing app matched, or router state not yet pushed).
@@ -222,6 +267,67 @@ class HAProxyMetricsCollector:
                     **tags,
                     "outcome": "failure" if parsed.failed else "success",
                 },
+            )
+
+    async def _report_node_metrics_forever(self, interval_s: float) -> None:
+        """Background task to emit the node-level HAProxy observability gauges."""
+        consecutive_errors = 0
+        while True:
+            try:
+                await asyncio.sleep(interval_s)
+                # count_haproxy_processes does blocking /proc IO that scales
+                # with the node's process count; run it in a thread so the
+                # actor's event loop (health checks, reloads) isn't stalled.
+                loop = asyncio.get_running_loop()
+                count = await loop.run_in_executor(
+                    None, self._haproxy_api.count_haproxy_processes
+                )
+                self.process_count_gauge.set(count)
+                self.target_mismatch_gauge.set(
+                    await self._haproxy_api.compute_target_mismatch()
+                )
+                consecutive_errors = 0
+            except Exception:
+                logger.exception("Unexpected error reporting HAProxy node metrics.")
+
+                # Exponential backoff starting at 1s and capping at 10s.
+                backoff_time_s = min(10, 2**consecutive_errors)
+                consecutive_errors += 1
+                await asyncio.sleep(backoff_time_s)
+
+    def start_node_metrics_polling(
+        self,
+        loop: asyncio.AbstractEventLoop,
+        interval_s: float,
+    ) -> None:
+        """Start the periodic loop that emits the node-level gauges."""
+        if self._node_metrics_task is None:
+            self._node_metrics_task = loop.create_task(
+                self._report_node_metrics_forever(interval_s)
+            )
+
+    def start(
+        self,
+        loop: asyncio.AbstractEventLoop,
+        *,
+        poll_interval_s: float,
+        enable_ingress_router_metrics: bool,
+        metrics_socket_path: Optional[str] = None,
+    ) -> Optional[asyncio.Task]:
+        """Start all metric collection for this proxy node.
+
+        Always starts the node-level gauge poll loop. When
+        `enable_ingress_router_metrics` is set, also creates the dgram
+        socket directory and binds the per-request reader at
+        `metrics_socket_path`, returning the bind task so the caller can
+        await it (e.g. to surface bind failures at actor-readiness time).
+        Returns `None` when the dgram reader is disabled.
+        """
+        self.start_node_metrics_polling(loop, poll_interval_s)
+        if enable_ingress_router_metrics:
+            os.makedirs(os.path.dirname(metrics_socket_path), exist_ok=True)
+            return loop.create_task(
+                self.bind_and_attach(metrics_socket_path, loop=loop)
             )
 
     async def bind_and_attach(
@@ -268,12 +374,16 @@ class HAProxyMetricsCollector:
         self._transport = transport
 
     def close(self) -> None:
-        """Tear down the dgram transport and remove the socket file.
+        """Tear down the node-metrics loop, the dgram transport, and the
+        socket file.
 
         Safe to call multiple times; safe to call without ever having
-        bound. The metric Counter / Histogram objects survive close —
-        they are owned by Ray's metric registry, not this instance.
+        bound or started polling. The metric objects survive close — they
+        are owned by Ray's metric registry, not this instance.
         """
+        if self._node_metrics_task is not None:
+            self._node_metrics_task.cancel()
+            self._node_metrics_task = None
         if self._transport is not None:
             self._transport.close()
             self._transport = None

@@ -110,6 +110,7 @@ steps:
     tags:
       - python
       - data
+      - skip-on-premerge
     instance_type: medium
     parallelism: 8
     commands:
@@ -125,6 +126,7 @@ steps:
       - python
       - data
       - data_non_parallel
+      - skip-on-premerge
     instance_type: medium
     parallelism: 3
     commands:

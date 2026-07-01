@@ -184,7 +184,9 @@ void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
   auto redis_reply = reinterpret_cast<redisReply *>(raw_reply);
   // Error happened.
   if (redis_reply == nullptr || redis_reply->type == REDIS_REPLY_ERROR) {
-    auto error_msg = redis_reply ? redis_reply->str : async_context->errstr;
+    auto error_msg = redis_reply ? redis_reply->str
+                                 : (async_context ? async_context->errstr
+                                                  : "Redis connection unavailable");
     RAY_LOG(ERROR) << "Redis request [" << absl::StrJoin(request_cxt->redis_cmds_, " ")
                    << "]"
                    << " failed due to error " << error_msg << ". "
