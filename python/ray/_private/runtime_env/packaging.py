@@ -260,15 +260,6 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     Note that the output of this function is not for handling actual IO, it's
     only for setting up local directory folders by using package name as path.
 
-    Remote URIs (non-.whl) are hashed so the local filename stays well within
-    the filesystem NAME_MAX limit (255 bytes on ext4/xfs/btrfs/APFS) once the
-    caller appends ".lock". `.whl` URIs are kept verbatim to honor PEP 427.
-
-    >>> import hashlib
-    >>> protocol, name = parse_uri("https://test.com/file.zip")
-    >>> name == f"https_{hashlib.sha1(b'https://test.com/file.zip').hexdigest()}.zip"
-    True
-
     >>> parse_uri("https://test.com/file.whl")
     (<Protocol.HTTPS: 'https'>, 'file.whl')
 
@@ -917,9 +908,6 @@ async def download_and_unpack_package(
                     or if package URI is invalid.
 
     """
-    if logger is None:
-        logger = default_logger
-
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
     if pkg_file.suffix == "":
         raise ValueError(
@@ -927,14 +915,10 @@ async def download_and_unpack_package(
             "URI must have a file extension and the URI must be valid."
         )
 
-    # Surface the URI -> local-path mapping at INFO so an engineer can
-    # always recover which URI produced a given cached file (parse_uri
-    # hashes remote URIs, so the basename is opaque without this log).
-    logger.info(
-        f"runtime_env URI '{pkg_uri}' resolves to local file '{pkg_file}'."
-    )
-
     async with _AsyncFileLock(str(pkg_file) + ".lock"):
+        if logger is None:
+            logger = default_logger
+
         logger.debug(f"Fetching package for URI: {pkg_uri}")
 
         local_dir = get_local_dir_from_uri(pkg_uri, base_directory)
