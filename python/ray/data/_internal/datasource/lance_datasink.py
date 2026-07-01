@@ -82,11 +82,60 @@ def _make_stream_factory(
     return stream_factory, first
 
 
+def _null_column(dtype: "pa.DataType", num_rows: int) -> "pa.Array":
+    """Build an all-null column of ``dtype`` with ``num_rows`` rows.
+
+    Falls back to wrapping a null storage array for extension types (e.g.
+    ``arrow.json``), which ``pa.nulls`` cannot always construct directly.
+    """
+    try:
+        return pa.nulls(num_rows, type=dtype)
+    except (pa.ArrowNotImplementedError, pa.ArrowInvalid, TypeError):
+        if isinstance(dtype, pa.ExtensionType):
+            return dtype.wrap_array(pa.nulls(num_rows, type=dtype.storage_type))
+        raise
+
+
+def _align_block_to_schema(tbl: "pa.Table", schema: "pa.Schema") -> "pa.Table":
+    """Align ``tbl`` to ``schema`` before a positional Lance write.
+
+    ``RecordBatchReader.from_batches(schema, ...)`` binds each batch to
+    ``schema`` positionally, so every block must expose exactly ``schema``'s
+    fields, in order. This helper:
+
+    - Reorders columns to ``schema``'s order (no-op if already aligned).
+    - Fills columns that are in ``schema`` but missing from ``tbl`` with nulls.
+      This is what lets an append write only a subset of the dataset's columns:
+      the missing columns become null for the newly written rows, instead of
+      the writer crashing on the field-count mismatch.
+    - Raises if ``tbl`` has columns *not* in ``schema``. Appending brand-new
+      columns is a schema change we don't perform here; select the existing
+      columns first (e.g. ``ds.select_columns(...)``).
+    """
+    if tbl.schema.names == schema.names:
+        return tbl
+
+    target_names = set(schema.names)
+    extra = [name for name in tbl.schema.names if name not in target_names]
+    if extra:
+        raise ValueError(
+            f"Data has columns not present in the target Lance schema: {extra}. "
+            "Appending new columns is not supported; select only the existing "
+            "columns (e.g. ds.select_columns(...)) before writing."
+        )
+
+    for field in schema:
+        if field.name not in tbl.schema.names:
+            tbl = tbl.append_column(field.name, _null_column(field.type, tbl.num_rows))
+    return tbl.select(schema.names)
+
+
 def _write_fragment(
     stream: Iterable[Block],
     uri: str,
     *,
     schema: Optional["pa.Schema"] = None,
+    fill_missing_columns: bool = False,
     max_rows_per_file: int = 64 * 1024 * 1024,
     max_bytes_per_file: Optional[int] = None,
     max_rows_per_group: int = 1024,  # Only useful for v1 writer.
@@ -125,9 +174,15 @@ def _write_fragment(
     def record_batch_converter(block_stream):
         for block in block_stream:
             tbl = BlockAccessor.for_block(block).to_arrow()
-            # `RecordBatchReader.from_batches(schema, ...)` is positional.
+            # `RecordBatchReader.from_batches(schema, ...)` is positional, so
+            # each block must expose exactly `schema`'s fields, in order.
             if schema is not None:
-                tbl = reorder_columns_by_schema(tbl, schema)
+                if fill_missing_columns:
+                    # Append can write a subset of the dataset's columns: align
+                    # to `schema`, null-filling the columns the block omits.
+                    tbl = _align_block_to_schema(tbl, schema)
+                else:
+                    tbl = reorder_columns_by_schema(tbl, schema)
             yield from tbl.to_batches()
 
     max_bytes_per_file = (
@@ -365,7 +420,9 @@ class LanceDatasink(_BaseLanceDatasink):
         schema: The schema of the dataset.
         mode: The write mode. Default is SaveMode.CREATE. Choices are
             SaveMode.CREATE, SaveMode.APPEND, SaveMode.OVERWRITE. Namespace-backed
-            writes currently support only SaveMode.CREATE.
+            writes currently support only SaveMode.CREATE. In SaveMode.APPEND, if
+            the data provides only a subset of the existing dataset's columns, the
+            missing columns are written as null for the newly appended rows.
         min_rows_per_file: The minimum number of rows per file. Default is 1024 * 1024.
         max_rows_per_file: The maximum number of rows per file. Default is 64 * 1024 * 1024.
         data_storage_version: The version of the data storage format to use. Newer versions are more
@@ -446,6 +503,7 @@ class LanceDatasink(_BaseLanceDatasink):
             blocks,
             self.uri,
             schema=self.schema,
+            fill_missing_columns=(self.mode == SaveMode.APPEND),
             max_rows_per_file=self.max_rows_per_file,
             data_storage_version=self.data_storage_version,
             storage_options=self.storage_options,
