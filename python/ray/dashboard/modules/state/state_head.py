@@ -20,6 +20,7 @@ from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME,
 )
 from ray.dashboard.modules.log.log_manager import LogsManager
+from ray.dashboard.pydantic_models import PlacementGroupSchema, TaskSchema
 from ray.dashboard.state_aggregator import StateAPIManager
 from ray.dashboard.state_api_utils import (
     do_reply,
@@ -133,7 +134,9 @@ class StateHead(SubprocessModule, RateLimitedModule):
         self, req: aiohttp.web.Request
     ) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_PLACEMENT_GROUPS, "1")
-        return await handle_list_api(self._state_api.list_placement_groups, req)
+        return await handle_list_api(
+            self._state_api.list_placement_groups, req, schema=PlacementGroupSchema
+        )
 
     @routes.get("/api/v0/workers")
     @RateLimitedModule.enforce_max_concurrent_calls
@@ -145,7 +148,7 @@ class StateHead(SubprocessModule, RateLimitedModule):
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_tasks(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_TASKS, "1")
-        return await handle_list_api(self._state_api.list_tasks, req)
+        return await handle_list_api(self._state_api.list_tasks, req, schema=TaskSchema)
 
     @routes.get("/api/v0/objects")
     @RateLimitedModule.enforce_max_concurrent_calls
