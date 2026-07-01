@@ -850,6 +850,35 @@ def expected_proxy_actors(num_proxy_nodes: int = 1) -> Dict[str, int]:
     return {"ProxyActor": num_proxy_nodes}
 
 
+def wait_for_haproxy_routing_to_replica(timeout: int = 30):
+    """Block until HAProxy marks a replica's primary backend server UP.
+
+    serve.run returns once replicas are RUNNING, but until a replica's
+    direct-ingress server passes HAProxy's health check, HAProxy serves requests
+    from the head-node backup fallback proxy. That path adds proxy and router
+    spans, so trace-topology assertions must wait for direct routing first. No-op
+    without HAProxy, which has no fallback to race.
+    """
+    if not RAY_SERVE_ENABLE_HA_PROXY:
+        return
+
+    def replica_backend_up():
+        for actor in list_actors(
+            filters=[("class_name", "=", "HAProxyManager"), ("state", "=", "ALIVE")]
+        ):
+            manager = ray.get_actor(actor.name, namespace=SERVE_NAMESPACE)
+            stats = ray.get(manager.get_all_stats.remote())
+            if any(
+                name.startswith("SERVE_REPLICA") and server.is_up
+                for servers in stats.values()
+                for name, server in servers.items()
+            ):
+                return True
+        return False
+
+    wait_for_condition(replica_backend_up, timeout=timeout)
+
+
 def alive_actor_counts() -> Dict[str, int]:
     """Count of ALIVE actors by class name in the current Ray session."""
     counts: Dict[str, int] = {}

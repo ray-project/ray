@@ -25,7 +25,10 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
 )
 from ray.serve._private.logging_utils import get_serve_logs_dir
-from ray.serve._private.test_utils import get_application_url
+from ray.serve._private.test_utils import (
+    get_application_url,
+    wait_for_haproxy_routing_to_replica,
+)
 from ray.serve._private.tracing_utils import (
     DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
     TRACE_STACK,
@@ -374,6 +377,7 @@ def test_tracing_e2e(
             )
         )
         serve.run(BasicModel.bind())
+        wait_for_haproxy_routing_to_replica()
 
         setup_tracing(
             component_name="upstream_app",
@@ -396,6 +400,7 @@ def test_tracing_e2e(
             )
         )
         serve.run(StreamingModel.bind())
+        wait_for_haproxy_routing_to_replica()
         setup_tracing(
             component_name="upstream_app",
             component_id="345",
