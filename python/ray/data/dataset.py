@@ -6921,7 +6921,9 @@ class Dataset:
             block_to_arrow = block_to_arrow.options(label_selector=label_selector)
         return [block_to_arrow.remote(block) for block in block_refs]
 
-    @ConsumptionAPI(pattern="Args:")
+    @Deprecated(
+        message="`to_random_access_dataset()` is unmaintained and will be removed in a future release.",
+    )
     def to_random_access_dataset(
         self,
         key: str,
@@ -6952,6 +6954,11 @@ class Dataset:
             provides efficient distributed random access to records in the dataset
             by the specified key.
         """
+        warnings.warn(
+            "`to_random_access_dataset()` is unmaintained and will be removed in a future release.",
+            RayDeprecationWarning,
+            stacklevel=2,
+        )
         if num_workers is None:
             num_workers = 4 * len(ray.nodes())
         return RandomAccessDataset(self, key, num_workers=num_workers)
