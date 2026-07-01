@@ -20,32 +20,10 @@ SKIP_PYTHON_PACKAGES=1 ./ci/env/install-dependencies.sh
 PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.minor}')")"
 pip install --no-deps -r python/deplocks/llm/rayllm_test_${PYTHON_CODE}_${RAY_CUDA_CODE}.lock
 
-# Fix RayExecutorV2 GPU collision when multiple engines share a node.
-VLLM_CUDA_VISIBLE_DEVICES_PATCH="$(pwd)/python/requirements/llm/patches/vllm-cuda-visible-devices-patch"
-VLLM_SITE_PACKAGES="$(python - <<'PY'
-import site
-import sysconfig
-from pathlib import Path
-
-candidate_dirs = [
-    Path(sysconfig.get_paths()["purelib"]),
-    Path(sysconfig.get_paths()["platlib"]),
-    *(Path(path) for path in site.getsitepackages()),
-]
-
-for base_dir in dict.fromkeys(candidate_dirs):
-    import_utils = base_dir / "vllm" / "utils" / "import_utils.py"
-    if import_utils.exists():
-        print(base_dir)
-        break
-else:
-    raise SystemExit("vLLM import_utils.py not found")
-PY
-)"
-(
-    cd "${VLLM_SITE_PACKAGES}"
-    git apply "${VLLM_CUDA_VISIBLE_DEVICES_PATCH}"
-)
+# NOTE: The RayExecutorV2 GPU-collision workaround (vllm-cuda-visible-devices-patch)
+# was dropped for vLLM 0.24.0, which merged vllm-project/vllm#44466 (workers now
+# receive an explicit logical-to-physical GPU mapping instead of vLLM mutating
+# CUDA_VISIBLE_DEVICES). The patch is obsolete and no longer applies.
 
 EOF
 
