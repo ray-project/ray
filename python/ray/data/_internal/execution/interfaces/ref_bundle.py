@@ -1,7 +1,7 @@
 import itertools
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, Iterable, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
 
 import ray
 from .common import NodeIdStr
@@ -85,6 +85,13 @@ class RefBundle:
     # This attribute is used by the split() operator to assign bundles to logical
     # output splits. It is otherwise None.
     output_split_idx: Optional[int] = None
+
+    # Optional per-task ``ray.remote`` args (e.g. a ``scheduling_strategy``) that
+    # the consuming map operator applies to the task launched for this bundle,
+    # overriding the operator's defaults. This is how a read task can be pinned to
+    # a specific node (see ``ReadTask.ray_remote_args`` and ``plan_read_op``).
+    # ``None`` for the vast majority of bundles, which use operator-level args.
+    task_ray_remote_args: Optional[Dict[str, Any]] = None
 
     # Object metadata (size, locations, spilling status)
     _cached_object_meta: Optional[Dict[ObjectRef, "_ObjectMetadata"]] = None
@@ -326,6 +333,7 @@ class RefBundle:
             schema=self.schema,
             owns_blocks=False,
             slices=tuple(consumed_slices) if consumed_slices else None,
+            task_ray_remote_args=self.task_ray_remote_args,
         )
 
         remaining_bundle = RefBundle(
@@ -333,6 +341,7 @@ class RefBundle:
             schema=self.schema,
             owns_blocks=False,
             slices=tuple(remaining_slices) if remaining_slices else None,
+            task_ray_remote_args=self.task_ray_remote_args,
         )
 
         return sliced_bundle, remaining_bundle
@@ -366,11 +375,27 @@ class RefBundle:
         owns_blocks = all(bundle.owns_blocks for bundle in bundles)
         # TODO: Reconcile the schemas rather than taking the first non-empty schema.
         schema = _take_first_non_empty_schema(bundle.schema for bundle in bundles)
+        # Per-task remote args (e.g. a node-affinity scheduling strategy) only make
+        # sense if every bundle being merged agrees on them; merging bundles pinned
+        # to different nodes would silently drop a placement constraint. Such bundles
+        # must not be combined, so require them to match and carry the value through.
+        task_args = [
+            bundle.task_ray_remote_args
+            for bundle in bundles
+            if bundle.task_ray_remote_args is not None
+        ]
+        merged_task_ray_remote_args = task_args[0] if task_args else None
+        assert all(args == merged_task_ray_remote_args for args in task_args), (
+            "Cannot merge RefBundles with differing task_ray_remote_args: "
+            f"{task_args}. Bundles pinned to different placements must not be "
+            "bundled together (e.g. node-sharded reads with min_rows_per_bundle set)."
+        )
         return cls(
             blocks=tuple(merged_blocks),
             schema=schema,
             owns_blocks=owns_blocks,
             slices=merged_slices,
+            task_ray_remote_args=merged_task_ray_remote_args,
         )
 
     def __eq__(self, other: "RefBundle"):

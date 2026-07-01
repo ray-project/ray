@@ -82,6 +82,7 @@ from ray.data._internal.stats import DatasetStats
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.util import (
     _autodetect_parallelism,
+    _ensure_node_local_target,
     get_compute_strategy_for_read_api,
     get_table_block_metadata_schema,
     merge_resources_to_ray_remote_args,
@@ -410,9 +411,9 @@ def _resolve_read_remote_args(
         ray_remote_args = {}
     if not datasource.supports_distributed_reads:
         label_selector = ray_remote_args.get("label_selector", {})
-        label_selector[
-            ray._raylet.RAY_NODE_ID_KEY
-        ] = ray.get_runtime_context().get_node_id()
+        label_selector[ray._raylet.RAY_NODE_ID_KEY] = (
+            ray.get_runtime_context().get_node_id()
+        )
         ray_remote_args["label_selector"] = label_selector
         ray_remote_args.pop("scheduling_strategy", None)
     if (
@@ -1359,6 +1360,8 @@ def read_parquet(
     file_extensions: Optional[List[str]] = ParquetDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    shard_by_node: bool = False,
+    nodes: Optional[List[str]] = None,
     **arrow_parquet_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from parquet files.
@@ -1501,6 +1504,25 @@ def read_parquet(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        shard_by_node: If ``True``, read node-local shards: each node in the
+            cluster is assumed to hold a *different* subset of the dataset under
+            the *same* ``paths`` on its local disk (e.g. ``/mnt/nvme/dataset``
+            populated differently on every node). Ray Data emits one read task
+            per target node, pins it to that node, and reads that node's local
+            view of ``paths`` -- listing and reading happen on the node, so the
+            blocks land in that node's object store and aren't copied across the
+            network at read time. This is intended for data pre-sharded onto
+            node-local NVMe drives and consumed with node locality (e.g. Ray
+            Train via ``streaming_split`` locality hints). When set, the shards
+            should be roughly balanced across nodes. The target must be
+            node-local: remote/shared storage (S3, GCS, HDFS) is rejected, since
+            every node would then read the same physical files. Not compatible
+            with ``partition_filter``, ``shuffle``, ``include_row_hash``,
+            ``tensor_column_schema``, or a user-provided
+            ``ray_remote_args["scheduling_strategy"]``.
+        nodes: Optional explicit list of node IDs (hex strings as returned by
+            ``ray.nodes()[i]["NodeID"]``) to shard across when ``shard_by_node``
+            is ``True``. Defaults to all alive nodes with CPU resources.
         **arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
             set of arguments, see the `PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
@@ -1560,6 +1582,29 @@ def read_parquet(
     dataset_kwargs = arrow_parquet_args.pop("dataset_kwargs", None)
     _block_udf = arrow_parquet_args.pop("_block_udf", None)
     schema = arrow_parquet_args.pop("schema", None)
+
+    if shard_by_node:
+        return _read_parquet_node_sharded(
+            paths,
+            columns=columns,
+            partitioning=partitioning,
+            include_paths=include_paths,
+            include_row_hash=include_row_hash,
+            schema=schema,
+            partition_filter=partition_filter,
+            shuffle=shuffle,
+            filesystem=filesystem,
+            ray_remote_args=ray_remote_args,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            concurrency=concurrency,
+            override_num_blocks=override_num_blocks,
+            nodes=nodes,
+            to_batch_kwargs=arrow_parquet_args,
+            block_udf=_block_udf,
+            file_extensions=file_extensions,
+        )
 
     ctx = DataContext.get_current()
     if ctx.use_datasource_v2:
@@ -1683,6 +1728,84 @@ def read_parquet(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
+    )
+
+
+def _read_parquet_node_sharded(
+    paths: Union[str, List[str]],
+    *,
+    columns: Optional[List[str]],
+    partitioning: Optional[Partitioning],
+    include_paths: bool,
+    include_row_hash: bool,
+    schema: Optional["pyarrow.Schema"],
+    partition_filter: Optional[PathPartitionFilter],
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]],
+    filesystem: Optional["pyarrow.fs.FileSystem"],
+    ray_remote_args: Optional[Dict[str, Any]],
+    num_cpus: Optional[float],
+    num_gpus: Optional[float],
+    memory: Optional[float],
+    concurrency: Optional[int],
+    override_num_blocks: Optional[int],
+    nodes: Optional[List[str]],
+    to_batch_kwargs: Dict[str, Any],
+    block_udf: Optional[Callable[[Block], Block]],
+    file_extensions: Optional[List[str]],
+) -> Dataset:
+    """Read Parquet shards pinned to the nodes that hold them on local disk.
+
+    See ``read_parquet(..., shard_by_node=True)``. Validates the unsupported
+    option combinations, then dispatches to ``_NodeShardedParquetDatasource``.
+    """
+    from ray.data._internal.datasource.parquet_datasource import (
+        _NodeShardedParquetDatasource,
+    )
+
+    # Node-local sharding pins each read task to a node via a
+    # NodeAffinitySchedulingStrategy. Options that conflict with that or that the
+    # on-node reader doesn't yet support are rejected explicitly rather than
+    # silently ignored.
+    if ray_remote_args and "scheduling_strategy" in ray_remote_args:
+        raise ValueError(
+            "`shard_by_node=True` sets a per-task `scheduling_strategy` to pin "
+            "each read to its node, so it can't be combined with a "
+            "`ray_remote_args['scheduling_strategy']`."
+        )
+    # Node-local sharding only makes sense on node-local storage: on shared
+    # storage every node would read the same physical files (duplicated data).
+    _ensure_node_local_target(paths, filesystem, operation="reads from")
+    if partition_filter is not None:
+        raise ValueError("`shard_by_node=True` doesn't support `partition_filter`.")
+    if shuffle is not None:
+        raise ValueError("`shard_by_node=True` doesn't support `shuffle`.")
+    if include_row_hash:
+        raise ValueError("`shard_by_node=True` doesn't support `include_row_hash`.")
+    if block_udf is not None:
+        # `tensor_column_schema` folds into `_block_udf`.
+        raise ValueError("`shard_by_node=True` doesn't support `tensor_column_schema`.")
+
+    datasource = _NodeShardedParquetDatasource(
+        paths,
+        nodes=nodes,
+        columns=columns,
+        partitioning=partitioning,
+        include_paths=include_paths,
+        schema=schema,
+        to_batch_kwargs=to_batch_kwargs,
+        file_extensions=file_extensions,
+        filesystem=filesystem,
+    )
+    return read_datasource(
+        datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        # One read task per node; never split or coalesce them, otherwise a task
+        # could be unpinned from the node holding its shard.
+        override_num_blocks=override_num_blocks,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
     )
 
 

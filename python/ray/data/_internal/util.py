@@ -355,7 +355,7 @@ def _resolve_custom_scheme(path: str) -> str:
 
 
 def _normalize_paths_to_strings(
-    paths: Union[str, pathlib.Path, List[Union[str, pathlib.Path]]]
+    paths: Union[str, pathlib.Path, List[Union[str, pathlib.Path]]],
 ) -> List[str]:
     """Normalize path input to a list of strings.
 
@@ -392,6 +392,55 @@ def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
             f"but found mixed {paths}"
         )
     return num == len(paths)
+
+
+def _ensure_node_local_target(
+    paths: Union[str, List[str]],
+    filesystem: Optional["pyarrow.fs.FileSystem"],
+    *,
+    operation: str,
+) -> None:
+    """Raise ``ValueError`` if ``paths``/``filesystem`` aren't node-local.
+
+    ``shard_by_node`` reads/writes each node's *local* disk, so the target must
+    be a local filesystem. Remote/shared storage (S3, GCS, HDFS, ...) is
+    rejected: on shared storage every node would hit the *same physical*
+    directory, which duplicates reads and races writes (data loss on
+    ``OVERWRITE``). Local ``OVERWRITE`` is fine -- each node overwrites its own
+    directory -- so this targets the storage, not the mode.
+
+    NOTE: a network filesystem mounted locally (e.g. NFS) looks like a real
+    local disk here and is NOT detected; the caller is responsible for ensuring
+    the path is genuinely node-local in that case.
+
+    Args:
+        paths: The path(s) to validate.
+        filesystem: An optional explicit pyarrow filesystem.
+        operation: Verb phrase for the error message, e.g. ``"reads from"``.
+    """
+    import pyarrow.fs as pafs
+
+    if filesystem is not None:
+        fs = filesystem
+        if isinstance(fs, RetryingPyFileSystem):
+            fs = fs.unwrap()
+        if not isinstance(fs, pafs.LocalFileSystem):
+            raise ValueError(
+                f"`shard_by_node=True` {operation} each node's local disk, so it "
+                f"requires node-local storage, but got a non-local filesystem "
+                f"{type(fs).__name__!r}."
+            )
+        return
+
+    for path in _normalize_paths_to_strings(paths):
+        scheme = urllib.parse.urlparse(path).scheme
+        if scheme not in ("", "file"):
+            raise ValueError(
+                f"`shard_by_node=True` {operation} each node's local disk, so it "
+                f"requires node-local paths, but got scheme {scheme!r} in "
+                f"{path!r}. Remote/shared storage (e.g. S3, GCS, HDFS) isn't "
+                f"supported."
+            )
 
 
 def _truncated_repr(obj: Any) -> str:
@@ -530,8 +579,7 @@ def _consumption_api(
 
 
 @overload
-def ConsumptionAPI(obj: F) -> F:
-    ...
+def ConsumptionAPI(obj: F) -> F: ...
 
 
 @overload
@@ -541,8 +589,7 @@ def ConsumptionAPI(
     datasource_metadata: Optional[str] = None,
     extra_condition: Optional[str] = None,
     delegate: Optional[str] = None,
-) -> Callable[[F], F]:
-    ...
+) -> Callable[[F], F]: ...
 
 
 def ConsumptionAPI(*args, **kwargs):
@@ -576,8 +623,7 @@ def _all_to_all_api() -> Callable[[F], F]:
 
 
 @overload
-def AllToAllAPI(obj: F) -> F:
-    ...
+def AllToAllAPI(obj: F) -> F: ...
 
 
 def AllToAllAPI(*args, **kwargs):

@@ -64,7 +64,9 @@ from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
 )
 from ray.data.expressions import BinaryExpr, Expr, Operation
+from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     import pyarrow
@@ -711,9 +713,9 @@ class ParquetDatasource(Datasource):
             partition_columns_selected=False,
             partition_schema=pa.schema([]),
             partitioning=None,
-            projection_map={col: col for col in columns}
-            if columns is not None
-            else None,
+            projection_map=(
+                {col: col for col in columns} if columns is not None else None
+            ),
             to_batch_kwargs=to_batch_kwargs,
             _block_udf=_block_udf,
             shuffle=shuffle,
@@ -2137,3 +2139,205 @@ def _infer_data_and_partition_columns(
         partition_columns = []
 
     return data_columns, partition_columns
+
+
+def _read_node_local_parquet(
+    paths: Union[str, List[str]],
+    *,
+    columns: Optional[List[str]],
+    partitioning: Optional[Partitioning],
+    include_paths: bool,
+    schema: Optional["pyarrow.Schema"],
+    to_batch_kwargs: Dict[str, Any],
+    file_extensions: Optional[List[str]],
+    filesystem: Optional["pyarrow.fs.FileSystem"],
+) -> Iterator["pyarrow.Table"]:
+    """Read this node's *local* view of ``paths`` and yield Arrow tables.
+
+    This runs inside a node-pinned read task (see
+    :class:`_NodeShardedParquetDatasource`). All listing and reading happen here,
+    on the node, against the node's local filesystem -- the driver never lists
+    these files. This deliberately avoids :class:`ParquetDatasource`'s sampling
+    path, which launches nested ``SPREAD``-scheduled tasks that could land on a
+    different node and fail to see this node's local files.
+    """
+    # Resolve the path against the node-local filesystem (plain paths resolve to a
+    # LocalFileSystem here), then expand directories into concrete Parquet file
+    # paths -- mirroring ``ParquetDatasource.__init__``. This listing happens on
+    # the node, so each node sees its own shard. ``get_parquet_dataset`` expects
+    # file paths, not a directory, so the expansion must happen first.
+    resolved_paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+    filesystem = RetryingPyFileSystem.wrap(
+        filesystem, retryable_errors=DataContext.get_current().retried_io_errors
+    )
+    listed_files = _list_files(
+        resolved_paths,
+        filesystem,
+        partition_filter=None,
+        file_extensions=file_extensions,
+    )
+    if not listed_files:
+        return
+    file_paths = [file_path for file_path, _ in listed_files]
+
+    pq_ds = get_parquet_dataset(
+        file_paths,
+        filesystem=filesystem,
+        schema=schema,
+        # Inspect all fragments so the on-node schema reflects local files.
+        inspect_num_fragments=None,
+        dataset_kwargs={"partitioning": None},
+    )
+    fragments = list(pq_ds.fragments)
+    if not fragments:
+        return
+
+    data_columns, partition_columns = None, None
+    if columns is not None:
+        data_columns, partition_columns = _infer_data_and_partition_columns(
+            columns, fragments[0], partitioning
+        )
+
+    pq_fragments = [_ParquetFragment(fragment, None) for fragment in fragments]
+    yield from read_fragments(
+        block_udf=None,
+        to_batches_kwargs=to_batch_kwargs or {},
+        data_columns=data_columns,
+        partition_columns=partition_columns,
+        schema=schema if schema is not None else pq_ds.schema,
+        fragments=pq_fragments,
+        include_paths=include_paths,
+        include_row_hash=False,
+        partitioning=partitioning,
+    )
+
+
+@DeveloperAPI
+class _NodeShardedParquetDatasource(Datasource):
+    """Reads node-local Parquet shards, one read task pinned per node.
+
+    Every node in the cluster is expected to hold a *different* subset of the
+    dataset under the *same* ``paths`` on its local disk (the "convention-based"
+    sharding layout, e.g. ``/mnt/nvme/dataset`` populated differently on each
+    node). This datasource emits exactly one read task per target node, pins it
+    to that node via a :class:`NodeAffinitySchedulingStrategy`, and reads that
+    node's *local* view of ``paths`` from within the task. Listing is deferred to
+    the node, so the driver never needs (and must not assume) a global view of
+    the files.
+
+    Because each read task runs on its node, the blocks it produces land in that
+    node's local object store. A downstream consumer pinned to the same node --
+    e.g. a Ray Train worker via ``streaming_split(..., locality_hints=...)`` --
+    therefore reads its shard without any cross-node transfer.
+    """
+
+    def __init__(
+        self,
+        paths: Union[str, List[str]],
+        *,
+        nodes: Optional[List[str]] = None,
+        soft: bool = False,
+        columns: Optional[List[str]] = None,
+        partitioning: Optional[Partitioning] = None,
+        include_paths: bool = False,
+        schema: Optional["pyarrow.Schema"] = None,
+        to_batch_kwargs: Optional[Dict[str, Any]] = None,
+        file_extensions: Optional[List[str]] = None,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    ):
+        super().__init__()
+        _check_pyarrow_version()
+        self._paths = paths
+        self._nodes = nodes
+        self._soft = soft
+        self._columns = columns
+        self._partitioning = partitioning
+        self._include_paths = include_paths
+        self._schema = schema
+        self._to_batch_kwargs = to_batch_kwargs or {}
+        self._file_extensions = file_extensions
+        self._filesystem = filesystem
+
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        # The shards live on the nodes, not the driver, so we can't size them
+        # without a (forbidden) driver-side listing.
+        return None
+
+    def _resolve_target_nodes(self) -> List[str]:
+        if self._nodes is not None:
+            if not self._nodes:
+                raise ValueError("`nodes` must be a non-empty list of node IDs.")
+            return list(self._nodes)
+
+        node_ids = [
+            node["NodeID"]
+            for node in ray.nodes()
+            if node.get("Alive") and node.get("Resources", {}).get("CPU", 0) > 0
+        ]
+        if not node_ids:
+            raise ValueError(
+                "No alive nodes with CPU resources were found to schedule "
+                "node-sharded reads on."
+            )
+        return node_ids
+
+    def get_read_tasks(
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
+    ) -> List[ReadTask]:
+        node_ids = self._resolve_target_nodes()
+
+        # Capture read options for the closures (avoid capturing `self`, which
+        # would bloat the serialized task).
+        paths = self._paths
+        columns = self._columns
+        partitioning = self._partitioning
+        include_paths = self._include_paths
+        schema = self._schema
+        to_batch_kwargs = self._to_batch_kwargs
+        file_extensions = self._file_extensions
+        filesystem = self._filesystem
+
+        read_tasks = []
+        for node_id in node_ids:
+            scheduling_strategy = NodeAffinitySchedulingStrategy(
+                node_id, soft=self._soft
+            )
+
+            def read_fn(node_id=node_id):
+                return _read_node_local_parquet(
+                    paths,
+                    columns=columns,
+                    partitioning=partitioning,
+                    include_paths=include_paths,
+                    schema=schema,
+                    to_batch_kwargs=to_batch_kwargs,
+                    file_extensions=file_extensions,
+                    filesystem=filesystem,
+                )
+
+            metadata = BlockMetadata(
+                num_rows=None,
+                size_bytes=None,
+                input_files=None,
+                exec_stats=None,
+            )
+            read_tasks.append(
+                ReadTask(
+                    read_fn,
+                    metadata,
+                    ray_remote_args={"scheduling_strategy": scheduling_strategy},
+                    per_task_row_limit=per_task_row_limit,
+                )
+            )
+
+        return read_tasks
+
+    def get_name(self) -> str:
+        return "NodeShardedParquet"
+
+    @property
+    def supports_distributed_reads(self) -> bool:
+        return True

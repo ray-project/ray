@@ -1,5 +1,5 @@
 import copy
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 import numpy as np
 
@@ -356,15 +356,29 @@ class ReadTask(Callable[[], Iterable[Block]]):
         metadata: BlockMetadata,
         schema: Optional["Schema"] = None,
         per_task_row_limit: Optional[int] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         self._metadata = metadata
         self._read_fn = read_fn
         self._schema = schema
         self._per_task_row_limit = per_task_row_limit
+        self._ray_remote_args = ray_remote_args
 
     @property
     def metadata(self) -> BlockMetadata:
         return self._metadata
+
+    @property
+    def ray_remote_args(self) -> Optional[Dict[str, Any]]:
+        """Per-task ``ray.remote`` args (e.g. a ``scheduling_strategy``).
+
+        When set, these args are applied only to the task that executes this
+        read, overriding the read operator's defaults. This is how a datasource
+        pins an individual read task to a specific node (for example, reading a
+        shard that lives on a particular node's local disk via a
+        ``NodeAffinitySchedulingStrategy``).
+        """
+        return self._ray_remote_args
 
     # TODO(justin): We want to remove schema from `ReadTask` later on
     @property

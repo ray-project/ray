@@ -569,9 +569,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         if "scheduling_strategy" not in ray_remote_args:
             ctx = self.data_context
             if input_bundle and input_bundle.size_bytes() > ctx.large_args_threshold:
-                ray_remote_args[
-                    "scheduling_strategy"
-                ] = ctx.scheduling_strategy_large_args
+                ray_remote_args["scheduling_strategy"] = (
+                    ctx.scheduling_strategy_large_args
+                )
                 # Takes precedence over small args case. This is to let users know
                 # when the large args case is being triggered.
                 self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
@@ -580,6 +580,18 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 # Only save to metrics if we haven't already done so.
                 if "scheduling_strategy" not in self._remote_args_for_metrics:
                     self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
+        # Apply any per-task remote args carried by this bundle (e.g. a node-affinity
+        # scheduling strategy set by a datasource to pin a read task to the node that
+        # holds its shard). These take precedence over the operator-level args and the
+        # defaults above -- including the framework's default `scheduling_strategy`
+        # (SPREAD), which is otherwise baked into `self._ray_remote_args` and would
+        # mask the per-task placement. Only bundles that carry these args (e.g.
+        # node-sharded reads) are affected; all other bundles are unchanged.
+        per_task_args = (
+            input_bundle.task_ray_remote_args if input_bundle is not None else None
+        )
+        if per_task_args:
+            ray_remote_args.update(per_task_args)
         ray_remote_args = merge_label_selector(
             ray_remote_args, self.data_context.execution_options.label_selector
         )
