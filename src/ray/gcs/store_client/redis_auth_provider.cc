@@ -126,7 +126,18 @@ StatusOr<RedisCredentials> EntraRedisAuthProvider::GetCredentials() {
   absl::MutexLock lock(&mu_);
   // Refresh if we have no token yet or are within the refresh buffer of expiry.
   if (!has_token_ || clock_.Now() + config_.refresh_buffer >= cached_.expiry) {
-    return RefreshLocked();
+    StatusOr<RedisCredentials> refreshed = RefreshLocked();
+    if (refreshed.ok() || !has_token_ || clock_.Now() >= cached_.expiry) {
+      // Either the refresh succeeded, or we have no usable fallback (no token
+      // yet, or the cached one has already expired) so propagate the error.
+      return refreshed;
+    }
+    // Proactive refresh failed but the cached token is still valid; keep using
+    // it rather than failing a caller (e.g. Connect RAY_CHECKs on the status).
+    RAY_LOG(WARNING) << "Entra ID Redis token refresh failed but the cached token "
+                        "is still valid; continuing to use it. Error: "
+                     << refreshed.status();
+    return cached_;
   }
   return cached_;
 }

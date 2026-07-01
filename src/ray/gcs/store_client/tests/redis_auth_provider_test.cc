@@ -142,5 +142,43 @@ TEST(RedisAuthProviderTest, EntraProviderPropagatesFetchError) {
   EXPECT_FALSE(creds.ok());
 }
 
+TEST(RedisAuthProviderTest, EntraProviderFallsBackToValidCachedTokenOnRefreshError) {
+  FakeClock clock(absl::FromUnixSeconds(1000));
+  bool fail_fetch = false;
+  int fetch_count = 0;
+
+  EntraAuthConfig config;
+  config.username = "explicit-user";
+  config.refresh_buffer = absl::Seconds(300);
+
+  EntraRedisAuthProvider provider(
+      clock, config, [&](const EntraAuthConfig &) -> StatusOr<EntraAccessToken> {
+        if (fail_fetch) {
+          return Status::RedisError("token acquisition failed");
+        }
+        ++fetch_count;
+        return EntraAccessToken{"token-1", absl::FromUnixSeconds(4600)};
+      });
+
+  // Prime the cache with a valid token.
+  auto creds = provider.GetCredentials();
+  ASSERT_TRUE(creds.ok());
+  EXPECT_EQ(creds->password, "token-1");
+  EXPECT_EQ(fetch_count, 1);
+
+  // Enter the refresh buffer and make the fetch fail. The cached token is still
+  // valid (before expiry), so it should be returned instead of an error.
+  fail_fetch = true;
+  clock.SetTime(absl::FromUnixSeconds(4400));  // 4400 + 300 >= 4600, but < 4600
+  creds = provider.GetCredentials();
+  ASSERT_TRUE(creds.ok());
+  EXPECT_EQ(creds->password, "token-1");
+  EXPECT_EQ(fetch_count, 1);
+
+  // Once the cached token has actually expired, the fetch error propagates.
+  clock.SetTime(absl::FromUnixSeconds(4700));  // past expiry
+  EXPECT_FALSE(provider.GetCredentials().ok());
+}
+
 }  // namespace gcs
 }  // namespace ray

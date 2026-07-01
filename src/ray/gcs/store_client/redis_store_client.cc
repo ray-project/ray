@@ -533,6 +533,10 @@ bool RedisDelKeyPrefixSync(const std::string &host,
                                /*password=*/options.password,
                                /*enable_ssl=*/options.enable_ssl))
       << "Failed to connect to Redis.";
+  // For token-based auth (e.g. Entra ID), start the background refresh loop so a
+  // long-running scan/delete over a large namespace can outlive the initial
+  // access token. No-op for static auth.
+  context.StartTokenRefresh();
 
   auto thread = std::make_unique<std::thread>([&]() {
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
