@@ -26,7 +26,7 @@ def compute_additional_split_factor(
     mem_size: int,
     target_max_block_size: Optional[int],
     cur_additional_split_factor: Optional[int] = None,
-) -> Tuple[int, str, int, Optional[int]]:
+) -> Tuple[int, str, int, Optional[int], Optional[float]]:
     """Returns parallelism to use and the min safe parallelism to avoid OOMs."""
 
     ctx = DataContext.get_current()
@@ -82,9 +82,15 @@ def compute_additional_split_factor(
     if estimated_num_blocks < detected_parallelism and estimated_num_blocks > 0:
         k = math.ceil(detected_parallelism / estimated_num_blocks)
         estimated_num_blocks = estimated_num_blocks * k
-        return detected_parallelism, reason, estimated_num_blocks, k
+        return (
+            detected_parallelism,
+            reason,
+            estimated_num_blocks,
+            k,
+            expected_block_size,
+        )
 
-    return detected_parallelism, reason, estimated_num_blocks, None
+    return detected_parallelism, reason, estimated_num_blocks, None, expected_block_size
 
 
 class SetReadParallelismRule(Rule):
@@ -120,6 +126,7 @@ class SetReadParallelismRule(Rule):
             reason,
             estimated_num_blocks,
             k,
+            expected_block_size,
         ) = compute_additional_split_factor(
             logical_op.datasource_or_legacy_reader,
             logical_op.parallelism,
@@ -144,5 +151,8 @@ class SetReadParallelismRule(Rule):
 
         if k is not None:
             op.set_additional_split_factor(k)
+
+        if expected_block_size is not None:
+            op._expected_block_size = expected_block_size
 
         logger.debug(f"Estimated num output blocks {estimated_num_blocks}")
