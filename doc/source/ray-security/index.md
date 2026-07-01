@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Security model and best practices for Ray, covering the Dashboard/Jobs/Client trust model, gRPC communication, and token authentication."
+---
+
 (security)=
 
 # Security

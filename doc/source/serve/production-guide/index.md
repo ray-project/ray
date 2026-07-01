@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Run Ray Serve in production on Kubernetes via KubeRay RayService or directly on a Ray cluster, covering config files, health checking, and failure recovery."
+---
+
 (serve-in-production)=
 
 # Production Guide

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Reference for the AlgorithmConfig API: type-safe configuration of training, environment, learner, and framework settings for any RLlib Algorithm.
+
 .. include:: /_includes/rllib/we_are_hiring.rst
 
 .. _rllib-algo-configuration-docs:

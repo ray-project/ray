@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Run Ray applications on a cluster using the Ray Jobs API and CLI, and reference autoscaling configuration for production workloads."
+---
+
 # Application guide
 
 This section introduces the main differences in running a Ray application on your laptop vs on a Ray Cluster.

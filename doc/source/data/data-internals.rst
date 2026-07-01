@@ -1,3 +1,6 @@
+.. meta::
+   :description: Implementation internals of Ray Data — the execution model, blocks, and scheduling — for advanced users and contributors.
+
 .. _datasets_scheduling:
 
 ==================

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Additional Ray integrations: Joblib, multiprocessing, Ray Collective, Dask-on-Ray, RayDP (Spark), Mars-on-Ray, and Modin.
+
 More Ray ML Libraries
 =====================
 

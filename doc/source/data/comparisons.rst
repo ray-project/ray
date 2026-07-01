@@ -1,3 +1,6 @@
+.. meta::
+   :description: How Ray Data compares to batch services, online-inference tools, and distributed frameworks like Spark and Daft for offline inference.
+
 Comparing Ray Data to other systems
 ===================================
 

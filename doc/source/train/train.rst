@@ -1,3 +1,6 @@
+.. meta::
+   :description: Distributed model training and fine-tuning at scale across PyTorch, Lightning, Hugging Face Transformers, XGBoost, and JAX.
+
 .. _train-docs:
 
 Ray Train: Scalable Model Training

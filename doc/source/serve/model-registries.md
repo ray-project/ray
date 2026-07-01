@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Integrate Ray Serve with model registries such as MLflow, Hugging Face Hub, and Weights and Biases to load and serve registered models in production."
+---
+
 # Model Registry Integration
 
 Ray Serve is Python-native, which means it integrates seamlessly with the broader MLOps ecosystem. You can easily connect Ray Serve deployments to Model Registry, enabling production-ready ML workflows without complex configuration or glue code. This guide shows you how to integrate Ray Serve with Model Registry to build end-to-end ML serving pipelines.

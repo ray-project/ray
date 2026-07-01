@@ -1,5 +1,8 @@
 ---
 orphan: true
+myst:
+  html_meta:
+    description: "Process foundation-model datasets with Data-Juicer on Ray: subset splitting, streaming JSON I/O, and MinHash-LSH deduplication at TB scale."
 ---
 
 # Distributed Data Processing in Data-Juicer

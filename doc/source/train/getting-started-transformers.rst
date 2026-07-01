@@ -1,3 +1,6 @@
+.. meta::
+   :description: Convert a Hugging Face Transformers script to distributed training with Ray Train: TorchTrainer, checkpointing, and multi-GPU ScalingConfig.
+
 .. _train-pytorch-transformers:
 
 Get Started with Distributed Training using Hugging Face Transformers

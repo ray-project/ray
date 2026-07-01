@@ -1,3 +1,6 @@
+.. meta::
+   :description: How to contribute to Ray Data, including the contributor workflow and how to write tests.
+
 ========================
 Contributing to Ray Data
 ========================

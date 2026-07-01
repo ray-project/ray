@@ -1,3 +1,6 @@
+.. meta::
+   :description: Scale multiprocessing.Pool programs to a Ray cluster with ray.util.multiprocessing.Pool as a drop-in replacement.
+
 .. _ray-multiprocessing:
 
 Distributed multiprocessing.Pool

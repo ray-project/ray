@@ -1,3 +1,6 @@
+.. meta::
+   :description: Common Ray Tune questions: choosing search algorithms and schedulers, early stopping, and trial parallelism tradeoffs.
+
 .. _tune-faq:
 
 Ray Tune FAQ

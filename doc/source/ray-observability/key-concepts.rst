@@ -1,3 +1,6 @@
+.. meta::
+   :description: Key Ray observability concepts: the Dashboard, the States API for querying actors/tasks/objects, Prometheus metrics, and the distributed debugger.
+
 .. _observability-key-concepts:
 
 Key Concepts
