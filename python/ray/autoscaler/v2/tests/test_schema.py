@@ -4,9 +4,28 @@ import time
 
 import pytest
 
-from ray.autoscaler.v2.schema import AutoscalerInstance, IPPRGroupSpec, IPPRStatus
+from ray.autoscaler.v2.schema import (
+    AutoscalerInstance,
+    ClusterStatus,
+    IPPRGroupSpec,
+    IPPRStatus,
+)
 from ray.core.generated.autoscaler_pb2 import NodeState, NodeStatus
 from ray.core.generated.instance_manager_pb2 import Instance
+
+
+def test_cluster_status_default_stats():
+    status = ClusterStatus()
+
+    assert status.active_nodes == []
+    assert status.idle_nodes == []
+    assert status.pending_launches == []
+    assert status.failed_launches == []
+    assert status.pending_nodes == []
+    assert status.failed_nodes == []
+    assert status.cluster_resource_usage == []
+    assert status.stats.gcs_request_time_s == 0.0
+    assert status.stats.request_ts_s is None
 
 
 def _make_ippr_status() -> IPPRStatus:
@@ -161,7 +180,7 @@ def test_ippr_status_need_sync_with_raylet():
 
 def test_ippr_status_limits_and_can_resize_up():
     status = _make_ippr_status()
-    assert status.can_resize_up() is False
+    assert status.can_resize_up()
     status.raylet_id = "abc"
     assert status.max_cpu() == 4.0
     assert status.max_memory() == 8
@@ -183,6 +202,9 @@ def test_ippr_status_limits_and_can_resize_up():
 
 def test_ippr_status_failure_and_timeout_helpers():
     status = _make_ippr_status()
+    status.raylet_id = "abc"
+    status.desired_cpu = 2.0
+    status.desired_memory = 4
     status.resizing_at = int(time.time()) - 20
     assert status.is_timeout()
 
@@ -192,6 +214,15 @@ def test_ippr_status_failure_and_timeout_helpers():
     status.record_failure("resize failed", failed_at=123)
     assert status.last_failed_at == 123
     assert status.last_failed_reason == "resize failed"
+
+    # K8s resize finished and resources match desired, but raylet sync is still
+    # pending: do not treat as timeout (provider will call GCS to sync).
+    status2 = _make_ippr_status()
+    status2.raylet_id = "abc"
+    status2.resizing_at = int(time.time()) - 20
+    status2.k8s_resize_status = None
+    assert status2.need_sync_with_raylet()
+    assert not status2.is_timeout()
 
 
 if __name__ == "__main__":

@@ -11,9 +11,15 @@ logger = logging.getLogger(__name__)
 CUDA_VISIBLE_DEVICES_ENV_VAR = "CUDA_VISIBLE_DEVICES"
 NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
 
-# TODO(Alex): This pattern may not work for non NVIDIA Tesla GPUs (which have
-# the form "Tesla V100-SXM2-16GB" or "Tesla K80").
-NVIDIA_GPU_NAME_PATTERN = re.compile(r"\w+\s+([A-Z0-9]+)")
+# Capture the accelerator model from the NVML device name: the run of leading
+# all-caps tokens (e.g. "RTX", "PRO") up to and including the first token that
+# contains a digit. This keeps datacenter cards stable ("Tesla V100-SXM2-16GB"
+# -> "V100", "NVIDIA A100-SXM4-40GB" -> "A100") while disambiguating the RTX
+# line, whose first token is only a brand prefix ("NVIDIA RTX PRO 6000 Blackwell
+# Server Edition" -> "RTX PRO 6000"). A trailing SKU suffix after a hyphen is
+# dropped. Mixed-case consumer names ("NVIDIA GeForce RTX 5090") don't match and
+# fall back to a hyphen-joined product name in _gpu_name_to_accelerator_type.
+NVIDIA_GPU_NAME_PATTERN = re.compile(r"\w+\s+((?:[A-Z]+\s+)*[A-Z0-9]*\d[A-Z0-9]*)")
 
 
 class NvidiaGPUAcceleratorManager(AcceleratorManager):
@@ -81,7 +87,17 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         if name is None:
             return None
         match = NVIDIA_GPU_NAME_PATTERN.match(name)
-        return match.group(1) if match else None
+        result = match.group(1).replace(" ", "-") if match else None
+        if result and len(result) > 1:
+            return result
+        # The pattern above requires an all-uppercase/numeric model token, which
+        # works for datacenter cards ("Tesla V100-SXM2-16GB" -> "V100",
+        # "NVIDIA RTX PRO 6000 ..." -> "RTX-PRO-6000") but not for consumer
+        # cards whose product line is mixed case ("NVIDIA GeForce RTX 5090").
+        # Fall back to a hyphen-joined product name so callers get a useful
+        # accelerator_type label like "GeForce-RTX-5090".
+        cleaned = re.sub(r"^NVIDIA\s+", "", name).strip()
+        return cleaned.replace(" ", "-") if cleaned else None
 
     @staticmethod
     def validate_resource_request_quantity(

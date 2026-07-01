@@ -5,6 +5,9 @@ from ray import ObjectRef
 
 ray.init()
 
+with ray.init(num_cpus=1, num_gpus=0):
+    pass
+
 
 @ray.remote
 def int_task() -> int:

@@ -15,6 +15,7 @@ from ray.serve._private.test_utils import (
     MockTimer,
     dead_replicas_context,
     replica_rank_context,
+    uninitialized_replicas_context,
 )
 
 
@@ -24,6 +25,9 @@ def disallow_ray_init(monkeypatch):
         raise RuntimeError("Unit tests should not depend on Ray being initialized.")
 
     monkeypatch.setattr(ray, "init", raise_on_init)
+    # Unit tests don't run on a Ray cluster, so stub the runtime context
+    # that callers consult for worker/actor ids.
+    monkeypatch.setattr(ray, "get_runtime_context", Mock())
 
 
 @pytest.fixture
@@ -87,3 +91,4 @@ def mock_deployment_state_manager(
 
         dead_replicas_context.clear()
         replica_rank_context.clear()
+        uninitialized_replicas_context.clear()

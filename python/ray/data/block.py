@@ -1,4 +1,5 @@
 import collections
+import functools
 import logging
 import sys
 import time
@@ -190,11 +191,35 @@ def to_stats(metas: List["BlockMetadata"]) -> List["BlockStats"]:
 
 @DeveloperAPI
 @dataclass(frozen=True)
+class CustomOpStats:
+    """Base for operator-specific, worker-reported per-task stats.
+
+    A generic extension slot carried by :class:`TaskExecWorkerStats`. Operators
+    that want to report extra per-task stats to the driver subclass this; it
+    cannot be instantiated directly.
+    """
+
+    def __post_init__(self):
+        if type(self) is CustomOpStats:
+            raise TypeError("CustomOpStats cannot be instantiated directly")
+
+
+@DeveloperAPI
+@dataclass(frozen=True)
 class TaskExecWorkerStats:
     """Task's execution stats reported from the executing worker"""
 
     # Total task's wall-clock time from start to finish (measured on the worker)
     task_wall_time_s: float
+
+    # Peak USS (Unique Set Size) memory in bytes observed during the task,
+    # or None if USS measurement is unavailable (e.g., non-Linux platforms).
+    max_uss_bytes: Optional[int] = None
+
+    # Operator-specific worker-reported stats: one CustomOpStats entry per
+    # reporting transform (fused transforms each contribute one). Empty for
+    # operators that do not report any extra stats.
+    custom_op_stats: List[CustomOpStats] = field(default_factory=list)
 
 
 @DeveloperAPI
@@ -223,10 +248,6 @@ class BlockExecStats:
     block_ser_time_s: Optional[float] = None
     # Total CPU time consumed by the worker process during the task, across all threads.
     cpu_time_s: Optional[float] = None
-
-    # Peak USS (Unique Set Size) memory in bytes observed while computing this block,
-    # as estimated by the memory profiler.
-    max_uss_bytes: int = 0
 
     @staticmethod
     def builder() -> "_BlockExecStatsBuilder":
@@ -312,6 +333,17 @@ class BlockMetadata(BlockStats):
         )
 
 
+@functools.lru_cache(maxsize=128)
+def _read_arrow_schema_cached(schema_bytes: bytes) -> "pa.Schema":
+    # Hot path on the StreamingExecutor scheduling thread: every completed task
+    # ships a `BlockMetadataWithSchema` whose `schema` is serialized Arrow IPC
+    # bytes. For wide schemas (hundreds of columns, especially with extension
+    # types like ArrowTensorType) `pa.ipc.read_schema` can dominate scheduler
+    # CPU. The same schema bytes recur across tasks of the same operator, so a
+    # small LRU collapses thousands of identical re-parses into one.
+    return pa.ipc.read_schema(pa.BufferReader(schema_bytes))
+
+
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True)
 class BlockMetadataWithSchema(BlockMetadata):
@@ -356,6 +388,26 @@ class BlockMetadataWithSchema(BlockMetadata):
             task_exec_stats=self.task_exec_stats,
         )
 
+    def __getstate__(self) -> Dict[str, Any]:
+        state = {f.name: getattr(self, f.name) for f in fields(BlockMetadataWithSchema)}
+
+        if isinstance(self.schema, pa.Schema):
+            state["schema"] = self.schema.serialize().to_pybytes()
+        else:
+            state["schema"] = self.schema
+
+        return state
+
+    def __setstate__(self, state: Dict[str, Any]):
+        schema_val: bytes | bytearray | Schema | None = state["schema"]
+        if isinstance(schema_val, (bytes, bytearray)):
+            # `bytearray` itself is unhashable so it can't key the LRU cache —
+            # coerce to `bytes` first.
+            if isinstance(schema_val, bytearray):
+                schema_val = bytes(schema_val)
+            state["schema"] = _read_arrow_schema_cached(schema_val)
+        self.__dict__.update(state)
+
 
 @DeveloperAPI
 class BlockAccessor:
@@ -376,6 +428,9 @@ class BlockAccessor:
         Args:
             public_row_format: Whether to cast rows into the public Dict row
                 format (this incurs extra copy conversions).
+
+        Returns:
+            An iterator over rows in this block.
         """
         raise NotImplementedError
 
@@ -443,6 +498,10 @@ class BlockAccessor:
 
         Args:
             columns: Name of columns to convert, or None if converting all columns.
+
+        Returns:
+            A NumPy ndarray when a single column is selected, or a dict mapping
+            column names to ndarrays when multiple columns are selected.
         """
         raise NotImplementedError
 
@@ -538,7 +597,7 @@ class BlockAccessor:
         # implements the Mapping protocol. Use bulk GPU->CPU transfer via
         # to_arrow() instead of the slow column-by-column Mapping path.
         elif _is_cudf_dataframe(batch):
-            return batch.to_arrow()
+            return batch.to_arrow(preserve_index=False)
 
         elif isinstance(batch, pandas.DataFrame):
             if (block_type == BlockType.ARROW) or (
@@ -710,8 +769,6 @@ class BlockAccessor:
         NOTE: In each column, NaNs/None are considered to be the same group.
 
         Args:
-            block: sorted block for which grouping of rows will be determined
-                    based on provided key
             keys: list of columns determining the key for every row based on
                     which the block will be grouped
 

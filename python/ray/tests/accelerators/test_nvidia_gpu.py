@@ -63,5 +63,41 @@ def test_gpu_info_parsing(patch_mock_pynvml):
     assert NvidiaGPUAcceleratorManager.get_current_node_accelerator_type() == "A100"
 
 
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        # Legacy datacenter GPU names: keep labels produced by the previous
+        # parser stable.
+        ("Tesla V100-SXM2-16GB", "V100"),
+        ("Tesla P100-PCIE-16GB", "P100"),
+        ("Tesla T4", "T4"),
+        ("Tesla P4", "P4"),
+        ("Tesla K80", "K80"),
+        ("NVIDIA A10G", "A10G"),
+        ("NVIDIA L4", "L4"),
+        ("NVIDIA L40S", "L40S"),
+        ("NVIDIA A100-SXM4-40GB", "A100"),
+        ("NVIDIA H100 80GB HBM3", "H100"),
+        ("NVIDIA H200", "H200"),
+        ("NVIDIA H20", "H20"),
+        ("NVIDIA B200", "B200"),
+        ("NVIDIA B300", "B300"),
+        # Consumer GPUs: the regex does not match the mixed-case product line,
+        # so we fall back to a hyphen-joined product name.
+        ("NVIDIA GeForce RTX 5090", "GeForce-RTX-5090"),
+        ("NVIDIA GeForce RTX 4090", "GeForce-RTX-4090"),
+        # RTX PRO cards: "RTX" alone is just a brand prefix, so the model is
+        # captured through the first digit-containing token instead of
+        # collapsing to the ambiguous "RTX".
+        ("NVIDIA RTX PRO 6000 Blackwell Server Edition", "RTX-PRO-6000"),
+        # Edge cases.
+        (None, None),
+        ("", None),
+    ],
+)
+def test_gpu_name_to_accelerator_type(name, expected):
+    assert NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(name) == expected
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

@@ -6,10 +6,12 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+from packaging.version import parse as parse_version
 
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     _align_struct_fields,
+    _has_unhashable_pandas_types,
     concat,
     hash_partition,
     shuffle,
@@ -142,6 +144,78 @@ def test_hash_partitioning():
 
     assert len(_structs_partition_dict) <= 101
     assert t == _concat_and_sort_partitions(_structs_partition_dict.values())
+
+
+@pytest.mark.parametrize(
+    "pa_type,expected",
+    [
+        # Nested types -> unhashable in pandas (convert to dict/list)
+        (pa.struct([("a", pa.int32())]), True),
+        (pa.list_(pa.int32()), True),
+        (pa.large_list(pa.int32()), True),
+        (pa.list_(pa.int32(), 3), True),  # fixed_size_list
+        (pa.map_(pa.string(), pa.int32()), True),
+        (pa.dense_union([pa.field("x", pa.int32())]), True),
+        # Ray extension types -> numpy arrays / arbitrary objects in pandas
+        (ArrowTensorTypeV2((2, 2), pa.int64()), True),
+        (ArrowPythonObjectType(), True),
+        # Hashable primitives -> must stay False so we keep the fast path
+        (pa.int32(), False),
+        (pa.float64(), False),
+        (pa.bool_(), False),
+        (pa.string(), False),
+        (pa.large_string(), False),
+        (pa.binary(), False),
+        (pa.decimal128(10, 2), False),
+        (pa.date32(), False),
+        (pa.timestamp("ns"), False),
+        (pa.dictionary(pa.int32(), pa.string()), False),
+    ],
+)
+def test_has_unhashable_pandas_types(pa_type, expected):
+    schema = pa.schema([("c", pa_type)])
+    assert _has_unhashable_pandas_types(schema) is expected
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("16.0.0"),
+    reason="list_view / large_list_view require pyarrow 16+",
+)
+def test_has_unhashable_pandas_types_list_views():
+    # Regression: list_view/large_list_view also convert to Python lists in
+    # pandas, so they must be flagged as unhashable like list/large_list.
+    for view_type in (pa.list_view(pa.int32()), pa.large_list_view(pa.int32())):
+        schema = pa.schema([("c", view_type)])
+        assert _has_unhashable_pandas_types(schema) is True
+
+
+def test_hash_partition_null_struct_consistent_across_blocks():
+    struct_t = pa.struct([("v", pa.int32())])
+    num_partitions = 8
+
+    all_null = pa.Table.from_pydict(
+        {"k": pa.array([None, None, None], type=struct_t), "idx": [0, 1, 2]}
+    )
+    mixed = pa.Table.from_pydict(
+        {
+            "k": pa.array([None, {"v": 1}, None], type=struct_t),
+            "idx": [10, 11, 12],
+        }
+    )
+
+    p1 = hash_partition(all_null, hash_cols=["k"], num_partitions=num_partitions)
+    p2 = hash_partition(mixed, hash_cols=["k"], num_partitions=num_partitions)
+
+    def null_partition_id(parts):
+        # Return the partition id holding null-key rows (there should be
+        # exactly one — identical null keys must co-locate).
+        null_pids = {
+            pid for pid, tbl in parts.items() if any(tbl["k"].is_null().to_pylist())
+        }
+        assert len(null_pids) == 1, null_pids
+        return next(iter(null_pids))
+
+    assert null_partition_id(p1) == null_partition_id(p2)
 
 
 def test_shuffle():

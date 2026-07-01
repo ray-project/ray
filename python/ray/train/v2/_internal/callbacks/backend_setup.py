@@ -1,6 +1,6 @@
 import logging
 
-from ray.exceptions import RayActorError
+from ray.exceptions import RayActorError, RayTaskError
 from ray.train.backend import BackendConfig
 from ray.train.v2._internal.execution.callback import (
     ReplicaGroupCallback,
@@ -25,8 +25,9 @@ class BackendSetupCallback(ReplicaGroupCallback, WorkerGroupCallback):
     def before_execution_group_shutdown(self, execution_group: ExecutionGroup):
         try:
             self._backend.on_shutdown(execution_group, self._backend_config)
-        except RayActorError:
+        except (RayActorError, RayTaskError):
             logger.warning(
                 "Graceful shutdown of backend failed. This is "
-                "expected if one of the workers has crashed."
+                "expected if one of the workers has crashed.",
+                exc_info=True,
             )

@@ -24,7 +24,6 @@ from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
     ReplicaID,
-    ReplicaQueueLengthInfo,
     RequestMetadata,
     RunningReplicaInfo,
 )
@@ -830,17 +829,11 @@ class RequestRouter(ABC):
             index += 1
         queue.insert(index, pending_request)
 
-    def on_new_queue_len_info(
-        self, replica_id: ReplicaID, queue_len_info: ReplicaQueueLengthInfo
-    ):
+    def on_new_queue_len_info(self, replica_id: ReplicaID, num_ongoing_requests: int):
         """Update queue length cache with new info received from replica."""
         if self._use_replica_queue_len_cache:
-            self._replica_queue_len_cache.update(
-                replica_id, queue_len_info.num_ongoing_requests
-            )
-            self._update_router_queue_len_gauge(
-                replica_id, queue_len_info.num_ongoing_requests
-            )
+            self._replica_queue_len_cache.update(replica_id, num_ongoing_requests)
+            self._update_router_queue_len_gauge(replica_id, num_ongoing_requests)
 
     def on_send_request(self, replica_id: ReplicaID):
         """Increment queue length cache when a request is sent to a replica."""

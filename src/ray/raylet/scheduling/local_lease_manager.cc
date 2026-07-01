@@ -57,7 +57,7 @@ LocalLeaseManager::LocalLeaseManager(
         get_lease_arguments,
     size_t max_pinned_lease_arguments_bytes,
     SchedulerMetrics &scheduler_metrics,
-    std::function<int64_t(void)> get_time_ms,
+    ClockInterface &clock,
     int64_t sched_cls_cap_interval_ms)
     : self_node_id_(self_node_id),
       self_scheduling_node_id_(self_node_id.Binary()),
@@ -71,7 +71,7 @@ LocalLeaseManager::LocalLeaseManager(
       get_lease_arguments_(get_lease_arguments),
       max_pinned_lease_arguments_bytes_(max_pinned_lease_arguments_bytes),
       scheduler_metrics_(scheduler_metrics),
-      get_time_ms_(get_time_ms),
+      clock_(clock),
       sched_cls_cap_enabled_(RayConfig::instance().worker_cap_enabled()),
       sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
       sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {}
@@ -281,9 +281,9 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
       if (sched_cls_cap_enabled_ &&
           sched_cls_info.granted_leases.size() >= sched_cls_info.capacity &&
           work->GetState() == internal::WorkStatus::WAITING) {
-        RAY_LOG(DEBUG) << "Hit cap! time=" << get_time_ms_()
+        RAY_LOG(DEBUG) << "Hit cap! time=" << clock_.SteadyNowMillis()
                        << " next update time=" << sched_cls_info.next_update_time;
-        if (get_time_ms_() < sched_cls_info.next_update_time) {
+        if (clock_.SteadyNowMillis() < sched_cls_info.next_update_time) {
           // We're over capacity and it's not time to grant a new lease yet.
           // Calculate the next time we should grant a new lease.
           int64_t current_capacity = sched_cls_info.granted_leases.size();
@@ -300,7 +300,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
                    "RAY_worker_cap_enabled=false for faster worker startup.";
           }
 
-          int64_t target_time = get_time_ms_() + wait_time;
+          int64_t target_time = clock_.SteadyNowMillis() + wait_time;
           sched_cls_info.next_update_time =
               std::min(target_time, sched_cls_info.next_update_time);
 
@@ -545,7 +545,7 @@ bool LocalLeaseManager::TrySpillback(const std::shared_ptr<internal::Work> &work
 }
 
 bool LocalLeaseManager::PoppedWorkerHandler(
-    const std::shared_ptr<WorkerInterface> worker,
+    const std::shared_ptr<WorkerInterface> &worker,
     PopWorkerStatus status,
     const LeaseID &lease_id,
     SchedulingClass scheduling_class,
@@ -571,13 +571,6 @@ bool LocalLeaseManager::PoppedWorkerHandler(
   }
 
   // Erases the work from lease_to_grant_ queue, also removes the lease dependencies.
-  //
-  // IDEA(ryw): Make an RAII class to wrap the a shared_ptr<internal::Work> and
-  // requests lease dependency upon ctor, and remove lease dependency upon dtor.
-  // I tried this, it works, but we expose the map via GetLeasesToGrant() used in
-  // scheduler_resource_reporter.cc. Maybe we can use `boost::any_range` to only expose
-  // a view of the Work ptrs, but I got dependency issues
-  // (can't include boost/range/any_range.hpp).
   auto erase_from_leases_to_grant_queue_fn =
       [this](const std::shared_ptr<internal::Work> &work_to_erase,
              const SchedulingClass &_scheduling_class) {
@@ -598,11 +591,9 @@ bool LocalLeaseManager::PoppedWorkerHandler(
           leases_to_grant_.erase(shapes_it);
         }
         RAY_CHECK(erased);
-
-        const auto &_lease = work_to_erase->lease_;
-        if (!_lease.GetLeaseSpecification().GetDependencies().empty()) {
-          lease_dependency_manager_.RemoveLeaseDependencies(
-              _lease.GetLeaseSpecification().LeaseId());
+        const auto &lease_spec = work_to_erase->lease_.GetLeaseSpecification();
+        if (!lease_spec.GetDependencies().empty()) {
+          lease_dependency_manager_.RemoveLeaseDependencies(lease_spec.LeaseId());
         }
       };
 
@@ -674,7 +665,13 @@ bool LocalLeaseManager::PoppedWorkerHandler(
             rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED,
             absl::StrCat("Failed to startup worker after retrying ",
                          RayConfig::instance().pop_worker_max_retries(),
-                         " times."));
+                         " times. This is most often caused by errors in the worker's "
+                         "Python environment setup. For example, pip / uv install "
+                         "failures, a broken py_executable, or a dependency conflict in "
+                         "the cluster image. For additional context, please look at the "
+                         "raylet.err on node ",
+                         self_node_id_.Hex(),
+                         "."));
       } else {
         work->SetStateWaiting(cause);
       }
@@ -766,13 +763,12 @@ void LocalLeaseManager::RemoveFromGrantedLeasesIfExists(const RayLease &lease) {
   }
 }
 
-void LocalLeaseManager::CleanupLease(std::shared_ptr<WorkerInterface> worker,
-                                     RayLease *lease) {
-  RAY_CHECK(worker != nullptr && lease != nullptr);
-  *lease = worker->GetGrantedLease();
-  RemoveFromGrantedLeasesIfExists(*lease);
+void LocalLeaseManager::CleanupLease(const std::shared_ptr<WorkerInterface> &worker) {
+  RAY_CHECK(worker != nullptr);
+  const auto &lease = worker->GetGrantedLease();
+  RemoveFromGrantedLeasesIfExists(lease);
 
-  ReleaseLeaseArgs(lease->GetLeaseSpecification().LeaseId());
+  ReleaseLeaseArgs(lease.GetLeaseSpecification().LeaseId());
   if (worker->GetAllocatedInstances() != nullptr) {
     ReleaseWorkerResources(worker);
   }
@@ -991,7 +987,7 @@ const RayLease *LocalLeaseManager::AnyPendingLeasesForResourceAcquisition(
 }
 
 void LocalLeaseManager::Grant(
-    std::shared_ptr<WorkerInterface> worker,
+    const std::shared_ptr<WorkerInterface> &worker,
     absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
     const std::shared_ptr<TaskResourceInstances> &allocated_instances,
     const RayLease &lease,
@@ -1004,6 +1000,7 @@ void LocalLeaseManager::Grant(
   } else {
     worker->SetAllocatedInstances(allocated_instances);
   }
+
   worker->GrantLease(lease);
 
   // Pass the contact info of the worker to use.
@@ -1047,6 +1044,7 @@ void LocalLeaseManager::Grant(
       }
     }
   }
+
   // Send the result back to the clients.
   for (const auto &reply_callback : reply_callbacks) {
     reply_callback.send_reply_callback_(Status::OK(), nullptr, nullptr);

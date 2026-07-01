@@ -18,7 +18,6 @@ depsets:
       - python/requirements/ml/py313/data-requirements.txt
       - python/requirements/ml/py313/data-test-requirements.txt
       - python/requirements/ml/py313/dl-cpu-requirements.txt
-      - python/requirements/ml/py313/dl-gpu-requirements.txt
     constraints:
       - /tmp/ray-deps/requirements_compiled_py3.13.txt
     output: python/deplocks/ci/data-base-ci_depset_py${PYTHON_VERSION}.lock
@@ -38,14 +37,21 @@ depsets:
     operation: relax
     source_depset: data_base_ci_depset_${PYTHON_SHORT}
     packages:
-    # these packages have conflicts when compiling v9 depsets
+    # these packages are relaxed for alternate fixed-pyarrow depsets
       - pyarrow
       - numpy
       - datasets
+      - delta-sharing
       - hudi
       - pylance
       - pandas
       - modin
+      # datasets==2.14.4 (pyarrow-v9) caps dill<0.3.8, but the py313 lock pins
+      # dill==0.4.1 via pymoo, and multiprocess==0.70.19 via datasets/evaluate
+      # requires dill>=0.4.1. Relax both so the v9 expand can downgrade the
+      # datasets→multiprocess→dill trio together.
+      - dill
+      - multiprocess
     output: python/deplocks/ci/relaxed_data-ci_depset_py${PYTHON_VERSION}.lock
     build_arg_sets:
       - py310
@@ -67,13 +73,13 @@ depsets:
       - py310
       - py312
 
-  - name: data_pyarrow_v9_depset_${PYTHON_SHORT}
+  - name: data_pyarrow_v17_depset_${PYTHON_SHORT}
     operation: expand
     depsets:
       - relaxed_data_ci_depset_${PYTHON_SHORT}
     requirements:
-      - python/requirements/data/pyarrow-v9.txt
-    output: python/deplocks/ci/data-pyarrow-v9-ci_depset_py${PYTHON_VERSION}.lock
+      - python/requirements/data/pyarrow-v17.txt
+    output: python/deplocks/ci/data-pyarrow-v17-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
       - --index https://download.pytorch.org/whl/cpu
       - --python-version=${PYTHON_VERSION}
@@ -94,7 +100,6 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
-      - --override python/requirements/data/mongo.txt
     build_arg_sets:
       - py310
 
@@ -106,54 +111,8 @@ depsets:
       - python/requirements/data/pyarrow-nightly.txt
     output: python/deplocks/ci/data-pyarrow-nightly-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
-      - --extra-index-url https://pypi.fury.io/arrow-nightlies/
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
-      - --upgrade-package pyarrow
     build_arg_sets:
       - py310
-
-  - name: relaxed_data_tfxbsl_ci_depset_${PYTHON_SHORT}
-    operation: relax
-    source_depset: data_base_ci_depset_${PYTHON_SHORT}
-    packages:
-    # these packages have conflicts when compiling v9 depsets
-      - datasets
-      - tensorflow-metadata
-      - tensorflow
-      - tf-keras
-      - pyarrow
-      - pandas
-      - protobuf
-      - hudi
-      - modin
-      - opentelemetry-proto
-      - pylance
-      - numpy
-      - cloudpickle
-      - dill
-      - dask
-      - distributed
-      - multiprocess
-      - tensorboard
-      - ml-dtypes
-      - cudf-cu12
-      - pymars
-    output: python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py${PYTHON_VERSION}.lock
-    build_arg_sets:
-      - py311
-
-  - name: data_tfxbsl_depset_${PYTHON_SHORT}
-    operation: expand
-    depsets:
-      - relaxed_data_tfxbsl_ci_depset_${PYTHON_SHORT}
-    requirements:
-      - python/requirements/data/tfxbsl.txt
-    output: python/deplocks/ci/data-tfxbsl-ci_depset_py${PYTHON_VERSION}.lock
-    append_flags:
-      - --python-version=${PYTHON_VERSION}
-      - --python-platform=linux
-      - --unsafe-package ray
-    build_arg_sets:
-      - py311

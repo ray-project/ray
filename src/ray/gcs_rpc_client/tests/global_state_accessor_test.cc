@@ -19,7 +19,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
@@ -90,6 +90,10 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
         fake_scheduler_placement_time_ms_histogram_,
         /*health_check_rpc_latency_ms_histogram=*/
         fake_health_check_rpc_latency_ms_histogram_,
+        /*io_context_monitor_latency_ms_gauge=*/
+        fake_io_context_monitor_latency_ms_gauge_,
+        /*io_context_monitor_unhealthy_counter=*/
+        fake_io_context_monitor_unhealthy_counter_,
     };
 
     gcs_server_.reset(new gcs::GcsServer(config, gcs_server_metrics, *io_service_));
@@ -165,6 +169,8 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
   observability::FakeGauge fake_resource_usage_gauge_;
   observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
   observability::FakeHistogram fake_health_check_rpc_latency_ms_histogram_;
+  observability::FakeGauge fake_io_context_monitor_latency_ms_gauge_;
+  observability::FakeCounter fake_io_context_monitor_unhealthy_counter_;
 
   std::unique_ptr<gcs::GlobalStateAccessor> global_state_;
 

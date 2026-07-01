@@ -23,7 +23,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/gcs_rpc_client/accessor.h"

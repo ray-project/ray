@@ -73,12 +73,13 @@ class CompositeBundleSchedulingPolicy : public IBundleSchedulingPolicy {
       : bundle_pack_policy_(cluster_resource_manager),
         bundle_spread_policy_(cluster_resource_manager),
         bundle_strict_spread_policy_(cluster_resource_manager),
-        bundle_strict_pack_policy_(cluster_resource_manager) {}
+        bundle_strict_pack_policy_(cluster_resource_manager),
+        label_domain_strict_pack_policy_(cluster_resource_manager) {}
 
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
       SchedulingOptions options,
-      absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes) override;
+      absl::flat_hash_set<scheduling::NodeID> candidate_nodes) override;
 
  private:
   BundlePackSchedulingPolicy bundle_pack_policy_;

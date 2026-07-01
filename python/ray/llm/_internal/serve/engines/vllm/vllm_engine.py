@@ -7,6 +7,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     AsyncGenerator,
+    Dict,
     List,
     Literal,
     Optional,
@@ -52,6 +53,16 @@ from ray.llm._internal.serve.engines.vllm.vllm_models import (
     VLLMEngineConfig,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    is_kv_aware,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
+    assign_replica_kv_events_endpoint,
+    get_kv_event_routing_stats,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.token_tracking import (
+    enable_token_tracking,
+)
 from ray.llm._internal.serve.utils.node_initialization_utils import (
     initialize_node,
 )
@@ -64,15 +75,43 @@ if TYPE_CHECKING:
     from vllm.entrypoints.openai.chat_completion.serving import OpenAIServingChat
     from vllm.entrypoints.openai.completion.serving import OpenAIServingCompletion
     from vllm.entrypoints.openai.models.serving import OpenAIServingModels
-    from vllm.entrypoints.openai.speech_to_text.serving import (
+    from vllm.entrypoints.pooling.embed.serving import ServingEmbedding
+    from vllm.entrypoints.pooling.scoring.serving import ServingScores
+    from vllm.entrypoints.serve.tokenize.serving import OpenAIServingTokenization
+    from vllm.entrypoints.speech_to_text.transcription.serving import (
         OpenAIServingTranscription,
     )
-    from vllm.entrypoints.pooling.embed.serving import OpenAIServingEmbedding
-    from vllm.entrypoints.pooling.score.serving import ServingScores
-    from vllm.entrypoints.serve.tokenize.serving import OpenAIServingTokenization
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
+
+
+def _canonicalize_request_id_header(
+    request: Any, raw_request_info: Optional[RawRequestInfo]
+) -> Optional[RawRequestInfo]:
+    """Ensure raw_request_info carries X-Request-Id == request.request_id so vLLM's
+    OpenAI layer (which prefers the header) sees the authoritative request id.
+
+    Returns a RawRequestInfo (new or mutated) with a single, correctly-cased header.
+    If the request has no request_id, this is a no-op and returns raw_request_info
+    unchanged (so embeddings/score/transcription requests are unaffected).
+    """
+    rid = getattr(request, "request_id", None)
+    if not rid:
+        return raw_request_info
+    headers = dict(raw_request_info.headers) if raw_request_info is not None else {}
+    # Drop any existing variant of the header (case- and separator-insensitive,
+    # e.g. "X-Request-Id" or "x_request_id") before setting the canonical one.
+    headers = {
+        k: v
+        for k, v in headers.items()
+        if k.replace("_", "-").lower() != "x-request-id"
+    }
+    headers["x-request-id"] = str(rid)
+    if raw_request_info is None:
+        return RawRequestInfo(headers=headers)
+    # Preserve any non-header fields RawRequestInfo carries (now or in the future).
+    return dataclasses.replace(raw_request_info, headers=headers)
 
 
 def _convert_config_dicts(merged: dict) -> dict:
@@ -87,13 +126,15 @@ def _convert_config_dicts(merged: dict) -> dict:
     which lack the default field values, causing AttributeError when vLLM code
     tries to access those fields.
     """
-    type_hints = typing.get_type_hints(AsyncEngineArgs)
+    fields_by_name = {f.name: f for f in dataclasses.fields(AsyncEngineArgs)}
 
     for key, value in list(merged.items()):
-        if not isinstance(value, dict) or key not in type_hints:
+        if not isinstance(value, dict) or key not in fields_by_name:
             continue
 
-        hint = type_hints[key]
+        hint = fields_by_name[key].type
+        if isinstance(hint, str):
+            continue
 
         # Handle Optional[X] (Union[X, None]) -> X
         origin = typing.get_origin(hint)
@@ -251,26 +292,39 @@ class VLLMEngine(LLMEngine):
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."
             )
-        from vllm import envs as vllm_envs
-
-        if hasattr(vllm_envs, "VLLM_USE_V1") and not vllm_envs.VLLM_USE_V1:
-            logger.error(
-                "vLLM v0 is fully deprecated. As a result in Ray Serve LLM only v1 is supported."
-            )
-
+        assign_replica_kv_events_endpoint(self.llm_config)
         self.llm_config.setup_engine_backend()
 
         self._running = False
+        # Routing stats advertised to Serve's request router; populated in
+        # start() once the engine's KV-events endpoint is bound.
+        self._routing_stats: Dict[str, Any] = {}
 
         # vLLM Integration points. Will be set through .start()
         self._engine_client = None
         self._oai_models: Optional["OpenAIServingModels"] = None
         self._oai_serving_chat: Optional["OpenAIServingChat"] = None
         self._oai_serving_completion: Optional["OpenAIServingCompletion"] = None
-        self._oai_serving_embedding: Optional["OpenAIServingEmbedding"] = None
+        self._oai_serving_embedding: Optional["ServingEmbedding"] = None
         self._oai_serving_transcription: Optional["OpenAIServingTranscription"] = None
         self._oai_serving_scores: Optional["ServingScores"] = None
         self._oai_serving_tokenization: Optional["OpenAIServingTokenization"] = None
+
+    async def build_asgi_app(self):
+        from vllm.entrypoints.openai.api_server import build_app, init_app_state
+
+        supported_tasks = ("generate",)
+        if hasattr(self._engine_client, "get_supported_tasks"):
+            supported_tasks = await self._engine_client.get_supported_tasks()
+
+        app = build_app(self._vllm_args, supported_tasks=supported_tasks)
+        await init_app_state(
+            self._engine_client,
+            app.state,
+            self._vllm_args,
+            supported_tasks=supported_tasks,
+        )
+        return app
 
     async def start(self) -> None:
         """Start the vLLM engine.
@@ -321,6 +375,7 @@ class VLLMEngine(LLMEngine):
         merged = _convert_config_dicts(merged)
 
         args = _dict_to_namespace(merged)
+        self._vllm_args = args
 
         # Query supported tasks from the engine so init_app_state initializes the correct serving objects.
         # Without this, vLLM falls back to 'generate' only.
@@ -353,9 +408,19 @@ class VLLMEngine(LLMEngine):
         self._validate_openai_serving_models()
         self._validate_engine_client()
 
+        self._routing_stats = get_kv_event_routing_stats(
+            self.llm_config,
+            vllm_engine_config.cache_config.block_size,
+            vllm_engine_config.scheduler_config.max_num_batched_tokens,
+        )
+
         self._running = True
 
         logger.info("Started vLLM engine.")
+
+    def routing_stats(self) -> Dict[str, Any]:
+        """Returns KV event and replay endpoints for KV-aware routing."""
+        return self._routing_stats
 
     def _validate_openai_serving_models(self):
         assert self._oai_models is not None, "oai_models is not initialized"
@@ -436,21 +501,25 @@ class VLLMEngine(LLMEngine):
 
         engine_config: VLLMEngineConfig = self.llm_config.get_engine_config()
 
-        if engine_config.use_gpu:
-            # Create engine config on a task with access to GPU,
-            # as GPU capability may be queried.
+        # If the backend is anything other than CPU, we need to create the
+        # engine config on a task with hardware access.
+        if engine_config.accelerator.requires_remote_initialization:
+            accelerator = engine_config.accelerator
+            accelerator_type = self.llm_config.accelerator_type
+
+            # Initialize options required for the remote task and hardware backend
+            remote_options = {
+                "num_cpus": 0,
+                "runtime_env": callback_ctx.runtime_env,
+                "scheduling_strategy": PlacementGroupSchedulingStrategy(
+                    placement_group=callback_ctx.placement_group,
+                ),
+                **accelerator.get_remote_options(accelerator_type),
+            }
+
             ref = (
-                ray.remote(
-                    num_cpus=0,
-                    num_gpus=0.001,
-                    accelerator_type=self.llm_config.accelerator_type,
-                )(_get_vllm_engine_config)
-                .options(
-                    runtime_env=callback_ctx.runtime_env,
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=callback_ctx.placement_group,
-                    ),
-                )
+                ray.remote(_get_vllm_engine_config)
+                .options(**remote_options)
                 .remote(self.llm_config)
             )
             vllm_engine_args, vllm_engine_config = ray.get(ref)
@@ -488,7 +557,13 @@ class VLLMEngine(LLMEngine):
 
         executor_class = Executor.get_class(vllm_engine_config)
         logger.info(f"Using executor class: {executor_class}")
-        engine_client = AsyncLLM(
+        # Report per-request token progress to the deployment's KV router actor,
+        # but only on KV-aware deployments: elsewhere the actor never exists and
+        # resolving it per request would block the engine's event loop.
+        engine_cls = AsyncLLM
+        if is_kv_aware(self.llm_config):
+            engine_cls = enable_token_tracking(AsyncLLM)
+        engine_client = engine_cls(
             vllm_config=vllm_engine_config,
             executor_class=executor_class,
             log_requests=vllm_engine_args.enable_log_requests,
@@ -540,6 +615,7 @@ class VLLMEngine(LLMEngine):
             yield error
             return
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
@@ -574,6 +650,7 @@ class VLLMEngine(LLMEngine):
             yield error
             return
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
@@ -610,6 +687,7 @@ class VLLMEngine(LLMEngine):
             yield error
             return
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
@@ -638,6 +716,7 @@ class VLLMEngine(LLMEngine):
         # Extract audio data from the request file
         audio_data = await request.file.read()
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
@@ -675,11 +754,13 @@ class VLLMEngine(LLMEngine):
             yield error
             return
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
         try:
-            score_response = await self._oai_serving_scores.create_score(
+            assert self._oai_serving_scores is not None
+            score_response = await self._oai_serving_scores(
                 request,
                 raw_request=raw_request,
             )
@@ -687,10 +768,8 @@ class VLLMEngine(LLMEngine):
             yield self._make_error_response(self._oai_serving_scores, e)
             return
 
-        if isinstance(score_response, VLLMErrorResponse):
-            yield ErrorResponse(**score_response.model_dump())
-        else:
-            yield ScoreResponse(**score_response.model_dump())
+        content = json.loads(score_response.body)
+        yield ScoreResponse(**content)
 
     async def tokenize(
         self,
@@ -701,6 +780,7 @@ class VLLMEngine(LLMEngine):
             yield error
             return
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
@@ -727,6 +807,7 @@ class VLLMEngine(LLMEngine):
             yield error
             return
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )

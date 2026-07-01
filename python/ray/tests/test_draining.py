@@ -87,6 +87,58 @@ def test_idle_termination(ray_start_cluster):
     assert is_accepted
 
 
+def test_idle_drain_rejected_while_holding_pinned_object(ray_start_cluster):
+    # Tests that a node is not drained if it's holding a pinned object
+    #
+    # The resource-sync period is widened so the object-store-memory idle signal is NOT
+    # refreshed between pinning the object and the drain request. The raylet must refresh
+    # it at the drain decision regardless; without that, the cached signal is stale and
+    # the drain is wrongly accepted once CPU/lease go idle.
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=0,
+        resources={"head": 1},
+        _system_config={"raylet_report_resources_period_milliseconds": 120000},
+    )
+    ray.init(address=cluster.address)
+    worker_node = cluster.add_node(num_cpus=1, resources={"worker": 1})
+    cluster.wait_for_nodes()
+    worker_node_id = worker_node.node_id
+
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    # >100 KiB so the return is stored in the worker's plasma (in_plasma), not inlined
+    # into the owner's reply.
+    @ray.remote(num_cpus=1, max_retries=0)
+    def make_object():
+        return b"x" * (10 * 1024 * 1024)
+
+    # Runs on the worker (head has 0 CPU). Keep the ref but do NOT fetch it, so the only
+    # copy stays pinned in the worker's plasma.
+    ref = make_object.remote()
+    ready, _ = ray.wait([ref], num_returns=1, timeout=60, fetch_local=False)
+    assert ready
+
+    def drain_idle():
+        is_accepted, _ = gcs_client.drain_node(
+            worker_node_id,
+            autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_IDLE_TERMINATION"),
+            "idle drain while node holds a referenced object",
+            2**63 - 1,
+        )
+        return is_accepted
+
+    # Make idle drain requests during the window where worker lease is returned (CPU +
+    # worker footprint go idle). The object held by the node should prevent it from draining.
+    for _ in range(10):
+        assert not drain_idle(), "idle drain accepted while the node held an object"
+        time.sleep(0.5)
+
+    # The worker survived and the object is still retrievable.
+    assert worker_node_id in {node["NodeID"] for node in ray.nodes() if node["Alive"]}
+    assert len(ray.get(ref)) == 10 * 1024 * 1024
+
+
 def test_preemption(ray_start_cluster):
     cluster = ray_start_cluster
     head_node = cluster.add_node(resources={"head": 1})
@@ -371,9 +423,7 @@ def test_scheduling_tasks_and_actors_during_draining(ray_start_cluster):
     with pytest.raises(ray.exceptions.TaskUnschedulableError):
         ray.get(
             get_node_id.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    worker_node_id, soft=False
-                )
+                label_selector={ray._raylet.RAY_NODE_ID_KEY: worker_node_id}
             ).remote()
         )
 

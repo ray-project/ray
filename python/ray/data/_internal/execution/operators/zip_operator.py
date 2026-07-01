@@ -3,10 +3,16 @@ import itertools
 from dataclasses import replace
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
+from typing_extensions import override
+
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
-from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.bundle_queue import BaseBundleQueue, FIFOBundleQueue
+from ray.data._internal.execution.interfaces import (
+    BlockEntry,
+    PhysicalOperator,
+    RefBundle,
+)
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
     NAryOperator,
@@ -18,7 +24,6 @@ from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
-    BlockPartition,
     to_stats,
 )
 from ray.data.context import DataContext
@@ -44,7 +49,8 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         """Create a ZipOperator.
 
         Args:
-            input_ops: Operators generating input data for this operator to zip.
+            data_context: The :class:`DataContext` to use for this operator.
+            *input_ops: Operators generating input data for this operator to zip.
         """
         assert len(input_ops) >= 2
         self._input_buffers: List[FIFOBundleQueue] = [
@@ -56,6 +62,16 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             data_context,
             *input_ops,
         )
+
+    @property
+    @override
+    def _input_queues(self) -> List["BaseBundleQueue"]:
+        return self._input_buffers
+
+    @property
+    @override
+    def _output_queues(self) -> List["BaseBundleQueue"]:
+        return [self._output_buffer]
 
     def num_outputs_total(self) -> Optional[int]:
         num_outputs = None
@@ -80,31 +96,6 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             else:
                 num_rows = max(num_rows, input_num_rows)
         return num_rows
-
-    def internal_input_queue_num_blocks(self) -> int:
-        return sum(buf.num_blocks() for buf in self._input_buffers)
-
-    def internal_input_queue_num_bytes(self) -> int:
-        return sum(buf.estimate_size_bytes() for buf in self._input_buffers)
-
-    def internal_output_queue_num_blocks(self) -> int:
-        return self._output_buffer.num_blocks()
-
-    def internal_output_queue_num_bytes(self) -> int:
-        return self._output_buffer.estimate_size_bytes()
-
-    def clear_internal_input_queue(self) -> None:
-        """Clear internal input queues."""
-        for idx, input_buffer in enumerate(self._input_buffers):
-            while input_buffer.has_next():
-                bundle = input_buffer.get_next()
-                self._metrics.on_input_dequeued(bundle, input_index=idx)
-
-    def clear_internal_output_queue(self) -> None:
-        """Clear internal output queue."""
-        while self._output_buffer.has_next():
-            bundle = self._output_buffer.get_next()
-            self._metrics.on_output_dequeued(bundle)
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.has_completed()
@@ -170,20 +161,18 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         Zipping blocks: after blocks from both sides are aligned, zip
         blocks from both sides together in parallel.
         """
-        left_blocks_with_metadata = []
+        left_entries: List[BlockEntry] = []
         for bundle in left_input:
-            for block, meta in bundle.blocks:
-                left_blocks_with_metadata.append((block, meta))
-        right_blocks_with_metadata = []
+            left_entries.extend(bundle.blocks)
+        right_entries: List[BlockEntry] = []
         for bundle in right_input:
-            for block, meta in bundle.blocks:
-                right_blocks_with_metadata.append((block, meta))
+            right_entries.extend(bundle.blocks)
 
         left_block_rows, left_block_bytes = self._calculate_blocks_rows_and_bytes(
-            left_blocks_with_metadata
+            left_entries
         )
         right_block_rows, right_block_bytes = self._calculate_blocks_rows_and_bytes(
-            right_blocks_with_metadata
+            right_entries
         )
 
         # Check that both sides have the same number of rows.
@@ -206,10 +195,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             # e.g. by generating the splitting plans for each route (via
             # _generate_per_block_split_indices) and choosing the plan that splits
             # the least cumulative bytes.
-            left_blocks_with_metadata, right_blocks_with_metadata = (
-                right_blocks_with_metadata,
-                left_blocks_with_metadata,
-            )
+            left_entries, right_entries = right_entries, left_entries
             left_block_rows, right_block_rows = right_block_rows, left_block_rows
             input_side_inverted = True
 
@@ -222,18 +208,30 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         # cumulative number of rows as that left block.
         # NOTE: _split_at_indices has a no-op fastpath if the blocks are already
         # aligned.
-        aligned_right_blocks_with_metadata = _split_at_indices(
-            right_blocks_with_metadata,
-            indices,
-            block_rows=right_block_rows,
+        # Determine the ownership of the blocks being split, accounting for the
+        # potential swap above. We must not free blocks that are shared with
+        # other operators (e.g., when the input RefBundle has owns_blocks=False
+        # because it comes from a materialized dataset).
+        split_side_owned = all(
+            b.owns_blocks for b in (left_input if input_side_inverted else right_input)
         )
-        del right_blocks_with_metadata
+        label_selector = self.data_context.execution_options.label_selector
+        aligned_right_blocks_with_metadata = _split_at_indices(
+            [(e.ref, e.metadata) for e in right_entries],
+            indices,
+            owned_by_consumer=split_side_owned,
+            block_rows=right_block_rows,
+            label_selector=label_selector,
+        )
+        del right_entries
 
-        left_blocks = [b for b, _ in left_blocks_with_metadata]
+        left_blocks = [e.ref for e in left_entries]
         right_blocks_list = aligned_right_blocks_with_metadata[0]
-        del left_blocks_with_metadata, aligned_right_blocks_with_metadata
+        del left_entries, aligned_right_blocks_with_metadata
 
         zip_one_block = cached_remote_fn(_zip_one_block, num_returns=2)
+        if label_selector:
+            zip_one_block = zip_one_block.options(label_selector=label_selector)
 
         output_blocks = []
         output_metadata_schema = []
@@ -260,12 +258,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         for block, meta_with_schema in zip(output_blocks, output_metadata_schema):
             output_refs.append(
                 RefBundle(
-                    [
-                        (
-                            block,
-                            meta_with_schema.metadata,
-                        )
-                    ],
+                    [BlockEntry(block, meta_with_schema.metadata)],
                     owns_blocks=input_owned,
                     schema=meta_with_schema.schema,
                 )
@@ -282,18 +275,24 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
 
     def _calculate_blocks_rows_and_bytes(
         self,
-        blocks_with_metadata: BlockPartition,
+        entries: List[BlockEntry],
     ) -> Tuple[List[int], List[int]]:
         """Calculate the number of rows and size in bytes for a list of blocks with
         metadata.
         """
         get_num_rows_and_bytes = cached_remote_fn(_get_num_rows_and_bytes)
+        label_selector = self.data_context.execution_options.label_selector
+        if label_selector:
+            get_num_rows_and_bytes = get_num_rows_and_bytes.options(
+                label_selector=label_selector
+            )
         block_rows = []
         block_bytes = []
-        for block, metadata in blocks_with_metadata:
+        for entry in entries:
+            metadata = entry.metadata
             if metadata.num_rows is None or metadata.size_bytes is None:
                 # Need to fetch number of rows or size in bytes, so just fetch both.
-                num_rows, size_bytes = ray.get(get_num_rows_and_bytes.remote(block))
+                num_rows, size_bytes = ray.get(get_num_rows_and_bytes.remote(entry.ref))
                 # Cache on the block metadata.
                 metadata = replace(metadata, num_rows=num_rows, size_bytes=size_bytes)
             block_rows.append(metadata.num_rows)

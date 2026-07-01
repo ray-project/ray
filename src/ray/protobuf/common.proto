@@ -622,6 +622,9 @@ message TaskSpec {
   optional string tensor_transport = 44;
   // A list of fallback options defining the fallback strategy for scheduling.
   FallbackStrategy fallback_strategy = 45;
+  // Private streaming generator option. The number of ObjectRefs produced by
+  // each generator yield. Defaults to 1.
+  uint64 num_objects_per_yield = 46;
 }
 
 message TaskInfoEntry {
@@ -662,6 +665,9 @@ message TaskInfoEntry {
   map<string, string> label_selector = 28;
 
   optional FallbackStrategy fallback_strategy = 29;
+  // True if this task creates a detached actor. Only meaningful when
+  // type == ACTOR_CREATION_TASK; defaults to false otherwise.
+  bool is_detached_actor = 30;
 }
 
 message TaskAttempt {
@@ -709,6 +715,9 @@ message PlacementGroupSpec {
   // Otherwise, the bundles can be placed elsewhere.
   // This only applies to STRICT_PACK pg.
   bytes soft_target_node_id = 11;
+  // Topology strategy. Maps non-node topology label keys (e.g.
+  // "ray.io/gpu-domain") to the placement strategy applied at that label.
+  map<string, PlacementStrategy> topology_strategy = 12;
 }
 
 message ObjectReference {
@@ -825,6 +834,12 @@ message ActorCreationTaskSpec {
   bool allow_out_of_order_execution = 13;
   // The max number of pending actor calls.
   int32 max_pending_calls = 14;
+  // The maximum number of objects across all streaming-generator tasks
+  // running on this actor that can be unconsumed before producers block.
+  // Set to -1 (default) to disable the actor-wide cap; in that case
+  // backpressure remains purely per-task via
+  // TaskSpec.generator_backpressure_num_objects.
+  int64 actor_generator_backpressure_num_objects = 15;
 }
 
 // Task spec of an actor task.
@@ -835,6 +850,12 @@ message ActorTaskSpec {
   bytes actor_creation_dummy_object_id = 4;
   // Per-concurrency-group sequence number for ordering tasks within each group.
   uint64 concurrency_group_sequence_number = 5;
+  // True if the target actor was created with lifetime="detached". Set by the
+  // caller from its ActorHandle at task submission time.
+  bool is_detached_actor = 6;
+  // Actor-wide streaming generator cap copied from the actor handle at submit
+  // time (unset or <=0 means no actor-wide owner threshold for this task).
+  optional int64 actor_generator_backpressure_num_objects = 7;
 }
 
 // Represents a task, including task spec.

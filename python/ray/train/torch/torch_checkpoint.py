@@ -156,6 +156,9 @@ class TorchCheckpoint(FrameworkCheckpoint):
             model: If the checkpoint contains a model state dict, and not
                 the model itself, then the state dict will be loaded to this
                 ``model``. Otherwise, the model will be discarded.
+
+        Returns:
+            The loaded ``torch.nn.Module``.
         """
         with self.as_directory() as tempdir:
             model_path = Path(tempdir, self.MODEL_FILENAME).as_posix()
@@ -173,10 +176,7 @@ class TorchCheckpoint(FrameworkCheckpoint):
             if model:
                 warnings.warn(
                     "TorchCheckpoint already contains all information needed. "
-                    "Discarding provided `model` argument. If you are using "
-                    "TorchPredictor directly, you should do "
-                    "`TorchPredictor.from_checkpoint(checkpoint)` by removing kwargs "
-                    "`model=`."
+                    "Discarding provided `model` argument."
                 )
         model = load_torch_model(
             saved_model=model_or_state_dict, model_definition=model

@@ -15,11 +15,13 @@ from typing import (
 
 import ray
 from ray import serve
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._common.utils import import_attr
 from ray.llm._internal.serve.constants import (
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
     ENGINE_START_TIMEOUT_S,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
+    RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING,
     RAYLLM_VLLM_ENGINE_CLS_ENV,
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
@@ -195,6 +197,30 @@ class LLMServer(LLMServerProtocol):
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
 
+    async def __serve_build_asgi_app__(self):
+        from fastapi import HTTPException
+
+        from ray.llm._internal.serve.core.configs.openai_api_models import (
+            ModelCard,
+            to_model_metadata,
+        )
+
+        app = await self.engine.build_asgi_app()
+
+        # vLLM's native ASGI app only exposes `GET /v1/models` (list); add
+        # `GET /v1/models/{id}` so direct-streaming clients can call
+        # `openai_client.models.retrieve(...)` like the OpenAiIngress path.
+        model_id = self._llm_config.model_id
+        model_card = to_model_metadata(model_id, self._llm_config)
+
+        @app.get("/v1/models/{model:path}", response_model=ModelCard)
+        async def _get_model(model: str):
+            if model != model_id:
+                raise HTTPException(status_code=404, detail=f"Unknown model: {model}")
+            return model_card
+
+        return app
+
     def _init_multiplex_loader(
         self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None
     ):
@@ -248,6 +274,10 @@ class LLMServer(LLMServerProtocol):
 
         # Push telemetry reports for the model in the current deployment.
         push_telemetry_report_for_all_models(all_models=[self._llm_config])
+        if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+            # Cluster-wide adoption signal: written from each replica on engine
+            # start, but last-write-wins so it reports one value per cluster.
+            record_extra_usage_tag(TagKey.LLM_SERVE_DIRECT_STREAMING_ENABLED, "1")
 
     def _get_batch_interval_ms(self, stream: bool = True) -> int:
         """Calculate the batching interval for responses."""
@@ -267,7 +297,17 @@ class LLMServer(LLMServerProtocol):
             "TranscriptionRequest",
         ],
     ):
-        """Add the request id to the request."""
+        """Stamp the Serve request id, unless the caller set request_id explicitly.
+
+        request_id defaults to a random uuid (never None), so use model_fields_set
+        to avoid clobbering an id a caller deliberately set (e.g. a P/D connector's
+        coordination id). Some request types (tokenize/detokenize) have no
+        request_id field at all -- skip those.
+        """
+        if not hasattr(request, "request_id"):
+            return
+        if "request_id" in request.model_fields_set:
+            return
         request_id = get_serve_request_id()
         if request_id:
             request.request_id = request_id
@@ -518,6 +558,17 @@ class LLMServer(LLMServerProtocol):
             logger.error("Engine health check failed in LLMServer.check_health: %s", e)
             raise e
 
+    async def record_routing_stats(self) -> Dict[str, Any]:
+        """Serve request-router hook, polled by the controller.
+
+        Surfaces this replica's routing stats (the engine's KV-events endpoint
+        for KV-aware routing); the deployment's ``KVRouterActor`` reads them off
+        the ``LongPoll`` replica snapshot to register the worker.
+        """
+        if self.engine is None:
+            return {}
+        return self.engine.routing_stats()
+
     async def sleep(self, **kwargs: Any) -> None:
         """Put the engine to sleep.
 
@@ -687,18 +738,6 @@ class LLMServer(LLMServerProtocol):
         engine_config = llm_config.get_engine_config()
         deployment_options = copy.deepcopy(llm_config.deployment_config)
 
-        # Handle the ray_actor_options that could be passed in to
-        # deployment_options
-        ray_actor_options = deployment_options.get("ray_actor_options", {})
-
-        replica_actor_resources = {
-            "CPU": ray_actor_options.get("num_cpus", 1),
-            "GPU": ray_actor_options.get("num_gpus", 0),
-            **ray_actor_options.get("resources", {}),
-        }
-        if "memory" in ray_actor_options:
-            replica_actor_resources["memory"] = ray_actor_options["memory"]
-
         if (
             "placement_group_bundles" in llm_config.deployment_config
             or "placement_group_strategy" in llm_config.deployment_config
@@ -707,18 +746,31 @@ class LLMServer(LLMServerProtocol):
                 "placement_group_bundles and placement_group_strategy must not be specified in deployment_config. You can override the default values by setting the `placement_group_config` in the LLMConfig."
             )
 
-        # TODO: Move this _merge_replica_actor_and_child_actor_bundles to a
-        # more generic place.
-        pg_bundles = _merge_replica_actor_and_child_actor_bundles(
-            engine_config.placement_bundles, replica_actor_resources
-        )
+        # Handle the ray_actor_options that could be passed in to
+        # deployment_options
+        ray_actor_options = deployment_options.get("ray_actor_options", {})
 
-        deployment_options.update(
-            {
-                "placement_group_bundles": pg_bundles,
-                "placement_group_strategy": engine_config.placement_strategy,
+        if not engine_config.accelerator.requires_deferred_placement_group:
+            replica_actor_resources = {
+                "CPU": ray_actor_options.get("num_cpus", 1),
+                "GPU": ray_actor_options.get("num_gpus", 0),
+                **ray_actor_options.get("resources", {}),
             }
-        )
+            if "memory" in ray_actor_options:
+                replica_actor_resources["memory"] = ray_actor_options["memory"]
+
+            # TODO: Move this _merge_replica_actor_and_child_actor_bundles to a
+            # more generic place.
+            pg_bundles = _merge_replica_actor_and_child_actor_bundles(
+                engine_config.placement_bundles, replica_actor_resources
+            )
+
+            deployment_options.update(
+                {
+                    "placement_group_bundles": pg_bundles,
+                    "placement_group_strategy": engine_config.placement_strategy,
+                }
+            )
 
         # Handle env vars from runtime_env
         default_runtime_env = ray.get_runtime_context().runtime_env

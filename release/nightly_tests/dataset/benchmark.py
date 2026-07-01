@@ -3,6 +3,7 @@ import json
 import logging
 import math
 import os
+import threading
 import time
 from enum import Enum
 from typing import Any, Callable, Dict, List, Union
@@ -14,16 +15,82 @@ from ray.util.state import list_runtime_envs
 logger = logging.getLogger(__name__)
 
 
-def _get_spilled_bytes_total() -> float:
+def _get_spilled_bytes_total(state) -> float:
     """Get the total number of spilled bytes across the cluster."""
-    memory_info = get_memory_info_reply(
-        get_state_from_address(ray.get_runtime_context().gcs_address)
-    )
-    return memory_info.store_stats.spilled_bytes_total
+    return get_memory_info_reply(state).store_stats.spilled_bytes_total
 
 
 def _bytes_to_gb(b: float) -> float:
     return round(b / (1024**3), 4)
+
+
+class ObjectStoreMemorySampler:
+    """Samples aggregate object store usage and tracks the peak value.
+
+    Object store usage is an instantaneous gauge, so checking only at the
+    beginning and end of a benchmark can miss short-lived memory spikes.
+    """
+
+    def __init__(self, state, interval_s: float = 1.0):
+        self._state = state
+        self._interval_s = interval_s
+        self._stop_event = threading.Event()
+        self._thread = None
+
+        self._peak_used_bytes = 0
+        self._peak_utilization = 0.0
+
+    @property
+    def peak_used_bytes(self) -> int:
+        return self._peak_used_bytes
+
+    @property
+    def peak_utilization(self) -> float:
+        return self._peak_utilization
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.stop()
+
+    def start(self):
+        self._sample_once()
+        self._thread = threading.Thread(
+            target=self._run,
+            name="object-store-memory-sampler",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def stop(self):
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join()
+        self._sample_once()
+
+    def _run(self):
+        while not self._stop_event.wait(self._interval_s):
+            self._sample_once()
+
+    def _sample_once(self):
+        try:
+            store_stats = get_memory_info_reply(self._state).store_stats
+        except Exception:
+            logger.warning("Failed to sample object store memory.", exc_info=True)
+            return
+
+        used_bytes = store_stats.object_store_bytes_used
+        capacity_bytes = store_stats.object_store_bytes_avail
+
+        self._peak_used_bytes = max(self._peak_used_bytes, used_bytes)
+
+        if capacity_bytes > 0:
+            self._peak_utilization = max(
+                self._peak_utilization,
+                used_bytes / capacity_bytes,
+            )
 
 
 def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
@@ -32,16 +99,21 @@ def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
     we care about for the release tests."""
     summary = ds.get_stats_summary(detail=True)
     return {
+        "total_scheduling_runtime": summary.streaming_exec_schedule_s,
+        "avg_scheduling_loop_duration_s": summary.streaming_exec_schedule_avg_s,
+        "max_scheduling_loop_duration_s": summary.streaming_exec_schedule_max_s,
+        "p50_scheduling_loop_duration_s": summary.streaming_exec_schedule_p50_s,
+        "p90_scheduling_loop_duration_s": summary.streaming_exec_schedule_p90_s,
         "operators": [
             {
                 "operator_name": op.operator_name,
                 "earliest_start_time": op.earliest_start_time,
                 "latest_end_time": op.latest_end_time,
-                "scheduling_overhead": [
-                    dataclasses.asdict(bucket) for bucket in op.scheduling_overhead
-                ]
-                if op.scheduling_overhead
-                else [],
+                "scheduling_overhead": (
+                    [dataclasses.asdict(bucket) for bucket in op.scheduling_overhead]
+                    if op.scheduling_overhead
+                    else []
+                ),
             }
             for op in summary.operators_stats
         ],
@@ -89,8 +161,13 @@ class RuntimeEnvSetupTracker:
 
 
 def benchmark_py_modules() -> List[str]:
-    """Return a list containing the absolute path to benchmark.py for use in runtime_env py_modules."""
-    return [os.path.abspath(__file__)]
+    """Return paths to benchmark.py and the profiling
+    package for use in runtime_env py_modules."""
+    dataset_dir = os.path.dirname(os.path.realpath(__file__))
+    return [
+        os.path.realpath(__file__),
+        os.path.join(dataset_dir, "profiling"),
+    ]
 
 
 class BenchmarkMetric(Enum):
@@ -99,6 +176,8 @@ class BenchmarkMetric(Enum):
     THROUGHPUT = "tput"
     ACCURACY = "accuracy"
     OBJECT_STORE_SPILLED_TOTAL_GB = "object_store_spilled_total_gb"
+    OBJECT_STORE_MEMORY_USED_PEAK_GB = "object_store_memory_used_peak_gb"
+    OBJECT_STORE_MEMORY_UTILIZATION_PEAK = "object_store_memory_utilization_peak"
 
 
 class Benchmark:
@@ -151,17 +230,31 @@ class Benchmark:
         gc.collect()
 
         print(f"Running case: {name}")
-        start_time = time.perf_counter()
-        start_spilled_bytes = _get_spilled_bytes_total()
-        fn_output = fn(*fn_args, **fn_kwargs)
-        assert fn_output is None or isinstance(fn_output, dict), fn_output
-        duration = time.perf_counter() - start_time
-        spilled_bytes_total = _get_spilled_bytes_total() - start_spilled_bytes
+        state = get_state_from_address(ray.get_runtime_context().gcs_address)
 
+        with ObjectStoreMemorySampler(state) as memory_sampler:
+            start_time = time.perf_counter()
+            start_spilled_bytes = _get_spilled_bytes_total(state)
+
+            try:
+                fn_output = fn(*fn_args, **fn_kwargs)
+            finally:
+                duration = time.perf_counter() - start_time
+
+        assert fn_output is None or isinstance(fn_output, dict), fn_output
+
+        spilled_bytes_total = _get_spilled_bytes_total(state) - start_spilled_bytes
         curr_case_metrics = {
             BenchmarkMetric.RUNTIME.value: duration,
             BenchmarkMetric.OBJECT_STORE_SPILLED_TOTAL_GB.value: _bytes_to_gb(
                 spilled_bytes_total
+            ),
+            BenchmarkMetric.OBJECT_STORE_MEMORY_USED_PEAK_GB.value: _bytes_to_gb(
+                memory_sampler.peak_used_bytes
+            ),
+            BenchmarkMetric.OBJECT_STORE_MEMORY_UTILIZATION_PEAK.value: round(
+                memory_sampler.peak_utilization,
+                4,
             ),
         }
         if isinstance(fn_output, dict):
