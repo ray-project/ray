@@ -27,7 +27,7 @@ class MetricCardinality(str, Enum):
 
     - LEGACY: Keep all labels. This was the default behavior before `recommended`.
     - RECOMMENDED: Drop high cardinality labels. The set of high cardinality labels
-    are determined internally by Ray and not exposed to users. This is the default
+    is determined internally by Ray and not exposed to users. This is the default
     behavior. Currently, this includes the following labels: WorkerId
     - LOW: Same as RECOMMENDED, but also drop the Name label for tasks and actors.
     """
