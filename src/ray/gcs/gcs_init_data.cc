@@ -21,8 +21,8 @@
 namespace ray {
 namespace gcs {
 void GcsInitData::AsyncLoad(Postable<void()> on_done) {
-  // There are 5 kinds of table data need to be loaded.
-  auto count_down = std::make_shared<int>(5);
+  // There are 6 kinds of table data need to be loaded.
+  auto count_down = std::make_shared<int>(6);
   auto on_load_finished = Postable<void()>(
       [count_down, on_done]() mutable {
         if (--(*count_down) == 0) {
@@ -30,6 +30,8 @@ void GcsInitData::AsyncLoad(Postable<void()> on_done) {
         }
       },
       on_done.io_context());
+
+  AsyncLoadWorkerTableData(on_load_finished);
 
   AsyncLoadJobTableData(on_load_finished);
 
@@ -40,6 +42,16 @@ void GcsInitData::AsyncLoad(Postable<void()> on_done) {
   AsyncLoadActorTaskSpecTableData(on_load_finished);
 
   AsyncLoadPlacementGroupTableData(on_load_finished);
+}
+
+void GcsInitData::AsyncLoadWorkerTableData(Postable<void()> on_done) {
+  RAY_LOG(INFO) << "Loading worker table data.";
+  gcs_table_storage_.WorkerTable().GetAll(std::move(on_done).TransformArg(
+      [this](absl::flat_hash_map<WorkerID, rpc::WorkerTableData> result) {
+        worker_table_data_ = std::move(result);
+        RAY_LOG(INFO) << "Finished loading worker table data, size = "
+                      << worker_table_data_.size();
+      }));
 }
 
 void GcsInitData::AsyncLoadJobTableData(Postable<void()> on_done) {
