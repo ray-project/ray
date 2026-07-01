@@ -622,6 +622,12 @@ class Worker:
     @property
     def job_logging_config(self):
         """Get the job's logging config for this worker"""
+
+        # Defend against teardown C++ memory access violations on Windows (Issue #62442)
+        is_finalizing = getattr(sys, "is_finalizing", lambda: False)
+        if sys.platform == "win32" and is_finalizing():
+            return None
+
         if not hasattr(self, "core_worker"):
             return None
         job_config = self.core_worker.get_job_config()
@@ -2668,9 +2674,6 @@ def connect(
         ):
             script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
             # If driver's sys.path doesn't include the script directory
-            # (e.g driver is started via `python -m`,
-            # see https://peps.python.org/pep-0338/),
-            # then we shouldn't add it to the workers.
             #
             # Also skip when the job already specifies a runtime_env
             # working_dir: in that case the driver was launched from inside
