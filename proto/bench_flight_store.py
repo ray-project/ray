@@ -9,6 +9,8 @@ CLI:
   --mode              ray | arrow-rdt | arrow-native (transfer path)
   --placement         same-node | cross-node | mixed (actor placement)
   --consumer-mode     read-only | modify (consumer work)
+  --consumer-output   num-rows | table (return row count, or republish the
+                      table -> adds a produce copy on the consumer)
   --num-actor-pairs   number of producer/consumer actor pairs
   --concurrency       max_concurrency per actor
   --max-in-flight     cap on outstanding produce->consume pairs (default:
@@ -45,6 +47,13 @@ def parse_args():
     )
     p.add_argument(
         "--consumer-mode", choices=["read-only", "modify"], default="read-only"
+    )
+    p.add_argument(
+        "--consumer-output",
+        choices=["num-rows", "table"],
+        default="num-rows",
+        help="num-rows: return the row count; table: republish the table "
+        "(adds a produce copy on the consumer)",
     )
     p.add_argument("--num-actor-pairs", type=int, default=4)
     p.add_argument("--concurrency", type=int, default=4)
@@ -103,7 +112,9 @@ def _make_producer_cls(mode: str, concurrency: int):
     return Producer
 
 
-def _make_consumer_cls(consumer_mode: str, concurrency: int):
+def _make_consumer_cls(consumer_mode: str, concurrency: int, output: str):
+    return_table = output == "table"
+
     if consumer_mode == "read-only":
 
         @ray.remote(
@@ -115,7 +126,8 @@ def _make_consumer_cls(consumer_mode: str, concurrency: int):
 
             def process(self, table):
                 assert isinstance(table, pa.Table), f"got {type(table)}"
-                return table.num_rows
+                n = table.num_rows
+                return table if return_table else n
 
     else:
 
@@ -145,7 +157,7 @@ def _make_consumer_cls(consumer_mode: str, concurrency: int):
                         #  actually avoids copies.
                         arr = chunk.to_numpy(zero_copy_only=False, writable=True)
                         arr += 1
-                return table.num_rows
+                return table if return_table else table.num_rows
 
     return Consumer
 
@@ -307,7 +319,9 @@ def main():
     )
 
     Producer = _make_producer_cls(args.mode, args.concurrency)
-    Consumer = _make_consumer_cls(args.consumer_mode, args.concurrency)
+    Consumer = _make_consumer_cls(
+        args.consumer_mode, args.concurrency, args.consumer_output
+    )
 
     producers = _create_actors(Producer, producer_nodes)
     consumers = _create_actors(Consumer, consumer_nodes)
@@ -321,6 +335,7 @@ def main():
         f"Placement:     {args.placement}  (cluster has {len(all_nodes)} worker nodes)"
     )
     print(f"Consumer mode: {args.consumer_mode}")
+    print(f"Consumer out:  {args.consumer_output}")
     print(
         f"Actor pairs:   {args.num_actor_pairs} producers + {args.num_actor_pairs} "
         f"consumers across prod={len(set(producer_nodes))} cons={len(set(consumer_nodes))} node(s)"
