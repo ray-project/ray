@@ -132,15 +132,17 @@ llms_txt_exclude = [
 # across environments for a given commit. See DOC-1344.
 _conf_dir = pathlib.Path(__file__).parent
 try:
-    _notebooks = subprocess.run(
-        ["git", "ls-files", "*.ipynb"],
+    _git_out = subprocess.run(
+        ["git", "ls-files", "-z", "*.ipynb"],
         cwd=_conf_dir,
         capture_output=True,
         text=True,
         check=True,
-    ).stdout.splitlines()
-except (OSError, subprocess.CalledProcessError):
-    # Non-git checkout (e.g. a source tarball): fall back to a filesystem scan.
+    ).stdout
+    # -z gives NUL-separated, unquoted paths (robust to spaces/newlines/unicode).
+    _notebooks = [nb for nb in _git_out.split("\0") if nb]
+except Exception:
+    # Non-git checkout or any git/decode failure: fall back to a filesystem scan.
     _notebooks = [
         p.relative_to(_conf_dir).as_posix() for p in _conf_dir.rglob("*.ipynb")
     ]
