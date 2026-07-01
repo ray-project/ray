@@ -36,6 +36,9 @@ def assert_no_leak():
     sys.platform != "linux" and sys.platform != "linux2",
     reason="This test requires Linux.",
 )
+# This test can spill many GiB to disk (the normal-return task may not OOM and
+# instead materializes all returns), so it needs a longer timeout.
+@pytest.mark.timeout(600)
 def test_generator_oom(ray_start_regular_shared):
     num_returns = 100
 

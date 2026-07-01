@@ -268,7 +268,7 @@ controlled fashion through a custom callback could be a good compromise.
     dqn = config.build()
 
     # Train n times. Expect RLlib to write buffer every ith iteration.
-    for _ in range(4):
+    for _ in range(2):
         print(dqn.train())
 
 
@@ -345,7 +345,7 @@ Also, see this more complex example that
 
     # Train n times. Expect to find `theta1_mean` in the results under:
     # `env_runners/theta1_mean`
-    for i in range(10):
+    for i in range(2):
         results = ppo.train()
         print(
             f"iter={i} "
