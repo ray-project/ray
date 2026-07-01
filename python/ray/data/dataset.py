@@ -7862,7 +7862,9 @@ class Schema:
         ]
 
     @property
-    def types(self) -> List[Union[type[object], "pyarrow.lib.DataType"]]:
+    def types(
+        self,
+    ) -> List[Union[type[object], "pyarrow.lib.DataType", "pandas.CategoricalDtype"]]:
         """Lists the types of this Dataset in Arrow format
 
         For non-Arrow compatible types, we return "object".
@@ -7878,13 +7880,21 @@ class Schema:
         from ray.data.extensions import TensorDtype
 
         def _convert_to_pa_type(
-            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype],
-        ) -> pa.DataType:
+            dtype: Union[
+                np.dtype, "pd.ArrowDtype", "pd.CategoricalDtype", BaseMaskedDtype
+            ],
+        ) -> Union["pa.DataType", "pd.CategoricalDtype"]:
             if isinstance(dtype, pd.ArrowDtype):
                 return dtype.pyarrow_dtype
             elif isinstance(dtype, pd.StringDtype):
                 # StringDtype is not a BaseMaskedDtype, handle separately
                 return pa.string()
+            elif isinstance(dtype, pd.CategoricalDtype):
+                # CategoricalDtype is not a NumPy dtype, so pa.from_numpy_dtype
+                # raises on it. Preserve the pandas dtype so the schema still
+                # surfaces the categories instead of silently degrading to None.
+                # See https://github.com/ray-project/ray/issues/50285.
+                return dtype
             elif isinstance(dtype, BaseMaskedDtype):
                 dtype = dtype.numpy_dtype
             return pa.from_numpy_dtype(dtype)
