@@ -192,6 +192,13 @@ def get_table_output(state_data: List, schema: StateSchema, detail: bool) -> str
         for col in cols:
             if col in keys:
                 headers.append(col.upper())
+                
+        # --- Fix UX Issue #30805: Prepend TASK_ID ---
+        if "TASK_ID" in headers:
+            headers.remove("TASK_ID")
+            headers.insert(0, "TASK_ID")
+        # ---------------------------------------------
+
         table.append([data[header.lower()] for header in headers])
     return f"""
 {header}
