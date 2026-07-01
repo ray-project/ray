@@ -255,7 +255,7 @@ class Planner:
 
     def _plan_recursively(
         self, logical_op: LogicalOperator, data_context: DataContext
-    ) -> Tuple[PhysicalOperator, Dict[LogicalOperator, PhysicalOperator]]:
+    ) -> Tuple[PhysicalOperator, Dict[PhysicalOperator, LogicalOperator]]:
         """Plan a logical operator and its input dependencies recursively.
 
         Args:
@@ -264,7 +264,7 @@ class Planner:
 
         Returns:
             A tuple of the physical operator corresponding to the logical operator, and
-            a mapping from physical to logical operators.
+            a mapping from physical operators to logical operators.
         """
         op_map: Dict[PhysicalOperator, LogicalOperator] = {}
 
