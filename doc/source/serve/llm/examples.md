@@ -14,7 +14,7 @@ End-to-end tutorials for deploying LLMs with Ray Serve. Each one walks through c
 - {doc}`Deploy a reasoning LLM </_collections/serve/tutorials/deployment-serve-llm/reasoning-llm/README>`: serve a reasoning model and handle its reasoning output.
 - {doc}`Deploy a hybrid reasoning LLM </_collections/serve/tutorials/deployment-serve-llm/hybrid-reasoning-llm/README>`: serve a model that can switch reasoning on and off per request.
 - {doc}`Deploy gpt-oss </_collections/serve/tutorials/deployment-serve-llm/gpt-oss/README>`: deploy OpenAI's open-weight gpt-oss model.
-- {doc}`Deploy an LLM on Ascend NPU </_collections/serve/tutorials/deployment-serve-llm/npu-ascend/README>`: serve an LLM on Huawei Ascend NPU.
+- {doc}`Deploy an LLM on Ascend NPU <./npu-ascend>`: serve an LLM on Huawei Ascend NPU.
 
 ```{toctree}
 :hidden:
@@ -26,5 +26,5 @@ End-to-end tutorials for deploying LLMs with Ray Serve. Each one walks through c
 /_collections/serve/tutorials/deployment-serve-llm/reasoning-llm/README
 /_collections/serve/tutorials/deployment-serve-llm/hybrid-reasoning-llm/README
 /_collections/serve/tutorials/deployment-serve-llm/gpt-oss/README
-/_collections/serve/tutorials/deployment-serve-llm/npu-ascend/README
+npu-ascend
 ```
