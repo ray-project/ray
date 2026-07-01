@@ -435,6 +435,30 @@ def ray_deps_setup():
         sha256 = "8e00c38829d6785a2dfb951bb87c6974fa07dfe488aa5b25deec4b8bc0f6a3ab",
     )
 
+    # libcurl: the HTTP transport used by azure-core (and therefore
+    # azure-identity) on Linux/macOS. Built from source via rules_foreign_cc so
+    # the Entra token exchange does not depend on a system libcurl.
+    # TODO: pin `sha256` before merging (bazel prints the expected hash on the
+    # first fetch); left unset so the archive can be fetched during CI bring-up.
+    auto_http_archive(
+        name = "com_github_curl_curl",
+        url = "https://github.com/curl/curl/releases/download/curl-8_11_0/curl-8.11.0.tar.gz",
+        strip_prefix = "curl-8.11.0",
+        build_file = "@rules_foreign_cc_thirdparty//curl:BUILD.curl.bazel",
+    )
+
+    # azure-sdk-for-cpp: provides Azure::Identity credentials (managed identity,
+    # workload identity federation, environment credentials, ...) used to obtain
+    # the Entra ID access token for external Redis auth. Built with CMake via
+    # rules_foreign_cc; only azure-core and azure-identity are compiled.
+    # TODO: pin `sha256` before merging (see note on curl above).
+    auto_http_archive(
+        name = "com_github_azure_azure_sdk_for_cpp",
+        url = "https://github.com/Azure/azure-sdk-for-cpp/archive/refs/tags/azure-identity_1.9.0.tar.gz",
+        strip_prefix = "azure-sdk-for-cpp-azure-identity_1.9.0",
+        build_file = "@io_ray//bazel:azure_sdk.BUILD",
+    )
+
     # Hedron's Compile Commands Extractor for Bazel
     # https://github.com/hedronvision/bazel-compile-commands-extractor
     auto_http_archive(

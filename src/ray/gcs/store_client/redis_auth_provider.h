@@ -15,7 +15,6 @@
 #pragma once
 
 #include <functional>
-#include <memory>
 #include <string>
 
 #include "absl/base/thread_annotations.h"
@@ -76,36 +75,42 @@ class StaticRedisAuthProvider : public RedisAuthProvider {
 
 /// Configuration for `EntraRedisAuthProvider`.
 struct EntraAuthConfig {
-  /// The IMDS token endpoint, e.g.
-  /// "http://169.254.169.254/metadata/identity/oauth2/token". Plain HTTP on the
-  /// link-local address; overridable for testing.
-  std::string imds_endpoint;
   /// The Entra resource/audience to request a token for. For Azure (Managed)
-  /// Redis this is "https://redis.azure.com/".
+  /// Redis this is "https://redis.azure.com/"; the SDK scope is derived from it
+  /// as "<resource>/.default".
   std::string resource;
-  /// Optional user-assigned managed identity client id. Empty selects the
-  /// system-assigned managed identity.
+  /// Optional user-assigned managed identity client id. When set, a
+  /// user-assigned managed identity is used explicitly; when empty the SDK's
+  /// `DefaultAzureCredential` chain is used (system-assigned managed identity,
+  /// workload identity federation, environment credentials, ... — deployments
+  /// opt in via the standard AZURE_* environment variables).
   std::string client_id;
   /// Optional Redis `AUTH` username override. When empty, the `oid` claim of
   /// the access token is used (as required by Azure Entra Redis auth).
   std::string username;
   /// How long before expiry to proactively refresh the token.
   absl::Duration refresh_buffer = absl::Seconds(300);
-  /// Timeout for a single IMDS HTTP request.
-  absl::Duration request_timeout = absl::Seconds(10);
 };
 
-/// Fetches a Microsoft Entra ID (Azure AD) access token from the Azure Instance
-/// Metadata Service (IMDS) managed-identity endpoint and uses it as the Redis
-/// password. The token is cached and transparently refreshed before expiry.
+/// A Microsoft Entra ID (Azure AD) access token together with its absolute
+/// expiry, as returned by the Azure Identity SDK.
+struct EntraAccessToken {
+  std::string token;
+  absl::Time expiry;
+};
+
+/// Obtains a Microsoft Entra ID (Azure AD) access token via the Azure Identity
+/// SDK and uses it as the Redis password. The token is cached and transparently
+/// refreshed before expiry.
 ///
-/// A pluggable `token_fetcher` performs the raw HTTP GET; the default
-/// implementation talks to IMDS over HTTP. Tests inject a fake fetcher.
+/// A pluggable `token_fetcher` performs the actual token acquisition; the
+/// default implementation delegates to `Azure::Identity`. Tests inject a fake
+/// fetcher.
 class EntraRedisAuthProvider : public RedisAuthProvider {
  public:
-  /// Performs the IMDS HTTP GET and returns the raw JSON response body.
+  /// Acquires an access token (and its expiry) for the configured resource.
   using TokenFetcher =
-      std::function<StatusOr<std::string>(const EntraAuthConfig &config)>;
+      std::function<StatusOr<EntraAccessToken>(const EntraAuthConfig &config)>;
 
   EntraRedisAuthProvider(ClockInterface &clock,
                          EntraAuthConfig config,
@@ -115,8 +120,8 @@ class EntraRedisAuthProvider : public RedisAuthProvider {
 
   bool IsRefreshable() const override { return true; }
 
-  /// The default fetcher: an HTTP GET against the IMDS token endpoint.
-  static StatusOr<std::string> DefaultTokenFetcher(const EntraAuthConfig &config);
+  /// The default fetcher: acquires a token through the Azure Identity SDK.
+  static StatusOr<EntraAccessToken> DefaultTokenFetcher(const EntraAuthConfig &config);
 
  private:
   StatusOr<RedisCredentials> RefreshLocked() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -129,15 +134,6 @@ class EntraRedisAuthProvider : public RedisAuthProvider {
   RedisCredentials cached_ ABSL_GUARDED_BY(mu_);
   bool has_token_ ABSL_GUARDED_BY(mu_) = false;
 };
-
-/// Parses the IMDS token JSON response, extracting the access token and its
-/// absolute expiry. Handles both the absolute `expires_on` (Unix seconds) and
-/// the relative `expires_in` (seconds from `now`) fields, which IMDS may return
-/// as either JSON strings or numbers.
-Status ParseImdsTokenResponse(const std::string &body,
-                              absl::Time now,
-                              std::string *access_token,
-                              absl::Time *expiry);
 
 /// Extracts the `oid` (object id) claim from a JWT access token, used as the
 /// Redis `AUTH` username for Entra-authenticated Azure Redis.

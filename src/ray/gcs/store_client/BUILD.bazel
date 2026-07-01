@@ -42,7 +42,7 @@ ray_cc_library(
         "//src/ray/util:logging",
         "//src/ray/util:network_util",
         "@boost//:asio",
-        "@boost//:beast",
+        "@com_github_azure_azure_sdk_for_cpp//:azure-identity",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",

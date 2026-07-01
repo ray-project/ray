@@ -50,41 +50,6 @@ TEST(RedisAuthProviderTest, StaticProviderReturnsFixedCredentials) {
   EXPECT_EQ(creds->expiry, absl::InfiniteFuture());
 }
 
-TEST(RedisAuthProviderTest, ParseImdsTokenResponseExpiresOn) {
-  std::string token;
-  absl::Time expiry;
-  // `expires_on` is an absolute Unix-seconds timestamp, returned as a string.
-  std::string body =
-      R"({"access_token":"abc","expires_on":"4600","token_type":"Bearer"})";
-  ASSERT_TRUE(
-      ParseImdsTokenResponse(body, absl::FromUnixSeconds(1000), &token, &expiry).ok());
-  EXPECT_EQ(token, "abc");
-  EXPECT_EQ(expiry, absl::FromUnixSeconds(4600));
-}
-
-TEST(RedisAuthProviderTest, ParseImdsTokenResponseExpiresInRelativeToNow) {
-  std::string token;
-  absl::Time expiry;
-  // `expires_in` is relative to now; here returned as a JSON number.
-  std::string body = R"({"access_token":"abc","expires_in":3600})";
-  ASSERT_TRUE(
-      ParseImdsTokenResponse(body, absl::FromUnixSeconds(1000), &token, &expiry).ok());
-  EXPECT_EQ(expiry, absl::FromUnixSeconds(4600));
-}
-
-TEST(RedisAuthProviderTest, ParseImdsTokenResponseErrors) {
-  std::string token;
-  absl::Time expiry;
-  absl::Time now = absl::FromUnixSeconds(1000);
-  // Not JSON.
-  EXPECT_FALSE(ParseImdsTokenResponse("not json", now, &token, &expiry).ok());
-  // Missing access_token.
-  EXPECT_FALSE(ParseImdsTokenResponse(R"({"expires_in":1})", now, &token, &expiry).ok());
-  // Missing expiry.
-  EXPECT_FALSE(
-      ParseImdsTokenResponse(R"({"access_token":"a"})", now, &token, &expiry).ok());
-}
-
 TEST(RedisAuthProviderTest, ExtractOidFromJwt) {
   std::string jwt =
       MakeJwt(R"({"oid":"11111111-2222-3333-4444-555555555555","aud":"x"})");
@@ -110,9 +75,9 @@ TEST(RedisAuthProviderTest, EntraProviderFetchesCachesAndExtractsOid) {
   // username left empty -> oid claim is used.
 
   EntraRedisAuthProvider provider(
-      clock, config, [&](const EntraAuthConfig &) -> StatusOr<std::string> {
+      clock, config, [&](const EntraAuthConfig &) -> StatusOr<EntraAccessToken> {
         ++fetch_count;
-        return absl::StrCat(R"({"access_token":")", jwt, R"(","expires_in":"3600"})");
+        return EntraAccessToken{jwt, absl::FromUnixSeconds(4600)};
       });
 
   EXPECT_TRUE(provider.IsRefreshable());
@@ -138,16 +103,17 @@ TEST(RedisAuthProviderTest, EntraProviderRefreshesNearExpiry) {
   config.refresh_buffer = absl::Seconds(300);
 
   EntraRedisAuthProvider provider(
-      clock, config, [&](const EntraAuthConfig &) -> StatusOr<std::string> {
+      clock, config, [&](const EntraAuthConfig &) -> StatusOr<EntraAccessToken> {
         ++fetch_count;
-        return absl::StrCat(
-            R"({"access_token":"token-)", fetch_count, R"(","expires_in":"3600"})");
+        return EntraAccessToken{absl::StrCat("token-", fetch_count),
+                                absl::FromUnixSeconds(1000 + fetch_count * 3600)};
       });
 
   auto creds = provider.GetCredentials();
   ASSERT_TRUE(creds.ok());
   EXPECT_EQ(creds->username, "explicit-user");
   EXPECT_EQ(creds->password, "token-1");
+  EXPECT_EQ(creds->expiry, absl::FromUnixSeconds(4600));
   EXPECT_EQ(fetch_count, 1);
 
   // Move to just outside the refresh buffer: still cached.
@@ -160,7 +126,7 @@ TEST(RedisAuthProviderTest, EntraProviderRefreshesNearExpiry) {
   creds = provider.GetCredentials();
   ASSERT_TRUE(creds.ok());
   EXPECT_EQ(creds->password, "token-2");
-  EXPECT_EQ(creds->expiry, absl::FromUnixSeconds(8000));
+  EXPECT_EQ(creds->expiry, absl::FromUnixSeconds(8200));
   EXPECT_EQ(fetch_count, 2);
 }
 
@@ -169,8 +135,8 @@ TEST(RedisAuthProviderTest, EntraProviderPropagatesFetchError) {
   EntraAuthConfig config;
   config.username = "explicit-user";
   EntraRedisAuthProvider provider(
-      clock, config, [&](const EntraAuthConfig &) -> StatusOr<std::string> {
-        return Status::RedisError("IMDS unreachable");
+      clock, config, [&](const EntraAuthConfig &) -> StatusOr<EntraAccessToken> {
+        return Status::RedisError("token acquisition failed");
       });
   auto creds = provider.GetCredentials();
   EXPECT_FALSE(creds.ok());

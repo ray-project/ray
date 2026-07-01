@@ -738,7 +738,6 @@ void RedisContext::EnsureAuthProvider(const std::string &username,
   const std::string &auth_mode = RayConfig::instance().REDIS_AUTH_MODE();
   if (auth_mode == "entra") {
     EntraAuthConfig config;
-    config.imds_endpoint = RayConfig::instance().REDIS_ENTRA_IMDS_ENDPOINT();
     config.resource = RayConfig::instance().REDIS_ENTRA_RESOURCE();
     config.client_id = RayConfig::instance().REDIS_ENTRA_CLIENT_ID();
     // An explicit username overrides the token's `oid` claim.
