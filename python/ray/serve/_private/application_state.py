@@ -1336,13 +1336,14 @@ class ApplicationStateManager:
         deployment_time: float = 0,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
+        delete_missing_apps: bool = True,
     ):
         """Declaratively apply the list of application configs.
 
         The applications will be reconciled to match the target state of the config.
 
-        Any applications previously deployed declaratively that are *not* present in
-        the list will be deleted.
+        If `delete_missing_apps` is true, applications previously deployed
+        declaratively that are *not* present in the list will be deleted.
         """
         for app_config in app_configs:
             if app_config.name not in self._application_states:
@@ -1364,15 +1365,16 @@ class ApplicationStateManager:
             )
 
         # Delete all apps that were previously deployed via the declarative API
-        # but are not in the config being applied.
-        existing_apps = {
-            name
-            for name, app_state in self._application_states.items()
-            if app_state.api_type == APIType.DECLARATIVE
-        }
-        apps_in_config = {app_config.name for app_config in app_configs}
-        for app_to_delete in existing_apps - apps_in_config:
-            self.delete_app(app_to_delete)
+        # but are not in the config being applied if `delete_missing_apps` is True
+        if delete_missing_apps:
+            existing_apps = {
+                name
+                for name, app_state in self._application_states.items()
+                if app_state.api_type == APIType.DECLARATIVE
+            }
+            apps_in_config = {app_config.name for app_config in app_configs}
+            for app_to_delete in existing_apps - apps_in_config:
+                self.delete_app(app_to_delete)
 
         ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 
@@ -1411,6 +1413,58 @@ class ApplicationStateManager:
 
     def get_route_prefix(self, name: str) -> Optional[str]:
         return self._application_states[name].route_prefix
+
+    def check_route_prefix_conflicts(
+        self, app_configs: List[ServeApplicationSchema], is_merge: bool
+    ) -> None:
+        """Checks submitted route prefixes don't collide with other live apps.
+        Raises ``RayServeException`` if such a conflict exists.
+        """
+        submitted_names = {app.name for app in app_configs}
+        final_prefix_routes: Dict[str, str] = {}
+        for app in app_configs:
+            if "route_prefix" in app.model_fields_set:
+                route_prefix = app.route_prefix
+            else:
+                # A rebuild or a new app resets the ingress to "/"
+                # else preserve the existing prefix
+                app_state = self._application_states.get(app.name)
+                is_rebuild = (
+                    app_state is None
+                    or get_app_code_version(app) != app_state._target_state.code_version
+                )
+                route_prefix = "/" if is_rebuild else app_state.route_prefix
+
+            # Continue when prefix is None
+            if route_prefix is None:
+                continue
+
+            existing_app_name = final_prefix_routes.get(route_prefix)
+            if existing_app_name is not None and existing_app_name != app.name:
+                raise RayServeException(
+                    f"Prefix {route_prefix} is being used by application "
+                    f'"{existing_app_name}". Failed to deploy application '
+                    f'"{app.name}".'
+                )
+            final_prefix_routes[route_prefix] = app.name
+
+        # In merge mode, check final_prefix_routes must not collide with
+        # other live apps
+        if is_merge:
+            for app_name, app_state in self._application_states.items():
+                if (
+                    app_name in submitted_names
+                    or app_state.route_prefix is None
+                    or app_state.status == ApplicationStatus.DELETING
+                ):
+                    continue
+                existing_app_name = final_prefix_routes.get(app_state.route_prefix)
+                if existing_app_name is not None:
+                    raise RayServeException(
+                        f"Prefix {app_state.route_prefix} is being used by "
+                        f'application "{app_name}". Failed to deploy application '
+                        f'"{existing_app_name}".'
+                    )
 
     def get_ingress_deployment_name(self, name: str) -> Optional[str]:
         if name not in self._application_states:
