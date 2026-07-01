@@ -1,7 +1,9 @@
 import asyncio
 import datetime
+import glob
 import os
 import random
+import socket
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -35,6 +37,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_HAPROXY_SOCKET_PATH,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
@@ -46,6 +49,7 @@ from ray.serve._private.deployment_state import (
     ReplicaStartupStatus,
     ReplicaState,
 )
+from ray.serve._private.haproxy import HAProxyApi
 from ray.serve._private.proxy import DRAINING_MESSAGE
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import (
@@ -862,12 +866,22 @@ def wait_for_haproxy_routing_to_replica(timeout: int = 30):
     if not RAY_SERVE_ENABLE_HA_PROXY:
         return
 
+    socket_glob = os.path.join(
+        os.path.dirname(RAY_SERVE_HAPROXY_SOCKET_PATH), "*", "admin.sock"
+    )
+
     def replica_backend_up():
-        for actor in list_actors(
-            filters=[("class_name", "=", "HAProxyManager"), ("state", "=", "ALIVE")]
-        ):
-            manager = ray.get_actor(actor.name, namespace=SERVE_NAMESPACE)
-            stats = ray.get(manager.get_all_stats.remote())
+        for sock_path in glob.glob(socket_glob):
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                    client.connect(sock_path)
+                    client.sendall(b"show stat\n")
+                    data = b""
+                    while chunk := client.recv(65536):
+                        data += chunk
+            except OSError:
+                continue  # stale socket from a prior run
+            stats = HAProxyApi._parse_haproxy_csv_stats(data.decode(errors="replace"))
             if any(
                 name.startswith("SERVE_REPLICA") and server.is_up
                 for servers in stats.values()
