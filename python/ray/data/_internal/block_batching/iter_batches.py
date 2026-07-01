@@ -251,15 +251,85 @@ class BatchIterator:
         self.before_epoch_start()
 
         while True:
+            # Record the wall-clock window during which the training thread was
+            # blocked waiting for the next batch.  These timestamps are used by
+            # _report_batch_timings to compute per-stage overlap attribution.
+            _blocked_start = time.perf_counter()
             with self.get_next_batch_context():
                 try:
                     batch = next(batch_iter)
                 except StopIteration:
                     break
+            _blocked_end = time.perf_counter()
+            # Attribute how much of each pipeline stage overlapped with the
+            # training thread's wait window.
+            if self._stats:
+                self._report_batch_timings(batch, _blocked_start, _blocked_end)
             with self.yield_batch_context(batch):
                 yield batch.data
 
         self.after_epoch_end()
+
+    def _report_batch_timings(
+        self,
+        batch: "Batch",
+        blocked_start: float,
+        blocked_end: float,
+    ) -> None:
+        """Attribute per-stage blocked time into DatasetStats using overlap math.
+
+        For each pipeline stage we know when it ran ``[stage_start, stage_end]``
+        (recorded by background threads onto ``batch.metadata.timings``).  We
+        also know when the training thread was blocked ``[blocked_start,
+        blocked_end]`` (captured in ``_iter_batches`` around ``next()``).
+
+        The attribution for a stage is the length of the intersection:
+
+            overlap = max(0, min(stage_end, blocked_end)
+                            - max(stage_start, blocked_start))
+
+        This is correct regardless of ``prefetch_batches``:
+        - If the stage finished before training blocked → overlap = 0 (hid).
+        - If the stage ran entirely within the blocked window → full credit.
+        - Partial overlap → partial credit.
+
+        Runs in the training thread; no locks needed because the background
+        thread finished writing ``batch.metadata.timings`` before enqueuing.
+        """
+        if self._stats is None:
+            return
+        t = batch.metadata.timings
+
+        def _overlap(stage_start: float, stage_end: float) -> float:
+            # stage_end <= stage_start means the stage didn't run (both default
+            # to 0.0) or timestamps are invalid — either way, no attribution.
+            if stage_end <= stage_start:
+                return 0.0
+            return max(
+                0.0,
+                min(stage_end, blocked_end) - max(stage_start, blocked_start),
+            )
+
+        self._stats.iter_blocked_fetch_s.add(_overlap(t.fetch_start_s, t.fetch_end_s))
+        self._stats.iter_blocked_batching_s.add(
+            _overlap(t.batching_start_s, t.batching_done_s)
+        )
+        # Format start = batching_done_s (sequential in background thread).
+        self._stats.iter_blocked_format_s.add(
+            _overlap(t.batching_done_s, t.format_done_s)
+        )
+        # Collate start = format_done_s.
+        self._stats.iter_blocked_collate_s.add(
+            _overlap(t.format_done_s, t.collate_done_s)
+        )
+        # Finalize start = collate_done_s if collate ran, else format_done_s.
+        last_pre_finalize = t.collate_done_s or t.format_done_s
+        self._stats.iter_blocked_finalize_s.add(
+            _overlap(last_pre_finalize, t.finalize_done_s)
+        )
+
+        self._stats.iter_batches_total += 1
+        self._stats.iter_rows_total += t.num_rows
 
     def __iter__(self) -> Iterator[DataBatch]:
         return self._iter_batches()

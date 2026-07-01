@@ -549,6 +549,45 @@ class _StatsActor:
             tag_keys=iter_tag_keys,
         )
 
+        # Per-stage training-thread blocked attribution (issue #64132).
+        # Each gauge holds the cumulative overlap between that stage's run window
+        # and the training thread's blocked window.  Sum ≈ iter_total_blocked_s.
+        self.iter_blocked_fetch_s = Gauge(
+            "data_iter_blocked_fetch_seconds",
+            description="Cumulative training-thread wait time attributable to ray.get() (block fetch)",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_batching_s = Gauge(
+            "data_iter_blocked_batching_seconds",
+            description="Cumulative training-thread wait time attributable to batch assembly",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_format_s = Gauge(
+            "data_iter_blocked_format_seconds",
+            description="Cumulative training-thread wait time attributable to batch format conversion",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_collate_s = Gauge(
+            "data_iter_blocked_collate_seconds",
+            description="Cumulative training-thread wait time attributable to collate_fn",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_finalize_s = Gauge(
+            "data_iter_blocked_finalize_seconds",
+            description="Cumulative training-thread wait time attributable to finalize_fn (e.g. CPU→GPU transfer)",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_batches_total = Gauge(
+            "data_iter_batches_total",
+            description="Total number of batches consumed by the training loop",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_rows_total = Gauge(
+            "data_iter_rows_total",
+            description="Total rows handed to the training loop; rate() gives rows/sec throughput",
+            tag_keys=iter_tag_keys,
+        )
+
         # === Dataset and Operator Metadata Metrics ===
         dataset_tags = ("dataset", "job_id", "start_time")
         self.data_dataset_estimated_total_blocks = Gauge(
@@ -749,6 +788,15 @@ class _StatsActor:
 
         self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
+
+        # Per-stage blocked attribution (issue #64132).
+        self.iter_blocked_fetch_s.set(stats.iter_blocked_fetch_s.get(), tags)
+        self.iter_blocked_batching_s.set(stats.iter_blocked_batching_s.get(), tags)
+        self.iter_blocked_format_s.set(stats.iter_blocked_format_s.get(), tags)
+        self.iter_blocked_collate_s.set(stats.iter_blocked_collate_s.get(), tags)
+        self.iter_blocked_finalize_s.set(stats.iter_blocked_finalize_s.get(), tags)
+        self.iter_batches_total.set(stats.iter_batches_total, tags)
+        self.iter_rows_total.set(stats.iter_rows_total, tags)
 
     def register_dataset(
         self,
@@ -1143,6 +1191,21 @@ class DatasetStats:
         self.iter_total_s: Timer = Timer()
         self.extra_metrics = {}
 
+        # Per-stage training-thread blocked attribution (issue #64132).
+        # Each Timer accumulates the overlap between that pipeline stage's run
+        # window and the training thread's blocked window, across all batches.
+        # Sum of all stages ≈ iter_total_blocked_s (small rounding differences
+        # possible from perf_counter resolution and queue-crossing gaps).
+        self.iter_blocked_fetch_s: Timer = Timer()
+        self.iter_blocked_batching_s: Timer = Timer()
+        self.iter_blocked_format_s: Timer = Timer()
+        self.iter_blocked_collate_s: Timer = Timer()
+        self.iter_blocked_finalize_s: Timer = Timer()
+
+        # Cumulative batch and row counters (monotonically increasing).
+        self.iter_batches_total: int = 0
+        self.iter_rows_total: int = 0
+
         # Block fetch stats during iteration.
         # These are stats about locations of blocks when the iterator is trying to
         # consume them. The iteration performance will be affected depending on
@@ -1196,6 +1259,13 @@ class DatasetStats:
             self.iter_blocks_remote,
             self.iter_unknown_location,
             self.iter_prefetched_bytes,
+            self.iter_blocked_fetch_s,
+            self.iter_blocked_batching_s,
+            self.iter_blocked_format_s,
+            self.iter_blocked_collate_s,
+            self.iter_blocked_finalize_s,
+            self.iter_batches_total,
+            self.iter_rows_total,
         )
 
         stats_summary_parents = []
@@ -1878,6 +1948,15 @@ class IterStatsSummary:
     iter_unknown_location: int
     # Current bytes of prefetched blocks in the iterator
     iter_prefetched_bytes: int
+    # Per-stage training-thread blocked attribution timers (issue #64132)
+    blocked_fetch_time: Timer
+    blocked_batching_time: Timer
+    blocked_format_time: Timer
+    blocked_collate_time: Timer
+    blocked_finalize_time: Timer
+    # Cumulative batch and row counters
+    batches_total: int
+    rows_total: int
 
     def __str__(self) -> str:
         return self.to_string()
@@ -1983,6 +2062,26 @@ class IterStatsSummary:
             if self.streaming_split_coord_time.get() != 0:
                 out += "Streaming split coordinator overhead time: "
                 out += f"{fmt(self.streaming_split_coord_time.get())}\n"
+
+        # Per-stage blocked attribution (issue #64132).
+        # Shows how much of iter_total_blocked_s each pipeline stage is responsible
+        # for.  Stages that ran in parallel with training show near-zero values.
+        stage_totals = [
+            ("block fetch (ray.get)", self.blocked_fetch_time),
+            ("batching", self.blocked_batching_time),
+            ("format", self.blocked_format_time),
+            ("collate", self.blocked_collate_time),
+            ("finalize (host→device)", self.blocked_finalize_time),
+        ]
+        active_stages = [(name, t) for name, t in stage_totals if t.get() > 0]
+        if active_stages:
+            out += "\nPer-stage training-thread blocked time breakdown:\n"
+            for stage_name, timer in active_stages:
+                out += "    * {}: {}\n".format(stage_name, fmt(timer.get()))
+        if self.batches_total:
+            out += "Total batches consumed: {}\n".format(self.batches_total)
+        if self.rows_total:
+            out += "Total rows consumed: {}\n".format(self.rows_total)
 
         return out
 

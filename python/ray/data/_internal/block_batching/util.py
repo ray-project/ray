@@ -3,6 +3,7 @@ import functools
 import logging
 import queue
 import threading
+import time
 from contextlib import nullcontext
 from typing import (
     Any,
@@ -22,12 +23,28 @@ from ray.data._internal.batcher import Batcher, ShufflingBatcher
 from ray.data._internal.block_batching.interfaces import (
     Batch,
     BatchMetadata,
+    BatchTimings,
     BlockPrefetcher,
     CollatedBatch,
 )
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.types import ObjectRef
+
+# Thread-local timing state written by resolve_block_refs and consumed by
+# _BatchingIterator.  Both run in the same iteration background thread so no
+# locking is needed.
+#
+# fetch_start_s: absolute timestamp of the FIRST block's ray.get() start.
+#   Written once per batch; not overwritten on subsequent blocks.
+# fetch_end_s: absolute timestamp of the LAST block's ray.get() end.
+#   Updated on every block so it always reflects the most recent fetch finish.
+# fetch_started: flag so we only set fetch_start_s on the first block.
+#
+# _BatchingIterator resets all three to 0.0 / False each time it yields a
+# batch, so a large block that feeds multiple batches is credited only to the
+# first batch and is not double-counted.
+_block_timing = threading.local()
 
 logger = logging.getLogger(__name__)
 
@@ -217,8 +234,16 @@ def resolve_block_refs(
 
         # TODO(amogkam): Optimized further by batching multiple references in a single
         # `ray.get()` call.
+        _t0 = time.perf_counter()
+        # Record the start of the first block's fetch; leave subsequent blocks
+        # untouched so fetch_start_s reflects when this batch first began fetching.
+        if not getattr(_block_timing, "fetch_started", False):
+            _block_timing.fetch_start_s = _t0
+            _block_timing.fetch_started = True
         with stats.iter_get_s.timer() if stats else nullcontext():
             block = ray.get(block_ref)
+        # Always update the end timestamp so it tracks the last block fetched.
+        _block_timing.fetch_end_s = time.perf_counter()
         yield block
 
     if stats:
@@ -293,11 +318,39 @@ class _BatchingIterator(Iterator[Batch]):
             )
 
             if can_yield:
+                _batching_start = time.perf_counter()
                 with timer:
                     next_batch = self._batcher.next_batch()
+                _batching_done = time.perf_counter()
 
+                # Consume fetch window set by resolve_block_refs and reset so
+                # the next batch starts fresh.  Falls back to 0.0 on the
+                # batch_blocks() path where resolve_block_refs is not in chain.
+                _fetch_start = getattr(_block_timing, "fetch_start_s", 0.0)
+                _fetch_end = getattr(_block_timing, "fetch_end_s", 0.0)
+                _block_timing.fetch_start_s = 0.0
+                _block_timing.fetch_end_s = 0.0
+                _block_timing.fetch_started = False
+
+                # Use BlockAccessor to get the row count correctly for all
+                # batch formats (dict of arrays, DataFrame, Arrow table, etc.).
+                # len() on a dict returns the number of columns, not rows.
+                try:
+                    _num_rows = BlockAccessor.for_block(next_batch).num_rows()
+                except Exception:
+                    _num_rows = 0
+
+                timings = BatchTimings(
+                    fetch_start_s=_fetch_start,
+                    fetch_end_s=_fetch_end,
+                    batching_start_s=_batching_start,
+                    batching_done_s=_batching_done,
+                    num_rows=_num_rows,
+                )
                 res = Batch(
-                    metadata=BatchMetadata(batch_idx=self._global_counter),
+                    metadata=BatchMetadata(
+                        batch_idx=self._global_counter, timings=timings
+                    ),
                     data=next_batch,
                 )
 
@@ -334,6 +387,7 @@ def _format_batch(
         )
         if ensure_copy:
             formatted_data = _copy_batch(formatted_data)
+    batch.metadata.timings.format_done_s = time.perf_counter()
     return dataclasses.replace(batch, data=formatted_data)
 
 
@@ -383,6 +437,7 @@ def _collate_batch(
 ) -> CollatedBatch:
     with stats.iter_collate_batch_s.timer() if stats else nullcontext():
         collated_data = collate_fn(batch.data)
+    batch.metadata.timings.collate_done_s = time.perf_counter()
     return CollatedBatch(metadata=batch.metadata, data=collated_data)
 
 
@@ -408,6 +463,7 @@ def _finalize_batch(
 ) -> CollatedBatch:
     with stats.iter_finalize_batch_s.timer() if stats else nullcontext():
         finalized_data = finalize_fn(batch.data)
+    batch.metadata.timings.finalize_done_s = time.perf_counter()
     return dataclasses.replace(batch, data=finalized_data)
 
 
