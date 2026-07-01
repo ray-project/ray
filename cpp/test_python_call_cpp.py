@@ -16,8 +16,14 @@ _CODE_SEARCH_PATH = [
 ]
 
 
-def test_cross_language_cpp():
+@pytest.fixture(scope="module", autouse=True)
+def ray_start():
     ray.init(job_config=ray.job_config.JobConfig(code_search_path=_CODE_SEARCH_PATH))
+    yield
+    ray.shutdown()
+
+
+def test_cross_language_cpp():
     obj = ray.cross_language.cpp_function("Plus1").remote(1)
     assert 2 == ray.get(obj)
 
