@@ -90,7 +90,7 @@ class KVRouterActor:
     4. The ``SelectionService`` maintains a global KV index radix tree, fed by
        every replica's KV events; each node records which workers hold that KV block.
     5. Scoring (``select_worker``) ranks candidate workers by KV-cache overlap
-       and prefill/decode load.
+       (queried from the KV index) plus prefill/decode load.
     6. Books each request's lifecycle into the service's active-load tracker, so
        in-flight load feeds back into scoring for subsequent requests.
     """
@@ -112,13 +112,6 @@ class KVRouterActor:
         #   2. expected_output_tokens for decode-block decay weighting.
         #   3. In-flight request set: Free reservation exactly once.
         self._requests: Dict[str, RequestLifecycle] = {}
-        # Carries the effective prefill tokens select() computed at routing time to
-        # on_request_added, which books them via the explicit create_reservation.
-        # TODO(jeffreywang): this map is only needed because create_reservation
-        # requires the effective prefill tokens to be passed in explicitly. Once the
-        # selection service caches each select() result and create_reservation can
-        # look it up by request id, Ray no longer needs to forward it.
-        self._effective_prefill_tokens_by_request: Dict[str, int] = {}
         self._pending_tasks: Set[asyncio.Task] = set()
         self._long_poll_client: Optional[LongPollClient] = None
         self._create_selection_service()
@@ -318,6 +311,11 @@ class KVRouterActor:
                 "KV-aware routing is unavailable because ai-dynamo is not "
                 "installed in the deployment's environment."
             )
+        # ``select`` records this request's chosen worker, normalized prompt, and
+        # effective prefill tokens in the selection service's in-flight cache,
+        # keyed by ``selection_id``. The matching ``on_request_added`` then books
+        # the reservation by that id alone, so the prompt is tokenized/hashed once
+        # here and never re-sent (see ``create_reservation`` there).
         selection = await self._svc.select(
             {
                 "model_name": _MODEL_NAME,
@@ -327,9 +325,6 @@ class KVRouterActor:
                 "allowed_worker_ids": allowed_worker_ids,
             }
         )
-        self._effective_prefill_tokens_by_request[request_id] = selection[
-            "effective_prefill_tokens"
-        ]
         return {
             "worker_id": selection["worker_id"],
             "dp_rank": selection["dp_rank"],
@@ -357,9 +352,17 @@ class KVRouterActor:
         token_ids: List[int],
         expected_output_tokens: Optional[int] = None,
     ) -> None:
-        """Admit a routed request into ``worker_id``'s active load, booking it
-        into the selection service which computes the worker's KV overlap from
-        ``token_ids``, so the recorded prefill excludes the cached prefix."""
+        """Admit a routed request into ``worker_id``'s active load.
+
+        The matching ``select`` (keyed by the same request id) already cached the
+        chosen worker, the normalized prompt, and the worker's uncached prefill
+        length in the selection service, so the reservation is booked by
+        ``reservation_id`` alone -- no re-sending ``token_ids`` and no duplicate
+        tokenization/hashing. Active prefill load still excludes any KV prefix
+        already cached on the worker, since ``select`` captured that. Only
+        ``expected_output_tokens`` (the request's output cap, known at admission)
+        is passed, refining the cached decode-load estimate.
+        """
         prompt_tokens = len(token_ids)
         self._requests[request_id] = RequestLifecycle(
             worker_id=worker_id,
@@ -367,19 +370,10 @@ class KVRouterActor:
             expected_output_tokens=expected_output_tokens,
             total_blocks=math.ceil(prompt_tokens / self._block_size),
         )
-        effective_prefill_tokens = self._effective_prefill_tokens_by_request.pop(
-            request_id, None
-        )
-
         await self._svc.create_reservation(
             {
-                "model_name": _MODEL_NAME,
-                "tenant_id": _TENANT_ID,
                 "reservation_id": request_id,
-                "worker_id": worker_id,
-                "token_ids": token_ids,
                 "expected_output_tokens": expected_output_tokens,
-                "effective_prefill_tokens": effective_prefill_tokens,
             }
         )
 
@@ -413,7 +407,6 @@ class KVRouterActor:
     async def on_request_completed(self, request_id: str) -> None:
         """Free ``request_id`` from the selection service's active load and the
         local view."""
-        self._effective_prefill_tokens_by_request.pop(request_id, None)
         if self._requests.pop(request_id, None) is not None:
             await self._svc.free_reservation(request_id)
 

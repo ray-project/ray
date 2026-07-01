@@ -323,8 +323,14 @@ class TestLifecycleTracking:
         worker_id = await self._registered_worker(actor)
         assert await actor.get_worker_active_requests.remote(worker_id) == 0
 
+        # ``select`` caches the chosen worker + normalized prompt under the
+        # request id; ``on_request_added`` then books the reservation by that id
+        # alone (no re-sent token_ids), so it must be preceded by a select.
+        token_ids = list(range(64))
+        selection = await actor.select_worker.remote("probe", token_ids, [worker_id])
+        assert selection["worker_id"] == worker_id
         await actor.on_request_added.remote(
-            "probe", worker_id, list(range(64)), expected_output_tokens=32
+            "probe", worker_id, token_ids, expected_output_tokens=32
         )
         assert await actor.get_worker_active_requests.remote(worker_id) == 1
 

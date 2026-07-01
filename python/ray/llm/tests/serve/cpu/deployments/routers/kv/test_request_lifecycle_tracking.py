@@ -82,13 +82,14 @@ class MockSelectionService:
         self.reservations = []
 
     async def create_reservation(self, request):
+        # The matching ``select`` cached the chosen worker and normalized prompt,
+        # so create_reservation now carries only the reservation id (plus the
+        # admission-time output cap) -- no worker_id, no token_ids.
         self.reservations.append(dict(request))
         self.calls.append(
             (
                 "create_reservation",
                 request["reservation_id"],
-                request["worker_id"],
-                len(request["token_ids"]),
                 request.get("expected_output_tokens"),
             )
         )
@@ -111,7 +112,6 @@ class RecordingKVRouterActor(KVRouterActor):
         self._block_size = block_size
         self._replica_id_by_worker = {}
         self._requests = {}
-        self._effective_prefill_tokens_by_request = {}
         self._pending_tasks = set()
         self._svc = MockSelectionService()
         self._event_log = []
@@ -156,7 +156,6 @@ class LocalKVRouterActor(KVRouterActor):
         self._block_size = block_size
         self._replica_id_by_worker = {}
         self._requests = {}
-        self._effective_prefill_tokens_by_request = {}
         self._pending_tasks = set()
         self._svc = MockSelectionService()
 
@@ -567,6 +566,24 @@ async def test_active_load_tracking():
 
 
 @pytest.mark.asyncio
+async def test_books_reservation_by_id_only():
+    """create_reservation replays the selection cached by ``select`` (keyed by
+    the request id), so it carries only the reservation id and the admission-time
+    output cap -- never the worker id, token ids, or effective prefill tokens,
+    which the selection service already captured at select time (avoiding a
+    duplicate tokenization/hash)."""
+    actor = LocalKVRouterActor(block_size=16)
+
+    await actor.on_request_added(
+        "r", WORKER_ID, list(range(16)), expected_output_tokens=20
+    )
+
+    assert actor._svc.reservations == [
+        {"reservation_id": "r", "expected_output_tokens": 20}
+    ]
+
+
+@pytest.mark.asyncio
 async def test_tracks_streamed_request_state(build_token_tracking_engine):
     """End-to-end: exact token counts land as actor block state over ``.remote``."""
     actor = RecordingKVRouterActor.remote(block_size=8)
@@ -630,7 +647,7 @@ async def test_lifecycle_books_selection_service_load(build_token_tracking_engin
         + ["add_output_block"] * 2
         + ["free_reservation"]
     )
-    assert calls[0] == ("create_reservation", "req-1", WORKER_ID, 12, MAX_TOKENS)
+    assert calls[0] == ("create_reservation", "req-1", MAX_TOKENS)
     assert calls[-1] == ("free_reservation", "req-1")
 
 
