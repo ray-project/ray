@@ -70,6 +70,9 @@ class TestTimeoutKeepAliveConfig:
         )
 
 
+@skip_if_haproxy(
+    "no per-node gRPC proxy to drain, tested via test_drain_and_undrain_haproxy_manager"
+)
 def test_grpc_proxy_on_draining_nodes(ray_cluster):
     """Test gRPC request on the draining node.
 
