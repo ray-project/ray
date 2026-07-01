@@ -141,6 +141,28 @@ class MemoryMonitorUtils {
                                     const CgroupManagerInterface &cgroup_manager);
 
   /**
+   * @brief Computes the memory threshold for runtime/poll-time decisions.
+   *
+   * @details This has the same threshold formula as GetMemoryThreshold(), but is
+   * safe to call repeatedly after startup: transient cgroup read failures,
+   * invalid cgroup constraint values, and temporary totals below the configured
+   * min-free reservation return kNull (or fall back to the fractional threshold
+   * for the min-free case) instead of crashing the raylet with RAY_CHECK.
+   *
+   * In resource isolation mode, memory.high is the authoritative user-slice
+   * threshold. If it cannot be read or parsed, this returns kNull instead of
+   * applying a host-level threshold to user-slice usage.
+   *
+   * @return The resolved threshold in bytes, or MemoryMonitorInterface::kNull
+   *         when the threshold is unavailable for this runtime decision.
+   */
+  static int64_t GetMemoryThresholdOrNull(int64_t total_memory_bytes,
+                                          float usage_threshold,
+                                          int64_t min_memory_free_bytes,
+                                          bool resource_isolation_enabled,
+                                          const CgroupManagerInterface &cgroup_manager);
+
+  /**
    * @brief Gets the used memory for a process from the process memory snapshot.
    *
    * @param snapshot The snapshot of per process memory usage to retrieve against

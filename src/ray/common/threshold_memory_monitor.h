@@ -14,12 +14,15 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <thread>
 
 #include "ray/asio/periodical_runner.h"
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/memory_monitor_interface.h"
 
 namespace ray {
@@ -30,6 +33,12 @@ namespace ray {
  *
  * Monitors the memory usage of the node using /proc filesystem and cgroups.
  * It checks the memory usage periodically and invokes the callback.
+ *
+ * The threshold is recomputed on every poll from the live cgroup memory limit
+ * so that runtime changes to the node's memory budget (e.g. Kubernetes
+ * in-place pod resize, cgroup edits by an external operator) are reflected
+ * without requiring the raylet to restart.
+ *
  * This class is thread safe.
  */
 class ThresholdMemoryMonitor : public MemoryMonitorInterface {
@@ -37,13 +46,22 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
   /**
    * @param kill_workers_callback function to execute when the memory usage limit is
    *        exceeded.
-   * @param memory_usage_threshold_bytes the threshold in bytes that triggers the
-   *        kill callback if exceeded.
+   * @param usage_threshold fraction in [0, 1] of total memory to use as the threshold.
+   *        Re-applied to the latest total bytes on every poll.
+   * @param min_memory_free_bytes the min amount of free space to maintain. When set,
+   *        the effective threshold is max(total * usage_threshold,
+   *        total - min_memory_free_bytes) -- i.e. the *later* of the two trip
+   *        points (note: this matches the existing MemoryMonitorUtils
+   *        semantics; despite the field name "min_memory_free", a higher
+   *        min_memory_free_bytes raises the trigger threshold rather than
+   *        lowering it). Pass kNull to disable.
    * @param monitor_interval_ms the frequency to update the usage. 0 disables the monitor
    *        and callbacks won't fire.
    * @param resource_isolation_enabled flag to determine if resource isolation is enabled.
    *        Used to determine the mode of monitoring. If resource isolation is enabled,
    *        the threshold monitor will only monitor user application memory usage.
+   * @param cgroup_manager Source of the user-slice memory upper bound when resource
+   *        isolation is enabled. Must outlive this monitor. Unused otherwise.
    * @param root_cgroup_path the path to the root cgroup that the threshold monitor will
    *        use to calculate the system memory usage.
    * @param user_cgroup_path the path to the user cgroup that the threshold monitor will
@@ -54,9 +72,11 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
    *        resource isolation is disabled.
    */
   ThresholdMemoryMonitor(KillWorkersCallback kill_workers_callback,
-                         int64_t memory_usage_threshold_bytes,
+                         float usage_threshold,
+                         int64_t min_memory_free_bytes,
                          uint64_t monitor_interval_ms,
                          bool resource_isolation_enabled,
+                         const CgroupManagerInterface &cgroup_manager,
                          const std::string &root_cgroup_path = kDefaultCgroupPath,
                          const std::string &user_cgroup_path = kDefaultCgroupPath,
                          const std::string &system_cgroup_path = kDefaultCgroupPath);
@@ -79,6 +99,10 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
   bool IsEnabled() const override;
 
  private:
+  FRIEND_TEST(ThresholdMemoryMonitorTest,
+              TestResourceIsolationThresholdReadFailureSkipsPoll);
+  FRIEND_TEST(ThresholdMemoryMonitorTest, TestResourceIsolationInvalidThresholdSkipsPoll);
+
   /**
    * @brief Checks if the memory usage on the host exceeds the threshold.
    *
@@ -97,6 +121,11 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
    */
   std::optional<MemoryUsageSnapshot> IsResourceIsolationThresholdExceeded();
 
+  /// Computes the current threshold in bytes against the latest cgroup total
+  /// memory. This is recomputed on every poll so that runtime changes to the
+  /// node's memory budget propagate without restarting the raylet.
+  int64_t ComputeMemoryThresholdBytes(int64_t total_memory_bytes) const;
+
   /// Callback function that executes at each monitoring interval,
   /// on a dedicated thread managed by this class.
   KillWorkersCallback kill_workers_callback_;
@@ -104,11 +133,18 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
   /// Flag to indicate that the worker killing event is in progress.
   std::atomic<bool> worker_killing_in_progress_;
 
-  /// The threshold in bytes that triggers the callback.
-  int64_t memory_usage_threshold_bytes_;
+  /// Fraction of total memory that triggers the callback when exceeded.
+  float usage_threshold_;
+
+  /// Min free bytes to maintain before triggering the callback. kNull disables.
+  int64_t min_memory_free_bytes_;
 
   /// Flag to indicate if resource isolation is enabled.
   bool resource_isolation_enabled_;
+
+  /// Source of the user-slice memory upper bound when resource isolation is
+  /// enabled. Owned by the caller and must outlive this monitor.
+  const CgroupManagerInterface &cgroup_manager_;
 
   /// The path to the root cgroup that the threshold monitor will
   /// use to monitor the system memory usage.
