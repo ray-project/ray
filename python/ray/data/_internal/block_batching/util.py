@@ -176,13 +176,11 @@ def resolve_block_refs(
     block_ref_iter: Iterator[PendingBlock],
     stats: Optional[DatasetStats] = None,
 ) -> Iterator[ResolvedBlock]:
-    """Resolves block references (via ``ray.get()``) and attaches the
-    data_transfer timing to each block's stage timings.
-
-    production_wait is already captured on the PendingBlock by
-    ``prefetch_batches_locally``; this function only measures data_transfer
-    (the ``ray.get()`` call). When *stats* is provided, the cumulative
-    ray.get() time is also recorded in ``stats.iter_get_s``.
+    """Resolve block references via ``ray.get()`` and attach data_transfer
+    timing. production_wait is already on the PendingBlock (set by
+    ``prefetch_batches_locally``); this function only measures data_transfer.
+    When *stats* is provided, ray.get() time is also recorded in
+    ``stats.iter_get_s``.
 
     Args:
         block_ref_iter: An iterator over PendingBlocks.
