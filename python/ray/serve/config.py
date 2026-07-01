@@ -813,6 +813,9 @@ class HTTPOptions(BaseModel):
     - ssl_ca_certs: Optional path to CA certificate file for client certificate
       verification.
 
+    - middlewares: [DEPRECATED] A list of Starlette middlewares to apply to the
+      HTTP proxy. Passing a non-empty list raises an error. Use Serve's FastAPI
+      integration to configure middlewares on ingress deployments instead.
     - location: [DEPRECATED: use `proxy_location` field instead] The deployment
       location of HTTP servers:
 
@@ -823,7 +826,8 @@ class HTTPOptions(BaseModel):
         - "Disabled": disable HTTP server.
 
     - num_cpus: [DEPRECATED] The number of CPU cores to reserve for each
-      internal Serve HTTP proxy actor.
+      internal Serve HTTP proxy actor. Passing a non-zero value raises an
+      error.
     """
 
     host: Optional[str] = DEFAULT_HTTP_HOST or get_localhost_ip()
@@ -863,23 +867,24 @@ class HTTPOptions(BaseModel):
 
     @field_validator("middlewares")
     @classmethod
-    def warn_for_middlewares(cls, v):
+    def raise_for_middlewares_assignment(cls, v):
         if v:
-            warnings.warn(
-                "Passing `middlewares` to HTTPOptions is deprecated and will be "
-                "removed in a future version. Consider using the FastAPI integration "
-                "to configure middlewares on your deployments: "
-                "https://docs.ray.io/en/latest/serve/http-guide.html#fastapi-http-deployments"  # noqa 501
+            raise ValueError(
+                "`middlewares` in HTTPOptions has been removed. Use Serve's "
+                "FastAPI integration to configure middlewares on ingress "
+                "deployments instead: "
+                "https://docs.ray.io/en/latest/serve/http-guide.html#fastapi-http-deployments"
             )
         return v
 
     @field_validator("num_cpus")
     @classmethod
-    def warn_for_num_cpus(cls, v):
+    def raise_for_num_cpus_assignment(cls, v):
         if v:
-            warnings.warn(
-                "Passing `num_cpus` to HTTPOptions is deprecated and will be "
-                "removed in a future version."
+            raise ValueError(
+                "`num_cpus` in HTTPOptions has been removed. Serve no longer "
+                "supports configuring CPU reservations for HTTP proxy actors "
+                "via HTTPOptions."
             )
         return v
 
