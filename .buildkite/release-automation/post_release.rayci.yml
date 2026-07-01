@@ -1,0 +1,23 @@
+group: Post-release
+depends_on:
+  - forge
+steps:
+  - block: "Trigger Cursor template upgrade workflow"
+    key: block-trigger-cursor-template-upgrade
+    depends_on: []
+    fields:
+      - text: "Ray version"
+        key: "ray-version"
+        hint: "e.g. 2.45.0"
+        required: true
+
+  - label: "Generate Cursor template upgrade steps"
+    key: trigger-cursor-template-upgrade
+    depends_on:
+      - block-trigger-cursor-template-upgrade
+    instance_type: small_branch
+    mount_buildkite_agent: true
+    commands:
+      - export RAY_VERSION="$(buildkite-agent meta-data get ray-version)"
+      - python .buildkite/release-automation/gen_cursor_template_upgrade.py > /tmp/cursor_upgrade_steps.yaml
+      - buildkite-agent pipeline upload /tmp/cursor_upgrade_steps.yaml --no-interpolation
