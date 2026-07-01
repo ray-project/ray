@@ -146,10 +146,14 @@ class FileAffinityPartitioner(FilePartitioner):
         return self._output_queue.popleft()
 
     def finalize(self):
-        # Flush each file's remaining chunks; sort by path for deterministic
-        # output across retries.
-        for path in sorted(self._open_buckets.keys()):
-            bucket = self._open_buckets[path]
+        # Flush each file's remaining chunks in the order buckets were first
+        # opened -- i.e. the order the input manifest arrived in. This must
+        # NOT re-sort by path: an upstream shuffle (``shuffle_files``) already
+        # produces a deterministic order (it sorts by path before permuting),
+        # so re-sorting here would silently discard the permutation and
+        # defeat any requested file shuffling. ``dict`` preserves insertion
+        # order in Python 3.7+.
+        for bucket in self._open_buckets.values():
             if bucket.items:
                 self._output_queue.append(_bucket_to_manifest(bucket))
         self._open_buckets.clear()

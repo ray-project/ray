@@ -96,6 +96,20 @@ def test_file_affinity_small_file_is_single_partition():
     assert partitions == [["a", "a"]]
 
 
+def test_file_affinity_finalize_preserves_arrival_order():
+    # Regression test: finalize() used to re-sort emitted partitions by path
+    # "for deterministic output," which silently discarded any upstream
+    # shuffle (shuffle_files already guarantees determinism itself -- it
+    # sorts by path *before* permuting). Partitions that flush at finalize()
+    # (i.e. never hit the max_bucket_size overflow) must preserve the order
+    # the input manifest arrived in, not re-derive an alphabetical order.
+    table = _affinity_table(["z", "a", "m"], [1, 1, 1], [None, None, None])
+    partitions = [
+        o[PATH_COLUMN_NAME].to_pylist() for o in _affinity_outputs(table, 100)
+    ]
+    assert partitions == [["z"], ["a"], ["m"]]
+
+
 def test_file_affinity_empty_input_emits_nothing():
     table = _affinity_table([], [], [])
     assert _affinity_outputs(table, 2) == []
