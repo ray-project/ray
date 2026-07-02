@@ -10,6 +10,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT,
     RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
     RAY_SERVE_PORT_QUARANTINE_S,
+    RAY_SERVE_RECON_PORT_GATE,
     SERVE_LOGGER_NAME,
 )
 
@@ -37,20 +38,31 @@ class PortAllocator:
         self._blocked_ports: Set[int] = set()
         # port -> monotonic deadline at which it leaves quarantine.
         self._quarantined_ports: Dict[int, float] = {}
+        # Min-heap of (deadline, port) mirroring _quarantined_ports so a no-op drain
+        # is O(1) (peek) instead of O(quarantined). Lazy-deleted (P2).
+        self._quarantine_heap: List[Tuple[float, int]] = []
 
     def _drain_expired_quarantine(self) -> None:
-        """Return quarantined ports past their expiry to the available pool."""
-        if not self._quarantined_ports:
+        """Return quarantined ports past their expiry to the available pool.
+
+        Drains via the min-heap keyed on expiry, so when nothing is due this is a
+        single O(1) peek instead of an O(quarantined) dict scan. Lazy deletion: a
+        popped heap entry is honored only if it still matches the live deadline in
+        _quarantined_ports (entries left stale by update_port_if_missing's reclaim
+        pop, or by a re-quarantine, are skipped).
+        """
+        if not self._quarantine_heap:
             return
         now = time.monotonic()
-        expired = [p for p, exp in self._quarantined_ports.items() if exp <= now]
-        for port in expired:
-            heapq.heappush(self._available_ports, port)
-            del self._quarantined_ports[port]
-            logger.info(
-                f"Released {self._protocol} port {port} from quarantine on "
-                f"node {self._node_id}; returning it to the available pool."
-            )
+        while self._quarantine_heap and self._quarantine_heap[0][0] <= now:
+            deadline, port = heapq.heappop(self._quarantine_heap)
+            if self._quarantined_ports.get(port) == deadline:
+                heapq.heappush(self._available_ports, port)
+                del self._quarantined_ports[port]
+                logger.info(
+                    f"Released {self._protocol} port {port} from quarantine on "
+                    f"node {self._node_id}; returning it to the available pool."
+                )
 
     def has_pending_quarantine(self) -> bool:
         """True if any port is still quarantined (drains expired entries first)."""
@@ -149,9 +161,9 @@ class PortAllocator:
                 f"{replica_id} on node {self._node_id}"
             )
         elif RAY_SERVE_PORT_QUARANTINE_S > 0:
-            self._quarantined_ports[port] = (
-                time.monotonic() + RAY_SERVE_PORT_QUARANTINE_S
-            )
+            deadline = time.monotonic() + RAY_SERVE_PORT_QUARANTINE_S
+            self._quarantined_ports[port] = deadline
+            heapq.heappush(self._quarantine_heap, (deadline, port))
             logger.info(
                 f"Quarantined {self._protocol} port {port} for "
                 f"{RAY_SERVE_PORT_QUARANTINE_S}s after releasing for replica "
@@ -233,8 +245,17 @@ class NodePortManager:
         for node_id in list(cls._node_managers):
             manager = cls._node_managers[node_id]
             alive = node_id_to_alive_replica_ids.get(node_id, set())
-            # Release ports of replicas no longer alive (quarantines them).
-            manager._prune_replica_ports(alive)
+            # P4-ports: skip the O(replicas) reclaim for a node whose alive-replica set
+            # is unchanged since the last prune (fingerprint = the full alive set, so a
+            # replica that left / arrived / moved nodes is caught). Liveness-only: a
+            # skipped node never reuses a live port (allocate() guards that). Teardown
+            # of an emptied+drained manager below still runs every tick.
+            if RAY_SERVE_RECON_PORT_GATE and alive == manager._last_pruned_alive:
+                pass
+            else:
+                # Release ports of replicas no longer alive (quarantines them).
+                manager._prune_replica_ports(alive)
+                manager._last_pruned_alive = set(alive)
             # Keep the manager until its quarantine drains; dropping it early
             # would discard the deadline and let the port be reused immediately.
             if not alive and not manager.has_pending_quarantine():
@@ -261,6 +282,9 @@ class NodePortManager:
 
     def __init__(self, node_id: str):
         self._node_id = node_id
+        # P4-ports: the alive-replica set this manager last pruned against. Skip the
+        # O(replicas) reclaim scan when unchanged. None sentinel -> first prune runs.
+        self._last_pruned_alive: Optional[Set[str]] = None
 
         self._http_allocator = PortAllocator(
             RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
