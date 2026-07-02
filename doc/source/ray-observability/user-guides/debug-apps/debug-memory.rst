@@ -55,9 +55,6 @@ If Ray's memory monitor kills the worker, it is automatically retried (see the :
 If Tasks or Actors cannot be retried, they raise an exception with 
 a much cleaner error message when you call ``ray.get`` to it.
 
-<<<<<<< HEAD
-.. code-block:: bash
-=======
 As mentioned above, having the Linux OOM killer trigger before the Ray OOM killer is undesirable.
 In Ray 2.56 and above, enable resource isolation mode by passing ``--enable-resource-isolation`` when starting Ray
 to ensure that the Ray OOM killer triggers before the Linux OOM killer.
@@ -77,7 +74,6 @@ Try to allocate at least a GiB (depending on host size) of buffer space between 
 .. note::
 
   To enable resource isolation, complete the prerequisite steps in :ref:`How to Enable Cgroup v2 for Resource Isolation <enable-cgroupv2>`.
->>>>>>> 05829210fa... [Core] Log hint to driver when system overhead exceeds reserved system memory (#64270)
 
   ray.exceptions.OutOfMemoryError: Task was killed due to the node running low on memory.
 
