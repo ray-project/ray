@@ -493,34 +493,75 @@ void NodeManager::RegisterGcs() {
   // For failure cases, GCS might think this raylet dead, but this
   // raylet still think it's alive. This could happen when the cluster setup is wrong,
   // for example, there is data loss in the DB.
+  //
+  // A second failure mode is GCS being temporarily unreachable from this node (e.g. GCS
+  // fault-tolerance restart, or a network partition where GCS is up but this node can't
+  // reach it). In that case the check returns a non-OK status rather than `!alive`. We
+  // tolerate this for `gcs_failover_worker_reconnect_timeout` seconds to allow the raylet
+  // to reconnect/resubscribe, but if we still can't confirm our liveness after that, we
+  // self-terminate. Otherwise the node lingers as an un-Ready "zombie": GCS's own
+  // health check still passes (this raylet's gRPC server is up), so GCS keeps the node
+  // ALIVE and the autoscaler never drains it.
+  last_gcs_liveness_check_success_ms_ = clock_.SteadyNowMillis();
   periodical_runner_->RunFnPeriodically(
       [this] {
-        // Flag to see whether a request is running.
-        static bool checking = false;
-        if (checking) {
+        // Self-terminate if GCS has been unreachable for longer than the reconnect
+        // timeout. This is evaluated at the top of the periodic runner (not only in
+        // the AsyncCheckAlive callback) so it fires promptly every self-check
+        // interval, instead of waiting for an in-flight check to hit its own 30s
+        // timeout.
+        const int64_t reconnect_timeout_s =
+            RayConfig::instance().gcs_failover_worker_reconnect_timeout();
+        if (reconnect_timeout_s > 0) {
+          const int64_t unreachable_ms =
+              clock_.SteadyNowMillis() - last_gcs_liveness_check_success_ms_;
+          if (unreachable_ms >= reconnect_timeout_s * 1000) {
+            RAY_LOG(FATAL)
+                << "This node has been unable to confirm its liveness with the GCS "
+                << "for " << unreachable_ms / 1000 << "s (>= "
+                << "gcs_failover_worker_reconnect_timeout=" << reconnect_timeout_s
+                << "s). The GCS is likely up but unreachable from this node. "
+                << "Self-terminating so the node can be reclaimed instead of "
+                << "lingering as an un-Ready zombie.";
+          }
+        }
+
+        // Don't allow overlapping checks.
+        if (gcs_liveness_check_in_flight_) {
           return;
         }
-        checking = true;
+        gcs_liveness_check_in_flight_ = true;
         gcs_client_.Nodes().AsyncCheckAlive(
             {self_node_id_},
             /* timeout_ms = */ 30000,
-            // capture checking ptr here because vs17 fail to compile
-            [this, checking_ptr = &checking](const auto &status,
-                                             const auto &alive_vec) mutable {
-              bool alive = alive_vec[0];
-              if ((status.ok() && !alive)) {
-                // GCS think this raylet is dead. Fail the node
-                RAY_LOG(FATAL)
-                    << "GCS consider this node to be dead. This may happen when "
-                    << "GCS is not backed by a DB and restarted or there is data loss "
-                    << "in the DB.";
-              } else if (status.IsUnauthenticated()) {
+            [this](const auto &status, const auto &alive_vec) {
+              gcs_liveness_check_in_flight_ = false;
+              if (status.ok()) {
+                bool alive = alive_vec[0];
+                if (!alive) {
+                  // GCS think this raylet is dead. Fail the node
+                  RAY_LOG(FATAL)
+                      << "GCS consider this node to be dead. This may happen when "
+                      << "GCS is not backed by a DB and restarted or there is data loss "
+                      << "in the DB.";
+                }
+                // We successfully confirmed our liveness with GCS; reset the timer.
+                last_gcs_liveness_check_success_ms_ = clock_.SteadyNowMillis();
+                return;
+              }
+              if (status.IsUnauthenticated()) {
                 RAY_LOG(FATAL)
                     << "GCS returned an authentication error. This may happen when "
                     << "GCS is not backed by a DB and restarted or there is data loss "
                     << "in the DB. Local cluster ID: " << gcs_client_.GetClusterId();
               }
-              *checking_ptr = false;
+              // Otherwise GCS is unreachable. We don't reset the success timer; if this
+              // persists, the timeout check at the top of the periodic runner will
+              // self-terminate the node.
+              RAY_LOG(WARNING)
+                  << "Failed to confirm node liveness with the GCS. Will self-terminate "
+                  << "if GCS stays unreachable for gcs_failover_worker_reconnect_timeout."
+                  << " Status: " << status;
             });
       },
       RayConfig::instance().raylet_liveness_self_check_interval_ms(),

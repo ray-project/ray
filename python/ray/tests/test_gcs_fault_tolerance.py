@@ -852,6 +852,53 @@ def test_raylet_fate_sharing(ray_start_regular):
             assert check_raylet_healthy()
 
 
+@pytest.mark.skipif(
+    not external_redis_test_enabled(),
+    reason="Self-termination on GCS unreachability is only desired when GCS is "
+    "fault-tolerant (Redis-backed); otherwise the raylet already dies on restart.",
+)
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        generate_system_config_map(
+            # Self-check often so the test is fast.
+            raylet_liveness_self_check_interval_ms=1000,
+            # Self-terminate quickly once GCS is unreachable. This is set well below
+            # gcs_rpc_server_reconnect_timeout_s (default 60s) so that if the raylet
+            # dies fast, it is this path firing rather than the grpc client's
+            # server_unavailable_timeout_callback.
+            gcs_failover_worker_reconnect_timeout=5,
+        )
+    ],
+    indirect=True,
+)
+def test_raylet_self_terminates_when_gcs_unreachable(
+    ray_start_regular_with_external_redis,
+):
+    # Reproduces the "zombie worker" scenario: GCS becomes unreachable (here, killed
+    # and not restarted) while the raylet's process is still up. Even with GCS fault
+    # tolerance, a raylet that cannot confirm its liveness with GCS for longer than
+    # gcs_failover_worker_reconnect_timeout must self-terminate so the node can be
+    # reclaimed instead of lingering as Running-but-un-Ready.
+    raylet_proc = ray._private.worker._global_node.all_processes[
+        ray_constants.PROCESS_TYPE_RAYLET
+    ][0].process
+
+    def check_raylet_healthy():
+        return raylet_proc.poll() is None
+
+    # Sanity check: raylet is healthy while GCS is reachable.
+    wait_for_condition(lambda: check_raylet_healthy())
+
+    # Kill GCS and do NOT restart it, simulating a partition where GCS is unreachable.
+    ray._private.worker._global_node.kill_gcs_server()
+
+    # The raylet should self-terminate within roughly
+    # gcs_failover_worker_reconnect_timeout (5s), and well before
+    # gcs_rpc_server_reconnect_timeout_s (60s).
+    wait_for_condition(lambda: not check_raylet_healthy(), timeout=40)
+
+
 def test_session_name(ray_start_cluster):
     # Kill GCS and check that raylets kill themselves when not backed by Redis,
     # and stay alive when backed by Redis.

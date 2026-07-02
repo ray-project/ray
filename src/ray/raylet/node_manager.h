@@ -984,6 +984,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Last time metrics are recorded (monotonic).
   SteadyTimePoint last_metrics_recorded_at_;
 
+  /// Liveness self-check (`NodeManager.GcsCheckAlive`) state. The raylet periodically
+  /// asks GCS whether it still considers this node alive. We track the last time that
+  /// check round-tripped successfully so that, if GCS becomes unreachable for longer
+  /// than `gcs_failover_worker_reconnect_timeout`, the raylet can self-terminate
+  /// instead of lingering as an un-Ready "zombie" that the autoscaler never drains.
+  /// Monotonic milliseconds from `clock_.SteadyNowMillis()`.
+  int64_t last_gcs_liveness_check_success_ms_ = 0;
+
+  /// True while a `GcsCheckAlive` request is in flight; prevents overlapping checks.
+  bool gcs_liveness_check_in_flight_ = false;
+
   /// The number of workers killed due to memory above threshold since last report.
   uint64_t number_workers_killed_by_oom_ = 0;
 
