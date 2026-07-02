@@ -26,12 +26,15 @@ def _make_hash_partition_fn(key_columns: List[str], num_partitions: int) -> Part
     return _partition
 
 
-def _concat_reduce(partition_id: int, tables: List[pa.Table]) -> Iterable[pa.Table]:
-    """Concatenate all shards of a partition into a single block.
+def _concat_reduce(
+    partition_id: int, tables_by_input: List[List[pa.Table]]
+) -> Iterable[pa.Table]:
+    """Concatenate all shards of a (single-input) partition into one block.
 
     Used under the partition = block contract: called once per partition with
     the full shard list so the output is exactly one block.
     """
+    tables = tables_by_input[0]
     if not tables:
         return
     yield pa.concat_tables(tables) if len(tables) > 1 else tables[0]
@@ -43,7 +46,10 @@ def _sort_reduce(key_columns: List[str]) -> ReduceFn:
     Requires blocking mode because sorting needs all shards before emitting.
     """
 
-    def _reduce(partition_id: int, tables: List[pa.Table]) -> Iterable[pa.Table]:
+    def _reduce(
+        partition_id: int, tables_by_input: List[List[pa.Table]]
+    ) -> Iterable[pa.Table]:
+        tables = tables_by_input[0]
         if not tables:
             return
         combined = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
