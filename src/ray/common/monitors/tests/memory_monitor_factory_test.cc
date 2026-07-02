@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/memory_monitor_factory.h"
+#include "ray/common/monitors/memory_monitor_factory.h"
 
 #include <memory>
 #include <string>
@@ -20,9 +20,9 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/cgroup2/fake_cgroup_manager.h"
-#include "ray/common/event_memory_monitor.h"
-#include "ray/common/memory_monitor_interface.h"
-#include "ray/common/threshold_memory_monitor.h"
+#include "ray/common/monitors/event_memory_monitor.h"
+#include "ray/common/monitors/memory_monitor_interface.h"
+#include "ray/common/monitors/threshold_memory_monitor.h"
 
 namespace ray {
 

@@ -20,7 +20,7 @@
 #include <thread>
 
 #include "absl/strings/str_format.h"
-#include "ray/common/memory_monitor_interface.h"
+#include "ray/common/monitors/memory_monitor_interface.h"
 #include "ray/common/status.h"
 
 namespace ray {
