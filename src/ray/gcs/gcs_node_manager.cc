@@ -106,11 +106,12 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
   // TODO(#56391): node creation time should be assigned here instead of in the raylet.
   const rpc::GcsNodeInfo &node_info = request.node_info();
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
+  scheduling::NodeID s_node_id = scheduling::NodeID(node_id.Binary());
   RAY_LOG(INFO)
           .WithField(node_id)
           .WithField("node_name", node_info.node_name())
           .WithField("node_address", node_info.node_manager_address())
-      << "Registering new node.";
+      << "Registering new node. [scheduling ID " << s_node_id << "]";
 
   auto on_done = [this, node_id, node_info_copy = node_info, reply, send_reply_callback](
                      const Status &status) mutable {
