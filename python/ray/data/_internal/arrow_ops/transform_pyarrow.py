@@ -67,6 +67,26 @@ def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
     return take_table(table, indices)
 
 
+def join(
+    left_table: "pyarrow.Table",
+    right_table: "pyarrow.Table",
+    *,
+    join_type: str,
+    left_on: List[str],
+    right_on: List[str],
+    left_suffix: Optional[str],
+    right_suffix: Optional[str],
+) -> "pyarrow.Table":
+    return left_table.join(
+        right_table,
+        join_type=join_type,
+        keys=left_on,
+        right_keys=right_on,
+        left_suffix=left_suffix,
+        right_suffix=right_suffix,
+    )
+
+
 def _create_empty_table(schema: "pyarrow.Schema"):
     import pyarrow as pa
 

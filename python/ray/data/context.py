@@ -120,6 +120,7 @@ DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
 DEFAULT_USE_POLARS = False
 
 DEFAULT_USE_POLARS_SORT = False
+DEFAULT_USE_POLARS_JOIN = False
 
 DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "0")))
 
@@ -664,6 +665,7 @@ class DataContext:
         hash_aggregate_operator_actor_num_cpus_per_partition_override: Override CPU
             allocation per partition for hash aggregate operator actors.
         use_polars_sort: Whether to use Polars for tabular dataset sorting operations.
+        use_polars_join: Whether to use Polars for tabular dataset join operations.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
             disabled by default.
         override_object_store_memory_limit_fraction: Override the fraction of object
@@ -799,6 +801,7 @@ class DataContext:
     large_args_threshold: int = DEFAULT_LARGE_ARGS_THRESHOLD
     use_polars: bool = DEFAULT_USE_POLARS
     use_polars_sort: bool = DEFAULT_USE_POLARS_SORT
+    use_polars_join: bool = DEFAULT_USE_POLARS_JOIN
     eager_free: bool = DEFAULT_EAGER_FREE
     decoding_size_estimation: bool = DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED
     min_parallelism: int = DEFAULT_MIN_PARALLELISM

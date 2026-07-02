@@ -1,9 +1,19 @@
 import logging
 import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple, Type
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Type,
+)
 
-from ray.data._internal.arrow_block import ArrowBlockAccessor
+from ray.data._internal.arrow_block import ArrowBlockAccessor, get_join_transform
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES,
     MIN_PYARROW_VERSION_VIEW_TYPES,
@@ -90,6 +100,7 @@ class JoiningAggregation(ShuffleAggregation):
 
         self._left_columns_suffix: Optional[str] = left_columns_suffix
         self._right_columns_suffix: Optional[str] = right_columns_suffix
+        self._data_context: DataContext = data_context
 
     def finalize(self, partition_shards_map: Dict[int, List[Block]]) -> Iterator[Block]:
         """Performs join on blocks from left (seq 0) and right (seq 1) sequences."""
@@ -112,6 +123,7 @@ class JoiningAggregation(ShuffleAggregation):
             right_key_col_names=self._right_key_col_names,
             left_columns_suffix=self._left_columns_suffix,
             right_columns_suffix=self._right_columns_suffix,
+            data_context=self._data_context,
         )
 
 
@@ -124,6 +136,7 @@ def join_tables(
     right_key_col_names: Tuple[str, ...],
     left_columns_suffix: Optional[str] = None,
     right_columns_suffix: Optional[str] = None,
+    data_context: Optional[DataContext] = None,
 ) -> "pa.Table":
     """Apply preprocess -> ``pa.Table.join`` -> postprocess to two input tables.
 
@@ -165,12 +178,14 @@ def join_tables(
 
     # Perform the join on supported columns
     arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[join_type]
-
-    supported = preprocess_result_l.supported_projection.join(
+    data_context = data_context or DataContext.get_current()
+    join = get_join_transform(data_context)
+    supported = join(
+        preprocess_result_l.supported_projection,
         preprocess_result_r.supported_projection,
         join_type=arrow_join_type,
-        keys=left_on,
-        right_keys=right_on,
+        left_on=left_on,
+        right_on=right_on,
         left_suffix=left_columns_suffix,
         right_suffix=right_columns_suffix,
     )
