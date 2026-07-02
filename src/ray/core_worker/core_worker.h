@@ -171,43 +171,45 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ///
   /// All member variables are injected either from CoreWorkerProcess or test code
 
-  CoreWorker(CoreWorkerOptions options,
-             std::unique_ptr<WorkerContext> worker_context,
-             instrumented_io_context &io_service,
-             instrumented_io_context &object_freed_callback_service,
-             instrumented_io_context &object_info_publish_service,
-             std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
-             std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
-             std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
-             std::unique_ptr<rpc::GrpcServer> core_worker_server,
-             rpc::Address rpc_address,
-             std::shared_ptr<gcs::GcsClient> gcs_client,
-             std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
-             std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
-             boost::thread &io_thread,
-             boost::thread &object_freed_callback_thread,
-             boost::thread &object_info_publish_thread,
-             std::shared_ptr<ReferenceCounterInterface> reference_counter,
-             std::shared_ptr<CoreWorkerMemoryStore> memory_store,
-             std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
-             std::shared_ptr<experimental::MutableObjectProviderInterface>
-                 experimental_mutable_object_provider,
-             std::unique_ptr<FutureResolver> future_resolver,
-             std::shared_ptr<TaskManager> task_manager,
-             std::shared_ptr<ActorCreatorInterface> actor_creator,
-             std::unique_ptr<ActorTaskSubmitter> actor_task_submitter,
-             std::unique_ptr<pubsub::PublisherInterface> object_info_publisher,
-             std::unique_ptr<pubsub::SubscriberInterface> object_info_subscriber,
-             std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
-             std::unique_ptr<NormalTaskSubmitter> normal_task_submitter,
-             std::unique_ptr<ObjectRecoveryManager> object_recovery_manager,
-             std::unique_ptr<ActorManager> actor_manager,
-             instrumented_io_context &task_execution_service,
-             std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
-             uint32_t pid,
-             ray::observability::MetricInterface &task_by_state_counter,
-             ray::observability::MetricInterface &actor_by_state_counter,
-             ClockInterface &clock);
+  CoreWorker(
+      CoreWorkerOptions options,
+      std::unique_ptr<WorkerContext> worker_context,
+      instrumented_io_context &io_service,
+      instrumented_io_context &object_freed_callback_service,
+      instrumented_io_context &object_info_publish_service,
+      std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
+      std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
+      std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
+      std::shared_ptr<PeriodicalRunnerInterface> object_info_publish_periodical_runner,
+      std::unique_ptr<rpc::GrpcServer> core_worker_server,
+      rpc::Address rpc_address,
+      std::shared_ptr<gcs::GcsClient> gcs_client,
+      std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
+      std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
+      boost::thread &io_thread,
+      boost::thread &object_freed_callback_thread,
+      boost::thread &object_info_publish_thread,
+      std::shared_ptr<ReferenceCounterInterface> reference_counter,
+      std::shared_ptr<CoreWorkerMemoryStore> memory_store,
+      std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
+      std::shared_ptr<experimental::MutableObjectProviderInterface>
+          experimental_mutable_object_provider,
+      std::unique_ptr<FutureResolver> future_resolver,
+      std::shared_ptr<TaskManager> task_manager,
+      std::shared_ptr<ActorCreatorInterface> actor_creator,
+      std::unique_ptr<ActorTaskSubmitter> actor_task_submitter,
+      std::unique_ptr<pubsub::PublisherInterface> object_info_publisher,
+      std::unique_ptr<pubsub::SubscriberInterface> object_info_subscriber,
+      std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
+      std::unique_ptr<NormalTaskSubmitter> normal_task_submitter,
+      std::unique_ptr<ObjectRecoveryManager> object_recovery_manager,
+      std::unique_ptr<ActorManager> actor_manager,
+      instrumented_io_context &task_execution_service,
+      std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
+      uint32_t pid,
+      ray::observability::MetricInterface &task_by_state_counter,
+      ray::observability::MetricInterface &actor_by_state_counter,
+      ClockInterface &clock);
 
   CoreWorker(CoreWorker const &) = delete;
 
@@ -1873,6 +1875,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
 
   std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
+
+  /// Runs the object-info publisher's periodic dead-subscriber check on the
+  /// dedicated publish thread. Held here so it outlives the publisher.
+  std::shared_ptr<PeriodicalRunnerInterface> object_info_publish_periodical_runner_;
 
   /// RPC server used to receive tasks to execute.
   std::unique_ptr<rpc::GrpcServer> core_worker_server_;

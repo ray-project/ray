@@ -48,14 +48,21 @@ void CoreWorkerGrpcService::InitServerCallFactories(
                                                           WaitForActorRefDeleted,
                                                           max_active_rpcs_per_handler_,
                                                           ClusterIdAuthType::NO_AUTH);
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
-                                                          PubsubLongPolling,
-                                                          max_active_rpcs_per_handler_,
-                                                          ClusterIdAuthType::NO_AUTH);
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
-                                                          PubsubCommandBatch,
-                                                          max_active_rpcs_per_handler_,
-                                                          ClusterIdAuthType::NO_AUTH);
+  // The object-info pubsub handlers run on the dedicated publish thread so that
+  // every object-info publisher operation is single-threaded; see
+  // CoreWorkerGrpcService's constructor for the rationale.
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED_ON_IO_SERVICE(
+      CoreWorkerService,
+      PubsubLongPolling,
+      max_active_rpcs_per_handler_,
+      ClusterIdAuthType::NO_AUTH,
+      object_info_publish_service_);
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED_ON_IO_SERVICE(
+      CoreWorkerService,
+      PubsubCommandBatch,
+      max_active_rpcs_per_handler_,
+      ClusterIdAuthType::NO_AUTH,
+      object_info_publish_service_);
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,
                                                           UpdateObjectLocationBatch,
                                                           max_active_rpcs_per_handler_,

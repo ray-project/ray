@@ -291,8 +291,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server->RegisterService(
-      std::make_unique<rpc::CoreWorkerGrpcService>(
-          io_service_, *service_handler_, /*max_active_rpcs_per_handler_=*/-1),
+      std::make_unique<rpc::CoreWorkerGrpcService>(io_service_,
+                                                   object_info_publish_service_,
+                                                   *service_handler_,
+                                                   /*max_active_rpcs_per_handler_=*/-1),
       false /* token_auth */);
   core_worker_server->Run();
 
@@ -342,13 +344,17 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                 addr));
       });
 
+  // The object-info publisher's periodic dead-subscriber check runs on the dedicated
+  // publish thread, like every other operation on the publisher.
+  auto object_info_publish_periodical_runner =
+      PeriodicalRunner::Create(object_info_publish_service_);
   auto object_info_publisher = std::make_unique<pubsub::PostingPublisher>(
       std::make_shared<pubsub::Publisher>(
           /*channels=*/
           std::vector<rpc::ChannelType>{
               rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
               rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
-          /*periodical_runner=*/*periodical_runner,
+          /*periodical_runner=*/*object_info_publish_periodical_runner,
           /*clock=*/clock_,
           /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
           /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
@@ -731,6 +737,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(core_worker_client_pool),
                                    std::move(raylet_client_pool),
                                    std::move(periodical_runner),
+                                   std::move(object_info_publish_periodical_runner),
                                    std::move(core_worker_server),
                                    std::move(rpc_address),
                                    std::move(gcs_client),

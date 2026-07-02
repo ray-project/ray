@@ -296,6 +296,7 @@ CoreWorker::CoreWorker(
     std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
     std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
     std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
+    std::shared_ptr<PeriodicalRunnerInterface> object_info_publish_periodical_runner,
     std::unique_ptr<rpc::GrpcServer> core_worker_server,
     rpc::Address rpc_address,
     std::shared_ptr<gcs::GcsClient> gcs_client,
@@ -336,6 +337,8 @@ CoreWorker::CoreWorker(
       core_worker_client_pool_(std::move(core_worker_client_pool)),
       raylet_client_pool_(std::move(raylet_client_pool)),
       periodical_runner_(std::move(periodical_runner)),
+      object_info_publish_periodical_runner_(
+          std::move(object_info_publish_periodical_runner)),
       core_worker_server_(std::move(core_worker_server)),
       rpc_address_(std::move(rpc_address)),
       gcs_client_(std::move(gcs_client)),
@@ -468,6 +471,9 @@ CoreWorker::CoreWorker(
         [this] {
           RAY_LOG(INFO) << "Event stats:\n\n"
                         << io_service_.stats()->StatsString() << "\n\n"
+                        << "-----------------\n"
+                        << "Object-info publish event stats:\n"
+                        << object_info_publish_service_.stats()->StatsString() << "\n\n"
                         << "-----------------\n"
                         << "Task execution event stats:\n"
                         << task_execution_service_.stats()->StatsString() << "\n\n"

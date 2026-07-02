@@ -125,8 +125,10 @@ class CoreWorkerTest : public ::testing::Test {
     auto core_worker_server =
         std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type), 0, true);
     core_worker_server->RegisterService(
-        std::make_unique<rpc::CoreWorkerGrpcService>(
-            io_service_, *service_handler, /*max_active_rpcs_per_handler_=*/-1),
+        std::make_unique<rpc::CoreWorkerGrpcService>(io_service_,
+                                                     object_info_publish_service_,
+                                                     *service_handler,
+                                                     /*max_active_rpcs_per_handler_=*/-1),
         false /* token_auth */);
     core_worker_server->Run();
 
@@ -260,45 +262,48 @@ class CoreWorkerTest : public ::testing::Test {
         mock_gcs_client_, *actor_task_submitter, *reference_counter_);
 
     auto periodical_runner = std::make_unique<FakePeriodicalRunner>();
+    auto object_info_publish_periodical_runner = std::make_unique<FakePeriodicalRunner>();
 
     // TODO(joshlee): Dependency inject socket into plasma_store_provider_ so we can
     // create a real plasma_store_provider_ and mutable_object_provider_
-    core_worker_ = std::make_shared<CoreWorker>(std::move(options),
-                                                std::move(worker_context),
-                                                io_service_,
-                                                object_freed_callback_service_,
-                                                object_info_publish_service_,
-                                                std::move(core_worker_client_pool),
-                                                std::move(raylet_client_pool),
-                                                std::move(periodical_runner),
-                                                std::move(core_worker_server),
-                                                std::move(rpc_address_),
-                                                mock_gcs_client_,
-                                                std::move(fake_raylet_ipc_client),
-                                                std::move(fake_local_raylet_rpc_client),
-                                                io_thread_,
-                                                object_freed_callback_thread_,
-                                                object_info_publish_thread_,
-                                                reference_counter_,
-                                                memory_store_,
-                                                nullptr,  // plasma_store_provider_
-                                                nullptr,  // mutable_object_provider_
-                                                std::move(future_resolver),
-                                                task_manager_,
-                                                actor_creator_,
-                                                std::move(actor_task_submitter),
-                                                std::move(object_info_publisher),
-                                                std::move(fake_object_info_subscriber),
-                                                std::move(lease_request_rate_limiter),
-                                                std::move(normal_task_submitter),
-                                                std::move(object_recovery_manager),
-                                                std::move(actor_manager),
-                                                task_execution_service_,
-                                                std::move(task_event_buffer),
-                                                getpid(),
-                                                fake_task_by_state_gauge_,
-                                                fake_actor_by_state_gauge_,
-                                                clock_);
+    core_worker_ =
+        std::make_shared<CoreWorker>(std::move(options),
+                                     std::move(worker_context),
+                                     io_service_,
+                                     object_freed_callback_service_,
+                                     object_info_publish_service_,
+                                     std::move(core_worker_client_pool),
+                                     std::move(raylet_client_pool),
+                                     std::move(periodical_runner),
+                                     std::move(object_info_publish_periodical_runner),
+                                     std::move(core_worker_server),
+                                     std::move(rpc_address_),
+                                     mock_gcs_client_,
+                                     std::move(fake_raylet_ipc_client),
+                                     std::move(fake_local_raylet_rpc_client),
+                                     io_thread_,
+                                     object_freed_callback_thread_,
+                                     object_info_publish_thread_,
+                                     reference_counter_,
+                                     memory_store_,
+                                     nullptr,  // plasma_store_provider_
+                                     nullptr,  // mutable_object_provider_
+                                     std::move(future_resolver),
+                                     task_manager_,
+                                     actor_creator_,
+                                     std::move(actor_task_submitter),
+                                     std::move(object_info_publisher),
+                                     std::move(fake_object_info_subscriber),
+                                     std::move(lease_request_rate_limiter),
+                                     std::move(normal_task_submitter),
+                                     std::move(object_recovery_manager),
+                                     std::move(actor_manager),
+                                     task_execution_service_,
+                                     std::move(task_event_buffer),
+                                     getpid(),
+                                     fake_task_by_state_gauge_,
+                                     fake_actor_by_state_gauge_,
+                                     clock_);
   }
 
  protected:
