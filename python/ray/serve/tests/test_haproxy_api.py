@@ -15,7 +15,7 @@ import requests
 import uvicorn
 from fastapi import FastAPI, Request, Response
 
-from ray._common.network_utils import find_free_port
+from ray._common.network_utils import find_free_port, get_localhost_ip
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
@@ -27,6 +27,7 @@ from ray.serve._private.haproxy import (
     HAProxyConfig,
     HAProxyManager,
     ServerConfig,
+    _routers_and_targets_by_backend,
 )
 from ray.serve.config import HTTPOptions
 
@@ -490,6 +491,48 @@ def _make_api(temp_dir, backend_configs):
         config_file_path=config_file_path,
         backend_configs=backend_configs,
     )
+
+
+def test_routers_and_targets_prefers_colocated_router():
+    """Each HAProxy prefers the router co-located on its own node, and falls
+    back to the deterministic pick when none is co-located."""
+    local = get_localhost_ip()
+
+    # _target_to_server rewrites a co-located router's host to the local host;
+    # a remote router keeps its node IP.
+    colocated = [
+        BackendConfig(
+            name="llm",
+            path_prefix="/",
+            servers=[
+                ServerConfig(name="r1", host=local, port=30001, replica_id="rid_1")
+            ],
+            ingress_request_router_servers=[
+                ServerConfig(name="router_local", host=local, port=9000),
+                ServerConfig(name="router_remote", host="10.0.0.2", port=9000),
+            ],
+        )
+    ]
+    # The on-node router is chosen even though it is not the min pick.
+    routers, _ = _routers_and_targets_by_backend(colocated, local_host=local)
+    assert routers["llm"].name == "router_local"
+
+    # No router on this node falls back to the lexicographically smallest.
+    remote_only = [
+        BackendConfig(
+            name="llm",
+            path_prefix="/",
+            servers=[
+                ServerConfig(name="r1", host="10.0.0.5", port=30001, replica_id="rid_1")
+            ],
+            ingress_request_router_servers=[
+                ServerConfig(name="router_a", host="10.0.0.2", port=9000),
+                ServerConfig(name="router_b", host="10.0.0.3", port=9000),
+            ],
+        )
+    ]
+    routers, _ = _routers_and_targets_by_backend(remote_only, local_host=local)
+    assert routers["llm"].name == "router_a"
 
 
 def test_write_ingress_request_router_lua_no_routers(haproxy_api_cleanup):

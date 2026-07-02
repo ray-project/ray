@@ -110,11 +110,17 @@ def _load_lua_template() -> string.Template:
 
 def _routers_and_targets_by_backend(
     backends: "List[BackendConfig]",
+    local_host: "Optional[str]" = None,
 ) -> "Tuple[Dict[str, ServerConfig], Dict[str, List[Tuple[str, str]]]]":
     """Per-backend router and replica map, restricted to backends with both.
 
-    Pick deterministically within each router pool to avoid the first-response
-    latency regression from cycling routers across requests.
+    Each HAProxy prefers its co-located router so the /internal/route hop stays
+    on-node, falling back to the lexicographically smallest router when none is
+    co-located. ``_target_to_server`` already rewrites a co-located target's
+    host to the local host, so the on-node router is the one whose ``host``
+    equals ``local_host``. Picking deterministically within the chosen pool
+    avoids the first-response latency regression from cycling routers across
+    requests.
     """
     routers: Dict[str, ServerConfig] = {}
     targets: Dict[str, List[Tuple[str, str]]] = {}
@@ -126,9 +132,12 @@ def _routers_and_targets_by_backend(
         ]
         if not entries:
             continue
+        candidates = backend.ingress_request_router_servers
+        colocated = [s for s in candidates if s.host == local_host]
+        # Prefer the co-located router; else the lexicographically smallest.
         # Host-first so co-located routers sort adjacent in debug output.
         routers[backend.name] = min(
-            backend.ingress_request_router_servers, key=lambda s: (s.host, s.port)
+            colocated or candidates, key=lambda s: (s.host, s.port)
         )
         targets[backend.name] = entries
     return routers, targets
@@ -1017,7 +1026,9 @@ class HAProxyApi(ProxyApi):
         Returns the script path, or None if no backend has both ingress
         request routers AND replicas with replica IDs.
         """
-        routers, targets = _routers_and_targets_by_backend(backends)
+        routers, targets = _routers_and_targets_by_backend(
+            backends, local_host=get_localhost_ip()
+        )
         if not routers:
             return None
 
