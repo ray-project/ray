@@ -37,6 +37,17 @@ tensorflow-metadata>=1.17.0
 tf-keras
 torchvision==0.24.0
 confluent-kafka
+# lerobot v3 datasource (ray.data.read_lerobot). lerobot >=0.5 requires
+# Python >=3.12, so gate the whole stack — including its torchcodec video
+# decoder and the av writer the tests use — behind that marker. The data
+# locks compile for py3.10/3.11/3.12; only the 3.12 lock picks these up.
+lerobot>=0.5.0; python_version >= "3.12"
+# torchcodec 0.10.0 is built for torch 2.10 (its libtorchcodec fails to load
+# against our pinned torch 2.9.0 with a c10 ABI symbol error); cap to the 0.9.x
+# line, which lerobot 0.5.1 allows (torchcodec>=0.3,<0.11) and which loads on
+# torch 2.9.
+torchcodec<0.10; python_version >= "3.12"
+av; python_version >= "3.12"
 zarr<3 ; python_version >= '3.11'  # zarr 2.18.4+ requires py3.11+ (v2 API)
 zarr>=2.18,<2.18.4 ; python_version < '3.11'  # 2.18.3: last v2 line supporting py3.10
 # numcodecs is zarr's codec dep; 0.14+ dropped py3.10. Pin per-Python with exact

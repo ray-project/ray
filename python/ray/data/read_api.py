@@ -50,6 +50,7 @@ from ray.data._internal.datasource.kafka_datasource import (
     PerPartitionOffsets,
 )
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
+from ray.data._internal.datasource.lerobot_datasource import LeRobotDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
@@ -2781,6 +2782,148 @@ def read_mcap(
     return read_datasource(
         datasource,
         parallelism=parallelism,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_lerobot(
+    root: Union[str, List[str]],
+    *,
+    episodes: Optional[List[int]] = None,
+    group_by_episode: bool = False,
+    filesystem: Optional[
+        "pyarrow.fs.FileSystem | fsspec.spec.AbstractFileSystem"
+    ] = None,
+    frame_tolerance_s: Optional[float] = None,
+    storage_options: Optional[Dict[str, Any]] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Create a :class:`~ray.data.Dataset` from a LeRobot v3 dataset.
+
+    `LeRobot <https://huggingface.co/lerobot>`_ is a platform for sharing datasets
+    and pretrained models for real-world robotics. A LeRobot v3 dataset stores
+    low-dimensional data (state, action, timestamps) in chunked Parquet files and
+    camera observations either as chunked MP4 video files or as encoded images
+    stored inline in the Parquet rows.  This reader decodes camera frames (video
+    via torchcodec, images via Pillow) and aligns them with the parquet data
+    using episode metadata.
+
+    Output columns include ``index``, ``episode_index``, ``frame_index``,
+    ``timestamp``, state/action vectors, decoded camera frames (as variable-shaped
+    uint8 tensors), ``task`` (string), ``dataset_index`` (int32, identifies the
+    source root when reading multiple datasets), and ``stats`` (a JSON string of the
+    source dataset's per-feature normalization statistics — mean/std/min/max — for
+    downstream normalization, e.g. of state/action vectors).
+
+    Examples:
+        Read a LeRobot v3 dataset from a public S3 bucket (anonymous access):
+
+        >>> import ray
+        >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
+        ...     "s3://anonymous@ray-example-data/lerobot/libero-mini",
+        ... )
+        >>> ds.schema()  # doctest: +SKIP
+
+        One read task per episode (instead of per video-file group):
+
+        >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
+        ...     "s3://anonymous@ray-example-data/lerobot/libero-mini",
+        ...     group_by_episode=True,
+        ... )
+
+        Read multiple datasets as one (paths may be local or cloud URIs):
+
+        >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
+        ...     ["/path/to/ds1", "/path/to/ds2"],
+        ... )
+
+    Args:
+        root: Path or URI to the dataset root (local, ``gs://``, ``s3://``),
+            or a list of such paths to read multiple datasets as one.
+            All roots must share the same ``video_keys``, ``image_keys``,
+            ``fps``, and non-video feature names.
+        episodes: If given, read only these ``episode_index`` values. This is a
+            read-time pushdown -- other episodes' parquet rows and video files
+            are never opened -- so it is cheaper than reading everything and
+            ``filter``-ing afterward. Applied per root when reading multiple
+            roots; requesting an ``episode_index`` absent from every root
+            raises. ``None`` (the default) reads all episodes.
+        group_by_episode: How to group rows into read tasks. ``False`` (the
+            default) emits one task per video-file group (each mp4 opened once
+            per task); ``True`` emits one task per episode. Use
+            ``override_num_blocks`` to tune the final number of output blocks.
+        filesystem: Filesystem for reading metadata and parquet. A pyarrow
+            ``FileSystem`` (wrapped internally with ``ArrowFSWrapper``) or an
+            fsspec ``AbstractFileSystem``. By default it is selected from the URI
+            scheme, including the ``s3://anonymous@bucket/…`` convention for
+            public buckets. For credentialed cloud datasets the recommended setup
+            is a pyarrow ``filesystem`` together with ``storage_options`` (see
+            below): the filesystem covers metadata and parquet, and
+            ``storage_options`` supplies the credentials for the by-URI video
+            decode path.
+        frame_tolerance_s: Max seconds a decoded video frame's timestamp may
+            differ from a row's timestamp before it is rejected. ``None`` (the
+            default) uses ``0.5 / fps`` — half a frame interval, e.g. ~0.05s at
+            10fps. Increase to tolerate timestamp jitter; decrease for stricter
+            alignment.
+        storage_options: fsspec storage options (e.g. credentials or a custom
+            ``endpoint_url``). They supply the credentials for the by-URI video
+            decode path -- videos are streamed directly through torchcodec /
+            fsspec, not through ``filesystem`` -- so pass them alongside a pyarrow
+            ``filesystem`` for credentialed cloud video. When ``filesystem`` is
+            not given, they also resolve the metadata / parquet filesystem.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+            Video decoding is CPU-intensive, so raising this (and lowering
+            ``concurrency``) can prevent oversubscription.
+        num_gpus: The number of GPUs to reserve for each parallel read worker.
+            Video frames are decoded on CPU (torchcodec), so this does not
+            accelerate decoding -- it only reserves GPUs for the read tasks.
+        memory: The heap memory in bytes to reserve for each parallel read
+            worker.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Use to
+            cap the number of simultaneous video decoders. By default,
+            concurrency is dynamically decided based on available resources.
+        override_num_blocks: Override the number of output blocks from all read
+            tasks. By default this is one read task per video-file group (or per
+            episode when ``group_by_episode``), so each file is opened once;
+            raise it (e.g. to your cluster's CPU count) to parallelize a
+            monolithic dataset across more workers. Splitting a video-file group
+            re-opens its file(s) once per sub-task, so higher parallelism trades
+            amortized file opens for more concurrency; lowering it merges groups.
+
+    Returns:
+        :class:`~ray.data.Dataset` of fully-decoded frames with state, action,
+        camera, task, and metadata columns.
+    """
+    datasource = LeRobotDatasource(
+        root=root,
+        episodes=episodes,
+        group_by_episode=group_by_episode,
+        filesystem=filesystem,
+        storage_options=storage_options,
+        frame_tolerance_s=frame_tolerance_s,
+    )
+    if override_num_blocks is None:
+        # Default to one read task per video-file group. Ray's generic
+        # block-count floor would over-split a video read, where each split
+        # re-opens a file and re-inits a torchcodec decoder -- a cost a small
+        # dataset can't amortize. An explicit override_num_blocks still
+        # splits/merges from this base (e.g. to parallelize a monolithic mp4).
+        override_num_blocks = datasource.default_num_blocks()
+    return read_datasource(
+        datasource,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,

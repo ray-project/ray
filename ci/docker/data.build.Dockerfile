@@ -36,6 +36,15 @@ echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gp
 sudo apt-get update
 sudo apt-get install -y mongodb-org
 
+# torchcodec (ray.data.read_lerobot's video decoder) dlopens libtorchcodec, which
+# links the FFmpeg shared libraries. Ubuntu 22.04's apt ffmpeg is 4.4.2
+# (libavutil.so.56) -- too old; torchcodec 0.9 needs ffmpeg 5-8
+# (libavutil.so.57-60). Install ffmpeg 7 from conda-forge into the image's
+# miniforge env and add its lib dir to the loader path so torchcodec finds it.
+conda install -y -c conda-forge "ffmpeg=7.*"
+echo "$(conda info --base)/lib" | sudo tee /etc/ld.so.conf.d/conda-ffmpeg.conf > /dev/null
+sudo ldconfig
+
 if [[ $RAY_CI_JAVA_BUILD == 1 ]]; then
   # These packages increase the image size quite a bit, so we only install them
   # as needed.
