@@ -4418,6 +4418,20 @@ class Dataset:
         if catalog is not None:
             from ray.data.catalog import AccessMode, ReaderFormat
 
+            # A catalog resolves a pre-existing, credential-vended location, so
+            # directory creation is both unnecessary and unsupported: it requires
+            # bucket-level permissions the vended (prefix-scoped) credentials
+            # typically lack. Force it off and tell the user.
+            if try_create_dir:
+                logger.warning(
+                    "`try_create_dir` is not supported when writing through a "
+                    "`catalog` and is being overridden to False. The catalog "
+                    "resolves an existing location, and directory creation on "
+                    "object storage needs bucket-level access that the vended "
+                    "credentials may not have."
+                )
+                try_create_dir = False
+
             resolved = catalog.resolve(
                 path, reader=ReaderFormat.PARQUET, mode=AccessMode.WRITE
             )
