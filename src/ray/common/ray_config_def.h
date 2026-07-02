@@ -1174,3 +1174,6 @@ RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
 // Whether to enable/disable multiple gRPC connections to improve object transfer
 // throughput.
 RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
+
+// Whether to have GCS manage actor scheduling itself
+RAY_CONFIG(bool, centralized_actor_scheduling, false)
