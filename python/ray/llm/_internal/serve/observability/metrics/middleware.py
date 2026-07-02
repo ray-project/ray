@@ -7,6 +7,14 @@ from starlette.requests import Request
 from starlette.routing import Match
 from starlette.types import Message
 
+try:
+    # FastAPI >= 0.137.2 exposes a public helper that flattens routes added via
+    # include_router() (nested under _IncludedRouter on 0.137) into matchable
+    # route contexts. Older versions lack it; see _flatten_routes().
+    from fastapi.routing import iter_route_contexts
+except ImportError:
+    iter_route_contexts = None
+
 from ray.llm._internal.serve.core.ingress.middleware import (
     get_request_id,
     get_user_id,
@@ -114,6 +122,27 @@ class MeasureHTTPRequestMetricsMiddleware:
                 )
 
 
+def _flatten_routes(routes):
+    """Yield matchable routes, flattening FastAPI 0.137+ included routers.
+
+    FastAPI 0.137 nests routes added via ``include_router()`` under
+    ``_IncludedRouter`` tree nodes that expose no ``path`` attribute, so iterating
+    ``app.routes`` and reading ``route.path`` raises ``AttributeError``. FastAPI
+    >= 0.137.2 provides the public ``iter_route_contexts()`` to flatten them into
+    route contexts (each exposing ``matches()`` and the templated ``path``); on
+    0.137.0/0.137.1 fall back to the private ``effective_route_contexts()``, and on
+    FastAPI < 0.137 the routes are already matchable as-is.
+    """
+    if iter_route_contexts is not None:
+        yield from iter_route_contexts(routes)
+        return
+    for route in routes:
+        if hasattr(route, "effective_route_contexts"):
+            yield from route.effective_route_contexts()
+        else:
+            yield route
+
+
 def _get_route_details(scope: dict) -> str:
     """
     Function to retrieve Starlette route from scope.
@@ -128,7 +157,7 @@ def _get_route_details(scope: dict) -> str:
     app = scope["app"]
     route = None
 
-    for starlette_route in app.routes:
+    for starlette_route in _flatten_routes(app.routes):
         match, _ = starlette_route.matches(scope)
         if match == Match.FULL:
             route = starlette_route.path
