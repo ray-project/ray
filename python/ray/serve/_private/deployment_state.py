@@ -59,6 +59,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
+    RAY_SERVE_RECON_OPT,
     RAY_SERVE_RETAINED_DEAD_REPLICAS,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
@@ -4548,56 +4549,113 @@ class DeploymentState:
         healthy_replicas: List[DeploymentReplica] = []
         unhealthy_replicas: List[DeploymentReplica] = []
 
-        for replica in self._replicas.pop(
-            states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
-        ):
-            is_healthy = replica.check_health()
-
-            # Record health check latency and failure metrics.
-            if replica.last_health_check_latency_ms is not None:
-                self.health_check_latency_histogram.observe(
-                    replica.last_health_check_latency_ms
-                )
-            if replica.last_health_check_failed:
-                if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
-                    self.health_check_failures_counter.inc(
-                        tags={"replica": replica.replica_id.unique_id}
+        # Profile-guided (RAY_SERVE_RECON_OPT): for the common non-gang case, iterate
+        # RUNNING/PENDING_MIGRATION IN PLACE. Healthy replicas that stay in their state
+        # bucket are never popped+re-added -> eliminates the O(num_replicas) container
+        # churn (~17-20% of the control loop at scale). Gang deployments fall back to the
+        # original pop/re-add path (their force-stop reshuffles the lists).
+        if RAY_SERVE_RECON_OPT and not self._is_gang_deployment:
+            _origin: List[ReplicaState] = []
+            _pairs = [
+                (replica, _st)
+                for _st in (ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION)
+                for replica in self._replicas.get([_st])
+            ]
+            _healths = [_replica.check_health() for _replica, _ in _pairs]
+            for (replica, _st), is_healthy in zip(_pairs, _healths):
+                if replica.last_health_check_latency_ms is not None:
+                    self.health_check_latency_histogram.observe(
+                        replica.last_health_check_latency_ms
                     )
+                if replica.last_health_check_failed:
+                    if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+                        self.health_check_failures_counter.inc(
+                            tags={"replica": replica.replica_id.unique_id}
+                        )
+                    else:
+                        self.health_check_failures_counter.inc()
+                if is_healthy:
+                    healthy_replicas.append(replica)
+                    _origin.append(_st)
                 else:
-                    self.health_check_failures_counter.inc()
+                    unhealthy_replicas.append(replica)
+            for replica, _st in zip(healthy_replicas, _origin):
+                self._set_health_gauge(replica.replica_id.unique_id, 1)
+                routing_stats = replica.pull_routing_stats()
+                if routing_stats is not None and routing_stats != replica.routing_stats:
+                    self._broadcasted_replicas_set_changed = True
+                replica.record_routing_stats(routing_stats)
+                # Mirror of the original path's unconditional
+                # self._replicas.add(replica.actor_details.state, replica): re-bucket a
+                # healthy replica only if its state changed. actor_details.state is only
+                # ever set via ReplicaStateContainer.add(), and check_health() never
+                # transitions state, so for RUNNING/PENDING_MIGRATION this is a no-op
+                # today -- kept as a defensive guard so the in-place path stays behavior-
+                # identical to the pop/re-add path if that invariant ever changes.
+                if replica.actor_details.state != _st:
+                    self._replicas.remove({replica.replica_id})
+                    self._replicas.add(replica.actor_details.state, replica)
+            for replica in unhealthy_replicas:
+                logger.warning(
+                    f"Replica {replica.replica_id} failed health check, stopping it."
+                )
+                self._replicas.remove({replica.replica_id})
+                graceful = not self.FORCE_STOP_UNHEALTHY_REPLICAS
+                self._stop_replica_mark_unhealthy_if_target_version(replica, graceful)
+        else:
+            for replica in self._replicas.pop(
+                states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
+            ):
+                is_healthy = replica.check_health()
 
-            if is_healthy:
-                healthy_replicas.append(replica)
-            else:
-                unhealthy_replicas.append(replica)
+                # Record health check latency and failure metrics.
+                if replica.last_health_check_latency_ms is not None:
+                    self.health_check_latency_histogram.observe(
+                        replica.last_health_check_latency_ms
+                    )
+                if replica.last_health_check_failed:
+                    if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+                        self.health_check_failures_counter.inc(
+                            tags={"replica": replica.replica_id.unique_id}
+                        )
+                    else:
+                        self.health_check_failures_counter.inc()
 
-        # Under the RESTART_GANG policy, force-stop all members of any gang that has at
-        # least one unhealthy replica. Replicas handled here are removed from the lists;
-        # remaining replicas continue to respect FORCE_STOP_UNHEALTHY_REPLICAS.
-        if (
-            self._is_gang_deployment
-            and self.get_gang_config().runtime_failure_policy
-            == GangRuntimeFailurePolicy.RESTART_GANG
-        ):
-            healthy_replicas, unhealthy_replicas = self._forcefully_stop_gang_replicas(
-                healthy_replicas, unhealthy_replicas
-            )
+                if is_healthy:
+                    healthy_replicas.append(replica)
+                else:
+                    unhealthy_replicas.append(replica)
 
-        for replica in healthy_replicas:
-            self._replicas.add(replica.actor_details.state, replica)
-            self._set_health_gauge(replica.replica_id.unique_id, 1)
-            routing_stats = replica.pull_routing_stats()
-            if routing_stats is not None and routing_stats != replica.routing_stats:
-                self._broadcasted_replicas_set_changed = True
-            replica.record_routing_stats(routing_stats)
+            # Under the RESTART_GANG policy, force-stop all members of any gang that has at
+            # least one unhealthy replica. Replicas handled here are removed from the lists;
+            # remaining replicas continue to respect FORCE_STOP_UNHEALTHY_REPLICAS.
+            if (
+                self._is_gang_deployment
+                and self.get_gang_config().runtime_failure_policy
+                == GangRuntimeFailurePolicy.RESTART_GANG
+            ):
+                (
+                    healthy_replicas,
+                    unhealthy_replicas,
+                ) = self._forcefully_stop_gang_replicas(
+                    healthy_replicas, unhealthy_replicas
+                )
 
-        # Only single-replica scheduling replicas remain.
-        for replica in unhealthy_replicas:
-            logger.warning(
-                f"Replica {replica.replica_id} failed health check, stopping it."
-            )
-            graceful = not self.FORCE_STOP_UNHEALTHY_REPLICAS
-            self._stop_replica_mark_unhealthy_if_target_version(replica, graceful)
+            for replica in healthy_replicas:
+                self._replicas.add(replica.actor_details.state, replica)
+                self._set_health_gauge(replica.replica_id.unique_id, 1)
+                routing_stats = replica.pull_routing_stats()
+                if routing_stats is not None and routing_stats != replica.routing_stats:
+                    self._broadcasted_replicas_set_changed = True
+                replica.record_routing_stats(routing_stats)
+
+            # Only single-replica scheduling replicas remain.
+            for replica in unhealthy_replicas:
+                logger.warning(
+                    f"Replica {replica.replica_id} failed health check, stopping it."
+                )
+                graceful = not self.FORCE_STOP_UNHEALTHY_REPLICAS
+                self._stop_replica_mark_unhealthy_if_target_version(replica, graceful)
 
         # In steady state there are no STARTING/UPDATING/RECOVERING/STOPPING
         # replicas, so skip startup/stopping checks.  The rank consistency
