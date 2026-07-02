@@ -1,6 +1,3 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
-
-
 .. _connector-v2-reference-docs:
 
 ConnectorV2 API
