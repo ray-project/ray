@@ -156,6 +156,13 @@ def get_preemption_info() -> Optional["PreemptionInfo"]:
     exit cleanly. Returns ``None`` until a preemption affecting this worker
     group is detected.
 
+    Reading the signal is informational. The recommended pattern is to save a
+    just-in-time checkpoint and keep training: when the node is actually
+    reclaimed, Ray Train restarts and resumes the run from the latest checkpoint
+    (consuming the ``FailureConfig.max_preemption_failures`` budget). A run that
+    returns cleanly finishes regardless of any signal, so you do not need to
+    return early to trigger a restart.
+
     Example:
 
         .. testcode::
@@ -164,17 +171,13 @@ def get_preemption_info() -> Optional["PreemptionInfo"]:
             import ray.train
 
             def train_func(config):
-                rank = ray.train.get_context().get_world_rank()
                 for step in range(config["total_steps"]):
-                    info = ray.train.get_preemption_info()
-                    if info is not None:
-                        if rank in info.preempted_ranks:
-                            # This worker's node is being reclaimed: clean up.
-                            ...
-                        else:
-                            # Survivor: save a just-in-time checkpoint.
-                            ray.train.report(metrics, checkpoint=checkpoint)
-                        return
+                    if ray.train.get_preemption_info() is not None:
+                        # Reclaim imminent: save a just-in-time checkpoint so the
+                        # restarted run resumes with minimal lost work. Keep
+                        # training -- Ray Train restarts you when the node is
+                        # actually reclaimed.
+                        ray.train.report(metrics, checkpoint=checkpoint)
                     # ... normal training step ...
 
     Returns:

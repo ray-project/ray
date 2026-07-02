@@ -653,14 +653,14 @@ class TrainController:
         elif isinstance(controller_state, RunningState):
             worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
 
-            # A worker echoed a preemption signal: move to PreemptingState and
-            # let the worker group drain before restarting. Checked before both
-            # the completion and error branches: a worker may react to the
-            # signal by checkpointing and returning (a clean exit) or be killed
-            # when its node is reclaimed (an error). Either way we want to drain
-            # and restart against the preemption retry budget, rather than
-            # finishing the run or charging it against `max_failures`.
-            preemption_info = worker_group_status.get_preemption_info()
+            # A preemption is in progress: move to PreemptingState and let the
+            # worker group drain before restarting. Checked before both the
+            # completion and error branches so that a worker killed when its
+            # node is reclaimed is charged against the preemption retry budget
+            # rather than `max_failures`. `_preemption_to_drain` returns None for
+            # a genuine completion (a clean return with no errors), letting it
+            # fall through to the finished branch below.
+            preemption_info = self._preemption_to_drain(worker_group_status)
             if preemption_info is not None:
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
@@ -727,6 +727,36 @@ class TrainController:
             raise ValueError(f"Unexpected controller state: {controller_state}")
 
     @staticmethod
+    def _is_genuine_completion(
+        worker_group_status: WorkerGroupPollStatus,
+    ) -> bool:
+        """Whether a clean finish should be treated as a genuine completion.
+
+        True when every rank exited cleanly (returned without error). A run that
+        returns cleanly finishes regardless of any preemption signal -- the
+        training function is expected to react to a preemption by checkpointing
+        and continuing, and be restarted when its node is actually reclaimed (a
+        worker error) or the reclaim deadline elapses, not by returning early.
+        A killed worker (error) makes this False.
+        """
+        return worker_group_status.finished and not worker_group_status.errors
+
+    @classmethod
+    def _preemption_to_drain(
+        cls, worker_group_status: WorkerGroupPollStatus
+    ) -> Optional["PreemptionInfo"]:
+        """The preemption that should move the run into PreemptingState, if any.
+
+        Returns the echoed `PreemptionInfo` unless the poll is a genuine
+        completion (see `_is_genuine_completion`), in which case it returns None
+        so the caller lets the run finish normally.
+        """
+        preemption_info = worker_group_status.get_preemption_info()
+        if preemption_info is None or cls._is_genuine_completion(worker_group_status):
+            return None
+        return preemption_info
+
+    @staticmethod
     def _is_preemption_deadline_exceeded(
         preemption_info: "PreemptionInfo",
         detected_at_s: float,
@@ -759,8 +789,25 @@ class TrainController:
         recreates the worker group on healthy nodes; once the budget is
         exhausted the decision is RAISE and we transition to ShuttingDownState
         followed by ErroredState.
+
+        If instead the workers return cleanly (no errors) while draining, the run
+        is treated as a genuine completion and transitions to FinishedState --
+        the training function finished before its node was reclaimed.
         """
         worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
+
+        # The workers returned cleanly (no errors) -> genuine completion. (A
+        # killed worker or a passed deadline fall through to the restart path
+        # below.)
+        if self._is_genuine_completion(worker_group_status):
+            self._return_value = worker_group_status.worker_statuses[0].return_value
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=controller_state,
+                next_state=ShuttingDownState(
+                    next_state=FinishedState(),
+                ),
+            )
 
         # Keep the preemption info current as additional nodes are drained.
         # Merge rather than overwrite so a staggered preemption (or a node

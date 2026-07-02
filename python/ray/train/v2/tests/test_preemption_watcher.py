@@ -7,6 +7,7 @@ import pytest
 import ray
 from ray.train.v2._internal.callbacks.preemption_callback import PreemptionCallback
 from ray.train.v2._internal.execution.preemption import (
+    PreemptionContext,
     PreemptionInfo,
     PreemptionWatcher,
     merge_preemption_info,
@@ -226,6 +227,7 @@ def test_merge_preemption_info_unions_nodes_and_keeps_earliest_deadline():
     b = PreemptionInfo(deadline_ms=3000, preempted_node_to_ranks={"n2": [2]})
     merged = merge_preemption_info(a, b)
     assert merged.deadline_ms == 3000
+    assert merged.preempted_node_to_ranks == {"n1": [0, 1], "n2": [2]}
     assert merged.preempted_node_ids == ["n1", "n2"]
     assert merged.preempted_ranks == [0, 1, 2]
 
@@ -244,6 +246,18 @@ def test_merge_preemption_info_both_deadlines_none():
     a = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"n1": [0]})
     b = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"n2": [1]})
     assert merge_preemption_info(a, b).deadline_ms is None
+
+
+def test_preemption_context_set_and_get():
+    info = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"n1": [0]})
+    ctx = PreemptionContext()
+
+    # No signal yet.
+    assert ctx.get() is None
+
+    # After the watcher sets a signal, reads return it (purely informational).
+    ctx.set(info)
+    assert ctx.get() is info
 
 
 if __name__ == "__main__":

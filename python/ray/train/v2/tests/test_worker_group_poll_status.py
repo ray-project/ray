@@ -132,6 +132,51 @@ def test_get_preemption_info_returns_echoed_signal():
     assert poll_status.get_preemption_info() is info
 
 
+def test_get_preemption_info_from_preempted_actor_death():
+    """With no echo, a worker killed by preemption (RayActorError.preempted) is
+    still surfaced as a preemption; other deaths are not."""
+    from ray.exceptions import RayActorError
+    from ray.train.v2._internal.exceptions import WorkerHealthCheckFailedError
+
+    def _died(preempted):
+        return WorkerStatus(
+            running=False,
+            error=WorkerHealthCheckFailedError(
+                "died", failure=RayActorError(preempted=preempted)
+            ),
+        )
+
+    # Preempted death -> synthesized PreemptionInfo for that rank.
+    preempted = WorkerGroupPollStatus(
+        worker_statuses={0: _died(preempted=True), 1: WorkerStatus(running=False)}
+    )
+    info = preempted.get_preemption_info()
+    assert info is not None
+    assert info.preempted_ranks == [0]
+
+    # Non-preemption actor death -> not a preemption.
+    crashed = WorkerGroupPollStatus(
+        worker_statuses={0: _died(preempted=False), 1: WorkerStatus(running=False)}
+    )
+    assert crashed.get_preemption_info() is None
+
+    # A plain (non-actor) error -> not a preemption.
+    errored = WorkerGroupPollStatus(
+        worker_statuses={0: WorkerStatus(running=False, error=RuntimeError("boom"))}
+    )
+    assert errored.get_preemption_info() is None
+
+    # An echo still takes precedence over death inference.
+    echo = PreemptionInfo(deadline_ms=5, preempted_node_to_ranks={"node-a": [1]})
+    with_echo = WorkerGroupPollStatus(
+        worker_statuses={
+            0: _died(preempted=True),
+            1: WorkerStatus(running=False, preemption_info=echo),
+        }
+    )
+    assert with_echo.get_preemption_info() is echo
+
+
 if __name__ == "__main__":
     import sys
 

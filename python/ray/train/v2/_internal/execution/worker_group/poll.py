@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Set
 
 from ray._private.ray_logging import NUMBERS
+from ray.exceptions import RayActorError
 from ray.train.v2._internal.exceptions import (
     UserExceptionWithTraceback,
     WorkerHealthCheckFailedError,
@@ -14,6 +15,22 @@ from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.types import ObjectRef
 
 ERR_CHAR_LIMIT = 1000
+
+# Sentinel node id used when a preemption is inferred from a worker's death
+# (RayActorError.preempted) rather than an advance drain signal, where the
+# preempted node id is not known.
+_UNKNOWN_PREEMPTED_NODE = "<unknown-preempted-node>"
+
+
+def _is_preemption_death(error: Optional[Exception]) -> bool:
+    """Whether a worker error is a node-preemption-caused death.
+
+    A worker killed by a node reclaim surfaces as a WorkerHealthCheckFailedError
+    wrapping a RayActorError whose ``preempted`` flag is set.
+    """
+    if isinstance(error, WorkerHealthCheckFailedError):
+        error = error.health_check_failure
+    return isinstance(error, RayActorError) and error.preempted
 
 
 def _normalize_error_string(error_str: str) -> str:
@@ -86,14 +103,28 @@ class WorkerGroupPollStatus:
         )
 
     def get_preemption_info(self) -> Optional[PreemptionInfo]:
-        """Return the preemption signal echoed by any worker, or None.
+        """Return the active preemption signal, or None.
 
-        The PreemptionWatcher fans the same PreemptionInfo out to every worker,
-        so any non-None echo reflects the current preemption; return the first.
+        Prefers the advance signal echoed by a worker (the PreemptionWatcher
+        fans the same PreemptionInfo out to every worker, so any non-None echo
+        reflects the current preemption). If there is no advance signal but a
+        worker was killed by a node reclaim -- detected via
+        ``RayActorError.preempted`` -- synthesize a PreemptionInfo for the
+        affected ranks so the reclaim is still charged to the preemption budget
+        rather than ``max_failures`` (the node id is unknown in this case).
         """
         for status in self.worker_statuses.values():
             if status.preemption_info is not None:
                 return status.preemption_info
+
+        preempted_ranks = sorted(
+            rank for rank, error in self.errors.items() if _is_preemption_death(error)
+        )
+        if preempted_ranks:
+            return PreemptionInfo(
+                deadline_ms=None,
+                preempted_node_to_ranks={_UNKNOWN_PREEMPTED_NODE: preempted_ranks},
+            )
         return None
 
     @property

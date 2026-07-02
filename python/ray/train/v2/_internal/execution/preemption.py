@@ -1,5 +1,6 @@
 import logging
 import threading
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
@@ -52,17 +53,17 @@ def merge_preemption_info(old: PreemptionInfo, new: PreemptionInfo) -> Preemptio
     not include earlier preempted nodes. Union the ``preempted_node_to_ranks``
     maps so we keep the full history, and keep the earliest known deadline.
     """
-    merged_node_to_ranks: Dict[str, List[int]] = {
-        node: list(ranks) for node, ranks in old.preempted_node_to_ranks.items()
-    }
-    for node, ranks in new.preempted_node_to_ranks.items():
-        merged_node_to_ranks[node] = sorted(
-            set(merged_node_to_ranks.get(node, [])) | set(ranks)
-        )
+    ranks_by_node: Dict[str, Set[int]] = defaultdict(set)
+    for info in (old, new):
+        for node, ranks in info.preempted_node_to_ranks.items():
+            ranks_by_node[node].update(ranks)
+
     deadlines = [d for d in (old.deadline_ms, new.deadline_ms) if d is not None]
     return PreemptionInfo(
-        deadline_ms=min(deadlines) if deadlines else None,
-        preempted_node_to_ranks=merged_node_to_ranks,
+        deadline_ms=min(deadlines, default=None),
+        preempted_node_to_ranks={
+            node: sorted(ranks) for node, ranks in ranks_by_node.items()
+        },
     )
 
 
@@ -78,7 +79,14 @@ class PreemptionContext:
             self._preemption_info = info
 
     def get(self) -> Optional[PreemptionInfo]:
-        """Return the current preemption signal, or ``None`` if none received."""
+        """Return the current preemption signal, or ``None`` if none received.
+
+        Reading the signal is informational: it lets the training function react
+        (e.g. save a just-in-time checkpoint and keep training) before its node
+        is reclaimed. It has no effect on control flow -- Ray Train restarts the
+        run when a node is actually reclaimed (or the reclaim deadline elapses),
+        and a run that returns cleanly finishes regardless of any signal.
+        """
         with self._lock:
             return self._preemption_info
 
