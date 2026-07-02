@@ -18,6 +18,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
+    RAY_SERVE_AUTOSCALE_CLIP_WINDOW_S,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
@@ -58,6 +59,26 @@ def _resolve_policy_callable(policy: AutoscalingPolicy) -> Callable:
         )
         return raw(**policy.policy_kwargs)
     return raw
+
+
+def _clip_window_start(
+    window_start: Optional[float],
+    first_ts: float,
+    end_ts: float,
+    clip_window_s: float,
+) -> Optional[float]:
+    """Cap window_start to the most recent clip_window_s of [.., end_ts] (D1 overshoot
+    fix), so a stale ramp transient is not averaged into the aggregation mean.
+
+    clip_window_s <= 0 (disabled) or a clip window wider than the data returns
+    window_start unchanged -- including None, so the no-clip case stays a true no-op.
+    """
+    if clip_window_s <= 0:
+        return window_start
+    clip_limit = end_ts - clip_window_s
+    if window_start is None:
+        return clip_limit if clip_limit > first_ts else None
+    return max(window_start, clip_limit)
 
 
 class DeploymentAutoscalingState:
@@ -526,6 +547,16 @@ class DeploymentAutoscalingState:
                 aligned_start = max(ts[0].timestamp for ts in non_empty_series)
                 if aligned_start <= merged_timeseries[-1].timestamp:
                     window_start = max(aligned_start, merged_timeseries[0].timestamp)
+
+            # D1 overshoot fix (RAY_SERVE_AUTOSCALE_CLIP_WINDOW_S, 0=off): cap
+            # window_start to the most recent N seconds so a stale free-autoscaling
+            # ramp transient is not averaged into the mean. See _clip_window_start.
+            window_start = _clip_window_start(
+                window_start,
+                merged_timeseries[0].timestamp,
+                merged_timeseries[-1].timestamp + last_window_s,
+                RAY_SERVE_AUTOSCALE_CLIP_WINDOW_S,
+            )
 
             # Calculate the aggregated metric value
             value = aggregate_timeseries(

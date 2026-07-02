@@ -448,6 +448,14 @@ RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR = get_env_float(
     "RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR", 0.2
 )
 
+# D1 overshoot fix: clip the autoscaling aggregation window to the most recent N
+# seconds so a stale free-autoscaling ramp transient is not time-averaged into the
+# request total (which keeps a deployment in transition and delays settling).
+# 0 = off (full window = today's behavior).
+RAY_SERVE_AUTOSCALE_CLIP_WINDOW_S = get_env_float_non_negative(
+    "RAY_SERVE_AUTOSCALE_CLIP_WINDOW_S", 0.0
+)
+
 # Replica autoscaling metrics push interval.
 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
     "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S", 10.0
