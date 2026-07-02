@@ -55,7 +55,7 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   RAY_CHECK(actor->GetNodeID().IsNil() && actor->GetWorkerID().IsNil());
 
   // Select a node to where the actor is forwarded.
-  auto node_id = SelectForwardingNode(actor);
+  auto node_id = LeaseWorkerNode(actor);
 
   auto node = gcs_node_manager_.GetAliveNode(node_id);
   if (!node.has_value()) {
@@ -78,9 +78,21 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
                 .emplace(actor->GetActorID())
                 .second);
 
-  // Lease worker directly from the node.
-  actor->SetGrantOrReject(false);
+  if (RayConfig::instance().centralized_actor_scheduling()) {
+    actor->SetGrantOrReject(true);
+  } else {
+    // Lease worker directly from the node.
+    actor->SetGrantOrReject(false);
+  }
   LeaseWorkerFromNode(actor, node.value());
+}
+
+NodeID GcsActorScheduler::LeaseWorkerNode(std::shared_ptr<GcsActor> actor) {
+  if (RayConfig::instance().centralized_actor_scheduling()) {
+    return SelectWorkerNode(actor);
+  }
+
+  return SelectForwardingNode(actor);
 }
 
 NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) {
@@ -96,6 +108,81 @@ NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) 
                                   : gcs_node_manager_.SelectRandomAliveNode();
   } else {
     node = gcs_node_manager_.SelectRandomAliveNode();
+  }
+
+  return node ? NodeID::FromBinary(node->node_id()) : NodeID::Nil();
+}
+
+NodeID GcsActorScheduler::SelectWorkerNode(std::shared_ptr<GcsActor> actor) {
+  // Select a node to lease worker for the actor.
+  std::shared_ptr<const rpc::GcsNodeInfo> node;
+  // owner node or 'best' node (if available)
+  std::optional<std::shared_ptr<const rpc::GcsNodeInfo>> maybe_node = std::nullopt;
+
+  // If an actor has resource requirements, we will try to schedule it on the same node as
+  // the owner if possible.
+  const auto &lease_spec = actor->GetLeaseSpecification();
+  if (!lease_spec.GetRequiredResources().IsEmpty()) {
+    bool is_infeasible;
+    auto best_node = cluster_resource_scheduler_.GetBestSchedulableNode(
+        lease_spec,
+        /*preferred_node_id*/ std::string(),  // actor->GetOwnerNodeID().Binary(),
+        /*exclude_local_node*/ false,
+        /*requires_object_store_memory*/ true,
+        &is_infeasible);
+    if (!is_infeasible && !best_node.IsNil()) { /* may not need nil check here */
+      const auto best_node_id = ray::NodeID::FromBinary(best_node.Binary());
+      maybe_node = gcs_node_manager_.GetAliveNode(best_node_id);
+    }
+    if (maybe_node.has_value()) {
+      RAY_LOG(DEBUG)
+              .WithField(actor->GetActorID())
+              .WithField(NodeID::FromBinary(maybe_node.value()->node_id()))
+          << "Scheduling " << actor->GetActorID() << " on *best* node "
+          << NodeID::FromBinary(maybe_node.value()->node_id());
+
+      if (!cluster_resource_scheduler_.AllocateRemoteTaskResources(
+              best_node, lease_spec.GetRequiredResources().GetResourceMap())) {
+        RAY_LOG(DEBUG)
+                .WithField(actor->GetActorID())
+                .WithField(NodeID::FromBinary(maybe_node.value()->node_id()))
+            << "Failed to allocate resources for request " << lease_spec.LeaseId()
+            << " on *best* node " << NodeID::FromBinary(maybe_node.value()->node_id());
+      }
+      actor->SetAcquiredResources(ResourceMapToResourceRequest(
+          actor->GetLeaseSpecification().GetRequiredResources().GetResourceMap(), false));
+    } else {
+      maybe_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
+    }
+
+    node = maybe_node.has_value() ? maybe_node.value()
+                                  : gcs_node_manager_.SelectRandomAliveNode();
+    if (maybe_node.has_value()) {
+      RAY_LOG(DEBUG)
+              .WithField(actor->GetActorID())
+              .WithField(NodeID::FromBinary(node->node_id()))
+          << "Scheduling " << actor->GetActorID() << " on non-head owner node "
+          << NodeID::FromBinary(node->node_id());
+    } else {
+      RAY_LOG(DEBUG)
+              .WithField(actor->GetActorID())
+              .WithField(NodeID::FromBinary(node->node_id()))
+          << "Scheduling " << actor->GetActorID() << " on random node (#1) "
+          << NodeID::FromBinary(node->node_id());
+    }
+  } else {
+    RAY_LOG(DEBUG).WithField(actor->GetActorID()) << "EMPTY LEASE ";
+    maybe_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
+    if (maybe_node.has_value()) {
+      node = maybe_node.value();
+    } else {
+      node = gcs_node_manager_.SelectRandomAliveNode();
+    }
+    RAY_LOG(DEBUG)
+            .WithField(actor->GetActorID())
+            .WithField(NodeID::FromBinary(node->node_id()))
+        << "Scheduling " << actor->GetActorID() << " on random node (#2) "
+        << NodeID::FromBinary(node->node_id());
   }
 
   return node ? NodeID::FromBinary(node->node_id()) : NodeID::Nil();
@@ -324,6 +411,8 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
       // reducing scheduling latency due to the stale resource view of spillback nodes.
       actor->SetGrantOrReject(true);
       LeaseWorkerFromNode(actor, spill_back_node);
+      RAY_LOG(DEBUG).WithField(actor->GetActorID()).WithField(spill_back_node_id)
+          << "Spilling " << actor->GetActorID() << " to node " << spill_back_node_id;
     } else {
       // If the spill back node is dead, we need to schedule again.
       actor->UpdateAddress(rpc::Address());
@@ -623,6 +712,13 @@ void GcsActorScheduler::OnActorDestruction(std::shared_ptr<GcsActor> actor) {
 }
 
 void GcsActorScheduler::ReturnActorAcquiredResources(std::shared_ptr<GcsActor> actor) {
+  if (RayConfig::instance().centralized_actor_scheduling()) {
+    auto &cluster_resource_manager =
+        cluster_resource_scheduler_.GetClusterResourceManager();
+    cluster_resource_manager.AddNodeAvailableResources(
+        scheduling::NodeID(actor->GetNodeID().Binary()),
+        actor->GetAcquiredResources().GetResourceSet());
+  }
   actor->SetAcquiredResources(ResourceRequest());
 }
 
