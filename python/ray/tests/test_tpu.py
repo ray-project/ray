@@ -993,14 +993,15 @@ def test_run_on_slice_creates_internal_slice(mock_spg_cls):
     mock_spg_cls.return_value = mock_handle
 
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
-        ray.util.tpu.run_on_slice(
-            _make_mock_fn(),
-            topology="2x2x2",
-            accelerator_version="v4",
-            num_slices=2,
-            chips_per_vm=4,
-            head_reservation_timeout_s=30.0,
-        )
+        with patch.object(ray, "get", return_value=None):
+            ray.util.tpu.run_on_slice(
+                _make_mock_fn(),
+                topology="2x2x2",
+                accelerator_version="v4",
+                num_slices=2,
+                chips_per_vm=4,
+                head_reservation_timeout_s=30.0,
+            )
 
     mock_spg_cls.assert_called_once_with(
         topology="2x2x2",
@@ -1018,10 +1019,11 @@ def test_run_on_slice_uses_provided_slice(mock_spg_cls):
     existing_handle = _make_mock_slice_handle()
 
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
-        ray.util.tpu.run_on_slice(
-            _make_mock_fn(),
-            tpu_slice=existing_handle,
-        )
+        with patch.object(ray, "get", return_value=None):
+            ray.util.tpu.run_on_slice(
+                _make_mock_fn(),
+                tpu_slice=existing_handle,
+            )
 
     mock_spg_cls.assert_not_called()
 
@@ -1049,7 +1051,10 @@ def test_run_on_slice_dispatches_one_task_per_bundle(mock_spg_cls):
     fn = _make_mock_fn()
 
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
-        refs = ray.util.tpu.run_on_slice(fn, topology="2x2x2", accelerator_version="v4")
+        with patch.object(ray, "get", return_value=None):
+            refs = ray.util.tpu.run_on_slice(
+                fn, topology="2x2x2", accelerator_version="v4"
+            )
 
     assert len(refs) == num_bundles
     assert fn.options.call_count == num_bundles
@@ -1064,7 +1069,8 @@ def test_run_on_slice_applies_unique_bundle_index_per_task(mock_spg_cls):
     fn = _make_mock_fn()
 
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
-        ray.util.tpu.run_on_slice(fn, topology="2x2x2", accelerator_version="v4")
+        with patch.object(ray, "get", return_value=None):
+            ray.util.tpu.run_on_slice(fn, topology="2x2x2", accelerator_version="v4")
 
     bundle_indices = [
         call.kwargs["scheduling_strategy"].placement_group_bundle_index
@@ -1082,7 +1088,8 @@ def test_run_on_slice_scheduling_strategy_references_correct_pg(mock_spg_cls):
     fn = _make_mock_fn()
 
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
-        ray.util.tpu.run_on_slice(fn, topology="2x2x2", accelerator_version="v4")
+        with patch.object(ray, "get", return_value=None):
+            ray.util.tpu.run_on_slice(fn, topology="2x2x2", accelerator_version="v4")
 
     for call in fn.options.call_args_list:
         assert (
@@ -1100,7 +1107,8 @@ def test_run_on_slice_sets_num_cpus_zero_and_tpu_resources(mock_spg_cls):
     fn = _make_mock_fn()
 
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
-        ray.util.tpu.run_on_slice(fn, topology="2x2x2", accelerator_version="v4")
+        with patch.object(ray, "get", return_value=None):
+            ray.util.tpu.run_on_slice(fn, topology="2x2x2", accelerator_version="v4")
 
     for call in fn.options.call_args_list:
         assert call.kwargs["num_cpus"] == 0
@@ -1115,13 +1123,14 @@ def test_run_on_slice_forwards_args_and_kwargs(mock_spg_cls):
     fn = _make_mock_fn()
 
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
-        ray.util.tpu.run_on_slice(
-            fn,
-            "pos_arg",
-            topology="2x2x2",
-            accelerator_version="v4",
-            my_kwarg="hello",
-        )
+        with patch.object(ray, "get", return_value=None):
+            ray.util.tpu.run_on_slice(
+                fn,
+                "pos_arg",
+                topology="2x2x2",
+                accelerator_version="v4",
+                my_kwarg="hello",
+            )
 
     # fn.options() returns fn itself (chained mock), so .remote() calls land on fn
     assert fn.remote.call_count == 2
@@ -1138,9 +1147,10 @@ def test_run_on_slice_releases_head_pgs_when_owns_slice(mock_spg_cls):
     mock_spg_cls.return_value = mock_handle
 
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
-        ray.util.tpu.run_on_slice(
-            _make_mock_fn(), topology="2x2x2", accelerator_version="v4"
-        )
+        with patch.object(ray, "get", return_value=None):
+            ray.util.tpu.run_on_slice(
+                _make_mock_fn(), topology="2x2x2", accelerator_version="v4"
+            )
 
     mock_handle.release_head_pgs.assert_called_once()
 
@@ -1152,14 +1162,65 @@ def test_run_on_slice_does_not_release_head_pgs_when_provided(mock_spg_cls):
     existing_handle = _make_mock_slice_handle()
 
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
-        ray.util.tpu.run_on_slice(
-            _make_mock_fn(),
-            topology="2x2x2",
-            accelerator_version="v4",
-            tpu_slice=existing_handle,
-        )
+        with patch.object(ray, "get", return_value=None):
+            ray.util.tpu.run_on_slice(
+                _make_mock_fn(),
+                topology="2x2x2",
+                accelerator_version="v4",
+                tpu_slice=existing_handle,
+            )
 
     existing_handle.release_head_pgs.assert_not_called()
+
+
+def test_run_on_slice_raises_if_provided_slice_is_shut_down():
+    """A clear ValueError is raised when tpu_slice has already been shut down
+    (placement_group is None), rather than a confusing AttributeError."""
+    shut_down_handle = _make_mock_slice_handle()
+    shut_down_handle.placement_group = None
+
+    with pytest.raises(ValueError, match="already been shut down"):
+        ray.util.tpu.run_on_slice(
+            _make_mock_fn(),
+            tpu_slice=shut_down_handle,
+        )
+
+
+@patch("ray.util.tpu.SlicePlacementGroup")
+def test_run_on_slice_pg_ready_exception_shuts_down_owned_slice(mock_spg_cls):
+    """If pg.ready() resolves with an exception (e.g. PG was removed),
+    ray.wait still returns it as ready. ray.get then surfaces the error;
+    the internally-created slice must be shut down before re-raising."""
+    mock_handle = _make_mock_slice_handle()
+    mock_spg_cls.return_value = mock_handle
+
+    with patch.object(ray, "wait", return_value=([MagicMock()], [])):
+        with patch.object(ray, "get", side_effect=RuntimeError("PG failed")):
+            with pytest.raises(RuntimeError, match="PG failed"):
+                ray.util.tpu.run_on_slice(
+                    _make_mock_fn(),
+                    topology="2x2x2",
+                    accelerator_version="v4",
+                )
+
+    mock_handle.shutdown.assert_called_once()
+
+
+@patch("ray.util.tpu.SlicePlacementGroup")
+def test_run_on_slice_pg_ready_exception_does_not_shutdown_provided_slice(mock_spg_cls):
+    """If pg.ready() resolves with an exception and the slice was provided
+    by the caller, shutdown() must not be called."""
+    existing_handle = _make_mock_slice_handle()
+
+    with patch.object(ray, "wait", return_value=([MagicMock()], [])):
+        with patch.object(ray, "get", side_effect=RuntimeError("PG failed")):
+            with pytest.raises(RuntimeError):
+                ray.util.tpu.run_on_slice(
+                    _make_mock_fn(),
+                    tpu_slice=existing_handle,
+                )
+
+    existing_handle.shutdown.assert_not_called()
 
 
 @patch("ray.util.tpu.SlicePlacementGroup")

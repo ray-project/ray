@@ -881,6 +881,12 @@ def run_on_slice(
         )
 
     pg = slice_handle.placement_group
+    if pg is None:
+        raise ValueError(
+            "The provided tpu_slice has already been shut down. "
+            "Create a new SlicePlacementGroup or pass tpu_slice=None to reserve one automatically."
+        )
+
     tpu_per_bundle = slice_handle.bundle_resources.get(
         "TPU", slice_handle.chips_per_host
     )
@@ -893,6 +899,16 @@ def run_on_slice(
             f"TPU slice placement group was not ready within {pg_ready_timeout_s}s. "
             "Ensure your cluster has sufficient TPU resources available."
         )
+
+    # ray.wait returns a ref as ready as soon as it resolves, including when
+    # it resolves with an exception (e.g. PG removed or failed to schedule).
+    # Call ray.get to surface any such error before proceeding.
+    try:
+        ray.get(ready[0])
+    except Exception:
+        if _owns_slice:
+            slice_handle.shutdown()
+        raise
 
     if _owns_slice:
         slice_handle.release_head_pgs()
