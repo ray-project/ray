@@ -210,11 +210,6 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         for i, count in enumerate(allocation):
             bundles = self._split_from_buffer(count)
             for b in bundles:
-                # Splitting may create new blocks; register for memory tracking.
-                for entry in b.blocks:
-                    self._block_ref_counter.on_block_produced(
-                        entry.ref, entry.metadata.size_bytes or 0, self.id
-                    )
                 b = replace(b, output_split_idx=i)
                 self._output_queue.add(b)
                 self._metrics.on_output_queued(b)
@@ -335,7 +330,17 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                 output.append(b)
                 acc += b.num_rows()
             else:
+                input_refs = {entry.ref for entry in b.blocks}
                 left, right = _split(b, nrow - acc, label_selector)
+                # Only register genuinely new blocks created by _split_block.
+                for part in (left, right):
+                    for entry in part.blocks:
+                        if entry.ref not in input_refs:
+                            self._block_ref_counter.on_block_produced(
+                                entry.ref,
+                                entry.metadata.size_bytes or 0,
+                                self.id,
+                            )
                 output.append(left)
                 acc += left.num_rows()
                 self._buffer.add(right)
