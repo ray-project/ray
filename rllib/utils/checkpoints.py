@@ -483,9 +483,8 @@ class Checkpointable(abc.ABC):
                     else:
                         ctor_kwargs[param_name] = val
 
-        # If the pickle file is from another python version, use provided
-        # args instead.
-        except (ValueError, AttributeError, ImportError):
+        # If the pickle file is from another python version, use provided args instead.
+        except (ValueError, AttributeError, ImportError, TypeError):
             logger.warning(
                 "Could not restore original class from checkpoint at '%s' "
                 "(possible version mismatch), falling back to %s.",

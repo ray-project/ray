@@ -12,6 +12,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
+    TaskContext,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
@@ -33,6 +34,7 @@ from ray.data.block import BlockAccessor, BlockStats, TaskExecWorkerStats, to_st
 from ray.data.context import DataContext
 
 if typing.TYPE_CHECKING:
+    from ray.data._internal.execution.operators.map_transformer import MapTransformer
     from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
@@ -46,19 +48,21 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         data_context: Runtime configuration.
         num_partitions: Total number of output partitions.  Must match the
             value used by the paired `ShuffleMapOp`.
-        reduce_fn: Function called once per partition (in blocking mode)
-            or incrementally (in streaming mode) to combine input shards
-            into output blocks.
-        streaming_reduce: If True, `reduce_fn` is called whenever a
-            partition's accumulator reaches `target_max_block_size`.  If
-            False, wait for all shards before calling once (required for
-            sort or stateful aggregation).  Forced to False when
-            `disallow_block_splitting=True`.
+        reduce_fn: Function called once per partition, with the full shard
+            list, to combine input shards into output blocks.
         disallow_block_splitting: If True, output blocks are emitted as-is
             without being reshaped to `target_max_block_size` — required
             for hash-shuffle's "partition = block" contract.
         reduce_cpus: CPU request per reduce task.  Defaults to 1.
         name: Display name shown in progress bars and logs.
+        fused_output_map_transformer: Set by ``FuseOperators`` when a
+            ``TaskPoolMapOperator`` directly downstream is fused into this
+            reduce: each reduce task applies it to its output blocks before
+            yielding.
+        fused_output_map_task_kwargs: Per-task kwargs the fused map injects into
+            its ``TaskContext``.
+        fused_output_map_target_max_block_size_override: The fused map op's
+            block-size override.
     """
 
     _DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS = 1.0
@@ -70,10 +74,12 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         *,
         num_partitions: int,
         reduce_fn: ReduceFn,
-        streaming_reduce: bool = True,
         disallow_block_splitting: bool = False,
         reduce_cpus: Optional[float] = None,
         name: str = "ShuffleReduce",
+        fused_output_map_transformer: Optional["MapTransformer"] = None,
+        fused_output_map_task_kwargs: Optional[Dict[str, Any]] = None,
+        fused_output_map_target_max_block_size_override: Optional[int] = None,
     ):
         super().__init__(
             name=name,
@@ -84,9 +90,6 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         self._num_partitions: int = num_partitions
         self._reduce_fn: ReduceFn = reduce_fn
         self._disallow_block_splitting: bool = disallow_block_splitting
-        # Block-splitting disallowed → reducer must see entire partition
-        # before emitting, so force blocking mode regardless of the flag.
-        self._streaming_reduce: bool = streaming_reduce and not disallow_block_splitting
 
         # -- Reduce task config & tracking -----------------------------------
         self._shuffle_reduce_task_num_cpus: float = (
@@ -96,6 +99,13 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         )
         self._shuffle_reduce_tasks: Dict[int, DataOpTask] = {}
         self._num_reduce_tasks_submitted: int = 0
+
+        # -- Fused downstream map --------------------------------------------
+        self._fused_output_map_transformer = fused_output_map_transformer
+        self._fused_output_map_task_kwargs = fused_output_map_task_kwargs or {}
+        self._fused_output_map_target_max_block_size_override = (
+            fused_output_map_target_max_block_size_override
+        )
 
         # -- Output queue ----------------------------------------------------
         self._output_queue: deque = deque()
@@ -124,8 +134,10 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         partition_id = extract_partition_id(refs)
 
         schema = refs.schema
-        if isinstance(schema, pa.Schema) and not any(
-            (m.num_rows or 0) for m in refs.metadata
+        if (
+            self._fused_output_map_transformer is None
+            and isinstance(schema, pa.Schema)
+            and not any((m.num_rows or 0) for m in refs.metadata)
         ):
             self._emit_empty_partition(refs, schema)
             return
@@ -151,14 +163,28 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             if self._disallow_block_splitting
             else self.data_context.target_max_block_size
         )
+
+        map_task_context = None
+        if self._fused_output_map_transformer is not None:
+            map_task_context = TaskContext(
+                task_idx=partition_id,
+                op_name=self.name,
+                target_max_block_size_override=(
+                    self._fused_output_map_target_max_block_size_override
+                ),
+            )
+            map_task_context.kwargs.update(self._fused_output_map_task_kwargs)
+
         block_gen = _shuffle_reduce_task.options(**reduce_options).remote(
             shard_refs,  # pyrefly: ignore[bad-argument-type]
             partition_id,
             self._reduce_fn,
             target_max_block_size,
-            self._streaming_reduce,
             self.data_context.hash_shuffle_reduce_batch_size,
             self.data_context.hash_shuffle_reduce_get_timeout_s,
+            self._fused_output_map_transformer,
+            map_task_context,
+            self.data_context,
         )
 
         data_task = DataOpTask(
