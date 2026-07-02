@@ -157,6 +157,7 @@ class ServeController:
         http_options: HTTPOptions,
         global_logging_config: LoggingConfig,
         grpc_options: Optional[gRPCOptions] = None,
+        proxy_location: Optional[ProxyLocation] = None,
     ):
         if RAY_SERVE_THROUGHPUT_OPTIMIZED:
             self._log_throughput_opt_message()
@@ -219,7 +220,8 @@ class ServeController:
                 "Direct ingress is enabled in ServeController, enabling proxy "
                 "on head node only."
             )
-            http_options.location = ProxyLocation.HeadOnly
+            proxy_location = ProxyLocation.HeadOnly
+            http_options = http_options.model_copy(update={"location": None})
 
         # Configure proxy default HTTP and gRPC options.
         self.proxy_state_manager = ProxyStateManager(
@@ -228,6 +230,7 @@ class ServeController:
             cluster_node_info_cache=self.cluster_node_info_cache,
             logging_config=self.global_logging_config,
             grpc_options=set_proxy_default_grpc_options(grpc_options),
+            proxy_location=proxy_location,
             proxy_actor_class=HAProxyManager if self._ha_proxy_enabled else ProxyActor,
             running_native_proxies=self._ha_proxy_enabled,
         )
@@ -1371,7 +1374,11 @@ class ServeController:
         return ServeInstanceDetails(
             target_capacity=self._target_capacity,
             controller_info=self._actor_details,
-            proxy_location=http_config.location,
+            proxy_location=(
+                self.proxy_state_manager.get_proxy_location()
+                if self.proxy_state_manager
+                else None
+            ),
             http_options=http_options,
             grpc_options=grpc_options,
             proxies=(
