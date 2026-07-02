@@ -1862,6 +1862,41 @@ class TestChooseReplica:
         [{"enable_queue_len_cache": True}],
         indirect=True,
     )
+    async def test_choose_replica_bounds_retries_on_repeated_rejection(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """When a replica keeps rejecting reservations, the router should raise
+        BackPressureError after max_request_retries instead of retrying forever."""
+        router, fake_request_router = setup_router
+        router._max_request_retries = 2
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        r1 = FakeReplica(r1_id)
+        r1._reject_reservation = True
+        # Both the initial and retry picks return the same always-rejecting replica,
+        # so no reservation ever succeeds and the retry counter drives the outcome.
+        fake_request_router.set_replica_to_return(r1)
+        fake_request_router.set_replica_to_return_on_retry(r1)
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        async def _enter():
+            async with router.choose_replica(request_metadata):
+                pass
+
+        with pytest.raises(BackPressureError):
+            await asyncio.wait_for(_enter(), timeout=5)
+
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"enable_queue_len_cache": True}],
+        indirect=True,
+    )
     async def test_concurrent_choose_replica_updates_cache(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):
