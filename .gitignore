@@ -158,6 +158,7 @@ python-driver-*
 # Ray Train unit test artifacts
 lightning_logs/
 hf-internal-testing/
+mlflow.db
 
 # Vscode
 .vscode/
