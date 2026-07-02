@@ -1,22 +1,12 @@
 build_arg_sets:
   cpu:
-    PYTHON_VERSION: py314
-    PYTHON_VERSION_STR: "3.14"
+    PYTHON_VERSION: py312
+    PYTHON_VERSION_STR: "3.12"
     CUDA_CODE: cpu
-    TORCH_CUDA_CODE: cpu
   cu130:
-    PYTHON_VERSION: py314
-    PYTHON_VERSION_STR: "3.14"
-    # The py3.14 LLM image is built on the CUDA 13.0 base container to match
-    # torch 2.11.0+cu130 and vLLM 0.22.0 / flashinfer-python 0.6.11.post2,
-    # which ship CUDA-13 wheels (their compiled extensions, e.g. vllm._C, link
-    # libcudart.so.13). Resolving the torch family from the cu130 index keeps
-    # the whole stack on CUDA 13: torch brings the matching libcudart, and the
-    # from-source EP kernels in docker/ray-llm/Dockerfile compile against the
-    # cu13.0.0 base's nvcc (a cu12.8 base aborts with a torch/nvcc CUDA-major
-    # mismatch).
+    PYTHON_VERSION: py312
+    PYTHON_VERSION_STR: "3.12"
     CUDA_CODE: cu130
-    TORCH_CUDA_CODE: cu130
 
 
 .common_settings: &common_settings
@@ -26,16 +16,13 @@ build_arg_sets:
     # Omit the nixl-cu12 binary wheel from the compiled lockfiles. nixl-cu12
     # and nixl-cu13 1.x wheels both install a top-level nixl_ep/ package with
     # an identically named nixl_ep_cpp.so but different libcudart
-    # requirements. The torch family is resolved from the cu130 index, so the
-    # image only provides libcudart.so.13; nixl-cu13 is the pinned binary (its
-    # nixl_ep_cpp.so links libcudart.so.13) and nixl-cu12 is excluded so the
-    # cuda12 wheel can't win the file race and break vLLM's eager
-    # `import nixl_ep` with `ImportError: libcudart.so.12`. The nixl
-    # meta-package (pure Python) is still required so examples like
+    # requirements; if both wheels are present the cu12 binary wins the file
+    # race and breaks vLLM's eager `import nixl_ep` on the cu130 image. The
+    # nixl meta-package (pure Python) is still required so that examples like
     # dp_pd_example can `import nixl` to gate optional features.
     - --unsafe-package nixl-cu12
     - --python-platform=x86_64-manylinux_2_31
-    - --index https://download.pytorch.org/whl/${TORCH_CUDA_CODE}
+    - --index https://download.pytorch.org/whl/${CUDA_CODE}
   build_arg_sets:
     - cpu
     - cu130
@@ -51,10 +38,10 @@ depsets:
       - python/requirements/cloud-requirements.txt
       - python/requirements/base-test-requirements.txt
     constraints:
-      - /tmp/ray-deps/requirements_compiled_py3.14.txt
+      - /tmp/ray-deps/requirements_compiled_py3.13.txt
     output: python/deplocks/llm/ray_test_${PYTHON_VERSION}_${CUDA_CODE}.lock
     pre_hooks:
-      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.14
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
 
 # Second, expand it into LLM test dependencies.
   - name: compiled_ray_llm_test_depset_${PYTHON_VERSION}_${CUDA_CODE}

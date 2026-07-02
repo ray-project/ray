@@ -129,7 +129,6 @@ depsets:
     build_arg_sets:
       - py311_cu128
       - py312_cu130
-      - py314_cu130
 
   - name: ray_base_extra_testdeps_gpu_${PYTHON_SHORT}
     operation: expand
