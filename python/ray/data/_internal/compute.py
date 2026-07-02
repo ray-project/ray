@@ -1,26 +1,9 @@
 import logging
-from typing import Any, Callable, Iterable, Optional, TypeVar, Union
+from typing import Any, Optional, Union
 
-from ray.data._internal.execution.interfaces import TaskContext
-from ray.data.block import Block, UserDefinedFunction
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__name__)
-
-T = TypeVar("T")
-U = TypeVar("U")
-
-
-# Block transform function applied by task and actor pools.
-BlockTransform = Union[
-    # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constrain block
-    # transform type.
-    # Callable[[Block, ...], Iterable[Block]]
-    # Callable[[Block, UserDefinedFunction, ...], Iterable[Block]],
-    Callable[[Iterable[Block], TaskContext], Iterable[Block]],
-    Callable[[Iterable[Block], TaskContext, UserDefinedFunction], Iterable[Block]],
-    Callable[..., Iterable[Block]],
-]
 
 
 @DeveloperAPI
