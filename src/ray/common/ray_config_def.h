@@ -937,6 +937,29 @@ RAY_CONFIG(std::string, REDIS_CLIENT_CERT, "")
 RAY_CONFIG(std::string, REDIS_CLIENT_KEY, "")
 RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
 
+/// Authentication mode for the external Redis backing GCS fault tolerance.
+/// "" / "static" (default) uses the static username/password (RAY_REDIS_PASSWORD
+/// and/or --redis_username/--redis_password). "entra" uses Microsoft Entra ID
+/// (Azure AD) token auth: a short-lived OAuth access token obtained through the
+/// Azure Identity SDK is used as the Redis credential and is refreshed (and
+/// re-AUTHed) before it expires. The token-acquisition flow (system- or
+/// user-assigned managed identity, workload identity federation, environment
+/// credentials, ...) is selected by the SDK from the standard AZURE_*
+/// environment variables (and REDIS_ENTRA_CLIENT_ID, below).
+RAY_CONFIG(std::string, REDIS_AUTH_MODE, "")
+/// The Entra resource/audience to request the token for. For Azure Cache for
+/// Redis / Azure Managed Redis this is "https://redis.azure.com/".
+RAY_CONFIG(std::string, REDIS_ENTRA_RESOURCE, "https://redis.azure.com/")
+/// Optional client id of a user-assigned managed identity. When set, that
+/// user-assigned managed identity is used explicitly; when empty the SDK's
+/// DefaultAzureCredential chain selects the credential.
+RAY_CONFIG(std::string, REDIS_ENTRA_CLIENT_ID, "")
+/// How long before token expiry to proactively refresh and re-AUTH, in seconds.
+RAY_CONFIG(int64_t, redis_entra_token_refresh_buffer_seconds, 300)
+/// How often the background loop checks whether the Redis token needs to be
+/// refreshed and re-applied, in milliseconds.
+RAY_CONFIG(int64_t, redis_token_refresh_interval_ms, 60000)
+
 /// grpc delay testing flags
 ///  To use this,
 ///      export RAY_testing_asio_delay_us="method1=min_val:max_val,method2=20:100"

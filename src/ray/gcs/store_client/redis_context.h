@@ -23,8 +23,10 @@
 #include <vector>
 
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/status.h"
 #include "ray/gcs/store_client/redis_async_context.h"
+#include "ray/gcs/store_client/redis_auth_provider.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/tag_defs.h"
 #include "ray/util/clock.h"
@@ -157,6 +159,12 @@ class RedisContext {
   /// Disconnect from the server.
   void Disconnect();
 
+  /// If the configured auth provider issues credentials that expire (e.g.
+  /// Microsoft Entra ID tokens), start a background timer that refreshes the
+  /// credential and re-`AUTH`s the live connection before expiry. No-op for
+  /// static credentials. Must be called after `Connect` succeeds.
+  void StartTokenRefresh();
+
   /// Run an arbitrary Redis command without a callback.
   ///
   /// \param args The vector of command args to pass to Redis.
@@ -192,6 +200,14 @@ class RedisContext {
                              bool enable_ssl,
                              const std::string &redis_address);
 
+  /// Lazily builds `auth_provider_` (once) based on RayConfig's REDIS_AUTH_MODE
+  /// and the static username/password passed to `Connect`.
+  void EnsureAuthProvider(const std::string &username, const std::string &password);
+
+  /// Fetches the current credentials and, if the password changed since it was
+  /// last applied, re-`AUTH`s both the sync and async connections.
+  void RefreshAndReauthenticate();
+
   instrumented_io_context &io_service_;
   ClockInterface &clock_;
 
@@ -199,6 +215,13 @@ class RedisContext {
   redisSSLContext *ssl_context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
   int64_t redis_db_probe_timeout_milliseconds_;
+
+  /// Source of Redis AUTH credentials (static password or refreshable token).
+  std::shared_ptr<RedisAuthProvider> auth_provider_;
+  /// The password most recently applied via AUTH, to avoid redundant re-AUTHs.
+  std::string last_applied_password_;
+  /// Drives periodic token refresh; only created for refreshable providers.
+  std::shared_ptr<PeriodicalRunner> token_refresh_runner_;
 };
 
 }  // namespace ray::gcs
