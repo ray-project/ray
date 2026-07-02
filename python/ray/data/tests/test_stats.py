@@ -204,7 +204,9 @@ def test_map_transformer_custom_op_stats():
     transformer = MapTransformer(
         [
             BlockMapTransformFn(
-                set_stats, disable_block_shaping=True, reports_custom_op_stats=True
+                set_stats,
+                disable_block_shaping=True,
+                should_report_custom_op_stats=True,
             )
         ]
     )
@@ -254,7 +256,9 @@ def test_map_task_carries_custom_op_stats_to_block_metadata(ray_start_regular_sh
     transformer = MapTransformer(
         [
             BlockMapTransformFn(
-                set_stats, disable_block_shaping=True, reports_custom_op_stats=True
+                set_stats,
+                disable_block_shaping=True,
+                should_report_custom_op_stats=True,
             )
         ]
     )
@@ -293,7 +297,9 @@ def test_custom_op_stats_survives_operator_fusion(ray_start_regular_shared):
     upstream = MapTransformer(
         [
             BlockMapTransformFn(
-                report_stats, disable_block_shaping=True, reports_custom_op_stats=True
+                report_stats,
+                disable_block_shaping=True,
+                should_report_custom_op_stats=True,
             )
         ]
     )
