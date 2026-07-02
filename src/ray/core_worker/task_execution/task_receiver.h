@@ -106,15 +106,15 @@ class TaskReceiver {
  private:
   /// Set up the configs for an actor.
   /// This should be called once for the actor creation task.
-  void SetupActor(bool is_asyncio,
-                  int fiber_max_concurrency,
-                  bool allow_out_of_order_execution);
+  void SetupActor(const TaskSpecification &task_spec);
 
-  void HandleTaskExecutionResult(Status status,
-                                 const TaskSpecification &task_spec,
-                                 const TaskExecutionResult &result,
-                                 const rpc::SendReplyCallback &send_reply_callback,
-                                 rpc::PushTaskReply *reply);
+  /// Populate `reply` from a completed task execution's `status` and `result`, then
+  /// invoke `send_reply_callback`.
+  static void HandleTaskExecutionResult(Status status,
+                                        const TaskSpecification &task_spec,
+                                        const TaskExecutionResult &result,
+                                        const rpc::SendReplyCallback &send_reply_callback,
+                                        rpc::PushTaskReply *reply);
 
   /// Execute a task that was queued for execution. Invoked by the execution queues via
   /// `execute_task_callback_`. Reads all per-request state from `task`.
