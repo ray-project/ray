@@ -329,7 +329,24 @@ def test_custom_decoder_bypasses_unsafe_guard(ray_start_2_cpus, tmp_path):
     assert rows[0]["pkl"] == {"key": "value"}
 
 
+def test_webdataset_verbose_open_logging(ray_start_2_cpus, tmp_path, capsys):
+    path = os.path.join(tmp_path, "bar_000000.tar")
+    with TarWriter(path) as tf:
+        for i in range(5):
+            tf.write(f"{i}.a", str(i).encode("utf-8"))
+    
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)], verbose_open=True)
+    samples = ds.take_all()
+    assert len(samples) == 5
+
+    # Check that start and done messages are logged to stderr
+    captured = capsys.readouterr()
+    assert "start" in captured.err or "start" in captured.out, captured.err
+    assert "done" in captured.err or "done" in captured.out, captured.err
+
+
 if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+
