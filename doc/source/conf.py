@@ -1101,7 +1101,7 @@ intersphinx_mapping = {
         "https://github.com/ray-project/pandas/releases/download/object-mirror-0.1.0/objects.inv",
     ),
     "pyarrow": ("https://arrow.apache.org/docs", None),
-    "pydantic": ("https://docs.pydantic.dev/latest/", None),
+    "pydantic": ("https://pydantic.dev/docs/validation/latest/", None),
     "pymongoarrow": ("https://mongo-arrow.readthedocs.io/en/latest/", None),
     "pyspark": ("https://spark.apache.org/docs/latest/api/python/", None),
     "python": ("https://docs.python.org/3", None),
@@ -1119,7 +1119,7 @@ intersphinx_mapping = {
         "https://docs.pytorch.org/docs/stable/",
         "https://docs.pytorch.org/docs/2.7/objects.inv",
     ),
-    "torchvision": ("https://pytorch.org/vision/stable/", None),
+    "torchvision": ("https://docs.pytorch.org/vision/stable/", None),
     "transformers": ("https://huggingface.co/docs/transformers/main/en/", None),
 }
 
