@@ -40,7 +40,7 @@ it raises an exception with one of the following error messages (which indicates
 
 .. code-block:: bash
 
-  Worker exit type: UNEXPECTED_SY STEM_EXIT Worker exit detail: Worker unexpectedly exits with a connection error code 2. End of file. There are some potential root causes. (1) The process is killed by SIGKILL by OOM killer due to high memory usage. (2) ray stop --force is called. (3) The worker is crashed unexpectedly due to SIGSEGV or other unexpected errors.
+  Worker exit type: UNEXPECTED_SYSTEM_EXIT Worker exit detail: Worker unexpectedly exits with a connection error code 2. End of file. There are some potential root causes. (1) The process is killed by SIGKILL by OOM killer due to high memory usage. (2) ray stop --force is called. (3) The worker is crashed unexpectedly due to SIGSEGV or other unexpected errors.
 
 .. code-block:: bash
 
@@ -55,7 +55,25 @@ If Ray's memory monitor kills the worker, it is automatically retried (see the :
 If Tasks or Actors cannot be retried, they raise an exception with 
 a much cleaner error message when you call ``ray.get`` to it.
 
+As mentioned above, having the Linux OOM killer trigger before the Ray OOM killer is undesirable.
+In Ray 2.56 and above, enable resource isolation mode by passing ``--enable-resource-isolation`` when starting Ray
+to ensure that the Ray OOM killer triggers before the Linux OOM killer.
+
+It's still possible for Linux OOM kills to occur if the system overhead consumes more memory than
+what's reserved for it (the default is 10%, with a minimum of 500 MB and a maximum of 10 GB).
+Ray logs something similar to the following example if it detects this scenario.
+
 .. code-block:: bash
+
+  System slice memory usage 10869600256 bytes has exceeded the reserved system memory of 10737418240 bytes. This can prevent Ray from being able to provide the proper protection to critical system processes and can lead to node deaths and significant loss of progress. Please consider passing a system reserved memory value that is higher than the current system slice memory usage via the --system-reserved-memory flag when starting the raylet.
+
+When you see a kernel OOM or this log message with resource isolation enabled, try increasing the memory reserved for system processes
+by setting a higher value than the reported system slice memory usage for the ``--system-reserved-memory`` flag when starting Ray. 
+Try to allocate at least a GiB (depending on host size) of buffer space between the reported/expected system slice memory usage and the system reserved memory.
+
+.. note::
+
+  To enable resource isolation, complete the prerequisite steps in :ref:`How to Enable Cgroup v2 for Resource Isolation <enable-cgroupv2>`.
 
   ray.exceptions.OutOfMemoryError: Task was killed due to the node running low on memory.
 

@@ -3074,18 +3074,20 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
               MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
                   MemoryMonitorInterface::kDefaultCgroupPath);
           if (initial_config_.enable_resource_isolation) {
-            StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound>
-                user_slice_memory_snapshot_or =
-                    MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
+            StatusSetOr<std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>,
+                        StatusT::NotFound>
+                user_and_system_slice_memory_snapshot_or =
+                    MemoryMonitorUtils::TakeUserAndSystemSliceMemoryUsageSnapshot(
                         cgroup_manager_->GetUserCgroupPath(),
                         cgroup_manager_->GetSystemCgroupPath());
-            if (user_slice_memory_snapshot_or.has_value()) {
-              memory_usage_snapshot = user_slice_memory_snapshot_or.value();
+            if (user_and_system_slice_memory_snapshot_or.has_value()) {
+              memory_usage_snapshot =
+                  user_and_system_slice_memory_snapshot_or.value().first;
             } else {
               RAY_LOG(ERROR) << absl::StrFormat(
-                  "Failed to take user slice memory snapshot due to: %s. "
+                  "Failed to take user and system slice memory snapshot due to: %s. "
                   "Falling back to host system memory snapshot.",
-                  user_slice_memory_snapshot_or.message());
+                  user_and_system_slice_memory_snapshot_or.message());
             }
           }
 
