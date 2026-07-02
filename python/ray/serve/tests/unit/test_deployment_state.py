@@ -389,6 +389,16 @@ class TestDeploymentActorContainer:
         assert c.count(code_version="v2") == 1
         assert c.count(code_version="v3") == 0
 
+    def test_is_empty(self):
+        dep_id = DeploymentID(name="test", app_name="app")
+        c = DeploymentActorContainer(dep_id)
+        assert c.is_empty()
+        w = _mock_deployment_actor_wrapper(dep_id, "v1", "actor_a")
+        c.add(DeploymentActorState.STARTING, w)
+        assert not c.is_empty()
+        c.pop()  # remove all tracked actors
+        assert c.is_empty()
+
     def test_add_moves_existing(self):
         """Adding same (code_version, name) moves from old state to new."""
         dep_id = DeploymentID(name="test", app_name="app")
