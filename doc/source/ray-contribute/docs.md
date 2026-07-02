@@ -180,6 +180,16 @@ If you want to change the content of the API documentation, you will have to edi
 
 To show the usage of APIs, it is important to have small usage examples embedded in the API documentation. These should be self-contained and run out of the box, so a user can copy and paste them into a Python interpreter and play around with them (e.g., if applicable, they should point to example data). Users often rely on these examples to build their applications. To learn more about writing examples, read [How to write code snippets](writing-code-snippets).
 
+(api-ref-build-behavior)=
+
+### How the docs build renders your API signatures
+
+The API reference is generated from your source code: autodoc imports the module to read its signatures and docstrings. Two build behaviors affect what you write in code, even if you never build the docs yourself.
+
+**Heavy dependencies are mocked, so keep your imports safe.** The docs build installs only a light dependency set, not Ray's full runtime. Heavy or optional libraries such as `torch`, `tensorflow`, and `pandas` are replaced by mock objects, listed in `autodoc_mock_imports` in `doc/source/conf.py`, so autodoc can import your module without importing those libraries. If your module imports a heavy dependency at import time and that library isn't mocked, the API-ref build fails. A mock can also stand in for an object incorrectly and abort the whole module import, which surfaces as a confusing, unrelated error. To avoid both, import heavy dependencies lazily inside the function or method that needs them rather than at module top level. If you add a public API that puts a new heavy dependency in a signature, add that library to `autodoc_mock_imports`.
+
+**Type annotations link to external docs through intersphinx.** When a public signature is annotated with a type from an external library, such as `numpy.ndarray` or `torch.Tensor`, the build turns it into a link to that library's own documentation using the `intersphinx_mapping` in `doc/source/conf.py`. The link resolves only if the library is in that mapping. If you add a public API whose signature references a new external library and you want its types linked, add the library to `intersphinx_mapping` (and, per the point above, usually to `autodoc_mock_imports` too). Annotations that don't resolve render as plain text; they don't fail the build.
+
 ## Adding code to an `.rST` or `.md` file
 
 Modifying text in an existing documentation file is easy, but you need to be careful when it comes to adding code. The reason is that we want to ensure every code snippet on our documentation is tested. This requires us to have a process for including and testing code snippets in documents. To learn how to write testable code snippets, read [How to write code snippets](writing-code-snippets).
