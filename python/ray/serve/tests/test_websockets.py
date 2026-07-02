@@ -11,6 +11,7 @@ from websockets.sync.client import connect
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.constants import RAY_SERVE_ENABLE_DIRECT_INGRESS
 from ray.serve._private.test_utils import get_application_url, get_metric_dictionaries
 
 
@@ -76,6 +77,10 @@ def test_client_disconnect(serve_instance):
     wait_response.result()
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    reason="Direct ingress (and HAProxy, which enables it) bypasses the Python proxy where this disconnect accounting lives.",
+)
 def test_client_disconnect_records_request_metric(serve_instance):
     """Test that a mid-stream WebSocket client disconnect is still counted in request metrics."""
     app = FastAPI()
