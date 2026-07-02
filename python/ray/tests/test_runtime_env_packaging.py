@@ -1,3 +1,4 @@
+import hashlib
 import io
 import os
 import random
@@ -665,21 +666,48 @@ class TestUnzipPackage:
             assert Path(archive_path).is_file()
 
 
+def _sha1_hex(s: str) -> str:
+    return hashlib.sha1(s.encode("utf-8")).hexdigest()
+
+
 class TestParseUri:
     @pytest.mark.parametrize(
         "parsing_tuple",
         [
+            # GCS stays in the netloc-only branch (unchanged behavior).
             ("gcs://file.zip", Protocol.GCS, "file.zip"),
-            ("s3://bucket/file.zip", Protocol.S3, "s3_bucket_file.zip"),
-            ("http://test.com/file.zip", Protocol.HTTP, "http_test_com_file.zip"),
-            ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),
-            ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip"),
-            ("azure://container/file.zip", Protocol.AZURE, "azure_container_file.zip"),
+            # Remote (non-.whl) URIs are always hashed.
+            (
+                "s3://bucket/file.zip",
+                Protocol.S3,
+                f"s3_{_sha1_hex('s3://bucket/file.zip')}.zip",
+            ),
+            (
+                "http://test.com/file.zip",
+                Protocol.HTTP,
+                f"http_{_sha1_hex('http://test.com/file.zip')}.zip",
+            ),
+            (
+                "https://test.com/file.zip",
+                Protocol.HTTPS,
+                f"https_{_sha1_hex('https://test.com/file.zip')}.zip",
+            ),
+            (
+                "gs://bucket/file.zip",
+                Protocol.GS,
+                f"gs_{_sha1_hex('gs://bucket/file.zip')}.zip",
+            ),
+            (
+                "azure://container/file.zip",
+                Protocol.AZURE,
+                f"azure_{_sha1_hex('azure://container/file.zip')}.zip",
+            ),
             (
                 "abfss://container@account.dfs.core.windows.net/file.zip",
                 Protocol.ABFSS,
-                "abfss_container_account_dfs_core_windows_net_file.zip",
+                f"abfss_{_sha1_hex('abfss://container@account.dfs.core.windows.net/file.zip')}.zip",
             ),
+            # .whl URIs bypass the hash path (PEP 427 — names must round-trip).
             (
                 "https://test.com/package-0.0.1-py2.py3-none-any.whl?param=value",
                 Protocol.HTTPS,
@@ -704,17 +732,14 @@ class TestParseUri:
         [
             (
                 "https://username:PAT@github.com/repo/archive/commit_hash.zip",
-                "https_username_PAT_github_com_repo_archive_commit_hash.zip",
+                f"https_{_sha1_hex('https://username:PAT@github.com/repo/archive/commit_hash.zip')}.zip",
             ),
             (
                 (
                     "https://un:pwd@gitlab.com/user/repo/-/"
                     "archive/commit_hash/repo-commit_hash.zip"
                 ),
-                (
-                    "https_un_pwd_gitlab_com_user_repo_-_"
-                    "archive_commit_hash_repo-commit_hash.zip"
-                ),
+                f"https_{_sha1_hex('https://un:pwd@gitlab.com/user/repo/-/archive/commit_hash/repo-commit_hash.zip')}.zip",
             ),
         ],
     )
@@ -730,37 +755,37 @@ class TestParseUri:
             (
                 "https://username:PAT@github.com/repo/archive:2/commit_hash.zip",
                 Protocol.HTTPS,
-                "https_username_PAT_github_com_repo_archive_2_commit_hash.zip",
+                f"https_{_sha1_hex('https://username:PAT@github.com/repo/archive:2/commit_hash.zip')}.zip",
             ),
             (
                 "gs://fake/2022-10-21T13:11:35+00:00/package.zip",
                 Protocol.GS,
-                "gs_fake_2022-10-21T13_11_35_00_00_package.zip",
+                f"gs_{_sha1_hex('gs://fake/2022-10-21T13:11:35+00:00/package.zip')}.zip",
             ),
             (
                 "s3://fake/2022-10-21T13:11:35+00:00/package.zip",
                 Protocol.S3,
-                "s3_fake_2022-10-21T13_11_35_00_00_package.zip",
+                f"s3_{_sha1_hex('s3://fake/2022-10-21T13:11:35+00:00/package.zip')}.zip",
             ),
             (
                 "azure://fake/2022-10-21T13:11:35+00:00/package.zip",
                 Protocol.AZURE,
-                "azure_fake_2022-10-21T13_11_35_00_00_package.zip",
+                f"azure_{_sha1_hex('azure://fake/2022-10-21T13:11:35+00:00/package.zip')}.zip",
             ),
             (
                 "abfss://container@account.dfs.core.windows.net/2022-10-21T13:11:35+00:00/package.zip",
                 Protocol.ABFSS,
-                "abfss_container_account_dfs_core_windows_net_2022-10-21T13_11_35_00_00_package.zip",
+                f"abfss_{_sha1_hex('abfss://container@account.dfs.core.windows.net/2022-10-21T13:11:35+00:00/package.zip')}.zip",
             ),
             (
                 "file:///fake/2022-10-21T13:11:35+00:00/package.zip",
                 Protocol.FILE,
-                "file__fake_2022-10-21T13_11_35_00_00_package.zip",
+                f"file_{_sha1_hex('file:///fake/2022-10-21T13:11:35+00:00/package.zip')}.zip",
             ),
             (
                 "file:///fake/2022-10-21T13:11:35+00:00/(package).zip",
                 Protocol.FILE,
-                "file__fake_2022-10-21T13_11_35_00_00__package_.zip",
+                f"file_{_sha1_hex('file:///fake/2022-10-21T13:11:35+00:00/(package).zip')}.zip",
             ),
         ],
     )
@@ -820,6 +845,29 @@ class TestParseUri:
         protocol, package_name = parse_uri(gcs_uri)
         assert protocol == Protocol.GCS
         assert package_name == gcs_uri.split("/")[-1]
+
+    def test_parse_uri_remote_is_stable(self):
+        """Remote URIs must map deterministically to the same package_name;
+        otherwise concurrent workers would acquire different file locks for
+        the same package."""
+        uri = "s3://bucket/some/path/pkg.zip"
+        _, name_first = parse_uri(uri)
+        _, name_second = parse_uri(uri)
+        assert name_first == name_second
+
+    def test_parse_uri_remote_paths_are_unique(self):
+        """Distinct remote URIs must not collide on the same package_name."""
+        _, name_a = parse_uri("s3://bucket/a.zip")
+        _, name_b = parse_uri("s3://bucket/b.zip")
+        assert name_a != name_b
+
+    @pytest.mark.parametrize("ext", [".tar.gz", ".tar.bz2"])
+    def test_parse_uri_remote_preserves_compound_extension(self, ext):
+        """Compound extensions are kept intact so downstream archive-type
+        detection (.tar.gz / .tar.bz2 handling in download_and_unpack_package)
+        keeps working after the URI has been hashed."""
+        _, name = parse_uri(f"s3://bucket/package{ext}")
+        assert name.endswith(ext)
 
 
 class TestAbfssProtocol:

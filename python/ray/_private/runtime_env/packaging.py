@@ -260,9 +260,6 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     Note that the output of this function is not for handling actual IO, it's
     only for setting up local directory folders by using package name as path.
 
-    >>> parse_uri("https://test.com/file.zip")
-    (<Protocol.HTTPS: 'https'>, 'https_test_com_file.zip')
-
     >>> parse_uri("https://test.com/file.whl")
     (<Protocol.HTTPS: 'https'>, 'file.whl')
 
@@ -286,30 +283,19 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             # for more information.
             package_name = uri.path.split("/")[-1]
         else:
-            package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
-
-            disallowed_chars = ["/", ":", "@", "+", " ", "(", ")"]
-            for disallowed_char in disallowed_chars:
-                package_name = package_name.replace(disallowed_char, "_")
-
-            # Preserve compound extensions like .tar.gz before replacing dots
-            compound_ext = None
-            if package_name.endswith(".tar.gz"):
-                compound_ext = ".tar.gz"
-                package_name = package_name[: -len(".tar.gz")]
-            elif package_name.endswith(".tar.bz2"):
-                compound_ext = ".tar.bz2"
-                package_name = package_name[: -len(".tar.bz2")]
-
-            if compound_ext:
-                package_name = package_name.replace(".", "_")
-                package_name += compound_ext
+            # Hash the URI to produce a stable, NAME_MAX-safe local filename
+            # regardless of how long or deeply nested the URI is. The extension
+            # is preserved so is_zip_uri / is_jar_uri keep working. Compound
+            # extensions (.tar.gz, .tar.bz2) are kept intact so archive-type
+            # detection downstream still works.
+            if uri.path.endswith(".tar.gz"):
+                suffix = ".tar.gz"
+            elif uri.path.endswith(".tar.bz2"):
+                suffix = ".tar.bz2"
             else:
-                # Remove all periods except the last, which is part of the
-                # file extension
-                package_name = package_name.replace(
-                    ".", "_", package_name.count(".") - 1
-                )
+                suffix = Path(uri.path).suffix
+            digest = hashlib.sha1(pkg_uri.encode("utf-8")).hexdigest()
+            package_name = f"{protocol.value}_{digest}{suffix}"
     else:
         package_name = uri.netloc
     return (protocol, package_name)
