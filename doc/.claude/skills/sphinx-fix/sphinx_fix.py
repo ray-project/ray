@@ -375,6 +375,11 @@ def is_noise(line: str) -> bool:
     """True for python-logging lines and JSON log records (not Sphinx warnings)."""
     if "\tWARNING " in line or "\tERROR " in line:
         return True
+    # urllib3 retry chatter from the pip-install phase. Sphinx never emits
+    # "Retrying (Retry(", so that signature alone is enough -- and it also catches
+    # read-timeout/status retries that lack the "after connection broken" wording.
+    if "Retrying (Retry(" in line:
+        return True
     s = line.strip()
     return s.startswith("{") and '"levelname"' in s
 
