@@ -1,3 +1,5 @@
+import asyncio
+import json
 import sys
 
 import pytest
@@ -14,7 +16,10 @@ from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     HardwareUsage,
     _get_or_create_telemetry_agent,
     _retry_get_telemetry_agent,
+    classify_start_failure,
+    exception_type,
     push_telemetry_report_for_all_models,
+    root_exception_type,
 )
 
 
@@ -117,6 +122,31 @@ def test_push_telemetry_report_for_all_models(disable_placement_bundles):
         get_hardware_fn=fake_get_gpu_type,
     )
 
+    # All five models use engine defaults, so each gets the same config object.
+    default_engine_config = json.dumps(
+        [
+            {
+                "quantization": "none",
+                "dtype": "auto",
+                "max_model_len": 0,
+                "prefix_caching": "default",
+                "chunked_prefill": "default",
+                "kv_cache_dtype": "auto",
+                "speculative_decoding": "off",
+                "enforce_eager": "default",
+                "pipeline_parallel": 1,
+                "accelerator_kind": "gpu",
+                "log_engine_metrics": "on",
+                "distributed_executor_backend": "default",
+                "load_format": "auto",
+                "multimodal": "0",
+                "set_engine_kwargs": [],
+            }
+        ]
+        * 5,
+        separators=(",", ":"),
+    )
+
     # Ensure that the telemetry is correct after pushing the reports.
     telemetry = ray.get(recorder.telemetry.remote())
     assert telemetry == {
@@ -132,6 +162,11 @@ def test_push_telemetry_report_for_all_models(disable_placement_bundles):
         TagKey.LLM_SERVE_MODELS: "llm_model_arch,llm_config_autoscale_model_arch,llm_config_json_model_arch,llm_config_lora_model_arch,llm_config_no_accelerator_type_arch",
         TagKey.LLM_SERVE_GPU_TYPE: "L4,A10G,A10G,A10G,L40S",
         TagKey.LLM_SERVE_NUM_GPUS: "1,1,1,1,1",
+        TagKey.LLM_SERVE_DEPLOY_OUTCOME: "success,success,success,success,success",
+        TagKey.LLM_SERVE_SERVING_PATTERN: "default,default,default,default,default",
+        TagKey.LLM_SERVE_ENGINE_CONFIG: default_engine_config,
+        # All deploys succeeded, so each failure object is empty.
+        TagKey.LLM_SERVE_DEPLOY_FAILURE: "[{},{},{},{},{}]",
     }
 
 
@@ -295,6 +330,241 @@ def test_telemetry_reports_auto_num_replicas(disable_placement_bundles):
     # Recorded as autoscaling with an integer replica count (not the string "auto").
     assert telemetry[TagKey.LLM_SERVE_AUTOSCALING_ENABLED_MODELS] == "auto_arch"
     assert telemetry[TagKey.LLM_SERVE_NUM_REPLICAS].isdigit()
+
+
+def test_deploy_outcome_and_engine_facts(disable_placement_bundles):
+    """Non-default deploy_outcome / serving_pattern (flat) and the bundled
+    engine-config JSON are recorded."""
+    recorder = TelemetryRecorder.remote()
+
+    def record_tag_func(key, value):
+        ray.get(recorder.record.remote(key, value))
+
+    telemetry_agent = _get_or_create_telemetry_agent()
+    telemetry_agent._reset_models.remote()
+    telemetry_agent._update_record_tag_func.remote(record_tag_func)
+
+    config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="facts_model"),
+        llm_engine=LLMEngine.vLLM,
+        accelerator_type="L4",
+        engine_kwargs=dict(
+            quantization="fp8",
+            dtype="bfloat16",
+            max_model_len=8192,
+            enable_prefix_caching=True,
+            enforce_eager=False,
+            kv_cache_dtype="fp8",
+            pipeline_parallel_size=2,
+            distributed_executor_backend="ray",
+            load_format="runai_streamer",
+        ),
+    )
+    config._set_model_architecture(model_architecture="facts_arch")
+
+    push_telemetry_report_for_all_models(
+        all_models=[config],
+        get_hardware_fn=lambda *a, **k: ["L4"],
+        deploy_outcome="oom",
+        serving_pattern="pd",
+    )
+
+    telemetry = ray.get(recorder.telemetry.remote())
+    assert telemetry[TagKey.LLM_SERVE_DEPLOY_OUTCOME] == "oom"
+    assert telemetry[TagKey.LLM_SERVE_SERVING_PATTERN] == "pd"
+
+    (engine_config,) = json.loads(telemetry[TagKey.LLM_SERVE_ENGINE_CONFIG])
+    assert engine_config == {
+        "quantization": "fp8",
+        "dtype": "bfloat16",
+        "max_model_len": 8192,
+        "prefix_caching": "on",
+        "chunked_prefill": "default",
+        "kv_cache_dtype": "fp8",
+        "speculative_decoding": "off",
+        "enforce_eager": "off",
+        "pipeline_parallel": 2,
+        "accelerator_kind": "gpu",
+        "log_engine_metrics": "on",
+        "distributed_executor_backend": "ray",
+        "load_format": "runai_streamer",
+        "multimodal": "0",
+        "set_engine_kwargs": sorted(
+            [
+                "quantization",
+                "dtype",
+                "max_model_len",
+                "enable_prefix_caching",
+                "enforce_eager",
+                "kv_cache_dtype",
+                "pipeline_parallel_size",
+                "distributed_executor_backend",
+                "load_format",
+            ]
+        ),
+    }
+
+
+class OutOfMemoryError(RuntimeError):
+    """Stands in for torch.cuda.OutOfMemoryError (matched by type name)."""
+
+
+@pytest.mark.parametrize(
+    "exc,expected",
+    [
+        (asyncio.TimeoutError(), "engine_start_timeout"),
+        (ImportError("no module named flash_attn"), "import_error"),
+        (ModuleNotFoundError("flash_attn"), "import_error"),
+        (MemoryError(), "oom"),
+        (OutOfMemoryError("cuda oom"), "oom"),
+        (ValueError("bad config value"), "invalid_config"),
+        (RuntimeError("worker crashed"), "other"),
+        # The message is never inspected, so embedded tokens can't be
+        # misclassified: a plain RuntimeError stays "other" regardless of text.
+        (RuntimeError("CUDA out of memory while loading the model"), "other"),
+        (RuntimeError("failed to download from /home/user/oom_test/"), "other"),
+    ],
+)
+def test_classify_start_failure(exc, expected):
+    """Failures map to a fixed enum by exception type; the message is never read."""
+    assert classify_start_failure(exc) == expected
+
+
+def test_exception_type_is_qualified_and_non_identifying():
+    assert exception_type(ValueError("x")) == "builtins.ValueError"
+    assert exception_type(OutOfMemoryError("x")).endswith(".OutOfMemoryError")
+
+
+def test_root_exception_type_walks_cause_chain():
+    """The root cause is recorded, since engine errors surface wrapped."""
+    try:
+        try:
+            raise RuntimeError("worker died")
+        except RuntimeError as inner:
+            raise ValueError("wrapper") from inner
+    except ValueError as wrapper:
+        assert exception_type(wrapper) == "builtins.ValueError"
+        assert root_exception_type(wrapper) == "builtins.RuntimeError"
+    # No chain: root is the exception itself.
+    assert root_exception_type(KeyError("k")) == "builtins.KeyError"
+
+
+def test_deploy_failure_detail_is_recorded(disable_placement_bundles):
+    """A failed deploy records exc_type / root_type / phase in the JSON tag."""
+    recorder = TelemetryRecorder.remote()
+
+    def record_tag_func(key, value):
+        ray.get(recorder.record.remote(key, value))
+
+    telemetry_agent = _get_or_create_telemetry_agent()
+    telemetry_agent._reset_models.remote()
+    telemetry_agent._update_record_tag_func.remote(record_tag_func)
+
+    config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="failed_model"),
+        llm_engine=LLMEngine.vLLM,
+        accelerator_type="L4",
+    )
+    config._set_model_architecture(model_architecture="failed_arch")
+
+    push_telemetry_report_for_all_models(
+        all_models=[config],
+        get_hardware_fn=lambda *a, **k: ["L4"],
+        deploy_outcome="oom",
+        deploy_failure={
+            "exc_type": "ray.exceptions.RayTaskError",
+            "root_type": "torch.cuda.OutOfMemoryError",
+            "phase": "engine_start",
+        },
+    )
+
+    telemetry = ray.get(recorder.telemetry.remote())
+    assert telemetry[TagKey.LLM_SERVE_DEPLOY_OUTCOME] == "oom"
+    (failure,) = json.loads(telemetry[TagKey.LLM_SERVE_DEPLOY_FAILURE])
+    assert failure == {
+        "exc_type": "ray.exceptions.RayTaskError",
+        "root_type": "torch.cuda.OutOfMemoryError",
+        "phase": "engine_start",
+    }
+
+
+def test_deploy_failure_records_outcome_when_engine_config_unavailable(
+    disable_placement_bundles, monkeypatch
+):
+    """The failure record must survive when engine-config enrichment raises,
+    e.g. a construct-phase ImportError when vLLM isn't importable on the replica
+    (get_engine_config re-imports vLLM). The outcome is the whole point of the
+    failure path, so it must not be dropped with the unavailable engine facts."""
+    recorder = TelemetryRecorder.remote()
+
+    def record_tag_func(key, value):
+        ray.get(recorder.record.remote(key, value))
+
+    telemetry_agent = _get_or_create_telemetry_agent()
+    telemetry_agent._reset_models.remote()
+    telemetry_agent._update_record_tag_func.remote(record_tag_func)
+
+    config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="broken_model"),
+        llm_engine=LLMEngine.vLLM,
+        accelerator_type="L4",
+    )
+    config._set_model_architecture(model_architecture="broken_arch")
+
+    def boom(*args, **kwargs):
+        raise ImportError("vLLM is not installed")
+
+    monkeypatch.setattr(type(config), "get_engine_config", boom)
+
+    push_telemetry_report_for_all_models(
+        all_models=[config],
+        get_hardware_fn=lambda *a, **k: ["L4"],
+        deploy_outcome="import_error",
+        deploy_failure={
+            "exc_type": "builtins.ImportError",
+            "root_type": "builtins.ImportError",
+            "phase": "construct",
+        },
+    )
+
+    telemetry = ray.get(recorder.telemetry.remote())
+    assert telemetry[TagKey.LLM_SERVE_DEPLOY_OUTCOME] == "import_error"
+    (failure,) = json.loads(telemetry[TagKey.LLM_SERVE_DEPLOY_FAILURE])
+    assert failure == {
+        "exc_type": "builtins.ImportError",
+        "root_type": "builtins.ImportError",
+        "phase": "construct",
+    }
+    # Engine facts fall back to "unknown" rather than aborting the record.
+    assert telemetry[TagKey.LLM_SERVE_TENSOR_PARALLEL_DEGREE] == "0"
+    assert telemetry[TagKey.LLM_SERVE_NUM_GPUS] == "0"
+    # accelerator_type is read straight off the config, so it still records.
+    assert telemetry[TagKey.LLM_SERVE_GPU_TYPE] == "L4"
+
+
+def test_curated_engine_keys_still_exist_in_vllm():
+    """Guard against engine drift: the engine_kwargs we decode must stay real
+    vLLM EngineArgs fields, so a rename breaks CI instead of silently recording
+    nothing. Skips where vLLM isn't importable."""
+    pytest.importorskip("vllm")
+    import dataclasses
+
+    from vllm.engine.arg_utils import AsyncEngineArgs
+
+    fields = {f.name for f in dataclasses.fields(AsyncEngineArgs)}
+    curated = {
+        "quantization",
+        "dtype",
+        "max_model_len",
+        "enable_prefix_caching",
+        "enable_chunked_prefill",
+        "kv_cache_dtype",
+        "enforce_eager",
+        "pipeline_parallel_size",
+        "distributed_executor_backend",
+        "load_format",
+    }
+    assert curated <= fields, f"no longer in vLLM AsyncEngineArgs: {curated - fields}"
 
 
 if __name__ == "__main__":

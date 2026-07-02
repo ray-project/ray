@@ -1,8 +1,10 @@
+import asyncio
 import hashlib
+import json
 import random
 import time
 from enum import Enum
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Sequence
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Sequence, Tuple
 
 import ray
 from ray import serve
@@ -19,6 +21,7 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+    from ray.llm._internal.serve.core.protocol import LLMServerProtocol
 
 LLM_SERVE_TELEMETRY_NAMESPACE = "llm_serve_telemetry"
 LLM_SERVE_TELEMETRY_ACTOR_NAME = "llm_serve_telemetry"
@@ -41,6 +44,10 @@ class TelemetryTags(str, Enum):
     LLM_SERVE_MODELS = "LLM_SERVE_MODELS"
     LLM_SERVE_GPU_TYPE = "LLM_SERVE_GPU_TYPE"
     LLM_SERVE_NUM_GPUS = "LLM_SERVE_NUM_GPUS"
+    LLM_SERVE_DEPLOY_OUTCOME = "LLM_SERVE_DEPLOY_OUTCOME"
+    LLM_SERVE_SERVING_PATTERN = "LLM_SERVE_SERVING_PATTERN"
+    LLM_SERVE_ENGINE_CONFIG = "LLM_SERVE_ENGINE_CONFIG"
+    LLM_SERVE_DEPLOY_FAILURE = "LLM_SERVE_DEPLOY_FAILURE"
 
 
 class TelemetryModel(BaseModelExtended):
@@ -62,6 +69,29 @@ class TelemetryModel(BaseModelExtended):
     tensor_parallel_degree: int
     gpu_type: str
     num_gpus: int
+    deploy_outcome: str = "success"
+    serving_pattern: str = "default"
+    quantization: str = "none"
+    dtype: str = "auto"
+    max_model_len: int = 0
+    prefix_caching: str = "default"
+    chunked_prefill: str = "default"
+    kv_cache_dtype: str = "auto"
+    speculative_decoding: str = "off"
+    enforce_eager: str = "default"
+    pipeline_parallel_degree: int = 1
+    accelerator_kind: str = "unspecified"
+    log_engine_metrics: str = "default"
+    distributed_executor_backend: str = "default"
+    load_format: str = "auto"
+    multimodal: str = "0"
+    # Names (not values) of the engine_kwargs the user set; auto-tracks new
+    # vLLM knobs without a code change. Key names are vLLM's public API surface.
+    set_engine_kwargs: Sequence[str] = ()
+    # Deploy failure detail (empty on success).
+    exc_type: str = ""
+    root_type: str = ""
+    failure_phase: str = ""
 
 
 @ray.remote(
@@ -154,22 +184,51 @@ class TelemetryAgent:
             ]
         )
 
-    def _model_architectures(self) -> str:
-        return ",".join([model.model_architecture for model in self.models.values()])
+    def _join(self, attr: str) -> str:
+        """Comma joined attribute across models, index aligned with LLM_SERVE_MODELS."""
+        return ",".join(str(getattr(model, attr)) for model in self.models.values())
 
-    def _tensor_parallel_degree(self) -> str:
-        return ",".join(
-            [str(model.tensor_parallel_degree) for model in self.models.values()]
+    def _engine_configs(self) -> str:
+        """JSON array of per-model engine facts, index aligned with LLM_SERVE_MODELS."""
+        return json.dumps(
+            [
+                {
+                    "quantization": model.quantization,
+                    "dtype": model.dtype,
+                    "max_model_len": model.max_model_len,
+                    "prefix_caching": model.prefix_caching,
+                    "chunked_prefill": model.chunked_prefill,
+                    "kv_cache_dtype": model.kv_cache_dtype,
+                    "speculative_decoding": model.speculative_decoding,
+                    "enforce_eager": model.enforce_eager,
+                    "pipeline_parallel": model.pipeline_parallel_degree,
+                    "accelerator_kind": model.accelerator_kind,
+                    "log_engine_metrics": model.log_engine_metrics,
+                    "distributed_executor_backend": model.distributed_executor_backend,
+                    "load_format": model.load_format,
+                    "multimodal": model.multimodal,
+                    "set_engine_kwargs": list(model.set_engine_kwargs),
+                }
+                for model in self.models.values()
+            ],
+            separators=(",", ":"),
         )
 
-    def _num_replicas(self) -> str:
-        return ",".join([str(model.num_replicas) for model in self.models.values()])
-
-    def _gpu_type(self) -> str:
-        return ",".join([model.gpu_type for model in self.models.values()])
-
-    def _num_gpus(self) -> str:
-        return ",".join([str(model.num_gpus) for model in self.models.values()])
+    def _deploy_failures(self) -> str:
+        """JSON array of per-model failure detail ({} on success), index aligned."""
+        return json.dumps(
+            [
+                {
+                    "exc_type": model.exc_type,
+                    "root_type": model.root_type,
+                    "phase": model.failure_phase,
+                }
+                if model.exc_type or model.failure_phase
+                else {}
+                for model in self.models.values()
+            ],
+            separators=(",", ":"),
+        )
 
     def generate_report(self) -> Dict[str, str]:
         return {
@@ -180,11 +239,17 @@ class TelemetryAgent:
             TelemetryTags.LLM_SERVE_AUTOSCALING_ENABLED_MODELS: self._autoscaling_enabled_models(),
             TelemetryTags.LLM_SERVE_AUTOSCALING_MIN_REPLICAS: self._autoscaling_min_replicas(),
             TelemetryTags.LLM_SERVE_AUTOSCALING_MAX_REPLICAS: self._autoscaling_max_replicas(),
-            TelemetryTags.LLM_SERVE_MODELS: self._model_architectures(),
-            TelemetryTags.LLM_SERVE_TENSOR_PARALLEL_DEGREE: self._tensor_parallel_degree(),
-            TelemetryTags.LLM_SERVE_NUM_REPLICAS: self._num_replicas(),
-            TelemetryTags.LLM_SERVE_GPU_TYPE: self._gpu_type(),
-            TelemetryTags.LLM_SERVE_NUM_GPUS: self._num_gpus(),
+            TelemetryTags.LLM_SERVE_MODELS: self._join("model_architecture"),
+            TelemetryTags.LLM_SERVE_TENSOR_PARALLEL_DEGREE: self._join(
+                "tensor_parallel_degree"
+            ),
+            TelemetryTags.LLM_SERVE_NUM_REPLICAS: self._join("num_replicas"),
+            TelemetryTags.LLM_SERVE_GPU_TYPE: self._join("gpu_type"),
+            TelemetryTags.LLM_SERVE_NUM_GPUS: self._join("num_gpus"),
+            TelemetryTags.LLM_SERVE_DEPLOY_OUTCOME: self._join("deploy_outcome"),
+            TelemetryTags.LLM_SERVE_SERVING_PATTERN: self._join("serving_pattern"),
+            TelemetryTags.LLM_SERVE_ENGINE_CONFIG: self._engine_configs(),
+            TelemetryTags.LLM_SERVE_DEPLOY_FAILURE: self._deploy_failures(),
         }
 
     def record(self, model: Optional[TelemetryModel] = None) -> None:
@@ -269,6 +334,9 @@ def push_telemetry_report_for_all_models(
     all_models: Optional[Sequence["LLMConfig"]] = None,
     get_lora_model_func: Callable = get_lora_model_ids,
     get_hardware_fn: Callable = get_hardware_usages_to_report,
+    deploy_outcome: str = "success",
+    serving_pattern: str = "default",
+    deploy_failure: Optional[Dict[str, str]] = None,
 ):
     """Push a telemetry report for each model. Never raises."""
     if not all_models:
@@ -277,7 +345,14 @@ def push_telemetry_report_for_all_models(
     for model in all_models:
         # Telemetry must never break the caller (e.g. engine start).
         try:
-            _push_model_telemetry(model, get_lora_model_func, get_hardware_fn)
+            _push_model_telemetry(
+                model,
+                get_lora_model_func,
+                get_hardware_fn,
+                deploy_outcome=deploy_outcome,
+                serving_pattern=serving_pattern,
+                deploy_failure=deploy_failure,
+            )
         except Exception:
             logger.exception(
                 "Failed to push telemetry for model %s",
@@ -285,11 +360,124 @@ def push_telemetry_report_for_all_models(
             )
 
 
+def _flag(value: Optional[bool]) -> str:
+    """Tri-state for an optional engine flag: on/off, or default when unset."""
+    if value is None:
+        return "default"
+    return "on" if value else "off"
+
+
+def infer_serving_pattern(server: "LLMServerProtocol") -> str:
+    """Classify the serving pattern from the server class hierarchy.
+
+    Uses MRO class names to avoid importing the DP/PD subclasses (which import
+    LLMServer, so importing them here would create a cycle).
+    """
+    names = {cls.__name__ for cls in type(server).__mro__}
+    is_dp = "DPServer" in names
+    is_pd = bool(names & {"PDPrefillServer", "PDDecodeServer"})
+    if is_dp and is_pd:
+        return "dp_pd"
+    if is_pd:
+        return "pd"
+    if is_dp:
+        return "dp"
+    return "default"
+
+
+def classify_start_failure(exc: BaseException) -> str:
+    """Map an engine-start failure to a coarse, non-identifying category.
+
+    Classify by exception type, which is stable across engine versions. The
+    message is never inspected or recorded, so a failure we can't type-identify
+    becomes "other" rather than risk a wrong label from brittle string matching.
+    """
+    if isinstance(exc, asyncio.TimeoutError):
+        return "engine_start_timeout"
+    if isinstance(exc, ImportError):  # ModuleNotFoundError is a subclass.
+        return "import_error"
+    if isinstance(exc, MemoryError) or "outofmemory" in type(exc).__name__.lower():
+        return "oom"  # torch.cuda.OutOfMemoryError, MemoryError, etc.
+    if isinstance(exc, ValueError):
+        return "invalid_config"
+    return "other"
+
+
+def exception_type(exc: BaseException) -> str:
+    """Fully qualified exception class name. A code symbol, never user data."""
+    return f"{type(exc).__module__}.{type(exc).__qualname__}"
+
+
+def root_exception_type(exc: BaseException) -> str:
+    """Type of the deepest chained cause. Engine errors often surface wrapped
+    (e.g. a Ray worker exception inside a RayTaskError), so the root is the one
+    that actually explains the failure."""
+    seen = {id(exc)}
+    while True:
+        nxt = exc.__cause__ or exc.__context__
+        if nxt is None or id(nxt) in seen:
+            return exception_type(exc)
+        seen.add(id(nxt))
+        exc = nxt
+
+
+def report_deploy_failure(
+    llm_config: "LLMConfig",
+    server: "LLMServerProtocol",
+    exc: BaseException,
+    phase: str,
+) -> None:
+    """Classify a failed engine start and push its telemetry. Never raises."""
+    push_telemetry_report_for_all_models(
+        all_models=[llm_config],
+        deploy_outcome=classify_start_failure(exc),
+        serving_pattern=infer_serving_pattern(server),
+        deploy_failure={
+            "exc_type": exception_type(exc),
+            "root_type": root_exception_type(exc),
+            "phase": phase,
+        },
+    )
+
+
+def _engine_facts(
+    model: "LLMConfig", get_hardware_fn: Callable
+) -> Tuple[int, int, int, str]:
+    """Engine-config and hardware facts, best-effort.
+
+    Returns (tensor_parallel_degree, pipeline_parallel_degree, num_gpus,
+    gpu_type). These lookups can raise. A construct-phase failure re-fires here
+    because get_engine_config imports vLLM. Degrade to "unknown" so a failed
+    deploy still records its outcome and failure detail. 0 marks an unknown value.
+    """
+    gpu_type = model.accelerator_type or DEFAULT_GPU_TYPE
+    try:
+        engine_config = model.get_engine_config()
+        if not model.accelerator_type:
+            gpu_type = HardwareUsage(get_hardware_fn).infer_gpu_from_hardware()
+        return (
+            engine_config.tensor_parallel_degree,
+            engine_config.pipeline_parallel_degree,
+            engine_config.num_devices,
+            gpu_type,
+        )
+    except Exception:
+        logger.exception(
+            "telemetry: engine-config enrichment failed; recording deploy "
+            "outcome without engine facts"
+        )
+        return 0, 0, 0, gpu_type
+
+
 def _push_model_telemetry(
     model: "LLMConfig",
     get_lora_model_func: Callable,
     get_hardware_fn: Callable,
+    deploy_outcome: str = "success",
+    serving_pattern: str = "default",
+    deploy_failure: Optional[Dict[str, str]] = None,
 ) -> None:
+    deploy_failure = deploy_failure or {}
     use_lora = (
         model.lora_config is not None
         and model.lora_config.dynamic_lora_loading_path is not None
@@ -332,8 +520,12 @@ def _push_model_telemetry(
             num_replicas = 1
         min_replicas = max_replicas = num_replicas
 
-    engine_config = model.get_engine_config()
-    hardware_usage = HardwareUsage(get_hardware_fn)
+    (
+        tensor_parallel_degree,
+        pipeline_parallel_degree,
+        num_gpus,
+        gpu_type,
+    ) = _engine_facts(model, get_hardware_fn)
 
     telemetry_model = TelemetryModel(
         # Hash so the cleartext model name (possibly proprietary) never reaches
@@ -346,8 +538,35 @@ def _push_model_telemetry(
         use_autoscaling=use_autoscaling,
         min_replicas=min_replicas,
         max_replicas=max_replicas,
-        tensor_parallel_degree=engine_config.tensor_parallel_degree,
-        gpu_type=model.accelerator_type or hardware_usage.infer_gpu_from_hardware(),
-        num_gpus=engine_config.num_devices,
+        tensor_parallel_degree=tensor_parallel_degree,
+        gpu_type=gpu_type,
+        num_gpus=num_gpus,
+        deploy_outcome=deploy_outcome,
+        serving_pattern=serving_pattern,
+        # Non-identifying engine facts.
+        quantization=model.engine_kwargs.get("quantization") or "none",
+        dtype=str(model.engine_kwargs.get("dtype") or "auto"),
+        max_model_len=int(model.engine_kwargs.get("max_model_len") or 0),
+        prefix_caching=_flag(model.engine_kwargs.get("enable_prefix_caching")),
+        chunked_prefill=_flag(model.engine_kwargs.get("enable_chunked_prefill")),
+        kv_cache_dtype=str(model.engine_kwargs.get("kv_cache_dtype") or "auto"),
+        speculative_decoding="on"
+        if model.engine_kwargs.get("speculative_config")
+        or model.engine_kwargs.get("speculative_model")
+        else "off",
+        enforce_eager=_flag(model.engine_kwargs.get("enforce_eager")),
+        pipeline_parallel_degree=pipeline_parallel_degree,
+        accelerator_kind=getattr(model.accelerator_config, "kind", None)
+        or "unspecified",
+        log_engine_metrics=_flag(model.log_engine_metrics),
+        distributed_executor_backend=str(
+            model.engine_kwargs.get("distributed_executor_backend") or "default"
+        ),
+        load_format=str(model.engine_kwargs.get("load_format") or "auto"),
+        multimodal="1" if model.supports_vision else "0",
+        set_engine_kwargs=sorted(model.engine_kwargs.keys()),
+        exc_type=deploy_failure.get("exc_type", ""),
+        root_type=deploy_failure.get("root_type", ""),
+        failure_phase=deploy_failure.get("phase", ""),
     )
     _push_telemetry_report(telemetry_model)

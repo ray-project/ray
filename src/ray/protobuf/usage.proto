@@ -256,6 +256,16 @@ enum TagKey {
   // Whether LLM direct streaming (engine-native ASGI ingress) is enabled via
   // RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING. "1" when enabled.
   LLM_SERVE_DIRECT_STREAMING_ENABLED = 623;
+  // Comma separated list of deploy outcomes per model, classified by exception
+  // type (fixed enum, never raw error text): success, engine_start_timeout,
+  // oom, import_error, invalid_config, other.
+  LLM_SERVE_DEPLOY_OUTCOME = 624;
+  // Comma separated list of serving patterns per model: default, dp, pd, dp_pd.
+  LLM_SERVE_SERVING_PATTERN = 625;
+  // Per-model engine config facts as a JSON array; see TelemetryAgent._engine_configs.
+  LLM_SERVE_ENGINE_CONFIG = 626;
+  // Per-model deploy failure detail as a JSON array; see TelemetryAgent._deploy_failures.
+  LLM_SERVE_DEPLOY_FAILURE = 627;
 
   // LLM Batch
   // Comma separated list of names of the config used to build processor.

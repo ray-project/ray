@@ -32,7 +32,9 @@ from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
+    infer_serving_pattern,
     push_telemetry_report_for_all_models,
+    report_deploy_failure,
 )
 from ray.llm._internal.serve.utils.batcher import Batcher
 from ray.llm._internal.serve.utils.lora_serve_utils import (
@@ -193,9 +195,24 @@ class LLMServer(LLMServerProtocol):
 
     async def start(self):
         """Start the underlying engine. This handles async initialization."""
-        if self._engine_cls is not None:
+        if self._engine_cls is None:
+            return
+        # Phase is the part we control; everything vLLM does inside engine.start()
+        # (download, load, warmup) collapses into "engine_start", but root_type
+        # usually reveals which.
+        phase = "construct"
+        try:
             self.engine = self._engine_cls(self._llm_config)
+            phase = "engine_start"
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
+        except Exception as e:
+            # Record the failure so deploy health is visible, then re-raise.
+            # Telemetry is best-effort and must not mask the error. Offload to a
+            # thread: the push does blocking ray.get + retry sleeps.
+            await asyncio.to_thread(
+                report_deploy_failure, self._llm_config, self, e, phase
+            )
+            raise
 
     async def __serve_build_asgi_app__(self):
         from fastapi import HTTPException
@@ -273,7 +290,13 @@ class LLMServer(LLMServerProtocol):
         await self.engine.start()
 
         # Push telemetry reports for the model in the current deployment.
-        push_telemetry_report_for_all_models(all_models=[self._llm_config])
+        # Offload to a thread: the push does blocking ray.get + retry sleeps.
+        await asyncio.to_thread(
+            push_telemetry_report_for_all_models,
+            all_models=[self._llm_config],
+            deploy_outcome="success",
+            serving_pattern=infer_serving_pattern(self),
+        )
         if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
             # Cluster-wide adoption signal: written from each replica on engine
             # start, but last-write-wins so it reports one value per cluster.
