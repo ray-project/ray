@@ -1,3 +1,4 @@
+import os
 import pytest
 import requests
 import sys
@@ -13,6 +14,16 @@ from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.schema import ApplicationStatus
 import time
+
+# Pooling models (classify/reward) are only served through vLLM's native ASGI
+# app, which is used when direct streaming is enabled. The default OpenAiIngress
+# path does not expose /classify or /pooling, so these tests only run when
+# RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1.
+direct_streaming_only = pytest.mark.skipif(
+    os.environ.get("RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING", "0") != "1",
+    reason="Pooling/classify endpoints are only served in direct-streaming mode "
+    "(RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1).",
+)
 
 
 @pytest.mark.asyncio(scope="function")
@@ -258,6 +269,92 @@ def test_score_model(model_name):
     for item in data["data"]:
         assert "score" in item
         assert isinstance(item["score"], float)
+
+    serve.shutdown()
+    time.sleep(1)
+
+
+@direct_streaming_only
+@pytest.mark.parametrize("model_name", ["Qwen/Qwen3-Reranker-0.6B"])
+def test_classify_model(model_name):
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id=model_name,
+        ),
+        deployment_config=dict(
+            num_replicas=1,
+        ),
+        engine_kwargs=dict(
+            enforce_eager=True,
+            max_model_len=512,
+            hf_overrides={
+                "architectures": ["Qwen3ForSequenceClassification"],
+                "classifier_from_token": ["no", "yes"],
+                "is_original_qwen3_reranker": True,
+            },
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=300)
+
+    response = requests.post(
+        "http://localhost:8000/classify",
+        json={
+            "model": model_name,
+            "input": "This movie was absolutely fantastic!",
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["object"] == "list"
+    assert "data" in data
+    assert len(data["data"]) == 1
+    item = data["data"][0]
+    assert "probs" in item
+    assert isinstance(item["probs"], list)
+    assert len(item["probs"]) > 0
+    assert item["num_classes"] == len(item["probs"])
+
+    serve.shutdown()
+    time.sleep(1)
+
+
+@direct_streaming_only
+@pytest.mark.parametrize("model_name", ["internlm/internlm2-1_8b-reward"])
+def test_pooling_reward_model(model_name):
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id=model_name,
+        ),
+        deployment_config=dict(
+            num_replicas=1,
+        ),
+        engine_kwargs=dict(
+            enforce_eager=True,
+            max_model_len=512,
+            trust_remote_code=True,
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=300)
+
+    response = requests.post(
+        "http://localhost:8000/pooling",
+        json={
+            "model": model_name,
+            "input": "The chef prepared a delicious meal.",
+            "encoding_format": "float",
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["object"] == "list"
+    assert "data" in data
+    assert len(data["data"]) == 1
+    # Reward models emit a per-token pooling vector; ensure it is non-empty.
+    assert len(data["data"][0]["data"]) > 0
 
     serve.shutdown()
     time.sleep(1)
