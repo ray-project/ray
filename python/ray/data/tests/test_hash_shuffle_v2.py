@@ -1,11 +1,26 @@
+import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
-    _get_shard_batch,
+from ray.data._internal.execution.interfaces import ExecutionOptions
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
+    ShuffleMapOp,
+    make_partition_sentinel,
 )
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
+    ShuffleReduceOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
+    _encode_partition_ipc,
+    _get_shard_batch,
+    _ipc_write_options,
+)
+from ray.data._internal.execution.util import make_ref_bundles
+from ray.data.block import BlockMetadata
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.conftest import *  # noqa: F401, F403
+from ray.data.tests.util import run_op_tasks_sync
 from ray.exceptions import GetTimeoutError
 from ray.tests.conftest import *  # noqa: F401, F403
 
@@ -228,6 +243,101 @@ def test_get_shard_batch_warns_then_raises_on_stall(
     assert [r.levelname for r in caplog.records].count("ERROR") == 1
     assert "partition 7" in caplog.records[0].message
     ray.cancel(ref, force=True)
+
+
+# --- Multi-input reduce -------------------------------------------------------
+# TODO: move these multi-input ShuffleReduceOp tests (and the _get_shard_batch
+# shuffle_tasks tests above) into a dedicated operator/task-level test file --
+# they aren't specific to hash-shuffle-v2.
+def _ipc_shard_bundle(partition_id, table):
+    """One partition's shard as a ShuffleMapOp emits it: an IPC-encoded buffer
+    stamped with the partition id."""
+    from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
+
+    buf = _encode_partition_ipc(table, _ipc_write_options("none"))
+    meta = BlockMetadata(
+        num_rows=table.num_rows,
+        size_bytes=table.nbytes,
+        exec_stats=None,
+        input_files=make_partition_sentinel(partition_id),
+    )
+    return RefBundle(
+        (
+            BlockEntry(
+                ref=ray.put(buf),  # pyrefly: ignore[bad-argument-type]
+                metadata=meta,
+            ),
+        ),
+        schema=table.schema,
+        owns_blocks=True,
+    )
+
+
+def _make_multi_input_reduce_op(reduce_fn, num_inputs=2, num_partitions=2):
+    ctx = DataContext.get_current()
+    maps = [
+        ShuffleMapOp(
+            InputDataBuffer(ctx, make_ref_bundles([[0]])),
+            ctx,
+            num_partitions=num_partitions,
+            partition_fn=lambda t: {},
+        )
+        for _ in range(num_inputs)
+    ]
+    return ShuffleReduceOp(
+        maps,
+        ctx,
+        num_partitions=num_partitions,
+        reduce_fn=reduce_fn,
+        disallow_block_splitting=True,
+    )
+
+
+def _drain_reduce_op(op, feed):
+    """Run `op` over `feed` (bundle, input_index) pairs and return output tables."""
+    op.start(ExecutionOptions())
+    for bundle, input_index in feed:
+        op.add_input(bundle, input_index)
+    op.all_inputs_done()
+    run_op_tasks_sync(op)
+    tables = []
+    while op.has_next():
+        for ref in op.get_next().block_refs:
+            tables.append(ray.get(ref))
+    return tables
+
+
+def _concat_inputs_reduce_fn():
+    def _reduce(partition_id, tables_by_input):
+        tables = [t for shards in tables_by_input for t in shards]
+        if tables:
+            yield pa.concat_tables(tables)
+
+    return _reduce
+
+
+def test_reduce_op_combines_all_inputs(ray_start_regular_shared_2_cpus):
+    """Both inputs' shards for a partition reach the reducer, in input order."""
+    op = _make_multi_input_reduce_op(_concat_inputs_reduce_fn(), num_inputs=2)
+    feed = [
+        (_ipc_shard_bundle(0, pa.table({"src": ["L"], "v": [1]})), 0),
+        (_ipc_shard_bundle(0, pa.table({"src": ["R"], "v": [2]})), 1),
+    ]
+    out = pa.concat_tables(_drain_reduce_op(op, feed))
+    assert sorted(out.column("src").to_pylist()) == ["L", "R"]
+    assert sorted(out.column("v").to_pylist()) == [1, 2]
+
+
+def test_reduce_op_runs_when_an_input_is_missing(ray_start_regular_shared_2_cpus):
+    """A partition that never receives one input (a block-less side) is still
+    reduced -- the reducer sees an empty shard list for the missing input rather
+    than the op hanging on a never-paired partition."""
+    op = _make_multi_input_reduce_op(_concat_inputs_reduce_fn(), num_inputs=2)
+    # Only input 0 delivers partition 0; input 1 never does.
+    feed = [(_ipc_shard_bundle(0, pa.table({"src": ["L"], "v": [1]})), 0)]
+    out = pa.concat_tables(_drain_reduce_op(op, feed))
+    assert out.column("src").to_pylist() == ["L"]
+    assert op.has_completed()
 
 
 if __name__ == "__main__":
