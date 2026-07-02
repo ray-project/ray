@@ -497,6 +497,10 @@ def _read_datasource_v2(
     # execution inside the ListFiles op — no caching layer needed.
     sample = sample_files(indexer, datasource.paths, datasource.filesystem, pruners)
     if len(sample) == 0:
+        if getattr(datasource, "ignore_missing_paths", False) or getattr(
+            datasource, "_ignore_missing_paths", False
+        ):
+            return from_blocks([])
         raise ValueError(
             f"no files found under {datasource.paths!r}. Check the path and any "
             "configured `partition_filter` or `file_extensions` filters."
@@ -1356,6 +1360,7 @@ def read_parquet(
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     include_paths: bool = False,
     include_row_hash: bool = False,
+    ignore_missing_paths: bool = False,
     file_extensions: Optional[List[str]] = ParquetDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -1386,6 +1391,14 @@ def read_parquet(
 
         >>> ray.data.read_parquet(
         ...    ["local:///path/to/file1", "local:///path/to/file2"]) # doctest: +SKIP
+
+        Read files matching a glob pattern.
+
+        >>> ray.data.read_parquet("/data/*.parquet")  # doctest: +SKIP
+
+        Read files matching a recursive glob pattern.
+
+        >>> ray.data.read_parquet("/data/**/*.parquet")  # doctest: +SKIP
 
         Specify a schema for the parquet file.
 
@@ -1492,6 +1505,9 @@ def read_parquet(
             columns, use :meth:`~ray.data.Dataset.select_columns` on the
             returned dataset and include ``'row_hash'`` explicitly in the list
             to retain it.
+        ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
+            that are not found. Also suppresses errors when a glob pattern matches
+            no files. Defaults to False.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -1639,6 +1655,7 @@ def read_parquet(
             file_extensions=file_extensions,
             include_paths=include_paths,
             include_row_hash=include_row_hash,
+            ignore_missing_paths=ignore_missing_paths,
             shuffle=shuffle,
             arrow_parquet_args=arrow_parquet_args,
             schema=schema,
@@ -1673,6 +1690,7 @@ def read_parquet(
         include_paths=include_paths,
         include_row_hash=include_row_hash,
         file_extensions=file_extensions,
+        ignore_missing_paths=ignore_missing_paths,
     )
     return read_datasource(
         datasource,
@@ -1731,6 +1749,14 @@ def read_images(
         path    string
         >>> ds.take(1)[0]["path"]
         'ray-example-data/batoidea/JPEGImages/1.jpeg'
+
+        Read files matching a glob pattern.
+
+        >>> ray.data.read_images("/data/*.png")  # doctest: +SKIP
+
+        Read files matching a recursive glob pattern.
+
+        >>> ray.data.read_images("/data/**/*.png")  # doctest: +SKIP
 
         If your images are arranged like:
 
@@ -1901,6 +1927,14 @@ def read_json(
         >>> ray.data.read_json( # doctest: +SKIP
         ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
+        Read files matching a glob pattern.
+
+        >>> ray.data.read_json("/data/*.json")  # doctest: +SKIP
+
+        Read files matching a recursive glob pattern.
+
+        >>> ray.data.read_json("/data/**/*.jsonl", lines=True)  # doctest: +SKIP
+
         By default, :meth:`~ray.data.read_json` parses
         `Hive-style partitions <https://athena.guide/articles/\
         hive-style-partitioning/>`_
@@ -2064,6 +2098,14 @@ def read_csv(
         Read a directory from remote storage.
 
         >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris-csv/")
+
+        Read files matching a glob pattern.
+
+        >>> ray.data.read_csv("/data/*.csv")  # doctest: +SKIP
+
+        Read files matching a recursive glob pattern.
+
+        >>> ray.data.read_csv("/data/**/*.csv")  # doctest: +SKIP
 
         Read files that use a different delimiter. For more uses of ParseOptions see
         https://arrow.apache.org/docs/python/generated/pyarrow.csv.ParseOptions.html  # noqa: #501
@@ -2230,6 +2272,14 @@ def read_text(
         >>> ray.data.read_text( # doctest: +SKIP
         ...    ["local:///path/to/file1", "local:///path/to/file2"])
 
+        Read files matching a glob pattern.
+
+        >>> ray.data.read_text("/data/*.txt")  # doctest: +SKIP
+
+        Read files matching a recursive glob pattern.
+
+        >>> ray.data.read_text("/data/**/*.txt")  # doctest: +SKIP
+
     Args:
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
@@ -2346,6 +2396,14 @@ def read_avro(
 
         >>> ray.data.read_avro( # doctest: +SKIP
         ...    ["local:///path/to/file1", "local:///path/to/file2"])
+
+        Read files matching a glob pattern.
+
+        >>> ray.data.read_avro("/data/*.avro")  # doctest: +SKIP
+
+        Read files matching a recursive glob pattern.
+
+        >>> ray.data.read_avro("/data/**/*.avro")  # doctest: +SKIP
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -2918,6 +2976,14 @@ def read_binary_files(
 
         >>> ray.data.read_binary_files( # doctest: +SKIP
         ...     ["local:///path/to/file1", "local:///path/to/file2"])
+
+        Read files matching a glob pattern.
+
+        >>> ray.data.read_binary_files("/data/*.pdf")  # doctest: +SKIP
+
+        Read files matching a recursive glob pattern.
+
+        >>> ray.data.read_binary_files("/data/**/*.pdf")  # doctest: +SKIP
 
         Read a file with the filepaths included as a column in the dataset.
 

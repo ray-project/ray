@@ -394,9 +394,12 @@ class ParquetDatasource(Datasource):
         include_paths: bool = False,
         include_row_hash: bool = False,
         file_extensions: Optional[List[str]] = None,
+        ignore_missing_paths: bool = False,
     ):
         super().__init__()
         _check_pyarrow_version()
+
+        self._ignore_missing_paths = ignore_missing_paths
 
         supports_distributed_reads = not _is_local_scheme(paths)
         if not supports_distributed_reads and ray.util.client.ray.is_connected():
@@ -417,7 +420,9 @@ class ParquetDatasource(Datasource):
         # causing this data being duplicated and excessive object store spilling.
         source_paths_ref = ray.put(paths)
 
-        paths, resolved_filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        paths, resolved_filesystem = _resolve_paths_and_filesystem(
+            paths, filesystem, ignore_missing_paths, expand_globs=True
+        )
         filesystem = RetryingPyFileSystem.wrap(
             resolved_filesystem,
             retryable_errors=DataContext.get_current().retried_io_errors,
@@ -434,6 +439,34 @@ class ParquetDatasource(Datasource):
             paths, file_sizes = zip(*listed_files)
         else:
             paths, file_sizes = [], []
+
+        # When ignore_missing_paths is True and no files remain after listing,
+        # build an empty datasource state through _init_state so that all
+        # required attributes are properly set.
+        if ignore_missing_paths and len(paths) == 0:
+            import pyarrow as pa
+
+            self._init_state(
+                supports_distributed_reads=supports_distributed_reads,
+                local_scheduling=local_scheduling,
+                source_paths_ref=source_paths_ref,
+                filesystem=resolved_filesystem,
+                fragments=[],
+                file_sizes=[],
+                file_schema=schema if schema is not None else pa.schema([]),
+                read_schema=schema if schema is not None else pa.schema([]),
+                partition_columns=[],
+                partition_columns_selected=False,
+                partition_schema=None,
+                partitioning=partitioning,
+                projection_map=None,
+                to_batch_kwargs=to_batch_kwargs or {},
+                _block_udf=_block_udf,
+                shuffle=shuffle,
+                include_paths=include_paths,
+                include_row_hash=include_row_hash,
+            )
+            return
 
         if dataset_kwargs is not None:
             logger.warning(
@@ -711,9 +744,9 @@ class ParquetDatasource(Datasource):
             partition_columns_selected=False,
             partition_schema=pa.schema([]),
             partitioning=None,
-            projection_map={col: col for col in columns}
-            if columns is not None
-            else None,
+            projection_map=(
+                {col: col for col in columns} if columns is not None else None
+            ),
             to_batch_kwargs=to_batch_kwargs,
             _block_udf=_block_udf,
             shuffle=shuffle,
