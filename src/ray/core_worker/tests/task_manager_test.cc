@@ -252,6 +252,32 @@ class TaskManagerTest : public ::testing::Test {
     manager_.CompletePendingTask(spec.TaskId(), reply, caller_address, false);
   }
 
+  // Records every task status passed to the task event buffer into `out` so a
+  // test can assert whether the task ended up FAILED vs FINISHED. Call once at
+  // the start of a test, before any status event is emitted.
+  void RecordTaskStatuses(std::vector<rpc::TaskStatus> *out) {
+    EXPECT_CALL(*task_event_buffer_mock_,
+                RecordTaskStatusEventIfNeeded(::testing::_,
+                                              ::testing::_,
+                                              ::testing::_,
+                                              ::testing::_,
+                                              ::testing::_,
+                                              ::testing::_,
+                                              ::testing::_))
+        .Times(::testing::AnyNumber())
+        .WillRepeatedly(
+            [out](const TaskID &,
+                  const JobID &,
+                  int32_t,
+                  const TaskSpecification &,
+                  rpc::TaskStatus status,
+                  bool,
+                  std::optional<const worker::TaskStatusEvent::TaskStateUpdate>) {
+              out->push_back(status);
+              return false;
+            });
+  }
+
   bool lineage_pinning_enabled_;
   bool did_queue_generator_resubmit_ = false;
   rpc::Address addr_;
@@ -2302,6 +2328,236 @@ TEST_F(TaskManagerTest, TestObjectRefStreamIndexDiscarded) {
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(obj_id, ObjectID::Nil());
   CompletePendingStreamingTask(spec, caller_address, 1);
+}
+
+// Regression test: a streaming generator whose replay produces fewer objects
+// than the first successful attempt must fail the task (not just mark
+// individual object refs) with rpc::ErrorType::STREAMING_GENERATOR_REPLAY_INCONSISTENT.
+// Without the fix, downstream consumers block on indices that will never be
+// produced (silent hang). Failing the task propagates the failure through
+// lineage to downstream consumers that may have already processed objects
+// from the first successful attempt (streaming generators are consumed
+// pipelined, so by replay time those consumers have already run).
+TEST_F(TaskManagerTest, TestStreamingGeneratorReplayFewerObjectsFailsLoudly) {
+  std::vector<rpc::TaskStatus> recorded_statuses;
+  RecordTaskStatuses(&recorded_statuses);
+
+  rpc::Address caller_address;
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/1);
+
+  // attempt 0: yield 3 objects in plasma.
+  for (int64_t i = 0; i < 3; i++) {
+    auto obj_id = ObjectID::FromIndex(spec.TaskId(), /*index=*/2 + i);
+    auto data = GenerateRandomBuffer();
+    auto req = GetIntermediateTaskReturn(/*idx=*/i,
+                                         /*finished=*/false,
+                                         generator_id,
+                                         /*dynamic_return_id=*/obj_id,
+                                         data,
+                                         /*set_in_plasma=*/true);
+    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback=*/[](Status) {}));
+  }
+  CompletePendingStreamingTask(spec,
+                               caller_address,
+                               /*num_streaming_generator_returns=*/3,
+                               /*set_in_plasma=*/true);
+
+  // Simulate lineage reconstruction triggering a replay.
+  std::vector<ObjectID> resubmitted_task_deps;
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
+
+  // attempt 1: yield only 2 objects. The third (index 2) is missing - this is
+  // the partial replay we are testing.
+  for (int64_t i = 0; i < 2; i++) {
+    auto obj_id = ObjectID::FromIndex(spec.TaskId(), /*index=*/2 + i);
+    auto data = GenerateRandomBuffer();
+    auto req = GetIntermediateTaskReturn(/*idx=*/i,
+                                         /*finished=*/false,
+                                         generator_id,
+                                         /*dynamic_return_id=*/obj_id,
+                                         data,
+                                         /*set_in_plasma=*/true);
+    manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback=*/[](Status) {});
+  }
+  CompletePendingStreamingTask(spec,
+                               caller_address,
+                               /*num_streaming_generator_returns=*/2,
+                               /*set_in_plasma=*/true);
+
+  // The replay must mark the task FAILED. This is the assertion that actually
+  // proves the fix ran: a same-object-count replay records FINISHED here
+  // instead.
+  ASSERT_THAT(recorded_statuses, ::testing::Contains(rpc::TaskStatus::FAILED));
+
+  // The task must be FAILED. FailPendingTask erases it from
+  // submissible_tasks_, so NumPendingTasks drops back to 0.
+  ASSERT_EQ(manager_.NumPendingTasks(), 0);
+
+  // Non-determinism is not a transient failure - fail_immediately=true must
+  // prevent a retry. num_retries_ reflects only the lineage-reconstruction
+  // Resubmit we triggered explicitly above.
+  ASSERT_EQ(num_retries_, 1);
+
+  // Object-level error markers are best-effort: MarkTaskReturnObjectsFailed
+  // (invoked from FailPendingTask) tries to write STREAMING_GENERATOR_REPLAY_INCONSISTENT
+  // to each return ref in the expected range, but MemoryStore::Put is a no-op
+  // on existing entries (sentinels from attempt 0) and is skipped entirely
+  // when the reference counter no longer tracks the object (e.g. after node
+  // death cleared the sentinel). The core guarantee is the task-level FAILED
+  // status asserted above, which propagates through lineage to downstream
+  // consumers. We do not assert on individual object markers here.
+}
+
+// When a replay returns MORE objects than the first successful attempt, the
+// extra objects (indices >= expected_count) are silently dropped by
+// ObjectRefStream::InsertToStream because the stream EOF is pinned to the
+// expected count. The consumer stops at the expected EOF and never sees the
+// extras, which means the consumer's logical data stream may be silently
+// truncated or have inconsistent block boundaries. The fix fails the task so
+// the failure propagates through lineage to downstream consumers.
+TEST_F(TaskManagerTest, TestStreamingGeneratorReplayMoreObjectsFailsLoudly) {
+  std::vector<rpc::TaskStatus> recorded_statuses;
+  RecordTaskStatuses(&recorded_statuses);
+
+  rpc::Address caller_address;
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/1);
+
+  // attempt 0: yield 2 objects.
+  for (int64_t i = 0; i < 2; i++) {
+    auto obj_id = ObjectID::FromIndex(spec.TaskId(), /*index=*/2 + i);
+    auto data = GenerateRandomBuffer();
+    auto req = GetIntermediateTaskReturn(/*idx=*/i,
+                                         /*finished=*/false,
+                                         generator_id,
+                                         /*dynamic_return_id=*/obj_id,
+                                         data,
+                                         /*set_in_plasma=*/true);
+    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback=*/[](Status) {}));
+  }
+  CompletePendingStreamingTask(spec,
+                               caller_address,
+                               /*num_streaming_generator_returns=*/2,
+                               /*set_in_plasma=*/true);
+
+  std::vector<ObjectID> resubmitted_task_deps;
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
+
+  // attempt 1: yield 3 objects (one more than the first successful attempt).
+  // The third object (index 2) is silently dropped by InsertToStream because
+  // it exceeds the EOF pinned to 2 by the first execution.
+  for (int64_t i = 0; i < 3; i++) {
+    auto obj_id = ObjectID::FromIndex(spec.TaskId(), /*index=*/2 + i);
+    auto data = GenerateRandomBuffer();
+    auto req = GetIntermediateTaskReturn(/*idx=*/i,
+                                         /*finished=*/false,
+                                         generator_id,
+                                         /*dynamic_return_id=*/obj_id,
+                                         data,
+                                         /*set_in_plasma=*/true);
+    manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback=*/[](Status) {});
+  }
+  CompletePendingStreamingTask(spec,
+                               caller_address,
+                               /*num_streaming_generator_returns=*/3,
+                               /*set_in_plasma=*/true);
+
+  // The task must be FAILED.
+  ASSERT_THAT(recorded_statuses, ::testing::Contains(rpc::TaskStatus::FAILED));
+  ASSERT_EQ(manager_.NumPendingTasks(), 0);
+  ASSERT_EQ(num_retries_, 1);
+
+  // The core guarantee of the fail-task approach is that the task is FAILED
+  // (asserted above), which propagates through lineage to downstream
+  // consumers. Object-level error markers are best-effort: indices 0/1
+  // already hold OBJECT_IN_PLASMA sentinels from the replay's
+  // HandleTaskReturn, and MarkTaskReturnObjectsFailed's Put is a no-op on
+  // them (MemoryStore::Put does not overwrite existing entries). In
+  // production, consumers that already fetched from plasma will get the
+  // (potentially inconsistent) data; the task-level FAILED status is what
+  // surfaces the problem to downstream tasks that haven't run yet.
+}
+
+// Sanity: a replay that produces the same number of objects as the first
+// successful attempt must NOT trip the inconsistency path. Guards against
+// false positives.
+TEST_F(TaskManagerTest, TestStreamingGeneratorReplaySameObjectsSucceeds) {
+  std::vector<rpc::TaskStatus> recorded_statuses;
+  RecordTaskStatuses(&recorded_statuses);
+
+  rpc::Address caller_address;
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/1);
+
+  for (int64_t i = 0; i < 2; i++) {
+    auto obj_id = ObjectID::FromIndex(spec.TaskId(), /*index=*/2 + i);
+    auto data = GenerateRandomBuffer();
+    auto req = GetIntermediateTaskReturn(/*idx=*/i,
+                                         /*finished=*/false,
+                                         generator_id,
+                                         /*dynamic_return_id=*/obj_id,
+                                         data,
+                                         /*set_in_plasma=*/true);
+    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback=*/[](Status) {}));
+  }
+  CompletePendingStreamingTask(spec,
+                               caller_address,
+                               /*num_streaming_generator_returns=*/2,
+                               /*set_in_plasma=*/true);
+
+  std::vector<ObjectID> resubmitted_task_deps;
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
+
+  for (int64_t i = 0; i < 2; i++) {
+    auto obj_id = ObjectID::FromIndex(spec.TaskId(), /*index=*/2 + i);
+    auto data = GenerateRandomBuffer();
+    auto req = GetIntermediateTaskReturn(/*idx=*/i,
+                                         /*finished=*/false,
+                                         generator_id,
+                                         /*dynamic_return_id=*/obj_id,
+                                         data,
+                                         /*set_in_plasma=*/true);
+    manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback=*/[](Status) {});
+  }
+  CompletePendingStreamingTask(spec,
+                               caller_address,
+                               /*num_streaming_generator_returns=*/2,
+                               /*set_in_plasma=*/true);
+
+  // No object should hold a STREAMING_GENERATOR_REPLAY_INCONSISTENT marker
+  // when the replay object count matches the first successful attempt.
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  for (int64_t i = 0; i < 2; i++) {
+    const auto obj_id = ObjectID::FromIndex(spec.TaskId(), /*index=*/2 + i);
+    std::vector<std::shared_ptr<RayObject>> results;
+    RAY_CHECK_OK(store_->Get({obj_id}, 1, /*timeout_ms=*/0, ctx, &results));
+    ASSERT_EQ(results.size(), 1);
+    rpc::ErrorType stored_error = rpc::ErrorType::OBJECT_LOST;
+    if (results[0]->IsException(&stored_error)) {
+      ASSERT_NE(stored_error, rpc::ErrorType::STREAMING_GENERATOR_REPLAY_INCONSISTENT);
+    }
+  }
+
+  // The task must NOT be failed - it should complete normally (FINISHED and
+  // erased from submissible_tasks_ as non-retryable).
+  ASSERT_THAT(recorded_statuses, ::testing::Contains(rpc::TaskStatus::FINISHED));
+  ASSERT_THAT(recorded_statuses,
+              ::testing::Not(::testing::Contains(rpc::TaskStatus::FAILED)));
+  ASSERT_EQ(manager_.NumPendingTasks(), 0);
+  ASSERT_EQ(num_retries_, 1);
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamReadIgnoredWhenNothingWritten) {
