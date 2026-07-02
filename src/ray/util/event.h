@@ -23,6 +23,7 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -126,6 +127,15 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual void Flush();
 
+  /**
+   * @brief Lazily initializes log_sink_ on the first write.
+   *
+   * Ensures that no log file is created on disk unless at least one event
+   * is actually written, avoiding stale/empty log files.
+   * Fixes: https://github.com/ray-project/ray/issues/64153
+   */
+  void EnsureSinkInitialized();
+
   std::string GetReporterKey() override { return "log.event.reporter"; }
 
  protected:
@@ -136,7 +146,15 @@ class LogEventReporter : public BaseEventReporter {
 
   std::string file_name_;
 
+  // The key used to look up / register the spdlog logger. Stored to enable
+  // lazy initialization of log_sink_ in EnsureSinkInitialized().
+  std::string log_sink_key_;
+
+  // The underlying spdlog logger. nullptr until the first event is written.
   std::shared_ptr<spdlog::logger> log_sink_;
+
+  // Ensure thread-safe lazy initialization of log_sink_.
+  std::once_flag sink_init_once_;
 };
 
 // store the reporters, add reporters and clean reporters

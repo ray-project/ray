@@ -72,23 +72,40 @@ LogEventReporter::LogEventReporter(SourceTypeVariant source_type,
   file_name_ = "event_" + source_type_name +
                (add_pid_to_file ? "_" + std::to_string(getpid()) : "") + ".log";
 
-  std::string log_sink_key = GetReporterKey() + log_dir_ + file_name_;
-  log_sink_ = spdlog::get(log_sink_key);
-  // If the file size is over {rotate_max_file_size_} MB, this file would be renamed
-  // for example event_GCS.0.log, event_GCS.1.log, event_GCS.2.log ...
-  // We allow to rotate for {rotate_max_file_num_} times.
-  if (log_sink_ == nullptr) {
-    log_sink_ = spdlog::rotating_logger_mt(log_sink_key,
-                                           log_dir_ + file_name_,
-                                           1048576 * rotate_max_file_size_,
-                                           rotate_max_file_num_);
-  }
-  log_sink_->set_pattern("%v");
+  // Store the sink key for lazy initialization.
+  // The log file will only be created on the first call to Report() or
+  // ReportExportEvent(), avoiding stale/empty log files at startup.
+  // See: https://github.com/ray-project/ray/issues/64153
+  log_sink_key_ = GetReporterKey() + log_dir_ + file_name_;
+  // Do NOT initialize log_sink_ here. It is lazily initialized in
+  // EnsureSinkInitialized(), which is called on the first write.
 }
 
 LogEventReporter::~LogEventReporter() { Flush(); }
 
-void LogEventReporter::Flush() { log_sink_->flush(); }
+void LogEventReporter::EnsureSinkInitialized() {
+  std::call_once(sink_init_once_, [this]() {
+    log_sink_ = spdlog::get(log_sink_key_);
+    // If the file size is over {rotate_max_file_size_} MB, this file would be renamed
+    // for example event_GCS.0.log, event_GCS.1.log, event_GCS.2.log ...
+    // We allow to rotate for {rotate_max_file_num_} times.
+    if (log_sink_ == nullptr) {
+      log_sink_ = spdlog::rotating_logger_mt(log_sink_key_,
+                                             log_dir_ + file_name_,
+                                             1048576 * rotate_max_file_size_,
+                                             rotate_max_file_num_);
+    }
+    log_sink_->set_pattern("%v");
+  });
+}
+
+void LogEventReporter::Flush() {
+  // Guard against an uninitialized sink (no events were ever written,
+  // so no log file was created).
+  if (log_sink_ != nullptr) {
+    log_sink_->flush();
+  }
+}
 
 std::string LogEventReporter::replaceLineFeed(std::string message) {
   std::stringstream ss;
@@ -169,6 +186,8 @@ std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export
 void LogEventReporter::Report(const rpc::Event &event, const json &custom_fields) {
   RAY_CHECK(Event_SourceType_IsValid(event.source_type()));
   RAY_CHECK(Event_Severity_IsValid(event.severity()));
+  // Lazily create the log file on the first write.
+  EnsureSinkInitialized();
   std::string result = EventToString(event, custom_fields);
 
   log_sink_->info(result);
@@ -179,6 +198,8 @@ void LogEventReporter::Report(const rpc::Event &event, const json &custom_fields
 
 void LogEventReporter::ReportExportEvent(const rpc::ExportEvent &export_event) {
   RAY_CHECK(ExportEvent_SourceType_IsValid(export_event.source_type()));
+  // Lazily create the log file on the first write.
+  EnsureSinkInitialized();
   std::string result = ExportEventToString(export_event);
 
   log_sink_->info(result);
