@@ -13,7 +13,8 @@ exclude: |
     python/requirements/llm/patches/|
     src/ray/thirdparty/|
     doc/external/|
-    doc/source/
+    doc/source/|
+    doc/.claude/skills/sphinx-fix/tests/
   )
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks

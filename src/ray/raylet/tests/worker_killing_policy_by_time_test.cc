@@ -20,7 +20,7 @@
 #include "gtest/gtest.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/lease/lease_spec.h"
-#include "ray/common/memory_monitor_interface.h"
+#include "ray/common/monitors/memory_monitor_interface.h"
 #include "ray/raylet/tests/util.h"
 #include "ray/util/clock.h"
 
