@@ -3,7 +3,8 @@ evaluate==0.4.6
 freezegun==1.1.0
 mosaicml; python_version < "3.12"
 sentencepiece==0.2.1
-s3torchconnector==1.4.3
+s3torchconnector==1.4.3; python_version < '3.14'
+s3torchconnector==1.5.0; python_version == '3.14'  # 1.4.3 has no cp314 wheels
 jupytext
 tblib
 xmltodict

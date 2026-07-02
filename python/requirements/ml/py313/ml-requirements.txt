@@ -1,4 +1,4 @@
-tf-keras
+tf-keras; python_version < '3.14'  # requires TensorFlow, which has no cp314 wheels yet
 transformers
 # keras 3.13 dropped py3.10 support; pin explicitly so pip-compile preserves
 # a py_version marker on the lock entry (tensorflow pulls keras transitively).

@@ -1,9 +1,21 @@
 # Keep this in sync with the definition in setup.py for ray[llm]
-vllm[audio]==0.23.0
+# Python 3.14: vllm 0.23.0 pins flashinfer-python==0.6.12, which requires
+# cuda-tile[tileiras]. On cp314 the only cuda-tile wheel is 1.4.0, whose
+# tileiras extra needs cuda-toolkit>=13.2, conflicting with torch 2.11.0's
+# cuda-toolkit<=13.0.2. Hold 3.14 at vllm 0.22.0 (flashinfer 0.6.11.post2,
+# no tileiras extra) until upstream cp314 wheels align. Remove this split
+# once vllm/flashinfer/torch are co-installable on 3.14.
+vllm[audio]==0.23.0 ; python_version < '3.14'
+vllm[audio]==0.22.0 ; python_version >= '3.14'
 prometheus-fastapi-instrumentator>=8.0.0  # for starlette v1.0.1+
 # Keep NIXL in sync with vLLM's kv_connectors requirements.
 # https://github.com/vllm-project/vllm/blob/v0.23.0/requirements/kv_connectors.txt#L2
 nixl==1.2.0
+# cu13 binary: the torch family is resolved from the cu130 index (see
+# ci/raydepsets/configs/rayllm.depsets.yaml), so nixl-cu13 is the matching
+# CUDA runtime for the cu130-based LLM image. nixl-cu13's nixl_ep_cpp.so links
+# libcudart.so.13; the cu12 wheel links libcudart.so.12, which the cu130 image
+# does not provide, breaking vLLM's eager `import nixl_ep` on the EP path.
 nixl-cu13==1.2.0
 anyio>=4.5.0
 # For json mode
