@@ -575,7 +575,80 @@ class gRPCReplicaResult(ReplicaResult):
             return await asyncio.wrap_future(fut)
 
     def add_done_callback(self, callback: Callable):
-        self._call.add_done_callback(callback)
+        """Register ``callback``, invoked when the underlying RPC completes.
+
+        The actor transport invokes done-callbacks with the request's result
+        or a ``RayError`` (see ``ActorReplicaResult.add_done_callback``).
+        ``grpc.aio`` instead invokes them with the raw ``grpc.aio.Call``, which
+        is opaque to consumers that rely on the actor-transport contract -- most
+        importantly the router's request-completion handler, which invalidates
+        the queue-length cache when a replica becomes unavailable (see
+        ``Router._process_finished_request``). Without normalization a failed
+        gRPC request is silently ignored, so a dead replica keeps getting
+        selected by power-of-two-choices routing until another code path probes
+        it (https://github.com/ray-project/ray/issues/63261).
+
+        Normalize a failed call into the same ``ActorUnavailableError`` the data
+        path raises (see ``_process_grpc_response`` / ``get_rejection_response``)
+        so behavior is consistent across transports.
+        """
+
+        def _on_done(call: grpc.aio.Call):
+            # The status code is only available via a coroutine, so resolve it
+            # before invoking ``callback``. The call is already complete here, so
+            # the coroutine resolves without blocking.
+            async def _invoke():
+                callback(await self._normalize_done_result(call))
+
+            # grpc.aio fires done-callbacks on the call's own loop, so in the
+            # common case schedule directly there and avoid the thread-safe
+            # queue/locking overhead of run_coroutine_threadsafe.
+            try:
+                current_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                current_loop = None
+
+            if current_loop is self._grpc_call_loop and current_loop.is_running():
+                current_loop.create_task(_invoke())
+                return
+
+            # Called from a different thread, or no running loop (e.g.
+            # interpreter shutdown): hop onto the call's loop, falling back to
+            # the previous behavior if that loop is gone rather than dropping
+            # the callback entirely.
+            coro = _invoke()
+            try:
+                run_coroutine_threadsafe(coro, self._grpc_call_loop)
+            except RuntimeError:
+                coro.close()
+                callback(call)
+
+        self._call.add_done_callback(_on_done)
+
+    async def _normalize_done_result(self, call: grpc.aio.Call) -> Any:
+        """Map a completed gRPC call to the actor-transport callback contract.
+
+        Returns an ``ActorUnavailableError`` if the replica was unreachable,
+        otherwise the ``call`` itself (preserving previous behavior).
+        """
+        try:
+            code = await call.code()
+        except Exception:
+            # If the status can't be determined, don't mask the outcome.
+            return call
+
+        # UNAVAILABLE means the replica's gRPC server was unreachable, so the
+        # request never completed on a live replica. Treat it like a
+        # RayActorError so the router invalidates its cache and reroutes; if the
+        # replica is actually dead the router learns that via active probing.
+        # (CANCELLED is intentionally excluded: in the done-callback path it is
+        # most often a client-initiated cancellation, not a replica failure.)
+        if code == grpc.StatusCode.UNAVAILABLE:
+            return ActorUnavailableError(
+                "Actor is unavailable.", self._actor_id.binary()
+            )
+
+        return call
 
     def cancel(self):
         self._call.cancel()
