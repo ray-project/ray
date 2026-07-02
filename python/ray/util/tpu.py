@@ -770,6 +770,147 @@ def slice_placement_group(
 
 
 @PublicAPI(stability="alpha")
+def run_on_slice(
+    fn: Any,
+    *args: Any,
+    topology: Optional[str] = None,
+    accelerator_version: Optional[str] = None,
+    tpu_slice: Optional[SlicePlacementGroup] = None,
+    num_slices: int = 1,
+    chips_per_vm: Optional[int] = None,
+    head_reservation_timeout_s: Optional[
+        float
+    ] = DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S,
+    pg_ready_timeout_s: Optional[float] = None,
+    **kwargs: Any,
+) -> "List[ray.ObjectRef]":
+    """Run a remote function on every host in a TPU slice.
+
+    Dispatches one task per host in the slice, pinning each task to its
+    corresponding placement-group bundle via
+    :class:`~ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy`.
+    The function blocks until the underlying placement group is scheduled,
+    then returns a list of object references — one per host — that can be
+    passed directly to ``ray.get``.
+
+    Resource options (``num_cpus=0``, ``resources={"TPU": N}``, and
+    ``scheduling_strategy``) are applied automatically via ``.options()``
+    and override any values set in the ``@ray.remote`` decorator.
+
+    Args:
+        fn: A ``@ray.remote``-decorated function to run on every host.
+        *args: Positional arguments broadcast to every task invocation.
+        topology: The TPU topology string (e.g. ``"4x4"``, ``"2x2x2"``). Required
+            when ``tpu_slice`` is ``None``; ignored otherwise.
+        accelerator_version: The TPU accelerator generation
+            (e.g. ``"v4"``, ``"v6e"``). Required when ``tpu_slice`` is ``None``;
+            ignored otherwise.
+        tpu_slice: An existing :class:`SlicePlacementGroup` to schedule
+            onto. When provided, the slice is used directly and
+            ``run_on_slice`` does **not** create, modify, or tear down
+            any placement groups. When ``None`` (default), a new slice
+            is reserved internally and its head placement groups are
+            released once the worker placement group becomes ready.
+        num_slices: Number of TPU slices to reserve. Ignored when
+            ``tpu_slice`` is provided. Defaults to ``1``.
+        chips_per_vm: Optional override for the number of chips per VM.
+            Ignored when ``tpu_slice`` is provided.
+        head_reservation_timeout_s: Seconds to wait for each head
+            placement group during slice reservation. Ignored when
+            ``tpu_slice`` is provided. Defaults to
+            ``DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S``.
+        pg_ready_timeout_s: Seconds to wait for the worker placement
+            group to become ready after reservation. Pass ``None`` to
+            wait indefinitely (default).
+        **kwargs: Keyword arguments broadcast to every task invocation.
+
+    Returns:
+        List[ray.ObjectRef]: One object reference per host in the slice.
+            Pass the list to ``ray.get`` to retrieve results.
+
+    Raises:
+        ValueError: If ``tpu_slice`` is ``None`` and either ``topology`` or
+            ``accelerator_version`` is not provided.
+        TimeoutError: If the placement group does not become ready within
+            ``pg_ready_timeout_s`` seconds. When the slice was created
+            internally, it is shut down before the error is raised to
+            avoid leaking resources.
+
+    Examples:
+
+    .. testcode:: python
+        :skipif: True
+
+        import ray
+        from ray.util.tpu import run_on_slice, slice_placement_group
+
+        @ray.remote
+        def my_tpu_task():
+            import jax
+            return jax.device_count()
+
+        # One-shot: reserve a v6e 4x4 slice, run on every host, then
+        # release automatically when the driver exits.
+        results = ray.get(
+            run_on_slice(my_tpu_task, topology="4x4", accelerator_version="v6e")
+        )
+
+        # Reuse an existing slice across multiple calls.
+        slice_handle = slice_placement_group(topology="4x4", accelerator_version="v6e")
+        ray.get(slice_handle.placement_group.ready())
+
+        results1 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
+        results2 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
+        slice_handle.shutdown()
+    """
+    from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+    _owns_slice = tpu_slice is None
+    slice_handle = tpu_slice
+    if _owns_slice:
+        if topology is None or accelerator_version is None:
+            raise ValueError(
+                "topology and accelerator_version are required when tpu_slice is not provided."
+            )
+        slice_handle = SlicePlacementGroup(
+            topology=topology,
+            accelerator_version=accelerator_version,
+            num_slices=num_slices,
+            chips_per_vm=chips_per_vm,
+            head_reservation_timeout_s=head_reservation_timeout_s,
+        )
+
+    pg = slice_handle.placement_group
+    tpu_per_bundle = slice_handle.bundle_resources.get(
+        "TPU", slice_handle.chips_per_host
+    )
+
+    ready, _ = ray.wait([pg.ready()], timeout=pg_ready_timeout_s)
+    if not ready:
+        if _owns_slice:
+            slice_handle.shutdown()
+        raise TimeoutError(
+            f"TPU slice placement group was not ready within {pg_ready_timeout_s}s. "
+            "Ensure your cluster has sufficient TPU resources available."
+        )
+
+    if _owns_slice:
+        slice_handle.release_head_pgs()
+
+    return [
+        fn.options(
+            num_cpus=0,
+            resources={"TPU": tpu_per_bundle},
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg,
+                placement_group_bundle_index=i,
+            ),
+        ).remote(*args, **kwargs)
+        for i in range(slice_handle.num_bundles)
+    ]
+
+
+@PublicAPI(stability="alpha")
 def init_jax_profiler(port: Optional[int] = None) -> None:
     """Setup JAX Profiler server for in-process JAX profiling.
 
