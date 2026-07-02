@@ -12,6 +12,7 @@ import pytest
 
 import ray
 from ray.data.catalog import (
+    AccessMode,
     Catalog,
     DatabricksUnityCatalog,
     ReaderFormat,
@@ -260,14 +261,14 @@ def test_resolve_gcp_delta_raises(uc_catalog, isolated_env):
 
 
 class _FakeCatalog(Catalog):
-    """Returns a pre-baked ResolvedSource; records the reader it was asked for."""
+    """Returns a pre-baked ResolvedSource; records (table, reader, mode) calls."""
 
     def __init__(self, resolved):
         self._resolved = resolved
         self.calls = []
 
-    def resolve(self, table, *, reader):
-        self.calls.append((table, reader))
+    def resolve(self, table, *, reader, mode=AccessMode.READ):
+        self.calls.append((table, reader, mode))
         return self._resolved
 
 
@@ -279,7 +280,7 @@ def test_read_parquet_with_catalog(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet("main.db.tbl", catalog=catalog)
 
     assert sorted(r["id"] for r in ds.take_all()) == [1, 2, 3]
-    assert catalog.calls == [("main.db.tbl", ReaderFormat.PARQUET)]
+    assert catalog.calls == [("main.db.tbl", ReaderFormat.PARQUET, AccessMode.READ)]
 
 
 @pytest.mark.parametrize("reader", ["parquet", "delta"])
@@ -313,7 +314,7 @@ def test_read_delta_with_catalog(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_delta("main.db.tbl", catalog=catalog)
 
     assert sorted(r["id"] for r in ds.take_all()) == [1, 2, 3]
-    assert catalog.calls == [("main.db.tbl", ReaderFormat.DELTA)]
+    assert catalog.calls == [("main.db.tbl", ReaderFormat.DELTA, AccessMode.READ)]
 
 
 def test_read_iceberg_uses_catalog_resolved_kwargs():
@@ -327,7 +328,7 @@ def test_read_iceberg_uses_catalog_resolved_kwargs():
 
     _, kwargs = ds_cls.call_args
     assert kwargs["catalog_kwargs"] == {"type": "rest", "uri": "u", "token": "tk"}
-    assert catalog.calls == [("main.db.tbl", ReaderFormat.ICEBERG)]
+    assert catalog.calls == [("main.db.tbl", ReaderFormat.ICEBERG, AccessMode.READ)]
 
 
 def test_read_iceberg_explicit_catalog_kwargs_take_precedence():
@@ -338,6 +339,132 @@ def test_read_iceberg_explicit_catalog_kwargs_take_precedence():
     ) as ds_cls, mock.patch("ray.data.read_api.read_datasource"):
         ray.data.read_iceberg(
             table_identifier="main.db.tbl",
+            catalog=catalog,
+            catalog_kwargs={"type": "sql", "uri": "explicit"},
+        )
+
+    _, kwargs = ds_cls.call_args
+    assert kwargs["catalog_kwargs"] == {"type": "sql", "uri": "explicit"}
+    assert catalog.calls == []  # catalog was not consulted
+
+
+# ---------------------------------------------------------------------------
+# AccessMode + write-mode credential vending
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "mode,expected_op",
+    [(AccessMode.READ, "READ"), (AccessMode.WRITE, "READ_WRITE")],
+)
+def test_access_mode_maps_to_databricks_table_op(mode, expected_op):
+    from databricks.sdk.service.catalog import TableOperation
+
+    assert mode.as_databricks_table_op() == TableOperation[expected_op]
+
+
+@pytest.mark.parametrize(
+    "mode,expected_op",
+    [(AccessMode.READ, "READ"), (AccessMode.WRITE, "READ_WRITE")],
+)
+def test_resolve_requests_operation_for_mode(
+    uc_catalog, isolated_env, mode, expected_op
+):
+    # resolve() must vend credentials for the requested access mode.
+    from databricks.sdk.service.catalog import TableOperation
+
+    client = mock.MagicMock()
+    client.tables.get.return_value = TableInfo(
+        table_id="tid-123", data_source_format=DataSourceFormat("DELTA")
+    )
+    gen = client.temporary_table_credentials.generate_temporary_table_credentials
+    gen.return_value = AWS_RESP
+    with mock.patch.object(
+        DatabricksUnityCatalog, "_workspace_client", return_value=client
+    ):
+        uc_catalog.resolve("main.sales.txns", reader=ReaderFormat.PARQUET, mode=mode)
+
+    assert gen.call_args.kwargs["operation"] == TableOperation[expected_op]
+
+
+def test_resolve_write_mode_builds_aws_filesystem(uc_catalog, isolated_env):
+    # Unlike READ (where AWS Parquet rides on env vars), WRITE builds an explicit
+    # S3FileSystem so the vended session token travels with the pickled datasink
+    # to the write workers.
+    patcher = _mock_uc_sdk()
+    try:
+        resolved = uc_catalog.resolve(
+            "main.sales.txns", reader=ReaderFormat.PARQUET, mode=AccessMode.WRITE
+        )
+    finally:
+        patcher.stop()
+
+    assert isinstance(resolved.filesystem, pafs.S3FileSystem)
+
+
+# ---------------------------------------------------------------------------
+# Writer integration via a fake catalog (no network)
+# ---------------------------------------------------------------------------
+
+
+def test_write_parquet_with_catalog(ray_start_regular_shared, tmp_path):
+    # write_parquet resolves the table identifier on the driver and writes to the
+    # catalog-resolved physical location, requesting WRITE access.
+    out = str(tmp_path / "out")
+    catalog = _FakeCatalog(ResolvedSource(path=out))
+    ray.data.range(3).write_parquet("main.db.tbl", catalog=catalog)
+
+    assert catalog.calls == [("main.db.tbl", ReaderFormat.PARQUET, AccessMode.WRITE)]
+    ds = ray.data.read_parquet(out)
+    assert sorted(r["id"] for r in ds.take_all()) == [0, 1, 2]
+
+
+def test_write_parquet_catalog_filesystem_overrides_with_warning(
+    ray_start_regular_shared, tmp_path
+):
+    # A catalog-resolved filesystem overrides a user-supplied one (with a warning).
+    out = str(tmp_path / "out")
+    fs = pafs.LocalFileSystem()
+    catalog = _FakeCatalog(ResolvedSource(path=out, filesystem=fs))
+
+    with mock.patch.object(ray.data.dataset.logger, "warning") as warn:
+        ray.data.range(1).write_parquet(
+            "main.db.tbl", catalog=catalog, filesystem=pafs.LocalFileSystem()
+        )
+
+    assert any(
+        "Overriding the provided `filesystem`" in str(c) for c in warn.call_args_list
+    )
+
+
+def test_write_iceberg_uses_catalog_resolved_kwargs(ray_start_regular_shared):
+    catalog = _FakeCatalog(
+        ResolvedSource(
+            catalog_kwargs={"type": "rest", "uri": "u", "token": "tk"},
+            table_identifier="db.tbl",
+        )
+    )
+    with mock.patch("ray.data.dataset.IcebergDatasink") as ds_cls, mock.patch.object(
+        ray.data.Dataset, "write_datasink"
+    ):
+        ray.data.range(1).write_iceberg("main.db.tbl", catalog=catalog)
+
+    _, kwargs = ds_cls.call_args
+    assert kwargs["catalog_kwargs"] == {"type": "rest", "uri": "u", "token": "tk"}
+    assert kwargs["table_identifier"] == "db.tbl"
+    assert catalog.calls == [("main.db.tbl", ReaderFormat.ICEBERG, AccessMode.WRITE)]
+
+
+def test_write_iceberg_explicit_catalog_kwargs_take_precedence(
+    ray_start_regular_shared,
+):
+    # When both catalog and catalog_kwargs are given, catalog is ignored.
+    catalog = _FakeCatalog(ResolvedSource(catalog_kwargs={"type": "rest", "uri": "u"}))
+    with mock.patch("ray.data.dataset.IcebergDatasink") as ds_cls, mock.patch.object(
+        ray.data.Dataset, "write_datasink"
+    ):
+        ray.data.range(1).write_iceberg(
+            "main.db.tbl",
             catalog=catalog,
             catalog_kwargs={"type": "sql", "uri": "explicit"},
         )
