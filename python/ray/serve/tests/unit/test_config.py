@@ -499,6 +499,11 @@ class TestReplicaConfig:
             ReplicaConfig.create(Class, ray_actor_options={"memory": -1})
         with pytest.raises(TypeError):
             ReplicaConfig.create(Class, ray_actor_options={"resources": []})
+        with pytest.raises(
+            ValueError,
+            match="Object store memory is a node-level resource",
+        ):
+            ReplicaConfig.create(Class, ray_actor_options={"object_store_memory": 100})
 
         disallowed_ray_actor_options = {
             "max_concurrency",

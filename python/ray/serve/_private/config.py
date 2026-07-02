@@ -868,6 +868,13 @@ class ReplicaConfig:
             "fallback_strategy",
         }
 
+        if "object_store_memory" in self.ray_actor_options:
+            raise ValueError(
+                "Specifying 'object_store_memory' in ray_actor_options is not "
+                "allowed. Object store memory is a node-level resource and "
+                "cannot be requested for Serve replica actors."
+            )
+
         for option in self.ray_actor_options:
             if option not in allowed_ray_actor_options:
                 raise ValueError(
