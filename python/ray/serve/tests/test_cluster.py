@@ -18,7 +18,11 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_state import ReplicaStartupStatus
-from ray.serve._private.test_utils import check_deployment_status
+from ray.serve._private.test_utils import (
+    check_deployment_status,
+    expected_proxy_actors,
+    skip_if_haproxy,
+)
 from ray.serve._private.utils import calculate_remaining_timeout, get_head_node_id
 from ray.serve.config import GangSchedulingConfig
 from ray.serve.context import _get_global_client
@@ -526,6 +530,10 @@ def test_handle_prefers_replicas_on_same_node(ray_cluster):
     assert blocked_response.result() == outer_node_id
 
 
+# TODO: HAProxy's default ingress balances across all replicas with no
+# node-local preference. prefer-local routing could be wired under HAProxy via
+# the ingress_request_router use-server delegation, then this skip dropped.
+@skip_if_haproxy("balances across replicas without node-local preference")
 @pytest.mark.parametrize("set_flag", [True, False])
 def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
     """When the feature flag is turned on via env var, verify that http proxy routes to
@@ -630,9 +638,15 @@ class TestHealthzAndRoutes:
 
         wait_for_condition(check_replicas_on_worker_nodes)
 
-        # Ensure total actors of 2 proxies, 1 controller, and 2 replicas,
-        # and 2 nodes exist.
-        wait_for_condition(lambda: len(list_actors(address=cluster.address)) == 5)
+        # Total alive actors: EveryNode proxies on both nodes + 1 controller +
+        # 2 replicas. Under HAProxy each proxy node runs an HAProxyManager and
+        # the head node adds a fallback ProxyActor.
+        expected_num_actors = (
+            sum(expected_proxy_actors(num_proxy_nodes=2).values()) + 1 + 2
+        )
+        wait_for_condition(
+            lambda: len(list_actors(address=cluster.address)) == expected_num_actors
+        )
         assert len(ray.nodes()) == 2
 
         # Ensure `/-/healthz` and `/-/routes` return 200 and expected responses
@@ -660,15 +674,19 @@ class TestHealthzAndRoutes:
         assert httpx.get("http://127.0.0.1:8001/-/routes").status_code == 200
         assert httpx.get("http://127.0.0.1:8001/-/routes").text == '{"/":"default"}'
 
-        # Delete the deployment should bring the active actors down to 3 and drop
-        # replicas on all nodes.
+        # Deleting the deployment drops the replicas on all nodes. The proxies and
+        # controller stay alive (the worker proxy drains), so the count is the
+        # pre-delete total minus the 2 replicas.
         serve.delete(name=SERVE_DEFAULT_APP_NAME)
 
+        expected_num_actors_after_delete = (
+            sum(expected_proxy_actors(num_proxy_nodes=2).values()) + 1
+        )
         wait_for_condition(
             lambda: len(
                 list_actors(address=cluster.address, filters=[("STATE", "=", "ALIVE")])
             )
-            == 3,
+            == expected_num_actors_after_delete,
         )
 
         # Ensure head node `/-/healthz` and `/-/routes` continue to
@@ -681,18 +699,23 @@ class TestHealthzAndRoutes:
             expected_code=200,
             expected_text="success",
         )
-        assert httpx.get("http://127.0.0.1:8000/-/routes").status_code == 200
-        assert httpx.get("http://127.0.0.1:8000/-/routes").text == "{}"
+        wait_for_condition(
+            condition_predictor=check_request,
+            url="http://127.0.0.1:8000/-/routes",
+            expected_code=200,
+            expected_text="{}",
+        )
         wait_for_condition(
             condition_predictor=check_request,
             url="http://127.0.0.1:8001/-/healthz",
             expected_code=503,
             expected_text="This node is being drained.",
         )
-        assert httpx.get("http://127.0.0.1:8001/-/routes").status_code == 503
-        assert (
-            httpx.get("http://127.0.0.1:8001/-/routes").text
-            == "This node is being drained."
+        wait_for_condition(
+            condition_predictor=check_request,
+            url="http://127.0.0.1:8001/-/routes",
+            expected_code=503,
+            expected_text="This node is being drained.",
         )
 
 

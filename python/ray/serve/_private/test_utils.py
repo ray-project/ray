@@ -1,7 +1,9 @@
 import asyncio
 import datetime
+import glob
 import os
 import random
+import socket
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -35,6 +37,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_HAPROXY_SOCKET_PATH,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
@@ -46,6 +49,7 @@ from ray.serve._private.deployment_state import (
     ReplicaStartupStatus,
     ReplicaState,
 )
+from ray.serve._private.haproxy import HAProxyApi
 from ray.serve._private.proxy import DRAINING_MESSAGE
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import (
@@ -62,6 +66,22 @@ from ray.util.state import list_actors
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
 PROMETHEUS_METRICS_TIMEOUT_S = 5
+
+
+def skip_if_haproxy(reason: str):
+    """Skip a test when the HAProxy ingress is enabled.
+
+    The HAProxy ingress runs as a separate premerge step with
+    RAY_SERVE_ENABLE_HA_PROXY=1. Some tests exercise behavior HAProxy does not
+    support yet (e.g. gRPC ingress) or that probes the native Serve proxy
+    directly. Mark those with this decorator instead of maintaining a separate
+    test allowlist. The test still runs in the non-HAProxy steps.
+    """
+    import pytest
+
+    return pytest.mark.skipif(
+        RAY_SERVE_ENABLE_HA_PROXY, reason=f"HAProxy ingress: {reason}"
+    )
 
 
 # Global variable that is fetched during controller recovery that
@@ -832,6 +852,45 @@ def expected_proxy_actors(num_proxy_nodes: int = 1) -> Dict[str, int]:
     if RAY_SERVE_ENABLE_HA_PROXY:
         return {"HAProxyManager": num_proxy_nodes, "ProxyActor": 1}
     return {"ProxyActor": num_proxy_nodes}
+
+
+def wait_for_haproxy_routing_to_replica(timeout: int = 30):
+    """Block until HAProxy marks a replica's primary backend server UP.
+
+    serve.run returns once replicas are RUNNING, but until a replica's
+    direct-ingress server passes HAProxy's health check, HAProxy serves requests
+    from the head-node backup fallback proxy. That path adds proxy and router
+    spans, so trace-topology assertions must wait for direct routing first. No-op
+    without HAProxy, which has no fallback to race.
+    """
+    if not RAY_SERVE_ENABLE_HA_PROXY:
+        return
+
+    socket_glob = os.path.join(
+        os.path.dirname(RAY_SERVE_HAPROXY_SOCKET_PATH), "*", "admin.sock"
+    )
+
+    def replica_backend_up():
+        for sock_path in glob.glob(socket_glob):
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                    client.connect(sock_path)
+                    client.sendall(b"show stat\n")
+                    data = b""
+                    while chunk := client.recv(65536):
+                        data += chunk
+            except OSError:
+                continue  # stale socket from a prior run
+            stats = HAProxyApi._parse_haproxy_csv_stats(data.decode(errors="replace"))
+            if any(
+                name.startswith("SERVE_REPLICA") and server.is_up
+                for servers in stats.values()
+                for name, server in servers.items()
+            ):
+                return True
+        return False
+
+    wait_for_condition(replica_backend_up, timeout=timeout)
 
 
 def alive_actor_counts() -> Dict[str, int]:
