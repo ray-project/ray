@@ -1672,6 +1672,35 @@ class TestProtoToDict:
         assert "initial_replicas" not in result
 
 
+def test_max_request_retries_config_validation():
+    """max_request_retries accepts -1 and non-negative ints, rejects < -1."""
+    RequestRouterConfig(max_request_retries=-1)
+    RequestRouterConfig(max_request_retries=0)
+    RequestRouterConfig(max_request_retries=10)
+
+    with pytest.raises(ValueError):
+        RequestRouterConfig(max_request_retries=-2)
+
+
+@pytest.mark.parametrize("max_retries", [-1, 0, 5])
+def test_max_request_retries_proto_roundtrip(max_retries):
+    """Ensure max_request_retries survives to_proto/from_proto."""
+    config = DeploymentConfig(
+        request_router_config=RequestRouterConfig(max_request_retries=max_retries)
+    )
+    roundtripped = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+    assert roundtripped.request_router_config.max_request_retries == max_retries
+
+
+def test_max_request_retries_proto_absent_field():
+    """Absent max_request_retries (older controller) falls back to -1 default."""
+    proto = DeploymentConfig().to_proto()
+    proto.request_router_config.ClearField("max_request_retries")
+    assert not proto.request_router_config.HasField("max_request_retries")
+    deserialized = DeploymentConfig.from_proto(proto)
+    assert deserialized.request_router_config.max_request_retries == -1
+
+
 if __name__ == "__main__":
     import sys
 
