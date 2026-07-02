@@ -457,6 +457,28 @@ class TestSizeBytes:
         )
         assert bytes_size == pytest.approx(true_size, rel=0.1), (bytes_size, true_size)
 
+    def test_deterministic_across_blocks(self):
+        """size_bytes() must return the same value for two blocks holding
+        identical data. Non-determinism here can cause a streaming generator
+        task to produce different block counts across replay attempts (e.g.
+        lineage reconstruction), since each attempt rebuilds the block and
+        re-estimates its size. That surfaces as a silent hang or silent data
+        loss downstream.
+        """
+        # Use enough rows to trigger sampling (sample_size < total_size), and
+        # vary the string lengths so a different sample yields a different
+        # estimate (this is what makes the non-deterministic case observable).
+        data = [f"str_{i}" for i in range(10_000)]
+        block1 = pd.DataFrame({"col": pd.Series(data, dtype="string")})
+        block2 = pd.DataFrame({"col": pd.Series(data, dtype="string")})
+
+        first = PandasBlockAccessor.for_block(block1).size_bytes()
+        second = PandasBlockAccessor.for_block(block2).size_bytes()
+
+        assert (
+            first == second
+        ), f"size_bytes() is non-deterministic: first={first}, second={second}"
+
 
 def test_iter_rows_with_na(ray_start_regular_shared):
     block = pd.DataFrame({"col": [pd.NA]})
