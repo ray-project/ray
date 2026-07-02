@@ -289,6 +289,15 @@ std::string GetAllInterfacesIP() {
 }
 
 std::string GetNodeIpAddressFromPerspective(const std::optional<std::string> &address) {
+  const char *use_hostname_env = std::getenv("RAY_NODE_USE_HOSTNAME");
+  if (use_hostname_env != nullptr && std::string(use_hostname_env) == "1") {
+    boost::system::error_code ec;
+    std::string hostname = boost::asio::ip::host_name(ec);
+    if (!ec) {
+      return hostname;
+    }
+    RAY_LOG(WARNING) << "Failed to retrieve hostname: " << ec.message();
+  }
   std::vector<std::pair<std::string, boost::asio::ip::udp>> test_addresses;
   if (address.has_value()) {
     auto parts = ParseAddress(*address);
