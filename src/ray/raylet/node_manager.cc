@@ -40,9 +40,9 @@
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/lease/lease.h"
-#include "ray/common/memory_monitor_factory.h"
-#include "ray/common/memory_monitor_interface.h"
-#include "ray/common/memory_monitor_utils.h"
+#include "ray/common/monitors/memory_monitor_factory.h"
+#include "ray/common/monitors/memory_monitor_interface.h"
+#include "ray/common/monitors/memory_monitor_utils.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
@@ -2255,7 +2255,7 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
   if (request.reason() ==
       rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION) {
     const bool is_idle =
-        cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeIdle();
+        cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeIdleForDrain();
     if (is_idle) {
       cluster_resource_scheduler_.GetLocalResourceManager().SetLocalNodeDraining(request);
       reply->set_is_accepted(true);
@@ -3159,18 +3159,20 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
               MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
                   MemoryMonitorInterface::kDefaultCgroupPath);
           if (initial_config_.enable_resource_isolation) {
-            StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound>
-                user_slice_memory_snapshot_or =
-                    MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
+            StatusSetOr<std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>,
+                        StatusT::NotFound>
+                user_and_system_slice_memory_snapshot_or =
+                    MemoryMonitorUtils::TakeUserAndSystemSliceMemoryUsageSnapshot(
                         cgroup_manager_->GetUserCgroupPath(),
                         cgroup_manager_->GetSystemCgroupPath());
-            if (user_slice_memory_snapshot_or.has_value()) {
-              memory_usage_snapshot = user_slice_memory_snapshot_or.value();
+            if (user_and_system_slice_memory_snapshot_or.has_value()) {
+              memory_usage_snapshot =
+                  user_and_system_slice_memory_snapshot_or.value().first;
             } else {
               RAY_LOG(ERROR) << absl::StrFormat(
-                  "Failed to take user slice memory snapshot due to: %s. "
+                  "Failed to take user and system slice memory snapshot due to: %s. "
                   "Falling back to host system memory snapshot.",
-                  user_slice_memory_snapshot_or.message());
+                  user_and_system_slice_memory_snapshot_or.message());
             }
           }
 
