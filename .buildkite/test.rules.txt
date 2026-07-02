@@ -18,7 +18,7 @@
 ! ray_client runtime_env_container
 ! data dask serve ml tune train train_gpu llm rllib rllib_gpu rllib_directly
 ! linux_wheels macos_wheels docker doc python_dependencies min_build tools windows
-! release_tests spark_on_ray
+! release_tests spark_on_ray rocksdb_tests redis_tests
 
 # NOTE: dstrodtman is leading effort to rework content in RST files, and wanted to shift
 # from blocking premerge for these changes. We can remove this pass block once effort concludes,
@@ -300,6 +300,17 @@ ci/ci.sh
 src/ray/core_worker/experimental*.h
 src/ray/core_worker/experimental*.cc
 @ cgraphs_direct_transport
+;
+
+# REP-64: changes to the GCS store_client API or backend implementations
+# (rocksdb, redis, in-memory) must re-run the GCS FT premerge suites for
+# both backends. Also covers rocksdb build-flag changes. The broader
+# `core_cpp ...` tags below mirror the catch-all `src/` rule so this
+# path keeps its normal build coverage on top of the FT suites.
+src/ray/gcs/store_client/
+bazel/rocksdb.BUILD
+@ rocksdb_tests redis_tests
+@ core_cpp cpp java python linux_wheels macos_wheels dashboard release_tests
 ;
 
 src/

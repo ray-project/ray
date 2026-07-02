@@ -435,8 +435,60 @@ RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
-// The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
+/// The storage backend to use for the GCS. It can be 'memory', 'redis', or
+/// 'rocksdb'.
 RAY_CONFIG(std::string, gcs_storage, "memory")
+
+/// Filesystem path for the RocksDB GCS database files. Only meaningful when
+/// gcs_storage == "rocksdb".
+RAY_CONFIG(std::string, gcs_storage_path, "")
+
+/// Offload RocksDB I/O (including the WAL fsync that dominates per-call
+/// latency) to a background thread pool so blocking ops do not stall the
+/// GCS event loop. When false, each Async* call runs synchronously on
+/// the caller's thread, matching InMemoryStoreClient semantics.
+RAY_CONFIG(bool, gcs_rocksdb_async_offload, false)
+
+/// Number of worker threads in the RocksDB offload pool. Only meaningful
+/// when gcs_rocksdb_async_offload is true. RocksDB serializes WAL writes
+/// internally and batches concurrent in-flight writers into one fsync
+/// (group commit), so a small pool (~4) is enough to capture the
+/// aggregate-throughput benefit on the GCS metadata workload.
+RAY_CONFIG(uint32_t, gcs_rocksdb_io_pool_size, 4)
+
+/// Number of per-key strand buckets used for single-key op ordering on
+/// the offload path. Single-key ops (Put/Get/Delete/Exists) are bucketed
+/// by hash(table, key) and serialized within a bucket; different buckets
+/// run concurrently up to the pool size. Default 64 gives ~16x headroom
+/// over the typical pool size (4). Only meaningful when
+/// gcs_rocksdb_async_offload is true.
+RAY_CONFIG(uint32_t, gcs_rocksdb_strand_buckets, 64)
+
+/// Comma-separated GCS table names whose RocksDB writes skip the per-write
+/// WAL fsync (WriteOptions::sync = false). Every other table keeps the
+/// fsync-before-ack durability contract.
+///
+/// Why this exists: GCS publishes death notifications (node down, actor
+/// dead) from inside the storage write's completion callback -- i.e.
+/// publish-after-persist. Under RocksDB the per-write fsync therefore
+/// delays the cluster-wide death notification by the fsync latency, which
+/// widens a pre-existing Ray-core object-reconstruction/task-resubmission
+/// race far enough that a generator (num_returns=None) reconstruction can
+/// hang. The other GCS backends do not expose this because their "persist"
+/// is effectively in-memory-fast: Ray's recommended Redis GCS runs with
+/// `appendfsync everysec` (fsync once per second, not per write; see
+/// doc/.../kuberay-gcs-persistent-ft.md) and Ray's test Redis has no
+/// persistence at all.
+///
+/// Relaxing the fsync on these tables keeps RocksDB at least as durable as
+/// that proven, shipped baseline (a crash can lose only the last,
+/// not-yet-fsynced write -- the same window Redis everysec already
+/// tolerates), while removing the notification delay. The defaults are the
+/// two death-notification tables, whose state is re-derivable after a GCS
+/// restart anyway: NODE liveness is re-established by health checks and
+/// ACTOR state is reconciled from the running cluster. Set to "" to keep
+/// the strict per-write fsync on all tables.
+RAY_CONFIG(std::string, gcs_rocksdb_soft_durability_tables, "NODE,ACTOR")
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)

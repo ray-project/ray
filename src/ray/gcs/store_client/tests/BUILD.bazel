@@ -1,4 +1,4 @@
-load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
+load("//bazel:ray.bzl", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
 
 ray_cc_library(
     name = "store_client_test_lib",
@@ -71,6 +71,74 @@ ray_cc_test(
     deps = [
         ":store_client_test_lib",
         "//src/ray/gcs/store_client:in_memory_store_client",
+    ],
+)
+
+# Smallest exercise of the RocksDB Bazel integration (no StoreClient).
+ray_cc_test(
+    name = "rocksdb_smoke_test",
+    size = "small",
+    srcs = ["rocksdb_smoke_test.cc"],
+    tags = ["team:core"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        "@com_github_facebook_rocksdb//:rocksdb",
+    ],
+)
+
+# RocksDb-specific StoreClient scenarios that don't fit
+# StoreClientTestBase: close+reopen recovery, cluster-id marker fail-fast,
+# offload-path roundtrips.
+ray_cc_test(
+    name = "rocksdb_store_client_test",
+    size = "small",
+    srcs = ["rocksdb_store_client_test.cc"],
+    tags = ["team:core"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/gcs/store_client:rocksdb_store_client",
+    ],
+)
+
+# Runs RocksDbStoreClient through the same StoreClientTestBase suite that
+# in_memory_store_client_test and redis_store_client_test exercise.
+ray_cc_test(
+    name = "rocksdb_parity_test",
+    size = "medium",
+    srcs = ["rocksdb_parity_test.cc"],
+    tags = ["team:core"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":store_client_test_lib",
+        "//src/ray/gcs/store_client:rocksdb_store_client",
+    ],
+)
+
+# Per-key strand correctness + JobID-counter atomicity under contention.
+ray_cc_test(
+    name = "rocksdb_concurrency_test",
+    size = "medium",
+    srcs = ["rocksdb_concurrency_test.cc"],
+    tags = ["team:core"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/gcs/store_client:rocksdb_store_client",
+    ],
+)
+
+# Operator-facing microbench binary, not a CI test. Compares inline and
+# offload paths against InMemoryStoreClient on the GCS hot-path
+# operations. Build with -c opt; debug-build numbers are misleading.
+ray_cc_binary(
+    name = "storage_microbench",
+    srcs = ["storage_microbench.cc"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/gcs/store_client:in_memory_store_client",
+        "//src/ray/gcs/store_client:rocksdb_store_client",
     ],
 )
 

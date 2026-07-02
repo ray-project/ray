@@ -450,6 +450,13 @@ def test_dynamic_generator_reconstruction(ray_start_cluster, num_returns_type):
 def test_dynamic_generator_reconstruction_nondeterministic(
     ray_start_cluster, too_many_returns, num_returns_type
 ):
+    # The num_returns_type=None variants used to hang under the RocksDB GCS
+    # backend: RocksDB's per-write WAL fsync delayed the actor-death
+    # notification enough to expose a pre-existing reconstruction race, so the
+    # driver hung in list(gen). Fixed by gcs_rocksdb_soft_durability_tables
+    # (default "NODE,ACTOR"), which skips the fsync on the death-notification
+    # tables, so these variants now pass and are no longer skipped. See the
+    # gcs_rocksdb_soft_durability_tables comment in ray_config_def.h for detail.
     config = {
         "health_check_failure_threshold": 10,
         "health_check_period_ms": 100,
