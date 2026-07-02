@@ -10,19 +10,13 @@ import time
 import zipfile
 from datetime import datetime
 from dataclasses import is_dataclass
-from importlib import import_module
 from typing import Any, Dict
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 import sphinx
 from docutils import nodes
-from jinja2.filters import FILTERS
-from sphinx.ext.autosummary import generate
-from sphinx.util.inspect import safe_getattr
 from sphinx.util.matching import compile_matchers
-
-DEFAULT_API_GROUP = "Others"
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +30,14 @@ from custom_directives import (  # noqa
     pregenerate_example_rsts,
     generate_versions_json,
     collect_example_orphans,
+)
+
+# Importing api_autogen registers the custom autosummary Jinja filters and
+# exposes the shared stub-generation entry point (see doc/source/api_autogen.py).
+from api_autogen import (  # noqa: E402
+    AUTOGEN_FILES,
+    AUTOSUMMARY_FILENAME_MAP,
+    generate_api_stubs,
 )
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -514,9 +516,7 @@ language = "en"
 # autogen files are only used to auto-generate public API documentation.
 # They are not included in the toctree to avoid warnings such as documents not included
 # in any toctree.
-autogen_files = [
-    "data/api/_autogen.rst",
-]
+autogen_files = AUTOGEN_FILES
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -767,60 +767,6 @@ autodoc_member_order = "bysource"
 autodoc_typehints = "signature"
 
 
-def filter_out_undoc_class_members(member_name, class_name, module_name):
-    module = import_module(module_name)
-    cls = getattr(module, class_name)
-    if getattr(cls, member_name).__doc__:
-        return f"~{class_name}.{member_name}"
-    else:
-        return ""
-
-
-def has_public_constructor(class_name, module_name):
-    cls = getattr(import_module(module_name), class_name)
-    return _is_public_api(cls)
-
-
-def get_api_groups(method_names, class_name, module_name):
-    api_groups = set()
-    cls = getattr(import_module(module_name), class_name)
-    for method_name in method_names:
-        method = getattr(cls, method_name)
-        if _is_public_api(method):
-            api_groups.add(
-                safe_getattr(method, "_annotated_api_group", DEFAULT_API_GROUP)
-            )
-
-    return sorted(api_groups)
-
-
-def select_api_group(method_names, class_name, module_name, api_group):
-    cls = getattr(import_module(module_name), class_name)
-    return [
-        method_name
-        for method_name in method_names
-        if _is_public_api(getattr(cls, method_name))
-        and _is_api_group(getattr(cls, method_name), api_group)
-    ]
-
-
-def _is_public_api(obj):
-    api_type = safe_getattr(obj, "_annotated_type", None)
-    if not api_type:
-        return False
-    return api_type.value == "PublicAPI"
-
-
-def _is_api_group(obj, group):
-    return safe_getattr(obj, "_annotated_api_group", DEFAULT_API_GROUP) == group
-
-
-FILTERS["filter_out_undoc_class_members"] = filter_out_undoc_class_members
-FILTERS["get_api_groups"] = get_api_groups
-FILTERS["select_api_group"] = select_api_group
-FILTERS["has_public_constructor"] = has_public_constructor
-
-
 def add_custom_assets(
     app: sphinx.application.Sphinx,
     pagename: str,
@@ -861,15 +807,14 @@ def add_custom_assets(
 def _autogen_apis(app: sphinx.application.Sphinx):
     """
     Auto-generate public API documentation.
+
+    Delegates to the shared generate_api_stubs (see doc/source/api_autogen.py),
+    which raises if generation produces nothing. The failure is intentionally
+    not swallowed: the API-doc consistency check reads these stubs, so a broken
+    autogen step must fail the build instead of silently emitting an empty
+    fixture.
     """
-    try:
-        generate.generate_autosummary_docs(
-            [os.path.join(app.srcdir, file) for file in autogen_files],
-            app=app,
-        )
-    except Exception as e:
-        import warnings
-        warnings.warn(f"Skipping autogen due to: {e}")
+    generate_api_stubs(app.srcdir, app=app)
 
 
 def process_signature(app, what, name, obj, options, signature, return_annotation):
@@ -1003,10 +948,7 @@ redoc = [
 
 redoc_uri = "https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"
 
-autosummary_filename_map = {
-    "ray.serve.deployment": "ray.serve.deployment_decorator",
-    "ray.serve.Deployment": "ray.serve.Deployment",
-}
+autosummary_filename_map = AUTOSUMMARY_FILENAME_MAP
 
 # Mock out external dependencies here.
 
