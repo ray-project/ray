@@ -141,8 +141,8 @@ def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="c
 def generate_pg_data(
     id,
     name="abc",
-    label_domain_key="",
-    label_domain_assignments=None,
+    topology_strategy=None,
+    topology_assignments=None,
 ):
     return PlacementGroupTableData(
         placement_group_id=id,
@@ -150,8 +150,8 @@ def generate_pg_data(
         name=name,
         creator_job_dead=True,
         creator_actor_dead=False,
-        label_domain_key=label_domain_key,
-        label_domain_assignments=label_domain_assignments or {},
+        topology_strategy=topology_strategy or {},
+        topology_assignments=topology_assignments or {},
     )
 
 
@@ -580,6 +580,12 @@ def test_humanify():
     timestamp = 1610000000
     assert "1970-01" in Humanify.timestamp(timestamp)
     assert Humanify.duration(timestamp) == "18 days, 15:13:20"
+
+
+def test_runtime_env_state_humanify_creation_time_ms():
+    state = {"creation_time_ms": 36639}
+    RuntimeEnvState.humanify(state)
+    assert state["creation_time_ms"] == "0:00:36.639000"
 
 
 def is_hex(val):

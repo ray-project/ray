@@ -143,7 +143,8 @@ struct ActorCreationOptions {
                        bool enable_task_events_p = kDefaultTaskEventEnabled,
                        std::unordered_map<std::string, std::string> labels_p = {},
                        LabelSelector label_selector_p = {},
-                       std::vector<FallbackOption> fallback_strategy_p = {})
+                       std::vector<FallbackOption> fallback_strategy_p = {},
+                       int64_t actor_generator_backpressure_num_objects_p = -1)
       : max_restarts(max_restarts_p),
         max_task_retries(max_task_retries_p),
         max_concurrency(max_concurrency_p),
@@ -164,7 +165,9 @@ struct ActorCreationOptions {
         enable_task_events(enable_task_events_p),
         labels(std::move(labels_p)),
         label_selector(std::move(label_selector_p)),
-        fallback_strategy(std::move(fallback_strategy_p)) {
+        fallback_strategy(std::move(fallback_strategy_p)),
+        actor_generator_backpressure_num_objects(
+            actor_generator_backpressure_num_objects_p) {
     // Check that resources is a subset of placement resources.
     for (auto &resource : resources) {
       auto it = this->placement_resources.find(resource.first);
@@ -225,6 +228,10 @@ struct ActorCreationOptions {
   const LabelSelector label_selector;
   // A list of scheduling options defining fallback strategies for scheduling.
   const std::vector<FallbackOption> fallback_strategy;
+  // Cap on unconsumed streaming-generator objects across all generator tasks
+  // on this actor. -1 disables the cap. See proto field
+  // ActorCreationTaskSpec.actor_generator_backpressure_num_objects.
+  const int64_t actor_generator_backpressure_num_objects = -1;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;
@@ -237,13 +244,15 @@ struct PlacementGroupCreationOptions {
       bool is_detached_p,
       NodeID soft_target_node_id = NodeID::Nil(),
       std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector =
-          {})
+          {},
+      std::unordered_map<std::string, PlacementStrategy> topology_strategy = {})
       : name_(std::move(name)),
         strategy_(strategy),
         bundles_(std::move(bundles)),
         is_detached_(is_detached_p),
         soft_target_node_id_(soft_target_node_id),
-        bundle_label_selector_(std::move(bundle_label_selector)) {
+        bundle_label_selector_(std::move(bundle_label_selector)),
+        topology_strategy_(std::move(topology_strategy)) {
     RAY_CHECK(soft_target_node_id_.IsNil() || strategy_ == PlacementStrategy::STRICT_PACK)
         << "soft_target_node_id only works with STRICT_PACK now";
   }
@@ -264,6 +273,9 @@ struct PlacementGroupCreationOptions {
   const NodeID soft_target_node_id_;
   /// The label selectors to apply per-bundle in this placement group.
   const std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector_;
+  /// Topology strategy. Maps each non-node topology label (e.g.
+  /// "ray.io/gpu-domain") to the placement strategy applied at that label.
+  const std::unordered_map<std::string, PlacementStrategy> topology_strategy_;
 };
 
 class ObjectLocation {

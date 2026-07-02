@@ -8,6 +8,8 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
 from urllib.parse import urlparse
 
+from ray.util import log_once
+
 if TYPE_CHECKING:
     import s3fs  # noqa: F401
 
@@ -253,6 +255,67 @@ class _S3FSSessionCredentialProvider:
         return True
 
 
+def _native_s3_obstore_kwargs(
+    filesystem: "pyarrow.fs.S3FileSystem",
+) -> Optional[Dict[str, Any]]:
+    """Translate a native PyArrow ``S3FileSystem`` into ``obstore.store.from_url``
+    kwargs, or ``None`` to route to the threaded path.
+
+    PyArrow exposes only ``region`` as a Python attribute, but the full
+    construction config (credential kind, keys, region, endpoint) is preserved in
+    the filesystem's pickle state -- PyArrow round-trips it to ship filesystems to
+    worker processes. Read it from there so obstore can be configured to match,
+    keeping the fast obstore download path instead of falling back to the slower
+    threaded one.
+
+    Returns ``None`` (caller uses the threaded path, applying the filesystem
+    verbatim) when the config can't be represented as *static* obstore options:
+    assume-role credentials, which PyArrow refreshes but a one-time obstore
+    snapshot would let go stale; or an unrecognized pickle shape (e.g. a future
+    PyArrow), which is caught and treated conservatively.
+    """
+    try:
+        # __reduce__() -> (reconstruct_fn, (state_dict,)); the state dict holds
+        # every constructor argument. PyArrow derives ``anonymous`` and the keys
+        # from the underlying credentials kind, so this is the authoritative view.
+        state = filesystem.__reduce__()[1][0]
+    except Exception as e:
+        if log_once("ray-data-obstore-filesystem-reduce-error"):
+            logger.warning(
+                "Unable to fetch PyArrow filesystem state from %s. Ray Data is unable to use obstore for this filesystem for faster downloads.",
+                filesystem,
+                exc_info=e,
+            )
+        return None
+
+    kwargs: Dict[str, Any] = {}
+    if state.get("region"):
+        kwargs["region"] = state["region"]
+    if state.get("endpoint_override"):
+        kwargs["endpoint"] = state["endpoint_override"]
+
+    if state.get("anonymous"):
+        kwargs["skip_signature"] = True
+        return kwargs
+
+    if state.get("role_arn"):
+        # Assume-role creds are refreshed periodically by PyArrow; a static
+        # obstore snapshot would go stale. Let the threaded path use the FS.
+        return None
+
+    if state.get("access_key"):
+        kwargs["access_key_id"] = state["access_key"]
+        if state.get("secret_key"):
+            kwargs["secret_access_key"] = state["secret_key"]
+        if state.get("session_token"):
+            kwargs["session_token"] = state["session_token"]
+        return kwargs
+
+    # Default credential chain: obstore resolves ambient credentials itself,
+    # matching the filesystem's default chain. Region (if any) is enough.
+    return kwargs
+
+
 def _extract_credentials_from_filesystem(
     filesystem: Optional["pyarrow.fs.FileSystem"],
 ) -> Optional[Dict[str, Any]]:
@@ -261,13 +324,13 @@ def _extract_credentials_from_filesystem(
     Maps PyArrow filesystem configuration to obstore keyword arguments.
     See obstore docs for available options per store type.
 
-    **Native S3 (``S3FileSystem``):** PyArrow's implementation is backed by the
-    AWS C++ SDK; Python only exposes a subset of options. ``region`` is typically
-    readable, while ``access_key``, ``secret_key``, ``session_token``, and
-    ``anonymous`` may not appear as Python attributes even when configured at
-    construction. Unavailable attributes are skipped silently, so forwarding to
-    obstore can degrade to the default AWS credential chain (env, IMDS, etc.)
-    without raising.
+    **Native S3 (``S3FileSystem``):** PyArrow exposes only ``region`` on the
+    Python object, but the full credential config is recoverable from the
+    filesystem's pickle state, so :func:`_native_s3_obstore_kwargs` translates it
+    into obstore options (``skip_signature`` for anonymous, static keys, region,
+    endpoint) to keep the fast obstore path. Configs that can't be represented as
+    static options -- assume-role (rotating creds) or an unrecognized pickle
+    shape -- return ``None`` there and route to the threaded path instead.
 
     **fsspec S3 (``PyFileSystem`` + ``FSSpecHandler``):** For ``s3`` / ``s3a``
     (e.g. ``s3fs`` with STS/Okta/custom endpoints), credentials are read from
@@ -305,21 +368,7 @@ def _extract_credentials_from_filesystem(
     FSSpecHandler = getattr(pyarrow.fs, "FSSpecHandler", None)
 
     if S3FileSystem is not None and isinstance(filesystem, S3FileSystem):
-        # NOTE: See docstring — many credential fields are not exposed on the
-        # Python S3FileSystem object; hasattr/getattr only forwards what exists.
-        for pa_attr, ob_key in [
-            ("region", "region"),
-            ("access_key", "access_key_id"),
-            ("secret_key", "secret_access_key"),
-            ("session_token", "session_token"),
-            ("endpoint_override", "endpoint"),
-        ]:
-            val = getattr(filesystem, pa_attr, None)
-            if val:
-                kwargs[ob_key] = val
-        if getattr(filesystem, "anonymous", False):
-            kwargs["skip_signature"] = True
-        return kwargs
+        return _native_s3_obstore_kwargs(filesystem)
 
     if GcsFileSystem is not None and isinstance(filesystem, GcsFileSystem):
         # obstore GCSConfig does not have a project_id field. The only useful

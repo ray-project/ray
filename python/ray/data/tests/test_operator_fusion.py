@@ -21,12 +21,13 @@ from ray.data._internal.logical.operators import (
     MapRows,
     Project,
     Read,
+    Write,
 )
 from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_execution_plan
 from ray.data._internal.planner import create_planner
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import rows_same
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.dataset import Dataset
 from ray.data.expressions import star
 from ray.data.tests.conftest import *  # noqa
@@ -554,6 +555,93 @@ def test_read_map_batches_operator_fusion_with_repartition_operator(
         assert "ReadRange->MapBatches(fn)" in ds.stats()
         assert "Repartition" in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "Repartition"])
+
+
+def test_fuse_map_into_shuffle_reduce(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+
+    ds = ray.data.range(100).repartition(4, keys=["id"]).map_batches(lambda b: b)
+    dag = get_execution_plan(ds._logical_plan)[0].dag
+
+    assert dag.name == (
+        "HashShuffleReduce(keys=('id',), partitions=4)->MapBatches(<lambda>)"
+    )
+    assert dag._fused_output_map_transformer is not None
+
+    assert sorted(extract_values("id", ds.take_all())) == list(range(100))
+
+
+def test_map_not_fused_into_shuffle_reduce_with_downstream_limit(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+
+    ds = (
+        ray.data.range(100)
+        .repartition(4, keys=["id"])
+        .map_batches(lambda b: b)
+        .limit(10)
+    )
+    dag = get_execution_plan(ds._logical_plan)[0].dag
+
+    assert dag.name == "limit=10"
+    map_op = dag.input_dependencies[0]
+    assert map_op.name == "MapBatches(<lambda>)"
+    reduce_op = map_op.input_dependencies[0]
+    assert reduce_op.name == "HashShuffleReduce(keys=('id',), partitions=4)"
+    assert reduce_op._fused_output_map_transformer is None
+
+    assert len(ds.take_all()) == 10
+
+
+def test_concurrency_capped_map_not_fused_into_shuffle_reduce(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    """A map with a ``concurrency=`` cap is NOT fused into the reduce. The
+    reduce runs one task per partition with no concurrency cap, so fusing would
+    silently ignore the user's limit; keeping the map separate honors it."""
+    DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+
+    ds = (
+        ray.data.range(100)
+        .repartition(4, keys=["id"])
+        .map_batches(lambda b: b, concurrency=2)
+    )
+    dag = get_execution_plan(ds._logical_plan)[0].dag
+
+    assert dag.name == "MapBatches(<lambda>)"
+    reduce_op = dag.input_dependencies[0]
+    assert reduce_op.name == "HashShuffleReduce(keys=('id',), partitions=4)"
+    assert reduce_op._fused_output_map_transformer is None
+
+
+def test_non_file_datasink_write_not_fused_into_shuffle_reduce(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    from ray.data.datasource.datasink import Datasink
+
+    DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+
+    class _NoopDatasink(Datasink):
+        def write(self, blocks, ctx):
+            for _ in blocks:
+                pass
+            return None
+
+    repartitioned = ray.data.range(100).repartition(4, keys=["id"])
+    write_op = Write(
+        _NoopDatasink(),
+        input_dependencies=[repartitioned._logical_plan.dag],
+    )
+    dag = get_execution_plan(LogicalPlan(write_op, DataContext.get_current()))[0].dag
+
+    # The write stays a separate root op feeding off an un-fused reduce.
+    assert dag.name == "Write"
+    reduce_op = dag.input_dependencies[0]
+    assert reduce_op.name == "HashShuffleReduce(keys=('id',), partitions=4)"
+    assert reduce_op._fused_output_map_transformer is None
 
 
 def test_read_map_batches_operator_fusion_with_sort_operator(
