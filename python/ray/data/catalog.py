@@ -199,6 +199,7 @@ class DatabricksUnityCatalog(Catalog):
         mode: AccessMode = AccessMode.READ,
     ) -> ResolvedSource:
         assert reader is not None and isinstance(reader, ReaderFormat)
+        assert mode is not None and isinstance(mode, AccessMode)
         if reader is ReaderFormat.ICEBERG:
             return self._resolve_iceberg(table)
         if reader in (ReaderFormat.DELTA, ReaderFormat.PARQUET):
