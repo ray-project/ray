@@ -717,5 +717,74 @@ def test_nixl_memory_pool_view_deduplication(ray_start_regular):
     assert not pool.has_block(base)
 
 
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_recv_memory_pool(ray_start_regular, device):
+    """
+    Test receiver-side NIXL memory pool: incoming tensors are read directly
+    into the pre-registered pool, and blocks are returned when tensors are freed.
+    """
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class RecvPoolActor:
+        def __init__(self, pool_device, pool_size):
+            from ray.experimental import register_nixl_memory_pool
+
+            register_nixl_memory_pool(pool_size, torch.device(pool_device))
+            self._held_tensors = []
+
+        def consume_one(self, refs, device):
+            tensor = ray.get(refs[0])
+            assert tensor.device.type == device
+            transport = get_tensor_transport_manager("NIXL")
+            pool = transport._memory_pool
+            assert (
+                tensor.untyped_storage().data_ptr()
+                == pool.get_pool_tensor().untyped_storage().data_ptr()
+            )
+            value = tensor.sum().item()
+            self._held_tensors.append(tensor)
+            return value
+
+        def clear_held(self):
+            import gc
+
+            self._held_tensors.clear()
+            gc.collect()
+
+        def get_pool_free_bytes(self):
+            transport = get_tensor_transport_manager("NIXL")
+            pool = transport._memory_pool
+            return sum(block.size for block in pool._free_blocks)
+
+    src_actor = GPUTestActor.remote()
+    # Each int64 tensor [1,2,3] is 24 bytes; pool fits two concurrent receives.
+    dst_actor = RecvPoolActor.remote(device, 48)
+
+    refs = src_actor.produce.remote([torch.tensor([1, 2, 3]).to(device)])
+    assert ray.get(dst_actor.consume_one.remote(refs, device)) == 6
+
+    refs = src_actor.produce.remote([torch.tensor([4, 5, 6]).to(device)])
+    assert ray.get(dst_actor.consume_one.remote(refs, device)) == 15
+
+    # Pool is full while both tensors are held.
+    refs = src_actor.produce.remote([torch.tensor([7, 8, 9]).to(device)])
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+        ray.get(dst_actor.consume_one.remote(refs, device))
+    assert "NixlOutOfMemoryError" in str(excinfo.value) and "out of memory" in str(
+        excinfo.value
+    )
+
+    ray.get(dst_actor.clear_held.remote())
+    wait_for_condition(
+        lambda: ray.get(dst_actor.get_pool_free_bytes.remote()) == 48,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+
+    refs = src_actor.produce.remote([torch.tensor([1, 2, 3, 4, 5, 6]).to(device)])
+    assert ray.get(dst_actor.consume_one.remote(refs, device)) == 21
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
