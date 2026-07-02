@@ -1,3 +1,12 @@
+aiohttp
+aiohttp-cors
 datasets==4.4.1
 # Keep compatible with transformers in the llm-cu130 image.
 huggingface-hub==0.36.2; python_version == "3.12"
+
+# Ray dashboard agent deps for vLLM engine Prometheus metrics.
+opencensus
+opentelemetry-api
+opentelemetry-sdk>=1.30.0
+opentelemetry-exporter-prometheus
+prometheus_client>=0.7.1
