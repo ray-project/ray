@@ -1,10 +1,17 @@
+import collections
+import threading
 from typing import TYPE_CHECKING, Any, Callable, List, Optional, TypeVar
 
 import ray
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
+    from typing import Union
+
     import ray.actor
+    from ray import ObjectRef, ObjectRefGenerator
+
+    RayWaitable = Union[ObjectRef, ObjectRefGenerator]
 
 V = TypeVar("V")
 
@@ -59,6 +66,8 @@ class ActorPool:
 
         # next work depending when actors free
         self._pending_submits = []
+        self._completed_futures: "collections.deque[RayWaitable]" = collections.deque()
+        self._lock = threading.Lock()
 
     def map(self, fn: Callable[["ray.actor.ActorHandle", V], Any], values: List[V]):
         """Apply the given function in parallel over the actors and values.
@@ -319,6 +328,85 @@ class ActorPool:
             )
         return ray.get(future)
 
+    def _bulk_wait_and_enqueue(
+        self,
+        ray_waitables: List["RayWaitable"],
+        num_returns: int,
+        timeout: Optional[float],
+    ) -> None:
+        """Wait for completed futures and enqueue them for retrieval.
+
+        Performs a two-phase wait strategy to address the
+        ``# TODO(ekl) bulk wait for performance`` in ``get_next_unordered``:
+
+        1. Blocking phase — calls ``ray.wait`` on the calling thread with the
+           given ``num_returns`` and ``timeout``, blocking until at least
+           ``num_returns`` futures are ready (or timeout expires).  Ready
+           futures are appended to ``_completed_futures``.
+        2. Background phase — spawns a daemon thread that immediately
+           (``timeout=0``) checks whether any of the remaining futures have
+           also completed, and enqueues those too.  This opportunistic
+           prefetch avoids redundant ``ray.wait`` calls on subsequent
+           ``get_next_unordered()`` invocations.
+
+        A ``threading.Lock`` guards ``_completed_futures`` so the calling
+        thread and the background thread never corrupt the deque
+        concurrently.
+
+        Arguments:
+            ray_waitables: Object references to wait on.
+            num_returns: Minimum number of completed futures to wait for
+                in the blocking phase (passed directly to ``ray.wait``).
+            timeout: Maximum seconds to block in the first phase.
+                ``None`` means wait indefinitely.
+        """
+
+        def _enqueue_unique_futures(
+            futures: List["RayWaitable"],
+        ) -> None:
+            for future in futures:
+                if future not in self._completed_futures:
+                    self._completed_futures.append(future)
+
+        def _wait_and_enqueue(
+            waitables: List["RayWaitable"],
+            num_returns: int,
+            timeout: Optional[float],
+        ) -> List["RayWaitable"]:
+            ready, remaining = ray.wait(
+                ray_waitables=waitables,
+                num_returns=num_returns,
+                timeout=timeout,
+            )
+            with self._lock:
+                _enqueue_unique_futures(ready)
+            return remaining
+
+        remaining = _wait_and_enqueue(
+            ray_waitables,
+            num_returns,
+            timeout,
+        )
+        if remaining:
+            threading.Thread(
+                target=_wait_and_enqueue,
+                args=(remaining, len(remaining), 0),
+                daemon=True,
+            ).start()
+
+    def _is_completed_futures_empty(self) -> bool:
+        """Check whether the completed-futures queue is empty.
+
+        Acquires ``self._lock`` before reading ``_completed_futures`` so
+        that the check is safe against concurrent writes from the
+        background prefetch thread spawned by ``_bulk_wait_and_enqueue``.
+
+        Returns:
+            True if no completed futures are queued, False otherwise.
+        """
+        with self._lock:
+            return not self._completed_futures
+
     def get_next_unordered(
         self,
         timeout: Optional[float] = None,
@@ -370,17 +458,32 @@ class ActorPool:
         """
         if not self.has_next():
             raise StopIteration("No more results to get")
-        # TODO(ekl) bulk wait for performance
-        res, _ = ray.wait(list(self._future_to_actor), num_returns=1, timeout=timeout)
+
+        if self._is_completed_futures_empty():
+            self._bulk_wait_and_enqueue(
+                list(self._future_to_actor),
+                num_returns=1,
+                timeout=timeout,
+            )
         timeout_msg = "Timed out waiting for result"
         raise_timeout_after_ignore = False
-        if res:
-            [future] = res
-        else:
+
+        future = None
+        with self._lock:
+            while self._completed_futures:
+                future = self._completed_futures.popleft()
+                if future in self._future_to_actor:
+                    break
+                else:
+                    future = None
+
+        if future is None:
             if not ignore_if_timedout:
                 raise TimeoutError(timeout_msg)
             else:
                 raise_timeout_after_ignore = True
+                future = next(iter(self._future_to_actor))
+
         i, a = self._future_to_actor.pop(future)
         self._return_actor(a)
         del self._index_to_future[i]
