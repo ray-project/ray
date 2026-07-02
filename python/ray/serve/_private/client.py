@@ -27,7 +27,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.utils import get_random_string
+from ray.serve._private.utils import _callable_uses_multiplexing, get_random_string
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
@@ -338,10 +338,6 @@ class ServeControllerClient:
         wait_for_ingress_deployment_creation: bool = True,
         wait_for_applications_running: bool = True,
     ) -> List[DeploymentHandle]:
-        # Imported lazily to avoid a circular import at module load time
-        # (multiplex -> metrics -> context -> client).
-        from ray.serve.multiplex import _callable_uses_multiplexing
-
         name_to_deployment_args_list = {}
         name_to_application_args = {}
         for app in built_apps:

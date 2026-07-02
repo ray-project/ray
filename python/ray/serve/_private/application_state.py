@@ -48,6 +48,7 @@ from ray.serve._private.storage.kv_store import KVStoreBase
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
+    _callable_uses_multiplexing,
     check_obj_ref_ready_nowait,
     override_runtime_envs_except_env_vars,
     validate_route_prefix,
@@ -1636,10 +1637,6 @@ def build_serve_application(
             default_runtime_env=ray.get_runtime_context().runtime_env,
         )
         built_app.validate_single_fastapi_ingress()
-
-        # Imported lazily to avoid a circular import at module load time
-        # (multiplex -> metrics -> context -> client -> application_state).
-        from ray.serve.multiplex import _callable_uses_multiplexing
 
         def _get_serialized_def(attr_path: str) -> bytes:
             module, attr = import_module_and_attr(attr_path)

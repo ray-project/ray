@@ -159,6 +159,7 @@ from ray.serve._private.tracing_utils import (
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     Semaphore,
+    _callable_uses_multiplexing,
     asyncio_grpc_exception_handler,
     check_obj_ref_ready_nowait,
     compress_metric_report,
@@ -1775,9 +1776,6 @@ class Replica:
         static check performed at deploy time.
         """
         if self._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
-            # Imported lazily to avoid a circular import at module load time.
-            from ray.serve.multiplex import _callable_uses_multiplexing
-
             if _callable_uses_multiplexing(self._user_callable_wrapper._callable):
                 raise RuntimeError(
                     "Model multiplexing (`@serve.multiplexed`) is not supported on the "

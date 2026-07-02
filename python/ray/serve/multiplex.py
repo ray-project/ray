@@ -18,52 +18,6 @@ from ray.serve.context import _get_global_client, _get_internal_replica_context
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-# Attribute set on functions/methods decorated with `@serve.multiplexed`. The
-# `__serve_multiplex_wrapper` is only created lazily on the first call, so this
-# marker is used to detect multiplexing statically (e.g. at replica startup)
-# without invoking user code.
-MULTIPLEXED_FUNCTION_MARKER_ATTR = "_serve_multiplexed_function"
-
-
-def _callable_uses_multiplexing(callable_obj: Any) -> bool:
-    """Whether `callable_obj` is or defines an `@serve.multiplexed` function.
-
-    Accepts a standalone function, a class, or a class instance, so it can be used
-    both at build time (where the deployment's `func_or_class` is available) and at
-    runtime (where an initialized instance is available).
-
-    For an instance it also inspects instance attributes, so multiplexing that is
-    wired up dynamically at init time (e.g. ``self._load_model =
-    serve.multiplexed(...)(fn)``) is detected. This case can only be caught at
-    runtime, since it is not visible on the class statically.
-    """
-    # NOTE: the marker is checked with `is True` rather than truthiness because some
-    # objects (e.g. `DeploymentHandle`, whose `__getattr__` returns a handle for any
-    # name) return a truthy value for an arbitrary attribute. The decorator always
-    # sets the marker to the literal `True`, so this stays exact without false
-    # positives.
-    def _has_marker(obj: Any) -> bool:
-        return getattr(obj, MULTIPLEXED_FUNCTION_MARKER_ATTR, False) is True
-
-    # Standalone function deployment decorated with `@serve.multiplexed`.
-    if _has_marker(callable_obj):
-        return True
-
-    # A class (or instance of one) with a method decorated with `@serve.multiplexed`.
-    klass = callable_obj if isinstance(callable_obj, type) else type(callable_obj)
-    for base in klass.__mro__:
-        for attr in base.__dict__.values():
-            if _has_marker(attr):
-                return True
-
-    # An instance that stored a multiplexed wrapper as an instance attribute.
-    if not isinstance(callable_obj, type):
-        for attr in getattr(callable_obj, "__dict__", {}).values():
-            if _has_marker(attr):
-                return True
-
-    return False
-
 
 class _ModelMultiplexWrapper:
     """A wrapper class that wraps the model load function and

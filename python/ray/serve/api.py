@@ -32,6 +32,7 @@ from ray.serve._private.logging_utils import configure_component_logger
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
+    MULTIPLEXED_FUNCTION_MARKER_ATTR,
     Default,
     copy_class_metadata,
     ensure_serialization_context,
@@ -62,10 +63,7 @@ from ray.serve.context import (
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
-from ray.serve.multiplex import (
-    MULTIPLEXED_FUNCTION_MARKER_ATTR,
-    _ModelMultiplexWrapper,
-)
+from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
 from ray.util.annotations import DeveloperAPI, PublicAPI
 

@@ -680,7 +680,7 @@ def test_ingress_validation_excludes_ingress_request_router_fastapi_app(monkeypa
 
 def test_callable_uses_multiplexing_static():
     """Detects `@serve.multiplexed` on a method/function statically (class input)."""
-    from ray.serve.multiplex import _callable_uses_multiplexing
+    from ray.serve._private.utils import _callable_uses_multiplexing
 
     class MultiplexedClass:
         @serve.multiplexed(max_num_models_per_replica=2)
@@ -705,7 +705,7 @@ def test_callable_uses_multiplexing_dynamic_instance():
 
     This is only visible on a constructed instance, not on the class statically.
     """
-    from ray.serve.multiplex import _callable_uses_multiplexing
+    from ray.serve._private.utils import _callable_uses_multiplexing
 
     class DynamicMultiplexed:
         def __init__(self):
@@ -727,7 +727,7 @@ def test_callable_uses_multiplexing_ignores_handle_attrs():
     so the instance-attribute scan must check the marker by identity (`is True`) to
     avoid false positives that would break every composed app under direct ingress.
     """
-    from ray.serve.multiplex import _callable_uses_multiplexing
+    from ray.serve._private.utils import _callable_uses_multiplexing
 
     class FakeHandle:
         # Mirrors DeploymentHandle: returns a truthy object for any attribute.
