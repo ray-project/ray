@@ -120,6 +120,9 @@ with PPO and the default RLModule, configure your experiment as follows:
 .. testcode::
     :hide:
 
+    config.env_runners(num_env_runners=0)
+    config.learners(num_learners=0)
+    config.training(train_batch_size_per_learner=32, minibatch_size=32, num_epochs=1)
     test = config.build()
     test.train()
     test.stop()
@@ -186,6 +189,9 @@ applies up to 30 "noop" actions after a reset, which aren't part of the episode:
 .. testcode::
     :hide:
 
+    config.env_runners(num_env_runners=0)
+    config.learners(num_learners=0)
+    config.training(train_batch_size_per_learner=32, minibatch_size=32, num_epochs=1)
     test = config.build()
     test.train()
     test.stop()
