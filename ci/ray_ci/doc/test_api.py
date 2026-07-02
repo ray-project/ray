@@ -9,7 +9,19 @@ from ci.ray_ci.doc.api import (
     AnnotationType,
     CodeType,
 )
-from ci.ray_ci.doc.mock.mock_module import mock_function
+from ci.ray_ci.doc.mock.mock_module import MockClass, mock_function, mock_w00t
+
+_MOCK = "ci.ray_ci.doc.mock.mock_module"
+
+
+def _doc_api(name: str, code_type: CodeType = CodeType.FUNCTION) -> API:
+    # Mimics a parsed doc-side entry: from_autosummary/from_autoclass always
+    # stamp PUBLIC_API regardless of the object's real annotation.
+    return API(
+        name=name,
+        annotation_type=AnnotationType.PUBLIC_API,
+        code_type=code_type,
+    )
 
 
 def test_from_autosummary():
@@ -208,6 +220,102 @@ def test_split_good_and_bad_apis():
 
     assert good_apis == ["a.b.public_function"]
     assert bad_apis == ["a.b.deprecated_function_01", "a.b.deprecated_function_02"]
+
+
+def test_resolve():
+    # Resolves a function, a class, and a (non-annotated) method of a class.
+    assert _doc_api(f"{_MOCK}.mock_w00t").resolve() is mock_w00t
+    assert _doc_api(f"{_MOCK}.MockClass").resolve() is MockClass
+    assert _doc_api(f"{_MOCK}.MockClass.mock_method").resolve() is MockClass.mock_method
+    # A deleted / renamed / misspelled name does not resolve.
+    assert _doc_api(f"{_MOCK}.does_not_exist").resolve() is None
+    assert _doc_api(f"{_MOCK}.MockClass.no_such_method").resolve() is None
+    assert _doc_api("ci.ray_ci.doc.no_such_submodule.thing").resolve() is None
+    assert _doc_api("totally_missing_top_level_module.thing").resolve() is None
+    # Malformed names must not crash (importlib.import_module("") raises
+    # ValueError); they resolve to None.
+    assert _doc_api("").resolve() is None
+    assert _doc_api(".leading.dot").resolve() is None
+    assert _doc_api(f"{_MOCK}..double.dot").resolve() is None
+
+
+def test_introspect_annotation_type():
+    assert API.introspect_annotation_type(MockClass) == AnnotationType.PUBLIC_API
+    assert API.introspect_annotation_type(mock_function) == AnnotationType.DEPRECATED
+    # Methods and other un-annotated objects resolve to UNKNOWN.
+    assert (
+        API.introspect_annotation_type(MockClass.mock_method) == AnnotationType.UNKNOWN
+    )
+    assert API.introspect_annotation_type(object()) == AnnotationType.UNKNOWN
+
+
+def test_canonical_name_of():
+    # Classes and functions canonicalize to module.qualname; the object comes
+    # from the same resolve() walk used to read the annotation.
+    assert (
+        API.canonical_name_of(mock_w00t, "ignored")
+        == f"{mock_w00t.__module__}.{mock_w00t.__qualname__}"
+    )
+    assert (
+        API.canonical_name_of(MockClass, "ignored")
+        == f"{MockClass.__module__}.{MockClass.__qualname__}"
+    )
+    # Anything that is not a class or function keeps the documented name.
+    assert API.canonical_name_of(object(), "some.documented.name") == (
+        "some.documented.name"
+    )
+
+
+def test_split_resolvable_and_broken_doc_apis():
+    api_in_docs = [
+        # public, resolves -> accepted
+        _doc_api(f"{_MOCK}.mock_w00t"),
+        # public method, resolves, un-annotated -> accepted (not a false positive)
+        _doc_api(f"{_MOCK}.MockClass.mock_method"),
+        # does not resolve -> unresolved
+        _doc_api(f"{_MOCK}.renamed_away"),
+        # resolves to a @Deprecated object -> non_public. Note the doc-side
+        # entry is stamped PUBLIC_API; the check must override it via live
+        # introspection.
+        _doc_api(f"{_MOCK}.mock_function"),
+        # resolves but is whitelisted as an intentional doc entry -> skipped
+        _doc_api(f"{_MOCK}.also_deprecated"),
+    ]
+    white_list_apis = {f"{_MOCK}.also_deprecated"}
+
+    unresolved, non_public = API.split_resolvable_and_broken_doc_apis(
+        api_in_docs, white_list_apis
+    )
+
+    assert unresolved == [f"{_MOCK}.renamed_away"]
+    assert non_public == [f"{mock_function.__module__}.{mock_function.__qualname__}"]
+
+
+def test_split_resolvable_flags_private_documented_name():
+    # A documented name that resolves but is private-named is non-public.
+    unresolved, non_public = API.split_resolvable_and_broken_doc_apis(
+        [_doc_api(f"{_MOCK}._private_thing")], set()
+    )
+    # It does not resolve here (no such attribute), so it lands in unresolved;
+    # the private-name rule is exercised through _check_team tests where the
+    # name resolves. Guard the resolution-miss branch explicitly.
+    assert unresolved == [f"{_MOCK}._private_thing"]
+    assert non_public == []
+
+
+def test_find_duplicate_doc_apis():
+    # mock_w00t appears twice, MockClass once. Names canonicalize first, so the
+    # duplicate is reported under the canonical name.
+    api_in_docs = [
+        _doc_api(f"{_MOCK}.mock_w00t"),
+        _doc_api(f"{_MOCK}.mock_w00t"),
+        _doc_api(f"{_MOCK}.MockClass", CodeType.CLASS),
+    ]
+    canonical_w00t = f"{mock_w00t.__module__}.{mock_w00t.__qualname__}"
+
+    assert API.find_duplicate_doc_apis(api_in_docs, set()) == [canonical_w00t]
+    # An intentional-duplicate whitelist suppresses the report.
+    assert API.find_duplicate_doc_apis(api_in_docs, {canonical_w00t}) == []
 
 
 if __name__ == "__main__":

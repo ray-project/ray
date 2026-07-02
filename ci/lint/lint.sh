@@ -121,12 +121,16 @@ api_annotations() {
 }
 
 api_policy_check() {
-  # install ray and compile doc to generate API files
-  echo "--- Build doc pages"
-  make -C doc/ html
-
   echo "--- Install Ray"
   _install_ray_no_deps
+
+  echo "--- Generate API doc stubs"
+  # The consistency check reads autosummary stub .rst files. Generate only those
+  # stubs instead of a full `make -C doc/ html` (which built the entire site just
+  # to produce them). This exits nonzero if generation produces nothing, so a
+  # broken autogen step fails here instead of silently. Stubs are generated after
+  # installing Ray so they reflect the checkout's source.
+  PYTHONPATH="$(pwd)${PYTHONPATH:+:$PYTHONPATH}" python doc/source/api_autogen.py
 
   echo "--- Check API/doc consistency"
   # Run via the image interpreter, not `bazel run`: the bazel target's @py_deps_py310

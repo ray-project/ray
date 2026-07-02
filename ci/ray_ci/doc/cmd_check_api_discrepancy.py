@@ -54,6 +54,16 @@ TEAM_API_CONFIGS = {
             "ray.client_builder.ClientContext",
             "ray.remote_function.RemoteFunction",
         },
+        # Canonical names that are intentionally documented in more than one
+        # place (Policy 04). ActorMethod.bind is documented once in the Ray Core
+        # API and once in the Compiled Graph API; conf.py's DuplicateObjectFilter
+        # mirrors this exemption for the Sphinx render. ray.remote (canonical
+        # ray._private.worker.remote) is cross-listed under both Tasks and
+        # Actors in ray-core/api/core.rst, since @ray.remote defines both.
+        "intentional_duplicate_apis": {
+            "ray.actor.ActorMethod.bind",
+            "ray._private.worker.remote",
+        },
     },
     "train": {
         "head_modules": {"ray.train"},
@@ -87,22 +97,28 @@ TEAM_API_CONFIGS = {
 
 
 def _check_team(ray_checkout_dir: str, team: str) -> bool:
+    config = TEAM_API_CONFIGS[team]
+
     # Load all APIs from the codebase
     api_in_codes = {}
-    for module in TEAM_API_CONFIGS[team]["head_modules"]:
+    for module in config["head_modules"]:
         module = Module(module)
         api_in_codes.update(
             {api.get_canonical_name(): api for api in module.get_apis()}
         )
 
-    # Load all APIs from the documentation
-    autodoc = Autodoc(f"{ray_checkout_dir}/{TEAM_API_CONFIGS[team]['head_doc_file']}")
-    api_in_docs = {api.get_canonical_name() for api in autodoc.get_apis()}
+    # Load all APIs from the documentation. Keep the raw list (not a set): Policy
+    # 04 needs to see a canonical name that was documented more than once.
+    autodoc = Autodoc(f"{ray_checkout_dir}/{config['head_doc_file']}")
+    doc_apis = autodoc.get_apis()
+    api_in_docs = {api.get_canonical_name() for api in doc_apis}
 
     # Load the white list APIs
-    white_list_apis = TEAM_API_CONFIGS[team]["white_list_apis"]
+    white_list_apis = config["white_list_apis"]
 
-    # Policy 01: all public APIs should be documented
+    passed = True
+
+    # Policy 01: all public APIs should be documented (code subset of docs).
     print(
         f"--- Validating that public {team} APIs should be documented...",
         file=sys.stderr,
@@ -120,14 +136,69 @@ def _check_team(ray_checkout_dir: str, team: str) -> bool:
         print("Public APIs that are NOT documented:", file=sys.stderr)
         for api in bad_apis:
             print(f"\t{api}", file=sys.stderr)
-
-    if bad_apis:
         print(
             f"Some public {team} APIs are not documented. Please document them.",
             file=sys.stderr,
         )
-        return False
-    return True
+        passed = False
+
+    # Policy 02: all documented APIs should resolve to public code (docs subset
+    # of code). A documented name that no longer imports, or that resolves to a
+    # deprecated / private object, is a stale or wrong doc entry.
+    print(
+        f"--- Validating that documented {team} APIs resolve to public code...",
+        file=sys.stderr,
+    )
+    doc_only_whitelist = white_list_apis | config.get("doc_only_whitelist", set())
+    unresolved_apis, non_public_apis = API.split_resolvable_and_broken_doc_apis(
+        doc_apis, doc_only_whitelist
+    )
+
+    if unresolved_apis:
+        print("Documented APIs that do NOT resolve to any object:", file=sys.stderr)
+        for api in unresolved_apis:
+            print(f"\t{api}", file=sys.stderr)
+        print(
+            f"Some documented {team} APIs do not resolve. Remove or fix the doc "
+            "entries (deleted, renamed, or misspelled names).",
+            file=sys.stderr,
+        )
+        passed = False
+
+    if non_public_apis:
+        print(
+            "Documented APIs that resolve to deprecated / private objects:",
+            file=sys.stderr,
+        )
+        for api in non_public_apis:
+            print(f"\t{api}", file=sys.stderr)
+        print(
+            f"Some documented {team} APIs are not public. Stop documenting them, "
+            "or white-list them if the documentation is intentional.",
+            file=sys.stderr,
+        )
+        passed = False
+
+    # Policy 04: no canonical name may be documented in more than one block.
+    print(
+        f"--- Validating that {team} APIs are documented exactly once...",
+        file=sys.stderr,
+    )
+    intentional_duplicate_apis = config.get("intentional_duplicate_apis", set())
+    duplicate_apis = API.find_duplicate_doc_apis(doc_apis, intentional_duplicate_apis)
+
+    if duplicate_apis:
+        print("APIs documented in more than one place:", file=sys.stderr)
+        for api in duplicate_apis:
+            print(f"\t{api}", file=sys.stderr)
+        print(
+            f"Some {team} APIs are documented more than once. Document each in a "
+            "single place, or white-list intentional duplicates.",
+            file=sys.stderr,
+        )
+        passed = False
+
+    return passed
 
 
 @click.command()
