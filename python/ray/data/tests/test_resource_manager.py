@@ -10,6 +10,7 @@ from freezegun import freeze_time
 
 import ray
 from ray.data._internal.compute import ComputeStrategy
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces import BlockEntry, PhysicalOperator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
@@ -40,6 +41,7 @@ from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.block import TaskExecWorkerStats
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.conftest import noop_counter
 
 
 def mock_map_op(
@@ -56,7 +58,6 @@ def mock_map_op(
         compute_strategy=compute_strategy,
         name=name,
     )
-    op.start(ExecutionOptions())
     return op
 
 
@@ -65,7 +66,7 @@ def mock_union_op(input_ops):
         DataContext.get_current(),
         *input_ops,
     )
-    op.start = MagicMock(side_effect=lambda _: None)
+    op.start = MagicMock(side_effect=lambda *_: None)
     return op
 
 
@@ -89,7 +90,7 @@ def mock_join_op(left_input_op, right_input_op):
             partition_size_hint=1,
         )
 
-    op.start = MagicMock(side_effect=lambda _: None)
+    op.start = MagicMock(side_effect=lambda *_: None)
     return op
 
 
@@ -101,7 +102,6 @@ def mock_all_to_all_op(input_op, name="MockShuffle"):
         data_context=DataContext.get_current(),
         name=name,
     )
-    op.start(ExecutionOptions())
     return op
 
 
@@ -119,6 +119,7 @@ def _resource_manager_for_limits_only_test(
         options,
         get_total_resources,
         DataContext.get_current(),
+        BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
     )
 
 
@@ -220,7 +221,7 @@ class TestResourceManager:
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
-        topo = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
 
         # Mock different metrics that contribute to the resource usage.
         mock_cpu = {
@@ -283,6 +284,7 @@ class TestResourceManager:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         resource_manager._op_resource_allocator = None
         resource_manager.update_usages()
@@ -339,12 +341,13 @@ class TestResourceManager:
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
 
-        topo = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
             MagicMock(return_value=ExecutionResources.zero()),
             DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         ray.data.DataContext.get_current()._max_num_blocks_in_streaming_gen_buffer = 1
         ray.data.DataContext.get_current().target_max_block_size = 2
@@ -448,12 +451,13 @@ class TestResourceManager:
             internal=42, outputs=100
         )
 
-        topo = build_streaming_topology(override, ExecutionOptions())
+        topo = build_streaming_topology(override, ExecutionOptions(), noop_counter())
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
             MagicMock(return_value=ExecutionResources.zero()),
             DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
 
         resource_manager.update_usages()
@@ -472,10 +476,10 @@ class TestResourceManager:
         o4 = mock_map_op(o3)
         o5 = mock_map_op(o4)
 
+        topo = build_streaming_topology(o5, ExecutionOptions(), noop_counter())
+
         o1.mark_execution_finished()
         o2.mark_execution_finished()
-
-        topo = build_streaming_topology(o5, ExecutionOptions())
 
         op_usages = {
             o1: ExecutionResources.zero(),
@@ -490,6 +494,7 @@ class TestResourceManager:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
 
@@ -528,13 +533,13 @@ class TestResourceManager:
         o7 = InputDataBuffer(DataContext.get_current(), [])
         o8 = mock_join_op(o7, o6)
 
+        topo = build_streaming_topology(o8, ExecutionOptions(), noop_counter())
+
         o1.mark_execution_finished()
         o2.mark_execution_finished()
         o4.mark_execution_finished()
         o5.mark_execution_finished()
         o7.mark_execution_finished()
-
-        topo = build_streaming_topology(o8, ExecutionOptions())
 
         op_usages = {
             o1: ExecutionResources.zero(),
@@ -552,6 +557,7 @@ class TestResourceManager:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
 
@@ -573,15 +579,17 @@ class TestResourceManager:
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
 
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
+
         o1.mark_execution_finished()
         o2.mark_execution_finished()
 
-        topo = build_streaming_topology(o3, ExecutionOptions())
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
             lambda: cluster_resources,
             DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
 
         for op in [o1, o2, o3]:
@@ -644,12 +652,13 @@ class TestResourceManager:
         attach to that terminal sink instead of being dropped by the
         InputDataBuffer early return."""
         buf = InputDataBuffer(DataContext.get_current(), [])
-        topo = build_streaming_topology(buf, ExecutionOptions())
+        topo = build_streaming_topology(buf, ExecutionOptions(), noop_counter())
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
             lambda: ExecutionResources(cpu=10, gpu=0, object_store_memory=1000),
             DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         buf.current_logical_usage = MagicMock(return_value=ExecutionResources.zero())
         buf.running_logical_usage = MagicMock(return_value=ExecutionResources.zero())
@@ -675,12 +684,13 @@ class TestResourceManager:
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
 
-        topo = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
             lambda: cluster_resources,
             DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
 
         for op in [o1, o2, o3]:
@@ -723,6 +733,7 @@ class TestResourceManager:
                 ExecutionOptions(),
                 MagicMock(return_value=ExecutionResources.zero()),
                 DataContext.get_current(),
+                BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
             )
 
     def test_topology_rejects_empty_topology(self, restore_data_context):
@@ -732,6 +743,7 @@ class TestResourceManager:
                 ExecutionOptions(),
                 MagicMock(return_value=ExecutionResources.zero()),
                 DataContext.get_current(),
+                BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
             )
 
     def test_topology_rejects_no_terminal_operator(self, restore_data_context):
@@ -749,6 +761,7 @@ class TestResourceManager:
                 ExecutionOptions(),
                 MagicMock(return_value=ExecutionResources.zero()),
                 DataContext.get_current(),
+                BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
             )
 
     def test_is_blocking_materializing_op(self, restore_data_context):
@@ -770,13 +783,14 @@ class TestResourceManager:
         o4 = mock_all_to_all_op(o3, name="Sort")
         o5 = mock_map_op(o4, name="Map2")
 
-        topo = build_streaming_topology(o5, ExecutionOptions())
+        topo = build_streaming_topology(o5, ExecutionOptions(), noop_counter())
 
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
 
         # Case 1: Shuffle operator itself is blocking materializing
@@ -801,12 +815,13 @@ class TestResourceManager:
         o6 = LimitOperator(1, o5, DataContext.get_current())
         o7 = mock_map_op(o6, name="Map3")
 
-        topo2 = build_streaming_topology(o7, ExecutionOptions())
+        topo2 = build_streaming_topology(o7, ExecutionOptions(), noop_counter())
         resource_manager2 = ResourceManager(
             topo2,
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
 
         # o5's downstream (o6, o7) has no blocking materializing ops
@@ -826,7 +841,7 @@ class TestResourceManager:
             name="HighMemoryTask",
         )
 
-        topo = build_streaming_topology(o2, ExecutionOptions())
+        topo = build_streaming_topology(o2, ExecutionOptions(), noop_counter())
         options = ExecutionOptions()
 
         resource_manager = ResourceManager(
@@ -834,6 +849,9 @@ class TestResourceManager:
             options=options,
             get_total_resources=lambda: cluster_resources,
             data_context=DataContext.get_current(),
+            block_ref_counter=BlockRefCounter(
+                add_object_out_of_scope_callback=lambda *_: True
+            ),
         )
         resource_manager.update_usages()
 
@@ -859,13 +877,14 @@ class TestOutputBackpressureGuard:
         o2 = mock_map_op(o1)
         o3 = LimitOperator(1, o2, DataContext.get_current())
 
-        topo = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
 
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         guard = OutputBackpressureGuard(topo, resource_manager)
 
@@ -876,13 +895,14 @@ class TestOutputBackpressureGuard:
         # Add o4 operator - o2 is no longer terminal
         o4 = mock_map_op(o3)
 
-        topo = build_streaming_topology(o4, ExecutionOptions())
+        topo = build_streaming_topology(o4, ExecutionOptions(), noop_counter())
 
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         guard = OutputBackpressureGuard(topo, resource_manager)
 
@@ -903,13 +923,14 @@ class TestOutputBackpressureGuard:
         o2 = mock_map_op(o1)
         o3 = LimitOperator(1, o2, DataContext.get_current())
 
-        topo = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
 
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         guard = OutputBackpressureGuard(topo, resource_manager)
 
@@ -937,13 +958,14 @@ class TestOutputBackpressureGuard:
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
 
-        topo = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
 
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         guard = OutputBackpressureGuard(topo, resource_manager)
         o3.num_active_tasks = MagicMock(return_value=0)
@@ -967,13 +989,14 @@ class TestOutputBackpressureGuard:
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
 
-        topo = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
 
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         guard = OutputBackpressureGuard(topo, resource_manager)
 
@@ -1008,13 +1031,14 @@ class TestOutputBackpressureGuard:
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
 
-        topo = build_streaming_topology(o3, ExecutionOptions())
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
 
         resource_manager = ResourceManager(
             topo,
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
         assert not resource_manager.op_resource_allocator_enabled()
 

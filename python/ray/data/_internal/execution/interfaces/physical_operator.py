@@ -24,6 +24,7 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     ActorPoolInfo,
     AutoscalingActorPool,
 )
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -134,6 +135,8 @@ class DataOpTask(OpTask):
         self,
         task_index: int,
         streaming_gen: ObjectRefGenerator,
+        block_ref_counter: BlockRefCounter,
+        producer_id: str,
         output_ready_callback: Callable[[RefBundle], None] = lambda bundle: None,
         task_done_callback: TaskDoneCallbackType = lambda exc, worker_stats, driver_stats: None,
         block_ready_callback: Callable[
@@ -149,6 +152,9 @@ class DataOpTask(OpTask):
         Args:
             task_index: Index of the task. Used for callbacks.
             streaming_gen: The streaming generator of this task. It should yield blocks.
+            block_ref_counter: The centralized block reference counter. on_block_produced
+                is called for each block yielded by this task.
+            producer_id: The id of the operator that produces the blocks from this task.
             output_ready_callback: The callback to call when a new RefBundle is output
                 from the generator.
             task_done_callback: The callback to call when the task is done.
@@ -171,6 +177,8 @@ class DataOpTask(OpTask):
         self._block_ready_callback = block_ready_callback
         self._metadata_ready_callback = metadata_ready_callback
         self._operator_name = operator_name
+        self._block_ref_counter: BlockRefCounter = block_ref_counter
+        self._producer_id: str = producer_id
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -307,6 +315,9 @@ class DataOpTask(OpTask):
                 meta_with_schema_bytes
             )
             meta = meta_with_schema.metadata
+            self._block_ref_counter.on_block_produced(
+                self._pending_block_ref, meta.size_bytes or 0, self._producer_id
+            )
             self._output_ready_callback(
                 RefBundle(
                     [BlockEntry(self._pending_block_ref, meta)],
@@ -758,12 +769,19 @@ class PhysicalOperator(Operator):
         """
         return self._num_output_splits
 
-    def start(self, options: ExecutionOptions) -> None:
+    def start(
+        self,
+        options: ExecutionOptions,
+        block_ref_counter: BlockRefCounter,
+    ) -> None:
         """Called by the executor when execution starts for an operator.
 
         Args:
             options: The global options used for the overall execution.
+            block_ref_counter: The executor-wide shared counter for tracking
+                object-store memory.
         """
+        self._block_ref_counter = block_ref_counter
         self._started = True
 
     def can_add_input(self) -> bool:
