@@ -514,6 +514,7 @@ message DeploymentArgs {
   bool ingress = 6;
   optional string docs_path = 7;
   bool ingress_request_router = 8;
+  bool uses_multiplexing = 9;
 }
 
 message ApplicationArgs {

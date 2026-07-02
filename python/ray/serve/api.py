@@ -32,6 +32,7 @@ from ray.serve._private.logging_utils import configure_component_logger
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
+    MULTIPLEXED_FUNCTION_MARKER_ATTR,
     Default,
     copy_class_metadata,
     ensure_serialization_context,
@@ -1137,6 +1138,11 @@ def multiplexed(
             else:
                 model_multiplex_wrapper = getattr(multiplex_object, multiplex_attr)
             return await model_multiplex_wrapper.load_model(model_id)
+
+        # Mark the wrapper so that multiplexing can be detected statically (e.g. at
+        # replica startup) without invoking user code, since the
+        # `__serve_multiplex_wrapper` is only created lazily on the first call.
+        setattr(_multiplex_wrapper, MULTIPLEXED_FUNCTION_MARKER_ATTR, True)
 
         return _multiplex_wrapper
 

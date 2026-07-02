@@ -48,6 +48,7 @@ from ray.serve._private.storage.kv_store import KVStoreBase
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
+    _callable_uses_multiplexing,
     check_obj_ref_ready_nowait,
     override_runtime_envs_except_env_vars,
     validate_route_prefix,
@@ -1695,6 +1696,9 @@ def build_serve_application(
                     serialized_autoscaling_policy_def=deployment_to_serialized_autoscaling_policy_def,
                     serialized_request_router_cls=deployment_to_serialized_request_router_cls,
                     serialized_deployment_actors=serialized_deployment_actors,
+                    uses_multiplexing=_callable_uses_multiplexing(
+                        deployment.func_or_class
+                    ),
                 )
             )
 
