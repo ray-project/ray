@@ -8,9 +8,7 @@ myst:
 
 # Testing Autoscaling Locally
 
-Testing autoscaling behavior is important for autoscaler development and the debugging of applications that depend
-on autoscaler behavior. You can run the autoscaler locally without needing to launch a real cluster with one of the
-following methods:
+Testing autoscaling behavior is important for autoscaler development and the debugging of applications that depend on autoscaler behavior. You can run the autoscaler locally without needing to launch a real cluster with one of the following methods:
 
 ## Using `RAY_FAKE_CLUSTER=1 ray start`
 
@@ -93,11 +91,9 @@ However, there are a few limitations:
 
 # Testing containerized multi nodes locally with Docker compose
 
-To go one step further and locally test a multi node setup where each node uses its own container (and thus
-has a separate filesystem, IP address, and Ray processes), you can use the `fake_multinode_docker` node provider.
+To go one step further and locally test a multi node setup where each node uses its own container (and thus has a separate filesystem, IP address, and Ray processes), you can use the `fake_multinode_docker` node provider.
 
-The setup is very similar to the {ref}`fake_multinode <fake-multinode>` provider. However, you need to start a monitoring process
-(`docker_monitor.py`) that takes care of running the `docker compose` command.
+The setup is very similar to the {ref}`fake_multinode <fake-multinode>` provider. However, you need to start a monitoring process (`docker_monitor.py`) that takes care of running the `docker compose` command.
 
 Prerequisites:
 
@@ -140,9 +136,7 @@ $ docker exec -it fake_docker_ffffffffffffffffffffffffffffffffffffffffffffffffff
 
 ## Using `ray.autoscaler._private.fake_multi_node.test_utils.DockerCluster`
 
-This utility is used to write tests that use multi node behavior. The `DockerCluster` class can
-be used to setup a Docker-compose cluster in a temporary directory, start the monitoring process,
-wait for the cluster to come up, connect to it, and update the configuration.
+This utility is used to write tests that use multi node behavior. The `DockerCluster` class can be used to setup a Docker-compose cluster in a temporary directory, start the monitoring process, wait for the cluster to come up, connect to it, and update the configuration.
 
 Please see the API documentation and example test cases on how to use this utility.
 
@@ -153,11 +147,9 @@ Please see the API documentation and example test cases on how to use this utili
 
 ## Features and Limitations of `fake_multinode_docker`
 
-The fake multinode docker node provider provides fully fledged nodes in their own containers. However,
-some limitations still remain:
+The fake multinode docker node provider provides fully fledged nodes in their own containers. However, some limitations still remain:
 
-1. Configurations for auth, setup, initialization, Ray start, file sync, and anything cloud-specific are not supported
-   (but might be in the future).
+1. Configurations for auth, setup, initialization, Ray start, file sync, and anything cloud-specific are not supported (but might be in the future).
 
 2. It's necessary to limit the number of nodes / node CPU / object store memory to avoid overloading your local machine.
 
@@ -167,50 +159,32 @@ some limitations still remain:
 
 The containers will mount two locations to host storage:
 
-- `/cluster/node`: This location (in the container) will point to `cluster_dir/nodes/<node_id>` (on the host).
-  This location is individual per node, but it can be used so that the host can examine contents stored in this directory.
-- `/cluster/shared`: This location (in the container) will point to `cluster_dir/shared` (on the host). This location
-  is shared across nodes and effectively acts as a shared filesystem (comparable to NFS).
+- `/cluster/node`: This location (in the container) will point to `cluster_dir/nodes/<node_id>` (on the host). This location is individual per node, but it can be used so that the host can examine contents stored in this directory.
+- `/cluster/shared`: This location (in the container) will point to `cluster_dir/shared` (on the host). This location is shared across nodes and effectively acts as a shared filesystem (comparable to NFS).
 
 ## Setting up in a Docker-in-Docker (dind) environment
 
-When setting up in a Docker-in-Docker (dind) environment (e.g. the Ray OSS Buildkite environment), some
-things have to be kept in mind. To make this clear, consider these concepts:
+When setting up in a Docker-in-Docker (dind) environment (e.g. the Ray OSS Buildkite environment), some things have to be kept in mind. To make this clear, consider these concepts:
 
 * The **host** is the not-containerized machine on which the code is executed (e.g. Buildkite runner)
-* The **outer container** is the container running directly on the **host**. In the Ray OSS Buildkite environment,
-  two containers are started - a *dind* network host and a container with the Ray source code and wheel in it.
+* The **outer container** is the container running directly on the **host**. In the Ray OSS Buildkite environment, two containers are started - a *dind* network host and a container with the Ray source code and wheel in it.
 * The **inner container** is a container started by the fake multinode docker node provider.
 
-The control plane for the multinode docker node provider lives in the outer container. However, `docker compose`
-commands are executed from the connected docker-in-docker network. In the Ray OSS Buildkite environment, this is
-the `dind-daemon` container running on the host docker. If you e.g. mounted `/var/run/docker.sock` from the
-host instead, it would be the host docker daemon. We will refer to both as the **host daemon** from now on.
+The control plane for the multinode docker node provider lives in the outer container. However, `docker compose` commands are executed from the connected docker-in-docker network. In the Ray OSS Buildkite environment, this is the `dind-daemon` container running on the host docker. If you e.g. mounted `/var/run/docker.sock` from the host instead, it would be the host docker daemon. We will refer to both as the **host daemon** from now on.
 
-The outer container modifies files that have to be mounted in the inner containers (and modified from there
-as well). This means that the host daemon also has to have access to these files.
+The outer container modifies files that have to be mounted in the inner containers (and modified from there as well). This means that the host daemon also has to have access to these files.
 
-Similarly, the inner containers expose ports - but because the containers are actually started by the host daemon,
-the ports are also only accessible on the host (or the dind container).
+Similarly, the inner containers expose ports - but because the containers are actually started by the host daemon, the ports are also only accessible on the host (or the dind container).
 
 For the Ray OSS Buildkite environment, we thus set some environment variables:
 
-* `RAY_TEMPDIR="/ray-mount"`. This environment variable defines where the temporary directory for the
-  cluster files should be created. This directory has to be accessible by the host, the outer container,
-  and the inner container. In the inner container, we can control the directory name.
+* `RAY_TEMPDIR="/ray-mount"`. This environment variable defines where the temporary directory for the cluster files should be created. This directory has to be accessible by the host, the outer container, and the inner container. In the inner container, we can control the directory name.
 
-* `RAY_HOSTDIR="/ray"`. In the case where the shared directory has a different name on the host, we can
-  rewrite the mount points dynamically. In this example, the outer container is started with `-v /ray:/ray-mount`
-  or similar, so the directory on the host is `/ray` and in the outer container `/ray-mount` (see `RAY_TEMPDIR`).
+* `RAY_HOSTDIR="/ray"`. In the case where the shared directory has a different name on the host, we can rewrite the mount points dynamically. In this example, the outer container is started with `-v /ray:/ray-mount` or similar, so the directory on the host is `/ray` and in the outer container `/ray-mount` (see `RAY_TEMPDIR`).
 
-* `RAY_TESTHOST="dind-daemon"` As the containers are started by the host daemon, we can't just connect to
-  `localhost`, as the ports are not exposed to the outer container. Thus, we can set the Ray host with this environment
-  variable.
+* `RAY_TESTHOST="dind-daemon"` As the containers are started by the host daemon, we can't just connect to `localhost`, as the ports are not exposed to the outer container. Thus, we can set the Ray host with this environment variable.
 
-Lastly, docker-compose obviously requires a docker image. The default docker image is `rayproject/ray:nightly`.
-The docker image requires `openssh-server` to be installed and enabled. In Buildkite we build a new image from
-`rayproject/ray:nightly-py38-cpu` to avoid installing this on the fly for every node (which is the default way).
-This base image is built in one of the previous build steps.
+Lastly, docker-compose obviously requires a docker image. The default docker image is `rayproject/ray:nightly`. The docker image requires `openssh-server` to be installed and enabled. In Buildkite we build a new image from `rayproject/ray:nightly-py38-cpu` to avoid installing this on the fly for every node (which is the default way). This base image is built in one of the previous build steps.
 
 Thus, we set
 
@@ -226,12 +200,10 @@ If you're doing local development on the fake multi node docker module, you can 
 
 * `FAKE_CLUSTER_DEV="auto"`
 
-this will mount the `ray/python/ray/autoscaler` directory to the started nodes. Please note that
-this is will probably not work in your docker-in-docker setup.
+this will mount the `ray/python/ray/autoscaler` directory to the started nodes. Please note that this is will probably not work in your docker-in-docker setup.
 
 If you want to specify which top-level Ray directories to mount, you can use:
 
 * `FAKE_CLUSTER_DEV_MODULES="autoscaler,tune"`
 
-This will mount both `ray/python/ray/autoscaler` and `ray/python/ray/tune` within the node containers. The
-list of modules should be comma separated and without spaces.
+This will mount both `ray/python/ray/autoscaler` and `ray/python/ray/tune` within the node containers. The list of modules should be comma separated and without spaces.

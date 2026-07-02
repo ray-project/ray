@@ -1,0 +1,14 @@
+Build: state=Finished  success=False  exit=1  build finished with problems, 1 warning.
+
+Findings (1):
+  Tier 3 — warnings:
+    [T3] myst-xref-missing-cross-extension  doc/source/404.md:9
+          msg:    'myst' cross-reference target not found: 'index.md'
+          fix:    Rewrite as a {doc} role so it resolves to the document and is never ambiguous; drop the extension on the target.  Suggested: {doc}`text <index>`
+          safety: mechanical
+
+Unclassified (0) — no rule matched; resolve with the user, then file a skill-improvement ticket to add a rule:
+
+Suppressed (0) — known-benign, not actionable:
+
+Next: apply the fixes above, then rebuild and re-run to confirm clean.

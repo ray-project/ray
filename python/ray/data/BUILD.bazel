@@ -719,6 +719,21 @@ py_test(
 )
 
 py_test(
+    name = "test_gpu_aggregate",
+    size = "medium",
+    srcs = ["tests/test_gpu_aggregate.py"],
+    tags = [
+        "exclusive",
+        "gpu",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_hash_shuffle",
     size = "medium",
     srcs = ["tests/test_hash_shuffle.py"],
@@ -1003,6 +1018,34 @@ py_test(
     name = "test_predicate_pushdown",
     size = "small",
     srcs = ["tests/test_predicate_pushdown.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_common_subexpr_elimination",
+    size = "small",
+    srcs = ["tests/test_common_subexpr_elimination.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_idempotency_optimizer_guards",
+    size = "small",
+    srcs = ["tests/test_idempotency_optimizer_guards.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1315,7 +1358,7 @@ py_test(
 
 py_test(
     name = "test_iceberg",
-    size = "small",
+    size = "medium",
     srcs = ["tests/datasource/test_iceberg.py"],
     tags = [
         "exclusive",
@@ -1837,6 +1880,20 @@ py_test(
 )
 
 py_test(
+    name = "test_zarrv2",
+    size = "medium",
+    srcs = ["tests/datasource/test_zarrv2.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_zip",
     size = "small",
     srcs = ["tests/test_zip.py"],
@@ -2190,6 +2247,20 @@ py_test(
     name = "test_read_datasource",
     size = "small",
     srcs = ["tests/test_read_datasource.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_catalog",
+    size = "small",
+    srcs = ["tests/test_catalog.py"],
     tags = [
         "exclusive",
         "team:data",

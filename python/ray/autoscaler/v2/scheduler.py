@@ -126,6 +126,44 @@ class IResourceScheduler(ABC):
         pass
 
 
+def _compute_min_resource_demand(
+    requests: List["ResourceRequest"],
+) -> Dict[str, float]:
+    """Compute the minimum demand for each resource key across all requests.
+
+    For each resource dimension, this returns the smallest non-zero value
+    requested by any single request. Used for quick feasibility pre-checks.
+    """
+    min_demand = {}
+    for r in requests:
+        for k, v in r.resources_bundle.items():
+            if v > 0:
+                if k not in min_demand or v < min_demand[k]:
+                    min_demand[k] = v
+    return min_demand
+
+
+def _can_fit_any_request(
+    available: Dict[str, float],
+    min_resource_demand: Dict[str, float],
+) -> bool:
+    """Quick pre-check: can this node possibly fit any pending request?
+
+    Returns False only when the node definitely cannot schedule any request,
+    i.e., every resource dimension is below the minimum demand. This is a
+    conservative check (no false negatives): if it returns True, the node
+    may or may not actually fit a request (try_schedule decides precisely).
+
+    Runs in O(D) where D is the number of resource dimensions (typically 2-4).
+    """
+    if not min_resource_demand:
+        return True
+    for k, min_v in min_resource_demand.items():
+        if available.get(k, 0.0) >= min_v:
+            return True
+    return False
+
+
 class NodeStateCache:
     """
     Caches the scheduling states of nodes to avoid redundant try_schedule calls
@@ -1693,6 +1731,10 @@ class ResourceDemandScheduler(IResourceScheduler):
             requests_to_sched, key=_sort_resource_request, reverse=True
         )
 
+        # Precompute the minimum resource demand across all requests for quick
+        # feasibility pre-checks.
+        min_resource_demand = _compute_min_resource_demand(requests_to_sched)
+
         existing_nodes = ctx.get_nodes()
         node_type_available = ctx.get_node_type_available()
 
@@ -1712,6 +1754,23 @@ class ResourceDemandScheduler(IResourceScheduler):
                             "memory": node.ippr_status.desired_memory,
                         }
                     )
+
+        # Pre-filter: skip RAY_RUNNING nodes that definitely cannot fit any
+        # request, avoiding expensive deepcopy + try_schedule in _sched_best_node.
+        exhausted_nodes = []
+        schedulable_nodes = []
+        for node in existing_nodes:
+            if (
+                node.im_instance_status == Instance.RAY_RUNNING
+                and not _can_fit_any_request(
+                    node.get_available_resources(resource_request_source),
+                    min_resource_demand,
+                )
+            ):
+                exhausted_nodes.append(node)
+            else:
+                schedulable_nodes.append(node)
+        existing_nodes = schedulable_nodes
 
         # Try scheduling resource requests with existing nodes first.
         while len(requests_to_sched) > 0 and len(existing_nodes) > 0:
@@ -1734,6 +1793,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         # If there's any existing nodes left, we will add to the target nodes
         target_nodes.extend(existing_nodes)
+        target_nodes.extend(exhausted_nodes)
 
         # Try scheduling remaining requests with IPPR after filling up existing nodes with their current capacity.
         existing_nodes = target_nodes
