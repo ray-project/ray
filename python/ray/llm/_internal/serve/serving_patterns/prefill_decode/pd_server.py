@@ -37,7 +37,7 @@ from ray.llm._internal.serve.core.ingress.utils import (
 )
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
-from ray.llm._internal.serve.engines.vllm.kv_transfer.base import BaseConnectorBackend
+from ray.llm._internal.serve.engines.common.kv_transfer.base import BaseConnectorBackend
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import DPServer
 from ray.llm._internal.serve.utils.broadcast import broadcast
 from ray.llm._internal.serve.utils.server_utils import (
@@ -595,11 +595,55 @@ async def _drain_prefill(prefill_resp) -> Optional[ErrorResponse]:
 
 
 # ---------------------------------------------------------------------------
+# Engine class selection (per llm_engine)
+# ---------------------------------------------------------------------------
+
+
+def _resolve_pd_engine_class(llm_config: "LLMConfig"):
+    """Engine class for a PD server, chosen by ``llm_engine``.
+
+    SGLang must use ``SGLangServer``; everything else falls through to the base
+    LLMServer default (VLLMEngine). The generic PD servers don't set
+    ``_default_engine_cls``, so without this they would always pick VLLMEngine.
+    """
+    if llm_config.llm_engine == "SGLang":
+        from ray.llm._internal.serve.engines.sglang.sglang_engine import SGLangServer
+
+        return SGLangServer
+    from ray.llm._internal.serve.engines.vllm.vllm_engine import VLLMEngine
+
+    return VLLMEngine
+
+
+class _PDEngineSelectionMixin:
+    """Make a PD server pick its engine class from ``llm_config.llm_engine``.
+
+    Preserves the base ``RAYLLM_VLLM_ENGINE_CLS`` escape hatch (used by tests
+    that patch the engine class) and otherwise dispatches on the engine.
+    """
+
+    @classmethod
+    def _resolve_engine_class(cls, llm_config: "LLMConfig"):
+        return _resolve_pd_engine_class(llm_config)
+
+    def _get_default_engine_class(self):
+        import os
+
+        from ray._common.utils import import_attr
+        from ray.llm._internal.serve.constants import RAYLLM_VLLM_ENGINE_CLS_ENV
+
+        engine_cls_path = os.environ.get(RAYLLM_VLLM_ENGINE_CLS_ENV)
+        if engine_cls_path:
+            return import_attr(engine_cls_path)
+        return self._resolve_engine_class(self._llm_config)
+
+
+# ---------------------------------------------------------------------------
 # PDPrefillServer
 # ---------------------------------------------------------------------------
 
 
-class PDPrefillServer(LLMServer):
+class PDPrefillServer(_PDEngineSelectionMixin, LLMServer):
     """Prefill-side LLM server for P/D disaggregation.
 
     This is a standard LLMServer with an additional ``prewarm_prefill``
@@ -646,7 +690,7 @@ class PDPrefillServer(LLMServer):
 # ---------------------------------------------------------------------------
 
 
-class PDDecodeServer(PDOrchestratorMixin, LLMServer):
+class PDDecodeServer(_PDEngineSelectionMixin, PDOrchestratorMixin, LLMServer):
     """Decode-side LLM server that orchestrates remote prefill.
 
     This deployment owns a real engine (decode config) and holds a handle

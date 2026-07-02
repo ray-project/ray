@@ -166,13 +166,53 @@ class PDServingArgs(BaseModelExtended):
         return self
 
     @model_validator(mode="after")
-    def _validate_kv_transfer_config(self):
-        """Validate that kv_transfer_config is set for both prefill and decode configs."""
+    def _validate_transfer_config(self):
+        """Each engine needs its own PD transfer config.
+
+        vLLM requires ``kv_transfer_config``; SGLang requires
+        ``disaggregation_transfer_backend``.
+        """
         for config in [self.prefill_config, self.decode_config]:
-            if config.engine_kwargs.get("kv_transfer_config") is None:
+            if config.llm_engine == "SGLang":
+                if not config.engine_kwargs.get("disaggregation_transfer_backend"):
+                    raise ValueError(
+                        "disaggregation_transfer_backend is required for SGLang "
+                        "P/D disaggregation"
+                    )
+            elif config.engine_kwargs.get("kv_transfer_config") is None:
                 raise ValueError(
                     "kv_transfer_config is required for P/D disaggregation"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _set_sglang_disaggregation_mode(self):
+        """Auto-set disaggregation_mode so users never set it by hand."""
+        if self.prefill_config.llm_engine == "SGLang":
+            self.prefill_config.engine_kwargs.setdefault(
+                "disaggregation_mode", "prefill"
+            )
+        if self.decode_config.llm_engine == "SGLang":
+            self.decode_config.engine_kwargs.setdefault("disaggregation_mode", "decode")
+        return self
+
+    @model_validator(mode="after")
+    def _default_decode_sglang_bootstrap_port_base(self):
+        """Shift decode's SGLang bootstrap port base off prefill's default so a
+        colocated P+D pair doesn't collide (mirrors the NIXL/MoRIIO shifts).
+
+        The decode engine runs a (mostly unused) bootstrap server too; pinning a
+        distinct port avoids a same-node bind clash on 8998.
+        """
+        if self.decode_config.llm_engine != "SGLang":
+            return self
+        from ray.llm._internal.serve.engines.sglang.kv_transfer.pd_connector import (
+            DEFAULT_BOOTSTRAP_PORT_BASE,
+        )
+
+        self.decode_config.engine_kwargs.setdefault(
+            "disaggregation_bootstrap_port", DEFAULT_BOOTSTRAP_PORT_BASE + 1000
+        )
         return self
 
     @model_validator(mode="after")

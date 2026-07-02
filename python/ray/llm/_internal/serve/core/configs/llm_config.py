@@ -45,14 +45,14 @@ from ray.llm._internal.serve.core.configs.accelerators import (
     TPUConfig,
     infer_hardware_kind_from_bundles,
 )
-from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
+from ray.llm._internal.serve.engines.common.kv_transfer.factory import (
     KVConnectorBackendFactory,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve._private.config import DeploymentConfig, handle_num_replicas_auto
 
 if TYPE_CHECKING:
-    from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+    from ray.llm._internal.serve.engines.common.kv_transfer.base import (
         BaseConnectorBackend,
     )
 
@@ -86,6 +86,7 @@ class LLMEngine(str, Enum):
     """Enum that represents an LLMEngine."""
 
     vLLM = "vLLM"
+    SGLang = "SGLang"
 
 
 class LoraConfig(BaseModelExtended):
@@ -146,7 +147,7 @@ class ModelLoadingConfig(BaseModelExtended):
     )
 
 
-EngineConfigType = Union[None, "VLLMEngineConfig"]  # noqa: F821
+EngineConfigType = Union[None, "VLLMEngineConfig", "SGLangEngineConfig"]  # noqa: F821
 
 
 class LLMConfig(BaseModelExtended):
@@ -589,18 +590,22 @@ class LLMConfig(BaseModelExtended):
         if self._engine_config:
             return self._engine_config
 
-        if self.llm_engine == LLMEngine.vLLM:
-            from ray.llm._internal.serve.engines.vllm.vllm_models import (
-                VLLMEngineConfig,
-            )
+        from ray.llm._internal.serve.core.configs.engine_adapter import (
+            get_engine_adapter,
+        )
 
-            self._engine_config = VLLMEngineConfig.from_llm_config(self)
-        else:
-            # Note (genesu): This should never happen because we validate the engine
-            # in the config.
-            raise ValueError(f"Unsupported engine: {self.llm_engine}")
-
+        adapter = get_engine_adapter(self.llm_engine)
+        self._engine_config = adapter.engine_config_cls().from_llm_config(self)
         return self._engine_config
+
+    @property
+    def num_devices(self) -> int:
+        """Total devices per replica (tensor-parallel × pipeline-parallel).
+
+        Neutral accessor used by connector backends for port spacing, so the
+        connector base never reaches into an engine-specific config type.
+        """
+        return self.get_engine_config().num_devices
 
     def update_engine_kwargs(self, **kwargs: Any) -> None:
         """Update the engine_kwargs and the engine_config engine_kwargs.
@@ -618,25 +623,26 @@ class LLMConfig(BaseModelExtended):
         self._setup_kv_connector_backend()
 
     def _setup_kv_connector_backend(self):
-        """Private method to setup kv connector depending on the local deployment state"""
-        # 1. validate that the backend is one of the backends supported (Nixl or LMCache)
-        kv_transfer_config = self.engine_kwargs.get("kv_transfer_config")
-        if not kv_transfer_config:
+        """Create + setup the KV connector backend for this engine, if any.
+
+        The connector name is resolved through the per-engine adapter so this
+        path carries no engine-specific knowledge (vLLM reads
+        ``kv_transfer_config.kv_connector``; SGLang reads
+        ``disaggregation_transfer_backend``). The instance is stashed so the P/D
+        orchestrator can reach the connector's coordination protocol (request
+        shaping, peer binding, handoff discipline) without re-creating it.
+        """
+        from ray.llm._internal.serve.core.configs.engine_adapter import (
+            get_engine_adapter,
+        )
+
+        adapter = get_engine_adapter(self.llm_engine)
+        name = adapter.connector_name(self.engine_kwargs)
+        if not name:
             return
 
-        kv_connector = kv_transfer_config.get("kv_connector")
-        if not kv_connector:
-            raise ValueError("Connector type is not specified.")
-
-        # 2. Setup the backend using factory
-        kv_connector_backend = KVConnectorBackendFactory.create_backend(
-            kv_connector, self
-        )
+        kv_connector_backend = KVConnectorBackendFactory.create_backend(name, self)
         kv_connector_backend.setup()
-        # 3. Stash the instance so the P/D orchestrator can reach the connector's
-        # coordination protocol (request shaping, peer binding, handoff
-        # discipline) without re-creating it. May be None on configs that never
-        # call setup_engine_backend(); the orchestrator falls back to the factory.
         self._kv_connector_backend = kv_connector_backend
 
     @property
