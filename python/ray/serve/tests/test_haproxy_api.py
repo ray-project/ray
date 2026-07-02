@@ -15,7 +15,7 @@ import requests
 import uvicorn
 from fastapi import FastAPI, Request, Response
 
-from ray._common.network_utils import find_free_port
+from ray._common.network_utils import find_free_port, get_localhost_ip
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
@@ -27,6 +27,7 @@ from ray.serve._private.haproxy import (
     HAProxyConfig,
     HAProxyManager,
     ServerConfig,
+    _mark_remote_servers_backup,
 )
 from ray.serve.config import HTTPOptions
 
@@ -490,6 +491,56 @@ def _make_api(temp_dir, backend_configs):
         config_file_path=config_file_path,
         backend_configs=backend_configs,
     )
+
+
+def test_mark_remote_servers_backup():
+    """Remote replicas become backup servers when a co-located replica exists;
+    otherwise every replica stays primary so the node still load-balances."""
+    local = get_localhost_ip()
+
+    mixed = [
+        ServerConfig(name="local", host=local, port=8001, replica_id="r1"),
+        ServerConfig(name="remote", host="10.0.0.2", port=8001, replica_id="r2"),
+    ]
+    _mark_remote_servers_backup(mixed, local)
+    assert [s.backup for s in mixed] == [False, True]
+
+    remote_only = [
+        ServerConfig(name="a", host="10.0.0.2", port=8001, replica_id="r1"),
+        ServerConfig(name="b", host="10.0.0.3", port=8001, replica_id="r2"),
+    ]
+    _mark_remote_servers_backup(remote_only, local)
+    assert [s.backup for s in remote_only] == [False, False]
+
+
+def test_prefer_local_backup_renders_in_config(haproxy_api_cleanup):
+    """A backup server renders with the HAProxy `backup` keyword; a primary
+    server does not."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        backend = BackendConfig(
+            name="app",
+            path_prefix="/",
+            app_name="app",
+            servers=[
+                ServerConfig(
+                    name="local", host="127.0.0.1", port=8001, replica_id="r1"
+                ),
+                ServerConfig(
+                    name="remote",
+                    host="10.0.0.2",
+                    port=8001,
+                    replica_id="r2",
+                    backup=True,
+                ),
+            ],
+        )
+        api = _make_api(temp_dir, {"app": backend})
+        api._generate_config_file_internal()
+        with open(os.path.join(temp_dir, "haproxy.cfg")) as f:
+            cfg = f.read()
+
+    assert "server remote 10.0.0.2:8001 check backup" in cfg
+    assert "server local 127.0.0.1:8001 check backup" not in cfg
 
 
 def test_write_ingress_request_router_lua_no_routers(haproxy_api_cleanup):

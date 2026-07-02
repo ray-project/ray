@@ -70,6 +70,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_UPDATE_LATENCY_BUCKETS_S,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED,
+    RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -132,6 +133,19 @@ def _routers_and_targets_by_backend(
         )
         targets[backend.name] = entries
     return routers, targets
+
+
+def _mark_remote_servers_backup(servers: "List[ServerConfig]", local_host: str) -> None:
+    """Mark remote replicas as HAProxy backup servers, in place.
+
+    So a HAProxy with a co-located replica (host rewritten to ``local_host`` by
+    ``_target_to_server``) routes to it first and only falls back to remote
+    replicas when the local one is down. No-op when no replica is co-located,
+    so a node without one still load-balances across all replicas.
+    """
+    if any(server.host == local_host for server in servers):
+        for server in servers:
+            server.backup = server.host != local_host
 
 
 def _format_routers_lua(routers: "Dict[str, ServerConfig]") -> str:
@@ -360,6 +374,9 @@ class ServerConfig:
     port: int  # Port to connect to
     # Replica identifier returned by /internal/route.
     replica_id: Optional[str] = None
+    # Rendered as a HAProxy `backup` server: used only when no primary server
+    # is available. Set on remote replicas under prefer-local-node routing.
+    backup: bool = False
 
     def __str__(self) -> str:
         return f"ServerConfig(name='{self.name}', host='{self.host}', port={self.port})"
@@ -1715,6 +1732,15 @@ class HAProxyManager(ProxyActorInterface):
     ) -> BackendConfig:
         """Create a backend configuration from a target group and fallback target."""
         servers = [self._target_to_server(target) for target in target_group.targets]
+
+        # The default ingress balances across all replicas with no node-local
+        # preference. Under prefer-local-node routing, prefer this node's
+        # co-located replica (_target_to_server rewrote it to the local host) by
+        # marking remote replicas as backup servers, so they are used only when
+        # the local one is down. TODO: for capacity-aware spillover, this could
+        # instead be wired via the ingress_request_router use-server delegation.
+        if RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING:
+            _mark_remote_servers_backup(servers, get_localhost_ip())
 
         ingress_request_router_servers = [
             self._target_to_server(target)

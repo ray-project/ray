@@ -196,7 +196,7 @@ backend {{ backend.name or 'unknown' }}
     {{ hc.default_server_directive }}
     # Servers in this backend
     {%- for server in backend.servers %}
-    server {{ server.name }} {{ server.host }}:{{ server.port }} check
+    server {{ server.name }} {{ server.host }}:{{ server.port }} check{% if server.backup %} backup{% endif %}
     {%- endfor %}
     {%- if backend.fallback_server %}
     # Fallback to head node's Serve proxy when no ingress replicas are available
