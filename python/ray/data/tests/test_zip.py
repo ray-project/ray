@@ -55,42 +55,6 @@ def test_zip_different_num_blocks_combinations(
     )
 
 
-@pytest.mark.parametrize(
-    "num_cols1,num_cols2,should_invert",
-    [
-        (1, 1, False),
-        (4, 1, False),
-        (1, 4, True),
-        (1, 10, True),
-        (10, 10, False),
-    ],
-)
-def test_zip_different_num_blocks_split_smallest(
-    ray_start_regular_shared,
-    num_cols1,
-    num_cols2,
-    should_invert,
-):
-    n = 12
-    num_blocks1 = 4
-    num_blocks2 = 2
-    ds1 = ray.data.from_items(
-        [{str(i): i for i in range(num_cols1)}] * n, override_num_blocks=num_blocks1
-    )
-    ds2 = ray.data.from_items(
-        [{str(i): i for i in range(num_cols1, num_cols1 + num_cols2)}] * n,
-        override_num_blocks=num_blocks2,
-    )
-    ds = ds1.zip(ds2).materialize()
-    bundles = ds.iter_internal_ref_bundles()
-    num_blocks = sum(len(b.block_refs) for b in bundles)
-    assert ds.take() == [{str(i): i for i in range(num_cols1 + num_cols2)}] * n
-    if should_invert:
-        assert num_blocks == num_blocks2
-    else:
-        assert num_blocks == num_blocks1
-
-
 def test_zip_pandas(ray_start_regular_shared):
     ds1 = ray.data.from_pandas(pd.DataFrame({"col1": [1, 2], "col2": [4, 5]}))
     ds2 = ray.data.from_pandas(pd.DataFrame({"col3": ["a", "b"], "col4": ["d", "e"]}))
@@ -186,6 +150,361 @@ def test_zip_does_not_free_shared_materialized_blocks(ray_start_regular_shared):
     # The mapped_ds should also work fine (blocks not freed by the zip).
     result2 = mapped_ds.take_all()
     assert len(result2) == 20
+
+
+def test_zip_streaming_dispatches_before_inputs_done(ray_start_regular_shared):
+    """Verify that ZipOperator submits zip tasks as blocks arrive, rather than
+    waiting until all inputs are done (which the old bulk operator did)."""
+    from ray.data._internal.execution.interfaces import ExecutionOptions
+    from ray.data._internal.execution.interfaces.physical_operator import DataOpTask
+    from ray.data._internal.execution.operators.input_data_buffer import (
+        InputDataBuffer,
+    )
+    from ray.data._internal.execution.operators.zip_operator import ZipOperator
+    from ray.data._internal.execution.util import make_ref_bundles
+    from ray.data.block import BlockAccessor
+    from ray.data.context import DataContext
+    from ray.data.tests.util import run_op_tasks_sync
+
+    ctx = DataContext.get_current()
+
+    # Two inputs, each with 3 blocks of 2 rows.
+    bundles_a = make_ref_bundles([[0, 1], [2, 3], [4, 5]])
+    bundles_b = make_ref_bundles([[10, 11], [12, 13], [14, 15]])
+
+    input_a = InputDataBuffer(ctx, bundles_a)
+    input_b = InputDataBuffer(ctx, bundles_b)
+    zip_op = ZipOperator(ctx, input_a, input_b)
+
+    zip_op.start(ExecutionOptions())
+    input_a.start(ExecutionOptions())
+    input_b.start(ExecutionOptions())
+
+    # Feed one block from each input — this is enough to align and dispatch a
+    # zip task, well before all inputs are done.
+    zip_op.add_input(input_a.get_next(), 0)
+    zip_op.add_input(input_b.get_next(), 1)
+
+    active = zip_op.get_active_tasks()
+    assert (
+        len(active) >= 1
+    ), "Streaming zip should dispatch a task before all inputs done"
+    assert all(isinstance(t, DataOpTask) for t in active)
+
+    # Feed remaining blocks.
+    while input_a.has_next():
+        zip_op.add_input(input_a.get_next(), 0)
+    while input_b.has_next():
+        zip_op.add_input(input_b.get_next(), 1)
+
+    zip_op.input_done(0)
+    zip_op.input_done(1)
+    zip_op.all_inputs_done()
+
+    # Drive the async zip tasks to completion, then drain and verify order.
+    run_op_tasks_sync(zip_op)
+    assert zip_op.num_active_tasks() == 0
+
+    results = []
+    while zip_op.has_next():
+        bundle = zip_op.get_next()
+        for block_ref in bundle.block_refs:
+            df = BlockAccessor.for_block(ray.get(block_ref)).to_pandas()
+            results.extend(df["id"].tolist())
+
+    assert results == [0, 1, 2, 3, 4, 5]
+    assert zip_op.has_completed()
+
+
+def test_zip_streaming_with_unaligned_blocks(ray_start_regular_shared):
+    """Verify that streaming zip correctly aligns blocks with different row counts
+    using the split-and-leftover mechanism."""
+    from ray.data._internal.execution.interfaces import ExecutionOptions
+    from ray.data._internal.execution.operators.input_data_buffer import (
+        InputDataBuffer,
+    )
+    from ray.data._internal.execution.operators.zip_operator import ZipOperator
+    from ray.data._internal.execution.util import make_ref_bundles
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+
+    # Input A: 3 blocks of [3, 3, 3] rows = 9 rows
+    # Input B: 2 blocks of [5, 4] rows = 9 rows
+    # Block boundaries don't align — tests the split/leftover logic.
+    bundles_a = make_ref_bundles([[0, 1, 2], [3, 4, 5], [6, 7, 8]])
+    bundles_b = make_ref_bundles([[10, 11, 12, 13, 14], [15, 16, 17, 18]])
+
+    input_a = InputDataBuffer(ctx, bundles_a)
+    input_b = InputDataBuffer(ctx, bundles_b)
+    zip_op = ZipOperator(ctx, input_a, input_b)
+
+    zip_op.start(ExecutionOptions())
+    input_a.start(ExecutionOptions())
+    input_b.start(ExecutionOptions())
+
+    # Feed all blocks.
+    while input_a.has_next():
+        zip_op.add_input(input_a.get_next(), 0)
+    while input_b.has_next():
+        zip_op.add_input(input_b.get_next(), 1)
+
+    zip_op.input_done(0)
+    zip_op.input_done(1)
+    zip_op.all_inputs_done()
+
+    # Drive the async zip tasks to completion, then collect all output rows.
+    from ray.data.block import BlockAccessor
+    from ray.data.tests.util import run_op_tasks_sync
+
+    run_op_tasks_sync(zip_op)
+
+    id_values = []
+    id_1_values = []
+    while zip_op.has_next():
+        bundle = zip_op.get_next()
+        for block_ref in bundle.block_refs:
+            df = BlockAccessor.for_block(ray.get(block_ref)).to_pandas()
+            id_values.extend(df["id"].tolist())
+            id_1_values.extend(df["id_1"].tolist())
+
+    assert id_values == list(range(9))
+    assert id_1_values == list(range(10, 19))
+
+
+def test_zip_streaming_different_row_counts_raises(ray_start_regular_shared):
+    """Verify that zipping datasets with different total row counts raises
+    ValueError at all_inputs_done."""
+    from ray.data._internal.execution.interfaces import ExecutionOptions
+    from ray.data._internal.execution.operators.input_data_buffer import (
+        InputDataBuffer,
+    )
+    from ray.data._internal.execution.operators.zip_operator import ZipOperator
+    from ray.data._internal.execution.util import make_ref_bundles
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+
+    bundles_a = make_ref_bundles([[0, 1, 2]])  # 3 rows
+    bundles_b = make_ref_bundles([[10, 11]])  # 2 rows
+
+    input_a = InputDataBuffer(ctx, bundles_a)
+    input_b = InputDataBuffer(ctx, bundles_b)
+    zip_op = ZipOperator(ctx, input_a, input_b)
+
+    zip_op.start(ExecutionOptions())
+    input_a.start(ExecutionOptions())
+    input_b.start(ExecutionOptions())
+
+    zip_op.add_input(input_a.get_next(), 0)
+    zip_op.add_input(input_b.get_next(), 1)
+
+    zip_op.input_done(0)
+    zip_op.input_done(1)
+
+    with pytest.raises(ValueError, match="different number of rows"):
+        zip_op.all_inputs_done()
+
+
+@pytest.mark.parametrize("extra_b_blocks", [[[12]], [[12], [13]]])
+def test_zip_streaming_partial_progress_mismatch_raises(
+    ray_start_regular_shared, extra_b_blocks
+):
+    """Regression test: even after some pairs zip successfully, a longer input
+    left with unconsumed bundles must raise (not stall) at all_inputs_done.
+
+    Covers both the case where the leftover sits in the block deque (one extra
+    bundle) and where it sits in the input buffer (two+ extra bundles), which is
+    the path that previously deferred validation and stalled.
+    """
+    from ray.data._internal.execution.interfaces import ExecutionOptions
+    from ray.data._internal.execution.operators.input_data_buffer import (
+        InputDataBuffer,
+    )
+    from ray.data._internal.execution.operators.zip_operator import ZipOperator
+    from ray.data._internal.execution.util import make_ref_bundles
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+
+    # A has one 2-row block; B starts with a matching 2-row block (so the first
+    # pair zips) followed by extra blocks that A can never match.
+    input_a = InputDataBuffer(ctx, make_ref_bundles([[0, 1]]))
+    input_b = InputDataBuffer(ctx, make_ref_bundles([[10, 11]] + extra_b_blocks))
+    zip_op = ZipOperator(ctx, input_a, input_b)
+
+    zip_op.start(ExecutionOptions())
+    input_a.start(ExecutionOptions())
+    input_b.start(ExecutionOptions())
+
+    while input_a.has_next():
+        zip_op.add_input(input_a.get_next(), 0)
+    while input_b.has_next():
+        zip_op.add_input(input_b.get_next(), 1)
+
+    zip_op.input_done(0)
+    zip_op.input_done(1)
+
+    with pytest.raises(ValueError, match="different number of rows"):
+        zip_op.all_inputs_done()
+
+
+@pytest.mark.parametrize(
+    "a_blocks,b_blocks",
+    [
+        # Leading empty block on one side.
+        ([[], [1, 2]], [[10, 11]]),
+        # Trailing empty block after the last real block (Bugbot regression:
+        # equal total rows must not raise a false mismatch).
+        ([[0, 1]], [[10, 11], []]),
+        # Multiple trailing empty blocks on one side.
+        ([[0, 1]], [[10, 11], [], []]),
+        # Empty blocks on both sides, interleaved.
+        ([[], [0, 1]], [[10, 11], []]),
+    ],
+)
+def test_zip_streaming_empty_blocks(ray_start_regular_shared, a_blocks, b_blocks):
+    """Zero-row blocks carry no rows, so they must be skipped without stalling or
+    tripping row-count validation, even when totals already match."""
+    from ray.data._internal.execution.interfaces import ExecutionOptions
+    from ray.data._internal.execution.operators.input_data_buffer import (
+        InputDataBuffer,
+    )
+    from ray.data._internal.execution.operators.zip_operator import ZipOperator
+    from ray.data._internal.execution.util import make_ref_bundles
+    from ray.data.block import BlockAccessor
+    from ray.data.context import DataContext
+    from ray.data.tests.util import run_op_tasks_sync
+
+    ctx = DataContext.get_current()
+
+    input_a = InputDataBuffer(ctx, make_ref_bundles(a_blocks))
+    input_b = InputDataBuffer(ctx, make_ref_bundles(b_blocks))
+    zip_op = ZipOperator(ctx, input_a, input_b)
+
+    zip_op.start(ExecutionOptions())
+    input_a.start(ExecutionOptions())
+    input_b.start(ExecutionOptions())
+
+    while input_a.has_next():
+        zip_op.add_input(input_a.get_next(), 0)
+    while input_b.has_next():
+        zip_op.add_input(input_b.get_next(), 1)
+
+    zip_op.input_done(0)
+    zip_op.input_done(1)
+    zip_op.all_inputs_done()
+
+    run_op_tasks_sync(zip_op)
+    assert zip_op.num_active_tasks() == 0
+
+    id_values = []
+    id_1_values = []
+    while zip_op.has_next():
+        bundle = zip_op.get_next()
+        for block_ref in bundle.block_refs:
+            df = BlockAccessor.for_block(ray.get(block_ref)).to_pandas()
+            id_values.extend(df["id"].tolist())
+            id_1_values.extend(df["id_1"].tolist())
+
+    # Rows are paired positionally, ignoring the (row-less) empty blocks.
+    assert id_values == [v for block in a_blocks for v in block]
+    assert id_1_values == [v for block in b_blocks for v in block]
+
+
+def test_zip_streaming_unknown_row_count_resolved_async(ray_start_regular_shared):
+    """Verify that when a block's metadata lacks num_rows, ZipOperator fetches it
+    via an async MetadataOpTask instead of blocking, and still zips correctly."""
+    import pyarrow as pa
+
+    from ray.data._internal.execution.interfaces import (
+        BlockEntry,
+        ExecutionOptions,
+        RefBundle,
+    )
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        MetadataOpTask,
+    )
+    from ray.data._internal.execution.operators.input_data_buffer import (
+        InputDataBuffer,
+    )
+    from ray.data._internal.execution.operators.zip_operator import ZipOperator
+    from ray.data.block import BlockAccessor, BlockMetadata
+    from ray.data.context import DataContext
+    from ray.data.tests.util import run_op_tasks_sync
+
+    ctx = DataContext.get_current()
+
+    def bundle_with_unknown_rows(values):
+        block = pd.DataFrame({"id": values})
+        # Build metadata with num_rows=None to exercise the async fetch path.
+        metadata = BlockMetadata(
+            num_rows=None,
+            size_bytes=None,
+            exec_stats=None,
+            input_files=None,
+        )
+        return RefBundle(
+            [BlockEntry(ray.put(block), metadata)],
+            owns_blocks=True,
+            schema=pa.lib.Schema.from_pandas(block, preserve_index=False),
+        )
+
+    input_a = InputDataBuffer(ctx, [bundle_with_unknown_rows([0, 1, 2])])
+    input_b = InputDataBuffer(ctx, [bundle_with_unknown_rows([10, 11, 12])])
+    zip_op = ZipOperator(ctx, input_a, input_b)
+
+    zip_op.start(ExecutionOptions())
+    input_a.start(ExecutionOptions())
+    input_b.start(ExecutionOptions())
+
+    zip_op.add_input(input_a.get_next(), 0)
+    zip_op.add_input(input_b.get_next(), 1)
+
+    # With unknown row counts, the operator must defer to async row-count tasks
+    # rather than block — so a MetadataOpTask should be active and no output yet.
+    active = zip_op.get_active_tasks()
+    assert any(isinstance(t, MetadataOpTask) for t in active), active
+    assert not zip_op.has_next()
+
+    zip_op.input_done(0)
+    zip_op.input_done(1)
+    zip_op.all_inputs_done()
+
+    # Drive row-count tasks and the subsequent zip task to completion.
+    run_op_tasks_sync(zip_op)
+    assert zip_op.num_active_tasks() == 0
+
+    id_values = []
+    id_1_values = []
+    while zip_op.has_next():
+        bundle = zip_op.get_next()
+        for block_ref in bundle.block_refs:
+            df = BlockAccessor.for_block(ray.get(block_ref)).to_pandas()
+            id_values.extend(df["id"].tolist())
+            id_1_values.extend(df["id_1"].tolist())
+
+    assert id_values == [0, 1, 2]
+    assert id_1_values == [10, 11, 12]
+
+
+def test_zip_streaming_throttling_enabled(ray_start_regular_shared):
+    """Verify that the streaming zip operator has throttling enabled
+    (backpressure support)."""
+    from ray.data._internal.execution.operators.input_data_buffer import (
+        InputDataBuffer,
+    )
+    from ray.data._internal.execution.operators.zip_operator import ZipOperator
+    from ray.data._internal.execution.util import make_ref_bundles
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+
+    input_a = InputDataBuffer(ctx, make_ref_bundles([[1]]))
+    input_b = InputDataBuffer(ctx, make_ref_bundles([[2]]))
+    zip_op = ZipOperator(ctx, input_a, input_b)
+
+    assert not zip_op.throttling_disabled()
 
 
 if __name__ == "__main__":
