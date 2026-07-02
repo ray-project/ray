@@ -4251,6 +4251,33 @@
     long_running: false
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1.yaml --run-vllm-profiler --run-serve-llm-profiler
 
+# Direct streaming with the prefix-cache-aware request router. Guards #64326,
+# where a body-aware router got no routing key on the direct-streaming path.
+- name: llm_serve_llama_3dot1_8B_quantized_tp_1_direct_streaming_prefix_cache
+  frequency: nightly
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu130
+      runtime_env:
+        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
+        - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
+    anyscale_sdk_2026: true
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1_prefix_cache.yaml
+
 # Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_tp_2
   frequency: nightly
