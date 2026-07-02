@@ -1,0 +1,28 @@
+# Smoke variant of qwen3_06b_deepspeed: synthetic data, few steps, single
+# worker. Validates the full harness path (config -> adapter -> metrics) on a
+# single small GPU without downloading a dataset. Not a perf-of-record run.
+name: qwen3_06b_deepspeed_smoke
+adapter: deepspeed
+launcher: ray_train
+scaling:
+  num_workers: 1
+  use_gpu: true
+model:
+  name: Qwen/Qwen3-0.6B
+  parallelism:
+    zero_stage: 1
+  precision: bf16
+data:
+  dataloader: native
+  dataset: synthetic            # random token ids, no network / tokenizer needed
+  dataset_path: ""
+  micro_batch_size: 2
+  seq_len: 512
+training:
+  num_steps: 20
+  warmup_steps: 3
+  seed: 42
+  log_every_n_steps: 5
+checkpoint:
+  every_n_steps: -1
+perturbation: null

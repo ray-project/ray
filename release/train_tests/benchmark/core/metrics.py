@@ -1,0 +1,412 @@
+"""Benchmark metrics: throughput, FLOPs/MFU estimation, and GPU utilization.
+
+Fills the gaps called out in the benchmark modernization proposal: the legacy
+harness only collected per-step timers and rows/sec; this module adds
+tokens/sec, model FLOPs, MFU, and sampled GPU utilization/memory.
+"""
+
+import logging
+import os
+import statistics
+import threading
+import time
+from contextlib import contextmanager
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
+
+
+# Peak dense (no-sparsity) tensor-core FLOP/s by GPU product name substring.
+# Sources: NVIDIA datasheets. Matched case-insensitively against
+# torch.cuda.get_device_name(); first hit wins, so keep more specific names
+# (e.g. "h100 nvl") before generic ones.
+GPU_PEAK_FLOPS: Dict[str, Dict[str, float]] = {
+    "b200": {"bf16": 2250e12, "fp16": 2250e12, "fp32": 80e12},
+    "h200": {"bf16": 989e12, "fp16": 989e12, "fp32": 67e12},
+    "h100 nvl": {"bf16": 835e12, "fp16": 835e12, "fp32": 60e12},
+    "h100 pcie": {"bf16": 756e12, "fp16": 756e12, "fp32": 51e12},
+    "h100": {"bf16": 989e12, "fp16": 989e12, "fp32": 67e12},  # SXM
+    "a100": {"bf16": 312e12, "fp16": 312e12, "fp32": 19.5e12},
+    "a10g": {"bf16": 70e12, "fp16": 70e12, "fp32": 31.2e12},
+    "l40s": {"bf16": 362e12, "fp16": 362e12, "fp32": 91.6e12},
+    "l4": {"bf16": 121e12, "fp16": 121e12, "fp32": 30.3e12},
+    "v100": {"fp16": 125e12, "fp32": 15.7e12},
+    "t4": {"fp16": 65e12, "fp32": 8.1e12},
+}
+
+
+def get_gpu_peak_flops(device_name: str, precision: str) -> Optional[float]:
+    """Look up peak dense FLOP/s for a device name + precision ("bf16" etc.).
+
+    Returns None when the device or precision is unknown, in which case MFU
+    is reported as unavailable rather than silently wrong.
+    """
+    name = device_name.lower()
+    for key, by_precision in GPU_PEAK_FLOPS.items():
+        if key in name:
+            peak = by_precision.get(precision)
+            if peak is None:
+                logger.warning(
+                    f"No {precision} peak FLOPs known for device '{device_name}'."
+                )
+            return peak
+    logger.warning(f"Unknown device '{device_name}' for peak FLOPs lookup.")
+    return None
+
+
+# Peak HBM/GDDR memory bandwidth in bytes/sec by GPU name substring (datasheet).
+# Used as the denominator for MBU (Memory Bandwidth Utilization), the bandwidth
+# analog of MFU — the metric that explains a high-utilization-but-low-MFU run
+# (memory-bound: large-vocab softmax, small batches, inference-style decode).
+# NOTE: matched by substring, first hit wins — keep more specific keys first
+# (e.g. "h100 pcie" before "h100"). The 80GB A100 (2039 GB/s) isn't separable
+# from the 40GB (1555) by substring — the SXM name is "A100-SXM4-{40,80}GB" —
+# so "a100" maps to the conservative 40GB value; override per-experiment if on
+# 80GB via a future config knob.
+GPU_PEAK_BANDWIDTH_GBPS: Dict[str, float] = {
+    "b200": 8000.0,
+    "h200": 4800.0,
+    "h100 pcie": 2000.0,
+    "h100": 3350.0,  # SXM HBM3
+    "a100": 1555.0,  # 40GB HBM2e
+    "a10g": 600.0,
+    "l40s": 864.0,
+    "l4": 300.0,
+    "v100": 900.0,
+    "t4": 320.0,
+}
+
+
+def get_gpu_peak_bandwidth_gbps(device_name: str) -> Optional[float]:
+    """Peak memory bandwidth (GB/s) for a device name, or None if unknown."""
+    name = device_name.lower()
+    for key, bw in GPU_PEAK_BANDWIDTH_GBPS.items():
+        if key in name:
+            return bw
+    logger.warning(f"Unknown device '{device_name}' for peak bandwidth lookup.")
+    return None
+
+
+@dataclass
+class FlopsSpec:
+    """Inputs to the train-FLOPs-per-token estimate.
+
+    ``active_params`` is the params that fire per token: for a dense model this
+    is the total; for MoE it's the non-expert params + top_k expert params
+    (+ always-on shared experts). Total experts must NOT be included — they
+    don't execute per token. This matches Megatron-LM and llm-foundry, which
+    both put *active* params in the param term and keep attention on the full
+    (dense) model. (HF Trainer is the outlier that uses total params and
+    overcounts MoE — we deliberately don't follow it.)
+    """
+
+    active_params: int
+    num_layers: int
+    hidden_size: int
+    seq_len: int
+    # "quadratic" (standard softmax attention), "linear" (Gated DeltaNet / SSM /
+    # RWKV-style — O(seq), negligible per-token, omitted), or "none".
+    attention: str = "quadratic"
+    include_backward: bool = True
+
+
+def flops_per_token(spec: FlopsSpec) -> float:
+    """Approximate train FLOPs per token.
+
+    Param term: 6 * active_params (forward 2N + backward 4N). Attention term for
+    quadratic attention: 12 * L * hidden * seq (the score/value matmuls the
+    param term misses) — equals llm-foundry's `4*L*d*s^2` per sequence times the
+    x3 fwd+bwd factor, divided by seq. Aligns with PaLM Appendix B / llm-foundry,
+    so MFU is comparable across published reports.
+    """
+    factor = 6 if spec.include_backward else 2
+    total = factor * spec.active_params
+    if spec.attention == "quadratic":
+        attn_factor = 12 if spec.include_backward else 4
+        total += attn_factor * spec.num_layers * spec.hidden_size * spec.seq_len
+    elif spec.attention == "linear":
+        # Linear attention is O(seq) per sequence -> ~O(1) per token and
+        # architecture-specific; omitted, so MFU is a slight (conservative)
+        # underestimate. TODO: model the recurrent-state-update FLOPs per family.
+        pass
+    return total
+
+
+class GpuMonitor:
+    """Samples GPU utilization and memory in a background thread via NVML.
+
+    No-ops cleanly when pynvml / a GPU is unavailable so the harness can run
+    on CPU for smoke tests.
+    """
+
+    def __init__(self, device_index: int = 0, interval_s: float = 1.0):
+        # NVML enumerates *physical* GPUs and ignores CUDA_VISIBLE_DEVICES, so a
+        # worker restricted to one GPU (Ray Train / torchrun set CVD) must map
+        # its logical device back to the physical NVML index, or it would sample
+        # the wrong GPU. Resolve CVD here.
+        self._device_index = _physical_gpu_index(device_index)
+        self._interval_s = interval_s
+        self._utilization: List[float] = []
+        self._memory_activity: List[float] = []
+        self._memory_used_gb: List[float] = []
+        self._stop_event = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+        self._nvml = None
+
+    def start(self) -> None:
+        try:
+            import pynvml
+
+            pynvml.nvmlInit()
+            self._nvml = pynvml
+        except Exception as e:
+            logger.warning(f"GPU monitoring disabled (pynvml unavailable: {e})")
+            return
+
+        self._thread = threading.Thread(target=self._sample_loop, daemon=True)
+        self._thread.start()
+
+    def _sample_loop(self) -> None:
+        handle = self._nvml.nvmlDeviceGetHandleByIndex(self._device_index)
+        while not self._stop_event.is_set():
+            try:
+                util = self._nvml.nvmlDeviceGetUtilizationRates(handle)
+                mem = self._nvml.nvmlDeviceGetMemoryInfo(handle)
+                self._utilization.append(float(util.gpu))
+                # util.memory = % of time the memory controller was reading or
+                # writing. A coarse MBU proxy (time-active, not %-of-peak-GB/s),
+                # but it cheaply flags memory-bound steps. True MBU needs DCGM
+                # (DCGM_FI_PROF_DRAM_ACTIVE) or CUPTI counters.
+                self._memory_activity.append(float(util.memory))
+                self._memory_used_gb.append(mem.used / 1e9)
+            except Exception:
+                pass
+            self._stop_event.wait(self._interval_s)
+
+    def stop(self) -> Dict[str, float]:
+        """Stop sampling and return summary stats (empty dict when disabled)."""
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+        if self._nvml is not None:
+            try:
+                self._nvml.nvmlShutdown()
+            except Exception:
+                pass
+        if not self._utilization:
+            return {}
+        return {
+            "gpu/utilization_mean_pct": statistics.fmean(self._utilization),
+            "gpu/utilization_max_pct": max(self._utilization),
+            "gpu/memory_bw_util_mean_pct": statistics.fmean(self._memory_activity),
+            "gpu/memory_bw_util_max_pct": max(self._memory_activity),
+            "gpu/memory_used_gb_max": max(self._memory_used_gb),
+            "gpu/num_samples": len(self._utilization),
+        }
+
+
+def _physical_gpu_index(logical_index: int) -> int:
+    """Map a logical device index to its physical NVML index via CUDA_VISIBLE_DEVICES.
+
+    With CVD="5,3", logical cuda:0 is physical GPU 5. NVML always speaks in
+    physical indices, so without this the monitor would sample the wrong GPU.
+    """
+    cvd = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if not cvd:
+        return logical_index
+    visible = [p for p in cvd.split(",") if p.strip() != ""]
+    try:
+        return int(visible[logical_index])
+    except (ValueError, IndexError):
+        return logical_index
+
+
+class StepTimer:
+    """Accumulates per-step wall times, split into warmup and steady state."""
+
+    def __init__(self, warmup_steps: int):
+        self._warmup_steps = warmup_steps
+        self._times: List[float] = []
+
+    @contextmanager
+    def timer(self):
+        start = time.perf_counter()
+        yield
+        self._times.append(time.perf_counter() - start)
+
+    @property
+    def num_steps(self) -> int:
+        return len(self._times)
+
+    @property
+    def steady_state_times(self) -> List[float]:
+        return self._times[self._warmup_steps :]
+
+    def total(self, include_warmup: bool = True) -> float:
+        return sum(self._times if include_warmup else self.steady_state_times)
+
+    def summary(self, prefix: str) -> Dict[str, float]:
+        if not self._times:
+            return {}
+        out = {
+            f"{prefix}/step_time_total_s": sum(self._times),
+            f"{prefix}/num_steps": len(self._times),
+        }
+        steady = self.steady_state_times
+        if steady:
+            out.update(
+                {
+                    f"{prefix}/step_time_mean_s": statistics.fmean(steady),
+                    f"{prefix}/step_time_p50_s": statistics.median(steady),
+                    f"{prefix}/step_time_max_s": max(steady),
+                }
+            )
+        return out
+
+
+class TrainMetricsCollector:
+    """Device-agnostic throughput / FLOPs / MFU collector for one training run.
+
+    Lives inside the training worker. Steady-state metrics (tokens/sec, MFU)
+    exclude the first ``warmup_steps`` steps so model download, compilation, and
+    allocator warmup don't skew them. Device-specific signals (GPU utilization,
+    memory) live in subclasses like ``GpuTrainMetricsCollector`` — a future
+    ``TpuTrainMetricsCollector`` would parallel it.
+    """
+
+    def __init__(
+        self,
+        world_size: int,
+        warmup_steps: int = 5,
+        flops_per_token: Optional[float] = None,
+        peak_flops_per_gpu: Optional[float] = None,
+    ):
+        self.world_size = world_size
+        self.flops_per_token = flops_per_token
+        self.peak_flops_per_gpu = peak_flops_per_gpu
+
+        self.step_timer = StepTimer(warmup_steps)
+        self.data_timer = StepTimer(warmup_steps)
+        self._tokens_per_step: List[float] = []
+        self._rows_per_step: List[float] = []
+        self._run_start = time.perf_counter()
+
+    def record_batch(self, num_rows: int, num_tokens: Optional[int] = None) -> None:
+        """Record the per-device batch that the just-timed step consumed."""
+        self._rows_per_step.append(num_rows)
+        if num_tokens is not None:
+            self._tokens_per_step.append(num_tokens)
+
+    def _device_summary(self) -> Dict[str, float]:
+        """Hook for subclasses to add device (GPU/TPU) metrics. None here."""
+        return {}
+
+    def summary(self) -> Dict[str, float]:
+        metrics: Dict[str, float] = {
+            "e2e_time_s": time.perf_counter() - self._run_start,
+            "world_size": self.world_size,
+        }
+        metrics.update(self.step_timer.summary("train"))
+        metrics.update(self.data_timer.summary("data"))
+
+        steady_step_times = self.step_timer.steady_state_times
+        steady_time = sum(steady_step_times)
+        if steady_time > 0:
+            n_steady = len(steady_step_times)
+            steady_rows = sum(self._rows_per_step[-n_steady:])
+            # Local (per-device) rates; global assumes symmetric data-parallel
+            # workers, which holds for every adapter in this harness today.
+            metrics["train/rows_per_sec_per_device"] = steady_rows / steady_time
+            metrics["train/global_rows_per_sec"] = (
+                metrics["train/rows_per_sec_per_device"] * self.world_size
+            )
+
+            if self._tokens_per_step:
+                steady_tokens = sum(self._tokens_per_step[-n_steady:])
+                tokens_per_sec_device = steady_tokens / steady_time
+                metrics["train/tokens_per_sec_per_device"] = tokens_per_sec_device
+                metrics["train/global_tokens_per_sec"] = (
+                    tokens_per_sec_device * self.world_size
+                )
+
+                if self.flops_per_token:
+                    achieved = tokens_per_sec_device * self.flops_per_token
+                    metrics["train/model_tflops_per_sec_per_device"] = achieved / 1e12
+                    if self.peak_flops_per_gpu:
+                        metrics["train/mfu"] = achieved / self.peak_flops_per_gpu
+
+        metrics.update(self._device_summary())
+        return metrics
+
+
+class GpuTrainMetricsCollector(TrainMetricsCollector):
+    """Adds NVIDIA GPU utilization + torch allocator memory peaks (rank-local).
+
+    ``device`` is the torch device for this worker; ``gpu_index`` is its logical
+    CUDA ordinal (the NVML sampler maps it to the physical GPU via CVD).
+    """
+
+    def __init__(
+        self,
+        world_size: int,
+        warmup_steps: int = 5,
+        flops_per_token: Optional[float] = None,
+        peak_flops_per_gpu: Optional[float] = None,
+        device: Optional[Any] = None,
+        gpu_index: int = 0,
+        monitor_gpu: bool = True,
+    ):
+        super().__init__(world_size, warmup_steps, flops_per_token, peak_flops_per_gpu)
+
+        # Static memory = what's resident before the training loop (model +
+        # optimizer + grad buffers). Capturing it here (after engine build) lets
+        # the summary separate it from activation/transient memory. Reset the
+        # allocator's peak so the reported peak reflects the loop.
+        self._device = device
+        self._static_memory_bytes: Optional[int] = None
+        if device is not None:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.reset_peak_memory_stats(device)
+                self._static_memory_bytes = torch.cuda.memory_allocated(device)
+
+        self._gpu_monitor = GpuMonitor(device_index=gpu_index) if monitor_gpu else None
+        if self._gpu_monitor:
+            self._gpu_monitor.start()
+
+    def _device_summary(self) -> Dict[str, float]:
+        out: Dict[str, float] = {}
+        out.update(self._memory_summary())
+        if self._gpu_monitor:
+            out.update(self._gpu_monitor.stop())
+            self._gpu_monitor = None
+        return out
+
+    def _memory_summary(self) -> Dict[str, float]:
+        """Torch allocator memory peaks for this worker (rank-local).
+
+        max_memory_allocated is the true peak working set (catches the transient
+        backward spike); max_memory_reserved is the allocator's footprint, the
+        number closest to the OOM threshold. activation ~= peak_allocated minus
+        static, an estimate of activation + transient memory.
+        """
+        if self._device is None:
+            return {}
+        import torch
+
+        if not torch.cuda.is_available():
+            return {}
+        peak_alloc = torch.cuda.max_memory_allocated(self._device)
+        out = {
+            "gpu/peak_memory_allocated_gb": peak_alloc / 1e9,
+            "gpu/peak_memory_reserved_gb": torch.cuda.max_memory_reserved(self._device)
+            / 1e9,
+        }
+        if self._static_memory_bytes is not None:
+            out["gpu/static_memory_gb"] = self._static_memory_bytes / 1e9
+            out["gpu/activation_memory_gb"] = (
+                max(0, peak_alloc - self._static_memory_bytes) / 1e9
+            )
+        return out

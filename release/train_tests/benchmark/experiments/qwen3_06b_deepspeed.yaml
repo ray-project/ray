@@ -1,0 +1,49 @@
+# Qwen3-0.6B + DeepSpeed ZeRO — P0 quick performance-regression workload.
+#
+# Cluster shape: 1x g5.48xlarge (8x A10G-24GB) single node — cheapest
+# bf16-capable option. Activations (not params) are the memory constraint on
+# 24GB: at batch x seq, eager attention's B*H*S*S scores OOM, so we use SDPA
+# attention + gradient checkpointing and a modest batch. On A100-40GB you can
+# raise micro_batch_size to 8 and drop gradient_checkpointing.
+#
+# Parity baseline: same experiment with `--set launcher=torchrun_ray`.
+name: qwen3_06b_deepspeed
+adapter: deepspeed
+launcher: ray_train
+scaling:
+  num_workers: 8                 # 8x A10G on a single g5.48xlarge node
+  use_gpu: true
+model:
+  name: Qwen/Qwen3-0.6B          # HF model id; AutoModelForCausalLM.from_pretrained
+  parallelism:
+    zero_stage: 1                # 0.6B fits easily; stage 1 shards only optimizer
+                                 # state. Full sharding (stage 3) / grad sharding
+                                 # (stage 2) add comms with no memory benefit here.
+  precision: bf16                # A10G supports bf16 natively
+  attn_implementation: sdpa      # avoid eager attention's O(S^2) score matrix
+  gradient_checkpointing: true   # fit activations on 24GB; trades ~30% recompute
+data:
+  dataloader: native
+  dataset: wikitext             # use `synthetic` to isolate compute from data ingest
+  dataset_path: ""
+  # Qwen3's ~152k vocab makes the logits/loss head (batch x seq x vocab, upcast
+  # to fp32 in cross-entropy) the memory bottleneck on 24GB, not the model body.
+  # mbs=2 keeps the logits-grad allocation small enough to fit. Raise on A100.
+  micro_batch_size: 2           # per-GPU micro batch; global = 2 x 8 = 16 seqs/step
+  seq_len: 2048
+  limit_training_rows: 8000
+training:
+  num_steps: 200
+  warmup_steps: 10
+  seed: 42
+  log_every_n_steps: 20
+  # global_batch_size unset -> grad-accum = 1 (global = micro x num_workers).
+  optimizer:
+    lr: 3.0e-4
+    betas: [0.9, 0.95]
+    weight_decay: 0.1
+checkpoint:
+  every_n_steps: 100
+  mode: sync
+  at_end: false
+perturbation: null
