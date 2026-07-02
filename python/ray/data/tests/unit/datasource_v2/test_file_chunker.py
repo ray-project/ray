@@ -352,13 +352,19 @@ def test_chunk_metadata_subclasses_are_typeddicts():
         row_group_start=0,
         row_group_end=1,
         in_memory_size=42,
+        num_rows=5,
     )
     lmd: ChunkMetadata = create_chunk_metadata(
         LineDelimitedFileChunkMetadata,
         chunk_byte_start_idx=0,
         chunk_byte_end_idx=10,
     )
-    assert set(pmd.keys()) == {"row_group_start", "row_group_end", "in_memory_size"}
+    assert set(pmd.keys()) == {
+        "row_group_start",
+        "row_group_end",
+        "in_memory_size",
+        "num_rows",
+    }
     assert set(lmd.keys()) == {"chunk_byte_start_idx", "chunk_byte_end_idx"}
 
 

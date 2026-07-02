@@ -132,6 +132,23 @@ DEFAULT_ARROW_SCANNER_BATCH_READAHEAD = env_integer(
     "RAY_DATA_ARROW_SCANNER_BATCH_READAHEAD", 4
 )
 
+# When True, the V2 ``ListFiles`` planner expands user paths/prefixes into
+# concrete files at plan time (a cheap metadata-only LIST -- no Parquet footer
+# reads) and shards THOSE across listing tasks. This lets the expensive
+# per-file footer reads (row-group-aware Parquet chunking) fan out across many
+# Ray tasks instead of concentrating in one task for a single-prefix input.
+# Set to False to restore the pre-expansion behavior (shard by raw input-path
+# count -> one task per prefix). Env-overridable.
+DEFAULT_LIST_FILES_EXPAND_PATHS = env_bool("RAY_DATA_LIST_FILES_EXPAND_PATHS", True)
+
+# Threads used by the plan-time path expansion above to parallelize the LIST
+# walk across DISTINCT input paths/prefixes. Only helps when many prefixes are
+# supplied (a single prefix's recursive listing is not parallelized here).
+# Defaults to 4. Env-overridable.
+DEFAULT_LIST_FILES_EXPAND_NUM_WORKERS = env_integer(
+    "RAY_DATA_LIST_FILES_EXPAND_NUM_WORKERS", 4
+)
+
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -881,6 +898,14 @@ class DataContext:
     # Batches the pyarrow scanner reads ahead per fragment scan (× batch target
     # ≈ per-scan decoded peak).
     arrow_scanner_batch_readahead: int = DEFAULT_ARROW_SCANNER_BATCH_READAHEAD
+    # When True, the V2 ``ListFiles`` planner expands paths/prefixes into
+    # concrete files at plan time and shards those across listing tasks, so
+    # per-file Parquet footer reads fan out across many tasks. False restores
+    # sharding by raw input-path count.
+    list_files_expand_paths: bool = DEFAULT_LIST_FILES_EXPAND_PATHS
+    # Threads for the plan-time path expansion above (parallelizes across
+    # distinct input prefixes).
+    list_files_expand_num_workers: int = DEFAULT_LIST_FILES_EXPAND_NUM_WORKERS
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format

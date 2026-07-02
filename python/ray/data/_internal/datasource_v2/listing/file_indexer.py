@@ -108,6 +108,16 @@ class NonSamplingFileIndexer(FileIndexer):
         """
         return self._file_chunker
 
+    @property
+    def ignore_missing_paths(self) -> bool:
+        """Whether missing input paths are skipped rather than raising.
+
+        Exposed so the ``ListFiles`` planner can reuse the same
+        missing-path semantics when it expands prefixes into concrete files
+        at plan time.
+        """
+        return self._ignore_missing_paths
+
     def list_files(
         self,
         paths: "BlockColumn",
