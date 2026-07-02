@@ -17,7 +17,7 @@
 ! python cpp core_cpp java workflow cgraphs_direct_transport dashboard
 ! ray_client runtime_env_container
 ! data dask serve ml tune train train_gpu llm rllib rllib_gpu rllib_directly
-! linux_wheels macos_wheels docker doc python_dependencies min_build tools windows
+! linux_wheels macos_wheels docker doc doc_redirects python_dependencies min_build tools windows
 ! release_tests spark_on_ray
 
 # NOTE: dstrodtman is leading effort to rework content in RST files, and wanted to shift
@@ -202,6 +202,15 @@ doc/requirements-doc.txt
 .vale/
 .buildkite/doc.rayci.yml
 @ doc
+;
+
+# Redirect YAML under doc/redirects/ gets a dedicated, credential-free premerge
+# check (rtd-redirects validate + diff-file) instead of the full doc build. It must
+# NOT emit the broad `doc` tag, which would pull in docbuild, the API
+# annotation/consistency checks, and the per-team doc tests. This rule must precede
+# the broad `doc/` pass rule below so a redirect-only PR selects `doc_redirects` alone.
+doc/redirects/*.yaml
+@ doc_redirects
 ;
 
 ci/docker/doctest.build.Dockerfile

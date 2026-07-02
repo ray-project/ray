@@ -89,6 +89,9 @@ doc/example.ipynb: doc
 doc/requirements-doc.txt: doc
 python/deplocks/docs/docbuild_depset_py3.10.lock: doc python_dependencies
 ci/raydepsets/configs/docs.depsets.yaml: doc python_dependencies
+# Redirect YAML selects the dedicated lightweight check, NOT the broad `doc` tag,
+# so a redirect-only PR skips docbuild, API checks, and the per-team doc tests.
+doc/redirects/current.yaml: doc_redirects
 
 # === Release ===
 
