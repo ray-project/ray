@@ -15,6 +15,7 @@ from .default_autoscaling_coordinator import (
 )
 from .default_cluster_autoscaler import DefaultClusterAutoscaler
 from .default_cluster_autoscaler_v2 import DefaultClusterAutoscalerV2
+from .placement_group_cluster_autoscaler import PlacementGroupClusterAutoscaler
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
@@ -39,8 +40,39 @@ def create_cluster_autoscaler(
     *,
     execution_id: str,
 ) -> ClusterAutoscaler:
+    from ray.data._internal.execution.interfaces.execution_options import (
+        ExecutionResources,
+    )
+    from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
     resource_limits = data_context.execution_options.resource_limits
     label_selector = data_context.execution_options.label_selector
+
+    scheduling_strategy = data_context.scheduling_strategy
+    if isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy):
+        pg = scheduling_strategy.placement_group
+        total_cpu = 0.0
+        total_gpu = 0.0
+        total_mem = 0.0
+        for bundle in pg.bundle_specs:
+            total_cpu += bundle.get("CPU", 0)
+            total_gpu += bundle.get("GPU", 0)
+            total_mem += bundle.get("memory", 0)
+        pg_resources = ExecutionResources(
+            cpu=total_cpu,
+            gpu=total_gpu,
+            memory=total_mem if total_mem > 0 else float("inf"),
+            object_store_memory=float("inf"),
+        )
+        if resource_limits != ExecutionResources.inf():
+            pg_resources = pg_resources.min(resource_limits)
+        logger.info(
+            "PlacementGroupSchedulingStrategy detected. "
+            "Cluster autoscaling disabled. "
+            f"Available resources: {pg_resources}"
+        )
+        return PlacementGroupClusterAutoscaler(pg_resources)
+
     cluster_autoscaler_version = os.environ.get(
         CLUSTER_AUTOSCALER_ENV_KEY, DEFAULT_CLUSTER_AUTOSCALER_VERSION
     )

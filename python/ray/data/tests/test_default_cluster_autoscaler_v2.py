@@ -956,6 +956,90 @@ def test_create_cluster_autoscaler_forwards_label_selector(monkeypatch):
     assert captured["label_selector"] == {"ray-subcluster": "training"}
 
 
+def test_placement_group_autoscaler_no_scaling():
+    """PlacementGroupClusterAutoscaler disables scaling and reports PG resources."""
+    from ray.data._internal.cluster_autoscaler.placement_group_cluster_autoscaler import (
+        PlacementGroupClusterAutoscaler,
+    )
+
+    pg_resources = ExecutionResources(cpu=2, gpu=0, memory=1000)
+    autoscaler = PlacementGroupClusterAutoscaler(pg_resources)
+
+    # try_trigger_scaling is a no-op
+    autoscaler.try_trigger_scaling()
+
+    # on_executor_shutdown is a no-op
+    autoscaler.on_executor_shutdown()
+
+    # get_total_resources returns the PG's resources
+    assert autoscaler.get_total_resources() == pg_resources
+
+
+def test_create_cluster_autoscaler_with_pg_strategy():
+    """Factory returns PlacementGroupClusterAutoscaler when PG strategy is set."""
+    from ray.data._internal.cluster_autoscaler.placement_group_cluster_autoscaler import (
+        PlacementGroupClusterAutoscaler,
+    )
+    from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+    mock_pg = Mock()
+    mock_pg.bundle_specs = [{"CPU": 1}, {"CPU": 1}]
+
+    mock_strategy = Mock(spec=PlacementGroupSchedulingStrategy)
+    mock_strategy.placement_group = mock_pg
+
+    data_context = Mock()
+    data_context.scheduling_strategy = mock_strategy
+    data_context.execution_options.resource_limits = ExecutionResources.inf()
+
+    autoscaler = create_cluster_autoscaler(
+        topology=Mock(),
+        resource_manager=Mock(),
+        data_context=data_context,
+        execution_id="test-pg",
+    )
+
+    assert isinstance(autoscaler, PlacementGroupClusterAutoscaler)
+    resources = autoscaler.get_total_resources()
+    assert resources.cpu == 2
+    assert resources.gpu == 0
+    assert resources.memory == float("inf")
+    assert resources.object_store_memory == float("inf")
+
+
+def test_pg_autoscaler_respects_resource_limits():
+    """When both PG strategy and resource_limits are set, use the tighter bound."""
+    from ray.data._internal.cluster_autoscaler.placement_group_cluster_autoscaler import (
+        PlacementGroupClusterAutoscaler,
+    )
+    from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+    mock_pg = Mock()
+    mock_pg.bundle_specs = [{"CPU": 4, "GPU": 1}, {"CPU": 4, "GPU": 1}]
+
+    mock_strategy = Mock(spec=PlacementGroupSchedulingStrategy)
+    mock_strategy.placement_group = mock_pg
+
+    data_context = Mock()
+    data_context.scheduling_strategy = mock_strategy
+    # User set a CPU limit tighter than the PG's 8 CPUs
+    data_context.execution_options.resource_limits = ExecutionResources.for_limits(cpu=4)
+
+    autoscaler = create_cluster_autoscaler(
+        topology=Mock(),
+        resource_manager=Mock(),
+        data_context=data_context,
+        execution_id="test-pg-limits",
+    )
+
+    assert isinstance(autoscaler, PlacementGroupClusterAutoscaler)
+    resources = autoscaler.get_total_resources()
+    # CPU should be min(8, 4) = 4
+    assert resources.cpu == 4
+    # GPU should be min(2, inf) = 2
+    assert resources.gpu == 2
+
+
 if __name__ == "__main__":
     import sys
 
