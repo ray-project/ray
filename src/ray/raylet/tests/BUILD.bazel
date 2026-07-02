@@ -67,7 +67,7 @@ ray_cc_test(
         "//src/ray/gcs_rpc_client:gcs_client",
         "//src/ray/object_manager:ownership_object_directory",
         "//src/ray/protobuf:core_worker_cc_grpc",
-        "//src/ray/pubsub:subscriber",
+        "//src/ray/pubsub:fake_subscriber",
         "//src/ray/raylet:local_object_manager",
         "//src/ray/raylet:worker_pool",
         "//src/ray/rpc:grpc_client",
@@ -151,7 +151,7 @@ ray_cc_test(
     deps = [
         ":util",
         "//src/ray/common:lease",
-        "//src/ray/common:memory_monitor_interface",
+        "//src/ray/common/monitors:memory_monitor_interface",
         "//src/ray/raylet:worker_killing_policy_by_time",
     ],
 )

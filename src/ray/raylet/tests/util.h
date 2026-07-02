@@ -133,13 +133,8 @@ class MockWorker : public WorkerInterface {
   const LeaseID &GetGrantedLeaseId() const override { return lease_id_; }
   const JobID &GetAssignedJobId() const override { return job_id_; }
   int GetRuntimeEnvHash() const override { return runtime_env_hash_; }
-  void AssignActorId(const ActorID &actor_id) override {
-    RAY_CHECK(false) << "Method unused";
-  }
-  const ActorID &GetActorId() const override {
-    RAY_CHECK(false) << "Method unused";
-    return ActorID::Nil();
-  }
+  void AssignActorId(const ActorID &actor_id) override { actor_id_ = actor_id; }
+  const ActorID &GetActorId() const override { return actor_id_; }
   const std::string GetLeaseIdAsDebugString() const override {
     RAY_CHECK(false) << "Method unused";
     return "";
@@ -202,6 +197,7 @@ class MockWorker : public WorkerInterface {
   int runtime_env_hash_;
   LeaseID lease_id_;
   JobID job_id_;
+  ActorID actor_id_;
   ActorID root_detached_actor_id_;
   std::unique_ptr<ProcessInterface> proc_;
   std::atomic<bool> killing_ = false;
@@ -222,12 +218,12 @@ class MockWorker : public WorkerInterface {
  * @param worker_process_pid The PID of the fake worker process. Defaults to -1.
  * @return A shared pointer to the created worker.
  */
-inline std::shared_ptr<WorkerInterface> CreateTaskWorker(TaskID owner_id,
-                                                         int32_t max_retries,
-                                                         int32_t port,
-                                                         rpc::TaskType task_type,
-                                                         ClockInterface &clock,
-                                                         pid_t worker_process_pid = -1) {
+std::shared_ptr<WorkerInterface> CreateTaskWorker(TaskID owner_id,
+                                                  int32_t max_retries,
+                                                  int32_t port,
+                                                  rpc::TaskType task_type,
+                                                  ClockInterface &clock,
+                                                  pid_t worker_process_pid = -1) {
   rpc::LeaseSpec message;
   message.set_lease_id(LeaseID::FromRandom().Binary());
   message.set_parent_task_id(owner_id.Binary());
@@ -250,9 +246,43 @@ inline std::shared_ptr<WorkerInterface> CreateTaskWorker(TaskID owner_id,
   return worker;
 }
 
-inline std::shared_ptr<WorkerInterface> CreateWorkerWithNoLease(int32_t port,
-                                                                ClockInterface &clock,
-                                                                pid_t pid = -1) {
+/**
+ * @brief Creates a MockWorker for an actor creation task, with an actor ID assigned.
+ *
+ * Mirrors NodeManager::ConvertWorkerToActor: the actor creation lease carries an
+ * actor ID, which is then assigned to the worker so that GetActorId() is non-nil.
+ *
+ * @param owner_id The parent task ID for the lease.
+ * @param max_actor_restarts The maximum number of actor restarts allowed.
+ * @param port The port number for the worker.
+ * @param clock The clock the worker uses to timestamp lease grants.
+ * @param worker_process_pid The PID of the fake worker process. Defaults to -1.
+ * @return A shared pointer to the created actor worker.
+ */
+std::shared_ptr<WorkerInterface> CreateActorWorker(TaskID owner_id,
+                                                   int32_t max_actor_restarts,
+                                                   int32_t port,
+                                                   ClockInterface &clock,
+                                                   pid_t worker_process_pid = -1) {
+  rpc::LeaseSpec message;
+  message.set_lease_id(LeaseID::FromRandom().Binary());
+  message.set_parent_task_id(owner_id.Binary());
+  message.set_type(rpc::TaskType::ACTOR_CREATION_TASK);
+  message.set_max_actor_restarts(max_actor_restarts);
+  message.set_actor_id(
+      ActorID::Of(owner_id.JobId(), owner_id, /*parent_task_counter=*/1).Binary());
+  LeaseSpecification lease_spec(message);
+  RayLease lease(lease_spec);
+  std::shared_ptr<MockWorker> worker = std::make_shared<MockWorker>(
+      ray::WorkerID::FromRandom(), port, clock, 0, worker_process_pid);
+  worker->GrantLease(lease);
+  worker->AssignActorId(lease_spec.ActorId());
+  return worker;
+}
+
+std::shared_ptr<WorkerInterface> CreateWorkerWithNoLease(int32_t port,
+                                                         ClockInterface &clock,
+                                                         pid_t pid = -1) {
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port, clock, 0, pid);
   return worker;
@@ -265,7 +295,7 @@ inline std::shared_ptr<WorkerInterface> CreateWorkerWithNoLease(int32_t port,
  *
  * @param worker The worker whose process should be killed.
  */
-inline void KillWorkerProcess(std::shared_ptr<WorkerInterface> worker) {
+void KillWorkerProcess(std::shared_ptr<WorkerInterface> worker) {
   pid_t worker_process_pid = worker->GetProcess().GetId();
   std::unique_ptr<FakeProcess> fake_process =
       std::make_unique<FakeProcess>(worker_process_pid);

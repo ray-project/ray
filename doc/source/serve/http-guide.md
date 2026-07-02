@@ -89,6 +89,17 @@ You can also pass in an existing FastAPI app to a deployment to serve it as-is:
 
 This is useful for scaling out an existing FastAPI app with no modifications necessary. Existing middlewares, **automatic OpenAPI documentation generation**, and other advanced FastAPI features should work as-is.
 
+### FastAPI Middleware
+
+Configure HTTP middleware on the FastAPI app that you pass to {mod}`@serve.ingress <ray.serve.ingress>`.
+The `HTTPOptions.middlewares` field is deprecated.
+
+```{literalinclude} doc_code/http_guide/http_guide.py
+:start-after: __begin_fastapi_middleware__
+:end-before: __end_fastapi_middleware__
+:language: python
+```
+
 ### WebSockets
 
 Serve supports WebSockets via FastAPI:

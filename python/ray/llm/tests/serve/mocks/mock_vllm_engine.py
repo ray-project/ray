@@ -66,6 +66,10 @@ class MockVLLMEngine(LLMEngine):
         """Start the mock engine."""
         self.started = True
 
+    def routing_stats(self) -> Dict[str, Any]:
+        """Mock engine advertises no routing stats (no KV-cache events)."""
+        return {}
+
     async def resolve_lora(self, lora_model: DiskMultiplexConfig):
         """Resolve/load a LoRA model."""
         self._current_lora_model[lora_model.model_id] = lora_model
@@ -668,6 +672,21 @@ class MockVLLMEngine(LLMEngine):
                 },
             )
             yield response
+
+
+class MockAsyncLLM:
+    """Mock vLLM's AsyncLLM: ``generate`` replays a fixed list of
+    ``RequestOutput``s, with ``error_after`` raising mid-stream."""
+
+    def __init__(self, script, error_after=None):
+        self.script = script
+        self.error_after = error_after
+
+    async def generate(self, prompt, sampling_params, request_id, **kwargs):
+        for i, output in enumerate(self.script):
+            if self.error_after is not None and i == self.error_after:
+                raise RuntimeError("engine failure")
+            yield output
 
 
 class FakeLoraModelLoader(LoraModelLoader):

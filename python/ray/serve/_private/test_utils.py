@@ -34,6 +34,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
@@ -821,6 +822,26 @@ def get_num_alive_replicas(
     return len(actors)
 
 
+def expected_proxy_actors(num_proxy_nodes: int = 1) -> Dict[str, int]:
+    """Proxy actors expected ALIVE by class name for the given number of proxy nodes.
+
+    Natively each proxy node runs one ProxyActor. Under HAProxy each proxy node runs an
+    HAProxyManager and the head node also runs a single fallback ProxyActor. Set-based
+    callers can take the keys, count-based callers use the counts directly.
+    """
+    if RAY_SERVE_ENABLE_HA_PROXY:
+        return {"HAProxyManager": num_proxy_nodes, "ProxyActor": 1}
+    return {"ProxyActor": num_proxy_nodes}
+
+
+def alive_actor_counts() -> Dict[str, int]:
+    """Count of ALIVE actors by class name in the current Ray session."""
+    counts: Dict[str, int] = {}
+    for actor in list_actors(filters=[("STATE", "=", "ALIVE")]):
+        counts[actor["class_name"]] = counts.get(actor["class_name"], 0) + 1
+    return counts
+
+
 def check_num_replicas_gte(
     name: str, target: int, app_name: str = SERVE_DEFAULT_APP_NAME
 ) -> int:
@@ -1004,7 +1025,9 @@ def ping_grpc_healthz(channel, test_draining=False):
     else:
         response, call = stub.Healthz.with_call(request=request)
         assert call.code() == grpc.StatusCode.OK
-        assert response.message == "success"
+        if not RAY_SERVE_ENABLE_HA_PROXY:
+            assert response.message == "success"
+    return True
 
 
 def ping_grpc_call_method(channel, app_name, test_not_found=False):
