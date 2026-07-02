@@ -375,6 +375,10 @@ def is_noise(line: str) -> bool:
     """True for python-logging lines and JSON log records (not Sphinx warnings)."""
     if "\tWARNING " in line or "\tERROR " in line:
         return True
+    # urllib3 retry chatter from the pip-install phase (Sphinx never emits
+    # "Retrying (Retry(" and pip index URLs are /simple/...), not a doc warning.
+    if "Retrying (Retry(" in line and "after connection broken" in line:
+        return True
     s = line.strip()
     return s.startswith("{") and '"levelname"' in s
 
@@ -673,6 +677,117 @@ def exit_code_for(report: Report) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------- #
+# Root-cause collapse (rendered-report affordance only)
+# --------------------------------------------------------------------------- #
+# One structural failure -- an autosummary stub that could not be generated for a
+# module/class -- masks a flood of downstream py:* reference-target-not-found
+# warnings for the SAME objects. Left flat, a single root renders as hundreds of
+# equal-looking rows (one API-ref rework produced ~70 stub warnings masking ~291
+# reference warnings). Collapse groups the downstream flood under its masking root
+# so the human sees "1 root -> N masked references" instead of N sibling rows.
+#
+# This is a human-readability affordance for render_human ONLY. report.findings
+# stays the full flat list, so --json (the agent surface) is unchanged and
+# complete, and the verdict/exit code still see every finding.
+#
+# Correlation is by shared parent namespace: the stub warnings and the reference
+# warnings are emitted for the same members, so both dotted paths share a parent
+# (e.g. ray.data.Dataset.map_batches and ray.data.Dataset.map -> ray.data.Dataset).
+# A tier-1 import abort is the other root of this same flood, but it surfaces
+# separately as the HARD-BROKEN banner (and empties the finding list), so collapse
+# runs only when the build completed far enough to emit findings.
+ROOT_RULE = "autosummary-stub-not-found"
+DOWNSTREAM_RULE = "py-xref-target-not-found"
+COLLAPSE_LIST_CAP = 5
+
+
+@dataclass
+class RootCauseGroup:
+    prefix: str
+    roots: list[Finding]  # autosummary-stub-not-found findings (the root)
+    downstream: list[Finding]  # py-xref-target-not-found findings it masks
+
+
+def _object_prefix(target: str | None) -> str | None:
+    """Parent namespace of a dotted object path (drop the last segment)."""
+    if not target:
+        return None
+    head = target.rpartition(".")[0]
+    return head or None
+
+
+def compute_root_cause_groups(findings: list[Finding]) -> list[RootCauseGroup]:
+    """Group a masked py-xref flood under its autosummary-stub root, by prefix.
+
+    A group forms for a parent-namespace prefix only when it has BOTH at least
+    one stub root and at least one downstream reference sharing that prefix -- the
+    masking scenario. A lone stub (no downstream) or a genuinely independent
+    reference (no matching stub) is left untouched in the normal findings list.
+    """
+    roots_by_prefix: dict[str, list[Finding]] = {}
+    downstream_by_prefix: dict[str, list[Finding]] = {}
+    for f in findings:
+        prefix = _object_prefix(f.target)
+        if not prefix:
+            continue
+        if f.rule_id == ROOT_RULE:
+            roots_by_prefix.setdefault(prefix, []).append(f)
+        elif f.rule_id == DOWNSTREAM_RULE:
+            downstream_by_prefix.setdefault(prefix, []).append(f)
+    groups = []
+    for prefix in sorted(set(roots_by_prefix) & set(downstream_by_prefix)):
+        groups.append(
+            RootCauseGroup(
+                prefix, roots_by_prefix[prefix], downstream_by_prefix[prefix]
+            )
+        )
+    return groups
+
+
+def _dedup(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for it in items:
+        if it not in seen:
+            seen.add(it)
+            out.append(it)
+    return out
+
+
+def _capped(items: list[str]) -> str:
+    """Comma-join up to the cap, appending an explicit dropped-count (never silent)."""
+    shown = ", ".join(items[:COLLAPSE_LIST_CAP])
+    if len(items) > COLLAPSE_LIST_CAP:
+        shown += f", ... and {len(items) - COLLAPSE_LIST_CAP} more"
+    return shown
+
+
+def _render_group(g: RootCauseGroup, out: list[str]) -> None:
+    n_roots, n_down = len(g.roots), len(g.downstream)
+    root = g.roots[0]
+    safety = root.safety + (" (needs your call)" if root.safety == "judgment" else "")
+    out.append(
+        f"  ROOT [T{root.tier}] {ROOT_RULE} — {g.prefix}.* "
+        f"({n_roots} stub{'s' if n_roots != 1 else ''} not generated, "
+        f"masking {n_down} downstream reference{'s' if n_down != 1 else ''})"
+    )
+    out.append(f"        where:  {_capped(_dedup([_loc(r.warning) for r in g.roots]))}")
+    out.append(
+        f"        stubs:  {_capped([r.target or r.warning.message for r in g.roots])}"
+    )
+    out.append(f"        fix:    {root.fix}")
+    out.append(f"        safety: {safety}")
+    out.append(
+        f"    masks {n_down} downstream py:* reference(s) — "
+        "collapsed (full list in --json):"
+    )
+    for d in g.downstream[:COLLAPSE_LIST_CAP]:
+        out.append(f"          {_loc(d.warning)}  {d.target or d.warning.message}")
+    if n_down > COLLAPSE_LIST_CAP:
+        out.append(f"          ... and {n_down - COLLAPSE_LIST_CAP} more (see --json)")
+
+
 def render_human(report: Report) -> str:
     out: list[str] = []
     st = report.build_state
@@ -705,17 +820,34 @@ def render_human(report: Report) -> str:
         out.append("Build: " + "  ".join(bits))
         out.append("")
 
+    # Collapse a masked downstream flood under its root (rendered-report only;
+    # report.findings stays flat). Skip on an aborted build -- the warning pass
+    # didn't complete, so the flood/root relationship isn't trustworthy yet.
+    groups = [] if report.abort else compute_root_cause_groups(report.findings)
+    grouped_ids = {id(f) for g in groups for f in (*g.roots, *g.downstream)}
+    remaining = [f for f in report.findings if id(f) not in grouped_ids]
+
+    if groups:
+        out.append(
+            f"Root-cause groups ({len(groups)}) — a structural root masks a "
+            "downstream flood; fix the root, rebuild, and the masked references "
+            "clear together:"
+        )
+        for g in groups:
+            _render_group(g, out)
+        out.append("")
+
     header = (
         "Partial findings (warning pass did not complete)"
         if report.abort
         else "Findings"
     )
-    out.append(f"{header} ({len(report.findings)}):")
-    if not report.findings:
+    out.append(f"{header} ({len(remaining)}):")
+    if not remaining:
         out.append("  (none)")
     else:
         by_tier: dict[int, list[Finding]] = {}
-        for f in report.findings:
+        for f in remaining:
             by_tier.setdefault(f.tier, []).append(f)
         for tier in sorted(by_tier):
             out.append(f"  Tier {tier} — {TIER_LABEL[tier]}:")
