@@ -21,7 +21,8 @@ from ray.rllib.utils.numpy import softmax
 torch, _ = try_import_torch()
 
 
-def _dummy_external_client(port: int = 5556):
+# TODO: Should this dummy client also be updated to use SingleAgentRLlibGateway?
+def _dummy_external_client(client_id: int, port: int = 5556):
     """A dummy client that runs CartPole and acts as a testing external env."""
 
     def _set_state(msg_body, rl_module):
@@ -60,6 +61,8 @@ def _dummy_external_client(port: int = 5556):
 
     env_steps_per_sample = config.get_rollout_fragment_length()
 
+    print(f"Setup completed for client {client_id} with server on port {port}")
+
     # Start actual env loop.
     env = gym.make("CartPole-v1")
     obs, _ = env.reset()
@@ -72,9 +75,7 @@ def _dummy_external_client(port: int = 5556):
             batch={
                 Columns.OBS: torch.tensor(np.array([obs], np.float32)),
             }
-        )[Columns.ACTION_DIST_INPUTS][
-            0
-        ].numpy()  # [0]=batch size 1
+        )[Columns.ACTION_DIST_INPUTS][0].numpy()  # [0]=batch size 1
 
         # Stochastic sample.
         action_probs = softmax(logits)
