@@ -101,18 +101,18 @@ class MapTransformFn(ABC):
         *,
         is_udf: bool = False,
         output_block_size_option: Optional[OutputBlockSizeOption] = None,
-        reports_custom_op_stats: bool = False,
+        should_report_custom_op_stats: bool = False,
     ):
         """Initialize a :class:`MapTransformFn`.
 
         Args:
             fn: The wrapped transform callable. Invoked with ``(data, ctx)``, or
                 ``(data, ctx, report_custom_op_stats)`` when
-                ``reports_custom_op_stats=True``.
+                ``should_report_custom_op_stats=True``.
             input_type: Expected type of the input data.
             is_udf: Whether this transformation is UDF or not.
             output_block_size_option: (Optional) Output block size configuration.
-            reports_custom_op_stats: If ``True``, the wrapped callable accepts a
+            should_report_custom_op_stats: If ``True``, the wrapped callable accepts a
                 third ``report_custom_op_stats`` callback argument and may report
                 per-task :class:`CustomOpStats` to the driver. Defaults to
                 ``False``, in which case the callable is invoked with
@@ -122,7 +122,7 @@ class MapTransformFn(ABC):
         self._input_type = input_type
         self._output_block_size_option = output_block_size_option
         self._is_udf = is_udf
-        self._reports_custom_op_stats = reports_custom_op_stats
+        self._should_report_custom_op_stats = should_report_custom_op_stats
 
     @abstractmethod
     def _post_process(self, results: Iterable[MapTransformFnData]) -> Iterable[Block]:
@@ -137,10 +137,10 @@ class MapTransformFn(ABC):
         """Call the wrapped fn, passing ``report_custom_op_stats`` only if it opted in.
 
         Keeps the common ``(data, ctx)`` signature for the vast majority of
-        transforms; only those constructed with ``reports_custom_op_stats=True``
+        transforms; only those constructed with ``should_report_custom_op_stats=True``
         receive the report callback.
         """
-        if self._reports_custom_op_stats:
+        if self._should_report_custom_op_stats:
             return self._fn(inputs, ctx, report_custom_op_stats)
         return self._fn(inputs, ctx)
 
@@ -375,14 +375,14 @@ class RowMapTransformFn(MapTransformFn):
         *,
         is_udf: bool = False,
         output_block_size_option: OutputBlockSizeOption,
-        reports_custom_op_stats: bool = False,
+        should_report_custom_op_stats: bool = False,
     ):
         super().__init__(
             row_fn,
             input_type=MapTransformFnDataType.Row,
             is_udf=is_udf,
             output_block_size_option=output_block_size_option,
-            reports_custom_op_stats=reports_custom_op_stats,
+            should_report_custom_op_stats=should_report_custom_op_stats,
         )
 
     def _pre_process(self, blocks: Iterable[Block]) -> Iterable[MapTransformFnData]:
@@ -438,14 +438,14 @@ class BatchMapTransformFn(MapTransformFn):
         zero_copy_batch: bool = True,
         output_block_size_option: Optional[OutputBlockSizeOption] = None,
         target_batch_size_bytes: int = _DEFAULT_BATCH_SIZE_BYTES,
-        reports_custom_op_stats: bool = False,
+        should_report_custom_op_stats: bool = False,
     ):
         super().__init__(
             batch_fn,
             input_type=MapTransformFnDataType.Batch,
             is_udf=is_udf,
             output_block_size_option=output_block_size_option,
-            reports_custom_op_stats=reports_custom_op_stats,
+            should_report_custom_op_stats=should_report_custom_op_stats,
         )
 
         self._batch_size = batch_size
@@ -487,7 +487,7 @@ class BlockMapTransformFn(MapTransformFn):
         is_udf: bool = False,
         disable_block_shaping: bool = False,
         output_block_size_option: Optional[OutputBlockSizeOption] = None,
-        reports_custom_op_stats: bool = False,
+        should_report_custom_op_stats: bool = False,
     ):
         """
         Initializes the object with a transformation function, accompanying options, and
@@ -500,7 +500,7 @@ class BlockMapTransformFn(MapTransformFn):
             disable_block_shaping: Disables block-shaping, making transformer to
                 produce blocks as is.
             output_block_size_option: (Optional) Configure output block sizing.
-            reports_custom_op_stats: If ``True``, ``block_fn`` accepts a third
+            should_report_custom_op_stats: If ``True``, ``block_fn`` accepts a third
                 ``report_custom_op_stats`` callback argument and may report
                 per-task :class:`CustomOpStats` to the driver.
         """
@@ -510,7 +510,7 @@ class BlockMapTransformFn(MapTransformFn):
             input_type=MapTransformFnDataType.Block,
             is_udf=is_udf,
             output_block_size_option=output_block_size_option,
-            reports_custom_op_stats=reports_custom_op_stats,
+            should_report_custom_op_stats=should_report_custom_op_stats,
         )
 
         self._disable_block_shaping = disable_block_shaping
