@@ -31,7 +31,7 @@ else
 fi
 
 # install test requirements
-python -m pip install -U pytest==8.3.3 pip-tools==7.4.1
+python -m pip install -U pytest==8.3.3 pip-tools==7.5.3
 
 # Verify pytest was installed and is accessible
 python -m pytest --version || echo "WARNING: pytest not found in PATH"
