@@ -54,9 +54,8 @@ def reset_collector(monkeypatch):
 
 
 def test_round_trip_payload_shape(reset_collector, mock_record, executor):
-    """End-to-end: record_workload, record_execution_result yields a valid
-    payload with anonymized plan tree, plan_str, env, and performance filled
-    in."""
+    """End-to-end: a full callback lifecycle yields a valid payload with
+    anonymized plan tree, plan_str, env, and performance filled in."""
     ds = ray.data.range(1).map_batches(lambda b: b)
     callback = UsageCallback(
         ds._logical_plan,
@@ -92,8 +91,8 @@ def test_round_trip_payload_shape(reset_collector, mock_record, executor):
 
 
 def test_detected_issues_in_payload(reset_collector, mock_record, monkeypatch):
-    """record_execution_result records the (issue_type, operator) pairs as a
-    list of ``{"issue_type", "operator"}`` objects in the payload."""
+    """Detected issues are recorded as (issue_type, operator) pairs, serialized
+    as a list of ``{"issue_type", "operator"}`` objects in the payload."""
     monkeypatch.setattr(
         collector,
         "physical_op_name_with_id",
@@ -159,7 +158,7 @@ def test_self_zip_one_usage_id_per_operator(reset_collector, mock_record, execut
 
 
 def test_detected_issues_absent_defaults_empty(reset_collector, mock_record, executor):
-    """record_execution_result without issues leaves detected_issues empty."""
+    """A run with no detected issues leaves detected_issues empty."""
     ds = ray.data.range(1)
     callback = UsageCallback(
         ds._logical_plan,
