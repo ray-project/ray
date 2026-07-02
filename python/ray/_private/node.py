@@ -530,11 +530,111 @@ class Node:
         # Register the handler to be called if we get a SIGTERM.
         # In this case, we want to exit with an error code (1) after
         # cleaning up child processes.
+        # `sigterm_received` guards against re-entrancy: a second SIGTERM that
+        # arrives while we are draining must not restart the drain wait.
+        sigterm_received = False
+
         def sigterm_handler(signum, frame):
+            nonlocal sigterm_received
+            if sigterm_received:
+                return
+            sigterm_received = True
+            # Mark the node as draining and give drain-aware components (e.g.
+            # Ray Serve proxies) a chance to stop accepting traffic and finish
+            # in-flight requests before we tear down local processes. Draining is
+            # best-effort: a failure here (e.g. SIGTERM arriving mid-startup,
+            # before the node is fully initialized) must never prevent local
+            # process cleanup.
+            try:
+                self._drain_node_before_shutdown()
+            except Exception:
+                logger.exception(
+                    "Error while draining node on SIGTERM; proceeding with shutdown."
+                )
             self.kill_all_processes(check_alive=False, allow_graceful=True)
             sys.exit(1)
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
+
+    def _drain_node_before_shutdown(self):
+        """Mark the local node as draining and wait before killing processes.
+
+        Invoked from the SIGTERM handler. Without this, receiving SIGTERM (e.g.
+        when `ray start --block` is PID 1 and Kubernetes deletes the pod during
+        a RayService upgrade) immediately kills the raylet and local Serve
+        replicas while old proxies are still routing to them, returning HTTP
+        500s. Marking the node as draining lets the Serve controller quiesce the
+        local proxy before its replicas disappear.
+
+        Controlled by ``RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S`` (seconds); a
+        value <= 0 disables draining and preserves immediate teardown.
+        """
+        timeout_s = ray_constants.RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S
+        if timeout_s <= 0:
+            return
+        # `_node_id` is assigned partway through Node.__init__, after the
+        # shutdown hooks are registered; if SIGTERM arrives before then there is
+        # nothing to drain (and the attribute may not exist yet).
+        if not getattr(self, "_node_id", None):
+            return
+
+        try:
+            # Imported lazily so we only pay the proto import cost when we
+            # actually need to drain (i.e. on shutdown).
+            from ray.core.generated import autoscaler_pb2
+
+            deadline_timestamp_ms = int(time.time() * 1000) + int(timeout_s * 1000)
+            # NOTE: drain_node expects the node id as a hex string (it decodes
+            # via FromHex); passing binary yields a nil id that the GCS silently
+            # accepts without ever draining the raylet.
+            is_accepted, rejection_message = self.get_gcs_client().drain_node(
+                self._node_id,
+                autoscaler_pb2.DrainNodeReason.DRAIN_NODE_REASON_PREEMPTION,
+                "Node received SIGTERM; draining before shutdown.",
+                deadline_timestamp_ms,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to mark the local node as draining on SIGTERM; "
+                "proceeding with immediate shutdown."
+            )
+            return
+
+        if not is_accepted:
+            # PREEMPTION drains are non-rejectable, so this is unexpected, but
+            # don't block shutdown on it.
+            logger.warning(
+                "Drain request for the local node was rejected (%s); "
+                "proceeding with immediate shutdown.",
+                rejection_message,
+            )
+            return
+
+        logger.info(
+            "Node %s received SIGTERM. Draining for up to %s seconds before "
+            "shutting down local processes.",
+            self._node_id,
+            timeout_s,
+        )
+        # Wait for the node to finish draining, using the timeout only as an
+        # upper bound. Once the node is draining AND idle -- all worker leases
+        # returned, i.e. Serve has quiesced the local proxy and migrated its
+        # replicas -- the raylet self-terminates, so we poll for the raylet
+        # process exiting. Whoever sent SIGTERM (e.g. Kubernetes) will SIGKILL
+        # us if we exceed the pod's termination grace period.
+        poll_interval_s = ray_constants.RAY_GRACEFUL_SHUTDOWN_POLL_INTERVAL_S
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            if any(
+                process_type == ray_constants.PROCESS_TYPE_RAYLET
+                for process_type, _ in self.dead_processes()
+            ):
+                logger.info("Local node finished draining; shutting down.")
+                return
+            time.sleep(min(poll_interval_s, max(0.0, deadline - time.monotonic())))
+        logger.info(
+            "Drain deadline reached after %s seconds; shutting down.", timeout_s
+        )
 
     def _init_temp(self, node_to_connect_info: Optional[GcsNodeInfo]):
         # Create a dictionary to store temp file index.
