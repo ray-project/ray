@@ -378,8 +378,15 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]==0.23.0",
+                # Python 3.14 held at vllm 0.22.0: 0.23.0's flashinfer 0.6.12
+                # needs cuda-tile[tileiras], whose only cp314 wheel (1.4.0)
+                # requires cuda-toolkit>=13.2, conflicting with torch 2.11.0.
+                # Remove this split once upstream cp314 wheels align.
+                "vllm[audio]==0.23.0; python_version < '3.14'",
+                "vllm[audio]==0.22.0; python_version >= '3.14'",
                 "nixl==1.2.0",
+                # cu13 binary to match the cu130-resolved torch family; see
+                # ci/raydepsets/configs/rayllm.depsets.yaml.
                 "nixl-cu13==1.2.0",
                 "jsonref>=1.1.0",
                 "jsonschema",
