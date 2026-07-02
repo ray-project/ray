@@ -60,3 +60,9 @@ celery
 taskiq
 mmh3
 ray-haproxy>=2.8.25,<2.9.0; sys_platform == 'linux'
+
+cupy-cuda12x==14.0.1; sys_platform != 'darwin' and python_version == '3.14'
+llvmlite==0.47.0; python_version == '3.14'
+numba==0.65.0; python_version == '3.14'
+# numpy 2.2.x has no cp314 wheels; 2.3.x is the first with them and stays within numba 0.65's numpy<2.5 ceiling.
+numpy==2.3.3; python_version == '3.14'

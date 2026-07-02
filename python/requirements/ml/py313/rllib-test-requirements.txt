@@ -22,7 +22,7 @@ supersuit==3.9.3
 
 # For tests on minigrid.
 minigrid==2.3.1
-tensorflow_estimator
+tensorflow_estimator; python_version < '3.14'  # TensorFlow has no cp314 wheels yet
 
 # DeepMind's OpenSpiel
 open-spiel==1.4

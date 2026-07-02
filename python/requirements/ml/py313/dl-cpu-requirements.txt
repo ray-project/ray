@@ -1,14 +1,15 @@
 # These requirements are used for the CI and CPU-only Docker images so we install CPU only versions of torch.
 # For GPU Docker images, you should install dl-gpu-requirements.txt afterwards.
 
-tensorflow==2.20.0; sys_platform != 'darwin' or platform_machine != 'arm64'
-tensorflow-macos==2.20.0; sys_platform == 'darwin' and platform_machine == 'arm64'
-tensorflow-probability==0.24.0
+# TensorFlow has no cp314 wheels yet, so the whole TF stack is excluded on 3.14.
+tensorflow==2.20.0; (sys_platform != 'darwin' or platform_machine != 'arm64') and python_version < '3.14'
+tensorflow-macos==2.20.0; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version < '3.14'
+tensorflow-probability==0.24.0; python_version < '3.14'
 tensorflow-io-gcs-filesystem==0.31.0; python_version < '3.12'
 tensorflow-datasets; python_version < '3.12'
 array-record==0.5.1; python_version < '3.12' and sys_platform != 'darwin' and platform_system != 'Windows'
 etils==1.5.2; python_version < '3.12'
-tf-keras==2.20.0
+tf-keras==2.20.0; python_version < '3.14'
 # If you make changes below this line, please also make the corresponding changes to `dl-gpu-requirements.txt`
 # and to `install-dependencies.sh`!
 
@@ -17,7 +18,7 @@ tf-keras==2.20.0
 
 torch==2.9.0
 torchmetrics==0.10.3
-torchtext==0.18.0
+# torchtext 0.18.0 (its final release) has no cp313 wheels; project is discontinued, so omit on 3.13+.
 torchvision==0.24.0
 # xgboost pulls nvidia-nccl-cu12 transitively even in CPU context. Align the
 # pin with what cu128 torch requires so the compiled lock doesn't clash with
@@ -30,8 +31,11 @@ torch-cluster==1.6.3
 torch-spline-conv==1.2.2
 torch-geometric==2.5.3
 
-cupy-cuda12x==13.6.0; sys_platform != 'darwin'
+cupy-cuda12x==13.6.0; sys_platform != 'darwin' and python_version < '3.14'  # 3.14 uses cupy 14.0.1 pinned in requirements.txt
 
 # Keep JAX version consistent with dl-gpu-requirements.txt
-jax==0.4.33; sys_platform != 'darwin'
-jaxlib==0.4.33; sys_platform != 'darwin'
+# jaxlib's first cp314 wheels are 0.7.1, so 3.14 needs a newer jax than the 0.4.33 used elsewhere.
+jax==0.4.33; sys_platform != 'darwin' and python_version < '3.14'
+jaxlib==0.4.33; sys_platform != 'darwin' and python_version < '3.14'
+jax==0.7.1; sys_platform != 'darwin' and python_version == '3.14'
+jaxlib==0.7.1; sys_platform != 'darwin' and python_version == '3.14'
