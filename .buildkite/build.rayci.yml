@@ -278,7 +278,6 @@ steps:
     array:
       python:
         - "3.12"
-        - "3.14"
       cuda:
         - "13.0.0-cudnn"
     env_file: rayci.env
@@ -300,7 +299,6 @@ steps:
     array:
       python:
         - "3.12"
-        - "3.14"
       cuda:
         - "13.0.0-cudnn"
     env_file: rayci.env
@@ -365,7 +363,6 @@ steps:
     array:
       python:
         - "3.12"
-        - "3.14"
       platform:
         - cu13.0.0-cudnn
     depends_on:
@@ -389,7 +386,6 @@ steps:
     array:
       python:
         - "3.12"
-        - "3.14"
       platform:
         - cu13.0.0-cudnn
     depends_on:
