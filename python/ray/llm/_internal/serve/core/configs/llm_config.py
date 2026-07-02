@@ -37,11 +37,13 @@ from ray.llm._internal.serve.constants import (
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
 from ray.llm._internal.serve.core.configs.accelerators import (
+    NPU_ACCELERATOR_VALUES,
     TPU_ACCELERATOR_VALUES,
     AcceleratorType,
     AnyAcceleratorConfig,
     CPUConfig,
     GPUConfig,
+    NPUConfig,
     TPUConfig,
     infer_hardware_kind_from_bundles,
 )
@@ -515,6 +517,9 @@ class LLMConfig(BaseModelExtended):
         if inferred_kind == "gpu":
             self.accelerator_config = GPUConfig(kind="gpu")
             return
+        if inferred_kind == "npu":
+            self.accelerator_config = NPUConfig(kind="npu")
+            return
         if inferred_kind == "cpu":
             self.accelerator_config = CPUConfig(kind="cpu")
             return
@@ -526,6 +531,10 @@ class LLMConfig(BaseModelExtended):
             )
             if accel_str in TPU_ACCELERATOR_VALUES:
                 self.accelerator_config = TPUConfig(kind="tpu")
+                return
+
+            if accel_str in NPU_ACCELERATOR_VALUES:
+                self.accelerator_config = NPUConfig(kind="npu")
                 return
 
             self.accelerator_config = GPUConfig(kind="gpu")
@@ -555,7 +564,12 @@ class LLMConfig(BaseModelExtended):
 
         # Determine what hardware kind the string implies to check for kind mismatch
         accel_str = getattr(self.accelerator_type, "value", str(self.accelerator_type))
-        expected_kind = "tpu" if accel_str in TPU_ACCELERATOR_VALUES else "gpu"
+        if accel_str in TPU_ACCELERATOR_VALUES:
+            expected_kind = "tpu"
+        elif accel_str in NPU_ACCELERATOR_VALUES:
+            expected_kind = "npu"
+        else:
+            expected_kind = "gpu"
 
         if self.accelerator_config.kind != expected_kind:
             raise ValueError(
