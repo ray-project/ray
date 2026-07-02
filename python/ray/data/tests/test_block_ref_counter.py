@@ -140,38 +140,6 @@ class TestBlockRefCounterLifecycle:
         _wait_for_counter(counter=counter, producer_id="op_task", expected=0)
 
 
-class TestBlockRefCounterNonOwnedBlocks:
-    def test_non_owned_block_not_tracked(self, ray_start_regular_shared):
-        """on_block_produced gracefully skips blocks not owned by this worker.
-
-        When SplitCoordinator runs a streaming executor inside an actor, the
-        input blocks are owned by the driver. The actor cannot register
-        out-of-scope callbacks on them, so on_block_produced should catch the
-        ValueError and leave the usage at zero.
-
-        We wrap the ObjectRef in a list to prevent Ray from auto-resolving it,
-        mirroring how SplitCoordinator receives refs embedded in a serialized
-        Dataset object.
-        """
-
-        @ray.remote
-        class CounterActor:
-            def try_track_non_owned_block(self, block_ref_wrapped, size_bytes):
-                block_ref = block_ref_wrapped[0]
-                counter = BlockRefCounter()
-                counter.on_block_produced(block_ref, size_bytes, "op_split")
-                return counter.get_object_store_memory_usage("op_split")
-
-        block_ref = ray.put(
-            np.zeros(1, dtype=np.uint8)  # pyrefly: ignore[bad-argument-type]
-        )
-        actor = CounterActor.remote()  # pyrefly: ignore[missing-attribute]
-        usage = ray.get(actor.try_track_non_owned_block.remote([block_ref], 1))
-        assert (
-            usage == 0
-        ), f"Non-owned block should not be tracked, but got {usage} bytes"
-
-
 if __name__ == "__main__":
     import sys
 
