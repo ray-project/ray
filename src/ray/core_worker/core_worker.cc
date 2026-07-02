@@ -3327,9 +3327,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
         }
       });
 
-  // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
-  // details.
-  return waiter->WaitUntilObjectConsumed();
+  return Status::OK();
 }
 
 void CoreWorker::RegisterGeneratorBackpressureState(
@@ -3394,6 +3392,41 @@ bool CoreWorker::TeardownGeneratorBackpressureTask(const ObjectID &generator_id)
     actor_metadata->Teardown();
   }
   return true;
+}
+
+void CoreWorker::SetAsyncGeneratorBackpressureUnblockNotify(const ObjectID &generator_id,
+                                                            void (*fn)(void *),
+                                                            void *ctx) {
+  absl::MutexLock lock(&generator_notify_mutex_);
+  generator_unblock_notifies_[generator_id] = std::make_pair(fn, ctx);
+}
+
+void CoreWorker::ClearAsyncGeneratorBackpressureUnblockNotify(
+    const ObjectID &generator_id) {
+  absl::MutexLock lock(&generator_notify_mutex_);
+  generator_unblock_notifies_.erase(generator_id);
+}
+
+void CoreWorker::NotifyAsyncGeneratorBackpressureUnblock(const ObjectID &generator_id,
+                                                         bool notify_all) {
+  // Hold generator_notify_mutex_ across the callback(s): this both excludes a
+  // concurrent ClearAsyncGeneratorBackpressureUnblockNotify (so the borrowed
+  // ctx stays valid for the duration of the call) and keeps a consistent lock
+  // order, since the mutex is always taken with the GIL released and the
+  // trampoline acquires the GIL only after.
+  absl::MutexLock lock(&generator_notify_mutex_);
+  if (notify_all) {
+    for (const auto &[id, cb] : generator_unblock_notifies_) {
+      if (cb.first != nullptr) {
+        cb.first(cb.second);
+      }
+    }
+  } else {
+    auto it = generator_unblock_notifies_.find(generator_id);
+    if (it != generator_unblock_notifies_.end() && it->second.first != nullptr) {
+      it->second.first(it->second.second);
+    }
+  }
 }
 
 void CoreWorker::HandleReportGeneratorItemReturns(
@@ -3479,13 +3512,23 @@ void CoreWorker::HandleUpdateGeneratorBackpressureConsumed(
     const bool all_objects_consumed =
         waiter->TotalObjectConsumed() >= waiter->TotalObjectGenerated();
 
-    absl::MutexLock lock(&mutex_);
-    auto it = generator_backpressure_states_.find(generator_id);
-    if (it != generator_backpressure_states_.end() &&
-        (teardown || (it->second.task_finished &&
-                      (it->second.actor_metadata == nullptr || all_objects_consumed)))) {
-      generator_backpressure_states_.erase(it);
+    {
+      absl::MutexLock lock(&mutex_);
+      auto it = generator_backpressure_states_.find(generator_id);
+      if (it != generator_backpressure_states_.end() &&
+          (teardown ||
+           (it->second.task_finished &&
+            (it->second.actor_metadata == nullptr || all_objects_consumed)))) {
+        generator_backpressure_states_.erase(it);
+      }
     }
+
+    // Wake any async streaming generator parked on an asyncio.Event. Done after
+    // releasing mutex_ (the trampoline acquires the GIL). When this task uses
+    // the actor-wide cap, its consumption frees shared budget, so wake every
+    // registered async generator to re-check; otherwise only this one.
+    NotifyAsyncGeneratorBackpressureUnblock(generator_id,
+                                            /*notify_all=*/actor_metadata != nullptr);
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
