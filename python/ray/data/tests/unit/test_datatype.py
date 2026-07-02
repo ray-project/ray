@@ -4,7 +4,12 @@ import pyarrow as pa
 import pytest
 from packaging import version
 
-from ray.data.datatype import DataType, TypeCategory
+from ray.data.datatype import (
+    DataType,
+    TypeCategory,
+    _arrow_offset_buffer_bytes,
+    _fixed_arrow_byte_width,
+)
 
 # Skip all tests if PyArrow version is less than 19.0
 pytestmark = pytest.mark.skipif(
@@ -876,6 +881,105 @@ class TestTypePredicates:
     def test_is_temporal_type(self, datatype, expected_result):
         """Test is_temporal_type predicate."""
         assert datatype.is_temporal_type() == expected_result
+
+
+class TestFixedArrowByteWidth:
+    @pytest.mark.parametrize(
+        "arrow_type, expected",
+        [
+            (pa.bool_(), 1 / 8),
+            (pa.int64(), 8.0),
+            (pa.int32(), 4.0),
+            (pa.float64(), 8.0),
+            (pa.decimal128(10, 2), 16.0),
+            (pa.binary(4), 4.0),  # fixed_size_binary
+            (pa.timestamp("us"), 8.0),
+            (pa.date32(), 4.0),
+            (pa.time32("s"), 4.0),
+        ],
+        ids=[
+            "bool",
+            "int64",
+            "int32",
+            "float64",
+            "decimal128",
+            "fixed_size_binary",
+            "timestamp",
+            "date32",
+            "time32",
+        ],
+    )
+    def test_fixed_width_types(self, arrow_type, expected):
+        assert _fixed_arrow_byte_width(arrow_type) == expected
+
+    @pytest.mark.parametrize(
+        "arrow_type",
+        [
+            pa.string(),
+            pa.large_string(),
+            pa.binary(),
+            pa.list_(pa.int64()),
+            pa.large_list(pa.int64()),
+            pa.map_(pa.string(), pa.int64()),
+            pa.struct({"a": pa.int64()}),
+            pa.dictionary(pa.int8(), pa.string()),
+        ],
+        ids=[
+            "string",
+            "large_string",
+            "binary",
+            "list",
+            "large_list",
+            "map",
+            "struct",
+            "dictionary",
+        ],
+    )
+    def test_variable_or_nested_types_return_none(self, arrow_type):
+        # Dictionary must return None: ``bit_width`` would report the *index*
+        # width (e.g. 8), not the decoded value size.
+        assert _fixed_arrow_byte_width(arrow_type) is None
+
+
+class TestArrowOffsetBufferBytes:
+    @pytest.mark.parametrize(
+        "arrow_type, per_entry",
+        [
+            (pa.string(), 4),
+            (pa.binary(), 4),
+            (pa.list_(pa.int64()), 4),
+            (pa.map_(pa.string(), pa.int64()), 4),
+            (pa.large_string(), 8),
+            (pa.large_binary(), 8),
+            (pa.large_list(pa.int64()), 8),
+        ],
+        ids=[
+            "string",
+            "binary",
+            "list",
+            "map",
+            "large_string",
+            "large_binary",
+            "large_list",
+        ],
+    )
+    def test_offset_buffer_sizes(self, arrow_type, per_entry):
+        # Offset buffer holds num_rows + 1 entries.
+        assert _arrow_offset_buffer_bytes(arrow_type, 100) == (100 + 1) * per_entry
+
+    @pytest.mark.parametrize(
+        "arrow_type",
+        [
+            pa.int64(),
+            pa.bool_(),
+            pa.struct({"a": pa.int64()}),
+            pa.list_(pa.int64(), 3),  # fixed_size_list: no offset buffer
+            pa.dictionary(pa.int8(), pa.string()),
+        ],
+        ids=["int64", "bool", "struct", "fixed_size_list", "dictionary"],
+    )
+    def test_no_offset_buffer_returns_zero(self, arrow_type):
+        assert _arrow_offset_buffer_bytes(arrow_type, 100) == 0
 
 
 if __name__ == "__main__":
