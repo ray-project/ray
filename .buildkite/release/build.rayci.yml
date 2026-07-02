@@ -42,7 +42,6 @@ steps:
     array:
       python:
         - "3.12"
-        - "3.14"
       cuda:
         - "13.0.0-cudnn"
     env:
@@ -191,7 +190,6 @@ steps:
         - "cu13.0.0-cudnn"
       python:
         - "3.12"
-        - "3.14"
     env:
       PYTHON_VERSION: "{{array.python}}"
       GPU: "{{array.gpu}}"
@@ -222,7 +220,6 @@ steps:
         - cu13.0.0-cudnn
       python:
         - "3.12"
-        - "3.14"
 
   - name: ray-ml-anyscale-cuda-build
     label: "wanda: ray-ml-anyscale py{{array.python}} {{array.gpu}}"

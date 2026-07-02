@@ -118,7 +118,6 @@ steps:
     array:
       python:
         - "3.12"
-        - "3.14"
       cuda:
         - "13.0.0-cudnn"
     env:
@@ -131,7 +130,6 @@ steps:
     array:
       python:
         - "3.12"
-        - "3.14"
       cuda:
         - "13.0.0-cudnn"
     env:
