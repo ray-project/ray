@@ -41,6 +41,7 @@ steps:
     wanda: docker/base-extra-testdeps/cuda.wanda.yaml
     array:
       python:
+        - "3.12"
         - "3.14"
       cuda:
         - "13.0.0-cudnn"
@@ -189,6 +190,7 @@ steps:
       gpu:
         - "cu13.0.0-cudnn"
       python:
+        - "3.12"
         - "3.14"
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -219,6 +221,7 @@ steps:
       gpu:
         - cu13.0.0-cudnn
       python:
+        - "3.12"
         - "3.14"
 
   - name: ray-ml-anyscale-cuda-build
