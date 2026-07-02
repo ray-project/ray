@@ -2,6 +2,7 @@
 
 This module tests:
 - Null predicates: is_null(), is_not_null()
+- Null replacement: fill_null()
 - Membership predicates: is_in(), not_in()
 """
 
@@ -9,7 +10,7 @@ import pandas as pd
 import pytest
 
 from ray.data._internal.planner.plan_expression.expression_evaluator import eval_expr
-from ray.data.expressions import BinaryExpr, Operation, UnaryExpr, col, lit
+from ray.data.expressions import BinaryExpr, Operation, UDFExpr, UnaryExpr, col, lit
 
 # ──────────────────────────────────────
 # Null Predicate Operations
@@ -100,6 +101,40 @@ class TestIsNotNull:
 
         assert expr1.structurally_equals(expr2)
         assert not expr1.structurally_equals(expr3)
+
+
+class TestFillNull:
+    """Tests for fill_null()."""
+
+    @pytest.fixture
+    def sample_data(self):
+        """Sample data with null values."""
+        return pd.DataFrame(
+            {
+                "value": [1.0, None, 3.0, None, 5.0],
+                "name": ["Alice", None, "Charlie", "Diana", None],
+            }
+        )
+
+    def test_fill_null_numeric(self, sample_data):
+        """Test fill_null on a numeric column."""
+        expr = col("value").fill_null(0)
+        assert isinstance(expr, UDFExpr)
+        result = eval_expr(expr, sample_data)
+        assert result.tolist() == [1.0, 0.0, 3.0, 0.0, 5.0]
+
+    def test_fill_null_string(self, sample_data):
+        """Test fill_null on a string column."""
+        expr = col("name").fill_null("unknown")
+        result = eval_expr(expr, sample_data)
+        assert result.tolist() == ["Alice", "unknown", "Charlie", "Diana", "unknown"]
+
+    def test_fill_null_all_null_column(self):
+        """Test fill_null on an all-null column (null-typed Arrow array)."""
+        data = pd.DataFrame({"value": [None, None, None]})
+        expr = col("value").fill_null(0)
+        result = eval_expr(expr, data)
+        assert result.tolist() == [0, 0, 0]
 
 
 class TestNullPredicateCombinations:
