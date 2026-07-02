@@ -542,9 +542,12 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return self._table.filter(mask)
 
     def _aggregate(self, sort_key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
-        # Fall back to original way when not all aggregations support pyarrow kernel
+        # Fallback to original way when not all aggregations support pyarrow kernel
         use_pyarrow_kernel = all(agg.support_pyarrow_kernel() for agg in aggs)
         if use_pyarrow_kernel:
+            if self._table.num_rows == 0:
+                return ArrowBlockAccessor._empty_table()
+
             keys = sort_key.get_columns()
             tables = []
             count = collections.defaultdict(int)
@@ -584,12 +587,22 @@ class ArrowBlockAccessor(TableBlockAccessor):
         aggs: Tuple["AggregateFn"],
         finalize: bool = True,
     ) -> Tuple[Block, "BlockMetadataWithSchema"]:
-        # Handle blocks of different types.
-        blocks = TableBlockAccessor.normalize_block_types(blocks)
-
-        # Fall back to original way when not all aggregations support pyarrow kernel
+        # Fallback to original way when not all aggregations support pyarrow kernel
         use_pyarrow_kernel = all(agg.support_pyarrow_kernel() for agg in aggs)
         if use_pyarrow_kernel:
+            blocks = [
+                block
+                for block in blocks
+                if BlockAccessor.for_block(block).num_rows() > 0
+            ]
+
+            if not blocks:
+                ret = pyarrow_table_from_pydict({})
+                return ret, BlockMetadataWithSchema.from_block(ret)
+
+            # Handle blocks of different types.
+            blocks = TableBlockAccessor.normalize_block_types(blocks, BlockType.ARROW)
+
             keys = sort_key.get_columns()
             combined = pyarrow.concat_tables(blocks) if len(blocks) > 1 else blocks[0]
             tables = []
@@ -609,8 +622,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                     if column.startswith(name + "|")
                 ] + keys
                 # The aggregation is unaware of the actual prefix name that may
-                # be modified due to aggregation's name conflicts, so recover
-                # the column name by remove prefix
+                # be modified due to aggregation's name conflicts, so remove agg prefix
                 columns_rename = {
                     column: column.removeprefix(name + "|") for column in need_columns
                 }

@@ -162,6 +162,18 @@ class AggregateFn:
         """
         return None
 
+    def support_pyarrow_kernel(self) -> bool:
+        return False
+
+    def aggregate_block_pyarrow_kernel(self, block: Block, keys: List[str]) -> Block:
+        raise NotImplementedError
+
+    def combine_pyarrow_kernel(self, block: Block, keys: List[str]) -> Block:
+        raise NotImplementedError
+
+    def finalize_pyarrow_kernel(self, block: Block) -> Block:
+        raise NotImplementedError
+
 
 @PublicAPI(stability="alpha")
 class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType]):
@@ -342,18 +354,6 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
             from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
             SortKey(self._target_col_name).validate_schema(schema)
-
-    def support_pyarrow_kernel(self) -> bool:
-        return False
-
-    def aggregate_block_pyarrow_kernel(self, block: Block, keys: List[str]) -> Block:
-        raise NotImplementedError
-
-    def combine_pyarrow_kernel(self, block: Block, keys: List[str]) -> Block:
-        raise NotImplementedError
-
-    def finalize_pyarrow_kernel(self, block: Block) -> Block:
-        raise NotImplementedError
 
 
 def _agg_output_field(
