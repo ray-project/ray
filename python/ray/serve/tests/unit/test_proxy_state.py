@@ -7,6 +7,7 @@ import pytest
 
 from ray._common.test_utils import wait_for_condition
 from ray._common.utils import Timer
+from ray.exceptions import ActorUnschedulableError, GetTimeoutError, RayActorError
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import RequestProtocol
 from ray.serve._private.constants import (
@@ -14,7 +15,12 @@ from ray.serve._private.constants import (
     RAY_SERVE_FALLBACK_PROXY_GRPC_PORT,
     RAY_SERVE_FALLBACK_PROXY_HTTP_PORT,
 )
-from ray.serve._private.proxy_state import ProxyState, ProxyStateManager, ProxyWrapper
+from ray.serve._private.proxy_state import (
+    ActorProxyWrapper,
+    ProxyState,
+    ProxyStateManager,
+    ProxyWrapper,
+)
 from ray.serve._private.test_utils import MockTimer
 from ray.serve.config import HTTPOptions, ProxyLocation
 from ray.serve.schema import LoggingConfig, ProxyStatus
@@ -933,6 +939,43 @@ class TestFallbackProxy:
         assert target.port == 8500
         assert target.instance_id == state.actor_details.node_instance_id
         assert target.name == state.actor_name
+
+
+class TestActorProxyWrapperIsShutdown:
+    """`is_shutdown` must treat a dead or permanently unschedulable proxy actor
+    as ready for shutdown. Otherwise the exception propagates out of
+    `is_shutdown` -> `kill` -> `ProxyState.shutdown` -> the controller's proxy
+    update loop, which then never reaches `_start_proxies_if_needed` and leaves
+    `proxies: {}` (external traffic 503)."""
+
+    def _make_wrapper(self) -> ActorProxyWrapper:
+        return ActorProxyWrapper(
+            logging_config=LoggingConfig(), actor_handle=mock.MagicMock()
+        )
+
+    def test_returns_true_when_actor_unschedulable(self):
+        # Proxy hard-pinned to a node that no longer exists.
+        wrapper = self._make_wrapper()
+        with patch(
+            "ray.get", side_effect=ActorUnschedulableError("node does not exist")
+        ):
+            assert wrapper.is_shutdown() is True
+
+    def test_returns_true_when_actor_dead(self):
+        wrapper = self._make_wrapper()
+        with patch("ray.get", side_effect=RayActorError()):
+            assert wrapper.is_shutdown() is True
+
+    def test_returns_false_when_health_check_pending(self):
+        # Live proxy whose health check has not returned yet (timeout=0).
+        wrapper = self._make_wrapper()
+        with patch("ray.get", side_effect=GetTimeoutError()):
+            assert wrapper.is_shutdown() is False
+
+    def test_returns_false_when_actor_alive(self):
+        wrapper = self._make_wrapper()
+        with patch("ray.get", return_value=None):
+            assert wrapper.is_shutdown() is False
 
 
 if __name__ == "__main__":
