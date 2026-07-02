@@ -1,0 +1,14 @@
+Build: state=Finished  success=False  exit=1  build finished with problems, 1 warning.
+
+Findings (1):
+  Tier 2 — structural/parse (fix first; these mask warnings beneath them):
+    [T2] toctree-nonexisting  doc/source/index.md:12
+          msg:    toctree contains reference to nonexisting document 'ray-contribute/old-name'
+          fix:    Fix the toctree entry (entries are extensionless) to the current document name, or remove it.
+          safety: mechanical
+
+Unclassified (0) — no rule matched; resolve with the user, then file a skill-improvement ticket to add a rule:
+
+Suppressed (0) — known-benign, not actionable:
+
+Next: fix Tier 2 first (it masks others), then rebuild and re-run — do not assume one pass is complete.

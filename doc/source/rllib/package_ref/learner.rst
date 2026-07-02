@@ -1,5 +1,3 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
-
 .. _learner-reference-docs:
 
 LearnerGroup API
