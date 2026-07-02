@@ -388,7 +388,6 @@ class FuseOperators(Rule):
             up_op.data_context,
             num_partitions=up_op._num_partitions,
             reduce_fn=up_op._reduce_fn,
-            streaming_reduce=up_op._streaming_reduce,
             disallow_block_splitting=up_op._disallow_block_splitting,
             reduce_cpus=up_op._shuffle_reduce_task_num_cpus,
             name=name,
