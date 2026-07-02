@@ -433,6 +433,10 @@ RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_max_interval_ms, 1000)
 RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
 /// Maximum number of destroyed actors in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
+/// Maximum number of previous worker IDs retained on `ActorTableData` for
+/// looking up logs from prior actor incarnations. When exceeded, the
+/// oldest ID is evicted FIFO. Set to 0 to disable history tracking.
+RAY_CONFIG(uint32_t, actor_previous_worker_ids_limit, 10)
 /// Maximum number of dead nodes in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
 // The storage backend to use for the GCS. It can be either 'redis' or 'memory'.

@@ -869,6 +869,155 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   ASSERT_TRUE(worker_client_->Reply());
 }
 
+TEST_F(GcsActorManagerTest, TestPreviousIncarnationsAppendedOnRestart) {
+  // Verify that on actor restart, the departing (worker_id, node_id) is
+  // appended to ActorTableData.previous_incarnations in order (oldest
+  // first), and that a restart onto a different node preserves the prior
+  // node_id (so log lookups can still find the old node's files).
+  auto job_id = JobID::FromInt(1);
+  auto registered_actor = RegisterActor(job_id,
+                                        /*max_restarts=*/3,
+                                        /*detached=*/false);
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
+      registered_actor->GetCreationTaskSpecification().GetMessage());
+
+  std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
+  RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
+      create_actor_request,
+      [&finished_actors](std::shared_ptr<gcs::GcsActor> result_actor,
+                         const rpc::PushTaskReply &,
+                         const Status &) {
+        finished_actors.emplace_back(result_actor);
+      }));
+
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.pop_back();
+
+  // First incarnation: alive.
+  auto address1 = RandomAddress();
+  auto node_id1 = NodeID::FromBinary(address1.node_id());
+  auto worker_id1 = WorkerID::FromBinary(address1.worker_id());
+  actor->UpdateAddress(address1);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
+  io_service_.run_one();
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations_size(), 0);
+
+  // Kill node1 → restart triggered → (worker_id1, node_id1) recorded.
+  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id1));
+  OnNodeDead(node_id1);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations_size(), 1);
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations(0).worker_id(),
+            worker_id1.Binary());
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations(0).node_id(),
+            node_id1.Binary());
+
+  // Second incarnation on a *different* node.
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+  mock_actor_scheduler_->actors.clear();
+  auto address2 = RandomAddress();
+  auto node_id2 = NodeID::FromBinary(address2.node_id());
+  auto worker_id2 = WorkerID::FromBinary(address2.worker_id());
+  ASSERT_NE(node_id1, node_id2);
+  actor->UpdateAddress(address2);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
+  io_service_.run_one();
+  io_service_.run_one();
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
+
+  // Kill node2 → second entry appended, in order. The prior entry must
+  // still carry the *original* node_id, not the current actor's node_id.
+  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id2));
+  OnNodeDead(node_id2);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations_size(), 2);
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations(0).worker_id(),
+            worker_id1.Binary());
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations(0).node_id(),
+            node_id1.Binary());
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations(1).worker_id(),
+            worker_id2.Binary());
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations(1).node_id(),
+            node_id2.Binary());
+
+  ASSERT_TRUE(worker_client_->Reply());
+}
+
+TEST_F(GcsActorManagerTest, TestPreviousIncarnationsBoundedByLimit) {
+  // Verify that when previous_incarnations exceeds
+  // actor_previous_worker_ids_limit, the oldest entry is evicted FIFO.
+  RayConfig::instance().initialize(
+      R"(
+{
+  "actor_previous_worker_ids_limit": 2
+}
+  )");
+
+  auto job_id = JobID::FromInt(1);
+  auto registered_actor = RegisterActor(job_id,
+                                        /*max_restarts=*/-1,
+                                        /*detached=*/false);
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
+      registered_actor->GetCreationTaskSpecification().GetMessage());
+
+  std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
+  RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
+      create_actor_request,
+      [&finished_actors](std::shared_ptr<gcs::GcsActor> result_actor,
+                         const rpc::PushTaskReply &,
+                         const Status &) {
+        finished_actors.emplace_back(result_actor);
+      }));
+
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.pop_back();
+
+  // Drive 3 restarts. After each, verify the list never exceeds the limit
+  // and retains the newest entries.
+  std::vector<WorkerID> worker_ids;
+  std::vector<NodeID> node_ids;
+  for (int i = 0; i < 3; ++i) {
+    auto address = RandomAddress();
+    node_ids.push_back(NodeID::FromBinary(address.node_id()));
+    worker_ids.push_back(WorkerID::FromBinary(address.worker_id()));
+    actor->UpdateAddress(address);
+    gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
+    io_service_.run_one();
+    if (i > 0) {
+      io_service_.run_one();
+    }
+    ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
+
+    EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_ids.back()));
+    OnNodeDead(node_ids.back());
+    ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
+
+    ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+    mock_actor_scheduler_->actors.clear();
+  }
+
+  // After 3 restarts with a cap of 2, expect only indices [1] and [2];
+  // index [0] must have been evicted FIFO.
+  const auto &previous = actor->GetActorTableData().previous_incarnations();
+  ASSERT_EQ(previous.size(), 2);
+  ASSERT_EQ(previous.Get(0).worker_id(), worker_ids[1].Binary());
+  ASSERT_EQ(previous.Get(0).node_id(), node_ids[1].Binary());
+  ASSERT_EQ(previous.Get(1).worker_id(), worker_ids[2].Binary());
+  ASSERT_EQ(previous.Get(1).node_id(), node_ids[2].Binary());
+
+  // Restore default limit so subsequent tests aren't affected.
+  RayConfig::instance().initialize(
+      R"(
+{
+  "maximum_gcs_destroyed_actor_cached_count": 10
+}
+  )");
+}
+
 TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id,
