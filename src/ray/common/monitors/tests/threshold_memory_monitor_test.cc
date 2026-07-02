@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/threshold_memory_monitor.h"
+#include "ray/common/monitors/threshold_memory_monitor.h"
 
 #include <atomic>
 #include <boost/thread/latch.hpp>
@@ -24,9 +24,9 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/cgroup2/noop_cgroup_manager.h"
-#include "ray/common/memory_monitor_interface.h"
-#include "ray/common/memory_monitor_test_fixture.h"
-#include "ray/common/memory_monitor_utils.h"
+#include "ray/common/monitors/memory_monitor_interface.h"
+#include "ray/common/monitors/memory_monitor_test_fixture.h"
+#include "ray/common/monitors/memory_monitor_utils.h"
 
 namespace ray {
 

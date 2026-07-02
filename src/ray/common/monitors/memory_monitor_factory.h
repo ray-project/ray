@@ -18,7 +18,7 @@
 #include <vector>
 
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
-#include "ray/common/memory_monitor_interface.h"
+#include "ray/common/monitors/memory_monitor_interface.h"
 
 namespace ray {
 
