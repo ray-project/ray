@@ -8,6 +8,7 @@ from ray._private.accelerators.amd_gpu import AMDGPUAcceleratorManager
 from ray._private.accelerators.furiosa import FuriosaAcceleratorManager
 from ray._private.accelerators.hpu import HPUAcceleratorManager
 from ray._private.accelerators.intel_gpu import IntelGPUAcceleratorManager
+from ray._private.accelerators.mblt import MBLTAcceleratorManager
 from ray._private.accelerators.metax_gpu import MetaxGPUAcceleratorManager
 from ray._private.accelerators.neuron import NeuronAcceleratorManager
 from ray._private.accelerators.npu import NPUAcceleratorManager
@@ -29,6 +30,7 @@ def get_all_accelerator_managers() -> Set[AcceleratorManager]:
         RBLNAcceleratorManager,
         MetaxGPUAcceleratorManager,
         FuriosaAcceleratorManager,
+        MBLTAcceleratorManager,
     }
 
 
@@ -89,4 +91,5 @@ __all__ = [
     "get_all_accelerator_resource_names",
     "get_accelerator_manager_for_resource",
     "RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR",
+    "MBLTAcceleratorManager",
 ]
