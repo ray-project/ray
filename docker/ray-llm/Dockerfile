@@ -4,11 +4,10 @@ ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
 COPY python/deplocks/llm/rayllm_*.lock ./
-COPY python/requirements/llm/patches/vllm-cuda-visible-devices-patch ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
 # Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
-ARG VLLM_SCRIPTS_REF="v0.23.0"
+ARG VLLM_SCRIPTS_REF="v0.24.0"
 
 RUN <<EOF
 #!/bin/bash
@@ -36,33 +35,11 @@ uv pip install --system --no-cache-dir --no-deps \
     --no-verify-hashes \
     -r "rayllm_${PYTHON_CODE}_${CUDA_CODE}.lock"
 
-# Fix RayExecutorV2 GPU collision when multiple engines share a node.
-# Remove this patch once https://github.com/vllm-project/vllm/pull/44466 is merged.
-VLLM_CUDA_VISIBLE_DEVICES_PATCH="$(pwd)/vllm-cuda-visible-devices-patch"
-VLLM_SITE_PACKAGES="$(python - <<'PY'
-import site
-import sysconfig
-from pathlib import Path
-
-candidate_dirs = [
-    Path(sysconfig.get_paths()["purelib"]),
-    Path(sysconfig.get_paths()["platlib"]),
-    *(Path(path) for path in site.getsitepackages()),
-]
-
-for base_dir in dict.fromkeys(candidate_dirs):
-    import_utils = base_dir / "vllm" / "utils" / "import_utils.py"
-    if import_utils.exists():
-        print(base_dir)
-        break
-else:
-    raise SystemExit("vLLM import_utils.py not found")
-PY
-)"
-(
-    cd "${VLLM_SITE_PACKAGES}"
-    git apply "${VLLM_CUDA_VISIBLE_DEVICES_PATCH}"
-)
+# NOTE: The RayExecutorV2 GPU-collision workaround (vllm-cuda-visible-devices-patch)
+# was dropped for vLLM 0.24.0. vllm-project/vllm#44466 landed in this release: the
+# executor now passes an explicit logical-to-physical GPU mapping
+# (parallel_config.assigned_physical_gpu_ids) to each worker and never mutates
+# CUDA_VISIBLE_DEVICES, so the patch is obsolete (and no longer applies).
 
 sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake
 
