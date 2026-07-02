@@ -122,6 +122,155 @@ VALID_TPU_TOPOLOGY = {
 }
 
 
+# Worker grid dimensions for each valid TPU topology.
+# Maps topology -> (worker_y, worker_x) for 2D, (worker_z, worker_y, worker_x) for 3D.
+# Assumes DEFAULT_TPU_NUM_CHIPS_PER_HOST (4) chips per worker for most types.
+# For v5e/v6e single-host topologies with 8 chips, the worker count is 1.
+#
+# Entries are ordered by ascending total worker count (sum of dims). This ordering
+# is required by _build_subslice_labels, which relies on it for early termination.
+#
+# NOTE: Large v3-only topologies ("16x32", "32x32") and the v5litepod-only "2x8"
+# topology are intentionally omitted; subslicing those parent sizes is not yet
+# supported and will raise ValueError at subslice_placement_group() call time.
+_VALID_TOPOLOGY_WORKER_DIMS_2D: Dict[str, Tuple[int, int]] = {
+    "2x2": (1, 1),
+    "2x4": (1, 2),
+    "4x4": (2, 2),
+    "4x8": (2, 4),
+    "8x8": (4, 4),
+    "8x16": (4, 8),
+    "16x16": (8, 8),
+}
+
+_VALID_TOPOLOGY_WORKER_DIMS_3D: Dict[str, Tuple[int, int, int]] = {
+    "2x2x1": (1, 1, 1),
+    "2x2x2": (1, 1, 2),
+    "2x2x4": (1, 1, 4),
+    "2x4x4": (1, 2, 4),
+    "4x4x4": (2, 2, 4),
+    "4x4x8": (2, 2, 8),
+    "4x8x8": (2, 4, 8),
+    "8x8x8": (4, 4, 8),
+    "8x8x16": (4, 4, 16),
+    "8x16x16": (4, 8, 16),
+    "16x16x16": (8, 8, 16),
+    "16x16x24": (8, 8, 24),
+}
+
+
+def _parse_topology_dims(topology: str) -> Tuple[int, ...]:
+    """Parse a topology string into dimension tuple.
+
+    Args:
+        topology: Topology string like "2x4" or "2x2x2".
+
+    Returns:
+        Tuple of int dimensions.
+    """
+    return tuple(int(d) for d in topology.strip().lower().split("x"))
+
+
+def _get_worker_dims_for_topology(
+    topology: str, accelerator_version: str
+) -> Tuple[int, ...]:
+    """Get the worker grid dimensions for a given topology and accelerator version.
+
+    Args:
+        topology: The TPU topology (e.g. "4x4", "2x2x2").
+        accelerator_version: The accelerator version (e.g. "v6e", "v4").
+
+    Returns:
+        Worker dimension tuple: (y, x) for 2D, (z, y, x) for 3D.
+
+    Raises:
+        ValueError: If the topology is not in the known dimension maps.
+    """
+    dims = _parse_topology_dims(topology)
+    if len(dims) == 2:
+        if topology not in _VALID_TOPOLOGY_WORKER_DIMS_2D:
+            raise ValueError(
+                f"Unknown 2D topology: '{topology}'. "
+                f"Valid: {list(_VALID_TOPOLOGY_WORKER_DIMS_2D.keys())}"
+            )
+        return _VALID_TOPOLOGY_WORKER_DIMS_2D[topology]
+    else:
+        if topology not in _VALID_TOPOLOGY_WORKER_DIMS_3D:
+            raise ValueError(
+                f"Unknown 3D topology: '{topology}'. "
+                f"Valid: {list(_VALID_TOPOLOGY_WORKER_DIMS_3D.keys())}"
+            )
+        return _VALID_TOPOLOGY_WORKER_DIMS_3D[topology]
+
+
+def _get_default_chips_per_vm(topology: str, accelerator_version: str) -> int:
+    """Get default chips per VM for a given topology and accelerator version.
+
+    Args:
+        topology: The TPU topology string (e.g. "2x4").
+        accelerator_version: The accelerator version (e.g. "v6e").
+
+    Returns:
+        Default number of chips per VM for this topology.
+    """
+    accel_lower = accelerator_version.strip().lower()
+
+    # Single-host: return total chips in topology
+    if accel_lower in TPU_8_CHIPS_PER_HOST_TYPES:
+        total_chips = get_num_chips_from_topology(topology)
+        if total_chips <= 8:
+            return total_chips
+
+    return DEFAULT_TPU_NUM_CHIPS_PER_HOST
+
+
+def _resolve_parent_topology(
+    subslice_topology: str,
+    accelerator_version: str,
+    chips_per_vm: int,
+) -> str:
+    """Resolve the smallest valid parent topology for a given subslice.
+
+    Args:
+        subslice_topology: Desired subslice topology (e.g. "2x4").
+        accelerator_version: Accelerator version (e.g. "v6e").
+        chips_per_vm: Chips per VM for the worker dimension calculation.
+
+    Returns:
+        The smallest parent topology string that can contain the subslice.
+
+    Raises:
+        ValueError: If no valid parent topology is found.
+    """
+    # Convert subslice topology to worker dimensions first.
+    sub_worker_dims = _get_worker_dims_for_topology(subslice_topology, "")
+    is_3d = len(sub_worker_dims) == 3
+
+    dims_map = (
+        _VALID_TOPOLOGY_WORKER_DIMS_3D if is_3d else _VALID_TOPOLOGY_WORKER_DIMS_2D
+    )
+
+    # Collect topologies strictly larger than the subslice. A topology cannot
+    # be a parent of itself, so the subslice topology is excluded explicitly.
+    candidates = [
+        (topo, worker_dims)
+        for topo, worker_dims in dims_map.items()
+        if topo != subslice_topology
+        and all(pd >= sd for pd, sd in zip(worker_dims, sub_worker_dims))
+    ]
+
+    if not candidates:
+        # No topology larger than the subslice exists (e.g. the subslice is
+        # already the maximum size for this accelerator). Return the subslice
+        # topology itself so the caller can detect the condition and fall back
+        # to a full SlicePlacementGroup.
+        return subslice_topology
+
+    # Return the smallest qualifying parent (by total worker count).
+    candidates.sort(key=lambda x: sum(x[1]))
+    return candidates[0][0]
+
+
 def _get_tpu_metadata(key: str) -> Optional[str]:
     """Poll and get TPU metadata."""
     try:
@@ -261,6 +410,150 @@ def get_chips_per_host(topology: str, accelerator_version: str) -> int:
         return total_chips
 
     return DEFAULT_TPU_NUM_CHIPS_PER_HOST
+
+
+# Label prefix for subslice labels set on TPU nodes after discovery.
+TPU_SUBSLICE_LABEL_PREFIX = "ray.io/tpu-subslice-"
+
+
+def _get_physical_worker_id_from_coords(
+    coords_list: List[List[int]],
+    parent_topology: str,
+    chips_per_vm: int,
+) -> int:
+    """Compute the physical worker position from libtpu chip coordinates.
+
+    Each worker owns a block of chips. The chip block size is determined by
+    chips_per_vm. For 4-chip workers, the block is 2x2 chips. For 8-chip
+    workers (v5e/v6e single-host), it could be 2x4 or 4x2.
+
+    The worker's position in the mesh is determined by dividing the minimum
+    (x, y) chip coordinate by the chip block dimensions.
+
+    Args:
+        coords_list: List of coordinate lists from libtpu. Each entry is
+            [x, y] for 2D or [x, y, z] for 3D.
+        parent_topology: The parent topology string (e.g. "4x4").
+        chips_per_vm: Number of chips per VM for dimension calculation.
+
+    Returns:
+        Physical worker ID (0-based linear index in the worker mesh).
+
+    Raises:
+        ValueError: If coordinates don't match the topology.
+    """
+    worker_dims = _get_worker_dims_for_topology(parent_topology, "")
+    chip_dims = _parse_topology_dims(parent_topology)
+
+    if len(worker_dims) == 2:
+        # 2D: each coordinate is [x, y]
+        topo_y, topo_x = chip_dims
+        worker_dim_y, worker_dim_x = worker_dims
+
+        min_x = min(c[0] for c in coords_list)
+        min_y = min(c[1] for c in coords_list)
+
+        # Determine block dimensions
+        block_y = max(1, topo_y // worker_dim_y)
+        block_x = max(1, topo_x // worker_dim_x)
+
+        wx = min_x // block_x
+        wy = min_y // block_y
+
+        if wx >= worker_dim_x or wy >= worker_dim_y:
+            raise ValueError(
+                f"Computed worker position ({wx}, {wy}) is out of bounds "
+                f"for parent topology '{parent_topology}' with worker dims "
+                f"({worker_dim_y}, {worker_dim_x})."
+            )
+
+        return wy * worker_dim_x + wx
+    else:
+        # 3D: each coordinate is [x, y] or [x, y, z].
+        worker_dim_z, worker_dim_y, worker_dim_x = worker_dims
+        topo_z, topo_y, topo_x = chip_dims
+
+        block_z = max(1, topo_z // worker_dim_z)
+        block_y = max(1, topo_y // worker_dim_y)
+        block_x = max(1, topo_x // worker_dim_x)
+
+        min_x = min(c[0] for c in coords_list)
+        min_y = min(c[1] for c in coords_list)
+
+        # Check if z coordinates are present.
+        has_z = any(len(c) >= 3 for c in coords_list)
+        if not has_z:
+            wz = 0
+        else:
+            min_z = min(c[2] if len(c) >= 3 else 0 for c in coords_list)
+            wz = min_z // block_z
+
+        wx = min_x // block_x
+        wy = min_y // block_y
+
+        return wz * worker_dim_y * worker_dim_x + wy * worker_dim_x + wx
+
+
+def _build_subslice_labels(
+    physical_worker_id: int,
+    parent_topology: str,
+) -> Dict[str, str]:
+    """Compute subslice labels for a worker at a given physical position.
+
+    For each valid sub-topology smaller than the parent, computes which
+    subslice index this worker belongs to based on its physical position
+    in the worker mesh.
+
+    Args:
+        physical_worker_id: 0-based linear index in the worker mesh.
+        parent_topology: The parent topology string (e.g. "4x4", "4x4x4").
+
+    Returns:
+        Dict mapping label keys (e.g. "ray.io/tpu-subslice-2x4") to subslice
+        index strings (e.g. "0").
+    """
+    worker_dims = _get_worker_dims_for_topology(parent_topology, "")
+
+    if len(worker_dims) == 2:
+        dim_y, dim_x = worker_dims
+        idx_y = physical_worker_id // dim_x
+        idx_x = physical_worker_id % dim_x
+
+        # NOTE: _VALID_TOPOLOGY_WORKER_DIMS_2D must be in ascending order by
+        # total worker count. The 'break' below relies on this property: once
+        # we reach the parent topology, all subsequent entries are at least as
+        # large and need not be examined.
+        labels: Dict[str, str] = {}
+        for sub_shape, (sub_y, sub_x) in _VALID_TOPOLOGY_WORKER_DIMS_2D.items():
+            if sub_y > dim_y or sub_x > dim_x:
+                continue
+            if sub_shape == parent_topology:
+                break
+            subslice_id = (idx_y // sub_y) * (dim_x // sub_x) + (idx_x // sub_x)
+            labels[f"{TPU_SUBSLICE_LABEL_PREFIX}{sub_shape}"] = str(subslice_id)
+        return labels
+    else:
+        dim_z, dim_y, dim_x = worker_dims
+        wz = physical_worker_id // (dim_y * dim_x)
+        remainder = physical_worker_id % (dim_y * dim_x)
+        wy = remainder // dim_x
+        wx = remainder % dim_x
+
+        # NOTE: _VALID_TOPOLOGY_WORKER_DIMS_3D must be in ascending order by
+        # total worker count. The 'break' relies on this property.
+        labels = {}
+        for sub_shape, (sub_z, sub_y, sub_x) in _VALID_TOPOLOGY_WORKER_DIMS_3D.items():
+            if sub_z > dim_z or sub_y > dim_y or sub_x > dim_x:
+                continue
+            if sub_shape == parent_topology:
+                break
+            subslice_id = (
+                (wz // sub_z) * (dim_y // sub_y) * (dim_x // sub_x)
+                + (wy // sub_y) * (dim_x // sub_x)
+                + (wx // sub_x)
+            )
+            labels[f"{TPU_SUBSLICE_LABEL_PREFIX}{sub_shape}"] = str(subslice_id)
+        return labels
 
 
 DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S: float = 100.0

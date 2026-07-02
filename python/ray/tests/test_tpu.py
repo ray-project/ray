@@ -5,7 +5,7 @@ import pytest
 
 import ray
 from ray._private.accelerators import TPUAcceleratorManager, tpu
-from ray.util.tpu import SlicePlacementGroup
+from ray.util.tpu import SlicePlacementGroup, SubslicePlacementGroup
 
 
 def test_get_current_pod_name_smoke():
@@ -1365,6 +1365,352 @@ def test_dispatch_integration_v6e_single_host(ray_v6e_tpu_cluster):
 
     assert len(refs) == 1
     ray.get(refs)
+# Mock data for SubslicePlacementGroup tests.
+# Chip coordinates for 4 workers of a 4x4 v6e slice (4 chips/VM each).
+# Format per worker: list of (hostname, chip_index, [x, y]) tuples.
+_4X4_MOCK_COORDS = [
+    [
+        ("tpu0", 0, [0, 0]),
+        ("tpu0", 1, [0, 1]),
+        ("tpu0", 2, [1, 0]),
+        ("tpu0", 3, [1, 1]),
+    ],
+    [
+        ("tpu1", 0, [2, 0]),
+        ("tpu1", 1, [2, 1]),
+        ("tpu1", 2, [3, 0]),
+        ("tpu1", 3, [3, 1]),
+    ],
+    [
+        ("tpu2", 0, [0, 2]),
+        ("tpu2", 1, [0, 3]),
+        ("tpu2", 2, [1, 2]),
+        ("tpu2", 3, [1, 3]),
+    ],
+    [
+        ("tpu3", 0, [2, 2]),
+        ("tpu3", 1, [2, 3]),
+        ("tpu3", 2, [3, 2]),
+        ("tpu3", 3, [3, 3]),
+    ],
+]
+
+_4X4_DISCOVERY_RESULTS = [
+    {"node_id": f"node_{i}", "coords": _4X4_MOCK_COORDS[i]} for i in range(4)
+]
+
+
+def _make_dummy_nodes(slice_name: str, topology: str, n_workers: int):
+    """Build a list of dummy Ray node dicts for use in mocked tests."""
+    return [
+        {
+            "NodeID": f"node_{i}",
+            "Alive": True,
+            "Resources": {"TPU": 4},
+            "Labels": {
+                ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name,
+                ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: str(i),
+                ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: topology,
+            },
+        }
+        for i in range(n_workers)
+    ]
+
+
+@pytest.fixture
+def mock_4x4_pgs():
+    """Mock PlacementGroup objects for subslice integration tests.
+
+    Clears the subslice runtime cache before each test to prevent
+    cross-test pollution.
+    """
+    ray.util.tpu._tpu_subslice_cache.clear()
+
+    from ray.util.placement_group import PlacementGroup
+
+    mock_head_pg = MagicMock(spec=PlacementGroup)
+    mock_worker_pg = MagicMock(spec=PlacementGroup)
+    mock_id = MagicMock()
+    mock_id.is_nil.return_value = False
+    mock_worker_pg.id = mock_id
+    mock_worker_pg.bundle_count = 4
+    mock_worker_pg.ready.return_value = "ready_ref"
+
+    return mock_head_pg, mock_worker_pg
+
+
+# SubslicePlacementGroup validation
+def test_subslice_placement_group_validation():
+    """Test validation and error handling for subslice_placement_group."""
+    # Invalid subslice topology for accelerator (non-numeric)
+    with pytest.raises(
+        ValueError,
+        match="is not valid for accelerator version",
+    ):
+        ray.util.tpu.subslice_placement_group(
+            subslice_topology="invalid_topology",
+            accelerator_version="v6e",
+        )
+
+    # Subslice topology is not supported for this accelerator
+    with pytest.raises(
+        ValueError,
+        match="is not valid for accelerator version",
+    ):
+        ray.util.tpu.subslice_placement_group(
+            subslice_topology="2x2x2",  # 3D not valid for v6e
+            accelerator_version="v6e",
+        )
+
+    # chips_per_vm must be positive
+    with pytest.raises(ValueError, match="chips_per_vm must be positive"):
+        ray.util.tpu.subslice_placement_group(
+            subslice_topology="2x4",
+            accelerator_version="v6e",
+            chips_per_vm=0,
+        )
+
+
+# SubslicePlacementGroup mocked integration tests
+
+
+def test_subslice_placement_group_basic_mocked(mock_4x4_pgs):
+    """Test full SubslicePlacementGroup lifecycle with mocked discovery."""
+    mock_head_pg, mock_worker_pg = mock_4x4_pgs
+    slice_name = "test-slice-basic"
+    dummy_nodes = _make_dummy_nodes(slice_name, "4x4", 4)
+
+    with patch(
+        "ray.util.tpu.reserve_tpu_slice",
+        return_value=(slice_name, mock_head_pg),
+    ), patch("ray.util.tpu.placement_group", return_value=mock_worker_pg), patch(
+        "ray.nodes", return_value=dummy_nodes
+    ), patch(
+        "ray.get"
+    ) as mock_ray_get:
+        mock_ray_get.side_effect = [None, _4X4_DISCOVERY_RESULTS]
+
+        sg = ray.util.tpu.subslice_placement_group(
+            subslice_topology="2x4",
+            accelerator_version="v6e",
+            chips_per_vm=4,
+            subslice_index=0,
+        )
+
+        assert sg.parent_topology == "4x4"
+        assert sg.subslice_topology == "2x4"
+        assert sg.subslice_index == 0
+        assert sg.slice_name == slice_name
+        assert sg.num_hosts == 2  # 2 workers in a 2x4 subslice of 4x4
+        assert sg.chips_per_host == 4
+        assert sg.bundle_resources == {"CPU": 1, "TPU": 4}
+        assert len(sg.bundle_label_selector) == 2
+
+        # Verify cache was populated correctly.
+        assert slice_name in ray.util.tpu._tpu_subslice_cache
+        cache = ray.util.tpu._tpu_subslice_cache[slice_name]
+        assert cache["0"]["ray.io/tpu-subslice-2x4"] == "0"
+        assert cache["1"]["ray.io/tpu-subslice-2x4"] == "0"
+        assert cache["2"]["ray.io/tpu-subslice-2x4"] == "1"
+        assert cache["3"]["ray.io/tpu-subslice-2x4"] == "1"
+
+        sg.shutdown()
+
+
+def test_subslice_placement_group_subslice_index_1(mock_4x4_pgs):
+    """Test requesting subslice index 1 in a 4x4 slice."""
+    mock_head_pg, mock_worker_pg = mock_4x4_pgs
+    slice_name = "test-slice-sg1"
+    dummy_nodes = _make_dummy_nodes(slice_name, "4x4", 4)
+
+    with patch(
+        "ray.util.tpu.reserve_tpu_slice",
+        return_value=(slice_name, mock_head_pg),
+    ), patch("ray.util.tpu.placement_group", return_value=mock_worker_pg), patch(
+        "ray.nodes", return_value=dummy_nodes
+    ), patch(
+        "ray.get"
+    ) as mock_ray_get:
+        mock_ray_get.side_effect = [None, _4X4_DISCOVERY_RESULTS]
+
+        sg = ray.util.tpu.subslice_placement_group(
+            subslice_topology="2x4",
+            accelerator_version="v6e",
+            chips_per_vm=4,
+            subslice_index=1,
+        )
+
+        # Subslice 1 of 2x4 in 4x4 = workers 2 and 3.
+        assert sg.subslice_index == 1
+        assert sg.num_hosts == 2
+
+        sg.shutdown()
+
+
+def test_subslice_invalid_subslice_index():
+    """Test that an out-of-bounds subslice_index raises a clear error.
+
+    Uses a 2x2 subslice of a 2x4 parent (2 workers, valid indices: 0 and 1).
+    """
+    ray.util.tpu._tpu_subslice_cache.clear()
+
+    # The first two workers of _4X4_MOCK_COORDS have chips consistent with a
+    # 2x4 parent (block_y=2, block_x=2), so we reuse them directly.
+    discovery_results_2w = _4X4_DISCOVERY_RESULTS[:2]
+    dummy_nodes = _make_dummy_nodes("test-slice-invalid-idx", "2x4", 2)
+
+    from ray.util.placement_group import PlacementGroup
+
+    mock_head_pg = MagicMock(spec=PlacementGroup)
+    mock_worker_pg = MagicMock(spec=PlacementGroup)
+    mock_id = MagicMock()
+    mock_id.is_nil.return_value = False
+    mock_worker_pg.id = mock_id
+    mock_worker_pg.bundle_count = 2
+    mock_worker_pg.ready.return_value = "ready_ref"
+
+    with patch(
+        "ray.util.tpu.reserve_tpu_slice",
+        return_value=("test-slice-invalid-idx", mock_head_pg),
+    ), patch("ray.util.tpu.placement_group", return_value=mock_worker_pg), patch(
+        "ray.nodes", return_value=dummy_nodes
+    ), patch(
+        "ray.get"
+    ) as mock_ray_get:
+        mock_ray_get.side_effect = [None, discovery_results_2w]
+
+        with pytest.raises(ValueError, match="Subslice index 5 is not valid"):
+            ray.util.tpu.subslice_placement_group(
+                subslice_topology="2x2",
+                accelerator_version="v6e",
+                chips_per_vm=4,
+                subslice_index=5,
+            )
+
+
+def test_subslice_release_head_pgs_and_shutdown():
+    """Test that release_head_pgs and shutdown are idempotent."""
+    from ray.util.placement_group import PlacementGroup
+
+    mock_pg = MagicMock(spec=PlacementGroup)
+    mock_head = MagicMock(spec=PlacementGroup)
+
+    sg = SubslicePlacementGroup(
+        placement_group=mock_pg,
+        parent_topology="4x4",
+        subslice_topology="2x4",
+        subslice_index=0,
+        slice_name="test-slice",
+        num_hosts=2,
+        chips_per_host=4,
+        bundle_resources={"TPU": 4, "CPU": 1},
+        head_placement_groups=[mock_head],
+    )
+
+    assert len(sg.head_placement_groups) == 1
+    sg.release_head_pgs()
+    assert len(sg.head_placement_groups) == 0
+    # Idempotent
+    sg.release_head_pgs()
+    assert len(sg.head_placement_groups) == 0
+
+    sg.shutdown()
+    assert sg.placement_group is None
+    # Idempotent
+    sg.shutdown()
+    assert sg.placement_group is None
+
+
+def test_subslice_cache_hit_after_discovery(mock_4x4_pgs):
+    """Test that a second subslice request uses the runtime cache, not discovery."""
+    mock_head_pg, mock_worker_pg = mock_4x4_pgs
+    slice_name = "test-slice-cache"
+    dummy_nodes = _make_dummy_nodes(slice_name, "4x4", 4)
+
+    with patch(
+        "ray.util.tpu.reserve_tpu_slice",
+        return_value=(slice_name, mock_head_pg),
+    ) as mock_reserve, patch(
+        "ray.util.tpu.placement_group", return_value=mock_worker_pg
+    ), patch(
+        "ray.nodes", return_value=dummy_nodes
+    ), patch(
+        "ray.get"
+    ) as mock_ray_get:
+        mock_ray_get.side_effect = [None, _4X4_DISCOVERY_RESULTS]
+
+        # First call: triggers discovery and populates the runtime cache.
+        sg1 = ray.util.tpu.subslice_placement_group(
+            subslice_topology="2x4",
+            accelerator_version="v6e",
+            chips_per_vm=4,
+            subslice_index=0,
+        )
+        assert mock_reserve.call_count == 1
+        sg1.shutdown()
+
+        # Second call with the same topology: must hit the runtime cache and
+        # not trigger another slice reservation or libtpu discovery.
+        mock_reserve.reset_mock()
+        sg2 = ray.util.tpu.subslice_placement_group(
+            subslice_topology="2x4",
+            accelerator_version="v6e",
+            chips_per_vm=4,
+            subslice_index=0,
+        )
+        assert mock_reserve.call_count == 0  # Cache hit — no discovery.
+        sg2.shutdown()
+
+
+def test_subslice_same_as_parent_falls_back_to_full_slice():
+    """When no strictly larger parent topology exists, subslice_placement_group
+    falls back to SlicePlacementGroup and wraps the result in a
+    SubslicePlacementGroup for API consistency.
+    """
+    ray.util.tpu._tpu_subslice_cache.clear()
+
+    from ray.util.placement_group import PlacementGroup
+
+    mock_pg = MagicMock(spec=PlacementGroup)
+    mock_head_pg = MagicMock(spec=PlacementGroup)
+    mock_id = MagicMock()
+    mock_id.is_nil.return_value = False
+    mock_pg.id = mock_id
+
+    # Build a mock SlicePlacementGroup to stand in for the full-slice fallback.
+    mock_slice = MagicMock(spec=SlicePlacementGroup)
+    mock_slice.placement_group = mock_pg
+    mock_slice.num_hosts = 4
+    mock_slice.chips_per_host = 4
+    mock_slice.bundle_resources = {"CPU": 1, "TPU": 4}
+    mock_slice.head_placement_groups = [mock_head_pg]
+    mock_slice.bundle_label_selector = [
+        {
+            ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "test-slice-fallback",
+            ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: str(i),
+        }
+        for i in range(4)
+    ]
+
+    # Patch _resolve_parent_topology to return the same topology as the
+    # subslice request, simulating the "no larger parent" condition.
+    with patch("ray.util.tpu._resolve_parent_topology", return_value="4x4",), patch(
+        "ray.util.tpu.SlicePlacementGroup",
+        return_value=mock_slice,
+    ):
+        sg = ray.util.tpu.subslice_placement_group(
+            subslice_topology="4x4",
+            accelerator_version="v6e",
+            chips_per_vm=4,
+        )
+
+    assert sg.parent_topology == "4x4"
+    assert sg.subslice_topology == "4x4"
+    assert sg.subslice_index == 0
+    assert sg.slice_name == "test-slice-fallback"
+    assert sg.num_hosts == 4
+    assert len(sg.bundle_label_selector) == 4
+    sg.shutdown()
 
 
 if __name__ == "__main__":
