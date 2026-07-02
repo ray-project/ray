@@ -51,6 +51,14 @@ class BackpressurePolicy(ABC):
         """
         return True
 
+    def get_block_reason(self, op: "PhysicalOperator") -> Optional[str]:
+        """Return a short human-readable reason explaining why this policy is
+        blocking ``op``, or ``None`` if it isn't.  Used to enrich the
+        backpressure status string in the progress bar — purely a debug
+        signal, not consulted by execution logic.
+        """
+        return None
+
     def max_task_output_bytes_to_read(self, op: "PhysicalOperator") -> Optional[int]:
         """Return the maximum bytes of pending task outputs can be read for
         the given operator. None means no limit.
