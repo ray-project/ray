@@ -1,9 +1,13 @@
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
     ScalingDecision,
 )
 from ray.train.v2.api.exceptions import TrainingFailedError
+
+if TYPE_CHECKING:
+    from ray.train.v2._internal.execution.preemption import PreemptionInfo
 
 
 class TrainControllerStateType(Enum):
@@ -17,6 +21,9 @@ class TrainControllerStateType(Enum):
        RESCHEDULING: The train controller is in the process of rescheduling the worker
            group.
        RUNNING: The train controller is actively running training tasks.
+       PREEMPTING: A preemption was detected; the controller is waiting for the
+           worker group to drain (workers exit or the deadline elapses) before
+           restarting.
        RESTARTING: The train controller is in the process of recovering from an error.
        RESIZING: The train controller is in the process of resizing a running worker
            group.
@@ -39,6 +46,7 @@ class TrainControllerStateType(Enum):
     SCHEDULING = ("SCHEDULING", False, False)
     RESCHEDULING = ("RESCHEDULING", False, False)
     RUNNING = ("RUNNING", False, False)
+    PREEMPTING = ("PREEMPTING", False, False)
     RESTARTING = ("RESTARTING", False, True)
     RESIZING = ("RESIZING", False, True)
     SHUTTING_DOWN = ("SHUTTING_DOWN", False, False)
@@ -111,6 +119,19 @@ class RunningState(TrainControllerState):
     # For example, we may want to indicate if any health checks failed.
     def __init__(self):
         super().__init__(state_type=TrainControllerStateType.RUNNING)
+
+
+class PreemptingState(TrainControllerState):
+    def __init__(
+        self,
+        preemption_info: "PreemptionInfo",
+        detected_at_s: float,
+    ):
+        super().__init__(state_type=TrainControllerStateType.PREEMPTING)
+        self.preemption_info = preemption_info
+        # Wall-clock time (epoch seconds) when the preemption was first
+        # detected, used to bound the drain wait when no deadline is known.
+        self.detected_at_s = detected_at_s
 
 
 class RestartingState(TrainControllerState):

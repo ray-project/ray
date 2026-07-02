@@ -14,6 +14,7 @@ from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_ENABLE_PREEMPTION_WATCHER,
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
+    DEFAULT_PREEMPTION_DEADLINE_S,
     ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
     ENABLE_PREEMPTION_WATCHER_ENV_VAR,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
@@ -41,6 +42,7 @@ from ray.train.v2._internal.execution.controller.state import (
     ErroredState,
     FinishedState,
     InitializingState,
+    PreemptingState,
     ReschedulingState,
     ResizingState,
     RestartingState,
@@ -53,6 +55,7 @@ from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     FailurePolicy,
 )
+from ray.train.v2._internal.execution.preemption import merge_preemption_info
 from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
     ResizeDecision,
@@ -64,10 +67,15 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupPollStatus,
 )
 from ray.train.v2._internal.logging import LoggingManager
-from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
+from ray.train.v2._internal.util import (
+    ObjectRefWrapper,
+    time_monotonic,
+    time_seconds,
+)
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import (
     ControllerError,
+    PreemptionError,
     TrainingFailedError,
 )
 from ray.train.v2.api.report_config import CheckpointConsistencyMode
@@ -75,6 +83,7 @@ from ray.train.v2.api.result import Result
 from ray.train.v2.api.validation_config import ValidationConfig
 
 if TYPE_CHECKING:
+    from ray.train.v2._internal.execution.preemption import PreemptionInfo
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 from ray.util.tpu import get_tpu_num_slices_for_workers
@@ -342,7 +351,7 @@ class TrainController:
         controller_state: TrainControllerState,
         training_failed_error: TrainingFailedError,
     ) -> TrainControllerState:
-        if isinstance(controller_state, RunningState):
+        if isinstance(controller_state, (RunningState, PreemptingState)):
             return RestartingState(training_failed_error=training_failed_error)
         elif isinstance(controller_state, SchedulingState):
             return ReschedulingState(training_failed_error=training_failed_error)
@@ -644,6 +653,24 @@ class TrainController:
         elif isinstance(controller_state, RunningState):
             worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
 
+            # A worker echoed a preemption signal: move to PreemptingState and
+            # let the worker group drain before restarting. Checked before both
+            # the completion and error branches: a worker may react to the
+            # signal by checkpointing and returning (a clean exit) or be killed
+            # when its node is reclaimed (an error). Either way we want to drain
+            # and restart against the preemption retry budget, rather than
+            # finishing the run or charging it against `max_failures`.
+            preemption_info = worker_group_status.get_preemption_info()
+            if preemption_info is not None:
+                return TrainControllerLoopIterationResult(
+                    run_attempt_id=self._get_run_attempt_id(),
+                    previous_state=controller_state,
+                    next_state=PreemptingState(
+                        preemption_info=preemption_info,
+                        detected_at_s=time_seconds(),
+                    ),
+                )
+
             if worker_group_status.finished and not worker_group_status.errors:
                 self._return_value = worker_group_status.worker_statuses[0].return_value
                 return TrainControllerLoopIterationResult(
@@ -653,6 +680,7 @@ class TrainController:
                         next_state=FinishedState(),
                     ),
                 )
+
             if worker_group_status.errors:
                 worker_group_error = worker_group_status.get_worker_group_error()
                 failure_decision = self._failure_policy.make_decision(
@@ -683,6 +711,8 @@ class TrainController:
                 previous_state=controller_state,
                 next_state=next_state,
             )
+        elif isinstance(controller_state, PreemptingState):
+            return await self._handle_preempting_state(controller_state)
         elif isinstance(controller_state, ResizingState):
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
@@ -695,6 +725,83 @@ class TrainController:
             return await self._shutdown()
         else:
             raise ValueError(f"Unexpected controller state: {controller_state}")
+
+    @staticmethod
+    def _is_preemption_deadline_exceeded(
+        preemption_info: "PreemptionInfo",
+        detected_at_s: float,
+    ) -> bool:
+        """Whether the preemption reclaim deadline has passed.
+
+        `deadline_ms` mirrors Ray Core's draining deadline: an epoch timestamp
+        in milliseconds. Ray Core reports 0 (which the watcher maps to None)
+        when no deadline is known, in which case we cap the drain wait at
+        `DEFAULT_PREEMPTION_DEADLINE_S` from when the preemption was first
+        detected, so we never wait indefinitely for workers to exit.
+        """
+        deadline_ms = preemption_info.deadline_ms
+        if deadline_ms is None:
+            deadline_ms = (detected_at_s + DEFAULT_PREEMPTION_DEADLINE_S) * 1000
+        return time_seconds() * 1000 >= deadline_ms
+
+    async def _handle_preempting_state(
+        self, controller_state: PreemptingState
+    ) -> TrainControllerLoopIterationResult:
+        """Wait for the worker group to drain after a preemption, then restart.
+
+        Polls the worker group until either all workers have exited or the
+        preemption deadline elapses (capped at `DEFAULT_PREEMPTION_DEADLINE_S`
+        when the deadline is unknown), whichever comes first. It then
+        synthesizes a `PreemptionError` and routes it through the failure
+        policy, which consumes the separate `max_preemption_failures` budget:
+        while that budget remains (it is unlimited by default), the decision is
+        RETRY and we transition to RestartingState, which tears down and
+        recreates the worker group on healthy nodes; once the budget is
+        exhausted the decision is RAISE and we transition to ShuttingDownState
+        followed by ErroredState.
+        """
+        worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
+
+        # Keep the preemption info current as additional nodes are drained.
+        # Merge rather than overwrite so a staggered preemption (or a node
+        # dropping out of the draining list once it's gone) doesn't erase
+        # earlier preempted nodes/ranks from the final PreemptionError.
+        new_preemption_info = worker_group_status.get_preemption_info()
+        if new_preemption_info is not None:
+            preemption_info = merge_preemption_info(
+                controller_state.preemption_info, new_preemption_info
+            )
+        else:
+            preemption_info = controller_state.preemption_info
+        deadline_exceeded = self._is_preemption_deadline_exceeded(
+            preemption_info, controller_state.detected_at_s
+        )
+
+        # Stay in PreemptingState until the workers exit on their own or the
+        # reclaim deadline passes.
+        if not worker_group_status.finished and not deadline_exceeded:
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=controller_state,
+                next_state=PreemptingState(
+                    preemption_info=preemption_info,
+                    detected_at_s=controller_state.detected_at_s,
+                ),
+            )
+
+        # True when the deadline forced teardown before every rank had exited.
+        drain_timed_out = deadline_exceeded and not worker_group_status.finished
+        preemption_error = PreemptionError(
+            preemption_info=preemption_info,
+            worker_failures=worker_group_status.errors,
+            drain_timed_out=drain_timed_out,
+        )
+        failure_decision = self._failure_policy.make_decision(
+            training_failed_error=preemption_error,
+        )
+        return self._execute_failure_decision(
+            failure_decision, training_failed_error=preemption_error
+        )
 
     def _generate_run_attempt_id(self):
         self._run_attempt_id = uuid.uuid4().hex

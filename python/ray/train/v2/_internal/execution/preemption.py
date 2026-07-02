@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Set
 import ray
 from ray.actor import ActorHandle
 from ray.train.v2._internal.constants import DEFAULT_PREEMPTION_POLL_INTERVAL_S
+from ray.util.annotations import PublicAPI
 from ray.util.tpu import get_tpu_slice_name_from_node
 
 if TYPE_CHECKING:
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="alpha")
 @dataclass(frozen=True)
 class PreemptionInfo:
     """Information about an imminent preemption event.
@@ -21,8 +23,8 @@ class PreemptionInfo:
     Attributes:
         deadline_ms: Earliest preemption deadline (UNIX time in milliseconds)
             across all preempted nodes. ``None`` if no deadline was reported.
-        preempted_node_to_ranks: Map of preempted ``node_id`` to the worker ``world_rank``s affected when that node
-            is preempted.
+        preempted_node_to_ranks: Map of each preempted ``node_id`` to the
+            affected worker world ranks when that node is preempted.
     """
 
     deadline_ms: Optional[int]
@@ -39,6 +41,29 @@ class PreemptionInfo:
         return sorted(
             {r for ranks in self.preempted_node_to_ranks.values() for r in ranks}
         )
+
+
+def merge_preemption_info(old: PreemptionInfo, new: PreemptionInfo) -> PreemptionInfo:
+    """Combine two preemption signals into one.
+
+    Used while the controller drains the worker group: in a staggered
+    preemption (nodes drained one after another, or a previously drained node
+    dropping out of Ray Core's draining list once it's gone) a later signal may
+    not include earlier preempted nodes. Union the ``preempted_node_to_ranks``
+    maps so we keep the full history, and keep the earliest known deadline.
+    """
+    merged_node_to_ranks: Dict[str, List[int]] = {
+        node: list(ranks) for node, ranks in old.preempted_node_to_ranks.items()
+    }
+    for node, ranks in new.preempted_node_to_ranks.items():
+        merged_node_to_ranks[node] = sorted(
+            set(merged_node_to_ranks.get(node, [])) | set(ranks)
+        )
+    deadlines = [d for d in (old.deadline_ms, new.deadline_ms) if d is not None]
+    return PreemptionInfo(
+        deadline_ms=min(deadlines) if deadlines else None,
+        preempted_node_to_ranks=merged_node_to_ranks,
+    )
 
 
 @dataclass

@@ -17,6 +17,7 @@ from ray.train.v2._internal.execution.controller.state import (
     ErroredState,
     FinishedState,
     InitializingState,
+    PreemptingState,
     ReschedulingState,
     ResizingState,
     RestartingState,
@@ -26,6 +27,7 @@ from ray.train.v2._internal.execution.controller.state import (
     TrainControllerState,
 )
 from ray.train.v2._internal.execution.failure_handling import FailureDecision
+from ray.train.v2._internal.execution.preemption import PreemptionInfo
 from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
     ResizeDecision,
@@ -35,7 +37,7 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerStatus,
 )
 from ray.train.v2.api.config import ScalingConfig
-from ray.train.v2.api.exceptions import ControllerError
+from ray.train.v2.api.exceptions import ControllerError, PreemptionError
 from ray.train.v2.tests.util import (
     DummyObjectRefWrapper,
     DummyWorkerGroup,
@@ -191,6 +193,163 @@ async def test_failure_handling():
     assert isinstance(controller.get_state(), ShuttingDownState)
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), ErroredState)
+
+
+async def _advance_to_running(controller, scaling_policy, num_workers):
+    scaling_policy.queue_recovery_decision(
+        ResizeDecision(num_workers=num_workers, resources_per_worker={})
+    )
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), SchedulingState)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RunningState)
+
+
+@pytest.mark.asyncio
+async def test_preemption_drain_then_restart():
+    """A preemption signal moves Running -> Preempting; once workers drain, the
+    controller raises a PreemptionError through the failure policy and restarts."""
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    train_run_context = create_dummy_run_context()
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=train_run_context,
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
+
+    await _advance_to_running(controller, scaling_policy, num_workers=2)
+    worker_group_before = controller.get_worker_group()
+
+    # A worker echoes a preemption signal (no deadline) -> PreemptingState.
+    info = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"node-a": [0]})
+    worker_group_before.preempt_worker(0, info)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), PreemptingState)
+
+    # Workers still running and no deadline -> keep draining.
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), PreemptingState)
+
+    # Once all workers exit, route through the failure policy and restart.
+    worker_group_before.finish_worker(0)
+    worker_group_before.finish_worker(1)
+    failure_policy.queue_decision(FailureDecision.RETRY)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RestartingState)
+    assert isinstance(controller.get_state().training_failed_error, PreemptionError)
+
+    await _advance_to_running(controller, scaling_policy, num_workers=2)
+    # Full restart -> fresh worker group.
+    assert controller.get_worker_group() is not worker_group_before
+
+
+@pytest.mark.asyncio
+async def test_preemption_takes_priority_over_clean_exit():
+    """If a worker reacts to preemption by checkpointing and returning (a clean
+    exit), the controller must still drain and restart, not finish the run."""
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    train_run_context = create_dummy_run_context()
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=train_run_context,
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
+
+    await _advance_to_running(controller, scaling_policy, num_workers=2)
+    worker_group = controller.get_worker_group()
+
+    # Workers exit cleanly (no errors) but carry a preemption signal.
+    info = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"node-a": [0]})
+    worker_group.preempt_worker(0, info)
+    worker_group.finish_worker(0)
+    worker_group.finish_worker(1)
+    await controller._run_control_loop_iteration()
+    # Must NOT short-circuit to FinishedState.
+    assert isinstance(controller.get_state(), PreemptingState)
+
+    # Workers already exited -> next iteration drains and restarts.
+    failure_policy.queue_decision(FailureDecision.RETRY)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RestartingState)
+    assert isinstance(controller.get_state().training_failed_error, PreemptionError)
+
+
+@pytest.mark.asyncio
+async def test_preemption_deadline_exceeded_and_raise():
+    """If the reclaim deadline passes before workers exit, the controller stops
+    draining and surfaces a PreemptionError with drain_timed_out=True."""
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    train_run_context = create_dummy_run_context()
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=train_run_context,
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
+
+    await _advance_to_running(controller, scaling_policy, num_workers=2)
+
+    # Deadline of 1ms past epoch is always exceeded.
+    info = PreemptionInfo(deadline_ms=1, preempted_node_to_ranks={"node-a": [0, 1]})
+    controller.get_worker_group().preempt_worker(0, info)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), PreemptingState)
+
+    # Deadline already passed even though workers are still running -> stop
+    # draining and raise.
+    failure_policy.queue_decision(FailureDecision.RAISE)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), ShuttingDownState)
+    await controller._run_control_loop_iteration()
+    state = controller.get_state()
+    assert isinstance(state, ErroredState)
+    assert isinstance(state.training_failed_error, PreemptionError)
+    assert state.training_failed_error.drain_timed_out is True
+
+
+def test_preemption_deadline_unknown_falls_back_to_default(monkeypatch):
+    """With no deadline reported, the drain wait is capped at the default grace
+    window measured from when the preemption was detected."""
+    import ray.train.v2._internal.execution.controller.controller as controller_module
+    from ray.train.v2._internal.constants import DEFAULT_PREEMPTION_DEADLINE_S
+
+    info = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"node-a": [0]})
+    detected_at_s = 1000.0
+
+    # Before the fallback window elapses -> not exceeded.
+    monkeypatch.setattr(
+        controller_module,
+        "time_seconds",
+        lambda: detected_at_s + DEFAULT_PREEMPTION_DEADLINE_S - 1,
+    )
+    assert not TrainController._is_preemption_deadline_exceeded(info, detected_at_s)
+
+    # After the fallback window elapses -> exceeded.
+    monkeypatch.setattr(
+        controller_module,
+        "time_seconds",
+        lambda: detected_at_s + DEFAULT_PREEMPTION_DEADLINE_S + 1,
+    )
+    assert TrainController._is_preemption_deadline_exceeded(info, detected_at_s)
+
+
+def test_preemption_deadline_uses_reported_deadline(monkeypatch):
+    """A known deadline is honored regardless of when it was detected."""
+    import ray.train.v2._internal.execution.controller.controller as controller_module
+
+    # Deadline is 5s past epoch (5000ms).
+    info = PreemptionInfo(deadline_ms=5000, preempted_node_to_ranks={"node-a": [0]})
+
+    monkeypatch.setattr(controller_module, "time_seconds", lambda: 4.0)
+    assert not TrainController._is_preemption_deadline_exceeded(info, detected_at_s=0.0)
+
+    monkeypatch.setattr(controller_module, "time_seconds", lambda: 6.0)
+    assert TrainController._is_preemption_deadline_exceeded(info, detected_at_s=0.0)
 
 
 @pytest.mark.parametrize(
