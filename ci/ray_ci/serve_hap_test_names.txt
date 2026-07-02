@@ -3,6 +3,7 @@
 //python/ray/serve/tests:test_batching
 //python/ray/serve/tests:test_cli
 //python/ray/serve/tests:test_cli_2
+//python/ray/serve/tests:test_cluster
 //python/ray/serve/tests:test_controller_recovery
 //python/ray/serve/tests:test_deploy
 //python/ray/serve/tests:test_deploy_2
