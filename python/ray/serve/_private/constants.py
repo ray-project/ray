@@ -1045,6 +1045,7 @@ if RAY_SERVE_ENABLE_HA_PROXY:
 if RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED:
     RAY_SERVE_HAPROXY_METRICS_ENABLED = True
 
+RAY_SERVE_RECON_OPT = get_env_bool("RAY_SERVE_RECON_OPT", "1")
 # Feature flag to aggregate metrics at the controller instead of the replicas or handles.
 RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
     "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER", "0"
