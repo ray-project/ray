@@ -44,6 +44,7 @@ class TestCreateChunkMetadata:
                 row_group_start=0,
                 row_group_end=1,
                 in_memory_size=0,
+                num_rows=1,
                 extra_field="boom",
             )
 
@@ -53,11 +54,13 @@ class TestCreateChunkMetadata:
             row_group_start=2,
             row_group_end=5,
             in_memory_size=7,
+            num_rows=9,
         )
         assert md == {
             "row_group_start": 2,
             "row_group_end": 5,
             "in_memory_size": 7,
+            "num_rows": 9,
         }
 
 
@@ -143,6 +146,30 @@ class TestParquetFileChunker:
         for m, _ in chunks:
             assert "in_memory_size" in m
             assert m["in_memory_size"] > 0
+
+    def test_stamps_per_chunk_num_rows_summing_to_file_total(self, tmp_path):
+        # Each chunk carries the exact row count of its row-group range; one
+        # chunk per row group here (target below rg size). Summed across chunks
+        # it equals the file total -- this is what lets ``Dataset.count()``
+        # answer from the manifest without reading any data columns.
+        p = str(tmp_path / "d.parquet")
+        size = _write_parquet_with_row_groups(p, num_row_groups=5, rows_per_group=10)
+        chunker = ParquetFileChunker(target_chunk_size=1)
+        chunks = list(chunker.generate_chunk_metadatas(p, size))
+        assert [m["num_rows"] for m, _ in chunks] == [10, 10, 10, 10, 10]
+        assert sum(m["num_rows"] for m, _ in chunks) == 50
+
+    def test_num_rows_matches_bundled_row_group_span(self, tmp_path):
+        # When several row groups bundle into one chunk, num_rows is the sum
+        # over the whole bundled [row_group_start, row_group_end) span.
+        p = str(tmp_path / "d.parquet")
+        size = _write_parquet_with_row_groups(p, num_row_groups=4, rows_per_group=10)
+        chunker = ParquetFileChunker(target_chunk_size=10 * 1024**3)  # one chunk
+        chunks = list(chunker.generate_chunk_metadatas(p, size))
+        assert len(chunks) == 1
+        m, _ = chunks[0]
+        assert (m["row_group_start"], m["row_group_end"]) == (0, 4)
+        assert m["num_rows"] == 40
 
     def test_ranges_are_contiguous_and_cover_all_row_groups(self, tmp_path):
         """Bundled ranges partition [0, num_row_groups) with no gaps/overlap."""

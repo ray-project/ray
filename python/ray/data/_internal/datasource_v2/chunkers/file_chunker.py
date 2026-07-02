@@ -77,11 +77,17 @@ class ParquetFileChunkMetadata(ChunkMetadata):
     estimate in bytes (see :func:`estimate_chunk_in_memory_size`), carried
     through the manifest so the partitioner sizes partitions by the decoded
     footprint rather than a flat on-disk × ratio guess.
+
+    ``num_rows`` is the exact number of rows in this chunk's row-group range,
+    summed from the footer. It lets ``Dataset.count()`` answer from the
+    manifest without reading any data columns (see
+    ``Dataset._try_count_from_manifest``).
     """
 
     row_group_start: int  # inclusive
     row_group_end: int  # exclusive
     in_memory_size: int  # footer-derived Arrow in-memory estimate (bytes)
+    num_rows: int  # exact rows in [row_group_start, row_group_end), from footer
 
 
 def estimate_chunk_in_memory_size(
@@ -340,6 +346,7 @@ class ParquetFileChunker(FileChunker):
                     row_group_start=start,
                     row_group_end=end,
                     in_memory_size=in_memory,
+                    num_rows=rows,
                 ),
                 on_disk_size,
             )
