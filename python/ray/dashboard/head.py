@@ -133,6 +133,10 @@ class DashboardHead:
         self.pid = os.getpid()
         self.dashboard_proc = psutil.Process()
         self.proxy_server_url = proxy_server_url
+        self._dashboard_address_registered = False
+        self._dashboard_http_address = None
+        self._metrics_address_registered = False
+        self._metrics_http_address = None
 
         # If the dashboard is started as non-minimal version, http server should
         # be configured to expose APIs.
@@ -154,6 +158,7 @@ class DashboardHead:
             self.session_name,
             self.metrics,
             self.proxy_server_url,
+            gcs_client=self.gcs_client,
         )
         await self.http_server.run(dashboard_head_modules, subprocess_module_handles)
 
@@ -170,6 +175,42 @@ class DashboardHead:
         assert self.http_server, "Accessing unsupported API in a minimal ray."
         return self.http_server.http_session
 
+    async def _register_addresses(self):
+        if not self.gcs_client.is_gcs_leader_local():
+            logger.debug("Not the GCS leader, skip registration.")
+            return
+
+        if not self._dashboard_address_registered and self._dashboard_http_address:
+            await self.gcs_client.async_internal_kv_put(
+                ray_constants.DASHBOARD_ADDRESS.encode(),
+                self._dashboard_http_address.encode(),
+                True,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            )
+            # Register the webui:url after promotion as we skip it in the initial setup in node.py.
+            await self.gcs_client.async_internal_kv_put(
+                b"webui:url",
+                self._dashboard_http_address.encode(),
+                True,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            )
+            self._dashboard_address_registered = True
+            logger.info(
+                "Successfully registered dashboard and webui addresses in GCS after promotion."
+            )
+
+        if not self._metrics_address_registered and self._metrics_http_address:
+            await self.gcs_client.async_internal_kv_put(
+                "DashboardMetricsAddress".encode(),
+                self._metrics_http_address.encode(),
+                True,
+                namespace=None,
+            )
+            self._metrics_address_registered = True
+            logger.info(
+                "Successfully registered dashboard metrics address in GCS after promotion."
+            )
+
     @async_loop_forever(dashboard_consts.GCS_CHECK_ALIVE_INTERVAL_SECONDS)
     async def _gcs_check_alive(self):
         try:
@@ -178,6 +219,27 @@ class DashboardHead:
             await self.gcs_client.async_check_alive(node_ids=[], timeout=None)
         except Exception:
             logger.warning("Failed to check gcs aliveness, will retry", exc_info=True)
+
+    async def _register_addresses_loop(self):
+        is_leader_elect_enabled = ray_constants.RAY_LEADER_ELECT
+        while True:
+            dashboard_done = (
+                self._dashboard_http_address is None
+                or self._dashboard_address_registered
+            )
+            metrics_done = (
+                self._metrics_http_address is None or self._metrics_address_registered
+            )
+            if dashboard_done and metrics_done:
+                break
+            try:
+                if not is_leader_elect_enabled or self.gcs_client.is_gcs_leader_local():
+                    await self._register_addresses()
+            except Exception:
+                logger.warning(
+                    "Failed to register dashboard addresses, will retry", exc_info=True
+                )
+            await asyncio.sleep(dashboard_consts.GCS_CHECK_ALIVE_INTERVAL_SECONDS)
 
     def _load_modules(
         self, modules_to_load: Optional[Set[str]] = None
@@ -242,6 +304,7 @@ class DashboardHead:
             ip=self.ip,
             http_host=self.http_host,
             http_port=self.http_port,
+            gcs_client=self.gcs_client,
         )
 
         # Select modules to load.
@@ -328,10 +391,30 @@ class DashboardHead:
         # Setup prometheus metrics export server
         assert internal_kv._internal_kv_initialized()
         assert gcs_client is not None
-        address = build_address(self.ip, DASHBOARD_METRIC_PORT)
-        await gcs_client.async_internal_kv_put(
-            "DashboardMetricsAddress".encode(), address.encode(), True, namespace=None
-        )
+        self._metrics_http_address = build_address(self.ip, DASHBOARD_METRIC_PORT)
+        is_leader_elect_enabled = ray_constants.RAY_LEADER_ELECT
+        if is_leader_elect_enabled and not gcs_client.is_gcs_leader_local():
+            logger.debug(
+                "GCS is in passive mode. Deferring dashboard metrics address registration after promotion."
+            )
+        else:
+            try:
+                await gcs_client.async_internal_kv_put(
+                    "DashboardMetricsAddress".encode(),
+                    self._metrics_http_address.encode(),
+                    True,
+                    namespace=None,
+                )
+                self._metrics_address_registered = True
+                logger.info("Successfully registered dashboard metrics address in GCS.")
+            except ValueError as e:
+                if "passive" in str(e).lower():
+                    logger.debug(
+                        "GCS is in passive mode. Deferring dashboard metrics address registration after promotion."
+                    )
+                else:
+                    raise
+
         if prometheus_client:
             try:
                 logger.info(
@@ -478,21 +561,40 @@ class DashboardHead:
         # We need to expose dashboard's node's ip for other worker nodes
         # if it's not localhost.
         dashboard_http_host = self.ip if not is_localhost(self.http_host) else http_host
+
         # This synchronous code inside an async context is not great.
         # It is however acceptable, because this only gets run once
         # during initialization and therefore cannot block the event loop.
         # This could be done better in the future, including
         # removing the polling on the Ray side, by communicating the
         # server address to Ray via stdin / stdout or a pipe.
-        self.gcs_client.internal_kv_put(
-            ray_constants.DASHBOARD_ADDRESS.encode(),
-            build_address(dashboard_http_host, http_port).encode(),
-            True,
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        )
+        self._dashboard_http_address = build_address(dashboard_http_host, http_port)
+        is_leader_elect_enabled = ray_constants.RAY_LEADER_ELECT
+        if is_leader_elect_enabled and not self.gcs_client.is_gcs_leader_local():
+            logger.debug(
+                "GCS is in passive mode. Deferring dashboard address registration after promotion."
+            )
+        else:
+            try:
+                self.gcs_client.internal_kv_put(
+                    ray_constants.DASHBOARD_ADDRESS.encode(),
+                    self._dashboard_http_address.encode(),
+                    True,
+                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                )
+                self._dashboard_address_registered = True
+                logger.info("Successfully registered dashboard address in GCS.")
+            except ValueError as e:
+                if "passive" in str(e).lower():
+                    logger.debug(
+                        "GCS is in passive mode. Deferring dashboard address registration after promotion."
+                    )
+                else:
+                    raise
 
         concurrent_tasks = [
             self._gcs_check_alive(),
+            self._register_addresses_loop(),
         ]
         for m in dashboard_head_modules:
             concurrent_tasks.append(m.run())

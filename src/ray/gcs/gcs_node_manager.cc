@@ -40,7 +40,8 @@ GcsNodeManager::GcsNodeManager(
     observability::RayEventRecorderInterface &ray_event_recorder,
     const std::string &session_name,
     pubsub::ObservabilityPublisher *observability_publisher,
-    ClockInterface &clock)
+    ClockInterface &clock,
+    std::function<bool()> is_leader_fn)
     : gcs_publisher_(gcs_publisher),
       observability_publisher_(observability_publisher),
       gcs_table_storage_(gcs_table_storage),
@@ -50,6 +51,7 @@ GcsNodeManager::GcsNodeManager(
       ray_event_recorder_(ray_event_recorder),
       session_name_(session_name),
       clock_(clock),
+      is_leader_fn_(std::move(is_leader_fn)),
       export_event_write_enabled_(IsExportAPIEnabledNode()) {}
 
 void GcsNodeManager::WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info,
@@ -123,6 +125,25 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
+  if (!is_leader_fn_()) {
+    if (!node_info.is_head_node()) {
+      GCS_RPC_SEND_REPLY(
+          send_reply_callback,
+          reply,
+          Status::InvalidArgument(
+              "Only the local head node registration is allowed on passive GCS."));
+      return;
+    }
+    RAY_LOG(INFO).WithField(node_id) << "GCS server is in passive mode. Caching local "
+                                        "head node registration in-memory.";
+    {
+      absl::MutexLock lock(&mutex_);
+      passive_local_node_ = std::make_shared<rpc::GcsNodeInfo>(node_info);
+    }
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    return;
+  }
+
   if (node_info.is_head_node()) {
     // mark all old head nodes as dead if exists:
     // 1. should never happen when HA is not used
@@ -159,10 +180,13 @@ void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
                                       rpc::CheckAliveReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) {
   absl::ReaderMutexLock lock(&mutex_);
+  reply->set_is_leader(is_leader_fn_());
   reply->set_ray_version(kRayVersion);
   for (const auto &id : request.node_ids()) {
     const auto node_id = NodeID::FromBinary(id);
-    const bool is_alive = alive_nodes_.contains(node_id);
+    const bool is_alive = alive_nodes_.contains(node_id) ||
+                          (passive_local_node_ != nullptr &&
+                           NodeID::FromBinary(passive_local_node_->node_id()) == node_id);
     reply->mutable_raylet_alive()->Add(is_alive);
   }
 
@@ -269,7 +293,8 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
       continue;
     }
   }
-  const size_t total_num_nodes = alive_nodes_.size() + dead_nodes_.size();
+  const size_t total_num_nodes =
+      alive_nodes_.size() + dead_nodes_.size() + (passive_local_node_ != nullptr ? 1 : 0);
   int64_t num_added = 0;
 
   if (request.node_selectors_size() > 0 && only_node_id_filters) {
@@ -280,6 +305,10 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
         auto iter = alive_nodes_.find(node_id);
         if (iter != alive_nodes_.end()) {
           *reply->add_node_info_list() = *iter->second;
+          ++num_added;
+        } else if (passive_local_node_ != nullptr &&
+                   NodeID::FromBinary(passive_local_node_->node_id()) == node_id) {
+          *reply->add_node_info_list() = *passive_local_node_;
           ++num_added;
         }
       }
@@ -317,6 +346,11 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
     if (!request.has_state_filter() ||
         request.state_filter() == rpc::GcsNodeInfo::ALIVE) {
       check_and_add_head_node(alive_nodes_);
+      if (num_added == 0 && passive_local_node_ != nullptr &&
+          passive_local_node_->is_head_node()) {
+        *reply->add_node_info_list() = *passive_local_node_;
+        ++num_added;
+      }
     }
     if (num_added == 0 && (!request.has_state_filter() ||
                            request.state_filter() == rpc::GcsNodeInfo::DEAD)) {
@@ -348,13 +382,29 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
         }
       };
 
+  auto check_and_add_passive_node = [&]() {
+    if (passive_local_node_ != nullptr && num_added < limit) {
+      NodeID node_id = NodeID::FromBinary(passive_local_node_->node_id());
+      if (!has_node_selectors || node_ids.contains(node_id) ||
+          node_names.contains(passive_local_node_->node_name()) ||
+          node_ip_addresses.contains(passive_local_node_->node_manager_address()) ||
+          (is_head_node_filter.has_value() &&
+           passive_local_node_->is_head_node() == is_head_node_filter.value())) {
+        *reply->add_node_info_list() = *passive_local_node_;
+        num_added += 1;
+      }
+    }
+  };
+
   if (request.has_state_filter()) {
     switch (request.state_filter()) {
     case rpc::GcsNodeInfo::ALIVE:
       if (!has_node_selectors) {
-        reply->mutable_node_info_list()->Reserve(alive_nodes_.size());
+        reply->mutable_node_info_list()->Reserve(
+            alive_nodes_.size() + (passive_local_node_ != nullptr ? 1 : 0));
       }
       add_to_response(alive_nodes_);
+      check_and_add_passive_node();
       break;
     case rpc::GcsNodeInfo::DEAD:
       if (!has_node_selectors) {
@@ -368,9 +418,11 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
     }
   } else {
     if (!has_node_selectors) {
-      reply->mutable_node_info_list()->Reserve(alive_nodes_.size() + dead_nodes_.size());
+      reply->mutable_node_info_list()->Reserve(alive_nodes_.size() + dead_nodes_.size() +
+                                               (passive_local_node_ != nullptr ? 1 : 0));
     }
     add_to_response(alive_nodes_);
+    check_and_add_passive_node();
     add_to_response(dead_nodes_);
   }
 
@@ -414,6 +466,10 @@ void GcsNodeManager::GetAllNodeAddressAndLiveness(
         if (iter != alive_nodes_.end()) {
           callback(ConvertToGcsNodeAddressAndLiveness(*iter->second));
           ++num_added;
+        } else if (passive_local_node_ != nullptr &&
+                   NodeID::FromBinary(passive_local_node_->node_id()) == node_id) {
+          callback(ConvertToGcsNodeAddressAndLiveness(*passive_local_node_));
+          ++num_added;
         }
       }
       if (!state_filter.has_value() || state_filter == rpc::GcsNodeInfo::DEAD) {
@@ -439,10 +495,18 @@ void GcsNodeManager::GetAllNodeAddressAndLiveness(
         }
       };
 
+  auto check_and_add_passive_node = [&]() {
+    if (passive_local_node_ != nullptr && num_added < limit) {
+      callback(ConvertToGcsNodeAddressAndLiveness(*passive_local_node_));
+      num_added += 1;
+    }
+  };
+
   if (state_filter.has_value()) {
     switch (state_filter.value()) {
     case rpc::GcsNodeInfo::ALIVE:
       add_with_callback(alive_nodes_);
+      check_and_add_passive_node();
       break;
     case rpc::GcsNodeInfo::DEAD:
       add_with_callback(dead_nodes_);
@@ -453,6 +517,7 @@ void GcsNodeManager::GetAllNodeAddressAndLiveness(
     }
   } else {
     add_with_callback(alive_nodes_);
+    check_and_add_passive_node();
     add_with_callback(dead_nodes_);
   }
 }
@@ -538,6 +603,10 @@ bool GcsNodeManager::IsNodeDead(const ray::NodeID &node_id) const {
 
 bool GcsNodeManager::IsNodeAlive(const ray::NodeID &node_id) const {
   absl::ReaderMutexLock lock(&mutex_);
+  if (passive_local_node_ != nullptr &&
+      NodeID::FromBinary(passive_local_node_->node_id()) == node_id) {
+    return true;
+  }
   return alive_nodes_.contains(node_id);
 }
 
@@ -823,6 +892,33 @@ void GcsNodeManager::UpdateAliveNode(
   // variables
   alive_nodes_[node_id] =
       std::make_shared<const rpc::GcsNodeInfo>(std::move(new_node_info));
+}
+
+void GcsNodeManager::PromoteNodeManager() {
+  std::shared_ptr<rpc::GcsNodeInfo> local_node;
+  {
+    absl::MutexLock lock(&mutex_);
+    if (passive_local_node_ == nullptr) {
+      return;
+    }
+    local_node = passive_local_node_;
+    passive_local_node_ = nullptr;
+  }
+
+  RAY_LOG(INFO)
+      << "Promoting GcsNodeManager: registering local head node via standard pipeline.";
+  rpc::RegisterNodeRequest request;
+  request.mutable_node_info()->CopyFrom(*local_node);
+  auto reply = std::make_shared<rpc::RegisterNodeReply>();
+  auto send_reply_callback = [local_node, reply](Status status,
+                                                 std::function<void()> f1,
+                                                 std::function<void()> f2) {
+    RAY_CHECK_OK(status) << "Failed to register local head node during GCS promotion.";
+    RAY_LOG(INFO)
+        << "Successfully registered local head node during GCS promotion. Node ID: "
+        << NodeID::FromBinary(local_node->node_id());
+  };
+  HandleRegisterNode(request, reply.get(), send_reply_callback);
 }
 
 }  // namespace gcs

@@ -80,6 +80,7 @@ class DashboardAgent:
 
         # grpc server is None in mininal.
         self.server = None
+        self._gcs_check_alive_task = None
         # http_server is None in minimal.
         self.http_server = None
 
@@ -205,11 +206,66 @@ class DashboardAgent:
     def get_node_id(self) -> str:
         return self.node_id
 
+    @dashboard_utils.async_loop_forever(
+        dashboard_consts.DASHBOARD_AGENT_REGISTER_INTERVAL_SECONDS
+    )
+    async def _gcs_check_alive(self):
+        try:
+            await self.gcs_client.async_check_alive(node_ids=[], timeout=2)
+        except Exception:
+            pass
+
+    async def _register_agent(self, http_port: int, grpc_port: int):
+        is_leader_elect_enabled = ray_constants.RAY_LEADER_ELECT
+        if is_leader_elect_enabled:
+            # The background gcs_check_alive task is needed to detect if the current GCS server is the leader.
+            self._gcs_check_alive_task = asyncio.create_task(self._gcs_check_alive())
+
+        try:
+            while True:
+                if not is_leader_elect_enabled or self.gcs_client.is_gcs_leader_local():
+                    put_by_node_id = self.gcs_client.async_internal_kv_put(
+                        f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
+                        json.dumps([self.ip, http_port, grpc_port]).encode(),
+                        True,
+                        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                    )
+                    put_by_ip = self.gcs_client.async_internal_kv_put(
+                        f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{self.ip}".encode(),
+                        json.dumps([self.node_id, http_port, grpc_port]).encode(),
+                        True,
+                        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                    )
+                    try:
+                        await asyncio.gather(put_by_node_id, put_by_ip)
+                        logger.info("Successfully registered agent address in GCS.")
+                        break
+                    except Exception as e:
+                        if isinstance(e, ValueError) and "passive" in str(e).lower():
+                            logger.debug(
+                                "GCS is in passive mode. Skipping registering agent address in GCS. Will retry in the loop."
+                            )
+                        else:
+                            logger.warning(
+                                f"Failed to register agent address in GCS: {e}. Will retry."
+                            )
+                await asyncio.sleep(
+                    dashboard_consts.DASHBOARD_AGENT_REGISTER_INTERVAL_SECONDS
+                )
+        finally:
+            if self._gcs_check_alive_task:
+                self._gcs_check_alive_task.cancel()
+                try:
+                    await self._gcs_check_alive_task
+                except asyncio.CancelledError:
+                    pass
+
     async def run(self):
         # Start a grpc asyncio server.
         if self.server:
             await self.server.start()
 
+        tasks = []
         modules = self._load_modules()
 
         launch_http_server = True
@@ -246,22 +302,11 @@ class DashboardAgent:
             # -1 should indicate that http server is not started.
             http_port = -1 if not self.http_server else self.http_server.http_port
             grpc_port = -1 if not self.server else self.grpc_port
-            put_by_node_id = self.gcs_client.async_internal_kv_put(
-                f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
-                json.dumps([self.ip, http_port, grpc_port]).encode(),
-                True,
-                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-            )
-            put_by_ip = self.gcs_client.async_internal_kv_put(
-                f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{self.ip}".encode(),
-                json.dumps([self.node_id, http_port, grpc_port]).encode(),
-                True,
-                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            tasks.append(
+                asyncio.create_task(self._register_agent(http_port, grpc_port))
             )
 
-            await asyncio.gather(put_by_node_id, put_by_ip)
-
-        tasks = [m.run(self.server) for m in modules]
+        tasks.extend([m.run(self.server) for m in modules])
 
         if sys.platform not in ["win32", "cygwin"]:
 

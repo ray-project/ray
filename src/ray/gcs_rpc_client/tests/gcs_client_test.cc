@@ -565,6 +565,7 @@ TEST_P(GcsClientTest, TestGcsClientCheckAlive) {
     ASSERT_EQ(nodes_alive.size(), 2);
     ASSERT_FALSE(nodes_alive[0]);
     ASSERT_FALSE(nodes_alive[1]);
+    ASSERT_TRUE(gcs_client_->Nodes().IsGcsLeader());
   }
 
   ASSERT_TRUE(RegisterNode(*node_info1));
@@ -575,6 +576,7 @@ TEST_P(GcsClientTest, TestGcsClientCheckAlive) {
     ASSERT_EQ(nodes_alive.size(), 2);
     ASSERT_TRUE(nodes_alive[0]);
     ASSERT_FALSE(nodes_alive[1]);
+    ASSERT_TRUE(gcs_client_->Nodes().IsGcsLeader());
   }
 }
 

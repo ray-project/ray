@@ -405,6 +405,7 @@ ray_cc_library(
         "gcs_server.cc",
     ],
     hdrs = [
+        "gcs_leader_gated_handlers.h",
         "gcs_server.h",
     ],
     features = select({

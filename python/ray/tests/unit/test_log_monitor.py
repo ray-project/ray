@@ -1,9 +1,11 @@
 import os
 import sys
+import types
 
 import pytest
 
-from ray._private.log_monitor import LogFileInfo
+from ray._private import ray_constants
+from ray._private.log_monitor import LogFileInfo, LogMonitor
 
 
 def _create_file_info(log_path):
@@ -125,6 +127,121 @@ def test_reopen_same_inode_growth_keeps_size_when_last_opened(tmp_path):
     file_info.reopen_if_necessary()
 
     assert file_info.size_when_last_opened == original_size
+    file_info.file_handle.close()
+
+
+class SentinelException(Exception):
+    pass
+
+
+def test_log_monitor_passive_publish_suppression(tmp_path, monkeypatch):
+    """Verify that LogMonitor suppresses log publishing when GCS is in passive mode."""
+    log_path = tmp_path / "worker-0-1234.out"
+    with open(log_path, "w") as f:
+        print("Test log message line", file=f)
+
+    file_info = _create_file_info(log_path)
+    file_info.worker_pid = 1234
+    file_info.job_id = "01000000"
+    file_info.is_err_file = False
+    file_info.actor_name = None
+    file_info.task_name = None
+    file_info.reopen_if_necessary()
+
+    mock_gcs_client = types.SimpleNamespace()
+    # Simulate GCS running in passive mode on this head node
+    mock_gcs_client.is_gcs_leader = lambda: False
+
+    called = {"publish": False}
+
+    def mock_publish_logs(data):
+        called["publish"] = True
+
+    mock_gcs_client.publish_logs = mock_publish_logs
+
+    log_monitor = LogMonitor.__new__(LogMonitor)
+    log_monitor.ip = "127.0.0.1"
+    log_monitor.logs_dir = str(tmp_path)
+    log_monitor.gcs_client = mock_gcs_client
+    log_monitor.open_file_infos = [file_info]
+    log_monitor.closed_file_infos = []
+    log_monitor.max_files_open = 1000
+    log_monitor.log_filenames = set()
+
+    # Enable leader election config
+    monkeypatch.setattr(ray_constants, "RAY_LEADER_ELECT", True)
+
+    def mock_sleep(seconds):
+        raise SentinelException("Loop suppressed")
+
+    import ray._private.log_monitor as log_monitor_module
+
+    monkeypatch.setattr(log_monitor_module.time, "sleep", mock_sleep)
+
+    log_monitor.should_update_filenames = lambda last: False
+    log_monitor.open_closed_files = lambda: None
+
+    with pytest.raises(SentinelException):
+        log_monitor.run()
+
+    # Verify log publishing to GCS was suppressed in passive mode
+    assert not called["publish"]
+    file_info.file_handle.close()
+
+
+def test_log_monitor_active_publish_resume(tmp_path, monkeypatch):
+    """Verify that LogMonitor publishes logs when GCS is in active mode."""
+    log_path = tmp_path / "worker-0-5678.out"
+    with open(log_path, "w") as f:
+        print("Active log message line", file=f)
+
+    file_info = _create_file_info(log_path)
+    file_info.worker_pid = 5678
+    file_info.job_id = "01000000"
+    file_info.is_err_file = False
+    file_info.actor_name = None
+    file_info.task_name = None
+    file_info.reopen_if_necessary()
+
+    mock_gcs_client = types.SimpleNamespace()
+    # Simulate GCS running in active leader mode on this head node
+    mock_gcs_client.is_gcs_leader = lambda: True
+
+    called = {"publish": False}
+
+    def mock_publish_logs(data):
+        called["publish"] = True
+        assert data["lines"] == ["Active log message line\n"]
+
+    mock_gcs_client.publish_logs = mock_publish_logs
+
+    log_monitor = LogMonitor.__new__(LogMonitor)
+    log_monitor.ip = "127.0.0.1"
+    log_monitor.logs_dir = str(tmp_path)
+    log_monitor.gcs_client = mock_gcs_client
+    log_monitor.open_file_infos = [file_info]
+    log_monitor.closed_file_infos = []
+    log_monitor.max_files_open = 1000
+    log_monitor.log_filenames = set()
+
+    # Enable leader election config
+    monkeypatch.setattr(ray_constants, "RAY_LEADER_ELECT", True)
+
+    def mock_sleep(seconds):
+        raise SentinelException("Loop active run finished")
+
+    import ray._private.log_monitor as log_monitor_module
+
+    monkeypatch.setattr(log_monitor_module.time, "sleep", mock_sleep)
+
+    log_monitor.should_update_filenames = lambda last: False
+    log_monitor.open_closed_files = lambda: None
+
+    with pytest.raises(SentinelException):
+        log_monitor.run()
+
+    # Verify log publishing to GCS resumed in active mode
+    assert called["publish"]
     file_info.file_handle.close()
 
 

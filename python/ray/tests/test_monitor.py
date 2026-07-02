@@ -5,6 +5,7 @@ import pytest
 
 import ray
 import ray._private.gcs_utils as gcs_utils
+from ray._private import ray_constants, utils as ray_utils
 from ray.autoscaler._private import (
     load_metrics as load_metrics_module,
     monitor as monitor_module,
@@ -130,6 +131,75 @@ def test_update_load_metrics_uses_cluster_state(monkeypatch):
 
     last_used = monitor.load_metrics.ray_nodes_last_used_time_by_ip["1.2.3.4"]
     assert last_used == pytest.approx(fixed_time - 1.5)
+
+
+class SentinelException(Exception):
+    pass
+
+
+def test_monitor_passive_loop_suppression(monkeypatch):
+    """Verify that Monitor._run suppresses updates when GCS is in passive mode."""
+    monitor = monitor_module.Monitor.__new__(monitor_module.Monitor)
+    monitor.gcs_client = types.SimpleNamespace()
+    monitor.load_metrics = LoadMetrics()
+    monitor.retry_on_failure = True
+
+    called = {"update_load": False}
+
+    def mock_update_load_metrics():
+        called["update_load"] = True
+
+    monitor.update_load_metrics = mock_update_load_metrics
+    # Simulate GCS running in passive mode on this head node
+    monitor.gcs_client.is_gcs_leader = lambda: False
+
+    # Enable leader election config
+    monkeypatch.setattr(ray_constants, "RAY_LEADER_ELECT", True)
+
+    def mock_sleep(seconds):
+        # Raise sentinel exception on sleep to halt the infinite loop after one iteration
+        raise SentinelException("Loop suppressed")
+
+    monkeypatch.setattr(monitor_module.time, "sleep", mock_sleep)
+
+    with pytest.raises(SentinelException):
+        monitor._run()
+
+    # Verify load metrics gathering and scaling updates were skipped
+    assert not called["update_load"]
+
+
+def test_monitor_failure_handling_passive(monkeypatch):
+    """Verify that Monitor._handle_failure suppresses driver/KV errors in passive mode."""
+    monitor = monitor_module.Monitor.__new__(monitor_module.Monitor)
+    monitor.gcs_client = types.SimpleNamespace()
+    monitor.autoscaler = None
+    # Simulate GCS running in standby (passive) mode on this head node
+    monitor.gcs_client.is_gcs_leader = lambda: False
+    monitor.destroy_autoscaler_workers = lambda: None
+
+    # Enable leader election config
+    monkeypatch.setattr(ray_constants, "RAY_LEADER_ELECT", True)
+
+    called = {"kv_put": False, "publish_error": False}
+
+    def mock_kv_put(*args, **kwargs):
+        called["kv_put"] = True
+        raise ValueError("GCS is in passive mode")
+
+    monkeypatch.setattr(monitor_module, "_internal_kv_put", mock_kv_put)
+    monkeypatch.setattr(monitor_module, "_internal_kv_initialized", lambda: True)
+
+    def mock_publish_error(*args, **kwargs):
+        called["publish_error"] = True
+
+    monkeypatch.setattr(ray_utils, "publish_error_to_driver", mock_publish_error)
+
+    monitor._handle_failure("test failure")
+
+    # Verify GCS KV put was attempted (and raised ValueError), and driver error was skipped
+    assert called["kv_put"]
+    assert not called["publish_error"]
 
 
 if __name__ == "__main__":
