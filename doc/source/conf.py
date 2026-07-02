@@ -5,6 +5,7 @@ import os
 import pathlib
 import random
 import re
+import subprocess
 import sys
 import time
 import zipfile
@@ -122,10 +123,31 @@ llms_txt_exclude = [
 # fnmatch, so a `**/*.ipynb` pattern can't work — we enumerate each
 # notebook's docname instead. Notebooks remain fully rendered in the HTML
 # build; only the agent corpus drops them.
+# Enumerate notebook docnames from the git-tracked set, not a live filesystem
+# scan. A live rglob also picks up notebooks generated or restored during the
+# build, and that set differs between the clean cache-producer tree (Buildkite)
+# and the cache-restored consumer tree (Read the Docs). Since llms_txt_exclude
+# is an env-affecting config value, that difference makes Sphinx discard the
+# restored doctree cache and re-read every doc. The tracked set is identical
+# across environments for a given commit. See DOC-1344.
 _conf_dir = pathlib.Path(__file__).parent
+try:
+    _git_out = subprocess.run(
+        ["git", "ls-files", "-z", "*.ipynb"],
+        cwd=_conf_dir,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    # -z gives NUL-separated, unquoted paths (robust to spaces/newlines/unicode).
+    _notebooks = [nb for nb in _git_out.split("\0") if nb]
+except Exception:
+    # Non-git checkout or any git/decode failure: fall back to a filesystem scan.
+    _notebooks = [
+        p.relative_to(_conf_dir).as_posix() for p in _conf_dir.rglob("*.ipynb")
+    ]
 llms_txt_exclude += sorted(
-    p.relative_to(_conf_dir).with_suffix("").as_posix()
-    for p in _conf_dir.rglob("*.ipynb")
+    pathlib.Path(nb).with_suffix("").as_posix() for nb in _notebooks
 )
 
 # -- sphinx-collections: pull external template files at build time -----------
