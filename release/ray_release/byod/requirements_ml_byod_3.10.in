@@ -25,6 +25,7 @@ memray
 modin
 # mosaicml-streaming
 numpy
+obstore
 openai-whisper
 openskill
 orjson
