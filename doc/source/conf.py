@@ -81,11 +81,27 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx_docsearch",
     "sphinx_collections",
-    "sphinx_llms_txt",
+    "llms_txt",  # in-repo extension from _ext folder (replaces sphinx-llms-txt)
     "sphinxext.opengraph",
 ]
 
-# -- sphinx-llms-txt: agent-friendly summary and full corpus -----------
+# -- llms.txt: agent-friendly index + per-section full corpus -----------
+# Emitted by the in-repo `llms_txt` extension (doc/source/_ext/llms_txt.py),
+# which replaces the third-party `sphinx-llms-txt`.
+
+# H1 title for llms.txt / llms-full.txt.
+llms_txt_title = "Ray"
+
+# Nav sections to move under llms.txt's trailing `## Optional` heading (content
+# agents may skip to save context). Empty for v1.
+llms_txt_optional_sections = []
+
+# Only generate the agent manifests on published builds (master, release tags,
+# local); skip on Read the Docs PR previews, where they aren't review-critical
+# and the full-source read is wasted work. `external` is RtD's version type for
+# PR builds — the same signal `.readthedocs.yaml` keys the incremental vs. full
+# build off of. (DOC-1048)
+llms_txt_build = os.getenv("READTHEDOCS_VERSION_TYPE") != "external"
 
 llms_txt_summary = (
     "Ray is an open-source unified compute framework for scaling AI and "
@@ -105,6 +121,11 @@ llms_txt_exclude = [
     "genindex",
     "404",
     "_TableOfContents",
+    # Include-only fragments and template/example scaffolding — not standalone
+    # nav pages; keep them out of the per-section llms-full shards.
+    "_includes/*",
+    "_templates/*",
+    "templates/*",
     "cluster/running-applications/job-submission/doc/*",
     "ray-observability/reference/doc/*",
     "ray-core/api/doc/*",
@@ -115,18 +136,11 @@ llms_txt_exclude = [
     "rllib/package_ref/*",
 ]
 
-# Exclude Jupyter notebooks from llms-full.txt. sphinx-llms-txt reads each
-# docname's source verbatim from `_sources/`, so for `.ipynb` pages it
-# appends raw notebook JSON (cells, outputs, embedded base64 images) into
-# the corpus. `llms_txt_exclude` matches docnames (extension stripped) via
-# fnmatch, so a `**/*.ipynb` pattern can't work — we enumerate each
-# notebook's docname instead. Notebooks remain fully rendered in the HTML
-# build; only the agent corpus drops them.
-_conf_dir = pathlib.Path(__file__).parent
-llms_txt_exclude += sorted(
-    p.relative_to(_conf_dir).with_suffix("").as_posix()
-    for p in _conf_dir.rglob("*.ipynb")
-)
+# Jupyter notebooks are dropped from llms.txt / llms-full.txt by the llms_txt
+# extension itself, which skips any page whose source is a `.ipynb` (by file
+# suffix, at build time — so it also catches notebooks fetched into the build by
+# sphinx-collections). No docname enumeration needed here. Notebooks remain
+# fully rendered in the HTML build; only the agent corpus drops them.
 
 # -- sphinx-collections: pull external template files at build time -----------
 
