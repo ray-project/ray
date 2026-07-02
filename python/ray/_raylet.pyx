@@ -2399,11 +2399,14 @@ cdef CRayStatus task_execution_handler(
                         "An unexpected internal error "
                         "occurred while the worker "
                         "was executing a task.")
-                    ray._private.utils.push_error_to_driver(
-                        ray._private.worker.global_worker,
-                        "worker_crash",
-                        traceback_str,
-                        job_id=None)
+                    try:
+                        ray._private.utils.push_error_to_driver(
+                            ray._private.worker.global_worker,
+                            "worker_crash",
+                            traceback_str,
+                            job_id=None)
+                    except Exception:
+                        logger.exception("Failed to push worker_crash error to driver.")
                     sys_exit.unexpected_error_traceback = traceback_str
                 raise sys_exit
         except SystemExit as e:
@@ -2779,9 +2782,11 @@ cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
 cdef void call_actor_shutdown() noexcept nogil:
     """C++ wrapper function that calls the Python actor shutdown callback."""
     with gil:
-        core_worker = ray._private.worker.global_worker.core_worker
-        if core_worker.current_actor_is_asyncio():
-            core_worker.stop_and_join_asyncio_threads_if_exist()
+        worker = ray._private.worker.global_worker
+        core_worker = getattr(worker, "core_worker", None)
+        if core_worker is not None:
+            if core_worker.current_actor_is_asyncio():
+                core_worker.stop_and_join_asyncio_threads_if_exist()
 
         _call_actor_shutdown()
 
