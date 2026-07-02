@@ -284,52 +284,53 @@ class LLMConfig(BaseModelExtended):
             ) from e
 
     def _infer_supports_vision(
-        self, model_id_or_path: str, trust_remote_code: bool = False
+        self, hf_config: "transformers.PretrainedConfig"
     ) -> None:
-        """Called in llm node initializer together with other transformers calls. It
-        loads the model config from huggingface and sets the supports_vision
-        attribute based on whether the config has `vision_config`. All LVM models has
-        `vision_config` setup.
+        """Set the supports_vision attribute based on whether the config has
+        `vision_config`. All LVM models have `vision_config` setup.
         """
-        hf_config = self._load_hf_config(
-            model_id_or_path, trust_remote_code=trust_remote_code
-        )
         self._supports_vision = hasattr(hf_config, "vision_config")
 
     def _set_model_architecture(
         self,
-        model_id_or_path: Optional[str] = None,
+        hf_config: Optional["transformers.PretrainedConfig"] = None,
         model_architecture: Optional[str] = None,
-        trust_remote_code: bool = False,
     ) -> None:
-        """Called in llm node initializer together with other transformers calls. It
-        loads the model config from huggingface and sets the model_architecture
-        attribute based on whether the config has `architectures`.
+        """Set the model_architecture attribute from the config's `architectures`,
+        or from an explicitly provided architecture string.
         """
-        if model_id_or_path:
-            hf_config = self._load_hf_config(
-                model_id_or_path, trust_remote_code=trust_remote_code
-            )
-            if (
-                hf_config
-                and hasattr(hf_config, "architectures")
-                and hf_config.architectures
-            ):
-                self._model_architecture = hf_config.architectures[0]
+        if hf_config is not None:
+            architectures = getattr(hf_config, "architectures", None)
+            if architectures:
+                self._model_architecture = architectures[0]
 
         if model_architecture:
             self._model_architecture = model_architecture
 
     def apply_checkpoint_info(
-        self, model_id_or_path: str, trust_remote_code: bool = False
+        self,
+        model_id_or_path: str,
+        trust_remote_code: bool = False,
+        hf_config: Optional["transformers.PretrainedConfig"] = None,
     ) -> None:
-        """Apply the checkpoint info to the model config."""
-        self._infer_supports_vision(
-            model_id_or_path, trust_remote_code=trust_remote_code
-        )
-        self._set_model_architecture(
-            model_id_or_path, trust_remote_code=trust_remote_code
-        )
+        """Apply the checkpoint info to the model config.
+
+        Args:
+            model_id_or_path: HF repo id or local path. Used to load the config
+                only when ``hf_config`` is not supplied.
+            trust_remote_code: Forwarded to the HF config loader.
+            hf_config: An already-resolved transformers config. When provided it
+                is used directly, so callers that have already resolved the
+                config (e.g. the engine, which understands formats like GGUF)
+                avoid a second load and any format-specific path handling.
+        """
+        if hf_config is None:
+            hf_config = self._load_hf_config(
+                model_id_or_path, trust_remote_code=trust_remote_code
+            )
+
+        self._infer_supports_vision(hf_config)
+        self._set_model_architecture(hf_config=hf_config)
 
     def get_or_create_callback(self) -> Optional[CallbackBase]:
         """Get or create the callback instance for this process.
