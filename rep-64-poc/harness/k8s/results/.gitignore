@@ -1,0 +1,6 @@
+# Scratch results stay local
+*
+!.gitignore
+!canonical/
+!canonical/**
+!*.committed.json

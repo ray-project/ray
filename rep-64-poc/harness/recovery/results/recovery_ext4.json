@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "host": {
+    "node": "sanjha-ld2.linkedin.biz",
+    "system": "Linux",
+    "release": "5.15.186.1-1.cm2",
+    "machine": "x86_64"
+  },
+  "runs": [
+    {
+      "num_keys": 100,
+      "populate_wall_seconds": 0.5200776159763336,
+      "recover": {
+        "open_seconds": 0.031892,
+        "scan_seconds": 0.001189,
+        "lookup_seconds": 0.001085,
+        "scan_count": 100,
+        "lookup_present": true
+      }
+    },
+    {
+      "num_keys": 1000,
+      "populate_wall_seconds": 4.267062850296497,
+      "recover": {
+        "open_seconds": 0.035814,
+        "scan_seconds": 0.001902,
+        "lookup_seconds": 0.001077,
+        "scan_count": 1000,
+        "lookup_present": true
+      }
+    },
+    {
+      "num_keys": 10000,
+      "populate_wall_seconds": 41.69634494557977,
+      "recover": {
+        "open_seconds": 0.072602,
+        "scan_seconds": 0.007602,
+        "lookup_seconds": 0.001103,
+        "scan_count": 10000,
+        "lookup_present": true
+      }
+    }
+  ]
+}

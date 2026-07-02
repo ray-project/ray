@@ -1,0 +1,78 @@
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: rep64-rocksdb
+  namespace: ${NAMESPACE}
+spec:
+  rayVersion: "2.55.1"
+  headGroupSpec:
+    rayStartParams:
+      dashboard-host: "0.0.0.0"
+      # Ray-scheduler-visible CPU on the head node. Default 0 in env files
+      # so user actors land only on worker pods — actors co-located with
+      # the GCS die with the pod when the pod-delete recovery test fires
+      # SIGKILL, masking GCS state durability behind worker-process loss.
+      # K8s container request/limit below stays at HEAD_CPU; the head still
+      # needs real CPU to run gcs_server + raylet.
+      num-cpus: "${HEAD_RAY_CPU}"
+    template:
+      spec:
+        containers:
+          - name: ray-head
+            image: ${IMAGE}
+            imagePullPolicy: ${IMAGE_PULL_POLICY}
+            env:
+              - name: RAY_gcs_storage
+                value: "${GCS_STORAGE}"
+              - name: RAY_gcs_storage_path
+                value: "/data/gcs"
+              - name: RAY_gcs_rpc_server_reconnect_timeout_s
+                value: "60"
+              - name: RAY_raylet_start_wait_time_s
+                value: "120"
+            resources:
+              requests:
+                cpu: "${HEAD_CPU}"
+                memory: "${HEAD_MEMORY}"
+              limits:
+                cpu: "${HEAD_CPU}"
+                memory: "${HEAD_MEMORY}"
+            volumeMounts:
+              - name: gcs-storage
+                mountPath: /data
+        volumes:
+          - name: gcs-storage
+            persistentVolumeClaim:
+              claimName: rep64-gcs-data
+  workerGroupSpecs:
+    - groupName: small-group
+      replicas: ${WORKER_REPLICAS}
+      minReplicas: ${WORKER_REPLICAS}
+      maxReplicas: ${WORKER_REPLICAS}
+      rayStartParams:
+        num-cpus: "${WORKER_CPU}"
+      template:
+        spec:
+          containers:
+            - name: ray-worker
+              image: ${IMAGE}
+              imagePullPolicy: ${IMAGE_PULL_POLICY}
+              resources:
+                requests:
+                  cpu: "${WORKER_CPU}"
+                  memory: "${WORKER_MEMORY}"
+                limits:
+                  cpu: "${WORKER_CPU}"
+                  memory: "${WORKER_MEMORY}"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rep64-gcs-data
+  namespace: ${NAMESPACE}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: ${STORAGE_CLASS}
+  resources:
+    requests:
+      storage: ${PVC_SIZE}

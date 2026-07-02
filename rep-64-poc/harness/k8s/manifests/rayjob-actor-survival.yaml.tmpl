@@ -1,0 +1,15 @@
+apiVersion: ray.io/v1
+kind: RayJob
+metadata:
+  name: rep64-actor-survival-${RUN_ID}
+  namespace: ${NAMESPACE}
+spec:
+  clusterSelector:
+    ray.io/cluster: rep64-rocksdb
+  entrypoint: "python /home/ray/actor_survival.py"
+  runtimeEnvYAML: |
+    env_vars:
+      ACTOR_COUNT: "${ACTOR_COUNT}"
+    working_dir: "https://github.com/jhasm/ray/raw/${GIT_COMMIT}/rep-64-poc/harness/k8s/python/"
+  shutdownAfterJobFinishes: false
+  ttlSecondsAfterFinished: 600

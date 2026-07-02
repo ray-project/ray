@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "key_count": 10000,
+  "sampled_ops_per_kind": 10000,
+  "backends": {
+    "in_memory": {
+    "put": {
+      "count": 10000,
+      "aggregate_seconds": 0.0135,
+      "ops_per_sec": 739497.0,
+      "mean_us": 1.11,
+      "p50_us": 0.82,
+      "p95_us": 2.42,
+      "p99_us": 4.03,
+      "min_us": 0.35,
+      "max_us": 526.74
+    },
+    "get": {
+      "count": 10000,
+      "aggregate_seconds": 0.0111,
+      "ops_per_sec": 898531.9,
+      "mean_us": 0.94,
+      "p50_us": 0.82,
+      "p95_us": 1.54,
+      "p99_us": 3.48,
+      "min_us": 0.36,
+      "max_us": 16.36
+    },
+      "get_all_seconds": 0.002805,
+      "get_all_count": 10001,
+      "get_keys_seconds": 0.001353,
+      "get_keys_count": 1111
+    },
+    "rocksdb": {
+    "put": {
+      "count": 10000,
+      "aggregate_seconds": 48.0260,
+      "ops_per_sec": 208.2,
+      "mean_us": 4801.74,
+      "p50_us": 3811.14,
+      "p95_us": 9010.38,
+      "p99_us": 13326.03,
+      "min_us": 2830.13,
+      "max_us": 47168.18
+    },
+    "get": {
+      "count": 10000,
+      "aggregate_seconds": 0.0153,
+      "ops_per_sec": 651783.5,
+      "mean_us": 1.36,
+      "p50_us": 0.97,
+      "p95_us": 3.29,
+      "p99_us": 3.96,
+      "min_us": 0.57,
+      "max_us": 17.40
+    },
+      "get_all_seconds": 0.003582,
+      "get_all_count": 10001,
+      "get_keys_seconds": 0.001182,
+      "get_keys_count": 1111
+    }
+  }
+}

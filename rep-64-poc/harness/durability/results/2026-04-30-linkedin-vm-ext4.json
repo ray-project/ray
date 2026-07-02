@@ -1,0 +1,51 @@
+{
+  "harness": {
+    "name": "rep-64-poc-fsync-probe",
+    "schema_version": 1,
+    "started_at": "2026-04-30T02:41:39.220091+00:00",
+    "params": {
+      "target_dir": "/home/sanjha",
+      "n": 200,
+      "write_size": 4096
+    },
+    "environment": {
+      "host_os": "Linux",
+      "host_kernel": "5.15.186.1-1.cm2",
+      "host_machine": "x86_64",
+      "host_python": "3.9.19",
+      "hypervisor": "unknown_generic"
+    }
+  },
+  "results": {
+    "fsync": {
+      "available": true,
+      "n": 200,
+      "p50_us": 3607.878,
+      "p99_us": 12287.991,
+      "p999_us": 13627.394,
+      "min_us": 1477.592,
+      "max_us": 13810.908,
+      "mean_us": 4275.876
+    },
+    "fdatasync": {
+      "available": true,
+      "n": 200,
+      "p50_us": 1808.352,
+      "p99_us": 4489.141,
+      "p999_us": 5092.463,
+      "min_us": 1428.149,
+      "max_us": 6940.891,
+      "mean_us": 2017.291
+    },
+    "f_fullfsync": {
+      "available": false,
+      "reason": "F_FULLFSYNC is macOS-only"
+    }
+  },
+  "label": {
+    "verdict": "honest",
+    "notes": [
+      "fsync p50 >= 30 us is consistent with a real flush command reaching non-volatile media. Durability tests on this substrate are trustworthy."
+    ]
+  }
+}

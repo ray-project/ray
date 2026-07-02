@@ -1,0 +1,67 @@
+# job-substrate-probe.yaml.tmpl — substrate fsync-honesty probe.
+#
+# Renders a single-shot K8s Job that runs harness/durability/probe_fsync.py
+# against a PVC backed by ${STORAGE_CLASS}.  40-substrate-sweep.sh loops
+# over SUBSTRATE_SWEEP_CLASSES and renders this template once per class,
+# overriding STORAGE_CLASS and JOB_NAME each iteration.
+#
+# Job names are unique per StorageClass (e.g. rep64-probe-local-path) so
+# multiple sweep runs can coexist without colliding.
+#
+# The probe script ships via a ConfigMap that the bash driver creates from
+# probe_fsync.py at runtime — keeps the source-of-truth in one place
+# without requiring it to be baked into the image.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ${JOB_NAME}-data
+  namespace: ${NAMESPACE}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: ${STORAGE_CLASS}
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${JOB_NAME}
+  namespace: ${NAMESPACE}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        rep64.io/test: substrate-probe
+        rep64.io/storage-class: ${STORAGE_CLASS}
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: probe
+          image: ${IMAGE}
+          imagePullPolicy: ${IMAGE_PULL_POLICY}
+          command:
+            - python
+            - /scripts/probe_fsync.py
+            - --target-dir
+            - /data
+            - --n
+            - "200"
+            - --output
+            - "-"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: ${JOB_NAME}-data
+        - name: scripts
+          configMap:
+            name: ${JOB_NAME}-script
+            defaultMode: 0755

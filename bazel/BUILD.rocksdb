@@ -1,0 +1,69 @@
+# RocksDB build for Ray's GCS embedded storage backend (REP-64 POC).
+#
+# RocksDB 9.11.2 ships its own CMake build. We drive it through
+# rules_foreign_cc's cmake() rule (already vendored at version 0.9.0,
+# see bazel/ray_deps_setup.bzl).
+#
+# Phase 2 deliberately disables every optional feature — compression
+# libs, gflags, RocksDB tools, RocksDB tests, jemalloc, liburing — so
+# this first cut is the smallest possible librocksdb.a that the
+# RocksDbStoreClient can link against. Phase 6 / Phase 7 will revisit
+# compression (LZ4 for L2+, per the REP's tuning table) and jemalloc.
+
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "cmake")
+
+filegroup(
+    name = "all_srcs",
+    srcs = glob(
+        include = ["**"],
+        exclude = ["*.bazel"],
+    ),
+)
+
+cmake(
+    name = "rocksdb",
+    cache_entries = {
+        # Keep the build minimal for the POC — no shared lib, no shell
+        # tools, no benchmarks, no tests, no compression deps.
+        "ROCKSDB_BUILD_SHARED": "OFF",
+        "WITH_TESTS": "OFF",
+        "WITH_BENCHMARK_TOOLS": "OFF",
+        "WITH_TOOLS": "OFF",
+        "WITH_CORE_TOOLS": "OFF",
+        "WITH_TRACE_TOOLS": "OFF",
+        "WITH_EXAMPLES": "OFF",
+        "WITH_GFLAGS": "OFF",
+
+        # Compression: deferred. The REP tuning table calls for LZ4 on
+        # cold levels but no compression on hot levels; we start with
+        # zero compression so the dep graph stays small.
+        "WITH_SNAPPY": "OFF",
+        "WITH_LZ4": "OFF",
+        "WITH_ZSTD": "OFF",
+        "WITH_ZLIB": "OFF",
+        "WITH_BZ2": "OFF",
+
+        # Allocator + I/O: leave OS-default for now. Ray vendors its own
+        # jemalloc separately, and mixing them needs explicit thought.
+        "WITH_JEMALLOC": "OFF",
+        "WITH_LIBURING": "OFF",
+        "WITH_NUMA": "OFF",
+        "WITH_TBB": "OFF",
+
+        # Force install to lib/ — on 64-bit Linux CMake's GNUInstallDirs
+        # picks lib64/, but macOS/BSD use lib/. Pinning to lib/ keeps the
+        # out_static_libs path portable across platforms.
+        "CMAKE_INSTALL_LIBDIR": "lib",
+
+        # Other.
+        "PORTABLE": "ON",
+        "FAIL_ON_WARNINGS": "OFF",
+        "USE_RTTI": "1",
+        "ROCKSDB_INSTALL_ON_WINDOWS": "OFF",
+        "WITH_RUNTIME_DEBUG": "OFF",
+    },
+    generate_args = ["-G Ninja"],
+    lib_source = ":all_srcs",
+    out_static_libs = ["librocksdb.a"],
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,120 @@
+{
+  "harness": {
+    "name": "rep-64-poc",
+    "schema_version": 1,
+    "phase": 1,
+    "backend": "redis",
+    "started_at": "2026-04-29T23:54:44.193399+00:00",
+    "duration_seconds": 47.06,
+    "params": {
+      "n_warmup": 500,
+      "n_measure": 5000,
+      "value_size_bytes": 256,
+      "table_count": 10,
+      "concurrency": 1
+    },
+    "environment": {
+      "host_kernel": "5.15.186.1-1.cm2",
+      "host_machine": "x86_64",
+      "host_python": "3.9.19",
+      "redis_version": "7.4.8",
+      "redis_mode": "standalone",
+      "redis_os": "Linux 5.15.186.1-1.cm2 x86_64",
+      "redis_arch_bits": 64,
+      "redis_image_tag": "redis:7.4-alpine@sha256:9210b8dc25f122eb00e5572dcc7147c8e11fb1a08308b088e06c9d5dd2aa49d6",
+      "container_runtime": "docker (manual run, no compose)"
+    }
+  },
+  "operations": {
+    "put": {
+      "n": 5000,
+      "errors": 0,
+      "p50_us": 3868.657,
+      "p99_us": 12194.206,
+      "p999_us": 31338.014,
+      "mean_us": 4723.968,
+      "ops_per_sec": 211.6
+    },
+    "get_hit": {
+      "n": 5000,
+      "errors": 0,
+      "p50_us": 144.791,
+      "p99_us": 225.573,
+      "p999_us": 432.565,
+      "mean_us": 150.363,
+      "ops_per_sec": 6588.7
+    },
+    "get_miss": {
+      "n": 5000,
+      "errors": 0,
+      "p50_us": 142.387,
+      "p99_us": 213.501,
+      "p999_us": 427.453,
+      "mean_us": 146.839,
+      "ops_per_sec": 6746.8
+    },
+    "exists_hit": {
+      "n": 5000,
+      "errors": 0,
+      "p50_us": 137.568,
+      "p99_us": 216.697,
+      "p999_us": 418.355,
+      "mean_us": 140.516,
+      "ops_per_sec": 7052.2
+    },
+    "exists_miss": {
+      "n": 5000,
+      "errors": 0,
+      "p50_us": 144.02,
+      "p99_us": 216.056,
+      "p999_us": 421.381,
+      "mean_us": 145.769,
+      "ops_per_sec": 6797.5
+    },
+    "multi_get_10": {
+      "n": 5000,
+      "errors": 0,
+      "p50_us": 182.693,
+      "p99_us": 277.779,
+      "p999_us": 463.269,
+      "mean_us": 186.851,
+      "ops_per_sec": 5317.8
+    },
+    "prefix_scan": {
+      "n": 100,
+      "errors": 0,
+      "p50_us": 10233.108,
+      "p99_us": 20611.163,
+      "p999_us": 20611.163,
+      "mean_us": 11362.645,
+      "ops_per_sec": 88.0
+    },
+    "get_all": {
+      "n": 100,
+      "errors": 0,
+      "p50_us": 21517.392,
+      "p99_us": 31720.806,
+      "p999_us": 31720.806,
+      "mean_us": 22077.782,
+      "ops_per_sec": 45.3
+    },
+    "delete": {
+      "n": 2750,
+      "errors": 0,
+      "p50_us": 3854.71,
+      "p99_us": 13661.959,
+      "p999_us": 28342.586,
+      "mean_us": 4811.173,
+      "ops_per_sec": 207.7
+    },
+    "batch_delete_10": {
+      "n": 100,
+      "errors": 0,
+      "p50_us": 4316.644,
+      "p99_us": 8894.92,
+      "p999_us": 8894.92,
+      "mean_us": 5156.424,
+      "ops_per_sec": 193.9
+    }
+  }
+}

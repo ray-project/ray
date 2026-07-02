@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "host": {
+    "node": "sanjha-ld2.linkedin.biz",
+    "system": "Linux",
+    "release": "5.15.186.1-1.cm2",
+    "machine": "x86_64"
+  },
+  "config": {
+    "db_path": "/tmp/rep64-kill9-pj9le7n_",
+    "num_writes": 1000,
+    "sync": 1,
+    "ghost_writes": 50,
+    "kill_after_ack_target": 10000,
+    "seed": 42
+  },
+  "writer": {
+    "exit_code": 0,
+    "killed_at_ack": null,
+    "finished_naturally": true,
+    "acks_seen": 1000,
+    "stderr_tail": ""
+  },
+  "verifier": {
+    "exit_code": 0,
+    "found_count": 950,
+    "missing_count": 50
+  },
+  "result": {
+    "acked_but_missing_count": 50,
+    "acked_but_missing_examples": [
+      950,
+      951,
+      952,
+      953,
+      954,
+      955,
+      956,
+      957,
+      958,
+      959,
+      960,
+      961,
+      962,
+      963,
+      964,
+      965,
+      966,
+      967,
+      968,
+      969
+    ],
+    "not_acked_but_found_count": 0,
+    "verdict": "FAIL"
+  }
+}

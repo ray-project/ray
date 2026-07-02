@@ -1,0 +1,16 @@
+apiVersion: ray.io/v1
+kind: RayJob
+metadata:
+  name: rep64-pd-${PHASE}-${RUN_ID}
+  namespace: ${NAMESPACE}
+spec:
+  clusterSelector:
+    ray.io/cluster: rep64-rocksdb
+  entrypoint: "python /home/ray/pod_delete_workload.py"
+  runtimeEnvYAML: |
+    env_vars:
+      ACTOR_COUNT: "${ACTOR_COUNT}"
+      PHASE: "${PHASE}"
+      SNAPSHOT: '${SNAPSHOT_JSON}'
+  shutdownAfterJobFinishes: false
+  ttlSecondsAfterFinished: 600

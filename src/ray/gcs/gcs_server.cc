@@ -35,6 +35,7 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
+#include "ray/gcs/store_client/rocksdb_store_client.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/gcs/store_client_kv.h"
 #include "ray/observability/metric_constants.h"
@@ -53,6 +54,8 @@ inline std::ostream &operator<<(std::ostream &str, GcsServer::StorageType val) {
     return str << "StorageType::IN_MEMORY";
   case GcsServer::StorageType::REDIS_PERSIST:
     return str << "StorageType::REDIS_PERSIST";
+  case GcsServer::StorageType::ROCKSDB_PERSIST:
+    return str << "StorageType::ROCKSDB_PERSIST";
   case GcsServer::StorageType::UNKNOWN:
     return str << "StorageType::UNKNOWN";
   default:
@@ -167,6 +170,30 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
         metrics_.storage_operation_latency_in_ms_histogram,
         metrics_.storage_operation_count_counter,
         clock_);
+    break;
+  case StorageType::ROCKSDB_PERSIST:
+    // REP-64 embedded RocksDB backend. Pass empty cluster_id: at the
+    // moment InitKVManager runs (before GetOrGenerateClusterId), the
+    // rpc_server_'s cluster_id is still Nil() and GetClusterId() would
+    // RAY_CHECK-fail. RocksDbStoreClient skips the marker check when
+    // cluster_id is empty. PVC-mismatch fail-fast (REP "Stale data
+    // protection") requires an external authoritative cluster_id source
+    // (e.g. K8s downward API) and is deferred to a follow-on PR; see
+    // rep-64-poc/reports/phase-3-skeleton.md for the full deferral
+    // writeup.
+    // Use a "tables" subdirectory so the KV client (InitKVManager) can open
+    // its own separate RocksDB instance at "kv/" without triggering RocksDB's
+    // in-process double-open guard (locked_files static map → ENOLCK).
+    store_client = std::make_shared<ObservableStoreClient>(
+        std::make_unique<RocksDbStoreClient>(
+            io_context,
+            RayConfig::instance().gcs_storage_path() + "/tables",
+            /*expected_cluster_id=*/"",
+            RayConfig::instance().gcs_rocksdb_async_offload(),
+            RayConfig::instance().gcs_rocksdb_io_pool_size(),
+            RayConfig::instance().gcs_rocksdb_strand_buckets()),
+        metrics_.storage_operation_latency_in_ms_histogram,
+        metrics_.storage_operation_count_counter);
     break;
   case StorageType::REDIS_PERSIST: {
     auto redis_store_client =
@@ -651,6 +678,14 @@ GcsServer::StorageType GcsServer::GetStorageType() const {
     RAY_CHECK(!config_.redis_address.empty());
     return StorageType::REDIS_PERSIST;
   }
+  if (RayConfig::instance().gcs_storage() == kRocksDbStorage) {
+    RAY_CHECK(!RayConfig::instance().gcs_storage_path().empty())
+        << "RAY_gcs_storage=rocksdb requires RAY_gcs_storage_path to be set "
+           "to a directory on a persistent volume. Note: RAY_CONFIG env var "
+           "names are case-sensitive and match the C++ field name verbatim "
+           "(lowercase), unlike Python-side flags such as RAY_REDIS_ADDRESS.";
+    return StorageType::ROCKSDB_PERSIST;
+  }
   RAY_LOG(FATAL) << "Unsupported GCS storage type: "
                  << RayConfig::instance().gcs_storage();
   return StorageType::UNKNOWN;
@@ -715,6 +750,22 @@ void GcsServer::InitKVManager() {
         metrics_.storage_operation_latency_in_ms_histogram,
         metrics_.storage_operation_count_counter,
         clock_);
+    break;
+  case (StorageType::ROCKSDB_PERSIST):
+    // See ROCKSDB_PERSIST case above (in the gcs_table_storage path) for
+    // the cluster_id deferral rationale.  Use a "kv" subdirectory so that
+    // this client and the tables client do not share a RocksDB directory,
+    // avoiding the in-process double-open ENOLCK failure.
+    store_client = std::make_unique<ObservableStoreClient>(
+        std::make_unique<RocksDbStoreClient>(
+            io_context,
+            RayConfig::instance().gcs_storage_path() + "/kv",
+            /*expected_cluster_id=*/"",
+            RayConfig::instance().gcs_rocksdb_async_offload(),
+            RayConfig::instance().gcs_rocksdb_io_pool_size(),
+            RayConfig::instance().gcs_rocksdb_strand_buckets()),
+        metrics_.storage_operation_latency_in_ms_histogram,
+        metrics_.storage_operation_count_counter);
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;

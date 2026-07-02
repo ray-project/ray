@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "test_name": "20-actor-survival",
+  "tier": "k3d",
+  "started_at": "2026-05-08T05:40:12Z",
+  "duration_s": 7,
+  "status": "pass",
+  "skip_reason": null,
+  "cluster": {
+    "kube_context": "k3d-rep64",
+    "namespace": "rep64-poc",
+    "kuberay_operator_version": "unknown",
+    "node_count": 2,
+    "k8s_server_version": "v1.30.4+k3s1"
+  },
+  "image": "cr.ray.io/rayproject/ray:nightly-rep64-fix",
+  "git_commit": "cbea070f2f27035110c7d338c4b7e582d9467377",
+  "metrics": {
+    "actors_created": 10,
+    "actors_recovered": 10,
+    "actors_lost": 0,
+    "named_lookup_ok": true,
+    "detached_survived": true,
+    "state_match_pct": 100
+  },
+  "errors": []
+}

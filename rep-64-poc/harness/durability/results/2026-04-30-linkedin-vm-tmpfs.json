@@ -1,0 +1,51 @@
+{
+  "harness": {
+    "name": "rep-64-poc-fsync-probe",
+    "schema_version": 1,
+    "started_at": "2026-04-30T02:41:38.995609+00:00",
+    "params": {
+      "target_dir": "/tmp",
+      "n": 200,
+      "write_size": 4096
+    },
+    "environment": {
+      "host_os": "Linux",
+      "host_kernel": "5.15.186.1-1.cm2",
+      "host_machine": "x86_64",
+      "host_python": "3.9.19",
+      "hypervisor": "unknown_generic"
+    }
+  },
+  "results": {
+    "fsync": {
+      "available": true,
+      "n": 200,
+      "p50_us": 1.092,
+      "p99_us": 1.273,
+      "p999_us": 1.343,
+      "min_us": 0.942,
+      "max_us": 3.597,
+      "mean_us": 1.106
+    },
+    "fdatasync": {
+      "available": true,
+      "n": 200,
+      "p50_us": 0.972,
+      "p99_us": 1.262,
+      "p999_us": 1.443,
+      "min_us": 0.831,
+      "max_us": 2.514,
+      "mean_us": 0.998
+    },
+    "f_fullfsync": {
+      "available": false,
+      "reason": "F_FULLFSYNC is macOS-only"
+    }
+  },
+  "label": {
+    "verdict": "lying",
+    "notes": [
+      "fsync p50 < 5 us on Linux means the syscall is being acknowledged before non-volatile commit. Most common cause is a virtualization layer (Hyper-V, Type-2 hypervisor, container with write-back caching) doing host-side buffering. Durability tests on this substrate will report false negatives \u2014 they will pass for the wrong reason."
+    ]
+  }
+}

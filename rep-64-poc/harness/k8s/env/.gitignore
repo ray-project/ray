@@ -1,0 +1,4 @@
+# Keep concrete remote env files local; the .example is the committed template.
+remote.env
+remote.*.env
+!remote.env.example

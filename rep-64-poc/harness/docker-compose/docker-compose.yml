@@ -1,0 +1,34 @@
+# Phase 1 baseline harness for REP-64 POC.
+#
+# Stands up a single Redis instance configured for the same durability
+# semantics RocksDB will be measured against (fsync per write).
+#
+# Image pinned to the immutable digest the first run resolved
+# (see ../README.md, "Reproducibility pinning"). Bump this when intentionally
+# upgrading and record the new digest in the next phase report.
+services:
+  redis:
+    image: redis:7.4-alpine@sha256:9210b8dc25f122eb00e5572dcc7147c8e11fb1a08308b088e06c9d5dd2aa49d6
+    container_name: rep64-poc-redis
+    # appendonly + appendfsync always ⇒ Redis fsyncs the AOF on every
+    # write, matching RocksDB's WriteOptions::sync=true contract. Without
+    # this, the comparison is unfair (Redis would buffer up to 1s of
+    # writes by default).
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync always
+      --save ""
+      --maxmemory-policy noeviction
+    volumes:
+      - redis-data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 1s
+      retries: 10
+
+volumes:
+  redis-data:

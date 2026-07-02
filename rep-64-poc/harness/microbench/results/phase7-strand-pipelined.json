@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "key_count": 10000,
+  "sampled_ops_per_kind": 10000,
+  "backends": {
+    "in_memory": {
+    "put": {
+      "count": 10000,
+      "aggregate_seconds": 0.0178,
+      "ops_per_sec": 562420.4,
+      "mean_us": 5.86,
+      "p50_us": 4.74,
+      "p95_us": 13.29,
+      "p99_us": 27.41,
+      "min_us": 0.82,
+      "max_us": 512.58
+    },
+    "get": {
+      "count": 10000,
+      "aggregate_seconds": 0.0129,
+      "ops_per_sec": 774294.8,
+      "mean_us": 4.46,
+      "p50_us": 4.15,
+      "p95_us": 8.22,
+      "p99_us": 9.69,
+      "min_us": 0.85,
+      "max_us": 28.91
+    },
+      "get_all_seconds": 0.001947,
+      "get_all_count": 10001,
+      "get_keys_seconds": 0.001305,
+      "get_keys_count": 1111
+    },
+    "rocksdb_inline": {
+    "put": {
+      "count": 10000,
+      "aggregate_seconds": 41.6602,
+      "ops_per_sec": 240.0,
+      "mean_us": 4174.81,
+      "p50_us": 3509.87,
+      "p95_us": 7370.34,
+      "p99_us": 10132.41,
+      "min_us": 2551.93,
+      "max_us": 108324.19
+    },
+    "get": {
+      "count": 10000,
+      "aggregate_seconds": 0.0220,
+      "ops_per_sec": 455235.7,
+      "mean_us": 5.75,
+      "p50_us": 5.21,
+      "p95_us": 11.30,
+      "p99_us": 14.85,
+      "min_us": 1.40,
+      "max_us": 36.46
+    },
+      "get_all_seconds": 0.003800,
+      "get_all_count": 10001,
+      "get_keys_seconds": 0.001189,
+      "get_keys_count": 1111
+    },
+    "rocksdb_offload": {
+    "put": {
+      "count": 10000,
+      "aggregate_seconds": 16.8471,
+      "ops_per_sec": 593.6,
+      "mean_us": 8244923.10,
+      "p50_us": 8188971.44,
+      "p95_us": 15708584.48,
+      "p99_us": 16441998.64,
+      "min_us": 3495.55,
+      "max_us": 16842756.25
+    },
+    "get": {
+      "count": 10000,
+      "aggregate_seconds": 0.0075,
+      "ops_per_sec": 1336972.2,
+      "mean_us": 2749.11,
+      "p50_us": 3363.75,
+      "p95_us": 4207.23,
+      "p99_us": 4334.91,
+      "min_us": 48.80,
+      "max_us": 4418.96
+    },
+      "get_all_seconds": 0.003185,
+      "get_all_count": 10001,
+      "get_keys_seconds": 0.001064,
+      "get_keys_count": 1111
+    }
+  }
+}

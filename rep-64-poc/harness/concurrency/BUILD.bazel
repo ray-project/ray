@@ -1,0 +1,19 @@
+# REP-64 POC, Phase 5: concurrency tests for RocksDbStoreClient.
+#
+# Stress GetNextJobID under N-thread contention and parallel AsyncPut
+# from multiple producers. Lives outside the upstream-bound
+# //:rocksdb_store_client_test target so the upstream test stays minimal
+# and POC harness churn doesn't spill onto the Ray-side BUILD file.
+
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "concurrency_test",
+    size = "medium",
+    srcs = ["concurrency_test.cc"],
+    tags = ["team:core"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        "//src/ray/gcs/store_client:rocksdb_store_client",
+    ],
+)

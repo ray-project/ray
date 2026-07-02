@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "host": {
+    "node": "sanjha-mn3428.linkedin.biz",
+    "system": "Darwin",
+    "release": "25.4.0",
+    "machine": "arm64"
+  },
+  "runs": [
+    {
+      "num_keys": 100,
+      "populate_wall_seconds": 0.9719668749603443,
+      "recover": {
+        "open_seconds": 0.273282,
+        "scan_seconds": 0.001623,
+        "lookup_seconds": 0.001603,
+        "scan_count": 100,
+        "lookup_present": true
+      }
+    },
+    {
+      "num_keys": 1000,
+      "populate_wall_seconds": 4.191311334026977,
+      "recover": {
+        "open_seconds": 0.069365,
+        "scan_seconds": 0.002188,
+        "lookup_seconds": 0.001565,
+        "scan_count": 1000,
+        "lookup_present": true
+      }
+    },
+    {
+      "num_keys": 10000,
+      "populate_wall_seconds": 41.17455016699387,
+      "recover": {
+        "open_seconds": 0.055897,
+        "scan_seconds": 0.003896,
+        "lookup_seconds": 0.001523,
+        "scan_count": 10000,
+        "lookup_present": true
+      }
+    }
+  ]
+}

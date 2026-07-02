@@ -1,0 +1,12 @@
+# REP-64 POC, Phase 8: storage-layer recovery-time benchmark.
+
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+cc_binary(
+    name = "recovery_bench",
+    srcs = ["recovery_bench.cc"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        "//src/ray/gcs/store_client:rocksdb_store_client",
+    ],
+)

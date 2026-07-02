@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "test_name": "40-substrate-sweep",
+  "tier": "k3d",
+  "started_at": "2026-05-08T05:44:00Z",
+  "duration_s": 0,
+  "status": "skipped",
+  "skip_reason": "SUBSTRATE_SWEEP_CLASSES not configured",
+  "cluster": {
+    "kube_context": "k3d-rep64",
+    "namespace": "rep64-poc",
+    "kuberay_operator_version": "unknown",
+    "node_count": 2,
+    "k8s_server_version": "v1.30.4+k3s1"
+  },
+  "image": "cr.ray.io/rayproject/ray:nightly-rep64-fix",
+  "git_commit": "cbea070f2f27035110c7d338c4b7e582d9467377",
+  "metrics": {},
+  "errors": []
+}

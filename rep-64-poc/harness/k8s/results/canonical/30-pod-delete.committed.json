@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "test_name": "30-pod-delete",
+  "tier": "k3d",
+  "started_at": "2026-05-08T20:42:24Z",
+  "duration_s": 18,
+  "status": "pass",
+  "skip_reason": null,
+  "cluster": {
+    "kube_context": "k3d-rep64",
+    "namespace": "rep64-poc",
+    "kuberay_operator_version": "unknown",
+    "node_count": 2,
+    "k8s_server_version": "v1.30.4+k3s1"
+  },
+  "image": "cr.ray.io/rayproject/ray:nightly-rep64-fix",
+  "git_commit": "a221f6f7f316c35caa30fbe3ac9349e0a60db7e9",
+  "metrics": {
+    "actors_created": 10,
+    "actors_recovered": 10,
+    "state_preserved_pct": 100,
+    "new_tasks_executed": 1,
+    "new_tasks_ok": true,
+    "backend": "rocksdb",
+    "pod_restart_s": 15.52,
+    "verify_rc": 0
+  },
+  "errors": []
+}
