@@ -20,7 +20,7 @@
 #include <string>
 #include <thread>
 
-#include "ray/common/memory_monitor_interface.h"
+#include "ray/common/monitors/memory_monitor_interface.h"
 #include "ray/common/status.h"
 
 namespace ray {

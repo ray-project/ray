@@ -20,7 +20,7 @@
 #include <thread>
 
 #include "ray/asio/periodical_runner.h"
-#include "ray/common/memory_monitor_interface.h"
+#include "ray/common/monitors/memory_monitor_interface.h"
 
 namespace ray {
 

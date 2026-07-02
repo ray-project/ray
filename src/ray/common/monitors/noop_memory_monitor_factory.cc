@@ -15,9 +15,9 @@
 #include <memory>
 #include <vector>
 
-#include "ray/common/memory_monitor_factory.h"
-#include "ray/common/memory_monitor_interface.h"
-#include "ray/common/noop_memory_monitor.h"
+#include "ray/common/monitors/memory_monitor_factory.h"
+#include "ray/common/monitors/memory_monitor_interface.h"
+#include "ray/common/monitors/noop_memory_monitor.h"
 
 namespace ray {
 

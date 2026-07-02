@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/memory_monitor_test_fixture.h"
+#include "ray/common/monitors/memory_monitor_test_fixture.h"
 
-#include "ray/common/memory_monitor_utils.h"
+#include "ray/common/monitors/memory_monitor_utils.h"
 #include "ray/util/logging.h"
 
 namespace ray {
