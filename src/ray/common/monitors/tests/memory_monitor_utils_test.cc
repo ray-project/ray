@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/memory_monitor_utils.h"
+#include "ray/common/monitors/memory_monitor_utils.h"
 
 #include <boost/filesystem.hpp>
 #include <fstream>
@@ -26,7 +26,7 @@
 #include "ray/common/cgroup2/fake_cgroup_driver.h"
 #include "ray/common/cgroup2/noop_cgroup_manager.h"
 #include "ray/common/id.h"
-#include "ray/common/memory_monitor_test_fixture.h"
+#include "ray/common/monitors/memory_monitor_test_fixture.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/util/process.h"

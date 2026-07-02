@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/memory_monitor_utils.h"
+#include "ray/common/monitors/memory_monitor_utils.h"
 
 #include <boost/algorithm/string.hpp>
 #include <filesystem>
@@ -21,7 +21,7 @@
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "ray/common/memory_monitor_interface.h"
+#include "ray/common/monitors/memory_monitor_interface.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 

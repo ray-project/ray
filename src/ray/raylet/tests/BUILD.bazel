@@ -151,7 +151,7 @@ ray_cc_test(
     deps = [
         ":util",
         "//src/ray/common:lease",
-        "//src/ray/common:memory_monitor_interface",
+        "//src/ray/common/monitors:memory_monitor_interface",
         "//src/ray/raylet:worker_killing_policy_by_time",
     ],
 )
