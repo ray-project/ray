@@ -94,6 +94,16 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
     }
   }
 
+  // Post stop() as a handler so it runs after all pending Py_DECREF callbacks
+  // have executed — avoids leaking Python refcounts if callbacks are in flight.
+  core_worker->object_freed_callback_service_.post(
+      [&svc = core_worker->object_freed_callback_service_]() { svc.stop(); },
+      "CoreWorker.StopCallbackService");
+  RAY_LOG(INFO) << "Waiting for joining the object-freed callback thread.";
+  if (core_worker->object_freed_callback_thread_.joinable()) {
+    core_worker->object_freed_callback_thread_.join();
+  }
+
   core_worker->core_worker_server_->Shutdown();
 
   // GCS client is safe to disconnect now that io_service has stopped.

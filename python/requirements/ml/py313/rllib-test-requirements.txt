@@ -38,7 +38,14 @@ moviepy
 numexpr
 
 # For ONNX export tests (policy_inference_after_training examples, --use-onnx-for-inference).
-onnx==1.16.0; sys_platform != 'darwin' or platform_machine != 'arm64'
+# onnxscript 0.5.x has a version-converter bug that breaks every torch>=2.9 dynamo ONNX
+# export; pin >=0.6 directly (bumping onnx alone won't force it -- the resolver keeps the
+# existing onnxscript pin). onnxscript>=0.6 in turn requires onnx>=1.17.
+# Pinned only on this py3.13 track, NOT in the non-py313 rllib-test-requirements.txt: that
+# track's tensorflow 2.15.1 caps ml_dtypes~=0.3.1, which conflicts with onnxscript>=0.6's
+# onnx-ir -> ml_dtypes>=0.5.0. The rllib ONNX tests run from py3.13-derived deplocks
+# (rllib_build_depset), so pinning here is sufficient; don't add this to the non-py313 file.
+onnx>=1.17.0; sys_platform != 'darwin' or platform_machine != 'arm64'
 onnxruntime==1.20.0; (sys_platform != 'darwin' or platform_machine != 'arm64') and python_version == '3.10'
 onnxruntime==1.24.4; (sys_platform != 'darwin' or platform_machine != 'arm64') and python_version > '3.10'
-onnxscript; sys_platform != 'darwin' or platform_machine != 'arm64'
+onnxscript>=0.6.2; sys_platform != 'darwin' or platform_machine != 'arm64'

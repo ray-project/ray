@@ -42,9 +42,9 @@ cd ray/doc
 
 ### Install dependencies
 
-If you haven't done so already, create a Python environment separate from the one you use to build and run Ray, preferably using the latest version of Python. For example, if you're using `conda`:
+If you haven't done so already, create a Python environment separate from the one you use to build and run Ray. Use Python 3.11 to match the version Read the Docs builds with. For example, if you're using `conda`:
 ```shell
-conda create -n docs python=3.12
+conda create -n docs python=3.11
 ```
 Next, activate the Python environment you're using (for example, venv or conda). With `conda`, this would be:
 ```shell
@@ -100,6 +100,24 @@ make develop
 Find the documentation build in the `_build` directory. After the build finishes, open the `_build/html/index.html` file in your browser. It's good practice to check the output of your build to make sure everything works as expected.
 
 Before committing any changes, run the [linter](getting-involved.md#lint-and-formatting) with `pre-commit run` from the `doc` folder to make sure your changes are formatted correctly.
+
+### Verify a Read the Docs-faithful build
+
+`make local` and `make develop` are for fast iteration while you author. Before you push, verify your changes the way Read the Docs builds them, so you catch failures locally instead of waiting on a Read the Docs build:
+
+```shell
+make rtd-build
+```
+
+`make rtd-build` reproduces the full build Read the Docs runs from a fresh checkout, with `fail_on_warning` enabled, so any Sphinx warning fails the build exactly as it does on Read the Docs. It first runs a preflight check that your environment matches Read the Docs — the Python version Read the Docs builds with (3.11) and the dependency versions pinned in `requirements-doc.lock.txt` — and stops with an explanation if it finds drift. Run that check on its own at any time with:
+
+```shell
+make rtd-doctor
+```
+
+A full build matters most when you add, remove, or rename files. The incremental `make local` build reuses cached pages, so a rename that breaks a cross-reference in an otherwise-unchanged page can pass locally and only fail on Read the Docs. `make rtd-build` always does a full build, so it catches these.
+
+If you intend to build on an environment that doesn't match Read the Docs, run `make rtd-build RTD_DOCTOR_ARGS=--warn-only` to downgrade the preflight check from an error to a warning.
 
 ### Code completion and other developer tooling
 
@@ -423,8 +441,8 @@ If you want to use the word anyway, modify the appropriate field in the [WordLis
 If you run into a problem building the docs, following these steps can help isolate or eliminate most issues:
 
 1. **Clean out build artifacts.** Use `make clean` to clean out docs build artifacts in the working directory. Sphinx uses caching to avoid doing work, and this sometimes causes problems. This is particularly true if you build the docs, then `git pull origin master` to pull in recent changes, and then try to build docs again.
-2. **Check your environment.** Use `pip list` to check the installed dependencies. Compare them to `doc/requirements-doc.txt`. The documentation build system doesn't have the same dependency requirements as Ray. You don't need to run ML models or execute code on distributed systems in order to build the docs. In fact, it's best to use a completely separate docs build environment from the environment you use to run Ray to avoid dependency conflicts.  When installing requirements, do `pip install -r doc/requirements-doc.txt`. Don't use `-U` because you don't want to upgrade any dependencies during the installation.
-3. **Ensure a modern version of Python.** The docs build system doesn't keep the same dependency and Python version requirements as Ray. Use a modern version of Python when building docs. Newer versions of Python can be substantially faster than preceding versions. Consult [endoflife.date/python](https://endoflife.date/python) for the latest version support information.
+2. **Check your environment.** Use `pip list` to check the installed dependencies. Compare them to `doc/requirements-doc.txt`. The documentation build system doesn't have the same dependency requirements as Ray. You don't need to run ML models or execute code on distributed systems in order to build the docs. In fact, it's best to use a completely separate docs build environment from the environment you use to run Ray to avoid dependency conflicts.  When installing requirements, do `pip install -r doc/requirements-doc.txt`. Don't use `-U` because you don't want to upgrade any dependencies during the installation. To check your environment against Read the Docs automatically, run `make rtd-doctor`, which compares your interpreter and the pinned docs dependencies to the versions Read the Docs uses and tells you what to fix.
+3. **Match the Read the Docs Python version.** The docs build system doesn't keep the same dependency and Python version requirements as Ray. Read the Docs builds with the Python version pinned in `.readthedocs.yaml` (currently 3.11), so use that same version locally; building with a different version can surface or hide warnings that then behave differently on Read the Docs.
 4. **Enable breakpoints in Sphinx.** Add `-P` to the `SPHINXOPTS` in `doc/Makefile` to tell `sphinx` to stop when it encounters a breakpoint, and remove `-j auto` to disable parallel builds. Now you can put breakpoints in the modules you're trying to import, or in `sphinx` code itself, which can help isolate stubborn build issues.
 5. **[Incremental build] Side navigation bar doesn't reflect new pages.** If you're adding new pages, they should always show up in the side navigation bar on index pages. However, incremental builds with `make local` skip rebuilding many other pages, so Sphinx doesn't update the side navigation bar on those pages. To build docs with a correct side navigation bar on all pages, consider using `make develop`.
 
