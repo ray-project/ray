@@ -725,11 +725,12 @@ def test_split_ranges_noop_when_target_not_greater():
         ),
     ],
 )
-def test_slices_by_file_group_non_contiguous_raises(video_keys, file_cols):
+def test_slices_by_file_group_non_contiguous_splits(video_keys, file_cols):
     """Episodes that share a file group but are not contiguous in the global
-    index are a non-standard layout: file-group slicing must raise (and point to
-    group_by_episode) rather than emit a wrong range. Here ep0 and ep2 share a
-    file but ep1 sits between them."""
+    index (e.g. an ``episodes`` subset drops the episode between them) are split
+    into separate contiguous ranges -- not merged into one wrong range. Here ep0
+    and ep2 share a file but ep1 (a different file) sits between them, so the
+    shared file yields two ranges."""
     from ray.data.datasource import LeRobotDatasource
 
     eps = pa.table(
@@ -739,8 +740,8 @@ def test_slices_by_file_group_non_contiguous_raises(video_keys, file_cols):
             **file_cols,
         }
     )
-    with pytest.raises(ValueError, match="Non-contiguous episodes share"):
-        LeRobotDatasource._slices_by_file_group(eps, video_keys)
+    out = LeRobotDatasource._slices_by_file_group(eps, video_keys)
+    assert sorted(out) == [(0, 10), (10, 20), (20, 30)]
 
 
 def test_episodes_for_row_range_uses_row_positions_not_episode_index():
@@ -1059,6 +1060,90 @@ def test_lerobot_compat_creds_cache_closes_handles(tmp_path):
     cache.clear()
     assert all(h.closed for h in handles), "clear() must close the fsspec handles"
     assert cache._cache == {}
+
+
+# ---------------------------------------------------------------------------
+# episodes filter (read-time pushdown)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("group_by_episode", [False, True])
+def test_read_lerobot_episodes_filters_rows(
+    ray_start_regular_shared, lerobot_dataset, group_by_episode
+):
+    """``episodes`` loads only the requested episode_indices (a read-time
+    pushdown), under both groupings, leaving the kept episodes' rows intact."""
+    ds = ray.data.read_lerobot(
+        lerobot_dataset, episodes=[0, 2], group_by_episode=group_by_episode
+    )
+    rows = ds.take_all()
+    assert len(rows) == 10  # 2 of 3 episodes * 5 frames
+    assert {r["episode_index"] for r in rows} == {0, 2}
+    # Frame values within a kept episode are unaffected by the filter.
+    for r in rows:
+        assert r["frame_index"] == r["index"] % 5
+
+
+def test_read_lerobot_episodes_single(ray_start_regular_shared, lerobot_dataset):
+    """A single-episode selection reads exactly that episode's frames."""
+    rows = ray.data.read_lerobot(lerobot_dataset, episodes=[1]).take_all()
+    assert len(rows) == 5
+    assert all(r["episode_index"] == 1 for r in rows)
+
+
+def test_read_lerobot_episodes_non_contiguous_shared_file(
+    ray_start_regular_shared, lerobot_dataset_no_video
+):
+    """A non-contiguous subset of a dataset whose episodes SHARE one data parquet
+    file still reads under the default (file-group) grouping: the file group is
+    split into contiguous runs, not merged into one wrong range or errored."""
+    rows = ray.data.read_lerobot(lerobot_dataset_no_video, episodes=[0, 2]).take_all()
+    assert len(rows) == 10
+    assert {r["episode_index"] for r in rows} == {0, 2}
+
+
+def test_read_lerobot_episodes_unknown_raises(
+    ray_start_regular_shared, lerobot_dataset
+):
+    """Requesting an episode_index absent from the dataset fails fast."""
+    from ray.data.datasource import LeRobotDatasource
+
+    with pytest.raises(ValueError, match="episode"):
+        LeRobotDatasource(lerobot_dataset, episodes=[0, 99])
+
+
+def test_read_lerobot_episodes_empty_raises(ray_start_regular_shared, lerobot_dataset):
+    """An empty ``episodes`` list is a degenerate request and is rejected (pass
+    ``None`` to read all episodes)."""
+    from ray.data.datasource import LeRobotDatasource
+
+    with pytest.raises(ValueError, match="episodes"):
+        LeRobotDatasource(lerobot_dataset, episodes=[])
+
+
+def test_read_lerobot_episodes_reduces_planning(
+    ray_start_regular_shared, lerobot_dataset
+):
+    """Filtering to fewer episodes shrinks the default read-task count and the
+    in-memory size estimate (fewer files, fewer frames)."""
+    from ray.data.datasource import LeRobotDatasource
+
+    full = LeRobotDatasource(lerobot_dataset)
+    one = LeRobotDatasource(lerobot_dataset, episodes=[1])
+    assert one.default_num_blocks() < full.default_num_blocks()
+    assert one.estimate_inmemory_data_size() < full.estimate_inmemory_data_size()
+
+
+def test_read_lerobot_episodes_multi_root(ray_start_regular_shared, tmp_path):
+    """``episodes`` applies per-root: each root contributes only its matching
+    episode_indices."""
+    root_a = create_lerobot_dataset(str(tmp_path / "ds_a"), num_episodes=3)
+    root_b = create_lerobot_dataset(str(tmp_path / "ds_b"), num_episodes=3)
+    rows = ray.data.read_lerobot([root_a, root_b], episodes=[0]).take_all()
+    # episode 0 from each of the two roots -> 2 * 5 frames.
+    assert len(rows) == 10
+    assert {r["episode_index"] for r in rows} == {0}
+    assert {r["dataset_index"] for r in rows} == {0, 1}
 
 
 if __name__ == "__main__":

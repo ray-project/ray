@@ -2795,6 +2795,7 @@ def read_mcap(
 def read_lerobot(
     root: Union[str, List[str]],
     *,
+    episodes: Optional[List[int]] = None,
     group_by_episode: bool = False,
     filesystem: Optional[
         "pyarrow.fs.FileSystem | fsspec.spec.AbstractFileSystem"
@@ -2852,6 +2853,12 @@ def read_lerobot(
             or a list of such paths to read multiple datasets as one.
             All roots must share the same ``video_keys``, ``image_keys``,
             ``fps``, and non-video feature names.
+        episodes: If given, read only these ``episode_index`` values. This is a
+            read-time pushdown -- other episodes' parquet rows and video files
+            are never opened -- so it is cheaper than reading everything and
+            ``filter``-ing afterward. Applied per root when reading multiple
+            roots; requesting an ``episode_index`` absent from every root
+            raises. ``None`` (the default) reads all episodes.
         group_by_episode: How to group rows into read tasks. ``False`` (the
             default) emits one task per video-file group (each mp4 opened once
             per task); ``True`` emits one task per episode. Use
@@ -2902,6 +2909,7 @@ def read_lerobot(
     """
     datasource = LeRobotDatasource(
         root=root,
+        episodes=episodes,
         group_by_episode=group_by_episode,
         filesystem=filesystem,
         storage_options=storage_options,

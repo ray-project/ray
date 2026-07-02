@@ -788,6 +788,7 @@ class LeRobotDatasource(Datasource):
         self,
         root: Union[str, Path, List[Union[str, Path]]],
         *,
+        episodes: Optional[List[int]] = None,
         group_by_episode: bool = False,
         filesystem: Optional[
             "pyarrow.fs.FileSystem | fsspec.AbstractFileSystem"
@@ -802,6 +803,11 @@ class LeRobotDatasource(Datasource):
                 or a list of such paths to read multiple datasets as one.
                 All roots must share the same camera keys (``video_keys`` and
                 ``image_keys``), ``fps``, and non-camera feature names.
+            episodes: If given, read only these ``episode_index`` values (a
+                read-time pushdown -- other episodes' parquet rows and video
+                files are never opened). Applied per root when reading multiple
+                roots. Requesting an ``episode_index`` absent from every root
+                raises. ``None`` (the default) reads all episodes.
             group_by_episode: How to group rows into read tasks. ``False`` (the
                 default) emits one task per video-file group (each mp4 opened
                 once per task); ``True`` emits one task per episode.
@@ -906,7 +912,7 @@ class LeRobotDatasource(Datasource):
         for m, r, (fs, fs_root, video_uri, video_opts) in zip(
             self.metas, roots, self._resolved
         ):
-            root, episodes = _build_root(
+            built_root, built_episodes = _build_root(
                 m,
                 r,
                 fs,
@@ -915,10 +921,51 @@ class LeRobotDatasource(Datasource):
                 video_opts,
                 frame_tolerance_s=self._frame_tolerance_s,
             )
-            self._roots.append(root)
-            self._episodes.append(episodes)
+            self._roots.append(built_root)
+            self._episodes.append(built_episodes)
+
+        if episodes is not None:
+            self._apply_episodes_filter(episodes)
 
         self._group_by_episode: bool = group_by_episode
+
+    def _apply_episodes_filter(self, episodes: List[int]) -> None:
+        """Restrict each root to the requested ``episode_index`` values.
+
+        Filters the per-root episode tables in place -- fewer ranges means fewer
+        read tasks and less I/O -- and keeps each root's ``total_frames`` (which
+        drives the size estimate) in sync. Raises if an ``episode_index`` is
+        absent from every root.
+        """
+        if len(episodes) == 0:
+            raise ValueError(
+                "episodes must be a non-empty list of episode_index values, or "
+                "None to read every episode."
+            )
+        requested = sorted({int(e) for e in episodes})
+        found: set = set()
+        for i, eps in enumerate(self._episodes):
+            idx_col = eps.column("episode_index")
+            mask = pc.is_in(idx_col, value_set=pa.array(requested, type=idx_col.type))
+            kept = eps.filter(mask)
+            found.update(kept.column("episode_index").to_pylist())
+            self._episodes[i] = kept
+            n_frames = int(
+                pc.sum(
+                    pc.subtract(
+                        kept.column("_global_to_index"),
+                        kept.column("_global_from_index"),
+                    )
+                ).as_py()
+                or 0
+            )
+            self._roots[i] = self._roots[i]._replace(total_frames=n_frames)
+        missing = sorted(set(requested) - found)
+        if missing:
+            raise ValueError(
+                f"episodes {missing} were not found in any dataset root "
+                f"(requested {requested})."
+            )
 
     @property
     def meta(self) -> "LeRobotDatasetMetadata":
@@ -959,19 +1006,20 @@ class LeRobotDatasource(Datasource):
 
         Returns:
             A list of ``(global_from_index, global_to_index)`` tuples, one per
-            file group, in first-seen order (``_slice`` sorts them afterward).
-            Same ``(from, to)`` shape that :meth:`_slices_by_episode` returns one
-            per episode -- this just merges the episodes that share a file.
-
-        Raises:
-            ValueError: if two episodes map to the same file group but are not
-                contiguous in the global index (a non-standard layout); use
-                ``group_by_episode=True`` for those datasets.
+            contiguous file run (``_slice`` sorts them afterward). Same
+            ``(from, to)`` shape that :meth:`_slices_by_episode` returns one per
+            episode -- this just merges the adjacent episodes that share a file.
+            Episodes that share a file but are NOT adjacent (an ``episodes``
+            subset dropped the episode between them, or a non-standard layout
+            interleaves files) are emitted as separate ranges -- the shared file
+            is re-opened once per run -- rather than merged into a wrong range.
 
         Example:
             Episodes spanning ``[0,30) [30,60) [60,90)`` in
             ``videos/cam/file-000.mp4`` and ``[90,120)`` in ``file-001.mp4``
-            group to ``[(0, 90), (90, 120)]`` -- two ranges, one per mp4.
+            group to ``[(0, 90), (90, 120)]`` -- two ranges, one per mp4. A
+            subset keeping only the first and third episode yields
+            ``[(0, 30), (60, 90)]`` (the shared file re-opened per run).
         """
         eps = episodes
 
@@ -992,25 +1040,27 @@ class LeRobotDatasource(Datasource):
         from_indices = eps.column("_global_from_index").to_pylist()
         to_indices = eps.column("_global_to_index").to_pylist()
 
-        ranges: dict = {}
-        for i in range(len(eps)):
+        # Walk episodes in global-index order and extend a run while it stays in
+        # the same file AND contiguous; a file change or a gap (a dropped episode
+        # from an `episodes` subset, or a non-standard interleaved layout) starts
+        # a new run. A file shared by non-adjacent episodes thus yields one range
+        # per run rather than a single wrong range spanning the gap.
+        order = sorted(range(len(eps)), key=lambda i: from_indices[i])
+        ranges: List[tuple] = []
+        cur_key = None
+        cur_from = cur_to = None
+        for i in order:
             key = tuple(col[i] for col in key_columns)
             from_idx, to_idx = from_indices[i], to_indices[i]
-            if key in ranges:
-                prev_from, prev_to = ranges[key]
-                if from_idx != prev_to:
-                    raise ValueError(
-                        f"Non-contiguous episodes share video-file group "
-                        f"key {key!r}: existing span ends at row {prev_to} "
-                        f"but the next episode (index {i}) starts at "
-                        f"row {from_idx}. Use group_by_episode=True for "
-                        "datasets with non-standard episode layouts."
-                    )
-                ranges[key] = (prev_from, to_idx)
+            if cur_key == key and from_idx == cur_to:
+                cur_to = to_idx
             else:
-                ranges[key] = (from_idx, to_idx)
-
-        return list(ranges.values())
+                if cur_key is not None:
+                    ranges.append((cur_from, cur_to))
+                cur_key, cur_from, cur_to = key, from_idx, to_idx
+        if cur_key is not None:
+            ranges.append((cur_from, cur_to))
+        return ranges
 
     def _slice(self) -> List[tuple]:
         """Create ``(root_index, start, end)`` triples for all roots, sorted."""
