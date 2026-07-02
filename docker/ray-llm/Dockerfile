@@ -6,9 +6,12 @@ FROM "$BASE_IMAGE"
 COPY python/deplocks/llm/rayllm_*.lock ./
 COPY python/requirements/llm/patches/vllm-cuda-visible-devices-patch ./
 
-# vLLM version tag to use for EP kernel and DeepGEMM install scripts
-# Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
-ARG VLLM_SCRIPTS_REF="v0.23.0"
+# vLLM version tag to use for EP kernel and DeepGEMM install scripts.
+# This image is py3.14-only, where llm-requirements.txt pins vllm 0.22.0, so
+# fetch the install scripts from the matching v0.22.0 tag.
+# Keep in sync with the py3.14 vllm version in
+# python/requirements/llm/llm-requirements.txt.
+ARG VLLM_SCRIPTS_REF="v0.22.0"
 
 RUN <<EOF
 #!/bin/bash
@@ -17,13 +20,13 @@ set -euo pipefail
 
 PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.minor}')")"
 
-if [[ "${PYTHON_CODE}" == "py312" ]]; then
+if [[ "${PYTHON_CODE}" == "py314" ]]; then
     CUDA_CODE=cu130
-    # Use nvshmem 3.3.24 which is the default for vLLM and compatible with CUDA 13
+    # Use nvshmem 3.3.24 which is the default for vLLM (supports CUDA 12.x).
     # https://github.com/vllm-project/vllm/blob/64ac1395e8d52e3e38910a62c7eb8524126730d8/tools/ep_kernels/install_python_libraries.sh#L14
     NVSHMEM_VER=3.3.24
 else
-    echo "ray-llm supports Python 3.12 only (this image is ${PYTHON_CODE})."
+    echo "ray-llm supports Python 3.14 only (this image is ${PYTHON_CODE})."
     exit 1
 fi
 

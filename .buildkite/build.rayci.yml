@@ -94,6 +94,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -115,6 +116,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -151,6 +153,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
       cuda:
         - "11.7.1-cudnn8"
         - "11.8.0-cudnn8"
@@ -202,6 +205,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     depends_on:
       - ray-image-cpu-build($)
       - ray-image-tpu-build($)
@@ -221,6 +225,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -242,6 +247,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
       cuda:
         - "11.7.1-cudnn8"
         - "11.8.0-cudnn8"
@@ -271,7 +277,7 @@ steps:
     wanda: ci/docker/ray-llm-image-cuda.wanda.yaml
     array:
       python:
-        - "3.12"
+        - "3.14"
       cuda:
         - "13.0.0-cudnn"
     env_file: rayci.env
@@ -292,7 +298,7 @@ steps:
     wanda: ci/docker/ray-llm-extra-image-cuda.wanda.yaml
     array:
       python:
-        - "3.12"
+        - "3.14"
       cuda:
         - "13.0.0-cudnn"
     env_file: rayci.env
@@ -334,6 +340,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     depends_on:
       - ray-extra-image-cpu-build($)
       - ray-extra-image-cuda-build($)
@@ -355,7 +362,7 @@ steps:
         --architecture x86_64
     array:
       python:
-        - "3.12"
+        - "3.14"
       platform:
         - cu13.0.0-cudnn
     depends_on:
@@ -378,7 +385,7 @@ steps:
         --architecture x86_64
     array:
       python:
-        - "3.12"
+        - "3.14"
       platform:
         - cu13.0.0-cudnn
     depends_on:
