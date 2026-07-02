@@ -1,24 +1,17 @@
 Build: state=Finished  success=False  exit=1  build finished with problems, 4 warnings.
 
-Findings (4):
-  Tier 2 — structural/parse (fix first; these mask warnings beneath them):
-    [T2] autosummary-stub-not-found  doc/source/apis/data/ray.data.Dataset.rst:20
-          msg:    autosummary: stub file not found 'ray.data.Dataset.map_batches'. Check your autosummary_generate setting.
-          fix:    Do not fix per entry when the failure is in bulk. Determine scope first: many missing stubs sharing a module prefix point at one root -- confirm the module imports under the build's mock set (autodoc_mock_imports) and that autosummary_generate is on; when an API-ref restructuring is in flight, the correct move may be to revert or repair the file moves rather than edit each entry. A lone missing stub means the member no longer exists -- update or drop the autosummary entry.
-          safety: judgment (needs your call)
-    [T2] autosummary-stub-not-found  doc/source/apis/data/ray.data.Dataset.rst:20
-          msg:    autosummary: stub file not found 'ray.data.Dataset.map'. Check your autosummary_generate setting.
-          fix:    Do not fix per entry when the failure is in bulk. Determine scope first: many missing stubs sharing a module prefix point at one root -- confirm the module imports under the build's mock set (autodoc_mock_imports) and that autosummary_generate is on; when an API-ref restructuring is in flight, the correct move may be to revert or repair the file moves rather than edit each entry. A lone missing stub means the member no longer exists -- update or drop the autosummary entry.
-          safety: judgment (needs your call)
-  Tier 3 — warnings:
-    [T3] py-xref-target-not-found  doc/source/apis/data/aggregate.rst:6
-          msg:    py:meth reference target not found: ray.data.Dataset.map_batches
-          fix:    Check for a co-occurring tier-2 autosummary-stub-not-found or tier-1 import abort for the same module first. If present, fix that root (up to and including reverting an in-progress API-ref restructuring) and rebuild -- the flood clears at once. Only when the build is otherwise healthy is the reference itself wrong: repoint to the correct dotted path, or fix the intersphinx target for a stdlib/third-party name.
-          safety: judgment (needs your call)
-    [T3] py-xref-target-not-found  doc/source/apis/data/aggregate.rst:6
-          msg:    py:meth reference target not found: ray.data.Dataset.map
-          fix:    Check for a co-occurring tier-2 autosummary-stub-not-found or tier-1 import abort for the same module first. If present, fix that root (up to and including reverting an in-progress API-ref restructuring) and rebuild -- the flood clears at once. Only when the build is otherwise healthy is the reference itself wrong: repoint to the correct dotted path, or fix the intersphinx target for a stdlib/third-party name.
-          safety: judgment (needs your call)
+Root-cause groups (1) — a structural root masks a downstream flood; fix the root, rebuild, and the masked references clear together:
+  ROOT [T2] autosummary-stub-not-found — ray.data.Dataset.* (2 stubs not generated, masking 2 downstream references)
+        where:  doc/source/apis/data/ray.data.Dataset.rst:20
+        stubs:  ray.data.Dataset.map_batches, ray.data.Dataset.map
+        fix:    Do not fix per entry when the failure is in bulk. Determine scope first: many missing stubs sharing a module prefix point at one root -- confirm the module imports under the build's mock set (autodoc_mock_imports) and that autosummary_generate is on; when an API-ref restructuring is in flight, the correct move may be to revert or repair the file moves rather than edit each entry. A lone missing stub means the member no longer exists -- update or drop the autosummary entry.
+        safety: judgment (needs your call)
+    masks 2 downstream py:* reference(s) — collapsed (full list in --json):
+          doc/source/apis/data/aggregate.rst:6  ray.data.Dataset.map_batches
+          doc/source/apis/data/aggregate.rst:6  ray.data.Dataset.map
+
+Findings (0):
+  (none)
 
 Unclassified (0) — no rule matched; resolve with the user, then file a skill-improvement ticket to add a rule:
 
