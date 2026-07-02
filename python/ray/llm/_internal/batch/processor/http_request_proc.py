@@ -35,9 +35,13 @@ class HttpRequestProcessorConfig(ProcessorConfig):
     )
     headers: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="The query header. Note that we will add "
-        "'Content-Type: application/json' to be the header for sure "
-        "because we only deal with requests body in JSON.",
+        description="The query header. The 'Content-Type' is managed "
+        "automatically: a JSON payload defaults to "
+        "'Content-Type: application/json', while a file-upload payload is sent "
+        "as 'multipart/form-data' (aiohttp sets the header, including the "
+        "boundary). A payload is treated as a file upload when it is a dict "
+        "with a bytes value or a nested dict with a 'content' key, e.g. for "
+        "OpenAI's audio transcription API.",
     )
     qps: Optional[int] = Field(
         default=None,
