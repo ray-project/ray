@@ -43,6 +43,12 @@ def _maybe_setup_kv_aware_routing(
             )
         return
 
+    # Keep the engine's token-tracking gate which reads llm_config consistent
+    # with the router resolved here from the merged deployment options.
+    llm_config.deployment_config["request_router_config"] = deployment_options[
+        "request_router_config"
+    ]
+
     deployment_options["deployment_actors"] = [
         *deployment_options.get("deployment_actors", []),
         DeploymentActorConfig(
