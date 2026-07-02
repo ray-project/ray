@@ -16,9 +16,9 @@ class FileScanner(Scanner[FileManifest]):
     """Base scanner for file-based datasources.
 
     Subclasses implement format-specific ``read_schema()`` and
-    ``create_reader()``. Shuffling and parallel bucketing are handled
+    ``create_reader()``. Shuffling and file-affinity bucketing are handled
     upstream in the ``ListFiles`` transform chain (``shuffle_files`` +
-    ``RoundRobinPartitioner`` via ``plan_list_files_op``), not here.
+    ``FileAffinityPartitioner`` via ``plan_list_files_op``), not here.
 
     PyArrow Dataset-based scanners should subclass ``ArrowFileScanner``;
     use ``FileScanner`` directly for non-Arrow file formats.

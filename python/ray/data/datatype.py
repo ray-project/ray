@@ -1049,3 +1049,55 @@ class DataType:
         elif pa.types.is_run_end_encoded(pa_type):
             return pa_type.value_type
         return pa_type
+
+
+# Bytes of one Arrow offset-buffer entry; ``large_*`` variants use int64.
+_ARROW_OFFSET_BYTES = 4
+_ARROW_LARGE_OFFSET_BYTES = 8
+
+
+def _fixed_arrow_byte_width(arrow_type: pa.DataType) -> Optional[float]:
+    """Per-value in-memory byte width for a *fixed-width* Arrow type.
+
+    Returns ``None`` for variable-width / nested types (string, binary, list,
+    map, struct, dictionary, extension, ...), whose in-memory size can't be
+    derived from the type alone. Booleans are bit-packed, so they report ``1/8``
+    byte per value. Dictionary types return ``None`` on purpose: ``bit_width``
+    would report the index width, not the decoded value size.
+    """
+    if pa.types.is_boolean(arrow_type):
+        return 1 / 8
+    if pa.types.is_dictionary(arrow_type):
+        return None
+    try:
+        # ``bit_width`` raises ValueError for variable-width / nested types and
+        # AttributeError for types without a bit width.
+        return arrow_type.bit_width / 8
+    except (ValueError, AttributeError):
+        return None
+
+
+def _arrow_offset_buffer_bytes(arrow_type: pa.DataType, num_rows: int) -> int:
+    """Bytes of the offset buffer a variable-width column allocates (0 if none).
+
+    Arrow offset buffers hold ``num_rows + 1`` entries: int32 (4 bytes) for
+    ``string`` / ``binary`` / ``list`` / ``map``, and int64 (8 bytes) for the
+    ``large_string`` / ``large_binary`` / ``large_list`` variants. Fixed-layout
+    containers (``struct``, ``fixed_size_list``), ``dictionary``, and fixed-width
+    types have no offset buffer, so this returns ``0`` for them.
+    """
+    n_offsets = num_rows + 1
+    if (
+        pa.types.is_large_string(arrow_type)
+        or pa.types.is_large_binary(arrow_type)
+        or pa.types.is_large_list(arrow_type)
+    ):
+        return n_offsets * _ARROW_LARGE_OFFSET_BYTES
+    if (
+        pa.types.is_string(arrow_type)
+        or pa.types.is_binary(arrow_type)
+        or pa.types.is_list(arrow_type)
+        or pa.types.is_map(arrow_type)
+    ):
+        return n_offsets * _ARROW_OFFSET_BYTES
+    return 0
