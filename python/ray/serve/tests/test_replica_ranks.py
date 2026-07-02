@@ -372,6 +372,7 @@ def test_rank_assignment_with_autoscaling(serve_instance):
     # Check that ranks are still contiguous after scale-up
     wait_for_condition(
         lambda: check_rank_assignment_complete("AutoscalingRankTracker", 4),
+        timeout=20,
     )
 
     scaled_ranks = get_replica_ranks("AutoscalingRankTracker")
@@ -380,14 +381,16 @@ def test_rank_assignment_with_autoscaling(serve_instance):
 
     signal_actor.send.remote()
 
-    # Wait for scale-down (no more load)
+    # Scale-down needs more than look_back_period_s of low load before ranks reassign.
     wait_for_condition(
         lambda: check_num_replicas_eq("AutoscalingRankTracker", 2, use_controller=True),
+        timeout=30,
     )
 
     # Check that ranks are reassigned and contiguous after scale-down
     wait_for_condition(
         lambda: check_rank_assignment_complete("AutoscalingRankTracker", 2),
+        timeout=20,
     )
 
     final_ranks = get_replica_ranks("AutoscalingRankTracker")
