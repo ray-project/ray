@@ -32,8 +32,15 @@ namespace ray {
 namespace rpc {
 /// \param MAX_ACTIVE_RPCS Maximum number of RPCs to handle at the same time. -1 means no
 /// limit.
-#define _RPC_SERVICE_HANDLER(                                                      \
-    SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, RECORD_METRICS, PASS_GRPC_PEER)  \
+/// \param IO_SERVICE The io_context the handler runs on. Handlers run on the service's
+/// main io_context unless a variant taking an explicit io_context is used.
+#define _RPC_SERVICE_HANDLER(SERVICE,                                              \
+                             HANDLER,                                              \
+                             MAX_ACTIVE_RPCS,                                      \
+                             AUTH_TYPE,                                            \
+                             RECORD_METRICS,                                       \
+                             PASS_GRPC_PEER,                                       \
+                             IO_SERVICE)                                           \
   std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                       \
       new ServerCallFactoryImpl<SERVICE,                                           \
                                 SERVICE##Handler,                                  \
@@ -46,7 +53,7 @@ namespace rpc {
           service_handler_,                                                        \
           &SERVICE##Handler::Handle##HANDLER,                                      \
           cq,                                                                      \
-          main_service_,                                                           \
+          IO_SERVICE,                                                              \
           #SERVICE ".grpc_server." #HANDLER,                                       \
           AUTH_TYPE == ClusterIdAuthType::NO_AUTH ? ClusterID::Nil() : cluster_id, \
           auth_token,                                                              \
@@ -56,28 +63,52 @@ namespace rpc {
 
 /// Define a RPC service handler with gRPC server metrics enabled.
 #define RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
-  _RPC_SERVICE_HANDLER(                                        \
-      SERVICE, HANDLER, MAX_ACTIVE_RPCS, ClusterIdAuthType::LAZY_AUTH, true, false)
+  _RPC_SERVICE_HANDLER(SERVICE,                                \
+                       HANDLER,                                \
+                       MAX_ACTIVE_RPCS,                        \
+                       ClusterIdAuthType::LAZY_AUTH,           \
+                       true,                                   \
+                       false,                                  \
+                       main_service_)
 
 /// Define a RPC service handler with gRPC server metrics disabled.
 #define RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
-  _RPC_SERVICE_HANDLER(                                                                \
-      SERVICE, HANDLER, MAX_ACTIVE_RPCS, ClusterIdAuthType::LAZY_AUTH, false, false)
+  _RPC_SERVICE_HANDLER(SERVICE,                                                        \
+                       HANDLER,                                                        \
+                       MAX_ACTIVE_RPCS,                                                \
+                       ClusterIdAuthType::LAZY_AUTH,                                   \
+                       false,                                                          \
+                       false,                                                          \
+                       main_service_)
 
 /// Like RPC_SERVICE_HANDLER, but passes `grpc::ServerContext::peer()` as the last
 /// argument to Handle##HANDLER (see HandleRequestFunctionWithGrpcPeer in server_call.h).
 #define RPC_SERVICE_HANDLER_WITH_GRPC_PEER(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
-  _RPC_SERVICE_HANDLER(                                                       \
-      SERVICE, HANDLER, MAX_ACTIVE_RPCS, ClusterIdAuthType::LAZY_AUTH, true, true)
+  _RPC_SERVICE_HANDLER(SERVICE,                                               \
+                       HANDLER,                                               \
+                       MAX_ACTIVE_RPCS,                                       \
+                       ClusterIdAuthType::LAZY_AUTH,                          \
+                       true,                                                  \
+                       true,                                                  \
+                       main_service_)
 
 /// Define a RPC service handler with gRPC server metrics enabled.
 #define RPC_SERVICE_HANDLER_CUSTOM_AUTH(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE) \
-  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, true, false)
+  _RPC_SERVICE_HANDLER(                                                               \
+      SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, true, false, main_service_)
 
 /// Define a RPC service handler with gRPC server metrics disabled.
 #define RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED( \
     SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE)                \
-  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, false, false)
+  _RPC_SERVICE_HANDLER(                                          \
+      SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, false, false, main_service_)
+
+/// Like RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED, but runs the handler
+/// on the given io_context instead of the service's main io_context.
+#define RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED_ON_IO_SERVICE( \
+    SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, IO_SERVICE)                  \
+  _RPC_SERVICE_HANDLER(                                                        \
+      SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, false, false, IO_SERVICE)
 
 class GrpcService;
 

@@ -149,10 +149,17 @@ class CoreWorkerServiceHandler : public DelayedServiceHandler {
 
 class CoreWorkerGrpcService : public GrpcService {
  public:
+  /// \param object_info_publish_service The io_context that serves the object-info
+  /// pubsub RPCs (PubsubLongPolling / PubsubCommandBatch). Together with
+  /// PostingPublisher, this confines every object-info publisher operation to that
+  /// context's dedicated thread, so the publisher's mutex is uncontended and pubsub
+  /// traffic never queues on the main io_context (#64347).
   CoreWorkerGrpcService(instrumented_io_context &main_service,
+                        instrumented_io_context &object_info_publish_service,
                         CoreWorkerServiceHandler &service_handler,
                         int64_t max_active_rpcs_per_handler)
       : GrpcService(main_service),
+        object_info_publish_service_(object_info_publish_service),
         service_handler_(service_handler),
         max_active_rpcs_per_handler_(max_active_rpcs_per_handler) {}
 
@@ -167,6 +174,7 @@ class CoreWorkerGrpcService : public GrpcService {
 
  private:
   CoreWorkerService::AsyncService service_;
+  instrumented_io_context &object_info_publish_service_;
   CoreWorkerServiceHandler &service_handler_;
   int64_t max_active_rpcs_per_handler_;
 };
