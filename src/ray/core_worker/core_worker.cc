@@ -15,6 +15,7 @@
 #include "ray/core_worker/core_worker.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <future>
 #include <memory>
 #include <string>
@@ -500,6 +501,52 @@ CoreWorker::CoreWorker(
       },
       100,
       "CoreWorker.RecoverObjects");
+
+  // REP-64 F5 (owner-side recovery fallback). Object recovery after a node
+  // failure is otherwise triggered ONLY by the node-death pub/sub push handled
+  // in on_node_change (see the SubscribeToNodeChange registration below): on
+  // DEAD it calls reference_counter_->ResetObjectsOnRemovedNode. If that single
+  // push is delayed (e.g. gated behind a slow GCS durable write, as under
+  // RocksDB strict fsync) or dropped, the owner never marks its lost objects for
+  // recovery and ray.get()/list(gen) hangs forever -- there is no other trigger.
+  // As a backstop, periodically fetch the set of DEAD nodes directly from the
+  // GCS with a fresh RPC (served from the GCS in-memory state, which is set
+  // synchronously on node failure and is NOT gated on the durable write) and
+  // (re)trigger recovery. ResetObjectsOnRemovedNode is idempotent: it only
+  // matches objects still pinned at that node, so re-running it for an
+  // already-recovered node is a cheap no-op. Respects strict durability and the
+  // GCS publish-after-persist ordering -- it only makes the consumer resilient
+  // to a late/lost notification.
+  if (std::getenv("RAY_TESTING_ENABLE_NODE_DEATH_FALLBACK") != nullptr) {
+    RAY_LOG(INFO) << "REP64 F5: owner-side node-death fallback enabled";
+    periodical_runner_->RunFnPeriodically(
+        [this] {
+          gcs_client_->Nodes().AsyncGetAll(
+              [this](const Status &status,
+                     const std::optional<std::pair<std::vector<rpc::GcsNodeInfo>,
+                                                    int64_t>> &result) {
+                if (!status.ok() || !result.has_value()) {
+                  return;
+                }
+                for (const auto &node : result->first) {
+                  const auto node_id = NodeID::FromBinary(node.node_id());
+                  // Mirror the on_node_change DEAD handler: reset object locations
+                  // AND disconnect the dead node's clients (the latter fails any
+                  // in-flight RPC to the dead node -- e.g. a streaming generator
+                  // task -- which is what actually unblocks the owner). All three
+                  // are idempotent, so re-running per tick is a cheap no-op once
+                  // the node is already reconciled.
+                  reference_counter_->ResetObjectsOnRemovedNode(node_id);
+                  raylet_client_pool_->Disconnect(node_id);
+                  core_worker_client_pool_->Disconnect(node_id);
+                }
+              },
+              /*timeout_ms=*/-1,
+              /*state_filter=*/rpc::GcsNodeInfo::DEAD);
+        },
+        1000,
+        "CoreWorker.ReconcileDeadNodesFallback");
+  }
 
   periodical_runner_->RunFnPeriodically(
       [this] { InternalHeartbeat(); },
