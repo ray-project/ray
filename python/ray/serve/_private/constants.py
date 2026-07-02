@@ -979,6 +979,11 @@ RAY_SERVE_PORT_QUARANTINE_S = get_env_float_non_negative(
     "RAY_SERVE_PORT_QUARANTINE_S",
     float(RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S + 30),
 )
+
+# Gate the incremental direct-ingress port reconcile: feed update_ports only the
+# set-diff of new ingress tuples (C3) and skip a node's prune reclaim scan when its
+# alive-replica set is unchanged since the last tick (C4). Full reconcile runs when off.
+RAY_SERVE_RECON_PORT_GATE = get_env_bool("RAY_SERVE_RECON_PORT_GATE", "0")
 # The minimum drain period for a HTTP proxy.
 # If RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS is set to 1,
 # then the minimum draining period is 0.
