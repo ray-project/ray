@@ -74,9 +74,9 @@ class AccessMode(str, Enum):
         # operation), so WRITE maps to READ_WRITE.
         from databricks.sdk.service.catalog import TableOperation
 
-        if self is AccessMode.READ:
+        if self == AccessMode.READ:
             return TableOperation.READ
-        elif self is AccessMode.WRITE:
+        elif self == AccessMode.WRITE:
             return TableOperation.READ_WRITE
         raise ValueError("Unsupported AccessMode for Databricks TableOperation")
 
