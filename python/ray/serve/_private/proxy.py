@@ -132,6 +132,16 @@ MAX_BACKOFF_PERIOD_SEC = 5
 DRAINING_MESSAGE = "This node is being drained."
 
 
+def _terminal_status_from_asgi_message(message: Any) -> Optional["ResponseStatus"]:
+    """Return a ResponseStatus for a terminal WebSocket close/disconnect message, else None."""
+    if not isinstance(message, dict):
+        return None
+    if message.get("type") in ("websocket.close", "websocket.disconnect"):
+        code = str(message["code"])
+        return ResponseStatus(code=code, is_error=code not in ["1000", "1001"])
+    return None
+
+
 class GenericProxy(ABC):
     """This class is served as the base class for different types of proxies.
     It contains all the common setup and methods required for running a proxy.
@@ -450,16 +460,47 @@ class GenericProxy(ABC):
             async for message in response_handler_info.response_generator:
                 if isinstance(message, ResponseStatus):
                     status = message
+                elif status is None:
+                    # Record a mid-stream disconnect code; trailing ResponseStatus overrides it.
+                    status = _terminal_status_from_asgi_message(message)
 
                 yield message
 
             assert status is not None and isinstance(status, ResponseStatus)
+        except GeneratorExit:
+            # GeneratorExit skips the post-finally recording below, so record here.
+            if proxy_request.request_type in ("http", "websocket"):
+                if status is None:
+                    disconnect_code = (
+                        "1006" if proxy_request.request_type == "websocket" else "499"
+                    )
+                    status = ResponseStatus(code=disconnect_code, is_error=True)
+                try:
+                    self._record_request_completion_metrics(
+                        proxy_request, response_handler_info, status, start_time
+                    )
+                except Exception:
+                    # A metrics error must not supplant the in-flight GeneratorExit.
+                    logger.exception("Failed to record metrics on client disconnect.")
+            raise
         finally:
             # If anything during the request failed, we still want to ensure the ongoing
             # request counter is decremented.
             if response_handler_info.should_increment_ongoing_requests:
                 self._ongoing_requests_end()
 
+        self._record_request_completion_metrics(
+            proxy_request, response_handler_info, status, start_time
+        )
+
+    def _record_request_completion_metrics(
+        self,
+        proxy_request: ProxyRequest,
+        response_handler_info: ResponseHandlerInfo,
+        status: ResponseStatus,
+        start_time: float,
+    ) -> None:
+        """Emit the access log and request / latency / error metrics."""
         latency_ms = (time.time() - start_time) * 1000.0
         status_code = (
             status.code.name
@@ -1341,17 +1382,17 @@ class HTTPProxy(GenericProxy):
                         "websocket.close",
                         "websocket.disconnect",
                     ]:
-                        status_code = str(asgi_message["code"])
-                        status = ResponseStatus(
-                            code=status_code,
-                            # All status codes are considered errors aside from:
-                            # 1000 (CLOSE_NORMAL), 1001 (CLOSE_GOING_AWAY).
-                            is_error=status_code not in ["1000", "1001"],
-                        )
+                        status = _terminal_status_from_asgi_message(asgi_message)
+                        status_code = status.code
                         response_generator.stop_checking_for_disconnect()
 
                     yield asgi_message
                     response_started = True
+        except GeneratorExit:
+            # Re-raise: an async generator must not yield while handling GeneratorExit.
+            if status is None and proxy_request.request_type != "websocket":
+                status = ResponseStatus(code="499", is_error=True)
+            raise
         except BaseException as e:
             error_status = get_http_response_status(e, request_timeout_s, request_id)
             if status is None:
