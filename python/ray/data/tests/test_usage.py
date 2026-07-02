@@ -83,6 +83,10 @@ def test_round_trip_payload_shape(reset_collector, mock_record, executor):
     ]
     assert entry["workload"]["plan_str"] == "MapBatches\n+- ReadRange\n"
     assert "pyarrow" in entry["env"]
+    # Performance deltas are populated from the injected readers; both readers
+    # return 0 at start and end, so the clamped deltas are 0.
+    assert entry["performance"]["bytes_spilled"] == 0
+    assert entry["performance"]["node_deaths"] == 0
     # No issues detected in this run; the key is present and empty.
     assert entry["detected_issues"] == []
 
@@ -312,6 +316,17 @@ def test_physical_op_name_without_logical_ops():
     operator = MagicMock()
     operator._logical_operators = []
     assert collector.physical_op_name_with_id(operator) == "Unknown"
+
+
+def test_compute_delta():
+    """Cluster metric deltas (bytes_spilled, node_deaths) are the non-negative
+    increase between start and end samples, or None if either sample is missing."""
+    assert collector.compute_delta(100, 250) == 150
+    # Cumulative counters shouldn't go backwards, but clamp to 0 if they do.
+    assert collector.compute_delta(250, 100) == 0
+    assert collector.compute_delta(None, 100) is None
+    assert collector.compute_delta(100, None) is None
+    assert collector.compute_delta(None, None) is None
 
 
 if __name__ == "__main__":

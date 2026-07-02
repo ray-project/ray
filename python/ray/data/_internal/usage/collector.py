@@ -117,9 +117,8 @@ class UsageInfo:
 # A callable that records config information for a logical operator.
 OpConfigFn = Callable[[LogicalOperator], Optional[OpConfig]]
 
-# A callable that samples a cumulative cluster metric (spilled bytes, dead node
-# count, ...). Injected into the callback so tests can supply deterministic
-# readers instead of querying a live cluster.
+# A callable that samples a cluster metric (spilled bytes, dead node
+# count, ...)
 MetricReader = Callable[[], Optional[int]]
 
 
