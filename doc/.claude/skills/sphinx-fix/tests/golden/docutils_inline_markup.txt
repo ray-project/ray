@@ -5,11 +5,11 @@ Findings (2):
     [T3] docutils-inline-markup  doc/source/data/api/doc/ray.data.ReaderFormat.rst:74:<autosummary>:1
           msg:    Inline emphasis start-string without end-string.
           fix:    Balance or escape the marker in the source docstring, not in the generated stub: wrap literals in double backticks (``*args``, ``**kwargs``), or escape a standalone asterisk (\*).
-          safety: mechanical
+          safety: judgment (needs your call)
     [T3] docutils-inline-markup  doc/source/data/api/doc/ray.data.ReaderFormat.rst:74:<autosummary>:1
           msg:    Inline strong start-string without end-string.
           fix:    Balance or escape the marker in the source docstring, not in the generated stub: wrap literals in double backticks (``*args``, ``**kwargs``), or escape a standalone asterisk (\*).
-          safety: mechanical
+          safety: judgment (needs your call)
 
 Unclassified (0) — no rule matched; resolve with the user, then file a skill-improvement ticket to add a rule:
 
