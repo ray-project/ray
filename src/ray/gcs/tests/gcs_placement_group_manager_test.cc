@@ -298,6 +298,47 @@ TEST_F(GcsPlacementGroupManagerTest, TestBasic) {
   ASSERT_EQ(scheduling_latency_tag_to_value.size(), 1);
 }
 
+// A placement-group state must stay visible in the `placement_groups` gauge on every
+// RecordMetrics() tick (not just on transitions), and be retracted to 0 once no PG is
+// in that state. The metrics backend clears gauge observations after each export
+// (#56405).
+TEST_F(GcsPlacementGroupManagerTest, TestPlacementGroupStateGaugeReEmitsAndRetracts) {
+  gcs_placement_group_manager_->SetUsageStatsClient(nullptr);
+  // Returns the placement_groups gauge value for the given State tag, or -1 if absent.
+  auto value_for_state = [this](const std::string &state) -> double {
+    for (const auto &[tags, value] : fake_placement_group_gauge_.GetTagToValue()) {
+      if (tags.at("State") == state) {
+        return value;
+      }
+    }
+    return -1;
+  };
+
+  auto request = GenCreatePlacementGroupRequest();
+  std::atomic<int> registered_count(0);
+  RegisterPlacementGroup(request,
+                         [&registered_count](const Status &) { ++registered_count; });
+  ASSERT_EQ(registered_count, 1);
+  auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  mock_placement_group_scheduler_->placement_groups_.pop_back();
+
+  gcs_placement_group_manager_->RecordMetrics();
+  ASSERT_EQ(value_for_state("PENDING"), 1);
+
+  // Re-emit across a tick with no transition.
+  fake_placement_group_gauge_.Clear();
+  gcs_placement_group_manager_->RecordMetrics();
+  ASSERT_EQ(value_for_state("PENDING"), 1)
+      << "pending placement group must persist without a transition";
+
+  // The PG is created: PENDING drops to 0, CREATED becomes 1.
+  OnPlacementGroupCreationSuccess(placement_group);
+  gcs_placement_group_manager_->RecordMetrics();
+  ASSERT_EQ(value_for_state("CREATED"), 1);
+  ASSERT_EQ(value_for_state("PENDING"), 0)
+      << "PENDING gauge must be retracted to 0 after creation";
+}
+
 TEST_F(GcsPlacementGroupManagerTest, TestSchedulingFailed) {
   auto request = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);

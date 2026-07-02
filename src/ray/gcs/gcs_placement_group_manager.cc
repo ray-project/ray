@@ -98,13 +98,14 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
       clock_(clock) {
   placement_group_state_counter_.reset(
       new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
+  // On change, only retract states that dropped to zero (emit their final 0). Live
+  // states are re-asserted every tick by the ForEachEntry loop in RecordMetrics, so
+  // emitting them here too would double-record. Keeps each state recorded once/tick.
   placement_group_state_counter_->SetOnChangeCallback(
       [this](const rpc::PlacementGroupTableData::PlacementGroupState key) mutable {
-        int64_t num_pg = placement_group_state_counter_->Get(key);
-        placement_group_gauge_.Record(
-            num_pg,
-            {{"State", rpc::PlacementGroupTableData::PlacementGroupState_Name(key)},
-             {"Source", "gcs"}});
+        if (placement_group_state_counter_->Get(key) == 0) {
+          RecordPlacementGroupState(key);
+        }
       });
   Tick();
 }
@@ -1032,7 +1033,24 @@ void GcsPlacementGroupManager::RecordMetrics() const {
     usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::PG_NUM_CREATED,
                                                  lifetime_num_placement_groups_created_);
   }
+  // Re-assert every live placement-group state each tick, not just transitions:
+  // the metrics backend clears gauge observations after each export (#56405), so
+  // these gauge values would otherwise drop out between transitions.
+  // FlushOnChangeCallbacks still emits the final 0 for keys that just dropped to
+  // zero (erased from the counter, so ForEachEntry won't visit them).
   placement_group_state_counter_->FlushOnChangeCallbacks();
+  placement_group_state_counter_->ForEachEntry(
+      [this](const rpc::PlacementGroupTableData::PlacementGroupState &key, int64_t) {
+        RecordPlacementGroupState(key);
+      });
+}
+
+void GcsPlacementGroupManager::RecordPlacementGroupState(
+    rpc::PlacementGroupTableData::PlacementGroupState state) const {
+  placement_group_gauge_.Record(
+      placement_group_state_counter_->Get(state),
+      {{"State", rpc::PlacementGroupTableData::PlacementGroupState_Name(state)},
+       {"Source", "gcs"}});
 }
 
 bool GcsPlacementGroupManager::IsInPendingQueue(
