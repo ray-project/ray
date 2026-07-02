@@ -344,14 +344,18 @@ def _build_file_body_mixed(tables: List[pa.Table], codec: str) -> bytes:
 # --- driver ---------------------------------------------------------------
 _PUT_PARALLELISM = int(os.environ.get("DATASET_GEN_PARALLELISM", "32"))
 
-# Default logical memory passed to read_parquet when --read-memory is omitted.
+# Logical memory hint for read_parquet. When --read-memory is omitted we pass
+# NO ``memory=`` argument at all (``memory=None`` below), so read_parquet falls
+# back to whatever the datasource itself estimates -- this lets us observe the
+# no-hint behavior. Kept as a convenience constant for callers that want to
+# pass an explicit 4 GiB via ``--read-memory 4GiB``.
 DEFAULT_READ_MEMORY_BYTES = 4 * 1024**3  # 4 GiB
 
 
 def _read_back(
     path: str,
     total_disk_bytes: Optional[int],
-    memory: int,
+    memory: Optional[int],
     use_version: str,
     write_output: Optional[str] = None,
     max_calls: Optional[int] = None,
@@ -415,12 +419,19 @@ def _read_back(
     # read worker after one task (a fresh process per read task) -- it releases
     # heap / allocator high-water between tasks, useful for the memory probes.
     ray_remote_args = {"max_calls": max_calls} if max_calls is not None else None
+    # Only pass ``memory=`` when a hint was explicitly requested (--read-memory).
+    # When omitted (``memory is None``) we pass no memory kwarg at all, so
+    # read_parquet uses the datasource's own estimate -- the no-hint behavior.
+    read_kwargs = {"ray_remote_args": ray_remote_args}
+    if memory is not None:
+        read_kwargs["memory"] = memory
+    memory_desc = human(memory) if memory is not None else "unset (no hint)"
     print(
-        f"[read] ray.data.read_parquet(memory={human(memory)}"
+        f"[read] ray.data.read_parquet(memory={memory_desc}"
         f"{f', max_calls={max_calls}' if max_calls is not None else ''}) <- {path}",
         flush=True,
     )
-    ds = ray.data.read_parquet(path, memory=memory, ray_remote_args=ray_remote_args)
+    ds = ray.data.read_parquet(path, **read_kwargs)
 
     # Persist the read-back dataset instead of draining it: write_parquet streams
     # the same ReadFiles pipeline (so the partitioner / chunker knobs above still
@@ -429,7 +440,7 @@ def _read_back(
     if write_output:
         print(
             f"[read+write] write_parquet {path} -> {write_output} "
-            f"(memory={human(memory)})",
+            f"(memory={memory_desc})",
             flush=True,
         )
         t0 = time.time()
@@ -473,7 +484,7 @@ def generate(
     codec: str,
     force: bool,
     read_back: bool,
-    read_memory: int,
+    read_memory: Optional[int],
     use_version: str,
     seed: int = 0,
     write_output: Optional[str] = None,
@@ -633,7 +644,7 @@ def generate_mixed(
     rows_per_row_group: int,
     force: bool,
     read_back: bool,
-    read_memory: int,
+    read_memory: Optional[int],
     use_version: str,
     seed: int,
     write_output: Optional[str] = None,
@@ -949,9 +960,11 @@ def main():
     p.add_argument(
         "--read-memory",
         type=parse_size,
-        default=DEFAULT_READ_MEMORY_BYTES,
-        help="Logical memory passed to read_parquet during read-back, "
-        "e.g. 4GiB, 512MiB.",
+        default=None,
+        help="Logical memory hint passed to read_parquet during read-back, "
+        "e.g. 4GiB, 512MiB. When omitted, NO memory hint is passed at all "
+        "(read_parquet uses the datasource's own estimate) -- use this to "
+        "observe the no-hint behavior.",
     )
     p.add_argument(
         "--write-output",
