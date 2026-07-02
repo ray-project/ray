@@ -1615,9 +1615,9 @@ gast==0.7.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   tensorflow
     #   tensorflow-probability
-gitdb==4.0.12 \
-    --hash=sha256:5ef71f855d191a3326fcfbc0d5da835f26b13fbcba60c32c21091c349ffdb571 \
-    --hash=sha256:67073e15955400952c6565cc3e707c554a4eea2e428946f7a4c162fab9bd9bcf
+gitdb==4.0.11 \
+    --hash=sha256:81a3407ddd2ee8df444cbacea00e2d038e40150acfa3001696fe0dcf1d3adfa4 \
+    --hash=sha256:bf5421126136d6d0af55bc1e7c1af1c397a34f5b7bd79e776cd3e89785c2b04b
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   gitpython
@@ -5519,9 +5519,9 @@ rapids-logger==0.2.3 ; sys_platform != 'darwin' \
     # via
     #   libcudf-cu12
     #   librmm-cu12
-ray-haproxy==2.8.20 ; sys_platform == 'linux' \
-    --hash=sha256:a955cbb370c9b9a4dadecd265ddff3ac6d007ad70eae293f05ef753a22b5e1f2 \
-    --hash=sha256:da23d7d28c39247826466ddfe3c166db7cef5dcd44d8a64b8f9eb91e7089076c
+ray-haproxy==2.8.25 ; sys_platform == 'linux' \
+    --hash=sha256:51671f11afb571ed5b37042f9287daf48de235f2d32ad18b732ee9587e9ad076 \
+    --hash=sha256:a63902c2fe7eb51fbcb502980228d743b79da6cecab230c4c24674517b1ac3ac
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ray

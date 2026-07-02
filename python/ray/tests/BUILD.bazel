@@ -356,7 +356,6 @@ py_test_module_list(
         "test_streaming_generator_2.py",
         "test_streaming_generator_3.py",
         "test_streaming_generator_4.py",
-        "test_streaming_generator_backpressure.py",
         "test_task_metrics.py",
         "test_tempdir.py",
         "test_tls_auth.py",
@@ -369,6 +368,22 @@ py_test_module_list(
     tags = [
         "exclusive",
         "medium_size_python_tests_shard_1",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "large",
+    files = [
+        "test_streaming_generator_backpressure.py",
+    ],
+    tags = [
+        "exclusive",
+        "large_size_python_tests_shard_1",
         "team:core",
     ],
     deps = [
@@ -403,6 +418,7 @@ py_test_module_list(
         "test_resource_demand_scheduler.py",
         "test_stress.py",
         "test_stress_sharded.py",
+        "test_wait.py",
     ],
     tags = [
         "exclusive",
@@ -481,6 +497,7 @@ py_test_module_list(
         "test_minimal_install.py",
         "test_path_utils.py",
         "test_runtime_env_ray_minimal.py",
+        "test_topology_strategy.py",
     ],
     tags = [
         "exclusive",
@@ -559,6 +576,7 @@ py_test_module_list(
         "test_multinode_failures_2.py",
         "test_node_death.py",
         "test_numba.py",
+        "test_object_out_of_scope_callback.py",
         "test_object_spilling_no_asan.py",
         "test_open_telemetry_metric_recorder.py",
         "test_placement_group_metrics.py",
@@ -578,7 +596,6 @@ py_test_module_list(
         "test_top_level_api.py",
         "test_tqdm.py",
         "test_unhandled_error.py",
-        "test_wait.py",
         "test_widgets.py",
         "test_worker_graceful_shutdown.py",
     ],
@@ -631,6 +648,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
+        "rdt/test_nixl_backend_selection.py",
         "rdt/test_nixl_memory_pool.py",
         "rdt/test_rdt_custom.py",
         "rdt/test_rdt_gloo.py",
@@ -653,9 +671,28 @@ py_test_module_list(
     files = [
         "rdt/test_rdt_ipc.py",
         "rdt/test_rdt_nccl.py",
-        "rdt/test_rdt_nixl.py",
         "test_gpu_provider_on_gpu.py",
         "test_gpu_tensor_zero_copy_serialization.py",
+    ],
+    tags = [
+        "custom_setup",
+        "exclusive",
+        "multi_gpu",
+        "no_windows",
+        "rdt",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "large",
+    env = {"RAY_PYTEST_USE_GPU": "1"},
+    files = [
+        "rdt/test_rdt_nixl.py",
     ],
     tags = [
         "custom_setup",

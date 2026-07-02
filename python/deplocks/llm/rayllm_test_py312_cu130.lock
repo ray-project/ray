@@ -1564,9 +1564,9 @@ gguf==0.18.0 \
     --hash=sha256:af93f7ef198a265cbde5fa6a6b3101528bca285903949ab0a3e591cd993a1864 \
     --hash=sha256:b4659093d5d0dccdb5902a904d54b327f4052879fe5e90946ad5fce9f8018c2e
     # via vllm
-gitdb==4.0.12 \
-    --hash=sha256:5ef71f855d191a3326fcfbc0d5da835f26b13fbcba60c32c21091c349ffdb571 \
-    --hash=sha256:67073e15955400952c6565cc3e707c554a4eea2e428946f7a4c162fab9bd9bcf
+gitdb==4.0.11 \
+    --hash=sha256:81a3407ddd2ee8df444cbacea00e2d038e40150acfa3001696fe0dcf1d3adfa4 \
+    --hash=sha256:bf5421126136d6d0af55bc1e7c1af1c397a34f5b7bd79e776cd3e89785c2b04b
     # via
     #   -c python/deplocks/llm/ray_test_py312_cu130.lock
     #   gitpython
@@ -4927,9 +4927,9 @@ quack-kernels==0.4.1 \
     --hash=sha256:9d7d6ba412bc0c8a9b1331c52a73db76280adb9dc2f2750df4851ddabef1466b \
     --hash=sha256:c1c8df2935bf5156ec47d2c5384ac08b411fd0ee702d80ae916dbf6d6f5ae813
     # via vllm
-ray-haproxy==2.8.20 ; sys_platform == 'linux' \
-    --hash=sha256:a955cbb370c9b9a4dadecd265ddff3ac6d007ad70eae293f05ef753a22b5e1f2 \
-    --hash=sha256:da23d7d28c39247826466ddfe3c166db7cef5dcd44d8a64b8f9eb91e7089076c
+ray-haproxy==2.8.25 ; sys_platform == 'linux' \
+    --hash=sha256:51671f11afb571ed5b37042f9287daf48de235f2d32ad18b732ee9587e9ad076 \
+    --hash=sha256:a63902c2fe7eb51fbcb502980228d743b79da6cecab230c4c24674517b1ac3ac
     # via
     #   -c python/deplocks/llm/ray_test_py312_cu130.lock
     #   -r python/requirements.txt
