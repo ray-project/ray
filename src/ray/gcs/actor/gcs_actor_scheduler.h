@@ -369,11 +369,24 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   ray::observability::MetricInterface &scheduler_placement_time_ms_histogram_;
   ClockInterface &clock_;
 
+  /// Select a node to forward the actor (using distributed scheduling), or
+  /// for the actual lease (using centralized scheduling)
+  ///
+  /// \param actor The actor to be scheduled or forwarded.
+  /// \return The selected node's ID. If the selection fails, NodeID::Nil() is returned.
+  NodeID LeaseWorkerNode(std::shared_ptr<GcsActor> actor);
+
   /// Select a node where the actor is forwarded (for queueing and scheduling).
   ///
   /// \param actor The actor to be forwarded.
   /// \return The selected node's ID. If the selection fails, NodeID::Nil() is returned.
   NodeID SelectForwardingNode(std::shared_ptr<GcsActor> actor);
+
+  /// Select a node where the actor will be scheduled
+  ///
+  /// \param actor The actor to be forwarded.
+  /// \return The selected node's ID. If the selection fails, NodeID::Nil() is returned.
+  NodeID SelectWorkerNode(std::shared_ptr<GcsActor> actor);
 
   friend class GcsActorSchedulerTest;
   FRIEND_TEST(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode);

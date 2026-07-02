@@ -134,12 +134,17 @@ void GcsResourceManager::UpdateFromResourceView(
   if (node_id == local_node_id_) {
     return;
   }
-  // We will only update the node's resources if it's from resource view reports.
-  if (!cluster_resource_manager_.UpdateNode(scheduling::NodeID(node_id.Binary()),
-                                            resource_view_sync_message)) {
-    RAY_LOG(INFO)
-        << "[UpdateFromResourceView]: received resource usage from unknown node id "
-        << node_id;
+
+  if (RayConfig::instance().centralized_actor_scheduling()) {
+    RAY_LOG(DEBUG) << "SKIPPING UPDATE FROM " << node_id;
+  } else {
+    // We will only update the node's resources if it's from resource view reports.
+    if (!cluster_resource_manager_.UpdateNode(scheduling::NodeID(node_id.Binary()),
+                                              resource_view_sync_message)) {
+      RAY_LOG(INFO)
+          << "[UpdateFromResourceView]: received resource usage from unknown node id "
+          << node_id;
+    }
   }
   UpdateNodeResourceUsage(node_id, resource_view_sync_message);
 }
