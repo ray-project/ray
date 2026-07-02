@@ -41,10 +41,13 @@ from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import (
     DatasetStats,
     DatasetStatsSummary,
+    IterationStage,
     NodeMetrics,
     OperatorStatsSummary,
     StatsSummary,
     Timer,
+    TimeSpan,
+    _maybe_time,
     _StatsActor,
     get_or_create_stats_actor,
 )
@@ -2039,6 +2042,147 @@ def test_stats_actor_iter_metrics():
     assert f"dataset_{ds._uuid}_0" == update_fn.call_args_list[-1].args[1]
 
 
+def test_update_iteration_metrics_exports_new_iter_metrics():
+    stats = DatasetStats(metadata={}, parent=None)
+    stats.iter_total_s.add(11.0)
+    stats.iter_blocked_production_wait_s.add(1.0)
+    stats.iter_blocked_data_transfer_s.add(1.5)
+    stats.iter_blocked_batching_s.add(2.0)
+    stats.iter_blocked_format_s.add(3.0)
+    stats.iter_blocked_collate_s.add(4.0)
+    stats.iter_blocked_finalize_s.add(5.0)
+    stats.iter_batches_total = 7
+    stats.iter_rows_total = 8
+
+    actor = _StatsActor.__ray_metadata__.modified_class.__new__(
+        _StatsActor.__ray_metadata__.modified_class
+    )
+    recorded = {}
+
+    class FakeGauge:
+        def __init__(self, name):
+            self.name = name
+
+        def set(self, value, tags):
+            recorded[self.name] = (value, tags)
+
+    for attr in [
+        "iter_initialize_s",
+        "iter_total_s",
+        "iter_get_ref_bundles_s",
+        "iter_get_s",
+        "iter_next_batch_s",
+        "iter_format_batch_s",
+        "iter_collate_batch_s",
+        "iter_finalize_batch_s",
+        "iter_blocks_local",
+        "iter_blocks_remote",
+        "iter_unknown_location",
+        "iter_prefetched_bytes",
+        "iter_block_fetching_s",
+        "iter_batch_shaping_s",
+        "iter_batch_formatting_s",
+        "iter_batch_collating_s",
+        "iter_batch_finalizing_s",
+        "time_to_first_batch_s",
+        "iter_total_blocked_s",
+        "iter_blocked_production_wait_s",
+        "iter_blocked_data_transfer_s",
+        "iter_blocked_batching_s",
+        "iter_blocked_format_s",
+        "iter_blocked_collate_s",
+        "iter_blocked_finalize_s",
+        "iter_batches_total",
+        "iter_rows_total",
+        "iter_user_s",
+    ]:
+        setattr(actor, attr, FakeGauge(attr))
+
+    actor.update_iteration_metrics(stats, "train_dataset_split_3")
+
+    expected_tags = {"dataset": "train_dataset_split_3"}
+    assert recorded["iter_total_s"] == (11.0, expected_tags)
+    assert recorded["iter_blocked_production_wait_s"] == (1.0, expected_tags)
+    assert recorded["iter_blocked_data_transfer_s"] == (1.5, expected_tags)
+    assert recorded["iter_blocked_batching_s"] == (2.0, expected_tags)
+    assert recorded["iter_blocked_format_s"] == (3.0, expected_tags)
+    assert recorded["iter_blocked_collate_s"] == (4.0, expected_tags)
+    assert recorded["iter_blocked_finalize_s"] == (5.0, expected_tags)
+    assert recorded["iter_batches_total"] == (7, expected_tags)
+    assert recorded["iter_rows_total"] == (8, expected_tags)
+
+
+def test_iter_stats_summary_has_new_fields():
+    """IterStatsSummary includes per-stage blocked timers and counters."""
+    stats = DatasetStats(metadata={}, parent=None)
+    summary = stats.to_summary()
+    iter_summary = summary.iter_stats
+
+    assert hasattr(iter_summary, "blocked_production_wait_time")
+    assert hasattr(iter_summary, "blocked_data_transfer_time")
+    assert hasattr(iter_summary, "blocked_batching_time")
+    assert hasattr(iter_summary, "blocked_format_time")
+    assert hasattr(iter_summary, "blocked_collate_time")
+    assert hasattr(iter_summary, "blocked_finalize_time")
+    assert hasattr(iter_summary, "batches_total")
+    assert hasattr(iter_summary, "rows_total")
+
+
+def test_iter_stats_summary_reflects_accumulated_values():
+    """IterStatsSummary carries the accumulated timer values."""
+    stats = DatasetStats(metadata={}, parent=None)
+    stats.iter_blocked_production_wait_s.add(0.5)
+    stats.iter_blocked_batching_s.add(0.2)
+    stats.iter_batches_total = 10
+    stats.iter_rows_total = 320
+
+    summary = stats.to_summary().iter_stats
+    assert summary.blocked_production_wait_time.get() == pytest.approx(0.5)
+    assert summary.blocked_data_transfer_time.get() == pytest.approx(0.0)
+    assert summary.blocked_batching_time.get() == pytest.approx(0.2)
+    assert summary.batches_total == 10
+    assert summary.rows_total == 320
+
+
+def test_iter_stats_to_string_shows_stage_breakdown():
+    """to_string() renders per-stage breakdown when values are non-zero."""
+    stats = DatasetStats(metadata={}, parent=None)
+    stats.iter_blocked_production_wait_s.add(1.5)
+    stats.iter_blocked_format_s.add(0.8)
+    stats.iter_batches_total = 5
+    stats.iter_rows_total = 160
+    stats.iter_total_blocked_s.add(2.3)
+
+    text = str(stats.to_summary().iter_stats)
+    assert "production wait" in text
+    assert "format" in text
+    assert "Total batches consumed: 5" in text
+    assert "Total rows consumed: 160" in text
+    assert "Per-stage training-thread blocked time breakdown" in text
+
+
+def test_iter_stats_to_string_omits_zero_stages():
+    """to_string() omits stages with zero values from the breakdown."""
+    stats = DatasetStats(metadata={}, parent=None)
+    stats.iter_blocked_production_wait_s.add(0.5)
+    stats.iter_total_blocked_s.add(0.5)
+
+    text = str(stats.to_summary().iter_stats)
+    assert "production wait" in text
+    # Zero stages should not appear
+    assert "batching" not in text
+    assert "collate" not in text
+
+
+def test_iter_stats_to_string_no_breakdown_when_all_zero():
+    """When all blocked_* stages are zero, no breakdown section appears."""
+    stats = DatasetStats(metadata={}, parent=None)
+    text = str(stats.to_summary().iter_stats)
+    assert "Per-stage training-thread blocked time breakdown" not in text
+    assert "Total batches consumed" not in text
+    assert "Total rows consumed" not in text
+
+
 def test_dataset_name_and_id():
     # Test deprecated APIs: _set_name and _name
     ds = ray.data.range(1)
@@ -2657,6 +2801,72 @@ class TestTimerPercentile:
         assert t._total_count == 0.0
         assert t.min() == float("inf")
         assert t.max() == 0.0
+
+
+class TestTimerSpan:
+    """Tests for Timer.timer() returning a TimeSpan and accumulating."""
+
+    def test_timer_yields_timespan(self):
+        """timer() yields a fresh TimeSpan whose duration is accumulated."""
+        t = Timer()
+        with t.timer() as span:
+            time.sleep(0.01)
+        assert isinstance(span, TimeSpan)
+        assert span.duration > 0
+        # The span's duration is accumulated into the Timer.
+        assert t.get() == pytest.approx(span.duration, rel=0.5)
+        assert t.max() > 0
+        assert t.min() == pytest.approx(span.duration, rel=0.5)
+
+    def test_each_call_returns_fresh_span(self):
+        """Each timer() call yields a distinct TimeSpan instance."""
+        t = Timer()
+        with t.timer() as s1:
+            pass
+        with t.timer() as s2:
+            pass
+        assert s1 is not s2
+        assert t.get() == pytest.approx(s1.duration + s2.duration, rel=0.5)
+
+    def test_maybe_time_skips_when_timer_none(self):
+        """_maybe_time(None) yields None."""
+        with _maybe_time(None) as span:
+            assert span is None
+        assert span is None
+
+    def test_maybe_time_yields_span_when_timer_given(self):
+        """_maybe_time(Timer) yields a TimeSpan backed by the Timer."""
+        t = Timer()
+        with _maybe_time(t) as span:
+            time.sleep(0.01)
+        assert isinstance(span, TimeSpan)
+        assert span.duration > 0
+        assert t.get() == pytest.approx(span.duration, rel=0.5)
+
+
+@pytest.mark.parametrize(
+    "stage,attr",
+    [
+        (IterationStage.PRODUCTION_WAIT, "iter_blocked_production_wait_s"),
+        (IterationStage.DATA_TRANSFER, "iter_blocked_data_transfer_s"),
+        (IterationStage.BATCHING, "iter_blocked_batching_s"),
+        (IterationStage.FORMAT, "iter_blocked_format_s"),
+        (IterationStage.COLLATE, "iter_blocked_collate_s"),
+        (IterationStage.FINALIZE, "iter_blocked_finalize_s"),
+    ],
+)
+class TestGetBlockedTimer:
+    """Tests for DatasetStats.get_blocked_timer() stage->Timer mapping."""
+
+    def test_get_blocked_timer_returns_correct_attribute(self, stage, attr):
+        """get_blocked_timer(stage) returns the Timer matching the stage."""
+        stats = DatasetStats(metadata={}, parent=None)
+        assert stats.get_blocked_timer(stage) is getattr(stats, attr)
+
+    def test_get_blocked_timer_returns_timer_instance(self, stage, attr):
+        """get_blocked_timer returns a real Timer (not None)."""
+        stats = DatasetStats(metadata={}, parent=None)
+        assert isinstance(stats.get_blocked_timer(stage), Timer)
 
 
 def test_streaming_exec_schedule_percentiles_populated(ray_start_regular_shared):

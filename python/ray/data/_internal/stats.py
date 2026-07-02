@@ -5,11 +5,13 @@ import time
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
+from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
     DefaultDict,
     Dict,
+    Iterator,
     List,
     Mapping,
     Optional,
@@ -160,6 +162,42 @@ class _StatsAccumulator:
         )
 
 
+class IterationStage(Enum):
+    """Stages of the iter_batches pipeline, used to attribute training-thread
+    blocked time. Each value is the Prometheus label for the corresponding
+    ``data_iter_blocked_<stage>_seconds`` gauge.
+    """
+
+    PRODUCTION_WAIT = "production_wait"  # waiting on upstream data production
+    DATA_TRANSFER = "data_transfer"  # cross-node ray.get() transfer
+    BATCHING = "batching"  # slicing/shuffling blocks into batches
+    FORMAT = "format"  # converting blocks to batch format
+    COLLATE = "collate"  # applying user collate_fn
+    FINALIZE = "finalize"  # applying user finalize_fn
+
+
+@dataclass
+class TimeSpan:
+    """A measured wall-clock interval (start_s, end_s)."""
+
+    start_s: float = 0.0
+    end_s: float = 0.0
+
+    @property
+    def duration(self) -> float:
+        return self.end_s - self.start_s
+
+
+@contextmanager
+def _maybe_time(timer: Optional["Timer"]) -> Iterator[Optional[TimeSpan]]:
+    """Time a block, yielding a TimeSpan (or None if timer is None)."""
+    if timer is None:
+        yield None
+    else:
+        with timer.timer() as span:
+            yield span
+
+
 class Timer:
     """Helper class for tracking accumulated time (in seconds).
 
@@ -186,12 +224,19 @@ class Timer:
         self._distribution: DistributionTracker = DistributionTracker()
 
     @contextmanager
-    def timer(self) -> None:
-        time_start = time.perf_counter()
+    def timer(self) -> Iterator[TimeSpan]:
+        """Time a block, yielding a fresh ``TimeSpan`` per call.
+
+        The returned span is a distinct instance each call, so multiple
+        threads sharing the same ``Timer`` don't race on span fields.
+        The duration is also accumulated into ``self`` via ``add``.
+        """
+        span = TimeSpan(start_s=time.perf_counter())
         try:
-            yield
+            yield span
         finally:
-            self.add(time.perf_counter() - time_start)
+            span.end_s = time.perf_counter()
+            self.add(span.duration)
 
     def add(self, value: float) -> None:
         self._total += value
@@ -449,6 +494,9 @@ class _StatsActor:
         self.per_node_metrics = self._create_prometheus_metrics_for_per_node_metrics()
 
         iter_tag_keys = ("dataset",)
+        # TODO: add a per-streaming-split-worker ``rank`` label to iteration
+        # metrics so users can distinguish which split worker blocked on
+        # which stage.
 
         self.time_to_first_batch_s = Gauge(
             "data_iter_time_to_first_batch_seconds",
@@ -486,6 +534,51 @@ class _StatsActor:
         self.iter_total_blocked_s = Gauge(
             "data_iter_total_blocked_seconds",
             description="Seconds user thread is blocked by iter_batches()",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_total_s = Gauge(
+            "data_iter_total_seconds",
+            description="Total wall-clock seconds spent in the dataset iterator",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_production_wait_s = Gauge(
+            "data_iter_blocked_production_wait_seconds",
+            description="Seconds user thread is blocked on upstream data production",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_data_transfer_s = Gauge(
+            "data_iter_blocked_data_transfer_seconds",
+            description="Seconds user thread is blocked on cross-node data transfer (ray.get)",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_batching_s = Gauge(
+            "data_iter_blocked_batching_seconds",
+            description="Seconds user thread is blocked on batch creation",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_format_s = Gauge(
+            "data_iter_blocked_format_seconds",
+            description="Seconds user thread is blocked on batch formatting",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_collate_s = Gauge(
+            "data_iter_blocked_collate_seconds",
+            description="Seconds user thread is blocked on batch collation",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_finalize_s = Gauge(
+            "data_iter_blocked_finalize_seconds",
+            description="Seconds user thread is blocked on batch finalization",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_batches_total = Gauge(
+            "data_iter_batches_total",
+            description="Total batches delivered to the user thread",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_rows_total = Gauge(
+            "data_iter_rows_total",
+            description="Total rows delivered to the user thread",
             tag_keys=iter_tag_keys,
         )
         self.iter_user_s = Gauge(
@@ -728,6 +821,7 @@ class _StatsActor:
         tags = self._create_tags(dataset_tag)
 
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
+        self.iter_total_s.set(stats.iter_total_s.get(), tags)
         self.iter_get_ref_bundles_s.set(stats.iter_get_ref_bundles_s.get(), tags)
         self.iter_get_s.set(stats.iter_get_s.get(), tags)
         self.iter_next_batch_s.set(stats.iter_next_batch_s.get(), tags)
@@ -748,6 +842,26 @@ class _StatsActor:
         self.time_to_first_batch_s.set(stats.iter_time_to_first_batch_s.get(), tags)
 
         self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
+        self.iter_blocked_production_wait_s.set(
+            stats.get_blocked_timer(IterationStage.PRODUCTION_WAIT).get(), tags
+        )
+        self.iter_blocked_data_transfer_s.set(
+            stats.get_blocked_timer(IterationStage.DATA_TRANSFER).get(), tags
+        )
+        self.iter_blocked_batching_s.set(
+            stats.get_blocked_timer(IterationStage.BATCHING).get(), tags
+        )
+        self.iter_blocked_format_s.set(
+            stats.get_blocked_timer(IterationStage.FORMAT).get(), tags
+        )
+        self.iter_blocked_collate_s.set(
+            stats.get_blocked_timer(IterationStage.COLLATE).get(), tags
+        )
+        self.iter_blocked_finalize_s.set(
+            stats.get_blocked_timer(IterationStage.FINALIZE).get(), tags
+        )
+        self.iter_batches_total.set(stats.iter_batches_total, tags)
+        self.iter_rows_total.set(stats.iter_rows_total, tags)
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
 
     def register_dataset(
@@ -1138,9 +1252,17 @@ class DatasetStats:
         self.iter_finalize_batch_s: Timer = Timer()
         self.iter_time_to_first_batch_s: Timer = Timer()
         self.iter_total_blocked_s: Timer = Timer()
+        self.iter_blocked_production_wait_s: Timer = Timer()
+        self.iter_blocked_data_transfer_s: Timer = Timer()
+        self.iter_blocked_batching_s: Timer = Timer()
+        self.iter_blocked_format_s: Timer = Timer()
+        self.iter_blocked_collate_s: Timer = Timer()
+        self.iter_blocked_finalize_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_initialize_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
+        self.iter_batches_total: int = 0
+        self.iter_rows_total: int = 0
         self.extra_metrics = {}
 
         # Block fetch stats during iteration.
@@ -1161,6 +1283,22 @@ class DatasetStats:
 
         # Streaming split coordinator stats (dataset level)
         self.streaming_split_coordinator_s: Timer = Timer()
+
+    def get_blocked_timer(self, stage: IterationStage) -> Timer:
+        """Return the blocked-attribution Timer for the given iteration stage."""
+        match stage:
+            case IterationStage.PRODUCTION_WAIT:
+                return self.iter_blocked_production_wait_s
+            case IterationStage.DATA_TRANSFER:
+                return self.iter_blocked_data_transfer_s
+            case IterationStage.BATCHING:
+                return self.iter_blocked_batching_s
+            case IterationStage.FORMAT:
+                return self.iter_blocked_format_s
+            case IterationStage.COLLATE:
+                return self.iter_blocked_collate_s
+            case IterationStage.FINALIZE:
+                return self.iter_blocked_finalize_s
 
     @property
     def stats_actor(self):
@@ -1196,6 +1334,14 @@ class DatasetStats:
             self.iter_blocks_remote,
             self.iter_unknown_location,
             self.iter_prefetched_bytes,
+            self.iter_blocked_production_wait_s,
+            self.iter_blocked_data_transfer_s,
+            self.iter_blocked_batching_s,
+            self.iter_blocked_format_s,
+            self.iter_blocked_collate_s,
+            self.iter_blocked_finalize_s,
+            self.iter_batches_total,
+            self.iter_rows_total,
         )
 
         stats_summary_parents = []
@@ -1878,6 +2024,16 @@ class IterStatsSummary:
     iter_unknown_location: int
     # Current bytes of prefetched blocks in the iterator
     iter_prefetched_bytes: int
+    # Per-stage training-thread blocked attribution timers.
+    blocked_production_wait_time: Timer
+    blocked_data_transfer_time: Timer
+    blocked_batching_time: Timer
+    blocked_format_time: Timer
+    blocked_collate_time: Timer
+    blocked_finalize_time: Timer
+    # Cumulative batch and row counters.
+    batches_total: int
+    rows_total: int
 
     def __str__(self) -> str:
         return self.to_string()
@@ -1983,6 +2139,25 @@ class IterStatsSummary:
             if self.streaming_split_coord_time.get() != 0:
                 out += "Streaming split coordinator overhead time: "
                 out += f"{fmt(self.streaming_split_coord_time.get())}\n"
+
+        # Per-stage training-thread blocked attribution.
+        stage_totals = [
+            ("production wait", self.blocked_production_wait_time),
+            ("data transfer (ray.get)", self.blocked_data_transfer_time),
+            ("batching", self.blocked_batching_time),
+            ("format", self.blocked_format_time),
+            ("collate", self.blocked_collate_time),
+            ("finalize (host->device)", self.blocked_finalize_time),
+        ]
+        active_stages = [(name, t) for name, t in stage_totals if t.get() > 0]
+        if active_stages:
+            out += "\nPer-stage training-thread blocked time breakdown:\n"
+            for stage_name, timer in active_stages:
+                out += "    * {}: {}\n".format(stage_name, fmt(timer.get()))
+        if self.batches_total:
+            out += "Total batches consumed: {}\n".format(self.batches_total)
+        if self.rows_total:
+            out += "Total rows consumed: {}\n".format(self.rows_total)
 
         return out
 
