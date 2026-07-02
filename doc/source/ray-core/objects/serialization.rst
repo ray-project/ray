@@ -42,6 +42,10 @@ This code example demonstrates how to serialize an `ObjectRef`, store it in exte
 
 .. literalinclude:: /ray-core/doc_code/object_ref_serialization.py
 
+.. seealso::
+
+  Avoid converting an ``ObjectRef`` to its hex string and reconstructing it elsewhere with ``ray.ObjectRef(bytes.fromhex(...))``. The hex form carries no reference, so the underlying object can be garbage-collected before the consumer fetches it. See :ref:`ray-out-of-band-object-ref-serialization` for the full pattern and the recommended fix.
+
 Numpy Arrays
 ~~~~~~~~~~~~
 
