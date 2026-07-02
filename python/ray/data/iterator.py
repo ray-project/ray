@@ -30,9 +30,6 @@ from ray.data.collate_fn import (
     DefaultCollateFn,
     NumpyBatchCollateFn,
     PandasBatchCollateFn,
-    TensorBatchReturnType,
-    TensorBatchType,
-    is_tensor_batch_type,
 )
 from ray.data.context import DataContext
 from ray.util.annotations import Deprecated, PublicAPI, RayDeprecationWarning
@@ -499,6 +496,7 @@ class DataIterator(abc.ABC):
             An iterable over Torch Tensor batches.
         """
 
+        from ray.data._internal.utils.pipelined_finalize import PipelinedFinalizeFn
         from ray.train.torch import get_device
         from ray.train.utils import _in_ray_train_worker
 
@@ -518,35 +516,6 @@ class DataIterator(abc.ABC):
             # Use the appropriate device for Ray Train, or falls back to CPU if
             # Ray Train is not being used.
             device = get_device() if _in_ray_train_worker() else "cpu"
-
-        from ray.data.util.torch_utils import (
-            move_tensors_to_device,
-        )
-
-        # The default finalize_fn handles the host to device data transfer.
-        # This is executed in a 1-thread pool separately from collate_fn
-        # to allow independent parallelism of these steps.
-        def default_finalize_fn(
-            batch: TensorBatchType,
-        ) -> Union[TensorBatchReturnType, Any]:
-            """Default finalize function for moving PyTorch tensors to device. If
-            batch is of type `TensorBatchType`, it will be automatically moved to the
-            current worker's device. For other types, you must handle device transfer
-            manually in your training loop.
-
-            Args:
-                batch: Input batch to move to device.
-
-            Returns:
-                Batch with tensors moved to the target device.
-                - If input is TensorBatchType, returns tensors moved to device
-                - Otherwise returns the same type as input without moving tensors
-                to device.
-            """
-            if is_tensor_batch_type(batch):
-                return move_tensors_to_device(batch, device=device)
-            else:
-                return batch
 
         if collate_fn is None:
             # The default collate_fn handles formatting and Tensor creation.
@@ -579,6 +548,8 @@ class DataIterator(abc.ABC):
         else:
             raise ValueError(f"Unsupported collate function: {type(collate_fn)}")
 
+        pipelined_finalize_fn = PipelinedFinalizeFn(device)
+
         return self._iter_batches(
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
@@ -587,7 +558,7 @@ class DataIterator(abc.ABC):
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=collate_fn,
-            _finalize_fn=default_finalize_fn,
+            _finalize_fn=pipelined_finalize_fn,
         )
 
     def iter_tf_batches(
