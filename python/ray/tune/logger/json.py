@@ -59,6 +59,9 @@ class JsonLoggerCallback(LoggerCallback):
 
         self._trial_files[trial].close()
         del self._trial_files[trial]
+        # Clean up the _trial_configs entry to prevent memory leak
+        # when running thousands of trials (see #64231)
+        self._trial_configs.pop(trial, None)
 
     def update_config(self, trial: "Trial", config: Dict):
         self._trial_configs[trial] = config

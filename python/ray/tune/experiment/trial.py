@@ -1000,7 +1000,11 @@ class Trial:
         if self._state_json is None:
             state = self.__getstate__()
             state.pop("run_metadata", None)
-            self._state_json = json.dumps(state, indent=2, cls=TuneFunctionEncoder)
+            # Use compact JSON serialization to reduce memory footprint
+            # of experiment state checkpoints when running thousands of
+            # trials (see #64231). Dropping indent saves ~25-30% on the
+            # largest per-trial blob.
+            self._state_json = json.dumps(state, cls=TuneFunctionEncoder)
 
         runtime_metadata_json = self.run_metadata.get_json_state()
 

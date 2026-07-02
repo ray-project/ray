@@ -77,3 +77,6 @@ class CSVLoggerCallback(LoggerCallback):
         del self._trial_csv[trial]
         self._trial_files[trial].close()
         del self._trial_files[trial]
+        # Clean up the _trial_continue entry to prevent memory leak
+        # when running thousands of trials (see #64231)
+        self._trial_continue.pop(trial, None)
