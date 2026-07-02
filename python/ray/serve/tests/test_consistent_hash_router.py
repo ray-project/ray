@@ -8,12 +8,23 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.constants import SERVE_NAMESPACE
-from ray.serve._private.test_utils import check_running, get_application_url
+from ray.serve._private.test_utils import (
+    check_running,
+    get_application_url,
+    skip_if_haproxy,
+)
 from ray.serve.config import RequestRouterConfig, gRPCOptions
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
 ROUTER_CLASS = "ray.serve.experimental.consistent_hash_router:ConsistentHashRouter"
+
+# Every test sets a custom ingress request router, rejected under HAProxy per #64211.
+pytestmark = skip_if_haproxy(
+    "HAProxy load-balances ingress itself and never calls the Serve request "
+    "router, so a custom request_router_class on the ingress deployment cannot "
+    "take effect and is rejected at serve.run()"
+)
 
 
 class TestConsistentHashRouting:

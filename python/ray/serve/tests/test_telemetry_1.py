@@ -18,6 +18,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.test_utils import (
     check_apps_running,
     check_telemetry,
+    skip_if_haproxy,
 )
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve.context import _get_global_client
@@ -349,6 +350,11 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray_with_telemetry, mode):
         )
 
 
+@skip_if_haproxy(
+    "multiplex needs the Serve router to route by model id to a replica that has "
+    "the model loaded, but HAProxy load-balances ingress and never calls the "
+    "router, so requests reach replicas missing the model"
+)
 def test_multiplexed_detect(manage_ray_with_telemetry):
     """Check that multiplexed api is detected by telemetry."""
 

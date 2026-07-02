@@ -39,6 +39,7 @@ from ray.serve._private.test_utils import (
     get_metric_float,
     ping_grpc_call_method,
     ping_grpc_list_applications,
+    skip_if_haproxy,
 )
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.config import RequestRouterConfig
@@ -736,6 +737,10 @@ def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
     )
 
 
+@skip_if_haproxy(
+    "HAProxy can't inspect websocket close codes, so it can't classify them as "
+    "HTTP errors and the error-vs-success request counts this test asserts can't hold"
+)
 def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
     """Verify that status codes aisde from 1000 or 1001 are errors."""
 
@@ -1043,6 +1048,8 @@ def test_queue_wait_time_metric(metrics_start_shutdown):
 
 def test_router_queue_len_metric(metrics_start_shutdown):
     """Test that router queue length metric is recorded correctly per replica."""
+    if RAY_SERVE_ENABLE_HA_PROXY:
+        pytest.skip("direct ingress bypasses the proxy router, queue-len gauge stays 0")
     signal = SignalActor.remote()
 
     @serve.deployment(max_ongoing_requests=10)
