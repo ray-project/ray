@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from typing import IO, Any, List, Optional
 
 from ray.autoscaler._private.cli_logger import cf, cli_logger
 
@@ -76,7 +77,9 @@ _ssh_output_regexes = {
 }
 
 
-def _read_subprocess_stream(f, output_file, is_stdout=False):
+def _read_subprocess_stream(
+    f: IO[str], output_file: Optional[IO[str]], is_stdout: bool = False
+) -> Optional[str]:
     """Read and process a subprocess output stream.
 
     The goal is to find error messages and respond to them in a clever way.
@@ -94,12 +97,15 @@ def _read_subprocess_stream(f, output_file, is_stdout=False):
     Args:
         f: File object for the stream.
         output_file: File object to which filtered output is written.
-        is_stdout (bool):
+        is_stdout:
             When `is_stdout` is `False`, the stream is assumed to
             be `stderr`. Different error message detectors are used,
             and the output is displayed to the user unless it matches
             a special case (e.g. SSH timeout), in which case this is
             left up to the caller.
+
+    Returns:
+        The detected special case name (e.g. "ssh_timeout") or None.
     """
 
     detected_special_case = None
@@ -169,11 +175,11 @@ def _read_subprocess_stream(f, output_file, is_stdout=False):
 
 
 def _run_and_process_output(
-    cmd,
-    stdout_file,
-    process_runner=subprocess,
-    stderr_file=None,
-    use_login_shells=False,
+    cmd: List[str],
+    stdout_file: Optional[IO[str]],
+    process_runner: Any = subprocess,
+    stderr_file: Optional[IO[str]] = None,
+    use_login_shells: bool = False,
 ):
     """Run a command and process its output for special cases.
 
@@ -185,11 +191,16 @@ def _run_and_process_output(
     are not actually errors).
 
     Args:
-        cmd (List[str]): Command to run.
+        cmd: Command to run.
+        stdout_file: File to redirect stdout to.
         process_runner: Used for command execution. Assumed to have
             'check_call' and 'check_output' inplemented.
-        stdout_file: File to redirect stdout to.
         stderr_file: File to redirect stderr to.
+        use_login_shells: Whether to disable special output processing because
+            an interactive login shell is in use.
+
+    Returns:
+        The return code of the executed process.
 
     Implementation notes:
     1. `use_login_shells` disables special processing
@@ -316,17 +327,25 @@ def _run_and_process_output(
 
 
 def run_cmd_redirected(
-    cmd, process_runner=subprocess, silent=False, use_login_shells=False
+    cmd: List[str],
+    process_runner: Any = subprocess,
+    silent: bool = False,
+    use_login_shells: bool = False,
 ):
     """Run a command and optionally redirect output to a file.
 
     Args:
-        cmd (List[str]): Command to run.
+        cmd: Command to run.
         process_runner: Process runner used for executing commands.
         silent: If true, the command output will be silenced completely
                        (redirected to /dev/null), unless verbose logging
                        is enabled. Use this for running utility commands like
                        rsync.
+        use_login_shells: Whether to disable special output processing because
+            an interactive login shell is in use.
+
+    Returns:
+        The return code of the executed process.
     """
     if silent and cli_logger.verbosity < 1:
         return _run_and_process_output(
@@ -366,7 +385,11 @@ def run_cmd_redirected(
             )
 
 
-def handle_ssh_fails(e, first_conn_refused_time, retry_interval):
+def handle_ssh_fails(
+    e: ProcessRunnerError,
+    first_conn_refused_time: Optional[float],
+    retry_interval: float,
+) -> Optional[float]:
     """Handle SSH system failures coming from a subprocess.
 
     Args:
@@ -379,6 +402,9 @@ def handle_ssh_fails(e, first_conn_refused_time, retry_interval):
             since SSH will likely never recover.
         retry_interval: The interval after which the command will be retried,
                         used here just to inform the user.
+
+    Returns:
+        The updated `first_conn_refused_time`, or None if not applicable.
     """
     if e.msg_type != "ssh_command_failed":
         return

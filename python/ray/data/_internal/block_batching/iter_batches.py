@@ -60,8 +60,9 @@ class BatchIterator:
         4. Then, in a threadpool consisting of `prefetch_batches` threads:
             a. Format the batches to the provided batch format.
             b. Apply the collate function.
-        5. Finalize each of the collated batches
-        6. Fetch outputs from the threadpool, maintaining order of the batches.
+        5. If preserve_order, restore the original batch order from the
+            threadpool output.
+        6. Finalize each of the (now ordered) collated batches.
 
     Args:
         ref_bundles: An iterator over RefBundles.
@@ -98,6 +99,11 @@ class BatchIterator:
             formatting to be overlapped with the UDF. Defaults to 1.
         prefetch_bytes_callback: A callback to report prefetched bytes to the executor's
             resource manager.
+        preserve_order: Whether to maintain the original order that the batches
+            were formed from the blocks (e.g., the input block order).
+            This only takes effect in the case that the format/collate threadpool
+            has more than one thread and the output batches have non-deterministic
+            order.
     """
 
     UPDATE_METRICS_INTERVAL_S: float = 5.0
@@ -119,6 +125,7 @@ class BatchIterator:
         ensure_copy: bool = False,
         prefetch_batches: int = 1,
         prefetch_bytes_callback: Optional[Callable[[int], None]] = None,
+        preserve_order: bool = False,
     ):
         self._ref_bundles = ref_bundles
         self._stats = stats
@@ -133,6 +140,7 @@ class BatchIterator:
         self._ensure_copy = ensure_copy
         self._prefetch_batches = prefetch_batches
         self._prefetch_bytes_callback = prefetch_bytes_callback
+        self._preserve_order = preserve_order
         self._eager_free = (
             clear_block_after_read and DataContext.get_current().eager_free
         )
@@ -224,12 +232,16 @@ class BatchIterator:
         # Step 4: Format and collate the batches in a threadpool.
         batch_iter = self._format_batches(batch_iter)
 
-        # Step 5: Finalize the batches (e.g., move to GPU).
-        batch_iter = self._finalize_batches(batch_iter)
+        # Step 5 (optional): Restore the original order of the batches
+        # if preserve_order is True, in the case that the format/collate threadpool
+        # shuffles around the batches non-deterministically.
+        # NOTE: This should happen before finalize_fn so the reorder buffer
+        # holds CPU batches rather than finalize_fn outputs (e.g., GPU tensors).
+        if self._preserve_order:
+            batch_iter = self._restore_original_batch_order(batch_iter)
 
-        # Step 6: Restore the original order of the batches, as the prior
-        # threadpool operations may have reordered the batches non-deterministically.
-        batch_iter = self._restore_original_batch_order(batch_iter)
+        # Step 6: Finalize the batches (e.g., move to GPU).
+        batch_iter = self._finalize_batches(batch_iter)
 
         yield from batch_iter
 
@@ -324,6 +336,9 @@ def _format_in_threadpool(
         num_threadpool_workers: The number of threads to use in the threadpool.
         ensure_copy: Whether batches are always copied from the underlying base
             blocks (not zero-copy views).
+
+    Returns:
+        An iterator over batches with formatting and collation applied.
     """
 
     def threadpool_computations_format_collate(

@@ -740,20 +740,33 @@ These metrics track replica health, restarts, and lifecycle timing.
 These lifecycle **histograms** use `deployment` and `application` labels only—no `replica` label—so Prometheus cardinality stays manageable at scale.
 :::
 
+By default, controller-emitted replica lifecycle metrics include source
+identifiers such as `replica` where applicable. For large deployments, set
+`RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS=0` to drop those
+source-level high-cardinality tags while retaining `deployment` and `application`.
+This setting doesn't affect replica-emitted metrics such as
+`ray_serve_deployment_replica_starts_total`.
+
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|
-| `ray_serve_deployment_replica_healthy` | Gauge | `deployment`, `replica`, `application` | Health status of the replica: `1` = healthy, `0` = unhealthy. |
+| `ray_serve_deployment_replica_healthy` | Gauge | `deployment`, `application`, `replica` by default; `deployment`, `application` when `RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS=0` | Tracks healthy replicas. With `replica`, each replica series is `1` for healthy and `0` for unhealthy. Without `replica`, the deployment/application series is the healthy replica count. |
 | `ray_serve_deployment_replica_starts_total` | Counter | `deployment`, `replica`, `application` | Total number of times the replica has started (including restarts due to failure). |
 | `ray_serve_replica_startup_latency_ms` | Histogram | `deployment`, `application` | Total time from replica creation to ready state in milliseconds. Includes node provisioning (if needed on VM or Kubernetes), runtime environment bootstrap (pip install, Docker image pull, etc.), Ray actor scheduling, and actor constructor execution. Useful for debugging slow cold starts. |
 | `ray_serve_replica_initialization_latency_ms` | Histogram | `deployment`, `application` | Time for the actor constructor to run in milliseconds. This is a subset of `ray_serve_replica_startup_latency_ms`. |
 | `ray_serve_replica_reconfigure_latency_ms` | Histogram | `deployment`, `application` | Time in milliseconds for a replica to complete reconfiguration. Includes both reconfigure time and one control-loop iteration, so very low values may be unreliable. |
 | `ray_serve_health_check_latency_ms` | Histogram | `deployment`, `application` | Duration of health check calls in milliseconds. Useful for identifying slow health checks blocking scaling. |
-| `ray_serve_health_check_failures_total` | Counter | `deployment`, `replica`, `application` | Total number of failed health checks. Provides early warning before replica is marked unhealthy. |
+| `ray_serve_health_check_failures_total` | Counter | `deployment`, `application`, `replica` by default; `deployment`, `application` when `RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS=0` | Total number of failed health checks. Provides early warning before replica is marked unhealthy. |
 | `ray_serve_replica_shutdown_duration_ms` | Histogram | `deployment`, `application` | Time from shutdown signal to replica fully stopped in milliseconds. Useful for debugging slow draining during scale-down or rolling updates. |
 
 ### Autoscaling metrics
 
 These metrics provide visibility into autoscaling behavior and help debug scaling issues.
+
+The autoscaling delay metrics `ray_serve_autoscaling_replica_metrics_delay_ms`
+and `ray_serve_autoscaling_handle_metrics_delay_ms` are **histograms** labeled
+only by `deployment` and `application`. Prometheus aggregates the per-replica
+and per-handle observations server-side, so no source-level tag is emitted and
+cardinality stays bounded at scale.
 
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|
@@ -762,8 +775,8 @@ These metrics provide visibility into autoscaling behavior and help debug scalin
 | `ray_serve_autoscaling_total_requests` | Gauge | `deployment`, `application` | Total number of requests (queued + in-flight) as seen by the autoscaler. This is the input to the scaling decision. |
 | `ray_serve_autoscaling_target_ongoing_requests` | Gauge | `deployment`, `application` | Configured `target_ongoing_requests` per replica. Divide `ray_serve_autoscaling_total_requests` by this value to compute the raw desired replica count for the default policy and detect autoscaling regressions. |
 | `ray_serve_autoscaling_policy_execution_time_ms` | Gauge | `deployment`, `application`, `policy_scope` | Time taken to execute the autoscaling policy in milliseconds. `policy_scope` is `deployment` or `application`. |
-| `ray_serve_autoscaling_replica_metrics_delay_ms` | Gauge | `deployment`, `application`, `replica` | Time taken for replica metrics to reach the controller in milliseconds. High values may indicate controller overload. |
-| `ray_serve_autoscaling_handle_metrics_delay_ms` | Gauge | `deployment`, `application`, `handle` | Time taken for handle metrics to reach the controller in milliseconds. High values may indicate controller overload. |
+| `ray_serve_autoscaling_replica_metrics_delay_ms` | Histogram | `deployment`, `application` | Time taken for replica metrics to reach the controller in milliseconds. High values may indicate controller overload. |
+| `ray_serve_autoscaling_handle_metrics_delay_ms` | Histogram | `deployment`, `application` | Time taken for handle metrics to reach the controller in milliseconds. High values may indicate controller overload. |
 | `ray_serve_autoscaling_async_inference_task_queue_metrics_delay_ms` | Gauge | `deployment`, `application` | Time taken for async inference task queue metrics (from QueueMonitor) to reach the controller in milliseconds. |
 | `ray_serve_record_autoscaling_stats_failed_total` | Counter | `application`, `deployment`, `replica`, `exception_name` | Total number of failed attempts to collect autoscaling metrics on replica from user defined function. Non-zero values indicate error in user code. |
 | `ray_serve_user_autoscaling_stats_latency_ms` | Histogram | `application`, `deployment`, `replica` | Histogram of time taken to execute the user-defined autoscaling stats function in milliseconds. |
@@ -887,7 +900,8 @@ See the [Ray Metrics documentation](collect-metrics) for more details, including
 
 ## Profiling memory
 
-Ray provides two useful metrics to track memory usage: `ray_component_rss_mb` (resident set size) and `ray_component_mem_shared_bytes` (shared memory). Approximate a Serve actor's memory usage by subtracting its shared memory from its resident set size (i.e. `ray_component_rss_mb` - `ray_component_mem_shared_bytes`).
+Ray provides two useful metrics to track memory usage: `ray_component_rss_bytes` (resident set size) and `ray_component_shared_bytes` (shared memory). Approximate a Serve actor's memory usage by subtracting its shared memory from its resident set size (i.e. `ray_component_rss_bytes` - `ray_component_shared_bytes`).
+Note: `ray_component_rss_mb` is being deprecated, please use `ray_component_rss_bytes` going forward. 
 
 If you notice a memory leak on a Serve actor, use `memray` to debug (`pip install memray`). Set the env var `RAY_SERVE_ENABLE_MEMORY_PROFILING=1`, and run your Serve application. All the Serve actors will run a `memray` tracker that logs their memory usage to `bin` files in the `/tmp/ray/session_latest/logs/serve/` directory. Run the `memray flamegraph [bin file]` command to generate a flamegraph of the memory usage. See the [memray docs](https://bloomberg.github.io/memray/overview.html) for more info.
 

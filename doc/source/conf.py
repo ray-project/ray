@@ -351,7 +351,13 @@ collections_final_clean = True
 # The collections config contains a function reference (for the "function" driver)
 # which Sphinx cannot pickle for caching. This is harmless — suppress the warning
 # so it doesn't cause a build failure under -W (warnings-as-errors).
-suppress_warnings = ["config.cache"]
+suppress_warnings = [
+    "config.cache",
+    # sphinxcontrib-redoc (unmaintained, 1.6.0) redundantly copies its bundled
+    # redoc.js asset; Sphinx 8's new copy_overwrite check flags the second copy over
+    # the existing (identical) file. Benign and not fixable upstream.
+    "misc.copy_overwrite",
+]
 # Disable autodoc_pydantic features that can produce empty raw directives
 # (e.g. when schema JSON fails for models with non-serializable fields)
 autodoc_pydantic_model_show_json = False
@@ -483,24 +489,6 @@ copybutton_selector = "div:not(.no-copybutton) > div.highlight > pre"
 # functionality with the `sphinx_tabs_disable_tab_closing` option.
 sphinx_tabs_disable_tab_closing = True
 
-# Special mocking of packaging.version.Version is required when using sphinx;
-# we can't just add this to autodoc_mock_imports, as packaging is imported by
-# sphinx even before it can be mocked. Instead, we patch it here.
-import packaging.version as packaging_version  # noqa
-
-Version = packaging_version.Version
-
-
-class MockVersion(Version):
-    def __init__(self, version: str):
-        if isinstance(version, (str, bytes)):
-            super().__init__(version)
-        else:
-            super().__init__("0")
-
-
-packaging_version.Version = MockVersion
-
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
 
@@ -545,9 +533,6 @@ exclude_patterns = [
     "train/examples/**/content/**README.md",
     "tune/examples/**/content/**README.md",
     # Other misc files (overviews, console-only examples, etc)
-    "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
-    "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
-    "train/tutorials/content/**/README.md",
     "serve/tutorials/video-analysis/*.ipynb",
     # Legacy/backward compatibility
     "ray-overview/examples/**/README.md",
@@ -584,26 +569,6 @@ exclude_patterns = [
     # is suppressed too. The template has no landing page on docs.ray.io.
     "_collections/ray-overview/examples/llamafactory-llm-fine-tune/README.*",
     "_collections/ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
-    # TODO(@elliot-barn): Remove the patterns below once the in-tree template
-    # directories are deleted in the follow-up PR. examples.yml + toctrees
-    # were repointed at /_collections/... so the in-tree copies left behind
-    # by the revert orphan-warn until they are removed.
-    "ray-overview/examples/*/README.ipynb",
-    "ray-overview/examples/*/content/README.ipynb",
-    "serve/tutorials/deployment-serve-llm/content/*/README.ipynb",
-    "serve/tutorials/asynchronous-inference/content/*.ipynb",
-    "train/tutorials/content/README.md",
-    "tune/examples/tune_pytorch_asha/content/*.ipynb",
-    # Numbered child notebooks of the excluded in-tree READMEs above. Their
-    # parent README's embedded {toctree} no longer fires (README is excluded),
-    # so the children orphan-warn until the in-tree directories are deleted.
-    "ray-overview/examples/e2e-multimodal-ai-workloads/notebooks/*.ipynb",
-    "ray-overview/examples/e2e-rag/notebooks/*.ipynb",
-    "ray-overview/examples/e2e-timeseries/e2e_timeseries/*.ipynb",
-    "ray-overview/examples/e2e-xgboost/notebooks/*.ipynb",
-    "ray-overview/examples/mcp-ray-serve/*.ipynb",
-    "ray-overview/examples/object-detection/*.ipynb",
-    "train/tutorials/content/workload-patterns/*.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -974,6 +939,30 @@ def setup(app):
 
     logging.getLogger("sphinx").addFilter(DuplicateObjectFilter())
 
+    class CollectionsFootnoteFilter(logging.Filter):
+        # Example notebooks fetched into _collections (from templates.ci.ray.io) contain
+        # prose that myst-parser 5.x parses as reST footnote refs/targets, which docutils
+        # then flags as errors. That content is external (not in this repo), so it can't
+        # be fixed here -- the fix belongs upstream. Drop these specific errors for
+        # _collections paths so the fail_on_warning build is not blocked by fetched content.
+        # TODO: fix the offending footnote-like text upstream and remove this filter.
+        def filter(self, record):
+            # INFO/DEBUG records (the bulk of build output) can't be the
+            # footnote/target warnings below, so skip getMessage() for them.
+            if record.levelno < logging.WARNING:
+                return True
+            msg = record.getMessage()
+            if (
+                "autonumbered footnote references" in msg
+                or "Unknown target name" in msg
+            ):
+                location = str(getattr(record, "location", "") or "")
+                if "_collections" in location:
+                    return False
+            return True
+
+    logging.getLogger("sphinx").addFilter(CollectionsFootnoteFilter())
+
     # Register hook to mark orphan documents
     example_orphan_documents = collect_example_orphans(app.confdir, app.srcdir)
     def mark_orphans(app, docname, _source):
@@ -1021,6 +1010,13 @@ autosummary_filename_map = {
 
 # Mock out external dependencies here.
 
+# Prefer not to mock libraries that are actually installed in the docs build
+# environment (doc/requirements-doc.lock.txt). Mocking an installed library
+# shadows the real module: an eager import in a documented class body then hits
+# the mock and aborts the whole package import as a misleading error. numpy and
+# pyarrow are installed, so they are not mocked. tensorflow is also installed (a
+# direct requirements-doc entry), but importing it for real breaks the autodoc
+# import of ray.rllib.algorithms.algorithm at build time, so it stays mocked.
 autodoc_mock_imports = [
     "aiohttp",
     "async_timeout",
@@ -1045,10 +1041,7 @@ autodoc_mock_imports = [
     "lightgbm_ray",
     "mlflow",
     "nevergrad",
-    "numpy",
     "pandas",
-    "pyarrow",
-    "pyarrow.compute",
     "pytorch_lightning",
     "scipy",
     "setproctitle",
@@ -1170,7 +1163,9 @@ def apply_ipython3_lexer(app, docname, source):
     Sphinx + myst-nb otherwise default to the python3 lexer, which fails on
     ``!shell`` and ``%magic`` cells and is fatal under Readthedocs ``-W``.
     """
-    doc_source = app.env.doc2path(docname, base=False)
+    # Sphinx 8 returns a _StrPath from doc2path; coerce to str so the re-based
+    # matchers (compile_matchers) and .endswith below accept it.
+    doc_source = str(app.env.doc2path(docname, base=False))
     if not doc_source.endswith(".ipynb"):
         return
     if any(m(doc_source) for m in app.ipython3_lexer_exclude_patterns):

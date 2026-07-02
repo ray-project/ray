@@ -35,6 +35,7 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
+    DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
@@ -55,7 +56,6 @@ from ray.serve._private.controller_health_metrics_tracker import (
 )
 from ray.serve._private.default_impl import (
     create_cluster_node_info_cache,
-    get_proxy_actor_class,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import (
@@ -64,6 +64,7 @@ from ray.serve._private.deployment_state import (
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.exceptions import ExternalScalerDisabledError
 from ray.serve._private.grpc_util import set_proxy_default_grpc_options
+from ray.serve._private.haproxy import HAProxyManager
 from ray.serve._private.http_util import (
     configure_http_options_with_defaults,
 )
@@ -74,6 +75,7 @@ from ray.serve._private.logging_utils import (
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.node_port_manager import NodePortManager
+from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
@@ -113,6 +115,7 @@ from ray.serve.schema import (
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
@@ -225,7 +228,7 @@ class ServeController:
             cluster_node_info_cache=self.cluster_node_info_cache,
             logging_config=self.global_logging_config,
             grpc_options=set_proxy_default_grpc_options(grpc_options),
-            proxy_actor_class=get_proxy_actor_class(),
+            proxy_actor_class=HAProxyManager if self._ha_proxy_enabled else ProxyActor,
             running_native_proxies=self._ha_proxy_enabled,
         )
         # We modify the HTTP and gRPC options above, so delete them to avoid
@@ -363,13 +366,17 @@ class ServeController:
             replica_metric_report = decompress_metric_report(replica_metric_report)
         latency = time.time() - replica_metric_report.timestamp
         latency_ms = latency * 1000
-        # Record the metrics delay for observability
-        self.replica_metrics_delay_gauge.set(
+        deployment = replica_metric_report.replica_id.deployment_id.name
+        application = replica_metric_report.replica_id.deployment_id.app_name
+
+        # Record the metrics delay for observability. A histogram lets Prometheus
+        # aggregate reports from all replicas of a deployment, so we omit the
+        # per-replica tag to keep cardinality bounded.
+        self.replica_metrics_delay_histogram.observe(
             latency_ms,
             tags={
-                "deployment": replica_metric_report.replica_id.deployment_id.name,
-                "application": replica_metric_report.replica_id.deployment_id.app_name,
-                "replica": replica_metric_report.replica_id.unique_id,
+                "deployment": deployment,
+                "application": application,
             },
         )
         # Track in health metrics
@@ -385,13 +392,17 @@ class ServeController:
             handle_metric_report = decompress_metric_report(handle_metric_report)
         latency = time.time() - handle_metric_report.timestamp
         latency_ms = latency * 1000
-        # Record the metrics delay for observability
-        self.handle_metrics_delay_gauge.set(
+        deployment = handle_metric_report.deployment_id.name
+        application = handle_metric_report.deployment_id.app_name
+
+        # Record the metrics delay for observability. A histogram lets Prometheus
+        # aggregate reports from all handles of a deployment, so we omit the
+        # per-handle tag to keep cardinality bounded.
+        self.handle_metrics_delay_histogram.observe(
             latency_ms,
             tags={
-                "deployment": handle_metric_report.deployment_id.name,
-                "application": handle_metric_report.deployment_id.app_name,
-                "handle": handle_metric_report.handle_id,
+                "deployment": deployment,
+                "application": application,
             },
         )
         # Track in health metrics
@@ -440,9 +451,13 @@ class ServeController:
         """Proxy long pull client's listen request.
 
         Args:
-            keys_to_snapshot_ids (Dict[str, int]): Snapshot IDs are used to
-              determine whether or not the host should immediately return the
-              data or wait for the value to be changed.
+            keys_to_snapshot_ids: Snapshot IDs are used to determine whether or
+                not the host should immediately return the data or wait for the
+                value to be changed.
+
+        Returns:
+            The result of the underlying long-poll host's listen call (an
+            ``UpdatedObject`` map for changed keys, returned to the client).
         """
         if not self.done_recovering_event.is_set():
             await self.done_recovering_event.wait()
@@ -453,8 +468,12 @@ class ServeController:
         """Proxy long pull client's listen request.
 
         Args:
-            keys_to_snapshot_ids_bytes (Dict[str, int]): the protobuf bytes of
-              keys_to_snapshot_ids (Dict[str, int]).
+            keys_to_snapshot_ids_bytes: the protobuf-serialized bytes of the
+                ``keys_to_snapshot_ids`` (``Dict[str, int]``) mapping.
+
+        Returns:
+            The protobuf-serialized response of the underlying long-poll host's
+            Java listen call, suitable for return to a Java client.
         """
         if not self.done_recovering_event.is_set():
             await self.done_recovering_event.wait()
@@ -745,21 +764,23 @@ class ServeController:
         )
 
         # Autoscaling metrics delay gauges
-        self.replica_metrics_delay_gauge = metrics.Gauge(
+        self.replica_metrics_delay_histogram = metrics.Histogram(
             "serve_autoscaling_replica_metrics_delay_ms",
             description=(
                 "Time taken for the replica metrics to be reported to the controller. "
                 "High values may indicate a busy controller."
             ),
-            tag_keys=("deployment", "application", "replica"),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=("deployment", "application"),
         )
-        self.handle_metrics_delay_gauge = metrics.Gauge(
+        self.handle_metrics_delay_histogram = metrics.Histogram(
             "serve_autoscaling_handle_metrics_delay_ms",
             description=(
                 "Time taken for the handle metrics to be reported to the controller. "
                 "High values may indicate a busy controller."
             ),
-            tag_keys=("deployment", "application", "handle"),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=("deployment", "application"),
         )
         self.async_inference_task_queue_metrics_delay_gauge = metrics.Gauge(
             "serve_autoscaling_async_inference_task_queue_metrics_delay_ms",
@@ -1052,11 +1073,11 @@ class ServeController:
         If same app name deployed, old application will be overwritten.
 
         Args:
-            name: Application name.
-            deployment_args_list: List of serialized deployment information,
-                where each item in the list is bytes representing the serialized
-                protobuf `DeploymentArgs` object. `DeploymentArgs` contains all the
-                information for the single deployment.
+            name_to_deployment_args_list: Dictionary mapping application names
+                to a list of serialized deployment information. Each item in
+                the list is bytes representing the serialized protobuf
+                ``DeploymentArgs`` object, which contains all the information
+                for a single deployment.
             name_to_application_args: Dictionary mapping application names to serialized
                 application arguments, where each item is bytes representing the serialized
                 protobuf `ApplicationArgs` object. `ApplicationArgs` contains the information
@@ -1195,6 +1216,9 @@ class ServeController:
 
         Args:
             name: the name of the deployment.
+            app_name: the name of the application that owns the deployment. The
+                empty string targets deployments that are not scoped to an
+                application (1.x-style deployments).
 
         Returns:
             DeploymentRoute's protobuf serialized bytes
@@ -1669,10 +1693,15 @@ class ServeController:
         return node_manager.is_port_allocated(replica_detail.replica_id, protocol)
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
-        """Return application status
+        """Return application status.
+
         Args:
             name: application name. If application name doesn't exist, app_status
                   is NOT_STARTED.
+
+        Returns:
+            Protobuf-serialized bytes of the ``StatusOverview`` for the named
+            application (including app status and per-deployment statuses).
         """
 
         app_status = self.application_state_manager.get_app_status_info(name)
@@ -1737,6 +1766,10 @@ class ServeController:
             name: Deployment name.
             app_name: Application name. Default is "" because 1.x
                 deployments go through this API.
+
+        Returns:
+            Protobuf-serialized bytes of the deployment's status, or ``None``
+            if no deployment exists for ``(name, app_name)``.
         """
 
         id = DeploymentID(name=name, app_name=app_name)
@@ -1753,6 +1786,9 @@ class ServeController:
 
     def get_ingress_deployment_name(self, app_name: str) -> Optional[str]:
         """Name of the ingress deployment in an application.
+
+        Args:
+            app_name: the application to look up.
 
         Returns:
             Ingress deployment name (str): if the application exists.
@@ -1790,13 +1826,18 @@ class ServeController:
         """
         return self.deployment_state_manager._get_replica_ranks_mapping(deployment_id)
 
-    async def graceful_shutdown(self, wait: bool = True):
+    async def graceful_shutdown(self, wait: bool = True) -> None:
         """Set the shutting down flag on controller to signal shutdown in
         run_control_loop().
 
         This is used to signal to the controller that it should proceed with shutdown
         process, so it can shut down gracefully. It also waits until the shutdown
         event is triggered if wait is true.
+
+        Args:
+            wait: if True, block until the controller's shutdown event fires
+                (the caller is expected to handle the resulting
+                ``RayActorError`` raised when the controller actor exits).
 
         Raises:
             RayActorError: if wait is True, the caller waits until the controller

@@ -297,7 +297,17 @@ class LLMServer(LLMServerProtocol):
             "TranscriptionRequest",
         ],
     ):
-        """Add the request id to the request."""
+        """Stamp the Serve request id, unless the caller set request_id explicitly.
+
+        request_id defaults to a random uuid (never None), so use model_fields_set
+        to avoid clobbering an id a caller deliberately set (e.g. a P/D connector's
+        coordination id). Some request types (tokenize/detokenize) have no
+        request_id field at all -- skip those.
+        """
+        if not hasattr(request, "request_id"):
+            return
+        if "request_id" in request.model_fields_set:
+            return
         request_id = get_serve_request_id()
         if request_id:
             request.request_id = request_id
@@ -547,6 +557,17 @@ class LLMServer(LLMServerProtocol):
         except Exception as e:
             logger.error("Engine health check failed in LLMServer.check_health: %s", e)
             raise e
+
+    async def record_routing_stats(self) -> Dict[str, Any]:
+        """Serve request-router hook, polled by the controller.
+
+        Surfaces this replica's routing stats (the engine's KV-events endpoint
+        for KV-aware routing); the deployment's ``KVRouterActor`` reads them off
+        the ``LongPoll`` replica snapshot to register the worker.
+        """
+        if self.engine is None:
+            return {}
+        return self.engine.routing_stats()
 
     async def sleep(self, **kwargs: Any) -> None:
         """Put the engine to sleep.

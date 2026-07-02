@@ -49,6 +49,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
       pubsub::PublisherInterface *object_info_publisher,
       pubsub::SubscriberInterface *object_info_subscriber,
       std::function<bool(const NodeID &node_id)> is_node_dead,
+      std::function<void(const ObjectID &object_id,
+                         const absl::flat_hash_set<NodeID> &locations)>
+          free_object_on_nodes_async,
       ray::observability::MetricInterface &owned_object_by_state_counter,
       ray::observability::MetricInterface &owned_object_sizes_by_state_counter,
       bool lineage_pinning_enabled = false)
@@ -57,6 +60,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber),
         is_node_dead_(std::move(is_node_dead)),
+        free_object_on_nodes_async_(std::move(free_object_on_nodes_async)),
         owned_object_count_by_state_(owned_object_by_state_counter),
         owned_object_sizes_by_state_(owned_object_sizes_by_state_counter) {}
 
@@ -171,7 +175,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   size_t NumActorsOwnedByUs() const override ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void RecordMetrics() override;
+  void RecordOwnerMetrics() override;
 
   std::unordered_set<ObjectID> GetAllInScopeObjectIDs() const override
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -777,6 +781,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// the object will be added to the buffer objects to recover.
   const std::function<bool(const NodeID &node_id)> is_node_dead_;
 
+  /// Called to send free local object RPCs to all raylets that hold a copy of
+  /// the object.
+  const std::function<void(const ObjectID &object_id,
+                           const absl::flat_hash_set<NodeID> &locations)>
+      free_object_on_nodes_async_;
+
   /// A buffer of the objects whose primary or spilled locations have been lost
   /// due to node failure. These objects are still in scope and need to be
   /// recovered.
@@ -788,6 +798,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Keep track of actors owend by this worker.
   size_t num_actors_owned_by_us_ ABSL_GUARDED_BY(mutex_) = 0;
 
+  /// Sticky: set to true the first time this worker becomes the owner of
+  /// any non-actor object. Never reset. Gates owner-side metric emission
+  /// so non-owners do not pollute per-worker metric cardinality.
+  std::atomic<bool> has_ever_owned_objects_{false};
   /// Track counts of owned objects by state.
   /// These are atomic to allow lock-free reads via public getters.
   std::atomic<size_t> owned_objects_pending_creation_{0};

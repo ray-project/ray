@@ -102,6 +102,9 @@ class TrainHead(SubprocessModule):
     ) -> List["DecoratedTrainRun"]:
         """Decorate the train runs with run attempts, job details, status, and status details.
 
+        Args:
+            train_runs: The train runs to decorate.
+
         Returns:
             List[DecoratedTrainRun]: The decorated train runs in reverse chronological order.
         """

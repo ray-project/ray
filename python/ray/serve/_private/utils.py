@@ -317,7 +317,8 @@ def override_runtime_envs_except_env_vars(parent_env: Dict, child_env: Dict) -> 
         parent_env: The environment to inherit settings from.
         child_env: The environment with override settings.
 
-    Returns: A new dictionary containing the merged runtime_env settings.
+    Returns:
+        A new dictionary containing the merged runtime_env settings.
 
     Raises:
         TypeError: If a dictionary is not passed in for parent_env or child_env.
@@ -376,6 +377,13 @@ def require_packages(packages: List[str]):
         >>> func() # doctest: +SKIP
         ImportError: func requires ["numpy", "package_a"] but
         ["package_a"] are not available, please pip install them.
+
+    Args:
+        packages: The list of package names that must be importable when the
+            decorated function is invoked.
+
+    Returns:
+        A decorator that wraps the target function with the package check.
     """
 
     def decorator(func):
@@ -460,11 +468,12 @@ def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[obj
     robust solution to this I was able to find. It would also be preferable
     to do this check when the decorator runs, rather than when the method is.
 
-    Returns the `self` object if it's a method call, else None.
-
     Arguments:
         args: arguments to the function/method call.
         func: the unbound function that was called.
+
+    Returns:
+        The ``self`` object if it's a method call, else ``None``.
     """
     if len(args) > 0:
         method = getattr(args[0], func.__name__, False)

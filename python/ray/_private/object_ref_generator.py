@@ -5,7 +5,7 @@ import collections
 from typing import TYPE_CHECKING, Deque, Iterator, Optional
 
 import ray
-from ray.exceptions import ObjectRefStreamEndOfStreamError
+from ray.exceptions import GetTimeoutError, ObjectRefStreamEndOfStreamError
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -180,6 +180,69 @@ class ObjectRefGenerator:
         self.worker.check_connected()
         return self.worker.core_worker.peek_next_object_id_binary(self._generator_ref)
 
+    def _stream_exhausted(self) -> bool:
+        """Whether the stream's end-of-stream marker has been reached and all
+        yielded refs consumed.
+
+        Non-blocking, in-memory check (unlike ``is_finished``, this does not
+        ``ray.get`` the generator return object). When True, the only thing
+        left is the end-of-stream ``ray.get`` of the return object that
+        ``_next_sync`` performs to surface ``StopIteration`` / task errors.
+        """
+        self.worker.check_connected()
+        return self.worker.core_worker.is_object_ref_stream_finished(
+            self._generator_ref
+        )
+
+    def _get_next_ref_n(self, num_refs: int) -> list["ray.ObjectRef"]:
+        """Return the next num_refs references from a generator without consuming them.
+
+        The returned refs are not consumed; wait for the last one to become ready
+        before calling ``_consume_next_ref_n`` to advance the stream.
+
+        Args:
+            num_refs: The number of references to return, starting from the
+                current head of the stream. Must be positive.
+
+        Returns:
+            A list of exactly num_refs ObjectRefs corresponding to the next
+            results in the stream, starting from the current head.
+        """
+        if num_refs <= 0:
+            raise ValueError("num_refs must be positive")
+        self.worker.check_connected()
+        core_worker = self.worker.core_worker
+        return [
+            ref
+            for ref, _ in core_worker.peek_object_ref_stream_n(
+                self._generator_ref, num_refs
+            )
+        ]
+
+    def _consume_next_ref_n(self, num_refs: int) -> None:
+        """Consume (advance) the next num_refs references from a generator.
+
+        The caller must have waited for the last requested ref to become ready
+        (see ``_get_next_ref_n``); otherwise this raises ``ValueError`` instead
+        of silently advancing past unwritten objects.
+
+        If fewer than num_refs references remain before the end of the stream,
+        only the remaining references are consumed and the call returns
+        without raising.
+
+        Args:
+            num_refs: The number of references to consume, starting from the
+                current head of the stream. Must be positive.
+        """
+        if num_refs <= 0:
+            raise ValueError("num_refs must be positive")
+        self.worker.check_connected()
+        core_worker = self.worker.core_worker
+        try:
+            core_worker.try_read_next_object_ref_stream_n(self._generator_ref, num_refs)
+        except ObjectRefStreamEndOfStreamError:
+            return
+
     def _next_sync(self, timeout_s: Optional[int | float] = None) -> "ray.ObjectRef":
         """Waits for timeout_s and returns the object ref if available.
 
@@ -227,7 +290,21 @@ class ObjectRefGenerator:
                 # The generator ref contains an exception
                 # if there's any failure. It contains nothing otherwise.
                 # In that case, it should raise StopIteration.
-                ray.get(self._generator_ref)
+                #
+                # Bound this get by the caller's timeout: the return object
+                # can be remote — or lost to a failed node and pending
+                # reconstruction — and an unbounded get would block the
+                # caller until it is restored (e.g. the Ray Data scheduling
+                # thread; a saturated cluster can then deadlock, since the
+                # blocked consumer is what releases backpressured CPUs).
+                # Per this method's contract, a timeout is reported as "no
+                # object ready yet" (nil ref) so the caller retries.
+                ray.get(
+                    self._generator_ref,
+                    timeout=(None if timeout_s is None or timeout_s < 0 else timeout_s),
+                )
+            except GetTimeoutError:
+                return ray.ObjectRef.nil()
             except Exception:
                 self._generator_task_raised = True
                 return self._generator_ref
@@ -270,8 +347,20 @@ class ObjectRefGenerator:
             try:
                 # The generator ref contains an exception
                 # if there's any failure. It contains nothing otherwise.
-                # In that case, it should raise StopSyncIteration.
-                await self._generator_ref
+                # In that case, it should raise StopAsyncIteration.
+                #
+                # Bound this await by the caller's timeout, mirroring
+                # _next_sync: the return object can be remote — or lost to a
+                # failed node and pending reconstruction — and an unbounded
+                # await would block the caller until it is restored. Per this
+                # method's contract, a timeout is reported as "no object
+                # ready yet" (nil ref) so the caller retries.
+                if timeout_s is None or timeout_s < 0:
+                    await self._generator_ref
+                else:
+                    await asyncio.wait_for(self._generator_ref, timeout=timeout_s)
+            except asyncio.TimeoutError:
+                return ray.ObjectRef.nil()
             except Exception:
                 self._generator_task_raised = True
                 return self._generator_ref

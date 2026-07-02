@@ -22,6 +22,7 @@
 
 #include "absl/strings/str_format.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/common/filter_local_objects_util.h"
 #include "ray/stats/tag_defs.h"
 
 namespace ray {
@@ -61,80 +62,38 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
             << " from the original " << original_worker_id << ". Object " << object_id
             << " may get freed while the new owner still has the object in scope.";
       }
-      continue;
     }
-
-    // Create a object eviction subscription message.
-    rpc::WorkerObjectEvictionSubMessage wait_request;
-    wait_request.set_object_id(object_id.Binary());
-    wait_request.set_intended_worker_id(owner_address.worker_id());
-    if (!generator_id.IsNil()) {
-      wait_request.set_generator_id(generator_id.Binary());
-    }
-    rpc::Address subscriber_address;
-    subscriber_address.set_node_id(self_node_id_.Binary());
-    subscriber_address.set_ip_address(self_node_address_);
-    subscriber_address.set_port(self_node_port_);
-    *wait_request.mutable_subscriber_address() = std::move(subscriber_address);
-
-    // If the subscription succeeds, register the subscription callback.
-    // Callback is invoked when the owner publishes the object to evict.
-    auto subscription_callback = [this, owner_address](const rpc::PubMessage &msg) {
-      RAY_CHECK(msg.has_worker_object_eviction_message());
-      const auto &object_eviction_msg = msg.worker_object_eviction_message();
-      const auto obj_id = ObjectID::FromBinary(object_eviction_msg.object_id());
-      ReleaseFreedObject(obj_id);
-      core_worker_subscriber_->Unsubscribe(
-          rpc::ChannelType::WORKER_OBJECT_EVICTION, owner_address, obj_id.Binary());
-    };
-
-    // Callback that is invoked when the owner of the object id is dead.
-    auto owner_dead_callback = [this, owner_address](const std::string &object_id_binary,
-                                                     const Status &) {
-      const auto obj_id = ObjectID::FromBinary(object_id_binary);
-      ReleaseFreedObject(obj_id);
-    };
-
-    auto sub_message = std::make_unique<rpc::SubMessage>();
-    *sub_message->mutable_worker_object_eviction_message() = std::move(wait_request);
-
-    core_worker_subscriber_->Subscribe(std::move(sub_message),
-                                       rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                       owner_address,
-                                       object_id.Binary(),
-                                       /*subscribe_done_callback=*/nullptr,
-                                       subscription_callback,
-                                       owner_dead_callback);
   }
 }
 
-void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
-  // Only free the object if it is not already freed.
+void LocalObjectManager::ReleaseFreedLocalObject(const ObjectID &object_id) {
+  // Called for both primary and secondary copies. For primary copies, do primary
+  // copy bookkeeping. For secondary copies, there is no primary copy bookkeeping,
+  // so the only work below is enqueueing for the next free batch.
   auto it = local_objects_.find(object_id);
-  if (it == local_objects_.end() || it->second.is_freed_) {
-    return;
-  }
-  // Mark the object as freed. NOTE(swang): We have to mark this instead of
-  // deleting the entry immediately in case the object is currently being
-  // spilled. In that case, we should process the free event once the object
-  // spill is complete.
-  it->second.is_freed_ = true;
+  if (it != local_objects_.end() && !it->second.is_freed_) {
+    // Mark the object as freed. NOTE(swang): We have to mark this instead of
+    // deleting the entry immediately in case the object is currently being
+    // spilled. In that case, we should process the free event once the object
+    // spill is complete.
+    it->second.is_freed_ = true;
 
-  RAY_LOG(DEBUG) << "Unpinning object " << object_id;
-  // The object should be in one of these states: pinned, spilling, or spilled.
-  auto pinned_objects_it = pinned_objects_.find(object_id);
-  RAY_CHECK(pinned_objects_it != pinned_objects_.end() ||
-            spilled_objects_url_.contains(object_id) ||
-            objects_pending_spill_.contains(object_id));
-  if (pinned_objects_it != pinned_objects_.end()) {
-    pinned_objects_size_ -= pinned_objects_it->second->GetSize();
-    pinned_objects_.erase(pinned_objects_it);
-    local_objects_.erase(it);
-  } else {
-    // If the object is being spilled or is already spilled, then we will clean
-    // up the local_objects_ entry once the spilled copy has been
-    // freed.
-    spilled_object_pending_delete_.push(object_id);
+    RAY_LOG(DEBUG) << "Unpinning object " << object_id;
+    // The object should be in one of these states: pinned, spilling, or spilled.
+    auto pinned_objects_it = pinned_objects_.find(object_id);
+    RAY_CHECK(pinned_objects_it != pinned_objects_.end() ||
+              spilled_objects_url_.contains(object_id) ||
+              objects_pending_spill_.contains(object_id));
+    if (pinned_objects_it != pinned_objects_.end()) {
+      pinned_objects_size_ -= pinned_objects_it->second->GetSize();
+      pinned_objects_.erase(pinned_objects_it);
+      local_objects_.erase(it);
+    } else {
+      // If the object is being spilled or is already spilled, then we will clean
+      // up the local_objects_ entry once the spilled copy has been
+      // freed.
+      spilled_object_pending_delete_.push(object_id);
+    }
   }
 
   // Try to evict all copies of the object from the cluster.
@@ -145,6 +104,24 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
       free_objects_period_ms_ == 0) {
     FlushFreeObjects();
   }
+}
+
+std::vector<ObjectID> LocalObjectManager::GetLocalObjectsOwnedBy(
+    const WorkerID &worker_id) const {
+  return GetLocalObjectsFilteredBy(
+      local_objects_, [&worker_id](const LocalObjectInfo &info) {
+        return !info.is_freed_ &&
+               WorkerID::FromBinary(info.owner_address_.worker_id()) == worker_id;
+      });
+}
+
+std::vector<ObjectID> LocalObjectManager::GetLocalObjectsOwnedByOwnersOn(
+    const NodeID &node_id) const {
+  return GetLocalObjectsFilteredBy(
+      local_objects_, [&node_id](const LocalObjectInfo &info) {
+        return !info.is_freed_ &&
+               NodeID::FromBinary(info.owner_address_.node_id()) == node_id;
+      });
 }
 
 void LocalObjectManager::FlushFreeObjects() {
