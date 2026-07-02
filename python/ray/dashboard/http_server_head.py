@@ -14,6 +14,7 @@ import multidict
 from packaging.version import Version
 
 import ray
+import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.timezone_utils as timezone_utils
 import ray.dashboard.utils as dashboard_utils
@@ -95,6 +96,7 @@ class HttpServerDashboardHead:
         session_name: str,
         metrics: DashboardPrometheusMetrics,
         proxy_server_url: str | None = None,
+        proxy_timeout: float = dashboard_consts.DEFAULT_PROXY_TIMEOUT,
     ):
         self.ip = ip
         self.http_host = http_host
@@ -104,6 +106,7 @@ class HttpServerDashboardHead:
         self.metrics = metrics
         self._session_name = session_name
         self.proxy_server_url = proxy_server_url
+        self.proxy_timeout = proxy_timeout
 
         # Below attirubtes are filled after `run` API is invoked.
         self.runner = None
@@ -329,7 +332,7 @@ class HttpServerDashboardHead:
             # This is to fix 415 error caused by content-type not in headers
             proxy_headers.setdefault("Content-Type", "application/json")
 
-            timeout = aiohttp.ClientTimeout(total=30)
+            timeout = aiohttp.ClientTimeout(total=self.proxy_timeout)
             try:
                 async with aiohttp.ClientSession(timeout=timeout) as session:
                     # Manual concatenation to preserve potential paths in proxy_server_url

@@ -67,6 +67,7 @@ class DashboardHead:
         serve_frontend: bool,
         modules_to_load: Optional[Set[str]] = None,
         proxy_server_url: Optional[str] = None,
+        proxy_timeout: float = dashboard_consts.DEFAULT_PROXY_TIMEOUT,
     ):
         """
         Dashboard head
@@ -95,6 +96,7 @@ class DashboardHead:
                 minimal flags.
             proxy_server_url: The proxy url to redirect api requests to
                 Ex: proxy_server_url=http://historyserver:8080
+            proxy_timeout: The timeout in seconds for proxy requests.
         """
         self.minimal = minimal
         self.serve_frontend = serve_frontend
@@ -133,6 +135,7 @@ class DashboardHead:
         self.pid = os.getpid()
         self.dashboard_proc = psutil.Process()
         self.proxy_server_url = proxy_server_url
+        self.proxy_timeout = proxy_timeout
 
         # If the dashboard is started as non-minimal version, http server should
         # be configured to expose APIs.
@@ -154,6 +157,7 @@ class DashboardHead:
             self.session_name,
             self.metrics,
             self.proxy_server_url,
+            self.proxy_timeout,
         )
         await self.http_server.run(dashboard_head_modules, subprocess_module_handles)
 
