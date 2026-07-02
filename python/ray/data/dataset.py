@@ -4098,6 +4098,17 @@ class Dataset:
         if meta_count is not None:
             return meta_count
 
+        # DataSourceV2 reads defer listing to execution, so ``_meta_count`` above
+        # can't answer (``ReadFiles.infer_metadata`` has no plan-time row count).
+        # Before falling back to a full materialization, try counting from the
+        # listing manifest alone: the Parquet chunker already reads every file's
+        # footer, so the exact row count rides on each chunk's metadata. This
+        # lists files (+ footers) but reads no data columns. Fail-safe: returns
+        # ``None`` for anything it can't prove exact, falling through below.
+        manifest_count = self._try_count_from_manifest()
+        if manifest_count is not None:
+            return manifest_count
+
         # NOTE: Project the dataset to avoid the need to carry actual
         #       data when we're only interested in the total count
         count_op = Count(
@@ -4118,6 +4129,90 @@ class Dataset:
         # Explicitly cast to int to avoid returning `np.int64`, which is the result
         # from calculating `sum()` from numpy batches.
         return int(count)
+
+    def _try_count_from_manifest(self) -> Optional[int]:
+        """Count a bare DataSourceV2 read from its listing manifest, if exact.
+
+        Returns the total row count summed from each chunk's footer-derived
+        ``num_rows`` (executing only the upstream ``ListFiles`` op — no data
+        columns are read), or ``None`` when an exact manifest count can't be
+        proven, in which case ``count()`` falls back to full materialization.
+
+        Guarded conservatively so it can only ever return an exact count:
+
+        * The plan must be a bare ``ReadFiles`` (any operator above it — filter,
+          limit, map, etc. — means the row count isn't the read's row count).
+        * The scanner must have no row-reducing pushdown (predicate, partition
+          predicate, or limit); column projection is fine (rows are unaffected).
+        * No post-read ``block_udf`` (it may change the row count).
+        * Every chunk must carry a non-null ``num_rows``; a non-Parquet chunk
+          schema (line-delimited) lacks the field, and a ``None`` chunk (the
+          corrupt-footer whole-file fallback) surfaces as a null -- either
+          aborts, since summing a null would silently undercount.
+        """
+        import pyarrow as pa
+        import pyarrow.compute as pc
+
+        from ray.data._internal.datasource_v2.listing.file_manifest import (
+            FILE_CHUNK_METADATA_COLUMN_NAME,
+        )
+        from ray.data._internal.datasource_v2.scanners.arrow_file_scanner import (
+            ArrowFileScanner,
+        )
+        from ray.data._internal.logical.operators.read_operator import ReadFiles
+
+        dag = self._logical_plan.dag
+        if not isinstance(dag, ReadFiles):
+            return None
+        if dag.block_udf is not None:
+            return None
+
+        scanner = dag.scanner
+        if not isinstance(scanner, ArrowFileScanner):
+            return None
+        # Defensive: a row-reducing pushdown on the scanner would make the
+        # manifest's num_rows an overcount. These aren't reachable on a bare
+        # read today (V2 ``read_parquet`` rejects ``filter=``, and predicate /
+        # limit pushdown rewrites the plan at optimization time, after count()
+        # inspects the un-optimized dag) -- but guard anyway so this stays exact
+        # if that changes. Column projection is intentionally allowed: it
+        # doesn't affect the row count.
+        if (
+            scanner.predicate is not None
+            or scanner.partition_predicate is not None
+            or scanner.limit is not None
+        ):
+            return None
+
+        # Execute only the upstream ListFiles op; sum footer-derived row counts
+        # straight off the manifest's chunk-metadata struct column with
+        # vectorized compute -- no data columns are read and no per-chunk Python
+        # objects are materialized.
+        list_files_op = dag.input_dependencies[0]
+        manifest_ds = Dataset._from_parent(
+            self, LogicalPlan(list_files_op, self.context)
+        )
+
+        total = 0
+        for block in manifest_ds.iter_batches(batch_size=None, batch_format="pyarrow"):
+            chunk_metadata = block[FILE_CHUNK_METADATA_COLUMN_NAME]
+            # Only Parquet chunks carry ``num_rows``; a line-delimited chunk
+            # schema (or an older manifest) has no such field.
+            if (
+                not pa.types.is_struct(chunk_metadata.type)
+                or chunk_metadata.type.get_field_index("num_rows") < 0
+            ):
+                return None
+            num_rows = pc.struct_field(chunk_metadata, "num_rows")
+            # A null row count is a corrupt-footer whole-file fallback chunk:
+            # its count is unknown, and ``pc.sum`` skips nulls, so we'd silently
+            # undercount. Decline and let the slow path materialize an exact count.
+            if num_rows.null_count > 0:
+                return None
+            block_total = pc.sum(num_rows).as_py()
+            if block_total is not None:  # None only for an empty manifest block
+                total += block_total
+        return total
 
     def _base_schema(
         self, fetch_if_missing: bool = True

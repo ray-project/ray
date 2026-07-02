@@ -6,6 +6,7 @@ unsupported-option gating. They call ``ray.data.read_parquet`` which
 triggers Ray auto-init, so they live alongside the other datasource
 integration tests rather than under ``tests/unit/``.
 """
+
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -37,6 +38,40 @@ def test_v2_flag_default():
     # default is a bool.
     ctx = DataContext()
     assert isinstance(ctx.use_datasource_v2, bool)
+
+
+def test_read_parquet_v2_count_from_manifest(tmp_path, restore_ctx):
+    # count() on a bare V2 parquet read is answered from the listing manifest
+    # (footer-derived row counts) without materializing data, and equals the
+    # real row count across multiple files.
+    _write(tmp_path / "a.parquet", pa.table({"a": list(range(10))}))
+    _write(tmp_path / "b.parquet", pa.table({"a": list(range(25))}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    # The fast path fires and returns the exact count.
+    assert ds._try_count_from_manifest() == 35
+    # End-to-end count() agrees.
+    assert ds.count() == 35
+
+
+def test_read_parquet_v2_count_falls_back_with_downstream_op(tmp_path, restore_ctx):
+    # A row-changing operator above the read (filter / limit) means the plan is
+    # no longer a bare ReadFiles, so the fast path declines and count() returns
+    # the true post-op count via the slow path.
+    from ray.data.expressions import col
+
+    _write(tmp_path / "a.parquet", pa.table({"a": list(range(10))}))
+
+    restore_ctx.use_datasource_v2 = True
+    filtered = ray.data.read_parquet(str(tmp_path)).filter(expr=col("a") >= 7)
+    assert filtered._try_count_from_manifest() is None
+    assert filtered.count() == 3
+
+    limited = ray.data.read_parquet(str(tmp_path)).limit(4)
+    assert limited._try_count_from_manifest() is None
+    assert limited.count() == 4
 
 
 def test_read_parquet_builds_list_files_read_files_chain(tmp_path, restore_ctx):
