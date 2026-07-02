@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <cmath>
 #include <deque>
 #include <fstream>
 #include <iostream>
@@ -27,6 +28,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "ray/common/constants.h"
@@ -34,6 +36,9 @@
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/placement_group_util.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/common/status.h"
 #include "ray/core_worker_rpc_client/core_worker_client_interface.h"
 #include "ray/util/container_util.h"
@@ -46,6 +51,42 @@ namespace ray {
 namespace raylet {
 
 namespace {
+
+ray::ResourceSet StripPgFormattedResources(const ray::ResourceSet &resource_set) {
+  absl::flat_hash_map<ray::scheduling::ResourceID, FixedPoint> new_resources;
+  for (const auto &[resource_id, quantity] : resource_set.Resources()) {
+    auto parsed = ParsePgFormattedResource(resource_id.Binary(),
+                                           /*for_wildcard_resource=*/true,
+                                           /*for_indexed_resource=*/true);
+    if (parsed) {
+      ray::scheduling::ResourceID new_id(parsed->original_resource);
+      new_resources[new_id] += quantity;
+    } else {
+      new_resources[resource_id] += quantity;
+    }
+  }
+  return ray::ResourceSet(new_resources);
+}
+
+ray::TaskResourceInstances StripPgFormattedResourceInstances(
+    const ray::TaskResourceInstances &task_resources) {
+  absl::flat_hash_map<ray::scheduling::ResourceID, std::vector<FixedPoint>> new_resources;
+  for (const auto &resource_id : task_resources.ResourceIds()) {
+    const auto &instances = task_resources.Get(resource_id);
+    auto parsed = ParsePgFormattedResource(resource_id.Binary(),
+                                           /*for_wildcard_resource=*/true,
+                                           /*for_indexed_resource=*/true);
+    if (parsed) {
+      ray::scheduling::ResourceID new_id(parsed->original_resource);
+      auto &new_instances = new_resources[new_id];
+      new_instances.insert(new_instances.end(), instances.begin(), instances.end());
+    } else {
+      auto &new_instances = new_resources[resource_id];
+      new_instances.insert(new_instances.end(), instances.begin(), instances.end());
+    }
+  }
+  return ray::TaskResourceInstances(std::move(new_resources));
+}
 
 std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
     const std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
@@ -245,16 +286,20 @@ const ProcessInterface &WorkerPool::AddWorkerProcess(
     SteadyTimePoint start,
     const rpc::RuntimeEnvInfo &runtime_env_info,
     const std::vector<std::string> &dynamic_options,
-    std::optional<absl::Duration> worker_startup_keep_alive_duration) {
-  auto [it, _] = state.worker_processes.emplace(
-      worker_id,
-      WorkerProcessInfo{/*is_pending_registration=*/true,
-                        worker_type,
-                        std::move(proc),
-                        start,
-                        runtime_env_info,
-                        dynamic_options,
-                        worker_startup_keep_alive_duration});
+    std::optional<absl::Duration> worker_startup_keep_alive_duration,
+    const ResourceSet &resource_requirements,
+    const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+  auto [it, _] =
+      state.worker_processes.emplace(worker_id,
+                                     WorkerProcessInfo{/*is_pending_registration=*/true,
+                                                       worker_type,
+                                                       std::move(proc),
+                                                       start,
+                                                       runtime_env_info,
+                                                       dynamic_options,
+                                                       worker_startup_keep_alive_duration,
+                                                       resource_requirements,
+                                                       allocated_instances});
   return *it->second.proc;
 }
 
@@ -468,7 +513,9 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
     const int runtime_env_hash,
     const std::string &serialized_runtime_env_context,
     const rpc::RuntimeEnvInfo &runtime_env_info,
-    std::optional<absl::Duration> worker_startup_keep_alive_duration) {
+    std::optional<absl::Duration> worker_startup_keep_alive_duration,
+    const ResourceSet &resource_requirements,
+    const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
   rpc::JobConfig *job_config = nullptr;
   if (!job_id.IsNil()) {
     auto it = all_jobs_.find(job_id);
@@ -542,7 +589,9 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
                        start,
                        runtime_env_info,
                        dynamic_options,
-                       worker_startup_keep_alive_duration);
+                       worker_startup_keep_alive_duration,
+                       resource_requirements,
+                       allocated_instances);
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
     io_worker_state.num_starting_io_workers++;
@@ -767,6 +816,8 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
         runtime_env,
         runtime_env_config,
         job_id,
+        /*resource_requirements=*/ResourceSet(),
+        /*allocated_instances=*/nullptr,
         [job_id](bool successful,
                  const std::string &serialized_runtime_env_context,
                  const std::string &setup_error_message) {
@@ -852,6 +903,9 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
       << ", register cost: " << duration_ms
       << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType());
   worker->SetAssignedPort(port);
+
+  worker->SetResourceRequirements(starting_process_info.resource_requirements);
+  worker->SetStartupAllocatedInstances(starting_process_info.allocated_instances);
 
   state.registered_workers.insert(worker);
 
@@ -1341,6 +1395,33 @@ WorkerUnfitForLeaseReason WorkerPool::WorkerFitForLease(
       pop_worker_request.dynamic_options_) {
     return WorkerUnfitForLeaseReason::DYNAMIC_OPTIONS_MISMATCH;
   }
+  // Skip if resource requirements mismatch.
+  if (StripPgFormattedResources(worker.GetResourceRequirements()) !=
+      StripPgFormattedResources(pop_worker_request.resource_requirements_)) {
+    return WorkerUnfitForLeaseReason::RESOURCE_MISMATCH;
+  }
+
+  // Skip if the startup allocated instances mismatch.
+  bool allocated_instances_match = false;
+  const auto &worker_allocated_instances = worker.GetStartupAllocatedInstances();
+  const auto &request_allocated_instances = pop_worker_request.allocated_instances_;
+
+  bool worker_has_instances =
+      worker_allocated_instances && !worker_allocated_instances->IsEmpty();
+  bool request_has_instances =
+      request_allocated_instances && !request_allocated_instances->IsEmpty();
+
+  if (!worker_has_instances && !request_has_instances) {
+    allocated_instances_match = true;
+  } else if (worker_has_instances && request_has_instances &&
+             StripPgFormattedResourceInstances(*worker_allocated_instances) ==
+                 StripPgFormattedResourceInstances(*request_allocated_instances)) {
+    allocated_instances_match = true;
+  }
+
+  if (!allocated_instances_match) {
+    return WorkerUnfitForLeaseReason::ALLOCATED_INSTANCES_MISMATCH;
+  }
   return WorkerUnfitForLeaseReason::NONE;
 }
 
@@ -1363,7 +1444,9 @@ void WorkerPool::StartNewWorker(
                            request->runtime_env_hash_,
                            serialized_runtime_env_context,
                            request->runtime_env_info_,
-                           request->worker_startup_keep_alive_duration_);
+                           request->worker_startup_keep_alive_duration_,
+                           request->resource_requirements_,
+                           request->allocated_instances_);
     if (status == PopWorkerStatus::OK) {
       RAY_CHECK(proc.IsValid());
       WarnAboutSize();
@@ -1383,33 +1466,39 @@ void WorkerPool::StartNewWorker(
   const std::string &serialized_runtime_env =
       pop_worker_request->runtime_env_info_.serialized_runtime_env();
 
-  if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
-    // create runtime env.
-    GetOrCreateRuntimeEnv(
-        serialized_runtime_env,
-        pop_worker_request->runtime_env_info_.runtime_env_config(),
-        pop_worker_request->job_id_,
-        [this, start_worker_process_fn, pop_worker_request](
-            bool successful,
-            const std::string &serialized_runtime_env_context,
-            const std::string &setup_error_message) {
-          if (successful) {
-            start_worker_process_fn(pop_worker_request, serialized_runtime_env_context);
-          } else {
-            process_failed_runtime_env_setup_failed_++;
-            pop_worker_request->callback_(
-                nullptr,
-                PopWorkerStatus::RuntimeEnvCreationFailed,
-                /*runtime_env_setup_error_message*/ setup_error_message);
-          }
-        });
-  } else {
-    start_worker_process_fn(pop_worker_request, "");
+  // If the request has allocated instances or resource requirements, we need to
+  // start a new worker even if the runtime env is empty. This is to inject allocated
+  // accelerators IDs to worker processes.
+  std::string env_to_use = serialized_runtime_env;
+  if (IsRuntimeEnvEmpty(env_to_use)) {
+    env_to_use = "{}";
   }
+  GetOrCreateRuntimeEnv(env_to_use,
+                        pop_worker_request->runtime_env_info_.runtime_env_config(),
+                        pop_worker_request->job_id_,
+                        pop_worker_request->resource_requirements_,
+                        pop_worker_request->allocated_instances_,
+                        [this, start_worker_process_fn, pop_worker_request](
+                            bool successful,
+                            const std::string &serialized_runtime_env_context,
+                            const std::string &setup_error_message) {
+                          if (successful) {
+                            start_worker_process_fn(pop_worker_request,
+                                                    serialized_runtime_env_context);
+                          } else {
+                            process_failed_runtime_env_setup_failed_++;
+                            pop_worker_request->callback_(
+                                nullptr,
+                                PopWorkerStatus::RuntimeEnvCreationFailed,
+                                /*runtime_env_setup_error_message*/ setup_error_message);
+                          }
+                        });
 }
 
-void WorkerPool::PopWorker(const LeaseSpecification &lease_spec,
-                           const PopWorkerCallback &callback) {
+void WorkerPool::PopWorker(
+    const LeaseSpecification &lease_spec,
+    const std::shared_ptr<TaskResourceInstances> &allocated_instances,
+    const PopWorkerCallback &callback) {
   auto pop_worker_request = std::make_shared<PopWorkerRequest>(
       lease_spec.GetLanguage(),
       rpc::WorkerType::WORKER,
@@ -1443,7 +1532,9 @@ void WorkerPool::PopWorker(const LeaseSpecification &lease_spec,
           return false;
         }
         return callback(worker, status, runtime_env_setup_error_message);
-      });
+      },
+      lease_spec.GetRequiredResources(),
+      allocated_instances);
   PopWorker(std::move(pop_worker_request));
 }
 
@@ -1546,19 +1637,17 @@ void WorkerPool::PrestartWorkersInternal(const LeaseSpecification &lease_spec,
                                          int64_t num_needed) {
   RAY_LOG(DEBUG) << "PrestartWorkers " << num_needed;
   for (int ii = 0; ii < num_needed; ++ii) {
-    // Prestart worker with no runtime env.
-    if (IsRuntimeEnvEmpty(lease_spec.SerializedRuntimeEnv())) {
-      PopWorkerStatus status;
-      StartWorkerProcess(
-          lease_spec.GetLanguage(), rpc::WorkerType::WORKER, lease_spec.JobId(), &status);
-      continue;
+    std::string env_to_use = lease_spec.SerializedRuntimeEnv();
+    if (IsRuntimeEnvEmpty(env_to_use)) {
+      env_to_use = "{}";
     }
 
-    // Prestart worker with runtime env.
     GetOrCreateRuntimeEnv(
-        lease_spec.SerializedRuntimeEnv(),
+        env_to_use,
         lease_spec.RuntimeEnvConfig(),
         lease_spec.JobId(),
+        lease_spec.GetRequiredResources(),
+        /*allocated_instances=*/nullptr,
         [this, lease_spec = lease_spec](bool successful,
                                         const std::string &serialized_runtime_env_context,
                                         const std::string &setup_error_message) {
@@ -1575,7 +1664,9 @@ void WorkerPool::PrestartWorkersInternal(const LeaseSpecification &lease_spec,
                              /*dynamic_options=*/{},
                              lease_spec.GetRuntimeEnvHash(),
                              serialized_runtime_env_context,
-                             lease_spec.RuntimeEnvInfo());
+                             lease_spec.RuntimeEnvInfo(),
+                             /*worker_startup_keep_alive_duration=*/std::nullopt,
+                             lease_spec.GetRequiredResources());
         });
   }
 }
@@ -1840,16 +1931,21 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
   UNREACHABLE;
 }
 
-void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env,
-                                       const rpc::RuntimeEnvConfig &runtime_env_config,
-                                       const JobID &job_id,
-                                       const GetOrCreateRuntimeEnvCallback &callback) {
+void WorkerPool::GetOrCreateRuntimeEnv(
+    const std::string &serialized_runtime_env,
+    const rpc::RuntimeEnvConfig &runtime_env_config,
+    const JobID &job_id,
+    const ResourceSet &resource_requirements,
+    const std::shared_ptr<TaskResourceInstances> &allocated_instances,
+    const GetOrCreateRuntimeEnvCallback &callback) {
   RAY_LOG(DEBUG) << "GetOrCreateRuntimeEnv for job " << job_id << " with runtime_env "
                  << serialized_runtime_env;
   runtime_env_agent_client_->GetOrCreateRuntimeEnv(
       job_id,
       serialized_runtime_env,
       runtime_env_config,
+      resource_requirements,
+      allocated_instances,
       [job_id, serialized_runtime_env, runtime_env_config, callback](
           bool successful,
           const std::string &serialized_runtime_env_context,

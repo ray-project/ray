@@ -392,6 +392,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
         // task might be hanging.
         worker_pool_.PopWorker(
             spec,
+            allocated_instances,
             [this, lease_id, scheduling_class, work, is_detached_actor, owner_address](
                 const std::shared_ptr<WorkerInterface> worker,
                 PopWorkerStatus status,

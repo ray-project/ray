@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/util/fake_process.h"
@@ -102,6 +103,11 @@ class FakeWorker : public WorkerInterface {
   void ActorCallArgWaitComplete(int64_t tag) override {}
   void ClearAllocatedInstances() override {}
   void ClearLifetimeAllocatedInstances() override {}
+  void SetStartupAllocatedInstances(
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {}
+  std::shared_ptr<TaskResourceInstances> GetStartupAllocatedInstances() const override {
+    return nullptr;
+  }
   const BundleID &GetBundleId() const override { return bundle_id_; }
   void SetBundleId(const BundleID &bundle_id) override { bundle_id_ = bundle_id; }
   bool IsRegistered() override { return false; }
@@ -109,6 +115,13 @@ class FakeWorker : public WorkerInterface {
   void SetJobId(const JobID &job_id) override {}
   const ActorID &GetRootDetachedActorId() const override {
     return root_detached_actor_id_;
+  }
+
+  const ResourceSet &GetResourceRequirements() const override {
+    return resource_requirements_;
+  }
+  void SetResourceRequirements(const ResourceSet &resource_requirements) override {
+    resource_requirements_ = resource_requirements;
   }
 
  private:
@@ -123,6 +136,7 @@ class FakeWorker : public WorkerInterface {
   ActorID actor_id_;
   rpc::Address owner_address_;
   ActorID root_detached_actor_id_;
+  ResourceSet resource_requirements_;
 };
 
 }  // namespace raylet

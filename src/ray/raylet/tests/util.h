@@ -22,6 +22,7 @@
 #include "absl/strings/str_format.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/lease/lease.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/util/clock.h"
 #include "ray/util/compat.h"
@@ -159,6 +160,15 @@ class MockWorker : public WorkerInterface {
     lifetime_allocated_instances_ = nullptr;
   }
 
+  void SetStartupAllocatedInstances(
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {
+    startup_allocated_instances_ = allocated_instances;
+  }
+
+  std::shared_ptr<TaskResourceInstances> GetStartupAllocatedInstances() const override {
+    return startup_allocated_instances_;
+  }
+
   const BundleID &GetBundleId() const override {
     RAY_CHECK(false) << "Method unused";
     return bundle_id_;
@@ -181,12 +191,20 @@ class MockWorker : public WorkerInterface {
     return root_detached_actor_id_;
   }
 
+  const ResourceSet &GetResourceRequirements() const override {
+    return resource_requirements_;
+  }
+  void SetResourceRequirements(const ResourceSet &resource_requirements) override {
+    resource_requirements_ = resource_requirements;
+  }
+
  private:
   WorkerID worker_id_;
   int port_;
   rpc::Address address_;
   std::shared_ptr<TaskResourceInstances> allocated_instances_;
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
+  std::shared_ptr<TaskResourceInstances> startup_allocated_instances_;
   std::vector<double> borrowed_cpu_instances_;
   std::optional<bool> is_gpu_;
   std::optional<bool> is_actor_worker_;
@@ -203,6 +221,7 @@ class MockWorker : public WorkerInterface {
   std::atomic<bool> killing_ = false;
   std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_;
   ClockInterface &clock_;
+  ResourceSet resource_requirements_;
 };
 
 /**

@@ -17,7 +17,13 @@ def test_visible_intel_gpu_ids(shutdown_only):
         os.environ["ONEAPI_DEVICE_SELECTOR"] = "level_zero:0,1,2"
         # Delete the cache so it can be re-populated the next time
         # we call get_accelerator_manager_for_resource
-        del get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
+        if hasattr(
+            get_accelerator_manager_for_resource,
+            "_resource_name_to_accelerator_manager",
+        ):
+            del (
+                get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
+            )
         ray.init()
         manager = get_accelerator_manager_for_resource("GPU")
         assert manager.get_current_node_num_accelerators() == 4
@@ -32,7 +38,13 @@ def test_visible_intel_gpu_type(shutdown_only):
         Accelerator, "get_current_node_accelerator_type", return_value=INTEL_MAX_1550
     ):
         os.environ["ONEAPI_DEVICE_SELECTOR"] = "level_zero:0,1,2"
-        del get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
+        if hasattr(
+            get_accelerator_manager_for_resource,
+            "_resource_name_to_accelerator_manager",
+        ):
+            del (
+                get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
+            )
         ray.init()
         manager = get_accelerator_manager_for_resource("GPU")
         assert manager.get_current_node_accelerator_type() == INTEL_MAX_1550

@@ -27,6 +27,9 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/placement_group_util.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/common/status.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/util/clock.h"
@@ -366,16 +369,21 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   // Making HTTP call.
   // POST /get_or_create_runtime_env
   // Body = proto rpc::GetOrCreateRuntimeEnvRequest
-  void GetOrCreateRuntimeEnv(const JobID &job_id,
-                             const std::string &serialized_runtime_env,
-                             const rpc::RuntimeEnvConfig &runtime_env_config,
-                             GetOrCreateRuntimeEnvCallback callback) override {
+  void GetOrCreateRuntimeEnv(
+      const JobID &job_id,
+      const std::string &serialized_runtime_env,
+      const rpc::RuntimeEnvConfig &runtime_env_config,
+      const ResourceSet &resource_requirements,
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances,
+      GetOrCreateRuntimeEnvCallback callback) override {
     RetryInvokeOnNotFoundWithDeadline<rpc::GetOrCreateRuntimeEnvReply>(
         [=](SuccCallback<rpc::GetOrCreateRuntimeEnvReply> succ_callback,
             FailCallback fail_callback) {
           return TryGetOrCreateRuntimeEnv(job_id,
                                           serialized_runtime_env,
                                           runtime_env_config,
+                                          resource_requirements,
+                                          allocated_instances,
                                           succ_callback,
                                           fail_callback);
         },
@@ -421,12 +429,65 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       const JobID &job_id,
       const std::string &serialized_runtime_env,
       const rpc::RuntimeEnvConfig &runtime_env_config,
+      const ResourceSet &resource_requirements,
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances,
       std::function<void(rpc::GetOrCreateRuntimeEnvReply)> succ_callback,
       std::function<void(ray::Status)> fail_callback) {
     rpc::GetOrCreateRuntimeEnvRequest request;
     request.set_job_id(job_id.Hex());
     request.set_serialized_runtime_env(serialized_runtime_env);
     request.mutable_runtime_env_config()->CopyFrom(runtime_env_config);
+
+    // Copy resource_requirements
+    auto mutable_reqs = request.mutable_resource_requirements();
+    for (const auto &[id, quantity] : resource_requirements.Resources()) {
+      std::string resource_name = id.Binary();
+      auto parsed = ParsePgFormattedResource(
+          resource_name, /*for_wildcard_resource*/ true, /*for_indexed_resource*/ true);
+      if (parsed) {
+        resource_name = parsed->original_resource;
+      }
+      (*mutable_reqs)[resource_name] += quantity.Double();
+    }
+
+    // Copy allocated_instances
+    auto mutable_allocated = request.mutable_allocated_instances();
+    if (allocated_instances) {
+      for (const auto &resource_id : allocated_instances->ResourceIds()) {
+        std::string resource_name = resource_id.Binary();
+        auto parsed = ParsePgFormattedResource(
+            resource_name, /*for_wildcard_resource*/ true, /*for_indexed_resource*/ true);
+        if (parsed) {
+          resource_name = parsed->original_resource;
+        }
+        ResourceID original_resource_id(resource_name);
+        if (original_resource_id.IsUnitInstanceResource()) {
+          const auto &instances = allocated_instances->Get(resource_id);
+          rpc::ResourceIDs ids;
+          for (size_t i = 0; i < instances.size(); i++) {
+            if (instances[i] > 0.) {
+              ids.add_ids(static_cast<int64_t>(i));
+            }
+          }
+          if (ids.ids_size() > 0) {
+            auto &existing_ids = (*mutable_allocated)[resource_name];
+            for (int64_t id : ids.ids()) {
+              bool duplicate = false;
+              for (int64_t existing_id : existing_ids.ids()) {
+                if (existing_id == id) {
+                  duplicate = true;
+                  break;
+                }
+              }
+              if (!duplicate) {
+                existing_ids.add_ids(id);
+              }
+            }
+          }
+        }
+      }
+    }
+
     std::string payload = request.SerializeAsString();
 
     auto session = Session::Create(

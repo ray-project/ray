@@ -22,6 +22,7 @@
 #include "absl/time/time.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/core_worker_rpc_client/core_worker_client_interface.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet_ipc_client/client_connection.h"
@@ -131,6 +132,15 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
     lifetime_allocated_instances_ = nullptr;
   };
 
+  void SetStartupAllocatedInstances(
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {
+    startup_allocated_instances_ = allocated_instances;
+  };
+
+  std::shared_ptr<TaskResourceInstances> GetStartupAllocatedInstances() const override {
+    return startup_allocated_instances_;
+  };
+
   const RayLease &GetGrantedLease() const override {
     RAY_CHECK(granted_lease_.has_value());
     return *granted_lease_;
@@ -162,6 +172,9 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   void SetJobId(const JobID &job_id) override;
   void SetIsGpu(bool is_gpu);
   void SetIsActorWorker(bool is_actor_worker);
+
+  const ResourceSet &GetResourceRequirements() const override;
+  void SetResourceRequirements(const ResourceSet &resource_requirements) override;
 
  private:
   /// The worker's ID.
@@ -220,6 +233,8 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// The capacity of each resource instance allocated to this worker
   /// when running as an actor.
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
+  /// Specific allocated instances this worker was started with.
+  std::shared_ptr<TaskResourceInstances> startup_allocated_instances_;
   /// RayLease being assigned to this worker.
   std::optional<RayLease> granted_lease_;
   /// Time when the last lease was granted to this worker, or std::nullopt if
@@ -236,6 +251,8 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// Saved process group id captured at registration time. Used for process-group
   /// cleanup validation at disconnect/stop.
   std::optional<pid_t> saved_pgid_ = std::nullopt;
+  /// Resource requirements of this worker process.
+  ResourceSet resource_requirements_;
 };
 
 }  // namespace raylet

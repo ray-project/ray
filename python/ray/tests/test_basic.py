@@ -340,7 +340,7 @@ def test_omp_threads_set(ray_start_cluster, monkeypatch):
     assert omp_num_threads == "1"
     # Set to 2
     pid2, omp_num_threads = ray.get(g.options(num_cpus=2).remote())
-    assert pid1 == pid2
+    assert pid1 != pid2
     assert omp_num_threads == "2"
 
     ###########################

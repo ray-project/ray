@@ -271,6 +271,14 @@ void Worker::SetIsActorWorker(bool is_actor_worker) {
       << ", actual: " << is_actor_worker;
 }
 
+const ResourceSet &Worker::GetResourceRequirements() const {
+  return resource_requirements_;
+}
+
+void Worker::SetResourceRequirements(const ResourceSet &resource_requirements) {
+  resource_requirements_ = resource_requirements;
+}
+
 }  // namespace raylet
 
 }  // end namespace ray

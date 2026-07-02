@@ -19,7 +19,10 @@ def test_visible_amd_gpu_ids(mock_get_num_accelerators, monkeypatch, shutdown_on
     monkeypatch.setenv("HIP_VISIBLE_DEVICES", "0,1,2")
     # Delete the cache so it can be re-populated the next time
     # we call get_accelerator_manager_for_resource
-    del get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
+    if hasattr(
+        get_accelerator_manager_for_resource, "_resource_name_to_accelerator_manager"
+    ):
+        del get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
     ray.init()
     _ = mock_get_num_accelerators.called
     assert ray.available_resources()["GPU"] == 3

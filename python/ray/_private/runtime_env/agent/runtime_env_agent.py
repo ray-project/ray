@@ -9,9 +9,11 @@ from typing import Callable, Dict, List, Set, Tuple
 
 import ray
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
+import ray._private.utils
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import (
     DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
+    env_bool,
 )
 from ray._private.ray_logging import setup_component_logger
 from ray._private.runtime_env.conda import CondaPlugin
@@ -263,6 +265,10 @@ class RuntimeEnvAgent:
             "Listening to address %s, port %d", address, runtime_env_agent_port
         )
 
+        self.original_visible_accelerator_ids = (
+            ray._private.utils.get_visible_accelerator_ids()
+        )
+
         try:
             self._node_ip = ray.util.get_node_ip_address()
             self._node_prefix = f"[Node {self._node_ip}] "
@@ -300,6 +306,54 @@ class RuntimeEnvAgent:
                 )
             else:
                 delete_runtime_env()
+
+    def _inject_resource_env_vars(
+        self, context: RuntimeEnvContext, request
+    ) -> RuntimeEnvContext:
+        import math
+
+        from ray._private.accelerators import (
+            RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
+            get_accelerator_manager_for_resource,
+            get_all_accelerator_resource_names,
+        )
+
+        cpu_req = request.resource_requirements.get("CPU", 0)
+        omp_num_threads = max(math.floor(cpu_req), 1)
+        # respect user configured env var if set.
+        if "OMP_NUM_THREADS" in os.environ:
+            omp_num_threads = max(int(os.environ["OMP_NUM_THREADS"]), 1)
+
+        if "OMP_NUM_THREADS" not in context.env_vars:
+            context.env_vars["OMP_NUM_THREADS"] = str(omp_num_threads)
+
+        override_on_zero = env_bool(
+            RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
+            False,
+        )
+
+        for resource_name in get_all_accelerator_resource_names():
+            manager = get_accelerator_manager_for_resource(resource_name)
+            env_var = manager.get_visible_accelerator_ids_env_var()
+            if not env_var:
+                continue
+
+            if env_var in context.env_vars:
+                continue
+
+            if resource_name in request.allocated_instances:
+                allocated_ids = list(request.allocated_instances[resource_name].ids)
+                if (
+                    self.original_visible_accelerator_ids.get(resource_name, None)
+                    is not None
+                ):
+                    original_ids = self.original_visible_accelerator_ids[resource_name]
+                    allocated_ids_str = {str(original_ids[i]) for i in allocated_ids}
+                else:
+                    allocated_ids_str = [str(i) for i in allocated_ids]
+                context.env_vars[env_var] = ",".join(allocated_ids_str)
+            elif override_on_zero:
+                context.env_vars[env_var] = ""
 
     def get_or_create_logger(self, job_id: bytes, log_files: List[str]):
         job_id = job_id.decode()
@@ -475,7 +529,9 @@ class RuntimeEnvAgent:
                 serialized_context = self._env_cache[serialized_env]
                 result = self._env_cache[serialized_env]
                 if result.success:
-                    context = result.result
+                    context_obj = RuntimeEnvContext.deserialize(result.result)
+                    self._inject_resource_env_vars(context_obj, request)
+                    context = context_obj.serialize()
                     self._logger.info(
                         "Runtime env already created "
                         f"successfully. Env: {serialized_env}, "
@@ -537,6 +593,12 @@ class RuntimeEnvAgent:
                 serialized_context if successful else error_message,
                 creation_time_ms,
             )
+
+            if successful:
+                context_obj = RuntimeEnvContext.deserialize(serialized_context)
+                self._inject_resource_env_vars(context_obj, request)
+                serialized_context = context_obj.serialize()
+
             # Reply the RPC
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=runtime_env_agent_pb2.AGENT_RPC_STATUS_OK

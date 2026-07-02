@@ -17,7 +17,10 @@ from ray._private.accelerators import (
 )
 def test_visible_metax_gpu_ids(mock_get_num_accelerators, monkeypatch, shutdown_only):
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1,2")
-    del get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
+    if hasattr(
+        get_accelerator_manager_for_resource, "_resource_name_to_accelerator_manager"
+    ):
+        del get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
     ray.init()
     assert mock_get_num_accelerators.called
     assert ray.available_resources()["GPU"] == 3
