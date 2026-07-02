@@ -1,13 +1,8 @@
 build_arg_sets:
   cu130:
-    PYTHON_VERSION: py314
-    PYTHON_VERSION_STR: "3.14"
+    PYTHON_VERSION: py312
+    PYTHON_VERSION_STR: "3.12"
     CUDA_CODE: cu130
-    # Resolve the torch family from the cu130 index so the whole CUDA-13 stack
-    # (torch 2.11.0+cu130, vLLM 0.22.0, flashinfer 0.6.11.post2) is consistent
-    # and vllm._C finds libcudart.so.13. Must match rayllm.depsets.yaml's
-    # TORCH_CUDA_CODE.
-    TORCH_CUDA_CODE: cu130
 
 
 .common_settings: &common_settings
@@ -15,7 +10,7 @@ build_arg_sets:
     - --python-version=${PYTHON_VERSION_STR}
     - --unsafe-package ray
     - --python-platform=x86_64-manylinux_2_31
-    - --index https://download.pytorch.org/whl/${TORCH_CUDA_CODE}
+    - --index https://download.pytorch.org/whl/${CUDA_CODE}
   build_arg_sets:
     - cu130
 
