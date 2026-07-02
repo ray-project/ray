@@ -152,6 +152,8 @@ attrs==25.1.0
     #   referencing
     #   sarif-om
     #   semgrep
+authlib==1.6.12
+    # via gradio
 autograd==1.8.0
     # via pymoo
 aws-sam-translator==1.81.0
@@ -401,6 +403,7 @@ cryptography==44.0.3
     #   -r python/requirements/test-requirements.txt
     #   adal
     #   aim
+    #   authlib
     #   azure-cli-core
     #   azure-identity
     #   azure-storage-blob
@@ -696,6 +699,7 @@ gradio==6.15.2 ; platform_system != "Windows"
     # via
     #   -r python/requirements/serve/serve-test-requirements.txt
     #   -r python/requirements/test-requirements.txt
+    #   trackio
 gradio-client==2.5.0
     # via
     #   gradio
@@ -799,6 +803,7 @@ huggingface-hub==1.13.0
     #   gradio-client
     #   timm
     #   tokenizers
+    #   trackio
     #   transformers
 humanfriendly==10.0
     # via
@@ -863,7 +868,9 @@ isodate==0.6.1
 isoduration==20.11.0
     # via jsonschema
 itsdangerous==2.1.2
-    # via flask
+    # via
+    #   flask
+    #   gradio
 izulu==0.50.0
     # via taskiq
 jax==0.4.33 ; python_version < "3.12" and sys_platform != "darwin"
@@ -1304,6 +1311,7 @@ numpy==1.26.4
     #   torchmetrics
     #   torchtext
     #   torchvision
+    #   trackio
     #   transformers
     #   triad
     #   utilsforecast
@@ -1400,6 +1408,7 @@ orjson==3.9.15
     # via
     #   gradio
     #   tensordict
+    #   trackio
 ormsgpack==1.7.0
     # via
     #   -r python/requirements.txt
@@ -1480,6 +1489,7 @@ pandas==2.3.3
     #   raydp
     #   statsforecast
     #   statsmodels
+    #   trackio
     #   triad
     #   utilsforecast
 pandocfilters==1.5.0
@@ -1521,6 +1531,7 @@ pillow==10.4.0 ; platform_system != "Windows"
     #   imageio
     #   matplotlib
     #   torchvision
+    #   trackio
 pkginfo==1.9.6
     # via azure-cli-core
 platformdirs==3.11.0
@@ -1676,7 +1687,9 @@ pydantic-core==2.41.5
 pydot==1.4.2
     # via -r python/requirements/test-requirements.txt
 pydub==0.25.1
-    # via gradio
+    # via
+    #   gradio
+    #   trackio
 pygame==2.5.2
     # via
     #   -r python/requirements/test-requirements.txt
@@ -2390,6 +2403,8 @@ tqdm==4.67.1
     #   torch-geometric
     #   torchtext
     #   transformers
+trackio==0.23.0
+    # via -r python/requirements/ml/core-requirements.txt
 traitlets==5.14.3
     # via
     #   comm
