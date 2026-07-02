@@ -12,9 +12,11 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     KV_ROUTER_ACTOR_NAME,
     KVRouterActor,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    is_kv_aware,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     configure_kv_events_for_kv_routing,
-    is_kv_aware_routing,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.config import DeploymentActorConfig
@@ -31,7 +33,7 @@ def _maybe_setup_kv_aware_routing(
     Attaches the KVRouterActor, which owns the deployment's global KV radix
     tree, and enables the engine KV events that feed it.
     """
-    if not is_kv_aware_routing(deployment_options.get("request_router_config")):
+    if not is_kv_aware(llm_config):
         if llm_config.engine_kwargs.get("kv_events_config") is not None:
             logger.warning(
                 "engine_kwargs['kv_events_config'] is set but the deployment's "
@@ -40,6 +42,12 @@ def _maybe_setup_kv_aware_routing(
                 "deployment_config.request_router_config."
             )
         return
+
+    # Keep the engine's token-tracking gate which reads llm_config consistent
+    # with the router resolved here from the merged deployment options.
+    llm_config.deployment_config["request_router_config"] = deployment_options[
+        "request_router_config"
+    ]
 
     deployment_options["deployment_actors"] = [
         *deployment_options.get("deployment_actors", []),

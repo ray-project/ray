@@ -106,6 +106,7 @@ class MemoryMonitorInterface {
   static constexpr int64_t kNull = -1;
   /// The logging frequency. Decoupled from how often the monitor runs.
   static constexpr uint32_t kLogIntervalMs = 5000;
+  static constexpr uint32_t kErrorLogIntervalMs = 30000;
 };
 
 }  // namespace ray
