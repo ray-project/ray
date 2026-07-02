@@ -165,7 +165,7 @@ class GcsPlacementGroup {
   rpc::PlacementGroupStats *GetMutableStats();
 
   /// Get the non-node topology label keys (e.g. {"ray.io/gpu-domain"}), or
-  /// std::nullopt if this PG doesn't use topology-aware scheduling.
+  /// std::nullopt if this PG doesn't use a topology strategy.
   std::optional<std::vector<std::string>> GetTopologyStrategyKeys() const;
 
   /// Get the topology assignment value selected for `label_key` (e.g. the
@@ -176,8 +176,8 @@ class GcsPlacementGroup {
   void SetTopologyAssignment(const std::string &label_key,
                              const std::string &label_value);
 
-  /// Clear all topology assignments (used when every bundle of a topology-aware
-  /// PG becomes unplaced, so a fresh selection can be made).
+  /// Clear all topology assignments (used when every bundle of a topology
+  /// strategy PG becomes unplaced, so a fresh selection can be made).
   void ClearTopologyAssignments();
 
  private:
