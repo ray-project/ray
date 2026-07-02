@@ -11,9 +11,7 @@
 
 ## Run the example
 
-This README will only contain minimal instructions on running this example on Anyscale.
-See [the guide on the Ray documentation](https://docs.ray.io/en/latest/train/examples/pytorch/dreambooth_finetuning.html)
-for a step-by-step walkthrough of the training code.
+This README will only contain minimal instructions on running this example on Anyscale. See [the guide on the Ray documentation](https://docs.ray.io/en/latest/train/examples/pytorch/dreambooth_finetuning.html) for a step-by-step walkthrough of the training code.
 
 You can get started fine-tuning on a sample dog dataset with default settings with the following commands:
 
@@ -57,9 +55,7 @@ python train.py \
 
 ### Generate images with a script
 
-Use the `generate.py` script to generate images with a prompt.
-Replace the variables with the values that you used in the fine-tuning script.
-See `run_model_flags` in `flags.py` for a full list of available command line arguments to pass to the script.
+Use the `generate.py` script to generate images with a prompt. Replace the variables with the values that you used in the fine-tuning script. See `run_model_flags` in `flags.py` for a full list of available command line arguments to pass to the script.
 
 ```bash
 python generate.py \
@@ -82,8 +78,7 @@ python generate.py \
 
 ### Generate images interactively in a notebook
 
-See the `playground.ipynb` notebook for a more interactive way to generate images with the fine-tuned model.
-Click on the Jupyter icon on the workspace page and open the notebook. *Note: The widgets in this notebook don't work in VS Code, so please use Jupyter!*
+See the `playground.ipynb` notebook for a more interactive way to generate images with the fine-tuned model. Click on the Jupyter icon on the workspace page and open the notebook. *Note: The widgets in this notebook don't work in VS Code, so please use Jupyter!*
 
 ## Appendix
 

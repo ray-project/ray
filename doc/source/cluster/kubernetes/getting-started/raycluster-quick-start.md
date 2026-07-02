@@ -57,8 +57,7 @@ raycluster-kuberay-head                       1/1     Running   0          XXs
 raycluster-kuberay-worker-workergroup-xvfkr   1/1     Running   0          XXs
 ```
 
-Wait for the pods to reach `Running` state. This may take a few minutes, downloading the Ray images takes most of this time.
-If your pods stick in the `Pending` state, you can check for errors using `kubectl describe pod raycluster-kuberay-xxxx-xxxxx` and ensure your Docker resource limits meet the requirements.
+Wait for the pods to reach `Running` state. This may take a few minutes, downloading the Ray images takes most of this time. If your pods stick in the `Pending` state, you can check for errors using `kubectl describe pod raycluster-kuberay-xxxx-xxxxx` and ensure your Docker resource limits meet the requirements.
 
 ## Step 4: Run an application on a RayCluster
 
@@ -66,8 +65,7 @@ Now, interact with the RayCluster deployed.
 
 ### Method 1: Execute a Ray job in the head Pod
 
-The most straightforward way to experiment with your RayCluster is to exec directly into the head pod.
-First, identify your RayCluster's head pod:
+The most straightforward way to experiment with your RayCluster is to exec directly into the head pod. First, identify your RayCluster's head pod:
 
 ```sh
 export HEAD_POD=$(kubectl get pods --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers)
@@ -97,9 +95,7 @@ kubectl exec -it $HEAD_POD -- python -c "import ray; ray.init(); print(ray.clust
 
 ### Method 2: Submit a Ray job to the RayCluster using [ray job submission SDK](jobs-quickstart)
 
-Unlike Method 1, this method doesn't require you to execute commands in the Ray head pod.
-Instead, you can use the [Ray job submission SDK](jobs-quickstart) to submit Ray jobs to the RayCluster through the Ray Dashboard port where Ray listens for Job requests.
-The KubeRay operator configures a [Kubernetes service](https://kubernetes.io/docs/concepts/services-networking/service/) targeting the Ray head Pod.
+Unlike Method 1, this method doesn't require you to execute commands in the Ray head pod. Instead, you can use the [Ray job submission SDK](jobs-quickstart) to submit Ray jobs to the RayCluster through the Ray Dashboard port where Ray listens for Job requests. The KubeRay operator configures a [Kubernetes service](https://kubernetes.io/docs/concepts/services-networking/service/) targeting the Ray head Pod.
 
 ```sh
 kubectl get service raycluster-kuberay-head-svc
@@ -158,8 +154,7 @@ Job 'raysubmit_8vJ7dKqYrWKbd17i' succeeded
 
 ## Step 5: Access the Ray Dashboard
 
-Visit `${YOUR_IP}:8265` in your browser for the Dashboard. For example, `127.0.0.1:8265`.
-See the job you submitted in Step 4 in the **Recent jobs** pane as shown below.
+Visit `${YOUR_IP}:8265` in your browser for the Dashboard. For example, `127.0.0.1:8265`. See the job you submitted in Step 4 in the **Recent jobs** pane as shown below.
 
 ![Ray Dashboard](../images/ray-dashboard.png)
 

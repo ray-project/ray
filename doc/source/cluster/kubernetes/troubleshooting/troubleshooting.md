@@ -2,8 +2,7 @@
 
 # Troubleshooting guide
 
-This document addresses common inquiries.
-If you don't find an answer to your question here, please don't hesitate to connect with us via our [community channels](https://github.com/ray-project/kuberay#getting-involved).
+This document addresses common inquiries. If you don't find an answer to your question here, please don't hesitate to connect with us via our [community channels](https://github.com/ray-project/kuberay#getting-involved).
 
 # Contents
 
@@ -38,15 +37,12 @@ Use an image with the tag `aarch64`, for example, `image: rayproject/ray:2.41.0-
 (upgrade-kuberay)=
 ## Upgrade KubeRay
 
-If you have issues upgrading KubeRay, see the [upgrade guide](#kuberay-upgrade-guide).
-Most issues are about the CRD version.
+If you have issues upgrading KubeRay, see the [upgrade guide](#kuberay-upgrade-guide). Most issues are about the CRD version.
 
 (worker-init-container)=
 ## Worker init container
 
-The KubeRay operator injects a default [init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) into every worker Pod.
-This init container is responsible for waiting until the Global Control Service (GCS) on the head Pod is ready before establishing a connection to the head.
-The init container will use `ray health-check` to check the GCS server status continuously.
+The KubeRay operator injects a default [init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) into every worker Pod. This init container is responsible for waiting until the Global Control Service (GCS) on the head Pod is ready before establishing a connection to the head. The init container will use `ray health-check` to check the GCS server status continuously.
 
 The default worker init container may not work for all use cases, or users may want to customize the init container.
 
@@ -59,44 +55,30 @@ Some common causes for the worker init container to stuck in `Init:0/1` status a
 * The `CLUSTER_DOMAIN` environment variable is not set correctly. See the section [cluster domain](#cluster-domain) for more details.
 * The worker init container shares the same ***ImagePullPolicy***, ***SecurityContext***, ***Env***, ***VolumeMounts***, and ***Resources*** as the worker Pod template. Sharing these settings is possible to cause a deadlock. See [#1130](https://github.com/ray-project/kuberay/issues/1130) for more details.
 
-If the init container remains stuck in `Init:0/1` status for 2 minutes, Ray stops redirecting the output messages to `/dev/null` and instead prints them to the worker Pod logs.
-To troubleshoot further, you can inspect the logs using `kubectl logs`.
+If the init container remains stuck in `Init:0/1` status for 2 minutes, Ray stops redirecting the output messages to `/dev/null` and instead prints them to the worker Pod logs. To troubleshoot further, you can inspect the logs using `kubectl logs`.
 
 ### 2. Disable the init container injection
 
-If you want to customize the worker init container, you can disable the init container injection and add your own.
-To disable the injection, set the `ENABLE_INIT_CONTAINER_INJECTION` environment variable in the KubeRay operator to `false` (applicable from KubeRay v0.5.2).
-Please refer to [#1069](https://github.com/ray-project/kuberay/pull/1069) and the [KubeRay Helm chart](https://github.com/ray-project/kuberay/blob/ddb5e528c29c2e1fb80994f05b1bd162ecbaf9f2/helm-chart/kuberay-operator/values.yaml#L83-L87) for instructions on how to set the environment variable.
-Once disabled, you can add your custom init container to the worker Pod template.
+If you want to customize the worker init container, you can disable the init container injection and add your own. To disable the injection, set the `ENABLE_INIT_CONTAINER_INJECTION` environment variable in the KubeRay operator to `false` (applicable from KubeRay v0.5.2). Please refer to [#1069](https://github.com/ray-project/kuberay/pull/1069) and the [KubeRay Helm chart](https://github.com/ray-project/kuberay/blob/ddb5e528c29c2e1fb80994f05b1bd162ecbaf9f2/helm-chart/kuberay-operator/values.yaml#L83-L87) for instructions on how to set the environment variable. Once disabled, you can add your custom init container to the worker Pod template.
 
 (cluster-domain)=
 ## Cluster domain
 
-In KubeRay, we use Fully Qualified Domain Names (FQDNs) to establish connections between workers and the head.
-The FQDN of the head service is `${HEAD_SVC}.${NAMESPACE}.svc.${CLUSTER_DOMAIN}`.
-The default [cluster domain](https://kubernetes.io/docs/tasks/administer-cluster/dns-custom-nameservers/#introduction) is `cluster.local`, which works for most Kubernetes clusters.
-However, it's important to note that some clusters may have a different cluster domain.
-You can check the cluster domain of your Kubernetes cluster by checking `/etc/resolv.conf` in a Pod.
+In KubeRay, we use Fully Qualified Domain Names (FQDNs) to establish connections between workers and the head. The FQDN of the head service is `${HEAD_SVC}.${NAMESPACE}.svc.${CLUSTER_DOMAIN}`. The default [cluster domain](https://kubernetes.io/docs/tasks/administer-cluster/dns-custom-nameservers/#introduction) is `cluster.local`, which works for most Kubernetes clusters. However, it's important to note that some clusters may have a different cluster domain. You can check the cluster domain of your Kubernetes cluster by checking `/etc/resolv.conf` in a Pod.
 
-To set a custom cluster domain, adjust the `CLUSTER_DOMAIN` environment variable in the KubeRay operator.
-Helm chart users can make this modification [here](https://github.com/ray-project/kuberay/blob/ddb5e528c29c2e1fb80994f05b1bd162ecbaf9f2/helm-chart/kuberay-operator/values.yaml#L88-L91).
-For more information, please refer to [#951](https://github.com/ray-project/kuberay/pull/951) and [#938](https://github.com/ray-project/kuberay/pull/938) for more details.
+To set a custom cluster domain, adjust the `CLUSTER_DOMAIN` environment variable in the KubeRay operator. Helm chart users can make this modification [here](https://github.com/ray-project/kuberay/blob/ddb5e528c29c2e1fb80994f05b1bd162ecbaf9f2/helm-chart/kuberay-operator/values.yaml#L88-L91). For more information, please refer to [#951](https://github.com/ray-project/kuberay/pull/951) and [#938](https://github.com/ray-project/kuberay/pull/938) for more details.
 
 (rayservice)=
 ## RayService
 
-RayService is a Custom Resource Definition (CRD) designed for Ray Serve. In KubeRay, creating a RayService will first create a RayCluster and then
-create Ray Serve applications once the RayCluster is ready. If the issue pertains to the data plane, specifically your Ray Serve scripts
-or Ray Serve configurations (`serveConfigV2`), troubleshooting may be challenging. See [rayservice-troubleshooting](kuberay-raysvc-troubleshoot) for more details.
+RayService is a Custom Resource Definition (CRD) designed for Ray Serve. In KubeRay, creating a RayService will first create a RayCluster and then create Ray Serve applications once the RayCluster is ready. If the issue pertains to the data plane, specifically your Ray Serve scripts or Ray Serve configurations (`serveConfigV2`), troubleshooting may be challenging. See [rayservice-troubleshooting](kuberay-raysvc-troubleshoot) for more details.
 
 (autoscaler)=
 ## Ray Autoscaler
 
 ### Ray Autoscaler doesn't scale up, causing new Ray tasks or actors to remain pending
 
-One common cause is that the Ray tasks or actors require an amount of resources that exceeds what any single Ray node can provide.
-Note that Ray tasks and actors represent the smallest scheduling units in Ray, and a task or actor should be on a single Ray node.
-Take [kuberay#846](https://github.com/ray-project/kuberay/issues/846) as an example. The user attempts to schedule a Ray task that requires 2 CPUs, but the Ray Pods available for these tasks have only 1 CPU each. Consequently, the Ray Autoscaler decides not to scale up the RayCluster.
+One common cause is that the Ray tasks or actors require an amount of resources that exceeds what any single Ray node can provide. Note that Ray tasks and actors represent the smallest scheduling units in Ray, and a task or actor should be on a single Ray node. Take [kuberay#846](https://github.com/ray-project/kuberay/issues/846) as an example. The user attempts to schedule a Ray task that requires 2 CPUs, but the Ray Pods available for these tasks have only 1 CPU each. Consequently, the Ray Autoscaler decides not to scale up the RayCluster.
 
 (multi-node-gpu)=
 ## Multi-node GPU Deployments
@@ -112,8 +94,7 @@ Currently, only modifications to the `replicas` field in `RayCluster/RayJob` CR 
 
 ### How to configure reconcile concurrency when there are large mount of CRs?
 
-In this example, [kuberay#3909](https://github.com/ray-project/kuberay/issues/3909),
-the user encountered high latency when processing RayCluster CRs and found that the ReconcileConcurrency value was set to 1.
+In this example, [kuberay#3909](https://github.com/ray-project/kuberay/issues/3909), the user encountered high latency when processing RayCluster CRs and found that the ReconcileConcurrency value was set to 1.
 
 The KubeRay operator supports configuring the `ReconcileConcurrency` setting, which controls the number of concurrent workers processing Ray custom resources (CRs).
 

@@ -40,12 +40,7 @@ Setting `num_replicas="auto"` is equivalent to the following deployment configur
     max_replicas: 100
 ```
 :::{note}
-When you set `num_replicas="auto"`, Ray Serve applies the defaults shown above,
-including `max_replicas: 100`. However, if you configure autoscaling manually
-without using `num_replicas="auto"`, the base default for `max_replicas` is 1,
-which means autoscaling won't occur unless you explicitly set a higher value.
-You can override any of these defaults by specifying `autoscaling_config` even
-when using `num_replicas="auto"`.
+When you set `num_replicas="auto"`, Ray Serve applies the defaults shown above, including `max_replicas: 100`. However, if you configure autoscaling manually without using `num_replicas="auto"`, the base default for `max_replicas` is 1, which means autoscaling won't occur unless you explicitly set a higher value. You can override any of these defaults by specifying `autoscaling_config` even when using `num_replicas="auto"`.
 :::
 
 Let's dive into what each of these parameters do.
@@ -105,8 +100,4 @@ Notice the following:
 
 ## Ray Serve Autoscaler vs Ray Autoscaler
 
-The Ray Serve Autoscaler is an application-level autoscaler that sits on top of the [Ray Autoscaler](cluster-index).
-Concretely, this means that the Ray Serve autoscaler asks Ray to start a number of replica actors based on the request demand.
-If the Ray Autoscaler determines there aren't enough available resources (e.g. CPUs, GPUs, etc.) to place these actors, it responds by requesting more Ray nodes.
-The underlying cloud provider then responds by adding more nodes.
-Similarly, when Ray Serve scales down and terminates replica Actors, it attempts to make as many nodes idle as possible so the Ray Autoscaler can remove them. To learn more about the architecture underlying Ray Serve Autoscaling, see [Ray Serve Autoscaling Architecture](serve-autoscaling-architecture).
+The Ray Serve Autoscaler is an application-level autoscaler that sits on top of the [Ray Autoscaler](cluster-index). Concretely, this means that the Ray Serve autoscaler asks Ray to start a number of replica actors based on the request demand. If the Ray Autoscaler determines there aren't enough available resources (e.g. CPUs, GPUs, etc.) to place these actors, it responds by requesting more Ray nodes. The underlying cloud provider then responds by adding more nodes. Similarly, when Ray Serve scales down and terminates replica Actors, it attempts to make as many nodes idle as possible so the Ray Autoscaler can remove them. To learn more about the architecture underlying Ray Serve Autoscaling, see [Ray Serve Autoscaling Architecture](serve-autoscaling-architecture).

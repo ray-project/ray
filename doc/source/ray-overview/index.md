@@ -114,5 +114,4 @@ Ray's libraries are for both data scientists and ML engineers. For data scientis
 
 For custom applications, the [Ray Core](../ray-core/walkthrough) library enables Python developers to easily build scalable, distributed systems that can run on a laptop, cluster, cloud, or Kubernetes. It's the foundation that Ray AI libraries and third-party integrations (Ray ecosystem) are built on.
 
-Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a growing
-[ecosystem of community integrations](ray-libraries).
+Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a growing [ecosystem of community integrations](ray-libraries).

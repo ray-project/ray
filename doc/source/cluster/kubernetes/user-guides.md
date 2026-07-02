@@ -41,8 +41,7 @@ user-guides/kuberay-history-server
 
 
 :::{note}
-To learn the basics of Ray on Kubernetes, we recommend taking a look
-at the {ref}`introductory guide <kuberay-quickstart>` first.
+To learn the basics of Ray on Kubernetes, we recommend taking a look at the {ref}`introductory guide <kuberay-quickstart>` first.
 :::
 
 * {ref}`kuberay-rayservice`

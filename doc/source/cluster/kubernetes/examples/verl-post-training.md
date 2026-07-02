@@ -1,11 +1,9 @@
 (kuberay-verl)=
 # Reinforcement Learning with Human Feedback (RLHF) for LLMs with verl on KubeRay
 
-[verl](https://github.com/volcengine/verl) is an open-source framework that provides a flexible, efficient, and production-ready RL training library for large language models (LLMs).
-This guide demonstrates Proximal Policy Optimization (PPO) training on the GSM8K dataset with verl for `Qwen2.5-0.5B-Instruct` on KubeRay.
+[verl](https://github.com/volcengine/verl) is an open-source framework that provides a flexible, efficient, and production-ready RL training library for large language models (LLMs). This guide demonstrates Proximal Policy Optimization (PPO) training on the GSM8K dataset with verl for `Qwen2.5-0.5B-Instruct` on KubeRay.
 
-* To make it easier to follow, this guide launches a single-node RayCluster with 4 GPUs.
-You can easily use KubeRay to launch a multi-node RayCluster to train larger models.
+* To make it easier to follow, this guide launches a single-node RayCluster with 4 GPUs. You can easily use KubeRay to launch a multi-node RayCluster to train larger models.
 * You can also use the [RayJob CRD](kuberay-rayjob-quickstart) for production use cases.
 
 # Step 1: Create a Kubernetes cluster with GPUs
@@ -14,8 +12,7 @@ Follow the instructions in [Managed Kubernetes services](kuberay-k8s-setup) to c
 
 This guide uses a Kubernetes cluster with 4 L4 GPUs.
 
-For GKE, you can follow the instructions in [this tutorial](kuberay-gke-gpu-cluster-setup) and use the following command
-to create a GPU node pool with 4 L4 GPUs per Kubernetes node:
+For GKE, you can follow the instructions in [this tutorial](kuberay-gke-gpu-cluster-setup) and use the following command to create a GPU node pool with 4 L4 GPUs per Kubernetes node:
 
 ```bash
 gcloud container node-pools create gpu-node-pool \
@@ -41,8 +38,7 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ra
 
 # Step 4: Install verl in the head Pod
 
-Log in to the head Pod and install verl.
-The verl community doesn't provide images with verl installed ([verl#2222](https://github.com/volcengine/verl/issues/2222)) at the moment.
+Log in to the head Pod and install verl. The verl community doesn't provide images with verl installed ([verl#2222](https://github.com/volcengine/verl/issues/2222)) at the moment.
 
 ```sh
 # Log in to the head Pod.
@@ -68,9 +64,7 @@ python3 -c "import transformers; transformers.pipeline('text-generation', model=
 
 # Step 6: Run a PPO training job
 
-Run the following command to start a PPO training job.
-This differs slightly from the instructions in [verl's documentation](https://verl.readthedocs.io/en/latest/start/quickstart.html#step-3-perform-ppo-training-with-the-instruct-model).
-The main differences are the following:
+Run the following command to start a PPO training job. This differs slightly from the instructions in [verl's documentation](https://verl.readthedocs.io/en/latest/start/quickstart.html#step-3-perform-ppo-training-with-the-instruct-model). The main differences are the following:
 * Set `n_gpus_per_node` to `4` because the head Pod has 4 GPUs.
 * Set `save_freq` to `-1` to avoid disk pressure caused by checkpointing.
 
@@ -103,8 +97,7 @@ PYTHONUNBUFFERED=1 python3 -m verl.trainer.main_ppo \
  trainer.total_epochs=15 2>&1 | tee verl_demo.log
 ```
 
-This job takes 5 hours to complete. While it's running, you can check the Ray dashboard to see more details about the PPO job and the Ray cluster.
-Additionally, you can follow the next step to check the PPO job logs to see how the model improves.
+This job takes 5 hours to complete. While it's running, you can check the Ray dashboard to see more details about the PPO job and the Ray cluster. Additionally, you can follow the next step to check the PPO job logs to see how the model improves.
 
 ```sh
 # Port forward the Ray dashboard to your local machine's port 8265.
@@ -117,8 +110,7 @@ Open `127.0.0.1:8265` in your browser to view the Ray dashboard and check whethe
 
 # Step 7: Check the PPO job logs
 
-Check `verl_demo.log` in the head Pod to see the PPO job's logs.
-For every 10 steps, verl validates the model with a simple math problem.
+Check `verl_demo.log` in the head Pod to see the PPO job's logs. For every 10 steps, verl validates the model with a simple math problem.
 
 * Math problem:
   ```
@@ -128,9 +120,7 @@ For every 10 steps, verl validates the model with a simple math problem.
 
 You should be able to see the model becomes gradually better at this question after several steps.
 
-In this example run, the model first got the correct answer after 130 steps, and the following is the log.
-Throughout the entire process, the validation ran 44 times and got the correct answer 20 times.
-It may vary depending on the random seed.
+In this example run, the model first got the correct answer after 130 steps, and the following is the log. Throughout the entire process, the validation ran 44 times and got the correct answer 20 times. It may vary depending on the random seed.
 
 ```
 (TaskRunner pid=21297) [response] First, we calculate the number of eggs Janet's ducks lay in a day. Since there are 16 eggs per day and Janet lays these eggs every day, the number of eggs laid in a day is 16.
@@ -145,8 +135,7 @@ It may vary depending on the random seed.
 (TaskRunner pid=21297) #### 18 dollars
 ```
 
-It's not necessary to wait for all steps to complete.
-You can stop the job if you observe the process of the model improving.
+It's not necessary to wait for all steps to complete. You can stop the job if you observe the process of the model improving.
 
 # Step 8: Clean up
 

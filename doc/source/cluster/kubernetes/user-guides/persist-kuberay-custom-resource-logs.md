@@ -10,37 +10,26 @@ Similar to Kubernetes, Ray does not provide a native storage solution for log da
 By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Ray pod's file system, including application and system logs. Learn more about the {ref}`log directory and log files <logging-directory>` and the {ref}`log rotation configuration <log-rotation>` before you start to collect the logs.
 
 ## Log processing tools
-There are a number of open source log processing tools available within the Kubernetes ecosystem. This page shows how to extract Ray logs using [Fluent Bit][FluentBit].
-Other popular tools include [Vector][Vector], [Fluentd][Fluentd], [Filebeat][Filebeat], and [Promtail][Promtail].
+There are a number of open source log processing tools available within the Kubernetes ecosystem. This page shows how to extract Ray logs using [Fluent Bit][FluentBit]. Other popular tools include [Vector][Vector], [Fluentd][Fluentd], [Filebeat][Filebeat], and [Promtail][Promtail].
 
 ## Log collection strategies
-To write collected logs to a pod's filesystem ,use one of two logging strategies:
-**sidecar containers** or **daemonsets**. Read more about these logging
-patterns in the [Kubernetes documentation][KubDoc].
+To write collected logs to a pod's filesystem ,use one of two logging strategies: **sidecar containers** or **daemonsets**. Read more about these logging patterns in the [Kubernetes documentation][KubDoc].
 
 ### Sidecar containers
-We provide an {ref}`example <kuberay-fluentbit>` of the sidecar strategy in this guide.
-You can process logs by configuring a log-processing sidecar
-for each Ray pod. Ray containers should be configured to share the `/tmp/ray`
-directory with the logging sidecar via a volume mount.
+We provide an {ref}`example <kuberay-fluentbit>` of the sidecar strategy in this guide. You can process logs by configuring a log-processing sidecar for each Ray pod. Ray containers should be configured to share the `/tmp/ray` directory with the logging sidecar via a volume mount.
 
 You can configure the sidecar to do either of the following:
 * Stream Ray logs to the sidecar's stdout.
 * Export logs to an external service.
 
 ### Daemonset
-Alternatively, it is possible to collect logs at the Kubernetes node level.
-To do this, one deploys a log-processing daemonset onto the Kubernetes cluster's
-nodes. With this strategy, it is key to mount
-the Ray container's `/tmp/ray` directory to the relevant `hostPath`.
+Alternatively, it is possible to collect logs at the Kubernetes node level. To do this, one deploys a log-processing daemonset onto the Kubernetes cluster's nodes. With this strategy, it is key to mount the Ray container's `/tmp/ray` directory to the relevant `hostPath`.
 
 (kuberay-fluentbit)=
 ## Setting up logging sidecars with Fluent Bit
-In this section, we give an example of how to set up log-emitting
-[Fluent Bit][FluentBit] sidecars for Ray pods to send logs to [Grafana Loki][GrafanaLoki], enabling centralized log management and querying.
+In this section, we give an example of how to set up log-emitting [Fluent Bit][FluentBit] sidecars for Ray pods to send logs to [Grafana Loki][GrafanaLoki], enabling centralized log management and querying.
 
-See the full config for a single-pod RayCluster with a logging sidecar [here][ConfigLink].
-We now discuss this configuration and show how to deploy it.
+See the full config for a single-pod RayCluster with a logging sidecar [here][ConfigLink]. We now discuss this configuration and show how to deploy it.
 
 ### Deploy Loki monolithic mode
 
@@ -51,8 +40,7 @@ Follow [Deploy Loki monolithic mode](deploy-loki-monolithic-mode) to deploy Graf
 Follow [Deploy Grafana](deploy-grafana) to set up Grafana Loki datasource and deploy Grafana.
 
 ### Configuring log processing
-The first step is to create a ConfigMap with configuration
-for Fluent Bit.
+The first step is to create a ConfigMap with configuration for Fluent Bit.
 
 The following ConfigMap example configures a Fluent Bit sidecar to:
 * Tail Ray logs.
@@ -86,13 +74,8 @@ data:
 ```
 
 A few notes on the above config:
-- The `Path_Key true` line above ensures that file names are included in the log records
-  emitted by Fluent Bit.
-- The `Refresh_Interval 5` line asks Fluent Bit to refresh the list of files
-  in the log directory once per 5 seconds, rather than the default 60.
-  The reason is that the directory `/tmp/ray/session_latest/logs/` does not exist
-  initially (Ray must create it first). Setting the `Refresh_Interval` low allows us to see logs
-  in the Fluent Bit container's stdout sooner.
+- The `Path_Key true` line above ensures that file names are included in the log records emitted by Fluent Bit.
+- The `Refresh_Interval 5` line asks Fluent Bit to refresh the list of files in the log directory once per 5 seconds, rather than the default 60. The reason is that the directory `/tmp/ray/session_latest/logs/` does not exist initially (Ray must create it first). Setting the `Refresh_Interval` low allows us to see logs in the Fluent Bit container's stdout sooner.
 - The [Kubernetes downward API][KubernetesDownwardAPI] populates the `POD_LABELS` variable used in the `FILTER` section. It pulls the label from the pod's metadata label `ray.io/cluster`, which is defined in the Fluent Bit sidecar container's environment.
 - The `tenant_id` field allows you to assign logs to different tenants. In this example, Fluent Bit sidecar sends the logs to the `test` tenant. You can adjust this configuration to match the tenant ID set up in your Grafana Loki instance, enabling multi-tenancy support in Grafana.
 - The `Host` field specifies the endpoint of the Loki gateway. If Loki and the RayCluster are in different namespaces, you need to append `.namespace` to the hostname, for example, `loki-gateway.monitoring` (replacing `monitoring` with the namespace where Loki resides).
@@ -100,10 +83,7 @@ A few notes on the above config:
 ### Adding logging sidecars to RayCluster Custom Resource (CR)
 
 #### Adding log and config volumes
-For each pod template in our RayCluster CR, we
-need to add two volumes: One volume for Ray's logs
-and another volume to store Fluent Bit configuration from the ConfigMap
-applied above.
+For each pod template in our RayCluster CR, we need to add two volumes: One volume for Ray's logs and another volume to store Fluent Bit configuration from the ConfigMap applied above.
 
 ```yaml
         volumes:
@@ -124,8 +104,7 @@ Add the following volume mount to the Ray container's configuration.
 ```
 
 #### Adding the Fluent Bit sidecar
-Finally, add the Fluent Bit sidecar container to each Ray pod config
-in your RayCluster CR.
+Finally, add the Fluent Bit sidecar container to each Ray pod config in your RayCluster CR.
 
 ```yaml
         - name: fluentbit
@@ -152,12 +131,10 @@ in your RayCluster CR.
             name: fluentbit-config
 ```
 
-Mounting the `ray-logs` volume gives the sidecar container access to Ray's logs.
-The <nobr>`fluentbit-config`</nobr> volume gives the sidecar access to logging configuration.
+Mounting the `ray-logs` volume gives the sidecar container access to Ray's logs. The <nobr>`fluentbit-config`</nobr> volume gives the sidecar access to logging configuration.
 
 #### Putting everything together
-Putting all of the above elements together, we have the following yaml configuration
-for a single-pod RayCluster will a log-processing sidecar.
+Putting all of the above elements together, we have the following yaml configuration for a single-pod RayCluster will a log-processing sidecar.
 
 ```yaml
 # Fluent Bit ConfigMap
@@ -246,12 +223,9 @@ spec:
 
 ### Deploying a RayCluster with logging sidecar
 
-To deploy the configuration described above, deploy the KubeRay Operator if you haven't yet:
-Refer to the {ref}`Getting Started guide <kuberay-operator-deploy>`
-for instructions on this step.
+To deploy the configuration described above, deploy the KubeRay Operator if you haven't yet: Refer to the {ref}`Getting Started guide <kuberay-operator-deploy>` for instructions on this step.
 
-Now, run the following commands to deploy the Fluent Bit ConfigMap and a single-pod RayCluster with
-a Fluent Bit sidecar.
+Now, run the following commands to deploy the Fluent Bit ConfigMap and a single-pod RayCluster with a Fluent Bit sidecar.
 ```shell
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.fluentbit.yaml
 ```
@@ -291,8 +265,7 @@ Finally, use a LogQL query to view logs for a specific RayCluster or RayJob, and
 (redirect-to-stderr)=
 ## Redirecting Ray logs to stderr
 
-By default, Ray writes logs to files in the `/tmp/ray/session_*/logs` directory.
-If your log processing tool is capable of capturing log records written to stderr, you can redirect Ray logs to the stderr stream of Ray containers by setting the environment variable `RAY_LOG_TO_STDERR=1` on all Ray nodes.
+By default, Ray writes logs to files in the `/tmp/ray/session_*/logs` directory. If your log processing tool is capable of capturing log records written to stderr, you can redirect Ray logs to the stderr stream of Ray containers by setting the environment variable `RAY_LOG_TO_STDERR=1` on all Ray nodes.
 
 ```{admonition} Alert: this practice isn't recommended.
 :class: caution
@@ -333,8 +306,7 @@ Follow the steps below to set the environment variable ``RAY_LOG_TO_STDERR=1`` o
   :::
 
   :::{tab-item} KubeRay
-  Set the `RAY_LOG_TO_STDERR` environment variable to `1` in the Ray container of each Ray Pod.
-  Use this [example YAML file](https://gist.github.com/kevin85421/3d676abae29ebd5677428ddbbd4c8d74) as a reference.
+  Set the `RAY_LOG_TO_STDERR` environment variable to `1` in the Ray container of each Ray Pod. Use this [example YAML file](https://gist.github.com/kevin85421/3d676abae29ebd5677428ddbbd4c8d74) as a reference.
   :::
 
 

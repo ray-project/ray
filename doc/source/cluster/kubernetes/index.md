@@ -17,13 +17,7 @@ references
 
 In this section we cover how to execute your distributed Ray programs on a Kubernetes cluster.
 
-Using the [KubeRay operator](https://github.com/ray-project/kuberay) is the
-recommended way to do so. The operator provides a Kubernetes-native way to manage Ray clusters.
-Each Ray cluster consists of a head node pod and a collection of worker node pods. Optional
-autoscaling support allows the KubeRay operator to size your Ray clusters according to the
-requirements of your Ray workload, adding and removing Ray pods as needed. KubeRay supports
-heterogenous compute nodes (including GPUs) as well as running multiple Ray clusters with
-different Ray versions in the same Kubernetes cluster.
+Using the [KubeRay operator](https://github.com/ray-project/kuberay) is the recommended way to do so. The operator provides a Kubernetes-native way to manage Ray clusters. Each Ray cluster consists of a head node pod and a collection of worker node pods. Optional autoscaling support allows the KubeRay operator to size your Ray clusters according to the requirements of your Ray workload, adding and removing Ray pods as needed. KubeRay supports heterogenous compute nodes (including GPUs) as well as running multiple Ray clusters with different Ray versions in the same Kubernetes cluster.
 
 ```{eval-rst}
 .. image:: images/ray_on_kubernetes.png
@@ -32,8 +26,7 @@ different Ray versions in the same Kubernetes cluster.
   Find source document here: https://docs.google.com/drawings/d/1E3FQgWWLuj8y2zPdKXjoWKrfwgYXw6RV_FWRwK8dVlg/edit
 ```
 
-KubeRay introduces three distinct Kubernetes Custom Resource Definitions (CRDs): **RayCluster**, **RayJob**, and **RayService**.
-These CRDs assist users in efficiently managing Ray clusters tailored to various use cases.
+KubeRay introduces three distinct Kubernetes Custom Resource Definitions (CRDs): **RayCluster**, **RayJob**, and **RayService**. These CRDs assist users in efficiently managing Ray clusters tailored to various use cases.
 
 See [Getting Started](kuberay-quickstart) to learn the basics of KubeRay and follow the quickstart guides to run your first Ray application on Kubernetes with KubeRay.
 
@@ -147,5 +140,4 @@ The Ray docs present all the information you need to start running Ray workloads
 
 Ray's Kubernetes support is developed at the [KubeRay GitHub repository](https://github.com/ray-project/kuberay), under the broader [Ray project](https://github.com/ray-project/). KubeRay is used by several companies to run production Ray deployments.
 
-- Visit the [KubeRay GitHub repo](https://github.com/ray-project/kuberay) to track progress, report bugs, propose new features, or contribute to
-the project.
+- Visit the [KubeRay GitHub repo](https://github.com/ray-project/kuberay) to track progress, report bugs, propose new features, or contribute to the project.

@@ -2,24 +2,16 @@
 
 # TLS Authentication
 
-Ray can be configured to use TLS on its gRPC channels. This means that
-connecting to the Ray head will require an appropriate
-set of credentials and also that data exchanged between various processes
-(client, head, workers) will be encrypted ([Ray's document](https://docs.ray.io/en/latest/ray-core/configure.html?highlight=tls#tls-authentication)).
+Ray can be configured to use TLS on its gRPC channels. This means that connecting to the Ray head will require an appropriate set of credentials and also that data exchanged between various processes (client, head, workers) will be encrypted ([Ray's document](https://docs.ray.io/en/latest/ray-core/configure.html?highlight=tls#tls-authentication)).
 
-This document provides detailed instructions for generating a public-private
-key pair and CA certificate for configuring KubeRay.
+This document provides detailed instructions for generating a public-private key pair and CA certificate for configuring KubeRay.
 
 > Warning: Enabling TLS will cause a performance hit due to the extra
-overhead of mutual authentication and encryption. Testing has shown that
-this overhead is large for small workloads and becomes relatively smaller
-for large workloads. The exact overhead will depend on the nature of your
-workload.
+overhead of mutual authentication and encryption. Testing has shown that this overhead is large for small workloads and becomes relatively smaller for large workloads. The exact overhead will depend on the nature of your workload.
 
 # Prerequisites
 
-To fully understand this document, it's highly recommended that you have a
-solid understanding of the following concepts:
+To fully understand this document, it's highly recommended that you have a solid understanding of the following concepts:
 
 * private/public key
 * CA (certificate authority)
@@ -51,17 +43,14 @@ kubectl apply -f ray-cluster.tls.yaml
 `ray-cluster.tls.yaml` will create:
 
 * A Kubernetes Secret containing the CA's private key (`ca.key`) and self-signed certificate (`ca.crt`) (**Step 1**)
-* A Kubernetes ConfigMap containing the scripts `gencert_head.sh` and `gencert_worker.sh`, which allow Ray Pods to generate private keys
-(`tls.key`) and self-signed certificates (`tls.crt`) (**Step 2**)
+* A Kubernetes ConfigMap containing the scripts `gencert_head.sh` and `gencert_worker.sh`, which allow Ray Pods to generate private keys (`tls.key`) and self-signed certificates (`tls.crt`) (**Step 2**)
 * A RayCluster with proper TLS environment variables configurations (**Step 3**)
 
 The certificate (`tls.crt`) for a Ray Pod is encrypted using the CA's private key (`ca.key`). Additionally, all Ray Pods have the CA's public key included in `ca.crt`, which allows them to decrypt certificates from other Ray Pods.
 
 # Step 1: Generate a private key and self-signed certificate for CA
 
-In this document, a self-signed certificate is used, but users also have the
-option to choose a publicly trusted certificate authority (CA) for their TLS
-authentication.
+In this document, a self-signed certificate is used, but users also have the option to choose a publicly trusted certificate authority (CA) for their TLS authentication.
 
 ```sh
 # Step 1-1: Generate a self-signed certificate and a new private key file for CA.
@@ -87,35 +76,20 @@ kubectl create secret generic ca-tls --from-file=ca.key --from-file=ca.crt
 * `ca.key`: CA's private key
 * `ca.crt`: CA's self-signed certificate
 
-This step is optional because the `ca.key` and `ca.crt` files have
-already been included in the Kubernetes Secret specified in [ray-cluster.tls.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-cluster.tls.yaml).
+This step is optional because the `ca.key` and `ca.crt` files have already been included in the Kubernetes Secret specified in [ray-cluster.tls.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-cluster.tls.yaml).
 
 # Step 2: Create separate private key and self-signed certificate for Ray Pods
 
-In [ray-cluster.tls.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-cluster.tls.yaml), each Ray
-Pod (both head and workers) generates its own private key file (`tls.key`) and self-signed
-certificate file (`tls.crt`) in its init container. We generate separate files for each Pod
-because worker Pods do not have deterministic DNS names, and we cannot use the same
-certificate across different Pods.
+In [ray-cluster.tls.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-cluster.tls.yaml), each Ray Pod (both head and workers) generates its own private key file (`tls.key`) and self-signed certificate file (`tls.crt`) in its init container. We generate separate files for each Pod because worker Pods do not have deterministic DNS names, and we cannot use the same certificate across different Pods.
 
-In the YAML file, you'll find a ConfigMap named `tls` that contains two shell scripts:
-`gencert_head.sh` and `gencert_worker.sh`. These scripts are used to generate the private key
-and self-signed certificate files (`tls.key` and `tls.crt`) for the Ray head and worker Pods.
-An alternative approach for users is to prebake the shell scripts directly into the docker image that's utilized
-by the init containers, rather than relying on a ConfigMap.
+In the YAML file, you'll find a ConfigMap named `tls` that contains two shell scripts: `gencert_head.sh` and `gencert_worker.sh`. These scripts are used to generate the private key and self-signed certificate files (`tls.key` and `tls.crt`) for the Ray head and worker Pods. An alternative approach for users is to prebake the shell scripts directly into the docker image that's utilized by the init containers, rather than relying on a ConfigMap.
 
 Please find below a brief explanation of what happens in each of these scripts:
 1. A 2048-bit RSA private key is generated and saved as `/etc/ray/tls/tls.key`.
-2. A Certificate Signing Request (CSR) is generated using the private key file (`tls.key`)
-and the `csr.conf` configuration file.
-3. A self-signed certificate (`tls.crt`) is generated using the private key of the
-Certificate Authority (`ca.key`) and the previously generated CSR.
+2. A Certificate Signing Request (CSR) is generated using the private key file (`tls.key`) and the `csr.conf` configuration file.
+3. A self-signed certificate (`tls.crt`) is generated using the private key of the Certificate Authority (`ca.key`) and the previously generated CSR.
 
-The only difference between `gencert_head.sh` and `gencert_worker.sh` is the `[ alt_names ]`
-section in `csr.conf` and `cert.conf`. The worker Pods use the fully qualified domain name
-(FQDN) of the head Kubernetes Service to establish a connection with the head Pod.
-Therefore, the `[alt_names]` section for the head Pod needs to include the FQDN of the head
-Kubernetes Service. By the way, the head Pod uses `$POD_IP` to communicate with worker Pods.
+The only difference between `gencert_head.sh` and `gencert_worker.sh` is the `[ alt_names ]` section in `csr.conf` and `cert.conf`. The worker Pods use the fully qualified domain name (FQDN) of the head Kubernetes Service to establish a connection with the head Pod. Therefore, the `[alt_names]` section for the head Pod needs to include the FQDN of the head Kubernetes Service. By the way, the head Pod uses `$POD_IP` to communicate with worker Pods.
 
 ```sh
 # gencert_head.sh

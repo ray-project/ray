@@ -8,17 +8,14 @@ This guide helps you diagnose and resolve common issues when deploying multi-nod
 
 When encountering issues with multi-node GPU serving, use this systematic approach to isolate the problem:
 
-1. **Test on different platforms**
-Compare behavior between:
+1. **Test on different platforms** Compare behavior between:
    - Single node without KubeRay
    - Standalone vLLM server on KubeRay
    - Ray Serve LLM deployment on KubeRay
 
-2. **Vary hardware configurations**
-Test with different GPU types—for example, A100s vs H100s—to identify hardware-specific issues
+2. **Vary hardware configurations** Test with different GPU types—for example, A100s vs H100s—to identify hardware-specific issues
 
-3. **Use minimal reproducers**
-Create simplified test cases that isolate specific components (NCCL, model loading, etc.)
+3. **Use minimal reproducers** Create simplified test cases that isolate specific components (NCCL, model loading, etc.)
 
 ## Common issues and solutions
 
@@ -29,11 +26,9 @@ Create simplified test cases that isolate specific components (NCCL, model loadi
 - Model serving hangs when using pipeline parallelism (PP > 1)
 - Resource allocation conflicts
 
-**Root Cause** 
-The Ray head pod is incorrectly scheduled on a GPU worker node, causing resource accounting issues.
+**Root Cause** The Ray head pod is incorrectly scheduled on a GPU worker node, causing resource accounting issues.
 
-**Solution**
-Configure the head pod to use zero GPUs in your RayCluster specification:
+**Solution** Configure the head pod to use zero GPUs in your RayCluster specification:
 
 ```yaml
 apiVersion: ray.io/v1
@@ -55,8 +50,7 @@ spec:
 - Works fine on A100 but fails on H100 with identical configuration
 - Malformed topology files
 
-**Root Cause** 
-Outdated `aws-ofi-plugin` in container images causes NCCL topology detection to fail on H100 instances.
+**Root Cause** Outdated `aws-ofi-plugin` in container images causes NCCL topology detection to fail on H100 instances.
 
 **Related issues**
 - [NVIDIA NCCL Issue #1726](https://github.com/NVIDIA/nccl/issues/1726)
