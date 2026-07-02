@@ -36,10 +36,12 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     DEFAULT_LATENCY_BUCKET_MS,
+    RAY_SERVE_ASYNC_NODE_INFO,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_LOG_TO_STDERR,
+    RAY_SERVE_NODE_INFO_REFRESH_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
@@ -530,6 +532,17 @@ class ServeController:
         new_proxy_nodes.add(self._controller_node_id)
         self._proxy_nodes = new_proxy_nodes
 
+    async def _node_info_refresh_loop(self) -> None:
+        """Refresh the node-info cache off the control loop (RAY_SERVE_ASYNC_NODE_INFO)
+        so the per-loop GCS query (get_all_node_info / get_all_resource_usage) never
+        blocks the event loop."""
+        while not self._shutting_down:
+            try:
+                await self.cluster_node_info_cache.refresh_async()
+            except Exception:
+                logger.exception("Exception in node-info refresh loop.")
+            await asyncio.sleep(RAY_SERVE_NODE_INFO_REFRESH_S)
+
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
         # because an unhandled exception would cause the main control loop to
@@ -537,6 +550,8 @@ class ServeController:
         recovering_timeout = RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S
         num_loops = 0
         start_time = time.time()
+        if RAY_SERVE_ASYNC_NODE_INFO:
+            run_background_task(self._node_info_refresh_loop())
         while True:
             loop_start_time = time.time()
             try:
@@ -575,10 +590,11 @@ class ServeController:
     async def run_control_loop_step(
         self, start_time: float, recovering_timeout: float, num_loops: int
     ):
-        try:
-            self.cluster_node_info_cache.update()
-        except Exception:
-            logger.exception("Exception updating cluster node info cache.")
+        if not RAY_SERVE_ASYNC_NODE_INFO:
+            try:
+                self.cluster_node_info_cache.update()
+            except Exception:
+                logger.exception("Exception updating cluster node info cache.")
 
         if self._shutting_down:
             try:

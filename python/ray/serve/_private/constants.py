@@ -78,6 +78,16 @@ CONTROL_LOOP_INTERVAL_S = get_env_float_non_negative(
     "RAY_SERVE_CONTROL_LOOP_INTERVAL_S", 0.1
 )
 
+# RAY_SERVE_ASYNC_NODE_INFO: refresh the node-info cache off the control loop. The GCS
+# node queries (get_all_node_info / get_all_resource_usage) release the GIL (with nogil),
+# so off-loading them to a background executor refresh + cached snapshot means a slow GCS
+# reply never freezes the single-threaded control loop. Default off (A/B).
+RAY_SERVE_ASYNC_NODE_INFO = get_env_bool("RAY_SERVE_ASYNC_NODE_INFO", "0")
+# Interval of the background node-info refresh loop when RAY_SERVE_ASYNC_NODE_INFO is on.
+RAY_SERVE_NODE_INFO_REFRESH_S = get_env_float_positive(
+    "RAY_SERVE_NODE_INFO_REFRESH_S", 1.0
+)
+
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60
 
