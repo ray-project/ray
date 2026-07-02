@@ -343,6 +343,18 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
 
             SortKey(self._target_col_name).validate_schema(schema)
 
+    def support_pyarrow_kernel(self) -> bool:
+        return False
+
+    def aggregate_block_pyarrow_kernel(self, block: Block, keys: List[str]) -> Block:
+        raise NotImplementedError
+
+    def combine_pyarrow_kernel(self, block: Block, keys: List[str]) -> Block:
+        raise NotImplementedError
+
+    def finalize_pyarrow_kernel(self, block: Block) -> Block:
+        raise NotImplementedError
+
 
 def _agg_output_field(
     name: str,
@@ -456,6 +468,54 @@ class Count(AggregateFnV2[int, int]):
 
     def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
         return pa.field(self.name, pa.int64(), nullable=False)
+
+    def support_pyarrow_kernel(self) -> bool:
+        return True
+
+    def aggregate_block_pyarrow_kernel(self, block: Block, keys: List[str]) -> Block:
+        table = BlockAccessor.for_block(block).to_arrow()
+
+        if self._target_col_name is None:
+            aggregations = [
+                (
+                    [],
+                    "count_all",
+                )
+            ]
+        else:
+            aggregations = [
+                (
+                    self._target_col_name,
+                    "count",
+                    pc.CountOptions(mode="only_valid" if self._ignore_nulls else "all"),
+                )
+            ]
+
+        return table.group_by(keys).aggregate(aggregations)
+
+    def combine_pyarrow_kernel(self, block: Block, keys: List[str]) -> Block:
+        table = BlockAccessor.for_block(block).to_arrow()
+        if self._target_col_name is None:
+            aggregations = [("count_all", "sum")]
+            columns_rename = {"count_all_sum": "count_all"}
+        else:
+            aggregations = [(self._target_col_name + "_count", "sum")]
+            columns_rename = {
+                self._target_col_name + "_count_sum": self._target_col_name + "_count"
+            }
+
+        combined = table.group_by(keys).aggregate(aggregations)
+
+        return combined.rename_columns(columns_rename)
+
+    def finalize_pyarrow_kernel(self, block: Block) -> Block:
+        table = BlockAccessor.for_block(block).to_arrow()
+        if self._target_col_name is None:
+            columns_rename = {"count_all": self.name}
+        else:
+            columns_rename = {self._target_col_name + "_count": self.name}
+
+        return table.rename_columns(columns_rename)
 
 
 @PublicAPI
@@ -645,6 +705,43 @@ class Min(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType])
     def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
         return _agg_output_field(self.name, input_schema, self._target_col_name, pc.min)
 
+    def support_pyarrow_kernel(self) -> bool:
+        return True
+
+    def aggregate_block_pyarrow_kernel(self, block: Block, keys: List[str]) -> Block:
+        table = BlockAccessor.for_block(block).to_arrow()
+
+        aggregations = [
+            (
+                self._target_col_name,
+                "min",
+                pc.ScalarAggregateOptions(skip_nulls=self._ignore_nulls),
+            )
+        ]
+
+        return table.group_by(keys).aggregate(aggregations)
+
+    def combine_pyarrow_kernel(self, block: Block, keys: List[str]) -> Block:
+        table = BlockAccessor.for_block(block).to_arrow()
+        aggregations = [
+            (
+                self._target_col_name + "_min",
+                "min",
+                pc.ScalarAggregateOptions(skip_nulls=self._ignore_nulls),
+            )
+        ]
+
+        combined = table.group_by(keys).aggregate(aggregations)
+
+        return combined.rename_columns(
+            {self._target_col_name + "_min_min": self._target_col_name + "_min"}
+        )
+
+    def finalize_pyarrow_kernel(self, block: Block) -> Block:
+        table = BlockAccessor.for_block(block).to_arrow()
+
+        return table.rename_columns({self._target_col_name + "_min": self.name})
+
 
 @PublicAPI
 class Max(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]):
@@ -710,6 +807,43 @@ class Max(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType])
 
     def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
         return _agg_output_field(self.name, input_schema, self._target_col_name, pc.max)
+
+    def support_pyarrow_kernel(self) -> bool:
+        return True
+
+    def aggregate_block_pyarrow_kernel(self, block: Block, keys: List[str]) -> Block:
+        table = BlockAccessor.for_block(block).to_arrow()
+
+        aggregations = [
+            (
+                self._target_col_name,
+                "max",
+                pc.ScalarAggregateOptions(skip_nulls=self._ignore_nulls),
+            )
+        ]
+
+        return table.group_by(keys).aggregate(aggregations)
+
+    def combine_pyarrow_kernel(self, block: Block, keys: List[str]) -> Block:
+        table = BlockAccessor.for_block(block).to_arrow()
+        aggregations = [
+            (
+                self._target_col_name + "_max",
+                "max",
+                pc.ScalarAggregateOptions(skip_nulls=self._ignore_nulls),
+            )
+        ]
+
+        combined = table.group_by(keys).aggregate(aggregations)
+
+        return combined.rename_columns(
+            {self._target_col_name + "_max_max": self._target_col_name + "_max"}
+        )
+
+    def finalize_pyarrow_kernel(self, block: Block) -> Block:
+        table = BlockAccessor.for_block(block).to_arrow()
+
+        return table.rename_columns({self._target_col_name + "_max": self.name})
 
 
 @PublicAPI
@@ -794,6 +928,65 @@ class Mean(AggregateFnV2[List[Union[int, float]], float]):
 
     def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
         return pa.field(self.name, pa.float64(), nullable=True)
+
+    def support_pyarrow_kernel(self) -> bool:
+        return True
+
+    def aggregate_block_pyarrow_kernel(self, block: Block, keys: List[str]) -> Block:
+        table = BlockAccessor.for_block(block).to_arrow()
+        aggregations = [
+            (
+                self._target_col_name,
+                "sum",
+                pc.ScalarAggregateOptions(skip_nulls=self._ignore_nulls),
+            ),
+            (
+                self._target_col_name,
+                "count",
+                pc.CountOptions(mode="only_valid" if self._ignore_nulls else "all"),
+            ),
+        ]
+
+        return table.group_by(keys).aggregate(aggregations)
+
+    def combine_pyarrow_kernel(self, block: Block, keys: List[str]) -> Block:
+        table = BlockAccessor.for_block(block).to_arrow()
+
+        aggregations = [
+            (
+                self._target_col_name + "_sum",
+                "sum",
+                pc.ScalarAggregateOptions(skip_nulls=self._ignore_nulls),
+            ),
+            (
+                self._target_col_name + "_count",
+                "sum",
+                pc.ScalarAggregateOptions(skip_nulls=self._ignore_nulls),
+            ),
+        ]
+
+        combined = table.group_by(keys).aggregate(aggregations)
+
+        return combined.rename_columns(
+            {
+                self._target_col_name + "_sum_sum": self._target_col_name + "_sum",
+                self._target_col_name + "_count_sum": self._target_col_name + "_count",
+            }
+        )
+
+    def finalize_pyarrow_kernel(self, block: Block) -> Block:
+        table = BlockAccessor.for_block(block).to_arrow()
+
+        ret = table.append_column(
+            self.name,
+            pc.divide(
+                pc.cast(table[self._target_col_name + "_sum"], pa.float64()),
+                pc.cast(table[self._target_col_name + "_count"], pa.float64()),
+            ),
+        ).drop_columns(
+            [self._target_col_name + "_sum", self._target_col_name + "_count"]
+        )
+        return ret
 
 
 @PublicAPI
