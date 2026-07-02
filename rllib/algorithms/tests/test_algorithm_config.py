@@ -456,7 +456,13 @@ class TestAlgorithmConfig(unittest.TestCase):
             )
 
     def test_to_dict_roundtrip_new_api_stack(self):
-        """Tests that to_dict() correctly outputs and round-trips New API stack batch sizes."""
+        """Tests that to_dict() round-trips New API stack batch sizes.
+
+        `to_dict()` does NOT eagerly resolve the effective batch size (that stays
+        lazy via the `total_train_batch_size` property). It only serializes the raw
+        fields, which is what makes it safe to call on an as-yet-unresolved config
+        (e.g. one carrying Tune search spaces).
+        """
         from ray.rllib.algorithms.ppo import PPOConfig
 
         # 1. Create a config on the New API Stack
@@ -469,24 +475,46 @@ class TestAlgorithmConfig(unittest.TestCase):
             .training(train_batch_size_per_learner=123)
         )
 
-        expected_total = config.total_train_batch_size
-
         # 2. Export to dictionary
         config_dict = config.to_dict()
 
-        # Verify our fix correctly populated the legacy batch size
-        self.assertEqual(config_dict["train_batch_size"], expected_total)
-
-        # Verify we did NOT inject these properties to prevent round-trip crashes/formula breaking
+        # to_dict() does not inject computed properties (would break round-trip).
         self.assertNotIn("total_train_batch_size", config_dict)
         self.assertNotIn("train_batch_size_per_learner", config_dict)
 
-        # 3. Roundtrip: Create a new config and update from the dictionary
+        # 3. Roundtrip: Create a new config and update from the dictionary, and
+        # verify the per-learner batch size (and the total derived from it) survives.
         new_config = PPOConfig().update_from_dict(config_dict)
-
-        # Verify the object successfully restored its dynamic state without crashing
         self.assertEqual(new_config.train_batch_size_per_learner, 123)
-        self.assertEqual(new_config.total_train_batch_size, expected_total)
+        self.assertEqual(new_config.total_train_batch_size, 123)
+
+    def test_to_dict_with_tune_search_space(self):
+        """to_dict() must not eagerly resolve batch size when it's a Tune search space.
+
+        Regression test: passing an AlgorithmConfig with a search-space
+        `train_batch_size_per_learner` as Tune's `param_space` calls `to_dict()` on
+        an unresolved config. Computing `total_train_batch_size` (`Domain * int`)
+        would raise TypeError, so `to_dict()` must not attempt it.
+        """
+        from ray import tune
+        from ray.rllib.algorithms.ppo import PPOConfig
+
+        config = (
+            PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
+            .training(train_batch_size_per_learner=tune.qrandint(256, 2048, 64))
+        )
+
+        # Must not raise (this is the bug: TypeError from `Domain * int`).
+        config_dict = config.to_dict()
+
+        # The unresolved search space survives serialization so Tune can sample it.
+        self.assertIsInstance(
+            config_dict["_train_batch_size_per_learner"], tune.search.sample.Domain
+        )
 
 
 if __name__ == "__main__":
