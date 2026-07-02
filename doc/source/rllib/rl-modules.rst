@@ -1,5 +1,3 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
-
 .. include:: /_includes/rllib/new_api_stack.rst
 
 .. _rlmodule-guide:
@@ -192,30 +190,16 @@ applies up to 30 "noop" actions after a reset, which aren't part of the episode:
     test.train()
     test.stop()
 
-The following is the compete list of all supported ``conv_..`` options:
-
-.. literalinclude:: ../../../rllib/core/rl_module/default_model_config.py
-        :language: python
-        :start-after: __sphinx_doc_default_model_config_conv_begin__
-        :end-before: __sphinx_doc_default_model_config_conv_end__
-
-
-Other default model settings
+Configuring LSTM
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For LSTM-based configurations and specific settings for continuous action output layers,
-see :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig`.
 
-.. note::
-
-    To auto-wrap your default encoder with an extra LSTM layer and allow your model to learn in
-    non-Markovian, partially observable environments, you can try the convenience
-    ``DefaultModelConfig.use_lstm`` setting in combination with the
-    ``DefaultModelConfig.lstm_cell_size`` and ``DefaultModelConfig.max_seq_len`` settings.
-    See here for a tuned
-    `example that uses a default RLModule with an LSTM layer <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/stateless_cartpole_ppo.py>`__.
-
-.. TODO: mention attention example once done
+To auto-wrap your default encoder with an extra LSTM layer and allow your model to learn in
+non-Markovian, partially observable environments, you can try the convenience
+``DefaultModelConfig.use_lstm`` setting in combination with the
+``DefaultModelConfig.lstm_cell_size`` and ``DefaultModelConfig.max_seq_len`` settings.
+See here for a tuned
+`example that uses a default RLModule with an LSTM layer <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/stateless_cartpole_ppo.py>`__.
 
 
 Constructing RLModule instances
@@ -622,7 +606,7 @@ Algorithm-specific RLModule APIs
 The algorithm that you choose to use with your RLModule affects to some
 extent the structure of the final custom module.
 Each Algorithm class has a fixed set of APIs that all RLModules trained
-by that algorithm, need to implement.
+by that algorithm need to implement.
 
 To find out, what APIs your Algorithms require, do the following:
 
