@@ -249,10 +249,18 @@ def test_fragments_to_read_coalesces_sister_chunks(tmp_path):
 
     # Two adjacent row-group chunks of the same file: [0, 2) and [2, 4).
     chunk_a = create_chunk_metadata(
-        ParquetFileChunkMetadata, row_group_start=0, row_group_end=2, in_memory_size=0
+        ParquetFileChunkMetadata,
+        row_group_start=0,
+        row_group_end=2,
+        in_memory_size=0,
+        num_rows=0,
     )
     chunk_b = create_chunk_metadata(
-        ParquetFileChunkMetadata, row_group_start=2, row_group_end=4, in_memory_size=0
+        ParquetFileChunkMetadata,
+        row_group_start=2,
+        row_group_end=4,
+        in_memory_size=0,
+        num_rows=0,
     )
     frags = fragments_to_read_for_manifest(
         {fragment.path: fragment},
@@ -283,6 +291,7 @@ def test_fragments_to_read_groups_by_file(tmp_path):
                 row_group_start=0,
                 row_group_end=4,
                 in_memory_size=0,
+                num_rows=0,
             )
         )
     frags = fragments_to_read_for_manifest(path_to_fragment, paths, metas)
@@ -388,7 +397,11 @@ def test_parquet_file_reader_handles_out_of_range_chunks(tmp_path):
 
     # Explicit range entirely beyond the file's one row group.
     out_of_range = create_chunk_metadata(
-        ParquetFileChunkMetadata, row_group_start=3, row_group_end=4, in_memory_size=0
+        ParquetFileChunkMetadata,
+        row_group_start=3,
+        row_group_end=4,
+        in_memory_size=0,
+        num_rows=0,
     )
     manifest = FileManifest.construct_manifest([file_path], [file_size], [out_of_range])
 
