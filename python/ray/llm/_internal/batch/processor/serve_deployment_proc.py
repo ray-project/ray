@@ -40,6 +40,7 @@ class ServeDeploymentProcessorConfig(ProcessorConfig):
     )
     request_timeout_s: Optional[float] = Field(
         default=None,
+        gt=0,
         description="Optional per-request timeout in seconds. When set, a request "
         "that does not return within this many seconds raises TimeoutError instead "
         "of blocking indefinitely (e.g. when replicas are saturated). TimeoutError "
