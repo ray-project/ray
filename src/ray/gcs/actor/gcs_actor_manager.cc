@@ -1533,6 +1533,25 @@ void GcsActorManager::RestartActor(
 
     actor->UpdateState(rpc::ActorTableData::RESTARTING);
     actor->GetMutableTaskSpec()->set_attempt_number(new_num_restarts);
+    // Retain the departing (worker_id, node_id) so dashboard log lookups
+    // can surface logs from prior incarnations even after the actor is
+    // rescheduled onto a different node (log files stay on the node where
+    // they were written). Bounded by
+    // `actor_previous_worker_ids_limit` (FIFO eviction); a value of 0
+    // disables history tracking.
+    if (!worker_id.IsNil()) {
+      const uint32_t limit = RayConfig::instance().actor_previous_worker_ids_limit();
+      if (limit > 0) {
+        auto *previous_incarnations =
+            mutable_actor_table_data->mutable_previous_incarnations();
+        auto *entry = previous_incarnations->Add();
+        entry->set_worker_id(worker_id.Binary());
+        entry->set_node_id(node_id.Binary());
+        while (static_cast<uint32_t>(previous_incarnations->size()) > limit) {
+          previous_incarnations->erase(previous_incarnations->begin());
+        }
+      }
+    }
     // Make sure to reset the address before flushing to GCS. Otherwise,
     // GCS will mistakenly consider this lease request succeeds when restarting.
     actor->UpdateAddress(rpc::Address());

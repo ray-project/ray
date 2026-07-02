@@ -223,31 +223,51 @@ class LogsManager:
         actor_data = await get_actor_fn(actor_id)
         if actor_data is None:
             raise ValueError(f"Actor ID {actor_id} not found.")
-        # TODO(sang): Only the latest worker id can be obtained from
-        # actor information now. That means, if actors are restarted,
-        # there's no way for us to get the past worker ids.
+
+        # Build the (node_id, worker_id) candidate list: try the current
+        # incarnation first, then previous_incarnations newest-to-oldest.
+        # Each previous incarnation carries its own node_id because after a
+        # restart the actor may run on a different node, and log files stay
+        # on the node where they were written.
+        #
+        # NOTE: during a RESTARTING window GCS clears `address` but has
+        # already appended the departing incarnation to
+        # `previous_incarnations`. So we only error out when *both* the
+        # current address and previous_incarnations are empty; otherwise
+        # we can still surface pre-restart logs.
+        candidates: List[Tuple[bytes, bytes]] = []
         worker_id_binary = actor_data.address.worker_id
-        if not worker_id_binary:
+        node_id_binary = actor_data.address.node_id
+        if worker_id_binary and node_id_binary:
+            candidates.append((node_id_binary, worker_id_binary))
+        previous = list(actor_data.previous_incarnations)
+        for entry in reversed(previous):
+            if entry.worker_id and entry.node_id:
+                candidates.append((entry.node_id, entry.worker_id))
+
+        if not candidates:
             raise ValueError(
                 f"Worker ID for Actor ID {actor_id} not found. "
                 "Actor is not scheduled yet."
             )
-        worker_id = WorkerID(worker_id_binary)
-        node_id_binary = actor_data.address.node_id
-        if not node_id_binary:
-            raise ValueError(
-                f"Node ID for Actor ID {actor_id} not found. "
-                "Actor is not scheduled yet."
+
+        log_filename = None
+        # `resolved_node_id` is the node_id of the first candidate we tried
+        # (current if present, otherwise the newest previous). We report
+        # this even on miss so error messages point at the right node.
+        resolved_node_id_binary = candidates[0][0]
+        for candidate_node_binary, candidate_worker_binary in candidates:
+            log_filename = await self._resolve_worker_file(
+                node_id_hex=NodeID(candidate_node_binary).hex(),
+                worker_id_hex=WorkerID(candidate_worker_binary).hex(),
+                pid=None,
+                suffix=suffix,
+                timeout=timeout,
             )
-        node_id = NodeID(node_id_binary)
-        log_filename = await self._resolve_worker_file(
-            node_id_hex=node_id.hex(),
-            worker_id_hex=worker_id.hex(),
-            pid=None,
-            suffix=suffix,
-            timeout=timeout,
-        )
-        return node_id.hex(), log_filename
+            if log_filename is not None:
+                resolved_node_id_binary = candidate_node_binary
+                break
+        return NodeID(resolved_node_id_binary).hex(), log_filename
 
     async def _resolve_task_filename(
         self, task_id: str, attempt_number: int, suffix: str, timeout: int
