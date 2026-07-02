@@ -97,7 +97,8 @@ class SchedulingPolicyTest : public ::testing::Test {
 };
 
 TEST_F(SchedulingPolicyTest, NodeAffinityPolicyTest) {
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  ResourceRequest req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
 
   nodes.emplace(scheduling::NodeID("local"), CreateNodeResources(20, 20, 0, 0, 0, 0));
   // Unavailable node
@@ -159,7 +160,8 @@ TEST_F(SchedulingPolicyTest, NodeAffinityPolicyTest) {
 }
 
 TEST_F(SchedulingPolicyTest, SpreadPolicyTest) {
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  ResourceRequest req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
 
   nodes.emplace(local_node, CreateNodeResources(20, 20, 0, 0, 0, 1));
   // Unavailable node
@@ -183,7 +185,8 @@ TEST_F(SchedulingPolicyTest, SpreadPolicyTest) {
   ASSERT_EQ(to_schedule, remote_node_3);
 
   // Spread across feasible nodes if there is no available nodes
-  req = ResourceMapToResourceRequest({{"GPU", 1}}, false);
+  req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"GPU", 1}}}, false);
   to_schedule = scheduling_policy.Schedule(req, SchedulingOptions::Spread(false, false));
   ASSERT_EQ(to_schedule, local_node);
 
@@ -196,7 +199,8 @@ TEST_F(SchedulingPolicyTest, SpreadPolicyTest) {
 }
 
 TEST_F(SchedulingPolicyTest, RandomPolicyTest) {
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  ResourceRequest req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
 
   nodes.emplace(local_node, CreateNodeResources(20, 20, 0, 0, 0, 0));
   nodes.emplace(remote_node, CreateNodeResources(20, 20, 0, 0, 0, 0));
@@ -228,9 +232,11 @@ TEST_F(SchedulingPolicyTest, RandomPolicyTest) {
 }
 
 TEST_F(SchedulingPolicyTest, FeasibleDefinitionTest) {
-  auto task_req1 =
-      ResourceMapToResourceRequest({{"CPU", 1}, {"object_store_memory", 1}}, false);
-  auto task_req2 = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  auto task_req1 = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}, {"object_store_memory", 1}}},
+      false);
+  auto task_req2 = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
 
   NodeResources resources;
   resources.total.Set(ResourceID::CPU(), 2.0);
@@ -239,9 +245,11 @@ TEST_F(SchedulingPolicyTest, FeasibleDefinitionTest) {
 }
 
 TEST_F(SchedulingPolicyTest, AvailableDefinitionTest) {
-  auto task_req1 =
-      ResourceMapToResourceRequest({{"CPU", 1}, {"object_store_memory", 1}}, false);
-  auto task_req2 = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  auto task_req1 = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}, {"object_store_memory", 1}}},
+      false);
+  auto task_req2 = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
 
   NodeResources resources;
   resources.available.Set(ResourceID::CPU(), 2.0);
@@ -290,7 +298,8 @@ TEST_F(SchedulingPolicyTest, AvailableTruncationTest) {
   // In this test, the local node and a remote node are both  available. The remote node
   // has a lower critical resource utilization, but they're both truncated to 0, so we
   // should still pick the local node (due to traversal order).
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  ResourceRequest req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
 
   nodes.emplace(local_node, CreateNodeResources(1, 2, 0, 0, 0, 0));
   nodes.emplace(remote_node, CreateNodeResources(0.75, 2, 0, 0, 0, 0));
@@ -305,7 +314,8 @@ TEST_F(SchedulingPolicyTest, AvailableTruncationTest) {
 TEST_F(SchedulingPolicyTest, AvailableTieBreakTest) {
   // In this test, the local node and a remote node are both available. The remote node
   // has a lower critical resource utilization so we schedule on it.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  ResourceRequest req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
 
   nodes.emplace(local_node, CreateNodeResources(1, 2, 0, 0, 0, 0));
   nodes.emplace(remote_node, CreateNodeResources(1.5, 2, 0, 0, 0, 0));
@@ -321,7 +331,8 @@ TEST_F(SchedulingPolicyTest, AvailableOverFeasibleTest) {
   // In this test, the local node is feasible and has a lower critical resource
   // utilization, but the remote node can run the task immediately, so we pick the remote
   // node.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
+  ResourceRequest req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}, {"GPU", 1}}}, false);
   nodes.emplace(local_node, CreateNodeResources(10, 10, 0, 0, 0, 1));
   nodes.emplace(remote_node, CreateNodeResources(1, 10, 0, 0, 1, 1));
 
@@ -334,7 +345,8 @@ TEST_F(SchedulingPolicyTest, AvailableOverFeasibleTest) {
 
 TEST_F(SchedulingPolicyTest, InfeasibleTest) {
   // All the nodes are infeasible, so we return -1.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
+  ResourceRequest req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}, {"GPU", 1}}}, false);
   nodes.emplace(local_node, CreateNodeResources(10, 10, 0, 0, 0, 0));
   nodes.emplace(remote_node, CreateNodeResources(1, 10, 0, 0, 0, 0));
 
@@ -348,7 +360,8 @@ TEST_F(SchedulingPolicyTest, InfeasibleTest) {
 TEST_F(SchedulingPolicyTest, BarelyFeasibleTest) {
   // Test the edge case where a task requires all of a node's resources, and the node is
   // fully utilized.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
+  ResourceRequest req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}, {"GPU", 1}}}, false);
 
   nodes.emplace(local_node, CreateNodeResources(0, 1, 0, 0, 0, 1));
 
@@ -362,7 +375,8 @@ TEST_F(SchedulingPolicyTest, BarelyFeasibleTest) {
 TEST_F(SchedulingPolicyTest, TruncationAcrossFeasibleNodesTest) {
   // Same as AvailableTruncationTest except now none of the nodes are available, but the
   // tie break logic should apply to feasible nodes too.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
+  ResourceRequest req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}, {"GPU", 1}}}, false);
   nodes.emplace(local_node, CreateNodeResources(1, 2, 0, 0, 0, 1));
   nodes.emplace(remote_node, CreateNodeResources(0.75, 2, 0, 0, 0, 1));
 
@@ -376,7 +390,8 @@ TEST_F(SchedulingPolicyTest, TruncationAcrossFeasibleNodesTest) {
 TEST_F(SchedulingPolicyTest, ForceSpillbackIfAvailableTest) {
   // The local node is better, but we force spillback, so we'll schedule on a non-local
   // node anyways.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
+  ResourceRequest req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}, {"GPU", 1}}}, false);
   nodes.emplace(local_node, CreateNodeResources(2, 2, 0, 0, 1, 1));
   nodes.emplace(remote_node, CreateNodeResources(1, 10, 0, 0, 1, 10));
 
@@ -396,17 +411,20 @@ TEST_F(SchedulingPolicyTest, AvoidSchedulingCPURequestsOnGPUNodes) {
     // The local node is better, but it has GPUs, the request is
     // non GPU, and the remote node does not have GPUs, thus
     // we should schedule on remote node.
-    const ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+    const ResourceRequest req = ResourceMapToResourceRequest(
+        absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
     const auto to_schedule =
         raylet_scheduling_policy::CompositeSchedulingPolicy(
             local_node, *cluster_resource_manager, [](auto) { return true; })
-            .Schedule(ResourceMapToResourceRequest({{"CPU", 1}}, false),
+            .Schedule(ResourceMapToResourceRequest(
+                          absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false),
                       HybridOptions(0.51, false, true, true));
     ASSERT_EQ(to_schedule, remote_node);
   }
   {
     // A GPU request should be scheduled on a GPU node.
-    const ResourceRequest req = ResourceMapToResourceRequest({{"GPU", 1}}, false);
+    const ResourceRequest req = ResourceMapToResourceRequest(
+        absl::flat_hash_map<std::string, double>{{{"GPU", 1}}}, false);
     const auto to_schedule =
         raylet_scheduling_policy::CompositeSchedulingPolicy(
             local_node, *cluster_resource_manager, [](auto) { return true; })
@@ -415,7 +433,8 @@ TEST_F(SchedulingPolicyTest, AvoidSchedulingCPURequestsOnGPUNodes) {
   }
   {
     // A CPU request can be be scheduled on a CPU node.
-    const ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+    const ResourceRequest req = ResourceMapToResourceRequest(
+        absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
     const auto to_schedule =
         raylet_scheduling_policy::CompositeSchedulingPolicy(
             local_node, *cluster_resource_manager, [](auto) { return true; })
@@ -424,8 +443,8 @@ TEST_F(SchedulingPolicyTest, AvoidSchedulingCPURequestsOnGPUNodes) {
   }
   {
     // A mixed CPU/GPU request should be scheduled on a GPU node.
-    const ResourceRequest req =
-        ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
+    const ResourceRequest req = ResourceMapToResourceRequest(
+        absl::flat_hash_map<std::string, double>{{{"CPU", 1}, {"GPU", 1}}}, false);
     const auto to_schedule =
         raylet_scheduling_policy::CompositeSchedulingPolicy(
             local_node, *cluster_resource_manager, [](auto) { return true; })
@@ -437,7 +456,8 @@ TEST_F(SchedulingPolicyTest, AvoidSchedulingCPURequestsOnGPUNodes) {
 TEST_F(SchedulingPolicyTest, SchedulenCPURequestsOnGPUNodeAsALastResort) {
   // Schedule on remote node, even though the request is CPU only, because
   // we can not schedule on CPU nodes.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  ResourceRequest req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
   nodes.emplace(local_node, CreateNodeResources(0, 10, 0, 0, 0, 0));
   nodes.emplace(remote_node, CreateNodeResources(1, 1, 0, 0, 1, 1));
 
@@ -451,7 +471,8 @@ TEST_F(SchedulingPolicyTest, SchedulenCPURequestsOnGPUNodeAsALastResort) {
 
 TEST_F(SchedulingPolicyTest, ForceSpillbackTest) {
   // The local node is available but disqualified.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
+  ResourceRequest req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}, {"GPU", 1}}}, false);
 
   nodes.emplace(local_node, CreateNodeResources(2, 2, 0, 0, 1, 1));
   nodes.emplace(remote_node, CreateNodeResources(0, 2, 0, 0, 0, 1));
@@ -466,7 +487,8 @@ TEST_F(SchedulingPolicyTest, ForceSpillbackTest) {
 TEST_F(SchedulingPolicyTest, ForceSpillbackOnlyFeasibleLocallyTest) {
   // The local node is better, but we force spillback, so we'll schedule on a non-local
   // node anyways.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
+  ResourceRequest req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}, {"GPU", 1}}}, false);
 
   nodes.emplace(local_node, CreateNodeResources(2, 2, 0, 0, 1, 1));
   nodes.emplace(remote_node, CreateNodeResources(0, 2, 0, 0, 0, 0));
@@ -489,7 +511,8 @@ TEST_F(SchedulingPolicyTest, NonGpuNodePreferredSchedulingTest) {
   nodes.emplace(remote_node_2, CreateNodeResources(3, 3, 0, 0, 0, 0));
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
 
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  ResourceRequest req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
   auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
                          local_node, *cluster_resource_manager, [](auto) { return true; })
                          .Schedule(req,
@@ -499,7 +522,8 @@ TEST_F(SchedulingPolicyTest, NonGpuNodePreferredSchedulingTest) {
                                                  /*gpu_avoid_scheduling*/ true));
   ASSERT_EQ(to_schedule, remote_node);
 
-  req = ResourceMapToResourceRequest({{"CPU", 3}}, false);
+  req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 3}}}, false);
   to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
                     local_node, *cluster_resource_manager, [](auto) { return true; })
                     .Schedule(req,
@@ -509,7 +533,8 @@ TEST_F(SchedulingPolicyTest, NonGpuNodePreferredSchedulingTest) {
                                             /*gpu_avoid_scheduling*/ true));
   ASSERT_EQ(to_schedule, remote_node_2);
 
-  req = ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
+  req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}, {"GPU", 1}}}, false);
   to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
                     local_node, *cluster_resource_manager, [](auto) { return true; })
                     .Schedule(req,
@@ -519,7 +544,8 @@ TEST_F(SchedulingPolicyTest, NonGpuNodePreferredSchedulingTest) {
                                             /*gpu_avoid_scheduling*/ true));
   ASSERT_EQ(to_schedule, local_node);
 
-  req = ResourceMapToResourceRequest({{"CPU", 2}}, false);
+  req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 2}}}, false);
   to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
                     local_node, *cluster_resource_manager, [](auto) { return true; })
                     .Schedule(req,
@@ -539,7 +565,8 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleSchedulingTest) {
   nodes.emplace(remote_node_2, CreateNodeResources(4, 4, 0, 0, 0, 0));
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
 
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 2}}, false);
+  ResourceRequest req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 2}}}, false);
   std::vector<const ResourceRequest *> req_list;
   req_list.push_back(&req);
   req_list.push_back(&req);
@@ -583,7 +610,8 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleLabelSelectorSuccessTest) {
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
 
   // Request 2 bundles requiring "zone: us-east", both should succeed on local_node.
-  ResourceRequest req_east = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  ResourceRequest req_east = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
   req_east.SetLabelSelector(
       LabelSelector(absl::flat_hash_map<std::string, std::string>{{"zone", "us-east"}}));
 
@@ -609,11 +637,13 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleLabelSelectorInfeasibleTest) {
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
 
   // No node has both labels in the label selector, so this should be infeasible.
-  ResourceRequest req_east = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  ResourceRequest req_east = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
   req_east.SetLabelSelector(
       LabelSelector(absl::flat_hash_map<std::string, std::string>{{"zone", "us-east"}}));
 
-  ResourceRequest req_west = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  ResourceRequest req_west = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
   req_west.SetLabelSelector(
       LabelSelector(absl::flat_hash_map<std::string, std::string>{{"zone", "us-west"}}));
 
@@ -637,7 +667,8 @@ TEST_F(SchedulingPolicyTest, PackBundleLabelSelectorInfeasibleTest) {
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
 
   // Create an infeasible resource request for zone:eu-central label.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  ResourceRequest req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
   req.SetLabelSelector(LabelSelector(
       absl::flat_hash_map<std::string, std::string>{{"zone", "eu-central"}}));
 
@@ -657,7 +688,8 @@ TEST_F(SchedulingPolicyTest, SpreadBundleLabelSelectorInfeasibleTest) {
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
 
   // Create an infeasible resource request.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  ResourceRequest req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
   req.SetLabelSelector(LabelSelector(
       absl::flat_hash_map<std::string, std::string>{{"zone", "eu-central"}}));
 
@@ -677,7 +709,8 @@ TEST_F(SchedulingPolicyTest, StrictSpreadBundleLabelSelectorInfeasibleTest) {
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
 
   // Create an infeasible resource request.
-  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+  ResourceRequest req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
   req.SetLabelSelector(LabelSelector(
       absl::flat_hash_map<std::string, std::string>{{"zone", "eu-central"}}));
 
@@ -731,8 +764,8 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
   std::unique_ptr<ClusterResourceManager> cluster_resource_manager =
       MockClusterResourceManager(nodes);
 
-  ResourceRequest bundle_req =
-      ResourceMapToResourceRequest({{"CPU", 2}, {"GPU", 4}}, false);
+  ResourceRequest bundle_req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 2}, {"GPU", 4}}}, false);
   std::vector<const ResourceRequest *> req_list(15, &bundle_req);
 
   LabelDomainStrictPackSchedulingPolicy label_domain_policy(*cluster_resource_manager);
@@ -826,8 +859,8 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingInfeasibleTest) {
   std::unique_ptr<ClusterResourceManager> cluster_resource_manager =
       MockClusterResourceManager(nodes);
 
-  ResourceRequest bundle_req =
-      ResourceMapToResourceRequest({{"CPU", 2}, {"GPU", 4}}, false);
+  ResourceRequest bundle_req = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 2}, {"GPU", 4}}}, false);
   std::vector<const ResourceRequest *> req_list(16, &bundle_req);
 
   LabelDomainStrictPackSchedulingPolicy label_domain_policy(*cluster_resource_manager);
@@ -847,6 +880,148 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingInfeasibleTest) {
 
   ASSERT_TRUE(result.status.IsInfeasible());
   ASSERT_FALSE(result.selected_label_domain.has_value());
+}
+
+TEST_F(SchedulingPolicyTest, PackBundlePrefersCpuNodesForCpuOnlyBundles) {
+  // PACK should place CPU-only bundles on CPU nodes ahead of GPU nodes, so that
+  // GPU nodes retain spare CPU for GPU-requiring actors.
+  // local_node {CPU:4, GPU:1}, remote_node {CPU:3}
+  nodes.emplace(local_node, CreateNodeResources(4, 4, 0, 0, 1, 1));
+  nodes.emplace(remote_node, CreateNodeResources(3, 3, 0, 0, 0, 0));
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  ResourceRequest gpu_bundle = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}, {"GPU", 1}}}, false);
+  ResourceRequest cpu_bundle = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
+  std::vector<const ResourceRequest *> req_list = {
+      &gpu_bundle, &cpu_bundle, &cpu_bundle, &cpu_bundle};
+
+  raylet_scheduling_policy::BundlePackSchedulingPolicy policy(*cluster_resource_manager);
+  SchedulingResult result = policy.Schedule(req_list,
+                                            SchedulingOptions::BundlePack(),
+                                            GetCandidateNodes(*cluster_resource_manager));
+
+  ASSERT_TRUE(result.status.IsSuccess());
+
+  int gpu_node_bundle_count = 0;
+  int cpu_node_bundle_count = 0;
+  for (const auto &node_id : result.selected_nodes) {
+    if (node_id == local_node) {
+      gpu_node_bundle_count++;
+    } else {
+      cpu_node_bundle_count++;
+    }
+  }
+  // The GPU node should only hold the GPU bundle; all CPU-only bundles go to the CPU
+  // node.
+  ASSERT_EQ(gpu_node_bundle_count, 1);
+  ASSERT_EQ(cpu_node_bundle_count, 3);
+}
+
+TEST_F(SchedulingPolicyTest, PackBundleCpuOnlyOverflowsToGpuNodeWhenNeeded) {
+  // When CPU-only nodes are full, CPU-only bundles should overflow to GPU nodes
+  // rather than failing, as long as GPU nodes have remaining CPU capacity.
+  // local_node {CPU:4, GPU:1}, remote_node {CPU:1}
+  nodes.emplace(local_node, CreateNodeResources(4, 4, 0, 0, 1, 1));
+  nodes.emplace(remote_node, CreateNodeResources(1, 1, 0, 0, 0, 0));
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  ResourceRequest gpu_bundle = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}, {"GPU", 1}}}, false);
+  ResourceRequest cpu_bundle = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
+  std::vector<const ResourceRequest *> req_list = {
+      &gpu_bundle, &cpu_bundle, &cpu_bundle, &cpu_bundle};
+
+  raylet_scheduling_policy::BundlePackSchedulingPolicy policy(*cluster_resource_manager);
+  SchedulingResult result = policy.Schedule(req_list,
+                                            SchedulingOptions::BundlePack(),
+                                            GetCandidateNodes(*cluster_resource_manager));
+
+  // All 4 bundles must be placed: the CPU-only node holds 1, the GPU node holds 3
+  // (1 GPU bundle + 2 CPU-only overflow).
+  ASSERT_TRUE(result.status.IsSuccess());
+  ASSERT_EQ(result.selected_nodes.size(), 4);
+}
+
+TEST_F(SchedulingPolicyTest, PackBundleGpuBundleUnplaceableReturnsFailed) {
+  // 1 GPU node with 1 GPU, 2 GPU bundles each needing 1 GPU.
+  // IsRequestFeasible passes (each bundle fits in isolation). Scheduling fails at
+  // placement and must return Failed (retryable) not Infeasible (permanent).
+  nodes.emplace(local_node, CreateNodeResources(2, 2, 0, 0, 1, 1));
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  ResourceRequest gpu_bundle = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}, {"GPU", 1}}}, false);
+  std::vector<const ResourceRequest *> req_list = {&gpu_bundle, &gpu_bundle};
+
+  raylet_scheduling_policy::BundlePackSchedulingPolicy policy(*cluster_resource_manager);
+  SchedulingResult result = policy.Schedule(req_list,
+                                            SchedulingOptions::BundlePack(),
+                                            GetCandidateNodes(*cluster_resource_manager));
+
+  ASSERT_TRUE(result.status.IsFailed());
+}
+
+TEST_F(SchedulingPolicyTest, PackBundleCustomResourceBundleFallsBackToGpuNode) {
+  // A bundle with a custom resource only present on the GPU node must be placed there
+  // even though it does not itself require GPU. The GPU pass skips it (BundleRequiresGpu
+  // is false); the overflow pass must route it to the GPU node via the fallback path.
+  NodeResources gpu_node_resources = CreateNodeResources(2, 2, 0, 0, 1, 1);
+  gpu_node_resources.available.Set(ResourceID("NvidiaLib"), 1);
+  gpu_node_resources.total.Set(ResourceID("NvidiaLib"), 1);
+  nodes.emplace(local_node, gpu_node_resources);
+  nodes.emplace(remote_node, CreateNodeResources(2, 2, 0, 0, 0, 0));
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  ResourceRequest gpu_bundle = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}, {"GPU", 1}}}, false);
+  ResourceRequest custom_bundle = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}, {"NvidiaLib", 1}}}, false);
+  std::vector<const ResourceRequest *> req_list = {&gpu_bundle, &custom_bundle};
+
+  raylet_scheduling_policy::BundlePackSchedulingPolicy policy(*cluster_resource_manager);
+  SchedulingResult result = policy.Schedule(req_list,
+                                            SchedulingOptions::BundlePack(),
+                                            GetCandidateNodes(*cluster_resource_manager));
+
+  ASSERT_TRUE(result.status.IsSuccess());
+  for (const auto &node_id : result.selected_nodes) {
+    ASSERT_EQ(node_id, local_node);
+  }
+}
+
+TEST_F(SchedulingPolicyTest, PackBundlePacksCpuOnlyBundlesOnGpuNodesWhenNoCpuNodes) {
+  // When there are no CPU-only nodes, CPU-only bundles must still be packed onto as
+  // few GPU nodes as possible rather than spread across all of them.
+  // local_node {CPU:4, GPU:1}, remote_node {CPU:4, GPU:1}
+  nodes.emplace(local_node, CreateNodeResources(4, 4, 0, 0, 1, 1));
+  nodes.emplace(remote_node, CreateNodeResources(4, 4, 0, 0, 1, 1));
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  ResourceRequest cpu_bundle = ResourceMapToResourceRequest(
+      absl::flat_hash_map<std::string, double>{{{"CPU", 1}}}, false);
+  std::vector<const ResourceRequest *> req_list = {&cpu_bundle, &cpu_bundle, &cpu_bundle};
+
+  raylet_scheduling_policy::BundlePackSchedulingPolicy policy(*cluster_resource_manager);
+  SchedulingResult result = policy.Schedule(req_list,
+                                            SchedulingOptions::BundlePack(),
+                                            GetCandidateNodes(*cluster_resource_manager));
+
+  ASSERT_TRUE(result.status.IsSuccess());
+
+  int local_node_count = 0;
+  int remote_node_count = 0;
+  for (const auto &node_id : result.selected_nodes) {
+    if (node_id == local_node) {
+      local_node_count++;
+    } else {
+      remote_node_count++;
+    }
+  }
+  ASSERT_TRUE((local_node_count == 3 && remote_node_count == 0) ||
+              (local_node_count == 0 && remote_node_count == 3));
 }
 
 }  // namespace raylet
