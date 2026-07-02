@@ -29,7 +29,9 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     HEALTHY_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
+    RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
+    RAY_SERVE_HAPROXY_METRICS_ENABLED,
     RAY_SERVE_PROXY_GC_THRESHOLD,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_WORKER_PROXY_GRPC_PORT,
@@ -245,6 +247,22 @@ class GenericProxy(ABC):
     ) -> ResponseGenerator:
         raise NotImplementedError
 
+    def _should_emit_request_ingress_metrics(self) -> bool:
+        """Whether this proxy emits the RequestIngressMetrics family itself.
+
+        In HAProxy mode (with HAProxy metrics enabled), this proxy runs as the
+        head-node fallback behind HAProxy. HAProxy already counts every request
+        it forwards -- including the ones it routes to this fallback -- from its
+        per-request log datagrams, so emitting here too would double-count HTTP
+        ingress metrics. gRPC is not proxied by HAProxy, so the fallback proxy
+        still emits gRPC.
+        """
+        return not (
+            RAY_SERVE_ENABLE_HA_PROXY
+            and RAY_SERVE_HAPROXY_METRICS_ENABLED
+            and self.protocol == RequestProtocol.HTTP
+        )
+
     def _ongoing_requests_start(self):
         """Ongoing requests start.
 
@@ -254,7 +272,8 @@ class GenericProxy(ABC):
         alive while draining requests, so they are not dropped unintentionally.
         """
         self._ongoing_requests += 1
-        self._proxy_metrics.set_num_ongoing_requests(self._ongoing_requests)
+        if self._should_emit_request_ingress_metrics():
+            self._proxy_metrics.set_num_ongoing_requests(self._ongoing_requests)
 
     def _ongoing_requests_end(self):
         """Ongoing requests end.
@@ -263,7 +282,8 @@ class GenericProxy(ABC):
         signaling that the node can be downscaled safely.
         """
         self._ongoing_requests -= 1
-        self._proxy_metrics.set_num_ongoing_requests(self._ongoing_requests)
+        if self._should_emit_request_ingress_metrics():
+            self._proxy_metrics.set_num_ongoing_requests(self._ongoing_requests)
 
     def _setup_proxy_tracing(
         self,
@@ -481,15 +501,16 @@ class GenericProxy(ABC):
                 extra=self._access_log_context,
             )
 
-        self._proxy_metrics.record_request(
-            route=response_handler_info.metadata.route,
-            method=proxy_request.method,
-            application=response_handler_info.metadata.application_name,
-            status_code=status_code,
-            latency_ms=latency_ms,
-            is_error=status.is_error,
-            deployment_name=response_handler_info.metadata.deployment_name,
-        )
+        if self._should_emit_request_ingress_metrics():
+            self._proxy_metrics.record_request(
+                route=response_handler_info.metadata.route,
+                method=proxy_request.method,
+                application=response_handler_info.metadata.application_name,
+                status_code=status_code,
+                latency_ms=latency_ms,
+                is_error=status.is_error,
+                deployment_name=response_handler_info.metadata.deployment_name,
+            )
 
     @abstractmethod
     def setup_request_context_and_handle(
