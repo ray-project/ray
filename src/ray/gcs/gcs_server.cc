@@ -579,7 +579,7 @@ void GcsServer::InitGcsActorManager(
     ray::observability::MetricInterface &actor_by_state_gauge,
     ray::observability::MetricInterface &gcs_actor_by_state_gauge) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && observability_publisher_ &&
-            gcs_node_manager_);
+            gcs_node_manager_ && cluster_resource_scheduler_);
   std::unique_ptr<GcsActorSchedulerInterface> scheduler;
   auto schedule_failure_handler =
       [this](std::shared_ptr<GcsActor> actor,
@@ -601,6 +601,7 @@ void GcsServer::InitGcsActorManager(
       std::make_unique<GcsActorScheduler>(io_context_provider_.GetDefaultIOContext(),
                                           gcs_table_storage_->ActorTable(),
                                           *gcs_node_manager_,
+                                          *cluster_resource_scheduler_,
                                           schedule_failure_handler,
                                           schedule_success_handler,
                                           raylet_client_pool_,

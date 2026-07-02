@@ -135,6 +135,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         io_context_->GetIoService(),
         *gcs_actor_table_,
         *gcs_node_manager_,
+        *cluster_resource_scheduler_,
         /*schedule_failure_handler=*/
         [this](std::shared_ptr<gcs::GcsActor> actor,
                const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
