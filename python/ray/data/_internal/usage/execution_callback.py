@@ -47,6 +47,9 @@ class UsageCallback(ExecutionCallback):
         # id(logical_op) -> usage_id, built while assembling the payload and used
         # to label operators so they reference the workload payload.
         self._usage_id_map: Dict[int, str] = {}
+        # The workload tree and usage-id map derive only from the (immutable)
+        # logical plan, so they're computed once in the start, cached for the execution end
+        self._workload: Optional[WorkloadInfo] = None
         self._get_cluster_spilled_bytes = get_cluster_spilled_bytes
         self._get_dead_node_count = get_dead_node_count
         self._started_at: Optional[float] = None
@@ -140,12 +143,14 @@ class UsageCallback(ExecutionCallback):
         Called both before execution starts and after execution finishes.
         Subclasses can override to return a richer ``UsageInfo`` structure.
         """
-        self._usage_id_map = collector.build_usage_id_map(self._logical_plan)
+        if self._workload is None:
+            self._usage_id_map = collector.build_usage_id_map(self._logical_plan)
+            self._workload = self.collect_workload()
         return UsageInfo(
             id=self._execution_id,
             started_at=self._started_at,
             env=self.collect_env(),
-            workload=self.collect_workload(),
+            workload=self._workload,
             performance=self.collect_performance(),
             detected_issues=collector.collect_issues(
                 self._collect_detected_issues(self._executor)
