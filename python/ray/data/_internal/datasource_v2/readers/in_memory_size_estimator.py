@@ -176,9 +176,12 @@ class ParquetFooterDerivedInMemorySizeEstimator(InMemorySizeEstimator):
     global on-disk × encoding-ratio guess.
 
     Chunks without a hint (whole-file fallback on a corrupt/empty footer, or
-    non-Parquet inputs) fall back to ``on_disk_size × fallback_ratio`` -- the
-    constant-ratio behavior -- so mixed manifests are handled row by row and the
-    estimate is never missing.
+    non-Parquet inputs) -- or with a hint of exactly ``0`` (a suspicious
+    footer-accounting corner case for a chunk with real on-disk bytes, e.g. an
+    all-dictionary/struct schema) -- fall back to ``on_disk_size ×
+    fallback_ratio``, the constant-ratio behavior, so mixed manifests are
+    handled row by row and a real chunk never contributes 0 weight to
+    ``FileAffinityPartitioner``'s size-cap flush.
     """
 
     def __init__(self, fallback_ratio: float = PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT):
@@ -191,14 +194,25 @@ class ParquetFooterDerivedInMemorySizeEstimator(InMemorySizeEstimator):
         for i in range(len(file_sizes)):
             md = chunk_metadatas[i]
             hint = md.get("in_memory_size") if isinstance(md, dict) else None
-            if hint is not None:
+            # A hint of exactly 0 is treated the same as a missing hint: a
+            # chunk's on-disk bytes (file_sizes[i], per-chunk here) are
+            # essentially never 0 for a real row-group chunk, so a 0 hint on
+            # such a chunk is a suspicious footer-accounting corner case
+            # (e.g. an all-dictionary/struct schema whose uncompressed bytes
+            # weren't attributed), not a genuine zero-byte chunk. Falling
+            # through to the ratio-based estimate avoids stamping a 0 weight
+            # onto real data, which would let it skip FileAffinityPartitioner's
+            # max_bucket_size flush entirely. A truly empty chunk (0 on-disk
+            # bytes too) still estimates to 0 via the fallback, so this is a
+            # no-op for the legitimate zero case.
+            if hint:
                 out[i] = float(hint)
             else:
                 path = manifest.paths[i]
                 if log_once(f"parquet_footer_hint_missing_v2:{path}"):
                     logger.debug(
-                        "No footer-derived in_memory_size hint for '%s'; "
-                        "falling back to on_disk_size * %s.",
+                        "No usable footer-derived in_memory_size hint for '%s' "
+                        "(missing or 0); falling back to on_disk_size * %s.",
                         path,
                         self._fallback_ratio,
                     )

@@ -210,6 +210,32 @@ def test_footer_derived_estimator_handles_none_file_size():
     assert list(sizes) == [0.0, 50 * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT]
 
 
+def test_footer_derived_estimator_treats_zero_hint_as_missing():
+    # Regression: a footer hint of exactly 0 on a chunk with real on-disk bytes
+    # is a suspicious footer-accounting corner case (e.g. an all-dictionary or
+    # all-struct schema), not a genuine zero-byte chunk. Using it as-is would
+    # stamp 0 weight onto real data, letting it skip FileAffinityPartitioner's
+    # max_bucket_size flush entirely (the chunk's weight never advances). It
+    # must fall back to on_disk_size x ratio, same as a missing (None) hint.
+    manifest = FileManifest.construct_manifest(
+        ["a", "b"],
+        [10, 0],
+        [
+            {"row_group_start": 0, "row_group_end": 1, "in_memory_size": 0},
+            {"row_group_start": 0, "row_group_end": 1, "in_memory_size": 0},
+        ],
+    )
+    sizes = ParquetFooterDerivedInMemorySizeEstimator().estimate_in_memory_sizes(
+        manifest
+    )
+    # Chunk "a" has real on-disk bytes (10) -> falls back to a nonzero ratio
+    # estimate instead of the suspicious 0 hint.
+    assert sizes[0] == 10 * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+    # Chunk "b" is genuinely empty (0 on-disk bytes too) -> the fallback also
+    # computes 0, so behavior for a truly empty chunk is unchanged.
+    assert sizes[1] == 0.0
+
+
 def test_file_affinity_accumulates_fractional_weights_without_truncation():
     # Each chunk's estimated in-memory size is 1.6 (a float, as real estimators
     # return -- e.g. on_disk_size * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT). With
