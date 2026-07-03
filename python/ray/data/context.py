@@ -773,6 +773,14 @@ class DataContext:
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
 
+    # When True, route key-based ``Repartition`` (and follow-ons) through the
+    # v3 file-transport hash shuffle (``ShuffleMapOpV3 + ShuffleReduceOpV3``)
+    # instead of the v2 ``HashShuffleOperator`` actor-pool path. v3 bypasses
+    # Plasma for bulk shuffle data: each mapper writes one file per node and
+    # serves byte-ranges via a per-node ``ShuffleManager`` actor over raw
+    # sockets. Default False — opt-in until v3 has soaked.
+    use_hash_shuffle_v3: bool = False
+
     ################################################################
     # GPU Shuffle configuration
     ################################################################

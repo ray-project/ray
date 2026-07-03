@@ -130,8 +130,7 @@ def _hash_partition(
         hashes = pd.util.hash_pandas_object(
             table.to_pandas(types_mapper=pd.ArrowDtype), index=False
         ).values
-        np.mod(hashes, num_partitions, out=hashes)
-        partitions = hashes
+        partitions = np.mod(hashes, num_partitions)
 
     return partitions
 
