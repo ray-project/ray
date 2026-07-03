@@ -37,8 +37,13 @@ if TYPE_CHECKING:
     from ray.llm._internal.serve.engines.common.kv_transfer.base import RequestType
 
 # SGLang's default disaggregation bootstrap port. Colocated replicas collide on
-# it, so setup() shifts by _compute_port_offset().
+# it, so setup() adds _compute_port_offset() on top of the base.
 DEFAULT_BOOTSTRAP_PORT_BASE = 8998
+
+# experimental_configs key for overriding the bootstrap port base. The builder
+# shifts decode's base off prefill's default (see builder.py) so a colocated P+D
+# pair on one node doesn't collide; per-replica offset is applied on top.
+BOOTSTRAP_PORT_BASE_KEY = "SGLANG_BOOTSTRAP_PORT_BASE"
 
 # bootstrap_room must fit SGLang's range (it computes room % dp_size). 62 bits
 # matches the prototype's secrets.randbits(62); derived from the request id hash
@@ -67,9 +72,19 @@ class SGLangConnectorBackend(BaseConnectorBackend):
         host = ray.util.get_node_ip_address()
         engine_kwargs["host"] = host
 
+        # A user-pinned explicit port wins (advanced/escape hatch). Otherwise
+        # compute base + per-replica offset so colocated replicas never share a
+        # port. The base is overridable via experimental_configs (the builder
+        # shifts decode's base off prefill's default); the offset is derived from
+        # the replica rank (or DP rank), matching the MoRIIO connector.
         port = engine_kwargs.get("disaggregation_bootstrap_port")
         if port is None:
-            port = DEFAULT_BOOTSTRAP_PORT_BASE + offset
+            base = int(
+                self.llm_config.experimental_configs.get(
+                    BOOTSTRAP_PORT_BASE_KEY, DEFAULT_BOOTSTRAP_PORT_BASE
+                )
+            )
+            port = base + offset
             engine_kwargs["disaggregation_bootstrap_port"] = port
 
         self._bootstrap_host = host

@@ -207,11 +207,16 @@ class PDServingArgs(BaseModelExtended):
         if self.decode_config.llm_engine != "SGLang":
             return self
         from ray.llm._internal.serve.engines.sglang.kv_transfer.pd_connector import (
+            BOOTSTRAP_PORT_BASE_KEY,
             DEFAULT_BOOTSTRAP_PORT_BASE,
         )
 
-        self.decode_config.engine_kwargs.setdefault(
-            "disaggregation_bootstrap_port", DEFAULT_BOOTSTRAP_PORT_BASE + 1000
+        # Shift the decode BASE (not the final port): the connector adds a
+        # per-replica offset on top, so colocated decode replicas still get
+        # distinct ports. The +1000 stride is well above any realistic
+        # tp_size*pp_size offset. Mirrors _default_decode_moriio_port_base.
+        self.decode_config.experimental_configs.setdefault(
+            BOOTSTRAP_PORT_BASE_KEY, DEFAULT_BOOTSTRAP_PORT_BASE + 1000
         )
         return self
 

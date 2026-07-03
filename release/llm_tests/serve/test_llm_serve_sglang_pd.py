@@ -21,6 +21,7 @@ from openai import OpenAI
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.llm._internal.serve.engines.sglang.kv_transfer.pd_connector import (
+    BOOTSTRAP_PORT_BASE_KEY,
     DEFAULT_BOOTSTRAP_PORT_BASE,
     SGLangConnectorBackend,
 )
@@ -293,8 +294,10 @@ def test_sglang_pd_builder_sets_disaggregation_mode():
     )
     assert args.prefill_config.engine_kwargs["disaggregation_mode"] == "prefill"
     assert args.decode_config.engine_kwargs["disaggregation_mode"] == "decode"
+    # Decode's bootstrap BASE is shifted (per-replica offset added later in the
+    # connector's setup()), so colocated decode replicas get distinct ports.
     assert (
-        args.decode_config.engine_kwargs["disaggregation_bootstrap_port"]
+        args.decode_config.experimental_configs[BOOTSTRAP_PORT_BASE_KEY]
         == DEFAULT_BOOTSTRAP_PORT_BASE + 1000
     )
 
