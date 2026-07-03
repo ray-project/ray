@@ -47,11 +47,14 @@ std::unique_ptr<WorkerKillingPolicyInterface> WorkerKillingPolicyFactory::Create
         cgroup_manager);
   };
 
-  int64_t kill_memory_buffer_bytes =
-      std::min(static_cast<int64_t>(
-                   startup_total_memory_bytes *
-                   WorkerKillingPolicyInterface::kDefaultKillMemoryBufferProportion),
-               RayConfig::instance().max_kill_memory_buffer_bytes());
+  int64_t kill_memory_buffer_bytes = RayConfig::instance().max_kill_memory_buffer_bytes();
+  if (startup_total_memory_bytes != MemoryMonitorInterface::kNull) {
+    kill_memory_buffer_bytes =
+        std::min(static_cast<int64_t>(
+                     startup_total_memory_bytes *
+                     WorkerKillingPolicyInterface::kDefaultKillMemoryBufferProportion),
+                 kill_memory_buffer_bytes);
+  }
   return std::make_unique<TimeBasedWorkerKillingPolicy>(
       std::move(memory_threshold_bytes_getter), kill_memory_buffer_bytes);
 }

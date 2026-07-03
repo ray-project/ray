@@ -184,8 +184,16 @@ ThresholdMemoryMonitor::IsResourceIsolationThresholdExceeded() {
   auto [user_slice_memory_snapshot, system_slice_memory_snapshot] =
       user_and_system_slice_memory_snapshot_or.value();
 
+  int64_t threshold_bytes =
+      ComputeMemoryThresholdBytes(user_slice_memory_snapshot.total_bytes);
+  if (threshold_bytes == MemoryMonitorInterface::kNull) {
+    // Threshold could not be resolved this poll. Skip rather than treat
+    // every non-negative usage as exceeding kNull (-1).
+    return std::nullopt;
+  }
+
   if (system_slice_memory_snapshot.used_bytes >
-      system_slice_memory_snapshot.total_bytes - memory_usage_threshold_bytes_) {
+      system_slice_memory_snapshot.total_bytes - threshold_bytes) {
     RAY_LOG_EVERY_MS(ERROR, MemoryMonitorInterface::kErrorLogIntervalMs)
         << absl::StrFormat(
                "System slice memory usage %d bytes has exceeded the reserved system "
@@ -197,18 +205,10 @@ ThresholdMemoryMonitor::IsResourceIsolationThresholdExceeded() {
                "than the current system slice memory usage "
                "via the --system-reserved-memory flag when starting the raylet.",
                system_slice_memory_snapshot.used_bytes,
-               system_slice_memory_snapshot.total_bytes - memory_usage_threshold_bytes_);
+               system_slice_memory_snapshot.total_bytes - threshold_bytes);
   }
 
-  int64_t threshold_bytes =
-      ComputeMemoryThresholdBytes(user_slice_memory_snapshot.total_bytes);
-  if (threshold_bytes == MemoryMonitorInterface::kNull) {
-    // Threshold could not be resolved this poll. Skip rather than treat
-    // every non-negative usage as exceeding kNull (-1).
-    return std::nullopt;
-  }
-  bool is_usage_above_threshold =
-      user_slice_memory_snapshot.used_bytes > memory_usage_threshold_bytes_;
+  bool is_usage_above_threshold = user_slice_memory_snapshot.used_bytes > threshold_bytes;
   if (is_usage_above_threshold) {
     RAY_LOG_EVERY_MS(INFO, MemoryMonitorInterface::kLogIntervalMs) << absl::StrFormat(
         "User slice memory usage above threshold, used: %d, threshold_bytes: %d, "

@@ -3161,9 +3161,7 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
           }
           ProcessesMemorySnapshot process_memory_snapshot =
               MemoryMonitorUtils::TakePerProcessMemorySnapshot();
-          MemoryUsageSnapshot memory_usage_snapshot =
-              MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
-                  MemoryMonitorInterface::kDefaultCgroupPath);
+          MemoryUsageSnapshot memory_usage_snapshot;
           if (initial_config_.enable_resource_isolation) {
             StatusSetOr<std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>,
                         StatusT::NotFound>
@@ -3171,15 +3169,21 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
                     MemoryMonitorUtils::TakeUserAndSystemSliceMemoryUsageSnapshot(
                         cgroup_manager_->GetUserCgroupPath(),
                         cgroup_manager_->GetSystemCgroupPath());
-            if (user_and_system_slice_memory_snapshot_or.has_value()) {
-              memory_usage_snapshot =
-                  user_and_system_slice_memory_snapshot_or.value().first;
-            } else {
-              RAY_LOG(ERROR) << absl::StrFormat(
-                  "Failed to take user and system slice memory snapshot due to: %s. "
-                  "Falling back to host system memory snapshot.",
-                  user_and_system_slice_memory_snapshot_or.message());
+            if (!user_and_system_slice_memory_snapshot_or.has_value()) {
+              RAY_LOG_EVERY_MS(ERROR, MemoryMonitorInterface::kErrorLogIntervalMs)
+                  << absl::StrFormat(
+                         "Failed to take user and system slice memory snapshot due to: "
+                         "%s. "
+                         "Skipping this resource-isolation worker killing decision.",
+                         user_and_system_slice_memory_snapshot_or.message());
+              ReleaseKillWorkerInProgress();
+              return;
             }
+            memory_usage_snapshot =
+                user_and_system_slice_memory_snapshot_or.value().first;
+          } else {
+            memory_usage_snapshot = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
+                MemoryMonitorInterface::kDefaultCgroupPath);
           }
 
           std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
