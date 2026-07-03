@@ -1372,6 +1372,7 @@ def v3_reduce_task(
     reduce_op_name: str = "ShuffleReduceV3",
     downstream_map_task_kwargs: Optional[Dict[str, Any]] = None,
     coalesce_output: bool = False,
+    downstream_map_target_max_block_size_override: Optional[int] = None,
 ) -> Generator[Union[Block, bytes], None, None]:
     """Fetch one partition's shards and stream ``reduce_fn`` output as
     (block, pickled metadata) pairs. Bytes stay out of plasma (§4.6).
@@ -1486,6 +1487,9 @@ def v3_reduce_task(
                 task_idx=partition_id,
                 op_name=reduce_op_name,
                 kwargs=downstream_map_task_kwargs or {},
+                target_max_block_size_override=(
+                    downstream_map_target_max_block_size_override
+                ),
             ),
         ):
             yield from _yield_with_stats(out_block)

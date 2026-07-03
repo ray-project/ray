@@ -216,9 +216,6 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         # (fires only after both ``all_inputs_done`` has been called AND
         # every mapper task has completed).
         self._completed_handle_refs: List[ObjectRef] = []
-        # Original mapper-input RefBundles, pinned so the handle ObjectRefs
-        # inside them stay alive until the op shuts down.
-        self._completed_input_bundles: List[RefBundle] = []
         # Single plasma object holding the full handle-ref list, shared by
         # every partition wrapper's block-ref slot. Ray dispatch cost per
         # reducer .remote() = 1 nested ref (not M), preserving the
@@ -455,13 +452,13 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
             owns_blocks=False,  # shared_handles_ref pins the underlying ref
         )
 
-        # Accumulate for the partition wrappers built in ``all_inputs_done``.
-        # We pin ``input_bundle`` (rather than destroy it here) so the
-        # handle ObjectRef inside stays alive — ``ray.put(handle_refs)``
-        # later takes a snapshot, but the underlying refs still need an
-        # explicit owner. Released in ``_do_shutdown``.
+        # Accumulate the handle ref for the partition wrappers built in
+        # ``_maybe_emit_partition_wrappers``. Match v2 (shuffle_map_operator.py:306):
+        # once the mapper task has returned, the input bundle has been
+        # consumed and can be released. Retry after task-done is not
+        # supported anyway (same FT limit as v2).
         self._completed_handle_refs.append(handle_ref)
-        self._completed_input_bundles.append(input_bundle)
+        input_bundle.destroy_if_owned()
 
         # Roll up stats from input metadata.
         input_rows = sum((m.num_rows or 0) for m in input_bundle.metadata)
@@ -619,13 +616,6 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         super()._do_shutdown(force)
         self._shuffle_map_tasks.clear()
         self._output_queue.clear()
-        # Release pinned mapper-input bundles — their sole purpose was to
-        # keep the handle ObjectRefs alive across dispatch. Once reducers
-        # have finished (this method runs at op shutdown), Ray-core
-        # ref-counting is safe to reclaim.
-        for bundle in self._completed_input_bundles:
-            bundle.destroy_if_owned()
-        self._completed_input_bundles.clear()
         self._completed_handle_refs.clear()
         # Drop the shared handle-list plasma object. Reducer tasks that
         # captured a borrowed ref have already completed by shutdown time.

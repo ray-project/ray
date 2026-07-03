@@ -88,12 +88,14 @@ class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
         reduce_fn: ReduceFn,
         streaming_reduce: bool = True,
         coalesce_output: bool = False,
+        disallow_block_splitting: bool = False,
         max_bytes_per_fetch: int = _DEFAULT_MAX_BYTES_PER_FETCH,
         reduce_prefetch_dir: Optional[str] = None,
         reduce_cpus: Optional[float] = None,
         name: str = "ShuffleReduceV3",
         downstream_map_transformer: Optional["MapTransformer"] = None,
         downstream_map_task_kwargs: Optional[Dict[str, Any]] = None,
+        downstream_map_target_max_block_size_override: Optional[int] = None,
     ):
         super().__init__(
             name=name,
@@ -119,8 +121,24 @@ class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
         self._downstream_map_task_kwargs: Dict[str, Any] = (
             downstream_map_task_kwargs or {}
         )
+        # Override for the target-max-block-size the fused downstream map
+        # would have used. Threaded into the TaskContext v3_reduce_task
+        # constructs around downstream_map_transformer, matching v2's
+        # ``fused_output_map_target_max_block_size_override`` semantics
+        # (shuffle_reduce_operator.py:106-108). ``None`` = fall back to the
+        # data_context default.
+        self._downstream_map_target_max_block_size_override: Optional[int] = (
+            downstream_map_target_max_block_size_override
+        )
         self._coalesce_output: bool = coalesce_output
         self._streaming_reduce: bool = streaming_reduce
+        # When True, the reduce output is emitted as a single block per
+        # partition (no target_max_block_size-driven splitting). Mirrors
+        # v2's ``disallow_block_splitting`` (shuffle_reduce_operator.py:77).
+        # Independent of ``coalesce_output``: ``coalesce_output=True`` post-
+        # concatenates ``reduce_fn`` chunks into one block; this flag
+        # instead tells the BlockOutputBuffer to not reshape at all.
+        self._disallow_block_splitting: bool = disallow_block_splitting
         self._max_bytes_per_fetch: int = max_bytes_per_fetch
         self._reduce_prefetch_dir: Optional[str] = reduce_prefetch_dir
         self._reduce_num_cpus: float = (
@@ -166,11 +184,21 @@ class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
         # ShuffleMapOpV3 from its per-partition decoded-byte accumulator).
         estimated_bytes = sum((m.size_bytes or 0) for m in refs.metadata)
 
+        # Match v2's disallow_block_splitting semantics
+        # (shuffle_reduce_operator.py:161-165): when True, drop the
+        # BlockOutputBuffer reshape target so a partition emits as a
+        # single block regardless of size.
+        target_max_block_size = (
+            None
+            if self._disallow_block_splitting
+            else self.data_context.target_max_block_size
+        )
+
         self._dispatch_one_reducer(
             partition_id,
             handles_ref,
             estimated_bytes,
-            self.data_context.target_max_block_size,
+            target_max_block_size,
         )
         # Wrapper was built with owns_blocks=False (shared_handles_ref is
         # owned by the upstream map op), so this is a no-op for the ref —
@@ -211,6 +239,7 @@ class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
             self.name,
             self._downstream_map_task_kwargs,
             self._coalesce_output,
+            self._downstream_map_target_max_block_size_override,
         )
 
         data_task = DataOpTask(

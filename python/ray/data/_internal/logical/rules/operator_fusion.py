@@ -427,12 +427,16 @@ class FuseOperators(Rule):
                 reduce_fn=up_op._reduce_fn,
                 streaming_reduce=up_op._streaming_reduce,
                 coalesce_output=up_op._coalesce_output,
+                disallow_block_splitting=up_op._disallow_block_splitting,
                 max_bytes_per_fetch=up_op._max_bytes_per_fetch,
                 reduce_prefetch_dir=up_op._reduce_prefetch_dir,
                 reduce_cpus=up_op._reduce_num_cpus,
                 name=name,
                 downstream_map_transformer=down_op.get_map_transformer(),
                 downstream_map_task_kwargs=down_op.get_map_task_kwargs(),
+                downstream_map_target_max_block_size_override=(
+                    down_op.target_max_block_size_override
+                ),
             )
         else:  # V2 ShuffleReduceOp
             fused_op = ShuffleReduceOp(
