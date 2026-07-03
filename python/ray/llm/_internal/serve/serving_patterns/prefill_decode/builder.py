@@ -186,6 +186,31 @@ class PDServingArgs(BaseModelExtended):
         return self
 
     @model_validator(mode="after")
+    def _reject_sglang_data_parallel(self):
+        """SGLang P/D with data_parallel_size>1 is not supported yet.
+
+        DP P/D uses DPPD{Prefill,Decode}Server, whose gang scheduling comes from
+        DPServer.get_deployment_options / __init__ — both read engine-config
+        fields (accelerator, placement_bundles) the minimal SGLangEngineConfig
+        does not carry. Rather than silently drop gang scheduling, fail fast.
+        Tracked as a follow-up (see RFC "Out of Scope").
+        """
+        for label, config in (
+            ("prefill_config", self.prefill_config),
+            ("decode_config", self.decode_config),
+        ):
+            if config.llm_engine != "SGLang":
+                continue
+            dp_size = config.engine_kwargs.get("data_parallel_size", 1)
+            if isinstance(dp_size, int) and dp_size > 1:
+                raise NotImplementedError(
+                    f"SGLang P/D disaggregation does not support "
+                    f"data_parallel_size>1 yet (got {dp_size} on {label}). "
+                    "Use data_parallel_size=1."
+                )
+        return self
+
+    @model_validator(mode="after")
     def _set_sglang_disaggregation_mode(self):
         """Auto-set disaggregation_mode so users never set it by hand."""
         if self.prefill_config.llm_engine == "SGLang":

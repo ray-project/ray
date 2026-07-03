@@ -302,5 +302,23 @@ def test_sglang_pd_builder_sets_disaggregation_mode():
     )
 
 
+def test_sglang_pd_rejects_data_parallel():
+    """SGLang P/D with data_parallel_size>1 fails fast (unsupported)."""
+    import copy
+
+    from ray.llm._internal.serve.serving_patterns.prefill_decode.builder import (
+        PDServingArgs,
+    )
+
+    prefill = copy.deepcopy(_sglang_config(base_gpu_id=0))
+    decode = copy.deepcopy(_sglang_config(base_gpu_id=1))
+    decode["engine_kwargs"]["data_parallel_size"] = 2
+
+    with pytest.raises(NotImplementedError, match="data_parallel_size"):
+        PDServingArgs.model_validate(
+            {"prefill_config": prefill, "decode_config": decode}
+        )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-xvs", __file__]))

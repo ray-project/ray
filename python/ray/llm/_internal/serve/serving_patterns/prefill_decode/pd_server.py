@@ -646,6 +646,11 @@ class _PDEngineSelectionMixin:
         minimal ``SGLangEngineConfig`` does not carry. SGLang builds its bundles
         from ``SGLangServer.get_deployment_options`` instead, so route SGLang
         there; every other engine keeps the base LLMServer behavior unchanged.
+
+        Note: SGLang + data_parallel_size>1 (the DPPD* servers, which get gang
+        scheduling from DPServer.get_deployment_options) is rejected up front by
+        the builder (_reject_sglang_data_parallel), so this SGLang branch never
+        silently drops DP gang scheduling.
         """
         if llm_config.llm_engine == "SGLang":
             from ray.llm._internal.serve.engines.sglang.sglang_engine import (
