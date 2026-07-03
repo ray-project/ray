@@ -695,6 +695,7 @@ def test_prefetch_bytes_callback(ray_start_regular_shared, prefetch_batches):
     [
         ("production", "iter_blocked_production_wait_s"),
         ("collate", "iter_blocked_collate_s"),
+        ("format", "iter_blocked_format_s"),
     ],
 )
 def test_e2e_blocked_attribution_by_scenario(
@@ -703,8 +704,11 @@ def test_e2e_blocked_attribution_by_scenario(
     """E2e: when a specific stage is the bottleneck, its blocked metric
     should be the largest among all stages."""
     from ray.data._internal.stats import _StatsManager
+    from ray.data._internal.block_batching import util as batch_util
 
-    collate_fn = None
+    iter_kwargs = {"batch_size": 10}
+    patches = []
+
     if scenario == "production":
         # Slow upstream map → production_wait dominates
         def slow_map(batch):
@@ -712,13 +716,57 @@ def test_e2e_blocked_attribution_by_scenario(
             return batch
 
         ds = ray.data.range(50, override_num_blocks=5).map(slow_map)
+
     elif scenario == "collate":
+        # Patch _format_in_threadpool to inject a slow collate_fn
+        # (regular iter_batches doesn't set collate_fn, so the collate
+        # stage would be skipped without this).
+        # prefetch_batches=0 so collate runs synchronously in the
+        # training thread (not prefetched ahead, which would hide the
+        # stall).
+        from ray.data._internal.block_batching import iter_batches as iter_mod
 
-        def collate_fn(batch):
-            time.sleep(0.3)
-            return batch
+        orig_format = iter_mod._format_in_threadpool
 
+        def format_with_slow_collate(
+            batch_iter,
+            stats,
+            batch_format,
+            collate_fn,
+            num_threadpool_workers,
+            ensure_copy=False,
+        ):
+            def slow_collate(batch):
+                time.sleep(0.3)
+                return batch
+
+            return orig_format(
+                batch_iter=batch_iter,
+                stats=stats,
+                batch_format=batch_format,
+                collate_fn=slow_collate,
+                num_threadpool_workers=num_threadpool_workers,
+                ensure_copy=ensure_copy,
+            )
+
+        patches.append(
+            patch(
+                "ray.data._internal.block_batching.iter_batches._format_in_threadpool",
+                format_with_slow_collate,
+            )
+        )
         ds = ray.data.range(50, override_num_blocks=5)
+        iter_kwargs = {"batch_size": 10, "prefetch_batches": 0}
+
+    elif scenario == "format":
+        # Large batch + Arrow→pandas conversion → format dominates.
+        # prefetch_batches=0 so format runs synchronously.
+        ds = ray.data.range(50000, override_num_blocks=1)
+        iter_kwargs = {
+            "batch_size": 50000,
+            "batch_format": "pandas",
+            "prefetch_batches": 0,
+        }
 
     it = ds.iterator()
     captured = []
@@ -728,8 +776,14 @@ def test_e2e_blocked_attribution_by_scenario(
         captured.append(stats)
         return orig(stats, dataset_tag)
 
-    with patch.object(_StatsManager, "update_iteration_metrics", spy):
-        for _ in it.iter_batches(batch_size=10, _collate_fn=collate_fn):
+    patches.append(patch.object(_StatsManager, "update_iteration_metrics", spy))
+
+    import contextlib
+
+    with contextlib.ExitStack() as stack:
+        for p in patches:
+            stack.enter_context(p)
+        for _ in it.iter_batches(**iter_kwargs):
             pass
 
     stats = captured[-1]
