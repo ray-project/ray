@@ -25,14 +25,12 @@ namespace observability {
 ///
 /// Samples are kept in a deque ordered oldest-to-newest. Each call to Observe()
 /// appends the new sample, evicts samples that have fallen outside the window (older
-/// than `now - window_duration`), and recomputes the maximum value over the
-/// remaining samples.
+/// than `now - window_duration`), and returns the maximum value over the remaining
+/// samples.
 ///
-/// This is meant to smooth a point-in-time metric: callers feed samples in via
-/// Observe() and export the windowed max it returns. The max is returned on every
-/// call (not just when it changes) so callers re-export each cycle, which the metric
-/// pipeline requires -- gauge values are cleared after each export/scrape, so a value
-/// that is not re-recorded disappears from subsequent scrapes.
+/// This is meant to smooth a point-in-time metric: rather than exporting every raw
+/// sample, callers feed samples in via Observe() and export the windowed max it
+/// returns.
 ///
 /// Not thread-safe; callers must synchronize externally if shared across threads.
 class WindowedMax {

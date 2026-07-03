@@ -711,10 +711,11 @@ async def start_asgi_http_server(
     *,
     event_loop: asyncio.AbstractEventLoop,
     enable_so_reuseport: bool = False,
-) -> asyncio.Task:
+) -> Tuple[asyncio.Task, uvicorn.Server]:
     """Start an HTTP server to run the ASGI app.
 
-    Returns a task that blocks until the server exits (e.g., due to error).
+    Returns a task that blocks until the server exits (e.g., due to error) and
+    the server object itself (so callers can shut it down gracefully).
     """
     app = _apply_middlewares(app, http_options.middlewares)
 
@@ -779,7 +780,7 @@ async def start_asgi_http_server(
     # the main thread and uvicorn doesn't expose a way to configure it.
     server.install_signal_handlers = lambda: None
 
-    return event_loop.create_task(server.serve(sockets=[sock]))
+    return event_loop.create_task(server.serve(sockets=[sock])), server
 
 
 def parse_request_timeout_header(

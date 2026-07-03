@@ -26,7 +26,7 @@ def _list_added_files(base: str, commit: str, remote: str = "origin") -> List[st
             "diff",
             "--name-only",
             "--diff-filter=A",
-            f"{remote}/{base}...{commit}",
+            f"FETCH_HEAD...{commit}",
             "--",
         ],
         text=True,

@@ -18,6 +18,30 @@ HAPROXY_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint
 {%- endif %}
 """
 
+# Same shape as HAPROXY_HEALTHZ_RULES_TEMPLATE, but emits gRPC trailers-only
+# responses. The OK / UNAVAILABLE distinction maps to grpc-status 0 / 14
+# (gRPC clients map HTTP 503 to UNAVAILABLE, which is why every shape here
+# uses HTTP 200 and signals state through grpc-status).
+HAPROXY_GRPC_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint (gRPC `Healthz`)
+    acl is_healthz path /ray.serve.RayServeAPIService/Healthz
+    # Suppress logging for health checks
+    http-request set-log-level silent if is_healthz
+{%- if not health_info.healthy %}
+    # Override: force health checks to fail (used by drain/disable)
+    http-request return status 200 content-type application/grpc hdr grpc-status 14 hdr grpc-message "{{ health_info.health_message }}" if is_healthz
+{%- elif backends %}
+    # OK if any backend has at least one server UP
+{%-   for backend in backends %}
+    acl backend_{{ backend.name or 'unknown' }}_server_up nbsrv({{ backend.name or 'unknown' }}) ge 1
+{%-   endfor %}
+    # Any backend with a server UP passes the health check (OR logic)
+{%-   for backend in backends %}
+    http-request return status 200 content-type application/grpc hdr grpc-status 0 if is_healthz backend_{{ backend.name or 'unknown' }}_server_up
+{%-   endfor %}
+    http-request return status 200 content-type application/grpc hdr grpc-status 14 hdr grpc-message "Service Unavailable" if is_healthz
+{%- endif %}
+"""
+
 HAPROXY_CONFIG_TEMPLATE = """global
     log {{ config.log_target }} local0 debug
     stats socket {{ config.socket_path }} mode 666 level admin expose-fd listeners
@@ -38,6 +62,13 @@ HAPROXY_CONFIG_TEMPLATE = """global
     {%- endif %}
     {%- if config.hard_stop_after_s is not none %}
     hard-stop-after {{ config.hard_stop_after_s }}s
+    {%- endif %}
+    {%- if config.grpc_enabled %}
+    tune.h2.max-frame-size {{ config.h2_max_frame_size }}
+    tune.h2.be.initial-window-size {{config.h2_be_initial_window_size}}
+    tune.h2.be.max-concurrent-streams {{config.h2_be_max_concurrent_streams}}
+    tune.h2.fe.initial-window-size {{config.h2_fe_initial_window_size}}
+    tune.h2.fe.max-concurrent-streams {{config.h2_fe_max_concurrent_streams}}
     {%- endif %}
 defaults
     mode http
@@ -94,6 +125,15 @@ frontend http_frontend
     log {{ metrics_socket_path }} len 8192 format rfc5424 local1 info
     log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.ingress_request_router_app)] intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)]]"
     {%- endif %}
+    {%- if config.root_path %}
+    # Strip the configured global root_path so the health/routes endpoints, the
+    # per-backend path ACLs, and the path forwarded to replicas are all
+    # root_path-agnostic. Mirrors the native Serve proxy, which mounts the app
+    # under root_path. An exact root_path match becomes "/", and paths outside
+    # root_path are left unchanged.
+    http-request set-path / if { path {{ config.root_path }} }
+    http-request set-path %[path,regsub(^{{ config.root_path }}/,/)] if { path_beg {{ config.root_path }}/ }
+    {%- endif %}
 {{ healthz_rules|safe }}
     # Routes endpoint
     acl routes path -i /-/routes
@@ -123,16 +163,25 @@ frontend http_frontend
     http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
     {%- endif %}
     http-request lua.route_via_ingress_request_router if METH_POST has_ingress_request_router_app
-    # Fail loudly when the Lua dispatch did not pick a replica. Must appear
-    # before the use_backend rules below so the request never falls back to
-    # the primary backend (which would be a silent bypass of the configured
-    # router policy).
-    http-request return status 503 content-type text/plain lf-string "Ingress request router failed: %[var(txn.ingress_request_router_failed)]" hdr X-Serve-Reason %[var(txn.ingress_request_router_failed)] if { var(txn.ingress_request_router_failed) -m found }
+    # A pin-miss is recoverable only if its app has a fallback proxy. Mark it
+    # per app so the 503 below fails loud for apps with none.
+    {%- for backend in backends %}
+    {%- if backend.ingress_request_router_servers and backend.fallback_server %}
+    http-request set-var(txn.ingress_request_router_recoverable) str(1) if { var(txn.ingress_request_router_app) -m str "{{ backend.name or 'unknown' }}" } { var(txn.ingress_request_router_failed) -m str "unknown_replica_id" }
+    {%- endif %}
+    {%- endfor %}
+    # 503 on any router failure except a recoverable pin-miss. Must precede the
+    # use_backend rules so failures never fall through to the primary backend.
+    http-request return status 503 content-type text/plain lf-string "Ingress request router failed: %[var(txn.ingress_request_router_failed)]" hdr X-Serve-Reason %[var(txn.ingress_request_router_failed)] if { var(txn.ingress_request_router_failed) -m found } !{ var(txn.ingress_request_router_recoverable) -m found }
     {%- endif %}
     # Static routing based on path prefixes in decreasing length then alphabetical order
 {%- for backend in backends %}
     {%- if has_ingress_request_router and backend.ingress_request_router_servers %}
     use_backend {{ backend.name or 'unknown' }}-via-ingress-request-router if is_{{ backend.name or 'unknown' }} { var(txn.via_ingress_request_router) -m found }
+    {%- if backend.fallback_server %}
+    # Pin-miss recovery: route into the router backend, which picks the fallback.
+    use_backend {{ backend.name or 'unknown' }}-via-ingress-request-router if is_{{ backend.name or 'unknown' }} { var(txn.ingress_request_router_failed) -m str "unknown_replica_id" }
+    {%- endif %}
     {%- endif %}
     use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }}
 {%- endfor %}
@@ -209,6 +258,15 @@ backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     {%- for server in backend.servers %}
     use-server {{ server.name }} if { var(txn.ingress_request_router_target) -m str "{{ server.name }}" }
     {%- endfor %}
+    {%- if backend.fallback_server %}
+    # Pin-miss: route to the fallback Serve proxy, which re-pins via its own
+    # router. If the fallback is DOWN this use-server is skipped and the request
+    # load-balances onto a primary replica in this backend, so affinity lapses
+    # until the fallback's health check passes. That is plain selection-time
+    # fallthrough, not `option redispatch` (which only re-picks after a
+    # connection failure to an already-selected server).
+    use-server {{ backend.fallback_server.name }} if { var(txn.ingress_request_router_failed) -m str "unknown_replica_id" }
+    {%- endif %}
     # `track` allows us to mirror primary-backend health and avoid double-checking.
     {%- for server in backend.servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} track {{ backend.name or 'unknown' }}/{{ server.name }}
@@ -218,6 +276,106 @@ backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     {%- endif %}
 {%- endif %}
 {%- endfor %}
+{%- if config.grpc_enabled %}
+frontend grpc_frontend
+    # gRPC requires HTTP/2. HAProxy decodes H2 frames into HTTP request
+    # semantics in `mode http` when `proto h2` is on the bind line.
+    bind {{ config.grpc_frontend_host }}:{{ config.grpc_frontend_port }} proto h2
+    mode http
+    log global
+
+{{ grpc_healthz_rules|safe }}
+
+    # ListApplications must aggregate across all apps, so it goes to the
+    # head-node fallback Serve proxy rather than an individual replica.
+    acl is_list_applications path /ray.serve.RayServeAPIService/ListApplications
+{%- if grpc_fallback_backend_with_health_config %}
+    use_backend grpc_fallback_backend if is_list_applications
+{%- else %}
+    http-request return status 200 content-type application/grpc hdr grpc-status 14 hdr grpc-message "ListApplications is unavailable" if is_list_applications
+{%- endif %}
+
+    # Route per-app on the `application` metadata that Ray Serve clients attach.
+{%- for backend in grpc_backends %}
+    acl is_{{ backend.name or 'unknown' }} req.hdr(application) -m str {{ backend.app_name }}
+    use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }}
+{%- endfor %}
+{%- if grpc_backends|length == 1 %}
+    # With exactly one app deployed, route there regardless of metadata so
+    # clients can call it without setting the `application` header.
+    default_backend {{ grpc_backends[0].name or 'unknown' }}
+{%- else %}
+    # Zero apps, or multiple apps without a matching `application` header.
+    default_backend default_grpc_backend
+{%- endif %}
+
+{%- if grpc_fallback_backend_with_health_config %}
+{%- set backend = grpc_fallback_backend_with_health_config.backend %}
+{%- set hc = grpc_fallback_backend_with_health_config.health_config %}
+{%- if backend.servers %}
+{%- set server = backend.servers[0] %}
+backend grpc_fallback_backend
+    mode http
+    log global
+    # gRPC health check: replay a complete unary `Healthz` request via
+    # `tcp-check send-binary` and match the healthy message in the response.
+    # `http-check` can't be used because its body is truncated at the first NUL
+    # byte and a gRPC frame always starts with the NUL compression flag, so the
+    # server would get a message-less unary and stall until timeout.
+    option tcp-check
+    tcp-check connect
+    tcp-check send-binary {{ hc.grpc_healthcheck_request_hex }}
+    tcp-check expect binary {{ hc.grpc_healthcheck_expect_hex }}
+    {{ hc.default_server_directive }}
+    # `proto h2` makes HAProxy speak HTTP/2 cleartext to the fallback gRPC server.
+    server {{ server.name }} {{ server.host }}:{{ server.port }} proto h2 check
+{%- endif %}
+{%- endif %}
+{%- if grpc_backends|length != 1 %}
+backend default_grpc_backend
+    mode http
+    log global
+    # Trailers-only NOT_FOUND. gRPC clients surface this as
+    # grpc.StatusCode.NOT_FOUND; an HTTP 503 would map to UNAVAILABLE instead.
+    acl has_application_header req.hdr(application) -m found
+    http-request return status 200 content-type application/grpc hdr grpc-status 5 hdr grpc-message "Application '%[req.hdr(application)]' not found. Ping /ray.serve.RayServeAPIService/ListApplications for available applications." if has_application_header
+    http-request return status 200 content-type application/grpc hdr grpc-status 5 hdr grpc-message "Application metadata not set. Ping /ray.serve.RayServeAPIService/ListApplications for available applications."
+{%- endif %}
+{%- for item in grpc_backends_with_health_config %}
+{%- set backend = item.backend %}
+{%- set hc = item.health_config %}
+backend {{ backend.name or 'unknown' }}
+    mode http
+    log global
+    http-reuse always
+    {%- if backend.timeout_connect_s is not none %}
+    timeout connect {{ backend.timeout_connect_s }}s
+    {%- endif %}
+    {%- if backend.timeout_server_s is not none %}
+    timeout server {{ backend.timeout_server_s }}s
+    {%- endif %}
+    {%- if backend.timeout_client_s is not none %}
+    timeout client {{ backend.timeout_client_s }}s
+    {%- endif %}
+    # gRPC health check: replay a complete unary `Healthz` request via
+    # `tcp-check send-binary` and match the healthy message in the response.
+    # `http-check` can't be used because its body is truncated at the first NUL
+    # byte and a gRPC frame always starts with the NUL compression flag, so the
+    # server would get a message-less unary and stall until timeout.
+    option tcp-check
+    tcp-check connect
+    tcp-check send-binary {{ hc.grpc_healthcheck_request_hex }}
+    tcp-check expect binary {{ hc.grpc_healthcheck_expect_hex }}
+    {{ hc.default_server_directive }}
+    # `proto h2` makes HAProxy speak HTTP/2 cleartext to backend gRPC servers.
+    {%- for server in backend.servers %}
+    server {{ server.name }} {{ server.host }}:{{ server.port }} proto h2 check
+    {%- endfor %}
+    {%- if backend.fallback_server %}
+    server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} proto h2 check backup
+    {%- endif %}
+{%- endfor %}
+{%- endif %}
 listen stats
   bind *:{{ config.stats_port }}
   stats enable

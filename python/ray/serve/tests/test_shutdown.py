@@ -15,6 +15,7 @@ from ray.serve._private.constants import (
     SERVE_PROXY_NAME,
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
+from ray.serve._private.test_utils import expected_proxy_actors
 from ray.serve._private.utils import format_actor_name
 from ray.serve.config import DeploymentActorConfig
 from ray.util.state import list_actors
@@ -130,7 +131,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "ProxyActor",
+        *expected_proxy_actors(),
         "ServeReplica:app:f",
     }
 
@@ -171,7 +172,7 @@ async def test_single_app_shutdown_actors_async(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "ProxyActor",
+        *expected_proxy_actors(),
         "ServeReplica:app:f",
     }
 
@@ -212,7 +213,7 @@ def test_multi_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "ProxyActor",
+        *expected_proxy_actors(),
         "ServeReplica:app1:f",
         "ServeReplica:app2:f",
     }
@@ -255,7 +256,7 @@ async def test_multi_app_shutdown_actors_async(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "ProxyActor",
+        *expected_proxy_actors(),
         "ServeReplica:app1:f",
         "ServeReplica:app2:f",
     }

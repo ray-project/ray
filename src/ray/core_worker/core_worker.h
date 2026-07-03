@@ -174,6 +174,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   CoreWorker(CoreWorkerOptions options,
              std::unique_ptr<WorkerContext> worker_context,
              instrumented_io_context &io_service,
+             instrumented_io_context &object_freed_callback_service,
              std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
              std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
              std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
@@ -183,6 +184,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
              std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
              std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
              boost::thread &io_thread,
+             boost::thread &object_freed_callback_thread,
              std::shared_ptr<ReferenceCounterInterface> reference_counter,
              std::shared_ptr<CoreWorkerMemoryStore> memory_store,
              std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
@@ -331,6 +333,20 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   Status TryReadObjectRefStream(const ObjectID &generator_id,
                                 rpc::ObjectReference *object_ref_out);
 
+  /**
+   * Advance multiple indexes of an ObjectRefStream.
+   *
+   * This is intended for bulk consumers that have already waited on
+   * deterministic ObjectRefs and only need to mark them as consumed.
+   *
+   * \param[in] generator_id The object ref id of the streaming generator task.
+   * \param[in] num_items The number of indexes to advance past, starting from
+   * the current head of the stream.
+   * \return Status ObjectRefEndOfStream if the stream has already reached EoF.
+   * InvalidArgument if the last requested ref is not ready. OK otherwise.
+   */
+  Status TryReadObjectRefStreamN(const ObjectID &generator_id, int64_t num_items);
+
   /// Return True if there's no more object to read. False otherwise.
   bool StreamingGeneratorIsFinished(const ObjectID &generator_id) const;
 
@@ -342,6 +358,20 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// (meaning if the object's value if retrievable).
   /// It should not be nil.
   std::pair<rpc::ObjectReference, bool> PeekObjectRefStream(const ObjectID &generator_id);
+
+  /**
+   * Read multiple next indexes of an ObjectRefStream of generator_id without
+   * consuming them.
+   *
+   * \param[in] generator_id The object ref id of the streaming generator task.
+   * \param[in] num_items The number of indexes to peek at, starting from the
+   * current head of the stream.
+   * \return A list of num_items object references for the next indexes, each
+   * paired with whether the object is already ready (i.e. its value is
+   * retrievable). None of the references should be nil.
+   */
+  std::vector<std::pair<rpc::ObjectReference, bool>> PeekObjectRefStreamN(
+      const ObjectID &generator_id, int64_t num_items);
 
   /// Read the next index of an ObjectRefStream of generator_id without
   /// consuming an index, and return just the ObjectID of that index.
@@ -400,6 +430,42 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
     // properly from reference counter.
     memory_store_->Delete(deleted);
   }
+
+  /// Register a callback to fire when an object goes out of scope or is freed.
+  /// Can only be called for objects owned by this worker. The callback is posted
+  /// to the dedicated object_freed_callback_service_ thread so it never blocks
+  /// the main IO thread.
+  ///
+  /// \param[in] object_id The owned object to watch.
+  /// \param[in] callback Invoked with the object_id when the object goes out of scope.
+  /// \return true if registered; false if the object is already out of scope or freed
+  ///         (callback will never fire).
+  bool AddObjectOutOfScopeOrFreedCallback(
+      const ObjectID &object_id, const std::function<void(const ObjectID &)> &callback);
+
+  /// C function-pointer overload of AddObjectOutOfScopeOrFreedCallback for use
+  /// from Cython. Can only be called for objects owned by this worker.
+  ///
+  /// \param[in] object_id The owned object to watch.
+  /// \param[in] callback Function to invoke when the object goes out of scope. Called
+  ///            with (object_id, callback_context).
+  /// \param[in] callback_context Opaque pointer forwarded unchanged to `callback`.
+  /// \return true if registered; false if the object is already out of scope or freed
+  ///         (callback will never fire).
+  bool AddObjectOutOfScopeOrFreedCallback(const ObjectID &object_id,
+                                          void (*callback)(const ObjectID &, void *),
+                                          void *callback_context);
+
+  /// Validate that the given object is owned by this worker. Used to gate
+  /// owner-only operations (e.g. registering an out-of-scope/freed callback)
+  /// so the error is constructed in C++ and propagated through the standard
+  /// Status path rather than re-implemented at each binding.
+  ///
+  /// \param[in] object_id The object to check.
+  /// \return Status::OK if this worker is the owner of the object;
+  ///         Status::InvalidArgument otherwise (the rejected case in practice is
+  ///         a borrowed object owned by another worker).
+  Status CheckObjectOwnedByUs(const ObjectID &object_id) const;
 
   int GetMemoryStoreSize() { return memory_store_->Size(); }
 
@@ -788,6 +854,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// 0 means it is the first attempt.
   /// \param[in] waiter The class to pause the thread if generator backpressure limit
   /// is reached.
+  /// \param[in] actor_metadata Actor-task bookkeeping for the actor-wide
+  /// streaming-generator cap (`_actor_generator_backpressure_num_objects`).
+  /// nullptr when the actor option is disabled or this is not an actor
+  /// task.
   Status ReportGeneratorItemReturns(
       const std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           &returned_objects,
@@ -795,7 +865,30 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       const rpc::Address &owner_address,
       int64_t item_index,
       uint64_t attempt_number,
-      const std::shared_ptr<GeneratorBackpressureWaiter> &waiter);
+      const std::shared_ptr<TaskGeneratorBackpressureWaiter> &waiter,
+      const std::shared_ptr<ActorTaskBackpressureMetadata> &actor_metadata);
+
+  void MarkGeneratorBackpressureTaskFinished(const ObjectID &generator_id);
+  bool TeardownGeneratorBackpressureTask(const ObjectID &generator_id);
+
+  /// Register a generator-backpressure entry up-front so that owner-failure
+  /// sweeps (``HandleOwnerDied``) can find tasks that are still blocked in
+  /// ``ReserveActorWideSlot`` before they have a chance to send their first
+  /// ``ReportGeneratorItemReturns`` (which is where the state is otherwise
+  /// inserted). Inserts only if no entry exists for ``generator_id``; existing
+  /// entries are left untouched so an in-progress report path does not race
+  /// with this call. Safe to invoke from any thread.
+  void RegisterGeneratorBackpressureState(
+      const ObjectID &generator_id,
+      std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter,
+      std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata,
+      const rpc::Address &owner_address);
+
+  /// Tear down any generator_backpressure_states_ entries owned by ``dead_owner``
+  /// so the actor-wide BP budget gets reclaimed when an owner worker dies without
+  /// running TryDelObjectRefStream (the path that normally sends the teardown
+  /// sentinel via UpdateGeneratorBackpressureConsumed).
+  void HandleOwnerDied(const WorkerID &dead_owner);
 
   /// Implements gRPC server handler.
   /// If an executor can generator task return before the task is finished,
@@ -803,6 +896,11 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   void HandleReportGeneratorItemReturns(rpc::ReportGeneratorItemReturnsRequest request,
                                         rpc::ReportGeneratorItemReturnsReply *reply,
                                         rpc::SendReplyCallback send_reply_callback);
+
+  void HandleUpdateGeneratorBackpressureConsumed(
+      rpc::UpdateGeneratorBackpressureConsumedRequest request,
+      rpc::UpdateGeneratorBackpressureConsumedReply *reply,
+      rpc::SendReplyCallback send_reply_callback);
 
   ///
   /// Public methods related to task submission.
@@ -983,6 +1081,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \return Whether the task has been canceled.
   bool IsTaskCanceled(const TaskID &task_id) const;
 
+  /// True when this thread is running a task that was marked canceled (ray.cancel on
+  /// sync actor workers). Safe from periodic / io threads: no-op without job + task.
+  bool ShouldInterruptTaskForCancellation() const;
+
   /// Decrease the reference count for this actor. Should be called by the
   /// language frontend when a reference to the ActorHandle destroyed.
   ///
@@ -1034,6 +1136,16 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ActorID GetActorId() const {
     absl::MutexLock lock(&mutex_);
     return actor_id_;
+  }
+
+  /// Returns the actor-wide streaming-generator backpressure waiter, or
+  /// nullptr if the option was disabled / this worker is not an actor.
+  /// Each streaming-generator task on the actor shares this waiter via an
+  /// ActorTaskBackpressureMetadata to enforce a single cap across all
+  /// concurrent generator tasks. Thread-safe; the waiter is set once
+  /// during actor creation and never reassigned.
+  std::shared_ptr<ActorWideGeneratorBackpressureWaiter> GetActorGeneratorWaiter() const {
+    return actor_generator_waiter_;
   }
 
   std::string GetActorName() const;
@@ -1573,12 +1685,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                                   std::vector<rpc::ObjectReference> *arg_refs,
                                   std::vector<ObjectID> *pinned_ids);
 
-  /// Process a subscribe message for wait for object eviction.
-  /// The object eviction message will be published once the object
-  /// needs to be evicted.
-  void ProcessSubscribeForObjectEviction(
-      const rpc::WorkerObjectEvictionSubMessage &message);
-
   /// Process a subscribe message for wait for ref removed.
   /// It is used for the ref counting protocol. When the borrower
   /// stops using the reference, the message will be published to the owner.
@@ -1752,6 +1858,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   instrumented_io_context &io_service_;
 
+  /// Dedicated event loop for object-freed callbacks, keeping them off io_service_.
+  instrumented_io_context &object_freed_callback_service_;
+
   /// Shared core worker client pool.
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
@@ -1777,6 +1886,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   // Thread that runs a boost::asio service to process IO events.
   boost::thread &io_thread_;
+
+  /// Dedicated thread for user-registered object-freed callbacks.
+  boost::thread &object_freed_callback_thread_;
 
   // Keeps track of object ID reference counts.
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
@@ -1861,6 +1973,27 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Actor repr name if overrides by the user, empty string if not.
   std::string actor_repr_name_ ABSL_GUARDED_BY(mutex_);
+
+  /// Actor-wide streaming-generator backpressure waiter. Shared across all
+  /// generator tasks running on this actor. nullptr when the actor was
+  /// created without `_actor_generator_backpressure_num_objects` (or with
+  /// -1, meaning disabled). Constructed lazily when the actor creation
+  /// task spec is executed.
+  std::shared_ptr<ActorWideGeneratorBackpressureWaiter> actor_generator_waiter_;
+
+  struct GeneratorBackpressureState {
+    std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter;
+    std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata;
+    bool task_finished = false;
+    // Owner that submitted the streaming generator task. When this worker dies
+    // we tear down the entry so the actor-wide BP budget gets reclaimed even
+    // when the task has already finished (and so the owner can no longer drive
+    // consumption updates).
+    WorkerID owner_worker_id;
+  };
+
+  absl::flat_hash_map<ObjectID, GeneratorBackpressureState> generator_backpressure_states_
+      ABSL_GUARDED_BY(mutex_);
 
   /// Number of tasks that have been pushed to the actor but not executed.
   std::atomic<int64_t> task_queue_length_;

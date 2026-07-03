@@ -215,6 +215,56 @@ class TestAPPO(unittest.TestCase):
         # related parameters (inference-only).
         self.assertEqual(len(state), 5)
 
+    def test_env_runner_state_server_on_vs_off(self):
+        """PULL-based EnvRunnerStateServer: APPO learns with the flag ON and OFF.
+
+        Also checks the global server actor is created only when the flag is enabled.
+        """
+        for use_server in [False, True]:
+            print(f"Testing with use_server={use_server}")
+            config = (
+                appo.APPOConfig()
+                .environment("CartPole-v1")
+                .env_runners(
+                    num_env_runners=2,
+                    use_env_runner_state_server=use_server,
+                )
+            )
+            algo = config.build()
+            # The global server actor exists iff the flag is enabled.
+            self.assertEqual(algo._env_runner_state_server is not None, use_server)
+
+            results = algo.train()
+            check_train_results_new_api_stack(results)
+            algo.stop()
+
+    def test_env_runner_state_server_kill_and_recover(self):
+        """Killing the EnvRunnerStateServer must not stop training; it recovers."""
+        config = (
+            appo.APPOConfig()
+            .environment("CartPole-v1")
+            .env_runners(num_env_runners=2, use_env_runner_state_server=True)
+        )
+        algo = config.build()
+        self.assertIsNotNone(algo._env_runner_state_server)
+
+        for _ in range(3):
+            algo.train()
+        version_before = ray.get(algo._env_runner_state_server.get_version.remote())
+        self.assertGreater(version_before, 0)
+
+        # Kill the server. `max_restarts=-1` makes Ray restart it (with empty state).
+        ray.kill(algo._env_runner_state_server, no_restart=False)
+
+        # Training continues through the gap and the next push re-seeds the server.
+        for _ in range(3):
+            results = algo.train()
+        check_train_results_new_api_stack(results)
+        version_after = ray.get(algo._env_runner_state_server.get_version.remote())
+        self.assertGreaterEqual(version_after, version_before)
+
+        algo.stop()
+
 
 if __name__ == "__main__":
     import sys

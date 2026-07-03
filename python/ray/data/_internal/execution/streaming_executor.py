@@ -59,6 +59,9 @@ from ray.util.debug import log_once
 from ray.util.metrics import Gauge
 
 if typing.TYPE_CHECKING:
+    from ray.data._internal.issue_detection.issue_detector_manager import (
+        IssueDetectorManager,
+    )
     from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
     from ray.data.block import Schema
 
@@ -134,6 +137,9 @@ class StreamingExecutor(Executor, threading.Thread):
         self._op_schema: Dict[PhysicalOperator, Schema] = {}
 
         self._dataset_id = dataset_id
+        # Set by IssueDetectionExecutionCallback when issue detection is registered;
+        # otherwise remains None. Access via the issue_detector_manager property.
+        self._issue_detector_manager: Optional["IssueDetectorManager"] = None
         # Stores if an operator is completed,
         # used for marking when an op has just completed.
         self._has_op_completed: Optional[Dict[PhysicalOperator, bool]] = None
@@ -160,6 +166,11 @@ class StreamingExecutor(Executor, threading.Thread):
         Executor.__init__(self, self._data_context.execution_options)
         thread_name = f"StreamingExecutor-{self._dataset_id}"
         threading.Thread.__init__(self, daemon=True, name=thread_name)
+
+    @property
+    def issue_detector_manager(self) -> Optional["IssueDetectorManager"]:
+        """The issue detector manager, or None if issue detection isn't registered."""
+        return self._issue_detector_manager
 
     def execute(
         self,

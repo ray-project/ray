@@ -18,7 +18,7 @@
 #include <memory>
 #include <utility>
 
-#include "ray/common/memory_monitor_utils.h"
+#include "ray/common/monitors/memory_monitor_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/raylet/worker_killing_policy_by_time.h"
 #include "ray/raylet/worker_killing_policy_group_by_owner.h"
