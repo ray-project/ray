@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 import ray
 from ray.llm._internal.serve.engines.common.kv_transfer.base import (
     BaseConnectorBackend,
+    clamp_request_to_single_token,
 )
 
 if TYPE_CHECKING:
@@ -130,7 +131,14 @@ class SGLangConnectorBackend(BaseConnectorBackend):
     def prepare_prefill_request(
         self, *, request: "RequestType", peer: Optional[Dict[str, Any]]
     ) -> "RequestType":
-        return self._stamp(request, peer)
+        prefill_request = self._stamp(request, peer)
+        # Prefill only produces the KV cache; it must emit a single,
+        # non-streaming token. The decode orchestrator drains the prefill stream
+        # to exhaustion inside its choose_replica context and relies on this
+        # clamp to keep that bounded (same contract as MoRIIO / the default
+        # mixin). Decode is NOT clamped — it generates the real output.
+        clamp_request_to_single_token(prefill_request)
+        return prefill_request
 
     def prepare_decode_request(
         self,
