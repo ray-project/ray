@@ -245,7 +245,9 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             map_task_context,
             self.data_context,
         )
-        metrics_bundle = bundles[0]
+        metrics_bundle = RefBundle(
+            sum((b.blocks for b in bundles), ()), schema=None, owns_blocks=False
+        )
 
         data_task = DataOpTask(
             task_index=partition_id,
