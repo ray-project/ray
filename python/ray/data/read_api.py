@@ -537,17 +537,23 @@ def _read_datasource_v2(
             if ctx.target_max_block_size is not None
             else sys.maxsize
         )
-    # Keep each file's chunks in that file's own size-bounded partitions
-    # (locality + sub-file parallelism). The partition count is data-driven, so
-    # ``parallelism`` / ``num_buckets`` does not apply here.
-    partitioner = FileAffinityPartitioner(
-        in_memory_size_estimator=datasource.get_size_estimator(),
-        max_bucket_size=max_bucket_size,
-    )
-
     # NOTE: We're using shuffle config factory to fix the seed at the planning
     #       time, rather than at the composition time (for backward-compatibility)
     shuffle = getattr(datasource, "shuffle", None)
+
+    # Keep each file's chunks in that file's own size-bounded partitions
+    # (locality + sub-file parallelism). The partition count is data-driven, so
+    # ``parallelism`` / ``num_buckets`` does not apply here. When shuffling is
+    # active, FileManifest.shuffle permutes individual chunk rows, so a
+    # multi-row-group file's chunks can arrive non-contiguously -- disable the
+    # partitioner's contiguity-dependent pipelining flush in that case (a
+    # scattered file's chunks still land in one partition, just via the
+    # size-cap/finalize path instead of incrementally).
+    partitioner = FileAffinityPartitioner(
+        in_memory_size_estimator=datasource.get_size_estimator(),
+        max_bucket_size=max_bucket_size,
+        assume_contiguous_files=shuffle is None,
+    )
 
     def _shuffle_config_factory() -> Optional[FileShuffleConfig]:
         return (

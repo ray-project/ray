@@ -112,15 +112,21 @@ class FileAffinityPartitioner(FilePartitioner):
     the pre-packing behavior: every partition holds chunks of exactly one file
     ("never mixed with other files").
 
-    Groups by **path**. A single file's chunks always arrive contiguously in
-    the input stream: the indexer yields one file's entire chunk list as one
-    atomic unit through ``make_async_gen`` and the manifest batching preserves
-    that order, so different files interleave only at file granularity, never
-    chunk granularity (parallel footer reads may reorder *files* but never tear
-    a file's chunk list apart). Contiguity lets a change of path mark the
+    Groups by **path**. When the caller confirms the input is contiguous
+    (``assume_contiguous_files=True``, the default -- true for the standard
+    unshuffled listing path, where the indexer yields one file's entire chunk
+    list as one atomic unit through ``make_async_gen`` and the manifest
+    batching preserves that order, so different files interleave only at file
+    granularity, never chunk granularity), a change of path marks the
     previous file complete: ``add_input`` flushes that file's bucket
     immediately (either standalone or into the pending pack), pipelining
     ``ReadFiles`` decoding with the listing task's remaining footer reads.
+    This assumption does NOT hold when file shuffling is active --
+    ``FileManifest.shuffle`` permutes individual chunk rows, so a
+    multi-row-group file's chunks can arrive non-contiguously -- callers must
+    pass ``assume_contiguous_files=False`` in that case; the file's chunks
+    still all land in one partition (via the size-cap overflow branch or
+    ``finalize``), just without the incremental per-file pipelining.
     ``finalize`` flushes the trailing open file and any pending pack, and
     preserves insertion (arrival) order for shuffle determinism.
     """
@@ -130,6 +136,7 @@ class FileAffinityPartitioner(FilePartitioner):
         in_memory_size_estimator: InMemorySizeEstimator,
         *,
         max_bucket_size: Optional[int],
+        assume_contiguous_files: bool = True,
     ):
         self._in_memory_size_estimator = in_memory_size_estimator
         self._max_bucket_size = max_bucket_size
@@ -144,7 +151,12 @@ class FileAffinityPartitioner(FilePartitioner):
         self._current_open_path: Optional[str] = None
         # Kill switch: when False, skip the per-file incremental flush and fall
         # back to flushing only at ``finalize`` (pre-pipelining behavior).
-        self._pipeline_flush = env_bool("RAY_DATA_PARTITIONER_PIPELINE_FLUSH", True)
+        # Also forced off when the caller can't guarantee contiguous arrival
+        # (e.g. file shuffling is active) -- the path-change flush would
+        # otherwise fragment a scattered file into spurious extra partitions.
+        self._pipeline_flush = assume_contiguous_files and env_bool(
+            "RAY_DATA_PARTITIONER_PIPELINE_FLUSH", True
+        )
         # Kill switch: when False, every completed file emits its own
         # standalone partition (pre-packing behavior).
         self._pack_files = env_bool("RAY_DATA_PARTITIONER_PACK_FILES", True)

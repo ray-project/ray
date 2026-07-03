@@ -58,7 +58,7 @@ def _affinity_table(paths, sizes, metas):
     )
 
 
-def _affinity_outputs(table, max_bucket_size):
+def _affinity_outputs(table, max_bucket_size, assume_contiguous_files=True):
     return list(
         partition_files(
             iter([table]),
@@ -66,6 +66,7 @@ def _affinity_outputs(table, max_bucket_size):
             partitioner=FileAffinityPartitioner(
                 in_memory_size_estimator=_FileSizeStubEstimator(),
                 max_bucket_size=max_bucket_size,
+                assume_contiguous_files=assume_contiguous_files,
             ),
         )
     )
@@ -519,6 +520,40 @@ def test_file_affinity_packing_is_deterministic_across_runs():
     run1 = [o[PATH_COLUMN_NAME].to_pylist() for o in _affinity_outputs(table, 3)]
     run2 = [o[PATH_COLUMN_NAME].to_pylist() for o in _affinity_outputs(table, 3)]
     assert run1 == run2
+
+
+def test_file_affinity_shuffled_input_fragments_file_when_assumed_contiguous():
+    # Regression demonstration (cursor[bot] finding): FileManifest.shuffle
+    # permutes individual chunk ROWS, so a multi-chunk file's chunks can
+    # arrive scattered/non-contiguously. With the default
+    # assume_contiguous_files=True, the path-change flush treats each
+    # scattered reappearance of "a" as a separate completed file; packing
+    # tries to re-merge them, but an intervening file that doesn't fit in the
+    # same pack (here "b" and "c", weight 3 each) forces "a" -- despite a
+    # total weight of only 3, well under cap=4 -- to split across 3 SEPARATE
+    # partitions. This is an efficiency/locality regression (redundant file
+    # opens), not a data-correctness bug: every row groups still gets read
+    # exactly once, just via more, smaller read tasks than necessary.
+    table = _affinity_table(["a", "b", "a", "c", "a"], [1, 3, 1, 3, 1], [None] * 5)
+    partitions = [o[PATH_COLUMN_NAME].to_pylist() for o in _affinity_outputs(table, 4)]
+    assert partitions == [["a", "b"], ["a", "c"], ["a"]]
+    # "a" (weight 3 total) is fragmented across all 3 partitions above.
+    assert sum(p.count("a") for p in partitions) == 3
+    assert sum(1 for p in partitions if "a" in p) == 3
+
+
+def test_file_affinity_assume_contiguous_files_false_avoids_fragmentation():
+    # Same scattered input as above, but with assume_contiguous_files=False
+    # (what read_api.py passes when shuffle is active): the path-change flush
+    # is disabled, so "a"'s chunks all accumulate in the same per-path bucket
+    # regardless of when they arrive, and correctly land in ONE partition via
+    # packing/finalize -- "b" and "c" each get their own partition.
+    table = _affinity_table(["a", "b", "a", "c", "a"], [1, 3, 1, 3, 1], [None] * 5)
+    partitions = [
+        o[PATH_COLUMN_NAME].to_pylist()
+        for o in _affinity_outputs(table, 4, assume_contiguous_files=False)
+    ]
+    assert partitions == [["a", "a", "a"], ["b"], ["c"]]
 
 
 if __name__ == "__main__":

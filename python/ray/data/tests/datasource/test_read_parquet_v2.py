@@ -118,6 +118,37 @@ def test_read_parquet_v2_shuffle_files_randomizes_row_order(tmp_path, restore_ct
     assert shuffled_order != sorted(range(num_files), key=lambda i: f"f{i}.parquet")
 
 
+def test_read_parquet_v2_shuffle_with_multi_row_group_files_reads_all_rows(
+    tmp_path, restore_ctx
+):
+    # Regression test for a cursor[bot] finding: FileManifest.shuffle permutes
+    # individual chunk rows, so a multi-row-group file's chunks can arrive at
+    # FileAffinityPartitioner non-contiguously (unlike the single-chunk files
+    # test_read_parquet_v2_shuffle_files_randomizes_row_order uses, which
+    # can't exercise this). This only ever affected read efficiency (a
+    # scattered file could fragment across extra read partitions), not
+    # correctness, but assert end-to-end row-content correctness under
+    # shuffle + multi-row-group files either way.
+    num_files = 5
+    rows_per_file = 20
+    expected_ids = []
+    for i in range(num_files):
+        ids = list(range(i * rows_per_file, (i + 1) * rows_per_file))
+        expected_ids.extend(ids)
+        # row_group_size=5 -> 4 row groups per file, so each file contributes
+        # multiple manifest rows (chunks) that shuffle can scatter.
+        pq.write_table(
+            pa.table({"id": ids}),
+            str(tmp_path / f"f{i}.parquet"),
+            row_group_size=5,
+        )
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path), shuffle=FileShuffleConfig(seed=7))
+    read_ids = sorted(r["id"] for r in ds.iter_rows())
+    assert read_ids == sorted(expected_ids)
+
+
 def test_read_parquet_v2_hive_partitioned(tmp_path, restore_ctx):
     for p in ["a", "b"]:
         d = tmp_path / f"color={p}"
