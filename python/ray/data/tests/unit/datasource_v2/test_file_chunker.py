@@ -287,6 +287,18 @@ class TestEstimateChunkInMemorySize:
         )
         assert est == int(80 * (1 / 8))
 
+    def test_small_boolean_chunk_rounds_up_instead_of_truncating_to_zero(self):
+        # Regression: bit-packed booleans contribute 1/8 byte/row, so a chunk
+        # with fewer than 8 rows has a fractional total (e.g. 5 * 1/8 = 0.625)
+        # that int(...) truncation would floor to 0 -- silently defeating
+        # max_bucket_size bucketing for boolean-heavy files. Must round up.
+        schema = pa.schema([pa.field("b", pa.bool_(), nullable=False)])
+        est = estimate_chunk_in_memory_size(
+            schema, num_rows=5, uncompressed_by_column={}, var_width_factor=2.0
+        )
+        assert est == 1
+        assert est > 0
+
     def test_var_width_uses_uncompressed_times_factor_plus_offsets(self):
         schema = pa.schema([pa.field("s", pa.string(), nullable=False)])
         est = estimate_chunk_in_memory_size(

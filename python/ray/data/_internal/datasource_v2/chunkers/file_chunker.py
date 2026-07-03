@@ -111,6 +111,12 @@ def estimate_chunk_in_memory_size(
       string still under-counts; ``var_width_factor`` is the conservative knob).
 
     A validity bitmap (``ceil(num_rows / 8)``) is added per nullable column.
+
+    The total is rounded UP (``math.ceil``), not truncated: bit-packed booleans
+    contribute ``1/8`` byte per row, so a small chunk (e.g. < 8 rows) can have a
+    fractional total that truncation would floor to 0, silently defeating
+    ``max_bucket_size`` bucketing for boolean-heavy files. This is a memory
+    estimate meant to bound memory, so rounding up is the safe direction.
     """
     total = 0.0
     for field in arrow_schema:
@@ -122,7 +128,7 @@ def estimate_chunk_in_memory_size(
             total += _arrow_offset_buffer_bytes(field.type, num_rows)
         if field.nullable:
             total += (num_rows + 7) // 8
-    return int(total)
+    return math.ceil(total)
 
 
 @DeveloperAPI
