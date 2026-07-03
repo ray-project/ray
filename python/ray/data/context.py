@@ -97,11 +97,15 @@ DEFAULT_PARQUET_IN_MEMORY_VAR_WIDTH_FACTOR = env_float(
 )
 
 # Max in-memory bytes per V2 read partition (the partitioner's
-# ``max_bucket_size``). Defaults to 1 GiB so consecutive row groups bundle into
-# fewer, file-local read tasks; the reader streams the decode and caps the
-# per-scan ``pre_buffer``, so a large partition does not blow up per-task memory.
-# Setting it to ``None`` falls back to ``target_max_block_size``.
-DEFAULT_PARTITIONER_MAX_BUCKET_SIZE_BYTES: Optional[int] = 1024**3  # 1 GiB
+# ``max_bucket_size``). Defaults to 256 MiB (2x the 128 MiB
+# ``target_max_block_size``): consecutive row groups still bundle into
+# file-local read tasks, but the finer cap yields ~4x more read partitions than
+# 1 GiB would -- feeding the downstream hash-shuffle map stage (one map task per
+# read output block) and making large files flush mid-stream more often. The
+# reader streams the decode and caps the per-scan ``pre_buffer``, so a partition
+# does not blow up per-task memory. Setting it to ``None`` falls back to
+# ``target_max_block_size``.
+DEFAULT_PARTITIONER_MAX_BUCKET_SIZE_BYTES: Optional[int] = 256 * 1024 * 1024  # 256 MiB
 
 # Target in-memory bytes per decode batch in the V2 Parquet reader. Kept
 # separate from ``target_max_block_size`` (the OUTPUT-block target) on purpose:
@@ -882,7 +886,7 @@ class DataContext:
     parquet_in_memory_var_width_factor: float = (
         DEFAULT_PARQUET_IN_MEMORY_VAR_WIDTH_FACTOR
     )
-    # Max in-memory bytes per read partition. Defaults to 1 GiB; None ->
+    # Max in-memory bytes per read partition. Defaults to 256 MiB; None ->
     # target_max_block_size.
     partitioner_max_bucket_size_bytes: Optional[
         int
