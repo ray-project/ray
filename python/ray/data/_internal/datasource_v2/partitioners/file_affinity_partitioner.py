@@ -1,11 +1,13 @@
 """File-affinity partitioner for DataSourceV2.
 
 Groups each file's chunks into size-bounded partitions, preserving **file
-locality**: every emitted partition holds chunks of exactly one file, and a
-file is split into multiple partitions of consecutive ("sister") row-group
-chunks when its estimated in-memory size exceeds ``max_bucket_size``. This
-gives read-task locality (one file per task -> one open + one footer read +
-sequential I/O) plus sub-file parallelism for large files.
+locality**: a file is split into multiple partitions of consecutive
+("sister") row-group chunks when its estimated in-memory size exceeds
+``max_bucket_size``, giving read-task locality (one open + one footer read +
+sequential I/O per file) plus sub-file parallelism for large files. By
+default, multiple small files are additionally packed into a shared
+partition so many tiny files don't each become their own read task -- see
+the class docstring for details and the kill switch.
 """
 import collections
 from typing import Dict, Optional, Tuple
@@ -84,15 +86,31 @@ def _bucket_to_manifest(bucket: "_WeightedBucket[_ChunkItem]") -> FileManifest:
     )
 
 
+def _flush_pending_pack(
+    pending_pack: "_WeightedBucket[FileManifest]",
+    output_queue: "collections.deque[FileManifest]",
+) -> None:
+    """Flush a pack of completed small-file manifests as one partition."""
+    if pending_pack.items:
+        output_queue.append(FileManifest.concat(pending_pack.items))
+        pending_pack.clear()
+
+
 class FileAffinityPartitioner(FilePartitioner):
     """Partitions chunks per file, bounded by ``max_bucket_size`` in-memory bytes.
 
-    All chunks of a file go to partitions of that file only (never mixed with
-    other files); a file whose estimated in-memory size exceeds
-    ``max_bucket_size`` is split into multiple partitions of consecutive
-    row-group chunks. ``num_buckets`` is intentionally absent -- the number of
-    partitions is data-driven: ``sum over files of
-    ceil(file_in_memory_size / max_bucket_size)``.
+    A file whose estimated in-memory size exceeds ``max_bucket_size`` is split
+    into multiple partitions of consecutive row-group chunks -- a file's own
+    chunks are never split across two *different* partitions unless the file
+    alone exceeds the cap. ``num_buckets`` is intentionally absent -- the
+    number of partitions is data-driven.
+
+    By default (``RAY_DATA_PARTITIONER_PACK_FILES=1``), multiple small files
+    (each individually under ``max_bucket_size``) are packed into a shared
+    partition via next-fit bin-packing, so many tiny files don't each become
+    their own read task. Disable via ``RAY_DATA_PARTITIONER_PACK_FILES=0`` for
+    the pre-packing behavior: every partition holds chunks of exactly one file
+    ("never mixed with other files").
 
     Groups by **path**. A single file's chunks always arrive contiguously in
     the input stream: the indexer yields one file's entire chunk list as one
@@ -101,8 +119,9 @@ class FileAffinityPartitioner(FilePartitioner):
     chunk granularity (parallel footer reads may reorder *files* but never tear
     a file's chunk list apart). Contiguity lets a change of path mark the
     previous file complete: ``add_input`` flushes that file's bucket
-    immediately, pipelining ``ReadFiles`` decoding with the listing task's
-    remaining footer reads. ``finalize`` flushes the trailing open file and
+    immediately (either standalone or into the pending pack), pipelining
+    ``ReadFiles`` decoding with the listing task's remaining footer reads.
+    ``finalize`` flushes the trailing open file and any pending pack, and
     preserves insertion (arrival) order for shuffle determinism.
     """
 
@@ -126,6 +145,32 @@ class FileAffinityPartitioner(FilePartitioner):
         # Kill switch: when False, skip the per-file incremental flush and fall
         # back to flushing only at ``finalize`` (pre-pipelining behavior).
         self._pipeline_flush = env_bool("RAY_DATA_PARTITIONER_PIPELINE_FLUSH", True)
+        # Kill switch: when False, every completed file emits its own
+        # standalone partition (pre-packing behavior).
+        self._pack_files = env_bool("RAY_DATA_PARTITIONER_PACK_FILES", True)
+        # Completed small files (own weight < max_bucket_size) accumulate here
+        # instead of emitting standalone, until the pack would overflow.
+        self._pending_pack: "_WeightedBucket[FileManifest]" = _WeightedBucket()
+
+    def _complete_file(self, bucket: "_WeightedBucket[_ChunkItem]") -> None:
+        """Emit a fully-arrived file's bucket: standalone, or packed with others.
+
+        A file that overflowed its own bucket (size-cap branch in ``add_input``)
+        never reaches this method -- it self-emits directly. This method only
+        sees files whose entire content fit under ``max_bucket_size`` on their
+        own, so they're candidates for packing with other small files.
+        """
+        manifest = _bucket_to_manifest(bucket)
+        if (
+            not self._pack_files
+            or self._max_bucket_size is None
+            or bucket.weight >= self._max_bucket_size
+        ):
+            self._output_queue.append(manifest)
+            return
+        if self._pending_pack.weight + bucket.weight > self._max_bucket_size:
+            _flush_pending_pack(self._pending_pack, self._output_queue)
+        self._pending_pack.add(manifest, bucket.weight)
 
     def add_input(self, input_manifest: FileManifest):
         in_memory_sizes = self._in_memory_size_estimator.estimate_in_memory_sizes(
@@ -148,7 +193,7 @@ class FileAffinityPartitioner(FilePartitioner):
                 if prev is not None:
                     prev_bucket = self._open_buckets.pop(prev, None)
                     if prev_bucket is not None and prev_bucket.items:
-                        self._output_queue.append(_bucket_to_manifest(prev_bucket))
+                        self._complete_file(prev_bucket)
                 self._current_open_path = path
 
             bucket = self._open_buckets.get(path)
@@ -186,6 +231,7 @@ class FileAffinityPartitioner(FilePartitioner):
         # order in Python 3.7+.
         for bucket in self._open_buckets.values():
             if bucket.items:
-                self._output_queue.append(_bucket_to_manifest(bucket))
+                self._complete_file(bucket)
         self._open_buckets.clear()
         self._current_open_path = None
+        _flush_pending_pack(self._pending_pack, self._output_queue)

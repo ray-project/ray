@@ -349,6 +349,37 @@ def test_parquet_file_reader_reads_chunked_manifest(tmp_path):
     assert sorted(chunked_rows) == sorted(whole_rows) == list(range(expected_rows))
 
 
+def test_parquet_file_reader_reads_packed_multi_file_manifest(tmp_path):
+    """End-to-end: a manifest packing rows from MULTIPLE distinct files (the
+    shape FileAffinityPartitioner's packing produces) reads correctly -- all
+    rows from all files, none dropped or duplicated. Exercises the real
+    ParquetFileReader/fragments_to_read_for_manifest path, not just the
+    partitioner in isolation (which is unit-tested separately in
+    test_file_partitioners.py)."""
+    paths, sizes, metas, expected_ids = [], [], [], []
+    next_id = 0
+    for i, num_rows in enumerate([5, 7, 3]):
+        p = str(tmp_path / f"f{i}.parquet")
+        ids = list(range(next_id, next_id + num_rows))
+        pq.write_table(pa.table({"id": ids}), p)
+        paths.append(p)
+        sizes.append(os.path.getsize(p))
+        metas.append(None)
+        expected_ids.extend(ids)
+        next_id += num_rows
+
+    # Simulate a packed partition: one manifest whose rows span 3 distinct
+    # files (FileAffinityPartitioner.finalize -> _flush_pending_pack would
+    # produce exactly this shape via FileManifest.concat of per-file
+    # manifests).
+    packed_manifest = FileManifest.construct_manifest(paths, sizes, metas)
+
+    reader = ParquetFileReader()
+    tables = _read_via_reader(reader, packed_manifest)
+    read_ids = sorted(pa.concat_tables(tables).column("id").to_pylist())
+    assert read_ids == sorted(expected_ids)
+
+
 def test_parquet_file_reader_chunked_row_hashes_are_unique(tmp_path):
     """Row hashes must remain unique across chunked sub-fragments of the
     same file.
