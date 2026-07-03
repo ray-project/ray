@@ -27,6 +27,9 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
     ShuffleReduceOp,
 )
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator_v3 import (  # noqa: E501
+    ShuffleReduceOpV3,
+)
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
@@ -74,9 +77,13 @@ class FuseOperators(Rule):
         # we fuse together MapOperator -> AllToAllOperator pairs.
         fused_dag = self._fuse_all_to_all_operators_in_dag(fused_dag)
 
-        # Fuse a downstream task-pool map into the V2 hash-shuffle reduce phase.
-        # Runs after map fusion so a downstream map chain is already collapsed
-        # into one TaskPoolMapOperator.
+        # Fuse a downstream task-pool map into the hash-shuffle reduce
+        # (V2 ``ShuffleReduceOp`` or V3 ``ShuffleReduceOpV3``). Runs after
+        # map fusion so a downstream map chain is already collapsed into
+        # one TaskPoolMapOperator. Both reduce classes share the same
+        # fusion policy via ``_can_fuse_map_into_shuffle_reduce``;
+        # construction of the fused replacement type-branches in
+        # ``_get_fused_map_into_shuffle_reduce_operator``.
         fused_dag = self._fuse_map_into_shuffle_reduce_in_dag(fused_dag)
 
         # Update output dependencies after fusion.
@@ -102,8 +109,14 @@ class FuseOperators(Rule):
         self, dag: PhysicalOperator, has_downstream_limit: bool = False
     ) -> PhysicalOperator:
         """Starting at the given operator, traverses up the DAG and fuses a
-        task-pool map sitting directly downstream of a V2 hash-shuffle reduce
-        into the reduce (a ``ShuffleReduceOp -> TaskPoolMapOperator`` pair).
+        task-pool map sitting directly downstream of a hash-shuffle reduce
+        (V2 ``ShuffleReduceOp`` or V3 ``ShuffleReduceOpV3``) into the
+        reduce — i.e. a ``ShuffleReduce[V3]? -> TaskPoolMapOperator`` pair.
+        Both reduce classes share the same fusion policy (concurrency-cap,
+        downstream-limit, non-file-datasink, already-fused, remote-args
+        checks) via ``_can_fuse_map_into_shuffle_reduce``; construction
+        of the fused replacement type-branches in
+        ``_get_fused_map_into_shuffle_reduce_operator``.
 
         Returns the current (root) operator after completing upstream fusions.
         """
@@ -122,8 +135,9 @@ class FuseOperators(Rule):
     def _can_fuse_map_into_shuffle_reduce(
         self, dag: PhysicalOperator, has_downstream_limit: bool
     ) -> bool:
-        """Whether ``dag`` is a task-pool map that can be fused into the V2
-        hash-shuffle reduce immediately upstream of it.
+        """Whether ``dag`` is a task-pool map that can be fused into the
+        hash-shuffle reduce (V2 ``ShuffleReduceOp`` or V3
+        ``ShuffleReduceOpV3``) immediately upstream of it.
         """
         # `dag` must be a fusable task-pool map.
         if not (isinstance(dag, TaskPoolMapOperator) and dag.supports_fusion()):
@@ -154,12 +168,23 @@ class FuseOperators(Rule):
         ):
             return False
 
-        # The sole upstream must be a reduce that hasn't already fused with a map.
+        # The sole upstream must be a hash-shuffle reduce (V2 or V3) that
+        # hasn't already fused with a map.
         upstream_ops = dag.input_dependencies
-        if len(upstream_ops) != 1 or not isinstance(upstream_ops[0], ShuffleReduceOp):
+        if len(upstream_ops) != 1 or not isinstance(
+            upstream_ops[0], (ShuffleReduceOp, ShuffleReduceOpV3)
+        ):
             return False
         reduce_op = upstream_ops[0]
-        if reduce_op._fused_output_map_transformer is not None:
+        # Already-fused check: V2 stores the absorbed transformer in
+        # ``_fused_output_map_transformer``; V3 stores it in
+        # ``_downstream_map_transformer``. Both signal "this reduce has
+        # already absorbed one downstream map; refuse a second".
+        if isinstance(reduce_op, ShuffleReduceOpV3):
+            already_fused = reduce_op._downstream_map_transformer is not None
+        else:
+            already_fused = reduce_op._fused_output_map_transformer is not None
+        if already_fused:
             return False
 
         return are_op_remote_args_compatible(self._op_map[reduce_op], self._op_map[dag])
@@ -376,27 +401,54 @@ class FuseOperators(Rule):
         return True
 
     def _get_fused_map_into_shuffle_reduce_operator(
-        self, down_op: TaskPoolMapOperator, up_op: ShuffleReduceOp
-    ) -> ShuffleReduceOp:
+        self,
+        down_op: TaskPoolMapOperator,
+        up_op: Union[ShuffleReduceOp, ShuffleReduceOpV3],
+    ) -> Union[ShuffleReduceOp, ShuffleReduceOpV3]:
+        """Build the fused replacement for a
+        ``ShuffleReduce[V3]? -> TaskPoolMapOperator`` edge. Constructs a new
+        reduce op of the same class as ``up_op`` (V2 or V3) with the
+        downstream map's transformer / kwargs plumbed into the reduce task
+        body. The two reduce classes carry different ctor arguments and use
+        different field names for the absorbed transformer / kwargs
+        (``fused_output_map_*`` for V2, ``downstream_map_*`` for V3), so
+        each branch below constructs its own class explicitly.
+        """
         name = up_op.name + "->" + down_op.name
 
         up_logical_op = self._op_map.pop(up_op)
         self._op_map.pop(down_op)
 
-        fused_op = ShuffleReduceOp(
-            up_op.input_dependencies[0],
-            up_op.data_context,
-            num_partitions=up_op._num_partitions,
-            reduce_fn=up_op._reduce_fn,
-            disallow_block_splitting=up_op._disallow_block_splitting,
-            reduce_cpus=up_op._shuffle_reduce_task_num_cpus,
-            name=name,
-            fused_output_map_transformer=down_op.get_map_transformer(),
-            fused_output_map_task_kwargs=down_op.get_map_task_kwargs(),
-            fused_output_map_target_max_block_size_override=(
-                down_op.target_max_block_size_override
-            ),
-        )
+        if isinstance(up_op, ShuffleReduceOpV3):
+            fused_op = ShuffleReduceOpV3(
+                input_op=up_op.input_dependencies[0],
+                data_context=up_op.data_context,
+                num_partitions=up_op._num_partitions,
+                reduce_fn=up_op._reduce_fn,
+                streaming_reduce=up_op._streaming_reduce,
+                coalesce_output=up_op._coalesce_output,
+                max_bytes_per_fetch=up_op._max_bytes_per_fetch,
+                reduce_prefetch_dir=up_op._reduce_prefetch_dir,
+                reduce_cpus=up_op._reduce_num_cpus,
+                name=name,
+                downstream_map_transformer=down_op.get_map_transformer(),
+                downstream_map_task_kwargs=down_op.get_map_task_kwargs(),
+            )
+        else:  # V2 ShuffleReduceOp
+            fused_op = ShuffleReduceOp(
+                up_op.input_dependencies[0],
+                up_op.data_context,
+                num_partitions=up_op._num_partitions,
+                reduce_fn=up_op._reduce_fn,
+                disallow_block_splitting=up_op._disallow_block_splitting,
+                reduce_cpus=up_op._shuffle_reduce_task_num_cpus,
+                name=name,
+                fused_output_map_transformer=down_op.get_map_transformer(),
+                fused_output_map_task_kwargs=down_op.get_map_task_kwargs(),
+                fused_output_map_target_max_block_size_override=(
+                    down_op.target_max_block_size_override
+                ),
+            )
         fused_op.set_logical_operators(
             *up_op._logical_operators, *down_op._logical_operators
         )
