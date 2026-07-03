@@ -56,6 +56,45 @@ def test_dedupe_schema_handle_empty(
         assert old_schema == out_bundle.schema, (old_schema, incoming_schema)
 
 
+def test_dedupe_schema_shares_equal_schema_object():
+    """Equal-but-distinct schemas must collapse onto a single shared object.
+
+    Each block's schema is deserialized fresh from its producing task, so bundles
+    that share a schema hold equal-but-distinct copies. When a fast producer and a
+    slow consumer create a deep driver-side backlog, retaining one copy per bundle
+    can accumulate GBs of schema on the driver heap. The dedup must repoint bundles
+    at the single canonical `old_schema` object.
+    """
+    old_schema = pa.schema([pa.field("id", pa.int64())])
+    # Equal to old_schema but a distinct object, mirroring per-task deserialization.
+    incoming_schema = pa.schema([pa.field("id", pa.int64())])
+    assert old_schema == incoming_schema
+    assert old_schema is not incoming_schema
+
+    incoming_bundle = RefBundle([], owns_blocks=False, schema=incoming_schema)
+    out_bundle, diverged = dedupe_schemas_with_validation(
+        old_schema, incoming_bundle, enforce_schemas=False
+    )
+
+    assert not diverged
+    # The returned bundle must reference the canonical object, not its own copy.
+    assert out_bundle.schema is old_schema
+
+    # End-to-end: N equal bundles pushed through the dedup loop (as OpState does)
+    # must retain exactly one distinct schema object.
+    tracked = None
+    queued = []
+    for _ in range(50):
+        b, _ = dedupe_schemas_with_validation(
+            tracked,
+            RefBundle([], owns_blocks=False, schema=pa.schema([pa.field("id", pa.int64())])),
+            enforce_schemas=False,
+        )
+        tracked = b.schema
+        queued.append(b)
+    assert len({id(b.schema) for b in queued}) == 1
+
+
 @pytest.mark.parametrize("enforce_schemas", [False, True])
 @pytest.mark.parametrize(
     "incoming_schema", [pa.schema([pa.field("uuid", pa.string())])]

@@ -1012,6 +1012,14 @@ def dedupe_schemas_with_validation(
 
     # This check is fast assuming pyarrow schemas
     if old_schema == bundle.schema:
+        # The schemas are equal but are (almost always) distinct objects, since
+        # each block's schema is deserialized fresh from its producing task. Point
+        # this bundle at the single canonical `old_schema` so that N bundles queued
+        # on the driver don't each retain their own equal-but-distinct copy of a
+        # (potentially very wide) schema. Without this, a fast producer + slow
+        # consumer backlog can accumulate tens of thousands of schema copies on the
+        # driver heap. `RefBundle.schema` is intentionally reassignable.
+        bundle.schema = old_schema
         return bundle, diverged
 
     diverged = True
