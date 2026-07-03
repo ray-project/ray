@@ -6,7 +6,8 @@ This guide walks through enabling the `SidecarSubmitterRestart` feature gate and
 ## Prerequisites
 
 * This feature requires Kubernetes v1.35+.
-  * KubeRay v1.7.0 or higher: Ray v2.54.0 or higher.
+* KubeRay v1.7.0 or higher.
+* Ray v2.54.0 or higher.
 
 ## Verifying SidecarSubmitterRestart on kind
 
@@ -19,7 +20,7 @@ kind create cluster --name rayjob-test --image kindest/node:v1.35.0
 ### Step 2: Install the KubeRay operator with `SidecarSubmitterRestart` enabled
 
 ```sh
-helm upgrade --install kuberay-operator kuberay/kuberay-operator --version v1.7.0 \
+helm upgrade --install kuberay-operator kuberay/kuberay-operator --version 1.7.0 \
   --set "featureGates[0].name=SidecarSubmitterRestart" \
   --set "featureGates[0].enabled=true"
 ```
