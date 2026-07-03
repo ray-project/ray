@@ -931,7 +931,6 @@ def v3_map_task(
     shuffle_id: str,
     token: str,
     transformer: MapBlockTransformer = None,
-    upstream_map_transformer: Optional[Any] = None,
     map_op_name: str = "ShuffleMapV3",
     pool_budget_bytes: int = 16 * 1024 * 1024,
     compression: ShuffleCompression = None,
@@ -1076,23 +1075,7 @@ def v3_map_task(
             def pool_size() -> int:
                 return sum(staging_bytes.values())
 
-            # When OperatorFusionRule absorbs an upstream MapTransformer
-            # into this op, apply it inline before partitioning. Ray
-            # serializes the transformer via cloudpickle (handles nested
-            # closures that stdlib pickle would reject). The generator
-            # chain stays lazy: one input block flows through the full
-            # read/map chain into _partition_units, then the next.
-            if upstream_map_transformer is not None:
-                from ray.data._internal.execution.interfaces import TaskContext
-
-                block_iter = upstream_map_transformer.apply_transform(
-                    iter(blocks),
-                    TaskContext(task_idx=map_id, op_name=map_op_name),
-                )
-            else:
-                block_iter = blocks
-
-            for blk in block_iter:
+            for blk in blocks:
                 if transformer is not None:
                     blk = transformer(blk)
                 if output_schema is None:

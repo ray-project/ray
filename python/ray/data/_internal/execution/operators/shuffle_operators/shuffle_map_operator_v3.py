@@ -70,9 +70,6 @@ from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if typing.TYPE_CHECKING:
-    from ray.data._internal.execution.operators.map_transformer import (
-        MapTransformer,
-    )
     from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
@@ -154,7 +151,6 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         map_cpus: float = _DEFAULT_MAP_NUM_CPUS,
         base_dir: Optional[str] = None,
         name: str = "ShuffleMapV3",
-        upstream_map_transformer: Optional["MapTransformer"] = None,
     ):
         super().__init__(
             name=name,
@@ -172,17 +168,6 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         # memory pressure).
         self._pool_budget_override: Optional[int] = pool_budget_bytes
         self._fsync_on_close: bool = fsync_on_close
-
-        # When set, OperatorFusionRule has absorbed an upstream
-        # TaskPoolMapOperator (typically the V2 parquet read, optionally
-        # with map/filter chained in front) into this op. v3_map_task
-        # applies it to incoming blocks via apply_transform before
-        # partitioning, so the read/map chain runs inline in the shuffle
-        # map ray task with no plasma round-trip for the intermediate
-        # blocks. None means standard non-fused dispatch.
-        self._upstream_map_transformer: Optional[
-            "MapTransformer"
-        ] = upstream_map_transformer
 
         # -- Map task config --
         self._map_num_cpus: float = map_cpus
@@ -259,42 +244,6 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         # -- Sub-progress bar --
         self._map_bar: Optional["BaseProgressBar"] = None
 
-    def supports_fusion(self) -> bool:
-        return True
-
-    def absorbs_upstream_map_transformer(self) -> bool:
-        return True
-
-    def fuse_with_upstream_map_transformer(
-        self, upstream_map_transformer
-    ) -> "ShuffleMapOpV3":
-        """Return a new ShuffleMapOpV3 that runs upstream_map_transformer
-        inline before partitioning, taking the absorbed upstream's input
-        as its own input. Composes with any previously-absorbed upstream
-        transformer (so chained Read -> Map -> ... -> ShuffleMapV3
-        collapses in fusion-rule waves into one op carrying the full
-        transform chain).
-        """
-        up_op = self.input_dependencies[0]
-        existing = self._upstream_map_transformer
-        if existing is not None:
-            combined = upstream_map_transformer.fuse(existing)
-        else:
-            combined = upstream_map_transformer
-        return ShuffleMapOpV3(
-            input_op=up_op.input_dependencies[0],
-            data_context=self.data_context,
-            num_partitions=self._num_partitions,
-            partition_fn=self._partition_fn,
-            compression=self._compression,
-            pool_budget_bytes=self._pool_budget_override,
-            fsync_on_close=self._fsync_on_close,
-            map_cpus=self._map_num_cpus,
-            base_dir=self._base_dir,
-            name=f"{up_op.name}->{self.name.split('->')[-1]}",
-            upstream_map_transformer=combined,
-        )
-
     # Queue plumbing
     @property
     def _input_queues(self) -> List[BaseBundleQueue]:
@@ -354,20 +303,6 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         # ≈ 2× input (the v2 SHUFFLE_PEAK_MEMORY_MULTIPLIER). Sized from the
         # input estimate, NOT the pool budget (the default pool is unbounded;
         # adding it would request 2^62 bytes and never schedule).
-        #
-        # KNOWN HAZARD: with upstream fusion (this op absorbs a
-        # ReadFilesParquetV2 etc.), the input bundle is the ListFiles output
-        # -- a manifest of file paths, a few KB -- not the GBs the fused
-        # read will actually pull inside the task. ``estimated_bytes`` then
-        # ≈ 0 and no memory ask is emitted, so the ResourceManager packs
-        # concurrent map tasks by CPU alone and can OOM the node (observed:
-        # 8 fused maps × ~2.4 GB actual working set on a 30 GB node). v2
-        # does NOT have this bug because its ShuffleMapOp does not absorb
-        # upstream map transformers -- the read stays a separate op whose
-        # output bundle carries the real ~1 GB estimate. TODO: derive the
-        # working-set estimate from the manifest's file-size column (or
-        # apply a target_max_block_size-derived floor) when
-        # ``_upstream_map_transformer is not None``.
         resources: Dict[str, Any] = {"num_cpus": self._map_num_cpus}
         if estimated_bytes > 0:
             resources["memory"] = estimated_bytes * 2
@@ -390,7 +325,6 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
             map_id=map_id,
             shuffle_id=self._shuffle_id,
             token=self._token,
-            upstream_map_transformer=self._upstream_map_transformer,
             map_op_name=self.name,
             pool_budget_bytes=pool_budget_bytes,
             compression=self._compression,

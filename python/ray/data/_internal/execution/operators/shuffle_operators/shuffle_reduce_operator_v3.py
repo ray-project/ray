@@ -145,19 +145,6 @@ class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
         # -- Sub-progress bar --
         self._reduce_bar: Optional["BaseProgressBar"] = None
 
-    def supports_fusion(self) -> bool:
-        return True
-
-    # NOTE: ``absorbs_downstream_map_transformer`` /
-    # ``fuse_with_downstream_map_transformer`` were removed when the generic
-    # emitter pass was retired in favor of upstream's dedicated pass
-    # ``_fuse_map_into_shuffle_reduce_in_dag`` (operator_fusion.py). That
-    # pass now type-branches on ``(ShuffleReduceOp | ShuffleReduceOpV3)``
-    # and constructs the fused replacement itself, so V3 no longer needs
-    # op-side capability methods. ``_downstream_map_transformer`` and
-    # ``_downstream_map_task_kwargs`` ctor params + fields stay because
-    # v3_reduce_task consumes them and the fusion pass populates them.
-
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         """Executor calls this with one partition wrapper at a time (bundle
         contains 1 block-ref = ``shared_handles_ref`` + partition_id
