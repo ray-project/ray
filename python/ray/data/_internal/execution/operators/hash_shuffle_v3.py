@@ -921,7 +921,7 @@ def open_shuffle_connection(
 ShuffleHandle = dict  # {path, index:{pid:[(off,len)]}, endpoint:(host,port), token}
 
 
-@ray.remote
+@ray.remote(max_calls=1)
 def v3_map_task(
     *blocks: pa.Table,
     partition_fn: PartitionFn,
@@ -1376,7 +1376,7 @@ def _chunk_members_by_bytes(
         yield cur
 
 
-@ray.remote(max_calls=8)
+@ray.remote(max_calls=1)
 def v3_reduce_task(
     handles: List[ShuffleHandle],
     partition_id: int,
