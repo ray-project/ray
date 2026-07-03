@@ -96,7 +96,7 @@ def test_detected_issues_in_payload(reset_collector, mock_record, monkeypatch):
     monkeypatch.setattr(
         collector,
         "physical_op_name_with_id",
-        lambda operator, usage_id_map=None: operator,
+        lambda operator, usage_id_map=None, op_name_fn=None: operator,
     )
     executor = MagicMock()
     executor.issue_detector_manager.get_detected_issues.return_value = [

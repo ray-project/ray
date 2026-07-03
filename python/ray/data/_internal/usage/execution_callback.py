@@ -40,8 +40,11 @@ class UsageCallback(ExecutionCallback):
         logical_plan: "LogicalPlan",
         get_cluster_spilled_bytes: MetricReader = collector.cluster_spilled_bytes,
         get_dead_node_count: MetricReader = collector.cluster_dead_node_count,
+        anonymize_op_name: collector.OpNameFn = collector.anonymize_op_name,
     ):
         self._logical_plan = logical_plan
+        # Anonymizes each operator's name for the workload payload.
+        self._anonymize_op_name = anonymize_op_name
         # Globally unique per-execution id, used for deduplicating executions for usage collection
         self._execution_id = uuid.uuid4().hex
         # id(logical_op) -> usage_id, built while assembling the payload and used
@@ -121,7 +124,9 @@ class UsageCallback(ExecutionCallback):
     def collect_workload(self) -> WorkloadInfo:
         """Anonymized plan tree, text rendering, and per-op config for this
         execution."""
-        return collector.collect_workload(self._logical_plan, self.collect_op_config)
+        return collector.collect_workload(
+            self._logical_plan, self.collect_op_config, self._anonymize_op_name
+        )
 
     def collect_performance(self) -> Optional[PipelinePerf]:
         """Post-execution performance. Returns ``None`` before execution
@@ -144,7 +149,9 @@ class UsageCallback(ExecutionCallback):
         Subclasses can override to return a richer ``UsageInfo`` structure.
         """
         if self._workload is None:
-            self._usage_id_map = collector.build_usage_id_map(self._logical_plan)
+            self._usage_id_map = collector.build_usage_id_map(
+                self._logical_plan, self._anonymize_op_name
+            )
             self._workload = self.collect_workload()
         return UsageInfo(
             id=self._execution_id,
@@ -167,7 +174,9 @@ class UsageCallback(ExecutionCallback):
         issues = (
             (
                 issue_type,
-                collector.physical_op_name_with_id(operator, self._usage_id_map),
+                collector.physical_op_name_with_id(
+                    operator, self._usage_id_map, self._anonymize_op_name
+                ),
             )
             for issue_type, operator in manager.get_detected_issues()
         )

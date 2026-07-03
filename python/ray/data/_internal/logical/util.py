@@ -12,13 +12,9 @@ _recorded_operators_lock = threading.Lock()
 
 
 def _is_builtin_cls(cls: type) -> bool:
-    """Return True if ``cls`` is defined under the ``ray.data`` package.
-
-    Used to gate which operator / datasource / datasink class names are safe
-    to surface in telemetry. Anything outside ``ray.data.*`` is treated as
-    user-defined and anonymized.
+    """Return True if ``cls`` is defined under the ``ray`` package.
     """
-    return (cls.__module__ or "").startswith("ray.data.")
+    return (cls.__module__ or "").startswith("ray.")
 
 
 def record_operators_usage(op: LogicalOperator):

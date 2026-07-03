@@ -117,6 +117,10 @@ class UsageInfo:
 # A callable that records config information for a logical operator.
 OpConfigFn = Callable[[LogicalOperator], Optional[OpConfig]]
 
+# A callable that returns the anonymized name for a logical operator.
+# Allows subclasses to add custom anonymization logic.
+OpNameFn = Callable[[LogicalOperator], str]
+
 # A callable that samples a cluster metric (spilled bytes, dead node
 # count, ...)
 MetricReader = Callable[[], Optional[int]]
@@ -213,7 +217,10 @@ def record_usage_info(info: UsageInfo) -> None:
         logger.debug("Failed to record usage info", exc_info=True)
 
 
-def build_usage_id_map(logical_plan: "LogicalPlan") -> Dict[int, str]:
+def build_usage_id_map(
+    logical_plan: "LogicalPlan",
+    op_name_fn: OpNameFn = None,
+) -> Dict[int, str]:
     """Build the ``id(logical_op) -> usage_id`` map for a plan.
 
     The IDs are computed based on the hash of the (post-order index, anonymized name) tuple. These are
@@ -224,9 +231,11 @@ def build_usage_id_map(logical_plan: "LogicalPlan") -> Dict[int, str]:
     """
     if usage_collection_disabled():
         return {}
+    if op_name_fn is None:
+        op_name_fn = anonymize_op_name
     try:
         ordered_logical_ops: List[Tuple[LogicalOperator, str]] = []
-        _build_plan(logical_plan.dag, ordered_logical_ops)
+        _build_plan(logical_plan.dag, ordered_logical_ops, op_name_fn)
         return {id(op): usage_id for op, usage_id in ordered_logical_ops}
     except Exception:
         logger.debug("Failed to build usage id map", exc_info=True)
@@ -236,22 +245,28 @@ def build_usage_id_map(logical_plan: "LogicalPlan") -> Dict[int, str]:
 def physical_op_name_with_id(
     operator: "PhysicalOperator",
     usage_id_map: Optional[Dict[int, str]] = None,
+    op_name_fn: OpNameFn = None,
 ) -> str:
     """Anonymized name for a physical op. Fused ops join their constituent logical
     ops with '->' to signal operator fusion. We need physical op name as
     issues from the issue detector reference physical ops."""
+    if op_name_fn is None:
+        op_name_fn = anonymize_op_name
     logical_ops = operator._logical_operators
     if not logical_ops:
         return "Unknown"
-    return "->".join(_logical_op_name_with_id(op, usage_id_map) for op in logical_ops)
+    return "->".join(
+        _logical_op_name_with_id(op, usage_id_map, op_name_fn) for op in logical_ops
+    )
 
 
 def _logical_op_name_with_id(
     logical_op: LogicalOperator,
     usage_id_map: Optional[Dict[int, str]] = None,
+    op_name_fn: OpNameFn = anonymize_op_name,
 ) -> str:
     """Logical op is formatted as ``<anonymized_name>-<usage_id>``. The usage ID map is populated before execution starts in the usage callback."""
-    name = anonymize_op_name(logical_op)
+    name = op_name_fn(logical_op)
     if usage_id_map:
         # Correlate with the IDs assigned to the logical ops in the workload plan.
         usage_id = usage_id_map.get(id(logical_op))
@@ -293,28 +308,34 @@ def _safe_version(pkg: str) -> Optional[str]:
 def collect_workload(
     logical_plan: "LogicalPlan",
     op_config_fn: OpConfigFn = None,
+    op_name_fn: OpNameFn = None,
 ) -> WorkloadInfo:
     """Collect the anonymized plan tree, indented text rendering, and per-op
     config list in a single DAG walk.
 
     ``op_config_fn`` builds the per-op config; it defaults to ``collect_op_config``
     and is overridable if subclasses need to extract custom config info.
+    ``op_name_fn`` anonymizes each operator's name; it defaults to
+    ``anonymize_op_name`` and is overridable the same way.
     """
     if op_config_fn is None:
         op_config_fn = collect_op_config
+    if op_name_fn is None:
+        op_name_fn = anonymize_op_name
     dag = logical_plan.dag
     ordered_logical_ops: List[Tuple[LogicalOperator, str]] = []
-    plan = _build_plan(dag, ordered_logical_ops)
+    plan = _build_plan(dag, ordered_logical_ops, op_name_fn)
     return WorkloadInfo(
         plan=plan,
-        plan_str=_format_plan_str(dag),
-        ops=_build_ops(ordered_logical_ops, op_config_fn),
+        plan_str=_format_plan_str(dag, op_name_fn),
+        ops=_build_ops(ordered_logical_ops, op_config_fn, op_name_fn),
     )
 
 
 def _build_plan(
     op: LogicalOperator,
     ordered_logical_ops: List[Tuple[LogicalOperator, str]],
+    op_name_fn: OpNameFn,
 ) -> PlanNode:
     """Build the plan tree and record logical ops in post-order.
 
@@ -326,7 +347,7 @@ def _build_plan(
     @cache
     def _build_cached(op: LogicalOperator) -> PlanNode:
         child_plans = [_build_cached(child) for child in op.input_dependencies]
-        name = anonymize_op_name(op)
+        name = op_name_fn(op)
         usage_id = make_usage_op_id(len(ordered_logical_ops), name)
         ordered_logical_ops.append((op, usage_id))
         return PlanNode(usage_id=usage_id, op=name, inputs=child_plans)
@@ -337,11 +358,12 @@ def _build_plan(
 def _build_ops(
     ordered_logical_ops: List[Tuple[LogicalOperator, str]],
     op_config_fn: OpConfigFn,
+    op_name_fn: OpNameFn,
 ) -> List[LogicalOp]:
     """Build the flat logical-op list from the canonical post-order traversal."""
     ops: List[LogicalOp] = []
     for op, usage_id in ordered_logical_ops:
-        name = anonymize_op_name(op)
+        name = op_name_fn(op)
         ops.append(
             LogicalOp(
                 usage_id=usage_id,
@@ -369,17 +391,21 @@ def make_usage_op_id(index: int, name: str) -> str:
     return hashlib.sha256(f"{index}:{name}".encode()).hexdigest()[:4]
 
 
-def _format_plan_str(op: LogicalOperator, depth: int = 0) -> str:
-    """Render the anonymized DAG as an indented tree, using ``anonymize_op_name`` to
+def _format_plan_str(
+    op: LogicalOperator,
+    op_name_fn: OpNameFn = anonymize_op_name,
+    depth: int = 0,
+) -> str:
+    """Render the anonymized DAG as an indented tree, using ``op_name_fn`` to
     avoid leaking UDF / datasource details.
     """
-    name = anonymize_op_name(op)
+    name = op_name_fn(op)
     if depth == 0:
         line = f"{name}\n"
     else:
         line = f"{' ' * ((depth - 1) * 3)}+- {name}\n"
     for child in op.input_dependencies:
-        line += _format_plan_str(child, depth + 1)
+        line += _format_plan_str(child, op_name_fn, depth + 1)
     return line
 
 
