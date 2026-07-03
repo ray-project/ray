@@ -158,3 +158,9 @@ class TestStageTimingsFields:
         assert stage_dict[IterationStage.COLLATE][0].end_s == 5.0
         assert stage_dict[IterationStage.FINALIZE][0].start_s == 5.0
         assert batch.metadata.num_rows == 50
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
