@@ -249,7 +249,6 @@ std::unique_ptr<EntityState> SubscriptionIndex::CreateEntityState(
         RayConfig::instance().max_grpc_message_size(),
         RayConfig::instance().publisher_entity_buffer_max_bytes());
 
-  case rpc::ChannelType::WORKER_OBJECT_EVICTION:
   case rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL:
   case rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL:
   case rpc::ChannelType::GCS_ACTOR_CHANNEL:

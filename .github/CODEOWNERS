@@ -8,8 +8,9 @@
 # ==== Documentation ====
 
 # Authors responsible for documentation infrastructure and layout.
-/doc/ @ray-project/ray-docs
-/doc/source/use-cases.rst @pcmoritz
+# ray-ci co-owns doc CI/build config; ray-docs-reviewers is a silent fallback
+# (notifications disabled) so docs leads can unblock docs-required reviews.
+/doc/ @ray-project/ray-docs @ray-project/ray-ci @ray-project/ray-docs-reviewers
 
 # ==== Ray core ====
 
@@ -25,10 +26,10 @@
 # C++ worker
 /cpp/ @SongGuyang @raulchen @kfstorm @ray-project/ray-core
 
-/doc/source/cluster/ @ray-project/ray-core
-/doc/source/ray-core/ @ray-project/ray-core
+/doc/source/cluster/ @ray-project/ray-core @ray-project/ray-docs
+/doc/source/ray-core/ @ray-project/ray-core @ray-project/ray-docs
 
-/doc/source/cluster/kubernetes/ @andrewsykim @ray-project/ray-core
+/doc/source/cluster/kubernetes/ @andrewsykim @ray-project/ray-core @ray-project/ray-docs
 
 # Public protobuf files.
 /src/ray/protobuf/public/ @edoakes @dayshah @MengjinYan
@@ -48,21 +49,21 @@
 
 # Ray data.
 /python/ray/data/ @ray-project/ray-data
-/doc/source/data/ @ray-project/ray-data
+/doc/source/data/ @ray-project/ray-data @ray-project/ray-docs
 /python/ray/dashboard/modules/data/ @ray-project/ray-data
 /python/ray/dashboard/modules/metrics/dashboards/data_dashboard_panels.py @ray-project/ray-data
 
 # RLlib.
 /rllib/ @ray-project/ray-rllib
-/doc/source/rllib/ @ray-project/ray-rllib
+/doc/source/rllib/ @ray-project/ray-rllib @ray-project/ray-docs
 
 # Ray Tune
 /python/ray/tune/ @ray-project/ray-tune
-/doc/source/tune/ @ray-project/ray-tune
+/doc/source/tune/ @ray-project/ray-tune @ray-project/ray-docs
 
 # Ray Train
 /python/ray/train/ @ray-project/ray-train
-/doc/source/train/ @ray-project/ray-train
+/doc/source/train/ @ray-project/ray-train @ray-project/ray-docs
 
 # Ray AIR
 /python/ray/air/ @ray-project/ray-train
@@ -72,7 +73,7 @@
 /java/serve/ @ray-project/ray-serve
 /src/ray/protobuf/serve.proto @ray-project/ray-serve
 /python/ray/dashboard/modules/serve/ @ray-project/ray-serve
-/doc/source/serve/ @ray-project/ray-serve
+/doc/source/serve/ @ray-project/ray-serve @ray-project/ray-docs
 
 # LLM
 /python/ray/llm/ @ray-project/ray-llm
@@ -80,9 +81,9 @@
 /python/ray/dashboard/modules/metrics/dashboards/serve_llm_dashboard_panels.py @ray-project/ray-llm
 /python/ray/dashboard/modules/metrics/dashboards/serve_llm_grafana_dashboard_base.json @ray-project/ray-llm
 /python/ray/serve/llm/ @ray-project/ray-llm
-/doc/source/serve/llm/ @ray-project/ray-llm
-/doc/source/data/working-with-llms.rst @ray-project/ray-llm
-/doc/source/data/doc_code/working-with-llms/ @ray-project/ray-llm
+/doc/source/serve/llm/ @ray-project/ray-llm @ray-project/ray-docs
+/doc/source/data/working-with-llms.rst @ray-project/ray-llm @ray-project/ray-docs
+/doc/source/data/doc_code/working-with-llms/ @ray-project/ray-llm @ray-project/ray-docs
 
 # LLM dependencies
 /python/requirements/llm/llm-requirements.txt @ray-project/ray-llm
@@ -105,12 +106,12 @@
 # ==== Build and CI ====
 
 # Bazel.
-#/BUILD.bazel @ray-project/ray-core @ray-project/ray-ci
-#/WORKSPACE @ray-project/ray-core @ray-project/ray-ci
-#/bazel/ @ray-project/ray-core @ray-project/ray-ci
+/BUILD.bazel @ray-project/ray-core @ray-project/ray-ci
+/WORKSPACE @ray-project/ray-core @ray-project/ray-ci
+/bazel/ @ray-project/ray-core @ray-project/ray-ci
 
-# CI scripts.
-#/ci/ @ray-project/ray-core @ray-project/ray-ci
+# CI scripts. More specific /ci/ rules below override this catch-all.
+/ci/ @ray-project/ray-core @ray-project/ray-ci
 
 # CI
 /ci/docker @ray-project/ray-ci
@@ -123,7 +124,21 @@
 # Buildkite pipeline management
 .buildkite/hooks @ray-project/ray-ci
 
+# Buildkite pipeline definitions and the change-detection rules that decide
+# what CI runs for every PR. Editing these changes what runs for everyone.
+/.buildkite/*.rayci.yml @ray-project/ray-ci
+/.buildkite/test.rules.txt @ray-project/ray-ci
+/.buildkite/always.rules.txt @ray-project/ray-ci
+
+# Compiled dependency lockfile. Gates the build and test environment.
+/python/requirements_compiled.txt @ray-project/ray-ci
+
+# Read the Docs build configuration. ray-docs owns the docs build; ray-ci
+# co-owns, and ray-docs-reviewers is a silent fallback for backup approval.
+/.readthedocs.yaml @ray-project/ray-docs @ray-project/ray-ci @ray-project/ray-docs-reviewers
+
 /release/ray_release @ray-project/ray-ci
+/release/release_tests.yaml @ray-project/ray-ci
 
 # Allow people to add BYOD post-installation shell scripts
 # on their own.
