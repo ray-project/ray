@@ -123,6 +123,13 @@ class SGLangServer:
                 "`pip install sglang[all]` to install required dependencies."
             ) from e
 
+        # Create + setup the KV-connector backend (if any) BEFORE snapshotting
+        # engine_kwargs below. For SGLang PD the connector's setup() mutates
+        # engine_kwargs in place (host, disaggregation_bootstrap_port) and stores
+        # the backend on llm_config so the PD orchestrator can reach it. Must run
+        # before sglang.Engine is constructed so those kwargs reach the engine.
+        llm_config.setup_engine_backend()
+
         # TODO(issue-61108): remove this once sglang#18752 is merged and included
         # in the minimum supported SGLang version for this example.
         original_signal_func = signal.signal

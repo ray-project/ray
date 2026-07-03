@@ -30,7 +30,12 @@ class VLLMAdapter(EngineAdapter):
         cfg = engine_kwargs.get("kv_transfer_config")
         if not cfg:
             return None
-        return cfg.get("kv_connector")
+        kv_connector = cfg.get("kv_connector")
+        if not kv_connector:
+            # Fail fast: a kv_transfer_config with no kv_connector is a
+            # misconfiguration, not a "no connector" case.
+            raise ValueError("Connector type is not specified.")
+        return kv_connector
 
     def engine_config_cls(self) -> Type:
         from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig

@@ -637,6 +637,24 @@ class _PDEngineSelectionMixin:
             return import_attr(engine_cls_path)
         return self._resolve_engine_class(self._llm_config)
 
+    @classmethod
+    def get_deployment_options(cls, llm_config: "LLMConfig"):
+        """Deployment options for the PD server, per engine.
+
+        The base ``LLMServer.get_deployment_options`` reads
+        ``engine_config.accelerator`` / ``placement_strategy`` — fields the
+        minimal ``SGLangEngineConfig`` does not carry. SGLang builds its bundles
+        from ``SGLangServer.get_deployment_options`` instead, so route SGLang
+        there; every other engine keeps the base LLMServer behavior unchanged.
+        """
+        if llm_config.llm_engine == "SGLang":
+            from ray.llm._internal.serve.engines.sglang.sglang_engine import (
+                SGLangServer,
+            )
+
+            return SGLangServer.get_deployment_options(llm_config)
+        return super().get_deployment_options(llm_config)
+
 
 # ---------------------------------------------------------------------------
 # PDPrefillServer

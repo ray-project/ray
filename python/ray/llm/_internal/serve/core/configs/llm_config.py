@@ -124,7 +124,6 @@ class LoraConfig(BaseModelExtended):
 
 
 class ModelLoadingConfig(BaseModelExtended):
-
     model_id: str = Field(
         description="The ID that should be used by end users to access this model.",
     )
@@ -151,7 +150,6 @@ EngineConfigType = Union[None, "VLLMEngineConfig", "SGLangEngineConfig"]  # noqa
 
 
 class LLMConfig(BaseModelExtended):
-
     runtime_env: Optional[Dict[str, Any]] = Field(
         default=None,
         description=(
@@ -615,8 +613,13 @@ class LLMConfig(BaseModelExtended):
         """
         self.engine_kwargs.update(kwargs)
         # engine_config may be created before engine starts, this makes sure
-        # the engine_config is updated with the latest engine_kwargs.
-        if self._engine_config:
+        # the engine_config is updated with the latest engine_kwargs. Not every
+        # engine config mirrors engine_kwargs (the minimal SGLangEngineConfig
+        # does not — SGLangServer reads llm_config.engine_kwargs directly), so
+        # only sync configs that carry it.
+        if self._engine_config is not None and hasattr(
+            self._engine_config, "engine_kwargs"
+        ):
             self._engine_config.engine_kwargs.update(kwargs)
 
     def setup_engine_backend(self):
