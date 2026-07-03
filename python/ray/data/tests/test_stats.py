@@ -2642,6 +2642,26 @@ class TestTimerPercentile:
         assert t.max() == 0.0
 
 
+class TestTimeSpan:
+    """Tests for TimeSpan dataclass."""
+
+    def test_default_values(self):
+        """Default TimeSpan has start_s=0 and end_s=0."""
+        t = TimeSpan()
+        assert t.start_s == 0.0
+        assert t.end_s == 0.0
+
+    def test_duration(self):
+        """Duration is end_s - start_s."""
+        t = TimeSpan(start_s=1.0, end_s=3.5)
+        assert t.duration == pytest.approx(2.5)
+
+    def test_zero_duration(self):
+        """Default TimeSpan has zero duration."""
+        t = TimeSpan()
+        assert t.duration == 0.0
+
+
 class TestTimerSpan:
     """Tests for Timer.timer() returning a TimeSpan and accumulating."""
 

@@ -3,6 +3,7 @@ import functools
 import logging
 import queue
 import threading
+import time
 from typing import (
     Any,
     Callable,
@@ -23,11 +24,11 @@ from ray.data._internal.block_batching.interfaces import (
     BatchMetadata,
     BatchStageTimings,
     BlockPrefetcher,
+    BlockStageTimings,
     CollatedBatch,
-    PendingBlock,
     ResolvedBlock,
 )
-from ray.data._internal.stats import DatasetStats, _maybe_time
+from ray.data._internal.stats import DatasetStats, TimeSpan, _maybe_time
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.types import ObjectRef
 
@@ -173,17 +174,20 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
 
 
 def resolve_block_refs(
-    block_ref_iter: Iterator[PendingBlock],
+    block_ref_iter: Iterator[ObjectRef[Block]],
     stats: Optional[DatasetStats] = None,
 ) -> Iterator[ResolvedBlock]:
-    """Resolve block references via ``ray.get()`` and attach data_transfer
-    timing. production_wait is already on the PendingBlock (set by
-    ``prefetch_batches_locally``); this function only measures data_transfer.
-    When *stats* is provided, ray.get() time is also recorded in
-    ``stats.iter_get_s``.
+    """Resolve block references via ``ray.get()`` and attach per-block
+    stage timings.
+
+    production_wait is captured manually around ``next(block_ref_iter)``
+    (without timer accumulation, to avoid double-counting with
+    ``prefetch_batches_locally``'s ``iter_get_ref_bundles_s`` timer);
+    data_transfer is captured via ``ray.get()``. When *stats* is provided,
+    ray.get() time is also recorded in ``stats.iter_get_s``.
 
     Args:
-        block_ref_iter: An iterator over PendingBlocks.
+        block_ref_iter: An iterator over block object references.
         stats: An optional stats object to record block hits, misses, and
             cumulative ray.get() time.
 
@@ -194,10 +198,22 @@ def resolve_block_refs(
     misses = 0
     unknowns = 0
 
-    for pending_block in block_ref_iter:
-        current_hit, current_miss, current_unknown = _calculate_ref_hits(
-            [pending_block.ref]
+    while True:
+        # production_wait: manually captured around next() (not accumulated
+        # into iter_get_ref_bundles_s — that Timer is driven by
+        # prefetch_batches_locally.get_next_ref_bundle).
+        production_wait_start = time.perf_counter() if stats else 0.0
+        try:
+            block_ref = next(block_ref_iter)
+        except StopIteration:
+            break
+        production_wait_span = (
+            TimeSpan(start_s=production_wait_start, end_s=time.perf_counter())
+            if stats
+            else None
         )
+
+        current_hit, current_miss, current_unknown = _calculate_ref_hits([block_ref])
         hits += current_hit
         misses += current_miss
         unknowns += current_unknown
@@ -205,10 +221,13 @@ def resolve_block_refs(
         # data_transfer: cross-node transfer via ray.get().
         # TODO(amogkam): batch multiple references in one ray.get() call.
         with _maybe_time(stats.iter_get_s if stats else None) as data_transfer_span:
-            block = ray.get(pending_block.ref)
+            block = ray.get(block_ref)
 
-        pending_block.stage_timings.data_transfer = data_transfer_span
-        yield ResolvedBlock(block=block, stage_timings=pending_block.stage_timings)
+        stage_timings = BlockStageTimings(
+            production_wait=production_wait_span,
+            data_transfer=data_transfer_span,
+        )
+        yield ResolvedBlock(block=block, stage_timings=stage_timings)
 
     if stats:
         stats.iter_blocks_local = hits
@@ -286,7 +305,7 @@ class _BatchingIterator(Iterator[Batch]):
                     self._stats.iter_next_batch_s if self._stats else None
                 ) as span:
                     next_batch = self._batcher.next_batch()
-                self._pending_timings.batching.append(span)
+                self._pending_timings.batching = span
 
                 res = Batch(
                     metadata=BatchMetadata(
@@ -335,7 +354,7 @@ def _format_batch(
         )
         if ensure_copy:
             formatted_data = _copy_batch(formatted_data)
-    batch.metadata.stage_timings.format.append(span)
+    batch.metadata.stage_timings.format = span
     return dataclasses.replace(batch, data=formatted_data)
 
 
@@ -385,7 +404,7 @@ def _collate_batch(
 ) -> CollatedBatch:
     with _maybe_time(stats.iter_collate_batch_s if stats else None) as span:
         collated_data = collate_fn(batch.data)
-    batch.metadata.stage_timings.collate.append(span)
+    batch.metadata.stage_timings.collate = span
     return CollatedBatch(metadata=batch.metadata, data=collated_data)
 
 
@@ -411,7 +430,7 @@ def _finalize_batch(
 ) -> CollatedBatch:
     with _maybe_time(stats.iter_finalize_batch_s if stats else None) as span:
         finalized_data = finalize_fn(batch.data)
-    batch.metadata.stage_timings.finalize.append(span)
+    batch.metadata.stage_timings.finalize = span
     return dataclasses.replace(batch, data=finalized_data)
 
 

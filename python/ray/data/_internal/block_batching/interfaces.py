@@ -16,19 +16,6 @@ class BlockStageTimings:
 
 
 @dataclass
-class PendingBlock:
-    """A block reference with partial stage timings.
-
-    ``production_wait`` is set on the first block of each ref bundle by
-    ``prefetch_batches_locally``; other blocks have it as None.
-    ``data_transfer`` is filled in later by ``resolve_block_refs``.
-    """
-
-    ref: ObjectRef[Block]
-    stage_timings: BlockStageTimings
-
-
-@dataclass
 class ResolvedBlock:
     """A resolved block paired with its per-block stage timings.
 
@@ -44,34 +31,33 @@ class ResolvedBlock:
 class BatchStageTimings:
     """Per-batch timing windows for each iteration stage.
 
-    Each field is a list of ``(start_s, end_s)`` windows the stage was
-    active. production_wait and data_transfer accumulate one span per
-    block; other stages have at most one span per batch. The lists are
-    compared against the training thread's blocked window to attribute
-    stall. Spans within a list don't overlap, so summing overlaps
-    doesn't double-count.
+    Fetch stages (production_wait, data_transfer) accumulate one span per
+    block, so they are ``List[TimeSpan]``. Other stages run at most once
+    per batch, so they are ``Optional[TimeSpan]``. ``stages()`` yields
+    ``List[TimeSpan]`` for all stages (single spans wrapped in a 1-element
+    list) so ``_attribute_blocked_time`` can use uniform overlap logic.
     """
 
     production_wait: List[TimeSpan] = field(default_factory=list)
     data_transfer: List[TimeSpan] = field(default_factory=list)
-    batching: List[TimeSpan] = field(default_factory=list)
-    format: List[TimeSpan] = field(default_factory=list)
-    collate: List[TimeSpan] = field(default_factory=list)
-    finalize: List[TimeSpan] = field(default_factory=list)
+    batching: Optional[TimeSpan] = None
+    format: Optional[TimeSpan] = None
+    collate: Optional[TimeSpan] = None
+    finalize: Optional[TimeSpan] = None
 
     def stages(self) -> Iterable[Tuple[IterationStage, List[TimeSpan]]]:
-        """Yield (stage, spans) pairs."""
+        """Yield (stage, spans) pairs, wrapping single spans in a list."""
         return (
             (IterationStage.PRODUCTION_WAIT, self.production_wait),
             (IterationStage.DATA_TRANSFER, self.data_transfer),
-            (IterationStage.BATCHING, self.batching),
-            (IterationStage.FORMAT, self.format),
-            (IterationStage.COLLATE, self.collate),
-            (IterationStage.FINALIZE, self.finalize),
+            (IterationStage.BATCHING, [self.batching] if self.batching else []),
+            (IterationStage.FORMAT, [self.format] if self.format else []),
+            (IterationStage.COLLATE, [self.collate] if self.collate else []),
+            (IterationStage.FINALIZE, [self.finalize] if self.finalize else []),
         )
 
     def accumulate_block_timings(self, src: BlockStageTimings) -> None:
-        """Accumulate a block's stage timings into this batch's lists.
+        """Accumulate a block's fetch timings into this batch's lists.
 
         A boundary block whose rows span multiple batches is attributed
         to the first batch it lands in.
