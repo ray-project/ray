@@ -312,21 +312,6 @@ class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
     def get_active_tasks(self) -> List[OpTask]:
         return list(self._shuffle_reduce_tasks.values())
 
-    def throttling_disabled(self) -> bool:
-        # Opt out of the ResourceManager reservation. Reduce is the
-        # terminal op (Write is fused in), so there's nothing downstream
-        # to reserve for; and the map op now emits N partition wrappers
-        # rather than M handle bundles, so the executor's ordinary
-        # backpressure loop already gates reducer dispatch tick-by-tick
-        # (one wrapper -> one _add_input_inner call -> one v3_reduce_task).
-        #
-        # TODO(shuffle_v3): this removes the memory safety valve during reduce --
-        # reduce tasks request only num_cpus (no memory estimate), so throttling
-        # was the only backpressure. Unbounded reduce has OOM'd at 512GB before.
-        # Validate against OOM and gate this properly (e.g. attach a real
-        # per-task memory estimate so the ResourceManager can back-pressure).
-        return True
-
     def has_execution_finished(self) -> bool:
         if self._shuffle_reduce_tasks or self._output_queue:
             return False
