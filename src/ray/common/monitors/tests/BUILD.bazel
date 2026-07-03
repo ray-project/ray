@@ -65,6 +65,9 @@ ray_cc_test(
         "@platforms//os:linux",
     ],
     deps = [
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+        "//src/ray/common/cgroup2:cgroup_manager_interface",
         "//src/ray/common/cgroup2:noop_cgroup_manager",
         "//src/ray/common/monitors:memory_monitor_interface",
         "//src/ray/common/monitors:memory_monitor_test_fixture",
