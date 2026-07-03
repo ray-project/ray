@@ -71,6 +71,25 @@ def _affinity_outputs(table, max_bucket_size):
     )
 
 
+def _manifest(paths, sizes=None, metas=None):
+    """Build a FileManifest for driving a partitioner directly (no cluster)."""
+    n = len(paths)
+    return FileManifest.construct_manifest(
+        paths,
+        sizes if sizes is not None else [1] * n,
+        metas if metas is not None else [None] * n,
+    )
+
+
+def _drain_partitions(partitioner):
+    out = []
+    while partitioner.has_partition():
+        out.append(
+            partitioner.next_partition().as_block()[PATH_COLUMN_NAME].to_pylist()
+        )
+    return out
+
+
 def test_file_affinity_groups_by_file_and_bounds_size():
     # File "a": 4 chunks of size 1; "b": 1 chunk. max_bucket_size=2 -> "a"
     # splits into two 2-chunk partitions, "b" is its own. No partition mixes
@@ -81,11 +100,17 @@ def test_file_affinity_groups_by_file_and_bounds_size():
     assert all(len(set(p)) == 1 for p in partitions)  # each partition single-file
 
 
-def test_file_affinity_interleaved_input_groups_by_file():
-    # Chunks of "a" and "b" interleaved in the input still group per file.
+def test_file_affinity_contiguous_input_flushes_per_file():
+    # The real indexer emits each file's chunks contiguously (one atomic
+    # record-list per file through make_async_gen), so flush-on-path-change
+    # flushes a file as soon as the next file's chunks begin arriving. This
+    # hand-crafted non-contiguous input (a,b,a,b) is NOT a shape the indexer
+    # produces; it exercises the path-change flush, which now emits one
+    # partition per contiguous run rather than grouping all of "a" together.
     table = _affinity_table(["a", "b", "a", "b"], [1, 1, 1, 1], [None] * 4)
     partitions = [o[PATH_COLUMN_NAME].to_pylist() for o in _affinity_outputs(table, 2)]
-    assert partitions == [["a", "a"], ["b", "b"]]
+    assert partitions == [["a"], ["b"], ["a"], ["b"]]
+    assert all(len(set(p)) == 1 for p in partitions)  # never mixes files
 
 
 def test_file_affinity_small_file_is_single_partition():
@@ -230,6 +255,76 @@ def test_file_affinity_handles_none_size_and_nan_estimate_without_raising():
     )
     partitions = [o[PATH_COLUMN_NAME].to_pylist() for o in outputs]
     assert partitions == [["a", "a"]]
+
+
+def test_file_affinity_flushes_previous_file_before_finalize():
+    # Pipelining proof: a file's partition becomes available as soon as the
+    # NEXT file's chunks start arriving -- BEFORE finalize() -- so ReadFiles can
+    # decode file "a" while later files' footers are still being read.
+    partitioner = FileAffinityPartitioner(
+        in_memory_size_estimator=_FileSizeStubEstimator(), max_bucket_size=100
+    )
+    # File "a" arrives first; with no path change and no finalize it stays
+    # buffered -- nothing is available yet.
+    partitioner.add_input(_manifest(["a", "a"]))
+    assert not partitioner.has_partition()
+    # File "b" starts arriving -> "a" is provably complete and flushes now,
+    # without waiting for finalize().
+    partitioner.add_input(_manifest(["b"]))
+    assert partitioner.has_partition()
+    assert partitioner.next_partition().as_block()[PATH_COLUMN_NAME].to_pylist() == [
+        "a",
+        "a",
+    ]
+    # "b" is still open -- it only flushes at finalize.
+    assert not partitioner.has_partition()
+    partitioner.finalize()
+    assert partitioner.next_partition().as_block()[PATH_COLUMN_NAME].to_pylist() == [
+        "b"
+    ]
+
+
+def test_file_affinity_multi_block_file_stays_single_partition():
+    # A file whose chunks straddle two manifest blocks (two add_input calls)
+    # must still land in ONE partition: _current_open_path is instance state, so
+    # the same path continuing across a block boundary does NOT spuriously flush.
+    # File "b" (fully in block 2) is its own partition.
+    partitioner = FileAffinityPartitioner(
+        in_memory_size_estimator=_FileSizeStubEstimator(), max_bucket_size=100
+    )
+    partitioner.add_input(_manifest(["a", "a"]))  # block 1: a's first chunks
+    partitioner.add_input(_manifest(["a", "b"]))  # block 2: a continues, then b
+    partitioner.finalize()
+    assert _drain_partitions(partitioner) == [["a", "a", "a"], ["b"]]
+
+
+def test_file_affinity_overflow_then_path_change_never_mixes_files():
+    # File "a": 3 chunks, max_bucket_size=2 -> the size cap flushes ["a","a"]
+    # mid-file and the 3rd chunk starts a fresh bucket; file "b" then arrives and
+    # the path change flushes a's remaining ["a"] before "b". The overflow and
+    # path-change flush paths cooperate and never mix files in a partition.
+    table = _affinity_table(["a", "a", "a", "b"], [1, 1, 1, 1], [None] * 4)
+    partitions = [o[PATH_COLUMN_NAME].to_pylist() for o in _affinity_outputs(table, 2)]
+    assert partitions == [["a", "a"], ["a"], ["b"]]
+    assert all(len(set(p)) == 1 for p in partitions)
+
+
+@pytest.mark.parametrize("pipeline_flush", [True, False])
+def test_file_affinity_kill_switch_gates_incremental_flush(monkeypatch, pipeline_flush):
+    # RAY_DATA_PARTITIONER_PIPELINE_FLUSH=0 reverts to finalize-only flushing.
+    # Either way the final partition set is identical -- only WHEN "a" becomes
+    # available differs (before finalize when on, at finalize when off).
+    monkeypatch.setenv(
+        "RAY_DATA_PARTITIONER_PIPELINE_FLUSH", "1" if pipeline_flush else "0"
+    )
+    partitioner = FileAffinityPartitioner(
+        in_memory_size_estimator=_FileSizeStubEstimator(), max_bucket_size=100
+    )
+    partitioner.add_input(_manifest(["a", "a"]))
+    partitioner.add_input(_manifest(["b"]))
+    assert partitioner.has_partition() is pipeline_flush
+    partitioner.finalize()
+    assert _drain_partitions(partitioner) == [["a", "a"], ["b"]]
 
 
 if __name__ == "__main__":

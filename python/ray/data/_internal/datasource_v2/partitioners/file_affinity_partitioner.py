@@ -10,6 +10,7 @@ sequential I/O) plus sub-file parallelism for large files.
 import collections
 from typing import Dict, Optional, Tuple
 
+from ray._common.utils import env_bool
 from ray.data._internal.datasource_v2.chunkers.file_chunker import ChunkMetadata
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
@@ -93,9 +94,16 @@ class FileAffinityPartitioner(FilePartitioner):
     partitions is data-driven: ``sum over files of
     ceil(file_in_memory_size / max_bucket_size)``.
 
-    Groups by **path** (not arrival position): the indexer may interleave
-    different files' chunks via parallel footer reads, so contiguity in the
-    input stream is not assumed.
+    Groups by **path**. A single file's chunks always arrive contiguously in
+    the input stream: the indexer yields one file's entire chunk list as one
+    atomic unit through ``make_async_gen`` and the manifest batching preserves
+    that order, so different files interleave only at file granularity, never
+    chunk granularity (parallel footer reads may reorder *files* but never tear
+    a file's chunk list apart). Contiguity lets a change of path mark the
+    previous file complete: ``add_input`` flushes that file's bucket
+    immediately, pipelining ``ReadFiles`` decoding with the listing task's
+    remaining footer reads. ``finalize`` flushes the trailing open file and
+    preserves insertion (arrival) order for shuffle determinism.
     """
 
     def __init__(
@@ -109,6 +117,15 @@ class FileAffinityPartitioner(FilePartitioner):
         # path -> bucket currently accumulating that file's chunks.
         self._open_buckets: Dict[str, "_WeightedBucket[_ChunkItem]"] = {}
         self._output_queue: "collections.deque[FileManifest]" = collections.deque()
+        # Path of the file whose chunks are currently arriving. When a chunk
+        # with a different path arrives, the previous file is complete (chunks
+        # arrive contiguously -- see class docstring) and its bucket is flushed.
+        # Instance state (not per-block) so a file straddling two manifest
+        # blocks keeps accumulating into the same bucket.
+        self._current_open_path: Optional[str] = None
+        # Kill switch: when False, skip the per-file incremental flush and fall
+        # back to flushing only at ``finalize`` (pre-pipelining behavior).
+        self._pipeline_flush = env_bool("RAY_DATA_PARTITIONER_PIPELINE_FLUSH", True)
 
     def add_input(self, input_manifest: FileManifest):
         in_memory_sizes = self._in_memory_size_estimator.estimate_in_memory_sizes(
@@ -120,6 +137,20 @@ class FileAffinityPartitioner(FilePartitioner):
             input_manifest.file_chunk_metadatas,
             in_memory_sizes,
         ):
+            # A change of path means the previous file is complete (its chunks
+            # arrived contiguously): flush its still-open bucket now so
+            # ReadFiles can decode it while later files' footers are still being
+            # read. The size-cap overflow below may already have flushed and
+            # removed that bucket, so ``pop`` with a default tolerates its
+            # absence.
+            if self._pipeline_flush and path != self._current_open_path:
+                prev = self._current_open_path
+                if prev is not None:
+                    prev_bucket = self._open_buckets.pop(prev, None)
+                    if prev_bucket is not None and prev_bucket.items:
+                        self._output_queue.append(_bucket_to_manifest(prev_bucket))
+                self._current_open_path = path
+
             bucket = self._open_buckets.get(path)
             if bucket is None:
                 bucket = _WeightedBucket()
@@ -157,3 +188,4 @@ class FileAffinityPartitioner(FilePartitioner):
             if bucket.items:
                 self._output_queue.append(_bucket_to_manifest(bucket))
         self._open_buckets.clear()
+        self._current_open_path = None

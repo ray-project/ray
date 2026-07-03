@@ -237,6 +237,11 @@ class NonSamplingFileIndexer(FileIndexer):
             # individually would let its round-robin merge interleave chunks from
             # the files processed concurrently -- breaking per-file contiguity and
             # discovery order under ``preserve_order=True``.
+            # NOTE: FileAffinityPartitioner relies on this per-file contiguity to
+            # flush a file's partition as soon as the next file's chunks arrive
+            # (see its class docstring). ``test_parallel_chunking_preserves_
+            # discovery_order`` pins the atomic-per-file behavior -- keep it if you
+            # change how records cross the ``make_async_gen`` boundary here.
             def chunk_files(
                 infos: Iterator[FileInfo],
             ) -> Iterator[List[Tuple[str, int, Optional[ChunkMetadata]]]]:
