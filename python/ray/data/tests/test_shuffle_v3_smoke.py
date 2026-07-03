@@ -25,6 +25,7 @@ import pytest
 
 import ray
 from ray.data._internal.arrow_ops.transform_pyarrow import hash_partition
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     ExecutionOptions,
@@ -158,7 +159,10 @@ def test_v3_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_parts):
     )
 
     upstream = InputDataBuffer(ctx, input_bundles)
-    upstream.start(ExecutionOptions())
+    # PhysicalOperator.start() requires a BlockRefCounter (executor-wide
+    # in the real path; a fresh instance is fine for the hand-driven test).
+    block_ref_counter = BlockRefCounter()
+    upstream.start(ExecutionOptions(), block_ref_counter)
 
     map_op = ShuffleMapOpV3(
         upstream,
@@ -180,8 +184,8 @@ def test_v3_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_parts):
         name="ShuffleReduceV3-smoke",
     )
 
-    map_op.start(ExecutionOptions())
-    reduce_op.start(ExecutionOptions())
+    map_op.start(ExecutionOptions(), block_ref_counter)
+    reduce_op.start(ExecutionOptions(), block_ref_counter)
 
     try:
         # Drive map by piping every upstream bundle in.
