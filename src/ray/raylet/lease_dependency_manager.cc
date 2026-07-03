@@ -371,8 +371,8 @@ std::string LeaseDependencyManager::DebugString() const {
   return result.str();
 }
 
-void LeaseDependencyManager::RecordWaitingLeaseState(const TaskMetricsKey &key) {
-  int64_t num_total = waiting_leases_counter_.Get(key);
+void LeaseDependencyManager::RecordWaitingLeaseState(const TaskMetricsKey &key,
+                                                     int64_t num_total) {
   // Of the waiting tasks of this name, some fraction may be inactive (blocked on
   // object store memory availability). Get this breakdown by querying the pull
   // manager.
@@ -407,7 +407,9 @@ void LeaseDependencyManager::RecordMetrics() {
   // counter, so ForEachEntry won't visit them).
   waiting_leases_counter_.FlushOnChangeCallbacks();
   waiting_leases_counter_.ForEachEntry(
-      [this](const TaskMetricsKey &key, int64_t) { RecordWaitingLeaseState(key); });
+      [this](const TaskMetricsKey &key, int64_t num_total) {
+        RecordWaitingLeaseState(key, num_total);
+      });
 }
 
 }  // namespace raylet

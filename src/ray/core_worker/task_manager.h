@@ -267,7 +267,7 @@ class TaskManager : public TaskManagerInterface {
         [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key)
             ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
               if (task_counter_.Get(key) == 0) {
-                RecordTaskState(key);
+                RecordTaskState(key, /*value=*/0);
               }
             });
     reference_counter_.SetReleaseLineageCallback(
@@ -608,8 +608,10 @@ class TaskManager : public TaskManagerInterface {
   /// through one implementation.
   ///
   /// \param key The (function name, task status, is_retry) key to record.
-  void RecordTaskState(const std::tuple<std::string, rpc::TaskStatus, bool> &key)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_);
+  /// \param value The current count for `key`, passed in by the caller (which
+  /// already has it) to avoid a redundant counter lookup.
+  void RecordTaskState(const std::tuple<std::string, rpc::TaskStatus, bool> &key,
+                       int64_t value) ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_);
 
   struct TaskEntry {
     TaskEntry(TaskSpecification spec,

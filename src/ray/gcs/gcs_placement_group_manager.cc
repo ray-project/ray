@@ -104,7 +104,7 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
   placement_group_state_counter_->SetOnChangeCallback(
       [this](const rpc::PlacementGroupTableData::PlacementGroupState key) mutable {
         if (placement_group_state_counter_->Get(key) == 0) {
-          RecordPlacementGroupState(key);
+          RecordPlacementGroupState(key, /*value=*/0);
         }
       });
   Tick();
@@ -1040,15 +1040,14 @@ void GcsPlacementGroupManager::RecordMetrics() const {
   // zero (erased from the counter, so ForEachEntry won't visit them).
   placement_group_state_counter_->FlushOnChangeCallbacks();
   placement_group_state_counter_->ForEachEntry(
-      [this](const rpc::PlacementGroupTableData::PlacementGroupState &key, int64_t) {
-        RecordPlacementGroupState(key);
-      });
+      [this](const rpc::PlacementGroupTableData::PlacementGroupState &key,
+             int64_t value) { RecordPlacementGroupState(key, value); });
 }
 
 void GcsPlacementGroupManager::RecordPlacementGroupState(
-    rpc::PlacementGroupTableData::PlacementGroupState state) const {
+    rpc::PlacementGroupTableData::PlacementGroupState state, int64_t value) const {
   placement_group_gauge_.Record(
-      placement_group_state_counter_->Get(state),
+      value,
       {{"State", rpc::PlacementGroupTableData::PlacementGroupState_Name(state)},
        {"Source", "gcs"}});
 }

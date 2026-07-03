@@ -2015,13 +2015,13 @@ void TaskManager::RecordMetrics() {
   // won't visit them).
   task_counter_.FlushOnChangeCallbacks();
   task_counter_.ForEachEntry(
-      [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key, int64_t)
-          ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) { RecordTaskState(key); });
+      [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key, int64_t value)
+          ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) { RecordTaskState(key, value); });
 }
 
 void TaskManager::RecordTaskState(
-    const std::tuple<std::string, rpc::TaskStatus, bool> &key) {
-  task_by_state_counter_.Record(task_counter_.Get(key),
+    const std::tuple<std::string, rpc::TaskStatus, bool> &key, int64_t value) {
+  task_by_state_counter_.Record(value,
                                 {{"State", rpc::TaskStatus_Name(std::get<1>(key))},
                                  {"Name", std::get<0>(key)},
                                  {"IsRetry", std::get<2>(key) ? "1" : "0"},

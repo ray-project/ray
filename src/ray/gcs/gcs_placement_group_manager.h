@@ -241,8 +241,10 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
   /// through one implementation.
   ///
   /// \param state The placement group state to record.
-  void RecordPlacementGroupState(
-      rpc::PlacementGroupTableData::PlacementGroupState state) const;
+  /// \param value The current count for `state`, passed in by the caller (which
+  /// already has it) to avoid a redundant counter lookup.
+  void RecordPlacementGroupState(rpc::PlacementGroupTableData::PlacementGroupState state,
+                                 int64_t value) const;
 
   /// Push a placement group to pending queue.
   ///

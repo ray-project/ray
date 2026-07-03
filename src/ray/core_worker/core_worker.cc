@@ -177,19 +177,18 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_gaug
       [this](const std::tuple<std::string, TaskStatusType, bool> &key)
           ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
             if (counter_.Get(key) == 0) {
-              RecordRunningTaskBreakdown(key);
+              RecordRunningTaskBreakdown(key, /*running_total=*/0);
             }
           });
 }
 
 void TaskCounter::RecordRunningTaskBreakdown(
-    const std::tuple<std::string, TaskStatusType, bool> &key) {
+    const std::tuple<std::string, TaskStatusType, bool> &key, int64_t running_total) {
   if (std::get<1>(key) != TaskStatusType::kRunning) {
     return;
   }
   const auto &func_name = std::get<0>(key);
   const auto is_retry = std::get<2>(key);
-  const int64_t running_total = counter_.Get(key);
   const int64_t num_in_get = running_in_get_counter_.Get({func_name, is_retry});
   const int64_t num_in_wait = running_in_wait_counter_.Get({func_name, is_retry});
   const int64_t num_getting_pinning_args =
@@ -246,9 +245,11 @@ void TaskCounter::RecordMetrics() {
   // gauge. FlushOnChangeCallbacks still emits the final 0 for keys that just
   // dropped to zero (erased from the counter, so ForEachEntry won't visit them).
   counter_.FlushOnChangeCallbacks();
-  counter_.ForEachEntry(
-      [this](const std::tuple<std::string, TaskStatusType, bool> &key, int64_t)
-          ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) { RecordRunningTaskBreakdown(key); });
+  counter_.ForEachEntry([this](const std::tuple<std::string, TaskStatusType, bool> &key,
+                               int64_t running_total)
+                            ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
+                              RecordRunningTaskBreakdown(key, running_total);
+                            });
   if (IsActor()) {
     float running_tasks = 0.0;
     float idle = 0.0;

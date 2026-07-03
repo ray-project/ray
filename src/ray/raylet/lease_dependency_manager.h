@@ -71,7 +71,7 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
     waiting_leases_counter_.SetOnChangeCallback(
         [this](const std::pair<std::string, bool> &key) mutable {
           if (waiting_leases_counter_.Get(key) == 0) {
-            RecordWaitingLeaseState(key);
+            RecordWaitingLeaseState(key, /*num_total=*/0);
           }
         });
   }
@@ -196,7 +196,9 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
   /// per-tick re-emit in RecordMetrics so both go through one implementation.
   ///
   /// \param key The (task name, is_retry) key to record.
-  void RecordWaitingLeaseState(const TaskMetricsKey &key);
+  /// \param num_total The current count for `key`, passed in by the caller (which
+  /// already has it) to avoid a redundant counter lookup.
+  void RecordWaitingLeaseState(const TaskMetricsKey &key, int64_t num_total);
 
   /// Metadata for an object that is needed by at least one executing worker
   /// and/or one queued lease.

@@ -265,7 +265,7 @@ GcsActorManager::GcsActorManager(
   actor_state_counter_->SetOnChangeCallback(
       [this](const std::pair<rpc::ActorTableData::ActorState, std::string> &key) mutable {
         if (actor_state_counter_->Get(key) == 0) {
-          RecordActorState(key);
+          RecordActorState(key, /*value=*/0);
         }
       });
 }
@@ -2105,13 +2105,14 @@ void GcsActorManager::RecordMetrics() const {
   actor_state_counter_->FlushOnChangeCallbacks();
   actor_state_counter_->ForEachEntry(
       [this](const std::pair<rpc::ActorTableData::ActorState, std::string> &key,
-             int64_t) { RecordActorState(key); });
+             int64_t value) { RecordActorState(key, value); });
 }
 
 void GcsActorManager::RecordActorState(
-    const std::pair<rpc::ActorTableData::ActorState, std::string> &key) const {
+    const std::pair<rpc::ActorTableData::ActorState, std::string> &key,
+    int64_t value) const {
   actor_by_state_gauge_.Record(
-      actor_state_counter_->Get(key),
+      value,
       {{"State", rpc::ActorTableData::ActorState_Name(key.first)},
        {"Name", key.second},
        {"Source", "gcs"},

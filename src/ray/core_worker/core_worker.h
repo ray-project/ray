@@ -122,8 +122,10 @@ class TaskCounter {
   ///
   /// \param key The (function name, task status type, is_retry) key. Only keys whose
   /// status is kRunning are recorded; all others are ignored.
+  /// \param running_total The current count for `key`, passed in by the caller
+  /// (which already has it) to avoid a redundant counter lookup.
   void RecordRunningTaskBreakdown(
-      const std::tuple<std::string, TaskStatusType, bool> &key)
+      const std::tuple<std::string, TaskStatusType, bool> &key, int64_t running_total)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_);
 
   mutable absl::Mutex mu_;
