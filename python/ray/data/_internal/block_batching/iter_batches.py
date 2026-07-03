@@ -21,7 +21,7 @@ from ray.data._internal.block_batching.util import (
 )
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_deallocation
-from ray.data._internal.stats import DatasetStats, _StatsManager
+from ray.data._internal.stats import DatasetStats, TimeSpan, _StatsManager
 from ray.data.block import Block, DataBatch
 from ray.data.context import DataContext
 from ray.types import ObjectRef

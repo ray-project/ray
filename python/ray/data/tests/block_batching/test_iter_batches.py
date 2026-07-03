@@ -704,7 +704,6 @@ def test_e2e_blocked_attribution_by_scenario(
     """E2e: when a specific stage is the bottleneck, its blocked metric
     should be the largest among all stages."""
     from ray.data._internal.stats import _StatsManager
-    from ray.data._internal.block_batching import util as batch_util
 
     iter_kwargs = {"batch_size": 10}
     patches = []

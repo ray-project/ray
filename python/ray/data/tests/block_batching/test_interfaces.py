@@ -1,6 +1,5 @@
 """Tests for ray.data._internal.block_batching.interfaces."""
 
-import pytest
 
 from ray.data._internal.block_batching.interfaces import (
     Batch,
