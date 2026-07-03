@@ -114,6 +114,17 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         # -- Sub-progress bars -----------------------------------------------
         self._reduce_bar: Optional["BaseProgressBar"] = None
 
+    def _reduce_task_remote_args(self, memory_estimate: int) -> Dict[str, Any]:
+        remote_args: Dict[str, Any] = {
+            "num_cpus": self._DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS,
+            "scheduling_strategy": "SPREAD",
+        }
+        if memory_estimate > 0:
+            remote_args["memory"] = memory_estimate
+        remote_args.update(self._reduce_ray_remote_args)
+        remote_args["num_returns"] = "streaming"
+        return remote_args
+
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         """Submit one reducer task for this partition-bundle.
 
@@ -143,19 +154,11 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         shard_refs = list(refs.block_refs)
         estimated_bytes = sum((m.size_bytes or 0) for m in refs.metadata)
 
-        reduce_resources: Dict[str, Any] = {
-            "num_cpus": self._DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS,
-        }
-        if estimated_bytes > 0:
-            reduce_resources["memory"] = int(
-                estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER
-            )
-        reduce_options: Dict[str, Any] = {
-            **reduce_resources,
-            "scheduling_strategy": "SPREAD",
-        }
-        reduce_options.update(self._reduce_ray_remote_args)
-        reduce_options["num_returns"] = "streaming"
+        reduce_options = self._reduce_task_remote_args(
+            int(estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
+            if estimated_bytes > 0
+            else 0
+        )
 
         target_max_block_size = (
             None
@@ -197,9 +200,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             task_done_callback=functools.partial(
                 self._handle_reduce_done, partition_id, refs
             ),
-            task_resource_bundle=ExecutionResources.from_resource_dict(
-                reduce_resources
-            ),
+            task_resource_bundle=ExecutionResources.from_resource_dict(reduce_options),
             operator_name=self.name,
         )
 
@@ -352,11 +353,11 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         if sizes:
             avg_bytes = sum(sizes) / len(sizes)
             memory = int(avg_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
-        return ExecutionResources(
-            cpu=self._reduce_ray_remote_args.get(
-                "num_cpus", self._DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS
-            ),
-            memory=self._reduce_ray_remote_args.get("memory", memory),
+        # Read the resource fields off the same remote args a reduce task is
+        # submitted with, so the budget allocator and the actual Ray
+        # reservation agree.
+        return ExecutionResources.from_resource_dict(
+            self._reduce_task_remote_args(memory)
         )
 
     def min_scheduling_resources(self) -> ExecutionResources:
