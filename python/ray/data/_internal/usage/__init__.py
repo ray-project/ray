@@ -25,11 +25,7 @@ def create_usage_callback(logical_plan: "LogicalPlan") -> UsageCallback:
 
     Factory method to return a ``UsageCallback`` object.
     """
-    try:
-        from ray.anyscale.data._internal.usage import RayTurboUsageCallback
-    except ImportError:
-        return UsageCallback(logical_plan)
-    return RayTurboUsageCallback(logical_plan)
+    return UsageCallback(logical_plan)
 
 
 __all__ = [
