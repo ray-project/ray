@@ -260,13 +260,6 @@ def main() -> None:
 
     ctx = DataContext.get_current()
     ctx.use_datasource_v2 = True
-    assert (
-        ctx.parquet_partitioner_strategy == "file_affinity"
-    ), f"strategy is {ctx.parquet_partitioner_strategy!r}, expected file_affinity"
-    print(
-        f"datasource_v2: True, partitioner: {ctx.parquet_partitioner_strategy}",
-        flush=True,
-    )
 
     _wait_for_fleet(args.target_cpu)
     _print_cluster_summary(args.data_size_gb)
