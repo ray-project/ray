@@ -85,9 +85,17 @@ class BayesOptSearch(Searcher):
             This is necessary to avoid initial local overfitting
             of the Bayesian process.
         verbose: Sets verbosity level for BayesOpt packages.
-        patience: If patience is set and we've repeated a trial numerous times,
-            we terminate the experiment.
-        skip_duplicate: skip duplicate config
+        patience: Number of times a configuration may be repeatedly suggested
+            before the search terminates early. The Bayesian optimizer can
+            converge and keep proposing the same point; when a configuration is
+            suggested more than ``patience`` times, ``suggest`` returns
+            ``Searcher.FINISHED`` and no further trials are started (so a run
+            may end before ``num_samples``). Set ``patience=1`` to stop as soon
+            as a configuration first repeats. Defaults to 5.
+        skip_duplicate: If True (default), configurations that have already been
+            suggested are skipped instead of re-evaluated. Set to False to allow
+            duplicate suggestions (useful for noisy objectives, or to keep
+            running until ``num_samples`` is reached).
         analysis: Optionally, the previous analysis to integrate.
         repeat_float_precision: Decimal precision used when hashing float
             values in a config to detect duplicate suggestions. Higher
@@ -177,6 +185,9 @@ class BayesOptSearch(Searcher):
         if self._patience <= 0:
             raise ValueError("patience must be set to a value greater than 0!")
         self._skip_duplicate = skip_duplicate
+        # One-time warnings so a converged GP does not fail silently.
+        self._logged_duplicate_warning = False
+        self._logged_convergence_stop_warning = False
         super(BayesOptSearch, self).__init__(
             metric=metric,
             mode=mode,
@@ -299,9 +310,30 @@ class BayesOptSearch(Searcher):
         # If patience is set and we've repeated a trial numerous times,
         # we terminate the experiment.
         if self._patience is not None and top_repeats > self._patience:
+            if not self._logged_convergence_stop_warning:
+                logger.warning(
+                    "BayesOptSearch is stopping early: a configuration was "
+                    "suggested more than `patience` (%d) times, which usually "
+                    "means the search has converged. No further trials will be "
+                    "suggested. To run more trials, increase `patience`, set "
+                    "`skip_duplicate=False`, or widen the search space."
+                    % self._patience
+                )
+                self._logged_convergence_stop_warning = True
             return Searcher.FINISHED
         # If we have seen a value before, we'll skip it.
         if already_seen and self._skip_duplicate:
+            if not self._logged_duplicate_warning:
+                logger.warning(
+                    "BayesOptSearch is re-suggesting already-evaluated "
+                    "configurations (the Gaussian Process has likely "
+                    "converged). Duplicates are being skipped; if a "
+                    "configuration repeats more than `patience` (%d) times the "
+                    "search will stop early. Set `skip_duplicate=False`, "
+                    "increase `patience`, or widen the search space to keep "
+                    "exploring." % self._patience
+                )
+                self._logged_duplicate_warning = True
             logger.info("Skipping duplicated config: {}.".format(config))
             return None
 

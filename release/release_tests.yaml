@@ -3219,6 +3219,30 @@
       cluster:
         cluster_compute: object_store_gce.yaml
 
+- name: callback_throughput
+  python: "3.10"
+  group: core-scalability-test
+  working_dir: benchmarks
+
+  frequency: nightly
+  team: core
+  env: aws_perf
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+    cluster_compute: object_store/callback_throughput.yaml
+
+  run:
+    timeout: 600
+    script: python object_store/test_callback_throughput.py
+    wait_for_nodes:
+      num_nodes: 11
+
+  variations:
+    - __suffix__: aws
+
 - name: small_objects
   python: "3.10"
   group: core-scalability-test
@@ -4762,6 +4786,30 @@
   run:
     timeout: 3600
     script: pytest -vs test_llm_serve_sglang.py
+
+- name: llm_serve_kv_router
+  frequency: manual
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/kv_router_test
+
+  cluster:
+    byod:
+      type: llm-cu130
+      runtime_env:
+        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
+        - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
+      post_build_script: byod_llm_kv_router_test.sh
+    anyscale_sdk_2026: true
+    # Kept in this working_dir rather than referenced across dirs
+    # so it ships in the test's runfiles.
+    cluster_compute: llm_4xl4.yaml
+
+  run:
+    timeout: 3600
+    script: pytest -vs .
 
 ##############
 # LLM Batch
