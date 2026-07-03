@@ -137,6 +137,13 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
     # is never filled. Lower numbers force mid-task spills proportional to
     # ``input / pool``, increasing IPC fragmentation on the reducer side.
     _POOL_GROWTH = 2
+    # Byte threshold for the per-node pre-map merge buffer, mirroring
+    # v2's ``_DEFAULT_PRE_MAP_MERGE_THRESHOLD`` (shuffle_map_operator.py:86).
+    # Small upstream bundles are grouped per node and submitted as ONE
+    # map task once they cross this threshold — cuts task-count explosion
+    # under skewed / small-block inputs. Pass 0 to disable buffering
+    # (submit each bundle as its own task, useful for tests / debugging).
+    _DEFAULT_PRE_MAP_MERGE_THRESHOLD = 1024 * 1024 * 1024  # 1 GiB
 
     def __init__(
         self,
@@ -149,6 +156,7 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         pool_budget_bytes: Optional[int] = None,
         fsync_on_close: bool = True,
         map_cpus: float = _DEFAULT_MAP_NUM_CPUS,
+        pre_map_merge_threshold: int = _DEFAULT_PRE_MAP_MERGE_THRESHOLD,
         base_dir: Optional[str] = None,
         name: str = "ShuffleMapV3",
     ):
@@ -195,6 +203,20 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         # ShuffleManager on each node. Mappers do ``get_if_exists=True`` so
         # the FIRST mapper on a node spawns; the rest share the same actor.
         self._shuffle_id: str = secrets.token_hex(8)
+
+        # -- Pre-map merge buffer (per-node) --
+        # Mirrors v2 ShuffleMapOp (shuffle_map_operator.py:113-121). Small
+        # upstream bundles land here keyed by their preferred node; when a
+        # node's buffered bytes cross ``_pre_map_merge_threshold`` we flush
+        # into a single ``v3_map_task``. Bundles for "unknown" node (no
+        # locality hint from upstream) share a single bucket keyed on the
+        # sentinel string ``"unknown"``.
+        self._pre_map_merge_threshold: int = pre_map_merge_threshold
+        self._merge_buffer_refs_by_node: Dict[str, List[ObjectRef]] = defaultdict(list)
+        self._merge_buffer_bytes_by_node: Dict[str, int] = defaultdict(int)
+        self._merge_buffer_bundles_by_node: Dict[str, List[RefBundle]] = defaultdict(
+            list
+        )
 
         # -- Map task tracking --
         self._next_map_idx: int = 0
@@ -266,23 +288,73 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         if not refs.block_refs:
             refs.destroy_if_owned()
             return
-        node_id = self._pick_target_node(refs)
-        self._submit_shuffle_map_task(refs, target_node_id=node_id)
+
+        # Merge buffer disabled: preserve the "one bundle -> one task"
+        # semantics (useful for tests / debugging, and matches v3's
+        # pre-buffer behavior). Bypasses the per-node grouping entirely.
+        if self._pre_map_merge_threshold <= 0:
+            node_id = self._pick_target_node(refs)
+            self._submit_shuffle_map_task(
+                list(refs.block_refs),
+                [refs],
+                estimated_bytes=sum((m.size_bytes or 0) for m in refs.metadata),
+                target_node_id=node_id,
+            )
+            return
+
+        # v2-style per-node accumulation: group incoming bundles by
+        # preferred node; flush a group when its byte total crosses the
+        # threshold. See v2 shuffle_map_operator.py:156-184 — same shape.
+        node_id = self._pick_target_node(refs) or "unknown"
+        for block_ref, meta in zip(refs.block_refs, refs.metadata):
+            self._merge_buffer_refs_by_node[node_id].append(block_ref)
+            self._merge_buffer_bytes_by_node[node_id] += meta.size_bytes or 0
+        self._merge_buffer_bundles_by_node[node_id].append(refs)
+
+        if (
+            self._merge_buffer_bytes_by_node[node_id]
+            >= self._pre_map_merge_threshold
+        ):
+            self._flush_merge_buffer(node_id)
+
+    def _flush_merge_buffer(self, node_id: str) -> None:
+        """Drain one node's merge buffer into a single ``v3_map_task``.
+        Mirrors v2 (shuffle_map_operator.py:192-205). If a caller sends an
+        empty flush (buffer empty for this node) we defensively destroy
+        any bundles that ended up here without contributing refs.
+        """
+        block_refs = self._merge_buffer_refs_by_node.pop(node_id, [])
+        bundles = self._merge_buffer_bundles_by_node.pop(node_id, [])
+        estimated_bytes = self._merge_buffer_bytes_by_node.pop(node_id, 0)
+        if not block_refs:
+            for bundle in bundles:
+                bundle.destroy_if_owned()
+            return
+        self._submit_shuffle_map_task(
+            block_refs,
+            bundles,
+            estimated_bytes=estimated_bytes,
+            target_node_id=node_id if node_id != "unknown" else None,
+        )
 
     def _submit_shuffle_map_task(
         self,
-        input_bundle: RefBundle,
+        block_refs: List[ObjectRef],
+        input_bundles: List[RefBundle],
         *,
+        estimated_bytes: int,
         target_node_id: Optional[str],
     ) -> None:
         """Submit one v3_map_task. Endpoint resolution happens INSIDE the
         task on whatever node Ray ends up running it on — driver no longer
         pre-resolves. ``target_node_id`` is just a locality hint.
+
+        Accepts a LIST of input bundles (merge-buffer flush) or a single-
+        element list (buffering disabled) — v3_map_task's ``*blocks`` splat
+        handles either uniformly.
         """
         map_id = self._next_map_idx
         self._next_map_idx += 1
-
-        estimated_bytes = sum((m.size_bytes or 0) for m in input_bundle.metadata)
 
         # Per-task pool budget: explicit override wins; otherwise UNBOUNDED
         # (accumulate every partition fully, encode once at end-of-task — the
@@ -315,7 +387,7 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
             )
 
         handle_ref = v3_map_task.options(**ray_options).remote(
-            *input_bundle.block_refs,
+            *block_refs,
             partition_fn=self._partition_fn,
             num_partitions=self._num_partitions,
             out_dir=self._base_dir,
@@ -332,7 +404,7 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
             task_index=map_id,
             object_ref=handle_ref,
             task_done_callback=functools.partial(
-                self._handle_map_done, map_id, handle_ref, input_bundle
+                self._handle_map_done, map_id, handle_ref, input_bundles
             ),
             task_resource_bundle=ExecutionResources.from_resource_dict(resources),
         )
@@ -341,9 +413,12 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         assert requested is not None
         self._map_resource_usage = self._map_resource_usage.add(requested)
 
+        # Concat metadata across every input bundle for the on_task_submitted
+        # record (matches v2 shuffle_map_operator.py:254-258).
         all_blocks_meta = tuple(
             BlockEntry(ref=ref, metadata=meta)
-            for ref, meta in zip(input_bundle.block_refs, input_bundle.metadata)
+            for bundle in input_bundles
+            for ref, meta in zip(bundle.block_refs, bundle.metadata)
         )
         self._metrics.on_task_submitted(
             map_id,
@@ -364,7 +439,7 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         self,
         map_id: int,
         handle_ref: "ObjectRef",
-        input_bundle: RefBundle,
+        input_bundles: List[RefBundle],
     ) -> None:
         """``MetadataOpTask`` callback: handle is materialized.
 
@@ -453,16 +528,21 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         )
 
         # Accumulate the handle ref for the partition wrappers built in
-        # ``_maybe_emit_partition_wrappers``. Match v2 (shuffle_map_operator.py:306):
-        # once the mapper task has returned, the input bundle has been
-        # consumed and can be released. Retry after task-done is not
+        # ``_maybe_emit_partition_wrappers``. Match v2 (shuffle_map_operator.py:305-306):
+        # once the mapper task has returned, every input bundle it consumed
+        # has been read and can be released. Retry after task-done is not
         # supported anyway (same FT limit as v2).
         self._completed_handle_refs.append(handle_ref)
-        input_bundle.destroy_if_owned()
+        for bundle in input_bundles:
+            bundle.destroy_if_owned()
 
-        # Roll up stats from input metadata.
-        input_rows = sum((m.num_rows or 0) for m in input_bundle.metadata)
-        input_bytes = sum((m.size_bytes or 0) for m in input_bundle.metadata)
+        # Roll up stats across every input bundle merged into this task.
+        input_rows = sum(
+            m.num_rows or 0 for bundle in input_bundles for m in bundle.metadata
+        )
+        input_bytes = sum(
+            m.size_bytes or 0 for bundle in input_bundles for m in bundle.metadata
+        )
         self._total_input_rows += input_rows
         self._total_input_bytes += input_bytes
         # No exec_stats here (we'd need v3_map_task to surface them); MVP
@@ -485,12 +565,20 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         self._maybe_emit_partition_wrappers()
 
     def all_inputs_done(self) -> None:
-        """Upstream (feeder of mapper input bundles) has closed. Wrappers
-        can only be emitted once *both* this has fired AND every in-flight
-        map task has completed, so we just try; the actual emission is
-        gated in ``_maybe_emit_partition_wrappers``.
+        """Upstream (feeder of mapper input bundles) has closed. Two
+        things happen here:
+          1. Flush every non-empty merge buffer as a final map task —
+             partial buffers (below threshold) still get submitted so no
+             input is left un-mapped.
+          2. Try to emit the N partition wrappers. Actual emission is
+             gated in ``_maybe_emit_partition_wrappers`` on the combined
+             "inputs_complete + no map tasks in flight" condition, so if
+             the just-flushed tasks are still pending this is a no-op and
+             ``_handle_map_done`` for the last one will emit later.
         """
         super().all_inputs_done()
+        for node_id in list(self._merge_buffer_refs_by_node.keys()):
+            self._flush_merge_buffer(node_id)
         self._maybe_emit_partition_wrappers()
 
     def _maybe_emit_partition_wrappers(self) -> None:
@@ -520,6 +608,10 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         if not self._inputs_complete:
             return
         if self._shuffle_map_tasks:
+            return
+        # An unflushed merge buffer means input we haven't turned into a
+        # task yet — can't emit wrappers before its handle materializes.
+        if self._merge_buffer_refs_by_node:
             return
         self._wrappers_emitted = True
 
@@ -594,7 +686,11 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         return dict(self._partition_decoded_bytes)
 
     def has_execution_finished(self) -> bool:
-        if self._shuffle_map_tasks or self._output_queue.has_next():
+        if (
+            self._shuffle_map_tasks
+            or self._merge_buffer_refs_by_node
+            or self._output_queue.has_next()
+        ):
             return False
         # Between "last mapper task finished" and "_maybe_emit_partition_wrappers
         # fires" both queues can be transiently empty even though we haven't
@@ -607,6 +703,7 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
     def has_completed(self) -> bool:
         return (
             not self._shuffle_map_tasks
+            and not self._merge_buffer_refs_by_node
             and not self._output_queue.has_next()
             and (not self._inputs_complete or self._wrappers_emitted)
             and super().has_completed()
@@ -615,6 +712,14 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
     def _do_shutdown(self, force: bool = False) -> None:
         super()._do_shutdown(force)
         self._shuffle_map_tasks.clear()
+        # Any bundles still parked in the merge buffer never became a task —
+        # release them (mirrors v2 shuffle_map_operator.py:404-408).
+        for bundles in self._merge_buffer_bundles_by_node.values():
+            for bundle in bundles:
+                bundle.destroy_if_owned()
+        self._merge_buffer_refs_by_node.clear()
+        self._merge_buffer_bundles_by_node.clear()
+        self._merge_buffer_bytes_by_node.clear()
         self._output_queue.clear()
         self._completed_handle_refs.clear()
         # Drop the shared handle-list plasma object. Reducer tasks that
