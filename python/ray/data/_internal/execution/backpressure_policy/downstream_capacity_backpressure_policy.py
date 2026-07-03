@@ -134,9 +134,6 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         If an output dependency is ineligible, skip it and recurse down to find
         eligible output dependencies.
         """
-        if not op.output_dependencies:
-            return 0
-
         total_capacity_size_bytes = 0
         for output_dependency in op.output_dependencies:
             if self._resource_manager.is_op_eligible(output_dependency):
@@ -165,6 +162,10 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
 
         if self._resource_manager._is_blocking_materializing_op(op):
             # Operator is materializing, so no need to perform backpressure.
+            return True
+
+        if not op.output_dependencies:
+            # Terminal operator; OutputBackpressureGuard handles this case.
             return True
 
         return False
