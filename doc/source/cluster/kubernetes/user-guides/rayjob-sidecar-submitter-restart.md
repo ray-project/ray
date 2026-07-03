@@ -1,26 +1,30 @@
 (kuberay-rayjob-sidecar-submitter-restart)=
-
 # RayJob SidecarSubmitterRestart
 
-This guide walks through enabling the `SidecarSubmitterRestart` feature gate and verifying that the submitter container recovers from a simulated crash without failing the RayJob. If you are unfamiliar with RayJob and KubeRay, see the [RayJob Quickstart](kuberay-rayjob-quickstart) first.
+This guide walks through enabling the `SidecarSubmitterRestart` feature gate and verifying that the submitter container recovers from a simulated crash without failing the RayJob. If you are unfamiliar with RayJob and KubeRay, see the {ref}`RayJob Quickstart <kuberay-rayjob-quickstart>` first.
 
-**Prerequisites**: KubeRay v1.7+, Ray v2.54.0+, and Kubernetes v1.35+.
+## Prerequisites
 
-## Step 1: Create a Kubernetes v1.35+ cluster
+* This feature requires Kubernetes v1.35+.
+  * KubeRay v1.7.0 or higher: Ray v2.54.0 or higher.
+
+## Verifying SidecarSubmitterRestart on kind
+
+### Step 1: Create a Kubernetes v1.35+ cluster on kind
 
 ```sh
 kind create cluster --name rayjob-test --image kindest/node:v1.35.0
 ```
 
-## Step 2: Install the KubeRay operator with `SidecarSubmitterRestart` enabled
+### Step 2: Install the KubeRay operator with `SidecarSubmitterRestart` enabled
 
 ```sh
-helm upgrade --install kuberay-operator kuberay/kuberay-operator \
+helm upgrade --install kuberay-operator kuberay/kuberay-operator --version v1.7.0 \
   --set "featureGates[0].name=SidecarSubmitterRestart" \
   --set "featureGates[0].enabled=true"
 ```
 
-## Step 3: Apply a long-running RayJob in `SidecarMode`
+### Step 3: Create a long-running RayJob in `SidecarMode`
 
 The job runs for ~5 minutes so there is time to simulate a crash mid-run.
 
@@ -36,14 +40,14 @@ spec:
   submitterConfig:
     backoffLimit: 3
   rayClusterSpec:
-    rayVersion: '2.54.0'
+    rayVersion: '2.56.0'
     headGroupSpec:
       rayStartParams: {}
       template:
         spec:
           containers:
           - name: ray-head
-            image: rayproject/ray:2.54.0
+            image: rayproject/ray:2.56.0
             resources:
               limits:
                 cpu: "1"
@@ -63,7 +67,7 @@ spec:
         spec:
           containers:
           - name: ray-worker
-            image: rayproject/ray:2.54.0
+            image: rayproject/ray:2.56.0
             resources:
               limits:
                 cpu: "1"
@@ -102,26 +106,22 @@ data:
 EOF
 ```
 
-## Step 4: Record the cluster and pod names
+### Step 4: Simulate a submitter crash
+
+Wait until `jobDeploymentStatus` is `Running`, then force-stop the submitter container to mimic a transient failure:
 
 ```sh
 JOB_ID=$(kubectl get rayjob rayjob-sidecar-restart -o jsonpath='{.status.jobId}')
 CLUSTER=$(kubectl get rayjob rayjob-sidecar-restart -o jsonpath='{.status.rayClusterName}')
 HEAD_POD=$(kubectl get pods -l ray.io/cluster=$CLUSTER,ray.io/node-type=head -o jsonpath='{.items[0].metadata.name}')
-```
-
-## Step 5: Simulate a submitter crash
-
-Force-stop the submitter container to mimic a transient failure:
-
-```sh
 CONTAINER_ID=$(kubectl get pod $HEAD_POD \
   -o jsonpath='{.status.containerStatuses[?(@.name=="ray-job-submitter")].containerID}' \
   | sed 's|containerd://||')
+
 docker exec rayjob-test-control-plane crictl stop $CONTAINER_ID
 ```
 
-## Step 6: Verify recovery
+### Step 5: Verify recovery
 
 The submitter container should restart and reattach to the log stream. The RayJob should remain `Running`:
 
@@ -138,7 +138,7 @@ kubectl exec $HEAD_POD -c ray-head -- \
   ray job status --address=http://127.0.0.1:8265 "$JOB_ID"
 ```
 
-## Step 7: Clean up
+### Step 6: Clean up
 
 ```sh
 kubectl delete rayjob rayjob-sidecar-restart
