@@ -1,27 +1,31 @@
 """ShuffleReduceOpV3 — reduce phase of the v3 file-transport hash shuffle.
 
-Consumes the per-mapper ``ShuffleHandle`` bundles emitted by
-``ShuffleMapOpV3`` and, once the map phase is closed, dispatches one
-``v3_reduce_task`` per partition. Each reduce task is a Ray streaming
-generator that yields ``(block, pickled metadata)`` pairs matching the v2
-``_shuffle_reduce_task`` protocol; we wrap each generator in a
-``DataOpTask`` so the executor sees ordinary streaming output bundles.
+Consumes the N ``partition wrapper`` bundles emitted by
+``ShuffleMapOpV3`` (one per partition_id, each carrying a shared
+handle-list ref + a ``__partition__<pid>`` sentinel in metadata) and
+dispatches one ``v3_reduce_task`` per bundle. Each reduce task is a Ray
+streaming generator that yields ``(block, pickled metadata)`` pairs
+matching the v2 ``_shuffle_reduce_task`` protocol; we wrap each
+generator in a ``DataOpTask`` so the executor sees ordinary streaming
+output bundles.
 
-Key state-machine difference vs. v2:
+Structurally identical to v2 ``ShuffleReduceOp``: one input bundle in,
+one reduce task out (via ``_add_input_inner``). The executor's normal
+backpressure + resource-manager machinery therefore gates reducer
+dispatch — N gating points (one per partition wrapper), same as v2.
 
-  * v2 ``ShuffleReduceOp`` receives one bundle PER PARTITION (each
-    containing M shard refs) and launches a reduce task immediately on
-    arrival.
-  * v3 ``ShuffleReduceOpV3`` receives one bundle PER MAPPER (each
-    containing a single ``ShuffleHandle`` ref). It must wait until ALL
-    mapper handles are in (``all_inputs_done``) before launching the N
-    reducers, because every reducer needs the full handle list to pull
-    its partition's bytes from every source node's ``ShuffleManager``.
+The only v3-specific twist is what the input bundle carries: instead
+of M shard ObjectRefs (v2), a v3 wrapper carries ONE ref pointing at a
+shared plasma object holding the full mapper-handle list. That single
+ref, plus the sentinel-encoded partition_id, is everything
+``v3_reduce_task`` needs to pull its partition's bytes from every source
+node's ``ShuffleManager``.
 
-This mirrors v2's effective behavior — v2's ShuffleMapOp also gates
-``_maybe_emit_partition_bundles`` on ``_inputs_complete``, so reduce can't
-start before map finishes there either; we just push the gathering
-responsibility one operator downstream.
+Barrier semantics: ``ShuffleMapOpV3.all_inputs_done`` only emits the N
+wrappers after every mapper has finished, so ``ShuffleReduceOpV3``
+still can't dispatch a reducer before map is fully closed — same
+effective ordering as v2 (v2's ``ShuffleMapOp._maybe_emit_partition_bundles``
+also gates on ``_inputs_complete``).
 """
 
 import functools
@@ -30,7 +34,6 @@ import typing
 from collections import deque
 from typing import Any, Dict, List, Optional
 
-import ray
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
@@ -45,6 +48,9 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.hash_shuffle_v3 import (
     ReduceFn,
     v3_reduce_task,
+)
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
+    extract_partition_id,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator_v3 import (  # noqa: E501
     ShuffleMapOpV3,
@@ -121,22 +127,11 @@ class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
             reduce_cpus if reduce_cpus is not None else self._DEFAULT_REDUCE_NUM_CPUS
         )
 
-        # -- Handle accumulation --
-        # Refs we've received from upstream (the ShuffleMapOpV3). One ref
-        # per mapper. We must wait for the upstream to close before
-        # dispatching reducers, because each reducer needs ALL of them.
-        self._handle_refs: List[ObjectRef] = []
-        # Keep the input bundles alive so the handle refs aren't dropped
-        # mid-flight; destroyed on shutdown / completion.
-        self._handle_input_bundles: List[RefBundle] = []
-        # Single plasma object holding the full handle-ref list, shared by all
-        # reducers (see _dispatch_all_reducers). Kept alive until shutdown.
-        self._shared_handles_ref: Optional[ObjectRef] = None
-
         # -- Reduce task tracking --
+        # ShuffleMapOpV3 emits one bundle per partition (never repeats a
+        # pid), so this dict never sees a collision.
         self._shuffle_reduce_tasks: Dict[int, DataOpTask] = {}
         self._num_reduce_tasks_submitted: int = 0
-        self._reducers_dispatched: bool = False
 
         # -- Output queue --
         # Streaming generator yields (block, pickled metadata) pairs; the
@@ -164,65 +159,48 @@ class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
     # v3_reduce_task consumes them and the fusion pass populates them.
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
-        """Each upstream bundle is one mapper's ShuffleHandle ref. Just
-        accumulate; the reducer dispatch happens once map closes."""
+        """Executor calls this with one partition wrapper at a time (bundle
+        contains 1 block-ref = ``shared_handles_ref`` + partition_id
+        sentinel in metadata). We extract the two pieces and dispatch one
+        reduce task. Backpressure is fully executor-driven — no
+        accumulation, no dispatch loop.
+        """
         assert input_index == 0
         if not refs.block_refs:
             refs.destroy_if_owned()
             return
-        # Expect exactly one block per mapper bundle (the handle dict).
-        for ref in refs.block_refs:
-            self._handle_refs.append(ref)
-        self._handle_input_bundles.append(refs)
 
-    def all_inputs_done(self) -> None:
-        """Upstream map has finished — dispatch one reduce task per
-        partition. Each task gets the FULL handle list and a specific
-        ``partition_id``; the v3 reduce code uses the handles' index dict
-        to find which (offset, length) ranges to fetch for that partition.
-        """
-        super().all_inputs_done()
-        self._dispatch_all_reducers()
+        partition_id = extract_partition_id(refs)
+        # The wrapper's sole block-ref IS the shared handle-list plasma
+        # object built by ShuffleMapOpV3.all_inputs_done. Ray dispatch sees
+        # 1 nested borrowed ref per reduce task (not M).
+        handles_ref = refs.block_refs[0]
+        # size_bytes comes from the wrapper's metadata (populated by
+        # ShuffleMapOpV3 from its per-partition decoded-byte accumulator).
+        estimated_bytes = sum((m.size_bytes or 0) for m in refs.metadata)
 
-    def _dispatch_all_reducers(self) -> None:
-        if self._reducers_dispatched:
-            return
-        self._reducers_dispatched = True
-
-        if not self._handle_refs:
-            # No mapper produced any handle, thus nothing to reduce.
-            return
-
-        target_max_block_size = self.data_context.target_max_block_size
-
-        # Bundle the full handle-ref list into ONE plasma object and pass that
-        # single ref to every reducer, instead of passing all M handle ObjectRefs
-        # inline to each of the P reduce tasks. Passing M nested refs per task
-        # made Ray register/serialize M borrowed refs on every ``.remote()``
-        # (~17ms/task in-situ, ~99% of dispatch -> the P=500 reduce ramp). With a
-        # single top-level ref, Ray auto-dereferences it on the worker back to the
-        # same handle list (the existing ``for h in handles: ray.get(h)`` loop in
-        # ``v3_reduce_task`` is unchanged). Held as a member so the plasma object
-        # outlives dispatch; released in ``_do_shutdown``. The inner map-output
-        # refs stay pinned by ``_handle_input_bundles`` as before.
-        self._shared_handles_ref = ray.put(self._handle_refs)
-
-        for partition_id in range(self._num_partitions):
-            self._dispatch_one_reducer(partition_id, target_max_block_size)
+        self._dispatch_one_reducer(
+            partition_id,
+            handles_ref,
+            estimated_bytes,
+            self.data_context.target_max_block_size,
+        )
+        # Wrapper was built with owns_blocks=False (shared_handles_ref is
+        # owned by the upstream map op), so this is a no-op for the ref —
+        # it just releases the Python-side RefBundle.
+        refs.destroy_if_owned()
 
     def _dispatch_one_reducer(
-        self, partition_id: int, target_max_block_size: Optional[int]
+        self,
+        partition_id: int,
+        handles_ref: ObjectRef,
+        estimated_bytes: int,
+        target_max_block_size: Optional[int],
     ) -> None:
         # Per-partition memory ask: 2× the decoded byte total this reducer
-        # will see (bounds peak heap from accum + reshape carry). Same source
-        # as v2's path -- see ShuffleMapOpV3.get_partition_bytes / the
-        # mapper task's ``decoded_bytes`` field. If the upstream hasn't
-        # populated bytes yet (e.g. retry on a partition with no bytes
-        # recorded), fall back to leaving the hint unset so Ray's defaults
-        # apply.
-        upstream = self.input_dependencies[0]
-        assert isinstance(upstream, ShuffleMapOpV3)
-        estimated_bytes = upstream.get_partition_bytes().get(partition_id, 0)
+        # will see (bounds peak heap from accum + reshape carry). Estimate
+        # comes from the wrapper's metadata (populated by the map op from
+        # its per-partition decoded_bytes accumulator).
         reduce_resources: Dict[str, Any] = {"num_cpus": self._reduce_num_cpus}
         if estimated_bytes > 0:
             reduce_resources["memory"] = int(
@@ -235,7 +213,7 @@ class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
         }
 
         block_gen = v3_reduce_task.options(**reduce_options).remote(
-            self._shared_handles_ref,
+            handles_ref,
             partition_id,
             self._reduce_fn,
             self._reduce_prefetch_dir,
@@ -263,18 +241,17 @@ class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
             operator_name=self.name,
         )
 
-        # ShuffleMapOpV3 emits one bundle per mapper, NOT per partition, so
-        # we always start with no prior task for this partition_id.
+        # Map emits each partition exactly once, so no collision possible.
         assert partition_id not in self._shuffle_reduce_tasks, (
             f"partition_id {partition_id} already has an in-flight reducer "
-            f"— ShuffleReduceOpV3 should dispatch each partition exactly once"
+            f"— ShuffleMapOpV3 should emit each partition wrapper exactly once"
         )
         self._shuffle_reduce_tasks[partition_id] = data_task
         self._num_reduce_tasks_submitted += 1
 
-        # For metrics, treat the handle list as this reducer's "input."
-        # We don't have a partition-specific RefBundle (handles cover every
-        # partition), so we just pass a synthetic empty bundle.
+        # For metrics, we don't have a partition-specific data bundle (the
+        # wrapper's only ref is the shared handle list), so pass a synthetic
+        # empty bundle — same pattern as before.
         self._metrics.on_task_submitted(
             partition_id,
             RefBundle((), schema=None, owns_blocks=False),
@@ -336,31 +313,22 @@ class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
         return list(self._shuffle_reduce_tasks.values())
 
     def throttling_disabled(self) -> bool:
-        # Opt out of the ResourceManager reservation UNCONDITIONALLY. Two effects:
-        #   (1) while the map phase runs, reduce (not yet active) stops reserving
-        #       a budget slice, so map reaches full CPU concurrency sooner;
-        #   (2) once reduce is running it isn't admission-throttled either, so all
-        #       partitions run at full concurrency.
-        # Reduce is the terminal op (Write is fused in), so there's nothing
-        # downstream to reserve for. This intentionally supersedes the earlier
-        # ``return not self._reducers_dispatched`` (which only opted out while
-        # waiting for map) to also un-throttle reduce execution itself.
+        # Opt out of the ResourceManager reservation. Reduce is the
+        # terminal op (Write is fused in), so there's nothing downstream
+        # to reserve for; and the map op now emits N partition wrappers
+        # rather than M handle bundles, so the executor's ordinary
+        # backpressure loop already gates reducer dispatch tick-by-tick
+        # (one wrapper -> one _add_input_inner call -> one v3_reduce_task).
         #
         # TODO(shuffle_v3): this removes the memory safety valve during reduce --
         # reduce tasks request only num_cpus (no memory estimate), so throttling
         # was the only backpressure. Unbounded reduce has OOM'd at 512GB before.
-        # Validate against OOM and gate this properly (e.g. revert to opting out
-        # only while waiting for map, and/or attach a real per-task memory
-        # estimate so the ResourceManager can back-pressure instead).
+        # Validate against OOM and gate this properly (e.g. attach a real
+        # per-task memory estimate so the ResourceManager can back-pressure).
         return True
 
     def has_execution_finished(self) -> bool:
         if self._shuffle_reduce_tasks or self._output_queue:
-            return False
-        # We also need the reducers to have been DISPATCHED — otherwise we
-        # might "finish" before all_inputs_done has fired (e.g. an empty
-        # upstream).
-        if not self._reducers_dispatched and not self._inputs_complete:
             return False
         return super().has_execution_finished()
 
@@ -368,7 +336,6 @@ class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
         return (
             not self._shuffle_reduce_tasks
             and not self._output_queue
-            and self._reducers_dispatched
             and super().has_completed()
         )
 
@@ -376,17 +343,9 @@ class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
         super()._do_shutdown(force)
         self._shuffle_reduce_tasks.clear()
         self._output_queue.clear()
-        # Destroying the input bundles drops our hold on each ShuffleHandle
-        # ObjectRef. Each handle dict carries the source node's
-        # ShuffleManager ActorHandle, so as the ObjectRefs are freed Ray
-        # ref-counting transitively releases the manager actors — index
-        # lifetime drives file lifetime, no explicit release RPC needed.
-        for bundle in self._handle_input_bundles:
-            bundle.destroy_if_owned()
-        self._handle_input_bundles.clear()
-        self._handle_refs.clear()
-        # Drop our hold on the shared handle-list plasma object.
-        self._shared_handles_ref = None
+        # ShuffleManager actors + handle refs are owned by ShuffleMapOpV3
+        # (via its ``_shared_handles_ref`` + pinned input bundles). Its
+        # own ``_do_shutdown`` releases them; nothing to clean here.
 
     # Stats / progress
     def get_stats(self) -> Dict[str, List[BlockStats]]:

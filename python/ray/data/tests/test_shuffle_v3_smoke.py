@@ -189,10 +189,14 @@ def test_v3_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_parts):
             map_op.add_input(upstream.get_next(), input_index=0)
         map_op.all_inputs_done()
 
-        # Drain map → feed reduce.
+        # Drain map → feed reduce. ShuffleMapOpV3 now emits N partition
+        # wrapper bundles (one per partition_id, each carrying the same
+        # shared handle-list ref + a __partition__<pid> sentinel), mirroring
+        # v2's map->reduce contract. So we expect num_parts bundles, not
+        # num_blocks (mapper count).
         map_output = _drain_op(map_op)
-        assert len(map_output) == num_blocks, (
-            f"expected {num_blocks} handle bundles from map, "
+        assert len(map_output) == num_parts, (
+            f"expected {num_parts} partition wrappers from map, "
             f"got {len(map_output)}"
         )
         for bundle in map_output:

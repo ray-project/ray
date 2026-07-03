@@ -1,26 +1,31 @@
 """ShuffleMapOpV3 — map phase of the v3 file-transport hash shuffle.
 
-Drives the per-mapper ``v3_map_task`` and emits ONE output ``RefBundle`` per
-completed mapper, each carrying the returned ``ShuffleHandle`` ref. Unlike
-the v2 ``ShuffleMapOp``, this op does NOT transpose per-mapper output into
-per-partition bundles: the v3 ``ShuffleHandle`` already contains the
-per-partition byte index, and the v3 reducer reads its partition's bytes
-directly from the source node's ``ShuffleManager`` via the file-transport
-side-channel. Net effect:
+Drives the per-mapper ``v3_map_task`` and, on ``all_inputs_done``, emits
+N ``RefBundle`` wrappers to its output queue — one per ``partition_id`` —
+mirroring the v2 ``ShuffleMapOp`` map->reduce contract (one bundle per
+partition, ``__partition__<pid>`` sentinel encoded in metadata).
 
-  * No ``_partition_staging[pid]`` FIFO queues on the driver.
-  * Each completed map task contributes ONE handle bundle.
-  * The downstream ``ShuffleReduceOpV3`` collects all handle bundles and,
-    once the map phase finishes, dispatches ``num_partitions`` reduce
-    tasks each given the full handle list + a ``partition_id``.
+Two things distinguish v3 from v2 at the map layer:
+
+  * v3 does NOT transpose per-mapper shards into per-partition shard
+    tuples. Each mapper writes a single ``.shf`` file containing all N
+    partitions' bytes; the ``ShuffleHandle`` returned by the mapper task
+    is a small dict (manager ActorHandle + per-partition byte index).
+  * The N partition wrappers built here all point at the SAME shared
+    plasma object (``ray.put(handle_refs)``), differing only in their
+    ``partition_id`` sentinel and ``size_bytes`` hint. Reducer dispatch
+    therefore costs 1 nested-ref serialization per task (not M),
+    preserving the optimization the reduce op used to perform itself.
+
+The upstream barrier (`_completed_handle_refs` fills as mappers finish;
+wrappers emitted at `all_inputs_done`) mirrors v2's
+`_maybe_emit_partition_bundles` gating — reducers can't start before map
+finishes in either implementation.
 
 Lifecycle: ``start()`` is the natural place to spawn one ``ShuffleManager``
 actor per cluster node that map tasks may run on (managers serve their own
 node's shuffle files over a per-node socket endpoint). ``_do_shutdown()``
 kills those actors and removes the on-disk shuffle directory.
-
-This is the operator-layer skeleton for the MVP "ds.repartition() goes
-through v3" path; planner glue and join/multi-seq are follow-up work.
 """
 
 import functools
@@ -212,9 +217,34 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         self._map_resource_usage = ExecutionResources.zero()
 
         # -- Output queue --
-        # Each item is a 1-block RefBundle whose ref points at the
-        # ShuffleHandle dict returned by ``v3_map_task``.
+        # Populated at ``all_inputs_done`` time with N partition-wrapper
+        # bundles (one per partition_id), each carrying the SAME
+        # ``_shared_handles_ref`` + a distinct partition_id sentinel in
+        # metadata. This mirrors v2's map->reduce contract (one bundle per
+        # partition), giving the executor N gating points for backpressure
+        # — instead of the reduce op firing all N reducers at once.
         self._output_queue: FIFOBundleQueue = FIFOBundleQueue()
+
+        # -- Post-map accumulation (used to build the N wrappers) --
+        # Handles returned by completed mappers (one per mapper task).
+        # Held on the driver until ``_maybe_emit_partition_wrappers`` runs
+        # (fires only after both ``all_inputs_done`` has been called AND
+        # every mapper task has completed).
+        self._completed_handle_refs: List[ObjectRef] = []
+        # Original mapper-input RefBundles, pinned so the handle ObjectRefs
+        # inside them stay alive until the op shuts down.
+        self._completed_input_bundles: List[RefBundle] = []
+        # Single plasma object holding the full handle-ref list, shared by
+        # every partition wrapper's block-ref slot. Ray dispatch cost per
+        # reducer .remote() = 1 nested ref (not M), preserving the
+        # optimization the reduce op used to make. Held here so its
+        # lifetime spans the whole shuffle; released in ``_do_shutdown``.
+        self._shared_handles_ref: Optional[ObjectRef] = None
+        # One-shot guard so wrappers are emitted exactly once even though
+        # ``_maybe_emit_partition_wrappers`` is called from both the
+        # ``all_inputs_done`` override and each ``_handle_map_done`` (either
+        # can be the last-to-fire event).
+        self._wrappers_emitted: bool = False
 
         # -- Stats --
         self._total_input_rows: int = 0
@@ -481,16 +511,23 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
             exec_stats=exec_stats,
             input_files=_make_mapper_sentinel(map_id),
         )
+        # Synthetic per-mapper output bundle — used ONLY for per-task
+        # metric bookkeeping (submitted -> output_generated -> finished).
+        # It is NOT pushed to the output queue; downstream sees the N
+        # partition wrappers built in ``all_inputs_done`` instead.
         out_bundle = RefBundle(
             (BlockEntry(ref=handle_ref, metadata=out_meta),),
             schema=None,
-            owns_blocks=True,
+            owns_blocks=False,  # shared_handles_ref pins the underlying ref
         )
-        self._output_queue.add(out_bundle)
-        self._metrics.on_output_queued(out_bundle)
 
-        # Free input bundles (they've been consumed by the map task).
-        input_bundle.destroy_if_owned()
+        # Accumulate for the partition wrappers built in ``all_inputs_done``.
+        # We pin ``input_bundle`` (rather than destroy it here) so the
+        # handle ObjectRef inside stays alive — ``ray.put(handle_refs)``
+        # later takes a snapshot, but the underlying refs still need an
+        # explicit owner. Released in ``_do_shutdown``.
+        self._completed_handle_refs.append(handle_ref)
+        self._completed_input_bundles.append(input_bundle)
 
         # Roll up stats from input metadata.
         input_rows = sum((m.num_rows or 0) for m in input_bundle.metadata)
@@ -511,6 +548,99 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
 
         if self._map_bar is not None:
             self._map_bar.update(increment=input_rows)
+
+        # This map task may be the last-to-finish event completing the
+        # (all_inputs_done + no map tasks in flight) gate — try to emit.
+        self._maybe_emit_partition_wrappers()
+
+    def all_inputs_done(self) -> None:
+        """Upstream (feeder of mapper input bundles) has closed. Wrappers
+        can only be emitted once *both* this has fired AND every in-flight
+        map task has completed, so we just try; the actual emission is
+        gated in ``_maybe_emit_partition_wrappers``.
+        """
+        super().all_inputs_done()
+        self._maybe_emit_partition_wrappers()
+
+    def _maybe_emit_partition_wrappers(self) -> None:
+        """Emit the N partition-wrapper bundles into ``_output_queue`` —
+        one per partition_id, each carrying the SAME shared handle-list
+        plasma ref plus a distinct ``__partition__<pid>`` sentinel in
+        metadata.
+
+        Called from two places (either can be the last-to-fire event):
+          * ``all_inputs_done``: upstream closes with all map tasks
+            already finished.
+          * ``_handle_map_done``: a map task finishes after
+            ``all_inputs_done`` already fired.
+
+        Gated on: ``_inputs_complete`` AND no map tasks in flight AND
+        wrappers not already emitted.
+
+        This gives the executor N distinct bundle-arrivals to backpressure
+        the downstream ``ShuffleReduceOpV3`` against — the reducer sees
+        one bundle per partition and dispatches one reducer per bundle,
+        exactly like the v2 ``ShuffleReduceOp`` does. The N wrappers do
+        not own the shared ref (``owns_blocks=False``); the ref's lifetime
+        is bound to ``self._shared_handles_ref`` for the entire op.
+        """
+        if self._wrappers_emitted:
+            return
+        if not self._inputs_complete:
+            return
+        if self._shuffle_map_tasks:
+            return
+        self._wrappers_emitted = True
+
+        if not self._completed_handle_refs:
+            # No mapper produced a handle (empty upstream); nothing to emit.
+            return
+
+        # Local import: v2 map operator's sentinel encoding. Sharing it
+        # keeps the reduce side reusable across V2 and V3 (both call
+        # ``extract_partition_id`` on the same sentinel format).
+        from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
+            make_partition_sentinel,
+        )
+        from ray.data.block import BlockExecStats
+
+        # ONE plasma object holds the list of M handle refs; every wrapper's
+        # single block slot points at it. Ray sees 1 borrowed ref per
+        # reducer .remote() dispatch (not M), preserving the dispatch-cost
+        # optimization that the reduce op used to make internally.
+        self._shared_handles_ref = ray.put(self._completed_handle_refs)
+
+        partition_bytes = self.get_partition_bytes()
+        for partition_id in range(self._num_partitions):
+            # size_bytes hint drives the reducer's memory ask via the
+            # wrapper's metadata (reduce reads it in _add_input_inner). If
+            # the accumulator hasn't recorded this partition (retry / empty
+            # partition / older mapper), the hint is 0 → Ray defaults.
+            size_bytes = partition_bytes.get(partition_id, 0)
+            # exec_stats must be present (framework asserts wall_time_s +
+            # block_ser_time_s are set for every emitted block metadata);
+            # the wrapper isn't a "computed" block, so we attach a minimal
+            # already-populated stats object.
+            exec_stats = BlockExecStats.builder().build(block_ser_time_s=0.0)
+            wrapper_meta = BlockMetadata(
+                # Wrapper doesn't itself carry rows (real rows surface at
+                # reduce output). Must be int-typed for metric arithmetic.
+                num_rows=0,
+                size_bytes=size_bytes,
+                exec_stats=exec_stats,
+                input_files=list(make_partition_sentinel(partition_id)),
+            )
+            wrapper = RefBundle(
+                (
+                    BlockEntry(
+                        ref=self._shared_handles_ref, metadata=wrapper_meta
+                    ),
+                ),
+                schema=None,
+                owns_blocks=False,
+            )
+            self._output_queue.add(wrapper)
+            self._metrics.on_output_queued(wrapper)
 
     def has_next(self) -> bool:
         return self._output_queue.has_next()
@@ -535,12 +665,19 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
     def has_execution_finished(self) -> bool:
         if self._shuffle_map_tasks or self._output_queue.has_next():
             return False
+        # Between "last mapper task finished" and "_maybe_emit_partition_wrappers
+        # fires" both queues can be transiently empty even though we haven't
+        # produced any output yet. Refuse to declare finished until the
+        # emission gate has actually fired (or upstream never opened).
+        if self._inputs_complete and not self._wrappers_emitted:
+            return False
         return super().has_execution_finished()
 
     def has_completed(self) -> bool:
         return (
             not self._shuffle_map_tasks
             and not self._output_queue.has_next()
+            and (not self._inputs_complete or self._wrappers_emitted)
             and super().has_completed()
         )
 
@@ -548,6 +685,17 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         super()._do_shutdown(force)
         self._shuffle_map_tasks.clear()
         self._output_queue.clear()
+        # Release pinned mapper-input bundles — their sole purpose was to
+        # keep the handle ObjectRefs alive across dispatch. Once reducers
+        # have finished (this method runs at op shutdown), Ray-core
+        # ref-counting is safe to reclaim.
+        for bundle in self._completed_input_bundles:
+            bundle.destroy_if_owned()
+        self._completed_input_bundles.clear()
+        self._completed_handle_refs.clear()
+        # Drop the shared handle-list plasma object. Reducer tasks that
+        # captured a borrowed ref have already completed by shutdown time.
+        self._shared_handles_ref = None
         # ShuffleManager actors are kept alive by the ActorHandle inside
         # each emitted ShuffleHandle; Ray ref-counting tears them down once
         # all reducer bundles release. No cleanup needed here.
