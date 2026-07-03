@@ -812,7 +812,7 @@ def get_node_ip_address(address=None):
         return ray._private.worker._global_node.node_ip_address
 
     if os.environ.get("RAY_NODE_USE_HOSTNAME") == "1":
-        return socket.gethostname()
+        return node_ip_address_from_perspective(address)
 
     if not ray_constants.ENABLE_RAY_CLUSTER:
         # Use loopback IP as the local IP address to prevent bothersome

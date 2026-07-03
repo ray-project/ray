@@ -15,6 +15,7 @@
 #include "ray/util/network_util.h"
 
 #include <boost/asio/generic/basic_endpoint.hpp>
+#include <boost/asio/ip/host_name.hpp>
 #include <memory>
 #include <string>
 #include <utility>
@@ -130,13 +131,22 @@ TEST(NetworkUtilTest, TestIsIPv6) {
 }
 
 TEST(NetworkUtilTest, TestGetNodeIpAddressHostnameRouting) {
-  // Test that GetNodeIpAddressFromPerspective returns hostname when RAY_NODE_USE_HOSTNAME=1
+  // Test that GetNodeIpAddressFromPerspective returns hostname when
+  // RAY_NODE_USE_HOSTNAME=1
+#ifdef _WIN32
+  _putenv_s("RAY_NODE_USE_HOSTNAME", "1");
+#else
   setenv("RAY_NODE_USE_HOSTNAME", "1", 1);
+#endif
   std::string hostname = boost::asio::ip::host_name();
   EXPECT_EQ(GetNodeIpAddressFromPerspective(std::nullopt), hostname);
 
   // Test default behavior (should be an IP, not the hostname)
+#ifdef _WIN32
+  _putenv_s("RAY_NODE_USE_HOSTNAME", "");
+#else
   unsetenv("RAY_NODE_USE_HOSTNAME");
+#endif
   std::string ip_address = GetNodeIpAddressFromPerspective(std::nullopt);
   EXPECT_NE(ip_address, hostname);
   // Basic IP validation (v4 or v6)
