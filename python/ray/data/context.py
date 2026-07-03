@@ -104,8 +104,11 @@ DEFAULT_PARQUET_IN_MEMORY_VAR_WIDTH_FACTOR = env_float(
 # read output block) and making large files flush mid-stream more often. The
 # reader streams the decode and caps the per-scan ``pre_buffer``, so a partition
 # does not blow up per-task memory. Setting it to ``None`` falls back to
-# ``target_max_block_size``.
-DEFAULT_PARTITIONER_MAX_BUCKET_SIZE_BYTES: Optional[int] = 256 * 1024 * 1024  # 256 MiB
+# ``target_max_block_size``. Env-overridable so it can be tuned from the
+# command line without an application-code change.
+DEFAULT_PARTITIONER_MAX_BUCKET_SIZE_BYTES: Optional[int] = env_integer(
+    "RAY_DATA_PARTITIONER_MAX_BUCKET_SIZE_BYTES", 256 * 1024 * 1024
+)
 
 # Target in-memory bytes per decode batch in the V2 Parquet reader. Kept
 # separate from ``target_max_block_size`` (the OUTPUT-block target) on purpose:
