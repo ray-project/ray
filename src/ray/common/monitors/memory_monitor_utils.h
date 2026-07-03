@@ -148,6 +148,16 @@ class MemoryMonitorUtils {
                                     const CgroupManagerInterface &cgroup_manager);
 
   /**
+   * @brief Validates static memory-threshold configuration values.
+   *
+   * Runtime threshold computation is allowed to skip transient failures (for
+   * example cgroup read failures), but invalid static RayConfig values should
+   * still fail fast just like GetMemoryThreshold().
+   */
+  static void ValidateMemoryThresholdConfig(float usage_threshold,
+                                            int64_t min_memory_free_bytes);
+
+  /**
    * @brief Computes the memory threshold for runtime/poll-time decisions.
    *
    * @details This has the same threshold formula as GetMemoryThreshold(), but is

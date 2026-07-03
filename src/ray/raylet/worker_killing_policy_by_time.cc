@@ -40,8 +40,15 @@ TimeBasedWorkerKillingPolicy::TimeBasedWorkerKillingPolicy(int64_t threshold_byt
 
 TimeBasedWorkerKillingPolicy::TimeBasedWorkerKillingPolicy(
     MemoryThresholdBytesGetter memory_threshold_bytes_getter, int64_t kill_buffer_bytes)
+    : TimeBasedWorkerKillingPolicy(
+          std::move(memory_threshold_bytes_getter),
+          [kill_buffer_bytes](int64_t) { return kill_buffer_bytes; }) {}
+
+TimeBasedWorkerKillingPolicy::TimeBasedWorkerKillingPolicy(
+    MemoryThresholdBytesGetter memory_threshold_bytes_getter,
+    KillBufferBytesGetter kill_buffer_bytes_getter)
     : memory_threshold_bytes_getter_(std::move(memory_threshold_bytes_getter)),
-      kill_buffer_bytes_(kill_buffer_bytes),
+      kill_buffer_bytes_getter_(std::move(kill_buffer_bytes_getter)),
       idle_worker_killing_memory_threshold_bytes_(
           RayConfig::instance().idle_worker_killing_memory_threshold_bytes()) {}
 
@@ -100,6 +107,8 @@ TimeBasedWorkerKillingPolicy::Policy(
            "Skipping this worker killing decision.";
     return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>();
   }
+  int64_t kill_buffer_bytes =
+      kill_buffer_bytes_getter_(memory_usage_snapshot.total_bytes);
 
   std::vector<std::shared_ptr<WorkerInterface>> sorted_workers;
   std::copy_if(workers.begin(),
@@ -185,7 +194,7 @@ TimeBasedWorkerKillingPolicy::Policy(
   // continue to select workers until the memory to free is reached
   auto sorted_worker_it = sorted_workers.begin();
   int64_t memory_to_free_bytes =
-      memory_usage_snapshot.used_bytes - threshold_bytes + kill_buffer_bytes_;
+      memory_usage_snapshot.used_bytes - threshold_bytes + kill_buffer_bytes;
   int64_t memory_left_to_free = memory_to_free_bytes;
 
   while (memory_left_to_free > 0 && sorted_worker_it != sorted_workers.end()) {
@@ -230,7 +239,7 @@ TimeBasedWorkerKillingPolicy::Policy(
       "Needed to free %d bytes. Selected %d workers to kill: %s.",
       memory_usage_snapshot.used_bytes,
       threshold_bytes,
-      kill_buffer_bytes_,
+      kill_buffer_bytes,
       memory_to_free_bytes,
       workers_to_kill.size(),
       PolicyDebugString(workers_to_kill, process_memory_snapshot));

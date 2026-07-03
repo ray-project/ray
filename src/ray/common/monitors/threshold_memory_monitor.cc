@@ -52,6 +52,8 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(
         io_service_.run();
       }),
       runner_(PeriodicalRunner::Create(io_service_)) {
+  MemoryMonitorUtils::ValidateMemoryThresholdConfig(usage_threshold_,
+                                                    min_memory_free_bytes_);
   // The effective threshold is recomputed against the live cgroup limit on
   // every poll (see ComputeMemoryThresholdBytes), so we deliberately do not
   // cache a startup value here -- doing so would drift out of sync the moment

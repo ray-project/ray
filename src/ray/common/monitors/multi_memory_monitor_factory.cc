@@ -42,6 +42,10 @@ std::vector<std::unique_ptr<MemoryMonitorInterface>> MemoryMonitorFactory::Creat
   }
 
   uint64_t monitor_interval_ms = RayConfig::instance().memory_monitor_refresh_ms();
+  float usage_threshold = RayConfig::instance().memory_usage_threshold();
+  int64_t min_memory_free_bytes = RayConfig::instance().min_memory_free_bytes();
+  MemoryMonitorUtils::ValidateMemoryThresholdConfig(usage_threshold,
+                                                    min_memory_free_bytes);
 
   if (monitor_interval_ms > 0) {
     // The threshold is recomputed on every poll inside ThresholdMemoryMonitor
@@ -50,8 +54,8 @@ std::vector<std::unique_ptr<MemoryMonitorInterface>> MemoryMonitorFactory::Creat
     // restarting the raylet.
     monitors.push_back(std::make_unique<ThresholdMemoryMonitor>(
         std::move(kill_workers_callback),
-        RayConfig::instance().memory_usage_threshold(),
-        RayConfig::instance().min_memory_free_bytes(),
+        usage_threshold,
+        min_memory_free_bytes,
         monitor_interval_ms,
         resource_isolation_enabled,
         cgroup_manager,

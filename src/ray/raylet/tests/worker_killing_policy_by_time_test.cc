@@ -634,6 +634,41 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   ASSERT_EQ(workers_to_kill[0].first->WorkerId(), worker->WorkerId());
 }
 
+TEST_F(WorkerKillingPolicyByTimeTest,
+       TestPolicyRecomputesKillBufferFromLatestTotalMemory) {
+  TimeBasedWorkerKillingPolicy policy(
+      [](int64_t total_memory_bytes) {
+        return static_cast<int64_t>(total_memory_bytes * 0.7);
+      },
+      [](int64_t total_memory_bytes) {
+        return static_cast<int64_t>(total_memory_bytes * 0.05);
+      });
+
+  TaskID owner_id = TaskID::ForDriverTask(job_id_);
+  std::shared_ptr<WorkerInterface> small_worker = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1001);
+  clock_.AdvanceTime(absl::Milliseconds(1));
+  std::shared_ptr<WorkerInterface> large_worker = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1002);
+
+  std::vector<std::shared_ptr<WorkerInterface>> workers{small_worker, large_worker};
+  ProcessesMemorySnapshot process_snapshot =
+      CreateProcessSnapshot({{small_worker, 25}, {large_worker, 100}});
+
+  // Runtime total memory is 1000 bytes, so threshold is 700 bytes and the kill
+  // buffer should be recomputed to 50 bytes. With 720 bytes used, the policy
+  // needs to free 70 bytes and should stop after selecting the 100-byte worker.
+  // A stale kill buffer from a larger startup total (for example, 100 bytes from
+  // a 2000-byte total) would require freeing 120 bytes and incorrectly select
+  // both workers.
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill =
+      policy.SelectWorkersToKill(
+          workers, process_snapshot, CreateSystemSnapshot(720, 1000 /*total_bytes*/));
+
+  ASSERT_EQ(workers_to_kill.size(), 1);
+  ASSERT_EQ(workers_to_kill[0].first->WorkerId(), large_worker->WorkerId());
+}
+
 TEST_F(WorkerKillingPolicyByTimeTest, TestPolicySkipsWhenThresholdUnavailable) {
   TimeBasedWorkerKillingPolicy policy(
       [](int64_t) { return MemoryMonitorInterface::kNull; }, 0 /*kill_buffer_bytes*/);

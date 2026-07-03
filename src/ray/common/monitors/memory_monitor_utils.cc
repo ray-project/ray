@@ -390,6 +390,8 @@ int64_t MemoryMonitorUtils::GetMemoryThresholdOrNull(
     int64_t min_memory_free_bytes,
     bool resource_isolation_enabled,
     const CgroupManagerInterface &cgroup_manager) {
+  ValidateMemoryThresholdConfig(usage_threshold, min_memory_free_bytes);
+
   if (total_memory_bytes == MemoryMonitorInterface::kNull) {
     return MemoryMonitorInterface::kNull;
   }
@@ -481,12 +483,7 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
     bool resource_isolation_enabled,
     const CgroupManagerInterface &cgroup_manager) {
   RAY_CHECK_GE(total_memory_bytes, MemoryMonitorInterface::kNull);
-  RAY_CHECK_GE(min_memory_free_bytes, MemoryMonitorInterface::kNull);
-  RAY_CHECK_GE(usage_threshold, 0)
-      << "Invalid configuration: usage_threshold must be >= 0";
-  RAY_CHECK_LE(usage_threshold, 1)
-      << "Invalid configuration: usage_threshold must be <= 1";
-
+  ValidateMemoryThresholdConfig(usage_threshold, min_memory_free_bytes);
   int64_t resolved_memory_threshold_bytes;
   int64_t threshold_fraction = static_cast<int64_t>(total_memory_bytes * usage_threshold);
 
@@ -523,6 +520,17 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
   }
 
   return resolved_memory_threshold_bytes;
+}
+
+void MemoryMonitorUtils::ValidateMemoryThresholdConfig(float usage_threshold,
+                                                       int64_t min_memory_free_bytes) {
+  RAY_CHECK_GE(min_memory_free_bytes, MemoryMonitorInterface::kNull)
+      << "Invalid configuration: min_memory_free_bytes must be >= "
+      << MemoryMonitorInterface::kNull;
+  RAY_CHECK_GE(usage_threshold, 0)
+      << "Invalid configuration: usage_threshold must be >= 0";
+  RAY_CHECK_LE(usage_threshold, 1)
+      << "Invalid configuration: usage_threshold must be <= 1";
 }
 
 StatusSetOr<int64_t, StatusT::NotFound> MemoryMonitorUtils::GetProcessUsedMemoryBytes(

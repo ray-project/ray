@@ -51,6 +51,7 @@ namespace raylet {
 class TimeBasedWorkerKillingPolicy : public WorkerKillingPolicyInterface {
  public:
   using MemoryThresholdBytesGetter = std::function<int64_t(int64_t total_memory_bytes)>;
+  using KillBufferBytesGetter = std::function<int64_t(int64_t total_memory_bytes)>;
 
   /**
    * @param threshold_bytes The maximum memory usage threshold in bytes.
@@ -66,11 +67,22 @@ class TimeBasedWorkerKillingPolicy : public WorkerKillingPolicyInterface {
    *        threshold in bytes from the latest total memory snapshot. This is called
    *        for every policy decision so runtime cgroup limit changes are reflected
    *        without restarting the raylet. Returning kNull skips the current decision.
-   * @param kill_buffer_bytes The amount of memory buffer under
-   * the memory usage threshold to leave free after killing workers.
+   * @param kill_buffer_bytes The amount of memory buffer under the memory usage
+   * threshold to leave free after killing workers. This overload keeps a fixed
+   * kill buffer and is primarily used by tests.
    */
   TimeBasedWorkerKillingPolicy(MemoryThresholdBytesGetter memory_threshold_bytes_getter,
                                int64_t kill_buffer_bytes);
+
+  /**
+   * @param memory_threshold_bytes_getter Computes the current maximum memory usage
+   *        threshold in bytes from the latest total memory snapshot.
+   * @param kill_buffer_bytes_getter Computes the current kill buffer in bytes from
+   *        the latest total memory snapshot, so runtime cgroup limit changes are
+   *        reflected without restarting the raylet.
+   */
+  TimeBasedWorkerKillingPolicy(MemoryThresholdBytesGetter memory_threshold_bytes_getter,
+                               KillBufferBytesGetter kill_buffer_bytes_getter);
 
   /**
    * @brief This constructor should only be used in tests.
@@ -131,8 +143,8 @@ class TimeBasedWorkerKillingPolicy : public WorkerKillingPolicyInterface {
   /// Computes the current memory usage threshold to free to in bytes.
   MemoryThresholdBytesGetter memory_threshold_bytes_getter_;
 
-  /// The kill memory buffer in bytes
-  int64_t kill_buffer_bytes_;
+  /// Computes the current kill memory buffer in bytes.
+  KillBufferBytesGetter kill_buffer_bytes_getter_;
 
   /// The memory threshold for workers without lease (i.e. idle workers)
   /// to be considered for killing in bytes.
