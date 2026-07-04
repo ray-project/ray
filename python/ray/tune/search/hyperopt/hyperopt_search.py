@@ -522,9 +522,13 @@ class HyperOptSearch(Searcher):
                         par,
                         [
                             (
+                                # A dict of plain constants converts to {}, but
+                                # hyperopt accepts constant dicts as choice
+                                # categories, so pass the original through.
                                 HyperOptSearch.convert_search_space(
                                     category, prefix=par
                                 )
+                                or category
                                 if isinstance(category, dict)
                                 else (
                                     HyperOptSearch.convert_search_space(

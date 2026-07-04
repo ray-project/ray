@@ -1029,6 +1029,20 @@ class SearchSpaceTest(unittest.TestCase):
 
             self.assertIn(config["domain_nested"], ["M", "N", "O", "P"])
 
+    def testConvertHyperOptChoiceOfConstantDicts(self):
+        # https://github.com/ray-project/ray/issues/49507
+        from ray.tune.search.hyperopt import HyperOptSearch
+
+        choices = [{"a": 1, "b": 2}, {"a": 3, "b": 4}]
+        config = {"space": tune.choice(choices)}
+
+        searcher = HyperOptSearch(space=config, metric="a", mode="max")
+        suggestion = searcher.suggest("0")
+
+        # The constant dict categories must survive conversion instead of
+        # being replaced by empty dicts.
+        self.assertIn(suggestion["space"], choices)
+
     def testConvertHyperOptConstant(self):
         from ray.tune.search.hyperopt import HyperOptSearch
 
