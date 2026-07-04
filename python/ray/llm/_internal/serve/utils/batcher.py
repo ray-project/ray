@@ -40,6 +40,7 @@ class Batcher(Generic[T]):
             return
 
         self.done_event: asyncio.Event = asyncio.Event()
+        self.first_item_event: asyncio.Event = asyncio.Event()
 
         # We are okay with this task getting cancelled (to propagate cancellations)
         self.read_task = asyncio.create_task(self.read())
@@ -57,6 +58,23 @@ class Batcher(Generic[T]):
             return
 
         try:
+            if self.interval_s is not None:
+                # Flush the first result(s) as soon as they are available instead
+                # of waiting out the first full interval. Time-to-first-token is
+                # latency-critical for streaming responses, while batching only
+                # exists to amortize per-chunk overhead for the rest of the
+                # stream. Without this, the batching interval is added to the
+                # TTFT of every request (https://github.com/ray-project/ray/issues/59681).
+                await self.first_item_event.wait()
+
+                results, is_done = self.check_done_and_drain()
+                if results:
+                    yield self._merge_results(results)
+                if is_done:
+                    # Raise exception, if any
+                    self.read_task.result()
+                    return
+
             while True:
                 # Wait for the interval or until we finish, whichever is faster.
                 # We use an event to avoid asyncio.wait_for cancelling the real task on timeout.
@@ -97,8 +115,13 @@ class Batcher(Generic[T]):
         try:
             async for x in self.generator:
                 self.queue.put_nowait(x)
+                if not self.first_item_event.is_set():
+                    self.first_item_event.set()
         finally:
             self.done_event.set()
+            # Unblock stream() if the generator finished (or raised) before
+            # producing any items.
+            self.first_item_event.set()
 
     def drain_queue(self):
         """Drain all results currently in the queue"""

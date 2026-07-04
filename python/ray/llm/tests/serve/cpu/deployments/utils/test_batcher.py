@@ -111,6 +111,42 @@ class TestBatching:
         assert batcher.queue.empty()
 
     @pytest.mark.asyncio
+    async def test_first_batch_not_delayed_by_interval(self):
+        """The first result must be yielded as soon as it is available rather
+        than after the first full batching interval. Otherwise the batching
+        interval is added to the time-to-first-token of every streaming
+        request (https://github.com/ray-project/ray/issues/59681)."""
+
+        first_item_ready = asyncio.Event()
+
+        async def generator():
+            yield dict(num_generated_tokens=1, generated_text=TEXT_VALUE)
+            first_item_ready.set()
+            # Keep the stream open well past the first flush.
+            await asyncio.sleep(MODEL_RESPONSE_BATCH_TIMEOUT_MS / 1000 * 3)
+            yield dict(num_generated_tokens=1, generated_text=FINAL_TEXT_VALUE)
+
+        batcher = TestBatcher(generator())
+        stream = batcher.stream()
+
+        start = time.perf_counter()
+        first_batch = await stream.__anext__()
+        first_batch_ms = (time.perf_counter() - start) * 1e3
+
+        assert first_batch["generated_text"] == TEXT_VALUE
+        assert first_batch_ms < MODEL_RESPONSE_BATCH_TIMEOUT_MS / 2, (
+            f"First batch took {first_batch_ms:.1f}ms; it should be yielded "
+            "immediately, not after the batching interval "
+            f"({MODEL_RESPONSE_BATCH_TIMEOUT_MS}ms)."
+        )
+
+        token_count = first_batch["num_generated_tokens"]
+        async for batch in stream:
+            token_count += batch["num_generated_tokens"]
+        assert token_count == 2, "No tokens should be lost or duplicated"
+        assert batcher.queue.empty()
+
+    @pytest.mark.asyncio
     async def test_batch_no_interval(self):
         """Check that the class creates only one batch if there's no interval."""
 
