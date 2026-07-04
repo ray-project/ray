@@ -24,6 +24,10 @@ from ray.data.context import DataContext
 if TYPE_CHECKING:
     import pyarrow as pa
 
+    from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (  # noqa: E501
+        ReduceFn,
+    )
+
 
 @dataclass(frozen=True)
 class _DatasetPreprocessingResult:
@@ -113,6 +117,49 @@ class JoiningAggregation(ShuffleAggregation):
             left_columns_suffix=self._left_columns_suffix,
             right_columns_suffix=self._right_columns_suffix,
         )
+
+
+def _make_join_reduce_fn(
+    *,
+    join_type: JoinType,
+    left_key_col_names: Tuple[str, ...],
+    right_key_col_names: Tuple[str, ...],
+    left_columns_suffix: Optional[str] = None,
+    right_columns_suffix: Optional[str] = None,
+    left_schema: Optional[Any] = None,
+    right_schema: Optional[Any] = None,
+) -> "ReduceFn":
+    """Build a V2-shuffle reduce fn that joins two co-partitioned inputs."""
+    import pyarrow as pa
+
+    def _side_table(tables: List[Block], schema: Optional[Any]) -> Optional["pa.Table"]:
+        if tables:
+            return _combine(tables)
+        if isinstance(schema, pa.Schema):
+            return schema.empty_table()
+        return None
+
+    def _reduce(
+        partition_id: int, tables_by_input: List[List[Block]]
+    ) -> Iterator[Block]:
+        assert (
+            len(tables_by_input) == 2
+        ), f"Join reduce expects two inputs (got {len(tables_by_input)})"
+        left_table = _side_table(tables_by_input[0], left_schema)
+        right_table = _side_table(tables_by_input[1], right_schema)
+        if left_table is None or right_table is None:
+            return
+        yield join_tables(
+            left_table,
+            right_table,
+            join_type=join_type,
+            left_key_col_names=left_key_col_names,
+            right_key_col_names=right_key_col_names,
+            left_columns_suffix=left_columns_suffix,
+            right_columns_suffix=right_columns_suffix,
+        )
+
+    return _reduce
 
 
 def join_tables(

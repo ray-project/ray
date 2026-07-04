@@ -135,17 +135,6 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         # -- Sub-progress bars -----------------------------------------------
         self._reduce_bar: Optional["BaseProgressBar"] = None
 
-    def _reduce_task_remote_args(self, memory_estimate: int) -> Dict[str, Any]:
-        remote_args: Dict[str, Any] = {
-            "num_cpus": self._DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS,
-            "scheduling_strategy": "SPREAD",
-        }
-        if memory_estimate > 0:
-            remote_args["memory"] = memory_estimate
-        remote_args.update(self._reduce_ray_remote_args)
-        remote_args["num_returns"] = "streaming"
-        return remote_args
-
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         """Buffer this input's partition-bundle; submit when all inputs paired.
 
@@ -207,6 +196,17 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
                 for i in range(self._num_inputs)
             ]
             self._submit_reduce_task(partition_id, bundles)
+
+    def _reduce_task_remote_args(self, memory_estimate: int) -> Dict[str, Any]:
+        remote_args: Dict[str, Any] = {
+            "num_cpus": self._DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS,
+            "scheduling_strategy": "SPREAD",
+        }
+        if memory_estimate > 0:
+            remote_args["memory"] = memory_estimate
+        remote_args.update(self._reduce_ray_remote_args)
+        remote_args["num_returns"] = "streaming"
+        return remote_args
 
     def _submit_reduce_task(self, partition_id: int, bundles: List[RefBundle]) -> None:
         """Submit one reduce task for a fully-paired partition."""
