@@ -353,9 +353,6 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         if sizes:
             avg_bytes = sum(sizes) / len(sizes)
             memory = int(avg_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
-        # Read the resource fields off the same remote args a reduce task is
-        # submitted with, so the budget allocator and the actual Ray
-        # reservation agree.
         return ExecutionResources.from_resource_dict(
             self._reduce_task_remote_args(memory)
         )
