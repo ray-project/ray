@@ -23,7 +23,10 @@ class TestAccumulateBlockTimings:
         """Accumulating a single block appends its span."""
         dst = BatchStageTimings()
         dst.accumulate_block_timings(
-            BlockStageTimings(production_wait=TimeSpan(start_s=1.0, end_s=2.0))
+            BlockStageTimings(
+                production_wait=TimeSpan(start_s=1.0, end_s=2.0),
+                data_transfer=TimeSpan(start_s=2.0, end_s=3.0),
+            )
         )
         assert len(dst.production_wait) == 1
         assert dst.production_wait[0].start_s == 1.0
@@ -34,39 +37,43 @@ class TestAccumulateBlockTimings:
         dst = BatchStageTimings()
 
         dst.accumulate_block_timings(
-            BlockStageTimings(production_wait=TimeSpan(start_s=1.0, end_s=2.0))
+            BlockStageTimings(
+                production_wait=TimeSpan(start_s=1.0, end_s=2.0),
+                data_transfer=TimeSpan(start_s=2.0, end_s=3.0),
+            )
         )
         dst.accumulate_block_timings(
-            BlockStageTimings(production_wait=TimeSpan(start_s=3.0, end_s=4.0))
+            BlockStageTimings(
+                production_wait=TimeSpan(start_s=3.0, end_s=4.0),
+                data_transfer=TimeSpan(start_s=4.0, end_s=5.0),
+            )
         )
         dst.accumulate_block_timings(
-            BlockStageTimings(production_wait=TimeSpan(start_s=5.0, end_s=6.0))
+            BlockStageTimings(
+                production_wait=TimeSpan(start_s=5.0, end_s=6.0),
+                data_transfer=TimeSpan(start_s=6.0, end_s=7.0),
+            )
         )
 
         assert len(dst.production_wait) == 3
         assert [s.start_s for s in dst.production_wait] == [1.0, 3.0, 5.0]
         assert [s.end_s for s in dst.production_wait] == [2.0, 4.0, 6.0]
 
-    def test_unrecorded_block_ignored(self):
-        """A block with no fetch timing (both fields None) is a no-op."""
-        dst = BatchStageTimings()
-        dst.production_wait.append(TimeSpan(start_s=2.0, end_s=3.0))
-
-        dst.accumulate_block_timings(BlockStageTimings())  # fields default to None
-
-        assert len(dst.production_wait) == 1
-        assert dst.production_wait[0].start_s == 2.0
-        assert dst.production_wait[0].end_s == 3.0
-
     def test_overlapping_blocks_kept_separate(self):
         """Overlapping windows are NOT merged — kept as separate spans."""
         dst = BatchStageTimings()
 
         dst.accumulate_block_timings(
-            BlockStageTimings(production_wait=TimeSpan(start_s=1.0, end_s=5.0))
+            BlockStageTimings(
+                production_wait=TimeSpan(start_s=1.0, end_s=5.0),
+                data_transfer=TimeSpan(start_s=5.0, end_s=6.0),
+            )
         )
         dst.accumulate_block_timings(
-            BlockStageTimings(production_wait=TimeSpan(start_s=3.0, end_s=7.0))
+            BlockStageTimings(
+                production_wait=TimeSpan(start_s=3.0, end_s=7.0),
+                data_transfer=TimeSpan(start_s=7.0, end_s=8.0),
+            )
         )
 
         assert len(dst.production_wait) == 2
@@ -77,7 +84,10 @@ class TestAccumulateBlockTimings:
         """Accumulating into an empty BatchStageTimings appends the span."""
         dst = BatchStageTimings()
         dst.accumulate_block_timings(
-            BlockStageTimings(production_wait=TimeSpan(start_s=10.0, end_s=20.0))
+            BlockStageTimings(
+                production_wait=TimeSpan(start_s=10.0, end_s=20.0),
+                data_transfer=TimeSpan(start_s=20.0, end_s=30.0),
+            )
         )
         assert len(dst.production_wait) == 1
         assert dst.production_wait[0].start_s == 10.0
@@ -87,10 +97,16 @@ class TestAccumulateBlockTimings:
         dst = BatchStageTimings()
 
         dst.accumulate_block_timings(
-            BlockStageTimings(data_transfer=TimeSpan(start_s=1.0, end_s=2.0))
+            BlockStageTimings(
+                production_wait=TimeSpan(start_s=0.0, end_s=1.0),
+                data_transfer=TimeSpan(start_s=1.0, end_s=2.0),
+            )
         )
         dst.accumulate_block_timings(
-            BlockStageTimings(data_transfer=TimeSpan(start_s=3.0, end_s=4.0))
+            BlockStageTimings(
+                production_wait=TimeSpan(start_s=2.0, end_s=3.0),
+                data_transfer=TimeSpan(start_s=3.0, end_s=4.0),
+            )
         )
 
         assert len(dst.data_transfer) == 2
@@ -119,19 +135,6 @@ class TestAccumulateBlockTimings:
         assert len(dst.data_transfer) == 2
         assert [s.start_s for s in dst.production_wait] == [1.0, 5.0]
         assert [s.start_s for s in dst.data_transfer] == [2.0, 6.0]
-
-    def test_data_transfer_none_preserves_destination(self):
-        """A block with no data_transfer leaves the list unchanged."""
-        dst = BatchStageTimings()
-        dst.data_transfer.append(TimeSpan(start_s=2.0, end_s=3.0))
-
-        # src has only production_wait, data_transfer is None
-        dst.accumulate_block_timings(
-            BlockStageTimings(production_wait=TimeSpan(start_s=1.0, end_s=2.0))
-        )
-
-        assert len(dst.data_transfer) == 1
-        assert dst.data_transfer[0].start_s == 2.0
 
 
 class TestStageTimingsFields:

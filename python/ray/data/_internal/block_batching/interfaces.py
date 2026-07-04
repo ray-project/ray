@@ -9,10 +9,16 @@ from ray.types import ObjectRef
 
 @dataclass
 class BlockStageTimings:
-    """Per-block timing for production_wait + data_transfer."""
+    """Per-block timing for production_wait + data_transfer.
 
-    production_wait: Optional[TimeSpan] = None
-    data_transfer: Optional[TimeSpan] = None
+    Both fields are always populated when ``stage_timings`` is set on a
+    ``ResolvedBlock``; the outer ``ResolvedBlock.stage_timings`` Optional
+    encodes "no timing recorded" (e.g. blocks already resolved before
+    entering the pipeline).
+    """
+
+    production_wait: TimeSpan
+    data_transfer: TimeSpan
 
 
 @dataclass
@@ -62,10 +68,8 @@ class BatchStageTimings:
         A boundary block whose rows span multiple batches is attributed
         to the first batch it lands in.
         """
-        if src.production_wait is not None:
-            self.production_wait.append(src.production_wait)
-        if src.data_transfer is not None:
-            self.data_transfer.append(src.data_transfer)
+        self.production_wait.append(src.production_wait)
+        self.data_transfer.append(src.data_transfer)
 
 
 @dataclass

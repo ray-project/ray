@@ -223,10 +223,15 @@ def resolve_block_refs(
         with _maybe_time(stats.iter_get_s if stats else None) as data_transfer_span:
             block = ray.get(block_ref)
 
-        stage_timings = BlockStageTimings(
-            production_wait=production_wait_span,
-            data_transfer=data_transfer_span,
-        )
+        if stats:
+            assert production_wait_span is not None
+            assert data_transfer_span is not None
+            stage_timings = BlockStageTimings(
+                production_wait=production_wait_span,
+                data_transfer=data_transfer_span,
+            )
+        else:
+            stage_timings = None
         yield ResolvedBlock(block=block, stage_timings=stage_timings)
 
     if stats:
