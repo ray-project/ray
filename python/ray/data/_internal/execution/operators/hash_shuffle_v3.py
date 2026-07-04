@@ -252,15 +252,14 @@ _HAS_FADV_DONTNEED = hasattr(os, "posix_fadvise") and hasattr(os, "POSIX_FADV_DO
 def _drop_pagecache(fd: int, offset: int, length: int) -> None:
     """Hint the kernel to drop ``[offset, offset+length)`` of ``fd`` from the
     page cache. Called after sendfile to keep the server's page-cache footprint
-    bounded to in-flight bytes -- otherwise served file regions sit hot in
-    cache and contend with the reducer's ``prefetch.bin`` on the same node.
-    Best-effort: any failure is silently ignored (the file is read-only, so
-    the worst case is the kernel keeps the pages a bit longer)."""
+    bounded to in-flight bytes."""
     if not _HAS_FADV_DONTNEED or length <= 0:
         return
     try:
         os.posix_fadvise(fd, offset, length, os.POSIX_FADV_DONTNEED)
     except OSError:
+        # Best-effort: any failure is silently ignored (the file is read-only, so
+        # the worst case is the kernel keeps the pages a bit longer).
         pass
 
 
@@ -372,19 +371,14 @@ class _ScanCoordinator:
                     req.done.set()
 
 
-# ----------------------------------------------------------------- fetch server
-# Request  (client→server): u32 len + payload `token\npath\noff,len;off,len;...`
-# Response (server→client): u32 count, then per range: u32 len + raw IPC bytes.
-#                           error → u32 _MAGIC_ERR.
+# Fetch helper class used by reducer tasks
 class _FetchHandler(socketserver.StreamRequestHandler):
     """Per-connection handler implementing the v1 wire protocol.
 
     Lifecycle: one handshake → loop of FETCH requests → CLOSE (or peer close).
     Each FETCH can carry multiple source paths, so a reducer with N sources on
     this node pays only one TCP round-trip's worth of handshake/setup overhead
-    no matter how many sources it asks for.
     """
-
     def handle(self):
         srv = self.server
         sock = self.connection
@@ -568,14 +562,17 @@ class _FetchHandler(socketserver.StreamRequestHandler):
 class _ThreadingServer(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
-    # many reducers × per-source prefetch open concurrent connections; the default
-    # backlog of 5 RSTs them. Size for fan-in (cf. §4.7 fan-out cap is the real bound).
+    # socket.listen() backlog. socketserver's default (5) is far below the
+    # SYN burst at shuffle start (all reducers fan-out TCP dial to each
+    # manager roughly at once). On server's overflow, Linux by default silently drops
+    # SYNs (tcp_abort_on_overflow=0), then clients see slow connects, eventually ETIMEDOUT.
+    # kernel silently clamps to somaxconn if lower.
     request_queue_size = 256
 
 
 @ray.remote
 class ShuffleManager:
-    """Per-node fetch service (§3.4): owns a socket server that serves byte-ranges
+    """Per-node file fetch service: owns a socket server that serves byte-ranges
     of local shuffle files to remote reducers. Survives individual map/reduce
     workers; in a real cluster, one per node (NodeAffinity)."""
 
@@ -594,7 +591,7 @@ class ShuffleManager:
         self._server.token = token
         self._server.base_dir = self.base_dir
         self._server.bytes_served = 0
-        # merge-on-read (§4.12): a single per-node coordinator pools fetch
+        # merge-on-read: a single per-node coordinator pools fetch
         # requests across connections and serves them in offset order.
         # Mutually exclusive with sendfile: the coordinator must hold bytes in
         # memory to fan out across connections, so when sendfile is on we skip
@@ -658,7 +655,7 @@ class ShuffleManager:
 
 
 # =============================================================================
-# Client side of the v1 wire protocol.
+# Client side
 #
 # ``_ShuffleConnection`` is the primitive: an open, handshake'd TCP connection
 # to one ShuffleManager. Once open, you can ``fetch(...)`` or
@@ -918,7 +915,7 @@ def open_shuffle_connection(
 
 
 # map / reduce task body
-ShuffleHandle = dict  # {path, index:{pid:[(off,len)]}, endpoint:(host,port), token}
+ShuffleHandle = dict  # {path, index:{pid:[(off,len)]}, endpoint:(host,port), token, node_id}
 
 
 @ray.remote(max_calls=1)
@@ -993,9 +990,7 @@ def v3_map_task(
     # Lookup-or-create the local node's ShuffleManager. ``get_if_exists=True``
     # makes this idempotent: concurrent mappers on the same node share one
     # actor; cross-node task retry just spawns a fresh manager on the new
-    # node. The returned ActorHandle goes into the ShuffleHandle so Ray
-    # ref-counting keeps the manager alive until all reducers have dropped
-    # their handle refs (binds file lifetime to index lifetime).
+    # node.
     node_id = ray.get_runtime_context().get_node_id()
     manager = ShuffleManager.options(
         name=f"shuffle_mgr:{shuffle_id}:{node_id}",
@@ -1008,31 +1003,21 @@ def v3_map_task(
 
     os.makedirs(out_dir, exist_ok=True)
     final_path = os.path.join(out_dir, f"map_{map_id}.shf")
-    # Write to a temp sibling first; only ``rename`` once we've verified the
-    # full file. Same directory so ``rename`` stays a metadata-only operation
-    # on the destination filesystem (no cross-device copy fallback).
+    # Write to a temp file first; only ``rename`` once we've verified the full file.
     tmp_path = final_path + ".tmp"
     # index = {partition id, {offset, length}}
     index: Dict[int, List[Tuple[int, int]]] = {}
     staging: Dict[int, List[pa.Table]] = {}
     staging_bytes: Dict[int, int] = {}
     peak_inflight = 0  # max bytes of partition output held at once (excludes input)
-    # Decoded (pre-compression, in-heap pa.Table) bytes per partition; surfaced
-    # in the returned handle and consumed by ShuffleReduceOpV3 to size each
-    # reducer's memory ask (mirrors v2's _partition_bytes path).
-    decoded_bytes_per_partition: Dict[int, int] = {}
-    # First non-None block schema this mapper sees; surfaced in the handle so
-    # the reducer can emit a typed empty block for partitions that received
-    # zero rows (the "N partitions -> N blocks" contract still demands one
-    # output block per partition, with the right schema -- see v2's
-    # ``_emit_empty_partition`` in shuffle_reduce_operator.py).
+    decoded_bytes_per_partition: Dict[int, int] = {} # Decoded bytes per partition
     output_schema: Optional[pa.Schema] = None
 
     def _partition_units(blk):
         """Yield (pid, shard).
         yield whole-block when the block already fits the pool (no overhead),
-        else split into pool-sized row-batches (bounds the 2×S partition spike
-        to S + O(pool))."""
+        else split into pool-sized row-batches (which bounds the 2×S partition
+        spike to S + O(pool))."""
         if blk.num_rows == 0:
             return
         avg_row = max(1, blk.nbytes // blk.num_rows)
@@ -1057,8 +1042,7 @@ def v3_map_task(
                     return
                 tbl = pa.concat_tables(shards) if len(shards) > 1 else shards[0]
                 # ``tbl.nbytes`` is the decoded (pre-IPC, pre-compression) byte
-                # count of this shard -- same source v2 uses (shuffle_tasks.py's
-                # ``merged.nbytes``). This is what the reducer holds in heap.
+                # count of this shard
                 decoded_bytes_per_partition[pid] = (
                     decoded_bytes_per_partition.get(pid, 0) + tbl.nbytes
                 )
@@ -1066,7 +1050,6 @@ def v3_map_task(
                 buf = _ipc_buffer(tbl, compression=compression)
                 off = f.tell()
 
-                # blocking write = natural backpressure on slow disk
                 f.write(memoryview(buf))
                 index.setdefault(pid, []).append((off, buf.size))
                 staging[pid] = []
@@ -1088,9 +1071,8 @@ def v3_map_task(
                     staging.setdefault(pid, []).append(shard)
                     staging_bytes[pid] = staging_bytes.get(pid, 0) + shard.nbytes
                     peak_inflight = max(peak_inflight, pool_size())
-                    # Pool overflow → spill the LARGEST bucket(s) until back under
-                    # budget. Bounds total staging to pool_budget_bytes,
-                    # M-independent.
+                    # If the pool overflow, then spill the LARGEST bucket(s) until back under
+                    # budget. Bounds total staging bytes to pool_budget_bytes
                     while pool_size() >= pool_budget_bytes:
                         victim = max(staging_bytes, key=staging_bytes.get)
                         if staging_bytes[victim] == 0:
@@ -1099,29 +1081,18 @@ def v3_map_task(
             for pid in list(staging.keys()):  # final flush of remainders
                 flush(pid)
 
-            # ---- end-of-write: flush + (optional) fdatasync + sanity check --
-            # Per-flush we do NOT fsync — page cache is fine for steady-state
-            # backpressure (the OS already throttles when dirty pages pile up).
-            # The single end-of-write sync below is what pairs with the atomic
-            # rename below to give "file exists == fully on disk".
+            # end-of-write: flush (flush data from py userspace file cache to kernel page cache) +
+            # fsync (page cache to disk) + sanity check
             f.flush()
             if fsync_on_close:
-                # ``fdatasync`` flushes data pages without bothering to update
-                # metadata timestamps — strictly faster than ``fsync`` and
-                # sufficient for our "bytes are on disk" guarantee. Not all
-                # platforms expose it (it's Linux-only in the Python stdlib),
-                # so fall back to ``fsync`` elsewhere (e.g. macOS).
-                fdatasync = getattr(os, "fdatasync", None)
-                if fdatasync is not None:
-                    fdatasync(f.fileno())
-                else:
-                    os.fsync(f.fileno())
+                os.fsync(f.fileno())
 
-            # Cross-check that ``f.tell()`` (what we actually wrote) matches the
-            # max ``offset + length`` we recorded in the index. A mismatch means
-            # either the index drifted from the writes (logic bug) or some
-            # write silently short-wrote (filesystem error). Either way we
-            # refuse to publish — the .tmp gets cleaned up by the except below.
+            # Sanity check: if ``f.tell()`` (what we actually wrote) matches the
+            # max ``offset + length`` we recorded in the index.
+            # A mismatch means
+            # 1) either the index drifted from the writes (logic bug), OR
+            # 2)some write silently short-wrote (filesystem error).
+            # Either way we refuse to publish, and the .tmp gets cleaned up by the except below.
             final_size_on_close = f.tell()
             if index:
                 expected_size = max(
@@ -1136,13 +1107,10 @@ def v3_map_task(
                     f"{expected_size}. Refusing to publish corrupt file."
                 )
 
-        # ---- atomic publish ------------------------------------------------
-        # rename(2) on the same filesystem is atomic: any concurrent reader
-        # either sees the old (here: nonexistent) name or the fully written
-        # new file. No "half-published" state is observable.
+        # atomic rename the file suffix from .tmp to .shf so that the task is deemed as finished
         os.rename(tmp_path, final_path)
     except Exception:
-        # Best-effort cleanup of the unpublished .tmp so failed attempts
+        # cleanup of the unpublished .tmp so failed attempts
         # don't leak files in ``out_dir``. (Ray lineage will retry the task
         # and write a fresh .tmp anyway.)
         try:
@@ -1154,11 +1122,13 @@ def v3_map_task(
     return {
         "path": os.path.realpath(final_path),
         "index": index,
-        # ActorHandle to this node's ShuffleManager. Reducer calls
-        # ``ray.get(manager.endpoint.remote())`` at fetch time to get the
-        # CURRENT (host, port), which survives actor restart on a new port.
-        # Embedding the handle also makes Ray ref-count the actor
+        # ActorHandle to this node's ShuffleManager
         "manager": manager,
+        # The node this manager is pinned to (NodeAffinity soft=False). The
+        # reducer cross-references this against ``ray.nodes()`` to distinguish
+        # transient manager restarts (node alive → retry) from node loss
+        # (node dead → v3 cannot recover, raise ShuffleNodeLostError).
+        "node_id": node_id,
         "token": token,
         "num_partitions": num_partitions,
         "peak_inflight_bytes": peak_inflight,  # debug: output held at once
@@ -1187,6 +1157,48 @@ def v3_map_task(
 class ShuffleFetchError(RuntimeError):
     """Raised when a side-channel fetch fails (source gone / file lost). Surfaced
     so the executor/lineage can re-run the producer mapper (§4.10/§11 Q1)."""
+
+
+class ShuffleNodeLostError(ShuffleFetchError):
+    """Raised when a source ShuffleManager's node has died.
+
+    v3 shuffle materializes mapper output on the mapper node's local disk and
+    embeds a NodeAffinity-pinned ActorHandle in the ShuffleHandle. If that
+    node dies, the on-disk output is gone with it AND Ray lineage cannot
+    reconstruct the mapper (the handle-refs are currently aggregated
+    driver-side, so mapper return-refs are not observed as lost). Retrying
+    the reducer against the same dead manager would just hang or fail again.
+
+    Fail loudly with an actionable message so the user knows the job is not
+    recoverable in the current v3 design, rather than waiting on a silent
+    ``ray.get(manager.endpoint.remote())`` hang against a permanently-pending
+    (soft=False, max_restarts=-1) actor.
+    """
+
+
+# Bounded wait for ``manager.endpoint.remote()`` before we probe whether the
+# manager's node is still alive. Sized to comfortably absorb a same-node actor
+# restart (seconds), but short enough that a node-death hang converts into a
+# ShuffleNodeLostError in bounded time. Override via env var for testing.
+_ENDPOINT_TIMEOUT_S: float = float(
+    os.environ.get("RAY_DATA_SHUFFLE_ENDPOINT_TIMEOUT_S", "60")
+)
+
+
+def _is_node_alive(node_id: str) -> Optional[bool]:
+    """Return True/False from ``ray.nodes()``, or None if the node isn't in the
+    snapshot at all (transient GCS lag — treat as inconclusive, don't upgrade
+    a fetch error to a fatal ShuffleNodeLostError on a maybe)."""
+    if not node_id:
+        return None
+    try:
+        for n in ray.nodes():
+            if n.get("NodeID") == node_id:
+                return bool(n.get("Alive"))
+    except Exception:
+        # GCS query itself failed — inconclusive.
+        return None
+    return None
 
 
 # --------------------------------------------------------- prefetch-file framing
@@ -1278,6 +1290,7 @@ class _PwriteSink:
 def _prefetch_node_into(
     out_file_obj,
     manager: "ray.actor.ActorHandle",
+    node_id: str,
     token: str,
     members: List[_PrefetchMember],
     max_bytes_per_fetch: int,
@@ -1305,7 +1318,26 @@ def _prefetch_node_into(
             ep = _ENDPOINT_CACHE.get(key)
             if ep is not None:
                 return ep
-        ep = ray.get(manager.endpoint.remote())
+        # Bounded wait: manager is NodeAffinity-pinned (soft=False) with
+        # max_restarts=-1, so if the node dies the actor stays PENDING forever
+        # and a naked ``ray.get`` hangs indefinitely. ``ray.wait`` lets us bail
+        # out and probe node liveness in bounded time.
+        ref = manager.endpoint.remote()
+        ready, _ = ray.wait([ref], timeout=_ENDPOINT_TIMEOUT_S)
+        if not ready:
+            alive = _is_node_alive(node_id)
+            if alive is False:
+                raise ShuffleNodeLostError(
+                    f"ShuffleManager node {node_id} is dead; the mapper's "
+                    f"on-disk shuffle output was lost with the node. v3 does "
+                    f"not yet reconstruct across node loss — retry the job "
+                    f"(a fresh mapper on a live node will produce new output)."
+                )
+            raise ShuffleFetchError(
+                f"Timed out resolving ShuffleManager endpoint after "
+                f"{_ENDPOINT_TIMEOUT_S}s (node_id={node_id}, alive={alive})."
+            )
+        ep = ray.get(ref)
         _ENDPOINT_CACHE[key] = ep
         return ep
 
@@ -1324,9 +1356,23 @@ def _prefetch_node_into(
                     (src_path, src_ranges) for _idx, src_path, src_ranges in batch
                 ]
                 conn.fetch_into(sources, out_file_obj)
+    except ShuffleNodeLostError:
+        # Already the loud/final classification — don't downgrade to
+        # ShuffleFetchError via the generic wrap below.
+        raise
     except Exception as e:
-        # Wrap any underlying error in the typed shuffle exception so the
-        # operator/lineage layer above can retry the source mapper.
+        # Cross-reference the manager's node against ``ray.nodes()``. If the
+        # node is dead, this is unrecoverable in v3 — surface it as a
+        # ShuffleNodeLostError so the user gets an actionable message instead
+        # of an opaque ShuffleFetchError chain. Node alive → the underlying
+        # cause is transient / local (e.g. mid-restart TCP refuse); keep the
+        # existing ShuffleFetchError semantics.
+        if _is_node_alive(node_id) is False:
+            raise ShuffleNodeLostError(
+                f"ShuffleManager node {node_id} is dead mid-fetch; "
+                f"lost on-disk output for {len(members)} source(s). v3 does "
+                f"not yet reconstruct across node loss."
+            ) from e
         raise ShuffleFetchError(
             f"fetch from {endpoint} (sources={len(members)}) failed: {e}"
         ) from e
@@ -1438,7 +1484,9 @@ def v3_reduce_task(
     # While iterating handles, also pick up an output schema for the empty-
     # partition path (so the N-block contract still emits a typed 0-row
     # block when no mapper produced any data for this partition_id).
-    jobs: List[Tuple["ray.actor.ActorHandle", str, str, List[Tuple[int, int]]]] = []
+    jobs: List[
+        Tuple["ray.actor.ActorHandle", str, str, str, List[Tuple[int, int]]]
+    ] = []
     output_schema: Optional[pa.Schema] = None
     for h in handles:
         if not isinstance(h, dict):
@@ -1447,7 +1495,13 @@ def v3_reduce_task(
             output_schema = h.get("schema")
         ranges = h["index"].get(partition_id) or []
         if ranges:
-            jobs.append((h["manager"], h["token"], h["path"], ranges))
+            # node_id may be missing on handles produced before this field was
+            # added — fall back to "" so ``_is_node_alive`` returns None (i.e.
+            # "inconclusive"), which preserves the pre-existing ShuffleFetchError
+            # behavior instead of ever raising a false-positive node-lost error.
+            jobs.append(
+                (h["manager"], h.get("node_id", ""), h["token"], h["path"], ranges)
+            )
 
     # streaming yield helper
     def _yield_with_stats(block: Block):
@@ -1531,14 +1585,15 @@ def v3_reduce_task(
         Tuple[
             "ray.actor.ActorHandle",
             str,
+            str,
             List[Tuple[int, str, List[Tuple[int, int]]]],
         ],
     ] = {}
-    for idx, (manager, token, src_path, src_ranges) in enumerate(jobs):
+    for idx, (manager, node_id, token, src_path, src_ranges) in enumerate(jobs):
         key = manager._actor_id.binary()
         if key not in groups:
-            groups[key] = (manager, token, [])
-        groups[key][2].append((idx, src_path, src_ranges))
+            groups[key] = (manager, node_id, token, [])
+        groups[key][3].append((idx, src_path, src_ranges))
 
     try:
         # Phase 1: prefetch all shards into one prefetch.bin, fetching the 32
@@ -1558,7 +1613,7 @@ def v3_reduce_task(
         group_list = list(groups.values())
         node_sizes = [
             sum(4 + length for (_i, _p, rngs) in members for (_o, length) in rngs)
-            for (_mgr, _tok, members) in group_list
+            for (_mgr, _nid, _tok, members) in group_list
         ]
         base_offsets = []
         _acc = 0
@@ -1663,9 +1718,14 @@ def v3_reduce_task(
                 mmf = pa.memory_map(prefetch_file, "r+")
 
             def _fetch_one(args):
-                base, size, (manager, token, members) = args
+                base, size, (manager, node_id, token, members) = args
                 _prefetch_node_into(
-                    _PwriteSink(fd, base), manager, token, members, max_bytes_per_fetch
+                    _PwriteSink(fd, base),
+                    manager,
+                    node_id,
+                    token,
+                    members,
+                    max_bytes_per_fetch,
                 )
                 return base, size
 
