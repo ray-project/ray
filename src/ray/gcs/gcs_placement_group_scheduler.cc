@@ -71,6 +71,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()
                  << ", id: " << placement_group->GetPlacementGroupID()
                  << ", bundles size = " << bundles.size();
+  RAY_LOG(INFO) << "PGPROBE sched-start pg=" << placement_group->GetPlacementGroupID()
+                << " bundles=" << bundles.size();
 
   std::vector<const ResourceRequest *> resource_request_list;
   resource_request_list.reserve(bundles.size());
@@ -131,6 +133,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   // Acquire resources from gcs resources manager to reserve bundle resources.
   const auto &bundle_locations = lease_status_tracker->GetBundleLocations();
   AcquireBundleResources(bundle_locations);
+  RAY_LOG(INFO) << "PGPROBE acquired pg=" << placement_group->GetPlacementGroupID();
 
   // Convert to a set of bundle specifications grouped by the node.
   std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
@@ -418,6 +421,8 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
   const auto &prepared_bundle_locations =
       lease_status_tracker->GetPreparedBundleLocations();
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
+  RAY_LOG(INFO) << "PGPROBE prepare-returned pg=" << placement_group_id
+                << " ok=" << lease_status_tracker->AllPrepareRequestsSuccessful();
 
   if (!lease_status_tracker->AllPrepareRequestsSuccessful()) {
     // Erase the status tracker from a in-memory map if exists.
@@ -464,6 +469,7 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
   const auto &prepared_bundle_locations =
       lease_status_tracker->GetPreparedBundleLocations();
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
+  RAY_LOG(INFO) << "PGPROBE commit-returned pg=" << placement_group_id;
 
   // Clean up the leasing progress map.
   auto it = placement_group_leasing_in_progress_.find(placement_group_id);
