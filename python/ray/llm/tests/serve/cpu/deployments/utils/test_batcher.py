@@ -115,18 +115,23 @@ class TestBatching:
         """The first result must be yielded as soon as it is available rather
         than after the first full batching interval. Otherwise the batching
         interval is added to the time-to-first-token of every streaming
-        request (https://github.com/ray-project/ray/issues/59681)."""
+        request (https://github.com/ray-project/ray/issues/59681).
 
-        first_item_ready = asyncio.Event()
+        A deliberately large interval is used so the assertion has a wide
+        margin and stays deterministic under CI scheduling jitter: with the
+        fix the first flush is immediate (<< interval), without it the first
+        flush would take ~interval.
+        """
+
+        interval_ms = 1000.0
 
         async def generator():
             yield dict(num_generated_tokens=1, generated_text=TEXT_VALUE)
-            first_item_ready.set()
             # Keep the stream open well past the first flush.
-            await asyncio.sleep(MODEL_RESPONSE_BATCH_TIMEOUT_MS / 1000 * 3)
+            await asyncio.sleep(interval_ms / 1000 * 3)
             yield dict(num_generated_tokens=1, generated_text=FINAL_TEXT_VALUE)
 
-        batcher = TestBatcher(generator())
+        batcher = TestBatcher(generator(), interval_ms=interval_ms)
         stream = batcher.stream()
 
         start = time.perf_counter()
@@ -134,10 +139,9 @@ class TestBatching:
         first_batch_ms = (time.perf_counter() - start) * 1e3
 
         assert first_batch["generated_text"] == TEXT_VALUE
-        assert first_batch_ms < MODEL_RESPONSE_BATCH_TIMEOUT_MS / 2, (
+        assert first_batch_ms < interval_ms / 2, (
             f"First batch took {first_batch_ms:.1f}ms; it should be yielded "
-            "immediately, not after the batching interval "
-            f"({MODEL_RESPONSE_BATCH_TIMEOUT_MS}ms)."
+            f"immediately, not after the batching interval ({interval_ms}ms)."
         )
 
         token_count = first_batch["num_generated_tokens"]
