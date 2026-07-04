@@ -147,6 +147,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         },
         *raylet_client_pool_,
         *worker_client_pool_,
+        cluster_resource_scheduler_->GetClusterResourceManager().GetBundleLocationIndex(),
         fake_scheduler_placement_time_ms_histogram_,
         clock_);
   }
@@ -225,6 +226,62 @@ class GcsActorSchedulerTest : public ::testing::Test {
 /**************************************************************/
 /************* TESTS WITH RAYLET SCHEDULING BELOW *************/
 /**************************************************************/
+
+TEST_F(GcsActorSchedulerTest, TestPgActorForwardedToCommittedBundleNode) {
+  RayConfig::instance().gcs_forward_pg_actor_leases_to_bundle_nodes() = true;
+
+  auto bundle_node = AddNewNode({{"CPU", 8}});
+  auto bundle_node_id = NodeID::FromBinary(bundle_node->node_id());
+  AddNewNode({{"CPU", 8}});
+
+  // Register pg bundle 0 as committed on bundle_node.
+  auto pg_id = PlacementGroupID::Of(JobID::FromInt(1));
+  auto bundle_locations = std::make_shared<BundleLocations>();
+  (*bundle_locations)[std::make_pair(pg_id, 0)] =
+      std::make_pair(bundle_node_id, std::shared_ptr<const BundleSpecification>(nullptr));
+  cluster_resource_scheduler_->GetClusterResourceManager()
+      .GetBundleLocationIndex()
+      .AddBundleLocations(pg_id, bundle_locations);
+
+  rpc::Address owner_address;
+  owner_address.set_node_id(NodeID::FromRandom().Binary());
+  owner_address.set_ip_address("127.0.0.1");
+  owner_address.set_port(5678);
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+  auto task_spec = GenActorCreationTask(JobID::FromInt(1),
+                                        /*max_restarts=*/1,
+                                        /*detached=*/true,
+                                        /*name=*/"",
+                                        "",
+                                        owner_address,
+                                        {{"CPU", 1}},
+                                        {{"CPU", 1}});
+  auto message = task_spec.GetMessage();
+  auto *pg_strategy = message.mutable_scheduling_strategy()
+                          ->mutable_placement_group_scheduling_strategy();
+  pg_strategy->set_placement_group_id(pg_id.Binary());
+
+  // A wildcard actor (bundle index -1) is forwarded to a committed bundle node.
+  pg_strategy->set_placement_group_bundle_index(-1);
+  auto wildcard_actor =
+      std::make_shared<gcs::GcsActor>(message, "", counter, fake_ray_event_recorder_, "");
+  ASSERT_EQ(gcs_actor_scheduler_->SelectForwardingNode(wildcard_actor), bundle_node_id);
+
+  // An actor pinned to bundle 0 is forwarded to exactly that bundle's node.
+  pg_strategy->set_placement_group_bundle_index(0);
+  auto indexed_actor =
+      std::make_shared<gcs::GcsActor>(message, "", counter, fake_ray_event_recorder_, "");
+  ASSERT_EQ(gcs_actor_scheduler_->SelectForwardingNode(indexed_actor), bundle_node_id);
+
+  // A group with no committed bundles falls back to the default path.
+  pg_strategy->set_placement_group_id(PlacementGroupID::Of(JobID::FromInt(2)).Binary());
+  pg_strategy->set_placement_group_bundle_index(-1);
+  auto unknown_pg_actor =
+      std::make_shared<gcs::GcsActor>(message, "", counter, fake_ray_event_recorder_, "");
+  ASSERT_FALSE(gcs_actor_scheduler_->SelectForwardingNode(unknown_pg_actor).IsNil());
+
+  RayConfig::instance().gcs_forward_pg_actor_leases_to_bundle_nodes() = false;
+}
 
 TEST_F(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode) {
   ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());

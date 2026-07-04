@@ -21,6 +21,7 @@
 #include <string>
 #include <utility>
 
+#include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 #include "ray/util/string_utils.h"
 
@@ -294,6 +295,16 @@ void ClusterLeaseManager::ScheduleAndGrantLeases() {
 }
 
 void ClusterLeaseManager::TryScheduleInfeasibleLease() {
+  if (RayConfig::instance().scheduler_rescan_infeasible_on_capacity_change_only()) {
+    const int64_t feasibility_version =
+        cluster_resource_scheduler_.GetClusterResourceManager().GetFeasibilityVersion();
+    if (feasibility_version == last_rescan_feasibility_version_) {
+      // Feasibility depends only on node totals/labels, so nothing in
+      // `infeasible_leases_` can have become feasible since the last rescan.
+      return;
+    }
+    last_rescan_feasibility_version_ = feasibility_version;
+  }
   for (auto shapes_it = infeasible_leases_.begin();
        shapes_it != infeasible_leases_.end();) {
     auto &work_queue = shapes_it->second;

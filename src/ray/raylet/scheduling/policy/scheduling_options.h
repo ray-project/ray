@@ -17,6 +17,7 @@
 #include <optional>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "ray/common/ray_config.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 
@@ -194,6 +195,10 @@ struct SchedulingOptions {
   bool avoid_local_node_;
   bool require_node_available_;
   bool avoid_gpu_nodes_;
+  /// If set, only these nodes are considered for scheduling (used to restrict a
+  /// placement-group lease to the nodes holding that group's bundles). Not
+  /// owned; must outlive the Schedule() call. Only honored by the hybrid policy.
+  const absl::flat_hash_set<scheduling::NodeID> *candidate_nodes_ = nullptr;
   // The scheduling strategy for the label domain level.
   // Set to NONE to disable label domain level scheduling.
   LabelDomainSchedulingStrategy label_domain_scheduling_strategy_ =

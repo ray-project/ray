@@ -72,6 +72,27 @@ class ClusterResourceManager {
   /// Get number of nodes in the cluster.
   int64_t NumNodes() const;
 
+  /// Version of the cluster's feasibility-relevant state. It is bumped when a
+  /// node is added or removed, or when a node's total resources or labels
+  /// change. Available-resource and draining updates do not bump it, so a lease
+  /// shape's feasibility (NodeResources::IsFeasible: labels + totals) cannot
+  /// change while this version stays the same. It may over-count (a bump
+  /// without an actual capacity change is allowed) but never under-counts.
+  int64_t GetFeasibilityVersion() const { return feasibility_version_; }
+
+  /// Get the nodes whose resource view contains bundle resources of the given
+  /// placement group. Only nodes with committed bundles of a group can ever be
+  /// feasible for that group's leases, so this is the group's exact candidate
+  /// set. Returns nullptr if no node holds the group's resources (or if
+  /// scheduler_restrict_pg_leases_to_bundle_nodes is off and the index is not
+  /// maintained). The returned pointer is invalidated by the next node update;
+  /// callers must not retain it across calls.
+  ///
+  /// \param pg_group_id_hex The placement group id in hex, as it appears in
+  ///   pg-formatted resource names (PlacementGroupID::Hex()).
+  const absl::flat_hash_set<scheduling::NodeID> *GetPgBundleCandidateNodes(
+      const std::string &pg_group_id_hex) const;
+
   /// Update total capacity of a given resource of a given node.
   ///
   /// \param node_id: Node whose resource we want to update.
@@ -198,9 +219,30 @@ class ClusterResourceManager {
   /// If node_id not found, return false; otherwise return true.
   bool GetNodeResources(scheduling::NodeID node_id, NodeResources *ret_resources) const;
 
+  /// Re-derive the placement-group membership of `node_id` from the pg-formatted
+  /// wildcard resource names in `node_resources` and update the candidate index.
+  /// No-op unless scheduler_restrict_pg_leases_to_bundle_nodes is set.
+  void UpdatePgBundleCandidateIndex(scheduling::NodeID node_id,
+                                    const NodeResources &node_resources);
+
+  /// Drop `node_id` from the placement-group candidate index.
+  void ErasePgBundleCandidateIndexEntries(scheduling::NodeID node_id);
+
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
   absl::flat_hash_map<scheduling::NodeID, Node> nodes_;
+
+  /// See GetFeasibilityVersion().
+  int64_t feasibility_version_ = 0;
+
+  /// See GetPgBundleCandidateNodes(). Keyed by placement group id hex; values
+  /// are the nodes whose view holds that group's bundle resources.
+  absl::flat_hash_map<std::string, absl::flat_hash_set<scheduling::NodeID>>
+      pg_bundle_candidate_nodes_;
+  /// Reverse mapping of `pg_bundle_candidate_nodes_` used to diff a node's
+  /// placement-group membership on updates and to clean up on node removal.
+  absl::flat_hash_map<scheduling::NodeID, absl::flat_hash_set<std::string>>
+      node_pg_group_ids_;
 
   /// Resource message updated
   absl::flat_hash_map<scheduling::NodeID, NodeResources> received_node_resources_;

@@ -25,6 +25,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/common/bundle_location_index.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
@@ -115,6 +116,9 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param raylet_client_pool Raylet client pool to
   /// construct connections to raylets.
   /// \param worker_client_pool Pool to manage connections to core worker clients.
+  /// \param committed_bundle_location_index Committed bundle locations of all
+  /// placement groups; used to forward a placement-group actor's lease directly
+  /// to a bundle node (gcs_forward_pg_actor_leases_to_bundle_nodes).
   /// \param scheduler_placement_time_ms_histogram Histogram of the time it took to
   /// schedule an Actor Creation Task on a worker.
   explicit GcsActorScheduler(
@@ -125,6 +129,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       GcsActorSchedulerSuccessCallback schedule_success_handler,
       rpc::RayletClientPool &raylet_client_pool,
       rpc::CoreWorkerClientPool &worker_client_pool,
+      const BundleLocationIndex &committed_bundle_location_index,
       ray::observability::MetricInterface &scheduler_placement_time_ms_histogram,
       ClockInterface &clock);
 
@@ -362,6 +367,11 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// The resource changed listeners.
   std::vector<std::function<void()>> resource_changed_listeners_;
 
+  /// Committed bundle locations of all placement groups, owned by the GCS
+  /// cluster resource manager and kept up to date by the placement group
+  /// scheduler (bundles added on commit, removed on PG removal/node death).
+  const BundleLocationIndex &committed_bundle_location_index_;
+
   ray::observability::MetricInterface &scheduler_placement_time_ms_histogram_;
   ClockInterface &clock_;
 
@@ -371,7 +381,17 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \return The selected node's ID. If the selection fails, NodeID::Nil() is returned.
   NodeID SelectForwardingNode(std::shared_ptr<GcsActor> actor);
 
+  /// Pick an alive node holding one of the committed bundles of the placement
+  /// group the actor belongs to. Wildcard actors (bundle index -1) are spread
+  /// across the group's bundles by actor id.
+  ///
+  /// \param actor The actor to be forwarded.
+  /// \return The selected node's ID, or NodeID::Nil() if the actor is not in a
+  /// placement group or no alive bundle node is known.
+  NodeID SelectBundleNodeForPgActor(const GcsActor &actor) const;
+
   friend class GcsActorSchedulerTest;
+  FRIEND_TEST(GcsActorSchedulerTest, TestPgActorForwardedToCommittedBundleNode);
   FRIEND_TEST(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode);
   FRIEND_TEST(GcsActorSchedulerTest, TestScheduleActorSuccess);
   FRIEND_TEST(GcsActorSchedulerTest, TestScheduleRetryWhenLeasing);

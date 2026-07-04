@@ -37,6 +37,7 @@ ray_cc_library(
     deps = [
         ":gcs_actor",
         "//src/ray/asio:instrumented_io_context",
+        "//src/ray/common:bundle_location_index",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",

@@ -172,6 +172,10 @@ class ClusterLeaseManager : public ClusterLeaseManagerInterface {
  private:
   void TryScheduleInfeasibleLease();
 
+  /// Cluster feasibility version at the last full rescan of `infeasible_leases_`.
+  /// Only consulted when scheduler_rescan_infeasible_on_capacity_change_only is set.
+  int64_t last_rescan_feasibility_version_ = -1;
+
   // Schedule the lease onto a node (which could be to a worker thats in a local or remote
   // node).
   void ScheduleOnNode(const NodeID &node_to_schedule,

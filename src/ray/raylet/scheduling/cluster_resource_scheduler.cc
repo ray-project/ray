@@ -206,14 +206,34 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     best_node_id = scheduling_policy_->Schedule(
         resource_request, SchedulingOptions::NodeLabelScheduling(scheduling_strategy));
   } else {
+    // A placement-group lease can only be feasible on nodes holding that group's
+    // bundle resources, so restrict the hybrid scan to them when the index is on.
+    // With no bundle node in the view yet, the lease is infeasible without
+    // scanning: pass an empty candidate set rather than an unrestricted scan.
+    static const absl::flat_hash_set<scheduling::NodeID> kNoCandidateNodes;
+    const absl::flat_hash_set<scheduling::NodeID> *pg_candidate_nodes = nullptr;
+    if (RayConfig::instance().scheduler_restrict_pg_leases_to_bundle_nodes() &&
+        IsAffinityWithBundleSchedule(scheduling_strategy)) {
+      const auto pg_group_id_hex =
+          PlacementGroupID::FromBinary(
+              scheduling_strategy.placement_group_scheduling_strategy()
+                  .placement_group_id())
+              .Hex();
+      pg_candidate_nodes =
+          cluster_resource_manager_->GetPgBundleCandidateNodes(pg_group_id_hex);
+      if (pg_candidate_nodes == nullptr) {
+        pg_candidate_nodes = &kNoCandidateNodes;
+      }
+    }
     // TODO(Alex): Setting require_available == force_spillback is a hack in order to
     // remain bug compatible with the legacy scheduling algorithms.
+    auto hybrid_options = SchedulingOptions::Hybrid(
+        /*avoid_local_node*/ force_spillback,
+        /*require_node_available*/ force_spillback,
+        preferred_node_id);
+    hybrid_options.candidate_nodes_ = pg_candidate_nodes;
     best_node_id =
-        scheduling_policy_->Schedule(resource_request,
-                                     SchedulingOptions::Hybrid(
-                                         /*avoid_local_node*/ force_spillback,
-                                         /*require_node_available*/ force_spillback,
-                                         preferred_node_id));
+        scheduling_policy_->Schedule(resource_request, std::move(hybrid_options));
   }
 
   *is_infeasible = best_node_id.IsNil();

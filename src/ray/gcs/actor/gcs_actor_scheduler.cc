@@ -33,6 +33,7 @@ GcsActorScheduler::GcsActorScheduler(
     GcsActorSchedulerSuccessCallback schedule_success_handler,
     rpc::RayletClientPool &raylet_client_pool,
     rpc::CoreWorkerClientPool &worker_client_pool,
+    const BundleLocationIndex &committed_bundle_location_index,
     ray::observability::MetricInterface &scheduler_placement_time_ms_histogram,
     ClockInterface &clock)
     : io_context_(io_context),
@@ -42,6 +43,7 @@ GcsActorScheduler::GcsActorScheduler(
       schedule_success_handler_(std::move(schedule_success_handler)),
       raylet_client_pool_(raylet_client_pool),
       worker_client_pool_(worker_client_pool),
+      committed_bundle_location_index_(committed_bundle_location_index),
       scheduler_placement_time_ms_histogram_(scheduler_placement_time_ms_histogram),
       clock_(clock) {
   RAY_CHECK(schedule_failure_handler_ != nullptr && schedule_success_handler_ != nullptr);
@@ -82,6 +84,13 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
 }
 
 NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) {
+  if (RayConfig::instance().gcs_forward_pg_actor_leases_to_bundle_nodes()) {
+    auto bundle_node_id = SelectBundleNodeForPgActor(*actor);
+    if (!bundle_node_id.IsNil()) {
+      return bundle_node_id;
+    }
+  }
+
   // Select a node to lease worker for the actor.
   std::shared_ptr<const rpc::GcsNodeInfo> node;
 
@@ -97,6 +106,33 @@ NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) 
   }
 
   return node ? NodeID::FromBinary(node->node_id()) : NodeID::Nil();
+}
+
+NodeID GcsActorScheduler::SelectBundleNodeForPgActor(const GcsActor &actor) const {
+  const BundleID bundle_id = actor.GetLeaseSpecification().PlacementGroupBundleId();
+  if (bundle_id.first.IsNil()) {
+    return NodeID::Nil();
+  }
+  if (bundle_id.second >= 0) {
+    auto location = committed_bundle_location_index_.GetBundleLocation(bundle_id);
+    if (location.has_value() && gcs_node_manager_.GetAliveNode(*location).has_value()) {
+      return *location;
+    }
+    return NodeID::Nil();
+  }
+  auto locations = committed_bundle_location_index_.GetBundleLocations(bundle_id.first);
+  if (!locations.has_value() || (*locations)->empty()) {
+    return NodeID::Nil();
+  }
+  // Spread wildcard actors across the group's bundle nodes instead of sending
+  // them all to one; hashing the actor id keeps the choice stable per actor.
+  auto it = (*locations)->begin();
+  std::advance(it, actor.GetActorID().Hash() % (*locations)->size());
+  const NodeID &bundle_node_id = it->second.first;
+  if (gcs_node_manager_.GetAliveNode(bundle_node_id).has_value()) {
+    return bundle_node_id;
+  }
+  return NodeID::Nil();
 }
 
 void GcsActorScheduler::Reschedule(std::shared_ptr<GcsActor> actor) {

@@ -18,6 +18,8 @@
 
 #include "gtest/gtest.h"
 #include "ray/asio/periodical_runner.h"
+#include "ray/common/bundle_spec.h"
+#include "ray/common/id.h"
 
 namespace ray {
 
@@ -60,6 +62,12 @@ struct ClusterResourceManagerTest : public ::testing::Test {
   scheduling::NodeID node2 = scheduling::NodeID(2);
   scheduling::NodeID node3 = scheduling::NodeID(3);
   std::unique_ptr<ClusterResourceManager> manager;
+
+  // ClusterResourceManager::AddOrUpdateNode is private; the fixture is a friend
+  // but TEST_F subclasses are not, so route calls through this helper.
+  void AddOrUpdateNode(scheduling::NodeID node_id, const NodeResources &resources) {
+    manager->AddOrUpdateNode(node_id, resources);
+  }
 };
 
 TEST_F(ClusterResourceManagerTest, UpdateNode) {
@@ -185,6 +193,90 @@ TEST_F(ClusterResourceManagerTest, SubtractAndAddNodeAvailableResources) {
   // Add again and make sure the available == 1 (<= total).
   manager->AddNodeAvailableResources(node0, ResourceSet({{"CPU", FixedPoint(1)}}));
   ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 1);
+}
+
+TEST_F(ClusterResourceManagerTest, FeasibilityVersionBumpsOnlyOnCapacityChanges) {
+  const int64_t v0 = manager->GetFeasibilityVersion();
+
+  // Re-applying a snapshot with identical totals/labels (what the periodic
+  // remote-view reset does) does not bump, even though available differs.
+  AddOrUpdateNode(node0, CreateNodeResources(/*available_cpu*/ 0.5, /*total_cpu*/ 1));
+  ASSERT_EQ(manager->GetFeasibilityVersion(), v0);
+
+  // Available-only and draining mutations do not bump.
+  ASSERT_TRUE(manager->SubtractNodeAvailableResources(
+      node0,
+      ResourceMapToResourceRequest({{"CPU", 0.5}},
+                                   /*requires_object_store_memory=*/false)));
+  ASSERT_TRUE(
+      manager->AddNodeAvailableResources(node0, ResourceSet({{"CPU", FixedPoint(0.5)}})));
+  ASSERT_TRUE(manager->SetNodeDraining(node0, true, 123));
+  ASSERT_EQ(manager->GetFeasibilityVersion(), v0);
+
+  // Changing a node's totals bumps.
+  AddOrUpdateNode(node0, CreateNodeResources(/*available_cpu*/ 2, /*total_cpu*/ 2));
+  const int64_t v1 = manager->GetFeasibilityVersion();
+  ASSERT_GT(v1, v0);
+
+  // Changing labels bumps; setting identical labels does not.
+  manager->SetNodeLabels(node0, {{"region", "us-west"}});
+  const int64_t v2 = manager->GetFeasibilityVersion();
+  ASSERT_GT(v2, v1);
+  manager->SetNodeLabels(node0, {{"region", "us-west"}});
+  ASSERT_EQ(manager->GetFeasibilityVersion(), v2);
+
+  // Adding a new node bumps.
+  AddOrUpdateNode(node3, CreateNodeResources(/*available_cpu*/ 1, /*total_cpu*/ 1));
+  const int64_t v3 = manager->GetFeasibilityVersion();
+  ASSERT_GT(v3, v2);
+
+  // UpdateResourceCapacity bumps only when the total actually changes.
+  manager->UpdateResourceCapacity(node3, ResourceID::CPU(), 5);
+  const int64_t v4 = manager->GetFeasibilityVersion();
+  ASSERT_GT(v4, v3);
+  manager->UpdateResourceCapacity(node3, ResourceID::CPU(), 5);
+  ASSERT_EQ(manager->GetFeasibilityVersion(), v4);
+
+  // Deleting resources and removing a node bump.
+  ASSERT_TRUE(manager->DeleteResources(node3, {ResourceID::CPU()}));
+  const int64_t v5 = manager->GetFeasibilityVersion();
+  ASSERT_GT(v5, v4);
+  ASSERT_TRUE(manager->RemoveNode(node3));
+  ASSERT_GT(manager->GetFeasibilityVersion(), v5);
+}
+
+TEST_F(ClusterResourceManagerTest, PgBundleCandidateIndexTracksBundleNodes) {
+  RayConfig::instance().scheduler_restrict_pg_leases_to_bundle_nodes() = true;
+  const auto pg_id = PlacementGroupID::Of(JobID::FromInt(1));
+  const std::string wildcard_resource =
+      FormatPlacementGroupResource(kBundle_ResourceLabel, pg_id.Hex(), -1);
+
+  ASSERT_EQ(manager->GetPgBundleCandidateNodes(pg_id.Hex()), nullptr);
+
+  NodeResources bundle_node_resources;
+  bundle_node_resources.total.Set(ResourceID::CPU(), 8)
+      .Set(scheduling::ResourceID(wildcard_resource), 1);
+  bundle_node_resources.available = bundle_node_resources.total;
+  AddOrUpdateNode(node0, bundle_node_resources);
+  const auto *candidates = manager->GetPgBundleCandidateNodes(pg_id.Hex());
+  ASSERT_NE(candidates, nullptr);
+  ASSERT_EQ(candidates->size(), 1u);
+  ASSERT_TRUE(candidates->contains(node0));
+
+  AddOrUpdateNode(node3, bundle_node_resources);
+  ASSERT_EQ(manager->GetPgBundleCandidateNodes(pg_id.Hex())->size(), 2u);
+
+  // The group's resources leave node0's view: its membership is dropped.
+  AddOrUpdateNode(node0, CreateNodeResources(/*available_cpu*/ 1, /*total_cpu*/ 1));
+  candidates = manager->GetPgBundleCandidateNodes(pg_id.Hex());
+  ASSERT_NE(candidates, nullptr);
+  ASSERT_FALSE(candidates->contains(node0));
+
+  // Removing the last member drops the group entry entirely.
+  ASSERT_TRUE(manager->RemoveNode(node3));
+  ASSERT_EQ(manager->GetPgBundleCandidateNodes(pg_id.Hex()), nullptr);
+
+  RayConfig::instance().scheduler_restrict_pg_leases_to_bundle_nodes() = false;
 }
 
 }  // namespace ray

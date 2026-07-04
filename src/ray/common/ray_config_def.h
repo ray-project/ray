@@ -233,6 +233,34 @@ RAY_CONFIG(float, scheduler_top_k_fraction, 0.2);
 /// scheduler guarantees k is at least equal to scheduler_top_k_absolute.
 RAY_CONFIG(int32_t, scheduler_top_k_absolute, 1);
 
+/// If true, the queue of infeasible leases is only rescanned when the cluster's
+/// feasibility-relevant state (node set, node total resources, node labels) has
+/// changed since the last rescan, instead of on every scheduling round. A lease
+/// shape's feasibility depends only on that state, so skipping the rescan while
+/// it is unchanged cannot change any scheduling outcome; it removes an
+/// O(infeasible shapes) full-cluster scan from every lease admission.
+/// Note: do not combine with GCS-based actor scheduling
+/// (gcs_actor_scheduling_enabled): its affinity-with-bundle policy can queue a
+/// lease as infeasible while bundle nodes are merely busy, and an
+/// availability-only change does not trigger a rescan here.
+RAY_CONFIG(bool, scheduler_rescan_infeasible_on_capacity_change_only, false)
+
+/// If true, raylets schedule placement-group leases only against the nodes that
+/// hold that placement group's bundle resources (tracked by an index maintained
+/// from the cluster resource view) instead of scanning every node. Only nodes
+/// holding the group's bundle resources can ever be feasible for such leases,
+/// so this cannot change scheduling outcomes; it turns an O(cluster size) scan
+/// per decision into an O(bundle nodes) one.
+RAY_CONFIG(bool, scheduler_restrict_pg_leases_to_bundle_nodes, false)
+
+/// If true, the GCS forwards a placement-group actor's lease request directly
+/// to a node holding one of the group's committed bundles instead of to the
+/// actor owner's node. The two-hop grant-or-reject protocol is unchanged; this
+/// only changes which raylet the first request is sent to, so lease requests
+/// spread across the group's bundle nodes instead of all funneling through the
+/// single raylet on the owner's (typically the head) node.
+RAY_CONFIG(bool, gcs_forward_pg_actor_leases_to_bundle_nodes, false)
+
 /// Whether to only report the usage of pinned copies of objects in the
 /// object_store_memory resource. This means nodes holding secondary copies only
 /// will become eligible for removal in the autoscaler.

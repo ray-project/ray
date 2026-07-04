@@ -114,14 +114,18 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
   ///
   /// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to
   /// schedule on.
-  scheduling::NodeID ScheduleImpl(const ResourceRequest &resource_request,
-                                  float spread_threshold,
-                                  bool force_spillback,
-                                  bool require_available,
-                                  NodeFilter node_filter,
-                                  const std::string &preferred_node,
-                                  int32_t schedule_top_k_absolute,
-                                  float scheduler_top_k_fraction);
+  /// \param candidate_nodes: if non-null, only these nodes are considered
+  /// (see SchedulingOptions::candidate_nodes_).
+  scheduling::NodeID ScheduleImpl(
+      const ResourceRequest &resource_request,
+      float spread_threshold,
+      bool force_spillback,
+      bool require_available,
+      NodeFilter node_filter,
+      const std::string &preferred_node,
+      int32_t schedule_top_k_absolute,
+      float scheduler_top_k_fraction,
+      const absl::flat_hash_set<scheduling::NodeID> *candidate_nodes = nullptr);
 
   /// Identifier of local node.
   const scheduling::NodeID local_node_id_;

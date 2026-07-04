@@ -70,6 +70,31 @@ class HybridSchedulingPolicyTest : public ::testing::Test {
   }
 };
 
+TEST_F(HybridSchedulingPolicyTest, CandidateNodesRestrictScheduling) {
+  nodes.emplace(local_node, CreateNodeResources(8, 8, 0, 0, 0, 0));
+  nodes.emplace(n1, CreateNodeResources(8, 8, 0, 0, 0, 0));
+  nodes.emplace(n2, CreateNodeResources(8, 8, 0, 0, 0, 0));
+  HybridSchedulingPolicy policy{local_node, nodes, [](auto) { return true; }};
+  auto request = ResourceMapToResourceRequest({{"CPU", 1}},
+                                              /*requires_object_store_memory=*/false);
+
+  // Restricted to n2: n2 must be picked even though every node fits.
+  absl::flat_hash_set<scheduling::NodeID> only_n2{n2};
+  auto options = HybridOptions(0.5, false, false);
+  options.candidate_nodes_ = &only_n2;
+  EXPECT_EQ(policy.Schedule(request, options), n2);
+
+  // An empty candidate set means nothing can be scheduled.
+  absl::flat_hash_set<scheduling::NodeID> no_candidates;
+  options.candidate_nodes_ = &no_candidates;
+  EXPECT_TRUE(policy.Schedule(request, options).IsNil());
+
+  // Candidates that are not in the cluster view are ignored.
+  absl::flat_hash_set<scheduling::NodeID> unknown_only{scheduling::NodeID(999)};
+  options.candidate_nodes_ = &unknown_only;
+  EXPECT_TRUE(policy.Schedule(request, options).IsNil());
+}
+
 TEST_F(HybridSchedulingPolicyTest, GetBestNode) {
   std::vector<std::pair<scheduling::NodeID, float>> node_scores{
       {n3, 0.6},

@@ -20,6 +20,7 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/scheduling/placement_group_util.h"
 #include "ray/raylet/metrics.h"
 
 namespace ray {
@@ -67,9 +68,19 @@ void ClusterResourceManager::AddOrUpdateNode(scheduling::NodeID node_id,
                                              const NodeResources &node_resources) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
+    feasibility_version_++;
+    UpdatePgBundleCandidateIndex(node_id, node_resources);
     // This node is new, so add it to the map.
     nodes_.emplace(node_id, node_resources);
   } else {
+    // Re-applying a snapshot with unchanged totals/labels (e.g. the periodic
+    // remote-view reset) must not bump the feasibility version, so compare first.
+    const auto &old_view = it->second.GetLocalView();
+    if (old_view.total != node_resources.total ||
+        old_view.labels != node_resources.labels) {
+      feasibility_version_++;
+      UpdatePgBundleCandidateIndex(node_id, node_resources);
+    }
     // This node exists, so update its resources.
     it->second = Node(node_resources);
   }
@@ -116,7 +127,84 @@ bool ClusterResourceManager::UpdateNode(
 
 bool ClusterResourceManager::RemoveNode(scheduling::NodeID node_id) {
   received_node_resources_.erase(node_id);
-  return nodes_.erase(node_id) != 0;
+  if (nodes_.erase(node_id) == 0) {
+    return false;
+  }
+  feasibility_version_++;
+  ErasePgBundleCandidateIndexEntries(node_id);
+  return true;
+}
+
+const absl::flat_hash_set<scheduling::NodeID>
+    *ClusterResourceManager::GetPgBundleCandidateNodes(
+        const std::string &pg_group_id_hex) const {
+  auto it = pg_bundle_candidate_nodes_.find(pg_group_id_hex);
+  if (it == pg_bundle_candidate_nodes_.end()) {
+    return nullptr;
+  }
+  return &it->second;
+}
+
+void ClusterResourceManager::UpdatePgBundleCandidateIndex(
+    scheduling::NodeID node_id, const NodeResources &node_resources) {
+  if (!RayConfig::instance().scheduler_restrict_pg_leases_to_bundle_nodes()) {
+    return;
+  }
+  // Every node holding a committed bundle of group G carries the wildcard
+  // resource bundle_group_<G> (see AddPlacementGroupConstraint), so parsing
+  // wildcard pg-formatted names recovers the node's full group membership.
+  absl::flat_hash_set<std::string> group_ids;
+  for (const auto &resource_id : node_resources.total.ExplicitResourceIds()) {
+    auto pg_data = ParsePgFormattedResource(resource_id.Binary(),
+                                            /*for_wildcard_resource=*/true,
+                                            /*for_indexed_resource=*/false);
+    if (pg_data.has_value()) {
+      group_ids.insert(pg_data->group_id);
+    }
+  }
+  auto old_it = node_pg_group_ids_.find(node_id);
+  if (old_it != node_pg_group_ids_.end()) {
+    for (const auto &group_id : old_it->second) {
+      if (group_ids.contains(group_id)) {
+        continue;
+      }
+      auto pg_it = pg_bundle_candidate_nodes_.find(group_id);
+      if (pg_it != pg_bundle_candidate_nodes_.end()) {
+        pg_it->second.erase(node_id);
+        if (pg_it->second.empty()) {
+          pg_bundle_candidate_nodes_.erase(pg_it);
+        }
+      }
+    }
+  }
+  for (const auto &group_id : group_ids) {
+    pg_bundle_candidate_nodes_[group_id].insert(node_id);
+  }
+  if (group_ids.empty()) {
+    if (old_it != node_pg_group_ids_.end()) {
+      node_pg_group_ids_.erase(old_it);
+    }
+  } else {
+    node_pg_group_ids_[node_id] = std::move(group_ids);
+  }
+}
+
+void ClusterResourceManager::ErasePgBundleCandidateIndexEntries(
+    scheduling::NodeID node_id) {
+  auto it = node_pg_group_ids_.find(node_id);
+  if (it == node_pg_group_ids_.end()) {
+    return;
+  }
+  for (const auto &group_id : it->second) {
+    auto pg_it = pg_bundle_candidate_nodes_.find(group_id);
+    if (pg_it != pg_bundle_candidate_nodes_.end()) {
+      pg_it->second.erase(node_id);
+      if (pg_it->second.empty()) {
+        pg_bundle_candidate_nodes_.erase(pg_it);
+      }
+    }
+  }
+  node_pg_group_ids_.erase(it);
 }
 
 bool ClusterResourceManager::SetNodeDraining(const scheduling::NodeID &node_id,
@@ -172,6 +260,9 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
   auto local_total = local_view->total.Get(resource_id);
   auto local_available = local_view->available.Get(resource_id);
   auto diff_capacity = resource_total_fp - local_total;
+  if (diff_capacity != 0) {
+    feasibility_version_++;
+  }
   auto total = local_total + diff_capacity;
   auto available = local_available + diff_capacity;
   if (total < 0) {
@@ -192,6 +283,7 @@ bool ClusterResourceManager::DeleteResources(
   }
 
   auto local_view = it->second.GetMutableLocalView();
+  feasibility_version_++;
   for (const auto &resource_id : resource_ids) {
     local_view->total.Set(resource_id, 0);
     local_view->available.Set(resource_id, 0);
@@ -300,8 +392,11 @@ void ClusterResourceManager::SetNodeLabels(
     absl::flat_hash_map<std::string, std::string> labels) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
+    feasibility_version_++;
     NodeResources node_resources;
     it = nodes_.emplace(node_id, node_resources).first;
+  } else if (it->second.GetLocalView().labels != labels) {
+    feasibility_version_++;
   }
   it->second.GetMutableLocalView()->labels = std::move(labels);
 }

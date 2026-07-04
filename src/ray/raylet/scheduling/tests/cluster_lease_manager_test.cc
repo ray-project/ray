@@ -27,6 +27,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/asio/periodical_runner.h"
+#include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/common/scheduling/resource_set.h"
@@ -481,8 +482,13 @@ class ClusterLeaseManagerTest : public ::testing::Test {
     node_resources[ray::kCPU_ResourceLabel] = num_cpus;
     node_resources[ray::kGPU_ResourceLabel] = num_gpus;
     node_resources[ray::kMemory_ResourceLabel] = memory;
+    AddNodeWithResources(id, node_resources);
+  }
+
+  void AddNodeWithResources(const NodeID &id,
+                            const absl::flat_hash_map<std::string, double> &resources) {
     scheduler_->GetClusterResourceManager().AddOrUpdateNode(
-        scheduling::NodeID(id.Binary()), node_resources, node_resources);
+        scheduling::NodeID(id.Binary()), resources, resources);
 
     rpc::GcsNodeAddressAndLiveness info;
     node_info_[id] = info;
@@ -2191,6 +2197,107 @@ TEST_F(ClusterLeaseManagerTest, TestMultipleInfeasibleLeasesWarnOnce) {
       std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback2, &reply2)});
   pool_.TriggerCallbacks();
   ASSERT_EQ(announce_infeasible_lease_calls_, 1);
+}
+
+TEST_F(ClusterLeaseManagerTest,
+       TestInfeasibleLeaseUnparksOnCapacityChangeWithRescanFlag) {
+  /*
+    With scheduler_rescan_infeasible_on_capacity_change_only set, an infeasible
+    lease must still be unparked when cluster capacity changes (no lost wakeups),
+    while scheduling rounds without a capacity change keep it parked.
+   */
+  RayConfig::instance().scheduler_rescan_infeasible_on_capacity_change_only() = true;
+
+  RayLease lease = CreateLease({{ray::kCPU_ResourceLabel, 12}});
+  rpc::RequestWorkerLeaseReply reply;
+  std::shared_ptr<bool> callback_occurred = std::make_shared<bool>(false);
+  auto callback = [callback_occurred](
+                      Status, std::function<void()>, std::function<void()>) {
+    *callback_occurred = true;
+  };
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(announce_infeasible_lease_calls_, 1);
+
+  // Scheduling rounds without any capacity change: the lease stays parked.
+  lease_manager_.ScheduleAndGrantLeases();
+  lease_manager_.ScheduleAndGrantLeases();
+  pool_.TriggerCallbacks();
+  ASSERT_FALSE(*callback_occurred);
+
+  // A capacity change that is still insufficient: parked, no spurious unpark.
+  AddNode(NodeID::FromRandom(), 8);
+  lease_manager_.ScheduleAndGrantLeases();
+  pool_.TriggerCallbacks();
+  ASSERT_FALSE(*callback_occurred);
+
+  // Sufficient capacity arrives: the lease must be unparked and spilled there.
+  auto remote_node_id = NodeID::FromRandom();
+  AddNode(remote_node_id, 12);
+  lease_manager_.ScheduleAndGrantLeases();
+  pool_.TriggerCallbacks();
+  ASSERT_TRUE(*callback_occurred);
+  ASSERT_EQ(reply.retry_at_raylet_address().node_id(), remote_node_id.Binary());
+
+  RayConfig::instance().scheduler_rescan_infeasible_on_capacity_change_only() = false;
+  AssertNoLeaks();
+}
+
+TEST_F(ClusterLeaseManagerTest, TestPgLeaseSchedulesOnBundleNodeWithRestrictFlag) {
+  /*
+    With scheduler_restrict_pg_leases_to_bundle_nodes set, a placement-group
+    lease is parked while no node holds the group's bundle resources and is
+    scheduled onto a bundle node as soon as one appears in the view.
+   */
+  RayConfig::instance().scheduler_restrict_pg_leases_to_bundle_nodes() = true;
+
+  const auto pg_id = PlacementGroupID::Of(JobID::FromInt(7));
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_placement_group_scheduling_strategy()
+      ->set_placement_group_id(pg_id.Binary());
+  auto pg_lease_resources =
+      AddPlacementGroupConstraint({{ray::kCPU_ResourceLabel, 1}}, pg_id, -1);
+  RayLease lease = CreateLease(pg_lease_resources, 0, {}, nullptr, scheduling_strategy);
+  rpc::RequestWorkerLeaseReply reply;
+  std::shared_ptr<bool> callback_occurred = std::make_shared<bool>(false);
+  auto callback = [callback_occurred](
+                      Status, std::function<void()>, std::function<void()>) {
+    *callback_occurred = true;
+  };
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
+  pool_.TriggerCallbacks();
+  // No node holds the group's bundle resources: parked as infeasible.
+  ASSERT_EQ(announce_infeasible_lease_calls_, 1);
+  ASSERT_FALSE(*callback_occurred);
+
+  // A big plain node is not a bundle node; the lease stays parked.
+  AddNode(NodeID::FromRandom(), 100);
+  lease_manager_.ScheduleAndGrantLeases();
+  pool_.TriggerCallbacks();
+  ASSERT_FALSE(*callback_occurred);
+
+  // A node holding the group's bundle resources appears: lease goes there.
+  auto bundle_node_id = NodeID::FromRandom();
+  auto bundle_node_resource_map =
+      AddPlacementGroupConstraint({{ray::kCPU_ResourceLabel, 4}}, pg_id, 0);
+  absl::flat_hash_map<std::string, double> bundle_node_resources(
+      bundle_node_resource_map.begin(), bundle_node_resource_map.end());
+  AddNodeWithResources(bundle_node_id, bundle_node_resources);
+  lease_manager_.ScheduleAndGrantLeases();
+  pool_.TriggerCallbacks();
+  ASSERT_TRUE(*callback_occurred);
+  ASSERT_EQ(reply.retry_at_raylet_address().node_id(), bundle_node_id.Binary());
+
+  RayConfig::instance().scheduler_restrict_pg_leases_to_bundle_nodes() = false;
+  AssertNoLeaks();
 }
 
 TEST_F(ClusterLeaseManagerTest, TestAnyPendingLeasesForResourceAcquisition) {

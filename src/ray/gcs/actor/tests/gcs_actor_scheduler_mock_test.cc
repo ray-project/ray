@@ -88,6 +88,7 @@ class GcsActorSchedulerMockTest : public Test {
         [this](auto a, const rpc::PushTaskReply) { schedule_success_handler(a); },
         *client_pool,
         *worker_client_pool_,
+        committed_bundle_location_index_,
         fake_scheduler_placement_time_ms_histogram_,
         clock_);
     auto node_info = std::make_shared<rpc::GcsNodeInfo>();
@@ -116,6 +117,7 @@ class GcsActorSchedulerMockTest : public Test {
       counter;
   MockCallback schedule_failure_handler;
   MockCallback schedule_success_handler;
+  BundleLocationIndex committed_bundle_location_index_;
   NodeID node_id;
   WorkerID worker_id;
   NodeID local_node_id;
