@@ -15,6 +15,10 @@ from fastapi.routing import APIRoute
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
+from ray.llm._internal.common.patches.vllm.tokenize_once import (
+    install as _install_tokenize_once,
+    reuse_prompt_token_ids as _reuse_prompt_token_ids,
+)
 from ray.llm._internal.serve.constants import DEFAULT_MAX_ONGOING_REQUESTS
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
@@ -45,6 +49,7 @@ from ray.serve.handle import DeploymentHandle
 from ray.serve.llm import LLMConfig
 
 logger = logging.getLogger(__name__)
+
 RequestType = Union[ChatCompletionRequest, CompletionRequest]
 
 # TODO(Kourosh): Deprecate in Ray 2.56, remove in Ray 2.58.
@@ -115,6 +120,10 @@ class PDOrchestratorMixin:
     # Set by __init__ of the concrete class that mixes this in.
     _prefill_handle: DeploymentHandle
 
+    # Decode reuses prefill's prompt token ids. Set from experimental_configs in
+    # PDDecodeServer.__init__. Default off.
+    _pd_tokenize_once: bool = False
+
     # ---- Connector backend resolution ----
 
     def _get_connector_backend(self) -> BaseConnectorBackend:
@@ -159,6 +168,29 @@ class PDOrchestratorMixin:
         return self._get_connector_backend().prepare_decode_request(
             request=request, peer=None, prefill_response=prefill_chunk
         )
+
+    def _decode_reuse_ids(self, prefill_chunk) -> Optional[list]:
+        """Prompt token ids for decode to reuse, or None when disabled or absent.
+
+        Chat carries them top-level. Completions carry them on the first choice as
+        ``CompletionResponseChoice.prompt_token_ids``."""
+        if not self._pd_tokenize_once:
+            return None
+        ids = getattr(prefill_chunk, "prompt_token_ids", None)
+        if ids is None:
+            choices = getattr(prefill_chunk, "choices", None)
+            if choices:
+                ids = getattr(choices[0], "prompt_token_ids", None)
+        return ids
+
+    def _request_prefill_token_ids(self, prefill_request) -> None:
+        """Ask prefill to echo its prompt token ids so decode can reuse them.
+
+        No-op when disabled or the request lacks the field. Used on sequential handoff
+        only. Concurrent decode starts before prefill returns, so it has nothing to
+        reuse."""
+        if self._pd_tokenize_once and hasattr(prefill_request, "return_token_ids"):
+            prefill_request.return_token_ids = True
 
     # ---- Orchestrated Request Flow ----
 
@@ -239,6 +271,7 @@ class PDOrchestratorMixin:
 
                 # Sequential handoff with peer binding: run prefill to its first
                 # chunk, then drive local decode with the returned params.
+                self._request_prefill_token_ids(prefill_request)
                 prefill_gen = prefill_handle_method.dispatch(
                     selection, prefill_request, raw_request_info
                 )
@@ -257,11 +290,12 @@ class PDOrchestratorMixin:
                 decode_request = backend.prepare_decode_request(
                     request=request, peer=peer, prefill_response=prefill_chunk
                 )
-                local_gen = await getattr(super(), method)(
-                    decode_request, raw_request_info
-                )
-                async for chunk in local_gen:
-                    yield chunk
+                with _reuse_prompt_token_ids(self._decode_reuse_ids(prefill_chunk)):
+                    local_gen = await getattr(super(), method)(
+                        decode_request, raw_request_info
+                    )
+                    async for chunk in local_gen:
+                        yield chunk
                 return
 
         # Default path: no pre-dispatch peer binding; dispatch prefill via the
@@ -284,6 +318,7 @@ class PDOrchestratorMixin:
             return
 
         # 1. Remote prefill
+        self._request_prefill_token_ids(prefill_request)
         prefill_gen = prefill_handle_method.remote(prefill_request, raw_request_info)
         prefill_chunk = await prefill_gen.__anext__()
 
@@ -298,9 +333,11 @@ class PDOrchestratorMixin:
         decode_request = backend.prepare_decode_request(
             request=request, peer=None, prefill_response=prefill_chunk
         )
-        local_gen = await getattr(super(), method)(decode_request, raw_request_info)
-        async for chunk in local_gen:
-            yield chunk
+        # Reuse prefill's ids for this decode so the render skips re-tokenizing.
+        with _reuse_prompt_token_ids(self._decode_reuse_ids(prefill_chunk)):
+            local_gen = await getattr(super(), method)(decode_request, raw_request_info)
+            async for chunk in local_gen:
+                yield chunk
 
     async def _concurrent_decode(
         self,
@@ -630,6 +667,12 @@ class PDDecodeServer(PDOrchestratorMixin, LLMServer):
             llm_config,
             engine_cls=engine_cls,
             model_downloader=model_downloader,
+        )
+        # Active only if enabled and the renderer wrap installs. The `and`
+        # short-circuits so install() is not called when disabled.
+        self._pd_tokenize_once = (
+            bool(self._llm_config.experimental_configs.get("pd_tokenize_once"))
+            and _install_tokenize_once()
         )
         await self._maybe_prewarm()
 

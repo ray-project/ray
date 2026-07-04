@@ -364,7 +364,6 @@ ray_cc_library(
         "//src/ray/rpc:rpc_callback_types",
         "//src/ray/rpc/authentication:authentication_token",
         "@com_github_grpc_grpc//:grpc++",
-        "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
     ],
 )
 
@@ -439,7 +438,7 @@ ray_cc_library(
         ":grpc_service_interfaces",
         ":grpc_services",
         ":metrics",
-        "//src/ray/asio:periodical_runner",
+        "//src/ray/asio:io_context_monitor",
         "//src/ray/util:clock",
         "//src/ray/core_worker_rpc_client:core_worker_client",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
@@ -467,6 +466,7 @@ ray_cc_library(
         "//src/ray/util:type_traits",
         "@boost//:bimap",
         "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/time",
     ],
 )
 

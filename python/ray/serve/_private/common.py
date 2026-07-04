@@ -800,6 +800,10 @@ class RequestMetadata:
 
     _http_method: str = ""
 
+    # Full gRPC service method (e.g. "/pkg.Service/Method") for direct-ingress gRPC
+    # requests. Mirrors the proxy's `method` metric tag (`gRPCProxyRequest.method`).
+    _grpc_service_method: str = ""
+
     # The client address in "host:port" format, if available.
     _client: str = ""
 
@@ -833,6 +837,10 @@ class RequestMetadata:
     @property
     def is_grpc_request(self) -> bool:
         return self._request_protocol == RequestProtocol.GRPC
+
+    @property
+    def protocol(self) -> RequestProtocol:
+        return self._request_protocol
 
 
 class StreamingHTTPRequest:

@@ -1,5 +1,3 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
-
 .. sphinx_rllib_readme_begin
 
 .. _rllib-index:

@@ -88,6 +88,11 @@ class CoreWorkerServiceHandler : public DelayedServiceHandler {
       ReportGeneratorItemReturnsReply *reply,
       SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleUpdateGeneratorBackpressureConsumed(
+      UpdateGeneratorBackpressureConsumedRequest request,
+      UpdateGeneratorBackpressureConsumedReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleKillActor(KillActorRequest request,
                                KillActorReply *reply,
                                SendReplyCallback send_reply_callback) = 0;
