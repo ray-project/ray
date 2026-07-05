@@ -1158,29 +1158,41 @@ def _chunk_members_by_bytes(
     members: List[_NodeMember],
     max_bytes: int,
 ) -> Iterable[List[_NodeMember]]:
-    """Yield consecutive sub-batches of ``members`` whose total requested
-    bytes (sum of ranges' ``length``) stay within ``max_bytes``.
+    """Yield sub-batches of members whose total requested bytes ≤ ``max_bytes``.
 
-    A single member larger than the budget gets its own singleton batch — we
-    never split a source's ranges across FETCHes (would require dedicated
-    multi-FETCH stitching). For typical workloads this is fine: the per-FETCH
-    budget is much larger than any one source's partition slice.
+    A source's ranges MAY be split across batches: the source appears as
+    multiple pseudo-members with the same ``idx``/``path`` but disjoint
+    range subsets, in the original range order. Individual ranges are
+    NEVER split — each range is one Arrow IPC frame at the mapper, so a
+    sub-range cut would break the reducer's decode. A single range larger
+    than ``max_bytes`` therefore still gets its own oversized batch.
     """
-    cur: List[_NodeMember] = []
-    cur_bytes = 0
+    batch: List[_NodeMember] = []
+    batch_bytes = 0
     for member in members:
-        size = sum(length for _off, length in member.ranges)
-        if cur and cur_bytes + size > max_bytes:
-            yield cur
-            cur = []
-            cur_bytes = 0
-        cur.append(member)
-        cur_bytes += size
-    if cur:
-        yield cur
+        pending: List[Tuple[int, int]] = []
+        for off, length in member.ranges:
+            if (batch or pending) and batch_bytes + length > max_bytes:
+                if pending:
+                    batch.append(
+                        _NodeMember(
+                            idx=member.idx, path=member.path, ranges=pending
+                        )
+                    )
+                    pending = []
+                yield batch
+                batch, batch_bytes = [], 0
+            pending.append((off, length))
+            batch_bytes += length
+        if pending:
+            batch.append(
+                _NodeMember(idx=member.idx, path=member.path, ranges=pending)
+            )
+    if batch:
+        yield batch
 
 
-# --------------------------------------------------------- fetch routing helpers
+# fetch helpers
 def _handles_to_sources(
     handles: List["ShuffleHandle"],
     partition_id: int,
