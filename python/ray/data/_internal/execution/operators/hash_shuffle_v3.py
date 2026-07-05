@@ -788,15 +788,12 @@ def v3_map_task(
     through the manager's page-cache-backed sendfile serve, so this sync
     only matters if node-reboot recovery is later added to the FT model.
     """
-    # Lookup-or-create the local node's ShuffleManager. ``get_if_exists=True``
-    # makes this idempotent: concurrent mappers on the same node share one
-    # actor; cross-node task retry just spawns a fresh manager on the new
-    # node.
     node_id = ray.get_runtime_context().get_node_id()
     manager = ShuffleManager.options(
         name=f"shuffle_mgr:{shuffle_id}:{node_id}",
         namespace="ray_data_shuffle_v3",
         get_if_exists=True,
+        lifetime="detached",
         max_restarts=-1,
         scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
         num_cpus=0,

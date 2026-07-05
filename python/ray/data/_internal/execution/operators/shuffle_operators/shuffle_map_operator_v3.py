@@ -721,13 +721,40 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         self._merge_buffer_bundles_by_node.clear()
         self._merge_buffer_bytes_by_node.clear()
         self._output_queue.clear()
+        # Explicit ShuffleManager sweep: managers are detached (see
+        # hash_shuffle_v3.v3_map_task ``.options(lifetime="detached")``),
+        # so ref-count no longer tears them down when handle refs drop —
+        # we must kill them here. Best-effort per actor: a manager may
+        # already be dead (node loss, prior crash exhausted max_restarts),
+        # and end-of-stage cleanup must not propagate that.
+        self._kill_managers_from_completed_handles()
         self._completed_handle_refs.clear()
         # Drop the shared handle-list plasma object. Reducer tasks that
         # captured a borrowed ref have already completed by shutdown time.
         self._shared_handles_ref = None
-        # ShuffleManager actors are kept alive by the ActorHandle inside
-        # each emitted ShuffleHandle; Ray ref-counting tears them down once
-        # all reducer bundles release. No cleanup needed here.
+
+    def _kill_managers_from_completed_handles(self) -> None:
+        """Dedup manager ActorHandles across the completed handles and
+        ``ray.kill(no_restart=True)`` each. Detached managers ignore
+        ref-count, so the driver must sweep them explicitly."""
+        seen: set = set()
+        for ref in self._completed_handle_refs:
+            try:
+                handle = ray.get(ref)  # small dict, μs-level local read
+            except Exception:
+                continue
+            mgr = handle.get("manager") if isinstance(handle, dict) else None
+            if mgr is None:
+                continue
+            key = mgr._actor_id.binary()
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                ray.kill(mgr, no_restart=True)
+            except Exception:
+                # Already dead / node lost / max_restarts exhausted — fine.
+                pass
 
     # Stats / progress
     def get_stats(self) -> Dict[str, List[BlockStats]]:
