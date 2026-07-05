@@ -1,6 +1,8 @@
 import asyncio
+import collections
 import logging
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -2563,6 +2565,30 @@ async def test_is_drained_waits_for_old_procs():
     # Old worker has exited -> drained.
     manager._haproxy.has_alive_old_procs = mock.Mock(return_value=False)
     assert await manager.is_drained() is True
+
+
+def test_soft_stop_old_procs_signals_live_workers():
+    """_soft_stop_old_procs re-delivers SIGUSR1 to our live displaced workers,
+    healing a worker whose `-sf` signal was lost, and skips exited procs and a
+    pid that is no longer one of ours (recycled)."""
+    api = HAProxyApi.__new__(HAProxyApi)
+
+    alive_ours = mock.Mock(pid=111, returncode=None)
+    exited = mock.Mock(pid=222, returncode=0)
+    alive_recycled = mock.Mock(pid=333, returncode=None)
+    api._old_procs = [alive_ours, exited, alive_recycled]
+    api._retired_logs = collections.deque()
+    api._max_retained_logs = 10
+
+    # 333's pid was recycled onto an unrelated process.
+    api._is_our_haproxy = lambda pid: pid != 333
+
+    with mock.patch("ray.serve._private.haproxy.os.kill") as mock_kill:
+        api._soft_stop_old_procs()
+
+    # Only the live worker that is still ours is signaled; the exited one is
+    # pruned and the recycled pid is left alone.
+    mock_kill.assert_called_once_with(111, signal.SIGUSR1)
 
 
 @pytest.mark.asyncio
