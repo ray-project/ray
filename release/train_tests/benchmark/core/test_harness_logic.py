@@ -193,6 +193,59 @@ def test_megatron_view_defaults_parallelism():
     assert by_header["#-GPUs"] == "8"
 
 
+def test_l40s_peak_flops_is_dense():
+    # 362 TFLOPS on the datasheet is the 2:4-sparsity figure; MFU must use dense.
+    assert get_gpu_peak_flops("NVIDIA L40S", "bf16") == 181.05e12
+
+
+def test_hfu_tracks_recompute_overhead():
+    import time
+
+    from core.metrics import TrainMetricsCollector
+
+    # Grad-ckpt full recompute: hardware does one extra forward (6N -> 8N).
+    collector = TrainMetricsCollector(
+        world_size=1,
+        warmup_steps=0,
+        flops_per_token=6.0e9,
+        hardware_flops_per_token=8.0e9,
+        peak_flops_per_gpu=100e12,
+    )
+    with collector.step_timer.timer():
+        time.sleep(0.001)
+    collector.record_batch(num_rows=2, num_tokens=2 * 128)
+    metrics = collector.summary()
+    assert metrics["train/hfu"] == pytest.approx(metrics["train/mfu"] * 8 / 6)
+    assert metrics["train/hardware_tflops_per_sec_per_device"] == pytest.approx(
+        metrics["train/model_tflops_per_sec_per_device"] * 8 / 6
+    )
+
+
+def test_benchmark_view_row():
+    from collect import _BENCHMARK_COLUMNS, _format_cell
+
+    row = {
+        "config/model": "Qwen/Qwen3-0.6B",
+        "world_size": 4,
+        "train/mfu": 0.1417,
+        "train/hfu": 0.1889,
+        "config/dp_replicate": 4,
+        "config/dp_shard": 1,
+        "config/zero_stage": 2,
+        "oom": False,
+    }
+    by_header = {c[0]: _format_cell(row, c) for c in _BENCHMARK_COLUMNS}
+    assert by_header["MFU"] == "0.1417"
+    assert by_header["HFU"] == "0.1889"
+    assert by_header["DP_Replicate"] == "4"
+    assert by_header["DP_Shard"] == "1"
+    assert by_header["TP"] == "1"  # defaults for pure-DP rows
+    assert by_header["ZeRO_Stage"] == "2"
+    assert by_header["OOM?"] == "N"
+    # Missing metrics render as "-" rather than erroring (e.g. OOM rows).
+    assert by_header["T/s"] == "-"
+
+
 def test_physical_gpu_index_maps_via_cvd(monkeypatch):
     # CVD="5,3": logical cuda:0 -> physical 5, cuda:1 -> physical 3.
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "5,3")

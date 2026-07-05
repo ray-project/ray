@@ -88,7 +88,52 @@ _MEGATRON_COLUMNS = [
     ("Model TFLOP / sec / GPU", "train/model_tflops_per_sec_per_device", _g, None),
 ]
 
-_VIEWS = {"full": _COLUMNS, "megatron": _MEGATRON_COLUMNS}
+# "benchmark" view: the report-table row schema (llm-foundry-style identity /
+# efficiency / throughput columns + the knobs actually tunable through Ray
+# Train and the adapters: DP replicate/shard, TP, PP, CP, ZeRO stage, offload).
+# DeepSpeed emits dp_* explicitly; TP/PP/CP default to 1 for pure-DP rows.
+def _yn(v) -> str:
+    return "Y" if v else "N"
+
+
+_BENCHMARK_COLUMNS = [
+    ("Model", "config/model", str, None),
+    ("SeqLen", "config/seq_len", _int, None),
+    ("NumWorkers", "world_size", _int, None),
+    ("GPU", "config/gpu", str, None),
+    ("MFU", "train/mfu", lambda v: f"{v:.4f}", None),
+    ("HFU", "train/hfu", lambda v: f"{v:.4f}", None),
+    ("Model TFLOP/s", "train/model_tflops_per_sec_per_device", _g, None),
+    ("MicroBS", "config/micro_batch_size", _int, None),
+    ("GradAccum", "config/grad_accum_steps", _int, None),
+    ("GlobalBS(samples)", "config/global_batch_size", _int, None),
+    ("GlobalBS(tokens)", "config/global_batch_tokens", lambda v: f"{v:,.0f}", None),
+    ("Throughput S/s", "train/global_rows_per_sec", _g, None),
+    ("T/s", "train/global_tokens_per_sec", lambda v: f"{v:,.0f}", None),
+    ("T/s/GPU", "train/tokens_per_sec_per_device", lambda v: f"{v:,.0f}", None),
+    ("DP_Replicate", "config/dp_replicate", _int, 1),
+    ("DP_Shard", "config/dp_shard", _int, 1),
+    ("TP", "config/tp", _int, 1),
+    ("PP", "config/pp", _int, 1),
+    ("CP", "config/cp", _int, 1),
+    ("ZeRO_Stage", "config/zero_stage", _int, None),
+    ("Precision", "config/precision", str, None),
+    ("Grad_Ckpt", "config/gradient_checkpointing", _yn, None),
+    ("Offload_Optimizer", "config/offload_optimizer", _yn, False),
+    ("Offload_Param", "config/offload_param", _yn, False),
+    ("NumParams", "num_params", _int, None),
+    ("Dataloader (ray_data/torch)", "config/dataloader", str, None),
+    ("Launcher (ray/torchrun)", "config/launcher", str, None),
+    ("Peak GPU Mem (GB)", "gpu/peak_memory_reserved_gb", _g, None),
+    ("GPU Mem Capacity (GB)", "gpu/memory_capacity_gb", _g, None),
+    ("OOM?", "oom", _yn, False),
+]
+
+_VIEWS = {
+    "full": _COLUMNS,
+    "megatron": _MEGATRON_COLUMNS,
+    "benchmark": _BENCHMARK_COLUMNS,
+}
 
 
 def _format_cell(row: Dict[str, Any], column) -> str:

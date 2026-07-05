@@ -222,6 +222,29 @@ class DeepSpeedAdapter(FrameworkAdapter):
             )
         )
 
+    def hardware_flops_per_token(self) -> Optional[float]:
+        """Model FLOPs plus recompute: the HFU numerator.
+
+        HF gradient checkpointing recomputes every decoder layer's forward
+        during backward, so the hardware executes one extra forward per token
+        (6N -> 8N, PaLM Appendix B accounting). Without checkpointing,
+        HFU == MFU. Uses active params, so MoE recompute is counted correctly.
+        """
+        model_flops = self.flops_per_token()
+        if model_flops is None or not self.cfg.model.gradient_checkpointing:
+            return model_flops
+        extra_forward = flops_per_token(
+            FlopsSpec(
+                active_params=self._active_params,
+                num_layers=self._hf_config.num_hidden_layers,
+                hidden_size=self._hf_config.hidden_size,
+                seq_len=self.cfg.data.seq_len,
+                attention=self._attention_kind,
+                include_backward=False,
+            )
+        )
+        return model_flops + extra_forward
+
     def _maybe_checkpoint(self, engine, step: int) -> None:
         interval = self.cfg.checkpoint.every_n_steps
         if interval <= 0 or step % interval != 0:
@@ -249,15 +272,14 @@ class DeepSpeedAdapter(FrameworkAdapter):
             )
         return self.cfg.training.num_epochs * steps_per_epoch
 
-    def run(self) -> Dict[str, Any]:
-        torch.manual_seed(self.cfg.training.seed)
+    def _train_phase(self, device) -> "tuple[TrainMetricsCollector, Optional[float]]":
+        """Build the engine + dataloader and run the step loop.
 
-        if self.cfg.data.seq_len is None:
-            raise ValueError("data.seq_len is required for the deepspeed adapter.")
-
+        Split from ``run`` so an OOM anywhere in it (model load, ZeRO init, or
+        a training step) can be caught and reported as a benchmark result.
+        """
         self._tokenizer = self._build_tokenizer()
         engine = self._build_engine()
-        device = self.ctx.device()
 
         peak_flops = None
         if torch.cuda.is_available():
@@ -273,6 +295,7 @@ class DeepSpeedAdapter(FrameworkAdapter):
                 world_size=self.ctx.world_size,
                 warmup_steps=self.cfg.training.warmup_steps,
                 flops_per_token=self.flops_per_token(),
+                hardware_flops_per_token=self.hardware_flops_per_token(),
                 peak_flops_per_gpu=peak_flops,
                 device=device,
                 gpu_index=getattr(device, "index", None) or 0,
@@ -282,6 +305,7 @@ class DeepSpeedAdapter(FrameworkAdapter):
                 world_size=self.ctx.world_size,
                 warmup_steps=self.cfg.training.warmup_steps,
                 flops_per_token=self.flops_per_token(),
+                hardware_flops_per_token=self.hardware_flops_per_token(),
                 peak_flops_per_gpu=peak_flops,
             )
 
@@ -339,21 +363,60 @@ class DeepSpeedAdapter(FrameworkAdapter):
 
             self._maybe_checkpoint(engine, step)
 
+        return collector, last_loss
+
+    def run(self) -> Dict[str, Any]:
+        torch.manual_seed(self.cfg.training.seed)
+
+        if self.cfg.data.seq_len is None:
+            raise ValueError("data.seq_len is required for the deepspeed adapter.")
+
+        device = self.ctx.device()
+        oom = False
+        collector = None
+        last_loss = None
+        try:
+            collector, last_loss = self._train_phase(device)
+        except (torch.cuda.OutOfMemoryError, RuntimeError) as e:
+            # Report OOM as a benchmark result (oom=true row) instead of
+            # crashing, so batch/seq sweeps record which cells don't fit.
+            # Best-effort in multi-worker runs: peer ranks blocked in
+            # collectives still fail via NCCL timeout.
+            is_oom = isinstance(e, torch.cuda.OutOfMemoryError) or (
+                "out of memory" in str(e).lower()
+            )
+            if not is_oom:
+                raise
+            logger.exception("CUDA OOM; reporting an oom=true benchmark row")
+            oom = True
+
+        if collector is None:  # OOM before the collector existed
+            collector = TrainMetricsCollector(
+                world_size=self.ctx.world_size,
+                warmup_steps=self.cfg.training.warmup_steps,
+            )
         metrics = collector.summary()
+        metrics["oom"] = oom
         if last_loss is not None:
             metrics["loss"] = last_loss
         metrics["num_params"] = self._num_params
         metrics["active_params"] = self._active_params
         # dense vs MoE is an explicit benchmark dimension.
-        is_moe = self._active_params != self._num_params
-        metrics["config/model_kind"] = "moe" if is_moe else "dense"
+        if self._active_params is not None:
+            is_moe = self._active_params != self._num_params
+            metrics["config/model_kind"] = "moe" if is_moe else "dense"
         metrics["config/attention_flops"] = self._attention_kind
 
         # Self-describing config echo so results JSON renders into a table
         # (collect.py) and archives without needing the source YAML.
+        seq_len = self.cfg.data.seq_len
+        batch_size = self.cfg.data.micro_batch_size
         grad_accum = self.cfg.grad_accum_steps(data_parallel_size=self.ctx.world_size)
+        global_batch = batch_size * self.ctx.world_size * grad_accum
         metrics["config/model"] = self.cfg.model.name
         metrics["config/adapter"] = self.cfg.adapter
+        metrics["config/launcher"] = self.cfg.launcher
+        metrics["config/dataloader"] = self.cfg.data.dataloader
         metrics["config/precision"] = self.cfg.model.precision
         metrics["config/zero_stage"] = (self.cfg.model.parallelism or {}).get(
             "zero_stage"
@@ -362,9 +425,25 @@ class DeepSpeedAdapter(FrameworkAdapter):
         metrics["config/seq_len"] = seq_len
         metrics["config/micro_batch_size"] = batch_size
         metrics["config/grad_accum_steps"] = grad_accum
-        metrics["config/global_batch_size"] = (
-            batch_size * self.ctx.world_size * grad_accum
-        )
+        metrics["config/global_batch_size"] = global_batch
+        metrics["config/global_batch_tokens"] = global_batch * seq_len
+
+        # Parallelism degrees in Megatron terms. DeepSpeed ZeRO is pure data
+        # parallel (tp = pp = cp = 1): stage 3 shards parameters, so the DP
+        # group counts as dp_shard; stages 0-2 replicate them (dp_replicate).
+        # Invariant: world = dp_replicate * dp_shard * tp * pp * cp.
+        zero_stage = (self.cfg.model.parallelism or {}).get("zero_stage", 3)
+        shards_params = zero_stage is not None and int(zero_stage) >= 3
+        metrics["config/dp_shard"] = self.ctx.world_size if shards_params else 1
+        metrics["config/dp_replicate"] = 1 if shards_params else self.ctx.world_size
+        metrics["config/tp"] = 1
+        metrics["config/pp"] = 1
+        metrics["config/cp"] = 1
+
+        # ZeRO-Offload flags from the final (framework_config-merged) DS config.
+        zero_opt = self._build_ds_config().get("zero_optimization", {})
+        metrics["config/offload_optimizer"] = bool(zero_opt.get("offload_optimizer"))
+        metrics["config/offload_param"] = bool(zero_opt.get("offload_param"))
         if torch.cuda.is_available():
             gpu_name = torch.cuda.get_device_name(device)
             metrics["config/gpu"] = gpu_name

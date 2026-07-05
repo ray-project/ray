@@ -29,7 +29,9 @@ GPU_PEAK_FLOPS: Dict[str, Dict[str, float]] = {
     "h100": {"bf16": 989e12, "fp16": 989e12, "fp32": 67e12},  # SXM
     "a100": {"bf16": 312e12, "fp16": 312e12, "fp32": 19.5e12},
     "a10g": {"bf16": 70e12, "fp16": 70e12, "fp32": 31.2e12},
-    "l40s": {"bf16": 362e12, "fp16": 362e12, "fp32": 91.6e12},
+    # L40S: 181.05 is the dense figure; the 362.05 on the datasheet is 2:4
+    # sparsity, which dense training can't use.
+    "l40s": {"bf16": 181.05e12, "fp16": 181.05e12, "fp32": 91.6e12},
     "l4": {"bf16": 121e12, "fp16": 121e12, "fp32": 30.3e12},
     "v100": {"fp16": 125e12, "fp32": 15.7e12},
     "t4": {"fp16": 65e12, "fp32": 8.1e12},
@@ -280,10 +282,15 @@ class TrainMetricsCollector:
         world_size: int,
         warmup_steps: int = 5,
         flops_per_token: Optional[float] = None,
+        hardware_flops_per_token: Optional[float] = None,
         peak_flops_per_gpu: Optional[float] = None,
     ):
         self.world_size = world_size
         self.flops_per_token = flops_per_token
+        # Model FLOPs plus recompute overhead (activation checkpointing): the
+        # HFU numerator. Equal to flops_per_token when nothing is recomputed,
+        # in which case HFU == MFU.
+        self.hardware_flops_per_token = hardware_flops_per_token
         self.peak_flops_per_gpu = peak_flops_per_gpu
 
         self.step_timer = StepTimer(warmup_steps)
@@ -335,6 +342,13 @@ class TrainMetricsCollector:
                     metrics["train/model_tflops_per_sec_per_device"] = achieved / 1e12
                     if self.peak_flops_per_gpu:
                         metrics["train/mfu"] = achieved / self.peak_flops_per_gpu
+                if self.hardware_flops_per_token:
+                    hw_achieved = tokens_per_sec_device * self.hardware_flops_per_token
+                    metrics["train/hardware_tflops_per_sec_per_device"] = (
+                        hw_achieved / 1e12
+                    )
+                    if self.peak_flops_per_gpu:
+                        metrics["train/hfu"] = hw_achieved / self.peak_flops_per_gpu
 
         metrics.update(self._device_summary())
         return metrics
@@ -352,12 +366,19 @@ class GpuTrainMetricsCollector(TrainMetricsCollector):
         world_size: int,
         warmup_steps: int = 5,
         flops_per_token: Optional[float] = None,
+        hardware_flops_per_token: Optional[float] = None,
         peak_flops_per_gpu: Optional[float] = None,
         device: Optional[Any] = None,
         gpu_index: int = 0,
         monitor_gpu: bool = True,
     ):
-        super().__init__(world_size, warmup_steps, flops_per_token, peak_flops_per_gpu)
+        super().__init__(
+            world_size,
+            warmup_steps,
+            flops_per_token,
+            hardware_flops_per_token,
+            peak_flops_per_gpu,
+        )
 
         # Static memory = what's resident before the training loop (model +
         # optimizer + grad buffers). Capturing it here (after engine build) lets
@@ -403,6 +424,11 @@ class GpuTrainMetricsCollector(TrainMetricsCollector):
             "gpu/peak_memory_allocated_gb": peak_alloc / 1e9,
             "gpu/peak_memory_reserved_gb": torch.cuda.max_memory_reserved(self._device)
             / 1e9,
+            # Capacity alongside the peaks so OOM headroom is one row, not a
+            # cross-reference against a datasheet.
+            "gpu/memory_capacity_gb": (
+                torch.cuda.get_device_properties(self._device).total_memory / 1e9
+            ),
         }
         if self._static_memory_bytes is not None:
             out["gpu/static_memory_gb"] = self._static_memory_bytes / 1e9
