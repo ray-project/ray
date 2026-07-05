@@ -58,35 +58,30 @@ class Batcher(Generic[T]):
             return
 
         try:
-            if self.interval_s is not None:
-                # Flush the first result(s) as soon as they are available instead
-                # of waiting out the first full interval. Time-to-first-token is
-                # latency-critical for streaming responses, while batching only
-                # exists to amortize per-chunk overhead for the rest of the
-                # stream. Without this, the batching interval is added to the
-                # TTFT of every request (https://github.com/ray-project/ray/issues/59681).
-                await self.first_item_event.wait()
-
-                results, is_done = self.check_done_and_drain()
-                if results:
-                    yield self._merge_results(results)
-                if is_done:
-                    # Raise exception, if any
-                    self.read_task.result()
-                    return
+            # For the very first flush we wait only until the first result is
+            # available instead of waiting out the full interval: time-to-first-
+            # token is latency-critical, while batching only exists to amortize
+            # per-chunk overhead for the rest of the stream. Otherwise the
+            # interval would be added to the TTFT of every request
+            # (https://github.com/ray-project/ray/issues/59681).
+            first_flush_pending = self.interval_s is not None
 
             while True:
-                # Wait for the interval or until we finish, whichever is faster.
-                # We use an event to avoid asyncio.wait_for cancelling the real task on timeout.
-                try:
-                    if self.interval_s is None:
-                        await self.done_event.wait()
-                    else:
-                        await asyncio.wait_for(
-                            self.done_event.wait(), timeout=self.interval_s
-                        )
-                except asyncio.TimeoutError:
-                    pass
+                if first_flush_pending:
+                    await self.first_item_event.wait()
+                    first_flush_pending = False
+                else:
+                    # Wait for the interval or until we finish, whichever is faster.
+                    # We use an event to avoid asyncio.wait_for cancelling the real task on timeout.
+                    try:
+                        if self.interval_s is None:
+                            await self.done_event.wait()
+                        else:
+                            await asyncio.wait_for(
+                                self.done_event.wait(), timeout=self.interval_s
+                            )
+                    except asyncio.TimeoutError:
+                        pass
 
                 # Get all elements from the queue
                 results, is_done = self.check_done_and_drain()
