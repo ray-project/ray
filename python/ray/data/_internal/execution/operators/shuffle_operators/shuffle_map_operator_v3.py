@@ -746,12 +746,15 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         self._shared_handles_ref = None
 
     def _kill_managers_from_completed_handles(self) -> None:
-        """Dedup manager ActorHandles across the completed handles, run
-        their ``cleanup()`` (rmtree base_dir + stop server), then
-        ``ray.kill(no_restart=True)``. Cleanup MUST run before kill:
-        ``ray.kill`` is SIGKILL-like and skips atexit, so the actor's
-        own atexit-registered cleanup won't fire."""
+        """Dedup manager ActorHandles across the completed handles and
+        gracefully terminate each. ``__ray_terminate__`` drains pending
+        tasks, invokes the actor's ``__ray_shutdown__`` (rmtree base_dir
+        + stop server), and exits — with a 30s Ray-default cap after
+        which the actor is force-killed. Errors (actor already dead,
+        node lost, timeout exceeded) are caught by Ray internally; our
+        try/except only guards the RPC-submission and result-wait sides."""
         seen: set = set()
+        mgrs = []
         for ref in self._completed_handle_refs:
             try:
                 handle = ray.get(ref)  # small dict, μs-level local read
@@ -764,15 +767,19 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
             if key in seen:
                 continue
             seen.add(key)
-            # 1) graceful cleanup RPC (drops files, stops server)
+            mgrs.append(mgr)
+
+        # Fire graceful shutdowns in parallel; wall time = slowest
+        # __ray_shutdown__ (Ray caps at 30s each), not sum of them.
+        term_refs = []
+        for mgr in mgrs:
             try:
-                ray.get(mgr.cleanup.remote())
+                term_refs.append(mgr.__ray_terminate__.remote())
             except Exception:
-                # Already dead / node lost — kill below is still fine to try.
                 pass
-            # 2) terminate the actor process
+        for ref in term_refs:
             try:
-                ray.kill(mgr, no_restart=True)
+                ray.get(ref)
             except Exception:
                 pass
 

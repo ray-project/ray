@@ -466,21 +466,19 @@ class ShuffleManager:
         t = threading.Thread(target=self._server.serve_forever, daemon=True)
         t.start()
 
-        # ``atexit`` covers only the graceful Python-shutdown path (e.g. Ray
-        # runtime tear-down). ``ray.kill`` is SIGKILL-like and skips atexit,
-        # so the driver's _do_shutdown MUST call ``cleanup()`` explicitly
-        # before killing the actor — otherwise files leak on disk.
+        # Cleanup fires on two paths:
+        #   1. Graceful actor shutdown via __ray_terminate__ (driver-side),
+        #      which Ray triggers ``__ray_shutdown__`` on after draining
+        #      pending tasks and before exiting the actor.
+        #   2. atexit hook covers the "Ray runtime torn down without going
+        #      through __ray_terminate__" fallback (interpreter shutdown).
+        # Both call the same idempotent method.
         self._cleaned = False
-        atexit.register(self.cleanup)
+        atexit.register(self.__ray_shutdown__)
 
-    def cleanup(self) -> None:
+    def __ray_shutdown__(self) -> None:
         """Stop the socket server + rmtree ``base_dir``. Idempotent.
-        Best-effort throughout: a cleanup failure must never propagate, or
-        it would mask the real shutdown reason.
-
-        Called both via ``atexit`` on graceful Python shutdown AND as an
-        explicit RPC from the driver's _do_shutdown before ``ray.kill``
-        (ray.kill is SIGKILL and skips atexit)."""
+        Best-effort throughout: a cleanup failure must never propagate."""
         if self._cleaned:
             return
         self._cleaned = True
