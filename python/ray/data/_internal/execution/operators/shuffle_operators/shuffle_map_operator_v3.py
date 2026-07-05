@@ -181,19 +181,24 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         self._map_num_cpus: float = map_cpus
 
         # -- On-disk staging --
-        # ``base_dir`` is just a directory-name template — each node mkdirs
-        # the same path on its OWN local FS. Driver doesn't own anything on
-        # remote disks. Cleanup is performed by the ``ShuffleManager`` actor
-        # itself: an ``atexit`` hook in the actor process ``rmtree``s
-        # ``base_dir`` on graceful actor termination (ref-count → 0).
-        # SIGKILL paths (OOM, ``ray.kill``, crash) skip atexit, leaving the
-        # files on disk for a ``max_restarts`` respawn — that's the right
-        # property for fault tolerance.
+        # ``base_dir`` is a directory-name template — each node mkdirs the
+        # same path on its OWN local FS. Driver owns nothing on remote disks.
+        #
+        # Cleanup layers, in order of precedence:
+        #   1. Main path: driver's _do_shutdown → ``mgr.cleanup.remote()``
+        #      (rmtree base_dir + stop server) → ``ray.kill(no_restart=True)``.
+        #   2. atexit hook inside the ShuffleManager runs the same cleanup on
+        #      graceful Python shutdown (Ray runtime tear-down / ray.shutdown).
+        #   3. Actor crash + ``max_restarts=-1`` same-node respawn: crash
+        #      skips atexit but files stay on disk for the respawn to pick
+        #      up — the property that makes single-actor FT work.
+        #   4. Ultimate backstop: ``tempfile.mkdtemp`` puts base_dir under
+        #      $TMPDIR (Linux /tmp), covered by systemd-tmpfiles / tmpwatch
+        #      / reboot — bounds leaks from driver hard crashes or cluster
+        #      SIGKILLs.
         #
         # Caller-supplied ``base_dir`` is treated as scratch space: it WILL
-        # be removed when the shuffle's actors are released. Callers that
-        # want their directory preserved should not pass a path they expect
-        # to keep.
+        # be rmtree'd when the shuffle's managers are swept.
         self._base_dir: str = base_dir or tempfile.mkdtemp(prefix="ray_shuffle_v3_")
         # Per-shuffle auth token; ShuffleManager rejects requests with any
         # other token. Cheap defense against accidental cross-shuffle reads
