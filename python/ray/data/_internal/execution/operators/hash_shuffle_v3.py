@@ -995,37 +995,6 @@ def _is_node_alive(node_id: str) -> Optional[bool]:
     return None
 
 
-# --------------------------------------------------------- prefetch-file framing
-# Each prefetched source lands in its own file under ``prefetch_dir`` with:
-#     u32 count           # number of IPC shards from this source
-#     repeat count times:
-#         u32 len_i        # bytes of the next IPC stream
-#         <IPC stream_i>   # complete Arrow IPC stream as written by the mapper
-# Why file-backed instead of List[bytes] in memory:
-#   * bounds reducer peak RSS to roughly one source's bytes during decode
-#     (the unbounded user-space accumulation across ALL sources was the
-#     biggest gap in the old reduce path under partition skew);
-#   * kernel page cache automatically shares pages and lets memory pressure
-#     evict cold prefetch data — a soft "spill" for free, with no explicit
-#     reducer-side memory accounting;
-#   * mmap'd reads give zero-copy ``pa.Buffer`` views into Arrow IPC decode
-#     for the uncompressed case (compressed IPC always decompresses into
-#     fresh buffers, so the copy is unavoidable there).
-def _write_prefetch_file(path: str, bufs: List[bytes]) -> None:
-    """Stage one fetched source's IPC shards to ``path`` with framing.
-
-    We deliberately do not ``fsync``: the file is local-only and consumed by
-    the very same reduce task within seconds, so kernel page cache is
-    sufficient — and is exactly what makes the subsequent ``pa.memory_map``
-    decode hit cache rather than re-read from disk.
-    """
-    with open(path, "wb") as f:
-        f.write(struct.pack(">I", len(bufs)))
-        for b in bufs:
-            f.write(struct.pack(">I", len(b)))
-            f.write(b)
-
-
 _DEFAULT_MAX_BYTES_PER_FETCH = 256 * 1024 * 1024  # 256 MiB per FETCH frame
 
 # Process-global cache of ShuffleManager endpoints: {actor_id_bytes: (ip, port)}.
@@ -1123,8 +1092,6 @@ def _prefetch_node_into(
                 ]
                 conn.fetch_into(sources, out_file_obj)
     except ShuffleNodeLostError:
-        # Already the loud/final classification — don't downgrade to
-        # ShuffleFetchError via the generic wrap below.
         raise
     except Exception as e:
         # Cross-reference the manager's node against ``ray.nodes()``. If the
