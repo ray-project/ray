@@ -739,9 +739,6 @@ def open_shuffle_connection(
 ShuffleHandle = dict  # {path, index:{pid:[(off,len)]}, endpoint:(host,port), token, node_id}
 
 
-# max_calls=1: worker reuse is intentionally disabled — repeated task runs
-# in one worker leaked memory across tasks in prior runs, so we recycle the
-# worker per task at the cost of a spawn per invocation.
 @ray.remote(max_calls=1)
 def v3_map_task(
     *blocks: pa.Table,
@@ -982,15 +979,6 @@ class ShuffleNodeLostError(ShuffleFetchError):
     """
 
 
-# Bounded wait for ``manager.endpoint.remote()`` before we probe whether the
-# manager's node is still alive. Sized to comfortably absorb a same-node actor
-# restart (seconds), but short enough that a node-death hang converts into a
-# ShuffleNodeLostError in bounded time. Override via env var for testing.
-_ENDPOINT_TIMEOUT_S: float = float(
-    os.environ.get("RAY_DATA_SHUFFLE_ENDPOINT_TIMEOUT_S", "60")
-)
-
-
 def _is_node_alive(node_id: str) -> Optional[bool]:
     """Return True/False from ``ray.nodes()``, or None if the node isn't in the
     snapshot at all (transient GCS lag — treat as inconclusive, don't upgrade
@@ -1041,12 +1029,7 @@ def _write_prefetch_file(path: str, bufs: List[bytes]) -> None:
 _DEFAULT_MAX_BYTES_PER_FETCH = 256 * 1024 * 1024  # 256 MiB per FETCH frame
 
 # Process-global cache of ShuffleManager endpoints: {actor_id_bytes: (ip, port)}.
-# Populated lazily on first fetch to a manager. Worker reuse is currently
-# disabled (all shuffle tasks are @ray.remote(max_calls=1) to avoid the memory
-# leak that repeated task runs in one worker exhibited), so this cache is
-# effectively per-task: it amortizes multiple resolves of the same manager
-# within a single reducer task's fetch loop (retries, multi-source refresh),
-# not across tasks.
+# When an file server actor is respawned (due to failure), the CACHE will be re-populated
 _ENDPOINT_CACHE: Dict[bytes, Tuple[str, int]] = {}
 
 
@@ -1054,12 +1037,9 @@ _PrefetchMember = Tuple[int, str, List[Tuple[int, int]]]
 
 
 class _PwriteSink:
-    """A minimal write-only file-like that ``os.pwrite``s sequentially from a
+    """A write-only file-like that ``os.pwrite``s sequentially from a
     fixed base offset on a shared fd. Multiple sinks (one per fetch thread) at
-    DISJOINT base regions write the same fd concurrently with no lock --
-    ``pwrite`` is positioned, so it neither uses nor mutates the fd's file
-    offset. Lets ``fetch_into`` stream frames straight to disk (page cache) at
-    a known offset, with no per-node in-RAM buffering."""
+    DISJOINT base regions write the same fd concurrently without lock"""
 
     __slots__ = ("_fd", "_pos")
 
@@ -1096,24 +1076,27 @@ def _prefetch_node_into(
     operator layer can decide what to do.
     """
 
-    def _resolve(force: bool = False) -> Tuple[str, int]:
+    def _resolve() -> Tuple[str, int]:
         # Process-global cache: a manager's (ip, port) is stable for its
         # lifetime, so this avoids a blocking ``ray.get`` actor round-trip per
         # node per task. That round-trip also released the task's CPU (Ray frees
         # the slot during a blocking get), which oversubscribed nodes; caching
-        # removes both costs. ``force`` bypasses + refreshes the entry after a
-        # connect failure (manager may have restarted on a new port).
+        # removes both costs. No force-refresh path: if the manager restarts
+        # on a new port mid-task, the cached endpoint goes stale and the
+        # connect fails downstream; recovery is via Ray task retry (which
+        # starts a fresh worker with an empty cache), not in-task re-resolve.
         key = manager._actor_id.binary()
-        if not force:
-            ep = _ENDPOINT_CACHE.get(key)
-            if ep is not None:
-                return ep
+        ep = _ENDPOINT_CACHE.get(key)
+        if ep is not None:
+            return ep
         # Bounded wait: manager is NodeAffinity-pinned (soft=False) with
         # max_restarts=-1, so if the node dies the actor stays PENDING forever
-        # and a naked ``ray.get`` hangs indefinitely. ``ray.wait`` lets us bail
-        # out and probe node liveness in bounded time.
+        # and a naked ``ray.get`` hangs indefinitely. ``ray.wait`` bails out
+        # after 60s so we can probe node liveness. 60s comfortably absorbs a
+        # same-node actor restart (seconds) yet still converts a node-death
+        # hang into a typed error in bounded time.
         ref = manager.endpoint.remote()
-        ready, _ = ray.wait([ref], timeout=_ENDPOINT_TIMEOUT_S)
+        ready, _ = ray.wait([ref], timeout=60)
         if not ready:
             alive = _is_node_alive(node_id)
             if alive is False:
@@ -1124,8 +1107,8 @@ def _prefetch_node_into(
                     f"(a fresh mapper on a live node will produce new output)."
                 )
             raise ShuffleFetchError(
-                f"Timed out resolving ShuffleManager endpoint after "
-                f"{_ENDPOINT_TIMEOUT_S}s (node_id={node_id}, alive={alive})."
+                f"Timed out resolving ShuffleManager endpoint after 60s "
+                f"(node_id={node_id}, alive={alive})."
             )
         ep = ray.get(ref)
         _ENDPOINT_CACHE[key] = ep
@@ -1133,14 +1116,7 @@ def _prefetch_node_into(
 
     endpoint = _resolve()
     try:
-        try:
-            conn_cm = open_shuffle_connection(endpoint, token)
-        except (ConnectionRefusedError, ConnectionResetError, OSError):
-            # Manager process may have just restarted on a new port —
-            # re-resolve (bypassing the stale cache) once and try again.
-            endpoint = _resolve(force=True)
-            conn_cm = open_shuffle_connection(endpoint, token)
-        with conn_cm as conn:
+        with open_shuffle_connection(endpoint, token) as conn:
             for batch in _chunk_members_by_bytes(members, max_bytes_per_fetch):
                 sources = [
                     (src_path, src_ranges) for _idx, src_path, src_ranges in batch
@@ -1194,8 +1170,6 @@ def _chunk_members_by_bytes(
     if cur:
         yield cur
 
-
-# max_calls=1: worker reuse disabled — see v3_map_task rationale above.
 @ray.remote(max_calls=1)
 def v3_reduce_task(
     handles: List[ShuffleHandle],
