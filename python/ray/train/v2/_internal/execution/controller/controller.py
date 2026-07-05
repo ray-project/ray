@@ -672,6 +672,9 @@ class TrainController:
                 )
 
             if worker_group_status.finished and not worker_group_status.errors:
+                self._warn_if_finished_during_preemption(
+                    worker_group_status.get_preemption_info()
+                )
                 self._return_value = worker_group_status.worker_statuses[0].return_value
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
@@ -741,6 +744,29 @@ class TrainController:
         """
         return worker_group_status.finished and not worker_group_status.errors
 
+    @staticmethod
+    def _warn_if_finished_during_preemption(
+        preemption_info: Optional["PreemptionInfo"],
+    ) -> None:
+        """Warn when a run finishes while a preemption signal is active.
+
+        A clean return always finishes the run, so a training function that
+        returns early after a just-in-time checkpoint -- expecting Ray Train to
+        restart it -- silently truncates training instead. Surface that loudly
+        so the misuse is caught at the moment it happens.
+        """
+        if preemption_info is None:
+            return
+        logger.warning(
+            "Training finished while a preemption was in progress "
+            f"(preempted_ranks={preemption_info.preempted_ranks}). If this was "
+            "intentional, ignore this warning. If you intended to resume after "
+            "the preemption instead, do not return from your training function "
+            "when `ray.train.get_preemption_info()` is set -- save a checkpoint "
+            "and continue training; Ray Train restarts and resumes the run when "
+            "the node is actually reclaimed."
+        )
+
     @classmethod
     def _preemption_to_drain(
         cls, worker_group_status: WorkerGroupPollStatus
@@ -800,6 +826,10 @@ class TrainController:
         # killed worker or a passed deadline fall through to the restart path
         # below.)
         if self._is_genuine_completion(worker_group_status):
+            self._warn_if_finished_during_preemption(
+                worker_group_status.get_preemption_info()
+                or controller_state.preemption_info
+            )
             self._return_value = worker_group_status.worker_statuses[0].return_value
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
