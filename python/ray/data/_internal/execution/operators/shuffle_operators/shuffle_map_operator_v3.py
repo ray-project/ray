@@ -734,9 +734,11 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         self._shared_handles_ref = None
 
     def _kill_managers_from_completed_handles(self) -> None:
-        """Dedup manager ActorHandles across the completed handles and
-        ``ray.kill(no_restart=True)`` each. Detached managers ignore
-        ref-count, so the driver must sweep them explicitly."""
+        """Dedup manager ActorHandles across the completed handles, run
+        their ``cleanup()`` (rmtree base_dir + stop server), then
+        ``ray.kill(no_restart=True)``. Cleanup MUST run before kill:
+        ``ray.kill`` is SIGKILL-like and skips atexit, so the actor's
+        own atexit-registered cleanup won't fire."""
         seen: set = set()
         for ref in self._completed_handle_refs:
             try:
@@ -750,10 +752,16 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
             if key in seen:
                 continue
             seen.add(key)
+            # 1) graceful cleanup RPC (drops files, stops server)
+            try:
+                ray.get(mgr.cleanup.remote())
+            except Exception:
+                # Already dead / node lost — kill below is still fine to try.
+                pass
+            # 2) terminate the actor process
             try:
                 ray.kill(mgr, no_restart=True)
             except Exception:
-                # Already dead / node lost / max_restarts exhausted — fine.
                 pass
 
     # Stats / progress

@@ -448,21 +448,21 @@ class ShuffleManager:
         t = threading.Thread(target=self._server.serve_forever, daemon=True)
         t.start()
 
-        # File cleanup is tied to graceful actor termination: when every
-        # ShuffleHandle holding this actor's ``ActorHandle`` is dropped
-        # (reducer bundles destroyed, plasma evicts the dict), Ray's actor
-        # ref count drops to 0 and the actor is terminated via the graceful
-        # path -- Python interpreter shutdown runs ``atexit`` hooks. SIGKILL
-        # paths (OOM, ``ray.kill``, hard crash) SKIP ``atexit``, leaving the
-        # files on disk for a ``max_restarts`` respawn to pick up; that's
-        # the property we want.  See ``ray._private.worker.kill`` docs.
+        # ``atexit`` covers only the graceful Python-shutdown path (e.g. Ray
+        # runtime tear-down). ``ray.kill`` is SIGKILL-like and skips atexit,
+        # so the driver's _do_shutdown MUST call ``cleanup()`` explicitly
+        # before killing the actor — otherwise files leak on disk.
         self._cleaned = False
-        atexit.register(self._cleanup_on_exit)
+        atexit.register(self.cleanup)
 
-    def _cleanup_on_exit(self) -> None:
-        """Stop the socket server + rmtree ``base_dir``.  Idempotent.
+    def cleanup(self) -> None:
+        """Stop the socket server + rmtree ``base_dir``. Idempotent.
         Best-effort throughout: a cleanup failure must never propagate, or
-        it would mask the real shutdown reason."""
+        it would mask the real shutdown reason.
+
+        Called both via ``atexit`` on graceful Python shutdown AND as an
+        explicit RPC from the driver's _do_shutdown before ``ray.kill``
+        (ray.kill is SIGKILL and skips atexit)."""
         if self._cleaned:
             return
         self._cleaned = True
