@@ -761,59 +761,32 @@ def v3_map_task(
     compression: ShuffleCompression = None,
     fsync_on_close: bool = True,
 ) -> ShuffleHandle:
-    """Streaming write with a SHARED, resource-accounted staging pool, sealed
+    """Streaming write with a shared, byte-accounted staging pool, sealed
     via atomic ``rename``.
 
-    **One knob — ``pool_budget_bytes`` — bounds both ends of the map:**
+    ``pool_budget_bytes`` bounds both ends of the map:
 
-    *Output side.* All post-hash partition buckets share one byte-accounted pool
-    of size ``pool_budget_bytes``. On overflow the LARGEST bucket is spilled
-    (flushed) to the file, then processing continues — spill-on-overflow, not
-    unbounded accumulation. So total staging is bounded by ``pool_budget_bytes``
-    **independent of the partition count M** (a fixed per-partition threshold
-    would be M × threshold — wrong for large M).
+    - **Output**: all post-hash partition buckets share one pool of that
+      size. On overflow the LARGEST bucket is spilled — total staging is
+      bounded independent of the partition count M.
+    - **Input**: v2's ``PartitionFn(Table → Dict[pid, Table])`` materializes
+      all M shards at once (~2× copy of its input), so we feed it in
+      row-batches sized ``pool_budget_bytes / avg_row_bytes`` to keep the
+      transient spike ~pool-bounded. If the whole block already fits the
+      pool, we skip batching.
 
-    *Input side (auto, no separate knob).* The v2 ``PartitionFn`` contract is
-    ``Table → Dict[pid, Table]`` — one call materializes **all M shards at once**
-    (≈ a full copy of its input) and the returned dict pins them in RAM regardless
-    of how fast the pool flushes. So calling it on a whole large block forces a
-    ~2×S peak the pool *cannot* reduce (measured: pool 256MB→4KB all stay at
-    2.0×S). The fix is to feed ``partition_fn`` in row-batches small enough that
-    one batch's transient shards stay ~pool-bounded — and we size that batch
-    **from the pool budget**: ``batch_rows ≈ pool_budget_bytes / avg_row_bytes``.
-    If the whole block already fits the pool (the common target-block case) we skip
-    batching entirely — no extra ``partition_fn`` calls, no extra chunks.
+    Net: **map peak ≈ input block + O(pool_budget_bytes)**. Blocking
+    ``f.write`` gives natural OS backpressure on slow disks.
 
-    Net: **map peak ≈ S (input block, the floor) + O(pool_budget_bytes)**, set by
-    the single pool knob. Shrinking the pool lowers the peak *and* auto-refines the
-    input batch; it costs more, smaller chunks (the read-side fragmentation that
-    §5.9 sort-merge folds back).
+    Sealed via atomic ``rename``: writes go to ``map_{i}.shf.tmp``; after a
+    final ``f.flush()`` + optional ``os.fsync`` + size sanity check against
+    the index, we ``os.rename`` to the published path. Readers therefore
+    see either no file or a complete, size-validated one — catches
+    truncated files earlier than Arrow IPC's per-shard magic would.
 
-    The blocking ``f.write`` provides natural OS backpressure (slow disk → write
-    blocks → the map throttles itself).
-
-    **File-level seal via atomic ``rename``.**  Writes go to ``map_{i}.shf.tmp``
-    first; once all flushes are done we run a final ``f.flush()`` (+ optional
-    ``os.fsync`` when ``fsync_on_close``), a size sanity check against the
-    index, then ``os.rename(tmp, final)``. POSIX guarantees ``rename`` is
-    atomic, so reducers (or the ShuffleManager serving them) see either
-      * NO file at the final path — handle hasn't been published yet, or
-      * a COMPLETE, size-validated file — every byte in the index is on disk.
-    This is a stronger guarantee than Arrow IPC's per-shard magic alone: the
-    framing detects corrupted shards but cannot tell a truncated file
-    (mapper crashed mid-write) from a complete one until you actually try to
-    decode the truncated tail.
-
-    ``fsync_on_close=True`` (the default) trades one ``fsync`` worth of
-    latency for durability against node crash between handle return and disk
-    writeback. Same-node and cross-node readers all go through the manager's
-    page-cache-backed sendfile serve, so this sync is only needed if the
-    Ray-lineage FT model is later extended to recover across node reboots.
-
-    Caveat: this still holds up to M staging buffers; for very large M the real
-    answer is sort-spill-merge (one bounded sort buffer, spill sorted runs, merge
-    to one partition-contiguous file — §5.9), which gets low peak AND ~M chunks at
-    once. Not in this PoC.
+    ``fsync_on_close=True`` gives durability against node crash. Readers go
+    through the manager's page-cache-backed sendfile serve, so this sync
+    only matters if node-reboot recovery is later added to the FT model.
     """
     # Lookup-or-create the local node's ShuffleManager. ``get_if_exists=True``
     # makes this idempotent: concurrent mappers on the same node share one
@@ -876,20 +849,16 @@ def v3_map_task(
                 )
 
                 buf = _ipc_buffer(tbl, compression=compression)
+                # Refuse frames the u32 response-wire encoding can't
+                # represent (see top-of-file spec).
                 if buf.size > _MAX_RANGE_BYTES:
-                    # Response wire-protocol encodes per-range length as u32
-                    # (see top-of-file spec). Refuse to write a frame that
-                    # cannot be represented on the wire; caller can shrink
-                    # ``pool_budget_bytes`` or the upstream block size.
                     raise RuntimeError(
                         f"map_{map_id}.shf partition {pid}: IPC frame is "
                         f"{buf.size} bytes, exceeding the u32 wire-protocol "
                         f"per-range limit ({_MAX_RANGE_BYTES}). Reduce "
-                        f"``pool_budget_bytes`` or the upstream block size "
-                        f"so each partition flush stays under 4 GiB."
+                        f"``pool_budget_bytes`` or the upstream block size."
                     )
                 off = f.tell()
-
                 f.write(memoryview(buf))
                 index.setdefault(pid, []).append((off, buf.size))
                 staging[pid] = []
@@ -902,8 +871,8 @@ def v3_map_task(
                 if transformer is not None:
                     blk = transformer(blk)
                 if output_schema is None:
-                    # Capture once. Used by the reducer to type empty-partition
-                    # blocks (see ShuffleHandle["schema"] consumer).
+                    # First-seen schema; reducer uses it to type empty
+                    # partitions (ShuffleHandle["schema"]).
                     output_schema = getattr(blk, "schema", None)
                 for pid, shard in _partition_units(blk):
                     if not shard.num_rows:
@@ -911,28 +880,22 @@ def v3_map_task(
                     staging.setdefault(pid, []).append(shard)
                     staging_bytes[pid] = staging_bytes.get(pid, 0) + shard.nbytes
                     peak_inflight = max(peak_inflight, pool_size())
-                    # If the pool overflow, then spill the LARGEST bucket(s) until back under
-                    # budget. Bounds total staging bytes to pool_budget_bytes
+                    # Spill LARGEST bucket(s) on overflow to bound total
+                    # staging to pool_budget_bytes.
                     while pool_size() >= pool_budget_bytes:
                         victim = max(staging_bytes, key=staging_bytes.get)
                         if staging_bytes[victim] == 0:
                             break
                         flush(victim)
-            for pid in list(staging.keys()):  # final flush of remainders
+            for pid in list(staging.keys()):
                 flush(pid)
 
-            # end-of-write: flush (flush data from py userspace file cache to kernel page cache) +
-            # fsync (page cache to disk) + sanity check
+            # userspace --flush-→ page cache --fsync-→ disk, then sanity-check the file
+            # size matches the index. Mismatch = logic bug or silent short
+            # write; refuse to publish (the except below unlinks tmp).
             f.flush()
             if fsync_on_close:
                 os.fsync(f.fileno())
-
-            # Sanity check: if ``f.tell()`` (what we actually wrote) matches the
-            # max ``offset + length`` we recorded in the index.
-            # A mismatch means
-            # 1) either the index drifted from the writes (logic bug), OR
-            # 2)some write silently short-wrote (filesystem error).
-            # Either way we refuse to publish, and the .tmp gets cleaned up by the except below.
             final_size_on_close = f.tell()
             if index:
                 expected_size = max(
@@ -947,12 +910,10 @@ def v3_map_task(
                     f"{expected_size}. Refusing to publish corrupt file."
                 )
 
-        # atomic rename the file suffix from .tmp to .shf so that the task is deemed as finished
+        # Atomic publish: .tmp → .shf.
         os.rename(tmp_path, final_path)
     except Exception:
-        # cleanup of the unpublished .tmp so failed attempts
-        # don't leak files in ``out_dir``. (Ray lineage will retry the task
-        # and write a fresh .tmp anyway.)
+        # Don't leak a half-written .tmp in out_dir; Ray retries the task.
         try:
             os.unlink(tmp_path)
         except OSError:
@@ -1449,7 +1410,6 @@ def v3_reduce_task(
                         target_max_block_size=target_max_block_size,
                     )
                 )
-            # todo: if reduce_fn does join/sort, it might oom
             for block in reduce_fn(partition_id, tables):
                 if output_buffer is None:
                     # target_max_block_size=None: emit blocks as-is.
