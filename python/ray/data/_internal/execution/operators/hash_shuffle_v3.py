@@ -1432,18 +1432,18 @@ def v3_reduce_task(
                     while output_buffer.has_next():
                         yield from _emit(output_buffer.next())
 
-        fd = os.open(prefetch_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
-        mmf = None
+        # O_RDWR: same fd serves ``os.pwrite`` from fetch threads AND
+        # ``os.pread`` from decode. Avoids a long-lived ``pa.memory_map``,
+        # which would pin all touched pages resident and defeat
+        # ``POSIX_FADV_DONTNEED``. With no mmap in the picture, the
+        # per-region drop below can actually release memory.
+        fd = os.open(prefetch_file, os.O_RDWR | os.O_CREAT | os.O_TRUNC, 0o644)
         try:
             if total_size > 0:
                 try:
                     os.posix_fallocate(fd, 0, total_size)  # Linux only
                 except (AttributeError, OSError):
                     os.ftruncate(fd, total_size)
-                # ``r+`` forces MAP_SHARED so this mapping stays coherent with
-                # concurrent pwrite() through the writer fd. ``r`` (MAP_PRIVATE
-                # on macOS) would cache the initial zeros and never see writes.
-                mmf = pa.memory_map(prefetch_file, "r+")
 
             def _fetch_one(args):
                 base, size, group = args
@@ -1468,14 +1468,15 @@ def v3_reduce_task(
 
             def _decode_region(base: int, size: int):
                 """Walk frames in [base, base+size), accumulate, drive streaming
-                reduce, yield output blocks."""
+                reduce, yield output blocks. Hint the kernel to drop the
+                region's pages at end so peak page cache is bounded by
+                the currently-decoding region + streaming accumulator."""
                 nonlocal accum_tables, accum_bytes
                 pos = base
                 end = base + size
                 while pos < end:
-                    mmf.seek(pos)
-                    length = struct.unpack(">I", bytes(mmf.read(4)))[0]
-                    ipc_buf = mmf.read(length)
+                    length = struct.unpack(">I", os.pread(fd, 4, pos))[0]
+                    ipc_buf = os.pread(fd, length, pos + 4)
                     pos += 4 + length
                     table = _read_ipc(ipc_buf)
                     accum_tables.append(table)
@@ -1488,12 +1489,16 @@ def v3_reduce_task(
                         tables, accum_tables = accum_tables, []
                         accum_bytes = 0
                         yield from _flush(tables)
+                # Region consumed — evict from page cache. Dirty pages
+                # from the earlier pwrite are writeback-then-evicted;
+                # clean pages drop immediately.
+                _drop_pagecache(fd, base, size)
 
             with ThreadPoolExecutor(max_workers=n_threads) as ex:
                 futs = [ex.submit(_fetch_one, w) for w in work]
                 for fut in as_completed(futs):
                     base, size = fut.result()
-                    if mmf is not None and size > 0:
+                    if size > 0:
                         yield from _decode_region(base, size)
 
             # Drain the accumulator tail.
@@ -1509,11 +1514,6 @@ def v3_reduce_task(
                 while output_buffer.has_next():
                     yield from _emit(output_buffer.next())
         finally:
-            if mmf is not None:
-                try:
-                    mmf.close()
-                except Exception:
-                    pass
             os.close(fd)
     finally:
         # One file, one unlink. Idempotent on partial-failure paths.
