@@ -41,6 +41,7 @@ class _BatchQueue:
         """Safely updates queue's max_concurrent_batches and modifies semaphore limits."""
         old_max = self.max_concurrent_batches
         self.max_concurrent_batches = new_max_concurrent_batches
+        
         delta = new_max_concurrent_batches - old_max
         if delta > 0:
             while delta > 0 and self._holding_tasks:
@@ -50,8 +51,6 @@ class _BatchQueue:
             for _ in range(delta):
                 self.semaphore.release()
         elif delta < 0:
-            import asyncio
-
             async def hold_permit(sem):
                 try:
                     await sem.acquire()
@@ -65,6 +64,7 @@ class _BatchQueue:
             for _ in range(abs(delta)):
                 task = asyncio.create_task(hold_permit(self.semaphore))
                 self._holding_tasks.append(task)
+        
         self._warn_if_max_batch_size_exceeds_max_ongoing_requests()
 
     def get_max_concurrent_batches(self) -> int:
@@ -90,10 +90,6 @@ def wrap_batch_queue(lazy_batch_queue_wrapper):
 
     wrapper.set_max_batch_size = lazy_batch_queue_wrapper.set_max_batch_size
     wrapper.set_batch_wait_timeout_s = lazy_batch_queue_wrapper.set_batch_wait_timeout_s
-    wrapper.set_max_concurrent_batches = (
-        lazy_batch_queue_wrapper.set_max_concurrent_batches
-    )
-    wrapper.get_max_concurrent_batches = (
-        lazy_batch_queue_wrapper.get_max_concurrent_batches
-    )
+    wrapper.set_max_concurrent_batches = lazy_batch_queue_wrapper.set_max_concurrent_batches
+    wrapper.get_max_concurrent_batches = lazy_batch_queue_wrapper.get_max_concurrent_batches
     return wrapper
