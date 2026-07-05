@@ -121,6 +121,7 @@ BUILTIN_BACKENDS = {
     "LMCacheConnectorV1": "ray.llm._internal.serve.engines.vllm.kv_transfer.lmcache:LMCacheConnectorV1Backend",
     "NixlConnector": "ray.llm._internal.serve.engines.vllm.kv_transfer.nixl:NixlConnectorBackend",
     "MultiConnector": "ray.llm._internal.serve.engines.vllm.kv_transfer.multi_connector:MultiConnectorBackend",
+    "MoRIIOConnector": "ray.llm._internal.serve.engines.vllm.kv_transfer.moriio:MoRIIOConnectorBackend",
 }
 
 

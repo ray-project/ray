@@ -85,7 +85,7 @@ Ray Serve sets `TCP_NODELAY` by default (`RAY_SERVE_HAPROXY_TCP_NODELAY=1`) so t
 
 ## When to use direct streaming
 
-Direct streaming is the high-performance, experimental serving path for Ray Serve LLM. Removing the ingress proxy hop cuts per-token overhead on streaming responses, which matters most for long generations and latency-sensitive, high-throughput deployments. It's intended to become the default serving path as it matures.
+Direct streaming is an experimental serving path for Ray Serve LLM. Removing the ingress proxy hop cuts per-token overhead on streaming responses, which matters most for long generations and latency-sensitive, high-throughput deployments. Ray intends it to become the default serving path as it matures.
 
 ## How it works
 

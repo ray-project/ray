@@ -214,6 +214,11 @@ class RemoteFunction:
         - ``resources`` (Dict[str, float]): The quantity of various custom resources
           to reserve for this task or for the lifetime of the actor.
           This is a dictionary mapping strings (resource names) to floats.
+        - ``name``: A human-readable name for the task. If set, the name appears
+          alongside the task in the Ray Dashboard, logs, and the State API
+          (for example, ``ray list tasks``), which is useful for debugging and
+          observability. Names don't need to be unique. Defaults to the remote
+          function's name.
         - ``label_selector`` (Dict[str, str]): If specified, the labels required for the node on
           which this actor can be scheduled on. The label selector consist of key-value pairs,
           where the keys are label names and the value are expressions consisting of an operator
@@ -281,6 +286,15 @@ class RemoteFunction:
             # Task g will require 2 gpus instead of 1.
             g = f.options(num_gpus=2)
         """
+        if "_num_objects_per_yield" in task_options:
+            num_objects_per_yield = (
+                self._default_options.get("_num_objects_per_yield") or 1
+            )
+            if task_options["_num_objects_per_yield"] != num_objects_per_yield:
+                raise ValueError(
+                    "_num_objects_per_yield cannot be overridden per task call. "
+                    "Use @ray.remote(_num_objects_per_yield=...) instead."
+                )
 
         func_cls = self
 
@@ -435,6 +449,12 @@ class RemoteFunction:
         ]
         if generator_backpressure_num_objects is None:
             generator_backpressure_num_objects = -1
+        num_objects_per_yield = task_options["_num_objects_per_yield"]
+        if num_objects_per_yield is None:
+            num_objects_per_yield = 1
+        ray_option_utils.task_options["_num_objects_per_yield"].validate(
+            "_num_objects_per_yield", num_objects_per_yield
+        )
 
         max_retries = task_options["max_retries"]
         retry_exceptions = task_options["retry_exceptions"]
@@ -517,6 +537,7 @@ class RemoteFunction:
                 worker.debugger_breakpoint,
                 serialized_runtime_env_info or "{}",
                 generator_backpressure_num_objects,
+                num_objects_per_yield,
                 enable_task_events,
                 labels,
                 label_selector,

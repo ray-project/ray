@@ -5,12 +5,14 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray.data._internal.execution.interfaces import ExecutionOptions
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data.context import DataContext
+from ray.data.tests.conftest import noop_counter
 from ray.data.tests.util import run_op_tasks_sync
 from ray.tests.conftest import *  # noqa
 
@@ -60,6 +62,9 @@ def test_limit_operator(ray_start_regular_shared):
         refs = make_ref_bundles([[i] * num_rows_per_block for i in range(num_refs)])
         input_op = InputDataBuffer(DataContext.get_current(), refs)
         limit_op = LimitOperator(limit, input_op, DataContext.get_current())
+        counter = noop_counter()
+        input_op.start(ExecutionOptions(), counter)
+        limit_op.start(ExecutionOptions(), counter)
         limit_op.mark_execution_finished = MagicMock(
             wraps=limit_op.mark_execution_finished
         )

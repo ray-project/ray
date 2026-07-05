@@ -82,6 +82,13 @@ from ray.data.read_api import (  # noqa: F401
     read_unity_catalog,
     read_videos,
     read_webdataset,
+    read_zarr,
+)
+from ray.data.catalog import (
+    Catalog,
+    ReaderFormat,
+    ResolvedSource,
+    DatabricksUnityCatalog,
 )
 
 # Module-level cached global functions for callable classes. It needs to be defined here
@@ -154,6 +161,7 @@ __all__ = [
     "from_items",
     "from_arrow",
     "from_arrow_refs",
+    "from_blocks",
     "from_mars",
     "from_modin",
     "from_numpy",
@@ -190,7 +198,12 @@ __all__ = [
     "read_tfrecords",
     "read_unity_catalog",
     "read_videos",
+    "read_zarr",
     "read_webdataset",
+    "Catalog",
+    "ReaderFormat",
+    "ResolvedSource",
+    "DatabricksUnityCatalog",
     "KafkaAuthConfig",
     "Preprocessor",
 ]

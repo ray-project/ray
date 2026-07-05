@@ -351,7 +351,13 @@ collections_final_clean = True
 # The collections config contains a function reference (for the "function" driver)
 # which Sphinx cannot pickle for caching. This is harmless — suppress the warning
 # so it doesn't cause a build failure under -W (warnings-as-errors).
-suppress_warnings = ["config.cache"]
+suppress_warnings = [
+    "config.cache",
+    # sphinxcontrib-redoc (unmaintained, 1.6.0) redundantly copies its bundled
+    # redoc.js asset; Sphinx 8's new copy_overwrite check flags the second copy over
+    # the existing (identical) file. Benign and not fixable upstream.
+    "misc.copy_overwrite",
+]
 # Disable autodoc_pydantic features that can produce empty raw directives
 # (e.g. when schema JSON fails for models with non-serializable fields)
 autodoc_pydantic_model_show_json = False
@@ -482,24 +488,6 @@ copybutton_selector = "div:not(.no-copybutton) > div.highlight > pre"
 # By default, tabs can be closed by selecting an open tab. We disable this
 # functionality with the `sphinx_tabs_disable_tab_closing` option.
 sphinx_tabs_disable_tab_closing = True
-
-# Special mocking of packaging.version.Version is required when using sphinx;
-# we can't just add this to autodoc_mock_imports, as packaging is imported by
-# sphinx even before it can be mocked. Instead, we patch it here.
-import packaging.version as packaging_version  # noqa
-
-Version = packaging_version.Version
-
-
-class MockVersion(Version):
-    def __init__(self, version: str):
-        if isinstance(version, (str, bytes)):
-            super().__init__(version)
-        else:
-            super().__init__("0")
-
-
-packaging_version.Version = MockVersion
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
@@ -951,6 +939,30 @@ def setup(app):
 
     logging.getLogger("sphinx").addFilter(DuplicateObjectFilter())
 
+    class CollectionsFootnoteFilter(logging.Filter):
+        # Example notebooks fetched into _collections (from templates.ci.ray.io) contain
+        # prose that myst-parser 5.x parses as reST footnote refs/targets, which docutils
+        # then flags as errors. That content is external (not in this repo), so it can't
+        # be fixed here -- the fix belongs upstream. Drop these specific errors for
+        # _collections paths so the fail_on_warning build is not blocked by fetched content.
+        # TODO: fix the offending footnote-like text upstream and remove this filter.
+        def filter(self, record):
+            # INFO/DEBUG records (the bulk of build output) can't be the
+            # footnote/target warnings below, so skip getMessage() for them.
+            if record.levelno < logging.WARNING:
+                return True
+            msg = record.getMessage()
+            if (
+                "autonumbered footnote references" in msg
+                or "Unknown target name" in msg
+            ):
+                location = str(getattr(record, "location", "") or "")
+                if "_collections" in location:
+                    return False
+            return True
+
+    logging.getLogger("sphinx").addFilter(CollectionsFootnoteFilter())
+
     # Register hook to mark orphan documents
     example_orphan_documents = collect_example_orphans(app.confdir, app.srcdir)
     def mark_orphans(app, docname, _source):
@@ -998,6 +1010,13 @@ autosummary_filename_map = {
 
 # Mock out external dependencies here.
 
+# Prefer not to mock libraries that are actually installed in the docs build
+# environment (doc/requirements-doc.lock.txt). Mocking an installed library
+# shadows the real module: an eager import in a documented class body then hits
+# the mock and aborts the whole package import as a misleading error. numpy and
+# pyarrow are installed, so they are not mocked. tensorflow is also installed (a
+# direct requirements-doc entry), but importing it for real breaks the autodoc
+# import of ray.rllib.algorithms.algorithm at build time, so it stays mocked.
 autodoc_mock_imports = [
     "aiohttp",
     "async_timeout",
@@ -1022,10 +1041,7 @@ autodoc_mock_imports = [
     "lightgbm_ray",
     "mlflow",
     "nevergrad",
-    "numpy",
     "pandas",
-    "pyarrow",
-    "pyarrow.compute",
     "pytorch_lightning",
     "scipy",
     "setproctitle",
@@ -1147,7 +1163,9 @@ def apply_ipython3_lexer(app, docname, source):
     Sphinx + myst-nb otherwise default to the python3 lexer, which fails on
     ``!shell`` and ``%magic`` cells and is fatal under Readthedocs ``-W``.
     """
-    doc_source = app.env.doc2path(docname, base=False)
+    # Sphinx 8 returns a _StrPath from doc2path; coerce to str so the re-based
+    # matchers (compile_matchers) and .endswith below accept it.
+    doc_source = str(app.env.doc2path(docname, base=False))
     if not doc_source.endswith(".ipynb"):
         return
     if any(m(doc_source) for m in app.ipython3_lexer_exclude_patterns):

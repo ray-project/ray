@@ -15,6 +15,10 @@ from fastapi.routing import APIRoute
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
+from ray.llm._internal.common.patches.vllm.tokenize_once import (
+    install as _install_tokenize_once,
+    reuse_prompt_token_ids as _reuse_prompt_token_ids,
+)
 from ray.llm._internal.serve.constants import DEFAULT_MAX_ONGOING_REQUESTS
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
@@ -45,6 +49,7 @@ from ray.serve.handle import DeploymentHandle
 from ray.serve.llm import LLMConfig
 
 logger = logging.getLogger(__name__)
+
 RequestType = Union[ChatCompletionRequest, CompletionRequest]
 
 # TODO(Kourosh): Deprecate in Ray 2.56, remove in Ray 2.58.
@@ -115,6 +120,10 @@ class PDOrchestratorMixin:
     # Set by __init__ of the concrete class that mixes this in.
     _prefill_handle: DeploymentHandle
 
+    # Decode reuses prefill's prompt token ids. Set from experimental_configs in
+    # PDDecodeServer.__init__. Default off.
+    _pd_tokenize_once: bool = False
+
     # ---- Connector backend resolution ----
 
     def _get_connector_backend(self) -> BaseConnectorBackend:
@@ -160,6 +169,29 @@ class PDOrchestratorMixin:
             request=request, peer=None, prefill_response=prefill_chunk
         )
 
+    def _decode_reuse_ids(self, prefill_chunk) -> Optional[list]:
+        """Prompt token ids for decode to reuse, or None when disabled or absent.
+
+        Chat carries them top-level. Completions carry them on the first choice as
+        ``CompletionResponseChoice.prompt_token_ids``."""
+        if not self._pd_tokenize_once:
+            return None
+        ids = getattr(prefill_chunk, "prompt_token_ids", None)
+        if ids is None:
+            choices = getattr(prefill_chunk, "choices", None)
+            if choices:
+                ids = getattr(choices[0], "prompt_token_ids", None)
+        return ids
+
+    def _request_prefill_token_ids(self, prefill_request) -> None:
+        """Ask prefill to echo its prompt token ids so decode can reuse them.
+
+        No-op when disabled or the request lacks the field. Used on sequential handoff
+        only. Concurrent decode starts before prefill returns, so it has nothing to
+        reuse."""
+        if self._pd_tokenize_once and hasattr(prefill_request, "return_token_ids"):
+            prefill_request.return_token_ids = True
+
     # ---- Orchestrated Request Flow ----
 
     async def _pd_handle_request(
@@ -175,6 +207,12 @@ class PDOrchestratorMixin:
         the resolved KV-connector backend. With the default backend flags
         (``requires_peer_binding=False``, ``concurrent_handoff=False``) the
         control flow and calls are identical to the historical NIXL/default flow.
+
+        A connector that encodes coordination data in the request id (MoRIIO's
+        dual-address id) just stamps ``request.request_id`` in ``prepare_*``; it
+        then reaches both engines unchanged -- the LLMServer pipeline preserves
+        an explicitly-set request_id (it no longer clobbers it with the Serve
+        id) and the engine copies it into the ``X-Request-Id`` header it reads.
         """
 
         # Determine method name for the handle call
@@ -233,6 +271,7 @@ class PDOrchestratorMixin:
 
                 # Sequential handoff with peer binding: run prefill to its first
                 # chunk, then drive local decode with the returned params.
+                self._request_prefill_token_ids(prefill_request)
                 prefill_gen = prefill_handle_method.dispatch(
                     selection, prefill_request, raw_request_info
                 )
@@ -251,11 +290,12 @@ class PDOrchestratorMixin:
                 decode_request = backend.prepare_decode_request(
                     request=request, peer=peer, prefill_response=prefill_chunk
                 )
-                local_gen = await getattr(super(), method)(
-                    decode_request, raw_request_info
-                )
-                async for chunk in local_gen:
-                    yield chunk
+                with _reuse_prompt_token_ids(self._decode_reuse_ids(prefill_chunk)):
+                    local_gen = await getattr(super(), method)(
+                        decode_request, raw_request_info
+                    )
+                    async for chunk in local_gen:
+                        yield chunk
                 return
 
         # Default path: no pre-dispatch peer binding; dispatch prefill via the
@@ -278,6 +318,7 @@ class PDOrchestratorMixin:
             return
 
         # 1. Remote prefill
+        self._request_prefill_token_ids(prefill_request)
         prefill_gen = prefill_handle_method.remote(prefill_request, raw_request_info)
         prefill_chunk = await prefill_gen.__anext__()
 
@@ -292,9 +333,11 @@ class PDOrchestratorMixin:
         decode_request = backend.prepare_decode_request(
             request=request, peer=None, prefill_response=prefill_chunk
         )
-        local_gen = await getattr(super(), method)(decode_request, raw_request_info)
-        async for chunk in local_gen:
-            yield chunk
+        # Reuse prefill's ids for this decode so the render skips re-tokenizing.
+        with _reuse_prompt_token_ids(self._decode_reuse_ids(prefill_chunk)):
+            local_gen = await getattr(super(), method)(decode_request, raw_request_info)
+            async for chunk in local_gen:
+                yield chunk
 
     async def _concurrent_decode(
         self,
@@ -439,9 +482,21 @@ class PDOrchestratorMixin:
 
         logger.info("[PDDecodeServer] Starting pre-warm across all P replicas.")
 
+        backend = self._get_connector_backend()
+        if backend.requires_peer_binding:
+            # Peer-binding connectors (e.g. MoRIIO) shape a prefill request
+            # against a specific selected replica's metadata; a peerless
+            # broadcast prewarm cannot bind one. The connector handshake
+            # completes on the first real request instead.
+            logger.info(
+                "[PDDecodeServer] Skipping pre-warm: connector %s requires peer "
+                "binding (handshake completes on the first real request).",
+                type(backend).__name__,
+            )
+            return
+
         model_id = self._llm_config.model_id
         dummy = self._make_dummy_request(model_id)
-        backend = self._get_connector_backend()
         prefill_req = backend.prepare_prefill_request(request=dummy, peer=None)
 
         # Broadcast to every live P replica; retry until they are up.
@@ -551,6 +606,25 @@ class PDPrefillServer(LLMServer):
     method used during the pre-warm handshake.
     """
 
+    async def record_replica_metadata(self) -> Dict[str, Any]:
+        """Publish this prefill replica's connector coordination metadata.
+
+        Read by the decode orchestrator via the replica-metadata hook
+        (``ReplicaSelection.replica_metadata``) so peer-binding connectors (e.g.
+        MoRIIO) can address the selected prefill replica. Returns ``{}`` for
+        connectors that publish nothing (the ``BaseConnectorBackend`` default).
+
+        Returns the metadata of the backend that engine init
+        (``setup_engine_backend``) created, ``setup()``-ed, and stored on this
+        server's ``_llm_config``. The replica-metadata hook is captured after
+        engine init, so for connector deployments the backend is present by
+        then; with no backend stored there is nothing to publish.
+        """
+        backend = getattr(self._llm_config, "kv_connector_backend", None)
+        if backend is None:
+            return {}
+        return backend.replica_metadata()
+
     async def prewarm_prefill(
         self, prefill_request: CompletionRequest
     ) -> Optional[dict]:
@@ -593,6 +667,12 @@ class PDDecodeServer(PDOrchestratorMixin, LLMServer):
             llm_config,
             engine_cls=engine_cls,
             model_downloader=model_downloader,
+        )
+        # Active only if enabled and the renderer wrap installs. The `and`
+        # short-circuits so install() is not called when disabled.
+        self._pd_tokenize_once = (
+            bool(self._llm_config.experimental_configs.get("pd_tokenize_once"))
+            and _install_tokenize_once()
         )
         await self._maybe_prewarm()
 

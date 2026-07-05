@@ -35,6 +35,7 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
+    DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
@@ -55,7 +56,6 @@ from ray.serve._private.controller_health_metrics_tracker import (
 )
 from ray.serve._private.default_impl import (
     create_cluster_node_info_cache,
-    get_proxy_actor_class,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import (
@@ -64,6 +64,7 @@ from ray.serve._private.deployment_state import (
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.exceptions import ExternalScalerDisabledError
 from ray.serve._private.grpc_util import set_proxy_default_grpc_options
+from ray.serve._private.haproxy import HAProxyManager
 from ray.serve._private.http_util import (
     configure_http_options_with_defaults,
 )
@@ -74,6 +75,7 @@ from ray.serve._private.logging_utils import (
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.node_port_manager import NodePortManager
+from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
@@ -113,6 +115,7 @@ from ray.serve.schema import (
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
@@ -225,7 +228,7 @@ class ServeController:
             cluster_node_info_cache=self.cluster_node_info_cache,
             logging_config=self.global_logging_config,
             grpc_options=set_proxy_default_grpc_options(grpc_options),
-            proxy_actor_class=get_proxy_actor_class(),
+            proxy_actor_class=HAProxyManager if self._ha_proxy_enabled else ProxyActor,
             running_native_proxies=self._ha_proxy_enabled,
         )
         # We modify the HTTP and gRPC options above, so delete them to avoid
@@ -363,13 +366,17 @@ class ServeController:
             replica_metric_report = decompress_metric_report(replica_metric_report)
         latency = time.time() - replica_metric_report.timestamp
         latency_ms = latency * 1000
-        # Record the metrics delay for observability
-        self.replica_metrics_delay_gauge.set(
+        deployment = replica_metric_report.replica_id.deployment_id.name
+        application = replica_metric_report.replica_id.deployment_id.app_name
+
+        # Record the metrics delay for observability. A histogram lets Prometheus
+        # aggregate reports from all replicas of a deployment, so we omit the
+        # per-replica tag to keep cardinality bounded.
+        self.replica_metrics_delay_histogram.observe(
             latency_ms,
             tags={
-                "deployment": replica_metric_report.replica_id.deployment_id.name,
-                "application": replica_metric_report.replica_id.deployment_id.app_name,
-                "replica": replica_metric_report.replica_id.unique_id,
+                "deployment": deployment,
+                "application": application,
             },
         )
         # Track in health metrics
@@ -385,13 +392,17 @@ class ServeController:
             handle_metric_report = decompress_metric_report(handle_metric_report)
         latency = time.time() - handle_metric_report.timestamp
         latency_ms = latency * 1000
-        # Record the metrics delay for observability
-        self.handle_metrics_delay_gauge.set(
+        deployment = handle_metric_report.deployment_id.name
+        application = handle_metric_report.deployment_id.app_name
+
+        # Record the metrics delay for observability. A histogram lets Prometheus
+        # aggregate reports from all handles of a deployment, so we omit the
+        # per-handle tag to keep cardinality bounded.
+        self.handle_metrics_delay_histogram.observe(
             latency_ms,
             tags={
-                "deployment": handle_metric_report.deployment_id.name,
-                "application": handle_metric_report.deployment_id.app_name,
-                "handle": handle_metric_report.handle_id,
+                "deployment": deployment,
+                "application": application,
             },
         )
         # Track in health metrics
@@ -753,21 +764,23 @@ class ServeController:
         )
 
         # Autoscaling metrics delay gauges
-        self.replica_metrics_delay_gauge = metrics.Gauge(
+        self.replica_metrics_delay_histogram = metrics.Histogram(
             "serve_autoscaling_replica_metrics_delay_ms",
             description=(
                 "Time taken for the replica metrics to be reported to the controller. "
                 "High values may indicate a busy controller."
             ),
-            tag_keys=("deployment", "application", "replica"),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=("deployment", "application"),
         )
-        self.handle_metrics_delay_gauge = metrics.Gauge(
+        self.handle_metrics_delay_histogram = metrics.Histogram(
             "serve_autoscaling_handle_metrics_delay_ms",
             description=(
                 "Time taken for the handle metrics to be reported to the controller. "
                 "High values may indicate a busy controller."
             ),
-            tag_keys=("deployment", "application", "handle"),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=("deployment", "application"),
         )
         self.async_inference_task_queue_metrics_delay_gauge = metrics.Gauge(
             "serve_autoscaling_async_inference_task_queue_metrics_delay_ms",

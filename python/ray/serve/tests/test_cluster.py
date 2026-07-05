@@ -597,12 +597,11 @@ class TestHealthzAndRoutes:
         """
         # Setup worker http proxy to be pointing to port 8001. Head node http proxy will
         # continue to be pointing to the default port 8000.
-        os.environ["TEST_WORKER_NODE_HTTP_PORT"] = "8001"
-
-        # Setup a cluster with 2 nodes
         cluster = ray_cluster
         cluster.add_node(num_cpus=0)
-        cluster.add_node(num_cpus=2)
+        cluster.add_node(
+            num_cpus=2, env_vars={"RAY_SERVE_WORKER_PROXY_HTTP_PORT": "8001"}
+        )
         cluster.wait_for_nodes()
         ray.init(address=cluster.address)
         serve.start(http_options={"location": "EveryNode"})
