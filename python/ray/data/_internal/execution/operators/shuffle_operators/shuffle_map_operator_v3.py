@@ -30,6 +30,7 @@ kills those actors and removes the on-disk shuffle directory.
 
 import functools
 import logging
+import os
 import secrets
 import tempfile
 import typing
@@ -197,9 +198,6 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         #      / reboot — bounds leaks from driver hard crashes or cluster
         #      SIGKILLs.
         #
-        # Caller-supplied ``base_dir`` is treated as scratch space: it WILL
-        # be rmtree'd when the shuffle's managers are swept.
-        self._base_dir: str = base_dir or tempfile.mkdtemp(prefix="ray_shuffle_v3_")
         # Per-shuffle auth token; ShuffleManager rejects requests with any
         # other token. Cheap defense against accidental cross-shuffle reads
         # by misrouted reducers in a shared cluster.
@@ -208,6 +206,15 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         # ShuffleManager on each node. Mappers do ``get_if_exists=True`` so
         # the FIRST mapper on a node spawns; the rest share the same actor.
         self._shuffle_id: str = secrets.token_hex(8)
+        # Caller-supplied ``base_dir`` is treated as scratch space: it WILL
+        # be rmtree'd when the shuffle's managers are swept. Default is a
+        # path name derived from ``shuffle_id`` — we deliberately do NOT
+        # mkdir on the driver: mappers ``os.makedirs`` their own local copy
+        # when they run, so pre-creating the empty dir on the head just
+        # leaks a directory per shuffle until tmpwatch cleans it.
+        self._base_dir: str = base_dir or os.path.join(
+            tempfile.gettempdir(), f"ray_shuffle_v3_{self._shuffle_id}"
+        )
 
         # -- Pre-map merge buffer (per-node) --
         # Mirrors v2 ShuffleMapOp (shuffle_map_operator.py:113-121). Small
