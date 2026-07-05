@@ -139,6 +139,12 @@ _STATUS_NOT_FOUND = 0x03  # path doesn't exist on disk
 _STATUS_READ_ERR = 0x04  # IO error reading file content
 _STATUS_PROTOCOL_ERR = 0x05  # malformed frame / unknown opcode / etc.
 
+# The response frame encodes each range's payload length as u32 (see
+# "Response frame" block above), so no single range/IPC frame may exceed
+# 4 GiB - 1. Checked at mapper write time so an oversized IPC buffer fails
+# the mapper task at its origin, not deep in a reducer fetch.
+_MAX_RANGE_BYTES: int = (1 << 32) - 1
+
 
 # ----------------------------------------------------------------- Arrow IPC
 def _ipc_buffer(table: pa.Table, compression: ShuffleCompression = None) -> pa.Buffer:
@@ -870,6 +876,18 @@ def v3_map_task(
                 )
 
                 buf = _ipc_buffer(tbl, compression=compression)
+                if buf.size > _MAX_RANGE_BYTES:
+                    # Response wire-protocol encodes per-range length as u32
+                    # (see top-of-file spec). Refuse to write a frame that
+                    # cannot be represented on the wire; caller can shrink
+                    # ``pool_budget_bytes`` or the upstream block size.
+                    raise RuntimeError(
+                        f"map_{map_id}.shf partition {pid}: IPC frame is "
+                        f"{buf.size} bytes, exceeding the u32 wire-protocol "
+                        f"per-range limit ({_MAX_RANGE_BYTES}). Reduce "
+                        f"``pool_budget_bytes`` or the upstream block size "
+                        f"so each partition flush stays under 4 GiB."
+                    )
                 off = f.tell()
 
                 f.write(memoryview(buf))
