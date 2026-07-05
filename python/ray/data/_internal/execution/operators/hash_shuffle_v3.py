@@ -263,114 +263,6 @@ def _drop_pagecache(fd: int, offset: int, length: int) -> None:
         pass
 
 
-# ------------------------------------------------------ merge-on-read (§4.12)
-class _ScanReq:
-    """One reducer's range request, parked while the coordinator pools it with
-    other connections' requests for the same file and serves them in one
-    offset-ordered pass."""
-
-    __slots__ = ("path", "ranges", "results", "error", "done")
-
-    def __init__(self, path: str, ranges: List[Tuple[int, int]]):
-        self.path = path
-        self.ranges = ranges
-        self.results: List[Optional[bytes]] = [None] * len(ranges)
-        self.error: Optional[Exception] = None
-        self.done = threading.Event()
-
-
-class _ScanCoordinator:
-    """Server-side merge-on-read (§4.12). A single scanner thread pools the range
-    requests arriving across ALL reducer connections within a short window,
-    groups them by file, and reads each file in **ascending-offset order** — one
-    near-sequential pass that fans each chunk back to its requesting connection.
-
-    The coordination point is this ONE process (the per-node ShuffleManager), so
-    we get cross-reducer sequential reads with NO global/driver barrier and NO
-    straggler coupling: late requests simply land in the next scan window. Sorting
-    by **physical offset** (not partition number) needs no write-side layout
-    contract — it works on the flush-order file (§5.3) as-is, which is why
-    offset-sort dominates partition-zoning."""
-
-    def __init__(self, scan_window_s: float = 0.003):
-        self._scan_window_s = scan_window_s
-        self._lock = threading.Lock()
-        self._cv = threading.Condition(self._lock)
-        self._pending: List[_ScanReq] = []
-        self._stop = False
-        # debug/metrics (proof the pooling + ordering actually happened)
-        self.scans = 0  # number of offset-ordered scan passes
-        self.pooled_reqs = 0  # total requests served via the coordinator
-        self.max_batch = 0  # largest cross-connection pool in one scan
-        self.bytes_served = 0
-        self.last_scan_ascending = True  # were the read offsets monotonic?
-        self._thread = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
-
-    def submit(self, path: str, ranges: List[Tuple[int, int]]) -> List[bytes]:
-        req = _ScanReq(path, ranges)
-        with self._lock:
-            self._pending.append(req)
-            self._cv.notify()
-        req.done.wait()
-        if req.error is not None:
-            raise req.error
-        return req.results
-
-    def stop(self):
-        with self._lock:
-            self._stop = True
-            self._cv.notify()
-
-    def _run(self):
-        while True:
-            with self._lock:
-                while not self._pending and not self._stop:
-                    self._cv.wait()
-                if self._stop and not self._pending:
-                    return
-            # batching window: let concurrent reducers' requests accumulate so the
-            # pool spans connections (the cross-reducer win, §4.12 P2).
-            if self._scan_window_s:
-                time.sleep(self._scan_window_s)
-            with self._lock:
-                batch, self._pending = self._pending, []
-            self._serve_batch(batch)
-
-    def _serve_batch(self, batch: List[_ScanReq]):
-        by_path: Dict[str, List[_ScanReq]] = {}
-        for req in batch:
-            by_path.setdefault(req.path, []).append(req)
-        self.scans += 1
-        self.pooled_reqs += len(batch)
-        self.max_batch = max(self.max_batch, len(batch))
-        for path, reqs in by_path.items():
-            # Pool every range across all reqs for this file, then sort by offset:
-            # one ascending sweep instead of per-connection random seeks.
-            items = []  # (offset, length, req, idx_within_req)
-            for req in reqs:
-                for i, (off, length) in enumerate(req.ranges):
-                    items.append((off, length, req, i))
-            items.sort(key=lambda t: t[0])
-            try:
-                last_off = -1
-                with open(path, "rb") as f:
-                    for off, length, req, i in items:
-                        if off < last_off:
-                            self.last_scan_ascending = False
-                        last_off = off
-                        f.seek(off)
-                        data = f.read(length)
-                        req.results[i] = data
-                        self.bytes_served += len(data)
-                for req in reqs:
-                    req.done.set()
-            except Exception as e:
-                for req in reqs:
-                    req.error = e
-                    req.done.set()
-
-
 # Fetch helper class used by reducer tasks
 class _FetchHandler(socketserver.StreamRequestHandler):
     """Per-connection handler implementing the v1 wire protocol.
@@ -459,94 +351,50 @@ class _FetchHandler(socketserver.StreamRequestHandler):
                 ranges.append((offset, length))
             requests.append((real, ranges))
 
-        # sendfile serve path (zero-copy, no coordinator). Validate every file +
-        # range FIRST so a missing file / bad range still produces an error
-        # status before we commit _STATUS_OK; then os.sendfile each range in
-        # REQUEST order (client maps positionally). SSD random reads are cheap,
-        # so we skip the coordinator's offset-sort.
-        if getattr(srv, "use_sendfile", False):
-            files = []
-            try:
-                for path, ranges in requests:
-                    f = open(path, "rb")
-                    files.append(f)
-                    sz = os.fstat(f.fileno()).st_size
-                    for off, length in ranges:
-                        if off < 0 or length < 0 or off + length > sz:
-                            raise OSError(
-                                f"range {off}+{length} outside {path} (size {sz})"
-                            )
-            except FileNotFoundError as e:
-                for f in files:
-                    f.close()
-                self._send_error(sock, _STATUS_NOT_FOUND, str(e))
-                return
-            except OSError as e:
-                for f in files:
-                    f.close()
-                self._send_error(sock, _STATUS_READ_ERR, str(e))
-                return
-            try:
-                sock.sendall(struct.pack(">B", _STATUS_OK))
-                for (path, ranges), f in zip(requests, files):
-                    fd = f.fileno()
-                    sock.sendall(struct.pack(">I", len(ranges)))
-                    for off, length in ranges:
-                        sock.sendall(struct.pack(">I", length))
-                        _sendfile_all(sock, fd, off, length)
-                        # Drop these pages from the page cache: hash-shuffle
-                        # ranges are typically read once per reducer, and same-
-                        # node reducers concurrently pwrite their own
-                        # ``prefetch.bin`` -- without this hint the just-served
-                        # (hot in LRU) ranges would evict the reducer's
-                        # incoming data. See _drop_pagecache.
-                        _drop_pagecache(fd, off, length)
-                        srv.bytes_served += length
-            finally:
-                for f in files:
-                    f.close()
-            return
-
-        # Serve: either via the per-node ScanCoordinator (offset-sorted batched
-        # reads pooled across reducer connections) or via a direct per-source
-        # read. Either way, results come back in REQUEST order so the client
-        # can map them positionally.
+        # Zero-copy serve via os.sendfile: validate every file + range FIRST so
+        # a missing file / bad range still produces an error status before we
+        # commit _STATUS_OK; then os.sendfile each range in REQUEST order
+        # (client maps positionally).
+        files = []
         try:
-            if srv.coordinator is not None:
-                results_per_source = [
-                    srv.coordinator.submit(path, ranges) for path, ranges in requests
-                ]
-            else:
-                results_per_source = [
-                    self._read_direct(path, ranges) for path, ranges in requests
-                ]
+            for path, ranges in requests:
+                f = open(path, "rb")
+                files.append(f)
+                sz = os.fstat(f.fileno()).st_size
+                for off, length in ranges:
+                    if off < 0 or length < 0 or off + length > sz:
+                        raise OSError(
+                            f"range {off}+{length} outside {path} (size {sz})"
+                        )
         except FileNotFoundError as e:
+            for f in files:
+                f.close()
             self._send_error(sock, _STATUS_NOT_FOUND, str(e))
             return
         except OSError as e:
+            for f in files:
+                f.close()
             self._send_error(sock, _STATUS_READ_ERR, str(e))
             return
-
-        # Send response.
-        sock.sendall(struct.pack(">B", _STATUS_OK))
-        for source_results in results_per_source:
-            sock.sendall(struct.pack(">I", len(source_results)))
-            for data in source_results:
-                sock.sendall(struct.pack(">I", len(data)))
-                sock.sendall(data)
-                srv.bytes_served += len(data)
-
-    @staticmethod
-    def _read_direct(path: str, ranges: List[Tuple[int, int]]) -> List[bytes]:
-        """Direct (no-coordinator) read path. Sort by offset within the file for
-        one near-sequential sweep, but return in original request order."""
-        sorted_pairs = sorted(enumerate(ranges), key=lambda p: p[1][0])
-        out: List[Optional[bytes]] = [None] * len(ranges)
-        with open(path, "rb") as f:
-            for orig_idx, (off, length) in sorted_pairs:
-                f.seek(off)
-                out[orig_idx] = f.read(length)
-        return [b for b in out if b is not None] if len(out) == len(ranges) else out  # type: ignore[return-value]
+        try:
+            sock.sendall(struct.pack(">B", _STATUS_OK))
+            for (path, ranges), f in zip(requests, files):
+                fd = f.fileno()
+                sock.sendall(struct.pack(">I", len(ranges)))
+                for off, length in ranges:
+                    sock.sendall(struct.pack(">I", length))
+                    _sendfile_all(sock, fd, off, length)
+                    # Drop these pages from the page cache: hash-shuffle
+                    # ranges are typically read once per reducer, and same-
+                    # node reducers concurrently pwrite their own
+                    # ``prefetch.bin`` -- without this hint the just-served
+                    # (hot in LRU) ranges would evict the reducer's
+                    # incoming data. See _drop_pagecache.
+                    _drop_pagecache(fd, off, length)
+                    srv.bytes_served += length
+        finally:
+            for f in files:
+                f.close()
 
     @staticmethod
     def _send_error(sock, status: int, msg: str):
@@ -580,8 +428,6 @@ class ShuffleManager:
         self,
         base_dir: str,
         token: str,
-        merge_on_read: bool = True,
-        scan_window_s: float = 0.003,
     ):
         self.base_dir = os.path.realpath(base_dir)
         os.makedirs(self.base_dir, exist_ok=True)
@@ -591,17 +437,6 @@ class ShuffleManager:
         self._server.token = token
         self._server.base_dir = self.base_dir
         self._server.bytes_served = 0
-        # merge-on-read: a single per-node coordinator pools fetch
-        # requests across connections and serves them in offset order.
-        # Mutually exclusive with sendfile: the coordinator must hold bytes in
-        # memory to fan out across connections, so when sendfile is on we skip
-        # it and serve each range kernel zero-copy from disk.
-        self._server.use_sendfile = _USE_SENDFILE
-        self._server.coordinator = (
-            _ScanCoordinator(scan_window_s)
-            if (merge_on_read and not _USE_SENDFILE)
-            else None
-        )
         self._host, self._port = self._server.server_address
         t = threading.Thread(target=self._server.serve_forever, daemon=True)
         t.start()
@@ -638,20 +473,6 @@ class ShuffleManager:
 
     def bytes_served(self) -> int:
         return self._server.bytes_served
-
-    def scan_stats(self) -> Dict[str, object]:
-        """merge-on-read metrics (§4.12): None if merge-on-read is disabled."""
-        c = self._server.coordinator
-        if c is None:
-            return {"merge_on_read": False}
-        return {
-            "merge_on_read": True,
-            "scans": c.scans,  # offset-ordered scan passes
-            "pooled_reqs": c.pooled_reqs,  # requests served via coordinator
-            "max_batch": c.max_batch,  # largest cross-connection pool
-            "last_scan_ascending": c.last_scan_ascending,
-            "bytes_served": c.bytes_served,
-        }
 
 
 # =============================================================================
@@ -918,6 +739,9 @@ def open_shuffle_connection(
 ShuffleHandle = dict  # {path, index:{pid:[(off,len)]}, endpoint:(host,port), token, node_id}
 
 
+# max_calls=1: worker reuse is intentionally disabled — repeated task runs
+# in one worker leaked memory across tasks in prior runs, so we recycle the
+# worker per task at the cost of a spawn per invocation.
 @ray.remote(max_calls=1)
 def v3_map_task(
     *blocks: pa.Table,
@@ -959,14 +783,14 @@ def v3_map_task(
     Net: **map peak ≈ S (input block, the floor) + O(pool_budget_bytes)**, set by
     the single pool knob. Shrinking the pool lowers the peak *and* auto-refines the
     input batch; it costs more, smaller chunks (the read-side fragmentation that
-    §4.12 merge-on-read / §5.9 sort-merge fold back).
+    §5.9 sort-merge folds back).
 
     The blocking ``f.write`` provides natural OS backpressure (slow disk → write
     blocks → the map throttles itself).
 
     **File-level seal via atomic ``rename``.**  Writes go to ``map_{i}.shf.tmp``
     first; once all flushes are done we run a final ``f.flush()`` (+ optional
-    ``os.fdatasync`` when ``fsync_on_close``), a size sanity check against the
+    ``os.fsync`` when ``fsync_on_close``), a size sanity check against the
     index, then ``os.rename(tmp, final)``. POSIX guarantees ``rename`` is
     atomic, so reducers (or the ShuffleManager serving them) see either
       * NO file at the final path — handle hasn't been published yet, or
@@ -976,11 +800,11 @@ def v3_map_task(
     (mapper crashed mid-write) from a complete one until you actually try to
     decode the truncated tail.
 
-    ``fsync_on_close=True`` (the default) trades one ``fdatasync`` worth of
+    ``fsync_on_close=True`` (the default) trades one ``fsync`` worth of
     latency for durability against node crash between handle return and disk
-    writeback. Same-node readers go through page cache and don't need this,
-    but cross-node reducers (and Ray lineage's "did the task actually
-    succeed" semantics) do.
+    writeback. Same-node and cross-node readers all go through the manager's
+    page-cache-backed sendfile serve, so this sync is only needed if the
+    Ray-lineage FT model is later extended to recover across node reboots.
 
     Caveat: this still holds up to M staging buffers; for very large M the real
     answer is sort-spill-merge (one bounded sort buffer, spill sorted runs, merge
@@ -1124,32 +948,14 @@ def v3_map_task(
         "index": index,
         # ActorHandle to this node's ShuffleManager
         "manager": manager,
-        # The node this manager is pinned to (NodeAffinity soft=False). The
-        # reducer cross-references this against ``ray.nodes()`` to distinguish
-        # transient manager restarts (node alive → retry) from node loss
-        # (node dead → v3 cannot recover, raise ShuffleNodeLostError).
         "node_id": node_id,
         "token": token,
         "num_partitions": num_partitions,
-        "peak_inflight_bytes": peak_inflight,  # debug: output held at once
-        # Total bytes written, post-seal. Lets the reducer (or operator)
-        # cross-check against the index without needing an os.stat
+        "peak_inflight_bytes": peak_inflight,
+        # Total bytes written to the output file, post-seal.
         "total_bytes": final_size_on_close,
-        # Informational: IPC reader auto-detects from per-batch metadata, so
-        # reducers do not need this field to decode. Useful for metrics and
-        # operator-level decisions (e.g. skip same-node mmap zero-copy path
-        # when bytes are compressed and decode will copy anyway).
         "compression": compression,
-        # Per-partition decoded (pa.Table.nbytes, pre-IPC/compression) byte
-        # totals. ShuffleReduceOpV3 sums these across mappers to size each
-        # reducer's memory ask. Same physical quantity as v2's
-        # ``_partition_bytes`` (from ``shuffle_tasks.py``'s ``merged.nbytes``).
         "decoded_bytes": decoded_bytes_per_partition,
-        # First non-None block schema this mapper saw. The reducer uses it to
-        # synthesize a 0-row, properly-typed block for empty partitions so the
-        # N-partitions -> N-blocks contract holds. ``None`` only for mappers
-        # that saw zero input blocks (in which case a peer mapper's handle
-        # provides the schema in the reducer).
         "schema": output_schema,
     }
 
@@ -1234,29 +1040,13 @@ def _write_prefetch_file(path: str, bufs: List[bytes]) -> None:
 
 _DEFAULT_MAX_BYTES_PER_FETCH = 256 * 1024 * 1024  # 256 MiB per FETCH frame
 
-# The ShuffleManager serves byte-ranges with os.sendfile (kernel zero-copy
-# file->socket) instead of read()-into-userspace + send(). Disables the
-# merge-on-read coordinator (which must hold bytes in memory to fan out across
-# connections, so it's mutually exclusive with sendfile). Server-side only; the
-# wire protocol and client are unchanged (server stays opaque to the
-# IPC/compression payload, so zero-copy is safe).
-#
-# Default ON: zero-copy serving keeps the manager's serve-side heap ~flat under
-# 256-way incast, which is what makes large (e.g. lz4) shards OOM-safe -- the
-# coordinator path materializes every requested range into userspace bytes per
-# connection and can balloon a node past its memory limit. Opt out with
-# RAY_DATA_SHUFFLE_SENDFILE=0 to fall back to the merge-on-read coordinator.
-_USE_SENDFILE = os.environ.get("RAY_DATA_SHUFFLE_SENDFILE", "1") not in (
-    "0",
-    "false",
-    "False",
-    "",
-)
-
 # Process-global cache of ShuffleManager endpoints: {actor_id_bytes: (ip, port)}.
-# Populated lazily on first fetch to a manager; survives across reduce tasks in
-# a reused worker (max_calls>1), so the per-node ``ray.get(endpoint.remote())``
-# round-trip is paid once per manager per worker, not once per node per task.
+# Populated lazily on first fetch to a manager. Worker reuse is currently
+# disabled (all shuffle tasks are @ray.remote(max_calls=1) to avoid the memory
+# leak that repeated task runs in one worker exhibited), so this cache is
+# effectively per-task: it amortizes multiple resolves of the same manager
+# within a single reducer task's fetch loop (retries, multi-source refresh),
+# not across tasks.
 _ENDPOINT_CACHE: Dict[bytes, Tuple[str, int]] = {}
 
 
@@ -1405,6 +1195,7 @@ def _chunk_members_by_bytes(
         yield cur
 
 
+# max_calls=1: worker reuse disabled — see v3_map_task rationale above.
 @ray.remote(max_calls=1)
 def v3_reduce_task(
     handles: List[ShuffleHandle],
@@ -1683,19 +1474,7 @@ def v3_reduce_task(
                     while output_buffer.has_next():
                         yield from _emit(output_buffer.next())
 
-        # PIPELINED fetch+decode. The old design fetched ALL shards into
-        # prefetch.bin behind a barrier, THEN decoded (task wall = fetch_s +
-        # reduce_s, serial). Fetch is network-bound -- and on burstable
-        # instances (m5.2xlarge: ~2.5 Gbps baseline) ENA-bandwidth-throttled, so
-        # its floor is fixed. Decode/reduce/write is CPU (Arrow C++, which
-        # releases the GIL) and far faster than the throttled network. So we
-        # decode each per-node region the instant its fetch future completes:
-        # the fetch threads produce, this generator thread consumes. Task wall
-        # collapses toward max(fetch, decode) instead of their sum, and peak
-        # memory drops (regions drain as they arrive instead of the whole
-        # compressed file sitting co-resident with the decode working set).
-        # Decode runs in completion order -- fine, hash-shuffle reduce is
-        # input-order-agnostic.
+        # PIPELINED fetch+decode
         fd = os.open(prefetch_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
         mmf = None
         try:
