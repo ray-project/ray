@@ -344,17 +344,7 @@ class TestGangScheduling:
         @serve.deployment
         class GangContextDeployment:
             def __call__(self):
-                ctx = ray.serve.context._get_internal_replica_context()
-                gc = ctx.gang_context
-                if gc is None:
-                    return None
-                return {
-                    "gang_id": gc.gang_id,
-                    "rank": gc.rank,
-                    "world_size": gc.world_size,
-                    "member_replica_ids": gc.member_replica_ids,
-                    "replica_id": ctx.replica_id.unique_id,
-                }
+                return ray.get_runtime_context().get_node_id()
 
         app = GangContextDeployment.options(
             num_replicas=4,
@@ -362,51 +352,49 @@ class TestGangScheduling:
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         ).bind()
 
-        handle = serve.run(app, name="gang_context_app")
+        serve.run(app, name="gang_context_app")
         wait_for_condition(check_apps_running, apps=["gang_context_app"])
 
-        # Collect gang contexts from all replicas
-        # Query enough times to hit all 4 replicas
-        contexts_by_replica = {}
-        for _ in range(100):
-            result = handle.remote().result()
-            assert result is not None
-            replica_id = result["replica_id"]
-            if replica_id not in contexts_by_replica:
-                contexts_by_replica[replica_id] = result
-            if len(contexts_by_replica) == 4:
-                break
-        assert len(contexts_by_replica) == 4
+        # Read gang context from controller replica state instead of handle
+        # routing (which may only hit local replicas under locality-aware
+        # routing). The controller stores the exact GangContext each replica
+        # reports from its own ReplicaContext, so this verifies the same values.
+        dep_id = DeploymentID(name="GangContextDeployment", app_name="gang_context_app")
+        running = _get_running_replicas(dep_id)
+        assert len(running) == 4
+        assert all(r.gang_context is not None for r in running)
 
-        # Group replicas by gang_id
+        # Group replicas by gang_id.
         gangs = {}
-        for replica_id, ctx in contexts_by_replica.items():
-            gang_id = ctx["gang_id"]
-            gangs.setdefault(gang_id, []).append(ctx)
+        for r in running:
+            gangs.setdefault(r.gang_context.gang_id, []).append(r)
 
         assert len(gangs) == 2
 
         for gang_id, members in gangs.items():
             assert len(members) == 2
-            assert all(member["world_size"] == 2 for member in members)
-            assert members[0]["member_replica_ids"] == members[1]["member_replica_ids"]
+            assert all(m.gang_context.world_size == 2 for m in members)
+            assert (
+                members[0].gang_context.member_replica_ids
+                == members[1].gang_context.member_replica_ids
+            )
 
-            expected_ids = sorted([m["replica_id"] for m in members])
-            actual_ids = sorted(members[0]["member_replica_ids"])
+            expected_ids = sorted([m.replica_id.unique_id for m in members])
+            actual_ids = sorted(members[0].gang_context.member_replica_ids)
             assert actual_ids == expected_ids
 
-            ranks = sorted([m["rank"] for m in members])
+            ranks = sorted([m.gang_context.rank for m in members])
             assert ranks == [0, 1]
 
-        # Across gangs: gang_ids should be different
+        # Across gangs: gang_ids should be different.
         gang_ids = list(gangs.keys())
         assert gang_ids[0] != gang_ids[1]
 
         # Across gangs: member_replica_ids should be different
         gang_members_list = list(gangs.values())
-        assert sorted(gang_members_list[0][0]["member_replica_ids"]) != sorted(
-            gang_members_list[1][0]["member_replica_ids"]
-        )
+        assert sorted(
+            gang_members_list[0][0].gang_context.member_replica_ids
+        ) != sorted(gang_members_list[1][0].gang_context.member_replica_ids)
 
         serve.delete("gang_context_app")
         serve.shutdown()
