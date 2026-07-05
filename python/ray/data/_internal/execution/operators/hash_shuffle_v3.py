@@ -210,6 +210,24 @@ def _tune_shuffle_socket(sock: socket.socket) -> None:
         except OSError:
             pass
 
+    # Tune keepalive to detect a silently dead peer (VM strand / raylet
+    # crash without RST) in ~5 minutes: 240s idle before first probe, then
+    # 3 probes 20s apart. Default Linux is ~2 hours, which lets a reducer
+    # hang for that long on a lost node. 5min is a magic number — bounded
+    # detection window without over-eagerly killing slow/paused links.
+    # Linux-only ``TCP_KEEP*``; other platforms silently skip.
+    for opt, val in (
+        (getattr(socket, "TCP_KEEPIDLE", None), 240),
+        (getattr(socket, "TCP_KEEPINTVL", None), 20),
+        (getattr(socket, "TCP_KEEPCNT", None), 3),
+    ):
+        if opt is None:
+            continue
+        try:
+            sock.setsockopt(socket.IPPROTO_TCP, opt, val)
+        except OSError:
+            pass
+
 
 def _recvall(sock: socket.socket, n: int) -> bytes:
     out = bytearray()
