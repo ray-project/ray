@@ -33,6 +33,7 @@ import struct
 import tempfile
 import threading
 import time
+from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import (
     Any,
@@ -1001,8 +1002,52 @@ _DEFAULT_MAX_BYTES_PER_FETCH = 256 * 1024 * 1024  # 256 MiB per FETCH frame
 # When an file server actor is respawned (due to failure), the CACHE will be re-populated
 _ENDPOINT_CACHE: Dict[bytes, Tuple[str, int]] = {}
 
+# --------------------------------------------------------- fetch routing types
+# Named containers replace the anonymous tuples the reducer used to thread
+# through fetch orchestration. Read via attribute access (``group.manager``)
+# instead of positional indexing (``group[0]``). ``slots=True`` keeps memory
+# footprint on par with the tuples they replace.
 
-_PrefetchMember = Tuple[int, str, List[Tuple[int, int]]]
+
+@dataclass(slots=True, frozen=True)
+class _SourceRef:
+    """One (mapper file, partition slice) the reducer needs to pull.
+
+    Built once per input handle for a given partition_id at reducer start.
+    """
+
+    manager: "ray.actor.ActorHandle"
+    node_id: str
+    token: str
+    path: str
+    ranges: List[Tuple[int, int]]
+
+
+@dataclass(slots=True, frozen=True)
+class _NodeMember:
+    """A source's ranges as they appear within a per-node fetch group.
+
+    ``idx`` is the source's original position across all reducer sources —
+    preserved so ``_PwriteSink``'s sequential pwrite layout stays consistent
+    across FETCH batches (each range lands at its expected offset).
+    """
+
+    idx: int
+    path: str
+    ranges: List[Tuple[int, int]]
+
+
+@dataclass(slots=True)
+class _NodeGroup:
+    """All sources on one ShuffleManager, grouped so we open ONE TCP
+    connection per manager. Multiple deserialized ActorHandle instances
+    pointing at the same actor collapse via ``manager._actor_id``.
+    """
+
+    manager: "ray.actor.ActorHandle"
+    node_id: str
+    token: str
+    members: List[_NodeMember] = field(default_factory=list)
 
 
 class _PwriteSink:
@@ -1031,7 +1076,7 @@ def _prefetch_node_into(
     manager: "ray.actor.ActorHandle",
     node_id: str,
     token: str,
-    members: List[_PrefetchMember],
+    members: List[_NodeMember],
     max_bytes_per_fetch: int,
 ) -> None:
     """Open ONE keep-alive connection to ``manager``'s endpoint and stream
@@ -1087,9 +1132,7 @@ def _prefetch_node_into(
     try:
         with open_shuffle_connection(endpoint, token) as conn:
             for batch in _chunk_members_by_bytes(members, max_bytes_per_fetch):
-                sources = [
-                    (src_path, src_ranges) for _idx, src_path, src_ranges in batch
-                ]
+                sources = [(m.path, m.ranges) for m in batch]
                 conn.fetch_into(sources, out_file_obj)
     except ShuffleNodeLostError:
         raise
@@ -1112,9 +1155,9 @@ def _prefetch_node_into(
 
 
 def _chunk_members_by_bytes(
-    members: List[_PrefetchMember],
+    members: List[_NodeMember],
     max_bytes: int,
-) -> Iterable[List[_PrefetchMember]]:
+) -> Iterable[List[_NodeMember]]:
     """Yield consecutive sub-batches of ``members`` whose total requested
     bytes (sum of ranges' ``length``) stay within ``max_bytes``.
 
@@ -1123,11 +1166,10 @@ def _chunk_members_by_bytes(
     multi-FETCH stitching). For typical workloads this is fine: the per-FETCH
     budget is much larger than any one source's partition slice.
     """
-    cur: List[Tuple[int, str, List[Tuple[int, int]]]] = []
+    cur: List[_NodeMember] = []
     cur_bytes = 0
     for member in members:
-        _idx, _path, src_ranges = member
-        size = sum(length for _off, length in src_ranges)
+        size = sum(length for _off, length in member.ranges)
         if cur and cur_bytes + size > max_bytes:
             yield cur
             cur = []
@@ -1136,6 +1178,87 @@ def _chunk_members_by_bytes(
         cur_bytes += size
     if cur:
         yield cur
+
+
+# --------------------------------------------------------- fetch routing helpers
+def _handles_to_sources(
+    handles: List["ShuffleHandle"],
+    partition_id: int,
+) -> Tuple[List[_SourceRef], Optional[pa.Schema]]:
+    """Extract per-partition source refs from a reducer's input handles.
+
+    Skips handles that produced zero bytes for this partition. Also picks
+    the first non-None output schema (for the empty-partition fallback).
+
+    ``node_id`` may be missing on handles produced before that field was
+    added — fall back to "" so ``_is_node_alive`` returns None
+    ("inconclusive"), preserving pre-existing ShuffleFetchError semantics
+    instead of ever raising a false-positive node-lost error.
+    """
+    sources: List[_SourceRef] = []
+    output_schema: Optional[pa.Schema] = None
+    for h in handles:
+        if not isinstance(h, dict):
+            h = ray.get(h)
+        if output_schema is None:
+            output_schema = h.get("schema")
+        ranges = h["index"].get(partition_id) or []
+        if ranges:
+            sources.append(
+                _SourceRef(
+                    manager=h["manager"],
+                    node_id=h.get("node_id", ""),
+                    token=h["token"],
+                    path=h["path"],
+                    ranges=ranges,
+                )
+            )
+    return sources, output_schema
+
+
+def _group_by_manager(sources: List[_SourceRef]) -> List[_NodeGroup]:
+    """Collapse sources by manager so each manager gets ONE TCP connection.
+
+    Multiple deserialized ActorHandle instances that point at the same actor
+    collapse to one group via ``manager._actor_id``. ``idx`` on each member
+    preserves the source's original position across all reducer sources —
+    used to keep the sequential pwrite layout stable across FETCH batches.
+    """
+    by_key: Dict[bytes, _NodeGroup] = {}
+    for idx, s in enumerate(sources):
+        key = s.manager._actor_id.binary()
+        group = by_key.get(key)
+        if group is None:
+            group = _NodeGroup(
+                manager=s.manager, node_id=s.node_id, token=s.token, members=[]
+            )
+            by_key[key] = group
+        group.members.append(_NodeMember(idx=idx, path=s.path, ranges=s.ranges))
+    return list(by_key.values())
+
+
+def _compute_prefetch_layout(
+    groups: List[_NodeGroup],
+) -> Tuple[int, List[int], List[int]]:
+    """Assign each group a contiguous byte region in the shared prefetch.bin.
+
+    Returns ``(total_size, base_offsets, per_group_sizes)`` — sizes are the
+    ``4 + length`` framed byte totals (u32 len prefix + IPC bytes per range),
+    base offsets are running cumulative sums. Fetch threads then pwrite each
+    group's response frames at DISJOINT offsets → lock-free concurrent writes
+    to one fd.
+    """
+    sizes = [
+        sum(4 + length for m in g.members for (_off, length) in m.ranges)
+        for g in groups
+    ]
+    base_offsets: List[int] = []
+    acc = 0
+    for sz in sizes:
+        base_offsets.append(acc)
+        acc += sz
+    return acc, base_offsets, sizes
+
 
 @ray.remote(max_calls=1)
 def v3_reduce_task(
@@ -1153,94 +1276,35 @@ def v3_reduce_task(
     downstream_map_target_max_block_size_override: Optional[int] = None,
 ) -> Generator[Union[Block, bytes], None, None]:
     """Fetch one partition's shards and stream ``reduce_fn`` output as
-    (block, pickled metadata) pairs. Bytes stay out of plasma (§4.6).
+    ``(block, pickled metadata)`` pairs. Bytes stay out of plasma.
 
-    Pipelined fetch + decode (not two-phase). One thread pool (size
-    ``RAY_DATA_SHUFFLE_FETCH_THREADS``, default 32) opens one keep-alive
-    TCP connection per ShuffleManager and lock-free ``os.pwrite``s every
-    response frame into its pre-assigned region of ``prefetch.bin``. This
-    generator consumes ``as_completed`` futures: the instant a node's
-    region lands, its shards are mmap-decoded and fed into the streaming
-    accumulator. Fetch (network-bound) and decode (Arrow C++, GIL-free)
-    overlap, so task wall collapses toward ``max(fetch, decode)`` instead
-    of their sum. Decode arrives in completion order — fine, reduce is
-    input-order-agnostic.
+    Fetch + decode are pipelined: one thread per ShuffleManager pwrites
+    response frames into a shared ``prefetch.bin`` at pre-assigned offsets,
+    and this generator mmap-decodes each region as its future completes.
 
-    Streaming-generator protocol matches v2's ``_shuffle_reduce_task``:
-        yield Block
-        yield pickle(BlockMetadataWithSchema)
-    So the operator wraps this in a ``DataOpTask`` and feeds each pair into
-    its output queue with proper backpressure.
-
-    Reduce modes:
-    - ``streaming=True``: ``reduce_fn`` is invoked each time the accumulator
-      crosses ``target_max_block_size``. Bounds peak accumulator memory but
-      requires ``reduce_fn`` to produce valid output from partial input
-      (concat is fine; global sort/aggregate is NOT).
-    - ``streaming=False``: accumulate everything, call ``reduce_fn`` once at
-      end of task.
+    Reduce mode (``streaming``): incremental flush every
+    ``target_max_block_size`` bytes vs accumulate-then-reduce.
 
     Output shaping (mutually exclusive):
-    - Default (``coalesce_output=False``): a ``BlockOutputBuffer`` reshapes
-      ``reduce_fn`` output to ``target_max_block_size``-sized chunks; one
-      partition may emit multiple blocks. ``target_max_block_size=None``
-      bypasses reshape and emits blocks exactly as ``reduce_fn`` yields.
-    - ``coalesce_output=True``: every ``reduce_fn`` chunk is held in an
-      ``_OutputBlockCoalescer`` and concatenated into ONE block at end of
-      task. Honors the public "N partitions → N blocks" contract for
-      ``repartition`` / ``sort``; peak heap ≈ partition size.
+    - ``coalesce_output=False`` (default): ``BlockOutputBuffer`` reshapes to
+      ``target_max_block_size``-sized chunks; ``None`` disables reshape.
+    - ``coalesce_output=True``: concatenate all output into one block
+      (honors the N-partitions → N-blocks contract for repartition/sort).
 
-    Args:
-        prefetch_dir: optional staging directory. Unset → per-task tempdir.
-        max_bytes_per_fetch: cap on requested bytes per FETCH (server
-            response buffer); big partitions split across multiple FETCHes
-            on the same connection. Default 256 MiB.
-        target_max_block_size: output reshape target; also the streaming
-            flush threshold. ``None`` disables reshape.
-        streaming: incremental flush vs accumulate-then-reduce.
-        downstream_map_transformer: when set, OperatorFusionRule has
-            absorbed a downstream MapOperator (typically Write) into this
-            reduce op. Each emitted block is run through this transformer
-            inline before the streaming-generator protocol yields it.
-        reduce_op_name: the live op name (possibly fused, e.g.
-            "ShuffleReduceV3->Write") used to label the TaskContext we
-            construct around downstream_map_transformer.
-        downstream_map_task_kwargs: kwargs threaded into the TaskContext
-            for the fused downstream map (e.g. Write target path).
-        coalesce_output: see "Output shaping" above. Enabled by the planner
-            for ops with an N-block contract (repartition, sort).
+    ``downstream_map_transformer`` runs a fused downstream map (typically
+    Write) inline on each emitted block before yielding.
     """
     start_time_s = time.perf_counter()
 
-    # Collect (manager, token, src_path, ranges) per source for this partition.
-    # While iterating handles, also pick up an output schema for the empty-
-    # partition path (so the N-block contract still emits a typed 0-row
-    # block when no mapper produced any data for this partition_id).
-    jobs: List[
-        Tuple["ray.actor.ActorHandle", str, str, str, List[Tuple[int, int]]]
-    ] = []
-    output_schema: Optional[pa.Schema] = None
-    for h in handles:
-        if not isinstance(h, dict):
-            h = ray.get(h)
-        if output_schema is None:
-            output_schema = h.get("schema")
-        ranges = h["index"].get(partition_id) or []
-        if ranges:
-            # node_id may be missing on handles produced before this field was
-            # added — fall back to "" so ``_is_node_alive`` returns None (i.e.
-            # "inconclusive"), which preserves the pre-existing ShuffleFetchError
-            # behavior instead of ever raising a false-positive node-lost error.
-            jobs.append(
-                (h["manager"], h.get("node_id", ""), h["token"], h["path"], ranges)
-            )
+    # Pull per-partition source refs + an output schema for the empty-partition
+    # fallback path (so the N-block contract still emits a typed 0-row block
+    # when no mapper produced any data for this partition_id).
+    sources, output_schema = _handles_to_sources(handles, partition_id)
 
-    # streaming yield helper
     def _yield_with_stats(block: Block):
-        """Yield (block, pickled metadata) — the executor's DataOpTask
-        wrapper sends a StreamingGeneratorStats back between the two yields,
-        which we feed into BlockExecStats for accurate ``block_ser_time_s``.
-        """
+        """Yield ``block`` then its pickled metadata. The two-yield protocol
+        lets the executor slot ``StreamingGeneratorStats`` in between for
+        accurate ``block_ser_time_s``."""
         exec_stats_builder = BlockExecStats.builder()
         exec_stats_builder.finish()
         gen_stats: StreamingGeneratorStats = yield block
@@ -1257,10 +1321,6 @@ def v3_reduce_task(
             )
         )
 
-    # When OperatorFusionRule has absorbed a downstream MapOperator (e.g.,
-    # Write) into this reduce op, apply its MapTransformer to each block
-    # before emit. Per-block invocation matches Write's expected granularity
-    # (datasink.write is called per block and emits a stats block).
     def _emit(block: Block):
         if downstream_map_transformer is None:
             yield from _yield_with_stats(block)
@@ -1280,20 +1340,13 @@ def v3_reduce_task(
         ):
             yield from _yield_with_stats(out_block)
 
-    # Empty-input shortcut. Two paths:
-    #  * coalesce_output: honor the "N partitions -> N blocks" contract by
-    #    emitting one 0-row block typed with the upstream schema (matches
-    #    v2's _emit_empty_partition path in shuffle_reduce_operator.py).
-    #    Skip the reduce_fn call entirely -- e.g. concat_reduce(pid, []) is
-    #    an empty generator, so going through reduce_fn would yield zero
-    #    blocks and silently violate the contract.
-    #  * non-coalesce: let reduce_fn decide (may legitimately yield nothing).
-    if not jobs:
+    # Empty-input shortcut. coalesce_output must emit exactly one 0-row block
+    # to honor the N-partitions → N-blocks contract; non-coalesce lets
+    # reduce_fn decide (it may legitimately yield nothing).
+    if not sources:
         if coalesce_output:
             if output_schema is not None:
                 yield from _emit(output_schema.empty_table())
-            # else: no schema available anywhere -> upstream produced zero
-            # mappers; nothing we can construct. Fall through to no-op.
         else:
             for block in reduce_fn(partition_id, []):
                 yield from _emit(block)
@@ -1309,63 +1362,27 @@ def v3_reduce_task(
     staging_dir: str = prefetch_dir
     prefetch_file = os.path.join(staging_dir, "prefetch.bin")
 
-    # Group by manager actor: one TCP connection per ShuffleManager.
-    # Key on the actor's id (binary) so multiple deserialized ActorHandle
-    # instances pointing at the same actor collapse to one entry.
-    groups: Dict[
-        bytes,
-        Tuple[
-            "ray.actor.ActorHandle",
-            str,
-            str,
-            List[Tuple[int, str, List[Tuple[int, int]]]],
-        ],
-    ] = {}
-    for idx, (manager, node_id, token, src_path, src_ranges) in enumerate(jobs):
-        key = manager._actor_id.binary()
-        if key not in groups:
-            groups[key] = (manager, node_id, token, [])
-        groups[key][3].append((idx, src_path, src_ranges))
+    groups = _group_by_manager(sources)
 
     try:
-        # Phase 1: prefetch all shards into one prefetch.bin, fetching the 32
-        # per-node ShuffleManagers CONCURRENTLY. The per-reducer fetch is round-
-        # trip / serial-contention bound (~23 MB/s over a serial 32-node loop,
-        # far below NIC -- not bandwidth- or server-disk-bound), so overlapping
-        # the node round-trips cuts both median and tail fetch.
-        #
-        # Each frame is [u32 len][shard bytes] and the shard size == the index
-        # range length, so the FULL layout is known up front: give each node a
-        # contiguous region and have its thread os.pwrite frames at its base
-        # offset. Disjoint offsets => lock-free concurrent writes to one fd, and
-        # NO in-RAM buffering (a BytesIO version OOM'd holding ~a partition in
-        # heap). buffered pwrite lands in page cache, so phase 2's mmap reads
-        # hit cache; no fsync (local scratch, consumed immediately then deleted).
+        # Fetch each source region in parallel, pwrite at pre-assigned offsets
+        # into one prefetch.bin (disjoint → lock-free). Buffered pwrite lands
+        # in page cache so the decode-side mmap reads hit cache.
         _fetch_threads = int(os.environ.get("RAY_DATA_SHUFFLE_FETCH_THREADS", "32"))
-        group_list = list(groups.values())
-        node_sizes = [
-            sum(4 + length for (_i, _p, rngs) in members for (_o, length) in rngs)
-            for (_mgr, _nid, _tok, members) in group_list
-        ]
-        base_offsets = []
-        _acc = 0
-        for _sz in node_sizes:
-            base_offsets.append(_acc)
-            _acc += _sz
-        total_size = _acc
+        total_size, base_offsets, node_sizes = _compute_prefetch_layout(groups)
 
-        # Reshape buffer (created lazily on first flush) + running accumulator;
-        # peak is bounded by target_max_block_size in streaming mode. Defined
-        # before the fetch loop because we now decode WHILE fetching (below).
+        # Streaming accumulator; bounded by target_max_block_size on flush.
         accum_tables: List[pa.Table] = []
         accum_bytes: int = 0
         output_buffer: Optional[BlockOutputBuffer] = None
 
         class _OutputBlockCoalescer:
+            """Buffer reduce_fn output; finalize into one block (or one
+            typed 0-row block) to honor the N-partitions → N-blocks
+            contract."""
+
             def __init__(self, fallback_schema):
                 self._blocks = []
-                # Seed from upstream handle so finalize can synthesize a
-                # typed 0-row block even if every reduce_fn output was empty.
                 self._schema = fallback_schema
 
             def add(self, block):
@@ -1379,9 +1396,6 @@ def v3_reduce_task(
                     if len(self._blocks) == 1:
                         return self._blocks[0]
                     return pa.concat_tables(self._blocks)
-                # Honor the N-block contract: emit a 0-row block typed with
-                # whichever schema we saw. Returning None here would silently
-                # drop this partition from the output count.
                 if self._schema is not None:
                     return self._schema.empty_table()
                 return None
@@ -1415,66 +1429,49 @@ def v3_reduce_task(
                     while output_buffer.has_next():
                         yield from _emit(output_buffer.next())
 
-        # PIPELINED fetch+decode
         fd = os.open(prefetch_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
         mmf = None
         try:
             if total_size > 0:
                 try:
-                    # posix_fallocate only works for linux (not on mac or windows)
-                    os.posix_fallocate(fd, 0, total_size)
+                    os.posix_fallocate(fd, 0, total_size)  # Linux only
                 except (AttributeError, OSError):
                     os.ftruncate(fd, total_size)
-                # NOTE: must be opened in "r+" (read+write) mode, not "r".
-                # ``pa.memory_map(path, "r")`` uses MAP_PRIVATE semantics, and on
-                # macOS that means the mapping caches the file's initial (zero)
-                # content at open time and does not pick up concurrent pwrite()
-                # updates through other fds -- the decoder would walk a region
-                # of zeros and fail with "Tried reading schema message, was
-                # null or length 0". "r+" forces MAP_SHARED, which is page-cache
-                # coherent with pwrite() through the writer fd on both Linux
-                # and macOS. We never actually write through ``mmf``; the
-                # writable mode is only chosen for its mapping semantics.
+                # ``r+`` forces MAP_SHARED so this mapping stays coherent with
+                # concurrent pwrite() through the writer fd. ``r`` (MAP_PRIVATE
+                # on macOS) would cache the initial zeros and never see writes.
                 mmf = pa.memory_map(prefetch_file, "r+")
 
             def _fetch_one(args):
-                base, size, (manager, node_id, token, members) = args
+                base, size, group = args
                 _prefetch_node_into(
                     _PwriteSink(fd, base),
-                    manager,
-                    node_id,
-                    token,
-                    members,
+                    group.manager,
+                    group.node_id,
+                    group.token,
+                    group.members,
                     max_bytes_per_fetch,
                 )
                 return base, size
 
-            n_threads = min(len(group_list), max(1, _fetch_threads))
-            work = list(zip(base_offsets, node_sizes, group_list))
-            # Rotate the per-reducer manager order by partition_id. When
-            # n_threads < #managers (bounded fan-in to mitigate TCP incast at the
-            # reducer's receive port), every reducer otherwise hits the SAME
-            # first n_threads managers simultaneously -- that just relocates the
-            # 256-way incast hotspot onto those managers. Rotating the start
-            # index by partition_id spreads the simultaneous fan-in across all 32
-            # managers. base_offset stays paired with its group (the on-disk
-            # prefetch layout is unchanged); only submission/execution order
-            # rotates. No-op at n_threads >= #managers (all launch at once).
+            n_threads = min(len(groups), max(1, _fetch_threads))
+            work = list(zip(base_offsets, node_sizes, groups))
+            # Rotate submission order by partition_id to spread simultaneous
+            # fan-in across all managers (avoids every reducer hitting the same
+            # first N managers when n_threads < #managers).
             if work:
                 _rot = partition_id % len(work)
                 work = work[_rot:] + work[:_rot]
 
             def _decode_region(base: int, size: int):
-                """Walk frames in [base, base+size), accumulate, and drive the
-                streaming reduce. Yields output blocks."""
+                """Walk frames in [base, base+size), accumulate, drive streaming
+                reduce, yield output blocks."""
                 nonlocal accum_tables, accum_bytes
                 pos = base
                 end = base + size
                 while pos < end:
                     mmf.seek(pos)
                     length = struct.unpack(">I", bytes(mmf.read(4)))[0]
-                    # Zero-copy view into mmap for uncompressed IPC; the decoder
-                    # copies into fresh buffers for compressed IPC.
                     ipc_buf = mmf.read(length)
                     pos += 4 + length
                     table = _read_ipc(ipc_buf)
@@ -1496,8 +1493,7 @@ def v3_reduce_task(
                     if mmf is not None and size > 0:
                         yield from _decode_region(base, size)
 
-            # Drain remaining accumulated shards (the only reduce_fn call in
-            # blocking mode; the tail in streaming mode).
+            # Drain the accumulator tail.
             if accum_tables:
                 yield from _flush(accum_tables)
                 accum_tables = []
@@ -1506,7 +1502,6 @@ def v3_reduce_task(
                 if final_block is not None:
                     yield from _emit(final_block)
             elif output_buffer is not None:
-                # Finalize the reshape buffer: emit any partial trailing block.
                 output_buffer.finalize()
                 while output_buffer.has_next():
                     yield from _emit(output_buffer.next())
