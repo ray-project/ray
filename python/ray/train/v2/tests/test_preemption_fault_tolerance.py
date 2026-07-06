@@ -1,21 +1,4 @@
-"""End-to-end preemption tests with a real ``DataParallelTrainer``.
-
-Only the preemption *signal* is mocked: the training function sets its own
-``PreemptionContext`` via ``get_train_context().preemption_context.set(...)``,
-which is byte-for-byte what ``RayTrainWorker.mark_preempt`` does when the
-``PreemptionWatcher`` detects a node drain. Everything else -- the worker group,
-the controller state machine (RunningState -> PreemptingState), the failure
-policy, checkpoint resume -- is real. This keeps these tests fast and
-deterministic on a single node; the nothing-mocked variant that drains a node
-through the real GCS ``DrainNode`` RPC on a multi-node cluster lives in
-test_preemption_drain.py.
-
-The controller restarts a run on an *actual* reclaim (a preempted worker death)
-or when the reclaim deadline elapses; a run that returns cleanly finishes
-regardless of any signal. A real preempted death can't be injected in-process,
-so the restart path is exercised here via the deadline (state-machine coverage
-of the death path lives in test_controller.py).
-"""
+"""End-to-end preemption tests with a real ``DataParallelTrainer``."""
 
 import pytest
 
