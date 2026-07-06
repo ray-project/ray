@@ -329,7 +329,7 @@ def test_decode_image_frames_from_path(tmp_path):
         has_video=False,
         image_camera=True,
     )
-    root = LeRobotDatasource(ds)._roots[0]
+    root = LeRobotDatasource(ds).distilled_metas[0]
 
     # Write a real PNG where _decode_image_frames resolves the path:
     # f"{fs_root}/{path}" -- the same join it uses for data/video files.
@@ -367,7 +367,7 @@ def test_decode_image_frames_requires_bytes_or_path(tmp_path):
         has_video=False,
         image_camera=True,
     )
-    root = LeRobotDatasource(ds)._roots[0]
+    root = LeRobotDatasource(ds).distilled_metas[0]
     table = pa.table(
         {
             "observation.image": pa.array(
@@ -772,7 +772,7 @@ def test_read_lerobot_batches_sized_per_root(ray_start_regular_shared, tmp_path)
 
     Regression test: a multi-root read mixing small (scalar-only) and large
     (video) rows must size each root's batches by that root's row size. The old
-    code sized every batch from ``_roots[0]``, so a large root following a small
+    code sized every batch from ``distilled_metas[0]``, so a large root following a small
     one would over-fill its batches and blow past the target block size.
     """
     from ray.data.datasource import LeRobotDatasource
@@ -788,8 +788,8 @@ def test_read_lerobot_batches_sized_per_root(ray_start_regular_shared, tmp_path)
     # Give the roots very different estimated row sizes and a block budget that
     # yields a tiny batch for the big root but a huge one for the small root.
     small, big = 100, 10_000
-    source._roots[0] = source._roots[0]._replace(row_size_bytes=small)
-    source._roots[1] = source._roots[1]._replace(row_size_bytes=big)
+    source.distilled_metas[0] = source.distilled_metas[0]._replace(row_size_bytes=small)
+    source.distilled_metas[1] = source.distilled_metas[1]._replace(row_size_bytes=big)
     source._max_block_bytes = lambda data_context=None: big * 2  # 2 big rows/batch
 
     batch_rows = {0: [], 1: []}
@@ -801,7 +801,7 @@ def test_read_lerobot_batches_sized_per_root(ray_start_regular_shared, tmp_path)
     # Big-row root (dataset_index 1): budget // big == 2 rows/batch.
     assert batch_rows[1] and max(batch_rows[1]) <= 2
     # Small-row root (dataset_index 0): budget // small == 200 >> 10 rows -> one
-    # batch. If batches were sized globally from _roots[0], the big root would
+    # batch. If batches were sized globally from distilled_metas[0], the big root would
     # also use 200 and land all 10 rows in a single batch (max would be 10).
     assert max(batch_rows[0]) == 10
     assert max(batch_rows[0]) > max(batch_rows[1])
@@ -862,8 +862,8 @@ def test_memory_estimate_and_schema_correctness(
 
     for path in (lerobot_dataset, lerobot_dataset_no_video, lerobot_dataset_image):
         source = LeRobotDatasource(path)
-        root = source._roots[0]
-        estimate = _estimated_row_size_bytes(source.metas[0].features)
+        root = source.distilled_metas[0]
+        estimate = _estimated_row_size_bytes(source.original_metas[0].features)
         tasks = source.get_read_tasks(1)
         block = pa.concat_tables([b for task in tasks for b in task()])
 
@@ -875,7 +875,7 @@ def test_memory_estimate_and_schema_correctness(
         # A row is exactly the dataset's feature columns (cameras decoded in
         # place) plus the three appended columns -- nothing more, nothing less.
         # Adding/removing an output column must be reflected in the estimate.
-        assert set(block.schema.names) == set(source.metas[0].features) | {
+        assert set(block.schema.names) == set(source.original_metas[0].features) | {
             "task",
             "dataset_index",
             "stats",
@@ -917,7 +917,7 @@ def test_read_lerobot_per_task_row_limit_bounds_decode(
 
     source = mod.LeRobotDatasource(lerobot_dataset)
     # Force ~2 rows per batch so the early stop is observable.
-    rsz = source._roots[0].row_size_bytes
+    rsz = source.distilled_metas[0].row_size_bytes
     monkeypatch.setattr(source, "_max_block_bytes", lambda data_context=None: rsz * 2)
 
     tasks = source.get_read_tasks(1, per_task_row_limit=2)
@@ -938,10 +938,10 @@ def test_read_lerobot_inconsistent_task_index_raises(
     source = LeRobotDatasource(lerobot_dataset)
     # Drop a referenced task id from the metadata to simulate an inconsistent
     # dataset (data references a task with no meta/tasks.parquet entry).
-    root = source._roots[0]
+    root = source.distilled_metas[0]
     broken = dict(root.tasks_dict)
     broken.pop(next(iter(broken)))
-    source._roots[0] = root._replace(tasks_dict=broken)
+    source.distilled_metas[0] = root._replace(tasks_dict=broken)
 
     with pytest.raises(ValueError, match="tasks metadata"):
         for task in source.get_read_tasks(1):

@@ -856,20 +856,20 @@ class LeRobotDatasource(Datasource):
         self._resolved = [
             _resolve_filesystem(r, filesystem, self._storage_options) for r in roots
         ]
-        self.metas = [
+        self.original_metas = [
             _load_lerobot_metadata(r, fs, fs_root)
             for r, (fs, fs_root, _, _) in zip(roots, self._resolved)
         ]
 
-        if any(m.video_keys for m in self.metas):
+        if any(m.video_keys for m in self.original_metas):
             _check_import(self, module="torchcodec", package="torchcodec")
             _check_import(self, module="av", package="av")
-        if any(m.image_keys for m in self.metas):
+        if any(m.image_keys for m in self.original_metas):
             _check_import(self, module="PIL", package="pillow")
 
-        if len(self.metas) > 1:
-            ref = self.metas[0]
-            for m in self.metas[1:]:
+        if len(self.original_metas) > 1:
+            ref = self.original_metas[0]
+            for m in self.original_metas[1:]:
                 if sorted(m.video_keys) != sorted(ref.video_keys):
                     raise ValueError(
                         f"video_keys mismatch: {ref.root!r} has "
@@ -907,10 +907,10 @@ class LeRobotDatasource(Datasource):
         # Derived state, computed once on the driver. We ray.put roots for read tasks
         # and episodes for planning (slicing) -- each read task embeds only its own
         # episode slice rather than broadcasting the whole table.
-        self._roots: List[_LeRobotRoot] = []
+        self.distilled_metas: List[_LeRobotRoot] = []
         self._episodes: List[pa.Table] = []
         for m, r, (fs, fs_root, video_uri, video_opts) in zip(
-            self.metas, roots, self._resolved
+            self.original_metas, roots, self._resolved
         ):
             built_root, built_episodes = _build_root(
                 m,
@@ -921,7 +921,7 @@ class LeRobotDatasource(Datasource):
                 video_opts,
                 frame_tolerance_s=self._frame_tolerance_s,
             )
-            self._roots.append(built_root)
+            self.distilled_metas.append(built_root)
             self._episodes.append(built_episodes)
 
         if episodes is not None:
@@ -959,7 +959,9 @@ class LeRobotDatasource(Datasource):
                 ).as_py()
                 or 0
             )
-            self._roots[i] = self._roots[i]._replace(total_frames=n_frames)
+            self.distilled_metas[i] = self.distilled_metas[i]._replace(
+                total_frames=n_frames
+            )
         missing = sorted(set(requested) - found)
         if missing:
             raise ValueError(
@@ -970,7 +972,7 @@ class LeRobotDatasource(Datasource):
     @property
     def meta(self) -> "LeRobotDatasetMetadata":
         """First-root upstream :class:`lerobot.LeRobotDatasetMetadata`."""
-        return self.metas[0]
+        return self.original_metas[0]
 
     # ------------------------------------------------------------------
     # Slicing helpers
@@ -1065,7 +1067,7 @@ class LeRobotDatasource(Datasource):
     def _slice(self) -> List[tuple]:
         """Create ``(root_index, start, end)`` triples for all roots, sorted."""
         all_ranges: List[tuple] = []
-        for root_idx, ds_root in enumerate(self._roots):
+        for root_idx, ds_root in enumerate(self.distilled_metas):
             episodes = self._episodes[root_idx]
             if self._group_by_episode:
                 ranges = self._slices_by_episode(episodes)
@@ -1135,7 +1137,9 @@ class LeRobotDatasource(Datasource):
     # ------------------------------------------------------------------
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        return sum(r.total_frames * r.row_size_bytes for r in self._roots) or None
+        return (
+            sum(r.total_frames * r.row_size_bytes for r in self.distilled_metas) or None
+        )
 
     def default_num_blocks(self) -> int:
         """The natural read-task count: one per video-file group (or per episode
@@ -1179,12 +1183,12 @@ class LeRobotDatasource(Datasource):
 
         task_plan = [self._merge_segments(group) for group in groups]
 
-        roots_ref = ray.put(self._roots)
+        roots_ref = ray.put(self.distilled_metas)
         max_block_bytes = self._max_block_bytes(data_context)
         return [
             _LeRobotReadTask(
                 segments=segments,
-                roots=self._roots,
+                roots=self.distilled_metas,
                 roots_ref=roots_ref,
                 episodes=self._episodes,
                 max_block_bytes=max_block_bytes,
