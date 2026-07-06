@@ -119,18 +119,6 @@ def test_restore_from_original_order():
     assert idx == [0, 1, 2, 3]
 
 
-def test_restore_original_order_stats():
-    base_iterator = [
-        Batch(BatchMetadata(batch_idx=2), None),
-        Batch(BatchMetadata(batch_idx=0), None),
-        Batch(BatchMetadata(batch_idx=1), None),
-    ]
-
-    ordered = list(restore_original_order(iter(base_iterator)))
-
-    assert [batch.metadata.batch_idx for batch in ordered] == [0, 1, 2]
-
-
 def test_attribute_blocked_time_overlap_attribution():
     stats = DatasetStats(metadata={}, parent=None)
     batch_iterator = BatchIterator(iter([]), stats=stats)
