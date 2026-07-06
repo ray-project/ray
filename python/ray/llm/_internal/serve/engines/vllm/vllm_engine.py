@@ -320,12 +320,10 @@ class VLLMEngine(LLMEngine):
         # Pass model_config so vLLM mounts the pooling routers (/pooling, /classify,
         # /embed, /score) on the native ASGI app to enable direct streaming for pooling
         # classify, embed, and score.
-        model_config = self._engine_client.model_config
-
         app = build_app(
             self._vllm_args,
             supported_tasks=supported_tasks,
-            model_config=model_config,
+            model_config=self._engine_client.model_config,
         )
         await init_app_state(
             self._engine_client,

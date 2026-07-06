@@ -4603,7 +4603,6 @@
       runtime_env:
         - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
         - RAY_SERVE_ENABLE_HA_PROXY=1
-        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
     anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
@@ -4612,7 +4611,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: pytest -vs test_llm_serve_integration.py -k "classify or pooling"
+    script: pytest -vs test_llm_serve_integration.py test_llm_serve_fault_tolerance.py
 
 - name: llm_serve_sleep_wakeup
   frequency: nightly

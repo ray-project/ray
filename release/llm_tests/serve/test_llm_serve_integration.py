@@ -274,87 +274,64 @@ def test_score_model(model_name):
     time.sleep(1)
 
 
-@direct_streaming_only
-@pytest.mark.parametrize("model_name", ["Qwen/Qwen3-Reranker-0.6B"])
-def test_classify_model(model_name):
-    llm_config = LLMConfig(
-        model_loading_config=dict(
-            model_id=model_name,
-        ),
-        deployment_config=dict(
-            num_replicas=1,
-        ),
-        engine_kwargs=dict(
-            enforce_eager=True,
-            max_model_len=512,
-            hf_overrides={
-                "architectures": ["Qwen3ForSequenceClassification"],
-                "classifier_from_token": ["no", "yes"],
-                "is_original_qwen3_reranker": True,
-            },
-        ),
-    )
-    app = build_openai_app({"llm_configs": [llm_config]})
-    serve.run(app, blocking=False)
-    wait_for_condition(is_default_app_running, timeout=300)
-
-    response = requests.post(
-        "http://localhost:8000/classify",
-        json={
-            "model": model_name,
-            "input": "This movie was absolutely fantastic!",
-        },
-    )
-    assert response.status_code == 200, response.text
-    data = response.json()
-    assert data["object"] == "list"
-    assert "data" in data
-    assert len(data["data"]) == 1
-    item = data["data"][0]
-    assert "probs" in item
+def _validate_classify(item):
     assert isinstance(item["probs"], list)
     assert len(item["probs"]) > 0
     assert item["num_classes"] == len(item["probs"])
 
-    serve.shutdown()
-    time.sleep(1)
+
+def _validate_pooling(item):
+    # Reward models emit a per-token pooling vector; ensure it is non-empty.
+    assert len(item["data"]) > 0
 
 
 @direct_streaming_only
-@pytest.mark.parametrize("model_name", ["internlm/internlm2-1_8b-reward"])
-def test_pooling_reward_model(model_name):
+@pytest.mark.parametrize(
+    "model_name,engine_kwargs,endpoint,validate_item",
+    [
+        pytest.param(
+            "Qwen/Qwen3-Reranker-0.6B",
+            dict(
+                hf_overrides={
+                    "architectures": ["Qwen3ForSequenceClassification"],
+                    "classifier_from_token": ["no", "yes"],
+                    "is_original_qwen3_reranker": True,
+                },
+            ),
+            "/classify",
+            _validate_classify,
+            id="classify",
+        ),
+        pytest.param(
+            "internlm/internlm2-1_8b-reward",
+            dict(trust_remote_code=True),
+            "/pooling",
+            _validate_pooling,
+            id="pooling",
+        ),
+    ],
+)
+def test_pooling_model(model_name, engine_kwargs, endpoint, validate_item):
+    """Pooling models (classify/reward) are served via vLLM's native /classify
+    and /pooling endpoints, which are only mounted in direct-streaming mode."""
     llm_config = LLMConfig(
-        model_loading_config=dict(
-            model_id=model_name,
-        ),
-        deployment_config=dict(
-            num_replicas=1,
-        ),
-        engine_kwargs=dict(
-            enforce_eager=True,
-            max_model_len=512,
-            trust_remote_code=True,
-        ),
+        model_loading_config=dict(model_id=model_name),
+        deployment_config=dict(num_replicas=1),
+        engine_kwargs=dict(enforce_eager=True, max_model_len=512, **engine_kwargs),
     )
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=300)
 
     response = requests.post(
-        "http://localhost:8000/pooling",
-        json={
-            "model": model_name,
-            "input": "The chef prepared a delicious meal.",
-            "encoding_format": "float",
-        },
+        f"http://localhost:8000{endpoint}",
+        json={"model": model_name, "input": "The chef prepared a delicious meal."},
     )
     assert response.status_code == 200, response.text
     data = response.json()
     assert data["object"] == "list"
-    assert "data" in data
     assert len(data["data"]) == 1
-    # Reward models emit a per-token pooling vector; ensure it is non-empty.
-    assert len(data["data"][0]["data"]) > 0
+    validate_item(data["data"][0])
 
     serve.shutdown()
     time.sleep(1)
