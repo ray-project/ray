@@ -138,6 +138,44 @@ def test_exit_actor_delivers_inflight_task_errors(ray_start_regular_shared):
     sys.platform == "win32",
     reason="Graceful shutdown draining is unreliable on Windows.",
 )
+def test_exit_actor_with_swallowed_exception(ray_start_regular_shared):
+    """A task that calls exit_actor() but swallows the resulting SystemExit
+    still exits the actor and its return value is discarded (the caller
+    observes the actor death), while in-flight tasks on other threads still
+    deliver their results."""
+    signal_actor = SignalActor.remote()
+
+    @ray.remote(max_concurrency=2)
+    class A:
+        def exit_and_swallow(self):
+            try:
+                ray.actor.exit_actor()
+            except SystemExit:
+                pass
+            return "should never be delivered"
+
+        def wait_then_return(self, value):
+            ray.get(signal_actor.wait.remote())
+            return value
+
+    a = A.remote()
+    inflight_ref = a.wait_then_return.remote("ok")
+    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
+    exit_ref = a.exit_and_swallow.remote()
+    ray.get(signal_actor.send.remote())
+
+    # The in-flight task still delivers its result during the graceful exit.
+    assert ray.get(inflight_ref, timeout=30) == "ok"
+    # The exit task's return value is discarded even though the exception was
+    # swallowed; its caller observes the actor death.
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(exit_ref, timeout=30)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Graceful shutdown draining is unreliable on Windows.",
+)
 def test_exit_actor_fails_queued_tasks(ray_start_regular_shared):
     """Methods queued (submitted but not yet started executing) when
     exit_actor() is called fail with ActorDiedError."""
