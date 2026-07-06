@@ -38,10 +38,16 @@ class UsageCallback(ExecutionCallback):
         get_cluster_spilled_bytes: MetricReader = collector.cluster_spilled_bytes,
         get_dead_node_count: MetricReader = collector.cluster_dead_node_count,
         anonymize_op_name: collector.OpNameFn = collector.anonymize_op_name,
+        collect_env: collector.EnvFn = collector.collect_env,
+        collect_op_config: collector.OpConfigFn = collector.collect_op_config,
     ):
         self._logical_plan = logical_plan
         # Anonymizes each operator's name for the workload payload.
         self._anonymize_op_name = anonymize_op_name
+        # Builds the env payload; overridable so subclasses collect richer env.
+        self._collect_env = collect_env
+        # Builds each operator's config entry in the workload payload.
+        self._collect_op_config = collect_op_config
         # Globally unique per-execution id, used for deduplicating executions for usage collection
         self._execution_id = uuid.uuid4().hex
         # id(logical_op) -> usage_id, built while assembling the payload and used
@@ -111,14 +117,13 @@ class UsageCallback(ExecutionCallback):
         self._dead_nodes_at_end = self._get_dead_node_count()
 
     def build_usage_info(self) -> UsageInfo:
-        """Assemble the usage collection payload for this execution.
-        """
+        """Assemble the usage collection payload for this execution."""
         if self._workload is None:
             self._usage_id_map = collector.build_usage_id_map(
                 self._logical_plan, self._anonymize_op_name
             )
             self._workload = collector.collect_workload(
-                self._logical_plan, collector.collect_op_config, self._anonymize_op_name
+                self._logical_plan, self._collect_op_config, self._anonymize_op_name
             )
         performance = None
         if self._finished:
@@ -133,7 +138,7 @@ class UsageCallback(ExecutionCallback):
         return UsageInfo(
             id=self._execution_id,
             started_at=self._started_at,
-            env=collector.collect_env(),
+            env=self._collect_env(),
             workload=self._workload,
             performance=performance,
             detected_issues=collector.collect_issues(

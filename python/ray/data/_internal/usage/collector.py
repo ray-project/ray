@@ -117,6 +117,10 @@ class UsageInfo:
 # A callable that records config information for a logical operator.
 OpConfigFn = Callable[[LogicalOperator], Optional[OpConfig]]
 
+# A callable that returns process-wide environment info. Overridable so
+# subclasses can collect richer env details.
+EnvFn = Callable[[], EnvInfo]
+
 # A callable that returns the anonymized name for a logical operator.
 # Allows subclasses to add custom anonymization logic.
 OpNameFn = Callable[[LogicalOperator], str]
