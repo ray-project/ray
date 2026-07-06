@@ -2127,7 +2127,8 @@
 # identical workload through vanilla torch.distributed (Ray actors as the
 # launcher) to guard the "Ray Train is on par with torchrun" claim.
 - name: train_benchmark-qwen3_06b_deepspeed
-  python: "3.12"
+  # GPU BYOD tests must use Python 3.10 (the ray-ml GPU image's version).
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/benchmark
 
