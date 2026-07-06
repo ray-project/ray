@@ -106,8 +106,19 @@ def _get_doctree(env, docname, cache):
     return cache[docname]
 
 
-def _clean(text: str) -> str:
-    """Collapse whitespace/newlines into a single line."""
+def _clean(text) -> str:
+    """Collapse whitespace/newlines into a single line, coercing non-strings.
+
+    A front-matter/docinfo ``description`` can be parsed as a non-string — a
+    YAML scalar (number, bool) or a list — so coerce rather than let a stray
+    value raise ``AttributeError`` and crash the whole build.
+    """
+    if text is None:
+        return ""
+    if isinstance(text, (list, tuple)):
+        text = " ".join(str(item) for item in text)
+    elif not isinstance(text, str):
+        text = str(text)
     return " ".join(text.split())
 
 
@@ -186,7 +197,9 @@ def _description(env, docname, meta_types, cache) -> str:
 
 
 def _is_excluded(docname: str, patterns) -> bool:
-    return any(fnmatch.fnmatch(docname, pat) for pat in patterns)
+    # fnmatchcase (not fnmatch) so matching is case-sensitive on every platform;
+    # fnmatch case-normalizes per-OS, but Sphinx docnames are case-sensitive.
+    return any(fnmatch.fnmatchcase(docname, pat) for pat in patterns)
 
 
 def _is_notebook(env, docname) -> bool:
@@ -565,6 +578,12 @@ def on_build_finished(app, exception):
             "[llms_txt] skipped (llms_txt_build is False; e.g. a PR preview build)"
         )
         return
+
+    if not getattr(config, "html_baseurl", None):
+        logger.warning(
+            "[llms_txt] html_baseurl is not set; generated links will be "
+            "relative, but the llms.txt spec expects absolute URLs."
+        )
 
     env = app.env
     exclude = list(getattr(config, "llms_txt_exclude", None) or [])

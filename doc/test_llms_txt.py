@@ -321,10 +321,26 @@ def test_build_gate():
     return True
 
 
+def test_clean_coercion():
+    """`_clean` coerces non-string front-matter values instead of crashing the
+    build (a YAML `description:` can parse to a number, bool, or list)."""
+    import sys
+
+    sys.path.insert(0, _EXT_DIR)
+    import llms_txt
+
+    _check(llms_txt._clean("  a   b ") == "a b", "string not collapsed")
+    _check(llms_txt._clean(123) == "123", "int not coerced")
+    _check(llms_txt._clean(["a", "b"]) == "a b", "list not joined")
+    _check(llms_txt._clean(None) == "", "None not handled")
+    return True
+
+
 if __name__ == "__main__":
     test_llms_txt()
     test_notebook_exclusion()
     test_build_gate()
+    test_clean_coercion()
     print(
         "PASS: llms_txt extension produced a correct index, Optional section, "
         "llms-full shards, excludes notebooks by source type, and honors the "
