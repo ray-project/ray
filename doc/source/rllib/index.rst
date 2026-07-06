@@ -135,8 +135,8 @@ on the collected data, and a model update step.
     # Build the algorithm.
     algo = config.build_algo()
 
-    # Train it for 5 iterations ...
-    for _ in range(5):
+    # Train it for 2 iterations ...
+    for _ in range(2):
         pprint(algo.train())
 
 At the end of your script, you evaluate the trained Algorithm and release all its resources:

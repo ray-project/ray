@@ -115,8 +115,8 @@ The following examples demonstrate this on RLlib's :py:class:`~ray.rllib.algorit
             results = tune.Tuner(
                 "PPO",
                 param_space=config,
-                # Train for 4000 timesteps (2 iterations).
-                run_config=tune.RunConfig(stop={"num_env_steps_sampled_lifetime": 4000}),
+                # Train for 2000 timesteps (1 iteration).
+                run_config=tune.RunConfig(stop={"num_env_steps_sampled_lifetime": 2000}),
             ).fit()
 
 .. _rllib-key-concepts-environments:
