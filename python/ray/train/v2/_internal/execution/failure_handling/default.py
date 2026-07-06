@@ -1,13 +1,11 @@
 import logging
-from typing import Optional
 
 from .failure_policy import FailureDecision, FailurePolicy
-from ray.exceptions import RayActorError
 from ray.train.v2._internal.exceptions import (
     WorkerGroupStartupFailedError,
     WorkerGroupStartupTimeoutError,
-    WorkerHealthCheckFailedError,
 )
+from ray.train.v2._internal.execution.worker_group.poll import _is_preempted_actor
 from ray.train.v2.api.config import FailureConfig
 from ray.train.v2.api.exceptions import (
     ControllerError,
@@ -23,17 +21,6 @@ RETRYABLE_CONTROLLER_ERRORS = (
     WorkerGroupStartupFailedError,
     WorkerGroupStartupTimeoutError,
 )
-
-
-def _is_preempted_actor(error: Optional[Exception]) -> bool:
-    """Whether a worker error is a node-preemption-caused death.
-
-    A worker killed by a node reclaim surfaces as a WorkerHealthCheckFailedError
-    wrapping a RayActorError whose ``preempted`` flag is set.
-    """
-    if isinstance(error, WorkerHealthCheckFailedError):
-        error = error.health_check_failure
-    return isinstance(error, RayActorError) and error.preempted
 
 
 def _is_preemption_failure(training_failed_error: TrainingFailedError) -> bool:

@@ -798,14 +798,18 @@ class TrainController:
 
         Exits the drain on the first of:
         - Training is done (all ranks returned cleanly): the run finishes.
-        - A worker errors: routed through the failure policy, which charges the
-          preemption budget if a worker was killed by the reclaim
-          (`RayActorError.preempted`) and `max_failures` otherwise (e.g. a bug
-          in the training function while draining).
-        - The reclaim deadline elapses (capped at
-          `DEFAULT_PREEMPTION_DEADLINE_S` when unknown) with workers still
-          running: force a teardown via a `PreemptionError` with
-          `drain_timed_out=True`.
+        - A worker errors with something that is NOT a reclaim kill (e.g. a bug
+          in the training function while draining): routed through the normal
+          WorkerGroupError path, charged against `max_failures`.
+        - Every rank has exited (typically killed by the reclaim,
+          `RayActorError.preempted`) or the reclaim deadline elapses (capped at
+          `DEFAULT_PREEMPTION_DEADLINE_S` when unknown) with ranks still
+          running: a `PreemptionError` is routed through the failure policy,
+          charged against `max_preemption_failures`.
+
+        Reclaim kills of a subset of ranks do NOT end the drain: the healthy
+        ranks keep running (e.g. finishing emergency checkpoints) until every
+        rank has exited or the deadline passes.
 
         On RETRY the run transitions to RestartingState (fresh worker group on
         healthy nodes, resuming from the latest checkpoint); once the relevant
@@ -828,11 +832,15 @@ class TrainController:
                 ),
             )
 
-        # A worker errored while draining. The failure policy classifies it:
-        # a reclaim kill (RayActorError.preempted) is charged against the
-        # preemption budget, anything else (e.g. a bug in the training
-        # function's just-in-time checkpoint) against `max_failures`.
-        if worker_group_status.errors:
+        # Worker errors that are NOT reclaim kills (e.g. a bug in the training
+        # function's just-in-time checkpoint) are real failures: fail fast
+        # through the normal WorkerGroupError path so they are charged against
+        # `max_failures`, not the (unlimited-by-default) preemption budget.
+        # Reclaim kills are part of the drain and handled below.
+        if (
+            worker_group_status.errors
+            and not worker_group_status.has_preempted_worker()
+        ):
             worker_group_error = worker_group_status.get_worker_group_error()
             failure_decision = self._failure_policy.make_decision(
                 training_failed_error=worker_group_error,
@@ -841,9 +849,9 @@ class TrainController:
                 failure_decision, training_failed_error=worker_group_error
             )
 
-        # All workers are still running. Keep the preemption info current as
-        # additional nodes are drained: merge rather than overwrite so a
-        # staggered preemption doesn't erase earlier preempted nodes/ranks.
+        # Keep the preemption info current as additional nodes are drained:
+        # merge rather than overwrite so a staggered preemption doesn't erase
+        # earlier preempted nodes/ranks.
         new_preemption_info = worker_group_status.get_preemption_info()
         if new_preemption_info is not None:
             preemption_info = merge_preemption_info(
@@ -852,10 +860,17 @@ class TrainController:
         else:
             preemption_info = controller_state.preemption_info
 
-        # Stay in PreemptingState until the reclaim deadline passes.
-        if not self._is_preemption_deadline_exceeded(
+        # Stay in PreemptingState while ranks are still running and the reclaim
+        # deadline has not passed, even if some ranks were already killed by
+        # the reclaim -- the healthy ranks keep training/checkpointing.
+        # TODO(lehui): Decouple the worker group teardown from the node reclaim
+        # deadline (e.g. a configurable grace period and a survivor emergency
+        # checkpoint via a relaxed report() barrier) so healthy ranks can be
+        # held deliberately rather than until the cloud's deadline.
+        deadline_exceeded = self._is_preemption_deadline_exceeded(
             preemption_info, controller_state.detected_at_s
-        ):
+        )
+        if not worker_group_status.finished and not deadline_exceeded:
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
@@ -865,10 +880,13 @@ class TrainController:
                 ),
             )
 
-        # The deadline passed with workers still running: force a teardown.
+        # The drain ended: every rank exited (reclaim kills carried in
+        # `worker_failures`) or the deadline forced a teardown with ranks still
+        # running (`drain_timed_out=True`).
         preemption_error = PreemptionError(
             preemption_info=preemption_info,
-            drain_timed_out=True,
+            worker_failures=worker_group_status.errors,
+            drain_timed_out=not worker_group_status.finished,
         )
         failure_decision = self._failure_policy.make_decision(
             training_failed_error=preemption_error,

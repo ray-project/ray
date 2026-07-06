@@ -238,15 +238,17 @@ async def test_preemption_drain_then_restart():
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), PreemptingState)
 
-    # The reclaim kills the workers -> route through the failure policy, which
-    # classifies the reclaim kill (RayActorError.preempted) against the
-    # preemption budget (see test_failure_policy.py), and restart.
+    # The reclaim kills all workers -> the drain is complete: a PreemptionError
+    # carrying the kill errors routes through the failure policy, and restart.
     worker_group_before.preempt_kill_worker(0)
     worker_group_before.preempt_kill_worker(1)
     failure_policy.queue_decision(FailureDecision.RETRY)
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), RestartingState)
-    assert isinstance(controller.get_state().training_failed_error, WorkerGroupError)
+    error = controller.get_state().training_failed_error
+    assert isinstance(error, PreemptionError)
+    assert error.drain_timed_out is False
+    assert set(error.worker_failures) == {0, 1}
 
     await _advance_to_running(controller, scaling_policy, num_workers=2)
     # Full restart -> fresh worker group.
@@ -293,12 +295,56 @@ async def test_preemption_staggered_merges_while_draining():
     assert state.preemption_info.preempted_ranks == [0, 1]
     assert state.preemption_info.deadline_ms == far_future - 1000
 
-    # The reclaim kills the workers -> restart via the failure policy.
+    # The reclaim kills the workers -> the PreemptionError carries the merged
+    # info from both staggered preemptions.
     worker_group.preempt_kill_worker(0)
     worker_group.preempt_kill_worker(1)
     failure_policy.queue_decision(FailureDecision.RETRY)
     await controller._run_control_loop_iteration()
-    assert isinstance(controller.get_state(), RestartingState)
+    state = controller.get_state()
+    assert isinstance(state, RestartingState)
+    assert isinstance(state.training_failed_error, PreemptionError)
+    assert state.training_failed_error.preemption_info.preempted_ranks == [0, 1]
+
+
+@pytest.mark.asyncio
+async def test_preemption_partial_kill_keeps_draining():
+    """A reclaim kill of a subset of ranks does not end the drain: the healthy
+    ranks keep running (e.g. finishing emergency checkpoints) until every rank
+    has exited or the deadline passes."""
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    train_run_context = create_dummy_run_context()
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=train_run_context,
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
+
+    await _advance_to_running(controller, scaling_policy, num_workers=2)
+    worker_group = controller.get_worker_group()
+
+    # Signal (no deadline) -> PreemptingState.
+    info = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"node-a": [0]})
+    worker_group.preempt_worker(0, info)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), PreemptingState)
+
+    # Rank 0 is killed by the reclaim while rank 1 is still running: the drain
+    # continues so the healthy rank can keep training/checkpointing.
+    worker_group.preempt_kill_worker(0)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), PreemptingState)
+
+    # Once the remaining rank exits too, the drain completes and restarts.
+    worker_group.finish_worker(1)
+    failure_policy.queue_decision(FailureDecision.RETRY)
+    await controller._run_control_loop_iteration()
+    state = controller.get_state()
+    assert isinstance(state, RestartingState)
+    assert isinstance(state.training_failed_error, PreemptionError)
+    assert state.training_failed_error.drain_timed_out is False
 
 
 @pytest.mark.asyncio

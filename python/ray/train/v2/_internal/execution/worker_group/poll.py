@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Set
 
 from ray._private.ray_logging import NUMBERS
+from ray.exceptions import RayActorError
 from ray.train.v2._internal.exceptions import (
     UserExceptionWithTraceback,
     WorkerHealthCheckFailedError,
@@ -14,6 +15,17 @@ from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.types import ObjectRef
 
 ERR_CHAR_LIMIT = 1000
+
+
+def _is_preempted_actor(error: Optional[Exception]) -> bool:
+    """Whether a worker error is a node-preemption-caused death.
+
+    A worker killed by a node reclaim surfaces as a WorkerHealthCheckFailedError
+    wrapping a RayActorError whose ``preempted`` flag is set.
+    """
+    if isinstance(error, WorkerHealthCheckFailedError):
+        error = error.health_check_failure
+    return isinstance(error, RayActorError) and error.preempted
 
 
 def _normalize_error_string(error_str: str) -> str:
@@ -97,6 +109,10 @@ class WorkerGroupPollStatus:
             if status.preemption_info is not None:
                 return status.preemption_info
         return None
+
+    def has_preempted_worker(self) -> bool:
+        """Whether any worker was killed by a node reclaim."""
+        return any(_is_preempted_actor(error) for error in self.errors.values())
 
     @property
     def finished(self) -> bool:
