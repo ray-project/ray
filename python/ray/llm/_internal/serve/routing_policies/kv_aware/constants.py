@@ -11,3 +11,8 @@ DEFAULT_KV_INDEXER_THREADS = 4
 # replicas (PORT_BASE + replica rank). Dynamo's selection service dials it to recover
 # events missed before its SUB connected.
 DEFAULT_KV_EVENTS_REPLAY_PORT_OFFSET = 1000
+
+# experimental_configs key carrying dynamo RouterConfigOverride fields (e.g.
+# overlap_score_weight, prefill_load_scale) applied to every KV-aware select,
+# tuning how scoring trades KV overlap against prefill/decode load.
+KV_SELECT_OVERRIDES_KEY = "KV_SELECT_OVERRIDES"

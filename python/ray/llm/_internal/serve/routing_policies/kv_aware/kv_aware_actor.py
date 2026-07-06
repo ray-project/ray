@@ -95,12 +95,20 @@ class KVRouterActor:
        in-flight load feeds back into scoring for subsequent requests.
     """
 
-    def __init__(self, indexer_threads: int = DEFAULT_KV_INDEXER_THREADS):
+    def __init__(
+        self,
+        indexer_threads: int = DEFAULT_KV_INDEXER_THREADS,
+        select_overrides: Optional[Dict[str, Any]] = None,
+    ):
         # KV-cache block size, learned once from the first replica's reported
         # engine config and passed to the selection service, which uses it to
         # track the worker's active load and index its KV blocks for overlap.
         self._block_size: Optional[int] = None
         self._indexer_threads = indexer_threads
+        # Optional dynamo RouterConfigOverride fields (e.g. overlap_score_weight,
+        # prefill_load_scale) forwarded on every select to tune how the scoring
+        # trades KV overlap against prefill/decode load.
+        self._select_overrides = select_overrides or None
         # _replica_id_by_worker maps a Dynamo worker id to the running replica's full
         # id string, kept in sync with the deployment's live replicas over LongPoll.
         # NOTE (jeffreywang): _replica_id_by_worker is later used by select_worker
@@ -316,15 +324,16 @@ class KVRouterActor:
         # keyed by ``selection_id``. The matching ``on_request_added`` then books
         # the reservation by that id alone, so the prompt is tokenized/hashed once
         # here and never re-sent (see ``create_reservation`` there).
-        selection = await self._svc.select(
-            {
-                "model_name": _MODEL_NAME,
-                "tenant_id": _TENANT_ID,
-                "selection_id": request_id,
-                "token_ids": token_ids,
-                "allowed_worker_ids": allowed_worker_ids,
-            }
-        )
+        select_request = {
+            "model_name": _MODEL_NAME,
+            "tenant_id": _TENANT_ID,
+            "selection_id": request_id,
+            "token_ids": token_ids,
+            "allowed_worker_ids": allowed_worker_ids,
+        }
+        if self._select_overrides:
+            select_request["router_config_override"] = self._select_overrides
+        selection = await self._svc.select(select_request)
         return {
             "worker_id": selection["worker_id"],
             "dp_rank": selection["dp_rank"],

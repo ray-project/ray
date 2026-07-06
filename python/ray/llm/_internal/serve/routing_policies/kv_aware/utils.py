@@ -7,6 +7,7 @@ from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     DEFAULT_KV_INDEXER_THREADS,
     KV_INDEXER_THREADS_KEY,
+    KV_SELECT_OVERRIDES_KEY,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     KV_ROUTER_ACTOR_NAME,
@@ -58,6 +59,9 @@ def _maybe_setup_kv_aware_routing(
             init_kwargs={
                 "indexer_threads": llm_config.experimental_configs.get(
                     KV_INDEXER_THREADS_KEY, DEFAULT_KV_INDEXER_THREADS
+                ),
+                "select_overrides": llm_config.experimental_configs.get(
+                    KV_SELECT_OVERRIDES_KEY
                 ),
             },
         ),

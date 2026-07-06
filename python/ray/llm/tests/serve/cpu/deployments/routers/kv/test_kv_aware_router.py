@@ -151,7 +151,7 @@ def test_build_openai_app_attaches_kv_actor():
     actor_cfg = configs[0]
     assert actor_cfg.get_actor_class().__ray_actor_class__ is KVRouterActor
     assert actor_cfg.actor_options["num_cpus"] == 0
-    assert actor_cfg.init_kwargs == {"indexer_threads": 4}
+    assert actor_cfg.init_kwargs == {"indexer_threads": 4, "select_overrides": None}
 
 
 def test_configurable_indexer_threads():
@@ -402,6 +402,44 @@ async def test_select_worker_requires_tokens():
 
     with pytest.raises(ValueError, match="non-empty token_ids"):
         await actor.select_worker("req-empty", [], [get_worker_id("r1")])
+
+
+class _RecordingSelectionService:
+    """Records the select request and returns a fixed selection."""
+
+    def __init__(self, worker_id: int):
+        self.request = None
+        self._worker_id = worker_id
+
+    async def select(self, request):
+        self.request = request
+        return {
+            "worker_id": self._worker_id,
+            "dp_rank": 0,
+            "overlap": {"longest_matched": 0},
+            "effective_prefill_tokens": 3,
+        }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "overrides", [None, {"overlap_score_weight": 0.5, "prefill_load_scale": 2.0}]
+)
+async def test_select_worker_forwards_router_config_override(overrides):
+    """KV_SELECT_OVERRIDES ride every select as router_config_override; absent
+    when unconfigured so dynamo keeps its defaults."""
+    worker_id = get_worker_id("r1")
+    actor = KVRouterActor.__new__(KVRouterActor)
+    actor._svc = _RecordingSelectionService(worker_id)
+    actor._select_overrides = overrides
+
+    await actor.select_worker("req", [1, 2, 3], [worker_id])
+
+    request = actor._svc.request
+    if overrides:
+        assert request["router_config_override"] == overrides
+    else:
+        assert "router_config_override" not in request
 
 
 @pytest.mark.asyncio
