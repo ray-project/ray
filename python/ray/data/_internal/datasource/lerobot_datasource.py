@@ -209,22 +209,35 @@ def _resolve_filesystem(
     filesystem: Optional["pyarrow.fs.FileSystem | fsspec.AbstractFileSystem"] = None,
     storage_options: Optional[Dict[str, Any]] = None,
 ) -> Tuple["fsspec.AbstractFileSystem", str, str, Dict[str, Any], bool]:
-    """Resolve the fsspec filesystem and paths for one LeRobot dataset *root*.
+    """Resolve the fsspec filesystem and paths for one LeRobot dataset root.
 
-    The lerobot library uses fsspec under the hood and fsspec has native support
-    for `hf://` Hugging Face datasets. So we resolve any filesystem via fsspec internally.
+    The lerobot library uses fsspec under the hood, and fsspec has native
+    support for ``hf://`` Hugging Face datasets, so any filesystem is resolved
+    via fsspec internally:
 
     * **metadata + parquet** are read through a single fsspec filesystem,
       returned as ``fs`` with the dataset path ``fs_root`` relative to it;
-    * **video files** are streamed *by URI* through torchcodec — lerobot opens
-      those itself via ``fsspec.open``, not through ``fs`` — so they get the URI
-      ``video_root_uri`` and options ``video_storage_options`` instead.
+    * **video files** are streamed by URI through torchcodec -- lerobot opens
+      those itself via ``fsspec.open``, not through ``fs`` -- so they get the
+      URI ``video_root_uri`` and options ``video_storage_options`` instead.
 
-    The ``s3://anonymous@…`` convention is also mapped onto the by-URI video
-    path: the marker is stripped from ``video_root_uri`` and ``anon=True`` is
-    threaded into ``video_storage_options`` (s3fs spells anonymous ``anon=True``).
+    The ``s3://anonymous@…`` convention is mapped onto the by-URI video path:
+    the marker is stripped from ``video_root_uri`` and ``anon=True`` is threaded
+    into ``video_storage_options`` (s3fs spells anonymous ``anon=True``).
 
-    A pyarrow *filesystem* cannot expose credentials, so pass *storage_options* alongside it for credentialed cloud video.
+    Args:
+        root: Path or URI of the dataset root.
+        filesystem: Optional pyarrow or fsspec filesystem. A pyarrow filesystem
+            cannot expose credentials, so pass ``storage_options`` alongside it
+            for credentialed cloud video.
+        storage_options: Optional fsspec options (credentials, ``endpoint_url``,
+            ...) applied to the resolved filesystem and the by-URI video path.
+
+    Returns:
+        A ``(fs, fs_root, video_root_uri, video_storage_options,
+        video_creds_unavailable)`` tuple. ``video_creds_unavailable`` is True
+        when a pyarrow ``filesystem`` was given that cannot supply credentials
+        to the by-URI video path.
     """
     import fsspec
     from fsspec.core import split_protocol
@@ -335,18 +348,30 @@ def _build_root(
     video_storage_options: Dict[str, Any],
     frame_tolerance_s: Optional[float] = None,
 ) -> Tuple[_LeRobotRoot, pa.Table]:
-    """Compute the per-root derived state bundle for a (pristine) lerobot
-    ``LeRobotDatasetMetadata`` instance.  Does not mutate *meta*.
+    """Compute the per-root derived state bundle for a lerobot
+    ``LeRobotDatasetMetadata`` instance.
 
-    *root* is the original dataset location (where data + video files live). For
-    a remote root ``meta.root`` points at a local temp copy of ``meta/`` only, so
-    data/video paths must be resolved against *root* — not ``meta.root``.
+    Args:
+        meta: Upstream lerobot metadata for one dataset root. Not mutated.
+        root: The original dataset location, where the data and video files
+            live. For a remote root ``meta.root`` points at a local temp copy of
+            ``meta/`` only, so data and video paths are resolved against
+            ``root``, not ``meta.root``.
+        fs: Resolved fsspec filesystem for metadata and parquet I/O; captured on
+            the returned :class:`_LeRobotRoot` so workers reuse it.
+        fs_root: Dataset path relative to ``fs``'s root, for path joining.
+        video_root_uri: Root URI for the by-URI video decode path (videos are
+            streamed through torchcodec/fsspec, not through ``fs``).
+        video_storage_options: fsspec options for that by-URI video path.
+        frame_tolerance_s: Max seconds a decoded frame's timestamp may differ
+            from a row's before the frame is rejected; ``None`` uses the
+            ``0.5 / fps`` default.
 
-    *fs* / *fs_root* (the resolved fsspec filesystem and the relative dataset
-    path) are used for the parquet schema read and captured on the returned
-    :class:`_LeRobotRoot` so workers reuse them.  *video_root_uri* /
-    *video_storage_options* are the URI + fsspec options for the by-URI video
-    decode path (see :func:`_resolve_filesystem`).
+    Returns:
+        A ``(root_bundle, episodes_table)`` tuple: the :class:`_LeRobotRoot`
+        worker-shipped state, and the per-root episodes table (augmented with
+        ``_global_from_index`` / ``_global_to_index``) kept on the driver for
+        planning.
     """
     root_uri = str(root).rstrip("/")
     fs_root = fs_root.rstrip("/")
@@ -589,7 +614,7 @@ class _LeRobotReadTask(ReadTask):
         batch's row order.
 
         Groups rows by video file and decodes each file's timestamps from the
-        shared (per-segment) decoder *cache*, so a file's decoder is reused
+        shared (per-segment) decoder ``cache``, so a file's decoder is reused
         across batches instead of being reopened. Returns
         ``{video_key: list[np.ndarray HWC uint8]}``.
         """
@@ -645,7 +670,7 @@ class _LeRobotReadTask(ReadTask):
         structs (``{bytes, path}``) inside the data parquet — so, unlike video,
         there is no separate file or timestamp matching: each row already holds
         its own encoded frame. Returns ``{image_key: list[np.ndarray HWC uint8]}``
-        aligned to *full*'s row order.
+        aligned to ``full``'s row order.
         """
 
         import io
@@ -755,7 +780,7 @@ class _LeRobotReadTask(ReadTask):
         stats_json: str,
     ) -> pa.Table:
         """Assemble one Arrow batch from a parquet-row table, decoded camera
-        frames, tasks, and per-dataset stats.  *camera_keys* covers both video
+        frames, tasks, and per-dataset stats.  ``camera_keys`` covers both video
         and image cameras: image columns already exist in the parquet rows as
         encoded-byte structs and are overwritten in place by their decoded
         tensors, while video columns are added."""
@@ -819,7 +844,7 @@ class LeRobotDatasource(Datasource):
                 the URI scheme — including the ``s3://anonymous@bucket/…``
                 convention for public buckets. Applied to every root.
             storage_options: Extra options forwarded to ``fsspec`` (e.g.
-                credentials or a custom ``endpoint_url``). When *filesystem* is
+                credentials or a custom ``endpoint_url``). When ``filesystem`` is
                 omitted these also select the metadata/parquet filesystem; they
                 always supply credentials for the by-URI video decode path
                 (lerobot opens video files itself via ``fsspec``). Applied to
