@@ -161,8 +161,13 @@ steps:
   #   2. Cross-file build dep: llmgpubuild is defined in llm.rayci.yml. Confirm
   #      a serve.rayci.yml step can depend_on it, or the step must live there.
   #   3. Instance type: Kourosh said these run on A10G (g5); the llm gpu step
-  #      uses g6-large. Confirm the right one. DPServer example needs 2 GPUs
-  #      (data_parallel_size=2) and may need the multi-GPU lane instead.
+  #      uses g6-large. Confirm the right one.
+  # This lane is single-GPU, so the two multi-GPU examples keep :skipif: True:
+  # DPServer (data_parallel_size=2) and OpenAiIngress (deploys two models, one
+  # A10G each) each need 2 GPUs and would hang here. Enabling them is a
+  # follow-up on a multi-GPU doctest lane (the multi_gpu_4 tag already routes
+  # to gpu-large --gpus 4 in llm.rayci.yml). The LLMServer and
+  # build_llm_deployment examples are single-GPU and run on this lane.
   - label: ":ray-serve: serve: llm doc tests (GPU)"
     tags:
       - serve

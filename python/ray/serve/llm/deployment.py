@@ -132,6 +132,7 @@ class DPServer(_DPServer):
 
     Examples:
         .. testcode::
+            :skipif: True
 
             from ray import serve
             from ray.serve.llm import LLMConfig, build_dp_deployment
