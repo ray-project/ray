@@ -33,13 +33,17 @@ UnorderedActorTaskExecutionQueue::UnorderedActorTaskExecutionQueue(
     std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
     bool is_asyncio,
     int fiber_max_concurrency,
-    const std::vector<ConcurrencyGroup> &concurrency_groups)
+    const std::vector<ConcurrencyGroup> &concurrency_groups,
+    ExecuteTaskCallback execute_task,
+    CancelTaskCallback cancel_task)
     : task_execution_service_(task_execution_service),
       main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),
       task_event_buffer_(task_event_buffer),
       pool_manager_(pool_manager),
       fiber_state_manager_(fiber_state_manager),
+      execute_task_(std::move(execute_task)),
+      cancel_task_(std::move(cancel_task)),
       is_asyncio_(is_asyncio) {
   if (is_asyncio_) {
     std::stringstream ss;
@@ -60,7 +64,7 @@ void UnorderedActorTaskExecutionQueue::CancelAllQueuedTasks(const std::string &m
 
   while (!queued_actor_tasks_.empty()) {
     auto it = queued_actor_tasks_.begin();
-    it->second.Cancel(status);
+    cancel_task_(it->second, status);
     pending_task_id_to_is_canceled.erase(it->first);
     queued_actor_tasks_.erase(it);
   }
@@ -124,8 +128,9 @@ void UnorderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
   }
 
   if (task_to_cancel.has_value()) {
-    task_to_cancel->Cancel(Status::SchedulingCancelled(
-        "In favor of the same task with larger attempt number"));
+    cancel_task_(*task_to_cancel,
+                 Status::SchedulingCancelled(
+                     "In favor of the same task with larger attempt number"));
   }
 }
 
@@ -220,10 +225,10 @@ void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
 
   // Accept can be very long, and we shouldn't hold a lock.
   if (is_canceled) {
-    request.Cancel(
-        Status::SchedulingCancelled("Task is canceled before it is scheduled."));
+    cancel_task_(request,
+                 Status::SchedulingCancelled("Task is canceled before it is scheduled."));
   } else {
-    request.Execute();
+    execute_task_(request);
   }
 
   std::optional<TaskToExecute> request_to_run;

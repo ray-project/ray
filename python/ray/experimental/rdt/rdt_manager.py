@@ -901,6 +901,11 @@ class RDTManager:
 
         with self._lock:
             rdt_meta = self._managed_rdt_metadata.pop(object_id)
+        # TODO(#60434): Once the driver has some notion about where rdt args are stored, we can
+        # integrate __ray_free__ with the current free objects RPC and avoid having to call
+        # an actor task here.
+        if not ray.is_initialized():
+            return
         src_actor = rdt_meta.src_actor
         tensor_transport_backend = rdt_meta.tensor_transport_backend
         tensor_transport_meta = rdt_meta.tensor_transport_meta

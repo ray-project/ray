@@ -34,6 +34,7 @@ class MockedWorker:
 def mocked_worker():
     mocked_core_worker = Mock()
     mocked_core_worker.try_read_next_object_ref_stream.return_value = None
+    mocked_core_worker.try_read_next_object_ref_stream_n.return_value = None
     mocked_core_worker.async_delete_object_ref_stream.return_value = None
     mocked_core_worker.create_object_ref_stream.return_value = None
     mocked_core_worker.peek_object_ref_stream.return_value = [], []
@@ -94,6 +95,16 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
 
             with pytest.raises(StopIteration):
                 generator._next_sync(timeout_s=0)
+
+
+def test_streaming_object_ref_generator_consume_bulk_unit(mocked_worker):
+    c = mocked_worker.core_worker
+    generator_ref = ray.ObjectRef.from_random()
+    generator = ObjectRefGenerator(generator_ref, mocked_worker)
+
+    generator._consume_next_ref_n(2)
+
+    c.try_read_next_object_ref_stream_n.assert_called_once_with(generator_ref, 2)
 
 
 def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):

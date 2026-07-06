@@ -511,6 +511,22 @@ class TestIterThreaded:
             list(it)
 
     @pytest.mark.parametrize("num_workers", [1, 4])
+    def test_non_generator_fn_construction_raises(self, num_workers: int):
+        """When ``fn`` is a non-generator function that raises during
+        construction (e.g., setup code before returning the iterator), the
+        exception must surface to the consumer rather than hang. Regression
+        for the case where ``fn(_locked_iter())`` was called outside the
+        worker's try/finally."""
+
+        def fn(it: Iterator[int]) -> Iterator[int]:
+            # Body runs eagerly at call time (not a generator function).
+            raise ValueError("boom in fn construction")
+
+        it = iter_threaded(iter(range(100)), fn, num_workers=num_workers)
+        with pytest.raises(ValueError, match="boom in fn construction"):
+            list(it)
+
+    @pytest.mark.parametrize("num_workers", [1, 4])
     def test_consumer_break_stops_workers(self, num_workers: int):
         """When the consumer breaks early and the iterator is no longer
         referenced, CPython GCs the generator immediately, which runs the
@@ -545,12 +561,52 @@ class TestIterThreaded:
             )
 
     def test_num_workers_validation(self):
-        with pytest.raises(ValueError, match="at least 1"):
+        with pytest.raises(ValueError, match="num_workers must be at least 1"):
             list(iter_threaded(iter([1]), _identity, num_workers=0))
+
+    def test_output_buffer_size_validation(self):
+        with pytest.raises(ValueError, match="output_buffer_size must be at least 1"):
+            list(iter_threaded(iter([1]), _identity, output_buffer_size=0))
 
     def test_empty_base_iterator(self):
         output = list(iter_threaded(iter([]), _identity, num_workers=4))
         assert output == []
+
+    @pytest.mark.parametrize("num_workers,output_buffer_size", [(1, 1), (2, 2), (4, 2)])
+    def test_in_flight_items_bounded_by_output_buffer_size(
+        self, num_workers: int, output_buffer_size: int
+    ):
+        """Without consumption, workers must not pull more than
+        ``output_buffer_size`` items from the base iterator. Pulled-but-not-
+        consumed items are 'in flight', and the bound caps them."""
+        pulled = 0
+        pulled_lock = threading.Lock()
+
+        def counting_iter() -> Iterator[int]:
+            nonlocal pulled
+            for i in range(1_000_000):
+                with pulled_lock:
+                    pulled += 1
+                yield i
+
+        it = iter_threaded(
+            counting_iter(),
+            _identity,
+            num_workers=num_workers,
+            output_buffer_size=output_buffer_size,
+        )
+
+        # Trigger the generator body (which starts the workers), then stop
+        # consuming. Workers fill in-flight up to the bound and then block
+        # on _acquire_slot.
+        next(it)
+        time.sleep(0.3)
+
+        with pulled_lock:
+            # Consumer took 1 → in-flight ≤ K. Plus the 1 already consumed.
+            assert (
+                pulled <= 1 + output_buffer_size
+            ), f"Pulled {pulled}, expected <= {1 + output_buffer_size}"
 
 
 if __name__ == "__main__":

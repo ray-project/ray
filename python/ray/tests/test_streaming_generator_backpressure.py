@@ -1,15 +1,23 @@
 import asyncio
+import gc
 import os
 import signal
 import sys
+import threading
 import time
+from typing import List, Optional, Tuple, Type
 
 import numpy as np
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray.util.state import list_tasks
+
+
+def _list_tasks(**kwargs):
+    """Same as ``list_tasks`` but pinned to this test's cluster. When several local Ray instances exist"""
+    return list_tasks(address=ray.get_runtime_context().gcs_address, **kwargs)
 
 
 @pytest.mark.parametrize("actor", [False, True])
@@ -175,7 +183,7 @@ def test_caller_failure_doesnt_hang(shutdown_only):
     caller.f.remote(None, False, "1")
 
     def verify():
-        task = list_tasks(filters=[("name", "=", "1")])[0]
+        task = _list_tasks(filters=[("name", "=", "1")])[0]
         assert task.state == "FINISHED"
         return True
 
@@ -187,7 +195,7 @@ def test_caller_failure_doesnt_hang(shutdown_only):
     r = caller.f.remote("exc", False, "2")  # noqa
 
     def verify():
-        task = list_tasks(filters=[("name", "=", "2")])[0]
+        task = _list_tasks(filters=[("name", "=", "2")])[0]
         assert task.state == "FINISHED"
         return True
 
@@ -199,7 +207,7 @@ def test_caller_failure_doesnt_hang(shutdown_only):
     r = caller.f.remote("exit", False, "3")  # noqa
 
     def verify():
-        task = list_tasks(filters=[("name", "=", "3")])[0]
+        task = _list_tasks(filters=[("name", "=", "3")])[0]
         assert task.state == "FINISHED"
         return True
 
@@ -210,12 +218,12 @@ def test_caller_failure_doesnt_hang(shutdown_only):
     caller = Caller.remote()
     r = caller.f.remote(None, True, "4")  # noqa
     wait_for_condition(
-        lambda: list_tasks(filters=[("name", "=", "4")])[0].state == "RUNNING"
+        lambda: _list_tasks(filters=[("name", "=", "4")])[0].state == "RUNNING"
     )
     ray.kill(caller)
 
     def verify():
-        task = list_tasks(filters=[("name", "=", "4")])[0]
+        task = _list_tasks(filters=[("name", "=", "4")])[0]
         assert task.state == "FAILED"
         return True
 
@@ -239,6 +247,17 @@ def test_backpressure_invalid(shutdown_only):
 
     a = A.remote()
     gen = a.f.options(_generator_backpressure_num_objects=1).remote()
+    with pytest.raises(ValueError):
+        ray.get(next(gen))
+
+    @ray.remote(_actor_generator_backpressure_num_objects=1)
+    class AsyncActorWithActorBP:
+        async def f(self):
+            for i in range(10):
+                yield i
+
+    async_actor_bp = AsyncActorWithActorBP.remote()
+    gen = async_actor_bp.f.remote()
     with pytest.raises(ValueError):
         ray.get(next(gen))
 
@@ -298,6 +317,7 @@ def test_backpressure_pause_signal(shutdown_only):
     """Verify the signal can be caught while the main thread is blocked
     by a backpressure.
     """
+    ray.init(num_cpus=2)
 
     @ray.remote(
         _generator_backpressure_num_objects=1,
@@ -312,16 +332,711 @@ def test_backpressure_pause_signal(shutdown_only):
     print(ray.get(next(gen)))
 
     def wait_for_task():
-        t = list_tasks(filters=[("name", "=", "backpressure_task")])[0]
+        t = _list_tasks(filters=[("name", "=", "backpressure_task")])[0]
         assert t.state == "RUNNING"
         return True
 
     wait_for_condition(wait_for_task)
 
-    t = list_tasks(filters=[("name", "=", "backpressure_task")])[0]
+    t = _list_tasks(filters=[("name", "=", "backpressure_task")])[0]
     os.kill(t.worker_pid, signal.SIGTERM)
     with pytest.raises(ray.exceptions.WorkerCrashedError):
         ray.get(gen._generator_ref)
+
+
+# ----------------------------------------------------------------------------
+# Actor-wide streaming-generator backpressure
+# ----------------------------------------------------------------------------
+
+_ACTOR_GEN_BP_WAIT_S = 30
+
+
+@ray.remote
+class TagReporter:
+    """Records ``(tag, i)`` for each value a generator is about to yield."""
+
+    def __init__(self):
+        self.records: List[Tuple[str, int]] = []
+
+    def report(self, tag: str, i: int) -> None:
+        self.records.append((tag, i))
+
+    def total_len(self) -> int:
+        return len(self.records)
+
+    def count_tag(self, tag: str) -> int:
+        return sum(1 for t, _ in self.records if t == tag)
+
+
+def _dual_stream_actor_class(
+    *,
+    actor_cap: int,
+    method_cap: Optional[int],
+) -> Type:
+    """Threaded dual-stream actor: shared actor-wide cap, optional tighter per-method cap.
+
+    When ``method_cap`` is ``None``, only ``_actor_generator_backpressure_num_objects``
+    is used (owner threshold includes that cap via ``EffectiveStreamingGenerator...``).
+    When set, ``method_cap`` is the per-method ``_generator_backpressure_num_objects``
+    for the intersection test (tighter than ``actor_cap``).
+    """
+
+    if method_cap is None:
+
+        @ray.remote(
+            max_concurrency=2,
+            _actor_generator_backpressure_num_objects=actor_cap,
+        )
+        class _A:
+            def gen(self, reporter, tag: str):
+                for i in range(5):
+                    ray.get(reporter.report.remote(tag, i))
+                    yield i
+
+        return _A
+
+    @ray.remote(
+        max_concurrency=2,
+        _actor_generator_backpressure_num_objects=actor_cap,
+    )
+    class _B:
+        @ray.method(_generator_backpressure_num_objects=method_cap)
+        def gen(self, reporter, tag: str):
+            for i in range(5):
+                ray.get(reporter.report.remote(tag, i))
+                yield i
+
+    return _B
+
+
+def _drain_all(gens):
+    """Consume every value from each generator in `gens` to completion."""
+    for gen in gens:
+        try:
+            while True:
+                ray.get(next(gen))
+        except StopIteration:
+            pass
+
+
+def _drain_cancelled(gen):
+    """Best-effort drain after ``ray.cancel``; the stream may end with an error."""
+    try:
+        while True:
+            ray.get(next(gen))
+    except StopIteration:
+        pass
+    except (
+        ray.exceptions.RayTaskError,
+        ray.exceptions.TaskCancelledError,
+    ):
+        pass
+
+
+def test_actor_generator_backpressure_single_task(shutdown_only):
+    """Actor-wide cap only (no per-method ``_generator_backpressure_num_objects``)."""
+    ray.init(num_cpus=2)
+    reporter = TagReporter.remote()
+
+    @ray.remote(_actor_generator_backpressure_num_objects=3)
+    class A:
+        def gen(self, rep, tag):
+            for i in range(5):
+                ray.get(rep.report.remote(tag, i))
+                yield i
+
+    a = A.remote()
+    g = a.gen.remote(reporter, "a")
+
+    # First 3 items get reported, then the producer is parked at the cap.
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 3,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    # Consume one → exactly one more is produced.
+    ray.get(next(g))
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 4,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    # Drain the rest, generator ends.
+    _drain_all([g])
+
+    # Fire again: the cap is reclaimed, the new task fills up to 3 again.
+    g2 = a.gen.remote(reporter, "a")
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 5 + 3,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    _drain_all([g2])
+
+
+def test_actor_generator_backpressure_task_completes_before_consumed(shutdown_only):
+    ray.init(num_cpus=2)
+    reporter = TagReporter.remote()
+
+    @ray.remote(max_concurrency=1, _actor_generator_backpressure_num_objects=4)
+    class A:
+        def gen(self, rep, tag):
+            for i in range(2):
+                ray.get(rep.report.remote(tag, i))
+                yield i
+
+        def ping(self):
+            return "ok"
+
+    a = A.remote()
+
+    g1 = a.gen.remote(reporter, "1")
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("1")) == 2,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    assert ray.get(a.ping.remote(), timeout=2) == "ok"
+
+    g2 = a.gen.remote(reporter, "2")
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("2")) == 2,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    g3 = a.gen.remote(reporter, "3")
+    time.sleep(1)
+    assert ray.get(reporter.count_tag.remote("3")) == 0
+
+    assert ray.get(next(g1)) == 0
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("3")) == 1,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    _drain_all([g1, g2, g3])
+
+
+def test_actor_generator_backpressure_num_objects_per_yield(shutdown_only):
+    """Actor-wide cap counts objects, not yields, when ``_num_objects_per_yield`` > 1."""
+    ray.init(num_cpus=2)
+    reporter = TagReporter.remote()
+
+    # Cap of 4 objects with 2 objects per yield admits at most 2 yields (4
+    # objects) before parking. With the (buggy) per-yield accounting the cap
+    # would instead admit 4 yields (8 objects) before parking.
+    @ray.remote(_actor_generator_backpressure_num_objects=4)
+    class A:
+        @ray.method(_num_objects_per_yield=2)
+        def gen(self, rep, tag):
+            for i in range(5):
+                ray.get(rep.report.remote(tag, i))
+                yield i, i
+
+    a = A.remote()
+    g = a.gen.remote(reporter, "a")
+
+    # Exactly two yields (= 4 objects) fill the cap, then the producer parks.
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 2,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    time.sleep(1)
+    assert ray.get(reporter.count_tag.remote("a")) == 2
+
+    # Consuming a ref frees budget below the cap and admits one more yield.
+    ray.get(next(g))
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 3,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    # Draining the rest lets the generator run to completion (5 yields total).
+    _drain_all([g])
+    assert ray.get(reporter.count_tag.remote("a")) == 5
+
+
+def test_actor_generator_backpressure_mt_actor(shutdown_only):
+    """Two concurrent sync generator tasks; actor-wide cap 6; reclaim on drain."""
+    ray.init(num_cpus=4)
+    reporter = TagReporter.remote()
+    A = _dual_stream_actor_class(actor_cap=6, method_cap=None)
+    a = A.remote()
+
+    g1 = a.gen.remote(reporter, "1")
+    g2 = a.gen.remote(reporter, "2")
+
+    wait_for_condition(
+        lambda: ray.get(reporter.total_len.remote()) == 6,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    # Consume one ref from g1 — exactly one more report.
+    ray.get(next(g1))
+    wait_for_condition(
+        lambda: ray.get(reporter.total_len.remote()) == 7,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    _drain_all([g1])
+    # Pull the rest from g2 (consumption unblocks the producer path for the tail).
+    _drain_all([g2])
+    assert ray.get(reporter.count_tag.remote("1")) == 5
+    assert ray.get(reporter.count_tag.remote("2")) == 5
+    assert ray.get(reporter.total_len.remote()) == 10
+
+
+def test_actor_generator_backpressure_mt_with_method_cap(shutdown_only):
+    """Intersections: per-method cap 2 (owner defers sooner) under actor cap 6."""
+    ray.init(num_cpus=4)
+    reporter = TagReporter.remote()
+    A = _dual_stream_actor_class(actor_cap=6, method_cap=2)
+    a = A.remote()
+
+    g1 = a.gen.remote(reporter, "1")
+    g2 = a.gen.remote(reporter, "2")
+
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("1")) == 2,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("2")) == 2,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    ray.get(next(g1))
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("1")) == 3,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    _drain_all([g1, g2])
+
+
+def test_actor_generator_backpressure_reclaim_on_cancel(shutdown_only):
+    """``ray.cancel`` on one stream reclaims actor-wide slots for the other."""
+    ray.init(num_cpus=4)
+    reporter = TagReporter.remote()
+    A = _dual_stream_actor_class(actor_cap=6, method_cap=None)
+    a = A.remote()
+
+    g1 = a.gen.remote(reporter, "1")
+    g2 = a.gen.remote(reporter, "2")
+
+    wait_for_condition(
+        lambda: ray.get(reporter.total_len.remote()) == 6,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    ray.cancel(g1)
+    _drain_cancelled(g1)
+
+    _drain_all([g2])
+    assert ray.get(reporter.count_tag.remote("2")) == 5
+
+
+def test_actor_generator_backpressure_reclaim_on_del_gen(shutdown_only):
+    """Deleting ``g2`` after partial reads frees BP budget so ``g1`` can emit further yields."""
+    ray.init(num_cpus=4)
+    reporter = TagReporter.remote()
+
+    @ray.remote(max_concurrency=2, _actor_generator_backpressure_num_objects=6)
+    class A:
+        def __init__(self):
+            self._extend = threading.Event()
+
+        def enable_extend(self) -> None:
+            self._extend.set()
+
+        def gen(self, rep, tag: str):
+            if tag == "2":
+                for i in range(5):
+                    ray.get(rep.report.remote(tag, i))
+                    yield i
+                return
+            for i in range(16):
+                ray.get(rep.report.remote(tag, i))
+                yield i
+                if i == 5:
+                    self._extend.wait()
+
+    a = A.remote()
+    g1 = a.gen.remote(reporter, "1")
+    g2 = a.gen.remote(reporter, "2")
+
+    wait_for_condition(
+        lambda: ray.get(reporter.total_len.remote()) == 6,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    n_take = 2
+    for _ in range(n_take):
+        ray.get(next(g2))
+
+    n1_before = ray.get(reporter.count_tag.remote("1"))
+
+    del g2
+    gc.collect()
+
+    ray.get(a.enable_extend.remote())
+
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("1")) >= n1_before + n_take,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    _drain_all([g1])
+    assert ray.get(reporter.count_tag.remote("1")) == 16
+
+
+def test_actor_generator_backpressure_large_actor_small_method(shutdown_only):
+    """Large actor cap does not bypass per-method cap on the executor."""
+    ray.init(num_cpus=4)
+    reporter = TagReporter.remote()
+    A = _dual_stream_actor_class(actor_cap=50, method_cap=2)
+    a = A.remote()
+
+    g1 = a.gen.remote(reporter, "1")
+    g2 = a.gen.remote(reporter, "2")
+
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("1")) == 2,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("2")) == 2,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    ray.get(next(g1))
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("1")) == 3,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    _drain_all([g1, g2])
+
+
+def test_actor_generator_backpressure_reclaim_on_exception(shutdown_only):
+    """Yield-then-raise reclaims cap so a follow-up task can use the budget."""
+    ray.init()
+
+    @ray.remote(max_concurrency=2, _actor_generator_backpressure_num_objects=1)
+    class A:
+        def yields_then_raises(self):
+            yield 0
+            raise RuntimeError("boom")
+
+        def ok(self):
+            for i in range(3):
+                yield i
+
+    a = A.remote()
+
+    bad = a.yields_then_raises.remote()
+    ray.get(next(bad))
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(next(bad))
+
+    good = a.ok.remote()
+    seen = [ray.get(next(good)) for _ in range(3)]
+    assert seen == [0, 1, 2]
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Uses SIGTERM on worker_pid from task metadata.",
+)
+def test_actor_generator_backpressure_reconstruction_worker_crash(shutdown_only):
+    """Actor-wide BP sets owner effective threshold 1; worker SIGTERM mid-stream retries."""
+    ray.init(num_cpus=2)
+    reporter = TagReporter.remote()
+
+    @ray.remote(
+        max_concurrency=1,
+        max_restarts=5,
+        max_task_retries=10,
+        _actor_generator_backpressure_num_objects=3,
+    )
+    class Producer:
+        def gen(self, rep):
+            for i in range(5):
+                ray.get(rep.report.remote("recon", i))
+                time.sleep(0.25)
+                yield i
+
+    p = Producer.remote()
+    gen = p.gen.options(name="actor_wide_bp_recon").remote(reporter)
+
+    assert ray.get(next(gen)) == 0
+
+    def running():
+        tasks = _list_tasks(filters=[("name", "=", "actor_wide_bp_recon")])
+        return bool(tasks) and tasks[0].state == "RUNNING"
+
+    wait_for_condition(running, timeout=30)
+    t = _list_tasks(filters=[("name", "=", "actor_wide_bp_recon")])[0]
+    os.kill(t.worker_pid, signal.SIGTERM)
+
+    values = [0]
+
+    def drained_five_values():
+        if len(values) >= 5:
+            return True
+        ref = next(gen)
+        try:
+            values.append(ray.get(ref))
+        except (
+            ray.exceptions.WorkerCrashedError,
+            ray.exceptions.RayActorError,
+        ):
+            pass
+        return len(values) >= 5
+
+    wait_for_condition(drained_five_values, timeout=120, raise_exceptions=True)
+
+    assert values == list(range(5))
+    # Retries replay producer-side reporting before owner-visible consumption catches up.
+    assert ray.get(reporter.count_tag.remote("recon")) >= 5
+
+    try:
+        while True:
+            ray.get(next(gen))
+    except StopIteration:
+        pass
+
+
+def test_actor_generator_backpressure_zero_value_rejected(shutdown_only):
+    """``_actor_generator_backpressure_num_objects=0`` is invalid."""
+    with pytest.raises(
+        ValueError,
+        match=r"_actor_generator_backpressure_num_objects must be > 0",
+    ):
+
+        @ray.remote(_actor_generator_backpressure_num_objects=0)
+        class A:
+            def f(self):
+                yield 0
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="This test uses os._exit(0), which can report an access violation on Windows.",
+)
+def test_actor_generator_backpressure_reclaim_on_owner_death(shutdown_only):
+    namespace = "actor_generator_backpressure_owner_death"
+    actor_name = f"actor_generator_backpressure_owner_death_actor_{os.getpid()}"
+    reporter_name = f"actor_generator_backpressure_owner_death_reporter_{os.getpid()}"
+    address = ray.init(num_cpus=2, namespace=namespace).address_info["address"]
+
+    driver = f"""
+import os
+
+import ray
+from ray._common.test_utils import wait_for_condition
+
+ray.init(address="{address}", namespace="{namespace}")
+
+
+@ray.remote(name="{reporter_name}", lifetime="detached")
+class Reporter:
+    def __init__(self):
+        self.counts = {{}}
+
+    def report(self, tag):
+        self.counts[tag] = self.counts.get(tag, 0) + 1
+
+    def count(self, tag):
+        return self.counts.get(tag, 0)
+
+
+@ray.remote(
+    name="{actor_name}",
+    lifetime="detached",
+    max_concurrency=1,
+    _actor_generator_backpressure_num_objects=2,
+)
+class A:
+    def gen(self, reporter, tag, count):
+        for i in range(count):
+            ray.get(reporter.report.remote(tag))
+            yield i
+
+    def ping(self):
+        return "ok"
+
+
+reporter = Reporter.remote()
+a = A.remote()
+g = a.gen.remote(reporter, "first", 1)
+wait_for_condition(lambda: ray.get(reporter.count.remote("first")) == 1, timeout=10)
+assert ray.get(a.ping.remote(), timeout=10) == "ok"
+
+# Exit
+os._exit(0)
+"""
+
+    run_string_as_driver(driver)
+    a = ray.get_actor(actor_name, namespace=namespace)
+    reporter = ray.get_actor(reporter_name, namespace=namespace)
+    try:
+        g = a.gen.remote(reporter, "second", 2)
+        wait_for_condition(
+            lambda: ray.get(reporter.count.remote("second")) == 2,
+            timeout=_ACTOR_GEN_BP_WAIT_S,
+        )
+        _drain_all([g])
+    finally:
+        ray.kill(a)
+        ray.kill(reporter)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="This test uses os._exit(0), which can report an access violation on Windows.",
+)
+def test_actor_generator_backpressure_owner_death_unblocks_task_waiter(shutdown_only):
+    namespace = "actor_generator_backpressure_owner_death_waiter"
+    actor_name = f"actor_generator_backpressure_owner_death_waiter_actor_{os.getpid()}"
+    reporter_name = (
+        f"actor_generator_backpressure_owner_death_waiter_reporter_{os.getpid()}"
+    )
+    address = ray.init(num_cpus=2, namespace=namespace).address_info["address"]
+
+    driver = f"""
+import os
+
+import ray
+from ray._common.test_utils import wait_for_condition
+
+ray.init(address="{address}", namespace="{namespace}")
+
+
+@ray.remote(name="{reporter_name}", lifetime="detached")
+class Reporter:
+    def __init__(self):
+        self.counts = {{}}
+
+    def report(self, tag):
+        self.counts[tag] = self.counts.get(tag, 0) + 1
+
+    def count(self, tag):
+        return self.counts.get(tag, 0)
+
+
+@ray.remote(
+    name="{actor_name}",
+    lifetime="detached",
+    max_concurrency=1,
+    _actor_generator_backpressure_num_objects=10,
+)
+class A:
+    @ray.method(_generator_backpressure_num_objects=1)
+    def gen(self, reporter, tag):
+        for i in range(2):
+            ray.get(reporter.report.remote(tag))
+            yield i
+
+    def ping(self):
+        return "ok"
+
+
+reporter = Reporter.remote()
+a = A.remote()
+g = a.gen.remote(reporter, "first")
+wait_for_condition(lambda: ray.get(reporter.count.remote("first")) == 1, timeout=10)
+
+os._exit(0)
+"""
+
+    run_string_as_driver(driver)
+    a = ray.get_actor(actor_name, namespace=namespace)
+    reporter = ray.get_actor(reporter_name, namespace=namespace)
+    try:
+        assert ray.get(a.ping.remote(), timeout=_ACTOR_GEN_BP_WAIT_S) == "ok"
+    finally:
+        ray.kill(a)
+        ray.kill(reporter)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="This test uses os._exit(0), which can report an access violation on Windows.",
+)
+def test_actor_generator_backpressure_owner_death_skips_between_yield_work(
+    shutdown_only,
+):
+    """After owner death we should not run another iteration of between-yield
+    user code before exiting. HandleOwnerDied marks the task canceled; the
+    executor loop bails before the next gen.send."""
+    namespace = "actor_generator_backpressure_owner_death_skip"
+    actor_name = f"actor_generator_backpressure_owner_death_skip_actor_{os.getpid()}"
+    reporter_name = (
+        f"actor_generator_backpressure_owner_death_skip_reporter_{os.getpid()}"
+    )
+    address = ray.init(num_cpus=2, namespace=namespace).address_info["address"]
+
+    driver = f"""
+import os
+
+import ray
+from ray._common.test_utils import wait_for_condition
+
+ray.init(address="{address}", namespace="{namespace}")
+
+
+@ray.remote(name="{reporter_name}", lifetime="detached")
+class Reporter:
+    def __init__(self):
+        self.between_yield_count = 0
+
+    def between_yield(self):
+        self.between_yield_count += 1
+
+    def count(self):
+        return self.between_yield_count
+
+
+@ray.remote(
+    name="{actor_name}",
+    lifetime="detached",
+    max_concurrency=1,
+    _actor_generator_backpressure_num_objects=10,
+)
+class A:
+    @ray.method(_generator_backpressure_num_objects=1)
+    def gen(self, reporter):
+        for i in range(10):
+            ray.get(reporter.between_yield.remote())
+            yield i
+
+    def ping(self):
+        return "ok"
+
+
+reporter = Reporter.remote()
+a = A.remote()
+g = a.gen.remote(reporter)
+# After this returns, the executor has run the between-yield call exactly
+# once and is parked in WaitUntilObjectConsumed for yield 0.
+wait_for_condition(lambda: ray.get(reporter.count.remote()) == 1, timeout=10)
+
+os._exit(0)
+"""
+
+    run_string_as_driver(driver)
+    a = ray.get_actor(actor_name, namespace=namespace)
+    reporter = ray.get_actor(reporter_name, namespace=namespace)
+    try:
+        # The actor must accept new tasks (gen task drained).
+        assert ray.get(a.ping.remote(), timeout=_ACTOR_GEN_BP_WAIT_S) == "ok"
+        # And the between-yield code must not have run another iteration after
+        # owner death — the count stays at the one call made before the driver
+        # exited.
+        assert ray.get(reporter.count.remote()) == 1
+    finally:
+        ray.kill(a)
+        ray.kill(reporter)
 
 
 if __name__ == "__main__":

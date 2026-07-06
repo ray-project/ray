@@ -464,6 +464,7 @@ py_test_run_all_subdirectory(
     include = ["source/train/doc_code/*.py"],
     exclude = [
         "source/train/doc_code/hvd_trainer.py",  # CI do not have Horovod
+        "source/train/doc_code/asynchronous_validation.py",  # pseudocode snippets, not runnable
     ],
     extra_srcs = [],
     tags = [
@@ -570,7 +571,7 @@ doctest(
             "source/**/*.rst",
         ],
         exclude = [
-            "source/ray-contribute/getting-involved.rst",
+            "source/ray-contribute/getting-involved.md",
             "source/ray-contribute/testing-tips.md",
             "source/ray-contribute/writing-code-snippets.md",
             "source/ray-observability/user-guides/ray-tracing.rst",

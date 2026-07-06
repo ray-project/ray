@@ -41,6 +41,7 @@ JobStatus
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
 
    JobStatus
 
@@ -74,6 +75,7 @@ JobType
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
 
    JobType
 

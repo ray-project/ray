@@ -34,6 +34,29 @@ def _line(sd_body: str) -> bytes:
     return f"{_SAMPLE_PREFIX}[serve@1 {sd_body}] - normal log message".encode()
 
 
+class _FakeHAProxyApi:
+    """Minimal HAProxyApi stand-in. Required by the collector constructor; the
+    push-metric tests pass it as an inert dummy, while the node-metrics tests
+    drive its backend_configs / stats."""
+
+    def __init__(
+        self, backend_configs: Optional[dict] = None, stats: Optional[dict] = None
+    ):
+        self.backend_configs = backend_configs or {}
+        self._stats = stats or {}
+
+    async def get_all_stats(self) -> dict:
+        return self._stats
+
+    def count_haproxy_processes(self) -> int:
+        return 0
+
+    async def compute_target_mismatch(self) -> int:
+        # Inert: the real symmetric-difference logic is covered by
+        # test_compute_target_mismatch against a real HAProxyApi.
+        return 0
+
+
 # ---------------------------------------------------------------------------
 # parse_line: pure parser tests
 # ---------------------------------------------------------------------------
@@ -185,7 +208,7 @@ def collector() -> HAProxyMetricsCollector:
     The collector's metric attributes are replaced post-init with
     `_RecordingMetric` so tests can assert against captured calls.
     """
-    c = HAProxyMetricsCollector()
+    c = HAProxyMetricsCollector(haproxy_api=_FakeHAProxyApi(), node_id="test-node")
     c.truncated_bodies_counter = _RecordingMetric()
     c.latency_histogram = _RecordingMetric()
     c.replica_mismatches_counter = _RecordingMetric()
@@ -455,7 +478,9 @@ async def test_bind_and_attach_receives_datagram_then_close_unlinks(
     """End-to-end on the asyncio path: bind a dgram socket, send a real
     syslog line to it from another socket, assert the metric was recorded,
     then close and verify the socket file is gone."""
-    collector = HAProxyMetricsCollector()
+    collector = HAProxyMetricsCollector(
+        haproxy_api=_FakeHAProxyApi(), node_id="test-node"
+    )
     # Replace the metric objects so we can assert on them without depending
     # on Ray's Prometheus registry.
     collector.latency_histogram = _RecordingMetric()
@@ -498,7 +523,9 @@ async def test_bind_and_attach_receives_datagram_then_close_unlinks(
 @pytest.mark.asyncio
 async def test_close_is_idempotent_and_safe_without_bind() -> None:
     """close() should never raise -- pre-bind, post-bind, or called twice."""
-    collector = HAProxyMetricsCollector()
+    collector = HAProxyMetricsCollector(
+        haproxy_api=_FakeHAProxyApi(), node_id="test-node"
+    )
     # never bound
     collector.close()
     collector.close()
@@ -511,12 +538,124 @@ async def test_bind_replaces_existing_socket_file(tmp_path) -> None:
     sock_path.write_bytes(b"")  # touch a stale file
     assert sock_path.exists()
 
-    collector = HAProxyMetricsCollector()
+    collector = HAProxyMetricsCollector(
+        haproxy_api=_FakeHAProxyApi(), node_id="test-node"
+    )
     try:
         await collector.bind_and_attach(str(sock_path), loop=asyncio.get_event_loop())
         assert sock_path.exists()
     finally:
         collector.close()
+
+
+# ---------------------------------------------------------------------------
+# Node-level poll metrics: target mismatch
+# ---------------------------------------------------------------------------
+
+
+def _backend(name: str, server_names, fallback: Optional[str] = None):
+    from ray.serve._private.haproxy import BackendConfig, ServerConfig
+
+    return BackendConfig(
+        name=name,
+        path_prefix="/",
+        servers=[
+            ServerConfig(name=s, host="127.0.0.1", port=9000 + i)
+            for i, s in enumerate(server_names)
+        ],
+        fallback_server=(
+            ServerConfig(name=fallback, host="127.0.0.1", port=8999)
+            if fallback is not None
+            else None
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    "broadcasted, reported, expected_mismatch",
+    [
+        # Fully converged: every broadcasted server is reported, nothing extra.
+        ({"s1", "s2"}, {"s1", "s2"}, 0),
+        # A broadcasted server hasn't been applied to HAProxy yet.
+        ({"s1", "s2", "s3"}, {"s1", "s2"}, 1),
+        # HAProxy still reports a stale server we no longer broadcast.
+        ({"s1", "s2"}, {"s1", "s2", "stale"}, 1),
+        # Divergence in both directions counts each side.
+        ({"s1", "s2"}, {"s1", "stale"}, 2),
+    ],
+)
+def test_compute_target_mismatch(broadcasted, reported, expected_mismatch) -> None:
+    # compute_target_mismatch lives on HAProxyApi (it reads backend_configs and
+    # get_all_stats), so exercise the real method with a stubbed stats source.
+    from ray.serve._private.haproxy import HAProxyApi, HAProxyConfig
+
+    with tempfile.TemporaryDirectory() as td:
+        api = HAProxyApi(
+            cfg=HAProxyConfig(socket_path=os.path.join(td, "admin.sock")),
+            backend_configs={"http-app": _backend("http-app", broadcasted)},
+            config_file_path=os.path.join(td, "haproxy.cfg"),
+        )
+
+        async def fake_get_all_stats():
+            return {"http-app": {name: object() for name in reported}}
+
+        api.get_all_stats = fake_get_all_stats
+        assert asyncio.run(api.compute_target_mismatch()) == expected_mismatch
+
+
+def test_compute_target_mismatch_treats_fallback_server_as_expected() -> None:
+    """The generated config renders the fallback server as a real backup
+    `server` line, so HAProxy reports it in stats. It must count as expected,
+    or the gauge would never converge to zero for backends with a fallback."""
+    from ray.serve._private.haproxy import HAProxyApi, HAProxyConfig
+
+    with tempfile.TemporaryDirectory() as td:
+        api = HAProxyApi(
+            cfg=HAProxyConfig(socket_path=os.path.join(td, "admin.sock")),
+            backend_configs={
+                "http-app": _backend("http-app", {"s1", "s2"}, fallback="fb")
+            },
+            config_file_path=os.path.join(td, "haproxy.cfg"),
+        )
+
+        async def fake_get_all_stats():
+            # HAProxy reports the two servers plus the fallback backup server.
+            return {"http-app": {"s1": object(), "s2": object(), "fb": object()}}
+
+        api.get_all_stats = fake_get_all_stats
+        assert asyncio.run(api.compute_target_mismatch()) == 0
+
+
+@pytest.mark.asyncio
+async def test_start_polls_always_and_binds_only_when_enabled(tmp_path) -> None:
+    """start() always begins node polling; the dgram reader (and its task) is
+    only created when ingress-router metrics are enabled."""
+    api = _FakeHAProxyApi(backend_configs={}, stats={})
+    loop = asyncio.get_event_loop()
+
+    disabled = HAProxyMetricsCollector(haproxy_api=api, node_id="test-node")
+    attach_task = disabled.start(
+        loop, poll_interval_s=10.0, enable_ingress_router_metrics=False
+    )
+    assert attach_task is None
+    assert disabled._node_metrics_task is not None
+    disabled.close()
+
+    sock_path = tmp_path / "subdir" / "metrics.sock"
+    enabled = HAProxyMetricsCollector(haproxy_api=api, node_id="test-node")
+    attach_task = enabled.start(
+        loop,
+        poll_interval_s=10.0,
+        enable_ingress_router_metrics=True,
+        metrics_socket_path=str(sock_path),
+    )
+    try:
+        assert attach_task is not None
+        await attach_task  # bind completes; makedirs created the parent dir
+        assert sock_path.exists()
+        assert enabled._node_metrics_task is not None
+    finally:
+        enabled.close()
 
 
 # ---------------------------------------------------------------------------

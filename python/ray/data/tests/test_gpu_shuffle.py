@@ -7,10 +7,12 @@ All Ray actor calls are mocked so the tests run on a standard CPU cluster.
 from typing import List
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pyarrow as pa
 import pytest
 
 import ray
+import ray.data._internal.gpu_shuffle.hash_shuffle as hash_shuffle
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     ExecutionResources,
@@ -29,6 +31,7 @@ from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
 from ray.data._internal.util import explain_plan
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.tests.conftest import noop_counter
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -178,11 +181,15 @@ class TestGPURankPool:
         return GPURankPool(
             nranks=nranks,
             total_nparts=total_nparts,
-            key_columns=["user_id"],
-            columns=None,
-            rmm_pool_size="auto",
-            spill_memory_limit="auto",
             setup_timeout_s=60.0,
+            actor_cls_factory=lambda: hash_shuffle.GPUShuffleActor,
+            actor_kwargs={
+                "key_columns": ["user_id"],
+                "columns": None,
+                "rmm_pool_size": "auto",
+                "spill_memory_limit": "auto",
+            },
+            log_label="GPUShufflePool",
         )
 
     def test_actors_empty_before_start(self):
@@ -427,6 +434,7 @@ class TestGPUShuffleOperatorFinalization:
             )
         op._rank_pool._actors = mock_actors
         op._rank_pool._nranks = nranks
+        op._block_ref_counter = noop_counter()
         return op, mock_actors
 
     def test_finalization_not_started_until_inputs_complete(self):
@@ -767,7 +775,6 @@ class TestGPUShuffleActorReal:
 
     def test_insert_batch_large_table(self, ray_with_gpu):
         """insert_batch handles a larger Arrow Table without error."""
-        import numpy as np
 
         n = 5_000
         actor = self._make_setup_actor(total_nparts=4)
@@ -947,11 +954,15 @@ class TestGPURankPoolReal:
         return GPURankPool(
             nranks=nranks,
             total_nparts=total_nparts,
-            key_columns=["id"],
-            columns=None,
-            rmm_pool_size="auto",
-            spill_memory_limit="auto",
             setup_timeout_s=60.0,
+            actor_cls_factory=lambda: hash_shuffle.GPUShuffleActor,
+            actor_kwargs={
+                "key_columns": ["id"],
+                "columns": None,
+                "rmm_pool_size": "auto",
+                "spill_memory_limit": "auto",
+            },
+            log_label="GPUShufflePool",
         )
 
     def test_pool_start_creates_actors(self, ray_with_gpu):
