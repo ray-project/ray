@@ -964,12 +964,9 @@ bool TaskManager::FailStreamingGeneratorReplayIfInconsistent(
     if (expected_count == 0 || expected_count == actual_count) {
       return false;
     }
-    // Defensive: a well-formed streaming generator reply always carries the
-    // generator id in return_objects(0), but guard against a malformed reply.
-    if (reply.return_objects_size() == 0) {
-      return false;
-    }
-    generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
+    // Use the pinned task spec, so malformed replies without return_objects
+    // still fail fast on the object-count mismatch.
+    generator_id = it->second.spec_.ReturnId(0);
   }
   FailStreamingGeneratorReplayInconsistency(
       task_id, generator_id, expected_count, actual_count);

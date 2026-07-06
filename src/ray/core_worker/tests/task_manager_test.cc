@@ -2530,6 +2530,38 @@ TEST_F(TaskManagerTest, TestStreamingGeneratorReplayMoreObjectsFailsLoudly) {
   // surfaces the problem to downstream tasks that haven't run yet.
 }
 
+TEST_F(TaskManagerTest, TestStreamingGeneratorReplayMismatchWithEmptyReturnsFails) {
+  std::vector<rpc::TaskStatus> recorded_statuses;
+  RecordTaskStatuses(&recorded_statuses);
+
+  rpc::Address caller_address;
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*streaming_generator=*/true);
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/1);
+
+  CompletePendingStreamingTask(spec,
+                               caller_address,
+                               /*num_streaming_generator_returns=*/2,
+                               /*set_in_plasma=*/true);
+
+  std::vector<ObjectID> resubmitted_task_deps;
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
+
+  rpc::PushTaskReply malformed_reply;
+  auto return_id_proto = malformed_reply.add_streaming_generator_return_ids();
+  return_id_proto->set_object_id(spec.ReturnId(1).Binary());
+  return_id_proto->set_is_plasma_object(true);
+
+  manager_.CompletePendingTask(spec.TaskId(),
+                               malformed_reply,
+                               caller_address,
+                               /*is_application_error=*/false);
+
+  ASSERT_THAT(recorded_statuses, ::testing::Contains(rpc::TaskStatus::FAILED));
+  ASSERT_EQ(manager_.NumPendingTasks(), 0);
+  ASSERT_EQ(num_retries_, 1);
+}
+
 // Sanity: a replay that produces the same number of objects as the first
 // successful attempt must NOT trip the inconsistency path. Guards against
 // false positives.
