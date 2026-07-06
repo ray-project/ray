@@ -103,7 +103,6 @@ def build_llm_deployment(
 
     Examples:
         .. testcode::
-            :skipif: True
 
             from ray import serve
             from ray.serve.llm import LLMConfig, build_llm_deployment
@@ -111,8 +110,8 @@ def build_llm_deployment(
             # Configure the model
             llm_config = LLMConfig(
                 model_loading_config=dict(
-                    model_id="llama-3.1-8b",
-                    model_source="meta-llama/Llama-3.1-8b-instruct",
+                    model_id="qwen-0.5b",
+                    model_source="Qwen/Qwen2.5-0.5B-Instruct",
                 ),
                 deployment_config=dict(
                     autoscaling_config=dict(

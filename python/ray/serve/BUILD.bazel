@@ -8,7 +8,8 @@ doctest(
         ["**/*.py"],
         exclude = [
             "tests/**",
-            # FIXME: Add the llm tests back with a diff tag.
+            # LLM docstring examples need vLLM + GPU. They run under the gated
+            # py_doctest[serve-llm-gpu] target below, not this CPU lane.
             "llm/**",
             # FIXME: Failing on Windows
             "gradio_integrations.py",
@@ -16,6 +17,29 @@ doctest(
         ],
     ),
     tags = ["team:serve"],
+)
+
+# GPU-gated doctest lane for the public ray.serve.llm docstring examples.
+# Modeled on //python/ray/train:py_doctest[train-gpu]: a separate target with
+# gpu = True so the examples run under a GPU build image (llmgpubuild, which
+# carries the vLLM/GPU deps) instead of being folded into the base CPU lane.
+# The doctest macro appends "[gpu]" to the name and adds the "doctest" and
+# "gpu" tags automatically. The extra "serve_llm_gpu" tag is the "diff tag" the
+# old FIXME asked for: rayci --only-tags is OR-matched, so a dedicated tag is
+# the only way a single CI step can select exactly these (doctest AND gpu),
+# the same way train isolates its GPU doctests with "train_v2_gpu".
+doctest(
+    name = "py_doctest[serve-llm-gpu]",
+    size = "large",
+    files = glob(
+        ["llm/**/*.py"],
+        exclude = ["llm/tests/**"],
+    ),
+    gpu = True,
+    tags = [
+        "team:serve",
+        "serve_llm_gpu",
+    ],
 )
 
 # This is a dummy test dependency that causes the above tests to be

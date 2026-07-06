@@ -22,8 +22,6 @@ class OpenAiIngress(_OpenAiIngress):
 
     Examples:
         .. testcode::
-            :skipif: True
-
 
             from ray import serve
             from ray.llm._internal.serve.core.configs.openai_api_models import (

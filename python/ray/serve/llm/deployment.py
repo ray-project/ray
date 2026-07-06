@@ -28,8 +28,8 @@ class LLMServer(InternalLLMServer):
 
     Examples:
         .. testcode::
-            :skipif: True
 
+            import ray
             from ray import serve
             from ray.serve.llm import LLMConfig
             from ray.serve.llm.deployment import LLMServer
@@ -37,8 +37,8 @@ class LLMServer(InternalLLMServer):
             # Configure the model
             llm_config = LLMConfig(
                 model_loading_config=dict(
-                    served_model_name="llama-3.1-8b",
-                    model_source="meta-llama/Llama-3.1-8b-instruct",
+                    model_id="qwen-0.5b",
+                    model_source="Qwen/Qwen2.5-0.5B-Instruct",
                 ),
                 deployment_config=dict(
                     autoscaling_config=dict(
@@ -58,7 +58,7 @@ class LLMServer(InternalLLMServer):
             # Query the model via `chat` api
             from ray.serve.llm.openai_api_models import ChatCompletionRequest
             request = ChatCompletionRequest(
-                model="llama-3.1-8b",
+                model="qwen-0.5b",
                 messages=[
                     {
                         "role": "user",
@@ -132,7 +132,6 @@ class DPServer(_DPServer):
 
     Examples:
         .. testcode::
-            :skipif: True
 
             from ray import serve
             from ray.serve.llm import LLMConfig, build_dp_deployment

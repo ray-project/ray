@@ -133,8 +133,11 @@ steps:
     instance_type: large
     commands:
       # doc tests
+      # --except-tags gpu keeps the GPU-gated py_doctest[serve-llm-gpu] target
+      # off this CPU box; it runs in the serve: llm doc tests (GPU) step below.
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/... //doc/... serve
         --only-tags doctest
+        --except-tags gpu
         --parallelism-per-worker 3
         --build-name servebuild-py3.10
         --python-version 3.10
@@ -146,6 +149,31 @@ steps:
         --build-name servebuild-py3.10
         --python-version 3.10
     depends_on: servebuild-multipy(python=3.10)
+
+  # PROTOTYPE — needs Elliot's review before merge. Re-enables the
+  # ray.serve.llm docstring examples (previously excluded in BUILD + skipif'd)
+  # as a GPU doctest lane, per the #ray-docs thread (2026-07-06).
+  # Open questions for review:
+  #   1. Lane ownership: this keeps the target team:serve and adds a serve step
+  #      that borrows llmgpubuild. Alternative is folding it into the existing
+  #      "llm gpu tests" step in llm.rayci.yml (team llm). Chose serve to match
+  #      the team:serve tag the examples already carry.
+  #   2. Cross-file build dep: llmgpubuild is defined in llm.rayci.yml. Confirm
+  #      a serve.rayci.yml step can depend_on it, or the step must live there.
+  #   3. Instance type: Kourosh said these run on A10G (g5); the llm gpu step
+  #      uses g6-large. Confirm the right one. DPServer example needs 2 GPUs
+  #      (data_parallel_size=2) and may need the multi-GPU lane instead.
+  - label: ":ray-serve: serve: llm doc tests (GPU)"
+    tags:
+      - serve
+      - gpu
+    instance_type: g6-large
+    commands:
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- python/ray/serve/... serve
+        --only-tags serve_llm_gpu
+        --build-name llmgpubuild
+        --python-version 3.12
+    depends_on: llmgpubuild
 
   - label: ":ray-serve: serve: default minimal"
     tags:
