@@ -25,7 +25,6 @@ def mock_record(monkeypatch):
 @pytest.fixture
 def reset_collector(monkeypatch):
     collector.reset_for_testing()
-    monkeypatch.setattr(collector, "_cluster_spilled_bytes", lambda: 0)
     monkeypatch.delenv("RAY_DATA_USAGE_DISABLED", raising=False)
     # ``ray.init()`` force-sets # RAY_USAGE_STATS_ENABLED=0 for driver-created clusters, so the env var can't
     # keep the collector's opt-out gate open. Patch the gate directly instead.
@@ -34,13 +33,32 @@ def reset_collector(monkeypatch):
     collector.reset_for_testing()
 
 
+# Fake metric readers injected through the collector's seams so tests never
+# read from the real cluster.
+def _zero_spilled_bytes() -> int:
+    return 0
+
+
+def _zero_dead_node_count() -> int:
+    return 0
+
+
 def test_round_trip_payload_shape(reset_collector, mock_record):
     """End-to-end: record_workload, record_execution_result yields a valid
     payload with anonymized plan tree, plan_str, env, and performance filled
     in."""
     ds = ray.data.range(1).map_batches(lambda b: b)
-    collector.record_workload("exec-1", ds._logical_plan)
-    collector.record_execution_result("exec-1")
+    collector.record_workload(
+        "exec-1",
+        ds._logical_plan,
+        get_cluster_spilled_bytes=_zero_spilled_bytes,
+        get_dead_node_count=_zero_dead_node_count,
+    )
+    collector.record_execution_result(
+        "exec-1",
+        get_cluster_spilled_bytes=_zero_spilled_bytes,
+        get_dead_node_count=_zero_dead_node_count,
+    )
 
     _, payload_json = mock_record[-1]
     payload = json.loads(payload_json)
@@ -63,13 +81,62 @@ def test_round_trip_payload_shape(reset_collector, mock_record):
     assert entry["detected_issues"] == []
 
 
+def test_performance_deltas_in_payload(reset_collector, mock_record):
+    """``bytes_spilled`` and ``node_deaths`` are recorded as the (clamped)
+    increase between execution start and end."""
+    ds = ray.data.range(1).map_batches(lambda b: b)
+    collector.record_workload(
+        "exec-1",
+        ds._logical_plan,
+        get_cluster_spilled_bytes=lambda: 100,
+        get_dead_node_count=lambda: 1,
+    )
+    collector.record_execution_result(
+        "exec-1",
+        get_cluster_spilled_bytes=lambda: 250,
+        get_dead_node_count=lambda: 3,
+    )
+
+    _, payload_json = mock_record[-1]
+    entry = json.loads(payload_json)["executions"][0]
+    assert entry["performance"]["bytes_spilled"] == 150
+    assert entry["performance"]["node_deaths"] == 2
+
+
+def test_node_deaths_none_when_unavailable(reset_collector, mock_record):
+    """A failed read (None) at either end leaves ``node_deaths`` as None."""
+    ds = ray.data.range(1).map_batches(lambda b: b)
+    collector.record_workload(
+        "exec-1",
+        ds._logical_plan,
+        get_cluster_spilled_bytes=_zero_spilled_bytes,
+        get_dead_node_count=lambda: None,
+    )
+    collector.record_execution_result(
+        "exec-1",
+        get_cluster_spilled_bytes=_zero_spilled_bytes,
+        get_dead_node_count=lambda: None,
+    )
+
+    _, payload_json = mock_record[-1]
+    entry = json.loads(payload_json)["executions"][0]
+    assert entry["performance"]["node_deaths"] is None
+
+
 def test_detected_issues_in_payload(reset_collector, mock_record):
     """record_execution_result records the (issue_type, operator) pairs as a
     list of ``{"issue_type", "operator"}`` objects in the payload."""
     ds = ray.data.range(1).map_batches(lambda b: b)
-    collector.record_workload("exec-1", ds._logical_plan)
+    collector.record_workload(
+        "exec-1",
+        ds._logical_plan,
+        get_cluster_spilled_bytes=_zero_spilled_bytes,
+        get_dead_node_count=_zero_dead_node_count,
+    )
     collector.record_execution_result(
         "exec-1",
+        get_cluster_spilled_bytes=_zero_spilled_bytes,
+        get_dead_node_count=_zero_dead_node_count,
         detected_issues=[
             (IssueType.HANGING, "MapBatches"),
             (IssueType.HIGH_MEMORY, "ReadRange"),
@@ -103,7 +170,12 @@ def test_self_zip_one_usage_id_per_operator(reset_collector, mock_record):
     ds = ray.data.range(1).map_batches(lambda b: b)
     zipped = ds.zip(ds)
 
-    collector.record_workload("exec-1", zipped._logical_plan)
+    collector.record_workload(
+        "exec-1",
+        zipped._logical_plan,
+        get_cluster_spilled_bytes=_zero_spilled_bytes,
+        get_dead_node_count=_zero_dead_node_count,
+    )
     usage_id_map = collector.build_usage_id_map(zipped._logical_plan)
 
     _, payload_json = mock_record[-1]
@@ -119,8 +191,17 @@ def test_self_zip_one_usage_id_per_operator(reset_collector, mock_record):
 def test_detected_issues_absent_defaults_empty(reset_collector, mock_record):
     """record_execution_result without issues leaves detected_issues empty."""
     ds = ray.data.range(1)
-    collector.record_workload("exec-1", ds._logical_plan)
-    collector.record_execution_result("exec-1")
+    collector.record_workload(
+        "exec-1",
+        ds._logical_plan,
+        get_cluster_spilled_bytes=_zero_spilled_bytes,
+        get_dead_node_count=_zero_dead_node_count,
+    )
+    collector.record_execution_result(
+        "exec-1",
+        get_cluster_spilled_bytes=_zero_spilled_bytes,
+        get_dead_node_count=_zero_dead_node_count,
+    )
 
     _, payload_json = mock_record[-1]
     entry = json.loads(payload_json)["executions"][0]
@@ -169,7 +250,12 @@ def test_limit_anonymized_to_class_name(reset_collector):
     """Limit's runtime name embeds the row count (e.g. ``limit=10``); telemetry
     must collapse it back to ``Limit`` so the value isn't recorded."""
     ds = ray.data.range(100).limit(10)
-    collector.record_workload("exec-limit", ds._logical_plan)
+    collector.record_workload(
+        "exec-limit",
+        ds._logical_plan,
+        get_cluster_spilled_bytes=_zero_spilled_bytes,
+        get_dead_node_count=_zero_dead_node_count,
+    )
     entry = collector.get_executions()["exec-limit"]
     plan_ops = [op.name for op in entry.workload.ops]
     assert "Limit" in plan_ops
@@ -182,8 +268,17 @@ def test_does_not_record_when_disabled_via_env_var(
     """Privacy gate: RAY_DATA_USAGE_DISABLED=1 must produce zero side effects."""
     monkeypatch.setenv("RAY_DATA_USAGE_DISABLED", "1")
     ds = ray.data.range(10)
-    collector.record_workload("exec-1", ds._logical_plan)
-    collector.record_execution_result("exec-1")
+    collector.record_workload(
+        "exec-1",
+        ds._logical_plan,
+        get_cluster_spilled_bytes=_zero_spilled_bytes,
+        get_dead_node_count=_zero_dead_node_count,
+    )
+    collector.record_execution_result(
+        "exec-1",
+        get_cluster_spilled_bytes=_zero_spilled_bytes,
+        get_dead_node_count=_zero_dead_node_count,
+    )
 
     assert mock_record == []
     assert "exec-1" not in collector.get_executions()
@@ -196,8 +291,17 @@ def test_does_not_record_when_usage_stats_opted_out(
     ``ray disable-usage-stats``, etc.) must also disable Ray Data collection."""
     monkeypatch.setattr(collector, "usage_stats_enabled", lambda: False)
     ds = ray.data.range(10)
-    collector.record_workload("exec-1", ds._logical_plan)
-    collector.record_execution_result("exec-1")
+    collector.record_workload(
+        "exec-1",
+        ds._logical_plan,
+        get_cluster_spilled_bytes=_zero_spilled_bytes,
+        get_dead_node_count=_zero_dead_node_count,
+    )
+    collector.record_execution_result(
+        "exec-1",
+        get_cluster_spilled_bytes=_zero_spilled_bytes,
+        get_dead_node_count=_zero_dead_node_count,
+    )
 
     assert mock_record == []
     assert "exec-1" not in collector.get_executions()
@@ -211,7 +315,12 @@ def test_does_not_raise_on_internal_errors(reset_collector, mock_record, monkeyp
         lambda *_: (_ for _ in ()).throw(RuntimeError("boom")),
     )
     ds = ray.data.range(10)
-    collector.record_workload("exec-1", ds._logical_plan)  # must not raise
+    collector.record_workload(
+        "exec-1",
+        ds._logical_plan,
+        get_cluster_spilled_bytes=_zero_spilled_bytes,
+        get_dead_node_count=_zero_dead_node_count,
+    )  # must not raise
     assert mock_record == []
 
 

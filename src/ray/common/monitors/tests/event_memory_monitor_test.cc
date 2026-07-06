@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/event_memory_monitor.h"
+#include "ray/common/monitors/event_memory_monitor.h"
 
 #include <atomic>
 #include <boost/chrono.hpp>
