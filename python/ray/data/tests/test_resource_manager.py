@@ -983,6 +983,99 @@ class TestOutputBackpressureGuard:
         topo[o3].total_enqueued_input_blocks = MagicMock(return_value=0)
         assert guard.should_unblock(o2) is True
 
+    def test_no_unblock_when_downstream_blocked_on_object_store(
+        self, restore_data_context
+    ):
+        """Case 1 must NOT relax output backpressure when the downstream op
+        can't schedule because its object-store *output* budget is exhausted.
+
+        Relaxing lets upstream produce more output, pushing object-store usage
+        further past the limit while downstream still can't run (the steady-state
+        overshoot). It should keep backpressure and fall back to the idle
+        detector. When downstream is blocked on CPU/GPU instead, relaxing frees
+        upstream resources and the original liveness behavior is preserved.
+        """
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = mock_map_op(o2)
+
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+        )
+        guard = OutputBackpressureGuard(topo, resource_manager)
+        o3.num_active_tasks = MagicMock(return_value=0)
+        guard._idle_detector.detect_idle = MagicMock(return_value=False)
+
+        # Downstream cannot submit a new task.
+        resource_manager.op_resource_allocator.can_submit_new_task = MagicMock(
+            return_value=False
+        )
+
+        # ...because its object-store output budget is exhausted -> keep
+        # backpressure (fall back to idle detector, which returns False here).
+        resource_manager.op_resource_allocator.is_task_submission_blocked_on_object_store = MagicMock(  # noqa: E501
+            return_value=True
+        )
+        assert guard.should_unblock(o2) is False
+
+        # ...because of CPU/GPU (not object store) -> relax to free upstream
+        # resources, preserving the original deadlock-prevention behavior.
+        resource_manager.op_resource_allocator.is_task_submission_blocked_on_object_store = MagicMock(  # noqa: E501
+            return_value=False
+        )
+        assert guard.should_unblock(o2) is True
+
+    def test_is_task_submission_blocked_on_object_store(self, restore_data_context):
+        """The allocator predicate reports True only when the op's object-store
+        output budget is below its per-task pending output estimate."""
+        from unittest.mock import PropertyMock
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = mock_map_op(o2)
+
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+        )
+        alloc = resource_manager.op_resource_allocator
+
+        alloc._op_budgets[o3] = ExecutionResources(object_store_memory=100)
+
+        # ``obj_store_mem_max_pending_output_per_task`` is a read-only property
+        # on OpRuntimeMetrics, so patch it at the class level.
+        with patch.object(
+            type(o3.metrics),
+            "obj_store_mem_max_pending_output_per_task",
+            new_callable=PropertyMock,
+        ) as mock_metric:
+            # budget (100) >= per-task pending output (50) -> not blocked.
+            mock_metric.return_value = 50
+            assert alloc.is_task_submission_blocked_on_object_store(o3) is False
+
+            # budget (100) < per-task pending output (150) -> blocked.
+            mock_metric.return_value = 150
+            assert alloc.is_task_submission_blocked_on_object_store(o3) is True
+
+            # No output produced yet -> estimate is None -> threshold 0 -> not
+            # blocked (matches can_submit_new_task's ``... or 0`` semantics).
+            mock_metric.return_value = None
+            assert alloc.is_task_submission_blocked_on_object_store(o3) is False
+
+        # Op has no budget entry (unlimited budget) -> not blocked.
+        del alloc._op_budgets[o3]
+        assert alloc.is_task_submission_blocked_on_object_store(o3) is False
+
     def test_unblock_backpressure_fallback_to_idle_detector(self, restore_data_context):
         """When unblock conditions not met, falls back to idle detector result."""
         o1 = InputDataBuffer(DataContext.get_current(), [])

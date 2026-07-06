@@ -599,6 +599,30 @@ class OpResourceAllocator(ABC):
         allocation is unlimited."""
         ...
 
+    def is_task_submission_blocked_on_object_store(self, op: PhysicalOperator) -> bool:
+        """Whether ``op``'s object-store *output* budget is exhausted, i.e. the
+        object-store condition of ``can_submit_new_task`` is violated.
+
+        Returns True whenever object store is a binding constraint, even if the
+        op is *also* blocked on CPU/GPU -- because relaxing wouldn't help in that
+        case either (object store would still block submission).
+
+        This distinction matters for the output-backpressure liveness escape
+        hatch: relaxing upstream output backpressure lets upstream tasks finish
+        and release the resources they hold, which helps a downstream op blocked
+        on CPU/GPU/slots. But it does the opposite for one blocked on object
+        store -- upstream completing only writes *more* output into an
+        already-full store, pushing usage further past the limit while the
+        downstream op still can't schedule. The hatch keys on this to avoid
+        overshooting the object-store memory limit.
+        """
+        budget = self.get_budget(op)
+        if budget is None:
+            return False
+        return budget.object_store_memory < (
+            op.metrics.obj_store_mem_max_pending_output_per_task or 0
+        )
+
     def _get_eligible_ops(self) -> List[PhysicalOperator]:
         """Returns a list of operators eligible for allocation.
 
