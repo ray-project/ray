@@ -483,6 +483,15 @@ html_extra_path = ["robots.txt"]
 
 html_baseurl = "https://docs.ray.io/en/latest/"
 
+# Base URL for links in the generated llms.txt / llms-full.txt. Unlike the SEO
+# `html_baseurl` (deliberately pinned to /en/latest/ as the canonical), these
+# should point at the version actually being built, so a version's manifest and
+# index links resolve within that same version — and PR previews are
+# self-navigable rather than pointing at prod /en/latest/. RtD's
+# `READTHEDOCS_CANONICAL_URL` carries the correct host + current version slug;
+# fall back to html_baseurl for local builds. (DOC-1130)
+llms_txt_base_url = os.getenv("READTHEDOCS_CANONICAL_URL") or html_baseurl
+
 # `html_baseurl` already encodes `/en/latest/`, so override sphinx-sitemap's
 # default `{lang}{version}{link}` scheme to just `{link}`. Otherwise the
 # extension prepends `en/` again, producing URLs like `en/latesten/<page>`.

@@ -336,11 +336,37 @@ def test_clean_coercion():
     return True
 
 
+def test_base_url_override():
+    """llms_txt_base_url overrides html_baseurl for all generated links, so links
+    can track the version being built (e.g. RtD's READTHEDOCS_CANONICAL_URL)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        out = _build(
+            Path(tmp),
+            extra_conf='\nllms_txt_base_url = "https://example.com/en/v2/"\n',
+        )
+        index = (out / "llms.txt").read_text(encoding="utf-8")
+        _check(
+            "https://example.com/en/v2/secA/page1.html" in index,
+            "llms_txt_base_url not used for page links",
+        )
+        _check(
+            "https://example.com/docs/" not in index,
+            "html_baseurl leaked despite llms_txt_base_url override",
+        )
+        manifest = (out / "llms-full.txt").read_text(encoding="utf-8")
+        _check(
+            "https://example.com/en/v2/secA/llms-full.txt" in manifest,
+            "llms_txt_base_url not used for shard links",
+        )
+    return True
+
+
 if __name__ == "__main__":
     test_llms_txt()
     test_notebook_exclusion()
     test_build_gate()
     test_clean_coercion()
+    test_base_url_override()
     print(
         "PASS: llms_txt extension produced a correct index, Optional section, "
         "llms-full shards, excludes notebooks by source type, and honors the "

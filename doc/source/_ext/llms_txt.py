@@ -54,6 +54,10 @@ Config values (set generic defaults here; Ray specifics live in ``conf.py``):
     Master switch (default ``True``). Set to ``False`` to skip all generation —
     e.g. on RtD PR previews, where the agent corpus isn't review-critical and
     the full-source read is wasted work.
+``llms_txt_base_url``
+    Absolute base URL for generated links. Defaults to ``html_baseurl``; set it
+    to the current build's canonical URL (e.g. ``READTHEDOCS_CANONICAL_URL``) so
+    links track the version being built rather than a pinned SEO canonical.
 
 All work happens in ``build-finished`` so it is parallel-safe, and the module
 sticks to APIs that survive the Sphinx 8 -> 9 jump (``findall`` not
@@ -227,16 +231,32 @@ def _top_dir(docname: str) -> str:
     return docname.split("/", 1)[0] if "/" in docname else docname
 
 
+def _base_url(config) -> str:
+    """Absolute base URL for generated links (trailing slash stripped).
+
+    Prefers ``llms_txt_base_url`` — set it to the *current build's* canonical URL
+    (e.g. Read the Docs' ``READTHEDOCS_CANONICAL_URL``, which carries the correct
+    host and version, including PR-preview hosts) so links track the version
+    being built. Falls back to the SEO-pinned ``html_baseurl``.
+    """
+    base = (
+        getattr(config, "llms_txt_base_url", None)
+        or getattr(config, "html_baseurl", "")
+        or ""
+    )
+    return base.rstrip("/")
+
+
 def _page_url(app, docname: str) -> str:
-    """Absolute URL for a page, using ``html_baseurl`` when configured."""
-    base = (getattr(app.config, "html_baseurl", "") or "").rstrip("/")
+    """Absolute URL for a page."""
+    base = _base_url(app.config)
     uri = app.builder.get_target_uri(docname)
     return f"{base}/{uri}" if base else uri
 
 
 def _asset_url(app, relpath: str) -> str:
     """Absolute URL for a build-output asset (e.g. a generated llms-full.txt)."""
-    base = (getattr(app.config, "html_baseurl", "") or "").rstrip("/")
+    base = _base_url(app.config)
     return f"{base}/{relpath}" if base else relpath
 
 
@@ -579,10 +599,11 @@ def on_build_finished(app, exception):
         )
         return
 
-    if not getattr(config, "html_baseurl", None):
+    if not _base_url(config):
         logger.warning(
-            "[llms_txt] html_baseurl is not set; generated links will be "
-            "relative, but the llms.txt spec expects absolute URLs."
+            "[llms_txt] no base URL (set llms_txt_base_url or html_baseurl); "
+            "generated links will be relative, but the llms.txt spec expects "
+            "absolute URLs."
         )
 
     env = app.env
@@ -617,6 +638,7 @@ def setup(app):
     app.add_config_value("llms_txt_full", True, "html")
     app.add_config_value("llms_txt_full_max_shard_tokens", 200000, "html")
     app.add_config_value("llms_txt_build", True, "html")
+    app.add_config_value("llms_txt_base_url", None, "html")
 
     app.connect("build-finished", on_build_finished)
 
