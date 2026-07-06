@@ -225,6 +225,7 @@ class RDTManager:
                 self._monitor_failures_thread.join()
                 self._monitor_failures_shutdown_event.clear()
                 self._monitor_failures_thread = None
+
         # Return this actor's pinned RDMA NIC (if any) to the cluster-wide
         # pool. No-op unless RAY_RDT_NIC_PINNING=1.
         from ray.experimental.rdt.nic_allocator import release_nic_for_current_actor

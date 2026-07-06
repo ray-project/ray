@@ -1158,6 +1158,20 @@ class Worker:
     def shutdown_rdt_manager(self):
         if self._rdt_manager:
             self._rdt_manager.shutdown()
+        # Release any RDMA NIC this process pinned for NIXL/UCX transfers.
+        # This runs regardless of whether an RDTManager was ever lazily
+        # created (e.g. an actor that only calls register_nixl_memory /
+        # register_nixl_memory_pool directly never creates one, but can
+        # still hold an exclusive NIC via NixlTensorTransport). Checked as
+        # a plain env lookup first so the import -- and the
+        # @ray.remote(NICAllocator) class definition it triggers -- is
+        # fully skipped when NIC pinning is disabled (the default).
+        if os.environ.get("RAY_RDT_NIC_PINNING", "0") == "1":
+            from ray.experimental.rdt.nic_allocator import (
+                release_nic_for_current_actor,
+            )
+
+            release_nic_for_current_actor()
 
 
 _connect_or_shutdown_lock = threading.RLock()

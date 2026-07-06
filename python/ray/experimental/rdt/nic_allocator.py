@@ -28,6 +28,13 @@ RDT_NIC_PINNING_ENV_VAR = "RAY_RDT_NIC_PINNING"
 # Overridable for testing.
 _INFINIBAND_SYSFS_ROOT = "/sys/class/infiniband"
 
+# Process-local record of the NIC (if any) this process successfully
+# acquired. Set only on a confirmed successful acquire, so a subsequent
+# release can check this and skip the GCS/allocator round trip entirely for
+# processes that never held a NIC (pinning disabled, no NICs, or the pool
+# was exhausted).
+_acquired_nic: Optional[str] = None
+
 
 def discover_rdma_nics() -> List[str]:
     """Enumerate port-qualified RDMA device names (e.g. ``mlx5_0:1``).
@@ -130,7 +137,13 @@ def acquire_nic_for_current_actor(timeout_s: float = 10.0) -> Optional[str]:
     available, or anything fails. NIC pinning is a performance
     optimization, so every failure path degrades to UCX's own device
     selection rather than raising.
+
+    On a confirmed successful acquire, records the NIC in the process-local
+    ``_acquired_nic`` so a later ``release_nic_for_current_actor`` call can
+    skip the allocator round trip entirely if this process never held one.
     """
+    global _acquired_nic
+
     if not _nic_pinning_enabled():
         return None
     nics = discover_rdma_nics()
@@ -142,24 +155,37 @@ def acquire_nic_for_current_actor(timeout_s: float = 10.0) -> Optional[str]:
             _INFINIBAND_SYSFS_ROOT,
         )
         return None
+
+    ctx = ray.get_runtime_context()
+    actor_id = ctx.get_actor_id()
+    if actor_id is None:
+        # Drivers are not pinned; only long-lived actors contend on NICs.
+        return None
+    node_id = ctx.get_node_id()
+
     try:
-        ctx = ray.get_runtime_context()
-        actor_id = ctx.get_actor_id()
-        if actor_id is None:
-            # Drivers are not pinned; only long-lived actors contend on NICs.
-            return None
-        node_id = ctx.get_node_id()
         allocator = _get_or_create_allocator()
         ray.get(allocator.register_node.remote(node_id, nics), timeout=timeout_s)
-        nic = ray.get(allocator.acquire.remote(node_id, actor_id), timeout=timeout_s)
-        if nic is None:
-            logger.warning(
-                "All %d RDMA NICs on node %s are already assigned; "
-                "falling back to unpinned UCX device selection.",
-                len(nics),
-                node_id,
-            )
-        return nic
+        acquire_ref = allocator.acquire.remote(node_id, actor_id)
+        nic = ray.get(acquire_ref, timeout=timeout_s)
+    except ray.exceptions.GetTimeoutError:
+        # The client wait timed out, but the single-threaded allocator may
+        # have already committed this NIC to actor_id. We don't know either
+        # way, so fire a best-effort, non-blocking release to undo a
+        # possible orphaned reservation rather than leaking it until the
+        # node dies. This is safe even if nothing was actually committed
+        # (release on an unheld NIC is a no-op).
+        logger.warning(
+            "Timed out waiting for NIC allocator on node %s; falling back "
+            "to unpinned UCX device selection and releasing any possible "
+            "orphaned reservation.",
+            node_id,
+        )
+        try:
+            allocator.release.remote(node_id, actor_id)
+        except Exception:
+            logger.debug("Best-effort orphan release failed.", exc_info=True)
+        return None
     except Exception:
         logger.warning(
             "RDT NIC acquisition failed; falling back to unpinned UCX "
@@ -168,10 +194,29 @@ def acquire_nic_for_current_actor(timeout_s: float = 10.0) -> Optional[str]:
         )
         return None
 
+    if nic is None:
+        logger.warning(
+            "All %d RDMA NICs on node %s are already assigned; "
+            "falling back to unpinned UCX device selection.",
+            len(nics),
+            node_id,
+        )
+        return None
+
+    _acquired_nic = nic
+    return nic
+
 
 def release_nic_for_current_actor(timeout_s: float = 5.0) -> None:
-    """Best-effort release of this actor's NIC on shutdown."""
-    if not _nic_pinning_enabled():
+    """Best-effort release of this actor's NIC on shutdown.
+
+    Returns immediately, without any GCS/allocator call, if this process
+    never successfully acquired a NIC (pinning disabled, no NICs found, or
+    the pool was exhausted) -- the common case during actor teardown.
+    """
+    global _acquired_nic
+
+    if _acquired_nic is None:
         return
     try:
         ctx = ray.get_runtime_context()
@@ -185,3 +230,5 @@ def release_nic_for_current_actor(timeout_s: float = 5.0) -> None:
         )
     except Exception:
         logger.debug("RDT NIC release skipped.", exc_info=True)
+    finally:
+        _acquired_nic = None

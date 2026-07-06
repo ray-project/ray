@@ -1,5 +1,6 @@
 import os
 import sys
+from unittest import mock
 
 import pytest
 
@@ -10,7 +11,16 @@ from ray.experimental.rdt.nic_allocator import (
     NICAllocator,
     acquire_nic_for_current_actor,
     discover_rdma_nics,
+    release_nic_for_current_actor,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_acquired_nic_state():
+    """_acquired_nic is process-local global state; isolate tests from it."""
+    nic_allocator._acquired_nic = None
+    yield
+    nic_allocator._acquired_nic = None
 
 
 def _make_sysfs(tmp_path, devices):
@@ -115,6 +125,101 @@ def test_acquire_noop_without_nics(monkeypatch):
         nic_allocator, "_INFINIBAND_SYSFS_ROOT", "/nonexistent/infiniband"
     )
     assert acquire_nic_for_current_actor() is None
+
+
+def test_release_noop_without_acquired_nic(monkeypatch):
+    """release() must short-circuit before touching Ray when this process
+    never recorded a successful acquire, even if pinning is enabled."""
+    monkeypatch.setenv(RDT_NIC_PINNING_ENV_VAR, "1")
+    assert nic_allocator._acquired_nic is None
+    with mock.patch("ray.get_actor") as mock_get_actor:
+        release_nic_for_current_actor()
+    mock_get_actor.assert_not_called()
+
+
+def test_release_clears_acquired_nic_after_success(ray_start_regular, tmp_path):
+    """A successful acquire followed by release clears the local record and
+    frees the NIC for another actor on the same node."""
+    sysfs_root = _make_sysfs(tmp_path, {"mlx5_0": [1]})
+
+    @ray.remote
+    class RDTWorker:
+        def __init__(self, sysfs_root):
+            os.environ[RDT_NIC_PINNING_ENV_VAR] = "1"
+            nic_allocator._INFINIBAND_SYSFS_ROOT = sysfs_root
+
+        def acquire(self):
+            return acquire_nic_for_current_actor()
+
+        def acquired_nic_is_recorded(self):
+            return nic_allocator._acquired_nic is not None
+
+        def release(self):
+            nic_allocator.release_nic_for_current_actor()
+            return nic_allocator._acquired_nic
+
+    w1 = RDTWorker.remote(sysfs_root)
+    w2 = RDTWorker.remote(sysfs_root)
+
+    assert ray.get(w1.acquire.remote()) == "mlx5_0:1"
+    assert ray.get(w1.acquired_nic_is_recorded.remote()) is True
+    # Only one NIC exists, so a second actor gets nothing until released.
+    assert ray.get(w2.acquire.remote()) is None
+
+    assert ray.get(w1.release.remote()) is None  # cleared after release
+    assert ray.get(w2.acquire.remote()) == "mlx5_0:1"
+
+
+def test_acquire_timeout_releases_possible_orphan(monkeypatch):
+    """A client-side timeout on the acquire RPC must not leave a permanent
+    reservation: the caller should fire a best-effort release rather than
+    silently leaking the NIC (the remote call may have already committed
+    even though the client gave up waiting on it)."""
+    monkeypatch.setenv(RDT_NIC_PINNING_ENV_VAR, "1")
+    monkeypatch.setattr(nic_allocator, "discover_rdma_nics", lambda: ["mlx5_0:1"])
+
+    released = {}
+
+    class FakeAllocatorHandle:
+        def __init__(self):
+            self.register_node = mock.Mock()
+            self.register_node.remote = mock.Mock(return_value="register_ref")
+            self.acquire = mock.Mock()
+            self.acquire.remote = mock.Mock(return_value="acquire_ref")
+            self.release = mock.Mock()
+
+            def _release_remote(node_id, actor_id):
+                released["node_id"] = node_id
+                released["actor_id"] = actor_id
+
+            self.release.remote = mock.Mock(side_effect=_release_remote)
+
+    fake_allocator = FakeAllocatorHandle()
+    monkeypatch.setattr(
+        nic_allocator, "_get_or_create_allocator", lambda: fake_allocator
+    )
+
+    def fake_ray_get(ref, timeout=None):
+        if ref == "register_ref":
+            return None
+        if ref == "acquire_ref":
+            # Simulate the register_node call succeeding but the acquire
+            # call's client-side wait timing out.
+            raise ray.exceptions.GetTimeoutError("simulated timeout")
+        raise AssertionError(f"unexpected ray.get call on {ref!r}")
+
+    with (
+        mock.patch("ray.get", side_effect=fake_ray_get),
+        mock.patch("ray.get_runtime_context") as mock_ctx,
+    ):
+        mock_ctx.return_value.get_actor_id.return_value = "actorA"
+        mock_ctx.return_value.get_node_id.return_value = "node1"
+        result = acquire_nic_for_current_actor()
+
+    assert result is None
+    assert nic_allocator._acquired_nic is None
+    fake_allocator.release.remote.assert_called_once_with("node1", "actorA")
+    assert released == {"node_id": "node1", "actor_id": "actorA"}
 
 
 def test_end_to_end_exclusive_assignment(ray_start_regular, tmp_path):
