@@ -37,8 +37,8 @@ doctest(
     ),
     gpu = True,
     tags = [
-        "team:serve",
         "serve_llm_gpu",
+        "team:serve",
     ],
 )
 
