@@ -858,6 +858,7 @@ def wait_for_haproxy_routing_to_replica(timeout: int = 30):
         for sock_path in glob.glob(socket_glob):
             try:
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                    client.settimeout(5.0)
                     client.connect(sock_path)
                     client.sendall(b"show stat\n")
                     data = b""
