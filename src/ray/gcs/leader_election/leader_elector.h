@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include <atomic>
 #include <condition_variable>
 #include <functional>
 #include <memory>
@@ -68,7 +67,10 @@ class LeaderElector {
   void Stop();
 
   // Check if the elector currently holds the lease.
-  bool IsLeader() const { return is_leading_.load(); }
+  bool IsLeader() const {
+    std::scoped_lock lock(mutex_);
+    return is_leading_;
+  }
 
  private:
   // The background loop execution function.
@@ -91,16 +93,15 @@ class LeaderElector {
 
   LeaderElectionConfig config_;
   // Flashed to true by GCS main thread to request background loops to exit gracefully.
-  std::atomic<bool> is_stopped_{false};
+  bool is_stopped_{false};
   // Tracks whether this candidate currently holds the leader election lease successfully.
-  std::atomic<bool> is_leading_{false};
+  bool is_leading_{false};
   std::unique_ptr<std::thread> election_thread_;
   std::unique_ptr<std::thread> watchdog_thread_;
   std::condition_variable watchdog_cv_;
-  std::mutex watchdog_mutex_;
   std::condition_variable election_cv_;
-  std::mutex election_mutex_;
-  std::atomic<int64_t> last_successful_renew_steady_ns_{0};
+  mutable std::mutex mutex_;
+  int64_t last_successful_renew_steady_ns_{0};
   std::string last_observed_leader_;
 };
 

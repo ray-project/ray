@@ -14,8 +14,6 @@
 
 #include "ray/gcs/leader_election/leader_elector.h"
 
-#include "absl/time/clock.h"
-#include "absl/time/time.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -56,10 +54,11 @@ void LeaderElector::Run() {
 void LeaderElector::Stop() {
   // Flag background loops to exit immediately. If already stopped, return.
   {
-    std::lock_guard<std::mutex> lock(watchdog_mutex_);
-    if (is_stopped_.exchange(true)) {
+    std::scoped_lock lock(mutex_);
+    if (is_stopped_) {
       return;
     }
+    is_stopped_ = true;
   }
   // Wake up all background threads from their wait/sleep states so they can exit.
   watchdog_cv_.notify_all();
@@ -75,8 +74,16 @@ void LeaderElector::Stop() {
   }
   watchdog_thread_.reset();
 
-  if (is_leading_.load()) {
-    is_leading_ = false;
+  bool was_leading = false;
+  {
+    std::scoped_lock lock(mutex_);
+    if (is_leading_) {
+      is_leading_ = false;
+      was_leading = true;
+    }
+  }
+
+  if (was_leading) {
     try {
       // Graceful exit: Voluntarily release the lease in Kubernetes to allow the
       // standby node to promote itself immediately.
@@ -89,11 +96,22 @@ void LeaderElector::Stop() {
 }
 
 void LeaderElector::Loop() {
-  while (!is_stopped_.load()) {
+  while (true) {
+    {
+      std::scoped_lock lock(mutex_);
+      if (is_stopped_) {
+        break;
+      }
+    }
     // 1. Standby mode: Poll K8s to acquire the lease.
     Acquire();
     // 2. Active mode: Periodically renew lease heartbeats as long as we hold leadership.
-    if (is_leading_.load() && !is_stopped_.load()) {
+    bool should_renew = false;
+    {
+      std::scoped_lock lock(mutex_);
+      should_renew = is_leading_ && !is_stopped_;
+    }
+    if (should_renew) {
       Renew();
     }
   }
@@ -131,8 +149,11 @@ Status LeaderElector::TryAcquireOrRenew(
   if (success) {
     // Lock successfully acquired or renewed.
     auto now_steady = std::chrono::steady_clock::now().time_since_epoch();
-    last_successful_renew_steady_ns_.store(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(now_steady).count());
+    {
+      std::scoped_lock lock(mutex_);
+      last_successful_renew_steady_ns_ =
+          std::chrono::duration_cast<std::chrono::nanoseconds>(now_steady).count();
+    }
     // Wake up the watchdog thread early to recalculate the remaining safety window.
     watchdog_cv_.notify_all();
   }
@@ -141,7 +162,13 @@ Status LeaderElector::TryAcquireOrRenew(
 }
 
 void LeaderElector::Acquire() {
-  while (!is_leading_.load() && !is_stopped_.load()) {
+  while (true) {
+    {
+      std::scoped_lock lock(mutex_);
+      if (is_leading_ || is_stopped_) {
+        return;
+      }
+    }
     bool acquired = false;
     Status status = TryAcquireOrRenew(
         [this](
@@ -157,7 +184,7 @@ void LeaderElector::Acquire() {
     if (acquired) {
       RAY_LOG(INFO) << "Successfully acquired leader lease. Promoting to Leader!";
       {
-        std::lock_guard<std::mutex> lock(watchdog_mutex_);
+        std::scoped_lock lock(mutex_);
         is_leading_ = true;
       }
       watchdog_cv_.notify_all();
@@ -167,15 +194,21 @@ void LeaderElector::Acquire() {
       return;
     }
 
-    std::unique_lock<std::mutex> lock(election_mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
     election_cv_.wait_for(lock,
                           std::chrono::seconds(config_.retry_period_seconds),
-                          [this]() { return is_stopped_.load(); });
+                          [this]() { return is_stopped_; });
   }
 }
 
 void LeaderElector::Renew() {
-  while (is_leading_.load() && !is_stopped_.load()) {
+  while (true) {
+    {
+      std::scoped_lock lock(mutex_);
+      if (!is_leading_ || is_stopped_) {
+        return;
+      }
+    }
     bool renewed = false;
     Status status = TryAcquireOrRenew(
         [this](
@@ -194,8 +227,11 @@ void LeaderElector::Renew() {
                         "down immediately.";
       bool was_leading = false;
       {
-        std::lock_guard<std::mutex> lock(watchdog_mutex_);
-        was_leading = is_leading_.exchange(false);
+        std::scoped_lock lock(mutex_);
+        if (is_leading_) {
+          is_leading_ = false;
+          was_leading = true;
+        }
       }
       watchdog_cv_.notify_all();
       if (was_leading && config_.on_stopped_leading) {
@@ -208,27 +244,41 @@ void LeaderElector::Renew() {
     // 1. Stop() is called.
     // 2. Leadership lost.
     // 3. retry_period_seconds has elapsed.
-    std::unique_lock<std::mutex> lock(election_mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
     election_cv_.wait_for(lock,
                           std::chrono::seconds(config_.retry_period_seconds),
-                          [this]() { return is_stopped_.load() || !is_leading_.load(); });
+                          [this]() { return is_stopped_ || !is_leading_; });
   }
 }
 
 void LeaderElector::WatchdogLoop() {
-  while (!is_stopped_.load()) {
+  while (true) {
+    {
+      std::scoped_lock lock(mutex_);
+      if (is_stopped_) {
+        return;
+      }
+    }
     // 1. If we are in standby (not leading), sleep on CV to prevent high CPU spin cycles.
-    if (!is_leading_.load()) {
-      std::unique_lock<std::mutex> lock(watchdog_mutex_);
+    bool leading = false;
+    {
+      std::scoped_lock lock(mutex_);
+      leading = is_leading_;
+    }
+    if (!leading) {
+      std::unique_lock<std::mutex> lock(mutex_);
       // Wake up if we are elected as leader or stop() is called.
-      watchdog_cv_.wait(lock,
-                        [this]() { return is_leading_.load() || is_stopped_.load(); });
+      watchdog_cv_.wait(lock, [this]() { return is_leading_ || is_stopped_; });
       continue;
     }
 
     // 2. Calculate monotonic elapsed time since the last successful lease renewal.
     // Load the last successful renewal steady timestamp first.
-    int64_t last_renew_ns = last_successful_renew_steady_ns_.load();
+    int64_t last_renew_ns;
+    {
+      std::scoped_lock lock(mutex_);
+      last_renew_ns = last_successful_renew_steady_ns_;
+    }
 
     // Capture current steady clock next. This order guarantees that last_renew_ns
     // is always <= now_steady_ns, preventing negative elapsed time calculations.
@@ -246,10 +296,13 @@ void LeaderElector::WatchdogLoop() {
                      << "s). Stepping down immediately!";
       bool was_leading = false;
       {
-        // Acquire election_mutex_ to prevent a lost wake-up race condition with the
+        // Acquire mutex_ to prevent a lost wake-up race condition with the
         // election thread waiting on election_cv_.
-        std::lock_guard<std::mutex> lock(election_mutex_);
-        was_leading = is_leading_.exchange(false);
+        std::scoped_lock lock(mutex_);
+        if (is_leading_) {
+          is_leading_ = false;
+          was_leading = true;
+        }
       }
       election_cv_.notify_all();
       if (was_leading && config_.on_stopped_leading) {
@@ -261,15 +314,15 @@ void LeaderElector::WatchdogLoop() {
     }
 
     // 4. Sleep on the CV for the exact duration of the remaining safety deadline window.
-    // If a renewal succeeds early, the election thread will call notify_all(), waking us
-    // early to recalculate. If the process stops, notify_all() wakes us to exit
-    // instantly.
-    std::unique_lock<std::mutex> lock(watchdog_mutex_);
+    // We will wake up early to stop waiting if:
+    //   - The process stops (is_stopped_ is true).
+    //   - A renewal succeeds early (last_successful_renew_steady_ns_ changes).
+    //   - Leadership is lost (is_leading_ is false).
+    std::unique_lock<std::mutex> lock(mutex_);
     watchdog_cv_.wait_for(
         lock, std::chrono::milliseconds(remaining_ms), [this, last_renew_ns]() {
-          return is_stopped_.load() ||
-                 last_successful_renew_steady_ns_.load() != last_renew_ns ||
-                 !is_leading_.load();
+          return is_stopped_ || last_successful_renew_steady_ns_ != last_renew_ns ||
+                 !is_leading_;
         });
   }
 }
