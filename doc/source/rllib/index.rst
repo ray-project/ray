@@ -53,7 +53,6 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
     user-guides
     rllib-examples
     new-api-stack-migration-guide
-    package_ref/index
 
 
 .. sphinx_rllib_readme_2_begin
