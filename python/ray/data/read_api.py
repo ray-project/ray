@@ -2809,7 +2809,7 @@ def read_lerobot(
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
-    """Create a :class:`~ray.data.Dataset` from a LeRobot v3 dataset.
+    """Creates a :class:`~ray.data.Dataset` from a LeRobot v3 dataset.
 
     `LeRobot <https://huggingface.co/lerobot>`_ is a platform for sharing datasets
     and pretrained models for real-world robotics. A LeRobot v3 dataset stores
@@ -2892,9 +2892,12 @@ def read_lerobot(
         memory: The heap memory in bytes to reserve for each parallel read
             worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
-        concurrency: The maximum number of Ray tasks to run concurrently. Use to
-            cap the number of simultaneous video decoders. By default,
-            concurrency is dynamically decided based on available resources.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set
+            this to control number of tasks to run concurrently. This doesn't
+            change the total number of tasks run or the total number of output
+            blocks. By default, concurrency is dynamically decided based on the
+            available resources. Use it to cap the number of simultaneous video
+            decoders.
         override_num_blocks: Override the number of output blocks from all read
             tasks. By default this is one read task per video-file group (or per
             episode when ``group_by_episode``), so each file is opened once;
@@ -2904,7 +2907,7 @@ def read_lerobot(
             amortized file opens for more concurrency; lowering it merges groups.
 
     Returns:
-        :class:`~ray.data.Dataset` of fully-decoded frames with state, action,
+        A :class:`~ray.data.Dataset` of fully-decoded frames with state, action,
         camera, task, and metadata columns.
     """
     datasource = LeRobotDatasource(
