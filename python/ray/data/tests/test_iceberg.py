@@ -1,5 +1,6 @@
 import os
 import random
+from contextlib import contextmanager
 from typing import Any, Dict, Generator, List, Optional, Tuple, Type, Union
 
 import numpy as np
@@ -265,7 +266,10 @@ def test_write_basic():
     table_p = (
         ds.to_pandas().sort_values(["col_a", "col_b", "col_c"]).reset_index(drop=True)
     )
-    assert orig_table_p.equals(table_p)
+    # Use check_dtype=False since PyIceberg >= 0.11 returns columns according to
+    # the Iceberg table schema (e.g. int32) rather than the written physical
+    # dtype (e.g. int16), while the values themselves are unchanged.
+    pd.testing.assert_frame_equal(orig_table_p, table_p, check_dtype=False)
 
 
 @pytest.mark.skipif(
@@ -1625,6 +1629,402 @@ class TestEdgeCases:
             {"col_a": [1, 4, 5], "col_b": ["a", "d", "e"], "col_c": [10, 40, 50]}
         )
         assert rows_same(result_df, expected)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+class TestCaseInsensitiveColumns:
+    """Test case-insensitive column operations via DataContext config."""
+
+    def test_read_with_case_insensitive_filter(self, clean_table):
+        """Test that filters work case-insensitively when config is set."""
+        from ray.data import DataContext
+
+        data = _create_typed_dataframe(
+            {"col_a": [1, 2, 3], "col_b": ["x", "y", "z"], "col_c": [10, 20, 30]}
+        )
+        _write_to_iceberg(data)
+
+        ctx = DataContext.get_current()
+        original = ctx.iceberg_case_sensitive
+        try:
+            ctx.iceberg_case_sensitive = False
+            ds = ray.data.read_iceberg(
+                table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+                catalog_kwargs=_CATALOG_KWARGS.copy(),
+                scan_kwargs={"case_sensitive": False},
+            )
+            result = ds.filter(expr=col("col_a") > 1).to_pandas()
+            assert len(result) == 2
+        finally:
+            ctx.iceberg_case_sensitive = original
+
+    def test_context_default_propagates_to_datasource(self, clean_table):
+        """Test that DataContext.iceberg_case_sensitive propagates to scan_kwargs."""
+        from ray.data import DataContext
+
+        ctx = DataContext.get_current()
+        original = ctx.iceberg_case_sensitive
+        try:
+            ctx.iceberg_case_sensitive = False
+            ds = IcebergDatasource(
+                table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+                catalog_kwargs=_CATALOG_KWARGS.copy(),
+            )
+            assert ds._scan_kwargs["case_sensitive"] is False
+        finally:
+            ctx.iceberg_case_sensitive = original
+
+    def test_explicit_scan_kwargs_override_context(self, clean_table):
+        """Test that explicit scan_kwargs override DataContext config."""
+        from ray.data import DataContext
+
+        ctx = DataContext.get_current()
+        original = ctx.iceberg_case_sensitive
+        try:
+            ctx.iceberg_case_sensitive = False
+            ds = IcebergDatasource(
+                table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+                catalog_kwargs=_CATALOG_KWARGS.copy(),
+                scan_kwargs={"case_sensitive": True},
+            )
+            assert ds._scan_kwargs["case_sensitive"] is True
+        finally:
+            ctx.iceberg_case_sensitive = original
+
+    def test_overwrite_case_insensitive(self, clean_table):
+        """Test case-insensitive overwrite with filter."""
+        from ray.data import DataContext
+
+        data = _create_typed_dataframe(
+            {"col_a": [1, 2, 3], "col_b": ["x", "y", "z"], "col_c": [10, 20, 30]}
+        )
+        _write_to_iceberg(data)
+
+        ctx = DataContext.get_current()
+        original = ctx.iceberg_case_sensitive
+        try:
+            ctx.iceberg_case_sensitive = False
+
+            new_data = _create_typed_dataframe(
+                {"col_a": [4, 5], "col_b": ["a", "b"], "col_c": [40, 50]}
+            )
+            _write_to_iceberg(
+                new_data,
+                mode=SaveMode.OVERWRITE,
+                overwrite_filter=col("col_c") >= 20,
+            )
+
+            result_df = _read_from_iceberg(sort_by="col_a")
+            expected = _create_typed_dataframe(
+                {"col_a": [1, 4, 5], "col_b": ["x", "a", "b"], "col_c": [10, 40, 50]}
+            )
+            assert rows_same(result_df, expected)
+        finally:
+            ctx.iceberg_case_sensitive = original
+
+    def test_upsert_case_insensitive(self, clean_table):
+        """Test case-insensitive upsert operations."""
+        from ray.data import DataContext
+
+        data = _create_typed_dataframe(
+            {"col_a": [1, 2, 3], "col_b": ["x", "y", "z"], "col_c": [10, 20, 30]}
+        )
+        _write_to_iceberg(data)
+
+        ctx = DataContext.get_current()
+        original = ctx.iceberg_case_sensitive
+        try:
+            ctx.iceberg_case_sensitive = False
+
+            update_data = _create_typed_dataframe(
+                {"col_a": [2, 4], "col_b": ["updated", "new"], "col_c": [200, 40]}
+            )
+            _write_to_iceberg(
+                update_data,
+                mode=SaveMode.UPSERT,
+                upsert_kwargs={"join_cols": ["col_a"]},
+            )
+
+            result_df = _read_from_iceberg(sort_by="col_a")
+            expected = _create_typed_dataframe(
+                {
+                    "col_a": [1, 2, 3, 4],
+                    "col_b": ["x", "updated", "z", "new"],
+                    "col_c": [10, 200, 30, 40],
+                }
+            )
+            assert rows_same(result_df, expected)
+        finally:
+            ctx.iceberg_case_sensitive = original
+
+    def test_upsert_kwargs_override_context(self, clean_table):
+        """Test that upsert_kwargs case_sensitive overrides DataContext."""
+        from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
+
+        from ray.data import DataContext
+
+        ctx = DataContext.get_current()
+        original = ctx.iceberg_case_sensitive
+        try:
+            ctx.iceberg_case_sensitive = True
+            sink = IcebergDatasink(
+                table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+                catalog_kwargs=_CATALOG_KWARGS.copy(),
+                mode=SaveMode.UPSERT,
+                upsert_kwargs={"join_cols": ["col_a"], "case_sensitive": False},
+            )
+            assert sink._case_sensitive is False
+        finally:
+            ctx.iceberg_case_sensitive = original
+
+    def test_overwrite_kwargs_override_context(self, clean_table):
+        """Test that overwrite_kwargs case_sensitive overrides DataContext."""
+        from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
+
+        from ray.data import DataContext
+
+        ctx = DataContext.get_current()
+        original = ctx.iceberg_case_sensitive
+        try:
+            ctx.iceberg_case_sensitive = True
+            sink = IcebergDatasink(
+                table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+                catalog_kwargs=_CATALOG_KWARGS.copy(),
+                mode=SaveMode.OVERWRITE,
+                overwrite_kwargs={"case_sensitive": False},
+            )
+            assert sink._case_sensitive is False
+        finally:
+            ctx.iceberg_case_sensitive = original
+
+    def test_schema_evolution_case_insensitive(self, clean_table):
+        """Test schema evolution with case-insensitive union_by_name."""
+        from ray.data import DataContext
+
+        data = _create_typed_dataframe(
+            {"col_a": [1, 2], "col_b": ["x", "y"], "col_c": [10, 20]}
+        )
+        _write_to_iceberg(data)
+
+        ctx = DataContext.get_current()
+        original = ctx.iceberg_case_sensitive
+        try:
+            ctx.iceberg_case_sensitive = False
+
+            new_data = pd.DataFrame(
+                {
+                    "col_a": pd.array([3, 4], dtype="Int32"),
+                    "col_b": ["a", "b"],
+                    "col_c": pd.array([30, 40], dtype="Int32"),
+                    "col_d": ["new1", "new2"],
+                }
+            )
+            _write_to_iceberg(new_data)
+
+            result_df = _read_from_iceberg(sort_by="col_a")
+            assert "col_d" in result_df.columns
+            assert len(result_df) == 4
+        finally:
+            ctx.iceberg_case_sensitive = original
+
+    def test_default_is_case_insensitive(self, clean_table):
+        """Test that the default config is case-insensitive (False)."""
+        from ray.data import DataContext
+
+        ctx = DataContext.get_current()
+        assert ctx.iceberg_case_sensitive is False
+
+        ds = IcebergDatasource(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+        assert ds._scan_kwargs["case_sensitive"] is False
+
+    # ------------------------------------------------------------------
+    # Discriminating tests: prove the flag actually *changes behavior*
+    # when a column name's case differs from the Iceberg schema, not just
+    # that the flag is plumbed through. Each test contrasts the
+    # case-sensitive (strict) and case-insensitive (lenient) halves.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _wrong_case_df() -> pd.DataFrame:
+        """Build a frame whose column names differ in case from the schema."""
+        return pd.DataFrame(
+            {
+                "COL_A": pd.array([1, 2], dtype="Int32"),
+                "COL_B": ["x", "y"],
+                "COL_C": pd.array([10, 20], dtype="Int32"),
+            }
+        )
+
+    def test_rename_map_helpers_case_insensitive(self):
+        """Read-path rename helpers match columns ignoring case."""
+        from ray.data._internal.datasource.iceberg_datasource import (
+            _apply_rename_case_insensitive,
+            _build_case_insensitive_rename_map,
+        )
+
+        tbl = pa.table({"col_a": [1, 2], "col_b": ["x", "y"]})
+        # Rename map keys use a different casing than the actual columns.
+        lowered = _build_case_insensitive_rename_map({"COL_A": "renamed_a"})
+        assert lowered == {"col_a": "renamed_a"}
+
+        renamed = _apply_rename_case_insensitive(tbl, lowered)
+        assert "renamed_a" in renamed.schema.names
+        assert "col_a" not in renamed.schema.names
+        # Unmapped columns are preserved unchanged.
+        assert "col_b" in renamed.schema.names
+
+    def test_get_arrow_column_case_sensitivity(self):
+        """Join-key lookup resolves wrong case only when case-insensitive."""
+        from ray.data._internal.datasource.iceberg_datasink import _get_arrow_column
+
+        tbl = pa.table({"col_a": [1, 2, 3]})
+
+        # case_sensitive=False: a differently-cased name resolves.
+        assert _get_arrow_column(
+            tbl, "COL_A", case_sensitive=False
+        ).to_pylist() == [1, 2, 3]
+        # case_sensitive=True: the same name does NOT resolve.
+        with pytest.raises(KeyError):
+            _get_arrow_column(tbl, "COL_A", case_sensitive=True)
+
+    def test_mode_case_sensitive_falls_back_to_context(self, clean_table):
+        """Every mode falls back to the DataContext value when kwargs omit it."""
+        from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
+
+        from ray.data import DataContext
+
+        ctx = DataContext.get_current()
+        original = ctx.iceberg_case_sensitive
+        try:
+            for ctx_value in (True, False):
+                ctx.iceberg_case_sensitive = ctx_value
+                # APPEND mode (the else branch) has no kwargs to override.
+                append_sink = IcebergDatasink(
+                    table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+                    catalog_kwargs=_CATALOG_KWARGS.copy(),
+                )
+                assert append_sink._case_sensitive is ctx_value
+                # UPSERT / OVERWRITE fall back to ctx when kwargs omit the flag.
+                upsert_sink = IcebergDatasink(
+                    table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+                    catalog_kwargs=_CATALOG_KWARGS.copy(),
+                    mode=SaveMode.UPSERT,
+                    upsert_kwargs={"join_cols": ["col_a"]},
+                )
+                assert upsert_sink._case_sensitive is ctx_value
+                overwrite_sink = IcebergDatasink(
+                    table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+                    catalog_kwargs=_CATALOG_KWARGS.copy(),
+                    mode=SaveMode.OVERWRITE,
+                )
+                assert overwrite_sink._case_sensitive is ctx_value
+        finally:
+            ctx.iceberg_case_sensitive = original
+
+    def test_append_wrong_case_insensitive_normalizes(self, clean_table):
+        """case_sensitive=False normalizes wrong-case columns into the schema."""
+        from ray.data import DataContext
+
+        ctx = DataContext.get_current()
+        original = ctx.iceberg_case_sensitive
+        try:
+            ctx.iceberg_case_sensitive = False
+            _write_to_iceberg(self._wrong_case_df())
+
+            result = _read_from_iceberg(sort_by="col_a")
+            # Data lands in the canonical lower-case columns; nothing new added.
+            assert set(result.columns) == {"col_a", "col_b", "col_c"}
+            assert len(result) == 2
+            assert result["col_a"].tolist() == [1, 2]
+        finally:
+            ctx.iceberg_case_sensitive = original
+
+    def test_append_wrong_case_sensitive_rejects(self, clean_table):
+        """case_sensitive=True does not match wrong-case columns, so the write fails.
+
+        This is the strict counterpart to
+        ``test_append_wrong_case_insensitive_normalizes``: with case sensitivity
+        on, ``COL_A`` is not reconciled with the schema's ``col_a`` and the write
+        raises instead of silently succeeding.
+        """
+        from ray.data import DataContext
+
+        ctx = DataContext.get_current()
+        original = ctx.iceberg_case_sensitive
+        try:
+            ctx.iceberg_case_sensitive = True
+            with pytest.raises(Exception):
+                _write_to_iceberg(self._wrong_case_df())
+        finally:
+            ctx.iceberg_case_sensitive = original
+
+    def test_upsert_wrong_case_join_cols_insensitive(self, clean_table):
+        """case_sensitive=False resolves wrong-case join_cols for upsert."""
+        from ray.data import DataContext
+
+        data = _create_typed_dataframe(
+            {"col_a": [1, 2, 3], "col_b": ["x", "y", "z"], "col_c": [10, 20, 30]}
+        )
+        _write_to_iceberg(data)
+
+        ctx = DataContext.get_current()
+        original = ctx.iceberg_case_sensitive
+        try:
+            ctx.iceberg_case_sensitive = False
+            update_data = _create_typed_dataframe(
+                {"col_a": [2], "col_b": ["updated"], "col_c": [200]}
+            )
+            _write_to_iceberg(
+                update_data,
+                mode=SaveMode.UPSERT,
+                upsert_kwargs={"join_cols": ["COL_A"]},  # wrong case on purpose
+            )
+            result_df = _read_from_iceberg(sort_by="col_a")
+            expected = _create_typed_dataframe(
+                {
+                    "col_a": [1, 2, 3],
+                    "col_b": ["x", "updated", "z"],
+                    "col_c": [10, 200, 30],
+                }
+            )
+            assert rows_same(result_df, expected)
+        finally:
+            ctx.iceberg_case_sensitive = original
+
+    def test_overwrite_wrong_case_filter_insensitive(self, clean_table):
+        """case_sensitive=False resolves a wrong-case overwrite filter column."""
+        from ray.data import DataContext
+
+        data = _create_typed_dataframe(
+            {"col_a": [1, 2, 3], "col_b": ["x", "y", "z"], "col_c": [10, 20, 30]}
+        )
+        _write_to_iceberg(data)
+
+        ctx = DataContext.get_current()
+        original = ctx.iceberg_case_sensitive
+        try:
+            ctx.iceberg_case_sensitive = False
+            new_data = _create_typed_dataframe(
+                {"col_a": [4, 5], "col_b": ["a", "b"], "col_c": [40, 50]}
+            )
+            _write_to_iceberg(
+                new_data,
+                mode=SaveMode.OVERWRITE,
+                overwrite_filter=col("COL_C") >= 20,  # wrong case on purpose
+            )
+            result_df = _read_from_iceberg(sort_by="col_a")
+            expected = _create_typed_dataframe(
+                {"col_a": [1, 4, 5], "col_b": ["x", "a", "b"], "col_c": [10, 40, 50]}
+            )
+            assert rows_same(result_df, expected)
+        finally:
+            ctx.iceberg_case_sensitive = original
 
 
 if __name__ == "__main__":

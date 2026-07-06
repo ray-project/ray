@@ -4008,7 +4008,8 @@ def read_iceberg(
         snapshot_id: Optional snapshot ID for the Iceberg table, by default the latest
             snapshot is used
         scan_kwargs: Optional arguments to pass to PyIceberg's Table.scan() function
-             (e.g., case_sensitive, limit, etc.)
+             (e.g., case_sensitive, limit, etc.). If ``case_sensitive`` is not set here,
+             the value from ``DataContext.get_current().iceberg_case_sensitive`` is used.
         catalog_kwargs: Optional arguments to pass to PyIceberg's catalog.load_catalog()
              function (e.g., name, type, etc.). For the function definition, see
              `pyiceberg catalog
