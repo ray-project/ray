@@ -111,11 +111,7 @@ class UsageCallback(ExecutionCallback):
         self._dead_nodes_at_end = self._get_dead_node_count()
 
     def build_usage_info(self) -> UsageInfo:
-        """Assemble the usage payload to be flushed for this execution.
-
-        Called both before execution starts and after it finishes.
-        Subclasses can override to return a richer ``UsageInfo`` structure.
-
+        """Assemble the usage collection payload for this execution.
         """
         if self._workload is None:
             self._usage_id_map = collector.build_usage_id_map(
@@ -124,8 +120,6 @@ class UsageCallback(ExecutionCallback):
             self._workload = collector.collect_workload(
                 self._logical_plan, collector.collect_op_config, self._anonymize_op_name
             )
-        # Performance is only meaningful once execution has finished; the
-        # pre-start payload carries None.
         performance = None
         if self._finished:
             performance = PipelinePerf(
