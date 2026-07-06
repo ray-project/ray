@@ -20,7 +20,10 @@ from ray.data._internal.block_batching.iter_batches import (
     prefetch_batches_locally,
     restore_original_order,
 )
-from ray.data._internal.block_batching.util import WaitBlockPrefetcher
+from ray.data._internal.block_batching.util import (
+    WaitBlockPrefetcher,
+    finalize_batches,
+)
 from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry, RefBundle
 from ray.data._internal.stats import DatasetStats, TimeSpan
 from ray.data.block import Block, BlockMetadata
@@ -371,7 +374,7 @@ class TestAttributeBlockedTimeEdgeCases:
         assert stats.iter_blocked_production_wait_s.get() == pytest.approx(150.0)
 
 
-def test_full_pipeline_attribution():
+def test_attribute_blocked_time_all_stages_full_overlap():
     """All stages with realistic timing, full overlap with blocked window."""
     stats = DatasetStats(metadata={}, parent=None)
     it = _make_test_iterator(stats)
@@ -733,8 +736,10 @@ def test_prefetch_bytes_callback(ray_start_regular_shared, prefetch_batches):
     "scenario,bound_stage",
     [
         ("production", "iter_blocked_production_wait_s"),
+        ("data_transfer", "iter_blocked_data_transfer_s"),
         ("collate", "iter_blocked_collate_s"),
         ("format", "iter_blocked_format_s"),
+        ("finalize", "iter_blocked_finalize_s"),
     ],
 )
 def test_e2e_blocked_attribution_by_scenario(
@@ -754,6 +759,22 @@ def test_e2e_blocked_attribution_by_scenario(
             return batch
 
         ds = ray.data.range(50, override_num_blocks=5).map(slow_map)
+
+    elif scenario == "data_transfer":
+        # Patch ray.get to inject cross-node transfer delay. resolve_block_refs
+        # is the only caller of ray.get in the iter_batches pipeline, so this
+        # specifically slows data_transfer.
+        from ray.data._internal.block_batching import util as util_mod
+
+        orig_get = util_mod.ray.get
+
+        def slow_get(ref):
+            time.sleep(0.3)
+            return orig_get(ref)
+
+        patches.append(patch.object(util_mod.ray, "get", slow_get))
+        ds = ray.data.range(50, override_num_blocks=5)
+        iter_kwargs = {"batch_size": 10, "prefetch_batches": 0}
 
     elif scenario == "collate":
         # Patch _format_in_threadpool to inject a slow collate_fn
@@ -805,6 +826,26 @@ def test_e2e_blocked_attribution_by_scenario(
             "batch_format": "pandas",
             "prefetch_batches": 0,
         }
+
+    elif scenario == "finalize":
+        # Patch BatchIterator._finalize_batches to always apply a slow
+        # finalize_fn (default iter_batches sets finalize_fn=None, so without
+        # this patch the finalize stage would be skipped).
+        # prefetch_batches=0 so finalize runs synchronously.
+        def finalize_with_slow_fn(self, batch_iter):
+            def slow_finalize(data):
+                time.sleep(0.3)
+                return data
+
+            return finalize_batches(
+                batch_iter, finalize_fn=slow_finalize, stats=self._stats
+            )
+
+        patches.append(
+            patch.object(BatchIterator, "_finalize_batches", finalize_with_slow_fn)
+        )
+        ds = ray.data.range(50, override_num_blocks=5)
+        iter_kwargs = {"batch_size": 10, "prefetch_batches": 0}
 
     it = ds.iterator()
     captured = []

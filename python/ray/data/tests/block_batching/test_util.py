@@ -66,6 +66,23 @@ def test_resolve_block_refs_accumulates_data_transfer_timer(
         assert r.stage_timings.data_transfer.duration >= 0.0
 
 
+def test_resolve_block_refs_captures_production_wait_span(
+    ray_start_regular_shared,
+):
+    """resolve_block_refs captures a per-block production_wait TimeSpan
+    around ``next(block_ref_iter)`` (manual capture, no Timer accumulation)."""
+    block_refs = [ray.put(i) for i in range(3)]
+
+    stats = DatasetStats(metadata={}, parent=None)
+    resolved = list(resolve_block_refs(iter(block_refs), stats=stats))
+
+    assert len(resolved) == 3
+    for r in resolved:
+        assert r.stage_timings is not None
+        assert r.stage_timings.production_wait is not None
+        assert r.stage_timings.production_wait.duration >= 0.0
+
+
 @pytest.mark.parametrize("block_size", [1, 10])
 @pytest.mark.parametrize("drop_last", [True, False])
 def test_blocks_to_batches(block_size, drop_last):
