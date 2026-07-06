@@ -284,7 +284,11 @@ class TestGangScheduling:
         handle = serve.run(app, name="gang_pack_app")
         wait_for_condition(check_apps_running, apps=["gang_pack_app"])
 
-        # Query multiple times to hit all replicas and collect node IDs
+        # Query multiple times to hit all replicas and collect node IDs.
+        # Intentionally handle-based: the assertion is that all replicas share
+        # a single node, and handle routing can only ever surface a subset of
+        # the nodes actually used. Locality-aware routing can therefore never
+        # inflate this count, so it cannot cause a false failure here.
         node_ids = set()
         for _ in range(40):
             result = handle.remote().result()
@@ -571,6 +575,11 @@ class TestGangResourceReservation:
             apps=["gang_reservation_app"],
         )
 
+        # Intentionally handle-based: each response is a self-contained
+        # per-replica invariant (bundle specs, strategy, per-replica bundle
+        # placement), so validating any sampled subset is sufficient. This
+        # never needs to enumerate all replicas, so locality-aware routing
+        # cannot cause a false failure.
         for _ in range(20):
             pg_info = handle.get_pg_info.remote().result()
             assert pg_info is not None
@@ -644,6 +653,10 @@ class TestGangResourceReservation:
                 break
         assert labeled_node_id is not None
 
+        # Intentionally handle-based: each response is a self-contained
+        # per-replica invariant (all bundles on the labeled node), so
+        # validating any sampled subset is sufficient and locality-aware
+        # routing cannot cause a false failure.
         for _ in range(20):
             pg_info = handle.get_pg_info.remote().result()
             assert pg_info is not None
@@ -836,7 +849,10 @@ class TestGangFailureRecovery:
         )
 
         # The 2 running replicas must belong to the SAME gang,
-        # proving no partial gang survived.
+        # proving no partial gang survived. Intentionally handle-based: this is
+        # a single-node cluster (ray.init(num_cpus=1)), so every replica is
+        # local to the caller and locality-aware routing still reaches all of
+        # them.
         contexts = {}
         for _ in range(50):
             result = handle.remote().result()
@@ -896,7 +912,11 @@ class TestGangFailureRecovery:
         handle = serve.run(HealthFailureDeployment.bind(), name=app_name)
         wait_for_condition(check_apps_running, apps=[app_name], timeout=60)
 
-        # Discover all 4 replica contexts.
+        # Discover all 4 replica contexts. Intentionally handle-based: this is
+        # a single-node cluster (ray.init(num_cpus=1)), so every replica is
+        # local to the caller and locality-aware routing still reaches all of
+        # them (unlike the multi-node placement checks that read controller
+        # state).
         contexts_by_replica = {}
         for _ in range(120):
             result = handle.remote().result()
