@@ -176,31 +176,6 @@ def test_orc_file_reader_reads_chunked_manifest(tmp_path):
     assert sorted(chunked_rows) == sorted(whole_rows) == list(range(expected_rows))
 
 
-def test_orc_file_reader_chunked_row_hashes_are_unique(tmp_path):
-    file_path = str(tmp_path / "data.orc")
-    expected_rows = 200
-    _write_multi_stripe_orc(file_path, expected_rows, rows_per_stripe=20)
-    file_size = os.path.getsize(file_path)
-
-    chunker = OrcFileChunker(target_chunk_size=256)
-    chunks = list(chunker.generate_chunk_metadatas(file_path, file_size))
-    assert len(chunks) > 1
-
-    manifest = FileManifest.construct_manifest(
-        [file_path] * len(chunks),
-        [size for _, size in chunks],
-        [metadata for metadata, _ in chunks],
-    )
-
-    reader = OrcFileReader(include_row_hash=True)
-    hashes = (
-        pa.concat_tables(list(reader.read(manifest))).column("row_hash").to_pylist()
-    )
-
-    assert len(hashes) == expected_rows
-    assert len(set(hashes)) == expected_rows
-
-
 def test_orc_file_reader_handles_out_of_range_chunks(tmp_path):
     file_path = str(tmp_path / "tiny.orc")
     _write_multi_stripe_orc(file_path, num_rows=5, rows_per_stripe=1)

@@ -48,16 +48,14 @@ def test_read_orc_hive_partitioned(tmp_path):
     ]
 
 
-def test_read_orc_include_paths_and_row_hash(tmp_path):
+def test_read_orc_include_paths(tmp_path):
     _write(tmp_path / "data.orc", pa.table({"a": [1, 2, 3]}))
 
-    ds = ray.data.read_orc(str(tmp_path), include_paths=True, include_row_hash=True)
+    ds = ray.data.read_orc(str(tmp_path), include_paths=True)
     rows = ds.take_all()
 
     assert len(rows) == 3
     assert all(row["path"].endswith("data.orc") for row in rows)
-    hashes = [row["row_hash"] for row in rows]
-    assert len(set(hashes)) == 3
 
 
 def test_read_orc_filter_and_projection(tmp_path):
@@ -93,9 +91,15 @@ def test_read_orc_override_num_blocks_drives_partitioner(tmp_path):
     list_files_op = ds._logical_plan.dag.input_dependencies[0]
     assert isinstance(list_files_op, ListFiles)
     assert isinstance(list_files_op.file_partitioner, RoundRobinPartitioner)
-    assert list_files_op.file_partitioner._num_buckets == 7
+    assert list_files_op.file_partitioner.num_buckets == 7
 
 
 def test_read_orc_empty_dir_raises(tmp_path):
     with pytest.raises(ValueError, match="no files found"):
         ray.data.read_orc(str(tmp_path))
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

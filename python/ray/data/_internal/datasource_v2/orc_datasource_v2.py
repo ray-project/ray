@@ -61,7 +61,6 @@ class OrcDatasourceV2(DataSourceV2[FileManifest]):
         file_extensions: Optional[List[str]] = None,
         ignore_missing_paths: bool = False,
         include_paths: bool = False,
-        include_row_hash: bool = False,
         shuffle: Optional[Union[Literal["files"], "FileShuffleConfig"]] = None,
         schema: Optional[pa.Schema] = None,
         file_chunker: Optional[FileChunker] = None,
@@ -77,7 +76,6 @@ class OrcDatasourceV2(DataSourceV2[FileManifest]):
         self._file_extensions = file_extensions or self._FILE_EXTENSIONS
         self._ignore_missing_paths = ignore_missing_paths
         self._include_paths = include_paths
-        self._include_row_hash = include_row_hash
         self._shuffle = shuffle
         self._user_schema = schema
         self._file_chunker = (
@@ -194,13 +192,6 @@ class OrcDatasourceV2(DataSourceV2[FileManifest]):
         ):
             schema = schema.append(pa.field(INCLUDE_PATHS_COLUMN_NAME, pa.string()))
 
-        if self._include_row_hash:
-            idx = schema.get_field_index("row_hash")
-            if idx == -1:
-                schema = schema.append(pa.field("row_hash", pa.uint64()))
-            elif schema.field(idx).type != pa.uint64():
-                schema = schema.set(idx, pa.field("row_hash", pa.uint64()))
-
         check_for_legacy_tensor_type(schema)
         return schema
 
@@ -216,7 +207,6 @@ class OrcDatasourceV2(DataSourceV2[FileManifest]):
             filesystem=filesystem or self._filesystem,
             partitioning=partitioning,
             include_paths=self._include_paths,
-            include_row_hash=self._include_row_hash,
             shuffle=self._shuffle,
             ignore_prefixes=options.get("ignore_prefixes"),
         )

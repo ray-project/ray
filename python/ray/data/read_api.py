@@ -1701,7 +1701,6 @@ def read_orc(
     partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     include_paths: bool = False,
-    include_row_hash: bool = False,
     ignore_missing_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
@@ -1720,7 +1719,6 @@ def read_orc(
         file_extensions=file_extensions,
         ignore_missing_paths=ignore_missing_paths,
         include_paths=include_paths,
-        include_row_hash=include_row_hash,
         shuffle=shuffle,
         schema=schema,
     )

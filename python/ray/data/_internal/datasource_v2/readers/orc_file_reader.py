@@ -5,7 +5,6 @@ import pyarrow.orc as orc
 from pyarrow.fs import FileSystem, LocalFileSystem
 
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
-from ray.data._internal.datasource.parquet_datasource import _compute_row_hashes
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
     OrcFileChunkMetadata,
 )
@@ -17,13 +16,10 @@ from ray.data._internal.datasource_v2.readers.base_reader import Reader
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     INCLUDE_PATHS_COLUMN_NAME,
-    ROW_HASH_COLUMN_NAME,
 )
 from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
-
-_ROWS_PER_HASH_STRIPE = 1 << 32
 
 
 @DeveloperAPI
@@ -39,7 +35,6 @@ class OrcFileReader(Reader[FileManifest]):
         filesystem: Optional[FileSystem] = None,
         partitioning: Optional[Partitioning] = None,
         include_paths: bool = False,
-        include_row_hash: bool = False,
         schema: Optional[pa.Schema] = None,
     ):
         self._batch_size = batch_size or _ARROW_DEFAULT_BATCH_SIZE
@@ -51,7 +46,6 @@ class OrcFileReader(Reader[FileManifest]):
             PathPartitionParser(partitioning) if partitioning is not None else None
         )
         self._include_paths = include_paths
-        self._include_row_hash = include_row_hash
         self._schema = schema
 
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
@@ -60,12 +54,11 @@ class OrcFileReader(Reader[FileManifest]):
 
         rows_read = 0
         for path, chunk_metadatas in self._iter_contiguous_path_groups(input_split):
+            if self._limit is not None and rows_read >= self._limit:
+                return
             for table in self._read_path(path, chunk_metadatas):
-                if self._limit is not None:
-                    if rows_read >= self._limit:
-                        return
-                    if table.num_rows > self._limit - rows_read:
-                        table = table.slice(0, self._limit - rows_read)
+                if self._limit is not None and table.num_rows > self._limit - rows_read:
+                    table = table.slice(0, self._limit - rows_read)
 
                 for batch in self._slice_table(table):
                     rows_read += batch.num_rows
@@ -259,18 +252,6 @@ class OrcFileReader(Reader[FileManifest]):
                 self._broadcast_partition_value(name, value, table.num_rows),
             )
 
-        if self._include_row_hash and (
-            columns_to_synthesize is None
-            or ROW_HASH_COLUMN_NAME in columns_to_synthesize
-        ):
-            start_row = stripe_idx * _ROWS_PER_HASH_STRIPE
-            hashes = _compute_row_hashes(path, start_row, table.num_rows)
-            if ROW_HASH_COLUMN_NAME in table.column_names:
-                table = table.drop([ROW_HASH_COLUMN_NAME])
-            table = table.append_column(
-                ROW_HASH_COLUMN_NAME, pa.array(hashes, type=pa.uint64())
-            )
-
         return table
 
     def _broadcast_partition_value(
@@ -310,10 +291,7 @@ class OrcFileReader(Reader[FileManifest]):
         return self._schema.field(idx).type
 
     def _synthetic_column_names(self) -> Set[str]:
-        names = {INCLUDE_PATHS_COLUMN_NAME}
-        if self._include_row_hash:
-            names.add(ROW_HASH_COLUMN_NAME)
-        return names
+        return {INCLUDE_PATHS_COLUMN_NAME}
 
     def _partition_column_names(self) -> Set[str]:
         if self._partition_parser is None:
