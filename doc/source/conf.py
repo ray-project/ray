@@ -108,11 +108,14 @@ llms_txt_optional_sections = []
 # this PR's RtD preview for review. REVERT to the gated line above before merge.
 llms_txt_build = True
 
-llms_txt_summary = (
-    "Ray is an open-source unified compute framework for scaling AI and "
-    "Python workloads, including data processing, model training, model "
-    "serving, hyperparameter tuning, and reinforcement learning. The full "
-    "documentation lives at https://docs.ray.io/."
+# Blockquote summary for llms.txt, kept as editable prose in a sibling file so
+# it can be updated without touching conf.py. `.txt` isn't a Sphinx source
+# suffix, so the file isn't built as a page. Whitespace is collapsed to a single
+# line for the `> summary` blockquote, so the file can be wrapped for readability.
+llms_txt_summary = " ".join(
+    (pathlib.Path(__file__).parent / "llms_txt_summary.txt")
+    .read_text(encoding="utf-8")
+    .split()
 )
 
 # Filter low-signal pages from llms-full.txt. Auto-generated API reference
