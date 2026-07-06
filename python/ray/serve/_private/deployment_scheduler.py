@@ -230,7 +230,7 @@ class ReplicaSchedulingRequest:
         """The resources required to schedule this replica on a node.
 
         STRICT_PACK placement group: sum of all bundles.
-        Other placement groups: bundle 0 (the actor is pinned there).
+        Other placement groups: bundle 0.
         Otherwise: actor resources.
         """
 
@@ -297,7 +297,7 @@ class DeploymentSchedulingInfo:
         """The resources required to schedule a replica of this deployment on a node.
 
         STRICT_PACK placement group: sum of all bundles.
-        Other placement groups: bundle 0 (the actor is pinned there).
+        Other placement groups: bundle 0.
         Otherwise: actor resources.
         """
 

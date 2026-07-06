@@ -1016,20 +1016,12 @@ def test_schedule_passes_placement_group_options():
 
 
 def test_schedule_pins_actor_to_bundle_0():
-    """Replicas with a placement group must be scheduled with
-    placement_group_bundle_index=0. This is the contract that
-    required_resources relies on and that ReplicaConfig validates against.
-    """
+    """Replicas with a placement group are scheduled with placement_group_bundle_index=0."""
     cluster_node_info_cache = MockClusterNodeInfoCache()
-
-    class MockPG:
-        def wait(self, *args):
-            return True
-
     scheduler = default_impl.create_deployment_scheduler(
         cluster_node_info_cache,
         head_node_id_override="fake-head-node-id",
-        create_placement_group_fn_override=lambda request: MockPG(),
+        create_placement_group_fn_override=lambda request: MockPlacementGroup(request),
     )
 
     dep_id = DeploymentID(name="pin_test")
