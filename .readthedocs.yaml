@@ -15,6 +15,9 @@ build:
     # files that affect documentation output. Reduces queue pressure on
     # the shared RTD build slots when several PRs are open at once.
     # Tag/branch builds (master, stable, etc.) always run.
+    # The guard matches doc/ but excludes doc/.claude/ (Claude Code skills
+    # and agent files), which never participate in the Sphinx build, so a
+    # PR that changes only those paths skips the build instead of running one.
     # See https://docs.readthedocs.com/platform/stable/guides/build/skip-build.html
     #
     # Some constructs are avoided deliberately because RTD's job runner
@@ -22,6 +25,9 @@ build:
     # with a backslash-escape format string), avoid backslash escapes
     # in general, and keep shell comments out of this block so that
     # backticks/$() inside comments don't confuse the preprocessor.
+    # The runner also strips the surrounding single quotes from arguments,
+    # so use git's :! exclude shorthand rather than :(exclude): unquoted
+    # parentheses reach /bin/sh (dash) and abort the script with a syntax error.
     post_checkout:
       - |
         if [ "${READTHEDOCS_VERSION_TYPE:-}" != "external" ]; then
@@ -33,14 +39,14 @@ build:
           echo "Could not determine merge-base with origin/master; building docs to be safe."
           exit 0
         fi
-        if git diff --quiet origin/master...HEAD -- doc/ python/ray/ rllib/ .readthedocs.yaml; then
+        if git diff --quiet origin/master...HEAD -- doc/ ':!doc/.claude/' python/ray/ rllib/ .readthedocs.yaml; then
           echo "No doc-affecting files changed in this PR; skipping Sphinx build."
           echo "Files changed in PR:"
           git diff --name-only origin/master...HEAD
           exit 183
         fi
         echo "Doc-affecting files changed; building docs. Changed doc-relevant paths:"
-        git diff --name-only origin/master...HEAD -- doc/ python/ray/ rllib/ .readthedocs.yaml
+        git diff --name-only origin/master...HEAD -- doc/ ':!doc/.claude/' python/ray/ rllib/ .readthedocs.yaml
     # Override the html build step. On PR (external) builds, build incrementally
     # from the latest master doc cache, falling back to a clean build
     # (rtd-fallback) if it fails. PRs that delete or move doc sources skip the

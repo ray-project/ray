@@ -506,6 +506,10 @@ class DeploymentActorContainer:
         """Return the set of code versions currently in the container."""
         return {entry.code_version for _, entry in self._actors_index.values()}
 
+    def is_empty(self) -> bool:
+        """O(1): True if no actor wrappers are tracked in any state."""
+        return not self._actors_index
+
 
 class ReplicaStartupStatus(Enum):
     PENDING_ALLOCATION = 1
@@ -5313,6 +5317,13 @@ class DeploymentState:
         """
         target_version = self._target_state.version
         if target_version is None:
+            return set()
+
+        # Fast path: with no deployment-scoped actors tracked, nothing can be orphaned
+        # (get_code_versions() is empty, and empty - anything == empty). Skips the O(N)
+        # self._replicas.get() materialization on every scale_deployment_replicas tick
+        # for the common deployment that has no deployment-scoped actors.
+        if self._deployment_actors.is_empty():
             return set()
 
         versions_to_keep = {r.version.code_version for r in self._replicas.get()}

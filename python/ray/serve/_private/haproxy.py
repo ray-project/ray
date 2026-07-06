@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import shutil
+import signal
 import string
 import time
 from abc import ABC, abstractmethod
@@ -906,6 +907,23 @@ class HAProxyApi(ProxyApi):
             self._retire_log_files(p)
         self._old_procs = still_alive
 
+    def _soft_stop_old_procs(self) -> None:
+        """Send SIGUSR1 to displaced workers so they close their listeners and
+        drain.
+
+        HAProxy's `-sf` flag already requests this, but its delivery can be
+        lost, so the manager sends the signal itself where it is reliable.
+        """
+        self._prune_old_procs()
+        for proc in self._old_procs:
+            if not self._is_our_haproxy(proc.pid):
+                continue
+            try:
+                # This is a no-op if the worker is already draining
+                os.kill(proc.pid, signal.SIGUSR1)
+            except OSError:
+                pass
+
     def _is_our_haproxy(self, pid: int) -> bool:
         """Whether `pid` is currently one of our haproxy workers.
 
@@ -1077,6 +1095,12 @@ class HAProxyApi(ProxyApi):
             # Track for shutdown cleanup; pruned at the next reload.
             if old_proc is not None:
                 self._old_procs.append(old_proc)
+
+            # `-sf` only re-signals stranded workers on the next reload, and
+            # there is none after the final one. Re-send SIGUSR1 directly so a
+            # worker left serving stale config stops now instead of racing the
+            # client's next request.
+            self._soft_stop_old_procs()
 
             logger.info(
                 "Successfully performed graceful HAProxy reload with process restart."
