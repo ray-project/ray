@@ -1019,8 +1019,7 @@ def dedupe_schemas_with_validation(
         # (potentially very wide) schema. Without this, a fast producer + slow
         # consumer backlog can accumulate tens of thousands of schema copies on the
         # driver heap. `RefBundle.schema` is intentionally reassignable.
-        bundle.schema = old_schema
-        return bundle, diverged
+        return dataclasses.replace(bundle, schema=old_schema), diverged
 
     diverged = True
     if enforce_schemas:
