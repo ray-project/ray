@@ -15,9 +15,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.usage import collector
 from ray.data._internal.usage.collector import (
-    EnvInfo,
     MetricReader,
-    OpConfig,
     PipelinePerf,
     UsageInfo,
     WorkloadInfo,
@@ -26,7 +24,6 @@ from ray.data._internal.usage.collector import (
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data._internal.issue_detection.issue_detector import IssueType
-    from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 
 logger = logging.getLogger(__name__)
@@ -113,52 +110,38 @@ class UsageCallback(ExecutionCallback):
         self._spilled_at_end = self._get_cluster_spilled_bytes()
         self._dead_nodes_at_end = self._get_dead_node_count()
 
-    def collect_env(self) -> EnvInfo:
-        """Process-wide environment info for this execution."""
-        return collector.collect_env()
-
-    def collect_op_config(self, op: "LogicalOperator") -> Optional[OpConfig]:
-        """Per-op config recorded in the workload payload."""
-        return collector.collect_op_config(op)
-
-    def collect_workload(self) -> WorkloadInfo:
-        """Anonymized plan tree, text rendering, and per-op config for this
-        execution."""
-        return collector.collect_workload(
-            self._logical_plan, self.collect_op_config, self._anonymize_op_name
-        )
-
-    def collect_performance(self) -> Optional[PipelinePerf]:
-        """Post-execution performance. Returns ``None`` before execution
-        finishes (the pre-start payload carries no performance data)."""
-        if not self._finished:
-            return None
-        return collector.PipelinePerf(
-            bytes_spilled=collector.compute_delta(
-                self._spilled_at_start, self._spilled_at_end
-            ),
-            node_deaths=collector.compute_delta(
-                self._dead_nodes_at_start, self._dead_nodes_at_end
-            ),
-        )
-
     def build_usage_info(self) -> UsageInfo:
-        """Assemble the payload flushed for this execution.
+        """Assemble the usage payload to be flushed for this execution.
 
-        Called both before execution starts and after execution finishes.
+        Called both before execution starts and after it finishes.
         Subclasses can override to return a richer ``UsageInfo`` structure.
+
         """
         if self._workload is None:
             self._usage_id_map = collector.build_usage_id_map(
                 self._logical_plan, self._anonymize_op_name
             )
-            self._workload = self.collect_workload()
+            self._workload = collector.collect_workload(
+                self._logical_plan, collector.collect_op_config, self._anonymize_op_name
+            )
+        # Performance is only meaningful once execution has finished; the
+        # pre-start payload carries None.
+        performance = None
+        if self._finished:
+            performance = PipelinePerf(
+                bytes_spilled=collector.compute_delta(
+                    self._spilled_at_start, self._spilled_at_end
+                ),
+                node_deaths=collector.compute_delta(
+                    self._dead_nodes_at_start, self._dead_nodes_at_end
+                ),
+            )
         return UsageInfo(
             id=self._execution_id,
             started_at=self._started_at,
-            env=self.collect_env(),
+            env=collector.collect_env(),
             workload=self._workload,
-            performance=self.collect_performance(),
+            performance=performance,
             detected_issues=collector.collect_issues(
                 self._collect_detected_issues(self._executor)
             ),
