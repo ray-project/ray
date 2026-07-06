@@ -144,3 +144,17 @@ class ParquetInMemorySizeEstimator(InMemorySizeEstimator):
 
     def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
         return self._encoding_ratio * manifest.file_sizes
+
+
+ORC_ENCODING_RATIO_ESTIMATE_DEFAULT = 5
+
+
+@DeveloperAPI
+class OrcInMemorySizeEstimator(InMemorySizeEstimator):
+    """Estimates in-memory sizes for ORC files using a fixed encoding ratio."""
+
+    def __init__(self, encoding_ratio: float = ORC_ENCODING_RATIO_ESTIMATE_DEFAULT):
+        self._encoding_ratio = encoding_ratio
+
+    def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
+        return self._encoding_ratio * manifest.file_sizes
