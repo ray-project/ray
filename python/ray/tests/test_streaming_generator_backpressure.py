@@ -13,11 +13,27 @@ import pytest
 import ray
 from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray.util.state import list_tasks
+from ray.util.state.exception import RayStateApiException
 
 
 def _list_tasks(**kwargs):
-    """Same as ``list_tasks`` but pinned to this test's cluster. When several local Ray instances exist"""
-    return list_tasks(address=ray.get_runtime_context().gcs_address, **kwargs)
+    """Same as ``list_tasks`` but pinned to this test's cluster (when several
+    local Ray instances exist) and tolerant of transient state-API errors.
+
+    The dashboard/state API can briefly return a non-JSON body (surfacing as
+    ``RayStateApiException``) when it is overloaded during a heavy test run.
+    That is unrelated to what these tests assert, so retry for a short window
+    instead of letting a momentary hiccup flake the test.
+    """
+    address = ray.get_runtime_context().gcs_address
+    deadline = time.monotonic() + 30
+    while True:
+        try:
+            return list_tasks(address=address, **kwargs)
+        except RayStateApiException:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.5)
 
 
 @pytest.mark.parametrize("actor", [False, True])
