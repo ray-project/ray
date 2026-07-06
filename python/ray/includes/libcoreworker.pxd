@@ -354,6 +354,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             void *ctx)
         void ClearAsyncGeneratorBackpressureUnblockNotify(
             const CObjectID &generator_id)
+        void NotifyAsyncGeneratorBackpressureUnblock(
+            const CObjectID &generator_id,
+            c_bool notify_all)
         shared_ptr[CActorWideGeneratorBackpressureWaiter] GetActorGeneratorWaiter() const
 
         # Param output contains the usage string if successful.

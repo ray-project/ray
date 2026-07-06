@@ -794,6 +794,12 @@ void CoreWorker::HandleOwnerDied(const WorkerID &dead_owner) {
       entry.actor_metadata->Teardown();
     }
   }
+  // Wake every parked async streaming generator: the dead owner's tasks so they
+  // exit their now-disabled per-task waits, and any actor-wide reserver since
+  // the teardown above freed shared budget.
+  if (!dead_entries.empty()) {
+    NotifyAsyncGeneratorBackpressureUnblock(ObjectID::Nil(), /*notify_all=*/true);
+  }
 }
 
 void CoreWorker::SubscribeToNodeChanges() {
@@ -3266,8 +3272,16 @@ Status CoreWorker::ReportGeneratorItemReturns(
           if (actor_metadata) {
             actor_metadata->Teardown();
           }
-          absl::MutexLock lock(&mutex_);
-          generator_backpressure_states_.erase(generator_id);
+          {
+            absl::MutexLock lock(&mutex_);
+            generator_backpressure_states_.erase(generator_id);
+          }
+          // The report to the owner failed, so we gave up on backpressure for
+          // this task (consumed == generated above). Wake it if an async
+          // generator is parked on the per-task wait, plus any actor-wide
+          // reserver since the Teardown above freed shared budget.
+          NotifyAsyncGeneratorBackpressureUnblock(
+              generator_id, /*notify_all=*/actor_metadata != nullptr);
         }
       });
 
@@ -3341,24 +3355,24 @@ bool CoreWorker::TeardownGeneratorBackpressureTask(const ObjectID &generator_id)
 void CoreWorker::SetAsyncGeneratorBackpressureUnblockNotify(const ObjectID &generator_id,
                                                             void (*fn)(void *),
                                                             void *ctx) {
-  absl::MutexLock lock(&generator_notify_mutex_);
+  absl::MutexLock lock(&generator_backpressure_notification_guard_);
   generator_unblock_notifies_[generator_id] = std::make_pair(fn, ctx);
 }
 
 void CoreWorker::ClearAsyncGeneratorBackpressureUnblockNotify(
     const ObjectID &generator_id) {
-  absl::MutexLock lock(&generator_notify_mutex_);
+  absl::MutexLock lock(&generator_backpressure_notification_guard_);
   generator_unblock_notifies_.erase(generator_id);
 }
 
 void CoreWorker::NotifyAsyncGeneratorBackpressureUnblock(const ObjectID &generator_id,
                                                          bool notify_all) {
-  // Hold generator_notify_mutex_ across the callback(s): this both excludes a
-  // concurrent ClearAsyncGeneratorBackpressureUnblockNotify (so the borrowed
+  // Hold generator_backpressure_notification_guard_ across the callback(s): this both
+  // excludes a concurrent ClearAsyncGeneratorBackpressureUnblockNotify (so the borrowed
   // ctx stays valid for the duration of the call) and keeps a consistent lock
   // order, since the mutex is always taken with the GIL released and the
-  // trampoline acquires the GIL only after.
-  absl::MutexLock lock(&generator_notify_mutex_);
+  // callback acquires the GIL only after.
+  absl::MutexLock lock(&generator_backpressure_notification_guard_);
   if (notify_all) {
     for (const auto &[id, cb] : generator_unblock_notifies_) {
       if (cb.first != nullptr) {
@@ -3468,7 +3482,7 @@ void CoreWorker::HandleUpdateGeneratorBackpressureConsumed(
     }
 
     // Wake any async streaming generator parked on an asyncio.Event. Done after
-    // releasing mutex_ (the trampoline acquires the GIL). When this task uses
+    // releasing mutex_ (the callback acquires the GIL). When this task uses
     // the actor-wide cap, its consumption frees shared budget, so wake every
     // registered async generator to re-check; otherwise only this one.
     NotifyAsyncGeneratorBackpressureUnblock(generator_id,

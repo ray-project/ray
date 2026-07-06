@@ -817,11 +817,11 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
    *
    * The notification registry is guarded by its own mutex and never by the GIL:
    * callers MUST invoke this with the GIL released so the lock is always acquired
-   * without holding the GIL (the trampoline acquires the GIL only after this
+   * without holding the GIL (the callback acquires the GIL only after this
    * lock), keeping a consistent lock order.
    *
    * @param[in] generator_id The generator whose async executor should be woken.
-   * @param[in] fn Non-null trampoline invoked as `fn(ctx)` when the task may have
+   * @param[in] fn Non-null callback invoked as `fn(ctx)` when the task may have
    * become unblocked.
    * @param[in] ctx Borrowed context passed back to `fn`; it must outlive the
    * registration (cleared via ClearAsyncGeneratorBackpressureUnblockNotify).
@@ -840,6 +840,27 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
    * @param[in] generator_id The generator whose notification to remove.
    */
   void ClearAsyncGeneratorBackpressureUnblockNotify(const ObjectID &generator_id);
+
+  /**
+   * @brief Fire the registered unblock notification(s) for async streaming
+   * generators, waking any parked on the asyncio.Event.
+   *
+   * Called from every path that can unblock a parked async generator: the
+   * consumption RPC handler, owner-death cleanup, the report-RPC-failure
+   * callback, and the executor when it releases an actor-wide slot. This is what
+   * lets the async waits use a plain `await event.wait()` with no polling
+   * fallback.
+   *
+   * MUST be called WITHOUT holding `mutex_`, and (from the executor) with the
+   * GIL released so the notification guard is always taken without the GIL (the
+   * callback re-acquires the GIL); see the guard's declaration.
+   *
+   * @param[in] generator_id The generator to wake when `notify_all` is false.
+   * @param[in] notify_all Wake every registered async generator (used whenever
+   * actor-wide budget may have changed, since it is shared across tasks).
+   */
+  void NotifyAsyncGeneratorBackpressureUnblock(const ObjectID &generator_id,
+                                               bool notify_all);
 
   /// Register a generator-backpressure entry up-front so that owner-failure
   /// sweeps (``HandleOwnerDied``) can find tasks that are still blocked in
@@ -1965,22 +1986,15 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   absl::flat_hash_map<ObjectID, GeneratorBackpressureState> generator_backpressure_states_
       ABSL_GUARDED_BY(mutex_);
 
-  /// Fire the registered unblock notification(s) for async streaming generators.
-  /// When `notify_all` is true, every registered generator is woken (used when
-  /// the actor-wide cap is involved, since one task's consumption frees shared
-  /// budget for the others); otherwise only `generator_id` is woken. Must be
-  /// called WITHOUT holding `mutex_` (the trampoline acquires the GIL).
-  void NotifyAsyncGeneratorBackpressureUnblock(const ObjectID &generator_id,
-                                               bool notify_all);
-
   /// Registry of async-streaming-generator unblock notifications, keyed by
   /// generator id. Deliberately guarded by its own mutex (not `mutex_`) so the
-  /// notify path (which calls into Python via the trampoline) never contends
+  /// notify path (which calls into Python via the callback) never contends
   /// with the hot `mutex_`. Always acquired with the GIL released; see
   /// SetAsyncGeneratorBackpressureUnblockNotify.
-  mutable absl::Mutex generator_notify_mutex_;
+  mutable absl::Mutex generator_backpressure_notification_guard_;
   absl::flat_hash_map<ObjectID, std::pair<void (*)(void *), void *>>
-      generator_unblock_notifies_ ABSL_GUARDED_BY(generator_notify_mutex_);
+      generator_unblock_notifies_
+          ABSL_GUARDED_BY(generator_backpressure_notification_guard_);
 
   /// Number of tasks that have been pushed to the actor but not executed.
   std::atomic<int64_t> task_queue_length_;

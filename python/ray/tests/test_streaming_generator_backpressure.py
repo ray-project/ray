@@ -1468,9 +1468,13 @@ class Reporter:
         return self.between_yield_count
 
 
+# max_concurrency=1 so a leaked/hung gen coroutine would hold the actor's only
+# slot and block the ping below (an async coroutine parked in an await still
+# holds its concurrency slot until it completes).
 @ray.remote(
     name="{actor_name}",
     lifetime="detached",
+    max_concurrency=1,
     _actor_generator_backpressure_num_objects=10,
 )
 class A:
@@ -1498,7 +1502,12 @@ os._exit(0)
     a = ray.get_actor(actor_name, namespace=namespace)
     reporter = ray.get_actor(reporter_name, namespace=namespace)
     try:
-        # The actor must accept new tasks (the gen task drained).
+        # ping is the load-bearing assertion for the owner-death notification: on
+        # a max_concurrency=1 actor the gen coroutine holds the only slot until it
+        # completes, so ping can only run once the gen task has drained. If the
+        # owner-death path failed to wake the parked async wait, the coroutine
+        # would hang forever holding the slot and this ping would time out (count
+        # alone can't detect that — a hung coroutine also stops at 1).
         assert ray.get(a.ping.remote(), timeout=_ACTOR_GEN_BP_WAIT_S) == "ok"
         # The between-yield code must not have run another iteration after owner
         # death — the count stays at the one call made before the driver exited.
