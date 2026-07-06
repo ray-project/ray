@@ -230,7 +230,7 @@ class OrcFileChunker(FileChunker):
     actual stripe ranges after opening the file.
     """
 
-    _FALLBACK_TARGET_CHUNK_SIZE = 1 * MiB
+    _DEFAULT_TARGET_CHUNK_SIZE = 1 * GiB
 
     def __init__(self, target_chunk_size: Optional[int] = None):
         from ray.data.context import DataContext
@@ -241,10 +241,8 @@ class OrcFileChunker(FileChunker):
             self._target_chunk_size = target_chunk_size
         elif ctx.parquet_chunker_target_chunk_size is not None:
             self._target_chunk_size = ctx.parquet_chunker_target_chunk_size
-        elif ctx.target_min_block_size is not None:
-            self._target_chunk_size = ctx.target_min_block_size
         else:
-            self._target_chunk_size = self._FALLBACK_TARGET_CHUNK_SIZE
+            self._target_chunk_size = self._DEFAULT_TARGET_CHUNK_SIZE
 
     def generate_chunk_metadatas(
         self, path: str, file_size: int
