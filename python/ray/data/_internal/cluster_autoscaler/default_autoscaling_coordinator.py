@@ -24,7 +24,7 @@ _RESOURCE_LOG_KEYS = ("CPU", "GPU", "memory", "object_store_memory")
 _RESOURCE_LOG_MEMORY_KEYS = {"memory", "object_store_memory"}
 # Label key the cluster autoscaler uses to bucket nodes by subcluster.
 # Hardcoded so all components agree without per-Dataset configuration.
-SUBCLUSTER_LABEL_KEY = "__subcluster__"
+SUBCLUSTER_LABEL_KEY = "ray-subcluster"
 # Sentinel for "no subcluster" — used as both a node-label fallback and
 # the bucket key for unlabeled nodes in ``_cluster_node_resources``.
 DEFAULT_SUBCLUSTER: Optional[str] = None

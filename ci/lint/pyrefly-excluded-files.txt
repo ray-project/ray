@@ -104,6 +104,7 @@ python/ray/data/_internal/logical/rules/limit_pushdown.py
 python/ray/data/_internal/logical/rules/operator_fusion.py
 python/ray/data/_internal/logical/rules/predicate_pushdown.py
 python/ray/data/_internal/logical/rules/projection_pushdown.py
+python/ray/data/_internal/logical/rules/common_subexpr_elimination.py
 python/ray/data/_internal/logical/rules/set_read_parallelism.py
 python/ray/data/_internal/logical/ruleset.py
 python/ray/data/_internal/logical/util.py
@@ -258,6 +259,7 @@ python/ray/data/tests/test_batcher.py
 python/ray/data/tests/test_block_ref_bundler.py
 python/ray/data/tests/test_bundle_queue.py
 python/ray/data/tests/test_checkpoint.py
+python/ray/data/tests/test_common_subexpr_elimination.py
 python/ray/data/tests/test_consumption.py
 python/ray/data/tests/test_context_propagation.py
 python/ray/data/tests/test_cudf_batch_format.py
@@ -279,6 +281,8 @@ python/ray/data/tests/test_filter.py
 python/ray/data/tests/test_groupby_e2e.py
 python/ray/data/tests/test_hash_shuffle.py
 python/ray/data/tests/test_hash_shuffle_aggregator.py
+python/ray/data/tests/test_idempotency_optimizer_guards.py
+python/ray/data/tests/test_hash_shuffle_v2.py
 python/ray/data/tests/test_issue_detection.py
 python/ray/data/tests/test_issue_detection_manager.py
 python/ray/data/tests/test_iterator.py
@@ -338,6 +342,7 @@ python/ray/data/tests/unit/test_data_batch_conversion.py
 python/ray/data/tests/unit/test_datatype.py
 python/ray/data/tests/unit/test_deduping_schema.py
 python/ray/data/tests/unit/test_expression_evaluator.py
+python/ray/data/tests/unit/test_expression_visitor.py
 python/ray/data/tests/unit/test_fifo_bundle_queue.py
 python/ray/data/tests/unit/test_object_extension.py
 python/ray/data/tests/unit/test_path_util.py
@@ -355,3 +360,9 @@ python/ray/data/tests/datasource/test_kafka.py
 python/ray/data/_internal/gpu_shuffle/rapidsmpf_backend.py
 python/ray/data/_internal/gpu_shuffle/hash_shuffle.py
 python/ray/data/_internal/execution/bundle_queue/base.py
+python/ray/data/_internal/datasource_v2/tests/test_file_partitioners.py
+python/ray/data/_internal/datasource_v2/tests/test_parquet_datasource_v2.py
+python/ray/data/tests/datasource/test_read_parquet_v2.py
+python/ray/data/tests/unit/datasource_v2/test_file_chunker.py
+python/ray/data/tests/unit/datasource_v2/test_file_indexer.py
+python/ray/data/tests/unit/datasource_v2/test_list_files_op.py

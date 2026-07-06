@@ -32,6 +32,7 @@ namespace raylet_scheduling_policy {
  * delegates to a node-level scheduling policy to schedule the bundles within
  * the selected groups.
  */
+// TODO(#64370) rename this to fit topology strategy
 class LabelDomainSchedulingPolicyInterface {
  public:
   explicit LabelDomainSchedulingPolicyInterface(

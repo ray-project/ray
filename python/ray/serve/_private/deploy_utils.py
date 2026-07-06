@@ -8,7 +8,12 @@ import ray
 import ray.util.serialization_addons
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
+    RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S,
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve.schema import ServeApplicationSchema
 
@@ -73,6 +78,23 @@ def deploy_args_to_deployment_info(
     """
 
     deployment_config = DeploymentConfig.from_proto_bytes(deployment_config_proto_bytes)
+
+    # Floor the timeout so the controller's force-kill can't cut the
+    # direct-ingress drain (min draining period) short.
+    if ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        floor_s = (
+            RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S
+            + RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S
+        )
+        if deployment_config.graceful_shutdown_timeout_s < floor_s:
+            logger.info(
+                f"Raising graceful_shutdown_timeout_s for ingress deployment "
+                f"'{deployment_name}' from "
+                f"{deployment_config.graceful_shutdown_timeout_s}s to {floor_s}s so "
+                f"the force-kill deadline covers the direct-ingress drain period."
+            )
+            deployment_config.graceful_shutdown_timeout_s = floor_s
+
     version = deployment_config.version
     replica_config = ReplicaConfig.from_proto_bytes(
         replica_config_proto_bytes, deployment_config.needs_pickle()

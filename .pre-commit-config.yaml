@@ -13,7 +13,8 @@ exclude: |
     python/requirements/llm/patches/|
     src/ray/thirdparty/|
     doc/external/|
-    doc/source/
+    doc/source/|
+    doc/.claude/skills/sphinx-fix/tests/
   )
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -60,7 +61,7 @@ repos:
           --check-return-types=False,
           --allow-init-docstring=True,
           --check-class-attributes=False,
-          # --check-style-mismatch=True, # Bring this back once things are a bit cleaner
+          --check-style-mismatch=True,
         ]
         types: [python]
         files: '^python/ray/'

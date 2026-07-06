@@ -14,7 +14,10 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <chrono>
+#include <future>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -56,6 +59,10 @@ class GcsServerTest : public ::testing::Test {
             fake_scheduler_placement_time_ms_histogram_,
             /*health_check_rpc_latency_ms_histogram=*/
             fake_health_check_rpc_latency_ms_histogram_,
+            /*io_context_monitor_latency_ms_gauge=*/
+            fake_io_context_monitor_latency_ms_gauge_,
+            /*io_context_monitor_unhealthy_counter=*/
+            fake_io_context_monitor_unhealthy_counter_,
         } {
     TestSetupUtil::StartUpRedisServers(std::vector<int>());
   }
@@ -75,11 +82,7 @@ class GcsServerTest : public ::testing::Test {
     gcs_server_ = std::make_unique<gcs::GcsServer>(config, fake_metrics_, io_service_);
     gcs_server_->Start();
 
-    thread_io_service_ = std::make_unique<std::thread>([this] {
-      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
-          io_service_.get_executor());
-      io_service_.run();
-    });
+    StartMainIOServiceThread();
 
     // Wait until server starts listening.
     while (gcs_server_->GetPort() == 0) {
@@ -110,16 +113,41 @@ class GcsServerTest : public ::testing::Test {
     rpc::ResetServerCallExecutor();
   }
 
-  grpc::Status CheckHealth(std::chrono::milliseconds timeout) {
+  // Issues a health Check RPC and returns the reported serving status, or
+  // std::nullopt if the RPC itself failed (e.g. timed out).
+  std::optional<grpc::health::v1::HealthCheckResponse::ServingStatus> CheckHealth(
+      std::chrono::milliseconds timeout) {
     grpc::health::v1::HealthCheckRequest request;
     grpc::health::v1::HealthCheckResponse response;
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() + timeout);
     auto status = health_check_stub_->Check(&context, request, &response);
-    if (status.ok()) {
-      EXPECT_EQ(response.status(), grpc::health::v1::HealthCheckResponse::SERVING);
+    if (!status.ok()) {
+      return std::nullopt;
     }
-    return status;
+    return response.status();
+  }
+
+  // Polls the health check until it reports `expected` or the timeout elapses,
+  // returning whether `expected` was observed.
+  bool WaitForHealthStatus(grpc::health::v1::HealthCheckResponse::ServingStatus expected,
+                           std::chrono::seconds timeout) {
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    do {
+      if (CheckHealth(std::chrono::milliseconds(1000)) == expected) {
+        return true;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    } while (std::chrono::steady_clock::now() < deadline);
+    return false;
+  }
+
+  void StartMainIOServiceThread() {
+    thread_io_service_ = std::make_unique<std::thread>([this] {
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service_.get_executor());
+      io_service_.run();
+    });
   }
 
   bool AddJob(rpc::AddJobRequest request) {
@@ -297,6 +325,8 @@ class GcsServerTest : public ::testing::Test {
   observability::FakeGauge fake_resource_usage_gauge_;
   observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
   observability::FakeHistogram fake_health_check_rpc_latency_ms_histogram_;
+  observability::FakeGauge fake_io_context_monitor_latency_ms_gauge_;
+  observability::FakeCounter fake_io_context_monitor_unhealthy_counter_;
 
   // Fake metrics struct
   gcs::GcsServerMetrics fake_metrics_;
@@ -543,25 +573,33 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
 // TODO(sang): Add tests after adding asyncAdd
 
 TEST_F(GcsServerTest, HealthCheckSucceeds) {
-  auto status = CheckHealth(std::chrono::milliseconds(5000));
-  ASSERT_TRUE(status.ok()) << "Health check failed: " << status.error_message();
+  // The IOContextMonitor drives the serving status; poll until it reports SERVING.
+  EXPECT_TRUE(WaitForHealthStatus(grpc::health::v1::HealthCheckResponse::SERVING,
+                                  std::chrono::seconds(10)));
 }
 
-TEST_F(GcsServerTest, HealthCheckTimesOutWhenMainIOContextBlocked) {
-  // Health check should succeed while io_context is running.
-  auto status = CheckHealth(std::chrono::milliseconds(5000));
-  ASSERT_TRUE(status.ok()) << "Health check failed: " << status.error_message();
+TEST_F(GcsServerTest, HealthCheckReflectsMainIOContextHealth) {
+  // Healthy while the main io_context is running.
+  ASSERT_TRUE(WaitForHealthStatus(grpc::health::v1::HealthCheckResponse::SERVING,
+                                  std::chrono::seconds(10)));
 
-  // Stop the main io_context so the custom health check handler cannot be dispatched.
-  io_service_.stop();
-  thread_io_service_->join();
-  thread_io_service_.reset();
+  // Block the main io_context by occupying its (single-threaded) event loop with a
+  // task that waits until released. The IOContextMonitor's probe can no longer
+  // complete, so once it exceeds the healthy deadline the GCS reports NOT_SERVING.
+  // The health check itself still responds since it runs on gRPC's own threads.
+  // We block rather than stop the io_context so it keeps running on its original
+  // thread (GCS components are pinned to it via thread checkers).
+  std::promise<void> release;
+  std::future<void> released = release.get_future();
+  io_service_.post([&released]() { released.wait(); }, "BlockMainIOContextForTest");
 
-  // The health check should time out because the handler is posted to the
-  // main io_context which is no longer processing events.
-  status = CheckHealth(std::chrono::milliseconds(100));
-  ASSERT_FALSE(status.ok());
-  EXPECT_EQ(status.error_code(), grpc::StatusCode::DEADLINE_EXCEEDED);
+  EXPECT_TRUE(WaitForHealthStatus(grpc::health::v1::HealthCheckResponse::NOT_SERVING,
+                                  std::chrono::seconds(30)));
+
+  // Release the io_context; probes complete again and the GCS recovers to SERVING.
+  release.set_value();
+  EXPECT_TRUE(WaitForHealthStatus(grpc::health::v1::HealthCheckResponse::SERVING,
+                                  std::chrono::seconds(30)));
 }
 
 }  // namespace ray

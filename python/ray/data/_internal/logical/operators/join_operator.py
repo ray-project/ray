@@ -50,19 +50,17 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
     join_type: Union[JoinType, str]
     left_key_columns: Tuple[str]
     right_key_columns: Tuple[str]
-    num_partitions: InitVar[int]
+    num_partitions: int
     left_columns_suffix: Optional[str] = None
     right_columns_suffix: Optional[str] = None
     partition_size_hint: Optional[int] = None
     aggregator_ray_remote_args: Optional[Dict[str, Any]] = None
     _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
-    _num_outputs: Optional[int] = field(init=False, repr=False)
 
     def __post_init__(
         self,
         left_input_op: LogicalOperator,
         right_input_op: LogicalOperator,
-        num_partitions: int,
     ):
         try:
             join_type_enum = JoinType(self.join_type)
@@ -78,7 +76,10 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             "_input_dependencies",
             [left_input_op, right_input_op],
         )
-        object.__setattr__(self, "_num_outputs", num_partitions)
+
+    @property
+    def num_outputs(self) -> Optional[int]:
+        return self.num_partitions
 
     def _with_new_input_dependencies(
         self, input_dependencies: List[LogicalOperator]

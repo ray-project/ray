@@ -40,9 +40,9 @@
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/lease/lease.h"
-#include "ray/common/memory_monitor_factory.h"
-#include "ray/common/memory_monitor_interface.h"
-#include "ray/common/memory_monitor_utils.h"
+#include "ray/common/monitors/memory_monitor_factory.h"
+#include "ray/common/monitors/memory_monitor_interface.h"
+#include "ray/common/monitors/memory_monitor_utils.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
@@ -104,6 +104,9 @@ std::vector<ObjectID> FlatbufferToObjectIds(
 }
 
 #if !defined(_WIN32)
+// Interval between polls for a gracefully-exiting worker process to exit.
+constexpr int kGracefulPgCleanupPollMs = 100;
+
 // Send a signal to the worker's saved process group with safety guards and logging.
 void CleanupProcessGroupSend(pid_t saved_pgid,
                              const WorkerID &wid,
@@ -128,6 +131,39 @@ void CleanupProcessGroupSend(pid_t saved_pgid,
         << " to process group " << saved_pgid << ": " << err->message()
         << ", errno=" << err->value();
   }
+}
+
+// Poll for a gracefully-exiting worker process to exit, then SIGKILL its process
+// group to reap any orphaned descendants. Reschedules itself on `timer` until the
+// worker exits, so per-worker process-group cleanup does not interrupt the
+// worker's own shutdown sequence (atexit / __ray_shutdown__ handlers).
+void SchedulePostExitProcessGroupCleanup(
+    std::shared_ptr<boost::asio::deadline_timer> timer,
+    pid_t worker_pid,
+    pid_t pgid,
+    WorkerID wid) {
+  // If the worker process has exited, sweep its (now leaderless) process group
+  // to reap any orphaned descendants it left behind, then stop.
+  if (kill(worker_pid, 0) == -1 && errno == ESRCH) {
+    auto probe = KillProcessGroup(pgid, 0);
+    const bool group_absent = (probe && probe->value() == ESRCH);
+    if (!group_absent) {
+      CleanupProcessGroupSend(pgid, wid, "SchedulePostExitProcessGroupCleanup", SIGKILL);
+    }
+    return;
+  }
+
+  // The worker is still running its own shutdown. We must not SIGKILL the group
+  // while it is alive (that would kill the worker mid-shutdown), so keep polling
+  // until it exits on its own. A worker that never exits is itself a bug; the
+  // 100ms poll is negligible overhead in that case (and stops when the raylet's
+  // io_context shuts down and cancels the timer).
+  timer->expires_from_now(boost::posix_time::milliseconds(kGracefulPgCleanupPollMs));
+  timer->async_wait([timer, worker_pid, pgid, wid](const boost::system::error_code &ec) {
+    if (!ec) {
+      SchedulePostExitProcessGroupCleanup(timer, worker_pid, pgid, wid);
+    }
+  });
 }
 #endif
 
@@ -1206,7 +1242,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     auto message = flatbuffers::GetRoot<protocol::FreeObjectsRequest>(message_data);
     auto object_ids = FlatbufferToObjectIds(*message->object_ids());
     // Clean up objects from the object store.
-    object_manager_.FreeObjects(object_ids, message->local_only());
+    object_manager_.FreeObjects(object_ids);
   } break;
   case protocol::MessageType::SubscribePlasmaReady: {
     ProcessSubscribePlasmaReady(client, message_data);
@@ -1556,7 +1592,18 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       }
     }
 
-    // Attempt per-worker process-group cleanup before removing the worker.
+    // Attempt per-worker process-group cleanup before removing the worker. The
+    // worker is its own process-group leader, so killpg also targets the worker
+    // process itself. The timing therefore differs by disconnect type:
+    //   - Non-graceful (e.g. the worker crashed): the worker is already gone, so
+    //     signal the group now (SIGTERM, then SIGKILL shortly after) to reap any
+    //     orphaned descendants it left behind.
+    //   - Graceful: the worker is still running its own shutdown sequence (e.g.
+    //     atexit / __ray_shutdown__ handlers). Signaling the group now would kill
+    //     it mid-shutdown, so wait until the worker process has exited on its own
+    //     and only then SIGKILL the group to reap any orphaned descendants. The
+    //     process group outlives the dead leader as long as members remain, so
+    //     the pgid stays valid for this post-exit sweep.
 #if !defined(_WIN32)
     const bool pg_enabled = RayConfig::instance().process_group_cleanup_enabled();
     const bool subreaper_enabled =
@@ -1564,29 +1611,36 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     if (pg_enabled && subreaper_enabled) {
       RAY_LOG_EVERY_MS(WARNING, 60000)
           << "Both per-worker process groups and subreaper are enabled; "
-          << "using PGs for worker cleanup. "
+          << "using process groups for worker cleanup. "
           << "Subreaper is deprecated and will be removed in a future release.";
     }
     if (pg_enabled) {
       auto saved = worker->GetSavedProcessGroupId();
       if (saved.has_value()) {
-        // Send SIGTERM first, then schedule a short async escalation to SIGKILL.
-        CleanupProcessGroupSend(*saved, worker->WorkerId(), "DisconnectClient", SIGTERM);
-        auto timer = std::make_shared<boost::asio::deadline_timer>(
-            io_service_, boost::posix_time::milliseconds(200));
-        auto wid = worker->WorkerId();
-        auto pgid = *saved;
-        timer->async_wait(
-            [timer, wid, pgid](const boost::system::error_code &ec) mutable {
-              if (!ec) {
-                // Probe with signal 0; if group plausibly exists, send SIGKILL.
-                auto probe = KillProcessGroup(pgid, 0);
-                const bool group_absent = (probe && probe->value() == ESRCH);
-                if (!group_absent) {
-                  CleanupProcessGroupSend(pgid, wid, "DisconnectClient", SIGKILL);
+        const auto wid = worker->WorkerId();
+        const pid_t pgid = *saved;
+        if (!graceful) {
+          // Send SIGTERM first, then schedule a short async escalation to SIGKILL.
+          CleanupProcessGroupSend(pgid, wid, "DisconnectClient", SIGTERM);
+          auto timer = std::make_shared<boost::asio::deadline_timer>(
+              io_service_, boost::posix_time::milliseconds(200));
+          timer->async_wait(
+              [timer, wid, pgid](const boost::system::error_code &ec) mutable {
+                if (!ec) {
+                  // Probe with signal 0; if group plausibly exists, send SIGKILL.
+                  auto probe = KillProcessGroup(pgid, 0);
+                  const bool group_absent = (probe && probe->value() == ESRCH);
+                  if (!group_absent) {
+                    CleanupProcessGroupSend(pgid, wid, "DisconnectClient", SIGKILL);
+                  }
                 }
-              }
-            });
+              });
+        } else {
+          // Poll for the worker process to exit, then sweep its process group.
+          const pid_t worker_pid = worker->GetProcess().GetId();
+          auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
+          SchedulePostExitProcessGroupCleanup(std::move(timer), worker_pid, pgid, wid);
+        }
       }
     }
 #endif
@@ -2201,7 +2255,7 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
   if (request.reason() ==
       rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION) {
     const bool is_idle =
-        cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeIdle();
+        cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeIdleForDrain();
     if (is_idle) {
       cluster_resource_scheduler_.GetLocalResourceManager().SetLocalNodeDraining(request);
       reply->set_is_accepted(true);
@@ -3105,18 +3159,20 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
               MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
                   MemoryMonitorInterface::kDefaultCgroupPath);
           if (initial_config_.enable_resource_isolation) {
-            StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound>
-                user_slice_memory_snapshot_or =
-                    MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
+            StatusSetOr<std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>,
+                        StatusT::NotFound>
+                user_and_system_slice_memory_snapshot_or =
+                    MemoryMonitorUtils::TakeUserAndSystemSliceMemoryUsageSnapshot(
                         cgroup_manager_->GetUserCgroupPath(),
                         cgroup_manager_->GetSystemCgroupPath());
-            if (user_slice_memory_snapshot_or.has_value()) {
-              memory_usage_snapshot = user_slice_memory_snapshot_or.value();
+            if (user_and_system_slice_memory_snapshot_or.has_value()) {
+              memory_usage_snapshot =
+                  user_and_system_slice_memory_snapshot_or.value().first;
             } else {
               RAY_LOG(ERROR) << absl::StrFormat(
-                  "Failed to take user slice memory snapshot due to: %s. "
+                  "Failed to take user and system slice memory snapshot due to: %s. "
                   "Falling back to host system memory snapshot.",
-                  user_slice_memory_snapshot_or.message());
+                  user_and_system_slice_memory_snapshot_or.message());
             }
           }
 
