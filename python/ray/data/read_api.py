@@ -2822,9 +2822,13 @@ def read_lerobot(
     Output columns include ``index``, ``episode_index``, ``frame_index``,
     ``timestamp``, state/action vectors, decoded camera frames (as variable-shaped
     uint8 tensors), ``task`` (string), ``dataset_index`` (int32, identifies the
-    source root when reading multiple datasets), and ``stats`` (a JSON string of the
-    source dataset's per-feature normalization statistics — mean/std/min/max — for
-    downstream normalization, e.g. of state/action vectors).
+    source root when reading multiple datasets), and ``stats``. ``stats`` is a
+    JSON string of the source dataset's per-feature normalization statistics,
+    keyed by feature name (e.g. ``{"action": {"mean": [...], "std": [...]}}``),
+    for downstream normalization of state/action vectors. It is a per-dataset
+    constant: the same value on every row, dictionary-encoded so it is stored
+    once per block rather than duplicated. It is ``"{}"`` when the dataset has
+    no stats.
 
     Examples:
         Read a LeRobot v3 dataset from a public S3 bucket (anonymous access):
@@ -2835,7 +2839,7 @@ def read_lerobot(
         ... )
         >>> ds.schema()  # doctest: +SKIP
 
-        One read task per episode (instead of per video-file group):
+        One read task per episode (instead of per file group):
 
         >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
         ...     "s3://anonymous@ray-example-data/lerobot/libero-mini",
@@ -2856,12 +2860,17 @@ def read_lerobot(
         episodes: If given, read only these ``episode_index`` values. This is a
             read-time pushdown -- other episodes' parquet rows and video files
             are never opened -- so it is cheaper than reading everything and
-            ``filter``-ing afterward. Applied per root when reading multiple
+            ``filter``-ing afterward. Row values are preserved, not renumbered:
+            ``index``, ``episode_index``, ``frame_index`` and ``timestamp`` keep
+            their original values, so ``index`` becomes non-contiguous (gaps
+            where episodes were skipped). Applied per root when reading multiple
             roots; requesting an ``episode_index`` absent from every root
             raises. ``None`` (the default) reads all episodes.
-        group_by_episode: How to group rows into read tasks. ``False`` (the
-            default) emits one task per video-file group (each mp4 opened once
-            per task); ``True`` emits one task per episode. Use
+        group_by_episode: How to group rows into read tasks. A *file group* is
+            the set of consecutive episodes whose frames share one physical file
+            (an mp4 per camera for video datasets, or the data parquet for image
+            datasets). ``False`` (the default) emits one task per file group, so
+            each file is opened once; ``True`` emits one task per episode. Use
             ``override_num_blocks`` to tune the final number of output blocks.
         filesystem: Filesystem for reading metadata and parquet. A pyarrow
             ``FileSystem`` (wrapped internally with ``ArrowFSWrapper``) or an
@@ -2899,12 +2908,14 @@ def read_lerobot(
             available resources. Use it to cap the number of simultaneous video
             decoders.
         override_num_blocks: Override the number of output blocks from all read
-            tasks. By default this is one read task per video-file group (or per
-            episode when ``group_by_episode``), so each file is opened once;
-            raise it (e.g. to your cluster's CPU count) to parallelize a
-            monolithic dataset across more workers. Splitting a video-file group
-            re-opens its file(s) once per sub-task, so higher parallelism trades
-            amortized file opens for more concurrency; lowering it merges groups.
+            tasks. By default this is one read task per file group (per video
+            file for video datasets, per data-parquet file for image/tabular
+            ones), or one per episode when ``group_by_episode``, so each file is
+            opened once; raise it (e.g. to your cluster's CPU count) to
+            parallelize a monolithic dataset across more workers. Splitting a
+            file group re-opens its file(s) once per sub-task, so higher
+            parallelism trades amortized file opens for more concurrency;
+            lowering it merges groups.
 
     Returns:
         A :class:`~ray.data.Dataset` of fully-decoded frames with state, action,
