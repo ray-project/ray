@@ -17,6 +17,7 @@ from ray.data._internal.planner._obstore_download import (
     _download_uris_with_obstore,
     _extract_credentials_from_filesystem,
     _is_obstore_supported_url,
+    _native_s3_obstore_kwargs,
     _obstore_filesystem_requires_threaded_download,
     _plan_obstore_routing,
     _resolve_size,
@@ -335,72 +336,80 @@ class TestDownloadHelpers:
         retrying = RetryingPyFileSystem.wrap(inner, retryable_errors=[])
         assert _extract_credentials_from_filesystem(retrying) is None
 
-    def test_extract_credentials_unwraps_retrying_fs_over_s3(self):
-        # Even when an S3FileSystem is wrapped, credentials must still be
-        # extracted from the inner filesystem after unwrapping.
-        mock_fs = MagicMock()
-        mock_fs.region = "eu-west-1"
-        mock_fs.access_key = None
-        mock_fs.secret_key = None
-        mock_fs.session_token = None
-        mock_fs.endpoint_override = None
-        mock_fs.anonymous = False
-
-        mock_retrying = MagicMock(spec=RetryingPyFileSystem)
-        mock_retrying.unwrap.return_value = mock_fs
-
-        with patch("pyarrow.fs.S3FileSystem", type(mock_fs)):
-            result = _extract_credentials_from_filesystem(mock_retrying)
-
-        assert result is not None
-        assert result.get("region") == "eu-west-1"
-
-    # _extract_credentials_from_filesystem with S3
-    def test_extract_credentials_s3_region_real(self):
-        # PyArrow's S3FileSystem C extension only exposes `region` as a Python
-        # attribute; credential fields are not accessible. This test documents
-        # that boundary with a real filesystem object.
+    # Native S3FileSystem is translated to obstore kwargs from its pickle state
+    # so the fast obstore path is kept. Anonymous, explicit static keys, and the
+    # default credential chain are all statically representable.
+    @pytest.mark.parametrize(
+        "kwargs, expected",
+        [
+            (
+                {"anonymous": True, "region": "us-west-2"},
+                {"region": "us-west-2", "skip_signature": True},
+            ),
+            (
+                {"region": "us-west-2"},
+                {"region": "us-west-2"},
+            ),
+            (
+                {"access_key": "AKID", "secret_key": "SECRET", "region": "us-west-2"},
+                {
+                    "region": "us-west-2",
+                    "access_key_id": "AKID",
+                    "secret_access_key": "SECRET",
+                },
+            ),
+        ],
+    )
+    def test_native_s3_translates_to_obstore(self, kwargs, expected):
         try:
-            fs = pafs.S3FileSystem(region="us-west-2")
+            fs = pafs.S3FileSystem(**kwargs)
         except Exception:
             pytest.skip("Cannot instantiate S3FileSystem in this environment")
-        result = _extract_credentials_from_filesystem(fs)
-        assert result is not None
-        assert result.get("region") == "us-west-2"
-        assert "access_key_id" not in result
-        assert "skip_signature" not in result
+        assert _extract_credentials_from_filesystem(fs) == expected
+        assert _plan_obstore_routing(fs) == (True, expected)
 
-    def test_extract_credentials_s3_anonymous_mock(self):
-        # We patch pyarrow.fs.S3FileSystem so isinstance() recognises the mock.
-        mock_fs = MagicMock()
-        mock_fs.anonymous = True
-        mock_fs.access_key = None
-        mock_fs.secret_key = None
-        mock_fs.session_token = None
-        mock_fs.endpoint_override = None
-        mock_fs.region = None
-        with patch("pyarrow.fs.S3FileSystem", type(mock_fs)):
-            result = _extract_credentials_from_filesystem(mock_fs)
-        assert result is not None
-        assert result.get("skip_signature") is True
-        assert "access_key_id" not in result
+    def test_native_s3_unwrapped_from_retrying_wrapper(self):
+        # RetryingPyFileSystem is unwrapped before the S3 check, so a wrapped
+        # native S3FileSystem is translated to obstore kwargs just the same.
+        try:
+            fs = pafs.S3FileSystem(anonymous=True, region="us-west-2")
+        except Exception:
+            pytest.skip("Cannot instantiate S3FileSystem in this environment")
+        retrying = RetryingPyFileSystem.wrap(fs, retryable_errors=[])
+        assert _extract_credentials_from_filesystem(retrying) == {
+            "region": "us-west-2",
+            "skip_signature": True,
+        }
 
-    def test_extract_credentials_s3_with_keys_mock(self):
-        mock_fs = MagicMock()
-        mock_fs.anonymous = False
-        mock_fs.access_key = "AKID"
-        mock_fs.secret_key = "SECRET"
-        mock_fs.session_token = "TOKEN"
-        mock_fs.endpoint_override = "https://custom-endpoint.com"
-        mock_fs.region = "us-west-2"
-        with patch("pyarrow.fs.S3FileSystem", type(mock_fs)):
-            result = _extract_credentials_from_filesystem(mock_fs)
-        assert result is not None
-        assert result["access_key_id"] == "AKID"
-        assert result["secret_access_key"] == "SECRET"
-        assert result["session_token"] == "TOKEN"
-        assert result["endpoint"] == "https://custom-endpoint.com"
-        assert result["region"] == "us-west-2"
+    def test_native_s3_assume_role_falls_back_to_threaded(self):
+        # Assume-role creds rotate; a static obstore snapshot would go stale, so
+        # the translation declines (None) and the caller uses the threaded path.
+        # Driven through the pickle state to avoid constructing a real
+        # assume-role filesystem (which may attempt STS).
+        class _Stub:
+            def __reduce__(self):
+                return (
+                    object,
+                    (
+                        {
+                            "role_arn": "arn:aws:iam::123456789012:role/test",
+                            "anonymous": False,
+                            "access_key": None,
+                            "region": "us-west-2",
+                        },
+                    ),
+                )
+
+        assert _native_s3_obstore_kwargs(_Stub()) is None
+
+    def test_native_s3_unreadable_pickle_state_falls_back_to_threaded(self):
+        # If the pickle state can't be introspected (e.g. a future PyArrow
+        # changes its serialization), fail safe to the threaded path.
+        class _Stub:
+            def __reduce__(self):
+                raise RuntimeError("unexpected serialization")
+
+        assert _native_s3_obstore_kwargs(_Stub()) is None
 
     # _extract_credentials_from_filesystem with GCS
     @pytest.mark.parametrize(

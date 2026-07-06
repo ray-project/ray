@@ -2953,7 +2953,7 @@ class Dataset:
         datasets = [self] + list(other)
         logical_plans = [union_ds._logical_plan for union_ds in datasets]
         op = UnionLogicalOperator(
-            *[plan.dag for plan in logical_plans],
+            [plan.dag for plan in logical_plans],
         )
         logical_plan = LogicalPlan(op, self.context)
 
@@ -3031,7 +3031,7 @@ class Dataset:
 
         logical_plans = [ds._logical_plan for ds in datasets]
         op = MixLogicalOperator(
-            *[plan.dag for plan in logical_plans],
+            [plan.dag for plan in logical_plans],
             weights=weights,
             stopping_condition=stopping_condition,
         )
@@ -3851,7 +3851,9 @@ class Dataset:
         Raises:
             ValueError: If the datasets have different row counts.
         """
-        op = Zip(self._logical_plan.dag, *[other._logical_plan.dag for other in other])
+        op = Zip(
+            [self._logical_plan.dag] + [other._logical_plan.dag for other in other]
+        )
         logical_plan = LogicalPlan(op, self.context)
         return Dataset._from_parent(self, logical_plan)
 
@@ -6527,7 +6529,7 @@ class Dataset:
     @PublicAPI(api_group=IOC_API_GROUP)
     def to_daft(self) -> "daft.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
-        `Daft DataFrame <https://docs.getdaft.io/en/stable/api/dataframe/>`_.
+        `Daft DataFrame <https://docs.daft.ai/en/stable/api/dataframe/>`_.
 
         This will convert all the data inside the Ray Dataset into a Daft DataFrame in a zero-copy way
         (using Arrow as the intermediate data format).

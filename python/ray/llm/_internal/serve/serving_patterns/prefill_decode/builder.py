@@ -183,6 +183,36 @@ class PDServingArgs(BaseModelExtended):
         )
         return self
 
+    @model_validator(mode="after")
+    def _default_decode_moriio_port_base(self):
+        """Shift decode's MoRIIO handshake/notify bases off prefill's defaults.
+
+        Mirrors ``_default_decode_nixl_port_base``: a colocated P+D pair on one
+        node would otherwise share MoRIIO's default handshake/notify ports. Only
+        applies when the decode config uses the MoRIIO connector. The +1000
+        stride is well above any realistic tp_size*pp_size offset added on top.
+        """
+        kv_transfer_config = (
+            self.decode_config.engine_kwargs.get("kv_transfer_config") or {}
+        )
+        if kv_transfer_config.get("kv_connector") != "MoRIIOConnector":
+            return self
+
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.moriio import (
+            DEFAULT_HANDSHAKE_PORT_BASE,
+            DEFAULT_NOTIFY_PORT_BASE,
+            HANDSHAKE_PORT_BASE_KEY,
+            NOTIFY_PORT_BASE_KEY,
+        )
+
+        self.decode_config.experimental_configs.setdefault(
+            HANDSHAKE_PORT_BASE_KEY, DEFAULT_HANDSHAKE_PORT_BASE + 1000
+        )
+        self.decode_config.experimental_configs.setdefault(
+            NOTIFY_PORT_BASE_KEY, DEFAULT_NOTIFY_PORT_BASE + 1000
+        )
+        return self
+
 
 # ---------------------------------------------------------------------------
 # Builder
@@ -235,7 +265,9 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
             f"{decode_cls.__name__}=ingress, LLMRouter=ingress_request_router"
         )
         return decode_deployment._with_ingress_request_router(
-            _build_openai_ingress_request_router(server=decode_deployment)
+            _build_openai_ingress_request_router(
+                server=decode_deployment, llm_config=pd_config.decode_config
+            )
         )
 
     decode_builder = build_dp_deployment if decode_dp_size > 1 else build_llm_deployment

@@ -20,86 +20,65 @@ more information.
 
     .. grid-item-card::
 
-        .. figure:: ../images/rayai_logo.png
+        .. figure:: ../images/aibrix.jpeg
             :class: card-figure
 
         .. div::
 
-            .. image:: https://img.shields.io/github/stars/rayai-labs/agentic-ray?style=social)]
-                :target: https://github.com/rayai-labs/agentic-ray
+            .. image:: https://img.shields.io/github/stars/vllm-project/aibrix?style=social
+                :target: https://github.com/vllm-project/aibrix
 
-            Agentic-Ray enables agents built with any framework to use Ray as their runtime, distribute tool calls across a cluster, and provision sandbox environments for executing AI-generated code.
+            AIBrix is a cloud-native LLM inference infrastructure platform that provides building blocks for deploying, scaling, and optimizing large language model serving with Ray-based hybrid orchestration.
 
         +++
-        .. button-link:: https://rayai.com
+        .. button-link:: https://github.com/vllm-project/aibrix
             :color: primary
             :outline:
             :expand:
 
-            Agentic-Ray Integration
+            AIBrix Integration
 
 
     .. grid-item-card::
 
-        .. figure:: ../images/airflow_logo_full.png
+        .. figure:: ../images/areal.png
             :class: card-figure
 
         .. div::
 
-            .. image:: https://img.shields.io/github/stars/astronomer/astro-provider-ray?style=social
-                :target: https://github.com/astronomer/astro-provider-ray
+            .. image:: https://img.shields.io/github/stars/areal-project/AReaL?style=social
+                :target: https://github.com/areal-project/AReaL
 
-            Apache Airflow® is an open-source platform that enables users to programmatically author, schedule, and monitor workflows using directed acyclic graphs (DAGs). With the Ray provider, users can seamlessly orchestrate Ray jobs within Airflow DAGs.
+            AReaL is an asynchronous reinforcement learning system for LLM agents developed by Ant Group. It decouples generation from training for efficient distributed post-training on Ray clusters.
 
         +++
-        .. button-link:: https://astronomer.github.io/astro-provider-ray/
+        .. button-link:: https://github.com/areal-project/AReaL
             :color: primary
             :outline:
             :expand:
 
-            Apache Airflow Integration
+            AReaL Integration
 
 
     .. grid-item-card::
 
-        .. figure:: ../images/buildflow.png
+        .. figure:: ../images/cosmos_curate.png
             :class: card-figure
 
         .. div::
 
-            .. image:: https://img.shields.io/github/stars/launchflow/buildflow?style=social
-                :target: https://github.com/launchflow/buildflow
+            .. image:: https://img.shields.io/github/stars/NVIDIA/cosmos-curator?style=social
+                :target: https://github.com/NVIDIA/cosmos-curator
 
-            BuildFlow is a backend framework that allows you to build and manage complex cloud infrastructure using pure python. With BuildFlow's decorator pattern you can turn any function into a component of your backend system.
+            Cosmos Curate is a GPU-accelerated video and image data curation toolkit from NVIDIA. It provides scalable pipelines for filtering, deduplication, and quality scoring using Ray for multi-node, multi-GPU distributed processing.
 
         +++
-        .. button-link:: https://docs.launchflow.com/buildflow/introduction
+        .. button-link:: https://github.com/NVIDIA/cosmos-curator
             :color: primary
             :outline:
             :expand:
 
-            BuildFlow Integration
-
-
-    .. grid-item-card::
-
-        .. figure:: ../images/classyvision.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/facebookresearch/ClassyVision?style=social
-                :target: https://github.com/facebookresearch/ClassyVision
-
-            Classy Vision is a new end-to-end, PyTorch-based framework for large-scale training of state-of-the-art image and video classification models. The library features a modular, flexible design that allows anyone to train machine learning models on top of PyTorch using very simple abstractions.
-
-        +++
-        .. button-link:: https://github.com/facebookresearch/ClassyVision/blob/main/tutorials/ray_aws.ipynb
-            :color: primary
-            :outline:
-            :expand:
-
-            Classy Vision Integration
+            Cosmos Curate Integration
 
 
     .. grid-item-card::
@@ -112,7 +91,7 @@ more information.
             .. image:: https://img.shields.io/github/stars/Eventual-Inc/Daft?style=social
                 :target: https://github.com/Eventual-Inc/Daft
 
-            Daft is a high-performance multimodal data engine that provides simple and reliable data processing for any modality - from structured tables to images, audio, video, and embeddings. Built with Python and Rust for modern AI workflows, Daft offers seamless scaling from local to `distributed clusters <https://www.daft.ai/cloud>`_, enabling efficient batch inference, document processing, and multimodal ETL pipelines at scale.
+            Daft is a high-performance multimodal data engine that provides simple and reliable data processing for any modality - from structured tables to images, audio, video, and embeddings. Built with Python and Rust for modern AI workflows, Daft offers seamless scaling from local to distributed clusters, enabling efficient batch inference, document processing, and multimodal ETL pipelines at scale.
 
         +++
         .. button-link:: https://docs.daft.ai/en/stable/distributed/ray/
@@ -121,27 +100,6 @@ more information.
             :expand:
 
             Daft Integration
-
-
-    .. grid-item-card::
-
-        .. figure:: ../images/dask.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/dask/dask?style=social
-                :target: https://github.com/dask/dask
-
-            Dask provides advanced parallelism for analytics, enabling performance at scale for the tools you love. Dask uses existing Python APIs and data structures to make it easy to switch between Numpy, Pandas, Scikit-learn to their Dask-powered equivalents.
-
-        +++
-        .. button-ref:: dask-on-ray
-            :color: primary
-            :outline:
-            :expand:
-
-            Dask Integration
 
 
     .. grid-item-card::
@@ -167,190 +125,23 @@ more information.
 
     .. grid-item-card::
 
-        .. figure:: ../images/flambe.png
+        .. figure:: ../images/deltacat.png
             :class: card-figure
 
         .. div::
 
-            .. image:: https://img.shields.io/github/stars/asappresearch/flambe?style=social
-                :target: https://github.com/asappresearch/flambe
+            .. image:: https://img.shields.io/github/stars/ray-project/deltacat?style=social
+                :target: https://github.com/ray-project/deltacat
 
-            Flambé is a machine learning experimentation framework built to accelerate the entire research life cycle. Flambé’s main objective is to provide a unified interface for prototyping models, running experiments containing complex pipelines, monitoring those experiments in real-time, reporting results, and deploying a final model for inference.
+            DeltaCAT is a portable multimodal lakehouse powered by Ray for petabyte-scale data compaction, deduplication, and incremental table processing with ACID compliance.
 
         +++
-        .. button-link:: https://github.com/asappresearch/flambe
+        .. button-link:: https://github.com/ray-project/deltacat
             :color: primary
             :outline:
             :expand:
 
-            Flambé Integration
-
-    .. grid-item-card::
-
-        .. figure:: ../images/flowdapt.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/emergentmethods/flowdapt?style=social
-                :target: https://github.com/emergentmethods/flowdapt
-
-            Flowdapt is a platform designed to help developers configure, debug, schedule, trigger, deploy and serve adaptive and reactive Artificial Intelligence workflows at large-scale.
-
-        +++
-        .. button-link:: https://github.com/emergentmethods/flowdapt
-            :color: primary
-            :outline:
-            :expand:
-
-            Flowdapt Integration
-
-
-    .. grid-item-card::
-
-        .. figure:: ../images/flyte.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/flyteorg/flyte?style=social
-                :target: https://github.com/flyteorg/flyte
-
-            Flyte is a Kubernetes-native workflow automation platform for complex, mission-critical data and ML processes at scale. It has been battle-tested at Lyft, Spotify, Freenome, and others and is truly open-source.
-
-        +++
-        .. button-link:: https://flyte.org/
-            :color: primary
-            :outline:
-            :expand:
-
-            Flyte Integration
-
-
-    .. grid-item-card::
-
-        .. figure:: ../images/horovod.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/horovod/horovod?style=social
-                :target: https://github.com/horovod/horovod
-
-            Horovod is a distributed deep learning training framework for TensorFlow, Keras, PyTorch, and Apache MXNet. The goal of Horovod is to make distributed deep learning fast and easy to use.
-
-        +++
-        .. button-link:: https://horovod.readthedocs.io/en/stable/ray_include.html
-            :color: primary
-            :outline:
-            :expand:
-
-            Horovod Integration
-
-
-    .. grid-item-card::
-
-        .. figure:: ../images/hugging.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/huggingface/transformers?style=social
-                :target: https://github.com/huggingface/transformers
-
-            State-of-the-art Natural Language Processing for Pytorch and TensorFlow 2.0. It integrates with Ray for distributed hyperparameter tuning of transformer models.
-
-        +++
-        .. button-link:: https://huggingface.co/transformers/master/main_classes/trainer.html#transformers.Trainer.hyperparameter_search
-            :color: primary
-            :outline:
-            :expand:
-
-            Hugging Face Transformers Integration
-
-
-    .. grid-item-card::
-
-        .. figure:: ../images/zoo.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/intel-analytics/analytics-zoo?style=social
-                :target: https://github.com/intel-analytics/analytics-zoo
-
-            Analytics Zoo seamlessly scales TensorFlow, Keras and PyTorch to distributed big data (using Spark, Flink & Ray).
-
-        +++
-        .. button-link:: https://analytics-zoo.github.io/master/#ProgrammingGuide/rayonspark/
-            :color: primary
-            :outline:
-            :expand:
-
-            Intel Analytics Zoo Integration
-
-
-    .. grid-item-card::
-
-        .. figure:: ../images/nlu.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/JohnSnowLabs/nlu?style=social
-                :target: https://github.com/JohnSnowLabs/nlu
-
-            The power of 350+ pre-trained NLP models, 100+ Word Embeddings, 50+ Sentence Embeddings, and 50+ Classifiers in 46 languages with 1 line of Python code.
-
-        +++
-        .. button-link:: https://nlu.johnsnowlabs.com/docs/en/predict_api#modin-dataframe
-            :color: primary
-            :outline:
-            :expand:
-
-            NLU Integration
-
-
-    .. grid-item-card::
-
-        .. figure:: ../images/ludwig.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/ludwig-ai/ludwig?style=social
-                :target: https://github.com/ludwig-ai/ludwig
-
-            Ludwig is a toolbox that allows users to train and test deep learning models without the need to write code. With Ludwig, you can train a deep learning model on Ray in zero lines of code, automatically leveraging Dask on Ray for data preprocessing, Horovod on Ray for distributed training, and Ray Tune for hyperparameter optimization.
-
-        +++
-        .. button-link:: https://medium.com/ludwig-ai/ludwig-ai-v0-4-introducing-declarative-mlops-with-ray-dask-tabnet-and-mlflow-integrations-6509c3875c2e
-            :color: primary
-            :outline:
-            :expand:
-
-            Ludwig Integration
-
-
-    .. grid-item-card::
-
-        .. figure:: ../images/mars.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/mars-project/mars?style=social
-                :target: https://github.com/mars-project/mars
-
-            Mars is a tensor-based unified framework for large-scale data computation which scales Numpy, Pandas and Scikit-learn. Mars can scale in to a single machine, and scale out to a cluster with thousands of machines.
-
-        +++
-        .. button-ref:: mars-on-ray
-            :color: primary
-            :outline:
-            :expand:
-
-            MARS Integration
+            DeltaCAT Integration
 
 
     .. grid-item-card::
@@ -376,44 +167,65 @@ more information.
 
     .. grid-item-card::
 
-        .. figure:: ../images/prefect.png
+        .. figure:: ../images/nemo.png
             :class: card-figure
 
         .. div::
 
-            .. image:: https://img.shields.io/github/stars/PrefectHQ/prefect-ray?style=social
-                :target: https://github.com/PrefectHQ/prefect-ray
+            .. image:: https://img.shields.io/github/stars/NVIDIA-NeMo/Curator?style=social
+                :target: https://github.com/NVIDIA-NeMo/Curator
 
-            Prefect is an open source workflow orchestration platform in Python. It allows you to easily define, track and schedule workflows in Python. This integration makes it easy to run a Prefect workflow on a Ray cluster in a distributed way.
+            NeMo Curator is a scalable data curation toolkit from NVIDIA for preparing high-quality datasets for large language model training. It uses Ray for distributed data processing including deduplication, filtering, and quality classification at scale.
 
         +++
-        .. button-link:: https://github.com/PrefectHQ/prefect-ray
+        .. button-link:: https://github.com/NVIDIA-NeMo/Curator
             :color: primary
             :outline:
             :expand:
 
-            Prefect Integration
+            NeMo Curator Integration
 
 
     .. grid-item-card::
 
-        .. figure:: ../images/pycaret.png
+        .. figure:: ../images/nemo.png
             :class: card-figure
 
         .. div::
 
-            .. image:: https://img.shields.io/github/stars/pycaret/pycaret?style=social
-                :target: https://github.com/pycaret/pycaret
+            .. image:: https://img.shields.io/github/stars/NVIDIA-NeMo/RL?style=social
+                :target: https://github.com/NVIDIA-NeMo/RL
 
-            PyCaret is an open source low-code machine learning library in Python that aims to reduce the hypothesis to insights cycle time in a ML experiment. It enables data scientists to perform end-to-end experiments quickly and efficiently.
+            NeMo-RL is NVIDIA's scalable post-training toolkit for large language models. It provides RLHF and alignment training built on Ray for distributed orchestration of training and inference workloads.
 
         +++
-        .. button-link:: https://github.com/pycaret/pycaret
+        .. button-link:: https://github.com/NVIDIA-NeMo/RL
             :color: primary
             :outline:
             :expand:
 
-            PyCaret Integration
+            NeMo-RL Integration
+
+
+    .. grid-item-card::
+
+        .. figure:: ../images/openrlhf.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/OpenRLHF/OpenRLHF?style=social
+                :target: https://github.com/OpenRLHF/OpenRLHF
+
+            OpenRLHF is an easy-to-use, scalable RLHF training framework. It supports distributed PPO, DPO, rejection sampling, and other alignment methods using Ray for orchestrating training and generation across multiple GPUs and nodes.
+
+        +++
+        .. button-link:: https://github.com/OpenRLHF/OpenRLHF
+            :color: primary
+            :outline:
+            :expand:
+
+            OpenRLHF Integration
 
 
     .. grid-item-card::
@@ -439,167 +251,125 @@ more information.
 
     .. grid-item-card::
 
-        .. figure:: ../images/raylight.png
+        .. figure:: ../images/roll.jpg
             :class: card-figure
 
         .. div::
 
-            .. image:: https://img.shields.io/github/stars/komikndr/raylight?style=social)]
-                :target: https://github.com/komikndr/raylight
+            .. image:: https://img.shields.io/github/stars/alibaba/ROLL?style=social
+                :target: https://github.com/alibaba/ROLL
 
-            Raylight is an extension for ComfyUI that enables true multi-GPU capability using XDiT XFuser, and FSDP managed by Ray. It is designed to scale diffusion models efficiently across multiple GPUs. Raylight provides sequence parallelism, and optimized VRAM utilization, making it ideal for large video and image generation models.
+            ROLL is Alibaba's reinforcement learning scaling library for large language models. It provides efficient distributed RL training with flexible resource scheduling and heterogeneous task management built on Ray.
 
         +++
-        .. button-link:: https://github.com/komikndr/raylight
+        .. button-link:: https://github.com/alibaba/ROLL
             :color: primary
             :outline:
             :expand:
 
-            Raylight Integration
+            ROLL Integration
 
 
     .. grid-item-card::
 
-        .. figure:: ../images/scikit.png
+        .. figure:: ../images/skyrl.png
             :class: card-figure
 
         .. div::
 
-            .. image:: https://img.shields.io/github/stars/scikit-learn/scikit-learn?style=social
-                :target: https://github.com/scikit-learn/scikit-learn
+            .. image:: https://img.shields.io/github/stars/NovaSky-AI/SkyRL?style=social
+                :target: https://github.com/NovaSky-AI/SkyRL
 
-            Scikit-learn is a free software machine learning library for the Python programming language. It features various classification, regression and clustering algorithms including support vector machines, random forests, gradient boosting, k-means and DBSCAN, and is designed to interoperate with the Python numerical and scientific libraries NumPy and SciPy.
+            SkyRL is a modular reinforcement learning library for LLM agents from UC Berkeley. It enables training through multi-turn environment interactions using Ray for distributed rollout and training.
 
         +++
-        .. button-link:: https://docs.ray.io/en/master/joblib.html
+        .. button-link:: https://github.com/NovaSky-AI/SkyRL
             :color: primary
             :outline:
             :expand:
 
-            Scikit Learn Integration
+            SkyRL Integration
 
 
     .. grid-item-card::
 
-        .. figure:: ../images/seldon.png
+        .. figure:: ../images/slime.jpg
             :class: card-figure
 
         .. div::
 
-            .. image:: https://img.shields.io/github/stars/SeldonIO/alibi?style=social
-                :target: https://github.com/SeldonIO/alibi
+            .. image:: https://img.shields.io/github/stars/THUDM/slime?style=social
+                :target: https://github.com/THUDM/slime
 
-            Alibi is an open source Python library aimed at machine learning model inspection and interpretation. The focus of the library is to provide high-quality implementations of black-box, white-box, local and global explanation methods for classification and regression models.
+            SLIME is a post-training framework for large language models from Tsinghua University. It provides RL scaling with a service-oriented architecture built on Ray and Megatron-LM for distributed training orchestration.
 
         +++
-        .. button-link:: https://github.com/SeldonIO/alibi
+        .. button-link:: https://github.com/THUDM/slime
             :color: primary
             :outline:
             :expand:
 
-            Seldon Alibi Integration
+            SLIME Integration
 
 
     .. grid-item-card::
 
-        .. figure:: ../images/sematic.png
+        .. figure:: ../images/syftr.jpg
             :class: card-figure
 
         .. div::
 
-            .. image:: https://img.shields.io/github/stars/sematic-ai/sematic?style=social
-                :target: https://github.com/sematic-ai/sematic
+            .. image:: https://img.shields.io/github/stars/datarobot/syftr?style=social
+                :target: https://github.com/datarobot/syftr
 
-            Sematic is an open-source ML pipelining tool written in Python. It enables users to write end-to-end pipelines that can seamlessly transition between your laptop and the cloud, with rich visualizations, traceability, reproducibility, and usability as first-class citizens. This integration enables dynamic allocation of Ray clusters within Sematic pipelines.
+            Syftr is an open-source agent workflow optimizer from DataRobot. It uses Ray and Ray Tune for scalable multi-objective optimization of agentic AI workflows across prompts, models, and tool selections.
 
         +++
-        .. button-link:: https://docs.sematic.dev/integrations/ray
+        .. button-link:: https://github.com/datarobot/syftr
             :color: primary
             :outline:
             :expand:
 
-            Sematic Integration
+            Syftr Integration
 
 
     .. grid-item-card::
 
-        .. figure:: ../images/spacy.png
+        .. figure:: ../images/verl.jpg
             :class: card-figure
 
         .. div::
 
-            .. image:: https://img.shields.io/github/stars/explosion/spacy-ray?style=social
-                :target: https://github.com/explosion/spacy-ray
+            .. image:: https://img.shields.io/github/stars/verl-project/verl?style=social
+                :target: https://github.com/verl-project/verl
 
-            spaCy is a library for advanced Natural Language Processing in Python and Cython. It's built on the very latest research, and was designed from day one to be used in real products.
+            verl is a flexible and efficient reinforcement learning training library for large language models from ByteDance. It provides a Ray-native hybrid controller for scalable RLHF training with distributed orchestration of rollout, training, and reward computation.
 
         +++
-        .. button-link:: https://pypi.org/project/spacy-ray/
+        .. button-link:: https://github.com/verl-project/verl
             :color: primary
             :outline:
             :expand:
 
-            spaCy Integration
+            verl Integration
 
 
     .. grid-item-card::
 
-        .. figure:: ../images/xgboost_logo.png
+        .. figure:: ../images/vllm.png
             :class: card-figure
 
         .. div::
 
-            .. image:: https://img.shields.io/github/stars/ray-project/xgboost_ray?style=social
-                :target: https://github.com/ray-project/xgboost_ray
+            .. image:: https://img.shields.io/github/stars/vllm-project/vllm?style=social
+                :target: https://github.com/vllm-project/vllm
 
-            XGBoost is a popular gradient boosting library for classification and regression. It is one of the most popular tools in data science and workhorse of many top-performing Kaggle kernels.
+            vLLM is a high-throughput and memory-efficient inference and serving engine for large language models. It uses Ray for distributed tensor parallelism and pipeline parallelism across multiple GPUs and nodes.
 
         +++
-        .. button-link:: https://github.com/ray-project/xgboost_ray
+        .. button-link:: https://docs.vllm.ai/
             :color: primary
             :outline:
             :expand:
 
-            XGBoost Integration
-
-
-    .. grid-item-card::
-
-        .. figure:: ../images/lightgbm_logo.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/ray-project/lightgbm_ray?style=social
-                :target: https://github.com/ray-project/lightgbm_ray
-
-            LightGBM is a high-performance gradient boosting library for classification and regression. It is designed to be distributed and efficient.
-
-        +++
-        .. button-link:: https://github.com/ray-project/lightgbm_ray
-            :color: primary
-            :outline:
-            :expand:
-
-            LightGBM Integration
-
-
-    .. grid-item-card::
-
-        .. figure:: ./images/volcano.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/volcano-sh/volcano?style=social
-                :target: https://github.com/volcano-sh/volcano/
-
-            Volcano is system for running high-performance workloads on Kubernetes. It features powerful batch scheduling capabilities required by ML and other data-intensive workloads.
-
-        +++
-        .. button-link:: https://github.com/volcano-sh/volcano/releases/tag/v1.7.0
-            :color: primary
-            :outline:
-            :expand:
-
-            Volcano Integration
+            vLLM Integration
