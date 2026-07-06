@@ -102,9 +102,13 @@ def _build_openai_ingress_request_router(
         num_replicas=1,
         max_ongoing_requests=1000,
     )
+    pre_routing_tokenization = is_kv_aware(llm_config)
     return deployment.bind(
         server=server,
-        pre_routing_tokenization=is_kv_aware(llm_config),
+        pre_routing_tokenization=pre_routing_tokenization,
+        # The in-process tokenizer resolves the engine's tokenizer and chat
+        # template from the deployment's LLM config.
+        llm_config=llm_config if pre_routing_tokenization else None,
     )
 
 

@@ -1,6 +1,6 @@
 import json
 from types import SimpleNamespace
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 
@@ -14,6 +14,9 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve._private.http_util import _matches_session_id_header
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
+
+if TYPE_CHECKING:
+    from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 
 logger = get_logger(__name__)
 
@@ -93,7 +96,7 @@ class LLMRouter:
             succeeded.
         4xx/5xx FastAPI ``{"detail": str}``: informational only; HAProxy
             treats any non-200 as a routing failure. When using KV aware routing,
-            a pre-routing ``/tokenize`` rejection is surfaced here.
+            a pre-routing tokenization rejection is surfaced here.
 
     Health:
         ``GET /health`` is exposed as a human-operator convenience.
@@ -105,13 +108,24 @@ class LLMRouter:
     _warned_no_routing_key: bool = False
 
     async def __init__(
-        self, server: DeploymentHandle, pre_routing_tokenization: bool = False
+        self,
+        server: DeploymentHandle,
+        pre_routing_tokenization: bool = False,
+        llm_config: Optional["LLMConfig"] = None,
     ):
         self._handle: DeploymentHandle = server
         self._handle._init()
         # Pre-routing tokenization is only useful to a KV-aware request router,
         # which scores replicas based on the prompt token IDs.
-        self._tokenizer = Tokenizer(self._handle) if pre_routing_tokenization else None
+        self._tokenizer = None
+        if pre_routing_tokenization:
+            if llm_config is None:
+                raise ValueError(
+                    "pre_routing_tokenization requires llm_config: the in-process "
+                    "tokenizer resolves the engine's tokenizer and chat template "
+                    "from it."
+                )
+            self._tokenizer = Tokenizer(llm_config)
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):

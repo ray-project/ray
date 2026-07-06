@@ -1,5 +1,4 @@
 import sys
-from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -8,8 +7,6 @@ from starlette.datastructures import Headers
 
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import (
-    ErrorInfo,
-    ErrorResponse,
     TokenizeChatRequest,
     TokenizeCompletionRequest,
 )
@@ -18,35 +15,15 @@ from ray.llm._internal.serve.core.ingress.builder import (
     build_openai_app,
 )
 from ray.llm._internal.serve.core.ingress.router import LLMRouter
-from ray.llm._internal.serve.core.ingress.tokenizer import TokenizeError, Tokenizer
+from ray.llm._internal.serve.core.ingress.tokenizer import (
+    TokenizeError,
+    build_tokenize_request,
+)
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.llm.request_router import KVAwareRouter
 
 
-class _TokenizeResponse:
-    def __init__(self, tokens):
-        self.tokens = tokens
-
-
-async def _tokenize_stream(response):
-    yield response
-
-
-def _handle_returning(response):
-    """A DeploymentHandle whose /tokenize streams ``response``; captures the
-    Tokenize* request it was called with under ``captured``."""
-    captured = {}
-
-    def tokenize_remote(tok_req, _):
-        captured["request"] = tok_req
-        return _tokenize_stream(response)
-
-    handle = MagicMock()
-    handle.options.return_value.tokenize.remote = tokenize_remote
-    return handle, captured
-
-
-class TestTokenizer:
+class TestBuildTokenizeRequest:
     @pytest.mark.parametrize(
         "payload",
         [
@@ -55,10 +32,10 @@ class TestTokenizer:
             {"model": "m"},  # neither messages nor prompt
         ],
     )
-    @pytest.mark.asyncio
-    async def test_untokenizable_payload_returns_none(self, payload):
-        """A parsed payload with no single-string prompt yields None."""
-        assert await Tokenizer(MagicMock()).tokenize(payload) is None
+    def test_untokenizable_payload_returns_none(self, payload):
+        """A parsed payload with no single-string prompt yields None, so the
+        caller falls back to token-less routing."""
+        assert build_tokenize_request(payload) is None
 
     @pytest.mark.parametrize(
         "payload, expected_request_type",
@@ -70,14 +47,9 @@ class TestTokenizer:
             ({"model": "m", "prompt": "hello"}, TokenizeCompletionRequest),
         ],
     )
-    @pytest.mark.asyncio
-    async def test_tokenizes_chat_and_completion(self, payload, expected_request_type):
-        """A chat or completion payload is sent to /tokenize as the right
-        Tokenize* request and its returned token ids are surfaced."""
-        handle, captured = _handle_returning(_TokenizeResponse([5, 6, 7]))
-        tokens = await Tokenizer(handle).tokenize(payload)
-        assert tokens == [5, 6, 7]
-        assert isinstance(captured["request"], expected_request_type)
+    def test_builds_chat_and_completion_requests(self, payload, expected_request_type):
+        """A chat or completion payload builds the right Tokenize* request."""
+        assert isinstance(build_tokenize_request(payload), expected_request_type)
 
     @pytest.mark.parametrize(
         "payload, expected",
@@ -118,44 +90,13 @@ class TestTokenizer:
             ),
         ],
     )
-    @pytest.mark.asyncio
-    async def test_forwards_prompt_fields_only(self, payload, expected):
+    def test_forwards_prompt_fields_only(self, payload, expected):
         """Prompt-rendering fields come from the request (not hardcoded) and
         sampling params are dropped, so routing ids match prefill."""
-        handle, captured = _handle_returning(_TokenizeResponse([1, 2]))
-        await Tokenizer(handle).tokenize(payload)
-        request = captured["request"]
+        request = build_tokenize_request(payload)
         for attr, value in expected.items():
             assert getattr(request, attr) == value
         assert "temperature" not in (request.model_extra or {})
-
-    @pytest.mark.asyncio
-    async def test_error_response_raises(self):
-        """A /tokenize ErrorResponse surfaces as a TokenizeError carrying vLLM's
-        status code, message, and type."""
-        err = ErrorResponse(
-            error=ErrorInfo(message="bad model", type="NotFoundError", code=404)
-        )
-        handle, _ = _handle_returning(err)
-        with pytest.raises(TokenizeError) as exc_info:
-            await Tokenizer(handle).tokenize({"model": "m", "prompt": "hi"})
-        assert exc_info.value.status_code == 404
-        assert exc_info.value.message == "bad model"
-        assert exc_info.value.type == "NotFoundError"
-
-    @pytest.mark.asyncio
-    async def test_empty_response_raises(self):
-        """An empty /tokenize stream raises rather than returning no tokens."""
-
-        async def _empty(*_args):
-            for _ in ():
-                yield
-
-        handle = MagicMock()
-        handle.options.return_value.tokenize.remote = _empty
-        with pytest.raises(TokenizeError) as exc_info:
-            await Tokenizer(handle).tokenize({"model": "m", "prompt": "hi"})
-        assert exc_info.value.status_code == 500
 
 
 class TestRoute:
@@ -209,8 +150,8 @@ class TestRoute:
 
     @pytest.mark.asyncio
     async def test_tokenize_error_becomes_http_error(self):
-        # A /tokenize rejection becomes an HTTPException with the same status
-        # code, and routing is not attempted.
+        # A tokenization rejection becomes an HTTPException with the same
+        # status code, and routing is not attempted.
         router = LLMRouter.__new__(LLMRouter)
         router._handle = MagicMock()
         router._tokenizer = MagicMock()
@@ -249,9 +190,8 @@ def _build_llm_app(request_router_class):
     return build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
 
 
-def _pre_routing_tokenization(app) -> Optional[bool]:
-    init_kwargs = app._ingress_request_router._bound_deployment.init_kwargs
-    return init_kwargs["pre_routing_tokenization"]
+def _router_init_kwargs(app) -> dict:
+    return app._ingress_request_router._bound_deployment.init_kwargs
 
 
 class TestPreRoutingTokenization:
@@ -275,7 +215,11 @@ class TestPreRoutingTokenization:
     )
     def test_enabled_only_for_kv_aware_router(self, request_router_class, expected):
         app = _build_llm_app(request_router_class)
-        assert _pre_routing_tokenization(app) is expected
+        init_kwargs = _router_init_kwargs(app)
+        assert init_kwargs["pre_routing_tokenization"] is expected
+        # The in-process tokenizer needs the LLM config to build the engine's
+        # renderer; it must be bound exactly when tokenization is enabled.
+        assert (init_kwargs["llm_config"] is not None) is expected
 
 
 if __name__ == "__main__":
