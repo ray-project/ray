@@ -52,6 +52,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 # RDTMeta is a named tuple containing the source actor, tensor transport
 # backend, tensor metadata, and other information that needs to be recorded.
 # - The tensor transport backend is the backend used to transport the tensors.
@@ -224,6 +225,11 @@ class RDTManager:
                 self._monitor_failures_thread.join()
                 self._monitor_failures_shutdown_event.clear()
                 self._monitor_failures_thread = None
+        # Return this actor's pinned RDMA NIC (if any) to the cluster-wide
+        # pool. No-op unless RAY_RDT_NIC_PINNING=1.
+        from ray.experimental.rdt.nic_allocator import release_nic_for_current_actor
+
+        release_nic_for_current_actor()
 
     def start_monitor_thread_if_needed(self):
         with self._init_lock:

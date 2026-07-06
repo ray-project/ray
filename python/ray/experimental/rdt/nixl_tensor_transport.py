@@ -237,6 +237,19 @@ class NixlTensorTransport(TensorTransportManager):
     def _init_nixl_agent(self):
         """Builds the NIXL agent for the selected backend."""
         backend = self.select_backend()
+        if backend == "UCX" and "UCX_NET_DEVICES" not in os.environ:
+            # Best-effort exclusive NIC pinning (no-op unless
+            # RAY_RDT_NIC_PINNING=1). Must run before agent construction
+            # because UCX reads UCX_NET_DEVICES at context init. A
+            # user-provided UCX_NET_DEVICES always wins.
+            from ray.experimental.rdt.nic_allocator import (
+                acquire_nic_for_current_actor,
+            )
+
+            nic = acquire_nic_for_current_actor()
+            if nic is not None:
+                os.environ["UCX_NET_DEVICES"] = nic
+                logger.info("Pinned NIXL/UCX transport to NIC %s", nic)
         agent = self._make_nixl_agent(backend)
         self._backend = backend
         logger.info("Using NIXL backend: %s", backend)
