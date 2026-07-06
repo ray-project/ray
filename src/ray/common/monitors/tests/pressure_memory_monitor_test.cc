@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/pressure_memory_monitor.h"
+#include "ray/common/monitors/pressure_memory_monitor.h"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/event_memory_monitor.h"
+#include "ray/common/monitors/event_memory_monitor.h"
 
 #include <sys/eventfd.h>
 #include <sys/inotify.h>
@@ -23,7 +23,7 @@
 #include <fstream>
 #include <string>
 
-#include "ray/common/memory_monitor_utils.h"
+#include "ray/common/monitors/memory_monitor_utils.h"
 #include "ray/util/logging.h"
 #include "ray/util/thread_utils.h"
 
