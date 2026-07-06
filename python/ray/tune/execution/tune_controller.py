@@ -1971,8 +1971,12 @@ class TuneController:
                 for this paused trial. Defaults to True.
         """
         # NOTE: The cached trial decision is not needed since we will overrule this
-        # decision with PAUSE.
+        # decision with PAUSE. We also drop any queued decision: pausing removes
+        # the trial's actor, so a stale CONTINUE queued by an earlier buffered
+        # result must not be executed afterwards (it would schedule a train task
+        # on the removed actor and raise a KeyError).
         self._cached_trial_decisions.pop(trial.trial_id, None)
+        self._queued_trial_decisions.pop(trial.trial_id, None)
         self._schedule_trial_pause(trial, should_checkpoint=should_checkpoint)
 
     def cleanup(self):

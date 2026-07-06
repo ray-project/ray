@@ -4,6 +4,7 @@ import pytest
 
 import ray
 from ray.tune import PlacementGroupFactory
+from ray.tune.schedulers import TrialScheduler
 from ray.tune.tests.execution.utils import TestingTrial, create_execution_test_objects
 
 
@@ -125,6 +126,38 @@ def test_actor_reuse_unstaged(tmpdir, ray_start_2_cpus):
     # self._actor_cache.increase_max(start_trial.placement_group_factory)
     tune_controller._actor_stopped(tracked_actorA1)
     tune_controller.step()
+
+
+def test_pause_trial_clears_queued_decision(tmpdir, ray_start_2_cpus):
+    """pause_trial must discard any queued trial decision.
+
+    Regression test for #58483: with PBT and buffered training results, an
+    earlier buffered result can queue a CONTINUE decision for a trial. When a
+    later result triggers PBT's exploit step it calls pause_trial, which tears
+    down the trial's actor. If the stale CONTINUE were left queued, the next
+    _maybe_execute_queued_decision would pop it and _execute_action(CONTINUE)
+    -> _schedule_trial_train -> _schedule_trial_task would raise KeyError on the
+    now-removed actor. pause_trial must clear the queued decision.
+    """
+    tune_controller, actor_manger, resource_manager = create_execution_test_objects(
+        max_pending_trials=8
+    )
+
+    trial = TestingTrial("trainable1", stub=True, trial_id="trial1")
+    tune_controller.add_trial(trial)
+    tune_controller.step()
+
+    tracked_actor, _, _ = actor_manger.added_actors[0]
+    tune_controller._actor_started(tracked_actor)
+    assert trial in tune_controller._trial_to_actor
+
+    # An earlier buffered result queued a CONTINUE for this trial.
+    tune_controller._queued_trial_decisions[trial.trial_id] = TrialScheduler.CONTINUE
+
+    # PBT's exploit step pauses the trial, removing its actor.
+    tune_controller.pause_trial(trial, should_checkpoint=False)
+
+    assert trial.trial_id not in tune_controller._queued_trial_decisions
 
 
 if __name__ == "__main__":
