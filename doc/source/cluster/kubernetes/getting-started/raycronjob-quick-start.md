@@ -23,6 +23,7 @@ The `RayCronJob` CRD acts as an automated scheduler specifically designed to cre
 * `schedule` - The cron schedule string defining when a new Ray job should be created and run (e.g., `* * * * *` for every minute).
 * `jobTemplate` - Wraps a standard **RayJob** spec that the controller will use for each scheduled run. It supports the same fields as a RayJob spec. See the standard [RayJob Configuration](kuberay-rayjob-quickstart) documentation for the complete list of supported fields within the `jobTemplate`.
 * `suspend` (Optional): If `suspend` is true, the controller suspends the scheduling of future jobs. This does not apply to or interrupt any `RayJob`s that have already been created and are currently running.
+* `timeZone` (Optional): The time zone for the `schedule`, in [IANA Time Zone Database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) format (e.g., `America/Los_Angeles`). If omitted, the schedule uses the local time zone of the KubeRay operator. Do not set `TZ` or `CRON_TZ` in the `schedule` string, use this field instead.
 
 ## How to Configure a RayCronJob
 
@@ -37,6 +38,7 @@ metadata:
   name: example-raycronjob
 spec:
   schedule: "*/5 * * * *" # Run every 5 minutes
+  timeZone: "America/Los_Angeles" # Optional, defaults to the operator's local time zone
   jobTemplate:
     # Everything below here is a standard RayJob spec
     entrypoint: python /home/ray/samples/sample_code.py

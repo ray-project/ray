@@ -2159,6 +2159,7 @@ ml-dtypes==0.5.4 \
     #   jax
     #   jaxlib
     #   keras
+    #   onnx
     #   onnx-ir
     #   onnxscript
     #   tensorflow
@@ -2915,38 +2916,31 @@ nvtx==0.2.15 ; sys_platform != 'darwin' \
     # via
     #   cudf-cu12
     #   pylibcudf-cu12
-onnx==1.16.0 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
-    --hash=sha256:034ae21a2aaa2e9c14119a840d2926d213c27aad29e5e3edaa30145a745048e1 \
-    --hash=sha256:03a627488b1a9975d95d6a55582af3e14c7f3bb87444725b999935ddd271d352 \
-    --hash=sha256:0e60ca76ac24b65c25860d0f2d2cdd96d6320d062a01dd8ce87c5743603789b8 \
-    --hash=sha256:0efeb46985de08f0efe758cb54ad3457e821a05c2eaf5ba2ccb8cd1602c08084 \
-    --hash=sha256:209fe84995a28038e29ae8369edd35f33e0ef1ebc3bddbf6584629823469deb1 \
-    --hash=sha256:237c6987c6c59d9f44b6136f5819af79574f8d96a760a1fa843bede11f3822f7 \
-    --hash=sha256:257858cbcb2055284f09fa2ae2b1cfd64f5850367da388d6e7e7b05920a40c90 \
-    --hash=sha256:298f28a2b5ac09145fa958513d3d1e6b349ccf86a877dbdcccad57713fe360b3 \
-    --hash=sha256:30f02beaf081c7d9fa3a8c566a912fc4408e28fc33b1452d58f890851691d364 \
-    --hash=sha256:3e0860fea94efde777e81a6f68f65761ed5e5f3adea2e050d7fbe373a9ae05b3 \
-    --hash=sha256:5202559070afec5144332db216c20f2fff8323cf7f6512b0ca11b215eacc5bf3 \
-    --hash=sha256:62a2e27ae8ba5fc9b4a2620301446a517b5ffaaf8566611de7a7c2160f5bcf4c \
-    --hash=sha256:66300197b52beca08bc6262d43c103289c5d45fde43fb51922ed1eb83658cf0c \
-    --hash=sha256:70a90649318f3470985439ea078277c9fb2a2e6e2fd7c8f3f2b279402ad6c7e6 \
-    --hash=sha256:71839546b7f93be4fa807995b182ab4b4414c9dbf049fee11eaaced16fcf8df2 \
-    --hash=sha256:7449241e70b847b9c3eb8dae622df8c1b456d11032a9d7e26e0ee8a698d5bf86 \
-    --hash=sha256:7532343dc5b8b5e7c3e3efa441a3100552f7600155c4db9120acd7574f64ffbf \
-    --hash=sha256:7665217c45a61eb44718c8e9349d2ad004efa0cb9fbc4be5c6d5e18b9fe12b52 \
-    --hash=sha256:7755cbd5f4e47952e37276ea5978a46fc8346684392315902b5ed4a719d87d06 \
-    --hash=sha256:77579e7c15b4df39d29465b216639a5f9b74026bdd9e4b6306cd19a32dcfe67c \
-    --hash=sha256:7fb29a9a692b522deef1f6b8f2145da62c0c43ea1ed5b4c0f66f827fdc28847d \
-    --hash=sha256:81b4ee01bc554e8a2b11ac6439882508a5377a1c6b452acd69a1eebb83571117 \
-    --hash=sha256:8cf3e518b1b1b960be542e7c62bed4e5219e04c85d540817b7027029537dec92 \
-    --hash=sha256:9eadbdce25b19d6216f426d6d99b8bc877a65ed92cbef9707751c6669190ba4f \
-    --hash=sha256:ae0029f5e47bf70a1a62e7f88c80bca4ef39b844a89910039184221775df5e43 \
-    --hash=sha256:c392faeabd9283ee344ccb4b067d1fea9dfc614fa1f0de7c47589efd79e15e78 \
-    --hash=sha256:d7886c05aa6d583ec42f6287678923c1e343afc4350e49d5b36a0023772ffa22 \
-    --hash=sha256:ddf14a3d32234f23e44abb73a755cb96a423fac7f004e8f046f36b10214151ee \
-    --hash=sha256:e5752bbbd5717304a7643643dba383a2fb31e8eb0682f4e7b7d141206328a73b \
-    --hash=sha256:ec22a43d74eb1f2303373e2fbe7fbcaa45fb225f4eb146edfed1356ada7a9aea \
-    --hash=sha256:f51179d4af3372b4f3800c558d204b592c61e4b4a18b8f61e0eea7f46211221a
+onnx==1.22.0 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
+    --hash=sha256:19e45e4af88e3fe3261458d4b8cc461957ae2782a358a3560503569bf3b23b72 \
+    --hash=sha256:1d0a2bdb15eb2b3cb65c438f3423d9620d14fdce32f92380e6bb1b2e09568ef5 \
+    --hash=sha256:239958534464612fbcb6ed23d5228aaa925b39b8773f58726809ffdccb4edd1c \
+    --hash=sha256:2632406b8f523ef2e2873c363f90b20a3d88c0fbcfac757d3addffccf8f452c2 \
+    --hash=sha256:2d8f229a553fa440fe623ed7b36fca5e7762da3af871c3f8f8ce451df73e2914 \
+    --hash=sha256:33ce94119bbb7f05d9caea4ea7549f5185a54369f6bbc9f70171bd5ee6935bbc \
+    --hash=sha256:596fbf0490947533c1c1045ba860851dc9fb77471023dac9a71ba5b42ceab103 \
+    --hash=sha256:5c1c0408a9d4b4df33851672e5fc7590b96301ee123396d608f9ab6f045ab06b \
+    --hash=sha256:6d0ffffd63a4ecc21ddaeddd5bf02099cb701aa4243f2de00122726869065ca4 \
+    --hash=sha256:72ccebab3bac07215c204ce8848d42e78eaaa666badbf72d25cd359b9f269e3a \
+    --hash=sha256:82e9f27fc1223cb06d68a56bed6f9d3caf3d0dad1b61bce45006d529b15bd94c \
+    --hash=sha256:8561a2c00041c07e08db0c228593b5b4694100398685f348532af7dbb84189da \
+    --hash=sha256:87a3077958f66f9a26dec10077ac28326d9cec2cbe1f0b040947243449754573 \
+    --hash=sha256:8907b9b9389893bc0dc6314cc00ee1e3a69844e48d689eacc6a0340411a7da58 \
+    --hash=sha256:8a5eccce2d5fc6c5046928a9aa7cdd9750ea4a586f8de341d3d40d820c35fdec \
+    --hash=sha256:8e268cdc0547e3949799ffd4a44451dc2b9080b57d0824a2db680b6ec65506f0 \
+    --hash=sha256:955e02e1f6d385b53d52f9cd7b9cdf5caf417c300bcfe3c64c6d542be763845b \
+    --hash=sha256:a1a89a7cb9ba13d78f009bdec448ec82a98972589734f157022a2bff7a5973a6 \
+    --hash=sha256:a3a39fc4643867aecb33417fdddb11e308ee79d2d4a584b9d50cc7aec2091b13 \
+    --hash=sha256:ae5a563f281cd9d2845622cecf6c092a57e4ee1b138f66fdbbdd4200567a5e16 \
+    --hash=sha256:c21a0e59fd967a95b358e4a6e756d1f1eec2d304a83480f329f66e30d2bf0223 \
+    --hash=sha256:cc8b66b312f8f03a53e268afb67180a2d97dd12cc79e2b61361c6c0073448016 \
+    --hash=sha256:ef40c0aaf0b643857ea9306fc7eddce17eaf9fb0407e4801f1fc5758443a38e0 \
+    --hash=sha256:f3c120dcdb70ad738f3c061b32798f408ea299eb69f84dd69ab4a6bf3c2ec01f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
@@ -2986,9 +2980,9 @@ onnxruntime==1.24.4 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
-onnxscript==0.5.7 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
-    --hash=sha256:480d572451bc233ed7f742b5005cb0c899594b2fdc28e15167dab26f7fd777ad \
-    --hash=sha256:f94a66059c56d13b44908e9b7fd9dae4b4faa6681c784f3fd4c29cfa863e454e
+onnxscript==0.7.0 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
+    --hash=sha256:5b356907d4501e9919f8599c91d8da967406a37b1fac2b40caa55a49acf242ea \
+    --hash=sha256:c95ed7b339b02cface56ee27689565c46612e1fc542c562298dddfdad5268dc5
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
@@ -4190,9 +4184,9 @@ rapids-logger==0.2.3 ; sys_platform != 'darwin' \
     # via
     #   libcudf-cu12
     #   librmm-cu12
-ray-haproxy==2.8.20 ; sys_platform == 'linux' \
-    --hash=sha256:a955cbb370c9b9a4dadecd265ddff3ac6d007ad70eae293f05ef753a22b5e1f2 \
-    --hash=sha256:da23d7d28c39247826466ddfe3c166db7cef5dcd44d8a64b8f9eb91e7089076c
+ray-haproxy==2.8.25 ; sys_platform == 'linux' \
+    --hash=sha256:51671f11afb571ed5b37042f9287daf48de235f2d32ad18b732ee9587e9ad076 \
+    --hash=sha256:a63902c2fe7eb51fbcb502980228d743b79da6cecab230c4c24674517b1ac3ac
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ray
@@ -5137,6 +5131,7 @@ typing-extensions==4.15.0 \
     #   gymnasium
     #   huggingface-hub
     #   mlflow-skinny
+    #   onnx
     #   onnx-ir
     #   onnxscript
     #   opentelemetry-api

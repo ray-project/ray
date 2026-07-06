@@ -360,8 +360,10 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         self._data_tasks[task_index] = DataOpTask(
             task_index,
             gen,
-            _output_ready_callback,
-            _task_done_callback,
+            self._block_ref_counter,
+            self.id,
+            output_ready_callback=_output_ready_callback,
+            task_done_callback=_task_done_callback,
             operator_name=self.name,
         )
 

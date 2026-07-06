@@ -1010,6 +1010,7 @@ class TorchPolicyV2(Policy):
                     for k in list(dummy_inputs.keys())
                     + ["state_ins", SampleBatch.SEQ_LENS]
                 },
+                dynamo=False,
             )
         # Save the torch.Model (architecture and weights, so it can be retrieved
         # w/o access to the original (custom) Model or Policy code).

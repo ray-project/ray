@@ -7,6 +7,7 @@ import pytest
 import ray
 from ray.data import Schema
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.conftest import noop_counter
 from ray.data.tests.util import column_udf, named_values
 from ray.tests.conftest import *  # noqa
 
@@ -176,9 +177,9 @@ def test_zip_streaming_dispatches_before_inputs_done(ray_start_regular_shared):
     input_b = InputDataBuffer(ctx, bundles_b)
     zip_op = ZipOperator(ctx, input_a, input_b)
 
-    zip_op.start(ExecutionOptions())
-    input_a.start(ExecutionOptions())
-    input_b.start(ExecutionOptions())
+    zip_op.start(ExecutionOptions(), noop_counter())
+    input_a.start(ExecutionOptions(), noop_counter())
+    input_b.start(ExecutionOptions(), noop_counter())
 
     # Feed one block from each input — this is enough to align and dispatch a
     # zip task, well before all inputs are done.
@@ -239,9 +240,9 @@ def test_zip_streaming_with_unaligned_blocks(ray_start_regular_shared):
     input_b = InputDataBuffer(ctx, bundles_b)
     zip_op = ZipOperator(ctx, input_a, input_b)
 
-    zip_op.start(ExecutionOptions())
-    input_a.start(ExecutionOptions())
-    input_b.start(ExecutionOptions())
+    zip_op.start(ExecutionOptions(), noop_counter())
+    input_a.start(ExecutionOptions(), noop_counter())
+    input_b.start(ExecutionOptions(), noop_counter())
 
     # Feed all blocks.
     while input_a.has_next():
@@ -292,9 +293,9 @@ def test_zip_streaming_different_row_counts_raises(ray_start_regular_shared):
     input_b = InputDataBuffer(ctx, bundles_b)
     zip_op = ZipOperator(ctx, input_a, input_b)
 
-    zip_op.start(ExecutionOptions())
-    input_a.start(ExecutionOptions())
-    input_b.start(ExecutionOptions())
+    zip_op.start(ExecutionOptions(), noop_counter())
+    input_a.start(ExecutionOptions(), noop_counter())
+    input_b.start(ExecutionOptions(), noop_counter())
 
     zip_op.add_input(input_a.get_next(), 0)
     zip_op.add_input(input_b.get_next(), 1)
@@ -333,9 +334,9 @@ def test_zip_streaming_partial_progress_mismatch_raises(
     input_b = InputDataBuffer(ctx, make_ref_bundles([[10, 11]] + extra_b_blocks))
     zip_op = ZipOperator(ctx, input_a, input_b)
 
-    zip_op.start(ExecutionOptions())
-    input_a.start(ExecutionOptions())
-    input_b.start(ExecutionOptions())
+    zip_op.start(ExecutionOptions(), noop_counter())
+    input_a.start(ExecutionOptions(), noop_counter())
+    input_b.start(ExecutionOptions(), noop_counter())
 
     while input_a.has_next():
         zip_op.add_input(input_a.get_next(), 0)
@@ -382,9 +383,9 @@ def test_zip_streaming_empty_blocks(ray_start_regular_shared, a_blocks, b_blocks
     input_b = InputDataBuffer(ctx, make_ref_bundles(b_blocks))
     zip_op = ZipOperator(ctx, input_a, input_b)
 
-    zip_op.start(ExecutionOptions())
-    input_a.start(ExecutionOptions())
-    input_b.start(ExecutionOptions())
+    zip_op.start(ExecutionOptions(), noop_counter())
+    input_a.start(ExecutionOptions(), noop_counter())
+    input_b.start(ExecutionOptions(), noop_counter())
 
     while input_a.has_next():
         zip_op.add_input(input_a.get_next(), 0)
@@ -454,9 +455,9 @@ def test_zip_streaming_unknown_row_count_resolved_async(ray_start_regular_shared
     input_b = InputDataBuffer(ctx, [bundle_with_unknown_rows([10, 11, 12])])
     zip_op = ZipOperator(ctx, input_a, input_b)
 
-    zip_op.start(ExecutionOptions())
-    input_a.start(ExecutionOptions())
-    input_b.start(ExecutionOptions())
+    zip_op.start(ExecutionOptions(), noop_counter())
+    input_a.start(ExecutionOptions(), noop_counter())
+    input_b.start(ExecutionOptions(), noop_counter())
 
     zip_op.add_input(input_a.get_next(), 0)
     zip_op.add_input(input_b.get_next(), 1)
