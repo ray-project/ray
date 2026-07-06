@@ -1,11 +1,13 @@
+import asyncio
 import inspect
 import logging
 from types import FunctionType
-from typing import Any, Dict, Union
+from typing import Any, Dict, List, Tuple, Union
 
 from pydantic import BaseModel
 
 import ray
+from ray import ObjectRef
 from ray._common.usage import usage_lib
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
@@ -15,7 +17,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import get_controller_impl
-from ray.serve.config import HTTPOptions, gRPCOptions
+from ray.serve.config import ControllerOptions, HTTPOptions, gRPCOptions
 from ray.serve.context import (
     _check_cached_client_alive,
     _get_global_client,
@@ -26,6 +28,22 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def _coerce_controller_options(
+    controller_options: Union[None, dict, ControllerOptions],
+) -> ControllerOptions:
+    """Normalize an optional dict / model into a validated ControllerOptions."""
+    if controller_options is None:
+        return ControllerOptions()
+    if isinstance(controller_options, ControllerOptions):
+        return controller_options
+    if isinstance(controller_options, dict):
+        return ControllerOptions.model_validate(controller_options)
+    raise TypeError(
+        "controller_options must be a dict, ControllerOptions, or None; got "
+        f"{type(controller_options).__name__}."
+    )
 
 
 def _check_http_options(
@@ -52,20 +70,29 @@ def _check_http_options(
             )
 
 
-def _start_controller(
-    http_options: Union[None, dict, HTTPOptions] = None,
-    grpc_options: Union[None, dict, gRPCOptions] = None,
-    global_logging_config: Union[None, dict, LoggingConfig] = None,
+def _create_controller_and_proxy_refs(
+    http_options: Union[None, dict, HTTPOptions],
+    grpc_options: Union[None, dict, gRPCOptions],
+    global_logging_config: Union[None, dict, LoggingConfig],
+    controller_options: ControllerOptions,
     **kwargs,
-) -> ActorHandle:
-    """Start Ray Serve controller.
+) -> Tuple[ActorHandle, List[ObjectRef]]:
+    """Create the detached ServeController actor in the caller process.
 
-    The function makes sure controller is ready to start deploying apps
-    after it returns.
+    Runs everything the old ``_start_controller`` remote task did, but inline:
+    ray.init if needed, arg validation, controller actor creation, and resolving
+    ``get_proxies``. Returns the controller handle (owned locally by the caller,
+    following normal ref-counting — no cross-process transfer) plus the list of
+    proxy-readiness ObjectRefs the caller must still wait on.
 
-    Parameters are same as ray.serve._private.api.serve_start().
+    Caller resolves ``proxy_ready_refs`` synchronously (``ray.get``) or
+    asynchronously (``await asyncio.gather``). Splitting the wait out of this
+    helper is what lets sync and async share one creation path without
+    duplication (per @edoakes's suggestion on #63597).
 
-    Returns: controller actor handle.
+    Parameters are same as ray.serve._private.api.serve_start(), except
+    ``controller_options`` must already be a validated ``ControllerOptions``
+    (callers coerce eagerly so a bad value raises locally, not from a task).
     """
 
     # Initialize ray if needed.
@@ -95,7 +122,7 @@ def _start_controller(
     elif isinstance(global_logging_config, dict):
         global_logging_config = LoggingConfig(**global_logging_config)
 
-    controller_impl = get_controller_impl()
+    controller_impl = get_controller_impl(controller_options=controller_options)
     controller = controller_impl.remote(
         http_options=http_options,
         grpc_options=grpc_options,
@@ -103,23 +130,19 @@ def _start_controller(
     )
 
     proxy_handles = ray.get(controller.get_proxies.remote())
-    if len(proxy_handles) > 0:
-        try:
-            ray.get(
-                [handle.ready.remote() for handle in proxy_handles.values()],
-                timeout=HTTP_PROXY_TIMEOUT,
-            )
-        except ray.exceptions.GetTimeoutError:
-            raise TimeoutError(
-                f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
-            )
-    return controller
+    proxy_ready_refs = (
+        [handle.ready.remote() for handle in proxy_handles.values()]
+        if len(proxy_handles) > 0
+        else []
+    )
+    return controller, proxy_ready_refs
 
 
 async def serve_start_async(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     global_logging_config: Union[None, dict, LoggingConfig] = None,
+    controller_options: Union[None, dict, ControllerOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance asynchronously.
@@ -134,6 +157,10 @@ async def serve_start_async(
 
     usage_lib.record_library_usage("serve")
 
+    # Validate eagerly in the caller so a bad ``controller_options`` raises
+    # here, at the call site, rather than after a round-trip into the helper.
+    controller_options = _coerce_controller_options(controller_options)
+
     client, _ = _check_cached_client_alive()
     if client is None:
         try:
@@ -143,21 +170,41 @@ async def serve_start_async(
     if client is not None:
         logger.info(
             f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
-            " New http options will not be applied."
+            " New http_options/controller_options will not be applied."
         )
         if http_options:
             _check_http_options(client, http_options)
         return client
 
-    controller = (
-        await ray.remote(_start_controller)
-        .options(num_cpus=0)
-        .remote(http_options, grpc_options, global_logging_config, **kwargs)
+    # Run the blocking controller-creation helper in a worker thread so its
+    # ray.get(controller.get_proxies.remote()) does not stall this event loop.
+    # serve_start_async exists (vs serve_start) precisely to keep long-lived
+    # callers like the Dashboard Agent responsive while Serve starts up.
+    # Safe because the helper only touches ray.init/ray.get/actor.remote, all
+    # thread-safe via the CoreWorker C++ API, and the Dashboard Agent uses sync
+    # ray.init (so the helper's ray.init branch is skipped). If the dashboard
+    # ever switched to async-mode ray.init this would need revisiting.
+    controller, proxy_ready_refs = await asyncio.to_thread(
+        _create_controller_and_proxy_refs,
+        http_options,
+        grpc_options,
+        global_logging_config,
+        controller_options,
+        **kwargs,
     )
 
-    client = ServeControllerClient(
-        controller,
-    )
+    if proxy_ready_refs:
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*proxy_ready_refs),
+                timeout=HTTP_PROXY_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            raise TimeoutError(
+                f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
+            )
+
+    client = ServeControllerClient(controller)
     _set_global_client(client)
     logger.info(f'Started Serve in namespace "{SERVE_NAMESPACE}".')
     return client
@@ -167,6 +214,7 @@ def serve_start(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     global_logging_config: Union[None, dict, LoggingConfig] = None,
+    controller_options: Union[None, dict, ControllerOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -177,39 +225,54 @@ def serve_start(
     ray.init(address="auto") or ray.init("ray://<remote_addr>")).
 
     Args:
-        http_options (Optional[Dict, serve.HTTPOptions]): Configuration options
-          for HTTP proxy. You can pass in a dictionary or HTTPOptions object
-          with fields:
+        http_options: Configuration options for HTTP proxy. You can pass in a
+          dictionary or HTTPOptions object with fields:
 
             - host(str, None): Host for HTTP servers to listen on. Defaults to
-              "127.0.0.1". To expose Serve publicly, you probably want to set
-              this to "0.0.0.0".
+              localhost. To expose Serve publicly, you probably want to set
+              this to "0.0.0.0" for IPv4 or "::" for IPv6.
             - port(int): Port for HTTP server. Defaults to 8000.
             - root_path(str): Root path to mount the serve application
               (for example, "/serve"). All deployment routes will be prefixed
               with this path. Defaults to "".
             - middlewares(list): A list of Starlette middlewares that will be
               applied to the HTTP servers in the cluster. Defaults to [].
-            - location(str, serve.config.DeploymentMode): The deployment
+            - location(str, serve.config.ProxyLocation): The deployment
               location of HTTP servers:
 
                 - "HeadOnly": start one HTTP server on the head node. Serve
                   assumes the head node is the node you executed serve.start
                   on. This is the default.
                 - "EveryNode": start one HTTP server per node.
-                - "NoServer" or None: disable HTTP server.
+                - "Disabled" (or legacy "NoServer") or None: disable HTTP server.
             - num_cpus (int): The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.  Defaults to 0.
-        grpc_options: [Experimental] Configuration options for gRPC proxy.
+        grpc_options: Configuration options for gRPC proxy.
           You can pass in a gRPCOptions object with fields:
 
             - port(int): Port for gRPC server. Defaults to 9000.
             - grpc_servicer_functions(list): List of import paths for gRPC
                 `add_servicer_to_server` functions to add to Serve's gRPC proxy.
                 Default empty list, meaning not to start the gRPC server.
+        global_logging_config: Optional ``LoggingConfig`` (or dict) applied as
+            the default logging configuration for the Serve controller and all
+            proxies/replicas in this Serve instance.
+        controller_options: Optional ``ControllerOptions`` (or dict) for the
+            Serve controller actor. Currently only ``runtime_env.env_vars``
+            is honored; see ``ray.serve.config.ControllerOptions``. Only
+            applied on first controller creation -- ignored if the controller
+            is already running in this Ray cluster (a log line is emitted).
+        **kwargs: Reserved for forwarding to internal controller-start hooks;
+            no public keys are currently supported and unknown keys may raise.
+
+    Returns:
+        A ``ServeControllerClient`` connected to the Serve controller (either
+        newly started or an already-running one in this Ray cluster).
     """
 
     usage_lib.record_library_usage("serve")
+
+    controller_options = _coerce_controller_options(controller_options)
 
     client, _ = _check_cached_client_alive()
     if client is None:
@@ -220,19 +283,29 @@ def serve_start(
     if client is not None:
         logger.info(
             f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
-            " New http options will not be applied."
+            " New http_options/controller_options will not be applied."
         )
         if http_options:
             _check_http_options(client, http_options)
         return client
 
-    controller = _start_controller(
-        http_options, grpc_options, global_logging_config, **kwargs
+    controller, proxy_ready_refs = _create_controller_and_proxy_refs(
+        http_options,
+        grpc_options,
+        global_logging_config,
+        controller_options,
+        **kwargs,
     )
 
-    client = ServeControllerClient(
-        controller,
-    )
+    if proxy_ready_refs:
+        try:
+            ray.get(proxy_ready_refs, timeout=HTTP_PROXY_TIMEOUT)
+        except ray.exceptions.GetTimeoutError:
+            raise TimeoutError(
+                f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
+            )
+
+    client = ServeControllerClient(controller)
     _set_global_client(client)
     logger.info(f'Started Serve in namespace "{SERVE_NAMESPACE}".')
     return client

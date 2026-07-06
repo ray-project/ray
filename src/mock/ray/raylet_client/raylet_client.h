@@ -21,15 +21,11 @@ class MockRayletClientInterface : public RayletClientInterface {
               ReportWorkerBacklog,
               (const rpc::ReportWorkerBacklogRequest &request),
               (override));
-  MOCK_METHOD(
-      void,
-      RequestWorkerLease,
-      (const rpc::LeaseSpec &lease_spec,
-       bool grant_or_reject,
-       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-       const int64_t backlog_size,
-       const bool is_selected_based_on_locality),
-      (override));
+  MOCK_METHOD(void,
+              RequestWorkerLease,
+              (rpc::RequestWorkerLeaseRequest && request,
+               const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback),
+              (override));
   MOCK_METHOD(void,
               ReturnWorkerLease,
               (int worker_port,
@@ -72,9 +68,11 @@ class MockRayletClientInterface : public RayletClientInterface {
       (override));
   MOCK_METHOD(
       void,
-      CancelResourceReserve,
-      (const BundleSpecification &bundle_spec,
-       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback),
+      RemovePlacementGroupBundles,
+      (const PlacementGroupID &placement_group_id,
+       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
+       const ray::rpc::ClientCallback<ray::rpc::RemovePlacementGroupBundlesReply>
+           &callback),
       (override));
   MOCK_METHOD(void,
               ReleaseUnusedBundles,
@@ -165,6 +163,10 @@ class MockRayletClientInterface : public RayletClientInterface {
               CancelLocalTask,
               (const rpc::CancelLocalTaskRequest &request,
                const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              FreeLocalObjects,
+              (const rpc::FreeLocalObjectsRequest &request),
               (override));
 };
 

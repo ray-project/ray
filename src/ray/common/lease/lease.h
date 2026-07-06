@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <inttypes.h>
-
 #include <string>
 #include <vector>
 
@@ -31,11 +29,6 @@ namespace ray {
 /// time.
 class RayLease {
  public:
-  /// Construct an empty lease. This should only be used to pass a lease
-  /// as an out parameter to a function or method.
-  // TODO(#55923): Remove this constructor and refactor worker.h to use unique_ptr
-  RayLease() = default;
-
   /// Construct a `RayLease` object from a protobuf message.
   explicit RayLease(rpc::LeaseSpec lease_spec)
       : lease_spec_(LeaseSpecification(std::move(lease_spec))) {}

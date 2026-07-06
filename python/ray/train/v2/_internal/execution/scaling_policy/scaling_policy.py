@@ -112,6 +112,7 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
         """Register training resources with the AutoscalingCoordinator."""
         resources_per_worker = self.scaling_config._resources_per_worker_not_none
         num_workers = self._get_num_workers_for_resource_request()
+        label_selectors = self.scaling_config._label_selector_per_worker(num_workers)
         try:
             from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
                 ResourceRequestPriority,
@@ -121,6 +122,7 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
                 self._autoscaling_coordinator.request_resources.remote(
                     requester_id=self._requester_id,
                     resources=[resources_per_worker] * num_workers,
+                    label_selectors=label_selectors,
                     expire_after_s=AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
                     priority=ResourceRequestPriority.HIGH,
                 ),
@@ -162,7 +164,14 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
         self._requester_id = f"train-{train_run_context.run_id}"
         resources_per_worker = self.scaling_config._resources_per_worker_not_none
         num_workers = self._get_num_workers_for_resource_request()
-        logger.info(f"Requesting resources: {resources_per_worker} * {num_workers}")
+        label_selectors = self.scaling_config._label_selector_per_worker(num_workers)
+        if label_selectors:
+            logger.info(
+                f"Requesting resources: {resources_per_worker} * {num_workers} "
+                f"with label_selectors={label_selectors}"
+            )
+        else:
+            logger.info(f"Requesting resources: {resources_per_worker} * {num_workers}")
         self._send_resource_request()
 
     async def before_controller_shutdown(self):

@@ -14,6 +14,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/raylet/scheduling/policy/composite_scheduling_policy.h"
 
 namespace ray {
@@ -79,16 +80,17 @@ class SchedulingPolicyTest : public ::testing::Test {
   std::unique_ptr<ClusterResourceManager> MockClusterResourceManager(
       const absl::flat_hash_map<scheduling::NodeID, Node> &nodes_map) {
     static instrumented_io_context io_context;
-    auto cluster_resource_manager = std::make_unique<ClusterResourceManager>(io_context);
+    auto cluster_resource_manager =
+        std::make_unique<ClusterResourceManager>(PeriodicalRunner::Create(io_context));
     cluster_resource_manager->nodes_ = nodes_map;
     return cluster_resource_manager;
   }
 
-  absl::flat_hash_map<scheduling::NodeID, const Node *> GetCandidateNodes(
+  absl::flat_hash_set<scheduling::NodeID> GetCandidateNodes(
       const ClusterResourceManager &crm) {
-    absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes;
+    absl::flat_hash_set<scheduling::NodeID> candidate_nodes;
     for (const auto &[id, node] : crm.GetResourceView()) {
-      candidate_nodes.emplace(id, &node);
+      candidate_nodes.insert(id);
     }
     return candidate_nodes;
   }
@@ -733,17 +735,17 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
       ResourceMapToResourceRequest({{"CPU", 2}, {"GPU", 4}}, false);
   std::vector<const ResourceRequest *> req_list(15, &bundle_req);
 
-  LabelDomainStrictPackSchedulingPolicy label_domain_policy;
+  LabelDomainStrictPackSchedulingPolicy label_domain_policy(*cluster_resource_manager);
   SchedulingOptions options = SchedulingOptions::BundlePack(
       std::make_pair(kDomainLabelKey, std::optional<std::string>(std::nullopt)));
 
   BundlePackSchedulingPolicy bundle_pack_policy(*cluster_resource_manager);
-  NodeScheduleFn node_schedule_fn =
-      [&bundle_pack_policy](const std::vector<const ResourceRequest *> &reqs,
-                            SchedulingOptions opts,
-                            absl::flat_hash_map<scheduling::NodeID, const Node *> nodes) {
-        return bundle_pack_policy.Schedule(reqs, opts, std::move(nodes));
-      };
+  NodeScheduleFn node_schedule_fn = [&bundle_pack_policy](
+                                        const std::vector<const ResourceRequest *> &reqs,
+                                        SchedulingOptions opts,
+                                        absl::flat_hash_set<scheduling::NodeID> nodes) {
+    return bundle_pack_policy.Schedule(reqs, opts, std::move(nodes));
+  };
 
   // Schedule should return SUCCESS with 15 nodes all from rack-1
   SchedulingResult result_1 = label_domain_policy.Schedule(
@@ -828,17 +830,17 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingInfeasibleTest) {
       ResourceMapToResourceRequest({{"CPU", 2}, {"GPU", 4}}, false);
   std::vector<const ResourceRequest *> req_list(16, &bundle_req);
 
-  LabelDomainStrictPackSchedulingPolicy label_domain_policy;
+  LabelDomainStrictPackSchedulingPolicy label_domain_policy(*cluster_resource_manager);
   SchedulingOptions options = SchedulingOptions::BundlePack(
       std::make_pair(kDomainLabelKey, std::optional<std::string>(std::nullopt)));
 
   BundlePackSchedulingPolicy bundle_pack_policy(*cluster_resource_manager);
-  NodeScheduleFn node_schedule_fn =
-      [&bundle_pack_policy](const std::vector<const ResourceRequest *> &reqs,
-                            SchedulingOptions opts,
-                            absl::flat_hash_map<scheduling::NodeID, const Node *> nodes) {
-        return bundle_pack_policy.Schedule(reqs, opts, std::move(nodes));
-      };
+  NodeScheduleFn node_schedule_fn = [&bundle_pack_policy](
+                                        const std::vector<const ResourceRequest *> &reqs,
+                                        SchedulingOptions opts,
+                                        absl::flat_hash_set<scheduling::NodeID> nodes) {
+    return bundle_pack_policy.Schedule(reqs, opts, std::move(nodes));
+  };
 
   SchedulingResult result = label_domain_policy.Schedule(
       req_list, options, GetCandidateNodes(*cluster_resource_manager), node_schedule_fn);

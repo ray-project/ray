@@ -284,6 +284,7 @@ class DataParallelTrainer(BaseTrainer):
         """Restores a DataParallelTrainer from a previously interrupted/failed run.
 
         Args:
+            path: The path to the experiment directory to restore from.
             train_loop_per_worker: Optionally re-specified train loop function.
                 This should be used to re-specify a function that is not
                 restorable in a new Ray cluster (e.g., it holds onto outdated
@@ -293,11 +294,14 @@ class DataParallelTrainer(BaseTrainer):
                 This should similarly be used if the original `train_loop_config`
                 contained outdated object references, and it should not be modified
                 from what was originally passed in.
+            **kwargs: Additional arguments forwarded to
+                :meth:`BaseTrainer.restore() <ray.train.trainer.BaseTrainer.restore>`.
 
         See :meth:`BaseTrainer.restore() <ray.train.trainer.BaseTrainer.restore>`
         for descriptions of the other arguments.
 
-        Returns a restored instance of the `DataParallelTrainer`.
+        Returns:
+            A restored instance of the ``DataParallelTrainer``.
         """
         return super(DataParallelTrainer, cls).restore(
             path=path,
@@ -478,7 +482,7 @@ class DataParallelTrainer(BaseTrainer):
         return self._data_config
 
     @repr_with_fallback(["ipywidgets", "8"])
-    def _repr_mimebundle_(self, **kwargs):
+    def _repr_mimebundle_(self, **kwargs: Any):
         """Returns a mimebundle with an ipywidget repr and a simple text repr.
 
         Depending on the frontend where the data is being displayed,
@@ -487,6 +491,10 @@ class DataParallelTrainer(BaseTrainer):
         for information about this method, and
         https://ipywidgets.readthedocs.io/en/latest/embedding.html
         for more information about the jupyter widget mimetype.
+
+        Args:
+            **kwargs: Standard Jupyter mimebundle kwargs (e.g. ``include``,
+                ``exclude``); unused by this implementation.
 
         Returns:
             A mimebundle containing an ipywidget repr and a simple text repr.

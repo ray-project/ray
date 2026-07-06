@@ -114,6 +114,11 @@ class CgroupManager : public CgroupManagerInterface {
   Status AddProcessToSystemCgroup(const std::string &pid) override;
 
   /**
+    @return the path to the system cgroup.
+  */
+  std::string GetSystemCgroupPath() const override;
+
+  /**
     @return the path to the user cgroup.
   */
   std::string GetUserCgroupPath() const override;

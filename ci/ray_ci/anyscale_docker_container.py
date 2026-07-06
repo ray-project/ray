@@ -2,8 +2,10 @@ import os
 import subprocess
 
 from ci.ray_ci.container import (
-    _AZURE_REGISTRY_NAME,
-    _DOCKER_AZURE_REGISTRY,
+    # _AZURE_REGISTRY_NAME and _DOCKER_AZURE_REGISTRY imports temporarily
+    # commented out: Azure image push is disabled due to CI issues.
+    # _AZURE_REGISTRY_NAME,
+    # _DOCKER_AZURE_REGISTRY,
     _DOCKER_ECR_REPO,
     _DOCKER_GCP_REGISTRY,
 )
@@ -23,7 +25,8 @@ class AnyscaleDockerContainer(DockerContainer):
         """
         aws_registry = _DOCKER_ECR_REPO.split("/")[0]
         gcp_registry = _DOCKER_GCP_REGISTRY
-        azure_registry = _DOCKER_AZURE_REGISTRY
+        # Azure image push temporarily disabled due to CI issues.
+        # azure_registry = _DOCKER_AZURE_REGISTRY
         tag = self._get_canonical_tag()
         ray_image = f"rayproject/{self.image_type}:{tag}"
         anyscale_image = f"{aws_registry}/anyscale/{self.image_type}:{tag}"
@@ -35,10 +38,14 @@ class AnyscaleDockerContainer(DockerContainer):
             + f"{ray_image} {anyscale_image} {aws_registry}",
             # gcloud login
             f"./release/gcloud_docker_login.sh {gce_credentials}",
-            # azure login
-            "./release/azure_docker_login.sh",
-            # azure cr login
-            f"az acr login --name {_AZURE_REGISTRY_NAME}",
+            # Azure ACR login skipped: Azure image push temporarily disabled
+            # due to CI issues.
+            "echo 'Skipping Azure ACR login: Azure image push temporarily "
+            "disabled due to CI issues.'",
+            # azure login (disabled)
+            # "./release/azure_docker_login.sh",
+            # azure cr login (disabled)
+            # f"az acr login --name {_AZURE_REGISTRY_NAME}",
             "export PATH=$(pwd)/google-cloud-sdk/bin:$PATH",
         ]
         # TODO(can): remove the alias when release test infra uses only the canonical
@@ -47,16 +54,18 @@ class AnyscaleDockerContainer(DockerContainer):
             for alias in self._get_image_tags():
                 aws_alias_image = f"{aws_registry}/anyscale/{self.image_type}:{alias}"
                 gcp_alias_image = f"{gcp_registry}/anyscale/{self.image_type}:{alias}"
-                azure_alias_image = (
-                    f"{azure_registry}/anyscale/{self.image_type}:{alias}"
-                )
+                # Azure alias image computation and push disabled — see above.
+                # azure_alias_image = (
+                #     f"{azure_registry}/anyscale/{self.image_type}:{alias}"
+                # )
                 cmds += [
                     f"docker tag {anyscale_image} {aws_alias_image}",
                     f"docker push {aws_alias_image}",
                     f"docker tag {anyscale_image} {gcp_alias_image}",
                     f"docker push {gcp_alias_image}",
-                    f"docker tag {anyscale_image} {azure_alias_image}",
-                    f"docker push {azure_alias_image}",
+                    # Azure tag/push temporarily disabled due to CI issues.
+                    # f"docker tag {anyscale_image} {azure_alias_image}",
+                    # f"docker push {azure_alias_image}",
                 ]
 
             if os.environ.get("BUILDKITE"):

@@ -1193,7 +1193,7 @@ class HangPlugin(RuntimeEnvPlugin):
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            testing_asio_delay_us="NodeManagerService.grpc_server.CancelResourceReserve=500000000:500000000",  # noqa: E501
+            testing_asio_delay_us="NodeManagerService.grpc_server.RemovePlacementGroupBundles=500000000:500000000",  # noqa: E501
         ),
     ],
     indirect=True,
@@ -1235,7 +1235,7 @@ def test_pg_removal_after_gcs_restarts(
 
     ray.util.remove_placement_group(pg)
     # The PG is marked as REMOVED in redis but not removed yet from raylet
-    # due to the injected delay of CancelResourceReserve rpc
+    # due to the injected delay of RemovePlacementGroupBundles rpc
     wait_for_condition(lambda: list_placement_groups()[0].state == "REMOVED")
 
     ray._private.worker._global_node.kill_gcs_server()

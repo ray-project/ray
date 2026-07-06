@@ -75,6 +75,12 @@ class ResultGrid:
         self,
         experiment_analysis: ExperimentAnalysis,
     ):
+        """Initialize a ``ResultGrid`` from an ``ExperimentAnalysis``.
+
+        Args:
+            experiment_analysis: The ``ExperimentAnalysis`` produced by the
+                completed Tune run, used to build the per-trial ``Result`` list.
+        """
         self._experiment_analysis = experiment_analysis
         self._results = [
             self._trial_to_result(trial) for trial in self._experiment_analysis.trials
@@ -106,9 +112,21 @@ class ResultGrid:
     ) -> Result:
         """Get the best result from all the trials run.
 
+        For metrics that are reported in a nested dict, use a slash-separated
+        flat key to refer to the nested entry. For example, if a trial reports
+        ``{"eval": {"metrics": {"loss": 0.1}}}``, pass ``metric="eval/metrics/loss"``:
+
+        >>> best_result = result_grid.get_best_result( # doctest: +SKIP
+        ...     metric="eval/metrics/loss", mode="min")
+
+        This works because Tune flattens reported result dicts with ``/`` as the
+        default delimiter before tracking metrics.
+
         Args:
             metric: Key for trial info to order on. Defaults to
                 the metric specified in your Tuner's ``TuneConfig``.
+                For nested metrics, use a slash-separated flat key
+                (e.g. ``"eval/metrics/loss"``).
             mode: One of [min, max]. Defaults to the mode specified
                 in your Tuner's ``TuneConfig``.
             scope: One of [all, last, avg, last-5-avg, last-10-avg].
@@ -124,6 +142,10 @@ class ResultGrid:
             filter_nan_and_inf: If True (default), NaN or infinite
                 values are disregarded and these trials are never selected as
                 the best trial.
+
+        Returns:
+            The ``Result`` corresponding to the best trial under the given
+            metric, mode, and scope.
         """
         if len(self._experiment_analysis.trials) == 1:
             return self._trial_to_result(self._experiment_analysis.trials[0])

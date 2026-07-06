@@ -11,17 +11,16 @@
 #
 
 ARG RAY_CORE_IMAGE
-ARG RAY_JAVA_IMAGE
-ARG RAY_DASHBOARD_IMAGE
-ARG MANYLINUX_VERSION
-ARG HOSTTYPE
+ARG RAY_JAVA_IMAGE=scratch
+ARG RAY_DASHBOARD_IMAGE=scratch
+ARG MANYLINUX_IMAGE
 
 FROM ${RAY_CORE_IMAGE} AS ray-core
 FROM ${RAY_JAVA_IMAGE} AS ray-java
 FROM ${RAY_DASHBOARD_IMAGE} AS ray-dashboard
 
 # Main build stage - manylinux2014 provides GLIBC 2.17
-FROM rayproject/manylinux2014:${MANYLINUX_VERSION}-jdk-${HOSTTYPE} AS builder
+FROM ${MANYLINUX_IMAGE} AS builder
 
 ARG PYTHON_VERSION=3.10
 ARG BUILDKITE_COMMIT
@@ -31,8 +30,6 @@ WORKDIR /home/forge/ray
 # Copy artifacts from all stages
 COPY --from=ray-core /ray_pkg.zip /tmp/
 COPY --from=ray-core /ray_py_proto.zip /tmp/
-COPY --from=ray-java /ray_java_pkg.zip /tmp/
-COPY --from=ray-dashboard /dashboard.tar.gz /tmp/
 
 # Source files needed for wheel build
 COPY --chown=forge ci/build/build-manylinux-wheel.sh ci/build/
@@ -44,26 +41,35 @@ USER forge
 # - BUILDKITE_COMMIT: Used for ray.__commit__. Defaults to "unknown" for local builds.
 ENV PYTHON_VERSION=${PYTHON_VERSION} \
     BUILDKITE_COMMIT=${BUILDKITE_COMMIT:-unknown}
-RUN <<'EOF'
+RUN --mount=from=ray-java,target=/mnt/java \
+    --mount=from=ray-dashboard,target=/mnt/dashboard \
+    <<'EOF'
 #!/bin/bash
 set -euo pipefail
 
 # Clean extraction dirs to avoid stale leftovers
-rm -rf /tmp/ray_pkg /tmp/ray_java_pkg
-mkdir -p /tmp/ray_pkg /tmp/ray_java_pkg
+rm -rf /tmp/ray_pkg
+mkdir -p /tmp/ray_pkg
 
 # Unpack pre-built artifacts
 unzip -o /tmp/ray_pkg.zip -d /tmp/ray_pkg
 unzip -o /tmp/ray_py_proto.zip -d python/
-unzip -o /tmp/ray_java_pkg.zip -d /tmp/ray_java_pkg
-mkdir -p python/ray/dashboard/client/build
-tar -xzf /tmp/dashboard.tar.gz -C python/ray/dashboard/client/build/
+
+# Dashboard (optional)
+if [[ -f /mnt/dashboard/dashboard.tar.gz ]]; then
+    mkdir -p python/ray/dashboard/client/build
+    tar -xzf /mnt/dashboard/dashboard.tar.gz -C python/ray/dashboard/client/build/
+fi
 
 # C++ core artifacts
 cp -r /tmp/ray_pkg/ray/* python/ray/
 
-# Java JARs
-cp -r /tmp/ray_java_pkg/ray/* python/ray/
+# Java JARs (optional)
+if [[ -f /mnt/java/ray_java_pkg.zip ]]; then
+    mkdir -p /tmp/ray_java_pkg
+    unzip -o /mnt/java/ray_java_pkg.zip -d /tmp/ray_java_pkg
+    cp -r /tmp/ray_java_pkg/ray/* python/ray/
+fi
 
 # Build ray wheel
 PY_VERSION="${PYTHON_VERSION//./}"

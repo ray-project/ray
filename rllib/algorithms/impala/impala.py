@@ -18,6 +18,7 @@ from ray.rllib.core import (
 )
 from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.env.env_runner_state_server import EnvRunnerStateServer
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
@@ -156,6 +157,10 @@ class IMPALAConfig(AlgorithmConfig):
 
         # IMPALA takes care of its own EnvRunner (weights, connector, metrics) synching.
         self._dont_auto_sync_env_runner_states = True
+        # Use the PULL-based `EnvRunnerStateServer` by default for async IMPALA/APPO:
+        # EnvRunners pull the freshest weights/connector states at the top of each
+        # `sample()` call.
+        self.use_env_runner_state_server = True
 
         # `.debugging()`
         self._env_runners_only = False
@@ -604,6 +609,36 @@ class IMPALA(Algorithm):
             self._learner_thread = make_learner_thread(self.env_runner, self.config)
             self._learner_thread.start()
 
+        # For pull-based EnvRunner state sync: create a single, global
+        # `EnvRunnerStateServer` actor holding the latest merged EnvRunner state.
+        # EnvRunners receive the handle by reference (shared below) and pull from it at
+        # the top of each `sample()` call; no one looks the actor up by name.
+        self._env_runner_state_server = None
+        if (
+            self.config.enable_rl_module_and_learner
+            and self.config.enable_env_runner_and_connector_v2
+            and self.config.use_env_runner_state_server
+            and self.config.num_env_runners > 0
+        ):
+            server_cls = ray.remote(
+                num_cpus=0,
+                max_restarts=-1,
+                max_concurrency=self.config.env_runner_state_server_max_concurrency,
+            )(EnvRunnerStateServer)
+            self._env_runner_state_server = server_cls.remote()
+
+            # Share the handle with all training EnvRunners, including the local one:
+            # IMPALA falls back to sampling on the local EnvRunner when no remote
+            # workers are healthy, and it must pull the latest state too (otherwise the
+            # fallback would sample with stale weights).
+            def _share_state_server(env_runner, server=self._env_runner_state_server):
+                env_runner._env_runner_state_server = server
+
+            self.env_runner_group.foreach_env_runner(
+                func=_share_state_server,
+                local_env_runner=True,
+            )
+
     @override(Algorithm)
     def training_step(self):
         with TimerAndPrometheusLogger(self._metrics_impala_training_step_time):
@@ -831,17 +866,69 @@ class IMPALA(Algorithm):
                     with TimerAndPrometheusLogger(
                         self._metrics_impala_training_step_sync_env_runner_state_time
                     ):
-                        self.env_runner_group.sync_env_runner_states(
-                            config=self.config,
-                            connector_states=connector_states,
-                            rl_module_state=rl_module_state,
-                            env_steps_sampled=self.metrics.peek(
-                                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
-                                default=0,
-                            ),
-                            env_to_module=self.env_to_module_connector,
-                            module_to_env=self.module_to_env_connector,
-                        )
+                        if self._env_runner_state_server is not None:
+                            # Push the full merged EnvRunner state (connector
+                            # states + RLModule weights kept as an ObjectRef +
+                            # counters/WEIGHTS_SEQ_NO) to the EnvRunnerStateServer.
+                            # `push` is fire-and-forget and only rebinds the actor's
+                            # stored reference (O(1)); the weights cross the wire only
+                            # when an EnvRunner pulls a newer version at the top of
+                            # its `sample()` call.
+                            env_runner_state = (
+                                self.env_runner_group.get_merged_env_runner_state(
+                                    config=self.config,
+                                    connector_states=connector_states,
+                                    rl_module_state=rl_module_state,
+                                    env_steps_sampled=self.metrics.peek(
+                                        (
+                                            ENV_RUNNER_RESULTS,
+                                            NUM_ENV_STEPS_SAMPLED_LIFETIME,
+                                        ),
+                                        default=0,
+                                    ),
+                                    env_to_module=self.env_to_module_connector,
+                                    module_to_env=self.module_to_env_connector,
+                                )
+                            )
+                            self._env_runner_state_server.push.remote(env_runner_state)
+                        else:
+                            self.env_runner_group.sync_env_runner_states(
+                                config=self.config,
+                                connector_states=connector_states,
+                                rl_module_state=rl_module_state,
+                                env_steps_sampled=self.metrics.peek(
+                                    (
+                                        ENV_RUNNER_RESULTS,
+                                        NUM_ENV_STEPS_SAMPLED_LIFETIME,
+                                    ),
+                                    default=0,
+                                ),
+                                env_to_module=self.env_to_module_connector,
+                                module_to_env=self.module_to_env_connector,
+                            )
+
+    @override(Algorithm)
+    def restore_env_runners(self, env_runner_group) -> List[int]:
+        restored = super().restore_env_runners(env_runner_group)
+        # Re-share the EnvRunnerStateServer handle with restored (training) EnvRunners:
+        # a fresh actor incarnation lost the attribute set post-construction. A restored
+        # runner starts at weights_seq_no=0, so its first pull force-applies the latest.
+        if (
+            restored
+            and self._env_runner_state_server is not None
+            and env_runner_group is self.env_runner_group
+        ):
+
+            def _share_state_server(env_runner, server=self._env_runner_state_server):
+                env_runner._env_runner_state_server = server
+
+            env_runner_group.foreach_env_runner(
+                func=_share_state_server,
+                remote_worker_ids=restored,
+                local_env_runner=False,
+                timeout_seconds=self.config.env_runner_restore_timeout_s,
+            )
+        return restored
 
     def _sample_and_get_connector_states(self):
         with TimerAndPrometheusLogger(

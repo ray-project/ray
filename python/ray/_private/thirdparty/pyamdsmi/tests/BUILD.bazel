@@ -1,0 +1,11 @@
+load("@rules_python//python:defs.bzl", "py_test")
+
+py_test(
+    name = "test_pyamdsmi",
+    size = "small",
+    srcs = ["test_pyamdsmi.py"],
+    tags = [
+        "manual",
+        "team:core",
+    ],
+)

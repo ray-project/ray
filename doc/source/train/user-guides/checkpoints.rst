@@ -319,7 +319,9 @@ you have the following options:
 
             In your ``checkpoint_upload_fn``, you should not call ``ray.train.report``, which may
             lead to unexpected behavior. You should also avoid collective operations, such as
-            :func:`~ray.train.report` or ``model.state_dict()``, which can cause deadlocks.
+            :func:`~ray.train.report` or ``model.state_dict()``, which can cause deadlocks. Finally,
+            the upload function should only the return a checkpoint object once all checkpoint data
+            has been saved.
 
         .. note::
 

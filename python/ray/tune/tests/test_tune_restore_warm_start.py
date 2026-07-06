@@ -281,29 +281,61 @@ class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
 class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
-        from ax.service.ax_client import AxClient
+        from ax.service.ax_client import AxClient, ObjectiveProperties
 
         space = AxSearch.convert_search_space(
             {"width": tune.uniform(0, 20), "height": tune.uniform(-100, 100)}
         )
 
-        from ax.adapter.registry import Generators
-        from ax.generation_strategy.generation_node import GenerationStep
-        from ax.generation_strategy.generation_strategy import GenerationStrategy
+        try:
+            # ax 1.0+: ax.modelbridge was removed
+            from ax.adapter.registry import Generators as Models
+            from ax.generation_strategy.generation_node import GenerationStep
+            from ax.generation_strategy.generation_strategy import GenerationStrategy
+        except ImportError:
+            # ax 0.x
+            from ax.modelbridge.generation_strategy import (
+                GenerationStep,
+                GenerationStrategy,
+            )
+            from ax.modelbridge.registry import Models
 
-        gs = GenerationStrategy(
-            steps=[
-                GenerationStep(
-                    generator=Generators.SOBOL,
-                    num_trials=-1,
-                    model_kwargs={"seed": 4321},
-                ),
-            ]
-        )
+        # set generation strategy to sobol to ensure reproductibility
+        # ax 1.0+ renamed 'model' to 'generator'; ax <0.2.0 used 'num_arms'
+        try:
+            gs = GenerationStrategy(
+                steps=[
+                    GenerationStep(
+                        generator=Models.SOBOL,
+                        num_trials=-1,
+                        model_kwargs={"seed": 42},
+                    ),
+                ]
+            )
+        except TypeError:
+            try:
+                gs = GenerationStrategy(
+                    steps=[
+                        GenerationStep(
+                            model=Models.SOBOL,
+                            num_trials=-1,
+                            model_kwargs={"seed": 42},
+                        ),
+                    ]
+                )
+            except TypeError:
+                # ax-platform<0.2.0
+                gs = GenerationStrategy(
+                    steps=[
+                        GenerationStep(
+                            model=Models.SOBOL,
+                            num_arms=-1,
+                            model_kwargs={"seed": 42},
+                        ),
+                    ]
+                )
 
-        from ax.service.utils.instantiation import ObjectiveProperties
-
-        client = AxClient(random_seed=4321, generation_strategy=gs)
+        client = AxClient(random_seed=42, generation_strategy=gs)
         client.create_experiment(
             parameters=space,
             objectives={"loss": ObjectiveProperties(minimize=True)},
