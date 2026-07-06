@@ -283,7 +283,7 @@ Ray docs use Sphinx cross-references, which resolve at build time and survive pa
 - Link between `.md` pages with a standard Markdown link: `[text](other-page.md)`.
 - Link to the API reference with autodoc cross-reference roles, such as `` {py:func}`ray.init` `` or `` {py:class}`ray.data.Dataset` ``.
 
-Write descriptive link text that says where the link goes. Don't write "click [here](path)." Wrap external URLs in Markdown; don't paste a bare URL into prose.
+Write descriptive link text that says where the link goes. Don't write `click [here](path).` Wrap external URLs in Markdown; don't paste a bare URL into prose.
 
 Link to a given page once per section. Repeating a link in a later section is fine when readers might enter the page at different points. For a cluster of related links, gather them under a "See also" list at the end of the section.
 
