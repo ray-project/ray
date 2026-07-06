@@ -1386,6 +1386,78 @@ def test_actor_generator_backpressure_async_reclaim_on_del_gen(shutdown_only):
     assert ray.get(reporter.count_tag.remote("1")) == 16
 
 
+def test_actor_generator_backpressure_async_exception_wakes_parked_sibling(
+    shutdown_only,
+):
+    """An async generator that raises while holding actor-wide budget must wake a
+    sibling async generator already parked in its actor-wide reserve.
+
+    Regression test for the executor teardown path. When a streaming generator
+    ends abnormally (a user exception, not normal completion), the executor
+    reclaims the actor-wide budget via ``TeardownGeneratorBackpressureTask``,
+    which signals the waiter's condition variable (waking sync reservers). Async
+    reservers wait on an ``asyncio.Event`` instead and must be notified
+    explicitly -- without that notify, and with no polling fallback, the parked
+    sibling would hang forever.
+
+    The exception path is used deliberately because it is the *only* reclaim
+    here: there is no consumption update (nothing drains the raiser) and no owner
+    death, so neither ``HandleUpdateGeneratorBackpressureConsumed`` nor
+    ``HandleOwnerDied`` -- both of which also notify -- can mask the teardown.
+    """
+    ray.init(num_cpus=4)
+    reporter = TagReporter.remote()
+
+    @ray.remote(_actor_generator_backpressure_num_objects=1)
+    class A:
+        def __init__(self):
+            self._go = asyncio.Event()
+
+        async def release(self) -> None:
+            self._go.set()
+
+        async def raiser(self, rep):
+            # Reserves the only actor-wide slot (filling the cap), reports so the
+            # test can observe it, then parks holding the slot until released --
+            # at which point it raises WITHOUT yielding. The exception reclaims
+            # the slot through the executor teardown path.
+            await rep.report.remote("raiser", 0)
+            await self._go.wait()
+            raise ValueError("boom")
+            yield  # unreachable; makes this an async generator
+
+        async def waiter(self, rep):
+            for i in range(3):
+                await rep.report.remote("waiter", i)
+                yield i
+
+    a = A.remote()
+    # Keep the ref alive: letting it GC would trigger the consumption/teardown
+    # path (which notifies) and mask the bug this test targets.
+    r = a.raiser.remote(reporter)  # noqa: F841
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("raiser")) == 1,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    # The sibling parks in its actor-wide reserve: the cap (1) is fully held by
+    # the raiser's reserved slot, so waiter cannot produce even its first value.
+    w = a.waiter.remote(reporter)
+    time.sleep(2)
+    assert ray.get(reporter.count_tag.remote("waiter")) == 0
+
+    # Let the raiser raise. Its exception reclaims the cap via the executor
+    # teardown -- the only relief path here -- which must wake the parked sibling.
+    ray.get(a.release.remote())
+
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("waiter")) >= 1,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    _drain_all([w])
+    assert ray.get(reporter.count_tag.remote("waiter")) == 3
+
+
 def test_actor_generator_backpressure_mixed_sync_async(shutdown_only):
     """A sync and an async streaming generator on the same actor share the cap.
 

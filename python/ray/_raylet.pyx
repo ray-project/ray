@@ -1000,6 +1000,16 @@ cdef class StreamingGeneratorExecutionContext:
         )
         if not state_found:
             self.actor_backpressure_metadata.get().Teardown()
+        # Teardown reclaimed this task's actor-wide budget and signaled the
+        # waiter's condition variable for sync reservers; async reservers wait on
+        # an asyncio.Event instead, so wake them too. Otherwise a sibling async
+        # generator parked in its actor-wide reserve would stay blocked until
+        # some other relief path (consumption/owner death) happens to fire.
+        # GIL released so the notification guard is taken without it.
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker(
+                ).NotifyAsyncGeneratorBackpressureUnblock(
+                    self.generator_id, True)
 
     def initialize(self, generator: Union[Generator, AsyncGenerator]):
         # We couldn't make this a part of `make` method because
