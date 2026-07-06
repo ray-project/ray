@@ -88,51 +88,6 @@ def _make_mapper_sentinel(mapper_id: int) -> List[str]:
     return [f"{_MAPPER_ID_SENTINEL}{mapper_id}"]
 
 
-def _estimate_handle_plasma_bytes(
-    handle_ref,
-    num_partitions: int,
-    schema_bytes: int = 0,
-) -> int:
-    """Rough plasma footprint of a ShuffleHandle ref.
-
-    The handle is a small dict (manager ActorHandle + token + path +
-    per-partition ``index`` of (offset, length) tuples + per-partition
-    ``decoded_bytes``); the GB of partition data lives on local disk via
-    file-transport, not in plasma. We don't need an exact number — the
-    streaming executor only uses size_bytes to gate backpressure, and
-    being within an order of magnitude of reality is sufficient.
-
-    Prefer Ray's object-locations API for the actual serialized size;
-    fall back to a partition-aware formula. The fallback assumes the
-    unbounded-pool case (K = N, i.e. each partition is flushed once at
-    end-of-input); bounded pools that trigger mid-run spills can push
-    this higher, but only by an ``O(K - N)`` term which stays modest for
-    typical workloads.
-
-    Args:
-        handle_ref: the map task's return ObjectRef.
-        num_partitions: N — dominates the linear growth of ``index`` and
-            ``decoded_bytes_per_partition``.
-        schema_bytes: optional serialized schema size (bytes). Default 0
-            skips schema accounting; callers that know the schema can
-            pass its serialized size for a tighter estimate.
-    """
-    try:
-        from ray.experimental import get_object_locations
-
-        info = get_object_locations([handle_ref]).get(handle_ref)
-        if info is not None:
-            size = info.get("object_size")
-            if isinstance(size, int) and size > 0:
-                return size
-    except Exception:
-        pass
-    # Fallback: ~600B fixed (path + token + manager handle + ints) plus
-    # ~80B per partition (one index entry + one decoded_bytes entry) plus
-    # schema. Empirically pickle bytes; within an order of magnitude.
-    return 600 + 80 * num_partitions + schema_bytes
-
-
 class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarMixin):
     """V3 map operator. See module docstring."""
 
@@ -536,9 +491,12 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         # handle["total_bytes"] here would over-account plasma usage by
         # orders of magnitude and trigger spurious backpressure / spill
         # decisions in ResourcePoolManager.
-        size_bytes = _estimate_handle_plasma_bytes(
-            handle_ref, num_partitions=self._num_partitions
-        )
+        # Handle plasma footprint is small (few KB, scales O(num_partitions))
+        # and the op declares outputs=0 for object-store usage. Reporting 0
+        # here keeps per-block accounting consistent with the op-level view.
+        # See "Handle plasma-footprint formula" in the shuffle v3 design doc
+        # if you need to plug in a concrete number.
+        size_bytes = 0
 
         out_meta = BlockMetadata(
             # The handle isn't itself a Block; it contributes 0 rows to the
