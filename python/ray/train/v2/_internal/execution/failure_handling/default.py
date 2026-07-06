@@ -1,9 +1,12 @@
 import logging
+from typing import Optional
 
 from .failure_policy import FailureDecision, FailurePolicy
+from ray.exceptions import RayActorError
 from ray.train.v2._internal.exceptions import (
     WorkerGroupStartupFailedError,
     WorkerGroupStartupTimeoutError,
+    WorkerHealthCheckFailedError,
 )
 from ray.train.v2.api.config import FailureConfig
 from ray.train.v2.api.exceptions import (
@@ -22,6 +25,33 @@ RETRYABLE_CONTROLLER_ERRORS = (
 )
 
 
+def _is_preempted_actor(error: Optional[Exception]) -> bool:
+    """Whether a worker error is a node-preemption-caused death.
+
+    A worker killed by a node reclaim surfaces as a WorkerHealthCheckFailedError
+    wrapping a RayActorError whose ``preempted`` flag is set.
+    """
+    if isinstance(error, WorkerHealthCheckFailedError):
+        error = error.health_check_failure
+    return isinstance(error, RayActorError) and error.preempted
+
+
+def _is_preemption_failure(training_failed_error: TrainingFailedError) -> bool:
+    """Whether a failure should be charged to the preemption retry budget.
+
+    True for a `PreemptionError` (raised by the controller while draining a
+    preemption) and for a `WorkerGroupError` in which a worker was killed by a
+    node reclaim (`RayActorError.preempted`), e.g. a preemption whose advance
+    signal was never observed.
+    """
+    if isinstance(training_failed_error, PreemptionError):
+        return True
+    return isinstance(training_failed_error, WorkerGroupError) and any(
+        _is_preempted_actor(error)
+        for error in training_failed_error.worker_failures.values()
+    )
+
+
 class DefaultFailurePolicy(FailurePolicy):
     def __init__(self, failure_config: FailureConfig):
         super().__init__(failure_config)
@@ -38,7 +68,7 @@ class DefaultFailurePolicy(FailurePolicy):
     ):
         if isinstance(training_failed_error, ControllerError):
             error_source = "controller"
-        elif isinstance(training_failed_error, PreemptionError):
+        elif _is_preemption_failure(training_failed_error):
             error_source = "preemption"
         elif isinstance(training_failed_error, WorkerGroupError):
             error_source = "worker group"
@@ -86,7 +116,7 @@ class DefaultFailurePolicy(FailurePolicy):
                     if self.failure_config.controller_failure_limit != -1
                     else float("inf")
                 )
-            elif isinstance(training_failed_error, PreemptionError):
+            elif _is_preemption_failure(training_failed_error):
                 self._preemption_failures += 1
                 error_count = self._preemption_failures
                 retry_limit = (

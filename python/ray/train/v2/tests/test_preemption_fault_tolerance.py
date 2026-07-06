@@ -5,7 +5,10 @@ Only the preemption *signal* is mocked: the training function sets its own
 which is byte-for-byte what ``RayTrainWorker.mark_preempt`` does when the
 ``PreemptionWatcher`` detects a node drain. Everything else -- the worker group,
 the controller state machine (RunningState -> PreemptingState), the failure
-policy, checkpoint resume -- is real.
+policy, checkpoint resume -- is real. This keeps these tests fast and
+deterministic on a single node; the nothing-mocked variant that drains a node
+through the real GCS ``DrainNode`` RPC on a multi-node cluster lives in
+test_preemption_drain.py.
 
 The controller restarts a run on an *actual* reclaim (a preempted worker death)
 or when the reclaim deadline elapses; a run that returns cleanly finishes
@@ -17,7 +20,13 @@ of the death path lives in test_controller.py).
 import pytest
 
 import ray
-from ray.train import FailureConfig, RunConfig, ScalingConfig
+from ray.train import (
+    FailureConfig,
+    PreemptionError,
+    RunConfig,
+    ScalingConfig,
+    WorkerGroupError,
+)
 from ray.train.v2._internal.constants import is_v2_enabled
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
@@ -122,6 +131,67 @@ def test_preemption_deadline_restart_and_resume(tmp_path):
     assert result.error is None
     # Resumed from the step-0 checkpoint and ran to completion.
     assert result.metrics["step"] == 1
+
+
+def test_preemption_budget_exhausted(tmp_path):
+    """When preemption restarts exceed ``max_preemption_failures``, the run
+    raises a ``PreemptionError`` (not a generic worker error)."""
+
+    def train_fn():
+        import time
+
+        from ray.train.v2._internal.execution.context import get_train_context
+        from ray.train.v2._internal.execution.preemption import PreemptionInfo
+
+        # Every attempt is preempted with an already-passed deadline and keeps
+        # running, so the controller force-tears-down each attempt.
+        get_train_context().preemption_context.set(
+            PreemptionInfo(
+                deadline_ms=1,  # epoch 1ms -> always in the past
+                preempted_node_to_ranks={"mock-node": [0, 1]},
+            )
+        )
+        time.sleep(60)  # interrupted by the forced teardown well before this
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            failure_config=FailureConfig(max_failures=0, max_preemption_failures=1),
+        ),
+    )
+    with pytest.raises(PreemptionError):
+        trainer.fit()
+
+
+def test_user_error_with_signal_is_worker_failure(tmp_path):
+    """A training function bug while a preemption signal is active is still a
+    worker failure charged to ``max_failures`` -- it is not masked by the
+    (unlimited-by-default) preemption budget."""
+
+    def train_fn():
+        from ray.train.v2._internal.execution.context import get_train_context
+        from ray.train.v2._internal.execution.preemption import PreemptionInfo
+
+        get_train_context().preemption_context.set(
+            PreemptionInfo(
+                deadline_ms=None,
+                preempted_node_to_ranks={"mock-node": [0, 1]},
+            )
+        )
+        raise RuntimeError("bug in jit checkpoint")
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            failure_config=FailureConfig(max_failures=0, max_preemption_failures=-1),
+        ),
+    )
+    with pytest.raises(WorkerGroupError):
+        trainer.fit()
 
 
 if __name__ == "__main__":

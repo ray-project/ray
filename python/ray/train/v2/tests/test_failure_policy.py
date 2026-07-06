@@ -1,7 +1,11 @@
 import pytest
 
+from ray.exceptions import RayActorError
 from ray.train import FailureConfig
-from ray.train.v2._internal.exceptions import WorkerGroupStartupTimeoutError
+from ray.train.v2._internal.exceptions import (
+    WorkerGroupStartupTimeoutError,
+    WorkerHealthCheckFailedError,
+)
 from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     create_failure_policy,
@@ -19,6 +23,19 @@ def _preemption_error():
         preemption_info=PreemptionInfo(
             deadline_ms=None, preempted_node_to_ranks={"node-a": [0, 1]}
         )
+    )
+
+
+def _preempted_death_worker_group_error():
+    """A worker group error where a worker was killed by a node reclaim."""
+    return WorkerGroupError(
+        "Worker group failed",
+        {
+            0: WorkerHealthCheckFailedError(
+                "worker died", failure=RayActorError(preempted=True)
+            ),
+            1: RuntimeError("collective communication aborted"),
+        },
     )
 
 
@@ -134,6 +151,44 @@ def test_infinite_preemption_retry_by_default():
             policy.make_decision(training_failed_error=_preemption_error())
             == FailureDecision.RETRY
         )
+
+
+@pytest.mark.parametrize("max_preemption_failures", [0, 1, 10])
+def test_preempted_worker_death_charged_to_preemption_budget(max_preemption_failures):
+    """A WorkerGroupError containing a reclaim kill (RayActorError.preempted) is
+    charged against max_preemption_failures, not max_failures."""
+    policy = create_failure_policy(
+        FailureConfig(max_failures=0, max_preemption_failures=max_preemption_failures)
+    )
+    for _ in range(max_preemption_failures):
+        assert (
+            policy.make_decision(
+                training_failed_error=_preempted_death_worker_group_error()
+            )
+            == FailureDecision.RETRY
+        )
+    assert (
+        policy.make_decision(
+            training_failed_error=_preempted_death_worker_group_error()
+        )
+        == FailureDecision.RAISE
+    )
+
+
+def test_non_preempted_actor_death_charged_to_max_failures():
+    """An actor death that was NOT caused by preemption stays on max_failures."""
+    policy = create_failure_policy(
+        FailureConfig(max_failures=0, max_preemption_failures=-1)
+    )
+    error = WorkerGroupError(
+        "Worker group failed",
+        {
+            0: WorkerHealthCheckFailedError(
+                "worker died", failure=RayActorError(preempted=False)
+            )
+        },
+    )
+    assert policy.make_decision(training_failed_error=error) == FailureDecision.RAISE
 
 
 def test_preemption_budget_is_separate_from_max_failures():

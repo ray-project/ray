@@ -129,8 +129,6 @@ class PreemptingState(TrainControllerState):
     ):
         super().__init__(state_type=TrainControllerStateType.PREEMPTING)
         self.preemption_info = preemption_info
-        # Wall-clock time (epoch seconds) when the preemption was first
-        # detected, used to bound the drain wait when no deadline is known.
         self.detected_at_s = detected_at_s
 
 

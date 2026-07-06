@@ -38,7 +38,11 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerStatus,
 )
 from ray.train.v2.api.config import ScalingConfig
-from ray.train.v2.api.exceptions import ControllerError, PreemptionError
+from ray.train.v2.api.exceptions import (
+    ControllerError,
+    PreemptionError,
+    WorkerGroupError,
+)
 from ray.train.v2.tests.util import (
     DummyObjectRefWrapper,
     DummyWorkerGroup,
@@ -234,13 +238,15 @@ async def test_preemption_drain_then_restart():
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), PreemptingState)
 
-    # The reclaim kills the workers -> route through the failure policy, restart.
+    # The reclaim kills the workers -> route through the failure policy, which
+    # classifies the reclaim kill (RayActorError.preempted) against the
+    # preemption budget (see test_failure_policy.py), and restart.
     worker_group_before.preempt_kill_worker(0)
     worker_group_before.preempt_kill_worker(1)
     failure_policy.queue_decision(FailureDecision.RETRY)
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), RestartingState)
-    assert isinstance(controller.get_state().training_failed_error, PreemptionError)
+    assert isinstance(controller.get_state().training_failed_error, WorkerGroupError)
 
     await _advance_to_running(controller, scaling_policy, num_workers=2)
     # Full restart -> fresh worker group.
@@ -287,14 +293,12 @@ async def test_preemption_staggered_merges_while_draining():
     assert state.preemption_info.preempted_ranks == [0, 1]
     assert state.preemption_info.deadline_ms == far_future - 1000
 
-    # The reclaim kills the workers -> the PreemptionError carries the merged info.
+    # The reclaim kills the workers -> restart via the failure policy.
     worker_group.preempt_kill_worker(0)
     worker_group.preempt_kill_worker(1)
     failure_policy.queue_decision(FailureDecision.RETRY)
     await controller._run_control_loop_iteration()
-    state = controller.get_state()
-    assert isinstance(state, RestartingState)
-    assert state.training_failed_error.preemption_info.preempted_ranks == [0, 1]
+    assert isinstance(controller.get_state(), RestartingState)
 
 
 @pytest.mark.asyncio
@@ -367,9 +371,10 @@ async def test_clean_exit_without_preemption_does_not_warn():
 
 
 @pytest.mark.asyncio
-async def test_preemption_worker_error_restarts():
-    """A worker killed by the reclaim (an error) is charged against the
-    preemption budget while a signal is active."""
+async def test_user_error_during_drain_is_worker_failure():
+    """A worker error that is NOT a reclaim kill (e.g. a bug in the training
+    function's just-in-time checkpoint) surfaces as a WorkerGroupError charged
+    against `max_failures`, even while a preemption is being drained."""
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
     train_run_context = create_dummy_run_context()
@@ -383,53 +388,55 @@ async def test_preemption_worker_error_restarts():
     await _advance_to_running(controller, scaling_policy, num_workers=2)
     worker_group = controller.get_worker_group()
 
-    # Signal present, and a worker is killed by the reclaim (a killed worker
-    # reports an error and is no longer running).
+    # Signal present -> PreemptingState.
     info = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"node-a": [0]})
     worker_group.preempt_worker(0, info)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), PreemptingState)
+
+    # A worker fails with a plain user error (not a preempted actor death)
+    # while draining.
     worker_group.error_worker(0)
     worker_group.finish_worker(0)
-    await controller._run_control_loop_iteration()
-    # Routed to preemption handling (not the WorkerGroupError / max_failures path).
-    assert isinstance(controller.get_state(), PreemptingState)
-
     worker_group.finish_worker(1)
-    failure_policy.queue_decision(FailureDecision.RETRY)
-    await controller._run_control_loop_iteration()
-    assert isinstance(controller.get_state(), RestartingState)
-    assert isinstance(controller.get_state().training_failed_error, PreemptionError)
-
-
-@pytest.mark.asyncio
-async def test_preemption_detected_from_actor_error():
-    """A worker killed by a node reclaim (RayActorError.preempted) with no
-    advance echo is still charged to the preemption budget, not max_failures."""
-    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
-    failure_policy = MockFailurePolicy(failure_config=None)
-    train_run_context = create_dummy_run_context()
-    controller = TrainController(
-        train_fn_ref=DummyObjectRefWrapper(lambda: None),
-        train_run_context=train_run_context,
-        scaling_policy=scaling_policy,
-        failure_policy=failure_policy,
-    )
-
-    await _advance_to_running(controller, scaling_policy, num_workers=2)
-    worker_group = controller.get_worker_group()
-
-    # Worker 0 is killed by the reclaim (preempted actor error), no advance echo;
-    # worker 1 exits cleanly.
-    worker_group.preempt_kill_worker(0)
-    worker_group.finish_worker(1)
-    await controller._run_control_loop_iteration()
-    # Inferred from RayActorError.preempted -> preemption path, not WorkerGroupError.
-    assert isinstance(controller.get_state(), PreemptingState)
-
     failure_policy.queue_decision(FailureDecision.RETRY)
     await controller._run_control_loop_iteration()
     state = controller.get_state()
     assert isinstance(state, RestartingState)
-    assert isinstance(state.training_failed_error, PreemptionError)
+    # Charged as a worker failure, not against the preemption budget.
+    assert isinstance(state.training_failed_error, WorkerGroupError)
+    assert not isinstance(state.training_failed_error, PreemptionError)
+
+
+@pytest.mark.asyncio
+async def test_preempted_death_without_signal_restarts_directly():
+    """A worker killed by a node reclaim (RayActorError.preempted) with no
+    advance signal restarts through the failure policy directly -- there is
+    nothing to drain, so the controller skips PreemptingState. The failure
+    policy charges the reclaim kill to the preemption budget (see
+    test_failure_policy.py)."""
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    train_run_context = create_dummy_run_context()
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=train_run_context,
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
+
+    await _advance_to_running(controller, scaling_policy, num_workers=2)
+    worker_group = controller.get_worker_group()
+
+    # Worker 0 is killed by the reclaim (preempted actor error), no advance
+    # echo; worker 1 exits cleanly.
+    worker_group.preempt_kill_worker(0)
+    worker_group.finish_worker(1)
+    failure_policy.queue_decision(FailureDecision.RETRY)
+    await controller._run_control_loop_iteration()
+    state = controller.get_state()
+    assert isinstance(state, RestartingState)
+    assert isinstance(state.training_failed_error, WorkerGroupError)
 
 
 @pytest.mark.parametrize(

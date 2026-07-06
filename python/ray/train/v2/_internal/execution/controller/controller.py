@@ -657,9 +657,9 @@ class TrainController:
             # worker group drain before restarting. Checked before both the
             # completion and error branches so that a worker killed when its
             # node is reclaimed is charged against the preemption retry budget
-            # rather than `max_failures`. `_preemption_to_drain` returns None for
-            # a genuine completion (a clean return with no errors), letting it
-            # fall through to the finished branch below.
+            # rather than `max_failures`. `_preemption_to_drain` returns None
+            # when training is done, letting it fall through to the finished
+            # branch below.
             preemption_info = self._preemption_to_drain(worker_group_status)
             if preemption_info is not None:
                 return TrainControllerLoopIterationResult(
@@ -671,7 +671,7 @@ class TrainController:
                     ),
                 )
 
-            if worker_group_status.finished and not worker_group_status.errors:
+            if self._is_training_done(worker_group_status):
                 self._warn_if_finished_during_preemption(
                     worker_group_status.get_preemption_info()
                 )
@@ -730,18 +730,10 @@ class TrainController:
             raise ValueError(f"Unexpected controller state: {controller_state}")
 
     @staticmethod
-    def _is_genuine_completion(
+    def _is_training_done(
         worker_group_status: WorkerGroupPollStatus,
     ) -> bool:
-        """Whether a clean finish should be treated as a genuine completion.
-
-        True when every rank exited cleanly (returned without error). A run that
-        returns cleanly finishes regardless of any preemption signal -- the
-        training function is expected to react to a preemption by checkpointing
-        and continuing, and be restarted when its node is actually reclaimed (a
-        worker error) or the reclaim deadline elapses, not by returning early.
-        A killed worker (error) makes this False.
-        """
+        """Whether every rank exited cleanly (returned without error)."""
         return worker_group_status.finished and not worker_group_status.errors
 
     @staticmethod
@@ -767,18 +759,17 @@ class TrainController:
             "the node is actually reclaimed."
         )
 
-    @classmethod
     def _preemption_to_drain(
-        cls, worker_group_status: WorkerGroupPollStatus
+        self, worker_group_status: WorkerGroupPollStatus
     ) -> Optional["PreemptionInfo"]:
         """The preemption that should move the run into PreemptingState, if any.
 
-        Returns the echoed `PreemptionInfo` unless the poll is a genuine
-        completion (see `_is_genuine_completion`), in which case it returns None
-        so the caller lets the run finish normally.
+        Returns the active `PreemptionInfo` unless training is done (see
+        `_is_training_done`), in which case it returns None so the caller lets
+        the run finish normally.
         """
         preemption_info = worker_group_status.get_preemption_info()
-        if preemption_info is None or cls._is_genuine_completion(worker_group_status):
+        if preemption_info is None or self._is_training_done(worker_group_status):
             return None
         return preemption_info
 
@@ -803,29 +794,27 @@ class TrainController:
     async def _handle_preempting_state(
         self, controller_state: PreemptingState
     ) -> TrainControllerLoopIterationResult:
-        """Wait for the worker group to drain after a preemption, then restart.
+        """Wait for the worker group to drain after a preemption.
 
-        Polls the worker group until either all workers have exited or the
-        preemption deadline elapses (capped at `DEFAULT_PREEMPTION_DEADLINE_S`
-        when the deadline is unknown), whichever comes first. It then
-        synthesizes a `PreemptionError` and routes it through the failure
-        policy, which consumes the separate `max_preemption_failures` budget:
-        while that budget remains (it is unlimited by default), the decision is
-        RETRY and we transition to RestartingState, which tears down and
-        recreates the worker group on healthy nodes; once the budget is
-        exhausted the decision is RAISE and we transition to ShuttingDownState
-        followed by ErroredState.
+        Exits the drain on the first of:
+        - Training is done (all ranks returned cleanly): the run finishes.
+        - A worker errors: routed through the failure policy, which charges the
+          preemption budget if a worker was killed by the reclaim
+          (`RayActorError.preempted`) and `max_failures` otherwise (e.g. a bug
+          in the training function while draining).
+        - The reclaim deadline elapses (capped at
+          `DEFAULT_PREEMPTION_DEADLINE_S` when unknown) with workers still
+          running: force a teardown via a `PreemptionError` with
+          `drain_timed_out=True`.
 
-        If instead the workers return cleanly (no errors) while draining, the run
-        is treated as a genuine completion and transitions to FinishedState --
-        the training function finished before its node was reclaimed.
+        On RETRY the run transitions to RestartingState (fresh worker group on
+        healthy nodes, resuming from the latest checkpoint); once the relevant
+        budget is exhausted, to ShuttingDownState then ErroredState.
         """
         worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
 
-        # The workers returned cleanly (no errors) -> genuine completion. (A
-        # killed worker or a passed deadline fall through to the restart path
-        # below.)
-        if self._is_genuine_completion(worker_group_status):
+        # The workers returned cleanly (no errors) -> training is done.
+        if self._is_training_done(worker_group_status):
             self._warn_if_finished_during_preemption(
                 worker_group_status.get_preemption_info()
                 or controller_state.preemption_info
@@ -839,10 +828,22 @@ class TrainController:
                 ),
             )
 
-        # Keep the preemption info current as additional nodes are drained.
-        # Merge rather than overwrite so a staggered preemption (or a node
-        # dropping out of the draining list once it's gone) doesn't erase
-        # earlier preempted nodes/ranks from the final PreemptionError.
+        # A worker errored while draining. The failure policy classifies it:
+        # a reclaim kill (RayActorError.preempted) is charged against the
+        # preemption budget, anything else (e.g. a bug in the training
+        # function's just-in-time checkpoint) against `max_failures`.
+        if worker_group_status.errors:
+            worker_group_error = worker_group_status.get_worker_group_error()
+            failure_decision = self._failure_policy.make_decision(
+                training_failed_error=worker_group_error,
+            )
+            return self._execute_failure_decision(
+                failure_decision, training_failed_error=worker_group_error
+            )
+
+        # All workers are still running. Keep the preemption info current as
+        # additional nodes are drained: merge rather than overwrite so a
+        # staggered preemption doesn't erase earlier preempted nodes/ranks.
         new_preemption_info = worker_group_status.get_preemption_info()
         if new_preemption_info is not None:
             preemption_info = merge_preemption_info(
@@ -850,13 +851,11 @@ class TrainController:
             )
         else:
             preemption_info = controller_state.preemption_info
-        deadline_exceeded = self._is_preemption_deadline_exceeded(
-            preemption_info, controller_state.detected_at_s
-        )
 
-        # Stay in PreemptingState until the workers exit on their own or the
-        # reclaim deadline passes.
-        if not worker_group_status.finished and not deadline_exceeded:
+        # Stay in PreemptingState until the reclaim deadline passes.
+        if not self._is_preemption_deadline_exceeded(
+            preemption_info, controller_state.detected_at_s
+        ):
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
@@ -866,12 +865,10 @@ class TrainController:
                 ),
             )
 
-        # True when the deadline forced teardown before every rank had exited.
-        drain_timed_out = deadline_exceeded and not worker_group_status.finished
+        # The deadline passed with workers still running: force a teardown.
         preemption_error = PreemptionError(
             preemption_info=preemption_info,
-            worker_failures=worker_group_status.errors,
-            drain_timed_out=drain_timed_out,
+            drain_timed_out=True,
         )
         failure_decision = self._failure_policy.make_decision(
             training_failed_error=preemption_error,
