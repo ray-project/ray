@@ -66,6 +66,8 @@ from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_HAPROXY_METRICS_ENABLED,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
@@ -505,7 +507,8 @@ class ReplicaMetricsManager:
             # gRPC ingress metrics are allocated lazily via
             # `enable_grpc_ingress_metrics()` once the gRPC config has been fetched from
             # the controller, which is not available at construction time.
-            self._add_ingress_metrics(RequestProtocol.HTTP)
+            if self._should_emit_request_ingress_metrics(RequestProtocol.HTTP):
+                self._add_ingress_metrics(RequestProtocol.HTTP)
 
             if self._cached_metrics_enabled:
                 # Mapping from protocol -> {request_tags -> value}.
@@ -525,6 +528,15 @@ class ReplicaMetricsManager:
     @property
     def _is_direct_ingress(self) -> bool:
         return self._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS
+
+    def _should_emit_request_ingress_metrics(self, protocol: RequestProtocol) -> bool:
+        # When HAProxy is enabled, http ingress request metrics are emitted by
+        # the HAProxyManager.
+        return self._is_direct_ingress and not (
+            RAY_SERVE_ENABLE_HA_PROXY
+            and RAY_SERVE_HAPROXY_METRICS_ENABLED
+            and protocol == RequestProtocol.HTTP
+        )
 
     def _add_ingress_metrics(self, protocol: RequestProtocol):
         """Allocate metric objects and ongoing-request counter for a protocol."""
@@ -864,7 +876,7 @@ class ReplicaMetricsManager:
         status_code: str,
     ):
         """Record per-request metrics."""
-        if not self._is_direct_ingress:
+        if not self._should_emit_request_ingress_metrics(protocol):
             return
 
         if self._cached_metrics_enabled:
