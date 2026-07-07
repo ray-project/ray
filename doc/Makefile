@@ -11,6 +11,9 @@ SPHINXBUILD   = sphinx-build
 SPHINXAUTOBUILD = sphinx-autobuild --port 0 --open-browser --ignore "*.log" --ignore "*data/examples*" --ignore "*train/examples*" --ignore "*serve/examples*"
 PAPER         =
 BUILDDIR      = _build
+# Output directory for the html builder. Overridable so Read the Docs can point
+# it at $READTHEDOCS_OUTPUT/html; defaults to the local _build/html.
+HTMLDIR      ?= $(BUILDDIR)/html
 
 # User-friendly check for sphinx-build
 ifeq ($(shell which $(SPHINXBUILD) >/dev/null 2>&1; echo $$?), 1)
@@ -26,7 +29,7 @@ ALLLINKCHECKOPTS = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(LINKCHECKOPTS)
 # the i18n builder cannot share the environment and doctrees with the others
 I18NSPHINXOPTS  = $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) source
 
-.PHONY: help clean html dirhtml singlehtml pickle json htmlhelp qthelp devhelp epub latex latexpdf text man changes linkcheck doctest coverage gettext show
+.PHONY: help clean html rtd rtd-fallback dirhtml singlehtml pickle json htmlhelp qthelp devhelp epub latex latexpdf text man changes linkcheck doctest coverage gettext show
 
 help:
 	@echo "Please use \`make <target>' where <target> is one of"
@@ -76,10 +79,10 @@ clean:
 html:
 	@# Remove cached serve API stubs so autosummary regenerates them with correct templates
 	find source/serve/api/doc/ -name "ray.serve.*.rst" -delete 2>/dev/null || true
-	$(SPHINXBUILD) -W --keep-going -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
+	$(SPHINXBUILD) -W --keep-going -b html $(ALLSPHINXOPTS) $(HTMLDIR)
 	@echo
-	@echo "Build finished. The HTML pages are in $(BUILDDIR)/html."
-	@echo "View the documentation by opening a browser and going to $(BUILDDIR)/html/index.html."
+	@echo "Build finished. The HTML pages are in $(HTMLDIR)."
+	@echo "View the documentation by opening a browser and going to $(HTMLDIR)/index.html."
 
 develop: html
 
@@ -93,6 +96,40 @@ local:
 	find source/serve/api/doc/ -name "ray.serve.*.rst" -delete 2>/dev/null || true
 	python update_cache_env.py --ray-dir=$(RAY_DIR)
 	$(SPHINXAUTOBUILD) -W --keep-going -b html $(ALLLOCALSPHINXOPTS) $(BUILDDIR)/html
+
+# Incremental one-shot build for Read the Docs PR previews: restore the latest
+# master build cache, mark only the PR-changed files dirty (load_doc_cache.py +
+# update_cache_env.py), then build once WITHOUT -a/-E so Sphinx reuses the cached
+# environment and rebuilds only those files. Mirrors `local`, but builds once
+# instead of running sphinx-autobuild.
+#
+# No --keep-going: if the restored cache is incompatible (e.g. it predates an
+# autosummary template change and carries stale generated stubs), fail on the
+# first warning so .readthedocs.yaml falls back to rtd-fallback (a clean build)
+# quickly instead of grinding through the whole build first.
+rtd:
+	python load_doc_cache.py --ray-dir=$(RAY_DIR)
+	@# Remove cached serve API stubs so autosummary regenerates them with correct templates
+	find source/serve/api/doc/ -name "ray.serve.*.rst" -delete 2>/dev/null || true
+	python update_cache_env.py --ray-dir=$(RAY_DIR)
+	@# Build into $(BUILDDIR)/html, where load_doc_cache.py extracted the full prior
+	@# site and update_cache_env.py refreshed the output timestamps, so Sphinx rewrites
+	@# only the PR-changed pages. Then publish the whole tree to $(HTMLDIR): building
+	@# straight into an empty $(HTMLDIR) (RTD's output dir) would emit only the changed
+	@# pages and drop the rest of the site.
+	$(SPHINXBUILD) -b html $(ALLLOCALSPHINXOPTS) $(BUILDDIR)/html
+	@if [ "$(HTMLDIR)" != "$(BUILDDIR)/html" ]; then \
+		echo "Publishing $(BUILDDIR)/html -> $(HTMLDIR)"; \
+		mkdir -p $(HTMLDIR) && cp -a $(BUILDDIR)/html/. $(HTMLDIR)/; \
+	fi
+
+# Cold rebuild used by .readthedocs.yaml when the incremental `rtd` build fails.
+# git clean -dfX removes only git-ignored files -- the restored cache's _build tree
+# and all generated source/**/doc stubs -- so the tree matches a fresh checkout,
+# then a full clean build runs (identical to what postmerge CI builds and caches).
+rtd-fallback:
+	git clean -dfX .
+	$(MAKE) HTMLDIR="$(HTMLDIR)" html
 
 dirhtml:
 	$(SPHINXBUILD) -b dirhtml $(ALLSPHINXOPTS) $(BUILDDIR)/dirhtml

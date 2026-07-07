@@ -167,7 +167,12 @@ from ray.serve._private.utils import (
     parse_import_path,
 )
 from ray.serve._private.version import DeploymentVersion
-from ray.serve.config import AutoscalingConfig, HTTPOptions, gRPCOptions
+from ray.serve.config import (
+    AutoscalingConfig,
+    HTTPOptions,
+    ProxyLocation,
+    gRPCOptions,
+)
 from ray.serve.context import _get_in_flight_requests
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import (
@@ -2153,32 +2158,36 @@ class Replica:
             self._grpc_options = None
 
         grpc_enabled = self._ingress and is_grpc_enabled(self._grpc_options)
+        # host=None normalizes to location Disabled in HTTPOptions.location_backfill_no_server.
+        http_enabled = self._http_options.location != ProxyLocation.Disabled
 
         # Allocate and start HTTP server
-        async def start_http_server(port):
-            options = configure_http_middlewares(
-                configure_http_options_with_defaults(
-                    HTTPOptions(**{**self._http_options.model_dump(), "port": port})
+        if http_enabled:
+
+            async def start_http_server(port):
+                options = configure_http_middlewares(
+                    configure_http_options_with_defaults(
+                        HTTPOptions(**{**self._http_options.model_dump(), "port": port})
+                    )
                 )
-            )
 
-            return await start_asgi_http_server(
-                self._direct_ingress_asgi,
-                options,
-                event_loop=self._event_loop,
-                enable_so_reuseport=False,
-            )
+                return await start_asgi_http_server(
+                    self._direct_ingress_asgi,
+                    options,
+                    event_loop=self._event_loop,
+                    enable_so_reuseport=False,
+                )
 
-        (
-            self._http_port,
             (
-                self._direct_ingress_http_server_task,
-                self._direct_ingress_http_server,
-            ),
-        ) = await allocate_and_start_server(
-            start_server_fn=start_http_server,
-            protocol=RequestProtocol.HTTP,
-        )
+                self._http_port,
+                (
+                    self._direct_ingress_http_server_task,
+                    self._direct_ingress_http_server,
+                ),
+            ) = await allocate_and_start_server(
+                start_server_fn=start_http_server,
+                protocol=RequestProtocol.HTTP,
+            )
 
         # Allocate and start gRPC server for ingress replicas if enabled.
         # Ingress request router replicas only need HTTP for /internal/route.
@@ -2207,10 +2216,13 @@ class Replica:
                 protocol=RequestProtocol.GRPC,
             )
 
-        logger.info(
-            f"Started HTTP server on port {self._http_port}"
-            + (f" and gRPC server on port {self._grpc_port}" if grpc_enabled else "")
-        )
+        started = []
+        if http_enabled:
+            started.append(f"HTTP server on port {self._http_port}")
+        if grpc_enabled:
+            started.append(f"gRPC server on port {self._grpc_port}")
+        if started:
+            logger.info(f"Started {' and '.join(started)}")
 
     @contextmanager
     def _tracing_context(self, request_metadata: RequestMetadata):
