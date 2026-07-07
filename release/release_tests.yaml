@@ -2149,12 +2149,16 @@
       run:
         timeout: 2400
         script: python -m core.runner --experiment experiments/qwen3_06b_deepspeed.yaml
+        wait_for_nodes:
+          num_nodes: 2
 
     - __suffix__: torchrun_parity
       frequency: weekly
       run:
         timeout: 2400
         script: python -m core.runner --experiment experiments/qwen3_06b_deepspeed.yaml --set launcher=torchrun_ray
+        wait_for_nodes:
+          num_nodes: 2
 
   smoke_test:
     frequency: manual
@@ -2164,6 +2168,8 @@
     run:
       timeout: 900
       script: python -m core.runner --experiment experiments/qwen3_06b_deepspeed_smoke.yaml
+      wait_for_nodes:
+        num_nodes: 1
 
 - name: training_ingest_benchmark-soak_test
   python: "3.10"
