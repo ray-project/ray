@@ -9,24 +9,16 @@ from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_CONTROLLER_NAME,
     SERVE_DEPLOYMENT_ACTOR_PREFIX,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
+from ray.serve._private.test_utils import expected_proxy_actors
 from ray.serve._private.utils import format_actor_name
 from ray.serve.config import DeploymentActorConfig
 from ray.util.state import list_actors
-
-
-def _expected_proxy_classes():
-    """Proxy actor class names expected ALIVE while a Serve app is running."""
-    # Under HAProxy the per-node HAProxyManager joins the head-node fallback ProxyActor.
-    if RAY_SERVE_ENABLE_HA_PROXY:
-        return {"ProxyActor", "HAProxyManager"}
-    return {"ProxyActor"}
 
 
 def test_shutdown(ray_shutdown):
@@ -139,7 +131,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        *_expected_proxy_classes(),
+        *expected_proxy_actors(),
         "ServeReplica:app:f",
     }
 
@@ -180,7 +172,7 @@ async def test_single_app_shutdown_actors_async(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        *_expected_proxy_classes(),
+        *expected_proxy_actors(),
         "ServeReplica:app:f",
     }
 
@@ -221,7 +213,7 @@ def test_multi_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        *_expected_proxy_classes(),
+        *expected_proxy_actors(),
         "ServeReplica:app1:f",
         "ServeReplica:app2:f",
     }
@@ -264,7 +256,7 @@ async def test_multi_app_shutdown_actors_async(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        *_expected_proxy_classes(),
+        *expected_proxy_actors(),
         "ServeReplica:app1:f",
         "ServeReplica:app2:f",
     }

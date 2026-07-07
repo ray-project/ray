@@ -22,6 +22,9 @@ from ray.llm._internal.serve.core.server.builder import (
 )
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    is_kv_aware,
+)
 from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
@@ -89,6 +92,7 @@ DEFAULT_INGRESS_REQUEST_ROUTER_OPTIONS = {
 def _build_openai_ingress_request_router(
     *,
     server: Application,
+    llm_config: LLMConfig,
     deployment_options: Optional[Dict[str, Any]] = None,
 ) -> Application:
     """Build the ingress request router peer for OpenAI compatible LLM apps.
@@ -99,11 +103,17 @@ def _build_openai_ingress_request_router(
     Deployment options default to one replica per node so each router
     co-locates with the per-node HAProxy that calls it. Callers override via
     ``LLMServingArgs.ingress_request_router_config``.
+
+    Pre-routing tokenization is wired on only when ``llm_config`` configures a
+    KVAwareRouter, the sole policy that scores replicas on prompt token IDs.
     """
     from ray.llm._internal.serve.core.ingress.router import LLMRouter
 
     options = {**DEFAULT_INGRESS_REQUEST_ROUTER_OPTIONS, **(deployment_options or {})}
-    return serve.deployment(LLMRouter, **options).bind(server=server)
+    return serve.deployment(LLMRouter, **options).bind(
+        server=server,
+        pre_routing_tokenization=is_kv_aware(llm_config),
+    )
 
 
 class IngressClsConfig(BaseModelExtended):
@@ -255,6 +265,7 @@ def build_openai_app(builder_config: dict) -> Application:
         return direct_deployment._with_ingress_request_router(
             _build_openai_ingress_request_router(
                 server=direct_deployment,
+                llm_config=llm_configs[0],
                 deployment_options=builder_config.ingress_request_router_config,
             )
         )
