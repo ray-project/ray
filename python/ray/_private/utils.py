@@ -357,23 +357,27 @@ def set_nvidia_gpu_numa_affinity_if_enabled() -> Optional[set]:
     """
     from ray._private.ray_constants import env_bool
 
-    if not env_bool(RAY_EXPERIMENTAL_NVIDIA_GPU_NUMA_AFFINITY_ENV_VAR, False):
-        return None
-
-    if not hasattr(os, "sched_getaffinity") or not hasattr(os, "sched_setaffinity"):
+    if (
+        # This hook changes process CPU affinity, so it must be explicitly enabled.
+        not env_bool(RAY_EXPERIMENTAL_NVIDIA_GPU_NUMA_AFFINITY_ENV_VAR, False)
+        # CPU affinity APIs are only available on supported platforms such as Linux.
+        or not hasattr(os, "sched_getaffinity")
+        or not hasattr(os, "sched_setaffinity")
+    ):
         return None
 
     runtime_ctx = ray.get_runtime_context()
     accelerator_ids = runtime_ctx.get_accelerator_ids().get("GPU", [])
     assigned_gpu_resource = runtime_ctx.get_assigned_resources().get("GPU", 0)
 
-    if not accelerator_ids:
-        return None
-
-    if assigned_gpu_resource != int(assigned_gpu_resource):
-        return None
-
-    if int(assigned_gpu_resource) != len(accelerator_ids):
+    if (
+        # The worker has no assigned NVIDIA GPU.
+        not accelerator_ids
+        # Fractional GPU resources do not map cleanly to GPU-local CPU sets.
+        or assigned_gpu_resource != int(assigned_gpu_resource)
+        # The whole-GPU resource count should match the assigned GPU IDs.
+        or int(assigned_gpu_resource) != len(accelerator_ids)
+    ):
         return None
 
     try:
