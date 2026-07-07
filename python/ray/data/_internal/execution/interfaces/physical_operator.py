@@ -267,14 +267,14 @@ class DataOpTask(OpTask):
 
         This method owns the shared pull loop; how a pair's metadata is fetched
         and emitted is delegated to ``metadata_fetcher``
-        (:meth:`MetadataFetcher.in_loop_get_size`). The generator yields a block
+        (:meth:`MetadataFetcher.in_data_ready_get_object_size`). The generator yields a block
         ref then its metadata ref. Each iteration pulls one pair and ends in one
         of these outcomes:
-        - both refs available -> ``in_loop_get_size`` handles the pair (emit
+        - both refs available -> ``in_data_ready_get_object_size`` handles the pair (emit
           inline, or defer for background fetch), charge its size, continue;
         - block ref not yet yielded -> stop, retry next call;
         - metadata ref not yet yielded -> stop, retry next call;
-        - metadata not available yet (``in_loop_get_size`` returns ``None``) ->
+        - metadata not available yet (``in_data_ready_get_object_size`` returns ``None``) ->
           stop, retry next call;
         - generator exhausted before a block -> end of stream (normal
           completion) -> ``DRAINED``;
@@ -371,7 +371,7 @@ class DataOpTask(OpTask):
             # Delegate metadata fetch + emit (inline) or defer (threaded). A
             # None result means the metadata isn't available yet: leave the
             # pair pending (refs stay set) and retry next call.
-            object_size = metadata_fetcher.in_loop_get_size(
+            object_size = metadata_fetcher.in_data_ready_get_object_size(
                 self,
                 self._pending_block_ref,
                 self._pending_meta_ref,
@@ -392,7 +392,7 @@ class DataOpTask(OpTask):
         # inline fires the done-callback now (re-raising a task failure);
         # threaded postpones it until the deferred pairs emit (a no-op here).
         if self.is_drained():
-            metadata_fetcher.in_loop_done(self)
+            metadata_fetcher.in_data_ready_done(self)
 
         return bytes_read
 
@@ -438,7 +438,9 @@ class DataOpTask(OpTask):
     def mark_emitted(self) -> None:
         self._pending_emit_count -= 1
 
-    def emit_block(self, block_ref: "ray.ObjectRef[Block]", meta_bytes: bytes) -> int:
+    def produce_block(
+        self, block_ref: "ray.ObjectRef[Block]", meta_bytes: bytes
+    ) -> int:
         """Deserialize ``meta_bytes``, emit the block's ``RefBundle``, and
         return ``meta.size_bytes`` (the inline mode's output-budget size)."""
         meta_with_schema: BlockMetadataWithSchema = pickle.loads(meta_bytes)

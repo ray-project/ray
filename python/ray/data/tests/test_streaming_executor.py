@@ -76,6 +76,7 @@ from ray.data.block import BlockAccessor, BlockMetadataWithSchema, TaskExecWorke
 from ray.data.context import EXECUTION_CALLBACKS_ENV_VAR, DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import noop_counter
+from ray.data.tests.util import fetcher_has_pending_work
 
 
 def mock_resource_manager(
@@ -211,7 +212,7 @@ def _process_completed_tasks_threaded(
             metadata_fetcher=fetcher,
         )
         deadline = time.time() + 30
-        while fetcher.has_pending_work():
+        while fetcher_has_pending_work(fetcher):
             if time.time() >= deadline:
                 raise TimeoutError("threaded metadata fetch did not finish within 30s")
             fetcher.after_loop_batch()
@@ -1611,7 +1612,7 @@ class TestDataOpTask:
         deferred = list(fetcher._pending_deferred)
         assert len(deferred) >= 1
 
-        fetcher.submit("op")
+        fetcher.submit("op", [task])
         with fetcher._results_lock:
             for d, meta_bytes in zip(deferred, ray.get([d.meta_ref for d in deferred])):
                 fetcher._results[d.meta_ref] = meta_bytes
@@ -1661,8 +1662,7 @@ class TestDataOpTask:
                 while not task.is_drained() and time.time() < deadline:
                     task.on_data_ready(None, fetcher)
                     time.sleep(0.01)
-                fetcher.submit(op_key)
-                fetcher.register_if_drained([task])
+                fetcher.submit(op_key, [task])
             assert task_a.is_drained() and task_b.is_drained()
 
             deadline = time.time() + 30
@@ -1711,8 +1711,7 @@ class TestDataOpTask:
         deferred = list(fetcher._pending_deferred)
         assert len(deferred) == 2
         first, second = deferred
-        fetcher.submit("op")
-        fetcher.register_if_drained([task])
+        fetcher.submit("op", [task])
         meta_bytes_first, meta_bytes_second = ray.get([first.meta_ref, second.meta_ref])
 
         # Only the LATER pair's metadata is available: it must be held.
@@ -1757,8 +1756,7 @@ class TestDataOpTask:
         deferred = list(fetcher._pending_deferred)
         assert len(deferred) == 2
         first, second = deferred
-        fetcher.submit("op")
-        fetcher.register_if_drained([task])
+        fetcher.submit("op", [task])
         good_bytes = ray.get(first.meta_ref)
         boom = ValueError("metadata fetch boom")
         # First pair fetches fine; the second resolves to an exception.
@@ -1776,13 +1774,13 @@ class TestDataOpTask:
         # The task completed despite the dropped block (done callback fired).
         assert done == [1]
         assert task.has_finished
-        assert not fetcher.has_pending_work()
+        assert not fetcher_has_pending_work(fetcher)
 
     def test_on_data_ready_branches_with_fake_fetcher(self, ray_start_regular_shared):
         """Mock the fetcher interface to drive ``on_data_ready``'s per-pair
         outcomes deterministically — no cluster timing or polling.
 
-        Covers: a pair not-ready (``in_loop_get_size`` returns None -> the loop
+        Covers: a pair not-ready (``in_data_ready_get_object_size`` returns None -> the loop
         stops, refs stay set), then the same pair becoming ready (size returned
         -> charged + refs advanced), then end-of-stream completion (inline
         fetcher -> done-callback fires)."""
@@ -1793,7 +1791,7 @@ class TestDataOpTask:
                 # Per call, the size to return (None = not ready yet).
                 self.script = [None, 4096]
 
-            def in_loop_get_size(self, task, block_ref, meta_ref):
+            def in_data_ready_get_object_size(self, task, block_ref, meta_ref):
                 self.calls.append((block_ref, meta_ref))
                 size = self.script.pop(0) if self.script else 0
                 if size is not None:
@@ -1801,7 +1799,7 @@ class TestDataOpTask:
                     task._output_ready_callback(object())
                 return size
 
-            def in_loop_done(self, task):
+            def in_data_ready_done(self, task):
                 # Emulate the inline fetcher: fire the done-callback at drain.
                 task.mark_done()
 

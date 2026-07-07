@@ -13,7 +13,10 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     PhysicalOperator,
     RefBundle,
 )
-from ray.data._internal.execution.metadata_fetcher import InlineMetadataFetcher
+from ray.data._internal.execution.metadata_fetcher import (
+    InlineMetadataFetcher,
+    ThreadedMetadataFetcher,
+)
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformCallable,
@@ -99,6 +102,13 @@ def assert_exprs_equal(actual: List[Expr], expected: List[Expr]):
         actual_names,
         expected_names,
     )
+
+
+def fetcher_has_pending_work(fetcher: ThreadedMetadataFetcher) -> bool:
+    """Whether a ``ThreadedMetadataFetcher`` still has a submitted pair to emit
+    or a postponed done-callback to fire. Test-only poll helper (peeks at the
+    fetcher's internals); call from the same thread that drives the fetcher."""
+    return any(fetcher._fifos.values()) or bool(fetcher._drained_tasks)
 
 
 def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
