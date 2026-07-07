@@ -176,7 +176,7 @@ class CometLoggerCallback(LoggerCallback):
         experiment = self._trial_experiments[trial]
         step = result["training_iteration"]
 
-        config_update = result.get("config", {}).copy()
+        config_update = (result.get("config") or {}).copy()
         config_update.pop("callbacks", None)  # Remove callbacks
         for k, v in config_update.items():
             if isinstance(v, dict):
