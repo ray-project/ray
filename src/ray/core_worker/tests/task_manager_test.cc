@@ -3425,6 +3425,111 @@ TEST_F(TaskManagerLineageTest, RecoverIntermediateObjectInStreamingGenerator) {
   CompletePendingStreamingTask(spec2, caller_address, 0);
 }
 
+TEST_F(TaskManagerLineageTest, TestStreamingGeneratorReconstructableWhileLineageInScope) {
+  /**
+   * Streaming generator's return objects should still be reconstructable as
+   * long as the generator's lineage is in scope.
+   */
+  rpc::Address caller_address;
+  TaskSpecification spec = CreateTaskHelper(1,
+                                            {},
+                                            /*dynamic_returns=*/true,
+                                            /*is_streaming_generator=*/true,
+                                            /*generator_backpressure_num_objects=*/2);
+  ObjectID generator_id = spec.ReturnId(0);
+
+  manager_.AddPendingTask(caller_address, spec, "", /*num_retries=*/1);
+  ASSERT_TRUE(manager_.ObjectRefStreamExists(generator_id));
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+
+  // The generator reports two return objects The first is consumed and stays in scope,
+  // keeping the generator's lineage. The second is left unconsumed and is the object
+  // under test.
+  ObjectID consumed_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  std::shared_ptr<Buffer> data = GenerateRandomBuffer();
+  rpc::ReportGeneratorItemReturnsRequest req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ consumed_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ true);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}));
+
+  ObjectID unconsumed_return_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ unconsumed_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ true);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}));
+
+  ASSERT_TRUE(reference_counter_->HasReference(unconsumed_return_id));
+  ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(unconsumed_return_id));
+
+  // Consume the first return object.
+  ObjectID read_id;
+  ASSERT_TRUE(manager_.TryReadObjectRefStream(generator_id, &read_id).ok());
+  ASSERT_EQ(read_id, consumed_return_id);
+
+  CompletePendingStreamingTask(spec,
+                               caller_address,
+                               /*num_streaming_generator_returns=*/2,
+                               /*set_in_plasma=*/true);
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+
+  // Simulate generator ref going out of scope
+  ASSERT_FALSE(manager_.TryDelObjectRefStream(generator_id));
+  ASSERT_TRUE(manager_.ObjectRefStreamExists(generator_id));
+  ASSERT_FALSE(reference_counter_->HasReference(unconsumed_return_id));
+  // The consumed return is kept in scope to keep lineage alive.
+  ASSERT_TRUE(reference_counter_->HasReference(consumed_return_id));
+
+  // Begin reconstruction.
+  std::vector<ObjectID> resubmitted_task_deps;
+  ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps), std::nullopt);
+  ASSERT_TRUE(resubmitted_task_deps.empty());
+  ASSERT_EQ(num_retries_, 1);
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+
+  // return item of reconstructed generator should still be available after
+  // reconstruction.
+  std::vector<std::shared_ptr<RayObject>> results;
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ unconsumed_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ true);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}));
+  ASSERT_TRUE(reference_counter_->HasReference(unconsumed_return_id));
+  ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(unconsumed_return_id));
+  RAY_CHECK_OK(store_->Get({unconsumed_return_id}, 1, 1, ctx, &results));
+  ASSERT_EQ(results.size(), 1);
+  results.clear();
+
+  CompletePendingStreamingTask(spec,
+                               caller_address,
+                               /*num_streaming_generator_returns=*/2,
+                               /*set_in_plasma=*/true);
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  reference_counter_->RemoveLocalReference(consumed_return_id, nullptr);
+  ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+}
+
 TEST_F(TaskManagerTest, TestGPUObjectTaskSuccess) {
   rpc::Address caller_address;
   auto spec = CreateTaskHelper(/*num_returns*/ 1,

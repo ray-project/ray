@@ -831,12 +831,6 @@ class TaskManager : public TaskManagerInterface {
   absl::flat_hash_map<ObjectID, ObjectRefStream> object_ref_streams_
       ABSL_GUARDED_BY(object_ref_stream_ops_mu_);
 
-  /// Tracks active streams that may receive backpressured generator reports.
-  /// Erasing an entry marks the stream deleted while the ObjectRefStream may
-  /// remain around until EOF/lineage cleanup.
-  absl::flat_hash_map<ObjectID, std::vector<ExecutionSignalCallback>>
-      ref_stream_execution_signal_callbacks_ ABSL_GUARDED_BY(object_ref_stream_ops_mu_);
-
   /// Report visibility is acknowledged immediately and consumed progress is
   /// pushed separately to the executor.
   absl::flat_hash_map<ObjectID, ConsumptionUpdateCallback>

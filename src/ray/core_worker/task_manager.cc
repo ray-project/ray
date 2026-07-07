@@ -434,8 +434,6 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     absl::MutexLock lock(&object_ref_stream_ops_mu_);
     auto inserted =
         object_ref_streams_.emplace(generator_id, ObjectRefStream(generator_id));
-    ref_stream_execution_signal_callbacks_.emplace(
-        generator_id, std::vector<ExecutionSignalCallback>());
     RAY_CHECK(inserted.second);
   }
 
@@ -838,21 +836,6 @@ bool TaskManager::StreamingGeneratorIsFinished(const ObjectID &generator_id) con
 }
 
 bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
-  // Call execution signal callbacks to ensure that the executor does not block
-  // after the generator goes out of scope at the caller.
-  auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
-  if (signal_it != ref_stream_execution_signal_callbacks_.end()) {
-    RAY_LOG(DEBUG) << "Deleting execution signal callbacks for generator "
-                   << generator_id;
-    for (const auto &execution_signal : signal_it->second) {
-      execution_signal(Status::NotFound("Stream is deleted."));
-    }
-    // We may still receive more generator return reports in the future, if the
-    // generator task is still running or is retried. They will get the
-    // callback immediately because we deleted this entry.
-    ref_stream_execution_signal_callbacks_.erase(signal_it);
-  }
-
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
     ref_stream_consumption_update_callbacks_.erase(generator_id);
@@ -1017,11 +1000,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     return false;
   }
   if (backpressure_threshold != -1) {
-    auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
-    if (signal_it == ref_stream_execution_signal_callbacks_.end()) {
-      execution_signal_callback(Status::NotFound("Stream is deleted."));
-      return false;
-    }
     if (consumption_update_callback) {
       ref_stream_consumption_update_callbacks_[generator_id] =
           consumption_update_callback;
