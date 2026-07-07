@@ -336,8 +336,16 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjects) {
       ->mutable_object_ref()
       ->set_object_id(obj.Binary());
   EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_spec_without_dependency));
+  // change task_id since <task_id, task_attempt> should be unique
+  // across all PushTask for actor life
+  task_spec_with_dependency.GetMutableMessage().set_task_id(
+      TaskID::FromRandom(JobID::FromInt(1)).Binary());
   EnqueueWithFetch(queue, waiter, 1, -1, MakeTaskToExecute(task_spec_with_dependency));
+  task_spec_with_dependency.GetMutableMessage().set_task_id(
+      TaskID::FromRandom(JobID::FromInt(1)).Binary());
   EnqueueWithFetch(queue, waiter, 2, -1, MakeTaskToExecute(task_spec_with_dependency));
+  task_spec_with_dependency.GetMutableMessage().set_task_id(
+      TaskID::FromRandom(JobID::FromInt(1)).Binary());
   EnqueueWithFetch(queue, waiter, 3, -1, MakeTaskToExecute(task_spec_with_dependency));
 
   ASSERT_TRUE(WaitForCondition([&n_executed]() { return n_executed == 1; }, 1000));

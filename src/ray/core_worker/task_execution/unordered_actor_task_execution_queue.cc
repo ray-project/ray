@@ -185,22 +185,22 @@ void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
-    waiter_.OnArgsReady(TaskAttempt{task_spec.TaskId(), task_spec.AttemptNumber()},
-                        [this, request = std::move(request)]() mutable {
-                          RAY_CHECK_EQ(std::this_thread::get_id(), main_thread_id_);
+    const TaskAttempt task_attempt{task_spec.TaskId(), task_spec.AttemptNumber()};
+    waiter_.OnArgsReady(task_attempt, [this, request = std::move(request)]() mutable {
+      RAY_CHECK_EQ(std::this_thread::get_id(), main_thread_id_);
 
-                          const TaskSpecification &task = request.TaskSpec();
-                          RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-                              task.TaskId(),
-                              task.JobId(),
-                              task.AttemptNumber(),
-                              task,
-                              rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
-                              /* include_task_info */ false));
+      const TaskSpecification &task = request.TaskSpec();
+      RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+          task.TaskId(),
+          task.JobId(),
+          task.AttemptNumber(),
+          task,
+          rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+          /* include_task_info */ false));
 
-                          request.MarkDependenciesResolved();
-                          RunRequestWithResolvedDependencies(std::move(request));
-                        });
+      request.MarkDependenciesResolved();
+      RunRequestWithResolvedDependencies(std::move(request));
+    });
   } else {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),
