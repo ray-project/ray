@@ -1260,10 +1260,11 @@ def test_out_of_band_checkpoints_local(checkpoint_upload_mode, tmp_path):
             delete_local_checkpoint_after_upload=False,
         )
 
-    with pytest.raises(
-        WorkerGroupError,
-        match="The reported checkpoint not is within Ray Train's experiment directory",
-    ) as exc_info:
+    if checkpoint_upload_mode == CheckpointUploadMode.NO_UPLOAD:
+        error_message = "Your `ray\\.train\\.report\\(checkpoint\\)` is outside the experiment directory\\."
+    else:
+        error_message = "Your `checkpoint_upload_fn` returned a checkpoint outside the experiment directory\\."
+    with pytest.raises(WorkerGroupError, match=error_message) as exc_info:
         DataParallelTrainer(
             train_fn,
             run_config=RunConfig(
@@ -1383,19 +1384,19 @@ def test_out_of_band_checkpoints_s3(
                 delete_local_checkpoint_after_upload=False,
             )
 
-        trainer = DataParallelTrainer(
-            train_fn,
-            run_config=RunConfig(
-                name=run_name,
-                storage_path=in_band_s3_uri,
-                worker_runtime_env={"env_vars": AWS_ENV_VARS},
-            ),
-        )
-        with pytest.raises(
-            WorkerGroupError,
-            match="The reported checkpoint not is within Ray Train's experiment directory",
-        ) as exc_info:
-            trainer.fit()
+        if checkpoint_upload_mode == CheckpointUploadMode.NO_UPLOAD:
+            error_message = "Your `ray\\.train\\.report\\(checkpoint\\)` is outside the experiment directory\\."
+        else:
+            error_message = "Your `checkpoint_upload_fn` returned a checkpoint outside the experiment directory\\."
+        with pytest.raises(WorkerGroupError, match=error_message) as exc_info:
+            DataParallelTrainer(
+                train_fn,
+                run_config=RunConfig(
+                    name=run_name,
+                    storage_path=in_band_s3_uri,
+                    worker_runtime_env={"env_vars": AWS_ENV_VARS},
+                ),
+            ).fit()
         assert isinstance(exc_info.value.worker_failures[0], ValueError)
 
         # The first (in-band) report committed before the second one failed.

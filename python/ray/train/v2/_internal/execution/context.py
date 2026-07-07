@@ -486,16 +486,14 @@ class TrainContext:
                     )
                 ):
                     raise ValueError(
-                        "The reported checkpoint not is within Ray Train's experiment directory. "
-                        "A checkpoint must be saved on the same filesystem and within the storage "
-                        "path configured by `RunConfig(storage_path, storage_filesystem)`:\n"
-                        f"  - storage filesystem:    {self.storage_context.storage_filesystem}\n"
-                        f"  - checkpoint filesystem: {training_report.checkpoint.filesystem}\n"
-                        f"  - storage path:          {self.storage_context.experiment_fs_path}\n"
-                        f"  - checkpoint path:       {training_report.checkpoint.path}\n"
-                        "You can access the storage configuration with "
-                        "`ray.train.get_context().get_storage().storage_filesystem` and "
-                        "`ray.train.get_context().get_storage().experiment_fs_path`."
+                        "Your `checkpoint_upload_fn` returned a checkpoint outside the experiment "
+                        "directory. Update it to write to a path under the configured storage path, "
+                        "or use `ray.train.get_context().get_storage().experiment_fs_path` to "
+                        "construct the destination.\n"
+                        f" - storage filesystem:    {self.storage_context.storage_filesystem}\n"
+                        f" - checkpoint filesystem: {training_report.checkpoint.filesystem}\n"
+                        f" - storage path:          {self.storage_context.experiment_fs_path}\n"
+                        f" - checkpoint path:       {training_report.checkpoint.path}\n"
                     )
                 self._wait_then_report(training_report, report_call_index)
 
@@ -504,16 +502,18 @@ class TrainContext:
                     self.storage_context, checkpoint
                 ):
                     raise ValueError(
-                        "The reported checkpoint not is within Ray Train's experiment directory. "
-                        "A checkpoint must be saved on the same filesystem and within the storage "
-                        "path configured by `RunConfig(storage_path, storage_filesystem)`:\n"
-                        f"  - storage filesystem:    {self.storage_context.storage_filesystem}\n"
-                        f"  - checkpoint filesystem: {checkpoint.filesystem}\n"
-                        f"  - storage path:          {self.storage_context.experiment_fs_path}\n"
-                        f"  - checkpoint path:       {checkpoint.path}\n"
-                        "You can access the storage configuration with "
-                        "`ray.train.get_context().get_storage().storage_filesystem` and "
-                        "`ray.train.get_context().get_storage().experiment_fs_path`."
+                        "Your `ray.train.report(checkpoint)` is outside the experiment "
+                        "directory. Either upload to the Ray Train run directory, or report a "
+                        "pointer checkpoint that points to the URI of your actual checkpoint, like: \n"
+                        ">>> checkpoint_uri = custom_checkpoint_upload_logic(...)\n"
+                        ">>> with tempfile.TemporaryDirectory() as tempdir:\n"
+                        '>>>    with open(os.path.join(tempdir, "pointer_ckpt.json"), "w") as f:\n'
+                        '>>>        json.dump({"uri": checkpoint_uri}, f)\n'
+                        ">>>    ray.train.report({}, checkpoint=Checkpoint.from_directory(tempdir))\n"
+                        f" - storage filesystem:    {self.storage_context.storage_filesystem}\n"
+                        f" - checkpoint filesystem: {checkpoint.filesystem}\n"
+                        f" - storage path:          {self.storage_context.experiment_fs_path}\n"
+                        f" - checkpoint path:       {checkpoint.path}\n"
                     )
 
                 training_report = _TrainingReport(
@@ -540,7 +540,20 @@ class TrainContext:
                             checkpoint_upload_fn,
                             validation,
                         )
+                    except Exception as e:
+                        # TODO: env var to disable eager raising
+                        logger.exception(
+                            "`ray.train.report(checkpoint_upload_mode=ASYNC)` checkpoint "
+                            "upload failed in the background thread. Raising eagerly "
+                            "to avoid training in a corrupted state with more potential "
+                            "progress lost due to checkpointing failures."
+                        )
+                        self.execution_context.training_thread_runner.get_exception_queue().put(
+                            construct_user_exception_with_traceback(e)
+                        )
+                        return
 
+                    try:
                         if (
                             training_report.checkpoint is not None
                             and not is_managed_checkpoint(
@@ -548,25 +561,24 @@ class TrainContext:
                             )
                         ):
                             raise ValueError(
-                                "The reported checkpoint not is within Ray Train's experiment directory. "
-                                "A checkpoint must be saved on the same filesystem and within the storage "
-                                "path configured by `RunConfig(storage_path, storage_filesystem)`:\n"
-                                f"  - storage filesystem:    {self.storage_context.storage_filesystem}\n"
-                                f"  - checkpoint filesystem: {training_report.checkpoint.filesystem}\n"
-                                f"  - storage path:          {self.storage_context.experiment_fs_path}\n"
-                                f"  - checkpoint path:       {training_report.checkpoint.path}\n"
-                                "You can access the storage configuration with "
-                                "`ray.train.get_context().get_storage().storage_filesystem` and "
-                                "`ray.train.get_context().get_storage().experiment_fs_path`."
+                                "Your `checkpoint_upload_fn` returned a checkpoint outside the experiment "
+                                "directory. Update it to write to a path under the configured storage path, "
+                                "or use `ray.train.get_context().get_storage().experiment_fs_path` to "
+                                "construct the destination.\n"
+                                f" - storage filesystem:    {self.storage_context.storage_filesystem}\n"
+                                f" - checkpoint filesystem: {training_report.checkpoint.filesystem}\n"
+                                f" - storage path:          {self.storage_context.experiment_fs_path}\n"
+                                f" - checkpoint path:       {training_report.checkpoint.path}\n"
                             )
 
                         self._wait_then_report(training_report, report_call_index)
                     except Exception as e:
                         # TODO: env var to disable eager raising
                         logger.exception(
-                            "Checkpoint reporting failed in the background thread. Raising eagerly "
-                            "to avoid training in a corrupted state with more potential progress "
-                            "lost due to checkpointing failures."
+                            "`ray.train.report(checkpoint_upload_mode=ASYNC)` checkpoint "
+                            "validation failed in the background thread. Raising eagerly "
+                            "to avoid training in a corrupted state with more potential "
+                            "progress lost due to checkpointing failures."
                         )
                         self.execution_context.training_thread_runner.get_exception_queue().put(
                             construct_user_exception_with_traceback(e)
