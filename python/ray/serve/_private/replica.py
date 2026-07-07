@@ -66,6 +66,8 @@ from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_HAPROXY_METRICS_ENABLED,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
@@ -101,6 +103,7 @@ from ray.serve._private.default_impl import (
     create_replica_impl,
     create_replica_metrics_manager,
 )
+from ray.serve._private.direct_ingress_grpc_util import gRPCDIReceiveStream
 from ray.serve._private.direct_ingress_http_util import ASGIDIReceiveProxy
 from ray.serve._private.event_loop_monitoring import EventLoopMonitor
 from ray.serve._private.grpc_util import (
@@ -158,6 +161,7 @@ from ray.serve._private.tracing_utils import (
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     Semaphore,
+    _callable_uses_multiplexing,
     asyncio_grpc_exception_handler,
     check_obj_ref_ready_nowait,
     compress_metric_report,
@@ -189,7 +193,10 @@ from ray.serve.generated.serve_pb2 import (
     ListApplicationsResponse,
 )
 from ray.serve.generated.serve_pb2_grpc import add_ASGIServiceServicer_to_server
-from ray.serve.grpc_util import RayServegRPCContext, gRPCInputStream
+from ray.serve.grpc_util import (
+    RayServegRPCContext,
+    gRPCInputStream,
+)
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank
 from ray.types import ObjectRef
@@ -501,7 +508,8 @@ class ReplicaMetricsManager:
             # gRPC ingress metrics are allocated lazily via
             # `enable_grpc_ingress_metrics()` once the gRPC config has been fetched from
             # the controller, which is not available at construction time.
-            self._add_ingress_metrics(RequestProtocol.HTTP)
+            if self._should_emit_request_ingress_metrics(RequestProtocol.HTTP):
+                self._add_ingress_metrics(RequestProtocol.HTTP)
 
             if self._cached_metrics_enabled:
                 # Mapping from protocol -> {request_tags -> value}.
@@ -521,6 +529,15 @@ class ReplicaMetricsManager:
     @property
     def _is_direct_ingress(self) -> bool:
         return self._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS
+
+    def _should_emit_request_ingress_metrics(self, protocol: RequestProtocol) -> bool:
+        # When HAProxy is enabled, http ingress request metrics are emitted by
+        # the HAProxyManager.
+        return self._is_direct_ingress and not (
+            RAY_SERVE_ENABLE_HA_PROXY
+            and RAY_SERVE_HAPROXY_METRICS_ENABLED
+            and protocol == RequestProtocol.HTTP
+        )
 
     def _add_ingress_metrics(self, protocol: RequestProtocol):
         """Allocate metric objects and ongoing-request counter for a protocol."""
@@ -860,7 +877,7 @@ class ReplicaMetricsManager:
         status_code: str,
     ):
         """Record per-request metrics."""
-        if not self._is_direct_ingress:
+        if not self._should_emit_request_ingress_metrics(protocol):
             return
 
         if self._cached_metrics_enabled:
@@ -1759,6 +1776,25 @@ class Replica:
         if self._initialization_latency is None:
             self._initialization_latency = time.time() - self._initialization_start_time
 
+    def _raise_if_multiplexing_with_direct_ingress(self):
+        """Reject model multiplexing on the ingress deployment under direct ingress.
+
+        Model multiplexing relies on the multiplexed model ID being propagated through
+        the proxy, which direct ingress bypasses (the model ID is never populated).
+
+        This runs after the user callable is initialized so it also catches
+        multiplexing that is wired up dynamically in the constructor (e.g.
+        `self._load_model = serve.multiplexed(...)(fn)`), which is invisible to the
+        static check performed at deploy time.
+        """
+        if self._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+            if _callable_uses_multiplexing(self._user_callable_wrapper._callable):
+                raise RuntimeError(
+                    "Model multiplexing (`@serve.multiplexed`) is not supported on the "
+                    "ingress deployment when direct ingress or HAProxy is enabled "
+                    "(RAY_SERVE_ENABLE_DIRECT_INGRESS)."
+                )
+
     async def initialize(
         self,
         deployment_config: Optional[DeploymentConfig],
@@ -1781,6 +1817,7 @@ class Replica:
                     self._user_callable_asgi_app = (
                         await self._user_callable_wrapper.initialize_callable()
                     )
+                    self._raise_if_multiplexing_with_direct_ingress()
                     self._user_callable_wrapper.start_user_loop_watchdog(
                         self._event_loop
                     )
@@ -2431,57 +2468,28 @@ class Replica:
 
         return tracing_ctx
 
-    async def _direct_ingress_unary_unary(
+    async def _gen_direct_ingress_grpc_response(
         self,
         service_method: str,
-        request_proto: Any,
         context: grpc._cython.cygrpc._ServicerContext,
-    ) -> bytes:
-        start_time = time.time()
-        if service_method == "/ray.serve.RayServeAPIService/Healthz":
-            healthy, message = await self._dataplane_health_check()
-            context.set_code(
-                grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
-            )
-            context.set_details(message)
-            self._metrics_manager.record_ingress_request_metrics(
-                protocol=RequestProtocol.GRPC,
-                method=service_method,
-                route=self._deployment_id.app_name,
-                app_name=self._deployment_id.app_name,
-                deployment_name=self._deployment_id.name,
-                latency_ms=(time.time() - start_time) * 1000.0,
-                is_error=not healthy,
-                status_code=(
-                    grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
-                ).name,
-            )
-            return HealthzResponse(message=message).SerializeToString()
+        *,
+        request_input: Any,
+        is_streaming: bool,
+    ) -> AsyncGenerator[bytes, None]:
+        """Shared generator for the four direct-ingress gRPC user-request handlers.
 
-        if service_method == "/ray.serve.RayServeAPIService/ListApplications":
-            # NOTE(edoakes): ListApplications may be used for health checking.
-            healthy, message = await self._dataplane_health_check()
-            context.set_code(
-                grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
-            )
-            context.set_details(message)
-            # ListApplications returns only the app name the replica is serving.
-            application_names = [self._deployment_id.app_name]
-            self._metrics_manager.record_ingress_request_metrics(
-                protocol=RequestProtocol.GRPC,
-                method=service_method,
-                route=self._deployment_id.app_name,
-                app_name=self._deployment_id.app_name,
-                deployment_name=self._deployment_id.name,
-                latency_ms=(time.time() - start_time) * 1000.0,
-                is_error=not healthy,
-                status_code=(
-                    grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
-                ).name,
-            )
-            return ListApplicationsResponse(
-                application_names=application_names
-            ).SerializeToString()
+        Yields serialized response message bytes (zero or more) and sets the final
+        gRPC status on `context` as a side effect. App-mismatch (NOT_FOUND) and
+        backpressure (RESOURCE_EXHAUSTED) short-circuit by yielding nothing.
+
+        The two axes that distinguish the four cardinalities are passed in:
+          - input axis: `request_input` is the deserialized request proto (unary
+            input) or a `gRPCInputStream` over the native request iterator
+            (client/bidi streaming input).
+          - output axis: `is_streaming` selects `call_user_generator` (many results)
+            vs. `call_user_method` (a single result, wrapped as a 1-item generator).
+        """
+        start_time = time.time()
 
         c = RayServegRPCContext(context)
         request_id = c.request_id() or generate_request_id()
@@ -2511,7 +2519,7 @@ class Replica:
                 is_error=True,
                 status_code=grpc.StatusCode.NOT_FOUND.name,
             )
-            return b""
+            return
 
         request_metadata = RequestMetadata(
             request_id=request_id,
@@ -2525,7 +2533,7 @@ class Replica:
             multiplexed_model_id="",
             route=self._deployment_id.app_name,
             tracing_context=self.get_grpc_tracing_context(c),
-            is_streaming=False,
+            is_streaming=is_streaming,
             is_direct_ingress=True,
             _client=format_grpc_peer_address(context.peer()),
         )
@@ -2541,43 +2549,45 @@ class Replica:
         method_info = self._user_callable_wrapper.get_user_method_info(
             request_metadata.call_method
         )
-        request_args = (request_proto,)
+        request_args = (request_input,)
         request_kwargs = (
             {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
             if method_info.takes_grpc_context_kwarg
             else {}
         )
 
-        async def call_unary():
-            yield await self._user_callable_wrapper.call_user_method(
+        if is_streaming:
+            result_gen = self._user_callable_wrapper.call_user_generator(
                 request_metadata, request_args, request_kwargs
             )
+        else:
+
+            async def call_unary():
+                yield await self._user_callable_wrapper.call_user_method(
+                    request_metadata, request_args, request_kwargs
+                )
+
+            result_gen = call_unary()
 
         with self._wrap_request(request_metadata) as status_code_callback:
             self._num_queued_requests += 1
             async with self._start_request(request_metadata):
                 self._num_queued_requests -= 1
 
-                # Use the generic disconnect detecting wrapper
-                result_gen = call_unary()
+                # Use the generic disconnect/timeout detecting wrapper.
                 replica_response_generator = ReplicaResponseGenerator(
                     result_gen,
                     timeout_s=self._grpc_options.request_timeout_s,
                 )
+                status = ResponseStatus(code=grpc.StatusCode.OK)
                 try:
-                    result = await replica_response_generator.__anext__()
+                    async for result in replica_response_generator:
+                        yield result.SerializeToString()
+                    # Apply any user-set code/details/trailing metadata once the
+                    # request completes successfully (sent as HTTP/2 trailers).
                     c._set_on_grpc_context(context)
-                    status = ResponseStatus(code=grpc.StatusCode.OK)
-
-                    # NOTE(edoakes): we need to fully consume the generator otherwise the
-                    # finalizers that run after the `yield` statement won't run. There might
-                    # be a cleaner way to structure this.
-                    try:
-                        await replica_response_generator.__anext__()
-                    except StopAsyncIteration:
-                        pass
                 except BaseException as e:
-                    # For gRPC requests, wrap exception with user-set status code
+                    # For gRPC requests, wrap exception with user-set status code.
                     e = self._maybe_wrap_grpc_exception(e, request_metadata)
                     status = get_grpc_response_status(
                         e,
@@ -2586,20 +2596,178 @@ class Replica:
                     )
                     raise e
                 finally:
+                    # Closing `result_gen` runs `call_user_generator`'s `finally`,
+                    # which cancels the unit running the user method (its task,
+                    # or the inline generator). This is a noop if the generator is
+                    # already exhausted.
+                    await result_gen.aclose()
                     # Record the status code for both success and error paths so
                     # ingress metrics are emitted for successful gRPC requests.
                     status_code_callback(status.code.name)
                     set_grpc_code_and_details(context, status)
 
-                return result.SerializeToString()
+    async def _maybe_handle_builtin_grpc_service(
+        self,
+        service_method: str,
+        context: grpc._cython.cygrpc._ServicerContext,
+    ) -> Optional[bytes]:
+        """Handle the built-in RayServeAPIService unary-unary methods.
+
+        `Healthz` and `ListApplications` are health-check-style endpoints that do
+        not dispatch to user code; both run the dataplane health check, set the
+        gRPC status, and record ingress metrics identically -- only the response
+        message differs. Returns the serialized response bytes if `service_method`
+        is one of them, otherwise None (the request targets a user-defined method).
+        """
+        if service_method not in (
+            "/ray.serve.RayServeAPIService/Healthz",
+            "/ray.serve.RayServeAPIService/ListApplications",
+        ):
+            return None
+
+        start_time = time.time()
+        healthy, message = await self._dataplane_health_check()
+        code = grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
+        context.set_code(code)
+        context.set_details(message)
+        self._metrics_manager.record_ingress_request_metrics(
+            protocol=RequestProtocol.GRPC,
+            method=service_method,
+            route=self._deployment_id.app_name,
+            app_name=self._deployment_id.app_name,
+            deployment_name=self._deployment_id.name,
+            latency_ms=(time.time() - start_time) * 1000.0,
+            is_error=not healthy,
+            status_code=code.name,
+        )
+
+        if service_method == "/ray.serve.RayServeAPIService/Healthz":
+            return HealthzResponse(message=message).SerializeToString()
+        # NOTE(edoakes): ListApplications may be used for health checking. It
+        # returns only the app name this replica is serving.
+        return ListApplicationsResponse(
+            application_names=[self._deployment_id.app_name]
+        ).SerializeToString()
+
+    async def _direct_ingress_unary_unary(
+        self,
+        service_method: str,
+        request_proto: Any,
+        context: grpc._cython.cygrpc._ServicerContext,
+    ) -> bytes:
+        builtin_response = await self._maybe_handle_builtin_grpc_service(
+            service_method, context
+        )
+        if builtin_response is not None:
+            return builtin_response
+
+        response_generator = self._gen_direct_ingress_grpc_response(
+            service_method,
+            context,
+            request_input=request_proto,
+            is_streaming=False,
+        )
+        # Fully consume the generator (so finalizers run) and return the response bytes,
+        # or empty bytes if none were produced (returning `None` to gRPC would cause
+        # serialization errors).
+        result = b""
+        async for message in response_generator:
+            result = message
+        return result
 
     async def _direct_ingress_unary_stream(
         self,
         service_method: str,
-        request: Any,
+        request_proto: Any,
         context: grpc._cython.cygrpc._ServicerContext,
     ):
-        raise NotImplementedError("unary_stream not implemented.")
+        response_generator = self._gen_direct_ingress_grpc_response(
+            service_method,
+            context,
+            request_input=request_proto,
+            is_streaming=True,
+        )
+        async for message in response_generator:
+            yield message
+
+    def _make_grpc_input_stream(
+        self, request_iterator: Any
+    ) -> Tuple[gRPCInputStream, Optional[gRPCDIReceiveStream]]:
+        """Build the gRPCInputStream the user method iterates over.
+
+        The native request iterator is bound to the replica's server event loop, so
+        a `gRPCDIReceiveStream` drains it on the server loop and forwards messages to
+        the user method.
+
+        The gRPCInputStream is built with a `cancel_event` that is set when the
+        client disconnects/errors mid-stream, so the user method sees
+        `is_cancelled()` and a graceful end (matching the proxy path) rather than a
+        raw gRPC error.
+
+        Args:
+            request_iterator: The native gRPC request iterator (bound to the server
+                event loop) for this client/bidirectional streaming request.
+
+        Returns:
+            (input_stream, receive_stream) where receive_stream is the bridge draining
+            the native iterator, to be torn down after the request completes.
+        """
+        cancel_event = asyncio.Event()
+        receive_stream = gRPCDIReceiveStream(
+            request_iterator,
+            self._user_callable_wrapper.event_loop,
+            cancel_event=cancel_event,
+        )
+        receive_stream.start()
+        return (
+            gRPCInputStream(receive_stream, cancel_event=cancel_event),
+            receive_stream,
+        )
+
+    async def _direct_ingress_stream_unary(
+        self,
+        service_method: str,
+        request_iterator: Any,
+        context: grpc._cython.cygrpc._ServicerContext,
+    ) -> bytes:
+        input_stream, receive_proxy = self._make_grpc_input_stream(request_iterator)
+        try:
+            response_generator = self._gen_direct_ingress_grpc_response(
+                service_method,
+                context,
+                request_input=input_stream,
+                is_streaming=False,
+            )
+            # Fully consume the generator (so finalizers run) and return the response
+            # bytes, or empty bytes if none were produced (returning `None` to gRPC
+            # would cause serialization errors).
+            result = b""
+            async for message in response_generator:
+                result = message
+            return result
+        finally:
+            if receive_proxy is not None:
+                receive_proxy.cancel()
+
+    async def _direct_ingress_stream_stream(
+        self,
+        service_method: str,
+        request_iterator: Any,
+        context: grpc._cython.cygrpc._ServicerContext,
+    ):
+        input_stream, receive_proxy = self._make_grpc_input_stream(request_iterator)
+        try:
+            response_generator = self._gen_direct_ingress_grpc_response(
+                service_method,
+                context,
+                request_input=input_stream,
+                is_streaming=True,
+            )
+            async for message in response_generator:
+                yield message
+        finally:
+            if receive_proxy is not None:
+                receive_proxy.cancel()
 
     def _direct_ingress_service_handler_factory(
         self, service_method: str, streaming_type: gRPCStreamingType
@@ -2607,9 +2775,10 @@ class Replica:
         if streaming_type == gRPCStreamingType.UNARY_STREAM:
 
             async def handler(*args, **kwargs):
-                return await self._direct_ingress_unary_stream(
+                async for result in self._direct_ingress_unary_stream(
                     service_method, *args, **kwargs
-                )
+                ):
+                    yield result
 
         elif streaming_type == gRPCStreamingType.UNARY_UNARY:
 
@@ -2621,12 +2790,17 @@ class Replica:
         elif streaming_type == gRPCStreamingType.STREAM_UNARY:
 
             async def handler(*args, **kwargs):
-                raise NotImplementedError("stream_unary not implemented.")
+                return await self._direct_ingress_stream_unary(
+                    service_method, *args, **kwargs
+                )
 
         elif streaming_type == gRPCStreamingType.STREAM_STREAM:
 
             async def handler(*args, **kwargs):
-                raise NotImplementedError("stream_stream not implemented.")
+                async for result in self._direct_ingress_stream_stream(
+                    service_method, *args, **kwargs
+                ):
+                    yield result
 
         else:
             raise ValueError(f"Unsupported streaming type: {streaming_type}")
@@ -3965,13 +4139,24 @@ class UserCallableWrapper:
 
         The user method is called in an asyncio `Task` and places its results on a
         `result_queue`. This method pulls and yields from the `result_queue`.
+
+        If this generator is closed before the user method finishes (e.g. the
+        client disconnected mid-stream), the unit running the user code is
+        cancelled so a `CancelledError` is raised inside the user generator: the
+        `call_future` task in separate-thread mode, or (inline) the user generator
+        itself in same-loop mode.
         """
         if not self._run_user_code_in_separate_thread:
             gen = await self._call_user_generator(
                 request_metadata, request_args, request_kwargs
             )
-            async for result in gen:
-                yield result
+            try:
+                async for result in gen:
+                    yield result
+            finally:
+                # User code runs inline; closing the wrapper injects a
+                # CancelledError into the user generator (see `_call_generator_async`).
+                await gen.aclose()
         else:
             result_queue = MessageQueue()
 
@@ -3989,9 +4174,17 @@ class UserCallableWrapper:
                 enqueue=_enqueue_thread_safe,
             )
 
-            async for messages in result_queue.fetch_messages_from_queue(call_future):
-                for msg in messages:
-                    yield msg
+            try:
+                async for messages in result_queue.fetch_messages_from_queue(
+                    call_future
+                ):
+                    for msg in messages:
+                        yield msg
+            finally:
+                # Cancel the user-code task so a CancelledError is raised inside the
+                # user method. No-op if it already completed.
+                if not call_future.done():
+                    call_future.cancel()
 
     @_run_user_code
     async def _call_user_generator(
@@ -4035,17 +4228,30 @@ class UserCallableWrapper:
             if inspect.iscoroutine(gen):
                 gen = await gen
 
-            if inspect.isgenerator(gen):
-                for result in gen:
-                    yield result
-            elif inspect.isasyncgen(gen):
-                async for result in gen:
-                    yield result
-            else:
-                raise TypeError(
-                    f"Called method '{user_method_info.name}' with "
-                    "`handle.options(stream=True)` but it did not return a generator."
-                )
+            try:
+                if inspect.isgenerator(gen):
+                    for result in gen:
+                        yield result
+                elif inspect.isasyncgen(gen):
+                    async for result in gen:
+                        yield result
+                else:
+                    raise TypeError(
+                        f"Called method '{user_method_info.name}' with "
+                        "`handle.options(stream=True)` but it did not return a "
+                        "generator."
+                    )
+            finally:
+                # If this wrapper is closed before the user generator finishes
+                # (e.g. the client disconnected), inject a CancelledError into the
+                # user's async generator so its cancellation handling runs. (Sync
+                # generators have no await points to cancel.) No-op if it already
+                # finished, in which case athrow raises StopAsyncIteration.
+                if inspect.isasyncgen(gen):
+                    try:
+                        await gen.athrow(asyncio.CancelledError())
+                    except (StopAsyncIteration, asyncio.CancelledError):
+                        pass
 
         def _call_generator_sync():
             gen = callable(*request_args, **request_kwargs)
