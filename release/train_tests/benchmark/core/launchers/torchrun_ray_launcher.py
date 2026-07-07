@@ -80,6 +80,8 @@ def run_with_torchrun(cfg: ExperimentConfig) -> Dict[str, Any]:
     from ray.util.placement_group import remove_placement_group
 
     env = dict(cfg.env_vars or {})
+    harness_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    runtime_env = {"working_dir": harness_root}
 
     @ray.remote(num_gpus=1, num_cpus=1)
     class _TorchDistWorker:
@@ -112,7 +114,9 @@ def run_with_torchrun(cfg: ExperimentConfig) -> Dict[str, Any]:
                 cfg, topology, world_size, master_addr, master_port, env
             )
 
-    actors, pg = create_gpu_actor_group(_TorchDistWorker, cfg.scaling.num_workers)
+    actors, pg = create_gpu_actor_group(
+        _TorchDistWorker, cfg.scaling.num_workers, runtime_env=runtime_env
+    )
     try:
         node_ips, topology, master_addr, master_port = elect_rendezvous(actors)
         logger.info(

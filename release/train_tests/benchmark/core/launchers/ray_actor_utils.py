@@ -41,7 +41,12 @@ def assign_topology(node_ips: List[str]) -> List[Dict[str, int]]:
     return topology
 
 
-def create_gpu_actor_group(actor_cls, num_workers: int, cpus_per_worker: int = 1):
+def create_gpu_actor_group(
+    actor_cls,
+    num_workers: int,
+    cpus_per_worker: int = 1,
+    runtime_env: Dict | None = None,
+):
     """One GPU bundle per worker via a PACK placement group; returns (actors, pg).
 
     The actor class must declare ``num_gpus=1``. PACK keeps a single-node job on
@@ -60,7 +65,8 @@ def create_gpu_actor_group(actor_cls, num_workers: int, cpus_per_worker: int = 1
         actor_cls.options(
             scheduling_strategy=PlacementGroupSchedulingStrategy(
                 placement_group=pg, placement_group_bundle_index=i
-            )
+            ),
+            runtime_env=runtime_env,
         ).remote()
         for i in range(num_workers)
     ]

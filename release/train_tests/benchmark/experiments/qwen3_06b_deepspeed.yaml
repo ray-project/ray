@@ -1,17 +1,18 @@
 # Qwen3-0.6B + DeepSpeed ZeRO — P0 quick performance-regression workload.
 #
-# Cluster shape: 1x g5.48xlarge (8x A10G-24GB) single node — cheapest
-# bf16-capable option. Activations (not params) are the memory constraint on
-# 24GB: at batch x seq, eager attention's B*H*S*S scores OOM, so we use SDPA
-# attention + gradient checkpointing and a modest batch. On A100-40GB you can
-# raise micro_batch_size to 8 and drop gradient_checkpointing.
+# Cluster shape: 1x g6e.12xlarge (4x L40S-48GB) single node. L40S is bf16-native
+# (Ada) with 2x the memory of A10G, and this 4-GPU shape is more schedulable
+# than the scarce 8-GPU g5.48xlarge. Activations (not params) are the memory
+# constraint: at batch x seq, eager attention's B*H*S*S scores are large, so we
+# use SDPA attention + gradient checkpointing and a modest batch. With 48GB you
+# have headroom to raise micro_batch_size or drop gradient_checkpointing.
 #
 # Parity baseline: same experiment with `--set launcher=torchrun_ray`.
 name: qwen3_06b_deepspeed
 adapter: deepspeed
 launcher: ray_train
 scaling:
-  num_workers: 8                 # 8x A10G on a single g5.48xlarge node
+  num_workers: 4                 # 4x L40S on a single g6e.12xlarge node
   use_gpu: true
 model:
   name: Qwen/Qwen3-0.6B          # HF model id; AutoModelForCausalLM.from_pretrained
@@ -29,7 +30,7 @@ data:
   # Qwen3's ~152k vocab makes the logits/loss head (batch x seq x vocab, upcast
   # to fp32 in cross-entropy) the memory bottleneck on 24GB, not the model body.
   # mbs=2 keeps the logits-grad allocation small enough to fit. Raise on A100.
-  micro_batch_size: 2           # per-GPU micro batch; global = 2 x 8 = 16 seqs/step
+  micro_batch_size: 2           # per-GPU micro batch; global = 2 x 4 = 8 seqs/step
   seq_len: 2048
   limit_training_rows: 8000
 training:

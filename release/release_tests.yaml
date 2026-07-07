@@ -2142,7 +2142,7 @@
       type: gpu
       post_build_script: byod_train_benchmark_deepspeed.sh
     anyscale_sdk_2026: true
-    cluster_compute: compute_configs/compute_gpu_8xA10G_aws.yaml
+    cluster_compute: compute_configs/compute_gpu_4xL40S_aws.yaml
 
   variations:
     - __suffix__: ray_train
