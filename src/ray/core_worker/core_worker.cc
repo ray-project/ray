@@ -2881,8 +2881,7 @@ Status CoreWorker::ExecuteTask(TaskExecutionMetadata &task) {
                                           /*add_local_ref=*/false,
                                           /*is_self=*/true);
     }
-    int64_t actor_generator_bp =
-        task.TaskSpec().ActorGeneratorBackpressureNumObjects();
+    int64_t actor_generator_bp = task.TaskSpec().ActorGeneratorBackpressureNumObjects();
     if (actor_generator_bp > 0) {
       // Shared waiter for all streaming-generator tasks on this actor.
       // check_signals matches what the per-task waiter uses (set in
