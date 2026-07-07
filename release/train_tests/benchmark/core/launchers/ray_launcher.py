@@ -8,6 +8,7 @@ only ``{"step": N}`` would otherwise shadow the final full metrics).
 
 import json
 import logging
+import os
 from datetime import datetime
 from typing import Any, Dict
 
@@ -38,11 +39,20 @@ def train_fn_per_worker(train_loop_config: Dict[str, Any]) -> None:
 
 
 def run_with_ray(cfg: ExperimentConfig) -> Dict[str, Any]:
-    run_config_kwargs = {}
+    # Train workers may be scheduled on a different node than the driver. Ship the
+    # benchmark package (the `core` module + adapters) to them via working_dir so
+    # they can unpickle the ExperimentConfig and import the adapter cross-node;
+    # otherwise workers fail with "No module named 'core'". Mirrors what the
+    # torchrun launcher does for its actor group.
+    harness_root = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
+    worker_runtime_env: Dict[str, Any] = {"working_dir": harness_root}
     # Experiment-declared env vars (if any) land in each worker process at launch
     # (before torch/CUDA init). Anything cluster-wide should be set on the cluster.
     if cfg.env_vars:
-        run_config_kwargs["worker_runtime_env"] = {"env_vars": dict(cfg.env_vars)}
+        worker_runtime_env["env_vars"] = dict(cfg.env_vars)
+    run_config_kwargs = {"worker_runtime_env": worker_runtime_env}
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn_per_worker,
