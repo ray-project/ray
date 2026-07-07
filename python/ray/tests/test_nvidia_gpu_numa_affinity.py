@@ -1,5 +1,3 @@
-import json
-
 import pytest
 
 import ray._private.utils as utils
@@ -37,12 +35,6 @@ def fake_affinity(monkeypatch):
     return affinity, set_calls
 
 
-def _status(monkeypatch):
-    return json.loads(
-        utils.os.environ[utils.RAY_EXPERIMENTAL_NVIDIA_GPU_NUMA_AFFINITY_STATUS_ENV_VAR]
-    )
-
-
 def test_nvidia_gpu_numa_affinity_disabled_by_default(monkeypatch, fake_affinity):
     affinity, set_calls = fake_affinity
     monkeypatch.delenv(utils.RAY_EXPERIMENTAL_NVIDIA_GPU_NUMA_AFFINITY_ENV_VAR, False)
@@ -52,7 +44,6 @@ def test_nvidia_gpu_numa_affinity_disabled_by_default(monkeypatch, fake_affinity
     assert original is None
     assert affinity["value"] == {0, 1, 2, 3}
     assert set_calls == []
-    assert _status(monkeypatch)["disabled_reason"] == "opt_in_not_enabled"
 
 
 def test_nvidia_gpu_numa_affinity_intersects_current_affinity(
@@ -75,7 +66,6 @@ def test_nvidia_gpu_numa_affinity_intersects_current_affinity(
     assert original == {0, 1, 2, 3}
     assert affinity["value"] == {2, 3}
     assert set_calls == [{2, 3}]
-    assert _status(monkeypatch)["selected_cpu_set"] == [2, 3]
 
     utils.reset_nvidia_gpu_numa_affinity(original)
     assert affinity["value"] == {0, 1, 2, 3}
@@ -98,7 +88,6 @@ def test_nvidia_gpu_numa_affinity_rejects_fractional_gpus(monkeypatch, fake_affi
     assert original is None
     assert affinity["value"] == {0, 1, 2, 3}
     assert set_calls == []
-    assert _status(monkeypatch)["disabled_reason"] == "fractional_gpu_resource"
 
 
 def test_nvidia_gpu_numa_affinity_rejects_multiple_gpu_cpu_sets(
@@ -124,4 +113,3 @@ def test_nvidia_gpu_numa_affinity_rejects_multiple_gpu_cpu_sets(
     assert original is None
     assert affinity["value"] == {0, 1, 2, 3}
     assert set_calls == []
-    assert _status(monkeypatch)["disabled_reason"] == "multiple_gpu_cpu_affinity_sets"

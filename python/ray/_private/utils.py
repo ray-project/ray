@@ -52,9 +52,6 @@ INT32_MAX = (2**31) - 1
 RAY_EXPERIMENTAL_NVIDIA_GPU_NUMA_AFFINITY_ENV_VAR = (
     "RAY_EXPERIMENTAL_NVIDIA_GPU_NUMA_AFFINITY"
 )
-RAY_EXPERIMENTAL_NVIDIA_GPU_NUMA_AFFINITY_STATUS_ENV_VAR = (
-    "RAY_EXPERIMENTAL_NVIDIA_GPU_NUMA_AFFINITY_STATUS"
-)
 
 
 pwd = None
@@ -320,13 +317,6 @@ def reset_visible_accelerator_env_vars(
             os.environ[env_var] = env_value
 
 
-def _record_nvidia_gpu_numa_affinity_status(**status) -> None:
-    os.environ[RAY_EXPERIMENTAL_NVIDIA_GPU_NUMA_AFFINITY_STATUS_ENV_VAR] = json.dumps(
-        status,
-        sort_keys=True,
-    )
-
-
 def _cpu_affinity_words_to_cpu_set(affinity_words) -> set:
     cpu_set = set()
     for word_index, word in enumerate(affinity_words):
@@ -368,19 +358,9 @@ def set_nvidia_gpu_numa_affinity_if_enabled() -> Optional[set]:
     from ray._private.ray_constants import env_bool
 
     if not env_bool(RAY_EXPERIMENTAL_NVIDIA_GPU_NUMA_AFFINITY_ENV_VAR, False):
-        _record_nvidia_gpu_numa_affinity_status(
-            enabled=False,
-            applied=False,
-            disabled_reason="opt_in_not_enabled",
-        )
         return None
 
     if not hasattr(os, "sched_getaffinity") or not hasattr(os, "sched_setaffinity"):
-        _record_nvidia_gpu_numa_affinity_status(
-            enabled=True,
-            applied=False,
-            disabled_reason="unsupported_platform",
-        )
         return None
 
     runtime_ctx = ray.get_runtime_context()
@@ -388,96 +368,35 @@ def set_nvidia_gpu_numa_affinity_if_enabled() -> Optional[set]:
     assigned_gpu_resource = runtime_ctx.get_assigned_resources().get("GPU", 0)
 
     if not accelerator_ids:
-        _record_nvidia_gpu_numa_affinity_status(
-            enabled=True,
-            applied=False,
-            disabled_reason="no_assigned_nvidia_gpu",
-            assigned_gpu_ids=[],
-            assigned_gpu_resource=assigned_gpu_resource,
-        )
         return None
 
     if assigned_gpu_resource != int(assigned_gpu_resource):
-        _record_nvidia_gpu_numa_affinity_status(
-            enabled=True,
-            applied=False,
-            disabled_reason="fractional_gpu_resource",
-            assigned_gpu_ids=[str(gpu_id) for gpu_id in accelerator_ids],
-            assigned_gpu_resource=assigned_gpu_resource,
-        )
         return None
 
     if int(assigned_gpu_resource) != len(accelerator_ids):
-        _record_nvidia_gpu_numa_affinity_status(
-            enabled=True,
-            applied=False,
-            disabled_reason="gpu_resource_id_count_mismatch",
-            assigned_gpu_ids=[str(gpu_id) for gpu_id in accelerator_ids],
-            assigned_gpu_resource=assigned_gpu_resource,
-        )
         return None
 
     try:
         gpu_ids = [int(gpu_id) for gpu_id in accelerator_ids]
     except (TypeError, ValueError):
-        _record_nvidia_gpu_numa_affinity_status(
-            enabled=True,
-            applied=False,
-            disabled_reason="unsupported_gpu_id_format",
-            assigned_gpu_ids=[str(gpu_id) for gpu_id in accelerator_ids],
-            assigned_gpu_resource=assigned_gpu_resource,
-        )
         return None
 
     gpu_cpu_sets = []
     for gpu_id in gpu_ids:
         gpu_cpu_set = _get_nvidia_gpu_cpu_affinity(gpu_id)
         if not gpu_cpu_set:
-            _record_nvidia_gpu_numa_affinity_status(
-                enabled=True,
-                applied=False,
-                disabled_reason="unknown_gpu_cpu_affinity",
-                assigned_gpu_ids=[str(gpu_id) for gpu_id in accelerator_ids],
-                assigned_gpu_resource=assigned_gpu_resource,
-            )
             return None
         gpu_cpu_sets.append(gpu_cpu_set)
 
     if len({frozenset(cpu_set) for cpu_set in gpu_cpu_sets}) > 1:
-        _record_nvidia_gpu_numa_affinity_status(
-            enabled=True,
-            applied=False,
-            disabled_reason="multiple_gpu_cpu_affinity_sets",
-            assigned_gpu_ids=[str(gpu_id) for gpu_id in accelerator_ids],
-            assigned_gpu_resource=assigned_gpu_resource,
-            gpu_cpu_sets=[sorted(cpu_set) for cpu_set in gpu_cpu_sets],
-        )
         return None
 
     original_affinity = set(os.sched_getaffinity(0))
     selected_cpu_set = original_affinity & gpu_cpu_sets[0]
     if not selected_cpu_set:
-        _record_nvidia_gpu_numa_affinity_status(
-            enabled=True,
-            applied=False,
-            disabled_reason="empty_affinity_intersection",
-            assigned_gpu_ids=[str(gpu_id) for gpu_id in accelerator_ids],
-            assigned_gpu_resource=assigned_gpu_resource,
-            original_affinity=sorted(original_affinity),
-            gpu_cpu_set=sorted(gpu_cpu_sets[0]),
-        )
         return None
 
     os.sched_setaffinity(0, selected_cpu_set)
-    _record_nvidia_gpu_numa_affinity_status(
-        enabled=True,
-        applied=True,
-        assigned_gpu_ids=[str(gpu_id) for gpu_id in accelerator_ids],
-        assigned_gpu_resource=assigned_gpu_resource,
-        original_affinity=sorted(original_affinity),
-        selected_cpu_set=sorted(selected_cpu_set),
-        gpu_cpu_set=sorted(gpu_cpu_sets[0]),
-    )
     return original_affinity
 
 
