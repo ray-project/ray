@@ -49,6 +49,12 @@ test --test_env=RAY_USAGE_STATS_REPORT_URL="http://127.0.0.1:8000"
 # Enable cluster mode for OSX and Windows. By default, Ray
 # will not allow multinode OSX and Windows clusters.
 test --test_env=RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER="1"
+# Work around an NVIDIA driver bug that breaks NCCL cuMem host buffer
+# registration on non-P2P GPUs (e.g. T4) with CUDA error 217 (peer access not
+# supported), failing multi-GPU collectives. Affects drivers 560-575
+# (CUDA 12.6-12.9); NVIDIA fixed it in r580+ (see NVIDIA/nccl#1838).
+# TODO(elliot-barn): remove once the CI GPU fleet is on driver r580 or newer.
+test --test_env=NCCL_CUMEM_HOST_ENABLE=0
 # This is needed for some core tests to run correctly
 build:windows --enable_runfiles
 # TODO(mehrdadn): Revert the "-\\.(asm|S)$" exclusion when this Bazel bug
