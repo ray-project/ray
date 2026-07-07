@@ -17,7 +17,7 @@ import requests
 import uvicorn
 from fastapi import FastAPI, Request, Response
 
-from ray._common.network_utils import find_free_port, get_localhost_ip
+from ray._common.network_utils import find_free_port
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
@@ -575,10 +575,8 @@ def _make_api(temp_dir, backend_configs):
 def test_routers_and_targets_prefers_colocated_router():
     """Each HAProxy prefers the router co-located on its own node, and falls
     back to the deterministic pick when none is co-located."""
-    local = get_localhost_ip()
+    local = "10.0.0.1"
 
-    # _target_to_server rewrites a co-located router's host to the local host;
-    # a remote router keeps its node IP.
     colocated = [
         BackendConfig(
             name="llm",
