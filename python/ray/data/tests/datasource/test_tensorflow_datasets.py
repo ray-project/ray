@@ -34,5 +34,31 @@ def test_from_tf_e2e(ray_start_regular_shared_2_cpus):
     _check_usage_record(["FromItems"])
 
 
+def test_from_tf_ragged(ray_start_regular_shared_2_cpus):
+    # Regression test for https://github.com/ray-project/ray/issues/61570.
+    # `as_numpy_iterator` can't convert ragged tensors, so `from_tf` needs to
+    # convert them itself instead of crashing. The element spec must stay ragged
+    # after slicing to reproduce the crash, so use a `ragged_rank=2` tensor:
+    # `from_tensor_slices` peels off the outer dimension and leaves each element
+    # as a (ragged) `RaggedTensor`.
+    import tensorflow as tf
+
+    tf_dataset = tf.data.Dataset.from_tensor_slices(
+        tf.ragged.constant([[[1, 2], [3]], [[4, 5, 6]]])
+    )
+    assert isinstance(tf_dataset.element_spec, tf.RaggedTensorSpec), (
+        "Test dataset must have a ragged element spec to exercise the fix"
+    )
+
+    ray_dataset = ray.data.from_tf(tf_dataset)
+
+    actual_data = extract_values("item", ray_dataset.take_all())
+    expected_data = [[[1, 2], [3]], [[4, 5, 6]]]
+    assert len(actual_data) == len(expected_data)
+    for actual, expected in zip(actual_data, expected_data):
+        # Each row is an object-dtype array of variable-length arrays.
+        assert [list(subarray) for subarray in actual] == expected
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
