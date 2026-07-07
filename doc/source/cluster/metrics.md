@@ -129,8 +129,7 @@ For a production environment, view [Prometheus documentation](https://prometheus
 
 ### Troubleshooting
 #### Using Ray configurations in Prometheus with Homebrew on macOS X
-Homebrew installs Prometheus as a service that is automatically launched for you.
-To configure these services, you cannot simply pass in the config files as command line arguments.
+Homebrew installs Prometheus as a service that is automatically launched for you. To configure these services, you cannot simply pass in the config files as command line arguments.
 
 Instead, change the --config-file line in `/usr/local/etc/prometheus.args` to read `--config.file /tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
 
@@ -142,8 +141,7 @@ You may receive the following error:
 
 ![trust error](https://raw.githubusercontent.com/ray-project/Images/master/docs/troubleshooting/prometheus-trusted-developer.png)
 
-When downloading binaries from the internet, macOS requires that the binary be signed by a trusted developer ID.
-Many developers are not on macOS's trusted list. Users can manually override this requirement.
+When downloading binaries from the internet, macOS requires that the binary be signed by a trusted developer ID. Many developers are not on macOS's trusted list. Users can manually override this requirement.
 
 See [these instructions](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac) for how to override the restriction and install or run the application.
 
@@ -154,15 +152,13 @@ To fix this issue, employ an automated shell script for seamlessly transferring 
 
 (scrape-metrics)=
 ## Scraping metrics
-Ray runs a metrics agent per node to export system and application metrics. Each metrics agent collects metrics from the local
-node and exposes them in a Prometheus format. You can then scrape each endpoint to access the metrics.
+Ray runs a metrics agent per node to export system and application metrics. Each metrics agent collects metrics from the local node and exposes them in a Prometheus format. You can then scrape each endpoint to access the metrics.
 
 To scrape the endpoints, we need to ensure service discovery, which allows Prometheus to find the metrics agents' endpoints on each node.
 
 ### Auto-discovering metrics endpoints
 
-You can allow Prometheus to dynamically find the endpoints to scrape by using Prometheus' [file based service discovery](https://prometheus.io/docs/guides/file-sd/#installing-configuring-and-running-prometheus).
-Use auto-discovery to export Prometheus metrics when using the Ray {ref}`cluster launcher <vm-cluster-quick-start>`, as node IP addresses can often change as the cluster scales up and down.
+You can allow Prometheus to dynamically find the endpoints to scrape by using Prometheus' [file based service discovery](https://prometheus.io/docs/guides/file-sd/#installing-configuring-and-running-prometheus). Use auto-discovery to export Prometheus metrics when using the Ray {ref}`cluster launcher <vm-cluster-quick-start>`, as node IP addresses can often change as the cluster scales up and down.
 
 Ray auto-generates a Prometheus [service discovery file](https://prometheus.io/docs/guides/file-sd/#installing-configuring-and-running-prometheus) on the head node to facilitate metrics agents' service discovery. This function allows you to scrape all metrics in the cluster without knowing their IPs. The following information guides you on the setup.
 
@@ -206,8 +202,7 @@ scrape_configs:
 
 ### Manually discovering metrics endpoints
 
-If you know the IP addresses of the nodes in your Ray Cluster, you can configure Prometheus to read metrics from a static list of endpoints.
-Set a fixed port that Ray should use to export metrics. If you're using the VM Cluster Launcher, pass ``--metrics-export-port=<port>`` to ``ray start``.  If you're using KubeRay, specify ``rayStartParams.metrics-export-port`` in the RayCluster configuration file. You must specify the port on all nodes in the cluster.
+If you know the IP addresses of the nodes in your Ray Cluster, you can configure Prometheus to read metrics from a static list of endpoints. Set a fixed port that Ray should use to export metrics. If you're using the VM Cluster Launcher, pass ``--metrics-export-port=<port>`` to ``ray start``.  If you're using KubeRay, specify ``rayStartParams.metrics-export-port`` in the RayCluster configuration file. You must specify the port on all nodes in the cluster.
 
 If you do not know the IP addresses of the nodes in your Ray Cluster, you can also programmatically discover the endpoints by reading the Ray Cluster information. The following example uses a Python script and the {py:obj}`ray.nodes` API to find the metrics agents' URLs, by combining the ``NodeManagerAddress`` with the ``MetricsExportPort``.
 
@@ -290,8 +285,7 @@ Go to the location of the binary and run Grafana using the built-in configuratio
 ./bin/grafana-server --config /tmp/ray/session_latest/metrics/grafana/grafana.ini web
 ```
 
-Access Grafana using the default grafana URL, `http://localhost:3000`.
-See the default dashboard by going to dashboards -> manage -> Ray -> Default Dashboard. The same {ref}`metric graphs <system-metrics>` are accessible in {ref}`Ray Dashboard <observability-getting-started>` after you integrate Grafana with Ray Dashboard.
+Access Grafana using the default grafana URL, `http://localhost:3000`. See the default dashboard by going to dashboards -> manage -> Ray -> Default Dashboard. The same {ref}`metric graphs <system-metrics>` are accessible in {ref}`Ray Dashboard <observability-getting-started>` after you integrate Grafana with Ray Dashboard.
 
 ```{admonition} Note
 :class: note
@@ -301,18 +295,15 @@ If this is your first time using Grafana, login with the username: `admin` and p
 
 ![grafana login](images/graphs.png)
 
-**Troubleshooting**
-***Using Ray configurations in Grafana with Homebrew on macOS X***
+**Troubleshooting** ***Using Ray configurations in Grafana with Homebrew on macOS X***
 
-Homebrew installs Grafana as a service that is automatically launched for you.
-Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.
+Homebrew installs Grafana as a service that is automatically launched for you. Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.
 
 Instead, update the `/usr/local/etc/grafana/grafana.ini` file so that it matches the contents of `/tmp/ray/session_latest/metrics/grafana/grafana.ini`.
 
 You can then start or restart the services with `brew services start grafana` and `brew services start prometheus`.
 
-***Loading Ray Grafana configurations with Docker Compose***
-In the Ray container, the symbolic link "/tmp/ray/session_latest/metrics" points to the latest active Ray session. However, Docker does not support the mounting of symbolic links on shared volumes and you may fail to load the Grafana configuration files and default dashboards.
+***Loading Ray Grafana configurations with Docker Compose*** In the Ray container, the symbolic link "/tmp/ray/session_latest/metrics" points to the latest active Ray session. However, Docker does not support the mounting of symbolic links on shared volumes and you may fail to load the Grafana configuration files and default dashboards.
 
 To fix this issue, employ an automated shell script for seamlessly transferring the necessary Grafana configurations and dashboards from the Ray container to a shared volume. To ensure a proper setup, mount the shared volume on the respective path for the container, which contains the recommended configurations and default dashboards to initiate Grafana servers.
 

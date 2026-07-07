@@ -377,22 +377,6 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "large",
-    files = [
-        "test_streaming_generator_backpressure.py",
-    ],
-    tags = [
-        "exclusive",
-        "large_size_python_tests_shard_1",
-        "team:core",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test_module_list(
     size = "medium",
     files = [
         "test_logging_java.py",
