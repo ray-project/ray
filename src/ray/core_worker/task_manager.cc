@@ -815,11 +815,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     return false;
   }
   if (backpressure_threshold != -1) {
-    auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
-    if (signal_it == ref_stream_execution_signal_callbacks_.end()) {
-      execution_signal_callback(Status::NotFound("Stream is deleted."));
-      return false;
-    }
     if (consumption_update_callback) {
       ref_stream_consumption_update_callbacks_[generator_id] =
           consumption_update_callback;
