@@ -12,16 +12,6 @@ from ray.data._internal.usage import collector
 from ray.data._internal.usage.execution_callback import UsageCallback
 
 
-# Fake metric readers injected through the callback's seams so tests never
-# read from the real cluster.
-def _zero_spilled_bytes() -> int:
-    return 0
-
-
-def _zero_dead_node_count() -> int:
-    return 0
-
-
 @pytest.fixture
 def mock_record(monkeypatch):
     recorded = []
@@ -49,6 +39,10 @@ def reset_collector(monkeypatch):
     # ``ray.init()`` force-sets # RAY_USAGE_STATS_ENABLED=0 for driver-created clusters, so the env var can't
     # keep the collector's opt-out gate open. Patch the gate directly instead.
     monkeypatch.setattr(collector, "usage_stats_enabled", lambda: True)
+    # The callback reads these module-level cluster metric readers; pin them to
+    # zero so tests never touch the real cluster and deltas are deterministic.
+    monkeypatch.setattr(collector, "cluster_spilled_bytes", lambda: 0)
+    monkeypatch.setattr(collector, "cluster_dead_node_count", lambda: 0)
     yield
     collector.reset_for_testing()
 
@@ -57,11 +51,7 @@ def test_round_trip_payload_shape(reset_collector, mock_record, executor):
     """End-to-end: a full callback lifecycle yields a valid payload with
     anonymized plan tree, plan_str, env, and performance filled in."""
     ds = ray.data.range(1).map_batches(lambda b: b)
-    callback = UsageCallback(
-        ds._logical_plan,
-        get_cluster_spilled_bytes=_zero_spilled_bytes,
-        get_dead_node_count=_zero_dead_node_count,
-    )
+    callback = UsageCallback(ds._logical_plan)
     callback.before_execution_starts(executor)
     callback.after_execution_succeeds(executor)
 
@@ -104,11 +94,7 @@ def test_detected_issues_in_payload(reset_collector, mock_record, monkeypatch):
         (IssueType.HIGH_MEMORY, "ReadRange"),
     ]
     ds = ray.data.range(1).map_batches(lambda b: b)
-    callback = UsageCallback(
-        ds._logical_plan,
-        get_cluster_spilled_bytes=_zero_spilled_bytes,
-        get_dead_node_count=_zero_dead_node_count,
-    )
+    callback = UsageCallback(ds._logical_plan)
     callback.before_execution_starts(executor)
     callback.after_execution_succeeds(executor)
 
@@ -139,11 +125,7 @@ def test_self_zip_one_usage_id_per_operator(reset_collector, mock_record, execut
     ds = ray.data.range(1).map_batches(lambda b: b)
     zipped = ds.zip(ds)
 
-    callback = UsageCallback(
-        zipped._logical_plan,
-        get_cluster_spilled_bytes=_zero_spilled_bytes,
-        get_dead_node_count=_zero_dead_node_count,
-    )
+    callback = UsageCallback(zipped._logical_plan)
     callback.before_execution_starts(executor)
     usage_id_map = collector.build_usage_id_map(zipped._logical_plan)
 
@@ -160,11 +142,7 @@ def test_self_zip_one_usage_id_per_operator(reset_collector, mock_record, execut
 def test_detected_issues_absent_defaults_empty(reset_collector, mock_record, executor):
     """A run with no detected issues leaves detected_issues empty."""
     ds = ray.data.range(1)
-    callback = UsageCallback(
-        ds._logical_plan,
-        get_cluster_spilled_bytes=_zero_spilled_bytes,
-        get_dead_node_count=_zero_dead_node_count,
-    )
+    callback = UsageCallback(ds._logical_plan)
     callback.before_execution_starts(executor)
     callback.after_execution_succeeds(executor)
 
@@ -215,11 +193,7 @@ def test_limit_anonymized_to_class_name(reset_collector, executor):
     """Limit's runtime name embeds the row count (e.g. ``limit=10``); telemetry
     must collapse it back to ``Limit`` so the value isn't recorded."""
     ds = ray.data.range(100).limit(10)
-    callback = UsageCallback(
-        ds._logical_plan,
-        get_cluster_spilled_bytes=_zero_spilled_bytes,
-        get_dead_node_count=_zero_dead_node_count,
-    )
+    callback = UsageCallback(ds._logical_plan)
     callback.before_execution_starts(executor)
     entry = collector.get_executions()[callback._execution_id]
     plan_ops = [op.name for op in entry.workload.ops]
@@ -233,11 +207,7 @@ def test_does_not_record_when_disabled_via_env_var(
     """Privacy gate: RAY_DATA_USAGE_DISABLED=1 must produce zero side effects."""
     monkeypatch.setenv("RAY_DATA_USAGE_DISABLED", "1")
     ds = ray.data.range(10)
-    callback = UsageCallback(
-        ds._logical_plan,
-        get_cluster_spilled_bytes=_zero_spilled_bytes,
-        get_dead_node_count=_zero_dead_node_count,
-    )
+    callback = UsageCallback(ds._logical_plan)
     callback.before_execution_starts(executor)
     callback.after_execution_succeeds(executor)
 
@@ -252,11 +222,7 @@ def test_does_not_record_when_usage_stats_opted_out(
     ``ray disable-usage-stats``, etc.) must also disable Ray Data collection."""
     monkeypatch.setattr(collector, "usage_stats_enabled", lambda: False)
     ds = ray.data.range(10)
-    callback = UsageCallback(
-        ds._logical_plan,
-        get_cluster_spilled_bytes=_zero_spilled_bytes,
-        get_dead_node_count=_zero_dead_node_count,
-    )
+    callback = UsageCallback(ds._logical_plan)
     callback.before_execution_starts(executor)
     callback.after_execution_succeeds(executor)
 
@@ -274,11 +240,7 @@ def test_does_not_raise_on_internal_errors(
         lambda *_: (_ for _ in ()).throw(RuntimeError("boom")),
     )
     ds = ray.data.range(10)
-    callback = UsageCallback(
-        ds._logical_plan,
-        get_cluster_spilled_bytes=_zero_spilled_bytes,
-        get_dead_node_count=_zero_dead_node_count,
-    )
+    callback = UsageCallback(ds._logical_plan)
     callback.before_execution_starts(executor)  # must not raise
     assert mock_record == []
 

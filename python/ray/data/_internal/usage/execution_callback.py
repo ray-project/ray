@@ -13,9 +13,9 @@ import uuid
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.execution_callback import ExecutionCallback
-from ray.data._internal.usage import collector
+from ray.data._internal.usage import collector, util
 from ray.data._internal.usage.collector import (
-    MetricReader,
+    OpConfig,
     PipelinePerf,
     UsageInfo,
     WorkloadInfo,
@@ -24,6 +24,7 @@ from ray.data._internal.usage.collector import (
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data._internal.issue_detection.issue_detector import IssueType
+    from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 
 logger = logging.getLogger(__name__)
@@ -32,22 +33,8 @@ logger = logging.getLogger(__name__)
 class UsageCallback(ExecutionCallback):
     """Records per-execution usage data."""
 
-    def __init__(
-        self,
-        logical_plan: "LogicalPlan",
-        get_cluster_spilled_bytes: MetricReader = collector.cluster_spilled_bytes,
-        get_dead_node_count: MetricReader = collector.cluster_dead_node_count,
-        anonymize_op_name: collector.OpNameFn = collector.anonymize_op_name,
-        collect_env: collector.EnvFn = collector.collect_env,
-        collect_op_config: collector.OpConfigFn = collector.collect_op_config,
-    ):
+    def __init__(self, logical_plan: "LogicalPlan"):
         self._logical_plan = logical_plan
-        # Anonymizes each operator's name for the workload payload.
-        self._anonymize_op_name = anonymize_op_name
-        # Builds the env payload; overridable so subclasses collect richer env.
-        self._collect_env = collect_env
-        # Builds each operator's config entry in the workload payload.
-        self._collect_op_config = collect_op_config
         # Globally unique per-execution id, used for deduplicating executions for usage collection
         self._execution_id = uuid.uuid4().hex
         # id(logical_op) -> usage_id, built while assembling the payload and used
@@ -56,8 +43,6 @@ class UsageCallback(ExecutionCallback):
         # The workload tree and usage-id map derive only from the (immutable)
         # logical plan, so they're computed once in the start, cached for the execution end
         self._workload: Optional[WorkloadInfo] = None
-        self._get_cluster_spilled_bytes = get_cluster_spilled_bytes
-        self._get_dead_node_count = get_dead_node_count
         self._started_at: Optional[float] = None
         self._spilled_at_start: Optional[int] = None
         self._spilled_at_end: Optional[int] = None
@@ -65,6 +50,9 @@ class UsageCallback(ExecutionCallback):
         self._dead_nodes_at_end: Optional[int] = None
         self._executor: Optional["StreamingExecutor"] = None
         self._finished = False
+        # Failure captured at finish; ``None`` on success or before start.
+        # Exposed to subclasses so they can record the failure type.
+        self._error: Optional[BaseException] = None
 
     # --- ExecutionCallback interface ---
 
@@ -94,6 +82,7 @@ class UsageCallback(ExecutionCallback):
         try:
             self._executor = executor
             self._finished = True
+            self._error = error
             self.on_collection_end(executor, error)
             collector.record_usage_info(self.build_usage_info())
         except Exception:
@@ -101,29 +90,42 @@ class UsageCallback(ExecutionCallback):
 
     # --- extension surface ---
 
+    def collect_op_config(self, op: "LogicalOperator") -> Optional[OpConfig]:
+        """Build the config entry for one operator in the workload payload."""
+        return collector.collect_op_config(op)
+
+    def anonymize_op_name(self, op: "LogicalOperator") -> str:
+        """Anonymized name for one operator in the workload payload.
+
+        The default policy lives in
+        ``ray.data._internal.usage.util.anonymize_op_name`` because it's a
+        utility shared with the legacy ``record_operators_usage`` path.
+        """
+        return util.anonymize_op_name(op)
+
     def on_collection_start(self, executor: "StreamingExecutor") -> None:
         """Called once before execution starts. Records start timing and the
         cluster metric baselines used to compute per-execution deltas."""
         self._started_at = time.time()
-        self._spilled_at_start = self._get_cluster_spilled_bytes()
-        self._dead_nodes_at_start = self._get_dead_node_count()
+        self._spilled_at_start = collector.cluster_spilled_bytes()
+        self._dead_nodes_at_start = collector.cluster_dead_node_count()
 
     def on_collection_end(
         self, executor: "StreamingExecutor", error: Optional[Exception]
     ) -> None:
         """Called once after execution succeeds or fails. Records the ending
         cluster metric samples."""
-        self._spilled_at_end = self._get_cluster_spilled_bytes()
-        self._dead_nodes_at_end = self._get_dead_node_count()
+        self._spilled_at_end = collector.cluster_spilled_bytes()
+        self._dead_nodes_at_end = collector.cluster_dead_node_count()
 
     def build_usage_info(self) -> UsageInfo:
         """Assemble the usage collection payload for this execution."""
         if self._workload is None:
             self._usage_id_map = collector.build_usage_id_map(
-                self._logical_plan, self._anonymize_op_name
+                self._logical_plan, self.anonymize_op_name
             )
             self._workload = collector.collect_workload(
-                self._logical_plan, self._collect_op_config, self._anonymize_op_name
+                self._logical_plan, self.collect_op_config, self.anonymize_op_name
             )
         performance = None
         if self._finished:
@@ -138,7 +140,7 @@ class UsageCallback(ExecutionCallback):
         return UsageInfo(
             id=self._execution_id,
             started_at=self._started_at,
-            env=self._collect_env(),
+            env=collector.collect_env(),
             workload=self._workload,
             performance=performance,
             detected_issues=collector.collect_issues(
@@ -157,7 +159,7 @@ class UsageCallback(ExecutionCallback):
             (
                 issue_type,
                 collector.physical_op_name_with_id(
-                    operator, self._usage_id_map, self._anonymize_op_name
+                    operator, self._usage_id_map, self.anonymize_op_name
                 ),
             )
             for issue_type, operator in manager.get_detected_issues()
