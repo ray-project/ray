@@ -77,9 +77,16 @@ def _get_node_resource_spec_and_count(
     """Get the unique node resource specs and their count in the cluster,
     scoped to a single subcluster.
 
-    ``subcluster`` is the value at ``SUBCLUSTER_LABEL_KEY`` to match
-    against. The default ``DEFAULT_SUBCLUSTER`` (None) selects nodes with
-    no subcluster label.
+    The returned specs are the scalable worker shapes used to build scale-up
+    requests, so the head node is deliberately excluded:
+
+      * Head node *instances* are not counted (they can't be used to schedule tasks).
+      * A node group *config* dedicated to the head node is dropped as well
+        (``max_count == 1`` and a shape matching the running head node).
+        Otherwise its shape would be requested as an extra node even though the
+        head can't be scaled. Groups that can also host workers
+        (``max_count > 1``) or that have a non-head shape are kept, including
+        worker types with zero running instances (scale-from-zero).
 
     Quirk: the returned dict also contains a ``node_type: 0`` (ex: `"m5.xlarge": 0`) entry for every
     node type registered in ``cluster_config.node_group_configs`` that
@@ -91,8 +98,38 @@ def _get_node_resource_spec_and_count(
     stamped with the validation label, which the autoscaler can never
     satisfy.
     TODO: get labels from cluster config so the catalog can be filtered.
+
+    Args:
+        subcluster: The value at ``SUBCLUSTER_LABEL_KEY`` to match against.
+            The default ``DEFAULT_SUBCLUSTER`` (None) selects nodes with no
+            subcluster label.
+
+    Returns:
+        A mapping from each scalable worker node shape to its current count of
+        running instances (0 for shapes discovered only from the cluster
+        config).
     """
     nodes_resource_spec_count = defaultdict(int)
+
+    # Split nodes into the head node and worker nodes. There is exactly one head
+    # node, and it can't be scaled up, so it's excluded from the counts and used
+    # below to identify a node group dedicated to the head. Worker nodes are
+    # further scoped to the requester's subcluster, so foreign subclusters'
+    # shapes and counts don't leak into this requester's active / pending
+    # bundles. Head detection is intentionally not subcluster-scoped: the head
+    # node group is global.
+    head_node_spec = None
+    worker_node_resources = []
+    for node in ray.nodes():
+        if not node["Alive"]:
+            continue
+        if "node:__internal_head__" in node["Resources"]:
+            head_node_spec = _NodeResourceSpec.from_bundle(node["Resources"])
+            continue
+        if (node.get("Labels") or {}).get(
+            SUBCLUSTER_LABEL_KEY, DEFAULT_SUBCLUSTER
+        ) == subcluster:
+            worker_node_resources.append(node["Resources"])
 
     cluster_config = ray._private.state.state.get_cluster_config()
     if cluster_config and cluster_config.node_group_configs:
@@ -103,21 +140,16 @@ def _get_node_resource_spec_and_count(
             node_resource_spec = _NodeResourceSpec.from_bundle(
                 node_group_config.resources
             )
+            # Skip a node group dedicated to the head node, since it can't be scaled up and thus shouldn't be counted towards the current cluster capacity or used as a template for scaling up.
+            if (
+                node_group_config.max_count == 1
+                and node_resource_spec == head_node_spec
+            ):
+                continue
+
             nodes_resource_spec_count[node_resource_spec] = 0
 
-    # Filter out the head node and nodes outside the requester's subcluster.
-    node_resources = [
-        node["Resources"]
-        for node in ray.nodes()
-        if (
-            node["Alive"]
-            and "node:__internal_head__" not in node["Resources"]
-            and (node.get("Labels") or {}).get(SUBCLUSTER_LABEL_KEY, DEFAULT_SUBCLUSTER)
-            == subcluster
-        )
-    ]
-
-    for r in node_resources:
+    for r in worker_node_resources:
         node_resource_spec = _NodeResourceSpec.from_bundle(r)
         nodes_resource_spec_count[node_resource_spec] += 1
 

@@ -444,6 +444,10 @@ cc_binary(
 
 py_test_module_list(
     size = "medium",
+    data = [
+        "counter.so",
+        "plus.so",
+    ],
     extra_srcs = [],
     files = [
         "test_python_call_cpp.py",

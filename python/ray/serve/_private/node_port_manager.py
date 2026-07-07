@@ -52,6 +52,11 @@ class PortAllocator:
                 f"node {self._node_id}; returning it to the available pool."
             )
 
+    def has_pending_quarantine(self) -> bool:
+        """True if any port is still quarantined (drains expired entries first)."""
+        self._drain_expired_quarantine()
+        return bool(self._quarantined_ports)
+
     def update_port_if_missing(self, replica_id: str, port: Optional[int]):
         """Update port value for a replica."""
         if replica_id in self._allocated_ports:
@@ -226,12 +231,15 @@ class NodePortManager:
     def prune(cls, node_id_to_alive_replica_ids: Dict[str, Set[str]]):
         # this doesn't need to be behind a lock because it will already be called from same thread
         for node_id in list(cls._node_managers):
-            if node_id not in node_id_to_alive_replica_ids:
+            manager = cls._node_managers[node_id]
+            alive = node_id_to_alive_replica_ids.get(node_id, set())
+            # Release ports of replicas no longer alive (quarantines them).
+            manager._prune_replica_ports(alive)
+            # Keep the manager until its quarantine drains; dropping it early
+            # would discard the deadline and let the port be reused immediately.
+            if not alive and not manager.has_pending_quarantine():
                 logger.info(f"Removing node manager for node {node_id}")
                 del cls._node_managers[node_id]
-            else:
-                manager = cls._node_managers[node_id]
-                manager._prune_replica_ports(node_id_to_alive_replica_ids[node_id])
 
     @classmethod
     def update_ports(cls, ingress_replicas_info: List[Tuple[str, str, int, int]]):
@@ -308,3 +316,10 @@ class NodePortManager:
             return self._grpc_allocator.is_port_allocated(replica_id)
         else:
             raise ValueError(f"Unsupported protocol: {protocol}")
+
+    def has_pending_quarantine(self) -> bool:
+        """True if either allocator still holds a quarantined port."""
+        # Evaluate both (no short-circuit) so each allocator drains expired ports.
+        http_pending = self._http_allocator.has_pending_quarantine()
+        grpc_pending = self._grpc_allocator.has_pending_quarantine()
+        return http_pending or grpc_pending

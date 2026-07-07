@@ -96,14 +96,9 @@ steps:
     tags: train
     instance_type: small
     commands:
-      # TEMP: --run-flaky-tests forces the flaky-classified torchft target to
-      # run (intersection with the flaky set) so we get a real pass/fail signal
-      # for the gloo-timeout fix. REVERT before merge -- once the test is
-      # un-flaked this flips to "No tests to run".
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
         --python-version 3.10 --build-name mltorchft-py3.10
         --only-tags torchft
-        --run-flaky-tests
         --except-tags needs_credentials,data_integration
     depends_on: [ "mltorchft", "forge" ]
 

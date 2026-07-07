@@ -106,7 +106,6 @@ class FakeWorker : public WorkerInterface {
   void SetBundleId(const BundleID &bundle_id) override { bundle_id_ = bundle_id; }
   bool IsRegistered() override { return false; }
   rpc::CoreWorkerClientInterface *rpc_client() override { return nullptr; }
-  bool IsAvailableForScheduling() const override { return true; }
   void SetJobId(const JobID &job_id) override {}
   const ActorID &GetRootDetachedActorId() const override {
     return root_detached_actor_id_;

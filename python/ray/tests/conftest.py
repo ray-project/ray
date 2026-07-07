@@ -70,7 +70,10 @@ def pre_envs(monkeypatch):
 
 
 def wait_for_redis_to_start(
-    redis_ip_address: str, redis_port: bool, password=None, username=None
+    redis_ip_address: str,
+    redis_port: int,
+    password: Optional[str] = None,
+    username: Optional[str] = None,
 ):
     """Wait for a Redis server to be available.
 
@@ -80,8 +83,8 @@ def wait_for_redis_to_start(
     Args:
         redis_ip_address: The IP address of the redis server.
         redis_port: The port of the redis server.
-        username: The username of the Redis server.
         password: The password of the Redis server.
+        username: The username of the Redis server.
 
     Raises:
         Exception: An exception is raised if we could not connect with Redis.

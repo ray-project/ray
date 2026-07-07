@@ -564,20 +564,20 @@ class PlacementGroupState(StateSchema):
     is_detached: Optional[bool] = state_column(filterable=True, detail=True)
     #: The scheduling stats of the placement group.
     stats: Optional[dict] = state_column(filterable=False, detail=True)
-    #: The node label key used for label-domain scheduling
-    #: (e.g. "ray.io/gpu-domain"). Empty string if the placement group
-    #: does not use label-domain scheduling.
+    #: The topology strategy for this placement group: a dict mapping each
+    #: topology label key (e.g. "ray.io/gpu-domain") to a placement strategy
+    #: (e.g. "STRICT_PACK"). Empty dict if the placement group does not use
+    #: topology-aware scheduling.
     #:
     #: NOTE: This field is experimental and may change in the future.
-    label_domain_key: Optional[str] = state_column(filterable=False, detail=True)
-    #: The selected label domain values for label-domain-aware scheduling.
-    #: Maps the domain label key to the chosen value
-    #: (e.g. {"ray.io/gpu-domain": "rack-1"}).
+    topology_strategy: Optional[dict] = state_column(filterable=False, detail=True)
+    #: Topology assignments: a dict mapping each topology label key to the
+    #: value the scheduler has selected for this PG (e.g.
+    #: {"ray.io/gpu-domain": "rack-1"}). Empty dict if no topology values
+    #: have been selected yet.
     #:
     #: NOTE: This field is experimental and may change in the future.
-    label_domain_assignments: Optional[dict] = state_column(
-        filterable=False, detail=True
-    )
+    topology_assignments: Optional[dict] = state_column(filterable=False, detail=True)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -918,7 +918,7 @@ class RuntimeEnvState(StateSchema):
     #: The latency of creating the runtime environment.
     #: Available if the runtime env is successfully created.
     creation_time_ms: Optional[float] = state_column(
-        filterable=False, format_fn=Humanify.timestamp
+        filterable=False, format_fn=Humanify.duration
     )
     #: The node id of this runtime environment.
     node_id: str = state_column(filterable=True)
@@ -1072,10 +1072,10 @@ class TaskSummaries:
         total_actor_scheduled = 0
 
         for task in tasks:
-            key = task["func_or_class_name"]
+            key = task.get("name") or task.get("func_or_class_name")
             if key not in summary:
                 summary[key] = TaskSummaryPerFuncOrClassName(
-                    func_or_class_name=task["func_or_class_name"],
+                    func_or_class_name=key,
                     type=task["type"],
                 )
             task_summary = summary[key]
@@ -1172,7 +1172,7 @@ class TaskSummaries:
 
             # Use name first which allows users to customize the name of
             # their remote function call using the name option.
-            func_name = task["name"] or task["func_or_class_name"]
+            func_name = task.get("name") or task.get("func_or_class_name")
             task_id = task["task_id"]
             type_enum = TaskType.DESCRIPTOR.values_by_name[task["type"]].number
 

@@ -24,13 +24,13 @@ namespace observability {
 
 RayEventRecorder::RayEventRecorder(
     rpc::EventAggregatorClient &event_aggregator_client,
-    instrumented_io_context &io_service,
+    std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
     size_t max_buffer_size,
     std::string_view metric_source,
     ray::observability::MetricInterface &dropped_events_counter,
     const NodeID &node_id)
     : event_aggregator_client_(event_aggregator_client),
-      periodical_runner_(PeriodicalRunner::Create(io_service)),
+      periodical_runner_(std::move(periodical_runner)),
       max_buffer_size_(max_buffer_size),
       metric_source_(metric_source),
       buffer_(max_buffer_size),

@@ -4,12 +4,11 @@ ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
 COPY python/deplocks/llm/rayllm_*.lock ./
-COPY python/requirements/llm/patches/vllm-trial-import-patch ./
 COPY python/requirements/llm/patches/vllm-cuda-visible-devices-patch ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
 # Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
-ARG VLLM_SCRIPTS_REF="v0.22.0"
+ARG VLLM_SCRIPTS_REF="v0.23.0"
 
 RUN <<EOF
 #!/bin/bash
@@ -37,9 +36,6 @@ uv pip install --system --no-cache-dir --no-deps \
     --no-verify-hashes \
     -r "rayllm_${PYTHON_CODE}_${CUDA_CODE}.lock"
 
-# Temporarily patch fixes from https://github.com/vllm-project/vllm/pull/39873
-# until the pinned vLLM release includes it.
-VLLM_IMPORT_UTILS_PATCH="$(pwd)/vllm-trial-import-patch"
 # Fix RayExecutorV2 GPU collision when multiple engines share a node.
 # Remove this patch once https://github.com/vllm-project/vllm/pull/44466 is merged.
 VLLM_CUDA_VISIBLE_DEVICES_PATCH="$(pwd)/vllm-cuda-visible-devices-patch"
@@ -65,7 +61,6 @@ PY
 )"
 (
     cd "${VLLM_SITE_PACKAGES}"
-    git apply "${VLLM_IMPORT_UTILS_PATCH}"
     git apply "${VLLM_CUDA_VISIBLE_DEVICES_PATCH}"
 )
 

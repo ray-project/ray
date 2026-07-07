@@ -27,7 +27,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.utils import get_random_string
+from ray.serve._private.utils import _callable_uses_multiplexing, get_random_string
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
@@ -363,6 +363,9 @@ class ServeControllerClient:
                     deployment_config=deployment._deployment_config,
                     version=deployment._version or get_random_string(),
                     route_prefix=app.route_prefix if is_ingress else None,
+                    uses_multiplexing=_callable_uses_multiplexing(
+                        deployment.func_or_class
+                    ),
                 )
 
                 deployment_args_proto = DeploymentArgs()
@@ -384,6 +387,9 @@ class ServeControllerClient:
                 deployment_args_proto.ingress_request_router = deployment_args[
                     "ingress_request_router"
                 ]
+                deployment_args_proto.uses_multiplexing = deployment_args[
+                    "uses_multiplexing"
+                ]
 
                 deployment_args_list.append(deployment_args_proto.SerializeToString())
 
@@ -395,7 +401,7 @@ class ServeControllerClient:
                 app.name
             ] = application_args_proto.SerializeToString()
 
-        # Validate applications before sending to controller
+        # Validate applications before sending to controller.
         self._check_ingress_deployments(built_apps)
 
         ray.get(
@@ -405,6 +411,7 @@ class ServeControllerClient:
         )
 
         handles = []
+        ready_apps = []
         for app in built_apps:
             # The deployment state is not guaranteed to be created after
             # deploy_application returns; the application state manager will
@@ -414,17 +421,27 @@ class ServeControllerClient:
 
             if wait_for_applications_running:
                 self._wait_for_application_running(app.name)
-                if app.route_prefix is not None:
-                    url_part = " at " + self._root_url + app.route_prefix
-                else:
-                    url_part = ""
-                logger.info(f"Application '{app.name}' is ready{url_part}.")
+                ready_apps.append(app)
 
             handles.append(
                 self.get_handle(
                     app.ingress_deployment_name, app.name, check_exists=False
                 )
             )
+
+        # Wait for the proxies to be serving before declaring the applications
+        # ready, so the "is ready" log line only prints once requests can
+        # actually be routed to the applications.
+        self.wait_for_proxies_serving(
+            wait_for_applications_running=wait_for_applications_running
+        )
+
+        for app in ready_apps:
+            if app.route_prefix is not None:
+                url_part = " at " + self._root_url + app.route_prefix
+            else:
+                url_part = ""
+            logger.info(f"Application '{app.name}' is ready{url_part}.")
 
         return handles
 

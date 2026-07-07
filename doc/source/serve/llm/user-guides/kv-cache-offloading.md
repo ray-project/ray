@@ -4,7 +4,7 @@
 Extend KV cache capacity by offloading to CPU memory or local disk for larger batch sizes and reduced GPU memory pressure.
 
 :::{note}
-Ray Serve doesn't provide KV cache offloading out of the box, but integrates seamlessly with vLLM solutions. This guide demonstrates one such integration: LMCache.
+Ray Serve doesn't provide KV cache offloading out of the box, but it integrates with vLLM solutions. This guide demonstrates one such integration: LMCache.
 :::
 
 
@@ -266,4 +266,4 @@ Extending KV cache beyond local GPU memory introduces overhead for managing and 
 ## See also
 
 - {doc}`Prefill/decode disaggregation <prefill-decode>` - Deploy LLMs with separated prefill and decode phases
-- [LMCache documentation](https://docs.lmcache.ai/) - Comprehensive LMCache configuration and features
+- [LMCache documentation](https://docs.lmcache.ai/) - LMCache configuration and features

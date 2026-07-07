@@ -57,12 +57,11 @@ describe("normalizeAccelerators", () => {
       utilization: 90,
       memoryUsed: 1024, // Converted to MiB
       memoryTotal: 4096, // Converted to MiB
-      processesPids: [{ pid: 456, memoryUsage: 512 }], // Converted to MiB
       rawTpu: tpus[0],
     });
   });
 
-  it("filters out tpus with <= 0 memoryTotal", () => {
+  it("does not filter out tpus with <= 0 memoryTotal", () => {
     const tpus: TPUStats[] = [
       {
         name: "tpu-1",
@@ -76,7 +75,25 @@ describe("normalizeAccelerators", () => {
     ];
 
     const result = normalizeAccelerators(undefined, tpus);
-    expect(result).toHaveLength(0);
+    expect(result).toHaveLength(1);
+  });
+
+  it("handles missing memory metrics for tpus", () => {
+    const tpus: any[] = [
+      {
+        name: "tpu-1",
+        index: 0,
+        tpuType: "v5e",
+        tpuTopology: "2x2",
+        tensorcoreUtilization: 90,
+        // memoryUsed and memoryTotal missing
+      },
+    ];
+
+    const result = normalizeAccelerators(undefined, tpus as TPUStats[]);
+    expect(result).toHaveLength(1);
+    expect(result[0].memoryUsed).toBeNaN();
+    expect(result[0].memoryTotal).toBeNaN();
   });
 
   it("combines both gpus and tpus", () => {
