@@ -154,11 +154,6 @@ class DataConfig:
         """True iff Ray Train V2's ScalingPolicy will register training resources
         with the AutoscalingCoordinator for this run.
 
-        Ray Train V2's ScalingPolicy registers training resources with the
-        AutoscalingCoordinator, which adjusts each executor's share accordingly.
-        Under Ray Train V1 there is no scaling policy, so DataConfig must reserve
-        training resources via exclude_resources instead to avoid Ray Data
-        over-booking the cluster.
         """
         from ray.train.v2._internal.constants import is_v2_enabled
 
