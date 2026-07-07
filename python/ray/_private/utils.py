@@ -49,6 +49,13 @@ if TYPE_CHECKING:
 
 INT32_MAX = (2**31) - 1
 
+RAY_EXPERIMENTAL_NVIDIA_GPU_NUMA_AFFINITY_ENV_VAR = (
+    "RAY_EXPERIMENTAL_NVIDIA_GPU_NUMA_AFFINITY"
+)
+RAY_EXPERIMENTAL_NVIDIA_GPU_NUMA_AFFINITY_STATUS_ENV_VAR = (
+    "RAY_EXPERIMENTAL_NVIDIA_GPU_NUMA_AFFINITY_STATUS"
+)
+
 
 pwd = None
 if sys.platform != "win32":
@@ -311,6 +318,173 @@ def reset_visible_accelerator_env_vars(
             os.environ.pop(env_var, None)
         else:
             os.environ[env_var] = env_value
+
+
+def _record_nvidia_gpu_numa_affinity_status(**status) -> None:
+    os.environ[RAY_EXPERIMENTAL_NVIDIA_GPU_NUMA_AFFINITY_STATUS_ENV_VAR] = json.dumps(
+        status,
+        sort_keys=True,
+    )
+
+
+def _cpu_affinity_words_to_cpu_set(affinity_words) -> set:
+    cpu_set = set()
+    for word_index, word in enumerate(affinity_words):
+        word_value = int(word)
+        bit_offset = word_index * 64
+        while word_value:
+            lowest_bit = word_value & -word_value
+            cpu_set.add(bit_offset + lowest_bit.bit_length() - 1)
+            word_value ^= lowest_bit
+    return cpu_set
+
+
+def _get_nvidia_gpu_cpu_affinity(gpu_id: int) -> set:
+    import ray._private.thirdparty.pynvml as pynvml
+
+    cpu_count = os.cpu_count() or 1024
+    cpu_set_size = max(1, (cpu_count + 63) // 64)
+    try:
+        pynvml.nvmlInit()
+        try:
+            handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_id)
+            affinity_words = pynvml.nvmlDeviceGetCpuAffinity(handle, cpu_set_size)
+            return _cpu_affinity_words_to_cpu_set(affinity_words)
+        finally:
+            pynvml.nvmlShutdown()
+    except pynvml.NVMLError:
+        return set()
+
+
+def set_nvidia_gpu_numa_affinity_if_enabled() -> Optional[set]:
+    """Optionally bind this worker to CPUs local to assigned NVIDIA GPUs.
+
+    This experimental hook is deliberately narrow. It only acts when explicitly
+    enabled, the worker has whole assigned GPU resources, the assigned GPU IDs
+    can be mapped through vendored NVML, and the GPU-local CPU set intersects
+    the process' existing scheduler affinity. The returned set is the original
+    scheduler affinity and should be restored after normal tasks complete.
+    """
+    from ray._private.ray_constants import env_bool
+
+    if not env_bool(RAY_EXPERIMENTAL_NVIDIA_GPU_NUMA_AFFINITY_ENV_VAR, False):
+        _record_nvidia_gpu_numa_affinity_status(
+            enabled=False,
+            applied=False,
+            disabled_reason="opt_in_not_enabled",
+        )
+        return None
+
+    if not hasattr(os, "sched_getaffinity") or not hasattr(os, "sched_setaffinity"):
+        _record_nvidia_gpu_numa_affinity_status(
+            enabled=True,
+            applied=False,
+            disabled_reason="unsupported_platform",
+        )
+        return None
+
+    runtime_ctx = ray.get_runtime_context()
+    accelerator_ids = runtime_ctx.get_accelerator_ids().get("GPU", [])
+    assigned_gpu_resource = runtime_ctx.get_assigned_resources().get("GPU", 0)
+
+    if not accelerator_ids:
+        _record_nvidia_gpu_numa_affinity_status(
+            enabled=True,
+            applied=False,
+            disabled_reason="no_assigned_nvidia_gpu",
+            assigned_gpu_ids=[],
+            assigned_gpu_resource=assigned_gpu_resource,
+        )
+        return None
+
+    if assigned_gpu_resource != int(assigned_gpu_resource):
+        _record_nvidia_gpu_numa_affinity_status(
+            enabled=True,
+            applied=False,
+            disabled_reason="fractional_gpu_resource",
+            assigned_gpu_ids=[str(gpu_id) for gpu_id in accelerator_ids],
+            assigned_gpu_resource=assigned_gpu_resource,
+        )
+        return None
+
+    if int(assigned_gpu_resource) != len(accelerator_ids):
+        _record_nvidia_gpu_numa_affinity_status(
+            enabled=True,
+            applied=False,
+            disabled_reason="gpu_resource_id_count_mismatch",
+            assigned_gpu_ids=[str(gpu_id) for gpu_id in accelerator_ids],
+            assigned_gpu_resource=assigned_gpu_resource,
+        )
+        return None
+
+    try:
+        gpu_ids = [int(gpu_id) for gpu_id in accelerator_ids]
+    except (TypeError, ValueError):
+        _record_nvidia_gpu_numa_affinity_status(
+            enabled=True,
+            applied=False,
+            disabled_reason="unsupported_gpu_id_format",
+            assigned_gpu_ids=[str(gpu_id) for gpu_id in accelerator_ids],
+            assigned_gpu_resource=assigned_gpu_resource,
+        )
+        return None
+
+    gpu_cpu_sets = []
+    for gpu_id in gpu_ids:
+        gpu_cpu_set = _get_nvidia_gpu_cpu_affinity(gpu_id)
+        if not gpu_cpu_set:
+            _record_nvidia_gpu_numa_affinity_status(
+                enabled=True,
+                applied=False,
+                disabled_reason="unknown_gpu_cpu_affinity",
+                assigned_gpu_ids=[str(gpu_id) for gpu_id in accelerator_ids],
+                assigned_gpu_resource=assigned_gpu_resource,
+            )
+            return None
+        gpu_cpu_sets.append(gpu_cpu_set)
+
+    if len({frozenset(cpu_set) for cpu_set in gpu_cpu_sets}) > 1:
+        _record_nvidia_gpu_numa_affinity_status(
+            enabled=True,
+            applied=False,
+            disabled_reason="multiple_gpu_cpu_affinity_sets",
+            assigned_gpu_ids=[str(gpu_id) for gpu_id in accelerator_ids],
+            assigned_gpu_resource=assigned_gpu_resource,
+            gpu_cpu_sets=[sorted(cpu_set) for cpu_set in gpu_cpu_sets],
+        )
+        return None
+
+    original_affinity = set(os.sched_getaffinity(0))
+    selected_cpu_set = original_affinity & gpu_cpu_sets[0]
+    if not selected_cpu_set:
+        _record_nvidia_gpu_numa_affinity_status(
+            enabled=True,
+            applied=False,
+            disabled_reason="empty_affinity_intersection",
+            assigned_gpu_ids=[str(gpu_id) for gpu_id in accelerator_ids],
+            assigned_gpu_resource=assigned_gpu_resource,
+            original_affinity=sorted(original_affinity),
+            gpu_cpu_set=sorted(gpu_cpu_sets[0]),
+        )
+        return None
+
+    os.sched_setaffinity(0, selected_cpu_set)
+    _record_nvidia_gpu_numa_affinity_status(
+        enabled=True,
+        applied=True,
+        assigned_gpu_ids=[str(gpu_id) for gpu_id in accelerator_ids],
+        assigned_gpu_resource=assigned_gpu_resource,
+        original_affinity=sorted(original_affinity),
+        selected_cpu_set=sorted(selected_cpu_set),
+        gpu_cpu_set=sorted(gpu_cpu_sets[0]),
+    )
+    return original_affinity
+
+
+def reset_nvidia_gpu_numa_affinity(original_affinity: Optional[set]) -> None:
+    """Restore the scheduler affinity captured by the NUMA affinity hook."""
+    if original_affinity is not None and hasattr(os, "sched_setaffinity"):
+        os.sched_setaffinity(0, original_affinity)
 
 
 class Unbuffered(object):

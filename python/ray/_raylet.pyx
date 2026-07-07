@@ -2089,9 +2089,13 @@ cdef execute_task_with_cancellation_handler(
     # an actor task and we don't want to reset it.
     if (<int>task_type != <int>TASK_TYPE_ACTOR_TASK):
         original_visible_accelerator_env_vars = ray._private.utils.set_visible_accelerator_ids()
+        original_nvidia_gpu_numa_affinity = (
+            ray._private.utils.set_nvidia_gpu_numa_affinity_if_enabled()
+        )
         omp_num_threads_overriden = ray._private.utils.set_omp_num_threads_if_unset()
     else:
         original_visible_accelerator_env_vars = None
+        original_nvidia_gpu_numa_affinity = None
         omp_num_threads_overriden = False
 
     # Initialize the actor if this is an actor creation task. We do this here
@@ -2195,6 +2199,10 @@ cdef execute_task_with_cancellation_handler(
             current_task_id = None
 
         if (<int>task_type == <int>TASK_TYPE_NORMAL_TASK):
+            if original_nvidia_gpu_numa_affinity is not None:
+                ray._private.utils.reset_nvidia_gpu_numa_affinity(
+                    original_nvidia_gpu_numa_affinity
+                )
             if original_visible_accelerator_env_vars:
                 # Reset the visible accelerator env vars for normal tasks, since they may be reused.
                 ray._private.utils.reset_visible_accelerator_env_vars(original_visible_accelerator_env_vars)
