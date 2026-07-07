@@ -50,9 +50,6 @@ class UsageCallback(ExecutionCallback):
         self._dead_nodes_at_end: Optional[int] = None
         self._executor: Optional["StreamingExecutor"] = None
         self._finished = False
-        # Failure captured at finish; ``None`` on success or before start.
-        # Exposed to subclasses so they can record the failure type.
-        self._error: Optional[BaseException] = None
 
     # --- ExecutionCallback interface ---
 
@@ -82,7 +79,6 @@ class UsageCallback(ExecutionCallback):
         try:
             self._executor = executor
             self._finished = True
-            self._error = error
             self.on_collection_end(executor, error)
             collector.record_usage_info(self.build_usage_info())
         except Exception:
@@ -114,7 +110,8 @@ class UsageCallback(ExecutionCallback):
         self, executor: "StreamingExecutor", error: Optional[Exception]
     ) -> None:
         """Called once after execution succeeds or fails. Records the ending
-        cluster metric samples."""
+        cluster metric samples. ``error`` is the failure (or ``None`` on
+        success); subclasses may override to capture it."""
         self._spilled_at_end = collector.cluster_spilled_bytes()
         self._dead_nodes_at_end = collector.cluster_dead_node_count()
 
