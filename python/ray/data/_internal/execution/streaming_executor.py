@@ -14,6 +14,7 @@ from ray.data._internal.execution.backpressure_policy import (
     BackpressurePolicy,
     get_backpressure_policies,
 )
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import (
@@ -219,13 +220,17 @@ class StreamingExecutor(Executor, threading.Thread):
                 )
 
         # Setup the streaming DAG topology and start the runner thread.
-        self._topology = build_streaming_topology(dag, self._options)
+        self._block_ref_counter = BlockRefCounter()
+        self._topology = build_streaming_topology(
+            dag, self._options, self._block_ref_counter
+        )
 
         self._resource_manager = ResourceManager(
             self._topology,
             self._options,
             lambda: self._cluster_autoscaler.get_total_resources(),
             self._data_context,
+            self._block_ref_counter,
         )
 
         # Constructed once per executor (not per scheduling iteration) so the
@@ -343,6 +348,9 @@ class StreamingExecutor(Executor, threading.Thread):
                 op.shutdown(timer, force=force)
 
             self._clear_topology_queues_post_shutdown(force, exception)
+            # Queues have been drained; any remaining Ray Core callbacks that fire
+            # after this point should be no-ops.
+            self._block_ref_counter.clear()
 
             min_ = round(timer.min(), 3)
             max_ = round(timer.max(), 3)

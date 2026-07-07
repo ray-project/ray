@@ -12,6 +12,9 @@ from ray.data._internal.actor_autoscaler import (
     ActorPoolScalingRequest,
     DefaultActorAutoscaler,
 )
+from ray.data._internal.actor_autoscaler.default_actor_autoscaler import (
+    _get_max_scale_up,
+)
 from ray.data._internal.cluster_autoscaler import DefaultClusterAutoscaler
 from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -955,6 +958,24 @@ def test_autoscaling_config_validation_negative_upscaling_threshold(
                 actor_pool_max_upscaling_delta=5,
             ),
         )
+
+
+def test_get_max_scale_up_tolerates_float_drift():
+    """Regression test for #64291.
+
+    A budget can carry tiny float drift (e.g. ``gpu=-1e-16``) from chained
+    arithmetic. ``_get_max_scale_up`` reads raw fields (non-negativity assert +
+    ``floordiv``), so this must not trip the assert or yield a negative
+    scale-up. ``ExecutionResources`` rounds at construction, so the drift
+    collapses to 0.
+    """
+    actor_pool = MagicMock()
+    actor_pool.per_actor_resource_usage = MagicMock(
+        return_value=ExecutionResources(cpu=1.0, gpu=0.25, memory=0.0)
+    )
+    # gpu drift rounds to 0 -> 0 actors fit on the gpu dimension -> scale-up 0.
+    budget = ExecutionResources(cpu=4, gpu=-1e-16, memory=0.0)
+    assert _get_max_scale_up(actor_pool, budget) == 0
 
 
 if __name__ == "__main__":
