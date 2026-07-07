@@ -356,7 +356,6 @@ py_test_module_list(
         "test_streaming_generator_2.py",
         "test_streaming_generator_3.py",
         "test_streaming_generator_4.py",
-        "test_streaming_generator_backpressure.py",
         "test_task_metrics.py",
         "test_tempdir.py",
         "test_tls_auth.py",
@@ -369,6 +368,22 @@ py_test_module_list(
     tags = [
         "exclusive",
         "medium_size_python_tests_shard_1",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "large",
+    files = [
+        "test_streaming_generator_backpressure.py",
+    ],
+    tags = [
+        "exclusive",
+        "large_size_python_tests_shard_1",
         "team:core",
     ],
     deps = [

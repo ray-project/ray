@@ -1174,6 +1174,7 @@
 
 - name: "tpch_q2_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1188,6 +1189,7 @@
 
 - name: "tpch_q3_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1208,6 +1210,7 @@
 
 - name: "tpch_q4_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1222,6 +1225,7 @@
 
 - name: "tpch_q5_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1236,6 +1240,7 @@
 
 - name: "tpch_q6_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1250,6 +1255,7 @@
 
 - name: "tpch_q7_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1264,9 +1270,18 @@
 
 - name: "tpch_q8_{{scaling}}"
   python: "3.10"
+  frequency: "{{frequency}}"
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: []
+      frequency: []
+    adjustments:
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+      - with:
+          scaling: autoscaling
+          frequency: manual
 
   cluster:
     anyscale_sdk_2026: true
@@ -1284,18 +1299,10 @@
 
 - name: "tpch_q9_{{scaling}}"
   python: "3.10"
-  frequency: "{{frequency}}"
+  frequency: manual
   matrix:
     setup:
-      scaling: []
-      frequency: []
-    adjustments:
-      - with:
-          scaling: fixed_size
-          frequency: nightly
-      - with:
-          scaling: autoscaling
-          frequency: nightly
+      scaling: [fixed_size, autoscaling]
 
   cluster:
     anyscale_sdk_2026: true
@@ -1313,6 +1320,7 @@
 
 - name: "tpch_q10_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1327,6 +1335,7 @@
 
 - name: "tpch_q11_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1341,6 +1350,7 @@
 
 - name: "tpch_q12_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1355,9 +1365,18 @@
 
 - name: "tpch_q13_{{scaling}}"
   python: "3.10"
+  frequency: "{{frequency}}"
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: []
+      frequency: []
+    adjustments:
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+      - with:
+          scaling: autoscaling
+          frequency: manual
 
   cluster:
     anyscale_sdk_2026: true
@@ -1369,6 +1388,7 @@
 
 - name: "tpch_q14_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1383,9 +1403,18 @@
 
 - name: "tpch_q15_{{scaling}}"
   python: "3.10"
+  frequency: "{{frequency}}"
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: []
+      frequency: []
+    adjustments:
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+      - with:
+          scaling: autoscaling
+          frequency: manual
 
   cluster:
     anyscale_sdk_2026: true
@@ -1397,6 +1426,7 @@
 
 - name: "tpch_q17_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1411,6 +1441,7 @@
 
 - name: "tpch_q18_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1425,6 +1456,7 @@
 
 - name: "tpch_q20_{{scaling}}"
   python: "3.10"
+  frequency: manual
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -1439,9 +1471,18 @@
 
 - name: "tpch_q21_{{scaling}}"
   python: "3.10"
+  frequency: "{{frequency}}"
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: []
+      frequency: []
+    adjustments:
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+      - with:
+          scaling: autoscaling
+          frequency: manual
 
   cluster:
     anyscale_sdk_2026: true
@@ -1453,9 +1494,18 @@
 
 - name: "tpch_q22_{{scaling}}"
   python: "3.10"
+  frequency: "{{frequency}}"
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: []
+      frequency: []
+    adjustments:
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+      - with:
+          scaling: autoscaling
+          frequency: manual
 
   cluster:
     anyscale_sdk_2026: true

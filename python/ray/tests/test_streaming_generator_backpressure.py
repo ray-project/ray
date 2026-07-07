@@ -819,6 +819,10 @@ def test_actor_generator_backpressure_zero_value_rejected(shutdown_only):
                 yield 0
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="This test uses os._exit(0), which can report an access violation on Windows.",
+)
 def test_actor_generator_backpressure_reclaim_on_owner_death(shutdown_only):
     namespace = "actor_generator_backpressure_owner_death"
     actor_name = f"actor_generator_backpressure_owner_death_actor_{os.getpid()}"
@@ -887,6 +891,10 @@ os._exit(0)
         ray.kill(reporter)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="This test uses os._exit(0), which can report an access violation on Windows.",
+)
 def test_actor_generator_backpressure_owner_death_unblocks_task_waiter(shutdown_only):
     namespace = "actor_generator_backpressure_owner_death_waiter"
     actor_name = f"actor_generator_backpressure_owner_death_waiter_actor_{os.getpid()}"
@@ -951,6 +959,10 @@ os._exit(0)
         ray.kill(reporter)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="This test uses os._exit(0), which can report an access violation on Windows.",
+)
 def test_actor_generator_backpressure_owner_death_skips_between_yield_work(
     shutdown_only,
 ):

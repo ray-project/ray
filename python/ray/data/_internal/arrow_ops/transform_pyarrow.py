@@ -416,17 +416,17 @@ def unify_schemas(
     if not overrides:
         raise pyarrow_exception
 
-    # Apply overrides to schemas
+    # Apply overrides to schemas. Rebuild each schema once by scanning its
+    # fields a single time, rather than calling Schema.set() per override:
+    # set() copies the whole schema on every call, which is O(n^2) when
+    # many/all columns diverge. This is O(fields + overrides) per schema.
     updated_schemas = []
     for schema in schemas_to_unify:
-        for name, new_type in overrides.items():
-            try:
-                idx = schema.get_field_index(name)
-                field = schema.field(name).with_type(new_type)
-                schema = schema.set(idx, field)
-            except KeyError:
-                pass
-        updated_schemas.append(schema)
+        fields = [
+            field.with_type(overrides[field.name]) if field.name in overrides else field
+            for field in schema
+        ]
+        updated_schemas.append(pyarrow.schema(fields, metadata=schema.metadata))
     schemas_to_unify = updated_schemas
 
     # Final unification with overrides applied
