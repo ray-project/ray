@@ -1888,6 +1888,41 @@ class TestDataOpTask:
         assert bytes_read == 108
         assert len(fetcher._pending_deferred) == 1
 
+    def test_threaded_size_bytes_none_still_consumes_pair(
+        self, ray_start_regular_shared
+    ):
+        """The threaded metadata-fallback path must not return None when the
+        fetched metadata's ``size_bytes`` is unset: the pair was already
+        deferred, and a None return would make ``on_data_ready`` hand the same
+        pair back on the next call, deferring (and eventually emitting) it
+        twice."""
+        gen = create_stub_streaming_gen(block_nbytes=[100])
+        task = DataOpTask(0, gen, BlockRefCounter(), "test_op")
+        fetcher = ThreadedMetadataFetcher()  # fetch thread not needed
+        block_ref, meta_ref = ray.put(b"stub-block"), ray.put(b"stub-meta")
+        meta_bytes = pickle.dumps(
+            BlockMetadataWithSchema(
+                num_rows=1,
+                size_bytes=None,
+                exec_stats=None,
+                task_exec_stats=None,
+                input_files=None,
+                schema=None,
+            )
+        )
+        with patch(
+            "ray.data._internal.execution.metadata_fetcher"
+            ".get_local_object_locations",
+            return_value={},
+        ), patch(
+            "ray.data._internal.execution.metadata_fetcher.ray.get",
+            return_value=meta_bytes,
+        ):
+            size = fetcher.in_data_ready_get_object_size(task, block_ref, meta_ref)
+        # Consumed: 0, not None (None would mean "retry the same pair").
+        assert size == 0
+        assert len(fetcher._pending_deferred) == 1
+
     def test_on_data_ready_branches_with_fake_fetcher(self, ray_start_regular_shared):
         """Mock the fetcher interface to drive ``on_data_ready``'s per-pair
         outcomes deterministically — no cluster timing or polling.

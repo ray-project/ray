@@ -442,7 +442,13 @@ class DataOpTask(OpTask):
         self, block_ref: "ray.ObjectRef[Block]", meta_bytes: bytes
     ) -> int:
         """Deserialize ``meta_bytes``, emit the block's ``RefBundle``, and
-        return ``meta.size_bytes`` (the inline mode's output-budget size)."""
+        return ``meta.size_bytes`` (the inline mode's output-budget size).
+
+        Never returns None: for ``in_data_ready_get_object_size`` callers, None
+        is reserved for "pair not consumed, retry", and this method has already
+        emitted the block. In practice ``RefBundle`` requires a known
+        ``size_bytes`` (the emit raises otherwise), so the ``or 0`` is
+        defensive."""
         meta_with_schema: BlockMetadataWithSchema = pickle.loads(meta_bytes)
         meta = meta_with_schema.metadata
         self._block_ref_counter.on_block_produced(
@@ -456,7 +462,7 @@ class DataOpTask(OpTask):
             ),
         )
         self._last_block_meta = meta
-        return meta.size_bytes
+        return meta.size_bytes or 0
 
     def mark_done(self) -> None:
         """Transition DRAINED -> FINISHED and fire ``task_done_callback``.

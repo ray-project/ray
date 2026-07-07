@@ -70,9 +70,13 @@ class MetadataFetcher(ABC):
     ) -> Optional[int]:
         """Handle one pulled pair inside the ``on_data_ready`` loop.
 
-        Returns the output-budget bytes for this pair, or ``None`` to mean "the
-        metadata isn't available yet — stop and retry next iteration" (the
-        caller breaks, leaving the refs set).
+        Returns the output-budget bytes for this pair (0 if the size is
+        unknown), or ``None`` to mean "the metadata isn't available yet — stop
+        and retry next iteration" (the caller breaks, leaving the refs set).
+
+        ``None`` must be returned ONLY when the pair was NOT consumed: the
+        caller will hand the same pair back on the next call, so returning
+        ``None`` after emitting/deferring it would emit the block twice.
         """
 
     def in_data_ready_done(self, task: DataOpTask) -> None:
@@ -265,7 +269,10 @@ class ThreadedMetadataFetcher(MetadataFetcher):
                 # Metadata isn't local yet either. Leave this pair pending and
                 # retry next iteration.
                 return None
-            object_size = meta_with_schema.metadata.size_bytes
+            # Coalesce a missing size to 0: None is reserved for the "pair not
+            # consumed, retry" signal above, and this pair IS consumed
+            # (deferred) below — returning None here would defer it twice.
+            object_size = meta_with_schema.metadata.size_bytes or 0
 
         self._pending_deferred.append(
             DeferredEmit(task=task, block_ref=block_ref, meta_ref=meta_ref)
