@@ -408,5 +408,33 @@ def test_cancel(shutdown_only, use_asyncio):
         pass
 
 
+def test_reference_count_of_inner_object(shutdown_only):
+    """This case used to test the yield contains an object ref owned
+    by the producer actor.
+    """
+    ray.init()
+
+    @ray.remote
+    class Producer:
+        def run(self):
+            # Since this bug is caused by a specific timing issue,
+            # a certain number of objects must be yielded to ensure
+            # it can be reproduced.
+            for i in range(100):
+                yield [ray.put(data) for data in range(5)]
+
+    @ray.remote
+    class Consumer:
+        def run(self, refs):
+            return ray.get(refs)
+
+    p = Producer.remote()
+    c = Consumer.remote()
+
+    ref_generator = p.run.remote()
+    for refs in ref_generator:
+        ray.get(c.run.remote(refs))
+
+        
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
