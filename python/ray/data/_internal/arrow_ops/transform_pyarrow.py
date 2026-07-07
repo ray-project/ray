@@ -451,7 +451,7 @@ def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.Chunke
     for arr in arrs:
         assert not isinstance(arr.type, tensor_types), (
             "'_concatenate_chunked_arrays' should only be used on non-tensor "
-            f"extension types, but got a chunked array of type {type_}."
+            f"extension types, but got a chunked array of type {arr.type}."
         )
         if type_ is None and not pyarrow.types.is_null(arr.type):
             type_ = arr.type

@@ -99,7 +99,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.has_completed()
-        assert 0 <= input_index <= len(self._input_dependencies), input_index
+        assert 0 <= input_index < len(self._input_dependencies), input_index
         self._input_buffers[input_index].add(refs)
         self._metrics.on_input_queued(refs, input_index=input_index)
 
