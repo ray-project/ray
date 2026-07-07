@@ -71,6 +71,19 @@ def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bo
         return False
 
 
+# protobuf>=7 removed the deprecated FieldDescriptor.label in favor of the
+# is_repeated property; detect once at import and bind the right check.
+if hasattr(FieldDescriptor, "is_repeated"):
+
+    def _field_is_repeated(field: FieldDescriptor) -> bool:
+        return bool(field.is_repeated)
+
+else:
+
+    def _field_is_repeated(field: FieldDescriptor) -> bool:
+        return field.label == FieldDescriptor.LABEL_REPEATED
+
+
 def _proto_to_dict(proto: Message) -> Dict:
     """Recursively convert a protobuf into a Python dictionary.
 
@@ -82,7 +95,7 @@ def _proto_to_dict(proto: Message) -> Dict:
     # Fill data with non-empty fields.
     for field, value in proto.ListFields():
         # Handle repeated fields
-        if field.label == FieldDescriptor.LABEL_REPEATED:
+        if _field_is_repeated(field):
             # if we dont do this block the repeated field will be a list of
             # `google.protobuf.internal.containers.RepeatedScalarFieldContainer
             # Explicitly convert to list
@@ -937,6 +950,10 @@ class ReplicaConfig:
             first_bundle = self.placement_group_bundles[0]
 
             # Validate that the replica actor fits in the first bundle.
+            # Downstream code depends on this validation. The scheduler pins the
+            # actor to bundle 0 in deployment_scheduler._schedule_replica, and
+            # DeploymentSchedulingInfo.required_resources reads bundle 0 as the
+            # replica's demand.
             bundle_cpu = first_bundle.get("CPU", 0)
             replica_actor_num_cpus = self.ray_actor_options.get("num_cpus", 0)
             if bundle_cpu < replica_actor_num_cpus:

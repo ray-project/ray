@@ -1,8 +1,12 @@
 import pytest
 
 import ray
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
+    _get_shard_batch,
+)
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.conftest import *  # noqa: F401, F403
+from ray.exceptions import GetTimeoutError
 from ray.tests.conftest import *  # noqa: F401, F403
 
 
@@ -168,6 +172,62 @@ def test_repartition_with_sort_produces_sorted_partitions(
         for block_ref in ref_bundle.block_refs:
             ids = ray.get(block_ref)["id"].to_pylist()
             assert ids == sorted(ids)
+
+
+def test_get_shard_batch_no_timeout(ray_start_regular_shared_2_cpus):
+    """timeout_s <= 0 fetches in a single blocking ray.get."""
+    refs = [ray.put(i) for i in range(4)]
+    out = _get_shard_batch(
+        refs,
+        partition_id=0,
+        batch_index=0,
+        num_batches=1,
+        timeout_s=0,
+    )
+    assert out == [0, 1, 2, 3]
+
+
+def test_get_shard_batch_returns_ready_values(ray_start_regular_shared_2_cpus):
+    """A timeout that is never hit returns the values unchanged."""
+    refs = [ray.put(i) for i in range(3)]
+    out = _get_shard_batch(
+        refs,
+        partition_id=1,
+        batch_index=0,
+        num_batches=1,
+        timeout_s=30.0,
+    )
+    assert out == [0, 1, 2]
+
+
+def test_get_shard_batch_warns_then_raises_on_stall(
+    ray_start_regular_shared_2_cpus, propagate_logs, caplog
+):
+    """A stalled fetch warns partway through, then raises at the timeout."""
+
+    @ray.remote
+    def _never_ready():
+        import time
+
+        time.sleep(1000)
+
+    ref = _never_ready.remote()
+    with caplog.at_level(
+        "WARNING",
+        logger="ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks",
+    ):
+        with pytest.raises(GetTimeoutError):
+            _get_shard_batch(
+                [ref],
+                partition_id=7,
+                batch_index=0,
+                num_batches=1,
+                timeout_s=0.3,
+            )
+    assert [r.levelname for r in caplog.records].count("WARNING") == 1
+    assert [r.levelname for r in caplog.records].count("ERROR") == 1
+    assert "partition 7" in caplog.records[0].message
+    ray.cancel(ref, force=True)
 
 
 if __name__ == "__main__":

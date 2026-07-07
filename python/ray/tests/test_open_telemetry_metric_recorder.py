@@ -1,3 +1,4 @@
+import os
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -8,6 +9,7 @@ from ray._private.metrics_agent import Gauge, Record
 from ray._private.telemetry.metric_types import MetricType
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
+    _get_service_name,
 )
 
 
@@ -395,6 +397,61 @@ def test_init_metrics_runs_only_once_per_class(
         assert OpenTelemetryMetricRecorder._metrics_initialized is True
     finally:
         OpenTelemetryMetricRecorder._metrics_initialized = original_flag
+
+
+@patch("opentelemetry.sdk.resources.Resource.create")
+@patch("ray._private.telemetry.open_telemetry_metric_recorder.MeterProvider")
+@patch("ray._private.telemetry.open_telemetry_metric_recorder.PrometheusMetricReader")
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_init_metrics_sets_service_name_resource(
+    mock_get_meter,
+    mock_set_meter_provider,
+    mock_prometheus_reader,
+    mock_meter_provider,
+    mock_resource_create,
+):
+    """
+    Regression test: the Prometheus exporter must not fall back to the default
+    OpenTelemetry service.name of unknown_service, otherwise multiple target_info
+    samples can collide in a single scrape.
+    """
+    mock_get_meter.return_value = MagicMock()
+    mock_resource = MagicMock()
+    mock_resource_create.return_value = mock_resource
+
+    original_flag = OpenTelemetryMetricRecorder._metrics_initialized
+    OpenTelemetryMetricRecorder._metrics_initialized = False
+    try:
+        with patch.dict(
+            os.environ,
+            {"OTEL_SERVICE_NAME": "", "OTEL_RESOURCE_ATTRIBUTES": ""},
+        ):
+            OpenTelemetryMetricRecorder()
+
+        mock_resource_create.assert_called_once_with(
+            {"service.name": "ray-dashboard-agent"}
+        )
+        mock_meter_provider.assert_called_once_with(
+            resource=mock_resource,
+            metric_readers=[mock_prometheus_reader.return_value],
+        )
+        mock_set_meter_provider.assert_called_once_with(
+            mock_meter_provider.return_value
+        )
+    finally:
+        OpenTelemetryMetricRecorder._metrics_initialized = original_flag
+
+
+def test_get_service_name_decodes_otel_resource_attributes():
+    with patch.dict(
+        os.environ,
+        {
+            "OTEL_SERVICE_NAME": "",
+            "OTEL_RESOURCE_ATTRIBUTES": "service.name=ray%20dashboard%2Cagent",
+        },
+    ):
+        assert _get_service_name("ray-dashboard-agent") == "ray dashboard,agent"
 
 
 if __name__ == "__main__":

@@ -69,7 +69,7 @@ class ReportHead(SubprocessModule):
         # will be hang when the ray.state is connected and the GCS is exit.
         # Please refer to: https://github.com/ray-project/ray/issues/16328
         self.service_discovery = PrometheusServiceDiscoveryWriter(
-            self.gcs_address, self.temp_dir
+            self.gcs_address, self.temp_dir, self.session_dir
         )
         self._state_api = None
         self._executor = ThreadPoolExecutor(
@@ -876,8 +876,7 @@ class ReportHead(SubprocessModule):
             if "node_id" not in req.query:
                 raise aiohttp.web.HTTPBadRequest(
                     text=(
-                        "Failed to execute task profiling: "
-                        "task's node id is required"
+                        "Failed to execute task profiling: task's node id is required"
                     )
                 )
 

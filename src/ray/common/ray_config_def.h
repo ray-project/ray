@@ -631,7 +631,7 @@ RAY_CONFIG(int64_t, io_context_monitor_probe_interval_ms, 1000)
 
 /// If a probe has been outstanding longer than this, the io_context is marked
 /// unhealthy.
-RAY_CONFIG(int64_t, io_context_monitor_healthy_deadline_ms, 5000)
+RAY_CONFIG(int64_t, io_context_monitor_healthy_deadline_ms, 30000)
 
 /// Sliding window over which the max probe latency is tracked and exported. The
 /// Prometheus metrics scrape interval is usually 15s; we exceed it so that the
@@ -1036,8 +1036,10 @@ RAY_CONFIG(bool, kill_child_processes_on_worker_exit_with_raylet_subreaper, fals
 
 // Enable per-worker process-group-based cleanup. When enabled, workers are
 // placed into their own process groups and can be cleaned up via killpg on
-// worker death. Cross-platform semantics on POSIX (no-op on Windows).
-RAY_CONFIG(bool, process_group_cleanup_enabled, false)
+// worker death. Cross-platform semantics on POSIX (no-op on Windows). Enabled by
+// default; this supersedes the deprecated subreaper-based cleanup
+// (kill_child_processes_on_worker_exit_with_raylet_subreaper).
+RAY_CONFIG(bool, process_group_cleanup_enabled, true)
 
 // If autoscaler v2 is enabled.
 RAY_CONFIG(bool, enable_autoscaler_v2, false)

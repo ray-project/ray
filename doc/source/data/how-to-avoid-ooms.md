@@ -113,11 +113,11 @@ other memory-related errors, memory pressure might have caused the death.
 
 ### Use ``batch_size="auto"`` or small batch sizes
 
-Choose the smallest batch size that achieves good performance, or use
-``batch_size="auto"``.
+Choose the smallest batch size that achieves good performance, or if your UDF doesn't
+use GPUs, use ``batch_size="auto"``.
 
 :::{versionadded} 2.56
-``batch_size="auto"`` was added in Ray 2.56.
+``batch_size="auto"``
 :::
 
 <!-- We're recommending 16 MiB because we found that it's the smallest batch size
@@ -173,7 +173,7 @@ actors for the ones you haven't.
 To avoid this, set ``DataContext.get_current().default_map_logical_memory = True``.
 
 :::{versionadded} 2.56
-``DataContext.default_map_logical_memory`` was added in Ray 2.56.
+``DataContext.default_map_logical_memory``
 :::
 
 ### Start Ray with resource isolation
@@ -186,7 +186,7 @@ To enable *resource isolation*, follow the guide in
 {doc}`Ray Core Resource Isolation </ray-core/resource-isolation-with-cgroupv2>`.
 
 :::{versionadded} 2.56
-Resource isolation was completed in Ray 2.56.
+The full implementation of resource isolation.
 :::
 
 ### Configure system memory to cover the raylet and anything outside the container
@@ -199,8 +199,16 @@ If you run large non-Ray processes like Vector or still experience kernel OOM ev
 *resource isolation* enabled, your "system" processes are likely using more memory than 
 the default reserved memory for system processes. 
 
+Ray logs something similar to the following example if it detects the "system" processes using more memory than the reserved amount.
+
+```
+System slice memory usage 10869600256 bytes has exceeded the reserved system memory of 10737418240 bytes. This can prevent Ray from being able to provide the proper protection to critical system processes and can lead to node deaths and significant loss of progress. Please consider passing a system reserved memory value that is higher than the current system slice memory usage via the --system-reserved-memory flag when starting the raylet.
+```
+
 In this case, allocate more memory by passing in a custom byte value to the ray start 
-flag `--system-reserved-memory`.
+flag `--system-reserved-memory`. Try to allocate at least a GiB (depending on host size)
+of buffer space between the reported/expected system slice memory usage and the reserved 
+system memory.
 
 The default is usually fine unless you're on tiny nodes, like an m5.xlarge.
 
@@ -255,4 +263,4 @@ For a deeper understanding of how Ray handles memory, read the following guides:
 - {ref}`Ray Data Memory Model <data_memory_management>`
 - {doc}`Ray Core Resource Isolation </ray-core/resource-isolation-with-cgroupv2>`
 - {ref}`Ray Core Out-Of-Memory Prevention <ray-oom-prevention>`
-- {doc}`Debugging Memory Issues </ray-observability/user-guides/debug-apps/debug-memory>`
+- {doc}`Debugging Ray Core Memory Issues </ray-observability/user-guides/debug-apps/debug-memory>`

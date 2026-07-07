@@ -4,31 +4,31 @@
 setuptools==80.9.0
 
 # Syntax highlighting
-Pygments==2.16.1
+Pygments==2.18.0
 
 # Sphinx
-sphinx==7.3.7
+sphinx==8.2.3
 sphinx-click==5.1.0
 sphinx-copybutton==0.5.2
 sphinxemoji>=0.3.2
-sphinx-jsonschema==1.19.1
+sphinx-jsonschema==1.19.2
 sphinx-llms-txt==0.7.1
 sphinx-sitemap==2.9.0
 sphinxcontrib-redoc==1.6.0
 sphinx-remove-toctrees==0.0.3
-sphinx_design==0.5.0
+sphinx_design==0.7.0
 sphinx-autobuild==2024.4.16
 sphinxext-opengraph==0.13.0
-pydata-sphinx-theme==0.17.1
+pydata-sphinx-theme==0.18.0
 autodoc_pydantic==2.2.0
 appnope
-sphinx-docsearch==0.0.7
+sphinx-docsearch==0.3.0
 sphinx-collections==0.3.1
 
 pydantic==2.12.4
 
 # MyST
-myst-parser==2.0.0 # Needed to parse markdown
+myst-parser==5.1.0 # Needed to parse markdown
 myst-nb==1.4.0
 # Jupyter conversion
 jupytext==1.15.2

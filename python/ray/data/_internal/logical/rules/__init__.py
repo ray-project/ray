@@ -1,6 +1,7 @@
 """Expose rule classes in ray.data._internal.logical.rules."""
 
 from .combine_shuffles import CombineShuffles
+from .common_subexpr_elimination import CommonSubExprElimination
 from .configure_map_task_memory import (
     ConfigureMapTaskMemoryRule,
     ConfigureMapTaskMemoryUsingOutputSize,
@@ -17,6 +18,7 @@ from .set_read_parallelism import (
 
 __all__ = [
     "CombineShuffles",
+    "CommonSubExprElimination",
     "ConfigureMapTaskMemoryRule",
     "ConfigureMapTaskMemoryUsingOutputSize",
     "FuseOperators",

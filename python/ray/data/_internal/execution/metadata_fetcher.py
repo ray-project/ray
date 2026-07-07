@@ -30,6 +30,7 @@ import ray
 import ray.exceptions
 from ray._common.utils import env_bool
 from ray.data._internal.execution.interfaces.physical_operator import (
+    METADATA_GET_TIMEOUT_S,
     METADATA_WAIT_TIMEOUT_S,
     DataOpTask,
     DeferredEmit,
@@ -40,11 +41,6 @@ from ray.experimental.locations import get_local_object_locations
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
-
-# Timeout (s) for the inline metadata ``ray.get``. The timeout includes shipping
-# the metadata to this node, so a 0 timeout could cancel an in-flight download;
-# a small non-zero value avoids that.
-METADATA_GET_TIMEOUT_S = 1.0
 
 # How long ``ThreadedMetadataFetcher.stop`` waits for the fetch thread to exit.
 _FETCH_THREAD_JOIN_TIMEOUT_S = 5.0

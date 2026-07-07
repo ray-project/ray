@@ -25,6 +25,7 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     ActorPoolInfo,
     AutoscalingActorPool,
 )
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -50,6 +51,11 @@ logger = logging.getLogger(__name__)
 
 # Timeout for waiting for metadata object to become available (in seconds)
 METADATA_WAIT_TIMEOUT_S = 0.1
+
+# Timeout (s) for a blocking metadata/end-of-stream ``ray.get``. The timeout
+# includes shipping the object to this node, so a 0 timeout could cancel an
+# in-flight download; a small non-zero value avoids that.
+METADATA_GET_TIMEOUT_S = 1.0
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
 Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
@@ -166,6 +172,8 @@ class DataOpTask(OpTask):
         self,
         task_index: int,
         streaming_gen: ObjectRefGenerator,
+        block_ref_counter: BlockRefCounter,
+        producer_id: str,
         output_ready_callback: Callable[[RefBundle], None] = lambda bundle: None,
         task_done_callback: TaskDoneCallbackType = lambda exc, worker_stats, driver_stats: None,
         block_ready_callback: Callable[
@@ -184,6 +192,9 @@ class DataOpTask(OpTask):
         Args:
             task_index: Index of the task. Used for callbacks.
             streaming_gen: The streaming generator of this task. It should yield blocks.
+            block_ref_counter: The centralized block reference counter. on_block_produced
+                is called for each block yielded by this task.
+            producer_id: The id of the operator that produces the blocks from this task.
             output_ready_callback: The callback to call when a new RefBundle is output
                 from the generator.
             task_done_callback: The callback to call when the task is done.
@@ -211,6 +222,8 @@ class DataOpTask(OpTask):
         self._metadata_ready_callback = metadata_ready_callback
         self._object_size_ready_callback = object_size_ready_callback
         self._operator_name = operator_name
+        self._block_ref_counter: BlockRefCounter = block_ref_counter
+        self._producer_id: str = producer_id
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -298,9 +311,24 @@ class DataOpTask(OpTask):
                     "block, it means there's an error in the implementation."
                 )
 
+                # Poll for the next block non-blockingly (timeout_s=0) while the
+                # task is still producing. Once the stream is exhausted, the same
+                # `_next_sync` call must `ray.get` the generator's return object
+                # to surface StopIteration / task errors. A 0 timeout there
+                # issues and then immediately cancels the pull of a
+                # plasma-resident return object on every poll, so it would never
+                # arrive and the task would never be observed as finished. In
+                # that end-of-stream case only, use a bounded blocking timeout so
+                # the return object can be pulled; on timeout (e.g. lost to a
+                # dead node) we still fall through and retry on a later call.
+                next_timeout_s = (
+                    METADATA_GET_TIMEOUT_S
+                    if self._streaming_gen._stream_exhausted()
+                    else 0
+                )
                 try:
                     self._pending_block_ref = self._streaming_gen._next_sync(
-                        timeout_s=0
+                        timeout_s=next_timeout_s
                     )
                 except StopIteration:
                     self._state = TaskGeneratorState.DRAINED
@@ -415,6 +443,9 @@ class DataOpTask(OpTask):
         return ``meta.size_bytes`` (the inline mode's output-budget size)."""
         meta_with_schema: BlockMetadataWithSchema = pickle.loads(meta_bytes)
         meta = meta_with_schema.metadata
+        self._block_ref_counter.on_block_produced(
+            block_ref, meta.size_bytes or 0, self._producer_id
+        )
         self._output_ready_callback(
             RefBundle(
                 [BlockEntry(block_ref, meta)],
@@ -860,12 +891,19 @@ class PhysicalOperator(Operator):
         """
         return self._num_output_splits
 
-    def start(self, options: ExecutionOptions) -> None:
+    def start(
+        self,
+        options: ExecutionOptions,
+        block_ref_counter: BlockRefCounter,
+    ) -> None:
         """Called by the executor when execution starts for an operator.
 
         Args:
             options: The global options used for the overall execution.
+            block_ref_counter: The executor-wide shared counter for tracking
+                object-store memory.
         """
+        self._block_ref_counter = block_ref_counter
         self._started = True
 
     def can_add_input(self) -> bool:

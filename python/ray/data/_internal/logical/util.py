@@ -36,7 +36,7 @@ def record_operators_usage(op: LogicalOperator):
 
 
 def anonymize_op_name(op: LogicalOperator) -> str:
-    """Return an op name suitable for telemetry.
+    """Return an op name suitable for usage collection.
 
     Read/Write surface their datasource/datasink suffix (``ReadParquet``,
     ``WriteIceberg``) when the underlying class ships under ``ray.data.*``;
