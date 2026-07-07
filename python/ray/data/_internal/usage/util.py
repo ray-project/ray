@@ -1,3 +1,6 @@
+"""Utility functions for operator naming and logical-op usage recording for Ray Data telemetry.
+"""
+
 import json
 import threading
 from typing import Dict

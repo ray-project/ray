@@ -30,7 +30,7 @@ from ray._private.worker import global_worker
 from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import MapBatches
-from ray.data._internal.logical.util import anonymize_op_name
+from ray.data._internal.usage.util import anonymize_op_name
 from ray.data.block import VALID_BATCH_FORMATS, _apply_batch_format
 
 if TYPE_CHECKING:
