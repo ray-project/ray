@@ -990,6 +990,20 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// The number of workers killed not by memory above threshold since last report.
   uint64_t number_workers_killed_ = 0;
 
+  // [bug1_observe] Counters characterizing the 3 lease-arg-leak bugs.
+  //   bug1_skip_count_          : HandleReturnWorkerLease saw worker_exiting=true
+  //                               and skipped HandleWorkerAvailable/CleanupLease.
+  //   backstop_cleanup_count_   : DisconnectClient's CleanupLease actually ran
+  //                               (i.e. the disconnect backstop worked).
+  //   bug2_unregistered_count_  : DisconnectClient early-returned on unregistered
+  //                               client (backstop bypassed, Bug #2 trigger).
+  //   bug3_is_dead_count_       : DisconnectClient saw worker->IsDead() and
+  //                               skipped CleanupLease (Bug #3 trigger).
+  uint64_t bug1_skip_count_ = 0;
+  uint64_t backstop_cleanup_count_ = 0;
+  uint64_t bug2_unregistered_count_ = 0;
+  uint64_t bug3_is_dead_count_ = 0;
+
   /// Managers all bundle-related operations.
   PlacementGroupResourceManager &placement_group_resource_manager_;
 
