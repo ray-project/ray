@@ -229,9 +229,9 @@ class ReplicaSchedulingRequest:
     def requested_resources(self) -> RequestedResources:
         """The resources required to schedule this replica on a node.
 
-        If this replica uses a strict pack placement group, the
-        required resources is the sum of the placement group bundles.
-        Otherwise, required resources is simply the actor resources.
+        STRICT_PACK placement group: sum of all bundles.
+        Other placement groups: bundle 0.
+        Otherwise: actor resources.
         """
 
         if (
@@ -242,6 +242,8 @@ class ReplicaSchedulingRequest:
                 [RequestedResources(bundle) for bundle in self.placement_group_bundles],
                 RequestedResources(),
             )
+        elif self.placement_group_bundles is not None:
+            return RequestedResources(self.placement_group_bundles[0])
         else:
             required = RequestedResources(self.actor_resources)
 
@@ -294,9 +296,9 @@ class DeploymentSchedulingInfo:
     def required_resources(self) -> RequestedResources:
         """The resources required to schedule a replica of this deployment on a node.
 
-        If this replicas uses a strict pack placement group, the
-        required resources is the sum of the placement group bundles.
-        Otherwise, required resources is simply the actor resources.
+        STRICT_PACK placement group: sum of all bundles.
+        Other placement groups: bundle 0.
+        Otherwise: actor resources.
         """
 
         if (
@@ -304,6 +306,8 @@ class DeploymentSchedulingInfo:
             and self.placement_group_strategy == "STRICT_PACK"
         ):
             return sum(self.placement_group_bundles, RequestedResources())
+        elif self.placement_group_bundles is not None:
+            return RequestedResources(self.placement_group_bundles[0])
         else:
             if self.actor_resources is None:
                 required = RequestedResources()
@@ -705,8 +709,12 @@ class DeploymentScheduler(ABC):
                     ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
                 )
                 return False
+            # Pin the actor as a subset of bundle 0. ReplicaConfig
+            # validates that actor resources fit in bundle 0, and
+            # required_resources assumes this pin.
             scheduling_strategy = PlacementGroupSchedulingStrategy(
                 placement_group=pg,
+                placement_group_bundle_index=0,
                 placement_group_capture_child_tasks=True,
             )
             target_labels = None
