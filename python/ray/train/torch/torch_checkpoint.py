@@ -21,7 +21,32 @@ ENCODED_DATA_KEY = "torch_encoded_data"
 
 @PublicAPI(stability="beta")
 class TorchCheckpoint(FrameworkCheckpoint):
-    """A :class:`~ray.train.Checkpoint` with Torch-specific functionality."""
+    """A :class:`~ray.train.Checkpoint` with Torch-specific functionality.
+
+    .. deprecated::
+
+        ``TorchCheckpoint`` is a Ray Train v1 API and will be removed in a future
+        release. In Ray Train v2, save your model state dict to a directory and use
+        :class:`ray.train.Checkpoint` directly::
+
+            import tempfile
+            import torch
+            import ray.train
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                torch.save(model.state_dict(), os.path.join(tmpdir, "model.pt"))
+                checkpoint = ray.train.Checkpoint.from_directory(tmpdir)
+                ray.train.report(metrics, checkpoint=checkpoint)
+
+        To restore::
+
+            checkpoint = ray.train.get_checkpoint()
+            with checkpoint.as_directory() as tmpdir:
+                state_dict = torch.load(
+                    os.path.join(tmpdir, "model.pt"), weights_only=True
+                )
+                model.load_state_dict(state_dict)
+    """
 
     MODEL_FILENAME = "model.pt"
 
@@ -103,6 +128,15 @@ class TorchCheckpoint(FrameworkCheckpoint):
     ) -> "TorchCheckpoint":
         """Create a :class:`~ray.train.Checkpoint` that stores a Torch model.
 
+        .. deprecated::
+
+            ``from_model`` is deprecated and will be removed in a future release.
+            It serializes the entire ``nn.Module`` object via pickle, which allows
+            arbitrary code execution when the checkpoint is loaded. Use
+            :meth:`~ray.train.torch.TorchCheckpoint.from_state_dict` instead, or
+            migrate to Ray Train v2 and save the state dict manually — see
+            :class:`~ray.train.torch.TorchCheckpoint` for the migration pattern.
+
         .. note::
 
             PyTorch recommends storing state dictionaries. To create a
@@ -139,6 +173,14 @@ class TorchCheckpoint(FrameworkCheckpoint):
 
                 ...
         """
+        warnings.warn(
+            "TorchCheckpoint.from_model() is deprecated and will be removed in a "
+            "future release. It serializes the entire nn.Module via pickle, which "
+            "allows arbitrary code execution on load. Use from_state_dict() instead, "
+            "or migrate to Ray Train v2 (ray.train.Checkpoint).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         tempdir = tempfile.mkdtemp()
 
         model_path = Path(tempdir, cls.MODEL_FILENAME).as_posix()
@@ -151,6 +193,19 @@ class TorchCheckpoint(FrameworkCheckpoint):
 
     def get_model(self, model: Optional[torch.nn.Module] = None) -> torch.nn.Module:
         """Retrieve the model stored in this checkpoint.
+
+        .. warning::
+
+            The checkpoint path must point to a **trusted** source.
+            Checkpoints created with the deprecated
+            :meth:`~ray.train.torch.TorchCheckpoint.from_model` store the entire
+            ``nn.Module`` via pickle serialization. Loading such a checkpoint from an
+            untrusted path (shared storage, downloaded artifact, checkpoint produced by
+            a different party) is equivalent to executing arbitrary Python code. Prefer
+            checkpoints created with
+            :meth:`~ray.train.torch.TorchCheckpoint.from_state_dict`, or migrate to
+            Ray Train v2 — see :class:`~ray.train.torch.TorchCheckpoint` for the
+            migration pattern.
 
         Args:
             model: If the checkpoint contains a model state dict, and not
