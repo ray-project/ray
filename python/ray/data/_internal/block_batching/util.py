@@ -202,6 +202,11 @@ def resolve_block_refs(
     """Resolve block references via ``ray.get()`` and attach per-block
     stage timings.
 
+    production_wait is captured manually (no Timer accumulation) to avoid
+    double-counting with ``prefetch_batches_locally``'s
+    ``iter_get_ref_bundles_s`` timer; data_transfer uses ``_maybe_time``
+    normally (no overlap with other timers).
+
     Args:
         block_ref_iter: An iterator over block object references.
         stats: An optional stats object to record block hits, misses, and
