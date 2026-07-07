@@ -1,6 +1,7 @@
 import pathlib
 from collections import defaultdict
 import asyncio
+import os
 import time
 
 import pytest
@@ -28,6 +29,10 @@ from ray.serve.schema import ApplicationStatus
 from vllm.entrypoints.openai.completion.protocol import CompletionRequest
 
 CONFIGS_DIR = pathlib.Path(__file__).parent / "configs"
+
+DIRECT_STREAMING_ENABLED = (
+    os.environ.get("RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING") == "1"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -93,6 +98,59 @@ def test_llm_serve_multi_node(tp_size, pp_size):
     serve.run(app, blocking=False)
 
     wait_for_condition(is_default_app_running, timeout=300)
+
+
+@pytest.mark.skipif(
+    not DIRECT_STREAMING_ENABLED,
+    reason="the ingress request router only exists on the direct-streaming path",
+)
+def test_llm_serve_direct_streaming_ingress_router_per_node():
+    """The direct-streaming ingress request router scales to one replica per
+    node so each node's HAProxy can call its co-located router.
+
+    ``max_replicas_per_node`` defaults to 1, so once ``num_replicas`` is set to
+    the number of schedulable nodes, the router reaching that many RUNNING
+    replicas means exactly one per node.
+    """
+    num_router_nodes = len(
+        [n for n in ray.nodes() if n["Alive"] and n["Resources"].get("CPU", 0) > 0]
+    )
+    assert num_router_nodes > 1, "expected a multi-node cluster"
+
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id="opt-1.3b",
+            model_source="facebook/opt-1.3b",
+        ),
+        deployment_config=dict(
+            autoscaling_config=dict(min_replicas=1, max_replicas=1),
+        ),
+        engine_kwargs=dict(
+            tensor_parallel_size=1,
+            max_model_len=512,
+            max_num_batched_tokens=256,
+            enforce_eager=True,
+        ),
+        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
+    )
+
+    app = build_openai_app(
+        llm_serving_args=LLMServingArgs(
+            llm_configs=[llm_config],
+            ingress_request_router_config={"num_replicas": num_router_nodes},
+        )
+    )
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=300)
+
+    def router_running_on_every_node():
+        dep = (
+            serve.status().applications[SERVE_DEFAULT_APP_NAME].deployments["LLMRouter"]
+        )
+        assert dep.replica_states.get("RUNNING", 0) == num_router_nodes
+        return True
+
+    wait_for_condition(router_running_on_every_node, timeout=300)
 
 
 @pytest.mark.parametrize(
