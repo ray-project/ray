@@ -26,7 +26,7 @@ namespace ray {
 namespace core {
 
 /**
- * IActorSubmitQueue is responsible for queuing per actor requests on the client.
+ * ActorSubmitQueueInterface is responsible for queuing per actor requests on the client.
  * To use ActorSubmitQueue, user should Emplace a task with a monotincally increasing
  * (and unique) sequence_no.
  * The task is not ready until it's being marked as
@@ -39,9 +39,9 @@ namespace core {
  *
  * This class is not thread safe.
  */
-class IActorSubmitQueue {
+class ActorSubmitQueueInterface {
  public:
-  virtual ~IActorSubmitQueue() = default;
+  virtual ~ActorSubmitQueueInterface() = default;
   /// Add a task into the queue.
   virtual void Emplace(const std::string &concurrency_group,
                        uint64_t sequence_no,

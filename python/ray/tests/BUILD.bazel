@@ -939,6 +939,7 @@ py_test_module_list(
         "test_serialization.py",
         "test_state_api.py",
         "test_state_api_data_source_client_get.py",
+        "test_streaming_generator_backpressure.py",
         "test_task_events.py",
         "test_task_events_2.py",
     ],

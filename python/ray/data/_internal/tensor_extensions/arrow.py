@@ -1531,12 +1531,27 @@ def unify_tensor_types(
     if len(shapes) == 1:
         return next(iter(types))
 
-    return ArrowVariableShapedTensorType(
+    # NOTE: Cardinality of variable-shaped tensor type's (``ndims``) is
+    #       derived as the max length of the shapes that are making it up
+    return _get_variable_shaped_tensor_type(
         dtype=value_types.pop(),
-        # NOTE: Cardinality of variable-shaped tensor type's (``ndims``) is
-        #       derived as the max length of the shapes that are making it up
         ndim=max(len(s) for s in shapes),
     )
+
+
+@functools.lru_cache(maxsize=ARROW_EXTENSION_SERIALIZATION_CACHE_MAXSIZE)
+def _get_variable_shaped_tensor_type(
+    dtype: pa.DataType, ndim: int
+) -> "ArrowVariableShapedTensorType":
+    """Construct (and cache) a variable-shaped tensor type.
+
+    ``ArrowVariableShapedTensorType`` is an immutable value type fully keyed by
+    ``(dtype, ndim)``, but constructing one is expensive: pyarrow's ext-type
+    registration serializes the metadata on every instantiation. Schema
+    unification builds the same handful of types over and over (once per
+    diverging column, per call), so we memoize construction here.
+    """
+    return ArrowVariableShapedTensorType(dtype=dtype, ndim=ndim)
 
 
 @DeveloperAPI(stability="alpha")
