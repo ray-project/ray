@@ -77,6 +77,7 @@ from ray.data.context import EXECUTION_CALLBACKS_ENV_VAR, DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import noop_counter
 from ray.data.tests.util import fetcher_has_pending_work
+from ray.exceptions import GetTimeoutError
 
 
 def mock_resource_manager(
@@ -1775,6 +1776,117 @@ class TestDataOpTask:
         assert done == [1]
         assert task.has_finished
         assert not fetcher_has_pending_work(fetcher)
+
+    def test_threaded_marks_drained_task_finished(self, ray_start_regular_shared):
+        """A drained task registered via ``submit`` is NOT finished until
+        ``emit_ready_and_fire_done_callbacks`` has emitted all of its pairs;
+        then the done-callback fires exactly once and the task is FINISHED."""
+        gen = create_stub_streaming_gen(block_nbytes=[100])
+        done: list = []
+        task = DataOpTask(
+            0,
+            gen,
+            BlockRefCounter(),
+            "test_op",
+            task_done_callback=lambda *a: done.append(a),
+        )
+
+        ray.wait([gen], fetch_local=False)
+        fetcher = ThreadedMetadataFetcher()
+        fetcher.start()
+        try:
+            deadline = time.time() + 30
+            while not task.is_drained() and time.time() < deadline:
+                task.on_data_ready(None, fetcher)
+                time.sleep(0.01)
+            assert task.is_drained()
+
+            fetcher.submit("op", [task])
+            # Completion is postponed: the done-callback only fires from
+            # emit_ready_and_fire_done_callbacks on this thread, so the task
+            # can't be finished yet.
+            assert not task.has_finished
+            assert done == []
+
+            deadline = time.time() + 30
+            while fetcher_has_pending_work(fetcher) and time.time() < deadline:
+                fetcher.emit_ready_and_fire_done_callbacks()
+                time.sleep(0.01)
+        finally:
+            fetcher.stop()
+
+        assert task.has_finished
+        assert len(done) == 1
+        # The task was deregistered; a later call must not re-fire.
+        fetcher.emit_ready_and_fire_done_callbacks()
+        assert len(done) == 1
+
+    def test_threaded_fetch_falls_back_to_per_ref_get(self):
+        """When the batched ``ray.get`` in ``_fetch`` raises, the fetcher
+        retries per-ref: refs that fetch fine are published, a ref that raced
+        out of the local store (GetTimeoutError) is returned for retry."""
+        fetcher = ThreadedMetadataFetcher()  # fetch thread not started
+        ref_ok, ref_gone = object(), object()
+
+        def fake_get(arg, timeout=None):
+            if isinstance(arg, list):
+                # The batched get hides which ref failed.
+                raise ValueError("batched get fails")
+            if arg is ref_gone:
+                raise GetTimeoutError("reported ready but no longer local")
+            return b"meta-bytes"
+
+        with patch("ray.data._internal.execution.metadata_fetcher.ray") as mock_ray:
+            mock_ray.wait.return_value = ([ref_ok, ref_gone], [])
+            mock_ray.get.side_effect = fake_get
+            retry = fetcher._fetch([ref_ok, ref_gone])
+
+        # The good ref's bytes were published; the raced ref is re-queued
+        # (not published, not treated as a block error).
+        with fetcher._results_lock:
+            assert fetcher._results == {ref_ok: b"meta-bytes"}
+        assert retry == [ref_gone]
+
+    def test_threaded_object_size_not_ready(self, ray_start_regular_shared):
+        """If the block's local ``object_size`` is unavailable, the threaded
+        fetcher falls back to a short metadata ``ray.get`` for the size; if the
+        metadata isn't local yet either, the pair stays pending (nothing
+        deferred, refs retained) and is retried on a later call."""
+        gen = create_stub_streaming_gen(block_nbytes=[100])
+        task = DataOpTask(0, gen, BlockRefCounter(), "test_op")
+
+        ray.wait([gen], fetch_local=False)
+        fetcher = ThreadedMetadataFetcher()  # fetch thread not needed
+
+        # Stage 1: no local size AND metadata not local -> the pair is held
+        # (refs stay set), nothing is deferred, nothing is charged.
+        with patch(
+            "ray.data._internal.execution.metadata_fetcher"
+            ".get_local_object_locations",
+            return_value={},
+        ):
+            with patch(
+                "ray.data._internal.execution.metadata_fetcher.ray.get",
+                side_effect=GetTimeoutError("metadata not local yet"),
+            ):
+                deadline = time.time() + 30
+                bytes_read = 0
+                while task._pending_meta_ref.is_nil() and time.time() < deadline:
+                    bytes_read += task.on_data_ready(None, fetcher)
+                    time.sleep(0.01)
+                assert not task._pending_block_ref.is_nil()
+                assert bytes_read == 0
+                assert fetcher._pending_deferred == []
+
+            # Stage 2: still no local size, but the metadata fetch now
+            # succeeds -> the size comes from meta.size_bytes and the held
+            # pair is deferred (the retry path works).
+            deadline = time.time() + 30
+            while not task.is_drained() and time.time() < deadline:
+                bytes_read += task.on_data_ready(None, fetcher)
+                time.sleep(0.01)
+        assert bytes_read == 108
+        assert len(fetcher._pending_deferred) == 1
 
     def test_on_data_ready_branches_with_fake_fetcher(self, ray_start_regular_shared):
         """Mock the fetcher interface to drive ``on_data_ready``'s per-pair
