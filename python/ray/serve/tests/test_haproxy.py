@@ -30,7 +30,11 @@ from ray.serve._private.constants import (
     SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy import HAProxyManager
-from ray.serve._private.test_utils import get_application_url
+from ray.serve._private.test_utils import (
+    alive_actor_counts,
+    expected_proxy_actors,
+    get_application_url,
+)
 from ray.serve.config import HTTPOptions, RequestRouterConfig
 from ray.serve.context import _get_global_client
 from ray.serve.exceptions import RayServeException
@@ -123,8 +127,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HAProxyManager",
-        "ProxyActor",
+        *expected_proxy_actors(),
         "ServeReplica:app:f",
     }
 
@@ -165,8 +168,7 @@ async def test_single_app_shutdown_actors_async(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HAProxyManager",
-        "ProxyActor",
+        *expected_proxy_actors(),
         "ServeReplica:app:f",
     }
 
@@ -347,8 +349,13 @@ async def test_drain_and_undrain_haproxy_manager(
 
     serve.run(HelloModel.options(num_replicas=2).bind())
 
-    # 3 haproxies, 1 controller, 2 replicas, 1 signal actor, 1 fallback proxy
-    wait_for_condition(lambda: len(list_actors()) == 8)
+    expected_actors = {
+        "ServeController": 1,
+        **expected_proxy_actors(num_proxy_nodes=3),
+        "ServeReplica:default:HelloModel": 2,
+        "SignalActor": 1,
+    }
+    wait_for_condition(lambda: alive_actor_counts() == expected_actors)
     assert len(ray.nodes()) == 3
 
     client = _get_global_client()

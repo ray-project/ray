@@ -1823,7 +1823,9 @@ def _fetch_file_infos(
     futures = []
 
     # Retry in case of transient errors during sampling.
-    task_options = {"retry_exceptions": [OSError]}
+    # Cap retries to avoid hanging indefinitely on permanent errors
+    # (e.g., permission denied, invalid credentials).
+    task_options = {"retry_exceptions": [OSError], "max_retries": 3}
     ctx = DataContext.get_current()
     if local_scheduling:
         task_options["label_selector"] = local_scheduling
@@ -1846,8 +1848,18 @@ def _fetch_file_infos(
         )
 
     sample_bar = ProgressBar("Parquet dataset sampling", len(futures), unit="file")
-    file_infos = sample_bar.fetch_until_complete(futures)
-    sample_bar.close()
+    try:
+        file_infos = sample_bar.fetch_until_complete(futures)
+    except ray.exceptions.RayTaskError as e:
+        logger.warning(
+            "Parquet dataset sampling failed. "
+            "If this is a credentials or permissions issue, "
+            "check your cloud storage access configuration. "
+            f"Underlying error: {e.cause}"
+        )
+        raise
+    finally:
+        sample_bar.close()
 
     return file_infos
 

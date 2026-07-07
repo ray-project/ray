@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import shutil
+import signal
 import string
 import time
 from abc import ABC, abstractmethod
@@ -37,6 +38,11 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_BINARY_PATH,
     RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
+    RAY_SERVE_HAPROXY_H2_BE_INITIAL_WINDOW_SIZE,
+    RAY_SERVE_HAPROXY_H2_BE_MAX_CONCURRENT_STREAMS,
+    RAY_SERVE_HAPROXY_H2_FE_INITIAL_WINDOW_SIZE,
+    RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS,
+    RAY_SERVE_HAPROXY_H2_MAX_FRAME_SIZE,
     RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_FALL,
@@ -78,6 +84,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.haproxy_templates import (
     HAPROXY_CONFIG_TEMPLATE,
+    HAPROXY_GRPC_HEALTHZ_RULES_TEMPLATE,
     HAPROXY_HEALTHZ_RULES_TEMPLATE,
 )
 from ray.serve._private.logging_utils import get_component_logger_file_path
@@ -86,7 +93,7 @@ from ray.serve._private.proxy import (
     ProxyActorInterface,
     apply_per_node_port_overrides,
 )
-from ray.serve._private.utils import get_head_node_id
+from ray.serve._private.utils import get_head_node_id, is_grpc_enabled
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.schema import (
     LoggingConfig,
@@ -99,6 +106,26 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @functools.cache
+def _haproxy_fmt_literal(value: Any) -> str:
+    r"""Format a string as a double-quoted HAProxy log-format literal for a
+    `set-var-fmt` rule.
+
+    App, route, and deployment names can contain any character, so the value is
+    quoted and the characters that are special inside a HAProxy double-quoted
+    log-format string are escaped: `\` (escape), `"` (delimiter), `%`
+    (directive), and `$` (env var). HAProxy removes the escaping when it reads
+    the config, so the stored value is the original string.
+
+    Example: `a"b%c` becomes `"a\"b%%c"`.
+    """
+    s = str(value)
+    s = s.replace("\\", "\\\\")
+    s = s.replace('"', '\\"')
+    s = s.replace("%", "%%")
+    s = s.replace("$", "\\$")
+    return '"' + s + '"'
+
+
 def _load_lua_template() -> string.Template:
     path = Path(__file__).parent / "ingress_request_router.lua.tmpl"
     try:
@@ -365,6 +392,57 @@ class HealthRouteInfo:
     routes_content_type: str = "application/json"
 
 
+def build_grpc_healthcheck_request_hex(path: str) -> str:
+    """Build the raw HTTP/2 bytes for a unary gRPC health-check request.
+
+    HAProxy's `http-check` cannot health-check a gRPC server: `http-check send`
+    truncates its body at the first NUL byte, and a gRPC length-prefixed message
+    always begins with the NUL compression-flag byte. With no message frame, the
+    server receives a message-less unary call and stalls until the check times
+    out. We therefore drive the check via `tcp-check send-binary`, which emits
+    exact bytes (NUL included), replaying a complete gRPC request: the HTTP/2
+    connection preface, an empty SETTINGS frame, a HEADERS frame (HPACK literal,
+    no Huffman/dynamic table), and a DATA frame carrying an empty message
+    (`00 00 00 00 00`) with END_STREAM. The peer responds with the real
+    `Healthz` body, which `tcp-check expect binary` matches against the healthy
+    message. Returns the request as a hex string for `tcp-check send-binary`.
+    """
+
+    def hpack_str(s: str) -> bytes:
+        b = s.encode()
+        # Literal string, no Huffman; lengths here are always < 127.
+        assert len(b) < 127, f"header value too long for simple HPACK: {s!r}"
+        return bytes([len(b)]) + b
+
+    def hpack_header(name: str, value: str) -> bytes:
+        # 0x00 = literal header field without indexing, new name.
+        return b"\x00" + hpack_str(name) + hpack_str(value)
+
+    def h2_frame(frame_type: int, flags: int, stream_id: int, payload: bytes) -> bytes:
+        return (
+            len(payload).to_bytes(3, "big")
+            + bytes([frame_type, flags])
+            + stream_id.to_bytes(4, "big")
+            + payload
+        )
+
+    preface = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+    settings = h2_frame(0x4, 0x0, 0, b"")  # empty SETTINGS
+    headers_block = b"".join(
+        [
+            hpack_header(":method", "POST"),
+            hpack_header(":scheme", "http"),
+            hpack_header(":path", path),
+            hpack_header(":authority", "ray-serve-grpc"),
+            hpack_header("te", "trailers"),
+            hpack_header("content-type", "application/grpc"),
+        ]
+    )
+    headers = h2_frame(0x1, 0x4, 1, headers_block)  # END_HEADERS (not END_STREAM)
+    data = h2_frame(0x0, 0x1, 1, b"\x00\x00\x00\x00\x00")  # empty msg, END_STREAM
+    return (preface + settings + headers + data).hex()
+
+
 @dataclass
 class ServerConfig:
     """Configuration for a single server."""
@@ -435,8 +513,9 @@ class BackendConfig:
     # The interval between two consecutive health checks when the server is in the DOWN state
     health_check_downinter: Optional[str] = None
 
-    # Endpoint path that the health check mechanism will send a request to. It's typically an HTTP path.
-    health_check_path: Optional[str] = "/-/healthz"
+    # Endpoint path that the health check mechanism will send a request to.
+    http_health_check_path: Optional[str] = "/-/healthz"
+    grpc_health_check_path: Optional[str] = "/ray.serve.RayServeAPIService/Healthz"
 
     # List of servers in this backend
     servers: List[ServerConfig] = field(default_factory=list)
@@ -450,6 +529,16 @@ class BackendConfig:
 
     # The app name for this backend.
     app_name: str = field(default_factory=str)
+
+    # Name of the app's ingress deployment. Rendered into the per-request HTTP
+    # metrics log line so HAProxy-emitted ingress metrics carry the deployment
+    # tag (matching what the Python proxy records). Empty when unknown.
+    ingress_deployment_name: str = field(default_factory=str)
+
+    # Protocol of this backend. HTTP backends are path-routed and use HTTP/1.1;
+    # gRPC backends are header-routed (by the `application` gRPC metadata) and
+    # speak HTTP/2 cleartext to replica direct-ingress gRPC servers.
+    protocol: RequestProtocol = RequestProtocol.HTTP
 
     def build_health_check_config(self, global_config: "HAProxyConfig") -> dict:
         """Build health check configuration for HAProxy backend.
@@ -485,10 +574,16 @@ class BackendConfig:
             else global_config.health_check_downinter
         )
         health_path = (
-            self.health_check_path
-            if self.health_check_path is not None
-            else global_config.health_check_path
+            self.http_health_check_path
+            if self.http_health_check_path is not None
+            else global_config.http_health_check_path
         )
+        if self.protocol == RequestProtocol.GRPC:
+            health_path = (
+                self.grpc_health_check_path
+                if self.grpc_health_check_path is not None
+                else global_config.grpc_health_check_path
+            )
 
         # Build default-server directive
         parts = []
@@ -512,13 +607,25 @@ class BackendConfig:
 
         default_server_directive = "default-server " + " ".join(parts)
 
-        return {
+        result = {
             "health_path": health_path,
             "default_server_directive": default_server_directive,
         }
 
+        # gRPC backends are health-checked via `tcp-check send-binary` (see
+        # build_grpc_healthcheck_request_hex for why `http-check` can't be used).
+        # Precompute the request bytes and the expected response marker so the
+        # template just emits them.
+        if self.protocol == RequestProtocol.GRPC:
+            result["grpc_healthcheck_request_hex"] = build_grpc_healthcheck_request_hex(
+                health_path
+            )
+            result["grpc_healthcheck_expect_hex"] = HEALTHY_MESSAGE.encode().hex()
+
+        return result
+
     def __str__(self) -> str:
-        return f"BackendConfig(app_name='{self.app_name}', name='{self.name}', path_prefix='{self.path_prefix}', servers={self.servers}, ingress_request_router_servers={self.ingress_request_router_servers}, fallback_server={self.fallback_server})"
+        return f"BackendConfig(app_name='{self.app_name}', name='{self.name}', path_prefix='{self.path_prefix}', servers={self.servers}, ingress_request_router_servers={self.ingress_request_router_servers}, fallback_server={self.fallback_server}, protocol={self.protocol.value})"
 
     def __repr__(self) -> str:
         return str(self)
@@ -575,9 +682,14 @@ class HAProxyConfig:
     # The interval between two consecutive health checks when the server is in the DOWN state
     health_check_downinter: Optional[str] = RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER
 
-    health_check_path: Optional[str] = "/-/healthz"  # For HTTP health checks
+    http_health_check_path: Optional[str] = "/-/healthz"  # For HTTP health checks
+    grpc_health_check_path: Optional[
+        str
+    ] = "/ray.serve.RayServeAPIService/Healthz"  # For gRPC health checks
 
     http_options: HTTPOptions = field(default_factory=HTTPOptions)
+
+    grpc_options: gRPCOptions = field(default_factory=gRPCOptions)
 
     log_target: str = RAY_SERVE_HAPROXY_LOG_TARGET
 
@@ -589,6 +701,14 @@ class HAProxyConfig:
     ingress_request_router_metrics_enabled: bool = (
         RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED
     )
+
+    # Per-request HTTP ingress metrics (serve_num_http_requests, latency,
+    # errors) emitted from HAProxy log datagrams -- the metrics the Python proxy
+    # emits in non-HAProxy mode. On by default whenever HAProxy metrics are
+    # enabled. When set, the http_frontend renders a per-request RFC 5424 log
+    # line to metrics_socket_path. gRPC is intentionally excluded due to
+    # limitations in parsing trailers.
+    metrics_enabled: bool = RAY_SERVE_HAPROXY_METRICS_ENABLED
     metrics_socket_path: str = RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH
 
     balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
@@ -605,7 +725,13 @@ class HAProxyConfig:
 
     is_head: bool = False
 
+    # Tuning flags
     bufsize: int = RAY_SERVE_HAPROXY_TUNE_BUFSIZE
+    h2_max_frame_size: int = RAY_SERVE_HAPROXY_H2_MAX_FRAME_SIZE
+    h2_be_initial_window_size: int = RAY_SERVE_HAPROXY_H2_BE_INITIAL_WINDOW_SIZE
+    h2_be_max_concurrent_streams: int = RAY_SERVE_HAPROXY_H2_BE_MAX_CONCURRENT_STREAMS
+    h2_fe_initial_window_size: int = RAY_SERVE_HAPROXY_H2_FE_INITIAL_WINDOW_SIZE
+    h2_fe_max_concurrent_streams: int = RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS
 
     @property
     def frontend_host(self) -> str:
@@ -620,6 +746,20 @@ class HAProxyConfig:
     @property
     def frontend_port(self) -> int:
         return self.http_options.port
+
+    @property
+    def grpc_enabled(self) -> bool:
+        return is_grpc_enabled(self.grpc_options)
+
+    @property
+    def grpc_frontend_host(self) -> str:
+        # gRPCOptions has no host field; reuse the HTTP host so both proxies
+        # bind on the same interface.
+        return self.frontend_host
+
+    @property
+    def grpc_frontend_port(self) -> int:
+        return self.grpc_options.port
 
     @property
     def root_path(self) -> str:
@@ -722,6 +862,10 @@ class HAProxyApi(ProxyApi):
     ):
         self.cfg = cfg
         self.backend_configs = backend_configs or {}
+        # Standalone gRPC fallback server used for requests (e.g. ListApplications)
+        # that can only be answered by the Serve proxy.
+        self.grpc_fallback_server: Optional[ServerConfig] = None
+        self.grpc_fallback_backend: Optional[BackendConfig] = None
         self.config_file_path = config_file_path
         # Lock to prevent concurrent config modifications
         self._config_lock = asyncio.Lock()
@@ -813,6 +957,23 @@ class HAProxyApi(ProxyApi):
             self._retire_log_files(p)
         self._old_procs = still_alive
 
+    def _soft_stop_old_procs(self) -> None:
+        """Send SIGUSR1 to displaced workers so they close their listeners and
+        drain.
+
+        HAProxy's `-sf` flag already requests this, but its delivery can be
+        lost, so the manager sends the signal itself where it is reliable.
+        """
+        self._prune_old_procs()
+        for proc in self._old_procs:
+            if not self._is_our_haproxy(proc.pid):
+                continue
+            try:
+                # This is a no-op if the worker is already draining
+                os.kill(proc.pid, signal.SIGUSR1)
+            except OSError:
+                pass
+
     def _is_our_haproxy(self, pid: int) -> bool:
         """Whether `pid` is currently one of our haproxy workers.
 
@@ -880,6 +1041,40 @@ class HAProxyApi(ProxyApi):
             for server_name in servers
         }
         return len(expected ^ reported)
+
+    async def count_ongoing_http_requests(self) -> int:
+        """Total in-flight HTTP requests across this node's HTTP app backends.
+
+        Sums each HTTP backend's aggregate `scur` (current sessions), which
+        counts request streams actively being served. Unlike the frontend scur
+        it does not count idle keep-alive connections, and unlike server-connection
+        counts it is unaffected by `http-reuse`. The aggregate row also includes
+        requests queued waiting for a server. The `-via-ingress-request-router`
+        backends are included (a router request lives in exactly one backend).
+        """
+        suffix = "-via-ingress-request-router"
+        stats = self._parse_haproxy_csv_stats(
+            await self._send_socket_command("show stat")
+        )
+        total = 0
+        for backend_name, servers in stats.items():
+            # The via-router backend is rendered from its app's BackendConfig but
+            # under a suffixed name; strip it to look the config (and protocol) up.
+            base = (
+                backend_name[: -len(suffix)]
+                if backend_name.endswith(suffix)
+                else backend_name
+            )
+            backend_config = self.backend_configs.get(base)
+            if (
+                backend_config is None
+                or backend_config.protocol != RequestProtocol.HTTP
+            ):
+                continue
+            backend_row = servers.get("BACKEND")
+            if backend_row is not None:
+                total += backend_row.current_sessions
+        return total
 
     def _retire_log_files(self, proc: asyncio.subprocess.Process) -> None:
         """Move an exited proc's std-stream logs into the bounded debug ring,
@@ -985,6 +1180,12 @@ class HAProxyApi(ProxyApi):
             if old_proc is not None:
                 self._old_procs.append(old_proc)
 
+            # `-sf` only re-signals stranded workers on the next reload, and
+            # there is none after the final one. Re-send SIGUSR1 directly so a
+            # worker left serving stale config stops now instead of racing the
+            # client's next request.
+            self._soft_stop_old_procs()
+
             logger.info(
                 "Successfully performed graceful HAProxy reload with process restart."
             )
@@ -1083,6 +1284,8 @@ class HAProxyApi(ProxyApi):
         """Internal config generation without locking (for use within locked sections)."""
         try:
             env = Environment()
+            # Escapes names before they are rendered into set-var-fmt values.
+            env.filters["haproxy_fmt"] = _haproxy_fmt_literal
 
             # Backends are sorted in decreasing order of length of path prefix
             # to ensure that the longest path prefix match is taken first.
@@ -1092,41 +1295,89 @@ class HAProxyApi(ProxyApi):
                 key=lambda be: (-len(be.path_prefix), be.path_prefix),
             )
 
+            # HTTP backends are path-routed; gRPC backends are header-routed
+            # (by the `application` gRPC metadata) and need a different
+            # frontend / backend rendering. Split them up here so the template
+            # can iterate each set independently.
+            http_backends = [b for b in backends if b.protocol == RequestProtocol.HTTP]
+            grpc_backends = [b for b in backends if b.protocol == RequestProtocol.GRPC]
+
             # Derive from the write result: returns None when no backend has
             # both routers and replicas with IDs (transient during scaling).
+            # The ingress request router is HTTP-only.
             ingress_request_router_lua_path = self._write_ingress_request_router_lua(
-                backends
+                http_backends
             )
             has_ingress_request_router = ingress_request_router_lua_path is not None
 
-            # Enrich backends with precomputed health check configuration strings
-            backends_with_health_config = [
+            # Enrich HTTP backends with precomputed health check configuration strings
+            http_backends_with_health_config = [
                 {
                     "backend": backend,
                     "health_config": backend.build_health_check_config(self.cfg),
                 }
-                for backend in backends
+                for backend in http_backends
             ]
 
-            health_route_info = self.cfg.build_health_route_info(backends)
+            # Enrich gRPC backends with precomputed health check configuration strings
+            grpc_backends_with_health_config = [
+                {
+                    "backend": backend,
+                    "health_config": backend.build_health_check_config(self.cfg),
+                }
+                for backend in grpc_backends
+            ]
+
+            # Healthz / routes only consider HTTP backends. The HAProxy `/-/healthz`
+            # and `/-/routes` endpoints are HTTP-facing.
+            health_route_info = self.cfg.build_health_route_info(http_backends)
 
             # Render healthz rules separately for readability/reuse
             healthz_template = env.from_string(HAPROXY_HEALTHZ_RULES_TEMPLATE)
             healthz_rules = healthz_template.render(
                 {
                     "config": self.cfg,
-                    "backends": backends,
+                    "backends": http_backends,
                     "health_info": health_route_info,
                 }
             )
+            grpc_healthz_template = env.from_string(HAPROXY_GRPC_HEALTHZ_RULES_TEMPLATE)
+            grpc_healthz_rules = grpc_healthz_template.render(
+                {
+                    "config": self.cfg,
+                    "backends": grpc_backends,
+                    "health_info": health_route_info,
+                }
+            )
+
+            # Generate the gRPC fallback backend with health check configuration, which only
+            # contains the head node serve proxy. This is only used for ListApplication requests
+            # since HAProxy can't construct the gRPC response itself, so it relies on the serve
+            # proxy to do so.
+            grpc_fallback_backend_with_health_config = None
+            if (
+                self.grpc_fallback_server is not None
+                and self.grpc_fallback_backend is not None
+            ):
+                grpc_fallback_backend_with_health_config = {
+                    "backend": self.grpc_fallback_backend,
+                    "health_config": self.grpc_fallback_backend.build_health_check_config(
+                        self.cfg
+                    ),
+                }
 
             config_template = env.from_string(HAPROXY_CONFIG_TEMPLATE)
             config_content = config_template.render(
                 {
                     "config": self.cfg,
-                    "backends": backends,
-                    "backends_with_health_config": backends_with_health_config,
+                    "backends": http_backends,
+                    "grpc_backends": grpc_backends,
+                    "backends_with_health_config": http_backends_with_health_config,
+                    "grpc_backends_with_health_config": (
+                        grpc_backends_with_health_config
+                    ),
                     "healthz_rules": healthz_rules,
+                    "grpc_healthz_rules": grpc_healthz_rules,
                     "route_info": health_route_info,
                     "has_ingress_request_router": has_ingress_request_router,
                     "ingress_request_router_lua_path": ingress_request_router_lua_path,
@@ -1140,7 +1391,10 @@ class HAProxyApi(ProxyApi):
                         RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
                     ),
                     "ingress_request_router_metrics_enabled": self.cfg.ingress_request_router_metrics_enabled,
+                    "metrics_enabled": self.cfg.metrics_enabled,
                     "metrics_socket_path": self.cfg.metrics_socket_path,
+                    "grpc_fallback_backend_with_health_config": grpc_fallback_backend_with_health_config,
+                    "healthy_message": HEALTHY_MESSAGE,  # the message in the response body for healthy replicas
                 }
             )
 
@@ -1383,6 +1637,31 @@ class HAProxyApi(ProxyApi):
             len(bc.servers) > 0 for bc in backend_configs.values()
         )
 
+    def set_grpc_fallback_server(self, server: Optional[ServerConfig]) -> None:
+        self.grpc_fallback_server = server
+        if server is not None:
+            self.grpc_fallback_backend = BackendConfig(
+                name="grpc_fallback_backend",
+                path_prefix="/",  # this is unused for grpc
+                protocol=RequestProtocol.GRPC,
+                servers=[server],
+            )
+        else:
+            self.grpc_fallback_backend = None
+
+    async def is_grpc_fallback_ready(self) -> bool:
+        """True iff the running HAProxy has an UP server in grpc_fallback_backend."""
+        if self.grpc_fallback_backend is None:
+            return False
+        try:
+            stats = self._parse_haproxy_csv_stats(
+                await self._send_socket_command("show stat")
+            )
+        except Exception:
+            return False
+        servers = stats.get("grpc_fallback_backend", {})
+        return any(server.is_up for server in servers.values())
+
     async def _get_running_pid(self) -> Optional[int]:
         """Pid of the HAProxy process currently answering the admin socket,
         or None if the socket is unavailable or the response is unparseable.
@@ -1440,6 +1719,7 @@ class HAProxyManager(ProxyActorInterface):
         self.event_loop = get_or_create_event_loop()
 
         self._target_groups: List[TargetGroup] = []
+        self._received_target_groups_broadcast = False
 
         # Fallback targets.
         self._http_fallback_target: Optional[Target] = None
@@ -1481,7 +1761,11 @@ class HAProxyManager(ProxyActorInterface):
         is_head = self._node_id == get_head_node_id()
         apply_per_node_port_overrides(self._http_options, self._grpc_options, is_head)
 
-        startup_msg = f"HAProxy starting on node {self._node_id} (HTTP port: {self._http_options.port})."
+        startup_msg = f"HAProxy starting on node {self._node_id} (HTTP port: {self._http_options.port}"
+        if is_grpc_enabled(self._grpc_options):
+            startup_msg += f", gRPC port: {self._grpc_options.port})."
+        else:
+            startup_msg += ")."
         logger.info(startup_msg)
         logger.debug(
             f"Configure HAProxyManager actor {ray.get_runtime_context().get_actor_id()} "
@@ -1497,6 +1781,7 @@ class HAProxyManager(ProxyActorInterface):
         self._haproxy = HAProxyApi(
             cfg=HAProxyConfig(
                 http_options=http_options,
+                grpc_options=grpc_options,
                 is_head=is_head,
                 socket_path=_per_node(RAY_SERVE_HAPROXY_SOCKET_PATH),
                 server_state_base=os.path.join(
@@ -1515,26 +1800,25 @@ class HAProxyManager(ProxyActorInterface):
 
             # The metrics collector owns all serve_haproxy_* metrics for this proxy.
             # It is constructed if haproxy metrics are enabled. start() always begins
-            # node-level polling and, when ingress-request-router metrics are enabled,
-            # also binds the per-request dgram reader and returns its bind task (which
+            # node-level polling and binds the per-request dgram reader (where
+            # HAProxy writes one line per request). It returns its bind task (which
             # ready() awaits to surface bind failures).
             self._metrics_collector = HAProxyMetricsCollector(
-                haproxy_api=self._haproxy, node_id=self._node_id
+                haproxy_api=self._haproxy,
+                node_id=self._node_id,
+                node_ip_address=self._node_ip_address,
             )
             try:
                 self._metrics_attach_task = self._metrics_collector.start(
                     self.event_loop,
                     poll_interval_s=RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S,
-                    enable_ingress_router_metrics=(
-                        self._haproxy.cfg.ingress_request_router_metrics_enabled
-                    ),
                     metrics_socket_path=self._haproxy.cfg.metrics_socket_path,
                 )
             except Exception:
                 logger.exception(
-                    "Failed to start the ingress-request-router datagram reader; "
-                    "per-request router metrics will not be emitted. Node-level "
-                    "metrics and HAProxy continue normally."
+                    "Failed to start the per-request metrics datagram reader; "
+                    "per-request metrics will not be emitted. Node-level metrics "
+                    "and HAProxy continue normally."
                 )
 
         self._haproxy_start_task = self.event_loop.create_task(self._haproxy.start())
@@ -1608,20 +1892,53 @@ class HAProxyManager(ProxyActorInterface):
             if self._is_draining():
                 return
 
+            # We have not received an update from the controller yet. We always
+            # get at least one broadcast even if target groups is empty (e.g.
+            # when the user sets route_prefix=None).
+            if not self._received_target_groups_broadcast:
+                await asyncio.sleep(0.2)
+                continue
+
+            # When gRPC is used, haproxy relies on the fallback serve proxy to
+            # handle ListApplications requests, so we block until HAProxy reprots
+            # an UP server in grpc_fallback_backend.
+            if (
+                is_grpc_enabled(self._grpc_options)
+                and not await self._haproxy.is_grpc_fallback_ready()
+            ):
+                await asyncio.sleep(0.2)
+                continue
+
+            desired_backend_servers = {
+                self._generate_backend_name(tg): {
+                    self._generate_server_name(target) for target in tg.targets
+                }
+                for tg in self._target_groups
+            }
+            fallback_servers = {
+                self._generate_server_name(target)
+                for target in (
+                    self._http_fallback_target,
+                    self._grpc_fallback_target,
+                )
+                if target is not None
+            }
+
             try:
-                all_backends = set()
-                ready_backends = set()
                 stats = await self._haproxy.get_all_stats()
+                ready_backends = set()
                 for backend, servers in stats.items():
-                    # The backend name is suffixed with the protocol. We omit
-                    # grpc backends for now since they aren't supported yet.
-                    if backend.lower().startswith("grpc"):
-                        continue
-                    all_backends.add(backend)
-                    for server in servers.values():
-                        if server.is_up:
+                    desired_servers = desired_backend_servers.get(backend, set())
+                    desired_servers.update(fallback_servers)
+                    for server_name, server in servers.items():
+                        if not server.is_up:
+                            continue
+
+                        if server_name in desired_servers:
                             ready_backends.add(backend)
-                ready_to_serve = all_backends == ready_backends
+                            break
+
+                ready_to_serve = set(desired_backend_servers) == ready_backends
             except Exception:
                 pass
             if not ready_to_serve:
@@ -1708,21 +2025,32 @@ class HAProxyManager(ProxyActorInterface):
 
         return log_file_path
 
+    def _generate_server_name(self, target: Target) -> str:
+        # The server name is derived from the replica's actor name, with the
+        # format `SERVE_REPLICA::<app>#<deployment>#<replica_id>`, or the
+        # proxy's actor name, with the format `SERVE_PROXY_ACTOR-<node_id>`.
+        # Special characters in the names are converted to comply with haproxy
+        # config's allowed characters, e.g. `#` -> `-`.
+        return self.get_safe_name(target.name)
+
     def _target_to_server(self, target: Target) -> ServerConfig:
         """Convert a target to a server."""
         # Use localhost if target is on the same node as HAProxy
         host = get_localhost_ip() if target.ip == self._node_ip_address else target.ip
         return ServerConfig(
-            # The server name is derived from the replica's actor name, with the
-            # format `SERVE_REPLICA::<app>#<deployment>#<replica_id>`, or the
-            # proxy's actor name, with the format `SERVE_PROXY_ACTOR-<node_id>`.
-            # Special characters in the names are converted to comply with haproxy
-            # config's allowed characters, e.g. `#` -> `-`.
-            name=self.get_safe_name(target.name),
+            name=self._generate_server_name(target),
             host=host,
             port=target.port,
             # Unsanitized actor name; matches what /internal/route returns.
             replica_id=target.name,
+        )
+
+    def _generate_backend_name(self, target_group: TargetGroup) -> str:
+        # The name is lowercased and formatted as <protocol>-<app_name>. Special
+        # characters in the name are converted to comply with haproxy config's
+        # allowed characters, e.g. `#` -> `-`.
+        return self.get_safe_name(
+            f"{target_group.protocol.value.lower()}-{target_group.app_name}"
         )
 
     def _create_backend_config(
@@ -1752,17 +2080,14 @@ class HAProxyManager(ProxyActorInterface):
             fallback_server = self._target_to_server(fallback_target)
 
         return BackendConfig(
-            # The name is lowercased and formatted as <protocol>-<app_name>. Special
-            # characters in the name are converted to comply with haproxy config's
-            # allowed characters, e.g. `#` -> `-`.
-            name=self.get_safe_name(
-                f"{target_group.protocol.value.lower()}-{target_group.app_name}"
-            ),
+            name=self._generate_backend_name(target_group),
             path_prefix=target_group.route_prefix,
             servers=servers,
             ingress_request_router_servers=ingress_request_router_servers,
             app_name=target_group.app_name,
+            ingress_deployment_name=target_group.ingress_deployment_name,
             fallback_server=fallback_server,
+            protocol=target_group.protocol,
         )
 
     async def _reload_haproxy(self) -> None:
@@ -1795,10 +2120,19 @@ class HAProxyManager(ProxyActorInterface):
         }
 
         self._haproxy.set_backend_configs(name_to_backend_configs)
+
+        grpc_fallback_server = (
+            self._target_to_server(self._grpc_fallback_target)
+            if self._grpc_fallback_target is not None
+            else None
+        )
+        self._haproxy.set_grpc_fallback_server(grpc_fallback_server)
+
         await self._reload_haproxy()
 
     def update_target_groups(self, target_groups: List[TargetGroup]) -> None:
         self._target_groups = target_groups
+        self._received_target_groups_broadcast = True
         self._schedule_haproxy_update()
 
     def update_fallback_targets(

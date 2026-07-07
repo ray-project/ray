@@ -896,8 +896,24 @@ RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE = get_env_int(
     "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE", 262144
 )
 
+# HAProxy tuning flags
 RAY_SERVE_HAPROXY_TUNE_BUFSIZE = get_env_int(
     "RAY_SERVE_HAPROXY_TUNE_BUFSIZE", 16384  # 16KB
+)
+RAY_SERVE_HAPROXY_H2_MAX_FRAME_SIZE = get_env_int(
+    "RAY_SERVE_HAPROXY_H2_MAX_FRAME_SIZE", 1024 * 16
+)  # 16KB
+RAY_SERVE_HAPROXY_H2_BE_INITIAL_WINDOW_SIZE = get_env_int(
+    "RAY_SERVE_HAPROXY_H2_BE_INITIAL_WINDOW_SIZE", 1024 * 64
+)  # 64KB
+RAY_SERVE_HAPROXY_H2_BE_MAX_CONCURRENT_STREAMS = get_env_int(
+    "RAY_SERVE_HAPROXY_H2_BE_MAX_CONCURRENT_STREAMS", 100
+)
+RAY_SERVE_HAPROXY_H2_FE_INITIAL_WINDOW_SIZE = get_env_int(
+    "RAY_SERVE_HAPROXY_H2_FE_INITIAL_WINDOW_SIZE", 1024 * 64
+)  # 64KB
+RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS = get_env_int(
+    "RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS", 100
 )
 
 # Escape hatch: when true, HAProxy forwards the (possibly truncated) request
@@ -1033,6 +1049,14 @@ if RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED:
 RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
     "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER", "0"
 )
+
+# Feature flag to include high-cardinality source tags on Serve controller metrics.
+# Disable this to keep deployment/application tags while dropping source identifiers
+# like replica IDs from controller-emitted metrics.
+RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS = get_env_bool(
+    "RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS", "1"
+)
+
 # Feature flag to use compact (low-cardinality) namespace tags on long poll metrics.
 # When enabled, metric tags use only the LongPollNamespace enum name
 # (e.g., "DEPLOYMENT_CONFIG") instead of the full key string which includes

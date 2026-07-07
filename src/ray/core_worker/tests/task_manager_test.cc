@@ -1833,6 +1833,184 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBasic) {
   manager_.TryDelObjectRefStream(generator_id);
 }
 
+TEST_F(TaskManagerTest, TestObjectRefStreamMarksPeekedRefsAfterEof) {
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto eof_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  auto post_eof_id = ObjectID::FromIndex(spec.TaskId(), 4);
+
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}));
+
+  auto peeked = manager_.PeekObjectRefStreamN(generator_id, 3);
+  ASSERT_EQ(peeked.size(), 3);
+  ASSERT_EQ(peeked[0].first, dynamic_return_id);
+  ASSERT_TRUE(peeked[0].second);
+  ASSERT_EQ(peeked[1].first, eof_id);
+  ASSERT_FALSE(peeked[1].second);
+  ASSERT_EQ(peeked[2].first, post_eof_id);
+  ASSERT_FALSE(peeked[2].second);
+
+  CompletePendingStreamingTask(
+      spec, caller_address, /*num_streaming_generator_returns=*/1);
+
+  std::vector<std::shared_ptr<RayObject>> results;
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  RAY_CHECK_OK(store_->Get({eof_id, post_eof_id}, 2, 1, ctx, &results));
+  ASSERT_EQ(results.size(), 2);
+  for (const auto &result : results) {
+    rpc::ErrorType error_type;
+    ASSERT_TRUE(result->IsException(&error_type));
+    ASSERT_EQ(error_type, rpc::ErrorType::END_OF_STREAMING_GENERATOR);
+  }
+
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
+TEST_F(TaskManagerTest, TestObjectRefStreamBulkPeekAfterEofReturnsEof) {
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto eof_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  auto post_eof_id = ObjectID::FromIndex(spec.TaskId(), 4);
+
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}));
+
+  CompletePendingStreamingTask(
+      spec, caller_address, /*num_streaming_generator_returns=*/1);
+
+  auto after_eof = manager_.PeekObjectRefStreamN(generator_id, 3);
+  ASSERT_EQ(after_eof.size(), 3);
+  ASSERT_EQ(after_eof[0].first, dynamic_return_id);
+  ASSERT_TRUE(after_eof[0].second);
+  ASSERT_EQ(after_eof[1].first, eof_id);
+  ASSERT_TRUE(after_eof[1].second);
+  ASSERT_EQ(after_eof[2].first, post_eof_id);
+  ASSERT_TRUE(after_eof[2].second);
+
+  std::vector<std::shared_ptr<RayObject>> results;
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  RAY_CHECK_OK(store_->Get({eof_id, post_eof_id}, 2, 1, ctx, &results));
+  ASSERT_EQ(results.size(), 2);
+  for (const auto &result : results) {
+    rpc::ErrorType error_type;
+    ASSERT_TRUE(result->IsException(&error_type));
+    ASSERT_EQ(error_type, rpc::ErrorType::END_OF_STREAMING_GENERATOR);
+  }
+
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
+TEST_F(TaskManagerTest, TestObjectRefStreamPeekedEofSentinelNotOverReleasedOnDelete) {
+  // A peeked EOF sentinel must be released exactly once at teardown; a double
+  // release would free a consumer's still-held peeked ref.
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto eof_id = ObjectID::FromIndex(spec.TaskId(), 3);
+
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}));
+
+  // Peek past the produced object (before EOF is marked) so the EOF sentinel is
+  // temporarily owned by the stream.
+  auto peeked = manager_.PeekObjectRefStreamN(generator_id, 3);
+  ASSERT_EQ(peeked.size(), 3);
+  ASSERT_EQ(peeked[1].first, eof_id);
+
+  // Simulate the consumer retaining the peeked sentinel ref. PeekObjectRefStreamN
+  // hands back ObjectRefs without skip_adding_local_ref, so each peeked ref adds
+  // its own consumer-side local reference on top of the owner-side one.
+  reference_counter_->AddLocalReference(eof_id, "");
+  ASSERT_TRUE(reference_counter_->HasReference(eof_id));
+
+  CompletePendingStreamingTask(
+      spec, caller_address, /*num_streaming_generator_returns=*/1);
+
+  // Tearing down the stream releases owner-side refs for unconsumed items. The
+  // consumer's reference on the sentinel must survive.
+  manager_.TryDelObjectRefStream(generator_id);
+  ASSERT_TRUE(reference_counter_->HasReference(eof_id))
+      << "EOF sentinel was over-released at stream teardown, freeing a "
+         "consumer-held peeked reference.";
+
+  reference_counter_->RemoveLocalReference(eof_id, nullptr);
+}
+
+TEST_F(TaskManagerTest, TestObjectRefStreamPeekAfterEofReturnsEof) {
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto eof_id = ObjectID::FromIndex(spec.TaskId(), 3);
+
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}));
+
+  CompletePendingStreamingTask(
+      spec, caller_address, /*num_streaming_generator_returns=*/1);
+
+  ObjectID obj_id;
+  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(obj_id, dynamic_return_id);
+
+  auto [peek_after_read, ready_after_read] = manager_.PeekObjectRefStream(generator_id);
+  ASSERT_EQ(peek_after_read, eof_id);
+  ASSERT_TRUE(ready_after_read);
+
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
 TEST_F(TaskManagerTest, TestObjectRefStreamCancellation) {
   /**
    * Test streaming generator task cancelled during execution. The caller
@@ -2164,6 +2342,108 @@ TEST_F(TaskManagerTest, TestObjectRefStreamReadIgnoredWhenNothingWritten) {
   status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(obj_id, ObjectID::Nil());
+  CompletePendingStreamingTask(spec, caller_address, 1);
+}
+
+TEST_F(TaskManagerTest, TestObjectRefStreamBulkReadAdvancesUnwrittenRefs) {
+  // When the last requested ref is ready, the bulk read may advance past an
+  // earlier ref that is still unwritten (out-of-order reports).
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  auto first_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto second_id = ObjectID::FromIndex(spec.TaskId(), 3);
+
+  auto peeked = manager_.PeekObjectRefStreamN(generator_id, 2);
+  ASSERT_EQ(peeked.size(), 2UL);
+  ASSERT_EQ(peeked[0].first, first_id);
+  ASSERT_EQ(peeked[1].first, second_id);
+  ASSERT_TRUE(reference_counter_->HasReference(first_id));
+  ASSERT_TRUE(reference_counter_->HasReference(second_id));
+
+  // Report only the last requested ref (index 1); index 0 stays unwritten.
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ second_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}));
+
+  auto status = manager_.TryReadObjectRefStreamN(generator_id, 2);
+  ASSERT_TRUE(status.ok()) << status;
+
+  // A late report for the already-consumed earlier ref is ignored.
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ first_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  bool signal_called = false;
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      /*execution_signal_callback*/ [&signal_called](Status callback_status) {
+        signal_called = true;
+        ASSERT_TRUE(callback_status.ok());
+      }));
+  ASSERT_TRUE(signal_called);
+
+  // A late location update must not re-own the consumed ref.
+  reference_counter_->RemoveLocalReference(first_id, nullptr);
+  ASSERT_FALSE(reference_counter_->HasReference(first_id));
+  manager_.TemporarilyOwnGeneratorReturnRefIfNeeded(first_id, generator_id);
+  ASSERT_FALSE(reference_counter_->HasReference(first_id));
+
+  CompletePendingStreamingTask(spec, caller_address, 2);
+}
+
+TEST_F(TaskManagerTest, TestObjectRefStreamBulkReadRejectsUnreadyLastRef) {
+  // Consuming before the last requested ref is ready is rejected without
+  // advancing, instead of silently dropping the unwritten objects.
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  auto first_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto second_id = ObjectID::FromIndex(spec.TaskId(), 3);
+
+  // Make only the first ref ready; the last requested ref is not.
+  auto peeked = manager_.PeekObjectRefStreamN(generator_id, 2);
+  ASSERT_EQ(peeked.size(), 2UL);
+  ASSERT_EQ(peeked[0].first, first_id);
+  ASSERT_EQ(peeked[1].first, second_id);
+
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ first_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}));
+
+  auto status = manager_.TryReadObjectRefStreamN(generator_id, 2);
+  ASSERT_TRUE(status.IsInvalidArgument()) << status;
+
+  // The cursor did not advance: the head is still the first ref.
+  auto peeked_after = manager_.PeekObjectRefStreamN(generator_id, 1);
+  ASSERT_EQ(peeked_after.size(), 1UL);
+  ASSERT_EQ(peeked_after[0].first, first_id);
+  ASSERT_TRUE(peeked_after[0].second);
+
   CompletePendingStreamingTask(spec, caller_address, 1);
 }
 
@@ -2814,6 +3094,64 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
   ASSERT_EQ(last_consumed, -1);
 
   /// No need to test out of order case. It won't be different.
+}
+
+TEST_F(TaskManagerTest, TestObjectRefStreamBulkReadBackpressure) {
+  /**
+   * Bulk reads (TryReadObjectRefStreamN) must report consumed progress to the
+   * executor so owner backpressure releases, exactly like the single-item
+   * TryReadObjectRefStream. Otherwise a backpressured generator stays blocked
+   * after bulk consumption.
+   */
+  auto spec = CreateTaskHelper(1,
+                               {},
+                               /*dynamic_returns=*/true,
+                               /*is_streaming_generator=*/true,
+                               /*generator_backpressure_num_objects*/ 2);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  int consumption_updates = 0;
+  Status last_consumption_status;
+  int64_t last_consumed = -2;
+  auto consumption_update = [&](Status status, int64_t num_objects_consumed) {
+    consumption_updates++;
+    last_consumption_status = status;
+    last_consumed = num_objects_consumed;
+  };
+
+  // Report two objects. Nothing is consumed yet, so no consumption update fires.
+  for (int64_t i = 0; i < 2; i++) {
+    auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2 + i);
+    auto data = GenerateRandomBuffer();
+    auto req = GetIntermediateTaskReturn(
+        /*idx*/ i,
+        /*finished*/ false,
+        generator_id,
+        /*dynamic_return_id*/ dynamic_return_id,
+        /*data*/ data,
+        /*set_in_plasma*/ false);
+    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback*/ [](Status) {}, consumption_update));
+  }
+  ASSERT_EQ(consumption_updates, 0);
+
+  // Peek adds the consumer-side local refs that the bulk read releases.
+  auto peeked = manager_.PeekObjectRefStreamN(generator_id, 2);
+  ASSERT_EQ(peeked.size(), 2UL);
+
+  // Bulk-read both items: the executor must be told that 2 objects were
+  // consumed so backpressure can release.
+  auto status = manager_.TryReadObjectRefStreamN(generator_id, 2);
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(consumption_updates, 1);
+  ASSERT_TRUE(last_consumption_status.ok());
+  ASSERT_EQ(last_consumed, 2);
+
+  CompletePendingStreamingTask(spec, caller_address, 2);
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  manager_.TryDelObjectRefStream(generator_id);
 }
 
 TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
