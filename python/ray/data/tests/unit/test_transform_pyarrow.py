@@ -12,6 +12,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     _align_struct_fields,
     _has_unhashable_pandas_types,
+    _hash_partition,
     concat,
     hash_partition,
     shuffle,
@@ -144,6 +145,28 @@ def test_hash_partitioning():
 
     assert len(_structs_partition_dict) <= 101
     assert t == _concat_and_sort_partitions(_structs_partition_dict.values())
+
+
+def test_hash_partition_string_keys_pandas3_readonly_hashes():
+    """Regression test for #64552.
+
+    pandas 3.0+ returns read-only hash arrays from hash_pandas_object on
+    Arrow-backed string columns. _hash_partition must not use in-place np.mod.
+    """
+    if parse_version(pd.__version__) < parse_version("3.0.0"):
+        pytest.skip("read-only hash arrays require pandas 3.0+")
+
+    keys = [f"k{i % 50}" for i in range(10_000)]
+    table = pa.table({"key": keys})
+    partitions = _hash_partition(table, num_partitions=7)
+
+    assert partitions.shape == (10_000,)
+    assert set(partitions) <= set(range(7))
+
+    partitions_by_key = {}
+    for key, partition in zip(keys, partitions):
+        partitions_by_key.setdefault(key, set()).add(partition)
+    assert all(len(parts) == 1 for parts in partitions_by_key.values())
 
 
 @pytest.mark.parametrize(
