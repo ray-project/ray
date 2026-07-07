@@ -151,6 +151,14 @@ void TaskReceiver::BeginActorTaskArgsFetch(const rpc::PushTaskRequest &request) 
   if (dependencies.empty()) {
     return;
   }
+  // The waiter keys this fetch by (task_id, attempt_number). This is safe because
+  // the executor receives a given (task_id, attempt_number) at most once per actor
+  // lifecycle:
+  // 1. each attempt is popped from the submit queue and sent exactly once
+  // 2. PushTask is not retried at the gRPC layer
+  // 3. Every resubmission (retry lineage reconstruction, or reconnect) increments the
+  // attempt number.
+  // So no two BeginArgsFetch/MarkReady calls ever collide on the same key.
   waiter_.BeginArgsFetch(dependencies,
                          TaskAttempt{task_spec.TaskId(), task_spec.AttemptNumber()});
 }
