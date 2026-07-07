@@ -10,7 +10,7 @@ myst:
 
 (getting-involved)=
 
-# Getting Involved / Contributing
+# Getting involved and contributing
 
 ```{toctree}
 :hidden:
@@ -26,7 +26,7 @@ profiling
 agent-development
 ```
 
-Ray is more than a framework for distributed applications but also an active community of developers, researchers, and folks that love machine learning.
+Ray is more than a framework for distributed applications. It's also an active community of developers, researchers, and folks who love machine learning.
 
 :::{tip}
 Ask questions on [our forum](https://discuss.ray.io/)! The community is extremely active in helping people succeed in building their Ray applications.
@@ -36,7 +36,7 @@ You can join (and Star!) us [on GitHub](https://github.com/ray-project/ray).
 
 ## Contributing to Ray
 
-We welcome (and encourage!) all forms of contributions to Ray, including and not limited to:
+We welcome and encourage all forms of contributions to Ray, including but not limited to:
 
 - Code reviewing of patches and PRs.
 - Pushing patches.
@@ -45,7 +45,7 @@ We welcome (and encourage!) all forms of contributions to Ray, including and not
 - Code readability and code comments to improve readability.
 - Test cases to make the codebase more robust.
 - Tutorials, blog posts, talks that promote the project.
-- Features and major changes via Ray Enhancement Proposals (REP): <https://github.com/ray-project/enhancements>
+- Features and major changes via [Ray Enhancement Proposals (REP)](https://github.com/ray-project/enhancements).
 
 ## What can I work on?
 
@@ -56,7 +56,7 @@ We use GitHub labels to categorize issues and help contributors find work that m
 If you're new to Ray, start with these labels:
 
 - [good-first-issue](https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3A%22good-first-issue%22): Small issues that are good for new contributors to onboard to the codebase.
-- [contribution-welcome](https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3A%22contribution-welcome%22): Impactful issues that are good candidates for community contributions. Reviews for these issues will be prioritized.
+- [contribution-welcome](https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3A%22contribution-welcome%22): Impactful issues that are good candidates for community contributions. We prioritize reviews for these issues.
 
 ### By component
 
@@ -81,11 +81,11 @@ You can combine labels in GitHub's search to find issues that match multiple cri
 
 ## Setting up your development environment
 
-To edit the Ray source code, fork the repository, clone it, and build Ray from source. Follow {ref}`these instructions for building <building-ray>` a local copy of Ray to easily make changes.
+To edit the Ray source code, fork the repository, clone it, and build Ray from source. Follow {ref}`these instructions for building <building-ray>` a local copy of Ray to make changes.
 
-## Submitting and Merging a Contribution
+## Submitting and merging a contribution
 
-There are a couple steps to merge a contribution.
+To merge a contribution, complete the following steps:
 
 1. First merge the most recent version of master into your development branch.
 
@@ -94,33 +94,33 @@ There are a couple steps to merge a contribution.
    git pull . upstream/master
    ```
 
-2. Make sure all existing [tests](#testing) and [linters](#lint-and-formatting) pass. Run `setup_hooks.sh` to create a git hook that will run the linter before you push your changes.
+2. Make sure all existing [tests](#testing) and [linters](#lint-and-formatting) pass. Run `setup_hooks.sh` to create a git hook that runs the linter before you push your changes.
 3. If introducing a new feature or patching a bug, be sure to add new test cases in the relevant file in `ray/python/ray/tests/`.
-4. Document the code. Public functions need to be documented, and remember to provide an usage example if applicable. See `doc/README.md` for instructions on editing and building public documentation.
-5. Address comments on your PR. During the review process you may need to address merge conflicts with other changes. To resolve merge conflicts, run `git pull . upstream/master` on your branch (please do not use rebase, as it is less friendly to the GitHub review tool. All commits will be squashed on merge.)
-6. Reviewers will merge and approve the pull request; be sure to ping them if the pull request is getting stale.
+4. Document the code. Document public functions, and remember to provide a usage example if applicable. See `doc/README.md` for instructions on editing and building public documentation.
+5. Address comments on your PR. During the review process you may need to address merge conflicts with other changes. To resolve merge conflicts, run `git pull . upstream/master` on your branch. Don't use rebase, because it's less friendly to the GitHub review tool. We squash all commits on merge.
+6. Reviewers approve and merge the pull request. Be sure to ping them if the pull request is getting stale.
 
-## PR Review Process
+## PR review process
 
-### For contributors who are in the `ray-project` organization:
+### For contributors in the `ray-project` organization
 
-- When you first create a PR, add an reviewer to the `assignee` section.
-- Assignees will review your PR and add the `@author-action-required` label if further actions are required.
+- When you first create a PR, add a reviewer to the `assignee` section.
+- Assignees review your PR and add the `@author-action-required` label if further action is required.
 - Address their comments and remove the `@author-action-required` label from the PR.
 - Repeat this process until assignees approve your PR.
 - Once the PR is approved, the author is in charge of ensuring the PR passes the build. Add the `test-ok` label if the build succeeds.
-- Committers will merge the PR once the build is passing.
+- Committers merge the PR once the build passes.
 
-### For contributors who are not in the `ray-project` organization:
+### For contributors not in the `ray-project` organization
 
-- Your PRs will have assignees shortly. Assignees of PRs will be actively engaging with contributors to merge the PR.
-- Please actively ping assignees after you address your comments!
+- Your PRs will have assignees shortly. Assignees of PRs actively engage with contributors to merge the PR.
+- Actively ping assignees after you address your comments!
 
 ## Testing
 
-Even though we have hooks to run unit tests automatically for each pull request, we recommend you to run unit tests locally beforehand to reduce reviewers’ burden and speedup review process.
+Even though we have hooks to run unit tests automatically for each pull request, we recommend running unit tests locally beforehand to reduce reviewers' burden and speed up the review process.
 
-If you are running tests for the first time, you can install the required dependencies with:
+If you're running tests for the first time, you can install the required dependencies with:
 
 ```shell
 pip install -c python/requirements_compiled.txt -r python/requirements/test-requirements.txt
@@ -128,14 +128,14 @@ pip install -c python/requirements_compiled.txt -r python/requirements/test-requ
 
 ### Testing for Python development
 
-The full suite of tests is too large to run on a single machine. However, you can run individual relevant Python test files. Suppose that one of the tests in a file of tests, e.g., `python/ray/tests/test_basic.py`, is failing. You can run just that test file locally as follows:
+The full suite of tests is too large to run on a single machine. However, you can run individual relevant Python test files. Suppose one of the tests in a file such as `python/ray/tests/test_basic.py` is failing. You can run just that test file locally as follows:
 
 ```shell
 # Directly calling `pytest -v ...` may lose import paths.
 python -m pytest -v -s python/ray/tests/test_basic.py
 ```
 
-This will run all of the tests in the file. To run a specific test, use the following:
+This runs all the tests in the file. To run a specific test, use the following:
 
 ```shell
 # Directly calling `pytest -v ...` may lose import paths.
@@ -150,15 +150,15 @@ To compile and run all C++ tests, you can run:
 bazel test $(bazel query 'kind(cc_test, ...)')
 ```
 
-Alternatively, you can also run one specific C++ test. You can use:
+Alternatively, you can run one specific C++ test:
 
 ```shell
 bazel test $(bazel query 'kind(cc_test, ...)') --test_filter=ClientConnectionTest --test_output=streamed
 ```
 
-## Code Style
+## Code style
 
-In general, we follow the [Google style guide](https://google.github.io/styleguide/) for C++ code and the [Black code style](https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html) for Python code. Python imports follow [PEP8 style](https://peps.python.org/pep-0008/#imports). However, it is more important for code to be in a locally consistent style than to strictly follow guidelines. Whenever in doubt, follow the local code style of the component.
+In general, we follow the [Google style guide](https://google.github.io/styleguide/) for C++ code and the [Black code style](https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html) for Python code. Python imports follow [PEP8 style](https://peps.python.org/pep-0008/#imports). However, it's more important for code to be in a locally consistent style than to strictly follow guidelines. Whenever in doubt, follow the local code style of the component.
 
 For Python documentation, we follow a subset of the [Google pydoc format](https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html). The following code snippets demonstrate the canonical Ray pydoc formatting:
 
@@ -239,9 +239,9 @@ class RayClass:
         self.attr1 = self.attr1 + 1
 ```
 
-See {ref}`this <writing-code-snippets_ref>` for more details about how to write code snippets in docstrings.
+See {ref}`How to write code snippets <writing-code-snippets_ref>` for more details about writing code snippets in docstrings.
 
-### Lint and Formatting
+### Lint and formatting
 
 We also have tests for code formatting and linting that need to pass before merge.
 
@@ -251,7 +251,7 @@ We also have tests for code formatting and linting that need to pass before merg
 pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
 ```
 
-* If developing for C++, you will need [clang-format](https://docs.kernel.org/dev-tools/clang-format.html) version `12` (download this version of Clang from [here](http://releases.llvm.org/download.html))
+* If developing for C++, you need [clang-format](https://docs.kernel.org/dev-tools/clang-format.html) version `12`. Download this version of Clang from [the LLVM releases page](http://releases.llvm.org/download.html).
 
 You can run the following locally:
 
@@ -261,7 +261,7 @@ pre-commit install  # automatic checks before committing
 pre-commit run ruff -a
 ```
 
-An output like the following indicates failure:
+Output such as the following indicates failure:
 
 ```shell
 WARNING: clang-format is not installed!  # This is harmless
@@ -270,7 +270,7 @@ From https://github.com/ray-project/ray
 python/ray/util/sgd/tf/tf_runner.py:4:1: F401 'numpy as np' imported but unused  # Below is the failure
 ```
 
-In addition, there are other formatting and semantic checkers for components like the following (not included in `pre-commit`):
+In addition, there are other formatting and semantic checkers, such as the following, that aren't included in `pre-commit`:
 
 * Python README format:
 
@@ -279,7 +279,7 @@ cd python
 python setup.py check --restructuredtext --strict --metadata
 ```
 
-* Python & Docs banned words check
+* Python and docs banned words check
 
 ```shell
 ./ci/lint/check-banned-words.sh
@@ -301,7 +301,7 @@ python setup.py check --restructuredtext --strict --metadata
 
 The Ray project automatically runs continuous integration (CI) tests once a PR is opened using [Buildkite](https://buildkite.com/ray-project/) with multiple CI test jobs.
 
-The [CI](https://github.com/ray-project/ray/tree/master/ci) test folder contains all integration test scripts and they invoke other test scripts via `pytest`, `bazel`-based test or other bash scripts. Some of the examples include:
+The [CI](https://github.com/ray-project/ray/tree/master/ci) test folder contains all integration test scripts, which invoke other test scripts via `pytest`, `bazel`-based tests, or other bash scripts. Examples include:
 
 * Bazel test command:
     * `bazel test --build_tests_only //:all`
@@ -310,31 +310,31 @@ The [CI](https://github.com/ray-project/ray/tree/master/ci) test folder contains
     * `pytest python/ray/serve/tests`
     * `python python/ray/serve/examples/echo_full.py`
 
-If a CI build exception doesn't appear to be related to your change, please visit [this link](https://flakey-tests.ray.io/) to check recent tests known to be flaky.
+If a CI build exception doesn't appear to be related to your change, check [recent tests known to be flaky](https://flakey-tests.ray.io/).
 
 ## API compatibility style guide
 
 Ray provides stability guarantees for its public APIs in Ray core and libraries, which are described in the {ref}`API Stability guide <api-stability>`.
 
-It's hard to fully capture the semantics of API compatibility into a single annotation (for example, public APIs may have "experimental" arguments). For more granular stability contracts, those can be noted in the pydoc (e.g., "the `random_shuffle` option is experimental"). When possible, experimental arguments should also be prefixed by underscores in Python (e.g., `_owner=`).
+It's hard to fully capture the semantics of API compatibility in a single annotation. For example, public APIs may have "experimental" arguments. Note more granular stability contracts in the pydoc, for example, "the `random_shuffle` option is experimental". When possible, prefix experimental arguments with underscores in Python, for example, `_owner=`.
 
 **Other recommendations**:
 
-In Python APIs, consider forcing the use of kwargs instead of positional arguments (with the `*` operator). Kwargs are easier to keep backwards compatible than positional arguments, e.g. imagine if you needed to deprecate "opt1" below, it's easier with forced kwargs:
+In Python APIs, consider forcing the use of kwargs instead of positional arguments (with the `*` operator). Kwargs are easier to keep backward compatible than positional arguments. For example, if you needed to deprecate "opt1" below, it's easier with forced kwargs:
 
 ```python
 def foo_bar(file, *, opt1=x, opt2=y)
     pass
 ```
 
-For callback APIs, consider adding a `**kwargs` placeholder as a "forward compatibility placeholder" in case more args need to be passed to the callback in the future, e.g.:
+For callback APIs, consider adding a `**kwargs` placeholder as a "forward compatibility placeholder" in case you need to pass more args to the callback in the future, for example:
 
 ```python
 def tune_user_callback(model, score, **future_kwargs):
     pass
 ```
 
-## Community Examples
+## Community examples
 
 We're always looking for new example contributions! When contributing an example for a Ray library, include a link to your example in the `examples.yml` file for that library:
 
@@ -345,16 +345,16 @@ We're always looking for new example contributions! When contributing an example
    contributor: community
 ```
 
-Give your example a title, a skill level (`beginner`, `intermediate`, or `advanced`), and a link (relative links point to other documentation pages, but direct links starting with `http://` also work). Include the `contributor: community` metadata to ensure that the example is correctly labeled as a community example in the example gallery.
+Give your example a title, a skill level (`beginner`, `intermediate`, or `advanced`), and a link. Relative links point to other documentation pages, but direct links starting with `http://` also work. Include the `contributor: community` metadata so the example is correctly labeled as a community example in the example gallery.
 
-## Becoming a Committer
+## Becoming a committer
 
 Committers are experienced contributors who have demonstrated significant contributions to the Ray project over an extended period. Committers have additional responsibilities and privileges within the project.
 
-**Eligibility Criteria**
+**Eligibility criteria**
 
-- Must be active in the project for at least 6 months
-- Must be nominated by at least 1 TSC (Technical Steering Committee) member
+- Must be active in the project for at least six months
+- Must be nominated by at least one TSC (Technical Steering Committee) member
 - Must have demonstrated significant contributions to the project, including:
 
   - High-quality code contributions
@@ -371,11 +371,11 @@ Committers are expected to:
 - Help maintain the health and direction of the project
 - Mentor contributors and reviewers
 
-## More Resources for Getting Involved
+## More resources for getting involved
 
 ```{include} involvement.md
 ```
 
 :::{note}
-These tips are based off of the TVM [contributor guide](https://github.com/dmlc/tvm).
+These tips are based on the TVM [contributor guide](https://github.com/dmlc/tvm).
 :::

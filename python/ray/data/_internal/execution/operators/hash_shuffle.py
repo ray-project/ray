@@ -80,6 +80,7 @@ from ray.data.context import (
 )
 
 if typing.TYPE_CHECKING:
+    from ray.data._internal.execution.block_ref_counter import BlockRefCounter
     from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
@@ -673,8 +674,12 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         self._reduce_bar = None
         self._reduce_metrics = OpRuntimeMetrics(self)
 
-    def start(self, options: ExecutionOptions) -> None:
-        super().start(options)
+    def start(
+        self,
+        options: ExecutionOptions,
+        block_ref_counter: "BlockRefCounter",
+    ) -> None:
+        super().start(options, block_ref_counter)
 
     @property
     def shuffle_name(self) -> str:
@@ -1196,6 +1201,8 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                     ExecutionResources.from_resource_dict(finalize_task_resource_bundle)
                 ),
                 operator_name=self.name,
+                block_ref_counter=self._block_ref_counter,
+                producer_id=self.id,
             )
             self._finalizing_tasks[partition_id] = data_task
 
@@ -2153,16 +2160,10 @@ def _shape_blocks(
 
     for block in blocks:
         output_buffer.add_block(block)
-
-        while output_buffer.has_next():
-            block = output_buffer.next()
-            yield block
+        yield from output_buffer.iter_ready_blocks()
 
     output_buffer.finalize()
-
-    while output_buffer.has_next():
-        block = output_buffer.next()
-        yield block
+    yield from output_buffer.iter_ready_blocks()
 
 
 def _get_total_cluster_resources() -> ExecutionResources:

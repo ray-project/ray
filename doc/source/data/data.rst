@@ -14,7 +14,6 @@ Ray Data: Scalable Data Processing for AI Workloads
     key-concepts
     user-guide
     examples
-    api/api
     contributing/contributing
     comparisons
     benchmark
