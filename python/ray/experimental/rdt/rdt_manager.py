@@ -158,6 +158,11 @@ class RDTManager:
         # A set of object ids that are queued to be freed. This is used when the object is freed
         # before the owner knows it's created (the tensor transport metadata is not available yet).
         self._queued_frees: Set[str] = set()
+        # Tensor-transport metadata delivered by the set_direct_transport_metadata
+        # callback before the owner registered the ref (see the race handling in
+        # set_tensor_transport_metadata_and_trigger_queued_operations). Keyed by
+        # object id; drained by set_rdt_metadata when the ref registers.
+        self._pending_tensor_transport_meta: Dict[str, "TensorTransportMetadata"] = {}
 
         # This lock makes sure the _rdt_store and _monitor_failures_thread are only created once.
         self._init_lock = threading.Lock()
@@ -244,6 +249,15 @@ class RDTManager:
     def set_rdt_metadata(self, obj_id: str, rdt_meta: RDTMeta):
         with self._lock:
             self._managed_rdt_metadata[obj_id] = rdt_meta
+            # The set_direct_transport_metadata callback may have raced ahead of this
+            # registration and stashed its metadata; apply it now that the object is
+            # registered. Done outside the lock: the call below takes a different lock
+            # (_tensor_transport_meta_cv).
+            pending = self._pending_tensor_transport_meta.pop(obj_id, None)
+        if pending is not None:
+            self.set_tensor_transport_metadata_and_trigger_queued_operations(
+                obj_id, pending
+            )
 
     def get_rdt_metadata(self, obj_id: str) -> Optional[RDTMeta]:
         with self._lock:
@@ -430,6 +444,17 @@ class RDTManager:
         dst_actors = None
         free_object = False
         with self._tensor_transport_meta_cv:
+            # This runs from the nogil C++ set_direct_transport_metadata callback,
+            # which is not ordered against the owner registering the ref via
+            # set_rdt_metadata. If the callback arrives first, obj_id is not yet in
+            # _managed_rdt_metadata and indexing it would raise KeyError; because the
+            # exception escapes the nogil callback it manifests as a SIGSEGV in
+            # __Pyx_AddTraceback rather than a normal error. Stash the (one-shot)
+            # metadata instead; set_rdt_metadata applies it when the ref registers.
+            if obj_id not in self._managed_rdt_metadata:
+                self._pending_tensor_transport_meta[obj_id] = tensor_transport_meta
+                self._tensor_transport_meta_cv.notify_all()
+                return
             self._managed_rdt_metadata[obj_id] = self._managed_rdt_metadata[
                 obj_id
             ]._replace(tensor_transport_meta=tensor_transport_meta)
@@ -901,6 +926,9 @@ class RDTManager:
 
         with self._lock:
             rdt_meta = self._managed_rdt_metadata.pop(object_id)
+            # Drop any metadata stashed before registration so it does not leak if the
+            # object is freed before its ref ever registered.
+            self._pending_tensor_transport_meta.pop(object_id, None)
         # TODO(#60434): Once the driver has some notion about where rdt args are stored, we can
         # integrate __ray_free__ with the current free objects RPC and avoid having to call
         # an actor task here.
