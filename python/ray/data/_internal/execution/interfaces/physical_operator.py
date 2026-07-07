@@ -297,7 +297,7 @@ class DataOpTask(OpTask):
 
         self._track_task_output_backpressure(max_bytes_to_read)
 
-        if self._state is not TaskGeneratorState.ACTIVE or self._pending_emit_count > 0:
+        if self._state is not TaskGeneratorState.ACTIVE or self.has_pending_emits():
             # Already DRAINED, or earlier pairs still await their background
             # metadata fetch. Don't pull further output ahead of unfetched
             # metadata; retry once the pending pairs have emitted.
@@ -391,7 +391,7 @@ class DataOpTask(OpTask):
         # Once drained, let the fetcher decide how completion is signalled:
         # inline fires the done-callback now (re-raising a task failure);
         # threaded postpones it until the deferred pairs emit (a no-op here).
-        if self._state is TaskGeneratorState.DRAINED:
+        if self.is_drained()
             metadata_fetcher.in_loop_done(self)
 
         return bytes_read
