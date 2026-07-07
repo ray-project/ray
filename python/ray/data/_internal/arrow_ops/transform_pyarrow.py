@@ -130,8 +130,9 @@ def _hash_partition(
         hashes = pd.util.hash_pandas_object(
             table.to_pandas(types_mapper=pd.ArrowDtype), index=False
         ).values
-        np.mod(hashes, num_partitions, out=hashes)
-        partitions = hashes
+        # pandas 3.0+ returns a read-only hash array for Arrow-backed columns;
+        # avoid in-place np.mod(..., out=hashes). See #64552.
+        partitions = np.mod(hashes, num_partitions)
 
     return partitions
 
