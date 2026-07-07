@@ -13,7 +13,7 @@
 // limitations under the License.
 #pragma once
 
-#include "ray/common/memory_monitor_interface.h"
+#include "ray/common/monitors/memory_monitor_interface.h"
 
 namespace ray {
 

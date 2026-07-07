@@ -62,6 +62,7 @@ sys.path.append(os.path.abspath("./_ext"))
 extensions = [
     "callouts",  # custom extension from _ext folder
     "queryparamrefs",
+    "api_sidebar",  # APIs tab: shared client-side API nav (see _ext/api_sidebar.py)
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",

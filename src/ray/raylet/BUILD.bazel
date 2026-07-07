@@ -209,7 +209,7 @@ ray_cc_library(
         "//bazel:is_linux": [
             ":worker_killing_policy_by_time",
             ":worker_killing_policy_group_by_owner",
-            "//src/ray/common:memory_monitor_utils",
+            "//src/ray/common/monitors:memory_monitor_utils",
         ],
         "//conditions:default": [
             ":noop_worker_killing_policy",
@@ -225,7 +225,7 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         ":worker_interface",
-        "//src/ray/common:memory_monitor_interface",
+        "//src/ray/common/monitors:memory_monitor_interface",
     ],
 )
 
@@ -241,7 +241,7 @@ ray_cc_library(
     deps = [
         ":worker_killing_policy_interface",
         "//src/ray/common:lease",
-        "//src/ray/common:memory_monitor_utils",
+        "//src/ray/common/monitors:memory_monitor_utils",
         "@com_google_absl//absl/time",
     ],
 )
@@ -258,7 +258,7 @@ ray_cc_library(
     deps = [
         ":worker_killing_policy_interface",
         "//src/ray/common:lease",
-        "//src/ray/common:memory_monitor_utils",
+        "//src/ray/common/monitors:memory_monitor_utils",
         "//src/ray/util:compat",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -318,10 +318,10 @@ ray_cc_library(
         "//src/ray/common:buffer",
         "//src/ray/common:flatbuf_utils",
         "//src/ray/common:lease",
-        "//src/ray/common:memory_monitor_factory",
-        "//src/ray/common:memory_monitor_interface",
-        "//src/ray/common:memory_monitor_utils",
         "//src/ray/common/cgroup2:cgroup_manager_interface",
+        "//src/ray/common/monitors:memory_monitor_factory",
+        "//src/ray/common/monitors:memory_monitor_interface",
+        "//src/ray/common/monitors:memory_monitor_utils",
         "//src/ray/core_worker:experimental_mutable_object_provider",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/flatbuffers:node_manager_generated",
