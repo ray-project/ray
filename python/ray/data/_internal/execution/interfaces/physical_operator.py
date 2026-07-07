@@ -391,7 +391,7 @@ class DataOpTask(OpTask):
         # Once drained, let the fetcher decide how completion is signalled:
         # inline fires the done-callback now (re-raising a task failure);
         # threaded postpones it until the deferred pairs emit (a no-op here).
-        if self.is_drained()
+        if self.is_drained():
             metadata_fetcher.in_loop_done(self)
 
         return bytes_read
