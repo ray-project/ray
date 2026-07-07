@@ -100,7 +100,6 @@ def _plan_hash_shuffle_repartition(
         data_context,
         num_partitions=target_num_partitions,
         reduce_fn=reduce_fn,
-        streaming_reduce=False,
         disallow_block_splitting=True,
         name=(
             f"HashShuffleReduce(keys={tuple(key_list)}, "
