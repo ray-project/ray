@@ -22,12 +22,17 @@ from ray.data._internal.block_batching.iter_batches import (
 )
 from ray.data._internal.block_batching.util import (
     WaitBlockPrefetcher,
-    finalize_batches,
+    _format_batch,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry, RefBundle
 from ray.data._internal.stats import DatasetStats, TimeSpan
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
+
+# Sleep duration injected into each scenario's bottleneck stage. Picked to be
+# large enough to dominate scheduling/measurement noise but small enough to
+# keep the test fast (5 batches × 0.3s ≈ 1.5s per scenario).
+SLEEP_S = 0.3
 
 
 def ref_bundle_generator(num_rows: int, num_blocks: int) -> Iterator[RefBundle]:
@@ -725,6 +730,7 @@ def test_prefetch_bytes_callback(ray_start_regular_shared, prefetch_batches):
     [
         ("production", "iter_blocked_production_wait_s"),
         ("data_transfer", "iter_blocked_data_transfer_s"),
+        ("batching", "iter_blocked_batching_s"),
         ("collate", "iter_blocked_collate_s"),
         ("format", "iter_blocked_format_s"),
         ("finalize", "iter_blocked_finalize_s"),
@@ -734,16 +740,16 @@ def test_e2e_blocked_attribution_by_scenario(
     ray_start_regular_shared, scenario, bound_stage
 ):
     """E2e: when a specific stage is the bottleneck, its blocked metric
-    should be the largest among all stages."""
+    should be the largest among all stages, and at least SLEEP_S."""
     from ray.data._internal.stats import _StatsManager
 
-    iter_kwargs = {"batch_size": 10}
+    iter_kwargs = {"batch_size": 10, "prefetch_batches": 0}
     patches = []
 
     if scenario == "production":
-        # Slow upstream map → production_wait dominates
+        # Slow upstream map → production_wait dominates.
         def slow_map(batch):
-            time.sleep(0.3)
+            time.sleep(SLEEP_S)
             return batch
 
         ds = ray.data.range(50, override_num_blocks=5).map(slow_map)
@@ -752,88 +758,59 @@ def test_e2e_blocked_attribution_by_scenario(
         # Patch ray.get to inject cross-node transfer delay. resolve_block_refs
         # is the only caller of ray.get in the iter_batches pipeline, so this
         # specifically slows data_transfer.
-        from ray.data._internal.block_batching import util as util_mod
-
-        orig_get = util_mod.ray.get
+        orig_get = ray.get
 
         def slow_get(ref):
-            time.sleep(0.3)
+            time.sleep(SLEEP_S)
             return orig_get(ref)
 
-        patches.append(patch.object(util_mod.ray, "get", slow_get))
+        patches.append(patch.object(ray, "get", slow_get))
         ds = ray.data.range(50, override_num_blocks=5)
-        iter_kwargs = {"batch_size": 10, "prefetch_batches": 0}
+
+    elif scenario == "batching":
+        # Patch Batcher.next_batch to inject slow batching.
+        from ray.data._internal.batcher import Batcher
+
+        orig_next_batch = Batcher.next_batch
+
+        def slow_next_batch(self):
+            time.sleep(SLEEP_S)
+            return orig_next_batch(self)
+
+        patches.append(patch.object(Batcher, "next_batch", slow_next_batch))
+        ds = ray.data.range(50, override_num_blocks=5)
 
     elif scenario == "collate":
-        # Patch _format_in_threadpool to inject a slow collate_fn
-        # (regular iter_batches doesn't set collate_fn, so the collate
-        # stage would be skipped without this).
-        # prefetch_batches=0 so collate runs synchronously in the
-        # training thread (not prefetched ahead, which would hide the
-        # stall).
-        from ray.data._internal.block_batching import iter_batches as iter_mod
+        # Pass _collate_fn directly (exposed on iter_batches signature).
+        def slow_collate(batch):
+            time.sleep(SLEEP_S)
+            return batch
 
-        orig_format = iter_mod._format_in_threadpool
+        iter_kwargs["_collate_fn"] = slow_collate
+        ds = ray.data.range(50, override_num_blocks=5)
 
-        def format_with_slow_collate(
-            batch_iter,
-            stats,
-            batch_format,
-            collate_fn,
-            num_threadpool_workers,
-            ensure_copy=False,
-        ):
-            def slow_collate(batch):
-                time.sleep(0.3)
-                return batch
-
-            return orig_format(
-                batch_iter=batch_iter,
-                stats=stats,
-                batch_format=batch_format,
-                collate_fn=slow_collate,
-                num_threadpool_workers=num_threadpool_workers,
-                ensure_copy=ensure_copy,
-            )
+    elif scenario == "format":
+        # Patch _format_batch to inject slow format (no _format_fn kwarg).
+        def slow_format(batch, batch_format, stats, ensure_copy=False):
+            time.sleep(SLEEP_S)
+            return _format_batch(batch, batch_format, stats, ensure_copy)
 
         patches.append(
             patch(
-                "ray.data._internal.block_batching.iter_batches._format_in_threadpool",
-                format_with_slow_collate,
+                "ray.data._internal.block_batching.util._format_batch",
+                slow_format,
             )
         )
         ds = ray.data.range(50, override_num_blocks=5)
-        iter_kwargs = {"batch_size": 10, "prefetch_batches": 0}
-
-    elif scenario == "format":
-        # Large batch + Arrow→pandas conversion → format dominates.
-        # prefetch_batches=0 so format runs synchronously.
-        ds = ray.data.range(50000, override_num_blocks=1)
-        iter_kwargs = {
-            "batch_size": 50000,
-            "batch_format": "pandas",
-            "prefetch_batches": 0,
-        }
 
     elif scenario == "finalize":
-        # Patch BatchIterator._finalize_batches to always apply a slow
-        # finalize_fn (default iter_batches sets finalize_fn=None, so without
-        # this patch the finalize stage would be skipped).
-        # prefetch_batches=0 so finalize runs synchronously.
-        def finalize_with_slow_fn(self, batch_iter):
-            def slow_finalize(data):
-                time.sleep(0.3)
-                return data
+        # Pass _finalize_fn directly (exposed on iter_batches signature).
+        def slow_finalize(data):
+            time.sleep(SLEEP_S)
+            return data
 
-            return finalize_batches(
-                batch_iter, finalize_fn=slow_finalize, stats=self._stats
-            )
-
-        patches.append(
-            patch.object(BatchIterator, "_finalize_batches", finalize_with_slow_fn)
-        )
+        iter_kwargs["_finalize_fn"] = slow_finalize
         ds = ray.data.range(50, override_num_blocks=5)
-        iter_kwargs = {"batch_size": 10, "prefetch_batches": 0}
 
     it = ds.iterator()
     captured = []
@@ -863,6 +840,12 @@ def test_e2e_blocked_attribution_by_scenario(
         stats.iter_blocked_finalize_s.get(),
     ]
     bound_value = getattr(stats, bound_stage).get()
+    # The bottleneck stage should be at least the sleep time we injected,
+    # proving the timing capture is actually recording the stall.
+    assert bound_value >= SLEEP_S, (
+        f"{scenario}-bound: {bound_stage}={bound_value} < SLEEP_S={SLEEP_S}; "
+        "timing capture missed the injected stall"
+    )
     # The bottleneck stage should be strictly greater than all others.
     for v in all_stages:
         if v == bound_value:

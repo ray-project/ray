@@ -843,23 +843,15 @@ class _StatsActor:
 
         self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
         self.iter_blocked_production_wait_s.set(
-            stats.get_blocked_timer(IterationStage.PRODUCTION_WAIT).get(), tags
+            stats.iter_blocked_production_wait_s.get(), tags
         )
         self.iter_blocked_data_transfer_s.set(
-            stats.get_blocked_timer(IterationStage.DATA_TRANSFER).get(), tags
+            stats.iter_blocked_data_transfer_s.get(), tags
         )
-        self.iter_blocked_batching_s.set(
-            stats.get_blocked_timer(IterationStage.BATCHING).get(), tags
-        )
-        self.iter_blocked_format_s.set(
-            stats.get_blocked_timer(IterationStage.FORMAT).get(), tags
-        )
-        self.iter_blocked_collate_s.set(
-            stats.get_blocked_timer(IterationStage.COLLATE).get(), tags
-        )
-        self.iter_blocked_finalize_s.set(
-            stats.get_blocked_timer(IterationStage.FINALIZE).get(), tags
-        )
+        self.iter_blocked_batching_s.set(stats.iter_blocked_batching_s.get(), tags)
+        self.iter_blocked_format_s.set(stats.iter_blocked_format_s.get(), tags)
+        self.iter_blocked_collate_s.set(stats.iter_blocked_collate_s.get(), tags)
+        self.iter_blocked_finalize_s.set(stats.iter_blocked_finalize_s.get(), tags)
         self.iter_batches_total.set(stats.iter_batches_total, tags)
         self.iter_rows_total.set(stats.iter_rows_total, tags)
         self.iter_user_s.set(stats.iter_user_s.get(), tags)

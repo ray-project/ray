@@ -56,10 +56,19 @@ class BatchStageTimings:
         return (
             (IterationStage.PRODUCTION_WAIT, self.production_wait),
             (IterationStage.DATA_TRANSFER, self.data_transfer),
-            (IterationStage.BATCHING, [self.batching] if self.batching else []),
-            (IterationStage.FORMAT, [self.format] if self.format else []),
-            (IterationStage.COLLATE, [self.collate] if self.collate else []),
-            (IterationStage.FINALIZE, [self.finalize] if self.finalize else []),
+            (
+                IterationStage.BATCHING,
+                [self.batching] if self.batching is not None else [],
+            ),
+            (IterationStage.FORMAT, [self.format] if self.format is not None else []),
+            (
+                IterationStage.COLLATE,
+                [self.collate] if self.collate is not None else [],
+            ),
+            (
+                IterationStage.FINALIZE,
+                [self.finalize] if self.finalize is not None else [],
+            ),
         )
 
     def accumulate_block_timings(self, src: BlockStageTimings) -> None:
