@@ -445,6 +445,8 @@ class Deployment:
         )
 
     def __eq__(self, other):
+        if not isinstance(other, Deployment):
+            return NotImplemented
         return all(
             [
                 self._name == other._name,
@@ -483,9 +485,9 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
     deployment_options = {
         "name": d.name,
-        "num_replicas": None
-        if d._deployment_config.autoscaling_config
-        else d.num_replicas,
+        "num_replicas": (
+            None if d._deployment_config.autoscaling_config else d.num_replicas
+        ),
         "max_ongoing_requests": d.max_ongoing_requests,
         "max_queued_requests": d.max_queued_requests,
         "user_config": d.user_config,

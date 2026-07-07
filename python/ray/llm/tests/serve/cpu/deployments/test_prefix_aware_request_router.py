@@ -401,6 +401,44 @@ class TestPromptNormalization:
         await asyncio.sleep(0.1)
 
 
+class TestEmptyInputHandling:
+    """Tests that empty input text does not cause ZeroDivisionError."""
+
+    @pytest.mark.asyncio
+    async def test_empty_input_does_not_raise(self, prefix_request_router):
+        """Empty input text should return 0.0 match rate, not ZeroDivisionError."""
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r1, r2])
+
+        # Insert some text so the prefix tree has data
+        ray.get(
+            prefix_request_router._tree_actor.insert.remote(
+                "hello", r1.replica_id.to_full_id_str(), time.time()
+            )
+        )
+
+        # Create a request with empty content (unsupported multimodal)
+        empty_req = fake_pending_request(
+            messages=[
+                {
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "http://example.com"},
+                        },
+                    ]
+                }
+            ]
+        )
+        # Should not raise ZeroDivisionError
+        chosen = await prefix_request_router._choose_replica_for_request(empty_req)
+        # Should fall back to smallest tenant (both have 0 from empty text perspective)
+        assert chosen in [r1, r2]
+
+
 class TestMultiDeploymentIsolation:
     """Tests that multiple deployments get isolated prefix tree actors."""
 
