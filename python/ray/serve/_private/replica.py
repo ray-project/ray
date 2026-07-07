@@ -66,6 +66,8 @@ from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_HAPROXY_METRICS_ENABLED,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
@@ -159,6 +161,7 @@ from ray.serve._private.tracing_utils import (
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     Semaphore,
+    _callable_uses_multiplexing,
     asyncio_grpc_exception_handler,
     check_obj_ref_ready_nowait,
     compress_metric_report,
@@ -505,7 +508,8 @@ class ReplicaMetricsManager:
             # gRPC ingress metrics are allocated lazily via
             # `enable_grpc_ingress_metrics()` once the gRPC config has been fetched from
             # the controller, which is not available at construction time.
-            self._add_ingress_metrics(RequestProtocol.HTTP)
+            if self._should_emit_request_ingress_metrics(RequestProtocol.HTTP):
+                self._add_ingress_metrics(RequestProtocol.HTTP)
 
             if self._cached_metrics_enabled:
                 # Mapping from protocol -> {request_tags -> value}.
@@ -525,6 +529,15 @@ class ReplicaMetricsManager:
     @property
     def _is_direct_ingress(self) -> bool:
         return self._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS
+
+    def _should_emit_request_ingress_metrics(self, protocol: RequestProtocol) -> bool:
+        # When HAProxy is enabled, http ingress request metrics are emitted by
+        # the HAProxyManager.
+        return self._is_direct_ingress and not (
+            RAY_SERVE_ENABLE_HA_PROXY
+            and RAY_SERVE_HAPROXY_METRICS_ENABLED
+            and protocol == RequestProtocol.HTTP
+        )
 
     def _add_ingress_metrics(self, protocol: RequestProtocol):
         """Allocate metric objects and ongoing-request counter for a protocol."""
@@ -864,7 +877,7 @@ class ReplicaMetricsManager:
         status_code: str,
     ):
         """Record per-request metrics."""
-        if not self._is_direct_ingress:
+        if not self._should_emit_request_ingress_metrics(protocol):
             return
 
         if self._cached_metrics_enabled:
@@ -1763,6 +1776,25 @@ class Replica:
         if self._initialization_latency is None:
             self._initialization_latency = time.time() - self._initialization_start_time
 
+    def _raise_if_multiplexing_with_direct_ingress(self):
+        """Reject model multiplexing on the ingress deployment under direct ingress.
+
+        Model multiplexing relies on the multiplexed model ID being propagated through
+        the proxy, which direct ingress bypasses (the model ID is never populated).
+
+        This runs after the user callable is initialized so it also catches
+        multiplexing that is wired up dynamically in the constructor (e.g.
+        `self._load_model = serve.multiplexed(...)(fn)`), which is invisible to the
+        static check performed at deploy time.
+        """
+        if self._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+            if _callable_uses_multiplexing(self._user_callable_wrapper._callable):
+                raise RuntimeError(
+                    "Model multiplexing (`@serve.multiplexed`) is not supported on the "
+                    "ingress deployment when direct ingress or HAProxy is enabled "
+                    "(RAY_SERVE_ENABLE_DIRECT_INGRESS)."
+                )
+
     async def initialize(
         self,
         deployment_config: Optional[DeploymentConfig],
@@ -1785,6 +1817,7 @@ class Replica:
                     self._user_callable_asgi_app = (
                         await self._user_callable_wrapper.initialize_callable()
                     )
+                    self._raise_if_multiplexing_with_direct_ingress()
                     self._user_callable_wrapper.start_user_loop_watchdog(
                         self._event_loop
                     )
