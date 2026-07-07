@@ -249,11 +249,6 @@ class RDTManager:
     def set_rdt_metadata(self, obj_id: str, rdt_meta: RDTMeta):
         with self._lock:
             self._managed_rdt_metadata[obj_id] = rdt_meta
-            # The set_direct_transport_metadata callback may have raced ahead of this
-            # registration and stashed its metadata; apply it now that the object is
-            # registered. The apply call is made outside the lock because it acquires
-            # _tensor_transport_meta_cv, which shares self._lock. Since self._lock is
-            # non-reentrant, calling it inside this block would deadlock.
             pending = self._pending_tensor_transport_meta.pop(obj_id, None)
         if pending is not None:
             self.set_tensor_transport_metadata_and_trigger_queued_operations(
