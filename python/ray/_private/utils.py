@@ -392,10 +392,14 @@ def set_nvidia_gpu_numa_affinity_if_enabled() -> Optional[set]:
             return None
         gpu_cpu_sets.append(gpu_cpu_set)
 
+    # If the assigned GPUs span multiple NUMA-local CPU sets, there is no single
+    # CPU affinity that is local to all of them. Keep the existing affinity.
     if len({frozenset(cpu_set) for cpu_set in gpu_cpu_sets}) > 1:
         return None
 
     original_affinity = set(os.sched_getaffinity(0))
+    # Respect any existing process CPU restrictions from containers, cgroups,
+    # cpusets, taskset, or platform configuration by only narrowing affinity.
     selected_cpu_set = original_affinity & gpu_cpu_sets[0]
     if not selected_cpu_set:
         return None
