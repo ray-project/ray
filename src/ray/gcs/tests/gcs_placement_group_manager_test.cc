@@ -314,11 +314,18 @@ TEST_F(GcsPlacementGroupManagerTest, TestPlacementGroupStateGaugeReEmitsAndRetra
     return -1;
   };
 
+  // Create through the production entry point so the manager builds the placement
+  // group with its own state counter (the one RecordMetrics() reads), rather than
+  // the fixture's separate counter_.
   auto request = GenCreatePlacementGroupRequest();
-  std::atomic<int> registered_count(0);
-  RegisterPlacementGroup(request,
-                         [&registered_count](const Status &) { ++registered_count; });
-  ASSERT_EQ(registered_count, 1);
+  rpc::CreatePlacementGroupReply reply;
+  std::promise<void> promise;
+  auto callback = [&promise](Status, std::function<void()>, std::function<void()>) {
+    promise.set_value();
+  };
+  gcs_placement_group_manager_->HandleCreatePlacementGroup(request, &reply, callback);
+  RunIOService();
+  promise.get_future().get();
   auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
   mock_placement_group_scheduler_->placement_groups_.pop_back();
 

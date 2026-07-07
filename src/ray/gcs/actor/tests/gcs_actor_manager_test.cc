@@ -431,6 +431,10 @@ TEST_F(GcsActorManagerTest, TestActorStateMetrics) {
   actor->UpdateAddress(RandomAddress());
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   io_service_.run_one();
+
+  // cleanup the registered_actor so that the destructor can be called to update the
+  // count
+  registered_actor.reset();
   gcs_actor_manager_->RecordMetrics();
   auto gcs_actor_tag_to_value = fake_gcs_actor_by_state_gauge_.GetTagToValue();
   // 5 states: REGISTERED, CREATED, DESTROYED, UNRESOLVED, PENDING
