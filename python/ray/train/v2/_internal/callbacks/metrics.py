@@ -90,8 +90,9 @@ class WorkerMetricsCallback(WorkerCallback, TrainContextCallback):
 
     def before_worker_shutdown(self):
         """Shutdown metrics before shutdown."""
-        for metric in self._metrics.values():
-            metric.reset()
+        if self._metrics:
+            for metric in self._metrics.values():
+                metric.reset()
 
     @contextmanager
     def on_report(self):

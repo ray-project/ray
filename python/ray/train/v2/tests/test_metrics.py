@@ -203,6 +203,13 @@ def test_worker_checkpoint_metrics_callback(
     assert callback._metrics[metric_name].get_value() == 0.0
 
 
+def test_worker_metrics_callback_shutdown_without_init(mock_gauge):
+    """before_worker_shutdown should not crash when _metrics is None."""
+    callback = WorkerMetricsCallback(train_run_context=create_dummy_run_context())
+    # _metrics is None — after_init_train_context was never called
+    callback.before_worker_shutdown()  # should not raise
+
+
 def test_controller_metrics_callback(monkeypatch, mock_gauge):
     t1 = 0.0
     t2 = 1.0
