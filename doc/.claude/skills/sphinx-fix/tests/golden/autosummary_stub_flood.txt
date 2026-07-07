@@ -1,0 +1,28 @@
+Build: state=Finished  success=False  exit=1  build finished with problems, 15 warnings.
+
+Root-cause groups (1) — a structural root masks a downstream flood; fix the root, rebuild, and the masked references clear together:
+  ROOT [T2] autosummary-stub-not-found — ray.data.Dataset.* (6 stubs not generated, masking 8 downstream references)
+        where:  doc/source/apis/data/ray.data.Dataset.rst:20
+        stubs:  ray.data.Dataset.map_batches, ray.data.Dataset.map, ray.data.Dataset.filter, ray.data.Dataset.flat_map, ray.data.Dataset.groupby, ... and 1 more
+        fix:    Do not fix per entry when the failure is in bulk. Determine scope first: many missing stubs sharing a module prefix point at one root -- confirm the module imports under the build's mock set (autodoc_mock_imports) and that autosummary_generate is on; when an API-ref restructuring is in flight, the correct move may be to revert or repair the file moves rather than edit each entry. A lone missing stub means the member no longer exists -- update or drop the autosummary entry.
+        safety: judgment (needs your call)
+    masks 8 downstream py:* reference(s) — collapsed (full list in --json):
+          doc/source/apis/data/aggregate.rst:6  ray.data.Dataset.map_batches
+          doc/source/apis/data/aggregate.rst:6  ray.data.Dataset.map
+          doc/source/apis/data/aggregate.rst:6  ray.data.Dataset.filter
+          doc/source/apis/data/aggregate.rst:6  ray.data.Dataset.flat_map
+          doc/source/apis/data/transform.rst:10  ray.data.Dataset.groupby
+          ... and 3 more (see --json)
+
+Findings (1):
+  Tier 3 — warnings:
+    [T3] py-xref-target-not-found  python/ray/train/collective/__init__.py:docstring of ray.train.collective.broadcast_from_rank_zero:
+          msg:    py:exc reference target not found: pickle.PicklingError
+          fix:    Check for a co-occurring tier-2 autosummary-stub-not-found or tier-1 import abort for the same module first. If present, fix that root (up to and including reverting an in-progress API-ref restructuring) and rebuild -- the flood clears at once. Only when the build is otherwise healthy is the reference itself wrong: repoint to the correct dotted path, or fix the intersphinx target for a stdlib/third-party name.
+          safety: judgment (needs your call)
+
+Unclassified (0) — no rule matched; resolve with the user, then file a skill-improvement ticket to add a rule:
+
+Suppressed (0) — known-benign, not actionable:
+
+Next: fix Tier 2 first (it masks others), then rebuild and re-run — do not assume one pass is complete.
