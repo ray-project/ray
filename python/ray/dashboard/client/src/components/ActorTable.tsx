@@ -100,6 +100,11 @@ const ActorTable = ({
   const [actorIdFilterValue, setActorIdFilterValue] = useState(filterToActorId);
   const [pageSize, setPageSize] = useState<number | undefined>(10);
 
+  const showGPUColumn = useMemo(
+    () => Object.values(actors).some((a) => a.gpus && a.gpus.length > 0),
+    [actors],
+  );
+
   const uptimeSorterKey = "fake_uptime_attr";
   const gpuUtilizationSorterKey = "fake_gpu_attr";
   const gramUsageSorterKey = "fake_gram_attr";
@@ -576,20 +581,26 @@ const ActorTable = ({
         <Table>
           <TableHead>
             <TableRow>
-              {columns.map(({ label, helpInfo }) => (
-                <TableCell align="center" key={label}>
-                  <Box
-                    display="flex"
-                    justifyContent="center"
-                    alignItems="center"
-                  >
-                    {label}
-                    {helpInfo && (
-                      <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
-                    )}
-                  </Box>
-                </TableCell>
-              ))}
+              {columns
+                .filter(
+                  (col) =>
+                    showGPUColumn ||
+                    (col.label !== "GPU" && col.label !== "GRAM"),
+                )
+                .map(({ label, helpInfo }) => (
+                  <TableCell align="center" key={label}>
+                    <Box
+                      display="flex"
+                      justifyContent="center"
+                      alignItems="center"
+                    >
+                      {label}
+                      {helpInfo && (
+                        <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
+                      )}
+                    </Box>
+                  </TableCell>
+                ))}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -759,20 +770,24 @@ const ActorTable = ({
                       </PercentageBar>
                     )}
                   </TableCell>
-                  <TableCell>
-                    <WorkerAcceleratorRow
-                      workerPID={pid}
-                      gpus={gpus}
-                      tpus={tpus}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <WorkerAcceleratorMemory
-                      workerPID={pid}
-                      gpus={gpus}
-                      tpus={tpus}
-                    />
-                  </TableCell>
+                  {showGPUColumn && (
+                    <TableCell>
+                      <WorkerAcceleratorRow
+                        workerPID={pid}
+                        gpus={gpus}
+                        tpus={tpus}
+                      />
+                    </TableCell>
+                  )}
+                  {showGPUColumn && (
+                    <TableCell>
+                      <WorkerAcceleratorMemory
+                        workerPID={pid}
+                        gpus={gpus}
+                        tpus={tpus}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell
                     align="center"
                     style={{

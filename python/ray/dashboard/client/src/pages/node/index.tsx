@@ -271,8 +271,13 @@ const Nodes = () => {
     accelerators.push("tpu");
   }
   const accelerator = accelerators.length !== 1 ? "generic" : accelerators[0];
+  const showAcceleratorColumns = accelerators.length > 0;
 
-  const columns = getColumns(accelerator);
+  const columns = showAcceleratorColumns
+    ? getColumns(accelerator)
+    : getColumns(accelerator).filter(
+        (_, i) => i !== 9 && i !== 10,
+      );
 
   return (
     <Box
@@ -401,6 +406,7 @@ const Nodes = () => {
                     node={node}
                     isRefreshing={isRefreshing}
                     startExpanded={nodeList.length === 1}
+                    showAcceleratorColumns={showAcceleratorColumns}
                   />
                 ))}
               </TableBody>
