@@ -143,7 +143,8 @@ def _routers_and_targets_by_backend(
 
     Each HAProxy prefers its co-located router (``host == local_host``, which
     ``_target_to_server`` rewrote to the local host) so the /internal/route hop
-    stays on-node. When none is co-located it picks one deterministically.
+    stays on-node, falling back to the lexicographically smallest router when
+    none is co-located.
     """
     routers: Dict[str, ServerConfig] = {}
     targets: Dict[str, List[Tuple[str, str]]] = {}
