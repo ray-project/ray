@@ -233,7 +233,9 @@ def test_process_completed_tasks_threaded(ray_start_regular_shared):
         o1,
         DataContext.get_current(),
     )
-    topo = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
+    topo = build_streaming_topology(
+        o2, ExecutionOptions(verbose_progress=True), noop_counter()
+    )
 
     assert len(topo[o1].output_queue) == 0, topo
     _process_completed_tasks_threaded(topo, [], 0, _make_disabled_guard())
@@ -253,7 +255,9 @@ def test_process_completed_tasks_threaded_multi_step(ray_start_regular_shared):
         o1,
         DataContext.get_current(),
     )
-    topo = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
+    topo = build_streaming_topology(
+        o2, ExecutionOptions(verbose_progress=True), noop_counter()
+    )
 
     assert len(topo[o1].output_queue) == 0, topo
     fetcher = ThreadedMetadataFetcher()
