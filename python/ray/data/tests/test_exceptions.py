@@ -44,6 +44,24 @@ def test_user_exception(
         for record in caplog.records
     ), caplog.records
 
+    # The "Full stack trace:" record: when internals are hidden (the default), it
+    # carries only the cleaned worker-side traceback inlined into the message, and
+    # the driver-side propagation frames (attached via exc_info) are omitted. When
+    # the user opts into stdout, the full driver + worker traceback is attached via
+    # exc_info instead.
+    full_trace_records = [
+        record
+        for record in caplog.records
+        if record.levelno == logging.ERROR and "Full stack trace:" in record.message
+    ]
+    assert full_trace_records, caplog.records
+    full_trace_record = full_trace_records[0]
+    if log_internal_stack_trace_to_stdout:
+        assert full_trace_record.exc_info is not None
+    else:
+        assert full_trace_record.exc_info is None
+        assert "ZeroDivisionError" in full_trace_record.message
+
 
 def test_system_exception(caplog, propagate_logs, ray_start_regular_shared):
     class FakeException(Exception):

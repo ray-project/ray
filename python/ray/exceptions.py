@@ -283,6 +283,11 @@ class RayTaskError(RayError):
         lines = self.traceback_str.strip().split("\n")
         out = []
         code_from_internal_file = False
+        # When the root cause is user code (e.g. a Ray Data UDF), also hide
+        # Ray Data's internal execution frames (scheduler/executor/planner) so
+        # the user's own traceback isn't buried under Ray Data machinery.
+        hide_data_internal = isinstance(self.cause, UserCodeException)
+        skipping_internal_frame = False
 
         # Format tracebacks.
         # Python stacktrace consists of
@@ -307,13 +312,19 @@ class RayTaskError(RayError):
                 else:
                     traceback_line += ")"
                 code_from_internal_file = False
+                skipping_internal_frame = False
                 out.append(traceback_line)
             elif line.startswith("  File ") and (
                 "ray/worker.py" in line
                 or "ray/_private/" in line
                 or "ray/util/tracing/" in line
                 or "ray/_raylet.pyx" in line
+                or (hide_data_internal and "ray/data/_internal/" in line)
             ):
+                # In a Data UDF error, strip continuation lines for every hidden
+                # internal frame (Ray Core and Ray Data alike); otherwise leave
+                # the existing single-line-skip behavior untouched.
+                skipping_internal_frame = hide_data_internal
                 # TODO(windows)
                 # Process the internal file line.
                 # The file line always starts with 2 space and File.
@@ -335,11 +346,28 @@ class RayTaskError(RayError):
                     #     [code] # if the next line is indented, it is code.
                     # Note there there are 4 spaces in the code line.
                     code_from_internal_file = True
+            elif skipping_internal_frame and line.startswith("    "):
+                # Drop all continuation lines (code + caret annotations) that
+                # belong to a hidden internal frame.
+                code_from_internal_file = False
             elif code_from_internal_file:
                 # If the current line is internal file's code,
                 # the next line is not code anymore.
                 code_from_internal_file = False
+            elif (
+                hide_data_internal
+                and line.strip()
+                and all(c in "^~" for c in line.strip())
+                and not (out and out[-1].startswith("    "))
+            ):
+                # Drop an orphaned caret/annotation line: one whose code line was
+                # a hidden internal frame or is absent (the raw traceback can
+                # place a stray "^^^^" right after the "Traceback" header), so
+                # there is nothing left for it to point at. Carets that still sit
+                # under a kept code line (the user's own frames) are preserved.
+                pass
             else:
+                skipping_internal_frame = False
                 out.append(line)
         return "\n".join(out)
 

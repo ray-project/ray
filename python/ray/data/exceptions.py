@@ -62,11 +62,10 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                 if not log_to_stdout and log_once("ray_data_exception_internal_hidden"):
                     logger.error(
                         "Exception occurred in user code, with the abbreviated stack "
-                        "trace below. By default, the Ray Data internal stack trace "
-                        "is omitted from stdout, and only written to the Ray Data log "
-                        f"files at `{get_log_directory()}`. To "
-                        "output the full stack trace to stdout, set "
-                        "`DataContext.log_internal_stack_trace_to_stdout` to True."
+                        "trace below. The Ray Data internal stack frames are omitted "
+                        "from both stdout and the Ray Data log files at "
+                        f"`{get_log_directory()}`. To output the full stack trace, "
+                        "set `DataContext.log_internal_stack_trace_to_stdout` to True."
                     )
             else:
                 # Exception has occurred in internal Ray Data / Ray Core code.
@@ -78,11 +77,21 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                 )
 
             should_hide_traceback = is_user_code_exception and not log_to_stdout
-            logger.exception(
-                "Full stack trace:",
-                exc_info=True,
-                extra={"hide": should_hide_traceback},
-            )
+            if should_hide_traceback:
+                # For a user-code error, the driver-side propagation frames (the
+                # Ray Data and Ray Core internals between `ray.get` and here) add
+                # nothing: the real failure is the worker-side traceback already
+                # captured in ``str(e)``. Log only that, so the Ray Data log file
+                # isn't buried in internal frames either. Setting
+                # ``DataContext.log_internal_stack_trace_to_stdout=True`` restores
+                # the full trace (and routes it to stdout).
+                logger.error("Full stack trace:\n%s", e, extra={"hide": True})
+            else:
+                logger.exception(
+                    "Full stack trace:",
+                    exc_info=True,
+                    extra={"hide": should_hide_traceback},
+                )
             if is_user_code_exception:
                 raise e.with_traceback(None)
             else:
