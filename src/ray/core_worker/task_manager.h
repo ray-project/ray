@@ -791,8 +791,10 @@ class TaskManager : public TaskManagerInterface {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Mark the stream is ended.
-  /// The end of the stream always contains a "sentinel object" passed
-  /// via end_of_stream_obj.
+  /// The end of the stream always contains a "sentinel object": normally a
+  /// generic END_OF_STREAMING_GENERATOR error (which surfaces as
+  /// ObjectRefStreamEndOfStreamError when read directly), or the task's error
+  /// when the stream ended because the generator task failed.
   ///
   /// \param generator_id The object ref id of the streaming
   /// generator task.
@@ -800,7 +802,15 @@ class TaskManager : public TaskManagerInterface {
   /// If -1 is specified, it will mark the current last index as end of stream.
   /// this should be used when a task fails (which means we know the task won't
   /// report any more generator return values).
-  void MarkEndOfStream(const ObjectID &generator_id, int64_t end_of_stream_index)
+  /// \param end_of_stream_error If non-null, the stream ended because the
+  /// generator task failed; this error is written to the sentinel object(s) at
+  /// and past the end of the stream instead of END_OF_STREAMING_GENERATOR. This
+  /// ensures a consumer that already peeked a not-yet-produced value ref (see
+  /// PeekObjectRefStreamN) surfaces the real task error (e.g. TaskCancelledError,
+  /// ActorDiedError) rather than a confusing end-of-stream error.
+  void MarkEndOfStream(const ObjectID &generator_id,
+                       int64_t end_of_stream_index,
+                       const RayObject *end_of_stream_error = nullptr)
       ABSL_LOCKS_EXCLUDED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// See TemporarilyOwnGeneratorReturnRefIfNeeded for a docstring.
