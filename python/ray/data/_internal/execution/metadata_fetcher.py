@@ -82,7 +82,7 @@ class MetadataFetcher(ABC):
         """Hand the operator's deferred pairs off for processing, and record
         any end-of-stream/failed tasks whose completion is postponed."""
 
-    def after_loop_batch(self) -> List[Tuple[str, BaseException]]:
+    def emit_ready_and_fire_done_callbacks(self) -> List[Tuple[str, BaseException]]:
         """Run once at the end of ``process_completed_tasks``. Returns
         ``(operator_name, exception)`` for each block-level fetch failure, for
         the caller's ``max_errored_blocks`` accounting. Default: nothing to do."""
@@ -165,7 +165,7 @@ class ThreadedMetadataFetcher(MetadataFetcher):
                                                                 + ray.get
                                                                    |
                             _results  <----- fetched bytes --------+
-        after_loop_batch():
+        emit_ready_and_fire_done_callbacks():
             _fifos[op]:  head [d0] -> [d1] -> [d2] tail   (append = yield order)
                               |
                               `- emit front-first while its bytes are in
@@ -290,7 +290,7 @@ class ThreadedMetadataFetcher(MetadataFetcher):
             if task.is_drained():
                 self._drained_tasks.add(task)
 
-    def after_loop_batch(self) -> List[Tuple[str, BaseException]]:
+    def emit_ready_and_fire_done_callbacks(self) -> List[Tuple[str, BaseException]]:
         """Emit whatever's ready (per-op order) then fire postponed done
         callbacks. Returns ``(operator_name, exception)`` for each pair whose
         metadata fetch failed, for the caller's ``max_errored_blocks``

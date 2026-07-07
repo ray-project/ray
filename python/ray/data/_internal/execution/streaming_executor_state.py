@@ -714,7 +714,7 @@ def process_completed_tasks(
         # - threaded mode: every pulled pair is deferred (budget arithmetic uses
         #   the block's local ``object_size``, no per-ref ``ray.get``) and handed
         #   to the background fetcher by ``submit``; emission and the postponed
-        #   done-callback happen in ``after_loop_batch``, preserving the per-op,
+        #   done-callback happen in ``emit_ready_and_fire_done_callbacks``, preserving the per-op,
         #   per-task, per-pair emission order.
         for state, ready_tasks in ready_tasks_by_op.items():
             # TODO elaborate why sorting (helps preserve_order case)
@@ -754,7 +754,10 @@ def process_completed_tasks(
     # would strand them and stall output forever. Deferred metadata-fetch
     # failures go through the same `max_errored_blocks` accounting as inline
     # `on_data_ready` errors. (Inline mode returns nothing here.)
-    for failed_op_name, fetch_exc in metadata_fetcher.after_loop_batch():
+    for (
+        failed_op_name,
+        fetch_exc,
+    ) in metadata_fetcher.emit_ready_and_fire_done_callbacks():
         _record_errored_block(fetch_exc, failed_op_name)
 
     # Pull any operator outputs into the streaming op state.

@@ -215,7 +215,7 @@ def _process_completed_tasks_threaded(
         while fetcher_has_pending_work(fetcher):
             if time.time() >= deadline:
                 raise TimeoutError("threaded metadata fetch did not finish within 30s")
-            fetcher.after_loop_batch()
+            fetcher.emit_ready_and_fire_done_callbacks()
             time.sleep(0.005)
         return result
     finally:
@@ -225,7 +225,7 @@ def _process_completed_tasks_threaded(
 def test_process_completed_tasks_threaded(ray_start_regular_shared):
     """End-to-end check of the threaded mode through ``process_completed_tasks``:
     pulled pairs are deferred, fetched on the background thread, and emitted
-    (per-op order) by ``after_loop_batch`` — yielding the same outputs as the
+    (per-op order) by ``emit_ready_and_fire_done_callbacks`` — yielding the same outputs as the
     inline mode."""
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
@@ -1616,7 +1616,7 @@ class TestDataOpTask:
         with fetcher._results_lock:
             for d, meta_bytes in zip(deferred, ray.get([d.meta_ref for d in deferred])):
                 fetcher._results[d.meta_ref] = meta_bytes
-        fetcher.after_loop_batch()
+        fetcher.emit_ready_and_fire_done_callbacks()
         assert len(outputs) == len(deferred)
         assert task._last_block_meta is not None
 
@@ -1667,7 +1667,7 @@ class TestDataOpTask:
 
             deadline = time.time() + 30
             while len(outputs) < 4 and time.time() < deadline:
-                fetcher.after_loop_batch()
+                fetcher.emit_ready_and_fire_done_callbacks()
                 time.sleep(0.01)
         finally:
             fetcher.stop()
@@ -1717,14 +1717,14 @@ class TestDataOpTask:
         # Only the LATER pair's metadata is available: it must be held.
         with fetcher._results_lock:
             fetcher._results[second.meta_ref] = meta_bytes_second
-        fetcher.after_loop_batch()
+        fetcher.emit_ready_and_fire_done_callbacks()
         assert outputs == []
         assert not task.has_finished
 
         # Once the EARLIER pair's metadata arrives, both emit, in yield order.
         with fetcher._results_lock:
             fetcher._results[first.meta_ref] = meta_bytes_first
-        fetcher.after_loop_batch()
+        fetcher.emit_ready_and_fire_done_callbacks()
         assert [b.size_bytes() for b in outputs] == [108, 208]
         assert task.has_finished
 
@@ -1764,7 +1764,7 @@ class TestDataOpTask:
             fetcher._results[first.meta_ref] = good_bytes
             fetcher._results[second.meta_ref] = boom
 
-        failures = fetcher.after_loop_batch()
+        failures = fetcher.emit_ready_and_fire_done_callbacks()
 
         # The error is surfaced (not raised), tagged with the operator name.
         assert failures == [("Map(fn)", boom)]
