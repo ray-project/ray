@@ -30,9 +30,9 @@ def record_operators_usage(op: LogicalOperator):
     _collect_operators_to_dict(op, ops_dict)
     ops_json_str = ""
     with _recorded_operators_lock:
-        for op, count in ops_dict.items():
-            _recorded_operators.setdefault(op, 0)
-            _recorded_operators[op] += count
+        for op_name, count in ops_dict.items():
+            _recorded_operators.setdefault(op_name, 0)
+            _recorded_operators[op_name] += count
         ops_json_str = json.dumps(_recorded_operators)
 
     record_extra_usage_tag(TagKey.DATA_LOGICAL_OPS, ops_json_str)

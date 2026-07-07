@@ -223,7 +223,7 @@ def record_usage_info(info: UsageInfo) -> None:
 
 def build_usage_id_map(
     logical_plan: "LogicalPlan",
-    op_name_fn: OpNameFn = None,
+    op_name_fn: Optional[OpNameFn] = None,
 ) -> Dict[int, str]:
     """Build the ``id(logical_op) -> usage_id`` map for a plan.
 
@@ -249,7 +249,7 @@ def build_usage_id_map(
 def physical_op_name_with_id(
     operator: "PhysicalOperator",
     usage_id_map: Optional[Dict[int, str]] = None,
-    op_name_fn: OpNameFn = None,
+    op_name_fn: Optional[OpNameFn] = None,
 ) -> str:
     """Anonymized name for a physical op. Fused ops join their constituent logical
     ops with '->' to signal operator fusion. We need physical op name as
@@ -311,8 +311,8 @@ def _safe_version(pkg: str) -> Optional[str]:
 
 def collect_workload(
     logical_plan: "LogicalPlan",
-    op_config_fn: OpConfigFn = None,
-    op_name_fn: OpNameFn = None,
+    op_config_fn: Optional[OpConfigFn] = None,
+    op_name_fn: Optional[OpNameFn] = None,
 ) -> WorkloadInfo:
     """Collect the anonymized plan tree, indented text rendering, and per-op
     config list in a single DAG walk.

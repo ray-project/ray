@@ -134,6 +134,10 @@ class UsageCallback(ExecutionCallback):
                     self._dead_nodes_at_start, self._dead_nodes_at_end
                 ),
             )
+        # Both are populated before this runs: on_collection_start sets
+        # _started_at, and before_execution_starts/_finish set _executor.
+        assert self._started_at is not None
+        assert self._executor is not None
         return UsageInfo(
             id=self._execution_id,
             started_at=self._started_at,
