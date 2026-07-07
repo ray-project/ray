@@ -141,13 +141,9 @@ def _routers_and_targets_by_backend(
 ) -> "Tuple[Dict[str, ServerConfig], Dict[str, List[Tuple[str, str]]]]":
     """Per-backend router and replica map, restricted to backends with both.
 
-    Each HAProxy prefers its co-located router so the /internal/route hop stays
-    on-node, falling back to the lexicographically smallest router when none is
-    co-located. ``_target_to_server`` already rewrites a co-located target's
-    host to the local host, so the on-node router is the one whose ``host``
-    equals ``local_host``. Picking deterministically within the chosen pool
-    avoids the first-response latency regression from cycling routers across
-    requests.
+    Each HAProxy prefers its co-located router (``host == local_host``, which
+    ``_target_to_server`` rewrote to the local host) so the /internal/route hop
+    stays on-node. When none is co-located it picks one deterministically.
     """
     routers: Dict[str, ServerConfig] = {}
     targets: Dict[str, List[Tuple[str, str]]] = {}
