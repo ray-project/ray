@@ -141,6 +141,20 @@ void TaskReceiver::HandleTaskExecutionResult(
   }
 }
 
+void TaskReceiver::BeginActorTaskArgsFetch(const rpc::PushTaskRequest &request) {
+  RAY_CHECK_EQ(request.task_spec().type(), TaskType::ACTOR_TASK)
+      << "BeginActorTaskArgsFetch must only be called for actor tasks";
+
+  // Copy rather than move since `request` needs task_spec further down
+  TaskSpecification task_spec(request.task_spec());
+  const auto dependencies = task_spec.GetDependencies();
+  if (dependencies.empty()) {
+    return;
+  }
+  waiter_.BeginArgsFetch(dependencies,
+                         TaskAttempt{task_spec.TaskId(), task_spec.AttemptNumber()});
+}
+
 void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                                          rpc::PushTaskReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
