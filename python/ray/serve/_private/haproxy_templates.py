@@ -22,9 +22,8 @@ HAPROXY_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint
 {%-   endfor %}
     http-request return status 503 content-type text/plain string "Service Unavailable" if healthcheck
 {%- elif config.is_head %}
-    # Head node stays ready with no app backends so a request can trigger upscale
-    # after apps scale to zero. Mirrors ProxyRouter.ready_for_traffic. A worker
-    # with no backends is not ready and falls through to the 404 default_backend.
+    # Head is the always-on ingress endpoint, so it stays ready with no backends.
+    # Mirrors is_head in ProxyRouter.ready_for_traffic.
     http-request return status {{ health_info.status }} content-type text/plain string "{{ health_info.health_message }}" if healthcheck
 {%- endif %}
 """
@@ -51,9 +50,8 @@ HAPROXY_GRPC_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint (gRPC `Heal
 {%-   endfor %}
     http-request return status 200 content-type application/grpc hdr grpc-status 14 hdr grpc-message "Service Unavailable" if is_healthz
 {%- elif config.is_head %}
-    # Head node stays ready with no app backends so a request can trigger upscale
-    # after apps scale to zero. Mirrors ProxyRouter.ready_for_traffic. A worker
-    # with no backends is not ready and falls through to the NOT_FOUND backend.
+    # Head is the always-on ingress endpoint, so it stays ready with no backends.
+    # Mirrors is_head in ProxyRouter.ready_for_traffic.
     http-request return status 200 content-type application/grpc hdr grpc-status 0 if is_healthz
 {%- endif %}
 """
