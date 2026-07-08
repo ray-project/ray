@@ -146,8 +146,10 @@ DEFAULT_VERBOSE_STATS_LOG = False
 
 DEFAULT_TRACE_ALLOCATIONS = bool(int(os.environ.get("RAY_DATA_TRACE_ALLOCATIONS", "0")))
 
-DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT = env_bool(
-    "RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT", False
+DEFAULT_LOG_INTERNAL_STACK_TRACE = env_bool(
+    "RAY_DATA_LOG_INTERNAL_STACK_TRACE",
+    # Back-compat: fall back to the old env var name if the new one is unset.
+    env_bool("RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT", False),
 )
 
 DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION = env_bool(
@@ -610,9 +612,10 @@ class DataContext:
             corrupted data samples) or IO errors. Data in the failed blocks are dropped.
             This option can be useful to prevent a long-running job from failing due to
             a small number of bad blocks.
-        log_internal_stack_trace_to_stdout: Whether to include internal Ray Data/Ray
-            Core code stack frames when logging to stdout. The full stack trace is
-            always written to the Ray Data log file.
+        log_internal_stack_trace: Whether to include Ray Data/Ray Core internal
+            code stack frames when logging a user-code error. By default these
+            frames are omitted from both stdout and the Ray Data log file; set
+            this to True to include them in both.
         raise_original_map_exception: Whether to raise the original exception
             encountered in map UDF instead of wrapping it in a `UserCodeException`.
         print_on_execution_start: If ``True``, print execution information when
@@ -845,9 +848,7 @@ class DataContext:
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
-    log_internal_stack_trace_to_stdout: bool = (
-        DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
-    )
+    log_internal_stack_trace: bool = DEFAULT_LOG_INTERNAL_STACK_TRACE
     raise_original_map_exception: bool = DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION
     print_on_execution_start: bool = True
     s3_try_create_dir: bool = DEFAULT_S3_TRY_CREATE_DIR
@@ -982,6 +983,14 @@ class DataContext:
                 self.arrow_fixed_shape_tensor_format = FixedShapeTensorFormat.V2
             else:
                 self.arrow_fixed_shape_tensor_format = FixedShapeTensorFormat.V1
+
+        elif name == "log_internal_stack_trace_to_stdout":
+            warnings.warn(
+                "`log_internal_stack_trace_to_stdout` is deprecated! Configure "
+                "`log_internal_stack_trace` instead.",
+                DeprecationWarning,
+            )
+            self.log_internal_stack_trace = value
 
         super().__setattr__(name, value)
 

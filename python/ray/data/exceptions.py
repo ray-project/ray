@@ -17,9 +17,9 @@ class RayDataUserCodeException(UserCodeException):
     user-specified UDF used in a Ray Data transformation.
 
     By default, the frames corresponding to Ray Data internal files are
-    omitted from the stack trace logged to stdout, but will still be
-    emitted to the Ray Data specific log file. To emit all stack frames to stdout,
-    set `DataContext.log_internal_stack_trace_to_stdout` to True."""
+    omitted from the stack trace in both stdout and the Ray Data log file.
+    To include all stack frames, set
+    `DataContext.log_internal_stack_trace` to True."""
 
     pass
 
@@ -48,10 +48,12 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
         try:
             return fn(*args, **kwargs)
         except Exception as e:
-            # Only log the full internal stack trace to stdout when configured
-            # via DataContext, or when the Ray Debugger is enabled.
-            # The full stack trace will always be emitted to the Ray Data log file.
-            log_to_stdout = DataContext.get_current().log_internal_stack_trace_to_stdout
+            # Whether to include the internal Ray Data / Ray Core stack frames
+            # in the logged trace. When False (the default), they're omitted
+            # from both stdout and the Ray Data log file for user-code errors.
+            log_internal_stack_trace = (
+                DataContext.get_current().log_internal_stack_trace
+            )
             if _is_ray_debugger_post_mortem_enabled():
                 logger.exception("Full stack trace:")
                 raise e
@@ -59,13 +61,15 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
             is_user_code_exception = isinstance(e, UserCodeException)
             if is_user_code_exception:
                 # Exception has occurred in user code.
-                if not log_to_stdout and log_once("ray_data_exception_internal_hidden"):
+                if not log_internal_stack_trace and log_once(
+                    "ray_data_exception_internal_hidden"
+                ):
                     logger.error(
                         "Exception occurred in user code, with the abbreviated stack "
                         "trace below. The Ray Data internal stack frames are omitted "
                         "from both stdout and the Ray Data log files at "
                         f"`{get_log_directory()}`. To output the full stack trace, "
-                        "set `DataContext.log_internal_stack_trace_to_stdout` to True."
+                        "set `DataContext.log_internal_stack_trace` to True."
                     )
             else:
                 # Exception has occurred in internal Ray Data / Ray Core code.
@@ -76,14 +80,16 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                     "https://github.com/ray-project/ray/issues/new/choose"
                 )
 
-            should_hide_traceback = is_user_code_exception and not log_to_stdout
+            should_hide_traceback = (
+                is_user_code_exception and not log_internal_stack_trace
+            )
             if should_hide_traceback:
                 # For a user-code error, the driver-side propagation frames (the
                 # Ray Data and Ray Core internals between `ray.get` and here) add
                 # nothing: the real failure is the worker-side traceback already
                 # captured in ``str(e)``. Log only that, so the Ray Data log file
                 # isn't buried in internal frames either. Setting
-                # ``DataContext.log_internal_stack_trace_to_stdout=True`` restores
+                # ``DataContext.log_internal_stack_trace=True`` restores
                 # the full trace (and routes it to stdout).
                 logger.error("Full stack trace:\n%s", e, extra={"hide": True})
             else:
