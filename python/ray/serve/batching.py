@@ -122,6 +122,8 @@ class _BatchQueue:
         max_concurrent_batches: int,
         handle_batch_func: Optional[Callable] = None,
         batch_size_fn: Optional[Callable[[List], int]] = None,
+        semaphore: Optional[asyncio.Semaphore] = None,
+        on_idle: Optional[Callable[[], None]] = None,
     ) -> None:
         """Async queue that accepts individual items and returns batches.
 
@@ -153,9 +155,11 @@ class _BatchQueue:
         self.batch_wait_timeout_s = batch_wait_timeout_s
         self.max_concurrent_batches = max_concurrent_batches
         self.batch_size_fn = batch_size_fn
-        self.semaphore = asyncio.Semaphore(max_concurrent_batches)
+        self.semaphore = semaphore or asyncio.Semaphore(max_concurrent_batches)
+        self._on_idle = on_idle
         self.requests_available_event = asyncio.Event()
         self.tasks: Set[asyncio.Task] = set()
+        self._pending_batch_count = 0
 
         # Used for observability.
         self.curr_iteration_start_times: Dict[asyncio.Task, float] = {}
@@ -440,37 +444,6 @@ class _BatchQueue:
             for future in futures:
                 _set_exception_if_not_done(future, e)
 
-    def _split_batch_by_model_id(
-        self, batch: List[_SingleRequest]
-    ) -> List[List[_SingleRequest]]:
-        """Split a batch into sub-batches based on multiplexed_model_id.
-
-        When using model multiplexing with batching, requests for different models
-        may end up in the same batch. This method ensures that each sub-batch only
-        contains requests for the same model, preventing issues where a single batch
-        contains requests for different models.
-
-        If no requests have a multiplexed_model_id set, returns the original batch
-        as a single sub-batch.
-
-        Args:
-            batch: The batch of requests to split.
-
-        Returns:
-            A list of sub-batches, where each sub-batch contains requests for the
-            same multiplexed_model_id.
-        """
-        # Group requests by their multiplexed_model_id
-        model_id_to_requests: Dict[str, List[_SingleRequest]] = {}
-        for request in batch:
-            model_id = request.request_context.multiplexed_model_id
-            if model_id not in model_id_to_requests:
-                model_id_to_requests[model_id] = []
-            model_id_to_requests[model_id].append(request)
-
-        # Return sub-batches for each model_id
-        return list(model_id_to_requests.values())
-
     async def _process_batches(self, func: Callable) -> None:
         """Loops infinitely and processes queued request batches."""
         # When asyncio task is created, the task will inherit the request context from the current context.
@@ -479,52 +452,23 @@ class _BatchQueue:
         while not self._loop.is_closed():
             batch, _ = await self.wait_for_batch()
 
-            # Split batch by multiplexed_model_id to ensure requests for different
-            # models are processed in separate batches. This is necessary when using
-            # model multiplexing with batching, as a single batch containing requests
-            # for different models would not work correctly.
-            sub_batches = self._split_batch_by_model_id(batch)
+            self._pending_batch_count += 1
+            try:
+                await self.semaphore.acquire()
+            except asyncio.CancelledError:
+                self._pending_batch_count -= 1
+                raise
 
-            # Process all sub-batches together under a single semaphore permit.
-            # This ensures sub-batches from the same original batch run concurrently
-            # rather than being serialized by the semaphore.
-            promise = self._process_sub_batches(func, sub_batches)
+            promise = self._process_batch_inner(func, batch)
             task = asyncio.create_task(promise)
             self.tasks.add(task)
             self.curr_iteration_start_times[task] = time.time()
+            self._pending_batch_count -= 1
             task.add_done_callback(self._handle_completed_task)
-
-    async def _process_sub_batches(
-        self, func: Callable, sub_batches: List[List[_SingleRequest]]
-    ) -> None:
-        """Processes multiple sub-batches concurrently under a single semaphore permit.
-
-        This method acquires the semaphore once and then processes all sub-batches
-        in parallel, ensuring that sub-batches from the same original batch don't
-        compete for semaphore permits.
-        """
-        # NOTE: this semaphore caps the number of concurrent batches specified by `max_concurrent_batches`
-        async with self.semaphore:
-            # Create tasks for each sub-batch. We use asyncio.create_task() instead
-            # of passing coroutines directly to asyncio.gather() because create_task
-            # copies the current context, giving each sub-batch its own isolated
-            # contextvars. This prevents concurrent sub-batches from overwriting
-            # each other's _serve_batch_request_context, which would cause
-            # get_multiplexed_model_id() to return wrong values.
-            tasks = [
-                asyncio.create_task(self._process_batch_inner(func, sub_batch))
-                for sub_batch in sub_batches
-            ]
-            await asyncio.gather(*tasks)
 
     async def _process_batch_inner(
         self, func: Callable, batch: List[_SingleRequest]
     ) -> None:
-        """Processes a single batch without acquiring the semaphore.
-
-        This is the inner implementation called by _process_sub_batches after
-        the semaphore has already been acquired.
-        """
         # Remove requests that have been cancelled from the batch. If
         # all requests have been cancelled, simply return and wait for
         # the next batch.
@@ -532,8 +476,7 @@ class _BatchQueue:
         if len(batch) == 0:
             return
 
-        # Compute batch size for this sub-batch. Each sub-batch may have a different
-        # size, especially when splitting by model_id, so we compute it here.
+        # Compute batch size after dropping cancelled requests.
         computed_batch_size = self._compute_batch_size(batch)
 
         # Calculate and record batch utilization percentage.
@@ -599,9 +542,17 @@ class _BatchQueue:
             )
 
     def _handle_completed_task(self, task: asyncio.Task) -> None:
-        self.tasks.remove(task)
-        del self.curr_iteration_start_times[task]
-        self._log_if_exception(task.exception())
+        try:
+            self.tasks.remove(task)
+            del self.curr_iteration_start_times[task]
+            if task.cancelled():
+                logger.debug("Task was cancelled")
+            else:
+                self._log_if_exception(task.exception())
+        finally:
+            self.semaphore.release()
+            if self._on_idle is not None and self.is_idle():
+                self._on_idle()
 
     @staticmethod
     def _log_if_exception(exception_maybe: Optional[BaseException]) -> None:
@@ -611,6 +562,23 @@ class _BatchQueue:
             else:
                 logger.exception("Task failed unexpectedly")
 
+    def is_idle(self) -> bool:
+        return (
+            self.queue.empty()
+            and self._pending_batch_count == 0
+            and len(self.tasks) == 0
+            and len(self.curr_iteration_start_times) == 0
+        )
+
+    def shutdown(self) -> None:
+        if self._handle_batch_task is None or self._handle_batch_task.done():
+            return
+
+        # TODO(edoakes): although we try to gracefully shutdown here, it still
+        # causes some errors when the process exits due to the asyncio loop
+        # already being destroyed.
+        self._handle_batch_task.cancel()
+
     def __del__(self):
         if (
             self._handle_batch_task is None
@@ -618,10 +586,7 @@ class _BatchQueue:
         ):
             return
 
-        # TODO(edoakes): although we try to gracefully shutdown here, it still
-        # causes some errors when the process exits due to the asyncio loop
-        # already being destroyed.
-        self._handle_batch_task.cancel()
+        self.shutdown()
 
 
 class _LazyBatchQueueWrapper:
@@ -640,42 +605,68 @@ class _LazyBatchQueueWrapper:
         handle_batch_func: Optional[Callable] = None,
         batch_size_fn: Optional[Callable[[List], int]] = None,
     ):
-        self._queue: Optional[_BatchQueue] = None
+        self._queues: Dict[str, _BatchQueue] = {}
         self.max_batch_size = max_batch_size
         self.batch_wait_timeout_s = batch_wait_timeout_s
         self.max_concurrent_batches = max_concurrent_batches
         self.handle_batch_func = handle_batch_func
         self.batch_size_fn = batch_size_fn
+        self.semaphore = asyncio.Semaphore(max_concurrent_batches)
 
     @property
     def queue(self) -> _BatchQueue:
-        """Returns _BatchQueue.
+        """Returns the default _BatchQueue.
 
-        Initializes queue when called for the first time.
+        Initializes the default queue when called for the first time.
         """
-        if self._queue is None:
-            self._queue = _BatchQueue(
+        return self.get_queue("")
+
+    def get_queue(self, multiplexed_model_id: str) -> _BatchQueue:
+        """Returns the _BatchQueue for a multiplexed model ID."""
+        queue_key = multiplexed_model_id or ""
+        if queue_key not in self._queues:
+            queue: Optional[_BatchQueue] = None
+
+            def remove_queue_if_idle() -> None:
+                self._remove_queue_if_idle(queue_key, queue)
+
+            queue = _BatchQueue(
                 self.max_batch_size,
                 self.batch_wait_timeout_s,
                 self.max_concurrent_batches,
                 self.handle_batch_func,
                 self.batch_size_fn,
+                self.semaphore,
+                remove_queue_if_idle,
             )
-        return self._queue
+            self._queues[queue_key] = queue
+        return self._queues[queue_key]
+
+    def _remove_queue_if_idle(
+        self, queue_key: str, queue: Optional[_BatchQueue]
+    ) -> None:
+        if queue_key == "" or queue is None:
+            return
+
+        if self._queues.get(queue_key) is not queue or not queue.is_idle():
+            return
+
+        queue.shutdown()
+        del self._queues[queue_key]
 
     def set_max_batch_size(self, new_max_batch_size: int) -> None:
         """Updates queue's max_batch_size."""
 
         self.max_batch_size = new_max_batch_size
 
-        if self._queue is not None:
-            self._queue.set_max_batch_size(new_max_batch_size)
+        for queue in self._queues.values():
+            queue.set_max_batch_size(new_max_batch_size)
 
     def set_batch_wait_timeout_s(self, new_batch_wait_timeout_s: float) -> None:
         self.batch_wait_timeout_s = new_batch_wait_timeout_s
 
-        if self._queue is not None:
-            self._queue.batch_wait_timeout_s = new_batch_wait_timeout_s
+        for queue in self._queues.values():
+            queue.batch_wait_timeout_s = new_batch_wait_timeout_s
 
     def get_max_batch_size(self) -> int:
         return self.max_batch_size
@@ -685,9 +676,10 @@ class _LazyBatchQueueWrapper:
 
     def _get_curr_iteration_start_times(self) -> _RuntimeSummaryStatistics:
         """Gets summary statistics of current iteration's start times."""
-        return _RuntimeSummaryStatistics(
-            list(self.queue.curr_iteration_start_times.values())
-        )
+        start_times = []
+        for queue in self._queues.values():
+            start_times.extend(queue.curr_iteration_start_times.values())
+        return _RuntimeSummaryStatistics(start_times)
 
     async def _is_batching_task_alive(self) -> bool:
         """Gets whether default _BatchQueue's background task is alive.
@@ -695,10 +687,13 @@ class _LazyBatchQueueWrapper:
         Returns False if the batch handler doesn't use a default _BatchQueue.
         """
 
-        if hasattr(self.queue, "_handle_batch_task"):
-            return not self.queue._handle_batch_task.done()
-        else:
-            return False
+        if not self._queues:
+            _ = self.queue
+
+        return any(
+            hasattr(queue, "_handle_batch_task") and not queue._handle_batch_task.done()
+            for queue in self._queues.values()
+        )
 
     async def _get_handling_task_stack(self) -> Optional[str]:
         """Gets the stack for the default _BatchQueue's background task.
@@ -706,12 +701,17 @@ class _LazyBatchQueueWrapper:
         Returns empty string if the batch handler doesn't use a default _BatchQueue.
         """
 
-        if hasattr(self.queue, "_handle_batch_task"):
-            str_buffer = io.StringIO()
-            self.queue._handle_batch_task.print_stack(file=str_buffer)
-            return str_buffer.getvalue()
-        else:
-            return None
+        if not self._queues:
+            _ = self.queue
+
+        stack_traces = []
+        for queue in self._queues.values():
+            if hasattr(queue, "_handle_batch_task"):
+                str_buffer = io.StringIO()
+                queue._handle_batch_task.print_stack(file=str_buffer)
+                stack_traces.append(str_buffer.getvalue())
+
+        return "\n".join(stack_traces) if stack_traces else None
 
 
 def _validate_max_batch_size(max_batch_size):
@@ -954,10 +954,11 @@ def batch(
             if self is not None:
                 flattened_args = flattened_args[2:]
 
-            batch_queue = lazy_batch_queue_wrapper.queue
-
             future = get_or_create_event_loop().create_future()
             request_context = serve.context._get_serve_request_context()
+            batch_queue = lazy_batch_queue_wrapper.get_queue(
+                request_context.multiplexed_model_id
+            )
             trace_context = get_trace_context()
             batch_queue.put(
                 _SingleRequest(
