@@ -62,8 +62,32 @@ class SGLangConnectorBackend(BaseConnectorBackend):
     _bootstrap_host: Optional[str] = None
     _bootstrap_port: Optional[int] = None
 
+    @staticmethod
+    def _check_request_model_has_bootstrap_fields() -> None:
+        """Fail early if the resolved OpenAI request model lacks bootstrap fields.
+
+        Ray's ``ChatCompletionRequest`` resolves to SGLang's model only in a
+        SGLang-only environment (the import chain in ``openai_api_models`` tries
+        vLLM first). If vLLM is also installed, it resolves to vLLM's model,
+        which has no ``bootstrap_room`` — assigning it in ``prepare_*`` then
+        raises deep in request handling. Surface it at startup instead.
+        """
+        from ray.llm._internal.serve.core.configs.openai_api_models import (
+            ChatCompletionRequest,
+        )
+
+        if "bootstrap_room" not in ChatCompletionRequest.model_fields:
+            raise RuntimeError(
+                "SGLang P/D requires SGLang's OpenAI request models, but the "
+                "resolved ChatCompletionRequest has no 'bootstrap_room' field. "
+                "This happens when vLLM is installed alongside SGLang (Ray's "
+                "import chain then picks vLLM's request model). SGLang P/D needs "
+                "a SGLang-only environment."
+            )
+
     def setup(self) -> None:
         """Pick a free bootstrap port + set host to the node IP, before engine start."""
+        self._check_request_model_has_bootstrap_fields()
         offset = self._compute_port_offset()
         engine_kwargs = self.llm_config.engine_kwargs
 

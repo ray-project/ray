@@ -320,5 +320,37 @@ def test_sglang_pd_rejects_data_parallel():
         )
 
 
+def test_sglang_pd_rejects_mixed_engines():
+    """Prefill and decode must use the same llm_engine."""
+    import copy
+
+    from ray.llm._internal.serve.serving_patterns.prefill_decode.builder import (
+        PDServingArgs,
+    )
+
+    sglang = _sglang_config(base_gpu_id=1)
+    vllm = copy.deepcopy(sglang)
+    vllm["llm_engine"] = "vLLM"
+    vllm["engine_kwargs"] = {"kv_transfer_config": {"kv_connector": "NixlConnector"}}
+
+    with pytest.raises(ValueError, match="same llm_engine"):
+        PDServingArgs.model_validate({"prefill_config": vllm, "decode_config": sglang})
+
+
+def test_sglang_connector_requires_bootstrap_fields():
+    """The connector fails early if the request model lacks bootstrap fields."""
+    from ray.llm._internal.serve.core.configs.openai_api_models import (
+        ChatCompletionRequest,
+    )
+
+    if "bootstrap_room" in ChatCompletionRequest.model_fields:
+        # SGLang-only env: the guard passes silently.
+        SGLangConnectorBackend._check_request_model_has_bootstrap_fields()
+    else:
+        # vLLM installed: the guard must raise.
+        with pytest.raises(RuntimeError, match="bootstrap_room"):
+            SGLangConnectorBackend._check_request_model_has_bootstrap_fields()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-xvs", __file__]))

@@ -166,6 +166,23 @@ class PDServingArgs(BaseModelExtended):
         return self
 
     @model_validator(mode="after")
+    def _validate_same_engine(self):
+        """Prefill and decode must use the same ``llm_engine``.
+
+        The decode orchestrator drives both sides through one connector protocol;
+        a mixed pair (e.g. prefill vLLM + decode SGLang) passes the per-side
+        transfer checks but has no compatible P/D wiring and fails at runtime.
+        Reject it up front.
+        """
+        if self.prefill_config.llm_engine != self.decode_config.llm_engine:
+            raise ValueError(
+                "P/D prefill and decode must use the same llm_engine "
+                f"(got prefill={self.prefill_config.llm_engine!r}, "
+                f"decode={self.decode_config.llm_engine!r})."
+            )
+        return self
+
+    @model_validator(mode="after")
     def _validate_transfer_config(self):
         """Each engine needs its own PD transfer config.
 
