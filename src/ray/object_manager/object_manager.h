@@ -130,6 +130,12 @@ class ObjectManagerInterface {
   virtual void HandleObjectAdded(const ObjectInfo &object_info) = 0;
   virtual void HandleObjectDeleted(const ObjectID &object_id) = 0;
 
+  /// Register a callback invoked when a move-semantics push to a peer node
+  /// has been fully acked. Fires once per (object_id, peer_node_id). Used by
+  /// the producer raylet to free its local copy after a successful transfer.
+  virtual void SetOnPushComplete(
+      std::function<void(const ObjectID &, const NodeID &)> fn) = 0;
+
   virtual ~ObjectManagerInterface() = default;
 };
 
@@ -208,6 +214,11 @@ class ObjectManager : public ObjectManagerInterface,
   /// pinned by the raylet, so we can comfotable evict after spilling the object from
   /// local object manager. False otherwise.
   bool IsPlasmaObjectSpillable(const ObjectID &object_id) override;
+
+  void SetOnPushComplete(
+      std::function<void(const ObjectID &, const NodeID &)> fn) override {
+    on_push_complete_ = std::move(fn);
+  }
 
   /// Consider pushing an object to a remote object manager. This object manager
   /// may choose to ignore the Push call (e.g., if Push is called twice in a row
@@ -453,6 +464,20 @@ class ObjectManager : public ObjectManagerInterface,
       ObjectID,
       absl::flat_hash_map<NodeID, std::unique_ptr<boost::asio::deadline_timer>>>
       unfulfilled_push_requests_;
+
+  /// Callback invoked when a move-semantics push completes. Receives the
+  /// object id and the peer node id the push was destined for.
+  std::function<void(const ObjectID &, const NodeID &)> on_push_complete_;
+
+  /// Per-push ack tracking for move semantics. Records how many chunks of a
+  /// given (object, peer) push have been acked so we can fire
+  /// on_push_complete_ exactly once when the whole transfer succeeds.
+  struct PushAckState {
+    int64_t total_chunks;
+    int64_t acked_chunks = 0;
+    bool failed = false;
+  };
+  absl::flat_hash_map<std::pair<ObjectID, NodeID>, PushAckState> push_ack_tracking_;
 
   /// The gPRC server.
   rpc::GrpcServer object_manager_server_;

@@ -292,6 +292,14 @@ NodeManager::NodeManager(
       socket_(std::move(socket)) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
 
+  // Plasma move semantics: when a push completes, the producer raylet frees
+  // its local copy — the peer is now the primary copy holder. Master's
+  // ReleaseFreedLocalObject drops the local pin without broadcasting.
+  object_manager_.SetOnPushComplete(
+      [this](const ObjectID &object_id, const NodeID &peer_node_id) {
+        local_object_manager_.ReleaseFreedLocalObject(object_id);
+      });
+
   periodical_runner_->RunFnPeriodically(
       [this]() { cluster_lease_manager_.ScheduleAndGrantLeases(); },
       RayConfig::instance().worker_cap_initial_backoff_delay_ms(),

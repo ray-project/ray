@@ -508,29 +508,59 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
       << ", total data size: " << chunk_reader->GetObject().GetObjectSize();
 
   auto push_id = UniqueID::FromRandom();
-  push_manager_->StartPush(
-      node_id, object_id, chunk_reader->GetNumChunks(), [=](int64_t chunk_id) {
-        rpc_service_.post(
-            [=]() {
-              // Post to the multithreaded RPC event loop so that data is copied
-              // off of the main thread.
-              SendObjectChunk(
-                  push_id,
-                  object_id,
-                  node_id,
-                  chunk_id,
-                  rpc_client,
-                  [=](const Status &status) {
-                    // Post back to the main event loop because the
-                    // PushManager is not thread-safe.
-                    main_service_->post([this]() { push_manager_->OnChunkComplete(); },
-                                        "ObjectManager.Push");
-                  },
-                  chunk_reader,
-                  from_disk);
-            },
-            "ObjectManager.Push");
-      });
+  const int64_t num_chunks = chunk_reader->GetNumChunks();
+  const bool move_semantics_enabled =
+      RayConfig::instance().enable_plasma_move_semantics();
+
+  if (move_semantics_enabled) {
+    push_ack_tracking_[std::make_pair(object_id, node_id)] =
+        PushAckState{num_chunks, /*acked_chunks=*/0, /*failed=*/false};
+  }
+
+  push_manager_->StartPush(node_id, object_id, num_chunks, [=](int64_t chunk_id) {
+    rpc_service_.post(
+        [=]() {
+          // Post to the multithreaded RPC event loop so that data is copied
+          // off of the main thread.
+          SendObjectChunk(
+              push_id,
+              object_id,
+              node_id,
+              chunk_id,
+              rpc_client,
+              [=](const Status &status) {
+                // Post back to the main event loop because the
+                // PushManager is not thread-safe.
+                main_service_->post(
+                    [this, object_id, node_id, status, move_semantics_enabled]() {
+                      push_manager_->OnChunkComplete();
+                      if (!move_semantics_enabled) {
+                        return;
+                      }
+                      auto it =
+                          push_ack_tracking_.find(std::make_pair(object_id, node_id));
+                      if (it == push_ack_tracking_.end()) {
+                        return;
+                      }
+                      if (!status.ok()) {
+                        it->second.failed = true;
+                      }
+                      it->second.acked_chunks++;
+                      if (it->second.acked_chunks == it->second.total_chunks) {
+                        const bool success = !it->second.failed;
+                        push_ack_tracking_.erase(it);
+                        if (success && on_push_complete_) {
+                          on_push_complete_(object_id, node_id);
+                        }
+                      }
+                    },
+                    "ObjectManager.Push");
+              },
+              chunk_reader,
+              from_disk);
+        },
+        "ObjectManager.Push");
+  });
 }
 
 void ObjectManager::SendObjectChunk(
