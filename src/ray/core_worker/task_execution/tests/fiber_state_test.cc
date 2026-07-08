@@ -113,5 +113,19 @@ TEST(FiberStateTest, DoubleStopJoin) {
   fiber_state.Join();
 }
 
+TEST(FiberStateTest, DestructorStopsAndJoins) {
+  // Destroying a FiberState without calling Stop()/Join() stops the runner
+  // thread, drains in-flight fibers, and joins the thread.
+  std::atomic<bool> task_completed{false};
+  {
+    FiberState fiber_state(2);
+    fiber_state.EnqueueFiber([&]() {
+      boost::this_fiber::sleep_for(std::chrono::milliseconds(100));
+      task_completed.store(true);
+    });
+  }
+  EXPECT_TRUE(task_completed.load());
+}
+
 }  // namespace core
 }  // namespace ray

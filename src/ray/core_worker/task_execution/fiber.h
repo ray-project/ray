@@ -17,6 +17,7 @@
 #include <boost/fiber/all.hpp>
 #include <chrono>
 #include <memory>
+#include <thread>
 #include <utility>
 
 #include "ray/util/logging.h"
@@ -29,33 +30,28 @@ namespace core {
 /// from python to switch control among different coroutines.
 /// Taken from boost::fiber examples
 /// https://github.com/boostorg/fiber/blob/7be4f860e733a92d2fa80a848dd110df009a20e1/examples/wait_stuff.cpp#L115-L142
-/// We use FiberEvent to synchronize fibers and StdEvent to synchronize threads.
-template <typename Mutex, typename Cond>
-class Event {
+class FiberEvent {
  public:
   // Block the fiber until the event is notified.
   void Wait() {
-    std::unique_lock<Mutex> lock(mutex_);
+    std::unique_lock<boost::fibers::mutex> lock(mutex_);
     cond_.wait(lock, [this]() { return ready_; });
   }
 
   // Notify the event and unblock all waiters.
   void Notify() {
     {
-      std::unique_lock<Mutex> lock(mutex_);
+      std::unique_lock<boost::fibers::mutex> lock(mutex_);
       ready_ = true;
     }
     cond_.notify_one();
   }
 
  private:
-  Cond cond_;
-  Mutex mutex_;
+  boost::fibers::condition_variable cond_;
+  boost::fibers::mutex mutex_;
   bool ready_ = false;
 };
-
-using FiberEvent = Event<boost::fibers::mutex, boost::fibers::condition_variable>;
-using StdEvent = Event<std::mutex, std::condition_variable>;
 
 /// Used by async actor mode. The FiberRateLimiter is a barrier that
 /// allows at most num fibers running at once. It implements the
@@ -106,11 +102,8 @@ class FiberState {
       // TODO(kevin85421): The language-specific callback function that
       // initializes threads. It's not currently used in the async mode.
       std::function<std::function<void()>()> initialize_thread_callback = nullptr)
-      : allocator_(kStackSize),
-        rate_limiter_(max_concurrency),
-        fiber_stopped_event_(std::make_shared<StdEvent>()) {
-    std::shared_ptr<StdEvent> fiber_stopped_event = fiber_stopped_event_;
-    auto fiber_runner_thread = std::thread([&, fiber_stopped_event]() {
+      : allocator_(kStackSize), rate_limiter_(max_concurrency) {
+    fiber_runner_thread_ = std::thread([this]() {
       while (!channel_.is_closed()) {
         std::function<void()> func;
         auto op_status = channel_.pop(func);
@@ -137,7 +130,9 @@ class FiberState {
                                  std::unique_lock<boost::fibers::mutex> lock(mutex_);
                                  num_in_flight_fibers_ -= 1;
                                  if (num_in_flight_fibers_ == 0) {
-                                   fibers_drained_event_.notify_all();
+                                   // The runner thread's main fiber (in the
+                                   // graceful drain below) is the only waiter.
+                                   fibers_drained_event_.notify_one();
                                  }
                                })
               .detach();
@@ -177,13 +172,15 @@ class FiberState {
       }
 
       // All fibers have completed, so no fiber can run after this point and it
-      // is safe for this thread to return (and be treated as stopped). This
-      // makes sure this thread won't accidentally access a being-destructed
-      // core worker.
-      fiber_stopped_event->Notify();
+      // is safe for this thread to finish (and be joined).
     });
+  }
 
-    fiber_runner_thread.detach();
+  ~FiberState() {
+    // Make sure the runner thread is stopped and joined before members are
+    // destroyed. No-op if Stop()/Join() were already called.
+    Stop();
+    Join();
   }
 
   void EnqueueFiber(std::function<void()> &&callback) {
@@ -197,7 +194,11 @@ class FiberState {
 
   void Stop() { channel_.close(); }
 
-  void Join() { fiber_stopped_event_->Wait(); }
+  void Join() {
+    if (fiber_runner_thread_.joinable()) {
+      fiber_runner_thread_.join();
+    }
+  }
 
  private:
   static constexpr size_t kStackSize = 1024 * 256;
@@ -210,18 +211,19 @@ class FiberState {
   /// The fiber semaphore used to limit the number of concurrent fibers
   /// running at once.
   FiberRateLimiter rate_limiter_;
-  /// Synchronization and bookkeeping for tracking the number of in-flight fibers and
-  /// waiting for them to finish during graceful shutdown.
+  /// Bookkeeping for tracking the number of in-flight fibers and waiting for
+  /// them to finish during graceful shutdown. All accesses happen on
+  /// `fiber_runner_thread_` (its main fiber and the task fibers it launches are
+  /// cooperatively scheduled on that one kernel thread), so the mutex is not
+  /// needed for mutual exclusion; it exists only because
+  /// boost::fibers::condition_variable requires one to wait on.
   boost::fibers::mutex mutex_;
   boost::fibers::condition_variable fibers_drained_event_;
   int num_in_flight_fibers_ = 0;
-  /// The fiber event used to notify that the event loop in fiber_runner_thread
-  /// have stopped running.
-  /// Since we don't join the fiber threads, it's possible that the
-  /// `fiber_runner_thread_` still accesses the `fiber_stopped_event_` after it's
-  /// deallocated in the main thread. As a result, we use a shared_ptr here to make sure
-  /// it's not deallocated if `fiber_runner_thread_` still has a reference to it.
-  std::shared_ptr<StdEvent> fiber_stopped_event_;
+  /// The thread that runs the fibers. It pops tasks off `channel_` and runs
+  /// each as a fiber, then (after Stop() closes the channel) drains in-flight
+  /// fibers before finishing. Join() joins it, so it never outlives this object.
+  std::thread fiber_runner_thread_;
 };
 
 }  // namespace core
