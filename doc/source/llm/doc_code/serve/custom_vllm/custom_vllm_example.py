@@ -1,9 +1,9 @@
 """Documentation example and CI test: custom vLLM model with Ray Serve LLM.
 
 Structure:
-1. Test-only setup: force serve.run non-blocking and strip accelerator
-   requirements for CI. The plugin is baked into the cluster image, and direct
-   streaming is enabled through the cluster environment.
+1. Test-only setup: force serve.run non-blocking. The plugin is baked into the
+   cluster image, and direct streaming is enabled through the cluster
+   environment.
 2. Docs example (between __custom_vllm_example_start/end__): embedded in the
    guide via literalinclude.
 3. Test validation (deployment status polling + reward-head assertion + cleanup).
@@ -14,29 +14,17 @@ import time
 import urllib.request
 
 from ray import serve
-from ray.serve import llm
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.schema import ApplicationStatus
 
 _original_serve_run = serve.run
-_original_build_openai_app = llm.build_openai_app
-
 
 def _non_blocking_serve_run(app, **kwargs):
     """Forces blocking=False for testing."""
     kwargs["blocking"] = False
     return _original_serve_run(app, **kwargs)
 
-
-def _testing_build_openai_app(llm_serving_args):
-    """Removes accelerator requirements for testing."""
-    for config in llm_serving_args["llm_configs"]:
-        config.accelerator_type = None
-    return _original_build_openai_app(llm_serving_args)
-
-
 serve.run = _non_blocking_serve_run
-llm.build_openai_app = _testing_build_openai_app
 
 # __custom_vllm_example_start__
 from ray import serve

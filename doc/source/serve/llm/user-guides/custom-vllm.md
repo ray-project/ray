@@ -30,7 +30,7 @@ Subclass vLLM's `Qwen3ForCausalLM` to reuse its backbone, then attach the reward
 
 ### Register the architecture
 
-vLLM calls `register()` in every process it starts, the driver, the engine core, and each rank worker, through vlLM's `load_general_plugins()`.
+vLLM calls `register()` in every process it starts, the driver, the engine core, and each rank worker, through vLLM's `load_general_plugins()`.
 
 ```{literalinclude} ../../../llm/doc_code/serve/custom_vllm/qwen3_reward_plugin/__init__.py
 :language: python
