@@ -29,39 +29,35 @@
   color: var(--pst-color-text-muted);
 }
 
-.notfound-links {
+.notfound-search {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  justify-content: center;
-  margin: 2rem 0;
-}
-
-.notfound-link {
-  display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem 1rem;
+  gap: 0.6rem;
+  width: 100%;
+  max-width: 28rem;
+  margin: 2rem auto 0;
+  padding: 0.75rem 1.1rem;
   border: 1px solid var(--pst-color-border);
-  border-radius: 0.5rem;
+  border-radius: 0.6rem;
   background: var(--pst-color-surface);
-  color: var(--pst-color-text-base);
-  text-decoration: none;
+  color: var(--pst-color-text-muted);
+  font-size: 1rem;
+  cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-.notfound-link:hover {
+.notfound-search:hover {
   border-color: var(--pst-color-primary);
-  background: var(--pst-color-on-surface);
-  text-decoration: none;
+  background: var(--pst-color-primary-bg);
+  color: var(--pst-color-text-base);
 }
 
-.notfound-link i {
-  font-size: 1.15rem;
+.notfound-search__icon {
+  font-size: 1.1rem;
   color: var(--pst-color-primary);
 }
 
-.notfound-search-hint {
-  font-size: 0.95rem;
-  color: var(--pst-color-text-muted);
+.notfound-search__text {
+  flex: 1;
+  text-align: left;
 }

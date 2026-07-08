@@ -32,25 +32,21 @@
   <p class="notfound-code">404</p>
   <h1 class="notfound-title">Page not found</h1>
   <p class="notfound-lead">
-    Sorry, we couldn't find the page you were looking for. It may have been
-    moved or removed, or the URL might be incorrect.
+    The page you're looking for is not available at this location. The content
+    might be in a different location, no longer available, or the URL might be
+    incorrect.
   </p>
-  <div class="notfound-links">
-    <a class="notfound-link" href="{{ pathto('index') }}">
-      <i class="ri-home-4-line"></i><span>Documentation home</span>
-    </a>
-    <a class="notfound-link" href="{{ pathto('ray-overview/getting-started') }}">
-      <i class="ri-play-line"></i><span>Getting started</span>
-    </a>
-    <a class="notfound-link" href="{{ pathto('ray-overview/installation') }}">
-      <i class="ri-install-line"></i><span>Install Ray</span>
-    </a>
-    <a class="notfound-link" href="{{ pathto('ray-overview/examples') }}">
-      <i class="ri-code-block"></i><span>Example gallery</span>
-    </a>
-  </div>
-  <p class="notfound-search-hint">
-    You can also use the search box at the top of the page to find what you need.
-  </p>
+  {# Reuse the site-wide Algolia DocSearch already initialized in the navbar by
+     sphinx-docsearch. Opening its modal from here keeps the page free of
+     hardcoded content-page links, which would rot if those pages move. #}
+  <button
+    type="button"
+    class="notfound-search"
+    aria-label="Search the Ray documentation"
+    onclick="document.querySelector('.DocSearch-Button')?.click()"
+  >
+    <i class="fa-solid fa-magnifying-glass notfound-search__icon" aria-hidden="true"></i>
+    <span class="notfound-search__text">Search the Ray docs&hellip;</span>
+  </button>
 </div>
 {% endblock %}
