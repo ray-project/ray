@@ -202,6 +202,49 @@ class SGLangServer:
         # this integration does not run. Keep the protocol hook as a no-op.
         return
 
+    async def __serve_build_asgi_app__(self) -> Any:
+        """Return SGLang's native OpenAI ASGI app for Ray Serve direct streaming.
+
+        When ``RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING`` is set, Ray Serve serves the
+        engine's own ASGI app (behind HAProxy) instead of routing every request
+        through the Python ingress. SGLang builds that app in ``launch_server``; here
+        we wire the same app to this replica's in-process ``Engine``.
+
+        Two adjustments are needed relative to ``launch_server``:
+
+        - Force single-tokenizer mode so the app lifespan skips the multi-tokenizer
+          shared-memory bootstrap, which only exists under ``launch_server``.
+        - Replace warmup with a no-op, because the default warmup targets
+          ``server_args.port``, which is not where Ray Serve listens.
+        """
+        from sglang.srt.entrypoints.http_server import (
+            _GlobalState,
+            app,
+            set_global_state,
+        )
+
+        engine = self.engine
+        # ``scheduler_info`` moved off ``Engine`` in newer SGLang releases; fall back
+        # to the scheduler init result when the direct attribute is absent.
+        scheduler_info = getattr(engine, "scheduler_info", None)
+        if scheduler_info is None:
+            scheduler_info = engine._scheduler_init_result.scheduler_infos[0]
+
+        set_global_state(
+            _GlobalState(
+                tokenizer_manager=engine.tokenizer_manager,
+                template_manager=engine.template_manager,
+                scheduler_info=scheduler_info,
+            )
+        )
+        app.is_single_tokenizer_mode = True
+        app.server_args = engine.server_args
+        app.warmup_thread_kwargs = {
+            "server_args": engine.server_args,
+            "execute_warmup_func": lambda server_args: True,
+        }
+        return app
+
     def _build_generate_kwargs(
         self, request: Any, prompt: Any, stream: bool
     ) -> dict[str, Any]:
