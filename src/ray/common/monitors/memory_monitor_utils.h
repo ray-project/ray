@@ -106,6 +106,9 @@ class MemoryMonitorUtils {
                                to read the object store memory usage from.
    * @param proc_dir The proc directory path
    *                 to read the OS level memory usage from.
+   * @param root_cgroup_path The root cgroup whose memory.swap.max is the slices'
+   *        effective swap budget (the leaves inherit it). Both slice totals are
+   *        expanded by it so they agree with the OOM threshold and `ray status`.
    * @return A pair of memory usage snapshots in the form of
    *         <user application memory usage, system memory usage>.
    *         Returns StatusT::NotFound if the memory values could not be successfully
@@ -113,9 +116,11 @@ class MemoryMonitorUtils {
    */
   static const StatusSetOr<std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>,
                            StatusT::NotFound>
-  TakeUserAndSystemSliceMemoryUsageSnapshot(const std::string &user_cgroup_path,
-                                            const std::string &system_cgroup_path,
-                                            const std::string &proc_dir = kProcDirectory);
+  TakeUserAndSystemSliceMemoryUsageSnapshot(
+      const std::string &user_cgroup_path,
+      const std::string &system_cgroup_path,
+      const std::string &proc_dir = kProcDirectory,
+      const std::string &root_cgroup_path = MemoryMonitorInterface::kDefaultCgroupPath);
 
   /**
    * @brief Takes a snapshot of the memory usage for the given cgroupv2 path.
@@ -265,6 +270,20 @@ class MemoryMonitorUtils {
    */
   static std::tuple<int64_t, int64_t> GetHostSwapBytes(
       const std::string &proc_dir = kProcDirectory);
+
+  /**
+   * @brief Resolves the swap budget from the root cgroup's memory.swap.max.
+   *
+   * The same value the scheduler's get_cgroup_aware_swap_memory reads. Used for
+   * the user-slice OOM threshold and snapshot so both agree with `ray status`.
+   *
+   * @param root_cgroup_path The root cgroup path.
+   * @param proc_dir The /proc directory, used for the host-swap fallback.
+   * @return The numeric swap.max, host swap for the "max"/overflow sentinel, or
+   *         0 when the file is absent (no swap support) or swap is disabled.
+   */
+  static int64_t ResolveRootSwapMaxBytes(const std::string &root_cgroup_path,
+                                         const std::string &proc_dir);
 
   /**
    * @brief Gets the used memory from the smap file.

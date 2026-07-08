@@ -144,7 +144,10 @@ ThresholdMemoryMonitor::IsResourceIsolationThresholdExceeded() {
   StatusSetOr<std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>, StatusT::NotFound>
       user_and_system_slice_memory_snapshot_or =
           MemoryMonitorUtils::TakeUserAndSystemSliceMemoryUsageSnapshot(
-              user_cgroup_path_, system_cgroup_path_);
+              user_cgroup_path_,
+              system_cgroup_path_,
+              MemoryMonitorUtils::kProcDirectory,
+              root_cgroup_path_);
 
   if (!user_and_system_slice_memory_snapshot_or.has_value()) {
     RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs) << absl::StrFormat(

@@ -152,7 +152,8 @@ const StatusSetOr<std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>, StatusT::
 MemoryMonitorUtils::TakeUserAndSystemSliceMemoryUsageSnapshot(
     const std::string &user_cgroup_path,
     const std::string &system_cgroup_path,
-    const std::string &proc_dir) {
+    const std::string &proc_dir,
+    const std::string &root_cgroup_path) {
   StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound> user_cgroup_memory_snapshot_or =
       TakeCgroupMemorySnapshot(user_cgroup_path, proc_dir);
   StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound> system_cgroup_memory_snapshot_or =
@@ -197,24 +198,33 @@ MemoryMonitorUtils::TakeUserAndSystemSliceMemoryUsageSnapshot(
   int64_t user_slice_ram_used_bytes = user_cgroup_memory_snapshot.anon_memory_bytes +
                                       user_cgroup_memory_snapshot.shmem_memory_bytes +
                                       system_cgroup_memory_snapshot.shmem_memory_bytes;
-  // Anon swap is per-cgroup deterministic, so (by analogy with system.anon) we
-  // credit only the user slice's own swap.current to its usage, and expand its
-  // advertised total by the user-slice swap.max allowance so the threshold
-  // matches what the user-slice OOM killer can spend before triggering. We do
-  // NOT credit system-slice swap to the user slice.
+  // The swap budget comes from the ROOT cgroup's swap.max (the same value the OOM
+  // threshold in GetMemoryThreshold and the Python scheduler use), so the
+  // advertised totals agree with what the OOM killer enforces. Both slice totals
+  // are expanded by it: for the user slice it is the extra headroom before the
+  // kill threshold; for the system slice it keeps `total - threshold` (the
+  // reserved-system-memory check) RAM-consistent, since the threshold is likewise
+  // swap-inflated and the swap term cancels. 0 when the flag is off.
+  int64_t root_swap_max_bytes =
+      RayConfig::instance().count_swap_in_memory_monitor()
+          ? ResolveRootSwapMaxBytes(root_cgroup_path, proc_dir)
+          : 0;
+  // Anon swap is per-cgroup deterministic, so we credit only the user slice's own
+  // swap.current to its usage. We do NOT credit system-slice swap to the user
+  // slice.
   int64_t total_user_slice_used_bytes =
       user_slice_ram_used_bytes + user_cgroup_memory_snapshot.swap_used_bytes;
-  int64_t user_slice_total_bytes =
-      host_level_total_bytes + user_cgroup_memory_snapshot.swap_max_bytes;
+  int64_t user_slice_total_bytes = host_level_total_bytes + root_swap_max_bytes;
   // We compute the system slice usage by subtracting the user slice usage from the total
   // system usage. This way, we can account for the memory usage of processes outside
   // ray's userspace and the kernel. host_level_used_bytes and the subtracted user usage
-  // are both RAM-only, so swap is not mixed into the system-slice figure.
+  // are both RAM-only, so swap is not mixed into the system-slice usage figure.
   int64_t total_system_slice_used_bytes =
       std::max<int64_t>(0, host_level_used_bytes - user_slice_ram_used_bytes);
+  int64_t system_slice_total_bytes = host_level_total_bytes + root_swap_max_bytes;
   return std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>{
       MemoryUsageSnapshot{total_user_slice_used_bytes, user_slice_total_bytes},
-      MemoryUsageSnapshot{total_system_slice_used_bytes, host_level_total_bytes}};
+      MemoryUsageSnapshot{total_system_slice_used_bytes, system_slice_total_bytes}};
 }
 
 const StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound>
@@ -508,6 +518,25 @@ std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetHostSwapBytes(
   return {swap_total_bytes, swap_used_bytes};
 }
 
+int64_t MemoryMonitorUtils::ResolveRootSwapMaxBytes(const std::string &root_cgroup_path,
+                                                    const std::string &proc_dir) {
+  std::string root_swap_max_path =
+      root_cgroup_path + "/" + kCgroupsV2MemorySwapMaxPath;
+  std::ifstream root_swap_max_ifs(root_swap_max_path, std::ios::in | std::ios::binary);
+  std::string root_swap_max_str;
+  if (!(root_swap_max_ifs && (root_swap_max_ifs >> root_swap_max_str))) {
+    // Absent file (no CONFIG_MEMCG_SWAP, etc.) — no swap budget.
+    return 0;
+  }
+  CgroupSwapMax root_swap_max = ParseCgroupSwapMax(root_swap_max_str);
+  if (root_swap_max.unlimited) {
+    // "max" / int64 overflow — genuinely unlimited, so the host swap is the cap.
+    auto [host_swap_total, _] = GetHostSwapBytes(proc_dir);
+    return std::max<int64_t>(0, host_swap_total);
+  }
+  return std::max<int64_t>(0, root_swap_max.bytes);
+}
+
 std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetLinuxMemoryBytes(
     const std::string proc_dir, bool include_swap) {
   std::string meminfo_path = proc_dir + "/meminfo";
@@ -723,22 +752,8 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
     // "max"/overflow at the root means genuinely unlimited, so fall back to host
     // swap; an absent file means no swap support, so add nothing.
     if (RayConfig::instance().count_swap_in_memory_monitor()) {
-      std::string root_swap_max_path =
-          root_cgroup_path + "/" + kCgroupsV2MemorySwapMaxPath;
-      std::ifstream root_swap_max_ifs(root_swap_max_path,
-                                      std::ios::in | std::ios::binary);
-      std::string root_swap_max_str;
-      if (root_swap_max_ifs && (root_swap_max_ifs >> root_swap_max_str)) {
-        CgroupSwapMax root_swap_max = ParseCgroupSwapMax(root_swap_max_str);
-        if (root_swap_max.unlimited) {
-          auto [host_swap_total, _] = GetHostSwapBytes();
-          if (host_swap_total > 0) {
-            resolved_memory_threshold_bytes += host_swap_total;
-          }
-        } else if (root_swap_max.bytes > 0) {
-          resolved_memory_threshold_bytes += root_swap_max.bytes;
-        }
-      }
+      resolved_memory_threshold_bytes +=
+          ResolveRootSwapMaxBytes(root_cgroup_path, kProcDirectory);
     }
   }
 
