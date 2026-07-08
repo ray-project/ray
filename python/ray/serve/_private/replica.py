@@ -2212,21 +2212,25 @@ class Replica:
             raise RuntimeError(err_msg)
 
         if self._ingress:
-            self._http_options, self._grpc_options = ray.get(
+            self._http_options, self._grpc_options, resolved_proxy_location = ray.get(
                 [
                     self._controller_handle.get_http_config.remote(),
                     self._controller_handle.get_grpc_config.remote(),
+                    self._controller_handle.get_proxy_location.remote(),
                 ]
             )
         else:
-            self._http_options = ray.get(
-                self._controller_handle.get_http_config.remote()
+            self._http_options, resolved_proxy_location = ray.get(
+                [
+                    self._controller_handle.get_http_config.remote(),
+                    self._controller_handle.get_proxy_location.remote(),
+                ]
             )
             self._grpc_options = None
 
         grpc_enabled = self._ingress and is_grpc_enabled(self._grpc_options)
-        # host=None normalizes to location Disabled in HTTPOptions.location_backfill_no_server.
-        http_enabled = self._http_options.location != ProxyLocation.Disabled
+        # HTTP ingress is enabled unless the resolved proxy placement is Disabled.
+        http_enabled = resolved_proxy_location != ProxyLocation.Disabled
 
         # Allocate and start HTTP server
         if http_enabled:
