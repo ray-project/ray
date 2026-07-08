@@ -8,7 +8,7 @@ import pytest
 
 from ci.ray_ci.bisect.generic_validator import WAIT, GenericValidator
 
-from ray_release.configs.global_config import init_global_config
+from ray_release.configs import global_config as global_config_lib
 from ray_release.test import Test
 
 _VALIDATOR_TEST_CONFIG = """
@@ -27,10 +27,21 @@ _validator_tmp = TemporaryDirectory()
 _validator_cfg = os.path.join(_validator_tmp.name, "config")
 with open(_validator_cfg, "w") as _f:
     _f.write(_VALIDATOR_TEST_CONFIG)
-# GenericValidator.run reads the buildkite org from the global config.
-init_global_config(_validator_cfg)
 
 START = time.time()
+
+
+@pytest.fixture(autouse=True)
+def _init_validator_global_config():
+    # GenericValidator.run reads the buildkite org from the global config. Set it
+    # per test (bypassing the singleton guard) and restore the prior value, so
+    # this module never contaminates the shared singleton for other test modules.
+    prev = global_config_lib.config
+    global_config_lib._init_global_config(_validator_cfg)
+    try:
+        yield
+    finally:
+        global_config_lib.config = prev
 
 
 class MockBuildkiteBuild:

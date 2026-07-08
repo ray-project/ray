@@ -90,24 +90,27 @@ ci_pipeline:
 """
 
 
-def test_global_config_defaults() -> None:
+def test_global_config_absent_targets_are_none() -> None:
+    """A config that omits the targeting keys yields None (no silent fallback to
+    ray's repo/org), so misconfiguration fails loudly instead of mis-targeting."""
     import ray_release.configs.global_config as gc
 
     with TemporaryDirectory() as tmp:
         config_file = os.path.join(tmp, "config")
         with open(config_file, "w") as f:
             f.write(_TEST_CONFIG_NO_OPTIONAL)
-        # Reset the singleton so we load a fresh config, and restore it after so
-        # this test does not contaminate the guarded test_init_global_config.
+        # Load a fresh config, then restore the prior singleton so this test does
+        # not contaminate others sharing the process.
+        prev = gc.config
         gc.config = None
         try:
             gc._init_global_config(config_file)
             config = gc.get_global_config()
-            assert config["state_machine_github_repo"] == "anyscale/ray"
-            assert config["buildkite_org"] == "ray-project"
+            assert config["state_machine_github_repo"] is None
+            assert config["buildkite_org"] is None
             assert config["state_machine_bisect_disabled"] is False
         finally:
-            gc.config = None
+            gc.config = prev
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ from typing import List, Optional
 
 import pytest
 
-from ray_release.configs.global_config import init_global_config
+from ray_release.configs import global_config as global_config_lib
 from ray_release.result import (
     Result,
     ResultStatus,
@@ -133,7 +133,9 @@ release_byod:
 state_machine:
   branch:
     aws_bucket: ray-ci-results
+  github_repo: anyscale/ray
 ci_pipeline:
+  buildkite_org: ray-project
   buildkite_secret: ray_ci_buildkite_token
   postmerge:
     - hi
@@ -143,12 +145,22 @@ _sm_tmp = TemporaryDirectory()
 _sm_cfg = os.path.join(_sm_tmp.name, "config")
 with open(_sm_cfg, "w") as _f:
     _f.write(_SM_TEST_CONFIG)
-# The state machine reads the buildkite org / bisect flag from the global config
-# during bisect; initialize it before exercising any transitions.
-init_global_config(_sm_cfg)
 
 TestStateMachine.ray_repo = MockRepo()
 TestStateMachine.ray_buildkite = MockBuildkite()
+
+
+@pytest.fixture(autouse=True)
+def _init_sm_global_config():
+    # Set a deterministic global config per test (bypassing the singleton guard)
+    # and restore the prior value afterward, so this module never contaminates the
+    # shared global-config singleton for other test modules in the same process.
+    prev = global_config_lib.config
+    global_config_lib._init_global_config(_sm_cfg)
+    try:
+        yield
+    finally:
+        global_config_lib.config = prev
 
 
 def test_ci_empty_results():
