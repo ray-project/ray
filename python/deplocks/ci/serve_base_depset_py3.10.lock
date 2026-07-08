@@ -677,7 +677,7 @@ cupy-cuda12x==13.6.0 ; sys_platform != 'darwin' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ray
-decorator==5.2.1 \
+decorator==5.2.1 ; python_full_version < '3.14' \
     --hash=sha256:65f266143752f734b0a7cc83c46f4618af75b8c5911b00ccb61d0ac9b6da0360 \
     --hash=sha256:d316bb415a2d9e2d2b3abcc4084c6502fc09240e292cd76a76afc106a1c8e04a
     # via
@@ -3600,7 +3600,7 @@ tensorflow==2.20.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/serve/serve-test-requirements.txt
     #   tf-keras
-tensorflow-probability==0.24.0 \
+tensorflow-probability==0.24.0 ; python_full_version < '3.14' \
     --hash=sha256:8c1774683e38359dbcaf3697e79b7e6a4e69b9c7b3679e78ee18f43e59e5759b
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt

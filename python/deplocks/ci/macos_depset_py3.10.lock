@@ -2137,7 +2137,7 @@ linkify-it-py==2.1.0 ; sys_platform != 'win32' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   markdown-it-py
-llvmlite==0.44.0 \
+llvmlite==0.44.0 ; python_full_version < '3.14' \
     --hash=sha256:07667d66a5d150abed9157ab6c0b9393c9356f229784a4385c02f99e94fc94d4 \
     --hash=sha256:1d671a56acf725bf1b531d5ef76b86660a5ab8ef19bb6a46064a705c6ca80aad \
     --hash=sha256:2fb7c4f2fb86cbae6dca3db9ab203eeea0e22d73b99bc2341cdf9de93612e930 \
@@ -3059,7 +3059,7 @@ nodeenv==1.10.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   pyright
-numba==0.61.2 \
+numba==0.61.2 ; python_full_version < '3.14' \
     --hash=sha256:34fba9406078bac7ab052efbf0d13939426c753ad72946baaa5bf9ae0ebb8dd2 \
     --hash=sha256:3945615cd73c2c7eba2a85ccc9c1730c21cd3958bfcf5a44302abae0fb07bb60 \
     --hash=sha256:3a10a8fc9afac40b1eac55717cece1b8b1ac0b946f5065c89e00bde646b5b154 \

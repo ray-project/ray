@@ -297,7 +297,7 @@ asttokens==3.0.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   stack-data
-astunparse==1.6.3 \
+astunparse==1.6.3 ; python_full_version < '3.14' \
     --hash=sha256:5ad93a8456f0d084c3456d059fd9a92cce667963232cbf763eac3bc5b7940872 \
     --hash=sha256:c2652417f2c8b5bb325c885ae329bdf3f86424075c4fd1a128674bc6fba4b8e8
     # via
@@ -1076,7 +1076,7 @@ filelock==3.29.0 \
     #   ray
     #   torch
     #   virtualenv
-flatbuffers==25.12.19 \
+flatbuffers==25.12.19 ; python_full_version < '3.14' or platform_machine != 'arm64' or sys_platform != 'darwin' \
     --hash=sha256:7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
@@ -1310,7 +1310,7 @@ future==1.0.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/tune-requirements.txt
-gast==0.7.0 \
+gast==0.7.0 ; python_full_version < '3.14' \
     --hash=sha256:0bb14cd1b806722e91ddbab6fb86bba148c22b40e7ff11e248974e04c8adfdae \
     --hash=sha256:99cbf1365633a74099f69c59bd650476b96baa5ef196fec88032b00b31ba36f7
     # via
@@ -1358,7 +1358,7 @@ google-auth==2.39.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   google-api-core
-google-pasta==0.2.0 \
+google-pasta==0.2.0 ; python_full_version < '3.14' \
     --hash=sha256:4612951da876b1a10fe3960d7226f0c7682cf901e16ac06e473b267a5afa8954 \
     --hash=sha256:b32482794a366b5366a32c92a9a9201b107821889935a02b3e51f6b432ea84ed \
     --hash=sha256:c9f2c8dfc8f96d0d5808299920721be30c9eec37f2389f28904f454565c8a16e
@@ -1751,13 +1751,13 @@ isoduration==20.11.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   jsonschema
-jax==0.4.33 ; sys_platform != 'darwin' \
+jax==0.4.33 ; python_full_version < '3.14' and sys_platform != 'darwin' \
     --hash=sha256:5f33e30b49060ebc990b1f8d75f89d15b9fec263f6fff34ef1af1d01996d314f \
     --hash=sha256:f0d788692fc0179653066c9e1c64e57311b8c15a389837fd7baf328abefcbb92
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
-jaxlib==0.4.33 ; sys_platform != 'darwin' \
+jaxlib==0.4.33 ; python_full_version < '3.14' and sys_platform != 'darwin' \
     --hash=sha256:054aa0f122725e000b8f8815b1794067ef2ff821588b62e1fab2a1280847f5c6 \
     --hash=sha256:0676ac605880ac6aa0ab9946a24a073ee8a1a83baf71cc1d35b71917a99d03d1 \
     --hash=sha256:3e14b4b50a19370312875541509a7ddc1ef8fc0bd95cff9508db9725038e8297 \
@@ -2046,7 +2046,7 @@ kombu==5.6.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   celery
-libclang==18.1.1 \
+libclang==18.1.1 ; python_full_version < '3.14' \
     --hash=sha256:0b2e143f0fac830156feb56f9231ff8338c20aecfe72b4ffe96f19e5a1dbb69a \
     --hash=sha256:3f0e1f49f04d3cd198985fea0511576b0aee16f9ff0e0f0cad7f9c57ec3c20e8 \
     --hash=sha256:4dd2d3b82fab35e2bf9ca717d7b63ac990a3519c7e312f19fa8e86dcc712f7fb \
@@ -3108,7 +3108,6 @@ numpy==2.2.6 \
     #   tinyscaler
     #   torch-geometric
     #   torchmetrics
-    #   torchtext
     #   torchvision
     #   transformers
     #   triad
@@ -4760,7 +4759,6 @@ requests==2.33.1 \
     #   ray
     #   tensorflow
     #   torch-geometric
-    #   torchtext
 rfc3339-validator==0.1.4 \
     --hash=sha256:138a2abdf93304ad60530167e51d2dfb9549521a836871b88d7f4695d0022f6b \
     --hash=sha256:24f6ec1eda14ef823da9e36ec7113124b39c04d50a4d3d3a3c2859577e7791fa
@@ -4911,12 +4909,12 @@ rsa==4.7.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   google-auth
-s3torchconnector==1.4.3 \
+s3torchconnector==1.4.3 ; python_full_version < '3.14' \
     --hash=sha256:a7288d1446905663d15b3a0debb819a86ced3c3f4a0c29055e3d205741bff2a2
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/train-test-requirements.txt
-s3torchconnectorclient==1.4.3 \
+s3torchconnectorclient==1.4.3 ; python_full_version < '3.14' \
     --hash=sha256:0c997613b3d424be40abd915dbcd498291150a9d08ec67d0fa4916f4d0ba6493 \
     --hash=sha256:11c085011f28a57f94bdccbdae4fcfd91a689a6ad72aa63c1f1661f63e0a2c99 \
     --hash=sha256:21bc530cd25acf7828e7d7d83b302afa598e186af692e20e8d71ab92cc5b2c20 \
@@ -5378,12 +5376,12 @@ tblib==3.2.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/train-test-requirements.txt
-tensorboard==2.20.0 \
+tensorboard==2.20.0 ; python_full_version < '3.14' \
     --hash=sha256:9dc9f978cb84c0723acf9a345d96c184f0293d18f166bb8d59ee098e6cfaaba6
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   tensorflow
-tensorboard-data-server==0.7.2 \
+tensorboard-data-server==0.7.2 ; python_full_version < '3.14' \
     --hash=sha256:7e0610d205889588983836ec05dc098e80f97b7e7bbff7e994ebb78f578d0ddb \
     --hash=sha256:9fe5d24221b29625dbc7328b0436ca7fc1c23de4acf4d272f1180856e32f9f60 \
     --hash=sha256:ef687163c24185ae9754ed5650eb5bc4d84ff257aabdc33f0cc6f74d8ba54530
@@ -5396,7 +5394,7 @@ tensorboardx==2.6.5 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ray
-tensorflow==2.20.0 \
+tensorflow==2.20.0 ; python_full_version < '3.14' \
     --hash=sha256:02a0293d94f5c8b7125b66abf622cc4854a33ae9d618a0d41309f95e091bbaea \
     --hash=sha256:0deb5c583dfc53b54fd158a194ce0087b406bb6518af400ca3809735e4548ec3 \
     --hash=sha256:1590cbf87b6bcbd34d8e9ad70d0c696135e0aa71be31803b27358cf7ed63f8fc \
@@ -5421,17 +5419,17 @@ tensorflow==2.20.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   tf-keras
-tensorflow-estimator==2.15.0 \
+tensorflow-estimator==2.15.0 ; python_full_version < '3.14' \
     --hash=sha256:aedf21eec7fb2dc91150fc91a1ce12bc44dbb72278a08b58e79ff87c9e28f153
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
-tensorflow-probability==0.24.0 \
+tensorflow-probability==0.24.0 ; python_full_version < '3.14' \
     --hash=sha256:8c1774683e38359dbcaf3697e79b7e6a4e69b9c7b3679e78ee18f43e59e5759b
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
-termcolor==3.3.0 \
+termcolor==3.3.0 ; python_full_version < '3.14' \
     --hash=sha256:348871ca648ec6a9a983a13ab626c0acce02f515b9e1983332b17af7979521c5 \
     --hash=sha256:cf642efadaf0a8ebbbf4bc7a31cec2f9b5f21a9f726f4ccbb08192c9c26f43a5
     # via
@@ -5450,7 +5448,7 @@ textual==4.0.0 ; sys_platform != 'win32' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   memray
-tf-keras==2.20.0 \
+tf-keras==2.20.0 ; python_full_version < '3.14' \
     --hash=sha256:080d1cda2c71be55b3cff03970b0e5fa50754946c5491db0cc8d4fef4d9ebc6c \
     --hash=sha256:73c547664679ed82da5b89466b9ea70da84dfe5a3a623ab59cd93ee5647165ee
     # via
@@ -5565,7 +5563,6 @@ torch==2.9.0+cpu \
     #   s3torchconnector
     #   timm
     #   torchmetrics
-    #   torchtext
     #   torchvision
 torch-cluster==1.6.3+pt29cpu \
     --hash=sha256:562d2ea316ba0e9173915ae9bc9906eb35455969e6414fa0fe63d08023222a12
@@ -5601,20 +5598,6 @@ torchmetrics==0.10.3 \
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   lightning
     #   pytorch-lightning
-torchtext==0.18.0+cpu \
-    --hash=sha256:128b4356d96059e6550b58d18e6a1147c85e3e0a91780cd87bfec45a36a73863 \
-    --hash=sha256:1b6a6c2cfcae95ef8cd41e28e7081749cde738c56bbbedf773e6d74ed3728538 \
-    --hash=sha256:36cceed5c2aedb3d765341ed747fbf3e5693e4bc3ab82f43d40768b1770fdbe9 \
-    --hash=sha256:489a817093990d208fca447509f125292cd484eff5e058289c614271c98c4f4b \
-    --hash=sha256:8e8c5ef34df27749f293c03d4b8a63f7ac9e587ae31aef4cb27537026a564f4f \
-    --hash=sha256:a388b78c6361fdf8da3336802d7801df4dcfc1a09475fae379da77cd7877f8c2 \
-    --hash=sha256:bf24e274d8aefba3b02ffe42b32df48ca0a77b20c78d4326d620d8c3e0b947a3 \
-    --hash=sha256:c28bede9fad3c89898901a815aa0f2e78e1d342c28b38664e1d7ea5e616f9b12 \
-    --hash=sha256:c760e672265cd6f3e4a7c8d4a78afe9e9617deacda926a743479ee0418d4207d \
-    --hash=sha256:f4dc0083c5b1b73109dd7f4fbade067f6ba1cd76a349dec35b4ba7e0599d3f66
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
 torchvision==0.24.0+cpu \
     --hash=sha256:1fa4ea1c4a33b1a21c69d066321fc8a89534f01cbecc1c54e726e340036aa61c \
     --hash=sha256:214a12ae8a3332da83cace9e513dcfdb3a87606e11ee2bb256a4f0172c61441b \
@@ -5671,7 +5654,6 @@ tqdm==4.67.1 \
     #   pytorch-lightning
     #   statsforecast
     #   torch-geometric
-    #   torchtext
     #   transformers
 traitlets==5.14.3 \
     --hash=sha256:9ed0579d3502c94b4b3732ac120375cda96f923114522847de4b3bb98b96b6b7 \
@@ -5995,13 +5977,13 @@ websockets==15.0.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   uvicorn
-werkzeug==2.3.8 \
+werkzeug==2.3.8 ; python_full_version < '3.14' \
     --hash=sha256:554b257c74bbeb7a0d254160a4f8ffe185243f52a52035060b761ca62d977f03 \
     --hash=sha256:bba1f19f8ec89d4d607a3bd62f1904bd2e609472d93cd85e9d4e178f472c3748
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   tensorboard
-wheel==0.46.3 \
+wheel==0.46.3 ; python_full_version < '3.14' \
     --hash=sha256:4b399d56c9d9338230118d705d9737a2a468ccca63d5e813e2a4fc7815d8bc4d \
     --hash=sha256:e3e79874b07d776c40bd6033f8ddf76a7dad46a7b8aa1b2787a83083519a1803
     # via

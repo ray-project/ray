@@ -357,7 +357,7 @@ asttokens==3.0.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   stack-data
-astunparse==1.6.3 \
+astunparse==1.6.3 ; python_full_version < '3.14' \
     --hash=sha256:5ad93a8456f0d084c3456d059fd9a92cce667963232cbf763eac3bc5b7940872 \
     --hash=sha256:c2652417f2c8b5bb325c885ae329bdf3f86424075c4fd1a128674bc6fba4b8e8
     # via
@@ -1775,7 +1775,7 @@ flask-cors==6.0.2 \
     #   -r python/requirements/ml/py313/data-requirements.txt
     #   mlflow
     #   moto
-flatbuffers==25.12.19 \
+flatbuffers==25.12.19 ; python_full_version < '3.14' or platform_machine != 'arm64' or sys_platform != 'darwin' \
     --hash=sha256:7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
@@ -2016,7 +2016,7 @@ future==1.0.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/tune-requirements.txt
-gast==0.7.0 \
+gast==0.7.0 ; python_full_version < '3.14' \
     --hash=sha256:0bb14cd1b806722e91ddbab6fb86bba148c22b40e7ff11e248974e04c8adfdae \
     --hash=sha256:99cbf1365633a74099f69c59bd650476b96baa5ef196fec88032b00b31ba36f7
     # via
@@ -2148,7 +2148,7 @@ google-crc32c==1.8.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   google-cloud-storage
     #   google-resumable-media
-google-pasta==0.2.0 \
+google-pasta==0.2.0 ; python_full_version < '3.14' \
     --hash=sha256:4612951da876b1a10fe3960d7226f0c7682cf901e16ac06e473b267a5afa8954 \
     --hash=sha256:b32482794a366b5366a32c92a9a9201b107821889935a02b3e51f6b432ea84ed \
     --hash=sha256:c9f2c8dfc8f96d0d5808299920721be30c9eec37f2389f28904f454565c8a16e
@@ -2727,17 +2727,17 @@ itsdangerous==2.2.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   flask
-jax==0.4.33 ; sys_platform != 'darwin' \
+jax==0.4.33 ; python_full_version < '3.14' and sys_platform != 'darwin' \
     --hash=sha256:5f33e30b49060ebc990b1f8d75f89d15b9fec263f6fff34ef1af1d01996d314f \
     --hash=sha256:f0d788692fc0179653066c9e1c64e57311b8c15a389837fd7baf328abefcbb92
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
-jax-cuda12-pjrt==0.4.33 ; sys_platform != 'darwin' \
+jax-cuda12-pjrt==0.4.33 ; python_full_version < '3.14' and sys_platform != 'darwin' \
     --hash=sha256:6a9945a8b58fabd040a06850f5ca6bcf94b9ec45b8248afb20c7f2eb809e2cea \
     --hash=sha256:b43f199ec27fd9b3bb79b34ed297894ad50bb7a6eab62012baaa9ea6607b22de
     # via jax-cuda12-plugin
-jax-cuda12-plugin==0.4.33 ; sys_platform != 'darwin' \
+jax-cuda12-plugin==0.4.33 ; python_full_version < '3.14' and sys_platform != 'darwin' \
     --hash=sha256:73c54317223aa8a5b46f6821d7cacfb38f4dbd2fc66f2a83a33419b4d72a5211 \
     --hash=sha256:750b8147076b17ddff097bd6b38f1db227eba6674eb4e5843dbb007e0b6bec33 \
     --hash=sha256:80736e03df2a5a0c35e4801f59e4d3c8b94cc8e8a03221763c95dcf7851fd120 \
@@ -2745,7 +2745,7 @@ jax-cuda12-plugin==0.4.33 ; sys_platform != 'darwin' \
     --hash=sha256:ad8f8863ee8d5e11a867bd71b37e979939cad64d0f74efd52cdb37292517613e \
     --hash=sha256:bb81b2f65b1bb8e65b966b6f79985d3b168d495628b694fdf1791cd89696694e
     # via -r python/requirements/ml/py313/dl-gpu-requirements.txt
-jaxlib==0.4.33 ; sys_platform != 'darwin' \
+jaxlib==0.4.33 ; python_full_version < '3.14' and sys_platform != 'darwin' \
     --hash=sha256:054aa0f122725e000b8f8815b1794067ef2ff821588b62e1fab2a1280847f5c6 \
     --hash=sha256:0676ac605880ac6aa0ab9946a24a073ee8a1a83baf71cc1d35b71917a99d03d1 \
     --hash=sha256:3e14b4b50a19370312875541509a7ddc1ef8fc0bd95cff9508db9725038e8297 \
@@ -2943,7 +2943,7 @@ jupytext==1.19.3 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/train-test-requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
-keras==3.14.0 \
+keras==3.14.0 ; python_full_version < '3.14' \
     --hash=sha256:19ce94b798caaba4d404ab6ef4753b44219170e5c2868156de8bb0494a260114 \
     --hash=sha256:86fcf8249a25264a566ac393c287c7ad657000e5e62615dcaad4b3472a17aeda
     # via
@@ -3148,7 +3148,7 @@ lazy-object-proxy==1.12.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   openapi-spec-validator
-libclang==18.1.1 \
+libclang==18.1.1 ; python_full_version < '3.14' \
     --hash=sha256:0b2e143f0fac830156feb56f9231ff8338c20aecfe72b4ffe96f19e5a1dbb69a \
     --hash=sha256:3f0e1f49f04d3cd198985fea0511576b0aee16f9ff0e0f0cad7f9c57ec3c20e8 \
     --hash=sha256:4dd2d3b82fab35e2bf9ca717d7b63ac990a3519c7e312f19fa8e86dcc712f7fb \
@@ -3634,7 +3634,7 @@ ml-collections==1.1.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   open-spiel
-ml-dtypes==0.5.4 \
+ml-dtypes==0.5.4 ; python_full_version < '3.14' or platform_machine != 'arm64' or sys_platform != 'darwin' \
     --hash=sha256:0d2ffd05a2575b1519dc928c0b93c06339eb67173ff53acb00724502cda231cf \
     --hash=sha256:11942cbf2cf92157db91e5022633c0d9474d4dfd813a909383bd23ce828a4b7d \
     --hash=sha256:14a4fd3228af936461db66faccef6e4f41c1d82fcc30e9f8d58a08916b1d811f \
@@ -4201,7 +4201,7 @@ mypy-extensions==1.0.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mypy
     #   typing-inspect
-namex==0.1.0 \
+namex==0.1.0 ; python_full_version < '3.14' \
     --hash=sha256:117f03ccd302cc48e3f5c58a296838f6b89c83455ab8683a1e85f2a430aa4306 \
     --hash=sha256:e2012a474502f1e2251267062aae3114611f07df4224b6e06334c57b0f2ce87c
     # via
@@ -4911,7 +4911,7 @@ opt-einsum==3.4.0 \
     #   jax
     #   pyro-ppl
     #   tensorflow
-optree==0.19.0 \
+optree==0.19.0 ; python_full_version < '3.14' \
     --hash=sha256:0230ed9ba60fbe97ee23c000850c54308009ba51a129a1060137f329f460e42e \
     --hash=sha256:045cf112adaebc76c9c7cabde857c01babfc9fae8aa0a28d48f7c565fadf0cb9 \
     --hash=sha256:0461f796b4ade3fab519d821b0fa521f07e2af70206b76aac75fcfdc2e051fca \
@@ -7110,12 +7110,12 @@ s3fs==2023.12.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/core-requirements.txt
-s3torchconnector==1.4.3 \
+s3torchconnector==1.4.3 ; python_full_version < '3.14' \
     --hash=sha256:a7288d1446905663d15b3a0debb819a86ced3c3f4a0c29055e3d205741bff2a2
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/train-test-requirements.txt
-s3torchconnectorclient==1.4.3 \
+s3torchconnectorclient==1.4.3 ; python_full_version < '3.14' \
     --hash=sha256:0c997613b3d424be40abd915dbcd498291150a9d08ec67d0fa4916f4d0ba6493 \
     --hash=sha256:11c085011f28a57f94bdccbdae4fcfd91a689a6ad72aa63c1f1661f63e0a2c99 \
     --hash=sha256:21bc530cd25acf7828e7d7d83b302afa598e186af692e20e8d71ab92cc5b2c20 \
@@ -7768,7 +7768,7 @@ tensorboardx==2.6.5 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
     #   ray
-tensordict==0.8.3 ; sys_platform != 'darwin' \
+tensordict==0.8.3 ; python_full_version < '3.14' and sys_platform != 'darwin' \
     --hash=sha256:0f9b56cf0d2a841369a2deefb4c9e553e55cef16bc7b207dd8f00f13ac40ba80 \
     --hash=sha256:10924b2ab549214000b392a23c622e2845b0fb1b4e073f2ef6325a882fbedb92 \
     --hash=sha256:22738b16ec44f30402bac400a7d6541eebdf00bfdb934df3e29e9db590cdae99 \
@@ -7796,7 +7796,7 @@ tensordict==0.8.3 ; sys_platform != 'darwin' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
-tensorflow==2.20.0 \
+tensorflow==2.20.0 ; python_full_version < '3.14' \
     --hash=sha256:02a0293d94f5c8b7125b66abf622cc4854a33ae9d618a0d41309f95e091bbaea \
     --hash=sha256:0deb5c583dfc53b54fd158a194ce0087b406bb6518af400ca3809735e4548ec3 \
     --hash=sha256:1590cbf87b6bcbd34d8e9ad70d0c696135e0aa71be31803b27358cf7ed63f8fc \
@@ -7821,12 +7821,12 @@ tensorflow==2.20.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
     #   tf-keras
-tensorflow-estimator==2.15.0 \
+tensorflow-estimator==2.15.0 ; python_full_version < '3.14' \
     --hash=sha256:aedf21eec7fb2dc91150fc91a1ce12bc44dbb72278a08b58e79ff87c9e28f153
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
-tensorflow-probability==0.24.0 \
+tensorflow-probability==0.24.0 ; python_full_version < '3.14' \
     --hash=sha256:8c1774683e38359dbcaf3697e79b7e6a4e69b9c7b3679e78ee18f43e59e5759b
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
@@ -7857,7 +7857,7 @@ textual==4.0.0 ; sys_platform != 'win32' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   memray
-tf-keras==2.20.0 \
+tf-keras==2.20.0 ; python_full_version < '3.14' \
     --hash=sha256:080d1cda2c71be55b3cff03970b0e5fa50754946c5491db0cc8d4fef4d9ebc6c \
     --hash=sha256:73c547664679ed82da5b89466b9ea70da84dfe5a3a623ab59cd93ee5647165ee
     # via
