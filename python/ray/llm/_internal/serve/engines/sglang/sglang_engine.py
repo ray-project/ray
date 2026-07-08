@@ -248,9 +248,18 @@ class SGLangServer:
         )
 
         # download_model_files returns the local path for a mirror, else the id.
+        # For a local path or plain HF id (no mirror), still prefer an existing
+        # on-disk snapshot (mirror or HF cache).
+        if not (local_path and local_path != engine_config.actual_hf_model_id):
+            local_path = get_model_location_on_disk(engine_config.actual_hf_model_id)
+
+        # Write the resolved path back onto the cached engine config so later
+        # readers of actual_hf_model_id see the on-disk location, not the
+        # pre-download id (mirrors the vLLM path in vllm_engine.py).
         if local_path and local_path != engine_config.actual_hf_model_id:
-            return local_path
-        return get_model_location_on_disk(engine_config.actual_hf_model_id)
+            engine_config.hf_model_id = local_path
+
+        return local_path
 
     @staticmethod
     def _build_sampling_params(request: Any) -> dict[str, Any]:
