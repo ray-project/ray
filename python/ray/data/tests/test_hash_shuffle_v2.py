@@ -20,6 +20,7 @@ from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.conftest import *  # noqa: F401, F403
+from ray.data.tests.conftest import noop_counter
 from ray.data.tests.util import run_op_tasks_sync
 from ray.exceptions import GetTimeoutError
 from ray.tests.conftest import *  # noqa: F401, F403
@@ -295,7 +296,7 @@ def _make_multi_input_reduce_op(reduce_fn, num_inputs=2, num_partitions=2):
 
 def _drain_reduce_op(op, feed):
     """Run `op` over `feed` (bundle, input_index) pairs and return output tables."""
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
     for bundle, input_index in feed:
         op.add_input(bundle, input_index)
     op.all_inputs_done()
