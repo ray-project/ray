@@ -1,0 +1,91 @@
+import os
+
+import pyarrow as pa
+import pytest
+from pyarrow import orc
+
+import ray
+
+
+def _write_orc(path, table):
+    with pa.OSFile(path, "wb") as sink:
+        orc.write_table(table, sink)
+
+
+def test_read_orc_basic(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "data.orc")
+    table = pa.table({"id": [0, 1, 2], "name": ["a", "b", "c"]})
+    _write_orc(path, table)
+
+    ds = ray.data.read_orc(path)
+
+    assert ds.count() == 3
+    assert set(ds.schema().names) == {"id", "name"}
+    assert sorted(row["id"] for row in ds.take_all()) == [0, 1, 2]
+
+
+def test_read_orc_multiple_files(ray_start_regular_shared, tmp_path):
+    for i in range(3):
+        _write_orc(os.path.join(tmp_path, f"part_{i}.orc"), pa.table({"id": [i]}))
+
+    ds = ray.data.read_orc(str(tmp_path))
+
+    assert ds.count() == 3
+    assert sorted(row["id"] for row in ds.take_all()) == [0, 1, 2]
+
+
+def test_read_orc_include_paths(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "data.orc")
+    _write_orc(path, pa.table({"id": [0]}))
+
+    ds = ray.data.read_orc(path, include_paths=True)
+
+    rows = ds.take_all()
+    assert all("path" in row for row in rows)
+    assert all(row["path"].endswith("data.orc") for row in rows)
+
+
+def test_read_orc_ignore_missing_paths(ray_start_regular_shared, tmp_path):
+    existing = os.path.join(tmp_path, "data.orc")
+    _write_orc(existing, pa.table({"id": [0, 1]}))
+    missing = os.path.join(tmp_path, "does_not_exist.orc")
+
+    ds = ray.data.read_orc([existing, missing], ignore_missing_paths=True)
+    assert ds.count() == 2
+
+    with pytest.raises(FileNotFoundError):
+        ray.data.read_orc([existing, missing], ignore_missing_paths=False).materialize()
+
+
+def test_read_orc_file_extensions_filtering(ray_start_regular_shared, tmp_path):
+    _write_orc(os.path.join(tmp_path, "data.orc"), pa.table({"id": [0, 1]}))
+    # A non-ORC file in the same directory should be filtered out by default.
+    with open(os.path.join(tmp_path, "_SUCCESS"), "w") as f:
+        f.write("")
+
+    ds = ray.data.read_orc(str(tmp_path))
+    assert ds.count() == 2
+
+    # A directory with no matching files raises a clear error.
+    empty_dir = os.path.join(tmp_path, "empty")
+    os.makedirs(empty_dir)
+    with open(os.path.join(empty_dir, "_SUCCESS"), "w") as f:
+        f.write("")
+    with pytest.raises(ValueError):
+        ray.data.read_orc(empty_dir)
+
+
+def test_read_orc_override_num_blocks(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "data.orc")
+    _write_orc(path, pa.table({"id": list(range(100))}))
+
+    ds = ray.data.read_orc(path, override_num_blocks=1)
+
+    assert ds.count() == 100
+    assert ds.materialize().num_blocks() == 1
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
