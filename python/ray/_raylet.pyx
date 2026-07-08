@@ -2026,8 +2026,14 @@ cdef void execute_task(
                     with exit_actor_task_ids_lock:
                         this_task_called_exit_actor = task_id in exit_actor_task_ids
                         exit_actor_task_ids.discard(task_id)
-                    if (this_task_called_exit_actor
-                            and core_worker.get_current_actor_should_exit()):
+                    if this_task_called_exit_actor:
+                        # exit_actor() records the task id and sets the
+                        # should-exit flag (which is never cleared) before
+                        # raising, so the flag must be set here.
+                        assert core_worker.get_current_actor_should_exit(), (
+                            "exit_actor() recorded this task id but the "
+                            "actor-should-exit flag is not set."
+                        )
                         # This task called exit_actor(). Exit before storing
                         # its outputs even if user code swallowed the
                         # resulting exception, so the caller sees the actor
