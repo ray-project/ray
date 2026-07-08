@@ -547,7 +547,7 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 Loading data from distributed DataFrame libraries
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Data interoperates with distributed data processing frameworks like `Daft <https://www.getdaft.io>`_,
+Ray Data interoperates with distributed data processing frameworks like `Daft <https://www.daft.ai>`_,
 :ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`, :ref:`Modin <modin-on-ray>`, and
 :ref:`Mars <mars-on-ray>`.
 
@@ -560,13 +560,9 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
 
     .. tab-item:: Daft
 
-        To create a :class:`~ray.data.dataset.Dataset` from a `Daft DataFrame <https://docs.getdaft.io/en/stable/api/dataframe/>`_, call
+        To create a :class:`~ray.data.dataset.Dataset` from a `Daft DataFrame <https://docs.daft.ai/en/stable/api/dataframe/>`_, call
         :func:`~ray.data.from_daft`. This function executes the Daft dataframe and constructs a ``Dataset`` backed by the resultant arrow data produced
         by your Daft query.
-
-        .. warning::
-            :func:`~ray.data.from_daft` doesn't work with PyArrow 14 and later. For more
-            information, see `this issue <https://github.com/ray-project/ray/issues/54837>`__.
 
         .. testcode::
             :skipif: True
