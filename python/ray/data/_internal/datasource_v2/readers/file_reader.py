@@ -1,3 +1,4 @@
+import logging
 from enum import Enum
 from functools import cached_property, partial
 from typing import Any, Iterator, List, Optional, Set, Tuple
@@ -27,6 +28,8 @@ _ARROW_DEFAULT_BATCH_SIZE = 131_072
 
 ROW_HASH_COLUMN_NAME = "row_hash"
 
+logger = logging.getLogger(__name__)
+
 
 def _resolve_num_read_workers(
     fragments_with_offsets: List[Tuple[pds.Fragment, int]], num_threads: int
@@ -42,6 +45,13 @@ def _resolve_num_read_workers(
     multi-file partitions still parallelize one thread per file.
     """
     num_distinct_files = len({frag.path for frag, _ in fragments_with_offsets})
+    logger.debug(
+        "Resolving num read workers: num_threads=%s, num_distinct_files=%s, "
+        "len(fragments_with_offsets)=%s",
+        num_threads,
+        num_distinct_files,
+        len(fragments_with_offsets),
+    )
     return min(num_threads, num_distinct_files)
 
 

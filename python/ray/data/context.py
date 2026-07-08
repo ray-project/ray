@@ -97,17 +97,18 @@ DEFAULT_PARQUET_IN_MEMORY_VAR_WIDTH_FACTOR = env_float(
 )
 
 # Max in-memory bytes per V2 read partition (the partitioner's
-# ``max_bucket_size``). Defaults to 256 MiB (2x the 128 MiB
-# ``target_max_block_size``): consecutive row groups still bundle into
-# file-local read tasks, but the finer cap yields ~4x more read partitions than
-# 1 GiB would -- feeding the downstream hash-shuffle map stage (one map task per
-# read output block) and making large files flush mid-stream more often. The
-# reader streams the decode and caps the per-scan ``pre_buffer``, so a partition
-# does not blow up per-task memory. Setting it to ``None`` falls back to
-# ``target_max_block_size``. Env-overridable so it can be tuned from the
-# command line without an application-code change.
+# ``max_bucket_size``). Defaults to 1 GiB: consecutive row groups bundle into
+# coarser file-local read tasks, keeping the read-output block count low. Since
+# the downstream hash-shuffle derives its partition count from the number of
+# input blocks (one map task per read output block), a coarser cap avoids
+# inflating the shuffle/aggregate partition count past the aggregator pool --
+# a finer cap (e.g. 256 MiB) yields ~4x more read partitions and oversubscribes
+# the aggregators. The reader streams the decode and caps the per-scan
+# ``pre_buffer``, so a 1 GiB partition does not blow up per-task memory. Setting
+# it to ``None`` falls back to ``target_max_block_size``. Env-overridable so it
+# can be tuned from the command line without an application-code change.
 DEFAULT_PARTITIONER_MAX_BUCKET_SIZE_BYTES: Optional[int] = env_integer(
-    "RAY_DATA_PARTITIONER_MAX_BUCKET_SIZE_BYTES", 256 * 1024 * 1024
+    "RAY_DATA_PARTITIONER_MAX_BUCKET_SIZE_BYTES", 1024 * 1024 * 1024
 )
 
 # Target in-memory bytes per decode batch in the V2 Parquet reader. Kept
@@ -127,7 +128,7 @@ DEFAULT_PARQUET_READER_TARGET_BATCH_SIZE_BYTES: Optional[int] = 128 * 1024 * 102
 # the per-task decoded working set. Defaults to 2 (file-affinity partitions are
 # single-file, so this caps to 1 there; it only adds cross-file I/O overlap for
 # round-robin / multi-file read tasks). Env-overridable.
-DEFAULT_READ_FILES_NUM_THREADS = env_integer("RAY_DATA_READ_FILES_NUM_THREADS", 2)
+DEFAULT_READ_FILES_NUM_THREADS = env_integer("RAY_DATA_READ_FILES_NUM_THREADS", 4)
 
 # Batches the pyarrow scanner reads ahead per fragment scan. Each batch is
 # ~the reader's target block size DECODED, so per-scan peak decoded memory
@@ -136,7 +137,7 @@ DEFAULT_READ_FILES_NUM_THREADS = env_integer("RAY_DATA_READ_FILES_NUM_THREADS", 
 # whole). Lower it (e.g. 1-2) for jumbo / low-compression columns to shrink the
 # in-flight decoded set. Env-overridable.
 DEFAULT_ARROW_SCANNER_BATCH_READAHEAD = env_integer(
-    "RAY_DATA_ARROW_SCANNER_BATCH_READAHEAD", 4
+    "RAY_DATA_ARROW_SCANNER_BATCH_READAHEAD", 8
 )
 
 # When True, the V2 ``ListFiles`` planner expands user paths/prefixes into
@@ -889,7 +890,7 @@ class DataContext:
     parquet_in_memory_var_width_factor: float = (
         DEFAULT_PARQUET_IN_MEMORY_VAR_WIDTH_FACTOR
     )
-    # Max in-memory bytes per read partition. Defaults to 256 MiB; None ->
+    # Max in-memory bytes per read partition. Defaults to 1 GiB; None ->
     # target_max_block_size.
     partitioner_max_bucket_size_bytes: Optional[
         int
