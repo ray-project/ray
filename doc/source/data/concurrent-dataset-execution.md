@@ -21,7 +21,7 @@ There are two steps.
 
 ### 1. Label your worker nodes
 
-Label each worker node with the reserved key `ray-subcluster` to mark which subcluster it belongs to. See {ref}`labels` for how to configure labels — the mechanism depends on your deployment (cluster YAML, KubeRay, or `ray start --labels`).
+Label each worker node with the reserved key `ray-subcluster` to mark which subcluster it belongs to. See {ref}`labels` for how to configure labels. The mechanism used depends on your deployment (cluster YAML, KubeRay, or `ray start --labels`).
 
 For example, in a Ray cluster YAML config:
 

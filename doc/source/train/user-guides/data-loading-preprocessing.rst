@@ -663,11 +663,11 @@ Isolating Ray Data worker processes from training nodes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You may sometimes want to prevent Ray Data CPU tasks from running on training worker nodes
-when training workers themselves run CPU/RAM-heavy operations
+when training workers themselves run CPU or RAM-heavy operations
 such as storing large local shuffle buffers or running expensive collate functions.
 Launching more Ray Data processes would oversubscribe the training worker nodes.
 Instead, the Ray Data tasks should run on a separate set of CPU nodes in your heterogeneous
-cluster (ex: 4 GPU training nodes + 4 CPU-only nodes).
+cluster (for example, 4 GPU training nodes and 4 CPU-only nodes).
 
 One workaround is to force full-node exclusion by reserving all CPUs per training worker via
 ``resources_per_worker={"CPU": node_cpus // num_gpus_per_node, "GPU": 1}`` in ``ScalingConfig``.
