@@ -944,10 +944,13 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
     // The object is still in scope. Track the raylet location until the object
     // has gone out of scope or the raylet fails, whichever happens first.
     if (it->second.pinned_at_node_id_.has_value()) {
-      RAY_LOG(INFO).WithField(object_id)
+      // With plasma move semantics enabled, this fires on every successful
+      // producer→consumer handoff (not just during reconstruction), so keep
+      // it at DEBUG to avoid log spam.
+      RAY_LOG(DEBUG).WithField(object_id)
           << "Updating primary location for object to node " << node_id
           << ", but it already has a primary location " << *it->second.pinned_at_node_id_
-          << ". This should only happen during reconstruction";
+          << ". Expected during reconstruction and after a move-semantics handoff.";
     }
     // Only the owner tracks the location.
     RAY_CHECK(it->second.owned_by_us_);

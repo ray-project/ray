@@ -136,6 +136,18 @@ class ObjectManagerInterface {
   virtual void SetOnPushComplete(
       std::function<void(const ObjectID &, const NodeID &)> fn) = 0;
 
+  /// Register a callback invoked when this node receives a MoveCompleted RPC,
+  /// i.e., it has just become the primary copy holder for the given object.
+  virtual void SetOnMoveCompleted(
+      std::function<void(const ObjectID &, const rpc::Address &)> fn) = 0;
+
+  /// Send a MoveCompleted RPC to a peer raylet informing it that a plasma
+  /// move-semantics push has completed and it is now the primary copy holder
+  /// for `object_id`. Fire-and-forget from the producer.
+  virtual void NotifyMoveCompleted(const ObjectID &object_id,
+                                   const NodeID &peer_node_id,
+                                   const rpc::Address &owner_address) = 0;
+
   virtual ~ObjectManagerInterface() = default;
 };
 
@@ -165,6 +177,13 @@ class ObjectManager : public ObjectManagerInterface,
   void HandlePull(rpc::PullRequest request,
                   rpc::PullReply *reply,
                   rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a MoveCompleted request from a remote raylet notifying us that we
+  /// are the new primary copy holder for the given object. Runs on the main
+  /// service.
+  void HandleMoveCompleted(rpc::MoveCompletedRequest request,
+                           rpc::MoveCompletedReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Get the port of the object manager rpc server.
   int GetServerPort() const override { return object_manager_server_.GetPort(); }
@@ -219,6 +238,15 @@ class ObjectManager : public ObjectManagerInterface,
       std::function<void(const ObjectID &, const NodeID &)> fn) override {
     on_push_complete_ = std::move(fn);
   }
+
+  void SetOnMoveCompleted(
+      std::function<void(const ObjectID &, const rpc::Address &)> fn) override {
+    on_move_completed_ = std::move(fn);
+  }
+
+  void NotifyMoveCompleted(const ObjectID &object_id,
+                           const NodeID &peer_node_id,
+                           const rpc::Address &owner_address) override;
 
   /// Consider pushing an object to a remote object manager. This object manager
   /// may choose to ignore the Push call (e.g., if Push is called twice in a row
@@ -468,6 +496,11 @@ class ObjectManager : public ObjectManagerInterface,
   /// Callback invoked when a move-semantics push completes. Receives the
   /// object id and the peer node id the push was destined for.
   std::function<void(const ObjectID &, const NodeID &)> on_push_complete_;
+
+  /// Callback invoked when this node receives a MoveCompleted RPC — i.e., we
+  /// are now the primary copy holder for the referenced object. Receives the
+  /// object id and the owner's address.
+  std::function<void(const ObjectID &, const rpc::Address &)> on_move_completed_;
 
   /// Per-push ack tracking for move semantics. Records how many chunks of a
   /// given (object, peer) push have been acked so we can fire

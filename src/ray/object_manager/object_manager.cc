@@ -705,6 +705,44 @@ void ObjectManager::HandlePull(rpc::PullRequest request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+void ObjectManager::HandleMoveCompleted(rpc::MoveCompletedRequest request,
+                                        rpc::MoveCompletedReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
+  ObjectID object_id = ObjectID::FromBinary(request.object_id());
+  rpc::Address owner_address = request.owner_address();
+  main_service_->post(
+      [this, object_id, owner_address]() {
+        if (on_move_completed_) {
+          on_move_completed_(object_id, owner_address);
+        }
+      },
+      "ObjectManager.HandleMoveCompleted");
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void ObjectManager::NotifyMoveCompleted(const ObjectID &object_id,
+                                        const NodeID &peer_node_id,
+                                        const rpc::Address &owner_address) {
+  auto rpc_client = GetRpcClient(peer_node_id);
+  if (!rpc_client) {
+    RAY_LOG(DEBUG).WithField(object_id).WithField(peer_node_id)
+        << "Cannot send MoveCompleted RPC: no rpc client for peer node.";
+    return;
+  }
+  rpc::MoveCompletedRequest request;
+  request.set_object_id(object_id.Binary());
+  request.mutable_owner_address()->CopyFrom(owner_address);
+  rpc_client->MoveCompleted(
+      request,
+      [object_id, peer_node_id](const Status &status,
+                                const rpc::MoveCompletedReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(DEBUG).WithField(object_id).WithField(peer_node_id)
+              << "MoveCompleted RPC failed: " << status;
+        }
+      });
+}
+
 void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids) {
   buffer_pool_.FreeObjects(object_ids);
 }

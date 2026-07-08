@@ -213,6 +213,8 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
       const NodeID &node_id) const override;
 
+  std::optional<rpc::Address> GetOwnerAddress(const ObjectID &object_id) const override;
+
   std::string DebugString() const override;
 
  private:

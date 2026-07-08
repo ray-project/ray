@@ -76,6 +76,10 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
                            const ObjectID &generator_id,
                            const bool spilled_to_local_storage) override;
 
+  void ReportObjectPrimaryMoved(const ObjectID &object_id,
+                                const NodeID &node_id,
+                                const rpc::Address &owner_address) override;
+
   void RecordMetrics(uint64_t duration_ms) override;
 
   std::string DebugString() const override;

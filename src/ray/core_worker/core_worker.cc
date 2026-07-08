@@ -4005,6 +4005,15 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
                        << " has been received.";
       }
     }
+
+    if (object_location_update.has_primary_moved_to_node_id()) {
+      // Plasma move semantics: the consumer raylet is telling us that the
+      // primary pin has moved to a new node. Update pinned_at_node_id_ so
+      // lineage reconstruction fires on the right node if it later dies.
+      const auto new_primary_node_id =
+          NodeID::FromBinary(object_location_update.primary_moved_to_node_id());
+      reference_counter_->UpdateObjectPinnedAtRaylet(object_id, new_primary_node_id);
+    }
   }
 
   send_reply_callback(Status::OK(),

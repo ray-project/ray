@@ -292,13 +292,43 @@ NodeManager::NodeManager(
       socket_(std::move(socket)) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
 
-  // Plasma move semantics: when a push completes, the producer raylet frees
-  // its local copy — the peer is now the primary copy holder. Master's
-  // ReleaseFreedLocalObject drops the local pin without broadcasting.
+  // Plasma move semantics: when a push completes, the producer raylet notifies
+  // the peer (now the primary copy holder) via a MoveCompleted RPC, then frees
+  // its local copy.
   object_manager_.SetOnPushComplete(
       [this](const ObjectID &object_id, const NodeID &peer_node_id) {
+        auto owner_address = local_object_manager_.GetOwnerAddress(object_id);
+        if (owner_address.has_value()) {
+          object_manager_.NotifyMoveCompleted(object_id, peer_node_id, *owner_address);
+        } else {
+          RAY_LOG(WARNING).WithField(object_id)
+              << "Move semantics: no owner address on producer raylet; "
+              << "skipping MoveCompleted RPC. Consumer's copy will remain a "
+              << "secondary until the owner learns of the move.";
+        }
         local_object_manager_.ReleaseFreedLocalObject(object_id);
       });
+
+  // Consumer side: when we receive a MoveCompleted RPC, we are now the primary
+  // copy holder. Pin the object locally (so it survives LRU eviction) and tell
+  // the owner that the primary pin has moved to this node so lineage
+  // reconstruction fires on the right node if we later die.
+  object_manager_.SetOnMoveCompleted([this](const ObjectID &object_id,
+                                            const rpc::Address &owner_address) {
+    std::vector<ObjectID> ids{object_id};
+    std::vector<std::unique_ptr<RayObject>> results;
+    if (!GetObjectsFromPlasma(ids, &results) || results.empty() ||
+        results[0] == nullptr) {
+      RAY_LOG(WARNING).WithField(object_id)
+          << "Move semantics: consumer could not fetch object from plasma "
+          << "on MoveCompleted; skipping pin. It may have been evicted "
+          << "or the push chunk sequence did not complete correctly.";
+      return;
+    }
+    local_object_manager_.PinObjectsAndWaitForFree(
+        ids, std::move(results), owner_address, /*generator_id=*/ObjectID::Nil());
+    object_directory_.ReportObjectPrimaryMoved(object_id, self_node_id_, owner_address);
+  });
 
   periodical_runner_->RunFnPeriodically(
       [this]() { cluster_lease_manager_.ScheduleAndGrantLeases(); },

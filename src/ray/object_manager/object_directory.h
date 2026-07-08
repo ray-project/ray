@@ -108,6 +108,18 @@ class IObjectDirectory {
                                    const ObjectID &generator_id,
                                    const bool spilled_to_local_storage) = 0;
 
+  /// Report that the primary (pinned) copy of an object has moved to a new
+  /// node via plasma move semantics. Sent by the consumer raylet after it has
+  /// pinned the object it just received from the producer.
+  ///
+  /// \param object_id The object whose primary copy moved.
+  /// \param node_id The new primary node (this raylet).
+  /// \param owner_address The owner of the object. Used to route the update
+  ///                      to the owning core worker.
+  virtual void ReportObjectPrimaryMoved(const ObjectID &object_id,
+                                        const NodeID &node_id,
+                                        const rpc::Address &owner_address) = 0;
+
   /// Record metrics.
   virtual void RecordMetrics(uint64_t duration_ms) = 0;
 

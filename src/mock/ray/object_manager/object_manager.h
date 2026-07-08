@@ -69,6 +69,16 @@ class MockObjectManager : public ObjectManagerInterface {
               SetOnPushComplete,
               ((std::function<void(const ObjectID &, const NodeID &)>)fn),
               (override));
+  MOCK_METHOD(void,
+              SetOnMoveCompleted,
+              ((std::function<void(const ObjectID &, const rpc::Address &)>)fn),
+              (override));
+  MOCK_METHOD(void,
+              NotifyMoveCompleted,
+              (const ObjectID &object_id,
+               const NodeID &peer_node_id,
+               const rpc::Address &owner_address),
+              (override));
 };
 
 }  // namespace ray
