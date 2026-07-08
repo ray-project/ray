@@ -59,7 +59,10 @@ pygame==2.5.2
 Pygments==2.18.0
 pymongo==4.3.2
 pyspark==3.4.1
-pytest==8.3.3
+pytest==7.4.4; python_version < '3.14'
+# 3.14 needs pytest 8.x (7.4.4 has no cp314 support); Ray's doctest harness is
+# incompatible with pytest 8 on <3.14 (import_path() signature change).
+pytest==8.3.3; python_version == '3.14'
 pytest-asyncio==0.17.2
 pytest-aiohttp==1.1.0
 pytest-httpserver==1.1.3
