@@ -37,18 +37,21 @@ def test_user_exception(
             for record in caplog.records
         ), caplog.records
 
+    # For a user-code error, the "Full stack trace:" record is always hidden from
+    # stdout (``hide=True``) regardless of the flag — internal frames never reach
+    # the console. The flag only controls what lands in the log file.
     assert any(
         record.levelno == logging.ERROR
         and "Full stack trace:" in record.message
-        and getattr(record, "hide", False) == (not log_internal_stack_trace)
+        and getattr(record, "hide", False) is True
         for record in caplog.records
     ), caplog.records
 
-    # The "Full stack trace:" record: when internals are hidden (the default), it
-    # carries only the cleaned worker-side traceback inlined into the message, and
-    # the driver-side propagation frames (attached via exc_info) are omitted. When
-    # the user opts into stdout, the full driver + worker traceback is attached via
-    # exc_info instead.
+    # The "Full stack trace:" record (written to the log file only): by default it
+    # carries just the cleaned worker-side traceback inlined into the message, with
+    # the driver-side propagation frames omitted. When the user opts in via
+    # `log_internal_stack_trace`, the full driver + worker traceback is attached to
+    # the log-file record via exc_info instead.
     full_trace_records = [
         record
         for record in caplog.records
