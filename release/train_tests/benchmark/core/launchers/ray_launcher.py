@@ -39,37 +39,21 @@ def train_fn_per_worker(train_loop_config: Dict[str, Any]) -> None:
 
 
 def run_with_ray(cfg: ExperimentConfig) -> Dict[str, Any]:
-    # Train workers may be scheduled on a different node than the driver and do
-    # NOT inherit the job's working_dir, so they fail to import `core` when
-    # unpickling the ExperimentConfig. Re-attach the job's ALREADY-UPLOADED
-    # working_dir URI to the workers. We must reuse the remote URI (not a local
-    # path): Ray only uploads local dirs at the job level (ray.init); a local
-    # path in an actor/worker runtime_env raises "is not a valid URI".
-    job_runtime_env = ray.get_runtime_context().runtime_env
-    try:
-        job_working_dir = job_runtime_env.get("working_dir")
-    except Exception:  # RuntimeEnv API variation across Ray versions
-        job_working_dir = None
-
     # #region agent log
     logger.info(
-        "DEBUG e07b5f run_with_ray: job_runtime_env=%s | working_dir=%r | env_vars=%s",
-        str(job_runtime_env),
-        job_working_dir,
+        "DEBUG e07b5f run_with_ray: job_runtime_env=%s | env_vars=%s",
+        str(ray.get_runtime_context().runtime_env),
         cfg.env_vars,
     )
     # #endregion
 
-    worker_runtime_env: Dict[str, Any] = {}
-    if job_working_dir:
-        worker_runtime_env["working_dir"] = job_working_dir
+    run_config_kwargs = {}
     # Experiment-declared env vars (if any) land in each worker process at launch
     # (before torch/CUDA init). Anything cluster-wide should be set on the cluster.
+    # The harness code itself reaches workers via the job-level working_dir set in
+    # runner.main() (workers inherit it), NOT via a per-worker runtime_env.
     if cfg.env_vars:
-        worker_runtime_env["env_vars"] = dict(cfg.env_vars)
-    run_config_kwargs = (
-        {"worker_runtime_env": worker_runtime_env} if worker_runtime_env else {}
-    )
+        run_config_kwargs["worker_runtime_env"] = {"env_vars": dict(cfg.env_vars)}
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn_per_worker,

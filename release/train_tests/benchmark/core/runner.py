@@ -21,11 +21,14 @@ import os
 import pprint
 from typing import Any, Dict
 
+import ray
+
 # Run on the harness root so `core`, `frameworks`, `data` import cleanly under
 # both `python -m core.runner` and torchrun.
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+HARNESS_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, HARNESS_ROOT)
 
 from core.experiment_config import ExperimentConfig, load_experiment  # noqa: E402
 
@@ -96,6 +99,15 @@ def main() -> None:
         cfg.launcher = args.launcher
 
     logger.info("Experiment config:\n" + pprint.pformat(cfg.to_dict()))
+
+    # Register the harness as a Ray job-level working_dir so it is uploaded once
+    # and inherited by the Train controller and ALL workers (which may be on other
+    # nodes). Anyscale sets the *job* working_dir outside Ray's runtime_env, so the
+    # driver's Ray runtime_env is empty and remote workers otherwise can't import
+    # `core`. Local dirs are only uploadable via ray.init (not per-actor runtime
+    # envs), so this must happen here, before any implicit ray.init.
+    if not ray.is_initialized():
+        ray.init(runtime_env={"working_dir": HARNESS_ROOT})
 
     metrics = run_experiment(cfg)
 
