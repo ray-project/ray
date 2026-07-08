@@ -1968,6 +1968,36 @@ class Replica:
         finally:
             self._semaphore.release()
 
+    @contextmanager
+    def _track_queued_request(self) -> Generator[Callable[[], None], None, None]:
+        """Count this request against max_queued_requests while it waits for a slot.
+
+        A direct-ingress request is queued from admission until it acquires an
+        ongoing-request slot. Use this as a `with` block around that wait.
+        Entering adds the request to the count. There are two ways it is removed.
+
+        1. The caller invokes the yielded callback once the slot is acquired, so
+           a running request does not keep occupying a queue slot.
+        2. The block exit removes it when the slot was never acquired, for
+           example a cancellation while the request is still queued.
+
+        The callback is idempotent, so both happening is safe and a cancelled
+        request cannot leak its count and wedge backpressure.
+        """
+        self._num_queued_requests += 1
+        released = False
+
+        def release() -> None:
+            nonlocal released
+            if not released:
+                released = True
+                self._num_queued_requests -= 1
+
+        try:
+            yield release
+        finally:
+            release()
+
     async def _drain_ongoing_requests(self, min_draining_period_s: float = 0.0):
         """Wait until the minimum draining period has elapsed and no ongoing
         requests remain.
@@ -2569,10 +2599,13 @@ class Replica:
 
             result_gen = call_unary()
 
-        with self._wrap_request(request_metadata) as status_code_callback:
-            self._num_queued_requests += 1
+        with (
+            self._wrap_request(request_metadata) as status_code_callback,
+            self._track_queued_request() as release_queue_slot,
+        ):
             async with self._start_request(request_metadata):
-                self._num_queued_requests -= 1
+                # Acquired an ongoing-request slot, so it's running, not queued.
+                release_queue_slot()
 
                 # Use the generic disconnect/timeout detecting wrapper.
                 replica_response_generator = ReplicaResponseGenerator(
@@ -2981,8 +3014,10 @@ class Replica:
         response_finished = False
         first_message_peeked = False
 
-        with self._wrap_request(request_metadata) as status_code_callback:
-            self._num_queued_requests += 1
+        with (
+            self._wrap_request(request_metadata) as status_code_callback,
+            self._track_queued_request() as release_queue_slot,
+        ):
 
             async def send_user_message(msg: Dict):
                 nonlocal response_started
@@ -3008,8 +3043,8 @@ class Replica:
 
             async def call_asgi():
                 async with self._start_request(request_metadata):
-                    self._num_queued_requests -= 1
-
+                    # Acquired an ongoing-request slot, so it's running, not queued.
+                    release_queue_slot()
                     if (
                         not self._user_callable_wrapper._run_user_code_in_separate_thread
                     ):
