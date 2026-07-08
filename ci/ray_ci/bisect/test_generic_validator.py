@@ -1,12 +1,34 @@
+import os
 import sys
 import time
+from tempfile import TemporaryDirectory
 from unittest import mock
 
 import pytest
 
 from ci.ray_ci.bisect.generic_validator import WAIT, GenericValidator
 
+from ray_release.configs.global_config import init_global_config
 from ray_release.test import Test
+
+_VALIDATOR_TEST_CONFIG = """
+release_byod:
+  byod_ecr: 029272617770.dkr.ecr.us-west-2.amazonaws.com
+  byod_ecr_region: us-west-2
+  gcp_cr: us-west1-docker.pkg.dev/anyscale-oss-ci
+  aws2gce_credentials: release/aws2gce_iam.json
+ci_pipeline:
+  buildkite_org: ray-project
+  postmerge:
+    - hi
+"""
+
+_validator_tmp = TemporaryDirectory()
+_validator_cfg = os.path.join(_validator_tmp.name, "config")
+with open(_validator_cfg, "w") as _f:
+    _f.write(_VALIDATOR_TEST_CONFIG)
+# GenericValidator.run reads the buildkite org from the global config.
+init_global_config(_validator_cfg)
 
 START = time.time()
 
