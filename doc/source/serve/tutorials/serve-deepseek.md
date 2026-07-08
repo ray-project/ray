@@ -22,8 +22,7 @@ Note: Deploying DeepSeek-R1 requires at least 720GB of free disk space per worke
 
 ### Quick Deployment
 
-For quick deployment and testing, save the following code to a file named `deepseek.py`,
-and run `python3 deepseek.py`.
+For quick deployment and testing, save the following code to a file named `deepseek.py`, and run `python3 deepseek.py`.
 
 ```python
 from ray import serve
@@ -63,8 +62,7 @@ serve.run(llm_app)
 
 ### Production Deployment
 
-For production deployments, save the following to a YAML file named `deepseek.yaml`
-and run `serve run deepseek.yaml`.
+For production deployments, save the following to a YAML file named `deepseek.yaml` and run `serve run deepseek.yaml`.
 
 ```yaml
 applications:
@@ -99,21 +97,9 @@ applications:
 
 You may need to adjust configurations in the above code based on your setup, specifically:
 
-* `accelerator_type`: for NVIDIA GPUs, DeepSeek requires Hopper GPUs or later ones. 
-Therefore, you can specify `H200`, `H100`, `H20` etc. based on your hardware.
-* `tensor_parallel_size` and `pipeline_parallel_size`: DeepSeek requires a single node of 8xH200,
-or two nodes of 8xH100. The typical setup of using H100 is setting `tensor_parallel_size` to `8`
-and `pipeline_parallel_size` to `2` as in the code example. When using H200, you can set
-`tensor_parallel_size` to `8` and leave out the `pipeline_parallel_size` parameter
-(it is `1` by default).
-* `model_source`: although you could specify a HuggingFace model ID like `deepseek-ai/DeepSeek-R1` 
-in the code example, it is recommended to pre-download the model because it is huge.
-You can download it to the local file system (e.g., `/path/to/downloaded/model`)
-or to a remote object store (e.g., `s3://my-bucket/path/to/downloaded/model`),
-and specify it as `model_source`. It is recommended to download it to a remote object store,
-using {ref}`Ray model caching utilities <model_cache>`. 
-Note that if you have two nodes and would like to download to local file system,
-you need to download the model to the same path on both nodes.
+* `accelerator_type`: for NVIDIA GPUs, DeepSeek requires Hopper GPUs or later ones. Therefore, you can specify `H200`, `H100`, `H20` etc. based on your hardware.
+* `tensor_parallel_size` and `pipeline_parallel_size`: DeepSeek requires a single node of 8xH200, or two nodes of 8xH100. The typical setup of using H100 is setting `tensor_parallel_size` to `8` and `pipeline_parallel_size` to `2` as in the code example. When using H200, you can set `tensor_parallel_size` to `8` and leave out the `pipeline_parallel_size` parameter (it is `1` by default).
+* `model_source`: although you could specify a HuggingFace model ID like `deepseek-ai/DeepSeek-R1` in the code example, it is recommended to pre-download the model because it is huge. You can download it to the local file system (e.g., `/path/to/downloaded/model`) or to a remote object store (e.g., `s3://my-bucket/path/to/downloaded/model`), and specify it as `model_source`. It is recommended to download it to a remote object store, using {ref}`Ray model caching utilities <model_cache>`. Note that if you have two nodes and would like to download to local file system, you need to download the model to the same path on both nodes.
 
 
 ## Testing the Service

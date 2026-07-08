@@ -13,15 +13,9 @@ This document walks you through everything you need to do to get started.
 
 ## Editorial style
 
-We follow the [Google developer documentation style guide](https://developers.google.com/style). Here are some highlights:
+The Ray documentation follows a house style guide that covers voice, word choice, sentence structure, headings, lists, links, and formatting. Read it before you write or edit a page. See {ref}`documentation-style`.
 
-* [Use present tense](https://developers.google.com/style/tense)
-* [Use second person](https://developers.google.com/style/person)
-* [Use contractions](https://developers.google.com/style/contractions)
-* [Use active voice](https://developers.google.com/style/voice)
-* [Use sentence case](https://developers.google.com/style/capitalization)
-
-Vale enforces the editorial style in CI. For more information, see [How to use Vale](vale).
+The house guide builds on the [Google developer documentation style guide](https://developers.google.com/style), which is the fallback for anything the house guide doesn't cover. Vale enforces an automated subset of the Google guide in CI. For more information, see [How to use Vale](vale).
 
 ## Building the Ray documentation
 
