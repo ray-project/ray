@@ -287,6 +287,23 @@ class ObjectID : public BaseID<ObjectID> {
   /// non-nil ActorID.
   static ActorID ToActorID(const ObjectID &object_id);
 
+  /// Whether this ObjectID was created by `ray.put()` (or any other codepath
+  /// through CoreWorker::Put that has no producing task and is therefore
+  /// lineage-ineligible).
+  ///
+  /// Identified by the put-index convention established in
+  /// WorkerContext::GetNextPutIndex: put indices are always strictly greater
+  /// than max_num_generator_returns. Conservative — every put is detected;
+  /// at worst a generator return whose emission index lands in the range
+  /// (NumReturns, NumReturns + max_num_generator_returns] could be
+  /// misclassified, which only forgoes a runtime optimization and never loses
+  /// data.
+  ///
+  /// Used by plasma move semantics on the producer raylet to refuse to
+  /// migrate the primary copy of put objects, since they cannot be
+  /// reconstructed if the new primary node dies.
+  static bool IsForPut(const ObjectID &object_id);
+
   MSGPACK_DEFINE(id_);
 
  private:

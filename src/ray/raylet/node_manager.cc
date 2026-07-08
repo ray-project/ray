@@ -294,9 +294,14 @@ NodeManager::NodeManager(
 
   // Plasma move semantics: when a push completes, the producer raylet notifies
   // the peer (now the primary copy holder) via a MoveCompleted RPC, then frees
-  // its local copy.
+  // its local copy. Put-produced objects are skipped — they are lineage-
+  // ineligible and would become permanently unrecoverable if the new primary
+  // node died.
   object_manager_.SetOnPushComplete(
       [this](const ObjectID &object_id, const NodeID &peer_node_id) {
+        if (ObjectID::IsForPut(object_id)) {
+          return;
+        }
         auto owner_address = local_object_manager_.GetOwnerAddress(object_id);
         if (owner_address.has_value()) {
           object_manager_.NotifyMoveCompleted(object_id, peer_node_id, *owner_address);
