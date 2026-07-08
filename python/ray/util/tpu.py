@@ -1234,12 +1234,18 @@ def _get_or_create_subslice_labels(
             ):
                 return slice_name, labels
 
-    # Check internal KV for previously discovered slices.
+    # Check internal KV for previously discovered slices. A slice has one
+    # entry per worker node, so deduplicate by slice name to avoid N redundant
+    # GCS round-trips for the same key.
+    seen_slice_names: set = set()
     for node in nodes:
         node_labels = node.get("Labels", {})
         slice_name = node_labels.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
         node_topology = node_labels.get(ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY)
         if slice_name and node_topology == parent_topology:
+            if slice_name in seen_slice_names:
+                continue
+            seen_slice_names.add(slice_name)
             try:
                 existing = ray.experimental.internal_kv._internal_kv_get(
                     _get_subslice_kv_key(slice_name),
@@ -1300,23 +1306,26 @@ def _find_available_subslice(
     from ray._private.state import available_resources_per_node
 
     avail = available_resources_per_node()
-    nodes = {n["NodeID"]: n for n in ray.nodes()}
 
-    for idx in sorted(subslice_indices.keys()):
+    # Pre-build a lookup map for O(1) node resolution by (slice_name, worker_id),
+    # avoiding an O(N) scan per worker inside the subslice loop.
+    slice_worker_to_node: Dict[Tuple[str, str], Any] = {}
+    for n in ray.nodes():
+        nl = n.get("Labels", {})
+        sn = nl.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
+        wid_label = nl.get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY)
+        if sn and wid_label:
+            slice_worker_to_node[(sn, wid_label)] = n
+
+    # Sort numerically so lower-indexed subslices are preferred over
+    # higher-indexed ones. (Indices are stored as strings in labels;
+    # lexicographic order would put "10" before "2" for large slices.)
+    for idx in sorted(subslice_indices.keys(), key=int):
         worker_ids = subslice_indices[idx]
         all_idle = True
 
         for wid in worker_ids:
-            # Find the node matching this slice_name + worker_id.
-            node = None
-            for n in nodes.values():
-                nl = n.get("Labels", {})
-                if (
-                    nl.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY) == slice_name
-                    and nl.get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) == wid
-                ):
-                    node = n
-                    break
+            node = slice_worker_to_node.get((slice_name, wid))
 
             if node is None or not node.get("Alive"):
                 all_idle = False
@@ -1572,13 +1581,23 @@ def subslice_placement_group(
             f"accelerator version '{version}'."
         )
 
-    # Resolve chips_per_vm and parent topology.
+    # Resolve the parent topology first. chips_per_vm is not used inside
+    # _resolve_parent_topology, so it is safe to call before chips_per_vm
+    # is finalised. Pass the user-supplied value when present; fall back to
+    # a non-zero sentinel otherwise (the value is ignored either way).
+    parent_topology = _resolve_parent_topology(
+        subslice_topology, version, chips_per_vm if chips_per_vm is not None else 4
+    )
+
+    # Derive chips_per_vm from the *parent* topology, not the subslice.
+    # All VMs in the physical parent slice share the same chip count; using
+    # the subslice topology (e.g. "2x4" on v6e) would incorrectly return the
+    # single-host default (8 chips) even though the parent slice (e.g. "4x4")
+    # uses 4-chip multi-host VMs.
     if chips_per_vm is None:
-        chips_per_vm = _get_default_chips_per_vm(subslice_topology, version)
+        chips_per_vm = _get_default_chips_per_vm(parent_topology, version)
     if chips_per_vm <= 0:
         raise ValueError("chips_per_vm must be positive.")
-
-    parent_topology = _resolve_parent_topology(subslice_topology, version, chips_per_vm)
 
     # Validate topologies.
     if not TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
@@ -1654,9 +1673,12 @@ def subslice_placement_group(
         ]
         if not target_worker_ids:
             max_idx = max(
-                int(labels.get(label_key, "-1"))
-                for labels in worker_labels.values()
-                if label_key in labels
+                (
+                    int(labels.get(label_key, "-1"))
+                    for labels in worker_labels.values()
+                    if label_key in labels
+                ),
+                default=-1,
             )
             raise ValueError(
                 f"Subslice index {subslice_index} is not valid for "

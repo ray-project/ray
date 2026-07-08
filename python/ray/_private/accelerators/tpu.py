@@ -1,5 +1,6 @@
 import glob
 import logging
+import math
 import os
 import re
 from functools import lru_cache
@@ -71,6 +72,7 @@ SINGLE_CORE_TPU_TYPES = ("v5litepod", "v6e")
 
 # The valid TPU types.
 VALID_TPU_TYPES = ("v2", "v3", "v4", "v5p", "v5litepod", "v6e", "v7x")
+
 
 # This is only used to construct TPU 3D topologies
 def _get_larger_3d_topologies(max_x: int, max_y: int, max_z: int) -> Set[str]:
@@ -267,7 +269,9 @@ def _resolve_parent_topology(
         return subslice_topology
 
     # Return the smallest qualifying parent (by total worker count).
-    candidates.sort(key=lambda x: sum(x[1]))
+    # Use math.prod — the product of the worker dimensions is the actual
+    # total worker count, which sum() only approximates for symmetric dims.
+    candidates.sort(key=lambda x: math.prod(x[1]))
     return candidates[0][0]
 
 
