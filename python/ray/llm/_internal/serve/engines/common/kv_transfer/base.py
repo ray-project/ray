@@ -18,20 +18,6 @@ if TYPE_CHECKING:
     RequestType = Union[ChatCompletionRequest, CompletionRequest]
 
 
-def base_prefill_kv_transfer_params() -> Dict[str, Any]:
-    """The ``kv_transfer_params`` common to a prefill (producer) request.
-
-    Tells the prefill engine to produce KV for a remote decode. Connectors layer
-    their own keys (e.g. a transfer id, DP/TP routing) on top of these.
-    """
-    return {
-        "do_remote_decode": True,
-        "do_remote_prefill": False,
-        "remote_engine_id": None,
-        "remote_block_ids": None,
-    }
-
-
 def clamp_request_to_single_token(request: "RequestType") -> None:
     """Clamp a prefill request to a single, non-streaming token (in place)."""
     request.max_tokens = 1
@@ -188,70 +174,3 @@ class BaseConnectorBackend(abc.ABC):
             A JSON-serializable dict of per-replica metadata (empty by default).
         """
         return {}
-
-
-class DefaultPDProtocolMixin:
-    """The default P/D protocol policy: no peer binding, sequential handoff.
-
-    Implements ``prepare_prefill_request`` / ``prepare_decode_request`` for
-    connectors that follow the standard policy: the prefill engine is told to
-    produce KV for a remote decode (clamped to a single non-streaming token),
-    and the decode engine forwards the ``kv_transfer_params`` that the prefill
-    engine returned on its first response chunk.
-
-    Mix this in *before* ``BaseConnectorBackend`` in a backend's bases so its
-    concrete methods satisfy the abstract methods.
-    """
-
-    def prepare_prefill_request(
-        self, *, request: "RequestType", peer: Optional[Dict[str, Any]]
-    ) -> "RequestType":
-        """Shape the prefill request under the default P/D protocol policy.
-
-        Deep-copies the request, stamps the standard ``kv_transfer_params`` that
-        tell the prefill engine to produce KV for a remote decode, and clamps it
-        to a single, non-streaming token. ``peer`` is ignored.
-        """
-        assert (
-            getattr(request, "kv_transfer_params", None) is None
-        ), "kv_transfer_params should be empty before orchestrator"
-        prefill_request = request.model_copy(deep=True)
-        prefill_request.kv_transfer_params = {
-            **base_prefill_kv_transfer_params(),
-            "remote_host": None,
-            "remote_port": None,
-        }
-        clamp_request_to_single_token(prefill_request)
-        return prefill_request
-
-    def prepare_decode_request(
-        self,
-        *,
-        request: "RequestType",
-        peer: Optional[Dict[str, Any]],
-        prefill_response: Optional[Any],
-    ) -> "RequestType":
-        """Shape the decode request under the default P/D protocol policy.
-
-        Deep-copies the request and, only when a prefill response chunk was
-        captured, forwards its ``kv_transfer_params`` so the decode engine
-        pulls/receives the KV produced by prefill. In concurrent-handoff mode
-        ``prefill_response`` is None and the request is left unmodified. ``peer``
-        is ignored.
-        """
-        decode_request = request.model_copy(deep=True)
-        if prefill_response is not None:
-            decode_request.kv_transfer_params = prefill_response.kv_transfer_params
-        return decode_request
-
-
-class DefaultConnectorBackend(DefaultPDProtocolMixin, BaseConnectorBackend):
-    """Concrete connector backend using the default P/D protocol policy.
-
-    Used as the factory fallback for connectors that are not registered with a
-    dedicated backend class: they get a no-op ``setup()`` and the default
-    request-shaping policy. ``BaseConnectorBackend`` is abstract, so the factory
-    must return a concrete class like this one.
-    """
-
-    pass

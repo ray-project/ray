@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Type, Union
 
 from ray.llm._internal.serve.engines.common.kv_transfer.base import (
     BaseConnectorBackend,
-    DefaultConnectorBackend,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.utils.registry import get_registry
@@ -19,6 +18,21 @@ if TYPE_CHECKING:
 
 
 logger = get_logger(__name__)
+
+
+def _default_connector_backend() -> Type["BaseConnectorBackend"]:
+    """The factory's fallback backend for unregistered connector names.
+
+    The default policy is expressed with vLLM's ``kv_transfer_params``, so the
+    concrete fallback lives on the vLLM side. Imported lazily so this neutral
+    factory module carries no module-level vLLM dependency.
+    """
+    from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+        DefaultConnectorBackend,
+    )
+
+    return DefaultConnectorBackend
+
 
 # Get the registry instance for KV connector backends
 _kv_backend_registry = get_registry("kv_connector_backend")
@@ -75,11 +89,12 @@ class KVConnectorBackendFactory:
         try:
             return _kv_backend_registry.get(name)
         except ValueError:
+            default_backend = _default_connector_backend()
             logger.warning(
                 f"Unsupported connector backend: {name}. "
-                f"Using default: {DefaultConnectorBackend.__name__}."
+                f"Using default: {default_backend.__name__}."
             )
-            return DefaultConnectorBackend
+            return default_backend
         except Exception as e:
             raise ImportError(
                 f"Failed to load connector backend '{name}': {type(e).__name__}: {e}"
