@@ -1,8 +1,11 @@
+import os
 import sys
+from tempfile import TemporaryDirectory
 from typing import List, Optional
 
 import pytest
 
+from ray_release.configs.global_config import init_global_config
 from ray_release.result import (
     Result,
     ResultStatus,
@@ -120,6 +123,29 @@ class MockBuildkite:
     def jobs(self):
         return MockBuildkiteJob()
 
+
+_SM_TEST_CONFIG = """
+release_byod:
+  byod_ecr: 029272617770.dkr.ecr.us-west-2.amazonaws.com
+  byod_ecr_region: us-west-2
+  gcp_cr: us-west1-docker.pkg.dev/anyscale-oss-ci
+  aws2gce_credentials: release/aws2gce_iam.json
+state_machine:
+  branch:
+    aws_bucket: ray-ci-results
+ci_pipeline:
+  buildkite_secret: ray_ci_buildkite_token
+  postmerge:
+    - hi
+"""
+
+_sm_tmp = TemporaryDirectory()
+_sm_cfg = os.path.join(_sm_tmp.name, "config")
+with open(_sm_cfg, "w") as _f:
+    _f.write(_SM_TEST_CONFIG)
+# The state machine reads the buildkite org / bisect flag from the global config
+# during bisect; initialize it before exercising any transitions.
+init_global_config(_sm_cfg)
 
 TestStateMachine.ray_repo = MockRepo()
 TestStateMachine.ray_buildkite = MockBuildkite()
@@ -346,6 +372,49 @@ def test_get_issue_owner() -> None:
     assert TestStateMachine.get_issue_owner(issue) == "core"
     issue = TestStateMachine.ray_repo.create_issue(labels=["w00t"], title="bye")
     assert TestStateMachine.get_issue_owner(issue) == NO_TEAM
+
+
+def test_release_bisect_disabled(monkeypatch) -> None:
+    """When bisect is disabled in config, no bisect build is triggered."""
+    import ray_release.test_automation.state_machine as sm_mod
+
+    real_get_global_config = sm_mod.get_global_config
+
+    def fake_get_global_config():
+        cfg = dict(real_get_global_config())
+        cfg["state_machine_bisect_disabled"] = True
+        return cfg
+
+    monkeypatch.setattr(sm_mod, "get_global_config", fake_get_global_config)
+
+    test = Test(name="bisect-off", team="ci")
+    test.test_results = [
+        TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
+    ]
+    assert test.get_state() == TestState.PASSING
+    test.test_results.insert(
+        0, TestResult.from_result(Result(status=ResultStatus.ERROR.value))
+    )
+    sm = ReleaseTestStateMachine(test)
+    sm.move()
+    assert test.get_state() == TestState.FAILING
+    # Bisect gated off -> no build number recorded.
+    assert test.get(Test.KEY_BISECT_BUILD_NUMBER) is None
+
+
+def test_release_bisect_enabled_triggers(monkeypatch) -> None:
+    """When bisect is enabled (default), a bisect build is triggered."""
+    test = Test(name="bisect-on", team="ci")
+    test.test_results = [
+        TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
+    ]
+    test.test_results.insert(
+        0, TestResult.from_result(Result(status=ResultStatus.ERROR.value))
+    )
+    sm = ReleaseTestStateMachine(test)
+    sm.move()
+    assert test.get_state() == TestState.FAILING
+    assert test[Test.KEY_BISECT_BUILD_NUMBER] == 1
 
 
 if __name__ == "__main__":
