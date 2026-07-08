@@ -50,8 +50,7 @@ BUCKET=my-bucket
 gcloud storage buckets create gs://$BUCKET --uniform-bucket-level-access
 ```
 
-Bind the `roles/storage.objectUser` role to the Kubernetes service account and bucket IAM policy.
-See [Identifying projects](https://cloud.google.com/resource-manager/docs/creating-managing-projects#identifying_projects) to find your project ID and project number:
+Bind the `roles/storage.objectUser` role to the Kubernetes service account and bucket IAM policy. See [Identifying projects](https://cloud.google.com/resource-manager/docs/creating-managing-projects#identifying_projects) to find your project ID and project number:
 ```bash
 PROJECT_ID=<your project ID>
 PROJECT_NUMBER=<your project number>
