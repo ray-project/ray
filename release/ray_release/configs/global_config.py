@@ -1,5 +1,5 @@
 import os
-from typing import List, Optional, TypedDict
+from typing import List, TypedDict
 
 import yaml
 
@@ -12,9 +12,9 @@ class GlobalConfig(TypedDict):
     state_machine_pr_aws_bucket: str
     state_machine_branch_aws_bucket: str
     state_machine_disabled: bool
-    state_machine_github_repo: Optional[str]
+    state_machine_github_repo: str
     state_machine_bisect_disabled: bool
-    buildkite_org: Optional[str]
+    buildkite_org: str
     aws2gce_credentials: str
     ci_pipeline_premerge: List[str]
     ci_pipeline_postmerge: List[str]

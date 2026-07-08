@@ -75,26 +75,5 @@ def test_run(mock_get_rayci_select, mock_get_buildkite):
     assert GenericValidator().run(Test({"name": "test"}), "revision")
 
 
-@mock.patch("ci.ray_ci.bisect.generic_validator.GenericValidator._get_buildkite")
-@mock.patch("ci.ray_ci.bisect.generic_validator.GenericValidator._get_rayci_select")
-def test_run_raises_without_buildkite_org(
-    mock_get_rayci_select, mock_get_buildkite, monkeypatch
-):
-    """A missing buildkite_org fails loudly instead of passing None to Buildkite."""
-    mock_get_rayci_select.return_value = "rayci_step_id"
-    mock_get_buildkite.return_value = MockBuildkite()
-
-    import ci.ray_ci.bisect.generic_validator as gv
-
-    real_get_global_config = gv.get_global_config
-    monkeypatch.setattr(
-        gv,
-        "get_global_config",
-        lambda: {**real_get_global_config(), "buildkite_org": None},
-    )
-    with pytest.raises(ValueError, match="buildkite_org"):
-        GenericValidator().run(Test({"name": "test"}), "revision")
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -56,12 +56,9 @@ class TestStateMachine(abc.ABC):
     @classmethod
     def _init_ray_repo(cls):
         if not cls.ray_repo:
-            repo_name = get_global_config()["state_machine_github_repo"]
-            if not repo_name:
-                raise ValueError(
-                    "state_machine_github_repo is not configured in global config"
-                )
-            cls.ray_repo = cls.get_github().get_repo(repo_name)
+            cls.ray_repo = cls.get_github().get_repo(
+                get_global_config()["state_machine_github_repo"]
+            )
 
     @classmethod
     def get_github(cls):
@@ -277,13 +274,11 @@ class TestStateMachine(abc.ABC):
                 f" bisect_build_number={bisect_build_number}"
             )
             return False
-        buildkite_org = get_global_config()["buildkite_org"]
-        if not buildkite_org:
-            raise ValueError("buildkite_org is not configured in global config")
         issue = self.ray_repo.get_issue(issue_number)
         issue.create_comment(
             f"Blamed commit: {blamed_commit} "
-            f"found by bisect job https://buildkite.com/{buildkite_org}/"
+            f"found by bisect job https://buildkite.com/"
+            f"{get_global_config()['buildkite_org']}/"
             f"{BUILDKITE_BISECT_PIPELINE}/builds/{bisect_build_number}"
         )
         return True
@@ -292,12 +287,10 @@ class TestStateMachine(abc.ABC):
         if get_global_config()["state_machine_bisect_disabled"]:
             logger.info(f"Skip bisect {self.test.get_name()}; bisect is disabled")
             return
-        buildkite_org = get_global_config()["buildkite_org"]
-        if not buildkite_org:
-            raise ValueError("buildkite_org is not configured in global config")
         if self._bisect_rate_limit_exceeded():
             logger.info(f"Skip bisect {self.test.get_name()} due to rate limit")
             return
+        buildkite_org = get_global_config()["buildkite_org"]
         test_type = self.test.get_test_type().value
         build = self.ray_buildkite.builds().create_build(
             buildkite_org,
