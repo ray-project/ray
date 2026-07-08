@@ -4,8 +4,7 @@ orphan: true
 (aws-neuron-core-inference-tutorial)=
 
 # Serve an Inference Model on AWS NeuronCores Using FastAPI (Experimental)
-This example compiles a BERT-based model and deploys the traced model on an AWS Inferentia (Inf2) or Tranium (Trn1)
-instance using Ray Serve and FastAPI.
+This example compiles a BERT-based model and deploys the traced model on an AWS Inferentia (Inf2) or Tranium (Trn1) instance using Ray Serve and FastAPI.
 
 
 :::{note}
