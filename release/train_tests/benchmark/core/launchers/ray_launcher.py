@@ -8,10 +8,10 @@ only ``{"step": N}`` would otherwise shadow the final full metrics).
 
 import json
 import logging
-import os
 from datetime import datetime
 from typing import Any, Dict
 
+import ray
 import ray.train
 from ray.train.torch import TorchTrainer
 
@@ -39,20 +39,37 @@ def train_fn_per_worker(train_loop_config: Dict[str, Any]) -> None:
 
 
 def run_with_ray(cfg: ExperimentConfig) -> Dict[str, Any]:
-    # Train workers may be scheduled on a different node than the driver. Ship the
-    # benchmark package (the `core` module + adapters) to them via working_dir so
-    # they can unpickle the ExperimentConfig and import the adapter cross-node;
-    # otherwise workers fail with "No module named 'core'". Mirrors what the
-    # torchrun launcher does for its actor group.
-    harness_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # Train workers may be scheduled on a different node than the driver and do
+    # NOT inherit the job's working_dir, so they fail to import `core` when
+    # unpickling the ExperimentConfig. Re-attach the job's ALREADY-UPLOADED
+    # working_dir URI to the workers. We must reuse the remote URI (not a local
+    # path): Ray only uploads local dirs at the job level (ray.init); a local
+    # path in an actor/worker runtime_env raises "is not a valid URI".
+    job_runtime_env = ray.get_runtime_context().runtime_env
+    try:
+        job_working_dir = job_runtime_env.get("working_dir")
+    except Exception:  # RuntimeEnv API variation across Ray versions
+        job_working_dir = None
+
+    # #region agent log
+    logger.info(
+        "DEBUG e07b5f run_with_ray: job_runtime_env=%s | working_dir=%r | env_vars=%s",
+        str(job_runtime_env),
+        job_working_dir,
+        cfg.env_vars,
     )
-    worker_runtime_env: Dict[str, Any] = {"working_dir": harness_root}
+    # #endregion
+
+    worker_runtime_env: Dict[str, Any] = {}
+    if job_working_dir:
+        worker_runtime_env["working_dir"] = job_working_dir
     # Experiment-declared env vars (if any) land in each worker process at launch
     # (before torch/CUDA init). Anything cluster-wide should be set on the cluster.
     if cfg.env_vars:
         worker_runtime_env["env_vars"] = dict(cfg.env_vars)
-    run_config_kwargs = {"worker_runtime_env": worker_runtime_env}
+    run_config_kwargs = (
+        {"worker_runtime_env": worker_runtime_env} if worker_runtime_env else {}
+    )
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn_per_worker,
