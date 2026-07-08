@@ -60,6 +60,7 @@ from ray.data._internal.output_buffer import (
 )
 from ray.data.block import (
     Block,
+    BlockAccessor,
     BlockExecStats,
     BlockMetadataWithSchema,
     TaskExecWorkerStats,
@@ -764,7 +765,7 @@ ShuffleHandle = dict  # {path, index:{pid:[(off,len)]}, endpoint:(host,port), to
 
 @ray.remote(max_calls=1)
 def v3_map_task(
-    *blocks: pa.Table,
+    *blocks: Block,
     partition_fn: PartitionFn,
     num_partitions: int,
     out_dir: str,
@@ -881,6 +882,12 @@ def v3_map_task(
                 return sum(staging_bytes.values())
 
             for blk in blocks:
+                # Match v2's boundary convention: accept any Ray Data Block
+                # (Arrow / pandas / ...) and normalize to ``pa.Table`` here.
+                # Downstream (partition_fn, transformer, IPC serialize) is
+                # Arrow-only and stays that way. No-op when already Arrow.
+                if not isinstance(blk, pa.Table):
+                    blk = BlockAccessor.for_block(blk).to_arrow()
                 if transformer is not None:
                     blk = transformer(blk)
                 if output_schema is None:
