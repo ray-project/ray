@@ -950,6 +950,10 @@ class ReplicaConfig:
             first_bundle = self.placement_group_bundles[0]
 
             # Validate that the replica actor fits in the first bundle.
+            # Downstream code depends on this validation. The scheduler pins the
+            # actor to bundle 0 in deployment_scheduler._schedule_replica, and
+            # DeploymentSchedulingInfo.required_resources reads bundle 0 as the
+            # replica's demand.
             bundle_cpu = first_bundle.get("CPU", 0)
             replica_actor_num_cpus = self.ray_actor_options.get("num_cpus", 0)
             if bundle_cpu < replica_actor_num_cpus:

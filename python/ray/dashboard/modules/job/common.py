@@ -373,7 +373,10 @@ class JobInfoStorageClient:
         )
         if old_info is not None:
             if status != old_info.status and old_info.status.is_terminal():
-                assert False, "Attempted to change job status from a terminal state."
+                raise RuntimeError(
+                    f"Attempted to change job status from a terminal state: "
+                    f"{old_info.status} -> {status}"
+                )
             new_info = replace(old_info, **jobinfo_replace_kwargs)
         else:
             new_info = JobInfo(
