@@ -46,6 +46,8 @@ class GenericValidator(Validator):
     def run(self, test: Test, revision: str) -> bool:
         buildkite = self._get_buildkite()
         buildkite_org = get_global_config()["buildkite_org"]
+        if not buildkite_org:
+            raise ValueError("buildkite_org is not configured in global config")
         build = buildkite.builds().create_build(
             buildkite_org,
             BUILDKITE_POSTMERGE_PIPELINE,

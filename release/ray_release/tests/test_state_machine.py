@@ -429,5 +429,54 @@ def test_release_bisect_enabled_triggers(monkeypatch) -> None:
     assert test[Test.KEY_BISECT_BUILD_NUMBER] == 1
 
 
+def test_init_ray_repo_raises_without_github_repo(monkeypatch) -> None:
+    """A missing state_machine_github_repo fails loudly instead of calling
+    get_repo(None)."""
+    import ray_release.test_automation.state_machine as sm_mod
+
+    real_get_global_config = sm_mod.get_global_config
+
+    def fake_get_global_config():
+        cfg = dict(real_get_global_config())
+        cfg["state_machine_github_repo"] = None
+        return cfg
+
+    monkeypatch.setattr(sm_mod, "get_global_config", fake_get_global_config)
+
+    saved_repo = TestStateMachine.ray_repo
+    TestStateMachine.ray_repo = None
+    try:
+        with pytest.raises(ValueError, match="state_machine_github_repo"):
+            TestStateMachine._init_ray_repo()
+    finally:
+        TestStateMachine.ray_repo = saved_repo
+
+
+def test_trigger_bisect_raises_without_buildkite_org(monkeypatch) -> None:
+    """A missing buildkite_org fails loudly instead of passing None to Buildkite."""
+    import ray_release.test_automation.state_machine as sm_mod
+
+    real_get_global_config = sm_mod.get_global_config
+
+    def fake_get_global_config():
+        cfg = dict(real_get_global_config())
+        cfg["buildkite_org"] = None
+        return cfg
+
+    monkeypatch.setattr(sm_mod, "get_global_config", fake_get_global_config)
+
+    test = Test(name="bisect-noorg", team="ci")
+    test.test_results = [
+        TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
+    ]
+    test.test_results.insert(
+        0, TestResult.from_result(Result(status=ResultStatus.ERROR.value))
+    )
+    sm = ReleaseTestStateMachine(test)
+    # PASSING -> FAILING triggers bisect, which must raise since org is unset.
+    with pytest.raises(ValueError, match="buildkite_org"):
+        sm.move()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
