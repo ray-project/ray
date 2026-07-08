@@ -1927,6 +1927,125 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBulkPeekAfterEofReturnsEof) {
   manager_.TryDelObjectRefStream(generator_id);
 }
 
+// When a streaming generator ends because of a failure (not a clean return),
+// refs peeked past the last produced item must surface the real terminal error
+// (e.g. TASK_CANCELLED / ACTOR_DIED) rather than a generic end-of-stream, so an
+// eager bulk consumer sees why the ref will never be produced. The following
+// tests cover both peek orderings (before vs. after the stream is ended) and
+// both code paths that end a failed stream (MarkTaskReturnObjectsFailed via
+// FailPendingTask, and MarkTaskNoRetry first for a dead actor / cancellation).
+namespace {
+
+// Assert every id in `ids` stores an exception whose error type is `expected`.
+void ExpectStreamRefsCarryError(CoreWorkerMemoryStore &store,
+                                const std::vector<ObjectID> &ids,
+                                rpc::ErrorType expected) {
+  std::vector<std::shared_ptr<RayObject>> results;
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  RAY_CHECK_OK(
+      store.Get(ids, static_cast<int>(ids.size()), /*timeout_ms=*/1, ctx, &results));
+  ASSERT_EQ(results.size(), ids.size());
+  for (const auto &result : results) {
+    rpc::ErrorType error_type;
+    ASSERT_TRUE(result->IsException(&error_type));
+    ASSERT_EQ(error_type, expected);
+  }
+}
+
+}  // namespace
+
+// Peek refs before the stream is ended, then fail the task. The peeked refs
+// (the EOF sentinel and everything past it, since nothing was produced) must
+// carry the failure error, which is written when MarkEndOfStream later
+// materializes the temporarily-owned peeked refs.
+TEST_F(TaskManagerTest, TestObjectRefStreamBulkPeekBeforeFailurePropagatesError) {
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  auto value_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto eof_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  auto post_eof_id = ObjectID::FromIndex(spec.TaskId(), 4);
+
+  // Peek before anything is produced or EOF is marked. EofIndex() is still -1,
+  // so PeekObjectRefStreamN writes nothing yet; it only temporarily owns them.
+  auto peeked = manager_.PeekObjectRefStreamN(generator_id, 3);
+  ASSERT_EQ(peeked.size(), 3);
+  ASSERT_EQ(peeked[0].first, value_id);
+  ASSERT_EQ(peeked[1].first, eof_id);
+  ASSERT_EQ(peeked[2].first, post_eof_id);
+  for (const auto &p : peeked) {
+    ASSERT_FALSE(p.second);
+  }
+
+  // The generator's actor dies before producing anything. FailPendingTask ends
+  // the stream with ACTOR_DIED, materializing the peeked refs with that error.
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::ACTOR_DIED);
+
+  ExpectStreamRefsCarryError(
+      *store_, {value_id, eof_id, post_eof_id}, rpc::ErrorType::ACTOR_DIED);
+
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
+// Fail the task first, then peek. PeekObjectRefStreamN itself materializes the
+// past-EOF refs (EofIndex() is already set), and must use the recorded terminal
+// error rather than a hardcoded end-of-stream.
+TEST_F(TaskManagerTest, TestObjectRefStreamBulkPeekAfterFailurePropagatesError) {
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  auto value_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto eof_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  auto post_eof_id = ObjectID::FromIndex(spec.TaskId(), 4);
+
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::ACTOR_DIED);
+
+  auto peeked = manager_.PeekObjectRefStreamN(generator_id, 3);
+  ASSERT_EQ(peeked.size(), 3);
+  ASSERT_EQ(peeked[0].first, value_id);
+  ASSERT_EQ(peeked[1].first, eof_id);
+  ASSERT_EQ(peeked[2].first, post_eof_id);
+
+  ExpectStreamRefsCarryError(
+      *store_, {value_id, eof_id, post_eof_id}, rpc::ErrorType::ACTOR_DIED);
+
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
+// Cancellation (repro scenario 1): MarkTaskCanceled ends the stream first (with
+// TASK_CANCELLED), before FailPendingTask runs. The peeked refs must carry
+// TASK_CANCELLED, and the later FailPendingTask must not downgrade it.
+TEST_F(TaskManagerTest, TestObjectRefStreamBulkPeekCancellationPropagatesError) {
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  auto value_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto eof_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  auto post_eof_id = ObjectID::FromIndex(spec.TaskId(), 4);
+
+  auto peeked = manager_.PeekObjectRefStreamN(generator_id, 3);
+  ASSERT_EQ(peeked.size(), 3);
+
+  // ray.cancel(): MarkTaskCanceled ends the stream first, then FailPendingTask
+  // arrives with TASK_CANCELLED. First-writer-wins keeps TASK_CANCELLED.
+  manager_.MarkTaskCanceled(spec.TaskId());
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::TASK_CANCELLED);
+
+  ExpectStreamRefsCarryError(
+      *store_, {value_id, eof_id, post_eof_id}, rpc::ErrorType::TASK_CANCELLED);
+
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
 TEST_F(TaskManagerTest, TestObjectRefStreamPeekedEofSentinelNotOverReleasedOnDelete) {
   // A peeked EOF sentinel must be released exactly once at teardown; a double
   // release would free a consumer's still-held peeked ref.

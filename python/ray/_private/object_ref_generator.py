@@ -200,6 +200,15 @@ class ObjectRefGenerator:
         The returned refs are not consumed; wait for the last one to become ready
         before calling ``_consume_next_ref_n`` to advance the stream.
 
+        If ``num_refs`` overshoots the end of the stream, the extra refs are
+        positions the generator will never produce. ``ray.get`` on such a ref
+        raises ``ObjectRefStreamEndOfStreamError`` when the stream ended cleanly,
+        but surfaces the real terminal error otherwise -- e.g.
+        ``TaskCancelledError`` if the task was cancelled or an actor/worker-death
+        error if the generator died -- mirroring what ``ray.get(gen.completed())``
+        raises. Callers must therefore distinguish a clean end-of-stream from a
+        real failure rather than treating every raised error as end-of-stream.
+
         Args:
             num_refs: The number of references to return, starting from the
                 current head of the stream. Must be positive.

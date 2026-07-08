@@ -16,6 +16,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -170,11 +171,24 @@ class ObjectRefStream {
    * caller should pass 1 past the highest index that the generator is
    * guaranteed to return. The EOF index will be set to the max of this index
    * and the next index for the caller to consume.
+   * \param[in] error_type The error that ended the stream. On a clean
+   * completion this is END_OF_STREAMING_GENERATOR; on a failure it is the real
+   * terminal error (e.g. TASK_CANCELLED, ACTOR_DIED). It is recorded on the
+   * stream and used as the value for every EOF-region object (the sentinel and
+   * any refs peeked past EOF), so a consumer that reads such a ref surfaces the
+   * real reason the ref will never be produced instead of a generic
+   * end-of-stream. Recorded once, on the first call (first-writer-wins, matching
+   * the end_of_stream_index_ guard below).
+   * \param[in] error_info Optional rich error info to accompany error_type
+   * (e.g. the serialized actor death cause). May be nullptr.
    * \param[out] object_ids_to_eof The ObjectIDs that should be marked with the
    * EOF sentinel. This includes the EOF index itself and any already-peeked
    * refs after EOF.
    */
-  void MarkEndOfStream(int64_t item_index, std::vector<ObjectID> *object_ids_to_eof);
+  void MarkEndOfStream(int64_t item_index,
+                       rpc::ErrorType error_type,
+                       const rpc::RayErrorInfo *error_info,
+                       std::vector<ObjectID> *object_ids_to_eof);
 
   /// Get all the ObjectIDs that are not read yet via TryReadNextItem.
   ///
@@ -191,6 +205,13 @@ class ObjectRefStream {
   int64_t LastConsumedIndex() const { return next_index_ - 1; }
 
   int64_t EofIndex() const { return end_of_stream_index_; }
+
+  /// The error that ended the stream, recorded by MarkEndOfStream. Defaults to
+  /// END_OF_STREAMING_GENERATOR until the stream is ended by a failure.
+  rpc::ErrorType EndOfStreamErrorType() const { return end_of_stream_error_type_; }
+  const std::optional<rpc::RayErrorInfo> &EndOfStreamErrorInfo() const {
+    return end_of_stream_error_info_;
+  }
 
   /// Total number of object that's written to the stream
   int64_t TotalNumObjectWritten() const { return total_num_object_written_; }
@@ -212,6 +233,13 @@ class ObjectRefStream {
   /// item_index < last will contain object references.
   /// If -1, that means the stream hasn't reached to EoF.
   int64_t end_of_stream_index_ = -1;
+  /// The terminal error that ended the stream, written as the value of every
+  /// EOF-region object. END_OF_STREAMING_GENERATOR for a clean completion; the
+  /// real failure (TASK_CANCELLED, ACTOR_DIED, ...) otherwise. Set once, when
+  /// end_of_stream_index_ is first set.
+  rpc::ErrorType end_of_stream_error_type_ = rpc::ErrorType::END_OF_STREAMING_GENERATOR;
+  /// Optional rich error info accompanying end_of_stream_error_type_.
+  std::optional<rpc::RayErrorInfo> end_of_stream_error_info_;
   /// The next index of the stream.
   /// If next_index_ == end_of_stream_index_, that means it is the end of the stream.
   int64_t next_index_ = 0;
@@ -706,7 +734,11 @@ class TaskManager : public TaskManagerInterface {
   };
 
   /// Set the task retry number to 0. If canceled is true, mark the task as
-  // canceled.
+  /// canceled. When canceled, a streaming generator's stream is ended with
+  /// TASK_CANCELLED as the terminal error (recorded on the stream) so that
+  /// eagerly-peeked, never-to-be-produced refs surface the cancellation instead
+  /// of a generic end-of-stream. Non-cancel failures record their terminal error
+  /// via FailPendingTask instead.
   void MarkTaskNoRetryInternal(const TaskID &task_id, bool canceled)
       ABSL_LOCKS_EXCLUDED(mu_);
 
@@ -800,7 +832,18 @@ class TaskManager : public TaskManagerInterface {
   /// If -1 is specified, it will mark the current last index as end of stream.
   /// this should be used when a task fails (which means we know the task won't
   /// report any more generator return values).
-  void MarkEndOfStream(const ObjectID &generator_id, int64_t end_of_stream_index)
+  /// \param error_type The terminal error to write to the EOF-region objects
+  /// (the sentinel and any refs peeked past EOF). Defaults to
+  /// END_OF_STREAMING_GENERATOR for a clean completion; failure paths pass the
+  /// real error (TASK_CANCELLED, ACTOR_DIED, ...) so an eager consumer that
+  /// waits on a not-yet-produced ref surfaces the real reason. Recorded once
+  /// (first-writer-wins), so the first path to end the stream determines it.
+  /// \param error_info Optional rich error info for error_type. May be nullptr.
+  void MarkEndOfStream(
+      const ObjectID &generator_id,
+      int64_t end_of_stream_index,
+      rpc::ErrorType error_type = rpc::ErrorType::END_OF_STREAMING_GENERATOR,
+      const rpc::RayErrorInfo *error_info = nullptr)
       ABSL_LOCKS_EXCLUDED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// See TemporarilyOwnGeneratorReturnRefIfNeeded for a docstring.
