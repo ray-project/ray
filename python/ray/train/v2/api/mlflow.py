@@ -39,13 +39,21 @@ class MLflowLoggerCallback(UserCallback):
                 metrics_to_log.append(Metric(key=k, value=float(v), timestamp=timestamp, step=int(step)))
 
         if metrics_to_log or (checkpoint and self._save_checkpoints):
-            if not self._run_id and self._experiment_name:
-                exp = self.client.get_experiment_by_name(self._experiment_name)
-                exp_id = exp.experiment_id if exp else self.client.create_experiment(self._experiment_name)
-                self._run_id = self.client.create_run(exp_id).info.run_id
+            if not self._run_id:
+                # Fallback to a default experiment name if neither run_id nor experiment_name is specified
+                exp_name = self._experiment_name or "ray_default_experiment"
+                try:
+                    exp = self.client.get_experiment_by_name(exp_name)
+                    exp_id = exp.experiment_id if exp else self.client.create_experiment(exp_name)
+                    self._run_id = self.client.create_run(exp_id).info.run_id
+                except Exception as e:
+                    logger.warning(f"Failed to auto-create MLflow experiment/run: {e}")
 
         if metrics_to_log and self._run_id:
-            self.client.log_batch(self._run_id, metrics=metrics_to_log)
+            try:
+                self.client.log_batch(self._run_id, metrics=metrics_to_log)
+            except Exception as e:
+                logger.warning(f"Failed to log batch metrics to MLflow: {e}")
 
         if checkpoint and self._save_checkpoints and self._run_id:
             try:
