@@ -241,8 +241,6 @@ def setup_tracing(
     component_id: str,
     component_type: Optional["ServeComponentType"] = None,  # noqa: F821
     tracing_config: Optional["TracingConfig"] = None,  # noqa: F821
-    tracing_exporter_import_path: Optional[str] = None,
-    tracing_sampling_ratio: Optional[float] = None,
 ) -> bool:
     """
     Set up tracing for a specific Serve component.
@@ -251,12 +249,9 @@ def setup_tracing(
         component_name: The name of the component.
         component_id: The unique identifier of the component.
         component_type: The type of the component.
-        tracing_config: Optional TracingConfig instance. When provided,
-            exporter and sampling ratio are extracted from it.
-        tracing_exporter_import_path: Path to tracing exporter function.
-            Only used as fallback when tracing_config is None.
-        tracing_sampling_ratio: Sampling ratio for traces (0.0 to 1.0).
-            Only used as fallback when tracing_config is None.
+        tracing_config: Optional TracingConfig instance. When provided, the
+            exporter and sampling ratio are read from it. When None, tracing
+            falls back to the RAY_SERVE_TRACING_* environment variables.
 
     Returns:
         bool: True if tracing setup is successful, False otherwise.
@@ -274,11 +269,9 @@ def setup_tracing(
             tracing_exporter_import_path = DEFAULT_TRACING_EXPORTER_IMPORT_PATH
         tracing_sampling_ratio = tracing_config.sampling_ratio
     else:
-        # Fall back to env vars / explicit kwargs
-        if tracing_exporter_import_path is None:
-            tracing_exporter_import_path = RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH
-        if tracing_sampling_ratio is None:
-            tracing_sampling_ratio = RAY_SERVE_TRACING_SAMPLING_RATIO
+        # No TracingConfig provided: fall back to env-var configuration.
+        tracing_exporter_import_path = RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH
+        tracing_sampling_ratio = RAY_SERVE_TRACING_SAMPLING_RATIO
 
     if tracing_exporter_import_path == "":
         _tracing_enabled = False

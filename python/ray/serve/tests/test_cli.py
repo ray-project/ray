@@ -105,6 +105,43 @@ def test_deploy_config_default_num_replicas_no_replica_restart(
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deploy_config_tracing_config_declarative_flow(serve_instance, tmp_path):
+    """Tracing config in the serve config (declarative flow) is applied via `serve deploy`.
+
+    Deploys a config with a top-level ``tracing_config`` and verifies the
+    controller applied it (i.e. ``get_tracing_config`` reflects the YAML), so
+    replicas started for the config pick it up.
+    """
+    client = serve_instance
+    config = {
+        "tracing_config": {"enabled": True, "sampling_ratio": 1.0},
+        "applications": [
+            {
+                "name": SERVE_DEFAULT_APP_NAME,
+                "import_path": "ray.serve.tests.test_config_files.pid.node",
+            }
+        ],
+    }
+    config_file_name = str(tmp_path / "serve_config.yaml")
+    with open(config_file_name, "w") as config_file:
+        yaml.safe_dump(config, config_file)
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    def check_running() -> bool:
+        app_status = serve.status().applications.get(SERVE_DEFAULT_APP_NAME)
+        return app_status is not None and app_status.status == "RUNNING"
+
+    wait_for_condition(check_running, timeout=30)
+
+    # The tracing config from the serve config reached the controller.
+    tracing_config = ray.get(client._controller.get_tracing_config.remote())
+    assert tracing_config is not None
+    assert tracing_config.enabled is True
+    assert tracing_config.sampling_ratio == 1.0
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy_basic(serve_instance):
     """Deploys some valid config files and checks that the deployments work."""
     # Create absolute file names to YAML config files

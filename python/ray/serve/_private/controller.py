@@ -1227,6 +1227,12 @@ class ServeController:
         )
         self._target_capacity = config.target_capacity
 
+        # If a global tracing config is provided in the declarative config,
+        # store it so replicas and proxies started for this config pick it up
+        # when they fetch the tracing config from the controller.
+        if config.tracing_config is not None:
+            self.global_tracing_config = config.tracing_config
+
         for app_config in config.applications:
             # If the application logging config is not set, use the global logging
             # config.

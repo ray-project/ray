@@ -1086,6 +1086,10 @@ class ServeDeploySchema(BaseModel):
         default=None,
         description="Logging config for configuring serve components logs.",
     )
+    tracing_config: Optional[TracingConfig] = Field(
+        default=None,
+        description="Tracing config for configuring serve components tracing.",
+    )
     applications: List[ServeApplicationSchema] = Field(
         ..., description="The set of applications to run on the Ray cluster."
     )
