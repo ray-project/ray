@@ -1,0 +1,67 @@
+/* Styles for the custom 404 page (DOC-945).
+ *
+ * Everything is scoped under `.notfound-page` so these rules only affect the
+ * 404 template (_templates/404.html) and never leak into other pages. Colors
+ * use the pydata-sphinx-theme CSS variables so the page follows light/dark
+ * mode automatically. */
+
+.notfound-page {
+  max-width: 42rem;
+  margin: 4rem auto;
+  padding: 0 1rem;
+  text-align: center;
+}
+
+.notfound-code {
+  margin: 0;
+  font-size: 5rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--pst-color-primary);
+}
+
+.notfound-title {
+  margin-top: 0.5rem;
+}
+
+.notfound-lead {
+  font-size: 1.1rem;
+  color: var(--pst-color-text-muted);
+}
+
+.notfound-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+  margin: 2rem 0;
+}
+
+.notfound-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--pst-color-border);
+  border-radius: 0.5rem;
+  background: var(--pst-color-surface);
+  color: var(--pst-color-text-base);
+  text-decoration: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.notfound-link:hover {
+  border-color: var(--pst-color-primary);
+  background: var(--pst-color-on-surface);
+  text-decoration: none;
+}
+
+.notfound-link i {
+  font-size: 1.15rem;
+  color: var(--pst-color-primary);
+}
+
+.notfound-search-hint {
+  font-size: 0.95rem;
+  color: var(--pst-color-text-muted);
+}
