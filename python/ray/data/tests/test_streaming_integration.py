@@ -614,14 +614,17 @@ def test_streaming_split_context(ray_start_10_cpus_shared):
 
 
 def test_streaming_split_dataset_tag(ray_start_10_cpus_shared):
-    """Test that _get_dataset_tag() returns correct tags from the coordinator."""
+    """Test that _get_metrics_tags() returns correct tags from the coordinator."""
     ds = ray.data.range(10)
     i1, i2 = ds.streaming_split(2, equal=True)
 
-    tag1 = i1._get_dataset_tag()
-    tag2 = i2._get_dataset_tag()
-    assert "_split_0" in tag1
-    assert "_split_1" in tag2
+    tags1 = i1._get_metrics_tags()
+    tags2 = i2._get_metrics_tags()
+    # The dataset id (execution id) is shared; the split index is surfaced as
+    # the per-consumer ``rank`` tag.
+    assert tags1["dataset"] == tags2["dataset"]
+    assert tags1["rank"] == "0"
+    assert tags2["rank"] == "1"
 
 
 def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_data_context):
