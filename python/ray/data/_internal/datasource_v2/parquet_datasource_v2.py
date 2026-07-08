@@ -301,6 +301,15 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         # datasource itself stays immutable — fall back to the
         # constructor-provided one for direct users of this API.
         partitioning = options.get("partitioning", self._partitioning)
+        ctx = DataContext.get_current()
+        # Per-batch decode target. Defaults to ``target_max_block_size`` but can
+        # be set independently via ``parquet_reader_target_batch_size_bytes`` to
+        # decode in finer batches (lower transient memory) without changing the
+        # output-block size. Only ``None`` (unset) falls back -- an explicit
+        # value (including ``0``) is honored verbatim.
+        target_batch_size = ctx.parquet_reader_target_batch_size_bytes
+        if target_batch_size is None:
+            target_batch_size = ctx.target_max_block_size
         return ParquetScanner(
             schema=schema,
             filesystem=filesystem or self._filesystem,
@@ -309,13 +318,6 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
             include_row_hash=self._include_row_hash,
             shuffle=self._shuffle,
             ignore_prefixes=options.get("ignore_prefixes"),
-            # Per-batch decode target. Defaults to ``target_max_block_size`` but
-            # can be set independently via ``parquet_reader_target_batch_size_bytes``
-            # to decode in finer batches (lower transient memory) without
-            # changing the output-block size.
-            target_block_size=(
-                DataContext.get_current().parquet_reader_target_batch_size_bytes
-                or DataContext.get_current().target_max_block_size
-            ),
+            target_block_size=target_batch_size,
             parquet_format_kwargs=dict(self._parquet_format_kwargs),
         )

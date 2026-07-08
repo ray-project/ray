@@ -4,6 +4,7 @@ from typing import Optional
 
 import numpy as np
 
+from ray.data._internal.datasource_v2.coercion import finite_float
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.file_reader import FileReader
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -150,18 +151,6 @@ class ParquetInMemorySizeEstimator(InMemorySizeEstimator):
         return self._encoding_ratio * manifest.file_sizes
 
 
-def _as_finite_float(value) -> float:
-    """Coerce ``value`` to a float, mapping ``None`` and ``NaN`` to ``0.0``.
-
-    File sizes can be ``None`` (e.g. ``HTTPFileSystem``, which doesn't report
-    sizes) or surface as ``NaN`` from a nullable size column; either would make
-    a downstream ``float(...)`` raise.
-    """
-    if value is None or value != value:  # ``value != value`` is True only for NaN
-        return 0.0
-    return float(value)
-
-
 @DeveloperAPI
 class ParquetFooterDerivedInMemorySizeEstimator(InMemorySizeEstimator):
     """Parquet-specific estimator that reads the per-chunk footer-derived hint.
@@ -216,5 +205,5 @@ class ParquetFooterDerivedInMemorySizeEstimator(InMemorySizeEstimator):
                         path,
                         self._fallback_ratio,
                     )
-                out[i] = _as_finite_float(file_sizes[i]) * self._fallback_ratio
+                out[i] = finite_float(file_sizes[i]) * self._fallback_ratio
         return out

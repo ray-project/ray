@@ -14,6 +14,7 @@ from typing import Dict, Optional, Tuple
 
 from ray._common.utils import env_bool
 from ray.data._internal.datasource_v2.chunkers.file_chunker import ChunkMetadata
+from ray.data._internal.datasource_v2.coercion import finite_float, finite_int
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
     FilePartitioner,
@@ -25,32 +26,6 @@ from ray.data._internal.weighted_round_robin import _WeightedBucket
 
 # One accumulated chunk: (path, file_size, chunk_metadata, intra-file sort key).
 _ChunkItem = Tuple[str, int, Optional[ChunkMetadata], int]
-
-
-def _finite_int(value) -> int:
-    """Coerce a file size to an int, mapping ``None`` and ``NaN`` to ``0``.
-
-    File sizes can be ``None`` (e.g. ``HTTPFileSystem``); ``int(None)`` raises
-    ``TypeError`` and ``int(NaN)`` raises ``ValueError`` (and ``NaN or 0`` stays
-    ``NaN`` since ``NaN`` is truthy), so guard both here.
-    """
-    if value is None or value != value:  # ``value != value`` is True only for NaN
-        return 0
-    return int(value)
-
-
-def _finite_float(value) -> float:
-    """Coerce an in-memory size estimate to a float, mapping ``None``/``NaN`` to ``0.0``.
-
-    Estimates are floats (e.g. on-disk size * encoding ratio); keep the
-    fractional precision when accumulating them into ``_WeightedBucket.weight``
-    rather than truncating each chunk to an int, which would make the bucket's
-    running weight drift below the true total and flush late against
-    ``max_bucket_size``.
-    """
-    if value is None or value != value:  # ``value != value`` is True only for NaN
-        return 0.0
-    return float(value)
 
 
 def _chunk_sort_key(chunk_metadata: Optional[ChunkMetadata]) -> int:
@@ -214,8 +189,8 @@ class FileAffinityPartitioner(FilePartitioner):
                 self._open_buckets[path] = bucket
             sort_key = _chunk_sort_key(chunk_metadata)
             bucket.add(
-                (path, _finite_int(file_size), chunk_metadata, sort_key),
-                _finite_float(in_memory_size),
+                (path, finite_int(file_size), chunk_metadata, sort_key),
+                finite_float(in_memory_size),
             )
             # Flush this file's bucket once it reaches the size cap. Subsequent
             # chunks of the same file start a fresh bucket, so each partition is
