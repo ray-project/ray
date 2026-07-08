@@ -4,9 +4,7 @@
 
 This document provides tips on TPU usage with KubeRay.
 
-TPUs are available on Google Kubernetes Engine (GKE). To use TPUs with Kubernetes, configure
-both the Kubernetes setup and add additional values to the RayCluster CR configuration.
-Configure TPUs on GKE by referencing the {ref}`kuberay-gke-tpu-cluster-setup`.
+TPUs are available on Google Kubernetes Engine (GKE). To use TPUs with Kubernetes, configure both the Kubernetes setup and add additional values to the RayCluster CR configuration. Configure TPUs on GKE by referencing the {ref}`kuberay-gke-tpu-cluster-setup`.
 
 ## About TPUs
 
@@ -18,11 +16,7 @@ After setting up a GKE cluster with TPUs and the Ray TPU initialization webhook,
 
 ## Configuring Ray Pods for TPU usage
 
-Using any TPU accelerator requires specifying `google.com/tpu` resource `limits` and `requests` in the container fields of your `RayCluster`'s
-`workerGroupSpecs`. This resource specifies the number of TPU chips for GKE to allocate each Pod. KubeRay v1.1.0 adds a `numOfHosts`
-field to the RayCluster custom resource, specifying the number of TPU hosts to create per worker group replica. For multi-host worker groups,
-Ray treats replicas as Pod slices rather than individual workers, and creates `numOfHosts` worker nodes per replica.
-Additionally, GKE uses `gke-tpu` node selectors to schedule TPU Pods on the node matching the desired TPU accelerator and topology.
+Using any TPU accelerator requires specifying `google.com/tpu` resource `limits` and `requests` in the container fields of your `RayCluster`'s `workerGroupSpecs`. This resource specifies the number of TPU chips for GKE to allocate each Pod. KubeRay v1.1.0 adds a `numOfHosts` field to the RayCluster custom resource, specifying the number of TPU hosts to create per worker group replica. For multi-host worker groups, Ray treats replicas as Pod slices rather than individual workers, and creates `numOfHosts` worker nodes per replica. Additionally, GKE uses `gke-tpu` node selectors to schedule TPU Pods on the node matching the desired TPU accelerator and topology.
 
 Below is a config snippet for a RayCluster worker group with 2 Ray TPU worker Pods. Ray schedules each worker on its own GKE v4 TPU node belonging to the same TPU Pod slice.
 
@@ -54,9 +48,7 @@ Below is a config snippet for a RayCluster worker group with 2 Ray TPU worker Po
 
 ## TPU workload scheduling
 
-After Ray deploys a Ray Pod with TPU resources, the Ray Pod can execute tasks and actors annotated with TPU requests.
-Ray supports TPUs as a [custom resource](https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#custom-resources).
-Tasks or actors request TPUs using the decorator `@ray.remote(resources={"TPU": NUM_TPUS})`.
+After Ray deploys a Ray Pod with TPU resources, the Ray Pod can execute tasks and actors annotated with TPU requests. Ray supports TPUs as a [custom resource](https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#custom-resources). Tasks or actors request TPUs using the decorator `@ray.remote(resources={"TPU": NUM_TPUS})`.
 
 ### TPU default labels
 

@@ -389,7 +389,7 @@ class FuseOperators(Rule):
             num_partitions=up_op._num_partitions,
             reduce_fn=up_op._reduce_fn,
             disallow_block_splitting=up_op._disallow_block_splitting,
-            reduce_cpus=up_op._shuffle_reduce_task_num_cpus,
+            reduce_ray_remote_args=up_op._reduce_ray_remote_args,
             name=name,
             fused_output_map_transformer=down_op.get_map_transformer(),
             fused_output_map_task_kwargs=down_op.get_map_task_kwargs(),

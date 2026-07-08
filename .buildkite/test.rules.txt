@@ -14,7 +14,7 @@
 #   ;  # Semicolon to separate rules
 
 ! always lint
-! python cpp core_cpp java workflow cgraphs_direct_transport dashboard
+! core_python cpp core_cpp java workflow cgraphs_direct_transport dashboard
 ! ray_client runtime_env_container
 ! data dask serve ml tune train train_gpu llm rllib rllib_gpu rllib_directly
 ! linux_wheels macos_wheels docker doc python_dependencies min_build tools windows
@@ -38,13 +38,11 @@ python/deplocks/llm/*.lock
 python/ray/llm/
 doc/source/llm/
 doc/source/data/doc_code/working-with-llms/
-.buildkite/llm.rayci.yml
 ci/docker/llm.build.Dockerfile
 @ llm
 ;
 
 python/ray/data/
-.buildkite/data.rayci.yml
 ci/docker/data.build.Dockerfile
 ci/docker/data.build.wanda.yaml
 ci/docker/datan.build.wanda.yaml
@@ -65,7 +63,6 @@ python/ray/train/
 @ ml train train_gpu linux_wheels
 ;
 
-.buildkite/ml.rayci.yml
 ci/docker/ml.build.wanda.yaml
 ci/docker/mllightning2gpu.build.wanda.yaml
 ci/docker/ml.build.Dockerfile
@@ -81,18 +78,16 @@ ci/docker/min.build.wanda.yaml
 rllib/
 python/ray/rllib/
 ci/ray_ci/rllib.tests.yml
-.buildkite/rllib.rayci.yml
 @ rllib rllib_gpu rllib_directly
 ;
 
 python/ray/serve/
-.buildkite/serve.rayci.yml
 ci/docker/serve.build.Dockerfile
 @ serve linux_wheels java
 ;
 
 python/ray/dashboard/
-@ dashboard linux_wheels python
+@ dashboard linux_wheels core_python
 ;
 
 # The macOS smoke test installs this specific lock file
@@ -119,7 +114,7 @@ ci/raydepsets/configs/docs.depsets.yaml
 python/deplocks/
 ci/raydepsets/configs/
 @ ml tune train serve workflow data min_build
-@ python dashboard linux_wheels java
+@ core_python dashboard linux_wheels java
 @ python_dependencies
 ;
 
@@ -129,7 +124,7 @@ python/requirements_compiled.txt
 python/requirements_compiled_py*
 python/requirements/
 @ ml tune train serve workflow data min_build
-@ python dashboard linux_wheels macos_wheels java
+@ core_python dashboard linux_wheels macos_wheels java
 @ python_dependencies
 ;
 
@@ -141,43 +136,42 @@ python/ray/experimental/collective/
 python/ray/tests/rdt/
 python/ray/dashboard/modules/reporter/gpu_providers.py
 python/ray/tests/test_gpu_provider_on_gpu.py
-@ python cgraphs_direct_transport
+@ core_python cgraphs_direct_transport
 ;
 
 python/ray/util/client/
-@ python ray_client
+@ core_python ray_client
 ;
 
 python/ray/util/dask/
-@ python dask
+@ core_python dask
 ;
 
 python/ray/util/spark/
-@ python spark_on_ray
+@ core_python spark_on_ray
 ;
 
 python/ray/runtime_env/
-@ python runtime_env_container
+@ core_python runtime_env_container
 ;
 
 python/
-@ ml tune train data
+# Run library tests on core Python code change.
+@ core_python llm ml tune train data serve
 # Python changes might impact cross language stack in Java.
 # Java also depends on Python CLI to manage processes.
-@ python dashboard linux_wheels macos_wheels java
+@ core_python dashboard linux_wheels macos_wheels java
 ;
 
 .buildkite/core.rayci.yml
-@ python core_cpp
+@ core_python core_cpp
 ;
 
 java/
-.buildkite/others.rayci.yml
 @ java
 ;
 
 cpp/
-.buildkite/pipeline.build_cpp.yml
 @ cpp
 ;
 
@@ -297,6 +291,32 @@ ci/ci.sh
 @ tools
 ;
 
+# Per-library pipeline definition files trigger only that library's suite,
+# instead of falling through to the wildcard '*' below (which would fan out to
+# the full library suite). These must stay after the specific '.buildkite/...'
+# rules above (core/doc/lint/macos/base/*.rules.txt) and before the final '*';
+# the generic '.buildkite/*.rayci.yml' fallback must come last so the
+# per-library rules win.
+.buildkite/data.rayci.yml
+@ data
+;
+
+.buildkite/serve.rayci.yml
+@ serve linux_wheels java
+;
+
+.buildkite/ml.rayci.yml
+@ ml train train_gpu tune
+;
+
+.buildkite/llm.rayci.yml
+@ llm
+;
+
+.buildkite/*.rayci.yml
+@ java
+;
+
 src/ray/core_worker/experimental*.h
 src/ray/core_worker/experimental*.cc
 @ cgraphs_direct_transport
@@ -304,7 +324,7 @@ src/ray/core_worker/experimental*.cc
 
 src/
 @ core_cpp cpp
-@ java python linux_wheels macos_wheels
+@ java core_python linux_wheels macos_wheels
 @ dashboard release_tests
 ;
 
@@ -325,6 +345,6 @@ setup_hooks.sh
 
 *
 @ ml tune train data serve
-@ core_cpp cpp java python doc
+@ core_cpp cpp java core_python doc
 @ linux_wheels macos_wheels dashboard tools release_tests
 ;
