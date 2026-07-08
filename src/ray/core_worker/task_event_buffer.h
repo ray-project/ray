@@ -259,7 +259,11 @@ class TaskProfileEvent : public TaskEvent {
   std::string event_name_;
   int64_t start_time_{};
   int64_t end_time_{};
-  std::string extra_data_;
+  // Defaults to a valid empty-JSON object so that if the event is flushed
+  // without SetExtraData being called (e.g. the worker is torn down before the
+  // Cython ProfileEvent.__exit__ runs, which is what normally sets "{}"),
+  // consumers that json-parse this field don't choke on an empty string.
+  std::string extra_data_ = "{}";
   /// The current Ray session name.
   std::string session_name_;
 };
