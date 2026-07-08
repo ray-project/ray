@@ -130,7 +130,7 @@ def _build_schema(
     decoded tensors, plus ``task``, ``dataset_index`` and ``stats``."""
 
     # Note(Artur): Imported here rather than at module top so importing this module stays
-    # docs-safe: an eager ``ray.data.extensions`` import pulls in pandas' tensor
+    # docs-build-safe: an eager ``ray.data.extensions`` import pulls in pandas' tensor
     # extension, whose class body breaks under the docs build's mocked pandas.
     from ray.data.extensions import ArrowVariableShapedTensorType
 
@@ -351,6 +351,8 @@ def _build_root(
     """Compute the per-root derived state bundle for a lerobot
     ``LeRobotDatasetMetadata`` instance.
 
+    This is a lighter representation of the metadata that is distributed to workers.
+
     Args:
         meta: Upstream lerobot metadata for one dataset root. Not mutated.
         root: The original dataset location, where the data and video files
@@ -384,7 +386,6 @@ def _build_root(
             f"{root_uri!r}: dataset has video keys {meta.video_keys} "
             "but meta/info.json has no 'video_path' template"
         )
-    image_keys = list(meta.image_keys)
     # Episode metadata as an Arrow table, with _global_from/to_index giving each
     # episode's [from, to) span in the global frame index. lerobot v3 records this
     # authoritatively as dataset_from_index / dataset_to_index -- the same running
@@ -419,7 +420,7 @@ def _build_root(
         zip(meta.tasks["task_index"].astype(int).tolist(), meta.tasks.index.tolist())
     )
     schema = _build_schema(
-        episodes_table, meta.data_path, meta.video_keys, image_keys, fs, fs_root
+        episodes_table, meta.data_path, meta.video_keys, meta.image_keys, fs, fs_root
     )
     row_size_bytes = _estimated_row_size_bytes(meta.features)
     stats_json = _stats_to_json(meta.stats)
@@ -431,7 +432,7 @@ def _build_root(
         data_path=meta.data_path,
         video_path=video_path,
         video_keys=list(meta.video_keys),
-        image_keys=image_keys,
+        image_keys=list(meta.image_keys),
         tasks_dict=tasks_dict,
         schema=schema,
         row_size_bytes=row_size_bytes,
@@ -618,8 +619,6 @@ class _LeRobotReadTask(ReadTask):
         across batches instead of being reopened. Returns
         ``{video_key: list[np.ndarray HWC uint8]}``.
         """
-        # ``video_path`` is guaranteed non-None whenever ``video_keys`` is
-        # non-empty (enforced in :func:`_build_root`).
         assert root.video_path is not None
         n = batch.num_rows
         ep_idx_col = batch.column("episode_index").to_pylist()
@@ -937,6 +936,8 @@ class LeRobotDatasource(Datasource):
         for m, r, (fs, fs_root, video_uri, video_opts) in zip(
             self.original_metas, roots, self._resolved
         ):
+            # Note that we construct these per-root derived state bundles sequentially.
+            # So at scale we assume that the number of episodes per root is (much) larger than the number of roots.
             built_root, built_episodes = _build_root(
                 m,
                 r,

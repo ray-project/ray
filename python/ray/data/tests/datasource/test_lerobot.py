@@ -107,6 +107,7 @@ def create_lerobot_dataset(
         "total_episodes": num_episodes,
         "total_tasks": 1,
         "fps": FPS,
+        # Note that the zero padded integers are derived from how lerobot datasets are written.
         "data_path": "data/chunk-{chunk_index:03d}/file-{file_index:03d}.parquet",
         "features": features,
     }
