@@ -49,6 +49,9 @@ def main(args):
     def benchmark_fn():
         path = f"s3://ray-benchmark-data/tpch/parquet/sf{args.sf}/lineitem"
 
+        if args.shuffle_strategy == "hash_shuffle":
+            DataContext.get_current().max_hash_shuffle_aggregators = 100
+
         # Configure appropriate shuffle-strategy
         DataContext.get_current().shuffle_strategy = ShuffleStrategy(
             args.shuffle_strategy
@@ -61,7 +64,10 @@ def main(args):
         )
         grouped_ds = ray.data.read_parquet(
             path, override_num_blocks=override_num_blocks
-        ).groupby(args.group_by)
+        ).groupby(
+            args.group_by,
+            num_partitions=100 if args.shuffle_strategy == "hash_shuffle" else None,
+        )
         consume_fn(grouped_ds)
 
         # Report arguments for the benchmark.
