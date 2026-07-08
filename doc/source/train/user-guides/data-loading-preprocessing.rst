@@ -682,7 +682,10 @@ where data tasks can actually run. It requires adding labels to your worker node
 
 .. code-block:: python
 
+    import ray
     from ray.data import ExecutionOptions
+    from ray.train import DataConfig
+    from ray.train.torch import TorchTrainer
 
     # (1) Pin construction-time tasks (schema inference, file listing).
     ctx = ray.data.DataContext.get_current().copy()
@@ -692,10 +695,10 @@ where data tasks can actually run. It requires adding labels to your worker node
 
     # (2) Pin per-worker ingest — Train replaces ds.context options
     # wholesale, so the selector must be restated here.
-    trainer = ray.train.torch.TorchTrainer(
+    trainer = TorchTrainer(
         ...,
         datasets={"train": train_dataset},
-        dataset_config=ray.train.DataConfig(
+        dataset_config=DataConfig(
             datasets_to_split=["train"],
             execution_options={
                 "train": ExecutionOptions(
