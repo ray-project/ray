@@ -662,9 +662,12 @@ In general, adding CPU-only nodes can help in two ways:
 Isolating Ray Data worker processes from training nodes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When training workers reserve most or all CPUs on their nodes, Ray Data can't schedule tasks there.
-However, Ray Data still counts those nodes' object store memory in its budget, which inflates the
-budget beyond what is actually usable and can cause unexpected spilling.
+You may sometimes want to prevent Ray Data CPU tasks from running on training worker nodes
+when training workers themselves run CPU/RAM-heavy operations
+such as storing large local shuffle buffers or running expensive collate functions.
+Launching more Ray Data processes would oversubscribe the training worker nodes.
+Instead, the Ray Data tasks should run on a separate set of CPU nodes in your heterogeneous
+cluster (ex: 4 GPU training nodes + 4 CPU-only nodes).
 
 One workaround is to force full-node exclusion by reserving all CPUs per training worker via
 ``resources_per_worker={"CPU": node_cpus // num_gpus_per_node, "GPU": 1}`` in ``ScalingConfig``.
@@ -704,11 +707,9 @@ where data tasks can actually run. It requires adding labels to your worker node
 
 .. tip::
 
-    Node isolation is most often needed when training workers run CPU-heavy operations
-    like large local shuffle buffers or expensive collate functions in-process, consuming
-    CPUs that Ray Data would otherwise use for its tasks.
-    Before isolating nodes, consider offloading that heavy work from training workers to the
-    data pipeline instead: :ref:`scale out expensive collation <scaling_collation_functions>`
+    Before resorting to isolating Ray Data tasks from training nodes, consider offloading that
+    heavy work from training workers to the data pipeline instead:
+    :ref:`scale out expensive collation <scaling_collation_functions>`
     and use :ref:`map_batches-based shuffling <map_batches_shuffle>` in place of large local
     shuffle buffers. These reduce CPU pressure on training workers and often eliminate the
     need for node isolation entirely.
