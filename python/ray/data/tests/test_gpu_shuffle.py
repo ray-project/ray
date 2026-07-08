@@ -31,6 +31,7 @@ from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
 from ray.data._internal.util import explain_plan
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.tests.conftest import noop_counter
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -433,6 +434,7 @@ class TestGPUShuffleOperatorFinalization:
             )
         op._rank_pool._actors = mock_actors
         op._rank_pool._nranks = nranks
+        op._block_ref_counter = noop_counter()
         return op, mock_actors
 
     def test_finalization_not_started_until_inputs_complete(self):

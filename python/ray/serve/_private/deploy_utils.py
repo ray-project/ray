@@ -15,6 +15,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve.exceptions import RayServeException
 from ray.serve.schema import ServeApplicationSchema
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -31,6 +32,7 @@ def get_deploy_args(
     serialized_autoscaling_policy_def: Optional[bytes] = None,
     serialized_request_router_cls: Optional[bytes] = None,
     serialized_deployment_actors: Optional[Dict[str, bytes]] = None,
+    uses_multiplexing: bool = False,
 ) -> Dict:
     """
     Takes a deployment's configuration, and returns the arguments needed
@@ -57,6 +59,7 @@ def get_deploy_args(
         "serialized_autoscaling_policy_def": serialized_autoscaling_policy_def,
         "serialized_request_router_cls": serialized_request_router_cls,
         "serialized_deployment_actors": serialized_deployment_actors,
+        "uses_multiplexing": uses_multiplexing,
     }
 
     return controller_deploy_args
@@ -71,6 +74,7 @@ def deploy_args_to_deployment_info(
     ingress: bool = False,
     ingress_request_router: bool = False,
     route_prefix: Optional[str] = None,
+    uses_multiplexing: bool = False,
     **kwargs,
 ) -> DeploymentInfo:
     """Takes deployment args passed to the controller after building an application and
@@ -79,9 +83,20 @@ def deploy_args_to_deployment_info(
 
     deployment_config = DeploymentConfig.from_proto_bytes(deployment_config_proto_bytes)
 
-    # Floor the timeout so the controller's force-kill can't cut the
-    # direct-ingress drain (min draining period) short.
     if ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        # Model multiplexing relies on the multiplexed model ID being propagated through
+        # the proxy, which direct ingress bypasses (the model ID is never populated).
+        # Only the *statically* detectable case is caught here; dynamically-initialized
+        # multiplexing is caught at replica initialization.
+        if uses_multiplexing:
+            raise RayServeException(
+                f'Ingress deployment "{deployment_name}" in application "{app_name}" uses '
+                "model multiplexing (`@serve.multiplexed`), which is not supported on the "
+                "ingress deployment when direct ingress or HAProxy is enabled."
+            )
+
+        # Floor the timeout so the controller's force-kill can't cut the
+        # direct-ingress drain (min draining period) short.
         floor_s = (
             RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S
             + RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S

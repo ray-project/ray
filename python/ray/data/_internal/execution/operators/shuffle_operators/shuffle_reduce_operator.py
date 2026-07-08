@@ -62,7 +62,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         disallow_block_splitting: If True, output blocks are emitted as-is
             without being reshaped to `target_max_block_size` — required
             for hash-shuffle's "partition = block" contract.
-        reduce_cpus: CPU request per reduce task.  Defaults to 1.
+        reduce_ray_remote_args: Remote args for the reducer tasks.
         name: Display name shown in progress bars and logs.
         fused_output_map_transformer: Set by ``FuseOperators`` when a
             ``TaskPoolMapOperator`` directly downstream is fused into this
@@ -84,7 +84,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         num_partitions: int,
         reduce_fn: ReduceFn,
         disallow_block_splitting: bool = False,
-        reduce_cpus: Optional[float] = None,
+        reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         name: str = "ShuffleReduce",
         fused_output_map_transformer: Optional["MapTransformer"] = None,
         fused_output_map_task_kwargs: Optional[Dict[str, Any]] = None,
@@ -106,10 +106,8 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         self._disallow_block_splitting: bool = disallow_block_splitting
 
         # -- Reduce task config & tracking -----------------------------------
-        self._shuffle_reduce_task_num_cpus: float = (
-            reduce_cpus
-            if reduce_cpus is not None
-            else self._DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS
+        self._reduce_ray_remote_args: Dict[str, Any] = dict(
+            reduce_ray_remote_args or {}
         )
         self._shuffle_reduce_tasks: Dict[int, DataOpTask] = {}
         self._num_reduce_tasks_submitted: int = 0
@@ -136,6 +134,17 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
 
         # -- Sub-progress bars -----------------------------------------------
         self._reduce_bar: Optional["BaseProgressBar"] = None
+
+    def _reduce_task_remote_args(self, memory_estimate: int) -> Dict[str, Any]:
+        remote_args: Dict[str, Any] = {
+            "num_cpus": self._DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS,
+            "scheduling_strategy": "SPREAD",
+        }
+        if memory_estimate > 0:
+            remote_args["memory"] = memory_estimate
+        remote_args.update(self._reduce_ray_remote_args)
+        remote_args["num_returns"] = "streaming"
+        return remote_args
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         """Buffer this input's partition-bundle; submit when all inputs paired.
@@ -204,18 +213,11 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         shard_refs_by_input = [list(b.block_refs) for b in bundles]
         estimated_bytes = sum((m.size_bytes or 0) for b in bundles for m in b.metadata)
 
-        reduce_resources: Dict[str, Any] = {
-            "num_cpus": self._shuffle_reduce_task_num_cpus,
-        }
-        if estimated_bytes > 0:
-            reduce_resources["memory"] = int(
-                estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER
-            )
-        reduce_options = {
-            **reduce_resources,
-            "scheduling_strategy": "SPREAD",
-            "num_returns": "streaming",
-        }
+        reduce_options = self._reduce_task_remote_args(
+            int(estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
+            if estimated_bytes > 0
+            else 0
+        )
 
         target_max_block_size = (
             None
@@ -252,15 +254,15 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         data_task = DataOpTask(
             task_index=partition_id,
             streaming_gen=block_gen,
+            block_ref_counter=self._block_ref_counter,
+            producer_id=self.id,
             output_ready_callback=functools.partial(
                 self._handle_reduce_output_ready, partition_id
             ),
             task_done_callback=functools.partial(
                 self._handle_reduce_done, partition_id, bundles
             ),
-            task_resource_bundle=ExecutionResources.from_resource_dict(
-                reduce_resources
-            ),
+            task_resource_bundle=ExecutionResources.from_resource_dict(reduce_options),
             operator_name=self.name,
         )
 
@@ -295,6 +297,12 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         )
         refs.destroy_if_owned()
 
+        # Empty partition creates a new block; register it for memory tracking.
+        self._block_ref_counter.on_block_produced(
+            out_bundle.blocks[0].ref,  # pyrefly: ignore[bad-argument-type]
+            block_meta.size_bytes or 0,
+            self.id,
+        )
         self._num_reduce_tasks_submitted += 1
         self._output_queue.append(out_bundle)
         self._metrics.on_output_queued(out_bundle)
@@ -417,9 +425,8 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         if sizes:
             avg_bytes = sum(sizes) / len(sizes)
             memory = int(avg_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
-        return ExecutionResources(
-            cpu=self._shuffle_reduce_task_num_cpus,
-            memory=memory,
+        return ExecutionResources.from_resource_dict(
+            self._reduce_task_remote_args(memory)
         )
 
     def min_scheduling_resources(self) -> ExecutionResources:

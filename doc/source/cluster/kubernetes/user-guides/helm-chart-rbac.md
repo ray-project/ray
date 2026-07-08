@@ -2,8 +2,7 @@
 
 # Helm Chart RBAC
 
-KubeRay utilizes [Kubernetes Role-Based Access Control (RBAC) resources](https://kubernetes.io/docs/reference/access-authn-authz/rbac/) to grant permissions for monitoring and managing resources.
-This document describes how to configure the KubeRay Helm chart to create RBAC resources for 3 different use cases.
+KubeRay utilizes [Kubernetes Role-Based Access Control (RBAC) resources](https://kubernetes.io/docs/reference/access-authn-authz/rbac/) to grant permissions for monitoring and managing resources. This document describes how to configure the KubeRay Helm chart to create RBAC resources for 3 different use cases.
 
 * [Case 1: Watch all namespaces in the Kubernetes cluster](case1-watch-all-namespaces)
 * [Case 2: Watch the namespace where the operator is deployed](case2-watch-1-namespace)
@@ -11,8 +10,7 @@ This document describes how to configure the KubeRay Helm chart to create RBAC r
 
 ## Parameters
 
-You can configure the KubeRay Helm chart to create RBAC resources for different use cases by modifying the following parameters in the [values.yaml](https://github.com/ray-project/kuberay/blob/master/helm-chart/kuberay-operator/values.yaml).
-Then, you can install the KubeRay Helm chart with the modified **values.yaml**.
+You can configure the KubeRay Helm chart to create RBAC resources for different use cases by modifying the following parameters in the [values.yaml](https://github.com/ray-project/kuberay/blob/master/helm-chart/kuberay-operator/values.yaml). Then, you can install the KubeRay Helm chart with the modified **values.yaml**.
 
 ```shell
 # Step 1: Clone the KubeRay repository
@@ -33,8 +31,7 @@ helm install kuberay-operator .
 * **`crNamespacedRbacEnable`**
   * Set to `true` in most cases. Set to `false` in the uncommon case of using a Kubernetes cluster managed by GitOps tools such as ArgoCD. For additional details, refer to [ray-project/kuberay#1162](https://github.com/ray-project/kuberay/pull/1162). Default: true.
 
-The [values.yaml](https://github.com/ray-project/kuberay/blob/master/helm-chart/kuberay-operator/values.yaml) file contains detailed descriptions of the parameters.
-See these pull requests for more context on parameters:
+The [values.yaml](https://github.com/ray-project/kuberay/blob/master/helm-chart/kuberay-operator/values.yaml) file contains detailed descriptions of the parameters. See these pull requests for more context on parameters:
 * [ray-project/kuberay#1106](https://github.com/ray-project/kuberay/pull/1106)
 * [ray-project/kuberay#1162](https://github.com/ray-project/kuberay/pull/1162)
 * [ray-project/kuberay#1190](https://github.com/ray-project/kuberay/pull/1190)
@@ -44,8 +41,7 @@ See these pull requests for more context on parameters:
 
 ![Watch all namespaces in the Kubernetes cluster](../images/rbac-clusterrole.svg)
 
-By default, the informer of the KubeRay operator watches all namespaces in the Kubernetes cluster.
-The operator has cluster-scoped access to create and manage resources, using ClusterRole and ClusterRoleBinding.
+By default, the informer of the KubeRay operator watches all namespaces in the Kubernetes cluster. The operator has cluster-scoped access to create and manage resources, using ClusterRole and ClusterRoleBinding.
 
 ```shell
 # Create a Kubernetes cluster using Kind.
@@ -86,8 +82,7 @@ kubectl get raycluster -A
 
 ![Watch the namespace where you deployed the operator](../images/rbac-role-one-namespace.svg)
 
-The informer of the KubeRay operator watches the namespace where you deployed the operator.
-The operator has Role and RoleBinding in the same namespace.
+The informer of the KubeRay operator watches the namespace where you deployed the operator. The operator has Role and RoleBinding in the same namespace.
 
 * Modify the `singleNamespaceInstall` parameter in the `values.yaml` file to `true`.
   ```shell
@@ -134,9 +129,7 @@ kubectl get raycluster -A
 
 ![Watch multiple namespaces in the Kubernetes cluster](../images/rbac-role-multi-namespaces.svg)
 
-In Case 2, users with only namespaced access deploy a separate KubeRay operator for each namespace.
-This approach can increase maintenance overhead, especially when upgrading versions for each deployed instance.
-Case 3 creates Role and RoleBinding for multiple namespaces, allowing a single KubeRay operator to monitor several namespaces.
+In Case 2, users with only namespaced access deploy a separate KubeRay operator for each namespace. This approach can increase maintenance overhead, especially when upgrading versions for each deployed instance. Case 3 creates Role and RoleBinding for multiple namespaces, allowing a single KubeRay operator to monitor several namespaces.
 
 * Modify the `singleNamespaceInstall` and `watchNamespace` parameters in the `values.yaml` file.
   ```shell
