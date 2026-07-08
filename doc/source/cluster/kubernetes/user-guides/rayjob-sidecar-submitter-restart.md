@@ -9,6 +9,13 @@ This guide walks through enabling the `SidecarSubmitterRestart` feature gate and
 * KubeRay v1.7.0 or higher.
 * Ray v2.54.0 or higher.
 
+## Behavior and caveats
+
+* The submitter container's `restartPolicy` is set to `OnFailure` at the container level, independent of the head Pod's pod-level `restartPolicy: Never`. A non-zero exit code restarts only the submitter container in place without restarting the `ray-head` container. A failure in the Ray job's own code doesn't make the submitter exit non-zero, so it won't trigger a restart by itself.
+* On restart, the submitter checks the Ray job status first. If the Ray job is still running, the submitter reattaches to the log stream instead of resubmitting, so a dropped log-follow connection doesn't force-kill a running job.
+* The KubeRay operator only validates the API server version. Per the Kubernetes version skew policy, worker node kubelets can be up to 3 minor versions older, so the node running the Ray head Pod must also be on v1.35+. If that kubelet doesn't support `ContainerRestartRules`, the per-container restart policy is silently ignored, and the operator's default 30-second submitter-finished timeout can mark the RayJob `Failed` even though the Ray job is still running.
+* Exceeding `submitterConfig.backoffLimit` still marks the RayJob as failed even if the Ray job itself is still running.
+
 ## Verifying SidecarSubmitterRestart on kind
 
 ### Step 1: Create a Kubernetes v1.35+ cluster on kind
