@@ -415,7 +415,7 @@ class _ControllableFakeCall:
     def done(self) -> bool:
         return self._done
 
-    def exception(self):
+    async def exception(self):
         if not self._done:
             raise asyncio.InvalidStateError("Call is not done.")
         return self._exception
@@ -468,6 +468,7 @@ class TestDoneCallbackTranslation:
         result.add_done_callback(lambda r: received.append(r))
 
         fake_call.fire_done()
+        await asyncio.sleep(0)
 
         # Filter out the in-flight-tracking callback's invocation (it was
         # registered in gRPCReplicaResult.__init__ and also fires; its return
@@ -483,6 +484,7 @@ class TestDoneCallbackTranslation:
         result.add_done_callback(lambda r: received.append(r))
 
         fake_call.fire_done()
+        await asyncio.sleep(0)
 
         # A done-but-not-failed call should not be replaced with a Ray error;
         # the call object itself is delivered.
@@ -501,6 +503,7 @@ class TestDoneCallbackTranslation:
         result.add_done_callback(lambda r: received.append(r))
 
         fake_call.fire_done()
+        await asyncio.sleep(0)
 
         assert len(received) == 1
         assert received[0] is fake_call
@@ -518,6 +521,7 @@ class TestDoneCallbackTranslation:
         result.add_done_callback(lambda r: received.append(r))
 
         fake_call.fire_done()
+        await asyncio.sleep(0)
 
         assert len(received) == 1
         assert received[0] is fake_call
@@ -533,6 +537,7 @@ class TestDoneCallbackTranslation:
         result.add_done_callback(lambda r: received.append(r))
 
         fake_call.fire_done()
+        await asyncio.sleep(0)
 
         assert len(received) == 1
         assert received[0] is already_translated

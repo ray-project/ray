@@ -62,7 +62,7 @@ class ControllableFakeCall:
     def done(self) -> bool:
         return self._done
 
-    def exception(self):
+    async def exception(self):
         if not self._done:
             raise asyncio.InvalidStateError("Call is not done.")
         return self._exception
@@ -125,6 +125,7 @@ async def main():
 
     # Fire the done callback to simulate request completion.
     fake_call.fire_done()
+    await asyncio.sleep(0)
 
     if not received:
         print("\n❌ NO CALLBACK FIRED — something is wrong.")
