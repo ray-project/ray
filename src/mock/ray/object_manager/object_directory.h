@@ -60,6 +60,13 @@ class MockObjectDirectory : public IObjectDirectory {
                const bool spilled_to_local_storage),
               (override));
 
+  MOCK_METHOD(void,
+              ReportObjectPrimaryMoved,
+              (const ObjectID &object_id,
+               const NodeID &node_id,
+               const rpc::Address &owner_address),
+              (override));
+
   MOCK_METHOD(void, RecordMetrics, (uint64_t duration_ms), (override));
 
   MOCK_METHOD(std::string, DebugString, (), (const, override));
