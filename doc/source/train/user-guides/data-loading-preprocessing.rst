@@ -704,7 +704,10 @@ where data tasks can actually run. It requires adding labels to your worker node
 
 .. tip::
 
-    Before isolating nodes, consider offloading heavy work from training workers to the
+    Node isolation is most often needed when training workers run CPU-heavy operations
+    like large local shuffle buffers or expensive collate functions in-process, consuming
+    CPUs that Ray Data would otherwise use for its tasks.
+    Before isolating nodes, consider offloading that heavy work from training workers to the
     data pipeline instead: :ref:`scale out expensive collation <scaling_collation_functions>`
     and use :ref:`map_batches-based shuffling <map_batches_shuffle>` in place of large local
     shuffle buffers. These reduce CPU pressure on training workers and often eliminate the
