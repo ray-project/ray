@@ -28,8 +28,8 @@ namespace ray {
 namespace observability {
 
 // RayTaskEventRecorder is the task-event-specific RayEventRecorderInterface impl. Unlike
-// the generic RayEventRecorder (a single FIFO drop-oldest buffer), it preserves the
-// drop semantics of the legacy task event buffer (see core_worker/task_event_buffer):
+// the generic RayEventRecorder (a single FIFO drop-oldest buffer), it applies
+// per-task-attempt drop semantics:
 //
 //   - Status events (definition + lifecycle) live in a bounded ring. On overflow the
 //     evicted event's task attempt is recorded as dropped, and later events for
@@ -37,8 +37,8 @@ namespace observability {
 //     via RayEventsData.task_events_metadata.dropped_task_attempts. For a task attempt,
 //     either all events are sent out or none is sent out.
 //   - Profile events are stored per attempt with a per-task cap and a global cap; on
-//     overflow the newest profile event is dropped (counted as a dropped-event metric)
-//     Dropped profile events are not reported. They are metric only.
+//     overflow the newest profile event is dropped (counted as a dropped-event metric).
+//     Dropped profile events are not reported — metric only.
 //
 // Events passed to AddEvents must implement TaskRayEventInterface.
 //
