@@ -20,10 +20,34 @@ SKIP_PYTHON_PACKAGES=1 ./ci/env/install-dependencies.sh
 PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.minor}')")"
 pip install --no-deps -r python/deplocks/llm/rayllm_test_${PYTHON_CODE}_${RAY_CUDA_CODE}.lock
 
-# NOTE: The RayExecutorV2 GPU-collision workaround (vllm-cuda-visible-devices-patch)
-# was dropped for vLLM 0.24.0, which merged vllm-project/vllm#44466 (workers now
-# receive an explicit logical-to-physical GPU mapping instead of vLLM mutating
-# CUDA_VISIBLE_DEVICES). The patch is obsolete and no longer applies.
+# Include the CUDA device index in vLLM's compile cache paths so a worker never
+# reloads a torch.compile artifact built for a different physical GPU.
+# TODO (jeffreywang): Remove this patch once https://github.com/vllm-project/vllm/pull/38962 lands.
+VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH="$(pwd)/python/requirements/llm/patches/vllm-device-aware-compile-cache.patch"
+VLLM_SITE_PACKAGES="$(python - <<'PY'
+import site
+import sysconfig
+from pathlib import Path
+
+candidate_dirs = [
+    Path(sysconfig.get_paths()["purelib"]),
+    Path(sysconfig.get_paths()["platlib"]),
+    *(Path(path) for path in site.getsitepackages()),
+]
+
+for base_dir in dict.fromkeys(candidate_dirs):
+    import_utils = base_dir / "vllm" / "utils" / "import_utils.py"
+    if import_utils.exists():
+        print(base_dir)
+        break
+else:
+    raise SystemExit("vLLM import_utils.py not found")
+PY
+)"
+(
+    cd "${VLLM_SITE_PACKAGES}"
+    git apply "${VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH}"
+)
 
 EOF
 
