@@ -352,6 +352,17 @@ def plan_all_to_all_op(
         )
 
     elif isinstance(op, Aggregate):
+        # External-shuffle only implements Repartition today. Aggregate would
+        # otherwise silently fall through to the plasma-based HashAggregate
+        # (or the generic AllToAll aggregate) — leaving the user thinking
+        # they're on the external path while plasma-pressure builds. Fail
+        # loudly with an actionable message.
+        if data_context.use_external_hash_shuffle:
+            raise NotImplementedError(
+                "External hash-shuffle currently supports Repartition only; "
+                "got Aggregate. Set DataContext.use_external_hash_shuffle=False "
+                "to use the plasma-based HashAggregate path."
+            )
         if data_context.shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
             return _plan_gpu_shuffle_aggregate(data_context, op, input_physical_dag)
         elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
