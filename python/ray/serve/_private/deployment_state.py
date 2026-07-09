@@ -59,7 +59,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
-    RAY_SERVE_RECON_OPT,
     RAY_SERVE_RETAINED_DEAD_REPLICAS,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
@@ -4546,7 +4545,7 @@ class DeploymentState:
     def _record_health_check_metrics(self, replica) -> None:
         """Record health-check latency + failure metrics for one replica.
 
-        Shared by the RAY_SERVE_RECON_OPT in-place path and the pop/re-add path
+        Shared by the in-place path and the pop/re-add (gang) path
         in ``check_and_update_replicas``.
         """
         if replica.last_health_check_latency_ms is not None:
@@ -4595,12 +4594,12 @@ class DeploymentState:
         healthy_replicas: List[DeploymentReplica] = []
         unhealthy_replicas: List[DeploymentReplica] = []
 
-        # Profile-guided (RAY_SERVE_RECON_OPT): for the common non-gang case, iterate
+        # Profile-guided: for the common non-gang case, iterate
         # RUNNING/PENDING_MIGRATION IN PLACE. Healthy replicas that stay in their state
         # bucket are never popped+re-added -> eliminates the O(num_replicas) container
         # churn on the control loop at scale. Gang deployments fall back to the
         # original pop/re-add path (their force-stop reshuffles the lists).
-        if RAY_SERVE_RECON_OPT and not self._is_gang_deployment:
+        if not self._is_gang_deployment:
             origin: List[ReplicaState] = []
             pairs = [
                 (replica, st)
