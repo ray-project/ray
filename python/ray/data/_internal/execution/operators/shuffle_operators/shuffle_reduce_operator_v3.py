@@ -75,8 +75,16 @@ logger = logging.getLogger(__name__)
 
 
 class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
+    """V3 file-transport reduce operator.
 
-    _DEFAULT_REDUCE_NUM_CPUS = 1.0
+    Structurally mirrors ``ShuffleReduceOp``: one wrapper bundle in via
+    ``_add_input_inner``, one reduce task out. The wrapper carries
+    ``shared_handles_ref`` + partition_id sentinel; ``v3_reduce_task``
+    uses those to fetch its partition's bytes over TCP from each
+    mapper's ``ShuffleManager``.
+    """
+
+    _DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS = 1.0
     _DEFAULT_MAX_BYTES_PER_FETCH = 256 * 1024 * 1024  # 256 MiB
 
     def __init__(
@@ -86,16 +94,17 @@ class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
         *,
         num_partitions: int,
         reduce_fn: ReduceFn,
-        streaming_reduce: bool = True,
-        coalesce_output: bool = False,
         disallow_block_splitting: bool = False,
-        max_bytes_per_fetch: int = _DEFAULT_MAX_BYTES_PER_FETCH,
-        reduce_prefetch_dir: Optional[str] = None,
         reduce_cpus: Optional[float] = None,
         name: str = "ShuffleReduceV3",
-        downstream_map_transformer: Optional["MapTransformer"] = None,
-        downstream_map_task_kwargs: Optional[Dict[str, Any]] = None,
-        downstream_map_target_max_block_size_override: Optional[int] = None,
+        fused_output_map_transformer: Optional["MapTransformer"] = None,
+        fused_output_map_task_kwargs: Optional[Dict[str, Any]] = None,
+        fused_output_map_target_max_block_size_override: Optional[int] = None,
+        # -- V3-specific below --
+        streaming_reduce: bool = True,
+        coalesce_output: bool = False,
+        max_bytes_per_fetch: int = _DEFAULT_MAX_BYTES_PER_FETCH,
+        reduce_prefetch_dir: Optional[str] = None,
     ):
         super().__init__(
             name=name,
@@ -105,63 +114,50 @@ class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
 
         self._num_partitions: int = num_partitions
         self._reduce_fn: ReduceFn = reduce_fn
-        # When set, OperatorFusionRule has absorbed a downstream MapOperator
-        # (typically Write) into this reduce op. v3_reduce_task applies it
-        # to each emitted block before yielding, so the downstream task
-        # never has to run -- output of this op IS the downstream's output
-        # (e.g., the write-stats blocks Write would have produced).
-        self._downstream_map_transformer: Optional[
-            "MapTransformer"
-        ] = downstream_map_transformer
-        # map_task_kwargs the absorbed downstream MapOperator would have
-        # received via its scheduler (e.g. Write's ``{"write_uuid": ...}``).
-        # v3_reduce_task threads this into the TaskContext it builds around
-        # the transformer so datasinks that read ``ctx.kwargs[...]`` see
-        # the same values they would in the un-fused path.
-        self._downstream_map_task_kwargs: Dict[str, Any] = (
-            downstream_map_task_kwargs or {}
-        )
-        # Override for the target-max-block-size the fused downstream map
-        # would have used. Threaded into the TaskContext v3_reduce_task
-        # constructs around downstream_map_transformer, matching v2's
-        # ``fused_output_map_target_max_block_size_override`` semantics
-        # (shuffle_reduce_operator.py:106-108). ``None`` = fall back to the
-        # data_context default.
-        self._downstream_map_target_max_block_size_override: Optional[int] = (
-            downstream_map_target_max_block_size_override
-        )
-        self._coalesce_output: bool = coalesce_output
-        self._streaming_reduce: bool = streaming_reduce
-        # When True, the reduce output is emitted as a single block per
-        # partition (no target_max_block_size-driven splitting). Mirrors
-        # v2's ``disallow_block_splitting`` (shuffle_reduce_operator.py:77).
-        # Independent of ``coalesce_output``: ``coalesce_output=True`` post-
-        # concatenates ``reduce_fn`` chunks into one block; this flag
-        # instead tells the BlockOutputBuffer to not reshape at all.
         self._disallow_block_splitting: bool = disallow_block_splitting
-        self._max_bytes_per_fetch: int = max_bytes_per_fetch
-        self._reduce_prefetch_dir: Optional[str] = reduce_prefetch_dir
-        self._reduce_num_cpus: float = (
-            reduce_cpus if reduce_cpus is not None else self._DEFAULT_REDUCE_NUM_CPUS
-        )
 
-        # -- Reduce task tracking --
-        # ShuffleMapOpV3 emits one bundle per partition (never repeats a
-        # pid), so this dict never sees a collision.
+        # -- Reduce task config & tracking -----------------------------------
+        self._shuffle_reduce_task_num_cpus: float = (
+            reduce_cpus
+            if reduce_cpus is not None
+            else self._DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS
+        )
         self._shuffle_reduce_tasks: Dict[int, DataOpTask] = {}
         self._num_reduce_tasks_submitted: int = 0
 
-        # -- Output queue --
-        # Streaming generator yields (block, pickled metadata) pairs; the
-        # DataOpTask harness assembles each into a RefBundle and our
-        # callback pushes it here.
+        # -- Fused downstream map --------------------------------------------
+        self._fused_output_map_transformer: Optional[
+            "MapTransformer"
+        ] = fused_output_map_transformer
+        self._fused_output_map_task_kwargs: Dict[str, Any] = (
+            fused_output_map_task_kwargs or {}
+        )
+        self._fused_output_map_target_max_block_size_override: Optional[int] = (
+            fused_output_map_target_max_block_size_override
+        )
+
+        # -- Output queue ----------------------------------------------------
         self._output_queue: deque = deque()
 
-        # -- Stats --
+        # -- Stats -----------------------------------------------------------
         self._output_blocks_stats: List[BlockStats] = []
 
-        # -- Sub-progress bar --
+        # -- Sub-progress bars -----------------------------------------------
         self._reduce_bar: Optional["BaseProgressBar"] = None
+
+        # =====================================================================
+        # V3-specific state below.
+        # =====================================================================
+
+        # v3_reduce_task behavior knobs (no v2 counterpart):
+        # - ``streaming_reduce``: incremental flush vs accumulate-then-reduce
+        # - ``coalesce_output``: concat all reduce_fn output into one block
+        # - ``max_bytes_per_fetch``: cap per-FETCH byte volume
+        # - ``reduce_prefetch_dir``: staging dir for prefetch.bin
+        self._streaming_reduce: bool = streaming_reduce
+        self._coalesce_output: bool = coalesce_output
+        self._max_bytes_per_fetch: int = max_bytes_per_fetch
+        self._reduce_prefetch_dir: Optional[str] = reduce_prefetch_dir
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         """Executor calls this with one partition wrapper at a time (bundle
@@ -216,7 +212,9 @@ class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
         # will see (bounds peak heap from accum + reshape carry). Estimate
         # comes from the wrapper's metadata (populated by the map op from
         # its per-partition decoded_bytes accumulator).
-        reduce_resources: Dict[str, Any] = {"num_cpus": self._reduce_num_cpus}
+        reduce_resources: Dict[str, Any] = {
+            "num_cpus": self._shuffle_reduce_task_num_cpus,
+        }
         if estimated_bytes > 0:
             reduce_resources["memory"] = int(
                 estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER
@@ -235,11 +233,11 @@ class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
             self._max_bytes_per_fetch,
             target_max_block_size,
             self._streaming_reduce,
-            self._downstream_map_transformer,
+            self._fused_output_map_transformer,
             self.name,
-            self._downstream_map_task_kwargs,
+            self._fused_output_map_task_kwargs,
             self._coalesce_output,
-            self._downstream_map_target_max_block_size_override,
+            self._fused_output_map_target_max_block_size_override,
         )
 
         data_task = DataOpTask(
@@ -369,15 +367,7 @@ class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
         return usage
 
     def incremental_resource_usage(self) -> ExecutionResources:
-        """Per-task resource ask for the framework's budget allocator.
-
-        Uses the upstream mapper op's per-partition decoded byte totals
-        (same source v2 uses, see shuffle_reduce_operator.py:311-324).
-        The avg-over-partitions estimate matches v2's policy: it's a
-        typical-case admission hint; per-task ``.options(memory=...)``
-        in ``_dispatch_one_reducer`` uses the *exact* per-partition bytes
-        so skewed partitions are sized correctly at Ray-core level.
-        """
+        """Per-task resource ask for the framework's budget allocator."""
         upstream = self.input_dependencies[0]
         assert isinstance(upstream, ShuffleMapOpV3)
         partition_bytes = upstream.get_partition_bytes()
@@ -386,7 +376,10 @@ class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
         if sizes:
             avg_bytes = sum(sizes) / len(sizes)
             memory = int(avg_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
-        return ExecutionResources(cpu=self._reduce_num_cpus, memory=memory)
+        return ExecutionResources(
+            cpu=self._shuffle_reduce_task_num_cpus,
+            memory=memory,
+        )
 
     def min_scheduling_resources(self) -> ExecutionResources:
         return self.incremental_resource_usage()
