@@ -157,18 +157,10 @@ def _get_available_resources(
 def get_table_output(state_data: List, schema: StateSchema, detail: bool) -> str:
     """Display the table output.
 
-    The table headers are ordered as the order defined in the dataclass of
-    `StateSchema`. For example,
-
-    @dataclass
-    class A(StateSchema):
-        a: str
-        b: str
-        c: str
-
-    will create headers
-    A B C
-    -----
+    Delegates to the schema's ``format_table_output`` so each resource schema
+    can customize its own table layout. When ``schema`` is ``None`` (no schema
+    provided), falls back to the default implementation below for backward
+    compatibility.
 
     Args:
         state_data: A list of state data.
@@ -178,11 +170,15 @@ def get_table_output(state_data: List, schema: StateSchema, detail: bool) -> str
     Returns:
         The table formatted string.
     """
+    if schema is not None:
+        return schema.format_table_output(state_data, detail)
+
+    # Backward-compat fallback (schema is None): original default logic.
     time = datetime.now()
     header = "=" * 8 + f" List: {time} " + "=" * 8
     headers = []
     table = []
-    cols = schema.list_columns(detail=detail)
+    cols = []
     for data in state_data:
         for key, val in data.items():
             if isinstance(val, dict):

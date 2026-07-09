@@ -78,7 +78,9 @@ from ray.util.state import (
 from ray.util.state.common import (
     ActorState,
     Humanify,
+    NodeState,
     ObjectState,
+    PlacementGroupState,
     RuntimeEnvState,
     StateResource,
     StateSchema,
@@ -90,6 +92,7 @@ from ray.util.state.state_cli import (
     _normalize_filter_keys,
     _parse_filter,
     format_list_api_output,
+    output_with_format,
     ray_get,
     ray_list,
     summary_state_cli_group,
@@ -588,6 +591,140 @@ def test_runtime_env_state_humanify_creation_time_ms():
     assert state["creation_time_ms"] == "0:00:36.639000"
 
 
+def test_default_table_output_preserves_wrapper_for_non_node_resources():
+    """Regression:搬默认表格逻辑进 StateSchema.format_table_output 后,
+    非 Node 资源(PlacementGroupState)默认表格仍带 Stats/Table 包装头与原列。"""
+    pg = {
+        "placement_group_id": "pg_abcdef0123456789",
+        "name": "test-pg",
+        "creator_job_id": "01000000",
+        "state": "CREATED",
+        "bundles": [{"CPU": 1.0}],
+        "is_detached": True,
+        "stats": {},
+        "topology_strategy": {},
+        "topology_assignments": {},
+    }
+    out = output_with_format(
+        [pg],
+        schema=PlacementGroupState,
+        format=AvailableFormat.DEFAULT,
+        detail=False,
+    )
+    assert "Stats:" in out
+    assert "Table:" in out
+    assert "PLACEMENT_GROUP_ID" in out
+    assert "CREATED" in out
+
+
+def _sample_node_state():
+    return {
+        "node_id": "057ae8704b49ce135e8f6665d66f44c6a81572f7e9d6475cd507ab9f",
+        "node_ip": "10.121.130.4",
+        "is_head_node": False,
+        "state": "ALIVE",
+        "state_message": None,
+        "node_name": "10.121.130.4",
+        "resources_total": {
+            "CPU": 4.0,
+            "GPU": 1.0,
+            "memory": 8589934592,
+            "object_store_memory": 51539607552,
+        },
+        "labels": {"ray.io/node-group": "worker-group"},
+        "start_time_ms": 123,
+        "end_time_ms": 0,
+    }
+
+
+def test_node_default_output_is_concise():
+    """`ray list nodes` 默认输出为精简裸表:
+    截断 node_id、CPU/GPU/MEMORY/OBJ_STORE 独立列、无行号、无 Stats/Table 包装头。"""
+    out = output_with_format(
+        [_sample_node_state()],
+        schema=NodeState,
+        format=AvailableFormat.DEFAULT,
+        detail=False,
+    )
+    lines = out.splitlines()
+    # 裸表:无包装头
+    assert "Stats:" not in out
+    assert "Table:" not in out
+    assert "List:" not in out
+    # 表头是第一行,且含新资源列
+    assert lines[0].startswith("NODE_ID")
+    for col in (
+        "NODE_IP",
+        "IS_HEAD_NODE",
+        "STATE",
+        "NODE_NAME",
+        "CPU",
+        "GPU",
+        "MEMORY",
+        "OBJ_STORE",
+    ):
+        assert col in lines[0]
+    # 旧的冗长列已从默认输出移除
+    assert "STATE_MESSAGE" not in out
+    assert "LABELS" not in out
+    assert "RESOURCES_TOTAL" not in out
+    # node_id 截断为前 8 字符 + ...
+    assert "057ae870..." in out
+    # 完整 node_id 不出现在默认输出中(未截断部分不出现)
+    full_id = "057ae8704b49ce135e8f6665d66f44c6a81572f7e9d6475cd507ab9f"
+    assert full_id not in out
+    # 数据行直接以截断 id 开头(无行号索引)
+    assert lines[1].startswith("057ae870...")
+    # memory / object_store_memory 已被 humanify 成可读单位
+    assert "8.000 GiB" in out
+    assert "48.000 GiB" in out
+
+
+def test_node_detail_output_delegates_to_base():
+    """`detail=True` 委托基类默认实现:完整表 + 包装头(Stats/Table)。"""
+    out = NodeState.format_table_output([_sample_node_state()], detail=True)
+    assert "Stats:" in out
+    assert "Table:" in out
+    # detail=True 委托基类:完整 node_id(未截断)+ RESOURCES_TOTAL 全列
+    full_id = "057ae8704b49ce135e8f6665d66f44c6a81572f7e9d6475cd507ab9f"
+    assert full_id in out
+    assert "RESOURCES_TOTAL" in out
+
+
+def test_node_json_yaml_unchanged():
+    """json / yaml 路径(detail=False)逐字节不变:
+    resources_total 完整(含 CPU/GPU/memory/object_store_memory)、node_id 完整未截断。"""
+    node = _sample_node_state()
+    # JSON
+    out_json = output_with_format(
+        [node], schema=NodeState, format=AvailableFormat.JSON, detail=False
+    )
+    data = json.loads(out_json)[0]
+    assert "resources_total" in data
+    assert "state_message" in data
+    assert "labels" in data
+    res = data["resources_total"]
+    for key in ("CPU", "GPU", "memory", "object_store_memory"):
+        assert key in res
+    full_id = "057ae8704b49ce135e8f6665d66f44c6a81572f7e9d6475cd507ab9f"
+    assert data["node_id"] == full_id
+    # YAML
+    out_yaml = output_with_format(
+        [_sample_node_state()],
+        schema=NodeState,
+        format=AvailableFormat.YAML,
+        detail=False,
+    )
+    ydata = yaml.safe_load(out_yaml)[0]
+    assert "resources_total" in ydata
+    assert "state_message" in ydata
+    assert "labels" in ydata
+    yres = ydata["resources_total"]
+    for key in ("CPU", "GPU", "memory", "object_store_memory"):
+        assert key in yres
+    assert ydata["node_id"] == full_id
+
+
 def is_hex(val):
     try:
         int_val = int(val, 16)
@@ -666,7 +803,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
         lambda: verify_output(ray_list, ["workers"], ["Stats:", "Table:", "WORKER_ID"])
     )
     wait_for_condition(
-        lambda: verify_output(ray_list, ["nodes"], ["Stats:", "Table:", "NODE_ID"])
+        lambda: verify_output(ray_list, ["nodes"], ["NODE_ID", "CPU", "OBJ_STORE"])
     )
     wait_for_condition(
         lambda: verify_output(
