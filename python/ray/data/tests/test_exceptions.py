@@ -37,9 +37,8 @@ def test_user_exception(
             for record in caplog.records
         ), caplog.records
 
-    # For a user-code error, the "Full stack trace:" record is always hidden from
-    # stdout (``hide=True``) regardless of the flag — internal frames never reach
-    # the console. The flag only controls what lands in the log file.
+    # For a user-code error the "Full stack trace:" record is always hidden from
+    # stdout (``hide=True``); the flag only controls the log-file content.
     assert any(
         record.levelno == logging.ERROR
         and "Full stack trace:" in record.message

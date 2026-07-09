@@ -82,15 +82,11 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                 )
 
             if is_user_code_exception:
-                # For a user-code error, the driver-side propagation frames (the
-                # Ray Data and Ray Core internals between `ray.get` and here) add
-                # nothing: the real failure is the worker-side traceback already
-                # captured in ``str(e)``. Never surface those internal frames on
-                # stdout (``extra={"hide": True}`` filters the console handler
-                # only; the file handler still writes the record). By default,
-                # write just the cleaned worker-side trace to the log file;
-                # setting ``DataContext.log_internal_stack_trace=True`` writes
-                # the full driver + worker trace to the log file instead.
+                # The driver-side propagation frames add nothing for a user-code
+                # error — the real failure is the worker traceback in ``str(e)``.
+                # Keep them off stdout always (``hide=True`` filters the console
+                # handler only; the file handler still writes the record). The
+                # flag controls only what reaches the log file.
                 if log_internal_stack_trace:
                     logger.exception(
                         "Full stack trace:", exc_info=True, extra={"hide": True}
@@ -98,9 +94,8 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                 else:
                     logger.error("Full stack trace:\n%s", e, extra={"hide": True})
             else:
-                # A system exception likely indicates a bug in Ray Data / Ray
-                # Core, so surface the full trace on stdout (and the log file) to
-                # help the user report it.
+                # System exception (likely a Ray bug): surface the full trace on
+                # stdout (and the log file) so the user can report it.
                 logger.exception("Full stack trace:", exc_info=True)
             if is_user_code_exception:
                 raise e.with_traceback(None)

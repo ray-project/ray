@@ -347,9 +347,8 @@ class RayTaskError(RayError):
                 # lines for removal.
                 in_hidden_frame = True
                 if "ray._raylet.raise_if_dependency_failed" in line:
-                    # The task failed because an input argument (dependency)
-                    # failed. Print a user-friendly message in place of the
-                    # internal frame.
+                    # A dependency (input argument) failed; show a friendly
+                    # note in place of the internal frame.
                     out.append(
                         "  At least one of the input arguments for "
                         "this task could not be computed:"
@@ -357,9 +356,7 @@ class RayTaskError(RayError):
             elif in_hidden_frame and line.startswith("    "):
                 # A continuation line (source code or caret) of a hidden frame.
                 if not hide_data_frames:
-                    # Ray Core-only mode: drop just the single source-code line,
-                    # then stop — this preserves the long-standing behavior,
-                    # which leaves any caret annotation that follows intact.
+                    # Ray Core-only: drop the source line, keep any caret.
                     in_hidden_frame = False
             elif (
                 hide_data_frames

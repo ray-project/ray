@@ -987,8 +987,12 @@ class DataContext:
 
         elif name == "log_internal_stack_trace_to_stdout":
             warnings.warn(
-                "`log_internal_stack_trace_to_stdout` is deprecated! Configure "
-                "`log_internal_stack_trace` instead.",
+                "`log_internal_stack_trace_to_stdout` is deprecated and will be "
+                "removed in January 2027. Configure `log_internal_stack_trace` "
+                "instead. Note the behavior has also changed: internal Ray Data / "
+                "Ray Core stack frames are now always omitted from stdout, and "
+                "`log_internal_stack_trace` instead controls whether they are "
+                "written to the Ray Data log file.",
                 DeprecationWarning,
             )
             self.log_internal_stack_trace = value
