@@ -55,10 +55,18 @@ class WindowStat:
 
     def mean(self) -> float:
         """Returns the (NaN-)mean of the last `self.window_size` items."""
+        # No items pushed yet -> avoid a "Mean of empty slice" RuntimeWarning
+        # from `np.nanmean` on an empty array (see issue #45659).
+        if not self.count:
+            return float("nan")
         return float(np.nanmean(self.items[: self.count]))
 
     def std(self) -> float:
         """Returns the (NaN)-stddev of the last `self.window_size` items."""
+        # No items pushed yet -> avoid a "Degrees of freedom <= 0" RuntimeWarning
+        # from `np.nanstd` on an empty array (see issue #45659).
+        if not self.count:
+            return float("nan")
         return float(np.nanstd(self.items[: self.count]))
 
     def quantiles(self) -> np.ndarray:
