@@ -26,6 +26,7 @@ from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
     ArrowBlockAccessor,
 )
+from ray.data._internal.execution.util import merge_label_selector
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
@@ -1822,13 +1823,17 @@ def _fetch_file_infos(
     futures = []
 
     # Retry in case of transient errors during sampling.
-    task_options = {"retry_exceptions": [OSError]}
+    # Cap retries to avoid hanging indefinitely on permanent errors
+    # (e.g., permission denied, invalid credentials).
+    task_options = {"retry_exceptions": [OSError], "max_retries": 3}
+    ctx = DataContext.get_current()
     if local_scheduling:
         task_options["label_selector"] = local_scheduling
     else:
-        task_options[
-            "scheduling_strategy"
-        ] = DataContext.get_current().scheduling_strategy
+        task_options["scheduling_strategy"] = ctx.scheduling_strategy
+    task_options = merge_label_selector(
+        task_options, ctx.execution_options.label_selector
+    )
 
     for fragment in sampled_fragments:
         # Sample the first rows batch in i-th file.
@@ -1843,8 +1848,18 @@ def _fetch_file_infos(
         )
 
     sample_bar = ProgressBar("Parquet dataset sampling", len(futures), unit="file")
-    file_infos = sample_bar.fetch_until_complete(futures)
-    sample_bar.close()
+    try:
+        file_infos = sample_bar.fetch_until_complete(futures)
+    except ray.exceptions.RayTaskError as e:
+        logger.warning(
+            "Parquet dataset sampling failed. "
+            "If this is a credentials or permissions issue, "
+            "check your cloud storage access configuration. "
+            f"Underlying error: {e.cause}"
+        )
+        raise
+    finally:
+        sample_bar.close()
 
     return file_infos
 

@@ -18,7 +18,7 @@ Community SGLang support is in early development. Track progress and provide fee
 ## Prerequisites
 
 ```bash
-pip install ray[serve,llm] "sglang[all,ray]"
+pip install "ray[llm]" "sglang[all,ray]"
 ```
 
 Set the following environment variable before running any example:

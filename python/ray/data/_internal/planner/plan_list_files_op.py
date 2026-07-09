@@ -28,7 +28,11 @@ from ray.data._internal.datasource_v2.listing.listing_utils import (
     partition_files,
     shuffle_files,
 )
-from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.interfaces import (
+    BlockEntry,
+    PhysicalOperator,
+    RefBundle,
+)
 from ray.data._internal.execution.operators.input_data_buffer import (
     InputDataBuffer,
 )
@@ -155,7 +159,10 @@ def _create_input_data_buffer(
         )
         block_ref: ray.ObjectRef[Block] = ray.put(block)
         ref_bundle = RefBundle(
-            ((block_ref, metadata),),  # pyrefly: ignore[bad-argument-type]
+            (
+                # pyrefly: ignore[bad-argument-type]
+                BlockEntry(block_ref, metadata),
+            ),
             # ``owns_blocks=False``: these are the root of the DAG and
             # must not be freed eagerly, or the DAG can't be reconstructed.
             owns_blocks=False,

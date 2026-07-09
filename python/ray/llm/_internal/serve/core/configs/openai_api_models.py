@@ -27,11 +27,6 @@ try:
         ErrorInfo as _ErrorInfo,
         ErrorResponse as _ErrorResponse,
     )
-    from vllm.entrypoints.openai.speech_to_text.protocol import (
-        TranscriptionRequest as _TranscriptionRequest,
-        TranscriptionResponse as _TranscriptionResponse,
-        TranscriptionStreamResponse as _TranscriptionStreamResponse,
-    )
     from vllm.entrypoints.pooling.embed.protocol import (
         EmbeddingChatRequest as _EmbeddingChatRequest,
         EmbeddingCompletionRequest as _EmbeddingCompletionRequest,
@@ -47,6 +42,11 @@ try:
         TokenizeChatRequest as _TokenizeChatRequest,
         TokenizeCompletionRequest as _TokenizeCompletionRequest,
         TokenizeResponse as _TokenizeResponse,
+    )
+    from vllm.entrypoints.speech_to_text.transcription.protocol import (
+        TranscriptionRequest as _TranscriptionRequest,
+        TranscriptionResponse as _TranscriptionResponse,
+        TranscriptionStreamResponse as _TranscriptionStreamResponse,
     )
 
 except ImportError as _vllm_import_error:

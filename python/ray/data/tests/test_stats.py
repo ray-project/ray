@@ -1,16 +1,18 @@
 import gc
 import logging
+import pickle
 import platform
 import re
 import threading
 import time
 from collections import Counter, defaultdict
 from contextlib import contextmanager
-from dataclasses import fields
+from dataclasses import dataclass, fields
 from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pyarrow as pa
 import pytest
 
 import ray
@@ -28,6 +30,13 @@ from ray.data._internal.execution.backpressure_policy.backpressure_policy import
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
+from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data._internal.execution.operators.map_operator import _map_task
+from ray.data._internal.execution.operators.map_transformer import (
+    BlockMapTransformFn,
+    CustomOpStatsReporter,
+    MapTransformer,
+)
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import (
     DatasetStats,
@@ -35,14 +44,21 @@ from ray.data._internal.stats import (
     NodeMetrics,
     OperatorStatsSummary,
     StatsSummary,
+    Timer,
     _StatsActor,
     get_or_create_stats_actor,
 )
 from ray.data._internal.util import MemoryProfiler
-from ray.data.block import BlockExecStats, BlockStats
+from ray.data.block import BlockExecStats, BlockStats, CustomOpStats
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
+
+
+@dataclass(frozen=True)
+class _ReadTaskStats(CustomOpStats):
+    num_rows: int
+    num_columns: int
 
 
 def get_operator(
@@ -178,6 +194,127 @@ def test_block_exec_stats_max_uss_bytes_without_polling(ray_start_regular_shared
         assert profiler.estimate_max_uss() > array_nbytes
 
 
+def test_map_transformer_custom_op_stats():
+    expected = _ReadTaskStats(num_rows=4, num_columns=1)
+
+    def set_stats(blocks, ctx, report_custom_op_stats):
+        report_custom_op_stats(expected)
+        yield from blocks
+
+    transformer = MapTransformer(
+        [
+            BlockMapTransformFn(
+                set_stats, disable_block_shaping=True, reports_custom_op_stats=True
+            )
+        ]
+    )
+
+    reporter = CustomOpStatsReporter()
+    # Nothing reported until a task runs.
+    assert reporter.get_stats() == []
+
+    ctx = TaskContext(task_idx=0, op_name="test")
+    block = pa.table({"id": list(range(expected.num_rows))})
+    # apply_transform takes the report callback, not the reporter object.
+    list(transformer.apply_transform([block], ctx, reporter.report))
+    assert reporter.get_stats() == [expected]
+
+
+def _drive_map_task_metadata(transformer, ctx, block):
+    """Run ``_map_task`` to completion and return the per-block metadata.
+
+    ``_map_task`` yields each block, then (after a ``send``) the pickled
+    ``BlockMetadataWithSchema`` for that block.
+    """
+    gen = _map_task(transformer, DataContext.get_current(), ctx, block)
+    metas = []
+    try:
+        next(gen)  # first block
+        while True:
+            metas.append(pickle.loads(gen.send(None)))  # that block's metadata
+            next(gen)  # next block; StopIteration when exhausted
+    except StopIteration:
+        pass
+    return metas
+
+
+def test_map_task_carries_custom_op_stats_to_block_metadata(ray_start_regular_shared):
+    """End-to-end wiring: a reporting transform's stats reach the per-block
+    TaskExecWorkerStats that ``_map_task`` emits back to the driver.
+
+    Guards the ``_map_task`` -> ``TaskExecWorkerStats.custom_op_stats`` plumbing
+    so a future edit there can't silently drop the field.
+    """
+    expected = _ReadTaskStats(num_rows=2, num_columns=1)
+
+    def set_stats(blocks, ctx, report_custom_op_stats):
+        report_custom_op_stats(expected)
+        yield from blocks
+
+    transformer = MapTransformer(
+        [
+            BlockMapTransformFn(
+                set_stats, disable_block_shaping=True, reports_custom_op_stats=True
+            )
+        ]
+    )
+    ctx = TaskContext(task_idx=0, op_name="test")
+    metas = _drive_map_task_metadata(transformer, ctx, pa.table({"id": [0, 1]}))
+
+    # custom_op_stats is a List[CustomOpStats] per block; flatten across blocks.
+    reported_stats = [
+        stats
+        for m in metas
+        if m.metadata.task_exec_stats is not None
+        for stats in m.metadata.task_exec_stats.custom_op_stats
+    ]
+    assert expected in reported_stats, reported_stats
+
+
+def test_custom_op_stats_survives_operator_fusion(ray_start_regular_shared):
+    """A reporting transform's stats survive operator fusion.
+
+    Because ``_map_task`` owns the reporter (rather than the transformer), a
+    reporting upstream transform fused with a downstream transform still carries
+    its stats back: both run under the fused operator's single reporter. This is
+    a regression guard — when stats lived on the transformer, fusion built a new
+    transformer and the closure-captured original was orphaned, silently
+    dropping the stats.
+    """
+    expected = _ReadTaskStats(num_rows=2, num_columns=1)
+
+    def report_stats(blocks, ctx, report_custom_op_stats):
+        report_custom_op_stats(expected)
+        yield from blocks
+
+    def passthrough(blocks, ctx):
+        yield from blocks
+
+    upstream = MapTransformer(
+        [
+            BlockMapTransformFn(
+                report_stats, disable_block_shaping=True, reports_custom_op_stats=True
+            )
+        ]
+    )
+    downstream = MapTransformer(
+        [BlockMapTransformFn(passthrough, disable_block_shaping=True)]
+    )
+    fused = upstream.fuse(downstream)
+
+    ctx = TaskContext(task_idx=0, op_name="test")
+    metas = _drive_map_task_metadata(fused, ctx, pa.table({"id": [0, 1]}))
+
+    # custom_op_stats is a List[CustomOpStats] per block; flatten across blocks.
+    reported_stats = [
+        stats
+        for m in metas
+        if m.metadata.task_exec_stats is not None
+        for stats in m.metadata.task_exec_stats.custom_op_stats
+    ]
+    assert expected in reported_stats, reported_stats
+
+
 def gen_expected_metrics(
     is_map: bool,
     spilled: bool = False,
@@ -205,7 +342,7 @@ def gen_expected_metrics(
             "'average_rows_inputs_per_task': N",
             "'average_bytes_outputs_per_task': N",
             "'average_rows_outputs_per_task': N",
-            "'op_task_duration_stats': {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
+            "'op_task_duration_stats': {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
             "'max_uss_bytes': H",
             "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
@@ -295,7 +432,7 @@ def gen_expected_metrics(
             "'average_rows_inputs_per_task': None",
             "'average_bytes_outputs_per_task': None",
             "'average_rows_outputs_per_task': None",
-            "'op_task_duration_stats': {'num_samples': Z, 'mean': Z, 'variance': Z, 'min': None, 'max': None, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
+            "'op_task_duration_stats': {'num_samples': Z, 'mean': Z, 'variance': Z, 'min': None, 'max': None, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
             "'max_uss_bytes': H",
             "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
@@ -552,15 +689,40 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
     it = ds.map_batches(dummy_map_batches).streaming_split(1)[0]
     list(it.iter_batches())
     stats = it.stats()
-    extra_metrics_1 = STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE  # .replace(
-    #     "'obj_store_mem_used': A", "'obj_store_mem_used': Z"
-    # )
     extra_metrics_2 = gen_expected_metrics(
         is_map=False,
         extra_metrics=["'num_output_N': N", "'output_splitter_overhead_time': N"],
     )
+    # The task_output_backpressure_time* metrics are wall-clock timers for output
+    # backpressure on the running MapBatches operator. Whether (and for how long)
+    # it blocks is a timing race against the single, slower streaming-split
+    # consumer, so the value is genuinely nondeterministic across runs (sometimes
+    # 0, usually positive). We therefore deliberately do NOT assert these three
+    # values: both the expected and the produced stats collapse them to a
+    # sentinel. Everything else -- including task_submission_backpressure_time --
+    # stays strictly checked. Only the running operator's (first) occurrence is
+    # collapsed; the idle split operator's timers remain strictly asserted as 0.
+    not_asserted = "<varies>"
+    backpressure_keys = (
+        "average_task_output_backpressure_time_s",
+        "task_output_backpressure_time",
+        "task_output_backpressure_time_s",
+    )
+    extra_metrics_1 = STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE
+    for key in backpressure_keys:
+        extra_metrics_1 = extra_metrics_1.replace(
+            f"'{key}': Z", f"'{key}': {not_asserted}"
+        )
+    produced = canonicalize(stats)
+    for key in backpressure_keys:
+        # count=1 collapses only the first (running MapBatches operator)
+        # occurrence; the \b stops the "N" token from matching the "N" in an idle
+        # operator's "None".
+        produced = re.sub(
+            rf"('{key}': )(?:N|Z)\b", rf"\g<1>{not_asserted}", produced, count=1
+        )
     assert (
-        canonicalize(stats)
+        produced
         == f"""Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
@@ -747,7 +909,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
         "      average_rows_outputs_per_task: N,\n"
-        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "      max_uss_bytes: H,\n"
         "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
@@ -912,7 +1074,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
         "      average_rows_outputs_per_task: N,\n"
-        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "      max_uss_bytes: H,\n"
         "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
@@ -1030,7 +1192,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            average_rows_inputs_per_task: N,\n"
         "            average_bytes_outputs_per_task: N,\n"
         "            average_rows_outputs_per_task: N,\n"
-        "            op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "            op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "            max_uss_bytes: H,\n"
         "            average_max_uss_per_task: H,\n"
         "            num_inputs_received: N,\n"
@@ -2305,6 +2467,212 @@ ray.shutdown()
             f"Expected exactly 2 datasets (one from Job 1 and one from Job 2), "
             f"but found {len(datasets)}"
         )
+
+
+class TestTimerPercentile:
+    """Tests for Timer's KLL-sketch-backed percentile().
+
+    Every ``Timer.add(v)`` feeds the internal ``DistributionTracker``
+    sketch, so ``percentile`` returns an approximate quantile bounded
+    by the KLL accuracy guarantee (~1.65% rank error at k=200). For
+    sample counts at or below k the sketch keeps every item and
+    returns exact values; the relaxed tolerances below cover both
+    regimes.
+    """
+
+    def test_zero_samples(self):
+        t = Timer()
+        assert t.percentile(0.0) == 0
+        assert t.percentile(0.5) == 0
+        assert t.percentile(0.9) == 0
+        assert t.percentile(1.0) == 0
+
+    def test_existing_aggregate_stats_unchanged(self):
+        # Sanity: wiring DistributionTracker into add() must not perturb
+        # Timer's pre-existing sum/min/max/avg semantics.
+        t = Timer()
+        for v in [0.001, 0.01, 0.1, 1.0]:
+            t.add(v)
+        assert t.get() == pytest.approx(1.111)
+        assert t.max() == pytest.approx(1.0)
+        assert t.min() == pytest.approx(0.001)
+        assert t.avg() == pytest.approx(0.27775)
+
+    def test_single_sample(self):
+        t = Timer()
+        t.add(0.042)
+        for p in [0.0, 0.5, 0.9, 1.0]:
+            assert t.percentile(p) == pytest.approx(0.042)
+
+    @pytest.mark.parametrize("p", [0.5, 0.9, 0.99])
+    def test_uniform_samples(self, p):
+        # All samples identical — every quantile must equal the sample.
+        t = Timer()
+        for _ in range(100):
+            t.add(0.005)
+        assert t.percentile(p) == pytest.approx(0.005)
+
+    def test_linearly_spaced_samples_within_kll_tolerance(self):
+        # 11 samples in [0.0, 1.0]. With k=200 the sketch is exact at
+        # this size; allow a small abs tolerance for safety.
+        t = Timer()
+        for v in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
+            t.add(v)
+        assert t.percentile(0.0) == pytest.approx(0.0, abs=0.05)
+        assert t.percentile(0.5) == pytest.approx(0.5, abs=0.1)
+        assert t.percentile(0.9) == pytest.approx(0.9, abs=0.1)
+        assert t.percentile(1.0) == pytest.approx(1.0, abs=0.05)
+
+    def test_percentiles_are_monotonic(self):
+        # Across arbitrary quantiles, the sketch must return a
+        # monotonically non-decreasing sequence.
+        t = Timer()
+        for v in range(1, 1001):
+            t.add(float(v))
+        ps = [t.percentile(q) for q in [0.1, 0.25, 0.5, 0.75, 0.9, 0.99]]
+        assert ps == sorted(ps)
+
+    def test_bimodal_distribution(self):
+        # 80 samples at 5ms, 20 samples at 200ms.
+        #   true p50 = 5ms (50% of mass is at 5ms)
+        #   true p90 ≈ 200ms (top 20% of mass is at 200ms)
+        t = Timer()
+        for _ in range(80):
+            t.add(0.005)
+        for _ in range(20):
+            t.add(0.2)
+        assert t.percentile(0.5) == pytest.approx(0.005, abs=0.01)
+        assert t.percentile(0.9) == pytest.approx(0.2, abs=0.05)
+
+    def test_worker_scaling_regression_case(self):
+        # Regression test for the worker_scaling-scale workload that
+        # motivated proper percentile tracking. KLL-backed percentiles
+        # land close to the true distribution and stay monotonic.
+        t = Timer()
+        for v in [8.0, 9.0, 10.0, 11.0, 12.0] * 16:  # 80 in 8-12s
+            t.add(v)
+        for v in [15.0, 18.0, 22.0, 28.0] * 4:  # 16 in 15-28s
+            t.add(v)
+        for v in [35.0, 37.0]:
+            t.add(v)
+        max_v = t.max()
+        p50 = t.percentile(0.5)
+        p90 = t.percentile(0.9)
+        assert 0 < p50 <= p90 <= max_v
+        # p50 in the bulk (8-12s); p90 well into the tail.
+        assert 8.0 <= p50 <= 12.0
+        assert p90 >= 15.0
+
+    @pytest.mark.parametrize("bad_p", [-0.1, 1.1, 90, -1.0, 2.0])
+    def test_rejects_out_of_range_p(self, bad_p):
+        # Catch the common ``percentile(90)`` typo (instead of 0.9).
+        t = Timer()
+        t.add(0.005)
+        with pytest.raises(ValueError, match="p must be in"):
+            t.percentile(bad_p)
+
+    @pytest.mark.parametrize("ok_p", [0.0, 1.0])
+    def test_accepts_boundary_p(self, ok_p):
+        t = Timer()
+        t.add(0.005)
+        # Should not raise.
+        t.percentile(ok_p)
+
+    def test_cloudpickle_roundtrip(self):
+        # Regression: Timer is embedded in DatasetStats, which is
+        # cloudpickled when Datasets cross actor / process boundaries.
+        # The KLL sketch under DistributionTracker is C++-backed; an
+        # earlier version of this PR broke ``cloudpickle.dumps(ds)``
+        # with ``cannot pickle 'kll_doubles_sketch' object``.
+        import cloudpickle
+
+        t = Timer()
+        for v in [0.001, 0.01, 0.1, 1.0]:
+            t.add(v)
+        t2 = cloudpickle.loads(cloudpickle.dumps(t))
+        assert t2.get() == pytest.approx(t.get())
+        assert t2.max() == pytest.approx(t.max())
+        assert t2.avg() == pytest.approx(t.avg())
+        # Percentiles must survive the round-trip.
+        assert t2.percentile(0.5) == pytest.approx(t.percentile(0.5))
+        assert t2.percentile(0.9) == pytest.approx(t.percentile(0.9))
+
+    def test_as_dict_is_json_serializable(self):
+        # Regression: Timer.__dict__ holds a DistributionTracker (not
+        # JSON-serializable) since percentile tracking was added. Code
+        # that persists Timer stats to JSON (e.g. the training-ingest
+        # benchmark checkpointing metrics.json) must use as_dict(), which
+        # exposes only the scalar fields.
+        import json
+
+        t = Timer()
+        for v in [0.001, 0.01, 0.1, 1.0]:
+            t.add(v)
+        d = t.as_dict()
+        assert "_distribution" not in d
+        # Must not raise ``Object of type DistributionTracker is not JSON
+        # serializable``.
+        json.loads(json.dumps(d))
+
+    def test_as_dict_from_dict_roundtrip(self):
+        t = Timer()
+        for v in [0.001, 0.01, 0.1, 1.0]:
+            t.add(v)
+
+        restored = Timer()
+        restored.from_dict(t.as_dict())
+        assert restored.get() == pytest.approx(t.get())
+        assert restored.min() == pytest.approx(t.min())
+        assert restored.max() == pytest.approx(t.max())
+        assert restored.avg() == pytest.approx(t.avg())
+
+    def test_as_dict_from_dict_empty(self):
+        # An untouched Timer reports min/max as None (inf is not
+        # JSON-representable) and restores back to the empty sentinels.
+        t = Timer()
+        d = t.as_dict()
+        assert d["_min"] is None and d["_max"] is None
+        assert d["_total"] == 0 and d["_total_count"] == 0
+
+        restored = Timer()
+        restored.from_dict(d)
+        assert restored.min() == float("inf")
+        assert restored.get() == 0
+
+    @pytest.mark.parametrize("bad_state", [None, [], "x", 42])
+    def test_from_dict_ignores_non_dict(self, bad_state):
+        # A malformed/missing checkpoint payload must not crash restore;
+        # the Timer keeps its empty-state defaults.
+        t = Timer()
+        t.from_dict(bad_state)
+        assert t.get() == 0
+        assert t.min() == float("inf")
+
+    def test_from_dict_handles_none_values(self):
+        # Explicit None values must fall back to defaults — .get(k, 0)
+        # would wrongly keep None since the key is present.
+        t = Timer()
+        t.from_dict({"_total": None, "_min": None, "_max": None, "_total_count": None})
+        assert t.get() == 0.0
+        assert t._total_count == 0.0
+        assert t.min() == float("inf")
+        assert t.max() == 0.0
+
+
+def test_streaming_exec_schedule_percentiles_populated(ray_start_regular_shared):
+    # KLL-sketch percentile tracking is always on (bounded memory), so
+    # the percentile fields are populated end-to-end with no env-var
+    # gating. ``Dataset.materialize`` runs the streaming executor on a
+    # deep copy of the dataset, so stats land on the
+    # ``MaterializedDataset`` it returns — read stats from there.
+    mds = ray.data.range(100).map(lambda r: r).materialize()
+    summary = mds.get_stats_summary(detail=True)
+    p50 = summary.streaming_exec_schedule_p50_s
+    p90 = summary.streaming_exec_schedule_p90_s
+    schedule_max = summary.streaming_exec_schedule_max_s
+    # Percentiles are populated, monotonic, and bounded by max.
+    assert p90 > 0
+    assert 0 <= p50 <= p90 <= schedule_max
 
 
 if __name__ == "__main__":

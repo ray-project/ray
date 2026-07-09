@@ -255,6 +255,12 @@ class RunningReplica:
         return self._replica_info.routing_stats
 
     @property
+    def replica_metadata(self) -> Dict[str, Any]:
+        """Static per-replica metadata captured once when the replica became ready."""
+        # Return a copy so callers can't mutate the RunningReplicaInfo's dict.
+        return self._replica_info.replica_metadata.copy()
+
+    @property
     def max_ongoing_requests(self) -> int:
         """Max concurrent requests that can be sent to this replica."""
         return self._replica_info.max_ongoing_requests
@@ -403,6 +409,11 @@ class ReplicaSelection:
     availability_zone: Optional[str]
     """Cloud availability zone of the replica's node."""
 
+    replica_metadata: Dict[str, Any]
+    """Static, immutable per-replica metadata published by the deployment's
+    ``record_replica_metadata`` hook (captured once when the replica became
+    ready). Empty dict if the deployment does not define the hook."""
+
     # Internal fields (not part of public API)
     _replica: RunningReplica
     _deployment_id: Optional[DeploymentID]
@@ -435,6 +446,7 @@ class ReplicaSelection:
             "port": self.port,
             "node_id": self.node_id,
             "availability_zone": self.availability_zone,
+            "replica_metadata": self.replica_metadata,
         }
 
     def _mark_dispatched(self) -> None:

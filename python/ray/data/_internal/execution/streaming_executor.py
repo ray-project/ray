@@ -14,6 +14,7 @@ from ray.data._internal.execution.backpressure_policy import (
     BackpressurePolicy,
     get_backpressure_policies,
 )
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import (
@@ -59,6 +60,9 @@ from ray.util.debug import log_once
 from ray.util.metrics import Gauge
 
 if typing.TYPE_CHECKING:
+    from ray.data._internal.issue_detection.issue_detector_manager import (
+        IssueDetectorManager,
+    )
     from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
     from ray.data.block import Schema
 
@@ -134,6 +138,9 @@ class StreamingExecutor(Executor, threading.Thread):
         self._op_schema: Dict[PhysicalOperator, Schema] = {}
 
         self._dataset_id = dataset_id
+        # Set by IssueDetectionExecutionCallback when issue detection is registered;
+        # otherwise remains None. Access via the issue_detector_manager property.
+        self._issue_detector_manager: Optional["IssueDetectorManager"] = None
         # Stores if an operator is completed,
         # used for marking when an op has just completed.
         self._has_op_completed: Optional[Dict[PhysicalOperator, bool]] = None
@@ -160,6 +167,11 @@ class StreamingExecutor(Executor, threading.Thread):
         Executor.__init__(self, self._data_context.execution_options)
         thread_name = f"StreamingExecutor-{self._dataset_id}"
         threading.Thread.__init__(self, daemon=True, name=thread_name)
+
+    @property
+    def issue_detector_manager(self) -> Optional["IssueDetectorManager"]:
+        """The issue detector manager, or None if issue detection isn't registered."""
+        return self._issue_detector_manager
 
     def execute(
         self,
@@ -208,13 +220,17 @@ class StreamingExecutor(Executor, threading.Thread):
                 )
 
         # Setup the streaming DAG topology and start the runner thread.
-        self._topology = build_streaming_topology(dag, self._options)
+        self._block_ref_counter = BlockRefCounter()
+        self._topology = build_streaming_topology(
+            dag, self._options, self._block_ref_counter
+        )
 
         self._resource_manager = ResourceManager(
             self._topology,
             self._options,
             lambda: self._cluster_autoscaler.get_total_resources(),
             self._data_context,
+            self._block_ref_counter,
         )
 
         # Constructed once per executor (not per scheduling iteration) so the
@@ -332,6 +348,9 @@ class StreamingExecutor(Executor, threading.Thread):
                 op.shutdown(timer, force=force)
 
             self._clear_topology_queues_post_shutdown(force, exception)
+            # Queues have been drained; any remaining Ray Core callbacks that fire
+            # after this point should be no-ops.
+            self._block_ref_counter.clear()
 
             min_ = round(timer.min(), 3)
             max_ = round(timer.max(), 3)
@@ -447,9 +466,10 @@ class StreamingExecutor(Executor, threading.Thread):
             stats = builder.build_multioperator(op.get_stats())
             stats.extra_metrics = op.metrics.as_dict(skip_internal_metrics=True)
         # Always assign a ``Timer`` so downstream consumers can call
-        # ``.get()`` / ``.avg()`` / ``.max()`` unconditionally. When
-        # ``_initial_stats`` is absent we hand back an empty Timer (count
-        # 0); the Timer's zero-sample semantics yield 0 across all three.
+        # ``.get()`` / ``.avg()`` / ``.max()`` / ``.percentile()``
+        # unconditionally. When ``_initial_stats`` is absent we hand
+        # back an empty Timer; zero-sample semantics yield 0 across all
+        # four.
         stats.streaming_exec_schedule_s = (
             self._initial_stats.streaming_exec_schedule_s
             if self._initial_stats
@@ -464,6 +484,9 @@ class StreamingExecutor(Executor, threading.Thread):
             1. Waiting for the next task completion using `ray.wait()`.
             2. Pulling completed refs into operator outqueues.
             3. Selecting and dispatching new inputs to operators.
+
+        Args:
+            topology: The :class:`Topology` of operators being executed.
 
         Returns:
             True if we should continue running the scheduling loop.

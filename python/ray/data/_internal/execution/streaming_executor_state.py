@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 import ray
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import ActorPoolInfo
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.bundle_queue import (
     ThreadSafeBundleQueue,
     create_bundle_queue,
@@ -238,6 +239,9 @@ class OpBufferQueue:
         Args:
             output_split_idx: If specified, only check ref bundles with the
                 given output split. When None, checks the default queue (index 0).
+
+        Returns:
+            ``True`` if a ``RefBundle`` is available for the requested split.
         """
         return self._get_queue_for(output_split_idx).has_next()
 
@@ -477,6 +481,10 @@ class OpState:
 
         This method must be thread-safe.
 
+        Args:
+            output_split_idx: Optional output split index for streaming-split
+                consumers; ``None`` reads from the default output queue.
+
         Returns:
             The RefBundle from the output queue, or an error / end of stream indicator.
 
@@ -536,7 +544,9 @@ class OpState:
 
 
 def build_streaming_topology(
-    dag: PhysicalOperator, options: ExecutionOptions
+    dag: PhysicalOperator,
+    options: ExecutionOptions,
+    block_ref_counter: BlockRefCounter,
 ) -> Topology:
     """Instantiate the streaming operator state topology for the given DAG.
 
@@ -547,6 +557,8 @@ def build_streaming_topology(
     Args:
         dag: The operator DAG to instantiate.
         options: The execution options to use to start operators.
+        block_ref_counter: The executor-wide shared counter for tracking
+            object-store memory.
 
     Returns:
         The topology dict holding the streaming execution state.
@@ -568,7 +580,7 @@ def build_streaming_topology(
         # Create state.
         op_state = OpState(op, inqueues)
         topology[op] = op_state
-        op.start(options)
+        op.start(options, block_ref_counter)
         return op_state
 
     setup_state(dag)

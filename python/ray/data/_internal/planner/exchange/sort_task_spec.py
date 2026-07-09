@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Optional, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
 
@@ -119,11 +119,10 @@ class SortTaskSpec(ExchangeTaskSpec):
         self,
         boundaries: List[T],
         sort_key: SortKey,
-        batch_format: str,
     ):
         super().__init__(
             map_args=[boundaries, sort_key],
-            reduce_args=[sort_key, batch_format],
+            reduce_args=[sort_key],
         )
 
     @staticmethod
@@ -147,13 +146,12 @@ class SortTaskSpec(ExchangeTaskSpec):
     @staticmethod
     def reduce(
         sort_key: SortKey,
-        batch_format: str,
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
     ) -> Tuple[Block, "BlockMetadataWithSchema"]:
         normalized_blocks = TableBlockAccessor.normalize_block_types(
             mapper_outputs,
-            target_block_type=ExchangeTaskSpec._derive_target_block_type(batch_format),
+            target_block_type=None,
         )
         blocks, meta_with_schema = BlockAccessor.for_block(
             normalized_blocks[0]
@@ -166,6 +164,7 @@ class SortTaskSpec(ExchangeTaskSpec):
         sort_key: SortKey,
         num_reducers: int,
         sample_bar: Optional[ProgressBar] = None,
+        label_selector: Optional[Dict[str, str]] = None,
     ) -> List[T]:
         """
         Return (num_reducers - 1) items in ascending order from the blocks that
@@ -176,6 +175,8 @@ class SortTaskSpec(ExchangeTaskSpec):
         n_samples = int(num_reducers * 10 / len(blocks))
 
         sample_block = cached_remote_fn(_sample_block)
+        if label_selector:
+            sample_block = sample_block.options(label_selector=label_selector)
 
         sample_results = [
             sample_block.remote(block, n_samples, sort_key) for block in blocks

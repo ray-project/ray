@@ -42,6 +42,42 @@ class DistributionTracker:
         if self._sketch is not None:
             self._sketch.update(value)
 
+    def merge(self, other: "DistributionTracker") -> None:
+        """Merge another tracker into this one (associative, commutative).
+
+        Uses Chan's parallel variant of Welford's algorithm for moments.
+        See: https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford:~:text=Parallel%20algorithm%5Bedit%5D
+        """
+        if other is self:
+            # Merging an accumulator into itself would double its samples
+            # (count, m2, and the sketch), so treat it as a no-op.
+            return
+        if other._count == 0:
+            return
+        if self._count == 0:
+            self._count = other._count
+            self._mean = other._mean
+            self._m2 = other._m2
+            self._min = other._min
+            self._max = other._max
+        else:
+            delta = other._mean - self._mean
+            total = self._count + other._count
+            self._m2 += other._m2 + (delta**2) * self._count * other._count / total
+            self._mean = (self._count * self._mean + other._count * other._mean) / total
+            self._count = total
+            self._min = min(self._min, other._min)
+            self._max = max(self._max, other._max)
+        if self._sketch is None or other._sketch is None:
+            # Moments above still merged; quantile detail is lost for the
+            # side(s) without a sketch.
+            self._sketch = None
+        else:
+            try:
+                self._sketch.merge(other._sketch)
+            except Exception:
+                self._sketch = None
+
     @property
     def num_samples(self) -> int:
         return self._count
@@ -78,8 +114,16 @@ class DistributionTracker:
         return self._sketch.get_quantiles([q])[0]
 
     @property
+    def p25(self) -> Optional[float]:
+        return self._quantile(0.25)
+
+    @property
     def p50(self) -> Optional[float]:
         return self._quantile(0.5)
+
+    @property
+    def p75(self) -> Optional[float]:
+        return self._quantile(0.75)
 
     @property
     def p90(self) -> Optional[float]:
@@ -100,8 +144,35 @@ class DistributionTracker:
             "variance": self.variance,
             "min": self.min,
             "max": self.max,
+            "p25": self.p25,
             "p50": self.p50,
+            "p75": self.p75,
             "p90": self.p90,
             "p95": self.p95,
             "p99": self.p99,
         }
+
+    # ``kll_doubles_sketch`` is a C++-backed object that does not
+    # pickle natively. DistributionTracker rides on DatasetStats
+    # (via Timer), which is cloudpickled when Datasets cross actor /
+    # process boundaries — without these hooks any such transfer
+    # raises ``TypeError: cannot pickle 'kll_doubles_sketch' object``.
+    # The sketch exposes its own byte serialization, so we round-trip
+    # through that.
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        if self._sketch is not None:
+            state["_sketch"] = self._sketch.serialize()
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        # If the source had datasketches but this side doesn't, drop
+        # the sketch (percentiles will return None — same fallback as a
+        # default construction without datasketches installed).
+        if self._sketch is not None and not _DATASKETCHES_AVAILABLE:
+            self._sketch = None
+        elif self._sketch is not None and not isinstance(
+            self._sketch, kll_doubles_sketch
+        ):
+            self._sketch = kll_doubles_sketch.deserialize(self._sketch)

@@ -77,16 +77,19 @@ class CrossLanguageError(RayError):
 
 @PublicAPI
 class TaskCancelledError(RayError):
-    """Raised when this task is cancelled.
-
-    Args:
-        task_id: The TaskID of the function that was directly
-            cancelled.
-    """
+    """Raised when this task is cancelled."""
 
     def __init__(
         self, task_id: Optional[TaskID] = None, error_message: Optional[str] = None
     ):
+        """Initialize a ``TaskCancelledError``.
+
+        Args:
+            task_id: The TaskID of the function that was directly
+                cancelled.
+            error_message: Optional additional error message describing why
+                the task was cancelled.
+        """
         self.task_id = task_id
         self.error_message = error_message
 
@@ -405,14 +408,6 @@ class ActorDiedError(RayActorError):
 
     This exception could happen either because the actor process dies while
     executing a task, or because a task is submitted to a dead actor.
-
-    Args:
-        cause: The cause of the actor error. `RayTaskError` type means
-            the actor has died because of an exception within `__init__`.
-            `ActorDiedErrorContext` means the actor has died because of
-            an unexpected system error. None means the cause isn't known.
-            Theoretically, this shouldn't happen,
-            but it's there as a safety check.
     """
 
     BASE_ERROR_MSG = "The actor died unexpectedly before finishing this task."
@@ -420,8 +415,15 @@ class ActorDiedError(RayActorError):
     def __init__(
         self, cause: Optional[Union[RayTaskError, ActorDiedErrorContext]] = None
     ):
-        """
-        Construct a RayActorError by building the arguments.
+        """Construct a RayActorError by building the arguments.
+
+        Args:
+            cause: The cause of the actor error. ``RayTaskError`` type means
+                the actor has died because of an exception within ``__init__``.
+                ``ActorDiedErrorContext`` means the actor has died because of
+                an unexpected system error. None means the cause isn't known.
+                Theoretically, this shouldn't happen, but it's there as a
+                safety check.
         """
 
         actor_id = None
@@ -631,12 +633,23 @@ class NodeDiedError(RayError):
 class ObjectLostError(RayError):
     """Indicates that the object is lost from distributed memory, due to
     node failure or system error.
-
-    Args:
-        object_ref_hex: Hex ID of the object.
     """
 
-    def __init__(self, object_ref_hex, owner_address, call_site):
+    def __init__(
+        self,
+        object_ref_hex: str,
+        owner_address: Optional[bytes],
+        call_site: str,
+    ):
+        """Initialize an ``ObjectLostError``.
+
+        Args:
+            object_ref_hex: Hex ID of the object.
+            owner_address: Address of the worker that owns the object, if
+                known.
+            call_site: Stringified Python call site at which the ``ObjectRef``
+                was originally created. Newlines are normalized for display.
+        """
         self.object_ref_hex = object_ref_hex
         self.owner_address = owner_address
         self.call_site = call_site.replace(
@@ -751,12 +764,19 @@ class OwnerDiedError(ObjectLostError):
 
     def __str__(self):
         log_loc = "`/tmp/ray/session_latest/logs`"
+        owner_location = None
         if self.owner_address:
             try:
                 addr = Address()
                 addr.ParseFromString(self.owner_address)
                 ip_addr = addr.ip_address
                 worker_id = WorkerID(addr.worker_id)
+                node_id = addr.node_id.hex() if addr.node_id else "unknown"
+                owner_location = (
+                    f"Owner worker ID: {worker_id.hex()}, "
+                    f"owner node ID: {node_id}, "
+                    f"owner address: {ip_addr}:{addr.port}."
+                )
                 log_loc = (
                     f"`/tmp/ray/session_latest/logs/*{worker_id.hex()}*`"
                     f" at IP address {ip_addr}"
@@ -775,6 +795,7 @@ class OwnerDiedError(ObjectLostError):
                 "`ray.put()`. "
                 f"Check cluster logs ({log_loc}) for more "
                 "information about the Python worker failure."
+                + (f"\n\n{owner_location}" if owner_location else "")
             )
         )
 

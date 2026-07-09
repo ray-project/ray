@@ -8,7 +8,6 @@ from ray.data._internal.execution.interfaces import (
     NodeIdStr,
     RefBundle,
 )
-from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
 from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
@@ -280,6 +279,10 @@ class SplitCoordinator:
     def start_epoch(self, split_idx: int) -> str:
         """Called to start an epoch.
 
+        Args:
+            split_idx: The split index of the caller; used as the barrier key
+                so all split consumers synchronize before a new epoch starts.
+
         Returns:
             UUID for the epoch, which must be used when accessing results via get().
         """
@@ -305,8 +308,8 @@ class SplitCoordinator:
                     ds = self._base_dataset
                     # Re-execute dataset
                     self._current_executor = ds._create_executor()
-                    self._output_iterator = execute_to_legacy_bundle_iterator(
-                        self._current_executor, ds._plan
+                    self._output_iterator = ds._build_bundle_iterator(
+                        self._current_executor
                     )
                     # Register the streaming split external consumers with the executor's resource manager.
                     self._current_executor.set_external_consumer_bytes(0)
@@ -374,7 +377,7 @@ class SplitCoordinator:
                 next_bundle = self._output_iterator.get_next(output_split_idx)
 
             schema = next_bundle.schema
-            block, metadata = next_bundle.blocks[-1]
+            last_entry = next_bundle.blocks[-1]
             next_bundle = RefBundle(
                 blocks=next_bundle.blocks[:-1],
                 schema=next_bundle.schema,
@@ -396,7 +399,7 @@ class SplitCoordinator:
 
                 # Track per-split row dispatch count.
                 self._num_rows_dispatched[output_split_idx] += (
-                    metadata.num_rows if metadata.num_rows else 0
+                    last_entry.metadata.num_rows if last_entry.metadata.num_rows else 0
                 )
                 num_rows_dispatched = self._num_rows_dispatched[output_split_idx]
 
@@ -409,7 +412,9 @@ class SplitCoordinator:
 
             returned_normally = True
             return RefBundle(
-                [(block, metadata)], schema=schema, owns_blocks=next_bundle.owns_blocks
+                [last_entry],
+                schema=schema,
+                owns_blocks=next_bundle.owns_blocks,
             )
         except StopIteration:
             with self._lock:

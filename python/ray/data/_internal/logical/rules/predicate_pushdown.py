@@ -1,6 +1,6 @@
 import copy
-from dataclasses import is_dataclass, replace
-from typing import List
+from dataclasses import dataclass, is_dataclass, replace
+from typing import List, Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -24,11 +24,26 @@ from ray.data._internal.logical.operators import (
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnSubstitutionVisitor,
 )
-from ray.data.expressions import Expr, col
+from ray.data.expressions import BinaryExpr, Expr, Operation, col
 
 __all__ = [
     "PredicatePushdown",
 ]
+
+
+@dataclass(frozen=True)
+class _ConvertibilitySplit:
+    """Result of splitting a predicate by PyArrow convertibility.
+
+    Attributes:
+        convertible: The conjuncts that can be lowered to PyArrow and pushed
+            into the datasource. ``None`` if nothing is convertible.
+        residual: The conjuncts that cannot be lowered and must remain as a
+            ``Filter``. ``None`` if everything is convertible.
+    """
+
+    convertible: Optional[Expr]
+    residual: Optional[Expr]
 
 
 class PredicatePushdown(Rule):
@@ -69,6 +84,15 @@ class PredicatePushdown(Rule):
         if not cls._is_valid_filter_operator(input_op):
             return op
 
+        # Do not fuse across a non-idempotent predicate (random/uuid/
+        # monotonically_increasing_id): combining moves where a predicate is
+        # evaluated (and thus which rows it sees), changing results.
+        if (
+            not op.predicate_expr.is_idempotent()
+            or not input_op.predicate_expr.is_idempotent()
+        ):
+            return op
+
         # Combine predicates
         combined_predicate = op.predicate_expr & input_op.predicate_expr
 
@@ -95,13 +119,17 @@ class PredicatePushdown(Rule):
         - Rename chains with name reuse: rename({'a': 'b', 'b': 'c'}).filter(col('b'))
           (where 'b' is valid output created by a->b)
         """
-        from ray.data._internal.logical.rules.projection_pushdown import (
-            _is_renaming_expr,
-        )
         from ray.data._internal.planner.plan_expression.expression_visitors import (
             _ColumnReferenceCollector,
         )
-        from ray.data.expressions import AliasExpr
+        from ray.data.expressions import AliasExpr, is_rename_expr
+
+        # Do not push a filter below a projection that produces a non-idempotent
+        # column (random/uuid/monotonically_increasing_id): reordering changes the row
+        # set / position the expression is evaluated over (e.g.
+        # monotonically_increasing_id reassigned over the filtered subset).
+        if not projection_op.is_idempotent():
+            return False
 
         collector = _ColumnReferenceCollector()
         collector.visit(filter_op.predicate_expr)
@@ -121,15 +149,18 @@ class PredicatePushdown(Rule):
                 new_names.add(expr.name)
 
                 # Check computed column: with_column('d', 4) creates AliasExpr(lit(4), 'd')
-                if expr.name in predicate_columns and not _is_renaming_expr(expr):
+                if expr.name in predicate_columns and not is_rename_expr(expr):
                     return False  # Computed column
 
                 # Track old names being renamed for later check
-                if _is_renaming_expr(expr):
+                if is_rename_expr(expr):
                     original_columns_being_renamed.add(expr.expr.name)
 
-        # Check if filter references columns removed by explicit select
-        # Valid if: projection includes all columns (star) OR predicate columns exist in output
+        # Check if filter references columns removed by explicit select.
+        # Valid if: projection includes all columns (star, UDF-fallback path)
+        # OR predicate columns exist in the explicit output set (typed path,
+        # where ``StarExpr`` is expanded into explicit ``col()`` refs in
+        # ``Project.__post_init__`` when the input schema is known).
         has_required_columns = (
             projection_op.has_star_expr() or predicate_columns.issubset(output_columns)
         )
@@ -185,6 +216,42 @@ class PredicatePushdown(Rule):
         return visitor.visit(predicate_expr)
 
     @classmethod
+    def _combine_with_and(
+        cls, left: Optional[Expr], right: Optional[Expr]
+    ) -> Optional[Expr]:
+        """Combine two optional predicates with ``AND``, ignoring ``None``."""
+        if left is not None and right is not None:
+            return left & right
+        return left if left is not None else right
+
+    @classmethod
+    def _split_by_convertibility(cls, predicate: Expr) -> _ConvertibilitySplit:
+        """Split a predicate into PyArrow convertible and residual parts.
+
+        Walks the top level ``AND`` chain and buckets each conjunct by whether
+        it can be lowered to PyArrow. The convertible part can be pushed into
+        the datasource while the residual part stays as a ``Filter`` above it.
+
+        Args:
+            predicate: The predicate expression to split.
+
+        Returns:
+            A ``_ConvertibilitySplit`` whose ``convertible`` and ``residual``
+            fields hold the two parts. Both are optional.
+        """
+        if isinstance(predicate, BinaryExpr) and predicate.op == Operation.AND:
+            left = cls._split_by_convertibility(predicate.left)
+            right = cls._split_by_convertibility(predicate.right)
+            return _ConvertibilitySplit(
+                convertible=cls._combine_with_and(left.convertible, right.convertible),
+                residual=cls._combine_with_and(left.residual, right.residual),
+            )
+
+        if predicate._is_pyarrow_convertible():
+            return _ConvertibilitySplit(convertible=predicate, residual=None)
+        return _ConvertibilitySplit(convertible=None, residual=predicate)
+
+    @classmethod
     def _try_push_down_predicate(cls, op: LogicalOperator) -> LogicalOperator:
         """Push Filter down through the operator tree."""
         if not cls._is_valid_filter_operator(op):
@@ -202,14 +269,36 @@ class PredicatePushdown(Rule):
             isinstance(input_op, LogicalOperatorSupportsPredicatePushdown)
             and input_op.supports_predicate_pushdown()
         ):
-            result_op = input_op.apply_predicate(predicate_expr)
+            # Datasources evaluate pushed predicates via PyArrow. A predicate
+            # that can't be lowered to PyArrow (e.g. it contains a UDF) must
+            # stay as a Filter. Split the top level AND chain so the convertible
+            # conjuncts can still be pushed while the residual ones are kept as
+            # a Filter above the read.
+            split = cls._split_by_convertibility(predicate_expr)
+
+            if split.convertible is None:
+                return filter_op
+
+            result_op = input_op.apply_predicate(split.convertible)
 
             # If the operator is unchanged (e.g., predicate references partition columns
             # that can't be pushed down), keep the Filter operator
             if result_op is input_op:
                 return filter_op
 
-            return result_op
+            # Convertible conjuncts were pushed into the read. Re-apply any
+            # residual (non-convertible) conjuncts as a Filter above it.
+            if split.residual is None:
+                return result_op
+            return Filter(predicate_expr=split.residual, input_dependencies=[result_op])
+
+        # Datasource pushdown (Case 1) only lowers PyArrow-convertible (hence
+        # idempotent) conjuncts. Beyond that, do not relocate a filter whose predicate
+        # is non-idempotent (random/uuid/monotonically_increasing_id): pushing it
+        # through a pass-through operator, into Union branches, or to a Join side
+        # changes the row set / position the expression is evaluated over.
+        if not predicate_expr.is_idempotent():
+            return filter_op
 
         # Case 2: Check if operator allows predicates to pass through
         if isinstance(input_op, LogicalOperatorSupportsPredicatePassThrough):
@@ -351,7 +440,7 @@ class PredicatePushdown(Rule):
                 aggregator_ray_remote_args=op.aggregator_ray_remote_args,
             )
         if isinstance(op, Union) and is_dataclass(op):
-            return Union(*new_inputs)
+            return Union(new_inputs)
         new_op = copy.copy(op)
         new_op.input_dependencies = new_inputs
         return new_op

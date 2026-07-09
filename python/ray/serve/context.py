@@ -231,6 +231,10 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
     If called from within a replica, this will connect to the same Serve
     app that the replica is running in.
 
+    Args:
+        raise_if_no_controller_running: If ``True``, raise when no Serve
+            controller actor is found. If ``False``, return ``None`` instead.
+
     Returns:
         ServeControllerClient that encapsulates a Ray actor handle to the
         existing Serve application's Serve Controller. None if there is

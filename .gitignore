@@ -253,3 +253,4 @@ CLAUDE.local.md
 
 # Worktrees
 .worktrees/
+.claude/worktrees/

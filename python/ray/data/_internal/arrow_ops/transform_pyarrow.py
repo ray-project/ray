@@ -111,8 +111,12 @@ def _hash_partition(
         # Struct/list/map columns become dicts/lists in pandas, which are
         # unhashable. Use row-by-row hashing on PyArrow scalars instead.
         partitions = np.zeros((table.num_rows,), dtype=np.int64)
-        for i in range(table.num_rows):
-            _tuple = tuple(c[i] for c in table.columns)
+
+        # Hoist per-column lookups out of the row loop. Iterating columns in
+        # lockstep with zip uses ChunkedArray.__iter__ (a C-level loop) instead
+        # of per-row __getitem__ calls, which avoids Python-side method dispatch
+        # on every element.
+        for i, _tuple in enumerate(zip(*table.columns)):
             partitions[i] = hash(_tuple) % num_partitions
     else:
         # Use pandas' vectorized hash (xxhash-based) instead of a Python
@@ -126,8 +130,9 @@ def _hash_partition(
         hashes = pd.util.hash_pandas_object(
             table.to_pandas(types_mapper=pd.ArrowDtype), index=False
         ).values
-        np.mod(hashes, num_partitions, out=hashes)
-        partitions = hashes
+        # pandas 3.0+ returns a read-only hash array for Arrow-backed columns;
+        # avoid in-place np.mod(..., out=hashes). See #64552.
+        partitions = np.mod(hashes, num_partitions)
 
     return partitions
 
@@ -146,6 +151,7 @@ def hash_partition(
     """
 
     import numpy as np
+    import pyarrow.compute as pac
 
     assert num_partitions > 0
 
@@ -156,24 +162,27 @@ def hash_partition(
 
     projected_table = table.select(hash_cols)
     partitions_array = _hash_partition(projected_table, num_partitions=num_partitions)
-    # For every partition compile list of indices of rows falling
-    # under that partition
-    indices = [np.where(partitions_array == p)[0] for p in range(num_partitions)]
+    # bincount needs signed int; pandas hash path returns uint64.
+    partitions_array = np.asarray(partitions_array, dtype=np.int64)
 
-    # NOTE: Subsequent `take` operation is known to be sensitive to the number of
-    #       chunks w/in the individual columns, and therefore to improve performance
-    #       we attempt to defragment the table to potentially combine some of those
-    #       chunks into contiguous arrays.
-    # TODO: can we always combine chunks?
-    table = try_combine_chunked_columns(table)
+    # Sort rows by partition id so each partition occupies a contiguous range
+    # of the result, then carve out partitions with zero-copy slices. The N
+    # output partitions together form a permutation of `table`, so one big
+    # take + N slices is equivalent to N independent takes and pays the take
+    # fixed cost once.
+    sort_indices = pac.sort_indices(pyarrow.array(partitions_array))
+    counts = np.bincount(partitions_array, minlength=num_partitions)
+    offsets = np.zeros(num_partitions + 1, dtype=np.int64)
+    offsets[1:] = np.cumsum(counts)
 
+    sorted_table = take_table(table, sort_indices)
     return {
-        p: table.take(idx)
+        p: sorted_table.slice(int(offsets[p]), int(counts[p]))
         # NOTE: Since some of the partitions might be empty, we're filtering out
         #       indices of the length 0 to make sure we're not passing around
         #       empty tables
-        for p, idx in enumerate(indices)
-        if len(idx) > 0
+        for p in range(num_partitions)
+        if counts[p] > 0
     }
 
 
@@ -408,17 +417,17 @@ def unify_schemas(
     if not overrides:
         raise pyarrow_exception
 
-    # Apply overrides to schemas
+    # Apply overrides to schemas. Rebuild each schema once by scanning its
+    # fields a single time, rather than calling Schema.set() per override:
+    # set() copies the whole schema on every call, which is O(n^2) when
+    # many/all columns diverge. This is O(fields + overrides) per schema.
     updated_schemas = []
     for schema in schemas_to_unify:
-        for name, new_type in overrides.items():
-            try:
-                idx = schema.get_field_index(name)
-                field = schema.field(name).with_type(new_type)
-                schema = schema.set(idx, field)
-            except KeyError:
-                pass
-        updated_schemas.append(schema)
+        fields = [
+            field.with_type(overrides[field.name]) if field.name in overrides else field
+            for field in schema
+        ]
+        updated_schemas.append(pyarrow.schema(fields, metadata=schema.metadata))
     schemas_to_unify = updated_schemas
 
     # Final unification with overrides applied
@@ -1214,6 +1223,9 @@ def combine_chunks(table: "pyarrow.Table", copy: bool = False) -> "pyarrow.Table
     Args:
         table: Table with chunked columns to be combined into contiguous arrays.
         copy: Skip copying when copy is False and there is exactly 1 chunk.
+
+    Returns:
+        A new table with contiguous arrays for each column.
     """
 
     new_column_values_arrays = []
@@ -1243,6 +1255,10 @@ def combine_chunked_array(
         array: The chunked array to be combined into a single contiguous array.
         ensure_copy: Skip copying when ensure_copy is False and there's exactly
            1 chunk.
+
+    Returns:
+        A single combined ``Array`` (or ``ChunkedArray`` for extension types
+        that cannot be combined into a single array).
     """
 
     import pyarrow as pa

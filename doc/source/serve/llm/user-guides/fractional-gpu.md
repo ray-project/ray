@@ -7,7 +7,7 @@ Serve multiple small models on the same GPU for cost-efficient deployments.
 This feature hasn't been extensively tested in production. If you encounter any issues, report them on [GitHub](https://github.com/ray-project/ray/issues) with reproducible code.
 :::
 
-Fractional GPU allocation allows you to run multiple model replicas on a single GPU by customizing placement groups. This approach maximizes GPU utilization and reduces costs when serving small models that don't require a full GPU's resources.
+Fractional GPU allocation runs multiple model replicas on a single GPU by customizing placement groups. Use it to raise GPU utilization and reduce cost when serving small models that don't need a full GPU.
 
 ## When to use fractional GPUs
 

@@ -344,6 +344,8 @@ class AlgorithmConfig(_Config):
         self.add_default_connectors_to_module_to_env_pipeline = True
         self.merge_env_runner_states = "training_only"
         self.broadcast_env_runner_states = True
+        self.use_env_runner_state_server = False
+        self.env_runner_state_server_max_concurrency = 16
         self.episode_lookback_horizon = 1
         # TODO (sven): Rename into `sample_timesteps` (or `sample_duration`
         #  and `sample_duration_unit` (replacing batch_mode), like we do it
@@ -677,6 +679,11 @@ class AlgorithmConfig(_Config):
 
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
+
+        Note: On the new API stack (enable_rl_module_and_learner=True), the effective
+        batch size is derived from `train_batch_size_per_learner` and `num_learners`;
+        read the `total_train_batch_size` property for it. The legacy `train_batch_size`
+        key in the returned dict is not authoritative on the new stack.
 
         Returns:
             A complete AlgorithmConfigDict, usable in backward-compatible Tune/RLlib
@@ -1877,6 +1884,8 @@ class AlgorithmConfig(_Config):
         episode_lookback_horizon: Optional[int] = NotProvided,
         merge_env_runner_states: Optional[Union[str, bool]] = NotProvided,
         broadcast_env_runner_states: Optional[bool] = NotProvided,
+        use_env_runner_state_server: Optional[bool] = NotProvided,
+        env_runner_state_server_max_concurrency: Optional[int] = NotProvided,
         compress_observations: Optional[bool] = NotProvided,
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
         batch_mode: Optional[str] = NotProvided,
@@ -2002,6 +2011,14 @@ class AlgorithmConfig(_Config):
             broadcast_env_runner_states: True, if merged EnvRunner states (from the
                 central connector pipelines) should be broadcast back to all remote
                 EnvRunner actors.
+            use_env_runner_state_server: If True (new API stack, async algorithms like
+                IMPALA/APPO), EnvRunners pull the latest weights and merged connector
+                states from a single global `EnvRunnerStateServer` actor at the top of
+                each `sample()` call, instead of the Algorithm broadcasting state to
+                every EnvRunner.
+            env_runner_state_server_max_concurrency: `max_concurrency` of the
+                `EnvRunnerStateServer` actor, i.e. how many EnvRunner `pull` requests it
+                serves concurrently. Only used when `use_env_runner_state_server=True`.
             use_worker_filter_stats: Whether to use the workers in the EnvRunnerGroup to
                 update the central filters (held by the local worker). If False, stats
                 from the workers aren't used and are discarded.
@@ -2160,6 +2177,12 @@ class AlgorithmConfig(_Config):
             self.merge_env_runner_states = merge_env_runner_states
         if broadcast_env_runner_states is not NotProvided:
             self.broadcast_env_runner_states = broadcast_env_runner_states
+        if use_env_runner_state_server is not NotProvided:
+            self.use_env_runner_state_server = use_env_runner_state_server
+        if env_runner_state_server_max_concurrency is not NotProvided:
+            self.env_runner_state_server_max_concurrency = (
+                env_runner_state_server_max_concurrency
+            )
         if use_worker_filter_stats is not NotProvided:
             self.use_worker_filter_stats = use_worker_filter_stats
         if update_worker_filter_stats is not NotProvided:
@@ -4267,6 +4290,11 @@ class AlgorithmConfig(_Config):
     def train_batch_size_per_learner(self) -> int:
         # If not set explicitly, try to infer the value.
         if self._train_batch_size_per_learner is None:
+            if self.train_batch_size is None:
+                raise ValueError(
+                    "Both `train_batch_size` and `train_batch_size_per_learner` "
+                    "are None! You must specify at least one of them in your config."
+                )
             return self.train_batch_size // (self.num_learners or 1)
         return self._train_batch_size_per_learner
 
@@ -4745,7 +4773,6 @@ class AlgorithmConfig(_Config):
         # Fill in the missing values from the specs that we already have. By combining
         # PolicySpecs and the default RLModuleSpec.
         for module_id in policy_dict | multi_rl_module_spec.rl_module_specs:
-
             # Remove/skip `learner_only=True` RLModules if `inference_only` is True.
             module_spec = multi_rl_module_spec.rl_module_specs[module_id]
             if inference_only and module_spec.learner_only:

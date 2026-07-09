@@ -1009,7 +1009,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.rows_inputs_of_submitted_tasks += inputs.num_rows() or 0
         self._pending_task_inputs.add(inputs)
         input_node_ids = {
-            node_id_from_block_metadata(meta) for _, meta in inputs.blocks
+            node_id_from_block_metadata(entry.metadata) for entry in inputs.blocks
         }
         self._running_tasks[task_index] = RunningTaskInfo(
             inputs=inputs,
@@ -1054,7 +1054,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         task_info.last_updated = time.perf_counter()
 
         first_output_node_id = None
-        for block_ref, meta in output.blocks:
+        for entry in output.blocks:
+            block_ref = entry.ref
+            meta = entry.metadata
             exec_stats = meta.exec_stats
 
             assert (
@@ -1105,7 +1107,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         # Update per node metrics
         if self._per_node_metrics_enabled:
-            for _, meta in output.blocks:
+            for entry in output.blocks:
+                meta = entry.metadata
                 node_id = node_id_from_block_metadata(meta)
                 node_metrics = self._per_node_metrics[node_id]
 
@@ -1201,8 +1204,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         ctx = self._op.data_context
         if ctx.enable_get_object_locations_for_metrics:
             locations = ray.experimental.get_object_locations(inputs.block_refs)
-            for block, meta in inputs.blocks:
-                if locations[block].get("did_spill", False):
+            for entry in inputs.blocks:
+                meta = entry.metadata
+                if locations[entry.ref].get("did_spill", False):
                     assert meta.size_bytes is not None
                     self.obj_store_mem_spilled += meta.size_bytes
 
@@ -1211,7 +1215,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         # Update per node metrics
         if self._per_node_metrics_enabled:
             node_ids = set()
-            for _, meta in inputs.blocks:
+            for entry in inputs.blocks:
+                meta = entry.metadata
                 node_id = node_id_from_block_metadata(meta)
                 node_metrics = self._per_node_metrics[node_id]
 

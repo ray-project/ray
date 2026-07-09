@@ -8,8 +8,7 @@ If you do not have any experience with Prometheus and Grafana on Kubernetes, wat
 
 ## Preparation
 
-Clone the [KubeRay repository](https://github.com/ray-project/kuberay) and checkout the `master` branch.
-This tutorial requires several files in the repository.
+Clone the [KubeRay repository](https://github.com/ray-project/kuberay) and checkout the `master` branch. This tutorial requires several files in the repository.
 
 ## Step 1: Create a Kubernetes cluster with Kind
 
@@ -114,10 +113,7 @@ curl localhost:8080
     - name: RAY_PROMETHEUS_HOST
       value: http://prometheus-kube-prometheus-prometheus.prometheus-system.svc:9090
   ```
-  * Note that we do not deploy Grafana in the head Pod, so we need to set both `RAY_GRAFANA_IFRAME_HOST` and `RAY_GRAFANA_HOST`.
-    `RAY_GRAFANA_HOST` is used by the head Pod to send health-check requests to Grafana in the backend.
-    `RAY_GRAFANA_IFRAME_HOST` is used by your browser to fetch the Grafana panels from the Grafana server rather than from the head Pod.
-    Because we forward the port of Grafana to `127.0.0.1:3000` in this example, we set `RAY_GRAFANA_IFRAME_HOST` to `http://127.0.0.1:3000`.
+  * Note that we do not deploy Grafana in the head Pod, so we need to set both `RAY_GRAFANA_IFRAME_HOST` and `RAY_GRAFANA_HOST`. `RAY_GRAFANA_HOST` is used by the head Pod to send health-check requests to Grafana in the backend. `RAY_GRAFANA_IFRAME_HOST` is used by your browser to fetch the Grafana panels from the Grafana server rather than from the head Pod. Because we forward the port of Grafana to `127.0.0.1:3000` in this example, we set `RAY_GRAFANA_IFRAME_HOST` to `http://127.0.0.1:3000`.
   * `http://` is required.
 
 ## Step 5: Collect Head Node metrics with a PodMonitor
@@ -411,8 +407,7 @@ For example, in the following figures, one selects the metrics from the RayClust
 
 After importing the KubeRay operator dashboard into Grafana, you can monitor metrics from the KubeRay operator. The dashboard includes a dropdown menu that lets you filter and view controller runtime metrics for specific Ray custom resources CRs: `RayCluster`, `RayJob`, and `RayService`.
 
-The KubeRay operator dashboard should look like this:
-![Grafana KubeRay operator Controller Runtime dashboard](../images/kuberay-dashboard-controller-runtime.png)
+The KubeRay operator dashboard should look like this: ![Grafana KubeRay operator Controller Runtime dashboard](../images/kuberay-dashboard-controller-runtime.png)
 
 ## Step 15: Embed Grafana panels in the Ray dashboard (optional)
 

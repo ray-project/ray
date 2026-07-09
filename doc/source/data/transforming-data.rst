@@ -502,7 +502,11 @@ You can do this by using :ref:`placement groups <ray-placement-group-doc-ref>` a
     def ray_remote_args_fn():
         from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
         pg = ray.util.placement_group([{"CPU": 1}] * NUM_SHARDS)
-        return {"scheduling_strategy": PlacementGroupSchedulingStrategy(placement_group=pg)}
+        scheduling_strategy = PlacementGroupSchedulingStrategy(
+            placement_group=pg,
+            placement_group_capture_child_tasks=True,
+        )
+        return {"scheduling_strategy": scheduling_strategy}
 
     ds = ray.data.range(10).map_batches(DistributedModel, ray_remote_args_fn=ray_remote_args_fn)
     ds.take_all()
