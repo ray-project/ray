@@ -327,11 +327,8 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         assert requested is not None
         self._map_resource_usage = self._map_resource_usage.subtract(requested)
 
-        # Fold this mapper's per-partition decoded bytes into the op-level
-        # accumulator ShuffleReduceOpV3 reads via ``get_partition_bytes``.
-        # ``ray.get`` is a μs-level local read here (task just completed).
-        # Log-and-continue on failure: a silent skip would collapse every
-        # reducer's memory ask to zero (previously observed in prod).
+        # Metrics-only fold. Silent failure would collapse the reducer
+        # memory ask to zero (past prod OOM), so log-and-continue loudly.
         try:
             handle = ray.get(handle_ref)
             for pid, nbytes in (handle.get("decoded_bytes") or {}).items():
@@ -343,10 +340,28 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
                 task_idx,
             )
 
+        # Roll up input stats BEFORE destroying the bundles.
+        input_rows = sum(
+            m.num_rows or 0 for bundle in input_bundles for m in bundle.metadata
+        )
+        input_bytes = sum(
+            m.size_bytes or 0 for bundle in input_bundles for m in bundle.metadata
+        )
+        self._total_input_rows += input_rows
+        self._total_input_bytes += input_bytes
+        # Mirror v2 shuffle_map_operator.py:310 — append a per-task stats
+        # entry so ``get_stats()`` isn't empty.
+        input_meta = BlockMetadata(
+            num_rows=input_rows,
+            size_bytes=input_bytes,
+            exec_stats=None,
+            input_files=None,
+        )
+        self._map_blocks_stats.append(input_meta.to_stats())
+
         # Synthetic output bundle for per-task metric bookkeeping only —
-        # NOT pushed to the output queue (downstream sees the N partition
-        # wrappers built at all_inputs_done). size_bytes=0 aligns with the
-        # op-level ``estimate_object_store_usage`` — bulk data is on disk.
+        # not pushed to the output queue (downstream sees the N partition
+        # wrappers built at all_inputs_done).
         exec_stats = BlockExecStats.builder().build(block_ser_time_s=0.0)
         out_meta = BlockMetadata(
             num_rows=0,
@@ -363,15 +378,6 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         self._completed_handle_refs.append(handle_ref)
         for bundle in input_bundles:
             bundle.destroy_if_owned()
-
-        input_rows = sum(
-            m.num_rows or 0 for bundle in input_bundles for m in bundle.metadata
-        )
-        input_bytes = sum(
-            m.size_bytes or 0 for bundle in input_bundles for m in bundle.metadata
-        )
-        self._total_input_rows += input_rows
-        self._total_input_bytes += input_bytes
 
         # Order: on_task_output_generated needs the task still in
         # _running_tasks; on_task_finished pops it.
