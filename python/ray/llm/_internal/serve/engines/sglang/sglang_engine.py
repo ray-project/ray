@@ -258,8 +258,10 @@ class SGLangServer:
 
         - Force single-tokenizer mode so the app lifespan skips the multi-tokenizer
           shared-memory bootstrap, which only exists under ``launch_server``.
-        - Replace warmup with a no-op, because the default warmup targets
-          ``server_args.port``, which is not where Ray Serve listens.
+        - Skip SGLang's built-in warmup (``skip_server_warmup``), because the
+          default warmup issues a request to ``server_args.port``, which is not
+          where Ray Serve listens. Skipping it also transitions the tokenizer
+          manager's status to ``Up``, which the ``/health`` endpoints require.
         """
         from sglang.srt.entrypoints.http_server import (
             _GlobalState,
@@ -281,12 +283,12 @@ class SGLangServer:
                 scheduler_info=scheduler_info,
             )
         )
+        # Copy ``server_args`` so we don't mutate the engine's own instance.
+        server_args = copy.copy(engine.server_args)
+        server_args.skip_server_warmup = True
         app.is_single_tokenizer_mode = True
-        app.server_args = engine.server_args
-        app.warmup_thread_kwargs = {
-            "server_args": engine.server_args,
-            "execute_warmup_func": lambda server_args: True,
-        }
+        app.server_args = server_args
+        app.warmup_thread_kwargs = {"server_args": server_args}
         return app
 
     def _build_generate_kwargs(
