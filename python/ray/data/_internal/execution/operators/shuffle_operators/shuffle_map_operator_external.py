@@ -484,27 +484,10 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         self._shared_handles_ref = None
 
     def _kill_managers_from_completed_handles(self) -> None:
-        """Dedup manager identities across the completed handles and
-        gracefully terminate each. ``__ray_terminate__`` drains pending
-        tasks, invokes the actor's ``__ray_shutdown__`` (rmtrees base_dir),
-        and exits.
-
-        Each manager is located by ``(shuffle_id, node_id)`` via
-        ``_lookup_manager``; a handle whose actor has already been
-        garbage-collected (``ValueError`` from ``ray.get_actor``) is
-        silently skipped.
-
-        Robustness:
-        - We bound the wait on the graceful terminate refs. If a manager's
-          node has died, ``__ray_terminate__`` sends against a
-          NodeAffinity-pinned actor that Ray will never re-schedule, and
-          ``ray.get`` would hang indefinitely. After the timeout we fall
-          back to ``ray.kill`` (fire-and-forget) so shutdown always makes
-          forward progress.
-        - Applies uniformly to the ``ActorDied + node alive`` anomaly
-          case too: the graceful call raises immediately, the fallback
-          kill is a no-op on an already-dead actor — cleanup completes.
-        """
+        """Terminate each unique ShuffleManager referenced by completed
+        handles. Graceful first (``__ray_terminate__`` → ``__ray_shutdown__``
+        → rmtree base_dir), fire in parallel; bounded ``ray.wait`` +
+        ``ray.kill`` fallback so a dead-node hang can't stall shutdown."""
         from ray.data._internal.execution.operators.hash_shuffle_external import (
             _lookup_manager,
         )
@@ -528,12 +511,12 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
             seen.add(key)
             try:
                 mgrs.append(_lookup_manager(shuffle_id, node_id))
-            except (ValueError, Exception):
-                # Actor name not registered / already gone — nothing to kill.
+            except Exception:
+                # Actor name never registered / already GC'd — nothing to kill.
                 continue
 
-        # Fire graceful shutdowns in parallel; wall time = slowest
-        # ``__ray_shutdown__``, not their sum.
+        # All ``.remote()`` calls fire before we wait → wall time = slowest
+        # shutdown, not the sum.
         term_refs_by_mgr: List[Tuple[Any, Any]] = []
         for mgr in mgrs:
             try:
@@ -541,9 +524,6 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
             except Exception:
                 pass
 
-        # Bounded wait: 30s covers a normal graceful shutdown but bails out
-        # before an unschedulable-actor (dead node) hang. Anything not done
-        # after that gets a hard ray.kill so cleanup always progresses.
         _GRACEFUL_TERM_TIMEOUT_S = 30.0
         pending = list(term_refs_by_mgr)
         deadline = time.monotonic() + _GRACEFUL_TERM_TIMEOUT_S
@@ -561,12 +541,13 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
                 try:
                     ray.get(r)
                 except Exception:
-                    # Terminate call failed (e.g. actor already dead) —
-                    # already-terminated is a success for our purposes.
+                    # Already-terminated / actor dead = success for us.
                     pass
             pending = [(m, r) for m, r in pending if r not in ready_set]
 
-        # Anything still not done: hard-kill so shutdown progresses.
+        # Timed-out (dead node) or otherwise stuck: hard kill so shutdown
+        # progresses. Skips ``__ray_shutdown__`` — base_dir may leak on disk
+        # for this manager (OS tmpwatch cleans it up eventually).
         for mgr, _ in pending:
             try:
                 ray.kill(mgr, no_restart=True)
