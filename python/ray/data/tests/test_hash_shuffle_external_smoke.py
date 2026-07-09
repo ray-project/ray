@@ -31,7 +31,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     RefBundle,
 )
-from ray.data._internal.execution.operators.hash_shuffle_external import (
+from ray.data._internal.execution.operators.hash_shuffle_v2 import (
     _concat_reduce,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator_external import (  # noqa: E501

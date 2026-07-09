@@ -5,9 +5,6 @@ from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
-from ray.data._internal.execution.operators.hash_shuffle_external import (
-    _concat_reduce as _concat_reduce_external,
-)
 from ray.data._internal.execution.operators.hash_shuffle_v2 import (
     _SHUFFLE_MAP_RUNTIME_ENV,
     _concat_reduce,
@@ -144,9 +141,7 @@ def _plan_hash_shuffle_repartition_external(
     )
 
     partition_fn = _make_hash_partition_fn(key_list, target_num_partitions)
-    reduce_fn = (
-        _sort_reduce(key_list) if logical_op.sort else _concat_reduce_external
-    )
+    reduce_fn = _sort_reduce(key_list) if logical_op.sort else _concat_reduce
     # Repartition(sort=True) fans out to a per-partition local sort, so the
     # reduce_fn must see every shard for its partition before it can sort.
     streaming_reduce = not logical_op.sort

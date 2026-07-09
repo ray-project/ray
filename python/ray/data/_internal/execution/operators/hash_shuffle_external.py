@@ -1533,9 +1533,3 @@ def external_hash_shuffle_reduce_task(
                 os.rmdir(prefetch_dir)
             except OSError:
                 pass
-
-
-def _concat_reduce(partition_id: int, tables: List[pa.Table]) -> Iterable[pa.Table]:
-    if not tables:
-        return
-    yield pa.concat_tables(tables) if len(tables) > 1 else tables[0]
