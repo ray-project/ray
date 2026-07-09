@@ -142,21 +142,23 @@ class OpenTelemetryMetricRecorder:
             metrics.set_meter_provider(provider)
             OpenTelemetryMetricRecorder._metrics_initialized = True
 
+    def _register_gauge_metric_unsafe(self, name: str, description: str) -> None:
+        if name in self._registered_instruments:
+            return
+
+        callback = self._create_observable_callback(name, MetricType.GAUGE)
+        instrument = self.meter.create_observable_gauge(
+            name=f"{NAMESPACE}_{name}",
+            description=description,
+            unit="1",
+            callbacks=[callback],
+        )
+        self._registered_instruments[name] = instrument
+        self._gauge_observations_by_name[name] = {}
+
     def register_gauge_metric(self, name: str, description: str) -> None:
         with self._lock:
-            if name in self._registered_instruments:
-                # Gauge with the same name is already registered.
-                return
-
-            callback = self._create_observable_callback(name, MetricType.GAUGE)
-            instrument = self.meter.create_observable_gauge(
-                name=f"{NAMESPACE}_{name}",
-                description=description,
-                unit="1",
-                callbacks=[callback],
-            )
-            self._registered_instruments[name] = instrument
-            self._gauge_observations_by_name[name] = {}
+            self._register_gauge_metric_unsafe(name, description)
 
     def register_counter_metric(self, name: str, description: str) -> None:
         """
@@ -251,6 +253,31 @@ class OpenTelemetryMetricRecorder:
         """
         return self._histogram_bucket_midpoints[name]
 
+    def _set_metric_value_unsafe(self, name: str, tags: dict, value: float):
+        tag_key = frozenset(tags.items())
+        if self._gauge_observations_by_name.get(name) is not None:
+            self._gauge_observations_by_name[name][tag_key] = value
+        elif name in self._counter_observations_by_name:
+            self._counter_observations_by_name[name][tag_key] = (
+                self._counter_observations_by_name[name].get(tag_key, 0) + value
+            )
+        elif name in self._sum_observations_by_name:
+            self._sum_observations_by_name[name][tag_key] = (
+                self._sum_observations_by_name[name].get(tag_key, 0) + value
+            )
+        else:
+            instrument = self._registered_instruments.get(name)
+            if isinstance(instrument, metrics.Histogram):
+                filtered_tags = {
+                    k: v
+                    for k, v in tags.items()
+                    if k
+                    not in MetricCardinality.get_high_cardinality_labels_to_drop(name)
+                }
+                instrument.record(value, attributes=filtered_tags)
+            else:
+                logger.warning(f"Metric {name} is not registered or unsupported type.")
+
     def set_metric_value(self, name: str, tags: dict, value: float):
         """
         Set the value of a metric with the given name and tags.
@@ -266,38 +293,7 @@ class OpenTelemetryMetricRecorder:
         synchronous metrics.
         """
         with self._lock:
-            tag_key = frozenset(tags.items())
-            if self._gauge_observations_by_name.get(name) is not None:
-                # Gauge - store the most recent value for the given tags.
-                self._gauge_observations_by_name[name][tag_key] = value
-            elif name in self._counter_observations_by_name:
-                # Counter - increment the value for the given tags.
-                self._counter_observations_by_name[name][tag_key] = (
-                    self._counter_observations_by_name[name].get(tag_key, 0) + value
-                )
-            elif name in self._sum_observations_by_name:
-                # Sum - add the value for the given tags.
-                self._sum_observations_by_name[name][tag_key] = (
-                    self._sum_observations_by_name[name].get(tag_key, 0) + value
-                )
-            else:
-                # Histogram - record the value synchronously.
-                instrument = self._registered_instruments.get(name)
-                if isinstance(instrument, metrics.Histogram):
-                    # Filter out high cardinality labels.
-                    filtered_tags = {
-                        k: v
-                        for k, v in tags.items()
-                        if k
-                        not in MetricCardinality.get_high_cardinality_labels_to_drop(
-                            name
-                        )
-                    }
-                    instrument.record(value, attributes=filtered_tags)
-                else:
-                    logger.warning(
-                        f"Metric {name} is not registered or unsupported type."
-                    )
+            self._set_metric_value_unsafe(name, tags, value)
 
     def record_histogram_aggregated_batch(
         self,
@@ -347,17 +343,27 @@ class OpenTelemetryMetricRecorder:
     def record_and_export(self, records: List[Record], global_tags=None):
         """
         Record a list of telemetry records and export them to Prometheus.
+
+        Holds the lock across the entire batch to ensure the Prometheus
+        callback sees a complete set of observations with a consistent
+        label schema. Without this, the callback can observe a partial
+        batch with one set of label keys, clear the observations, then
+        see the remainder with a different label schema -- producing
+        duplicate HELP/TYPE headers in the Prometheus text output.
         """
         global_tags = global_tags or {}
 
-        for record in records:
-            gauge = record.gauge
-            value = record.value
-            tags = {**record.tags, **global_tags}
-            try:
-                self.register_gauge_metric(gauge.name, gauge.description or "")
-                self.set_metric_value(gauge.name, tags, value)
-            except Exception as e:
-                logger.error(
-                    f"Failed to record metric {gauge.name} with value {value} with tags {tags!r} and global tags {global_tags!r} due to: {e!r}"
-                )
+        with self._lock:
+            for record in records:
+                gauge = record.gauge
+                value = record.value
+                tags = {**record.tags, **global_tags}
+                try:
+                    self._register_gauge_metric_unsafe(
+                        gauge.name, gauge.description or ""
+                    )
+                    self._set_metric_value_unsafe(gauge.name, tags, value)
+                except Exception as e:
+                    logger.error(
+                        f"Failed to record metric {gauge.name} with value {value} with tags {tags!r} and global tags {global_tags!r} due to: {e!r}"
+                    )
