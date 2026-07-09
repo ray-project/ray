@@ -249,9 +249,10 @@ class SplitCoordinator:
         return self._data_context
 
     def get_dataset_tag(self, output_split_idx: int) -> Dict[str, str]:
-        # ``dataset`` is the (un-suffixed) execution id so it matches the
-        # execution-side metrics; the output split index is surfaced as
-        # ``split_index`` so each consumer gets its own iteration-metric series.
+        """Metrics tags for the dataset.
+
+        ``dataset`` is the dataset id and ``split_index`` indicates the split.
+        """
         return {
             "dataset": self._base_dataset.get_dataset_id(),
             "split_index": str(output_split_idx),

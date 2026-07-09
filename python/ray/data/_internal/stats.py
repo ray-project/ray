@@ -726,10 +726,9 @@ class _StatsActor:
         dataset_tag: str,
         split_index: str,
     ):
-        # ``dataset`` identifies the dataset execution; ``split_index`` identifies
-        # the consumer within it (the output split index for stream-split
-        # iterators, or an empty string for plain iterators, which have no split
-        # dimension). Together these must match ``iter_tag_keys`` exactly.
+        # ``dataset`` is the dataset id; ``split_index`` indicates the split
+        # (empty for plain iterators, which have no split dimension). Together
+        # these must match ``iter_tag_keys`` exactly.
         tags = {"dataset": dataset_tag, "split_index": split_index}
 
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)

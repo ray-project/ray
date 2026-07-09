@@ -46,9 +46,12 @@ class DataIteratorImpl(DataIterator):
         return self._base_dataset.context
 
     def _get_dataset_tag(self) -> Dict[str, str]:
-        # Plain iterators have no split dimension, so ``split_index`` is an empty
-        # string. This keeps the iteration metric label set uniform with the
-        # stream-split path while collapsing back to a single series.
+        """Metrics tags for the dataset.
+
+        Plain iterators have no split dimension, so ``split_index`` is an empty
+        string. This keeps the iteration metric label set uniform with the
+        stream-split path while collapsing back to a single series.
+        """
         return {
             "dataset": self._base_dataset.get_dataset_id(),
             "split_index": "",

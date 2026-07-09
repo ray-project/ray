@@ -68,8 +68,8 @@ class BatchIterator:
         ref_bundles: An iterator over RefBundles.
         stats: DatasetStats object to record timing and other statistics.
         dataset_tag: The iterator's iteration-metric tags, a dict with keys
-            ``dataset`` (the dataset execution id) and ``split_index`` (the
-            output split index, or an empty string for plain iterators).
+            ``dataset`` (the dataset id) and ``split_index`` (indicates the
+            split, empty for plain iterators).
         clear_block_after_read: Whether to clear the block from object store
             manually (i.e. without waiting for Python's automatic GC) after it
             is read. Doing so will reclaim memory faster and hence reduce the
