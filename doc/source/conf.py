@@ -851,7 +851,7 @@ def add_custom_assets(
         # previews and per-version builds); fall back to html_baseurl for local
         # builds where the env var is unset. Scoped to this page only, so it
         # cannot re-introduce the sitewide sidebar-href regression from #63343.
-        base_url = os.environ.get("READTHEDOCS_CANONICAL_URL") or html_baseurl
+        base_url = os.environ.get("READTHEDOCS_CANONICAL_URL") or app.config.html_baseurl or "/"
         if not base_url.endswith("/"):
             base_url += "/"
         context["notfound_base_url"] = base_url
