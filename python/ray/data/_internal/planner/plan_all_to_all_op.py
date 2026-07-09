@@ -142,12 +142,8 @@ def _plan_hash_shuffle_repartition_external(
 
     partition_fn = _make_hash_partition_fn(key_list, target_num_partitions)
     reduce_fn = _sort_reduce(key_list) if logical_op.sort else _concat_reduce
-    # Repartition(sort=True) fans out to a per-partition local sort, so the
-    # reduce_fn must see every shard for its partition before it can sort.
-    streaming_reduce = not logical_op.sort
     # Honor the repartition(N) -> exactly N blocks contract by coalescing all
-    # reduce_fn outputs into a single block per partition. Independent of the
-    # input-side streaming flag.
+    # reduce_fn outputs into a single block per partition.
     coalesce_output = True
 
     map_op = ExternalHashShuffleMapOp(
@@ -166,7 +162,6 @@ def _plan_hash_shuffle_repartition_external(
         data_context,
         num_partitions=target_num_partitions,
         reduce_fn=reduce_fn,
-        streaming_reduce=streaming_reduce,
         coalesce_output=coalesce_output,
         disallow_block_splitting=True,
         name=(

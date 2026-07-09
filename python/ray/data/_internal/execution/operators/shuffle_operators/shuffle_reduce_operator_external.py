@@ -102,7 +102,6 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         fused_output_map_task_kwargs: Optional[Dict[str, Any]] = None,
         fused_output_map_target_max_block_size_override: Optional[int] = None,
         # -- External-shuffle-specific below --
-        streaming_reduce: bool = True,
         coalesce_output: bool = False,
         max_bytes_per_fetch: int = _DEFAULT_MAX_BYTES_PER_FETCH,
         reduce_prefetch_dir: Optional[str] = None,
@@ -151,11 +150,9 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         # =====================================================================
 
         # external_hash_shuffle_reduce_task behavior knobs (no v2 counterpart):
-        # - ``streaming_reduce``: incremental flush vs accumulate-then-reduce
         # - ``coalesce_output``: concat all reduce_fn output into one block
         # - ``max_bytes_per_fetch``: cap per-FETCH byte volume
         # - ``reduce_prefetch_dir``: staging dir for prefetch.bin
-        self._streaming_reduce: bool = streaming_reduce
         self._coalesce_output: bool = coalesce_output
         self._max_bytes_per_fetch: int = max_bytes_per_fetch
         self._reduce_prefetch_dir: Optional[str] = reduce_prefetch_dir
@@ -233,7 +230,6 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             self._reduce_prefetch_dir,
             self._max_bytes_per_fetch,
             target_max_block_size,
-            self._streaming_reduce,
             self._fused_output_map_transformer,
             self.name,
             self._fused_output_map_task_kwargs,

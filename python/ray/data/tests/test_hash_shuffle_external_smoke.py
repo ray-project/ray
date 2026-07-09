@@ -178,7 +178,6 @@ def test_external_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_par
         ctx,
         num_partitions=num_parts,
         reduce_fn=_concat_reduce,
-        streaming_reduce=False,
         # default target_max_block_size = None ⇒ partition = block
         name="ExternalHashShuffleReduce-smoke",
     )

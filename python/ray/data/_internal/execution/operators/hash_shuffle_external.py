@@ -1279,7 +1279,6 @@ def external_hash_shuffle_reduce_task(
     prefetch_dir: Optional[str] = None,
     max_bytes_per_fetch: int = _DEFAULT_MAX_BYTES_PER_FETCH,
     target_max_block_size: Optional[int] = None,
-    streaming: bool = True,
     downstream_map_transformer: Optional[Any] = None,
     reduce_op_name: str = "ExternalHashShuffleReduce",
     downstream_map_task_kwargs: Optional[Dict[str, Any]] = None,
@@ -1293,8 +1292,9 @@ def external_hash_shuffle_reduce_task(
     response frames into a shared ``prefetch.bin`` at pre-assigned offsets,
     and this generator mmap-decodes each region as its future completes.
 
-    Reduce mode (``streaming``): incremental flush every
-    ``target_max_block_size`` bytes vs accumulate-then-reduce.
+    The reducer always runs in blocking mode — accumulate the partition,
+    reduce once, then finalize (mirrors v2's decision in #64481: repartition
+    needs "one partition = one block", so incremental flush was dead code).
 
     Output shaping (mutually exclusive):
     - ``coalesce_output=False`` (default): ``BlockOutputBuffer`` reshapes to
@@ -1474,10 +1474,10 @@ def external_hash_shuffle_reduce_task(
                 work = work[_rot:] + work[:_rot]
 
             def _decode_region(base: int, size: int):
-                """Walk frames in [base, base+size), accumulate, drive streaming
-                reduce, yield output blocks. Hint the kernel to drop the
-                region's pages at end so peak page cache is bounded by
-                the currently-decoding region + streaming accumulator."""
+                """Walk frames in [base, base+size), accumulate for the
+                final reduce. Hint the kernel to drop the region's pages
+                at end so peak page cache is bounded by the currently-
+                decoding region + the accumulator."""
                 nonlocal accum_tables, accum_bytes
                 pos = base
                 end = base + size
@@ -1488,14 +1488,6 @@ def external_hash_shuffle_reduce_task(
                     table = _read_ipc(ipc_buf)
                     accum_tables.append(table)
                     accum_bytes += table.nbytes
-                    if (
-                        streaming
-                        and target_max_block_size is not None
-                        and accum_bytes >= target_max_block_size
-                    ):
-                        tables, accum_tables = accum_tables, []
-                        accum_bytes = 0
-                        yield from _flush(tables)
                 # Region consumed — evict from page cache. Dirty pages
                 # from the earlier pwrite are writeback-then-evicted;
                 # clean pages drop immediately.
@@ -1506,7 +1498,7 @@ def external_hash_shuffle_reduce_task(
                 for fut in as_completed(futs):
                     base, size = fut.result()
                     if size > 0:
-                        yield from _decode_region(base, size)
+                        _decode_region(base, size)
 
             # Drain the accumulator tail.
             if accum_tables:

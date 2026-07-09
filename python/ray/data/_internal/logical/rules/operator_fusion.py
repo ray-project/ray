@@ -175,15 +175,9 @@ class FuseOperators(Rule):
         ):
             return False
         reduce_op = upstream_ops[0]
-        # Already-fused check: V2 stores the absorbed transformer in
-        # ``_fused_output_map_transformer``; the external variant stores it in
-        # ``_downstream_map_transformer``. Both signal "this reduce has
-        # already absorbed one downstream map; refuse a second".
-        if isinstance(reduce_op, ExternalHashShuffleReduceOp):
-            already_fused = reduce_op._downstream_map_transformer is not None
-        else:
-            already_fused = reduce_op._fused_output_map_transformer is not None
-        if already_fused:
+        # Already-fused check: both variants store the absorbed transformer in
+        # ``_fused_output_map_transformer`` — refuse a second downstream fuse.
+        if reduce_op._fused_output_map_transformer is not None:
             return False
 
         return are_op_remote_args_compatible(self._op_map[reduce_op], self._op_map[dag])
@@ -408,10 +402,10 @@ class FuseOperators(Rule):
         ``ShuffleReduce[External]? -> TaskPoolMapOperator`` edge. Constructs a new
         reduce op of the same class as ``up_op`` (plasma or external) with the
         downstream map's transformer / kwargs plumbed into the reduce task
-        body. The two reduce classes carry different ctor arguments and use
-        different field names for the absorbed transformer / kwargs
-        (``fused_output_map_*`` for the plasma variant, ``downstream_map_*`` for the external variant), so
-        each branch below constructs its own class explicitly.
+        body. The two reduce classes share their ``fused_output_map_*`` API
+        but the external variant carries a few extra ctor knobs
+        (``coalesce_output``, ``max_bytes_per_fetch``, ``reduce_prefetch_dir``),
+        so each branch below constructs its own class explicitly.
         """
         name = up_op.name + "->" + down_op.name
 
@@ -420,20 +414,19 @@ class FuseOperators(Rule):
 
         if isinstance(up_op, ExternalHashShuffleReduceOp):
             fused_op = ExternalHashShuffleReduceOp(
-                input_op=up_op.input_dependencies[0],
-                data_context=up_op.data_context,
+                up_op.input_dependencies[0],
+                up_op.data_context,
                 num_partitions=up_op._num_partitions,
                 reduce_fn=up_op._reduce_fn,
-                streaming_reduce=up_op._streaming_reduce,
                 coalesce_output=up_op._coalesce_output,
                 disallow_block_splitting=up_op._disallow_block_splitting,
                 max_bytes_per_fetch=up_op._max_bytes_per_fetch,
                 reduce_prefetch_dir=up_op._reduce_prefetch_dir,
-                reduce_cpus=up_op._reduce_num_cpus,
+                reduce_cpus=up_op._shuffle_reduce_task_num_cpus,
                 name=name,
-                downstream_map_transformer=down_op.get_map_transformer(),
-                downstream_map_task_kwargs=down_op.get_map_task_kwargs(),
-                downstream_map_target_max_block_size_override=(
+                fused_output_map_transformer=down_op.get_map_transformer(),
+                fused_output_map_task_kwargs=down_op.get_map_task_kwargs(),
+                fused_output_map_target_max_block_size_override=(
                     down_op.target_max_block_size_override
                 ),
             )
