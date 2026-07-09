@@ -2036,8 +2036,6 @@ def test_stats_actor_iter_metrics():
     final_stats = update_fn.call_args_list[-1].args[0]
 
     assert final_stats == ds_stats
-    # Iteration metrics are tagged with separate ``dataset`` and ``split_index``
-    # args. This is a plain iterator, so it uses the empty-string split index.
     assert update_fn.call_args_list[-1].args[1] == f"dataset_{ds._uuid}_0"
     assert update_fn.call_args_list[-1].args[2] == ""
 

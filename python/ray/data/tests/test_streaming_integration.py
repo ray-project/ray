@@ -620,8 +620,6 @@ def test_streaming_split_dataset_tag(ray_start_10_cpus_shared):
 
     tags1 = i1._get_dataset_tag()
     tags2 = i2._get_dataset_tag()
-    # The dataset id (execution id) is shared; the output split index is
-    # surfaced as the per-consumer ``split_index`` tag.
     assert tags1["dataset"] == tags2["dataset"]
     assert tags1["split_index"] == "0"
     assert tags2["split_index"] == "1"
