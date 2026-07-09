@@ -25,6 +25,7 @@ Last touched 2026-07-07.
   4. `[core] Plasma move-semantics design + fixes writeup` (this doc)
 - Safety tag `pre-simplify-squash` points at the pre-rebase tip (`fb56edea8e`) — 24 commits including all the WIPs and `local_only` / `moved_out_pending_broadcast_` machinery. Untouched and available if we need to consult it.
 - **Open issue: §2.3 Bug C** — `ObjectFetchTimedOutError` reproduced 2026-06-15 on `video_object_detection` while move semantics is enabled, on a *task return* (index = 2, not a put), so neither Fix A nor Fix B covers it. Three hypotheses recorded; next step is to gather the specific log lines and confirm which path lost the object.
+  - **UPDATE 2026-07-09 (post-rebase): root-caused.** Reproduced reliably on `image_embedding_from_jsonl` (0.1× scale) — ON build failed 4/5 runs, including a *solo* run (no concurrency, no chaos, no node death). Confirmed **hypothesis (a): an eviction race in the seal→pin window** — the consumer's pushed copy is sealed but *unpinned* until the fire-and-forget `MoveCompleted` RPC pins it, while the producer releases immediately on push-complete; under memory pressure the unpinned copy is LRU-evicted before the pin → object lost (never spilled). Clean on `backpressure_training_prefetch` (no pressure). Two candidate fixes (ack-bearing MoveCompleted vs `is_move` flag + pin-at-seal); full evidence in §2.3.
 
 Re-entry order when picking this back up:
 1. Read §2.3 Bug C and run the greps in "What to look for in logs".
@@ -48,6 +49,19 @@ Master (as of `e002fae45f`) already does owner-driven eviction — the owner cor
 - **Consumer-side wiring** (`on_move_completed_` in NodeManager): fetches the newly-received object from plasma, calls `LocalObjectManager::PinObjectsAndWaitForFree` to pin it (so it survives LRU), and calls `object_directory_.ReportObjectPrimaryMoved(id, self_node_id_, owner_address)` to tell the owner the primary pin has moved to this node.
 - **Owner-side** (`CoreWorker::HandleUpdateObjectLocationBatch`): when it receives an `ObjectLocationUpdate` with `primary_moved_to_node_id` set, calls `ReferenceCounter::UpdateObjectPinnedAtRaylet(id, new_primary)`. This keeps `pinned_at_node_id_` in sync so lineage reconstruction fires on the *new* primary node if it later dies.
 - **Reference counter DEBUG downgrade** (`reference_counter.cc:947`): the `"already has a primary location"` message is now DEBUG instead of INFO because it fires on every successful move-semantics handoff, not just during reconstruction.
+
+### How the producer's copy actually leaves plasma (and how the owner learns)
+
+`ReleaseFreedLocalObject` does NOT delete the object immediately — it enqueues and the delete propagates in stages:
+
+1. **Enqueue.** `ReleaseFreedLocalObject` unpins locally (`local_objects_.erase`, `pinned_objects_.erase`) and adds the id to `objects_pending_deletion_` (`local_object_manager.cc:101`). It flushes right away only if the batch is full (`free_objects_batch_size`) or `free_objects_period_ms == 0`; otherwise it waits for the periodic tick. **So there is a bounded delay** between the producer thinking "I released" and the object actually being gone from its plasma store.
+2. **Flush.** `FlushFreeObjects` (`local_object_manager.cc:136`) hands the batch to `on_objects_freed_` → `ObjectManager::FreeObjects(ids)` → `buffer_pool_.FreeObjects(ids)` → `PlasmaClient::Delete(ids)` (IPC to plasma store).
+3. **Plasma-side delete + notification.** The plasma store's `ObjectLifecycleManager::DeleteObject` gates on `PLASMA_SEALED` state + `ref_count_ == 0`. Only then does `DeleteObjectInternal` run, which physically deletes the object AND fires `delete_object_callback_(object_id)` (`plasma/object_lifecycle_manager.cc:256`). If either gate fails, the id is stashed in `earger_deletion_objects_` and retried when the last reader releases.
+4. **Callback hops back to raylet main.** The plasma store runs on its own thread (`ObjectStoreRunner`'s `store_thread_`), so `delete_object_callback_` posts to `main_service` (`main.cc:812-820`) before invoking `ObjectManager::HandleObjectDeleted(id)`.
+5. **Owner notification.** `HandleObjectDeleted` (`object_manager.cc:207`) calls `object_directory_->ReportObjectRemoved(id, self_node_id_, object_info)`. On `OwnershipBasedObjectDirectory`, this stages an `ObjectLocationUpdate{plasma_location_update: REMOVED}` on the per-owner batch and sends it via `UpdateObjectLocationBatch` RPC.
+6. **Owner-side effects.** The owner's `CoreWorker::HandleUpdateObjectLocationBatch` calls `RemoveObjectLocationOwner(id, node)`, which (a) updates the `locations` set in `ReferenceCounter`, and (b) **publishes the change to `WORKER_OBJECT_LOCATIONS_CHANNEL`** so any raylet currently pulling this object (borrowers) sees the location list shrink and re-plans its fetch.
+
+Implication for move semantics: after `on_push_complete_` fires, the owner's view of `locations` for the moved object doesn't instantly become `{consumer}`. Instead there's a window where it's `{producer, consumer}` — until the producer's next `FlushFreeObjects` batch actually deletes the plasma entry, `HandleObjectDeleted` runs, and the REMOVED update reaches the owner. Fix A's `primary_moved_to_node_id` update (which flips `pinned_at_node_id_` immediately) travels through the *same* batched RPC, so ordering with the eventual REMOVED update depends on which one lands in the buffer first at the consumer/producer respectively.
 
 ### What is NOT in this implementation
 
@@ -191,10 +205,27 @@ strings $(python -c "import ray, os; print(os.path.dirname(ray.__file__))")/_ray
 3. Consumer node's plasma high-water-mark just before the stall?
 4. Confirmed the running binary has the branch commits?
 
-**Status:** Open. Recommended patch path:
+**Status:** ROOT-CAUSED 2026-07-09 — hypothesis (a) confirmed post-rebase on `image_embedding_from_jsonl` (see UPDATE at end of section). Original triage notes:
 - If (a): add INFO log in `on_push_complete_` success path and both branches of `GetObjectsFromPlasma` in `on_move_completed_`. Re-run; verify consumer pin actually happens.
 - If (b): implement the ack-bearing `MoveCompleted` RPC described in §5 item 1.
 - If (c): audit `LocalObjectManager::AddSpilledUrl` / restore path to ensure moved-pin metadata survives a round-trip.
+
+**UPDATE 2026-07-09 — reproduced post-rebase on `image_embedding_from_jsonl` and root-caused to hypothesis (a): an eviction race in the seal→pin window.**
+
+Post the 2026-07-07 rebase, the ON build (`enable_plasma_move_semantics=true`; master + the 3 move-sem commits; image `karticam-raytr-plasma-move-sem-on`) failed the 0.1×-scaled `image_embedding_from_jsonl` benchmark **4 of 5 runs**, including a **solo run** (no concurrency, no `--chaos`, on-demand nodes → **no node death**). The OFF build (flag gated off) succeeded **5/5**. Lost object was a task return, **index 2** — same signature as the original `video_object_detection` repro.
+
+Root cause confirmed from the failed job's per-node raylet logs (`prodjob_p3325vygp1d5kp4luxjhb5dnk5`): an **eviction race in the seal→pin window** — NOT an "unsealed" race (the seal precedes the last-chunk ack).
+- On the consumer, `HandlePush`/`ReceiveObjectChunk` **seals** the pushed object (the buffer pool seals on the final chunk, *before* that chunk's ack is sent) but **does not pin** it → it's a sealed *unpinned secondary* copy.
+- The producer's `on_push_complete_` fires only once all chunks are acked (so after the consumer sealed), sends the fire-and-forget `MoveCompleted` RPC, and **immediately** calls `ReleaseFreedLocalObject` — without waiting for the consumer to pin.
+- The consumer pins only later, in `on_move_completed_` → `GetObjectsFromPlasma` + `PinObjectsAndWaitForFree`, when it processes that RPC.
+- Under memory pressure (image_embedding spills 100+ GB), the sealed-unpinned copy is **LRU-evicted in the window between seal and pin**. `GetObjectsFromPlasma` then returns null (`node_manager.cc:289`) → pin skipped (`:291`, *"…could not fetch object from plasma on MoveCompleted; skipping pin. It may have been evicted…"*) → and the producer has already released → object exists **nowhere**.
+- **Never spilled** — 0 hits in `local_object_manager` / spill+restore workers; borrowers log `pull_manager.cc:500` *"neither in memory nor external storage"* → **rules out hypothesis (c)**. No node death → no recovery → borrowers hit `ObjectFetchTimedOutError` after `fetch_fail_timeout_milliseconds`.
+- Fan-out edge also present: `node_manager.cc:273` *"no owner address on producer raylet; skipping MoveCompleted RPC"* on the 2nd push (see §5 edge cases).
+- **Workload-dependence confirmed:** `backpressure_training_prefetch` (peak ~50 GB, **no spilling**) never evicts in the window → move-sem ON is clean there (and shows a reproducible ~9% lower peak object-store); `image_embedding` (heavy spilling) triggers the eviction → ON fails 4/5.
+
+**Two candidate fixes:**
+1. **Ack-bearing `MoveCompleted` (§5 item 1).** Producer releases its copy only after the consumer replies that `GetObjectsFromPlasma` + `PinObjectsAndWaitForFree` succeeded; on failure (evicted / not fetchable) it keeps its copy and falls back to normal ownership. Correct and minimal, but it does **not prevent** the eviction — it makes it *harmless* by keeping the producer copy — so the move (and its memory relief) is forfeited for exactly the objects evicted under pressure, plus a round-trip of added latency before the producer can release. Still needs the fan-out no-owner-address case handled.
+2. **`is_move` flag on `PushRequest` + pin-at-seal.** The producer tags the move-target push. On that push the consumer pins the object and calls `ReportObjectPrimaryMoved` (owner primary-location update) **as part of the receive path, right after seal — before acking the last chunk**. Since the producer only releases after all chunks are acked, the release is naturally ordered *after* the pin, so there is **no unpinned window to evict in**. Also removes the separate async `MoveCompleted` RPC and its fan-out no-owner edge (only the flagged push pins as primary), and preserves the memory benefit under pressure. Costs: one proto field on `PushRequest`, and pinning from the object-manager receive thread (hop to `main_service_` for `PinObjectsAndWaitForFree`); the pin itself can't fail for store-full reasons since the object is already resident. **Stronger fix — closes the window at the source.**
 
 ---
 
