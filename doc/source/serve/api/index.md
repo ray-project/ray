@@ -12,9 +12,7 @@
 ### Writing Applications
 
 <!---
-NOTE: `serve.deployment` and `serve.Deployment` have an autosummary-generated filename collision due to case insensitivity.
-This is fixed by added custom filename mappings in `source/conf.py` (look for "autosummary_filename_map").
---->
+NOTE: `serve.deployment` and `serve.Deployment` have an autosummary-generated filename collision due to case insensitivity. This is fixed by added custom filename mappings in `source/conf.py` (look for "autosummary_filename_map"). --->
 
 ```{eval-rst}
 .. autosummary::
@@ -43,8 +41,7 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
 #### Deployment Handles
 
 :::{note}
-The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully removed as of Ray 2.10.
-See the [model composition guide](serve-model-composition) for how to update code to use the {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` API instead.
+The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully removed as of Ray 2.10. See the [model composition guide](serve-model-composition) for how to update code to use the {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` API instead.
 :::
 
 ```{eval-rst}

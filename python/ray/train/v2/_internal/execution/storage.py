@@ -394,6 +394,7 @@ class StorageContext:
         storage_path: Union[str, os.PathLike],
         experiment_dir_name: str,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
+        read_only: bool = False,
     ):
         self.custom_fs_provided = storage_filesystem is not None
 
@@ -406,8 +407,10 @@ class StorageContext:
         )
         self.storage_fs_path = Path(self.storage_fs_path).as_posix()
 
-        self._create_validation_file()
-        self._check_validation_file()
+        self.read_only = read_only
+        if not self.read_only:
+            self._create_validation_file()
+            self._check_validation_file()
 
     def __str__(self):
         return (
@@ -465,6 +468,11 @@ class StorageContext:
         Returns:
             Checkpoint: A Checkpoint pointing to the persisted checkpoint location.
         """
+        if self.read_only:
+            raise RuntimeError(
+                "Cannot perform write/validation operations as the StorageContext is read-only."
+            )
+
         # TODO(justinvyu): Fix this cyclical import.
         from ray.train import Checkpoint
 

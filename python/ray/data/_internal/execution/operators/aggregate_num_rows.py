@@ -53,6 +53,9 @@ class AggregateNumRows(PhysicalOperator):
             [BlockEntry(block_ref, metadata)], owns_blocks=True, schema=schema
         )
 
+        self._block_ref_counter.on_block_produced(
+            block_ref, metadata.size_bytes or 0, self.id
+        )
         self._has_outputted = True
         return bundle
 

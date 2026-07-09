@@ -961,6 +961,13 @@ cdef class StreamingGeneratorExecutionContext:
         shared_ptr[CActorTaskBackpressureMetadata] actor_backpressure_metadata
         c_bool actor_backpressure_state_owned_by_core_worker
         int64_t num_objects_per_yield
+        # asyncio.Event + its loop used by async streaming generators to wait for
+        # backpressure to clear without blocking a thread. The C++ core worker
+        # wakes the event (via a callback, from the RPC thread that processes
+        # consumption updates) through SetAsyncGeneratorBackpressureUnblockNotify.
+        # Only set while an async generator with backpressure is executing.
+        object backpressure_event
+        object backpressure_loop
 
     cdef teardown_actor_backpressure_state_if_needed(self):
         """Release the actor-wide BP slot held by this task.
@@ -993,6 +1000,16 @@ cdef class StreamingGeneratorExecutionContext:
         )
         if not state_found:
             self.actor_backpressure_metadata.get().Teardown()
+        # Teardown reclaimed this task's actor-wide budget and signaled the
+        # waiter's condition variable for sync reservers; async reservers wait on
+        # an asyncio.Event instead, so wake them too. Otherwise a sibling async
+        # generator parked in its actor-wide reserve would stay blocked until
+        # some other relief path (consumption/owner death) happens to fire.
+        # GIL released so the notification guard is taken without it.
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker(
+                ).NotifyAsyncGeneratorBackpressureUnblock(
+                    self.generator_id, True)
 
     def initialize(self, generator: Union[Generator, AsyncGenerator]):
         # We couldn't make this a part of `make` method because
@@ -1266,6 +1283,82 @@ def _release_actor_generator_slot(
         context.actor_backpressure_metadata.get().ReleaseSlot(num_objects)
 
 
+def _wait_for_object_consumed(
+        StreamingGeneratorExecutionContext context):
+    """Block (with the GIL released) until the per-task backpressure budget
+    admits more objects. Used by sync streaming generators (each runs on its own
+    execution thread, so blocking here is fine). No-op when the per-task option
+    is disabled (threshold -1)."""
+    cdef CRayStatus status
+    with nogil:
+        status = context.waiter.get().WaitUntilObjectConsumed()
+    check_status(status)
+
+
+cdef void _backpressure_unblock_callback(void* ctx) noexcept nogil:
+    """C callback invoked by the core worker (from any thread) when an async
+    streaming generator may have become unblocked. Acquires the GIL and wakes
+    the generator's asyncio.Event. Registered via
+    SetAsyncGeneratorBackpressureUnblockNotify; ``ctx`` is the borrowed
+    StreamingGeneratorExecutionContext, kept alive by the running coroutine.
+
+    The Python work lives in a separate GIL-holding helper because this is a
+    nogil C callback (the core worker calls it without the GIL) and nogil
+    functions cannot hold Python-object locals."""
+    with gil:
+        _notify_backpressure_event(<object>ctx)
+
+
+cdef _notify_backpressure_event(StreamingGeneratorExecutionContext context):
+    loop = context.backpressure_loop
+    event = context.backpressure_event
+    if loop is None or event is None:
+        return
+    try:
+        loop.call_soon_threadsafe(event.set)
+    except RuntimeError:
+        # The event loop is closed/closing; a still-awaiting coroutine is torn
+        # down through normal cancellation, so there is nothing to wake.
+        pass
+
+
+async def _async_wait_for_object_consumed(
+        StreamingGeneratorExecutionContext context):
+    """Await until the per-task backpressure budget admits more objects.
+
+    Waits on the generator's asyncio.Event, which the core worker sets from every
+    path that can relieve backpressure (consumption, owner death, report
+    failure). No-op when the per-task option is disabled."""
+    event = context.backpressure_event
+    while context.waiter.get().IsBackpressured():
+        # Clear before re-checking so a wake-up delivered between the check and
+        # the await is not lost.
+        event.clear()
+        if not context.waiter.get().IsBackpressured():
+            break
+        await event.wait()
+
+
+async def _async_reserve_actor_generator_slot(
+        StreamingGeneratorExecutionContext context):
+    """Await until the actor-wide budget admits this yield's objects, then
+    reserve them. Reserves exactly once: ``TryReserveSlot`` admits the group on
+    success, so it must be called at most once per successful pass.
+
+    Waits on the generator's asyncio.Event, which the core worker sets whenever
+    actor-wide budget may have freed (consumption, a sibling task releasing its
+    slot, owner death)."""
+    cdef int64_t num_objects = context.num_objects_per_yield
+    event = context.backpressure_event
+    while True:
+        # Clear before attempting so a wake-up delivered while we attempt (and
+        # fail) is not lost.
+        event.clear()
+        if context.actor_backpressure_metadata.get().TryReserveSlot(num_objects):
+            break
+        await event.wait()
+
+
 cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context):
     """Execute a given generator and streaming-report the
         result to the given caller_address.
@@ -1285,6 +1378,10 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
         int64_t gen_index = 0
         CRayStatus return_status
         c_bool completed_normally = False
+        # True if per-task (`_generator_backpressure_num_objects`) backpressure is
+        # enabled; gates the per-task backpressure wait below. Actor-wide
+        # backpressure is handled separately by the reserve/release calls.
+        c_bool per_task_backpressure
 
     assert context.is_initialized()
     # Generator task should only have 1 return object ref,
@@ -1292,6 +1389,8 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
     assert context.return_size == 1
 
     gen = context.generator
+
+    per_task_backpressure = context.waiter.get().NeedsObjectConsumedUpdates()
 
     try:
         stats = None
@@ -1320,6 +1419,12 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
                 # Track serialization duration of the next output
                 stats = report_streaming_generator_output(
                     context, output, gen_index, None)
+                # Per-task backpressure: block until the caller has consumed
+                # enough ObjectRefs. Skipped when the per-task option is disabled.
+                # Each sync generator runs on its own execution thread, so
+                # blocking here does not stall other tasks.
+                if per_task_backpressure:
+                    _wait_for_object_consumed(context)
                 if stats is None:
                     break
 
@@ -1328,6 +1433,14 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
             except StopIteration:
                 if context.actor_backpressure_metadata.get() != NULL:
                     _release_actor_generator_slot(context)
+                    # Releasing frees shared actor-wide budget; wake any async
+                    # generator parked in its reserve so it can re-check. (Sync
+                    # reservers are woken by the waiter's condition variable.)
+                    # GIL released so the notification guard is taken without it.
+                    with nogil:
+                        CCoreWorkerProcess.GetCoreWorker(
+                            ).NotifyAsyncGeneratorBackpressureUnblock(
+                                context.generator_id, True)
                 completed_normally = True
                 break
     except Exception as e:
@@ -1377,6 +1490,12 @@ async def execute_streaming_generator_async(
         int64_t cur_generator_index = 0
         CRayStatus return_status
         c_bool completed_normally = False
+        # per_task_backpressure (`_generator_backpressure_num_objects`) gates the
+        # per-task wait. has_backpressure (per-task OR actor-wide) gates the
+        # asyncio.Event bridge, which both the per-task wait and the actor-wide
+        # reserve await.
+        c_bool per_task_backpressure
+        c_bool has_backpressure
 
     assert context.is_initialized()
     # Generator task should only have 1 return object ref,
@@ -1391,22 +1510,52 @@ async def execute_streaming_generator_async(
     executor = worker.core_worker.get_event_loop_executor()
     interrupt_signal_event = threading.Event()
 
+    per_task_backpressure = context.waiter.get().NeedsObjectConsumedUpdates()
+    has_backpressure = (
+        per_task_backpressure
+        or context.actor_backpressure_metadata.get() != NULL
+    )
+
     try:
+        # Async streaming generators enforce backpressure by awaiting an
+        # asyncio.Event instead of blocking: the core worker wakes the event
+        # (via `_backpressure_unblock_callback`) when the caller consumes more
+        # objects. This keeps the event loop responsive and never holds the
+        # report executor thread while parked.
+        #
+        # Registered INSIDE the try so the finally below always clears it, even
+        # if setup raises -- a stale registry entry would hold a dangling context.
+        if has_backpressure:
+            context.backpressure_loop = loop
+            context.backpressure_event = asyncio.Event()
+            # Registered with the GIL released so the registry lock is taken
+            # without the GIL (the callback acquires the GIL only after); see
+            # CoreWorker::SetAsyncGeneratorBackpressureUnblockNotify.
+            with nogil:
+                CCoreWorkerProcess.GetCoreWorker().SetAsyncGeneratorBackpressureUnblockNotify(
+                    context.generator_id,
+                    _backpressure_unblock_callback,
+                    <void*>context,
+                )
+
         stats = None
 
         while True:
             try:
-                # Actor-wide backpressure pre-check. Dispatched to the
-                # executor (not awaited on the event loop directly) because
-                # ReserveSlot blocks with nogil while waiting for budget,
-                # and we don't want to block the asyncio loop. Returns OK
-                # immediately when the actor option is disabled.
+                # Actor-wide backpressure pre-check. Awaits the event (instead of
+                # blocking the loop) until the shared budget admits this yield's
+                # objects. Returns immediately when the actor option is disabled.
                 if context.actor_backpressure_metadata.get() != NULL:
-                    await loop.run_in_executor(
-                        executor,
-                        _reserve_actor_generator_slot,
-                        context,
-                    )
+                    await _async_reserve_actor_generator_slot(context)
+                # Bail before running any more user code if the task has been
+                # canceled (e.g. the owner died and HandleOwnerDied marked it
+                # canceled and tore down the actor metadata, so the reserve above
+                # returns for the now-dead task). Mirrors the sync path: without
+                # this the actor would run the gen body once more between yields,
+                # causing side effects and delaying the actor slot release.
+                if CCoreWorkerProcess.GetCoreWorker().IsTaskCanceled(
+                        context.task_id.native()):
+                    break
                 output = await gen.asend(stats)
                 # NOTE: Report of streaming generator output is done in a
                 # standalone thread-pool to avoid blocking the event loop,
@@ -1415,11 +1564,8 @@ async def execute_streaming_generator_async(
                 # does not modify the output before we serialize it.
                 #
                 # Note that the RPC is sent asynchronously, and we do not wait
-                # for the reply here. The exception is if the user specified a
-                # backpressure threshold for the streaming generator, and we
-                # are currently under backpressure. Then we need to wait for an
-                # ack from the caller (the reply for a possibly previous report
-                # RPC) that they have consumed more ObjectRefs.
+                # for the reply here; the per-task backpressure wait is awaited
+                # separately below.
                 stats = await loop.run_in_executor(
                     executor,
                     report_streaming_generator_output,
@@ -1428,17 +1574,25 @@ async def execute_streaming_generator_async(
                     cur_generator_index,
                     interrupt_signal_event,
                 )
+                # Per-task backpressure: await until the caller has consumed
+                # enough ObjectRefs. Skipped when the per-task option is disabled.
+                if per_task_backpressure:
+                    await _async_wait_for_object_consumed(context)
                 if stats is None:
                     break
                 cur_generator_index += context.num_objects_per_yield
 
             except StopAsyncIteration:
                 if context.actor_backpressure_metadata.get() != NULL:
-                    await loop.run_in_executor(
-                        executor,
-                        _release_actor_generator_slot,
-                        context,
-                    )
+                    # ReleaseSlot is non-blocking; call it directly. Releasing
+                    # frees shared actor-wide budget, so wake any async generator
+                    # parked in its reserve to re-check. GIL released so the
+                    # notification guard is taken without it.
+                    _release_actor_generator_slot(context)
+                    with nogil:
+                        CCoreWorkerProcess.GetCoreWorker(
+                            ).NotifyAsyncGeneratorBackpressureUnblock(
+                                context.generator_id, True)
                 completed_normally = True
                 break
 
@@ -1465,6 +1619,17 @@ async def execute_streaming_generator_async(
         interrupt_signal_event.set()
 
         raise
+
+    finally:
+        # Stop the core worker from waking a context that is going away. Cleared
+        # with the GIL released (consistent lock order with the registration).
+        if has_backpressure:
+            with nogil:
+                CCoreWorkerProcess.GetCoreWorker().ClearAsyncGeneratorBackpressureUnblockNotify(
+                    context.generator_id,
+                )
+            context.backpressure_event = None
+            context.backpressure_loop = None
 
     # The caller gets object values through the reports. If we finish the task
     # before sending the report is complete, then we may fail before the report
@@ -1942,17 +2107,6 @@ cdef void execute_task(
                         context.initialize(outputs)
 
                         if is_async_gen:
-                            if generator_backpressure_num_objects != -1:
-                                raise ValueError(
-                                    "_generator_backpressure_num_objects is "
-                                    "not supported for an async actor."
-                                )
-                            if (<StreamingGeneratorExecutionContext>context
-                                    ).actor_backpressure_metadata.get() != NULL:
-                                raise ValueError(
-                                    "_actor_generator_backpressure_num_objects is "
-                                    "not supported for an async actor."
-                                )
                             # Note that the report RPCs are called inside an
                             # event loop thread.
                             core_worker.run_async_func_or_coro_in_event_loop(
@@ -2865,6 +3019,37 @@ cdef class GcsClient:
             with ray._private.utils._CALLED_FREQ_LOCK:
                 ray._private.utils._CALLED_FREQ[name] += 1
         return getattr(self.inner, name)
+
+cdef void _invoke_object_out_of_scope_callback(
+        const CObjectID &c_object_id, void *user_callback) noexcept nogil:
+    """Invoked on the object_freed_callback_service_ thread when an object goes
+    out of scope. Calls the registered Python callback with the object ID as
+    ``bytes``, then releases the Py_INCREF taken at registration.
+
+    Args:
+        c_object_id: The C++ ObjectID of the object that went out of scope.
+        user_callback: The Python callable registered by the caller, kept
+            alive by the Py_INCREF in ``add_object_out_of_scope_callback``.
+    """
+    with gil:
+        try:
+            callback = <object>user_callback
+            id_binary = c_object_id.Binary()
+            callback(id_binary)
+        except BaseException:
+            # Invoked from C++ through a C function pointer, so a propagating
+            # exception would be undefined behavior; that is why we catch
+            # everything here, including KeyboardInterrupt/SystemExit.
+            logger.exception(
+                "Exception in the callback registered via "
+                "CoreWorker.add_object_out_of_scope_callback for object %s. The "
+                "callback must be non-blocking and exception-free, so check it "
+                "for I/O, blocking calls, or bugs that raise.",
+                c_object_id.Hex().decode("ascii"),
+            )
+        finally:
+            cpython.Py_DECREF(<object>user_callback)
+
 
 cdef class CoreWorker:
 
@@ -4219,6 +4404,56 @@ cdef class CoreWorker:
             CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
                 c_object_id)
 
+    def add_object_out_of_scope_callback(
+            self, ObjectRef object_ref, callback: Callable[[bytes], None]):
+        """Register a Python callable to fire when object_ref goes out of scope.
+
+        .. warning::
+            This is an internal Ray API. Do not use it outside of Ray libraries.
+
+        Can only be called on the worker that owns object_ref. Raises
+        ValueError if object_ref is not owned by this worker.
+
+        The callback runs on a dedicated background thread concurrent with the
+        main Python thread. It must be thread-safe; use a lock if it ever accesses
+        state shared with the main thread.
+
+        .. warning::
+            The callback runs on a single thread shared by every out-of-scope
+            notification for this worker, so it MUST be O(1) and non-blocking.
+            Anything that blocks here serializes every subsequent callback on
+            this worker. Please do not register any hanging/failing operations
+            here.
+
+        If the callback raises, the exception is logged and swallowed so that
+        subsequent callbacks are not affected.
+
+        Args:
+            object_ref: The owned object to watch.
+            callback: Called with the object ID as ``bytes`` when the last
+                reference is released.
+
+        Returns:
+            True if registered; False if the object is already out of scope
+            (the callback will never fire).
+        """
+        if not callable(callback):
+            raise TypeError(
+                f"callback must be callable, got {type(callback).__name__!r}"
+            )
+        cdef CObjectID c_object_id = object_ref.native()
+        check_status(CCoreWorkerProcess.GetCoreWorker().CheckObjectOwnedByUs(
+            c_object_id))
+        cpython.Py_INCREF(callback)
+        registered = CCoreWorkerProcess.GetCoreWorker() \
+            .AddObjectOutOfScopeOrFreedCallback(
+                c_object_id,
+                _invoke_object_out_of_scope_callback,
+                <void *>callback)
+        if not registered:
+            cpython.Py_DECREF(callback)
+        return registered
+
     def get_owner_address(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
@@ -4880,6 +5115,28 @@ cdef class CoreWorker:
             # Already added when the ref is updated.
             skip_adding_local_ref=True)
 
+    def try_read_next_object_ref_stream_n(
+            self, ObjectRef generator_id, int64_t num_items):
+        """
+        Advance the ObjectRefStream cursor by num_items.
+
+        Args:
+            generator_id: The object ref id of the streaming generator task.
+            num_items: The number of indexes to advance past, starting from
+                the current head of the stream.
+        """
+
+        cdef:
+            CObjectID c_generator_id = generator_id.native()
+
+        if num_items <= 0:
+            raise ValueError("num_items must be positive")
+
+        with nogil:
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().TryReadObjectRefStreamN(
+                    c_generator_id, num_items))
+
     def is_object_ref_stream_finished(self, ObjectRef generator_id):
         cdef:
             CObjectID c_generator_id = generator_id.native()
@@ -4904,6 +5161,42 @@ cdef class CoreWorker:
                     c_object_ref_and_is_ready_pair.first.object_id(),
                     c_object_ref_and_is_ready_pair.first.owner_address().SerializeAsString()), # noqa
                 c_object_ref_and_is_ready_pair.second)
+
+    def peek_object_ref_stream_n(self, ObjectRef generator_id, int64_t num_items):
+        """
+        Read multiple next indexes of an ObjectRefStream of generator_id without
+        consuming them.
+
+        Args:
+            generator_id: The object ref id of the streaming generator task.
+            num_items: Number of next refs to peek.
+
+        Returns:
+            Object references for the next indexes and whether each object is
+            ready.
+        """
+        cdef:
+            CObjectID c_generator_id = generator_id.native()
+            c_vector[pair[CObjectReference, c_bool]] c_object_refs_and_ready
+            CObjectReference c_object_ref
+
+        if num_items <= 0:
+            raise ValueError("num_items must be positive")
+
+        with nogil:
+            c_object_refs_and_ready = (
+                    CCoreWorkerProcess.GetCoreWorker().PeekObjectRefStreamN(
+                        c_generator_id, num_items))
+
+        refs_and_ready = []
+        for i in range(c_object_refs_and_ready.size()):
+            c_object_ref = c_object_refs_and_ready[i].first
+            refs_and_ready.append(
+                (ObjectRef(
+                    c_object_ref.object_id(),
+                    c_object_ref.owner_address().SerializeAsString()),
+                 c_object_refs_and_ready[i].second))
+        return refs_and_ready
 
     def peek_next_object_id_binary(self, ObjectRef generator_id):
         """Return the binary form of the next object id in the stream."""
