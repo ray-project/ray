@@ -38,8 +38,6 @@ from ray.serve.config import (
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
     GangSchedulingConfig,
-    HTTPOptions,
-    ProxyLocation,
     RequestRouterConfig,
 )
 from ray.serve.generated.serve_pb2 import (
@@ -1123,55 +1121,3 @@ class ReplicaConfig:
             "placement_group_fallback_strategy": self.placement_group_fallback_strategy,
             "max_replicas_per_node": self.max_replicas_per_node,
         }
-
-
-def prepare_imperative_http_options(
-    proxy_location: Union[None, str, ProxyLocation],
-    http_options: Union[None, dict, HTTPOptions],
-) -> HTTPOptions:
-    """Prepare `HTTPOptions` with a resolved `location` based on `proxy_location` and `http_options`.
-
-    Precedence:
-    - If `proxy_location` is provided, it overrides any `location` in `http_options`.
-    - Else if `http_options` specifies a `location` explicitly (HTTPOptions(...) or dict with 'location'), keep it.
-    - Else (no `proxy_location` and no explicit `location`) set `location` to `ProxyLocation.EveryNode`.
-      A bare `HTTPOptions()` counts as an explicit default (`HeadOnly`).
-
-    Args:
-        proxy_location: Optional ProxyLocation (or its string representation).
-        http_options: Optional HTTPOptions instance or dict. If None, a new HTTPOptions() is created.
-
-    Returns:
-        HTTPOptions: New instance with resolved location.
-
-    Note:
-        1. Default ProxyLocation (when unspecified) resolves to ProxyLocation.EveryNode.
-        2. Default HTTPOptions() location is ProxyLocation.HeadOnly.
-        3. `HTTPOptions` is used in `imperative` mode (Python API) cluster set-up.
-            `Declarative` mode (CLI / REST) uses `HTTPOptionsSchema`.
-
-    Raises:
-        ValueError: If http_options is not None, dict, or HTTPOptions.
-    """
-    if http_options is None:
-        location_set_explicitly = False
-        http_options = HTTPOptions()
-    elif isinstance(http_options, dict):
-        location_set_explicitly = "location" in http_options
-        http_options = HTTPOptions(**http_options)
-    elif isinstance(http_options, HTTPOptions):
-        # empty `HTTPOptions()` is considered as user specified the default location value `HeadOnly` explicitly
-        location_set_explicitly = True
-        http_options = HTTPOptions(**http_options.model_dump(exclude_unset=True))
-    else:
-        raise ValueError(
-            f"Unexpected type for http_options: `{type(http_options).__name__}`"
-        )
-
-    if proxy_location is None:
-        if not location_set_explicitly:
-            http_options.location = ProxyLocation.EveryNode
-    else:
-        http_options.location = ProxyLocation._normalize(proxy_location)
-
-    return http_options
