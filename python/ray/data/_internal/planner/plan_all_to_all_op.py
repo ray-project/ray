@@ -179,6 +179,10 @@ def _plan_hash_shuffle_repartition_v3(
         num_partitions=target_num_partitions,
         partition_fn=_partition_fn,
         map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
+        name=(
+            f"HashShuffleMapV3(keys={key_cols}, "
+            f"partitions={target_num_partitions})"
+        ),
     )
     reduce_op = ShuffleReduceOpV3(
         map_op,
@@ -188,6 +192,10 @@ def _plan_hash_shuffle_repartition_v3(
         streaming_reduce=streaming_reduce,
         coalesce_output=coalesce_output,
         disallow_block_splitting=True,
+        name=(
+            f"HashShuffleReduceV3(keys={key_cols}, "
+            f"partitions={target_num_partitions})"
+        ),
     )
     return reduce_op
 
