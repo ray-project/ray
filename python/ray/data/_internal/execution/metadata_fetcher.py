@@ -24,7 +24,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from collections.abc import Hashable
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 import ray.exceptions
@@ -62,13 +62,10 @@ class MetadataFetcher(ABC):
         """Stop any background machinery."""
 
     @abstractmethod
-    def in_data_ready_get_object_size(
-        self,
-        task: DataOpTask,
-        block_ref: "ray.ObjectRef[Any]",
-        meta_ref: "ray.ObjectRef[Any]",
-    ) -> Optional[int]:
-        """Handle one pulled pair inside the ``on_data_ready`` loop.
+    def in_data_ready_get_object_size(self, task: DataOpTask) -> Optional[int]:
+        """Handle one pulled pair inside the ``on_data_ready`` loop. The pair's
+        refs are read off the task (``task.pending_block_ref`` /
+        ``task.pending_meta_ref``).
 
         Returns the output-budget bytes for this pair (0 if the size is
         unknown), or ``None`` to mean "the metadata isn't available yet — stop
@@ -97,12 +94,9 @@ class InlineMetadataFetcher(MetadataFetcher):
     """Synchronous mode: fetch metadata inline and emit immediately. Holds no
     state and starts no thread."""
 
-    def in_data_ready_get_object_size(
-        self,
-        task: DataOpTask,
-        block_ref: "ray.ObjectRef[Any]",
-        meta_ref: "ray.ObjectRef[Any]",
-    ) -> Optional[int]:
+    def in_data_ready_get_object_size(self, task: DataOpTask) -> Optional[int]:
+        # The ref resolves to pickled metadata bytes, not a BlockMetadata.
+        meta_ref: "ray.ObjectRef[Any]" = task.pending_meta_ref
         try:
             # The timeout includes the time to ship the metadata to this node,
             # so a 0 timeout could cancel an in-flight download. Use a small
@@ -122,7 +116,7 @@ class InlineMetadataFetcher(MetadataFetcher):
                 f"crashes, node preemption, or overload."
             )
             return None
-        return task.produce_block(block_ref, meta_bytes)
+        return task.produce_block(task.pending_block_ref, meta_bytes)
 
     def in_data_ready_done(self, task: DataOpTask) -> None:
         # Inline mode fires the done-callback the moment the generator drains:
@@ -180,7 +174,30 @@ class ThreadedMetadataFetcher(MetadataFetcher):
     waiting on metadata never blocks another.
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        get_objects: Optional[Callable] = None,
+        wait_for_objects: Optional[Callable] = None,
+        get_object_locations: Optional[Callable] = None,
+    ):
+        """Create a ThreadedMetadataFetcher.
+
+        Args:
+            get_objects: Fetches object values by ref, like ``ray.get``
+                (called as ``get_objects(refs, timeout=...)``). Injectable so
+                tests can drive the fetch path without a real cluster.
+            wait_for_objects: Reports which refs are locally available, like
+                ``ray.wait`` (called with ``fetch_local=True``).
+            get_object_locations: Returns per-ref location info (including
+                ``object_size``), like ``get_local_object_locations``.
+        """
+        self._get_objects: Callable = get_objects or ray.get
+        self._wait_for_objects: Callable = wait_for_objects or ray.wait
+        self._get_object_locations: Callable = (
+            get_object_locations or get_local_object_locations
+        )
+
         self._request_q: "queue_module.Queue[_Request]" = queue_module.Queue()
         # fetch thread -> executor: meta_ref -> bytes (or captured Exception).
         self._results: Dict["ray.ObjectRef", Any] = {}
@@ -230,12 +247,9 @@ class ThreadedMetadataFetcher(MetadataFetcher):
                     "Failed to join the metadata-fetch thread.", exc_info=True
                 )
 
-    def in_data_ready_get_object_size(
-        self,
-        task: DataOpTask,
-        block_ref: "ray.ObjectRef[Any]",
-        meta_ref: "ray.ObjectRef[Any]",
-    ) -> Optional[int]:
+    def in_data_ready_get_object_size(self, task: DataOpTask) -> Optional[int]:
+        block_ref = task.pending_block_ref
+        meta_ref = task.pending_meta_ref
         # Output-budget size from the block's local object_size (no RPC).
         # Normally known: the driver owns the just-yielded block ref, so the
         # value (which matches ``meta.size_bytes``) is in the local object
@@ -244,7 +258,7 @@ class ThreadedMetadataFetcher(MetadataFetcher):
         # differ from ``meta.size_bytes`` (the in-memory/logical size). We should
         # add an explicit ``object_size_bytes`` to ``BlockMetadata`` and use it
         # directly, so the fallback below doesn't conflate the two.
-        info: Optional[Dict[str, Any]] = get_local_object_locations([block_ref]).get(
+        info: Optional[Dict[str, Any]] = self._get_object_locations([block_ref]).get(
             block_ref
         )
         object_size: Optional[int] = (
@@ -263,7 +277,7 @@ class ThreadedMetadataFetcher(MetadataFetcher):
                 )
             try:
                 meta_with_schema: BlockMetadataWithSchema = pickle.loads(
-                    ray.get(meta_ref, timeout=METADATA_WAIT_TIMEOUT_S)
+                    self._get_objects(meta_ref, timeout=METADATA_WAIT_TIMEOUT_S)
                 )
             except ray.exceptions.GetTimeoutError:
                 # Metadata isn't local yet either. Leave this pair pending and
@@ -399,7 +413,7 @@ class ThreadedMetadataFetcher(MetadataFetcher):
            that raced out of the local store. A ref that resolved to an error is
            published as that exception for ``_emit_ready`` to surface.
         """
-        ready, not_ready = ray.wait(
+        ready, not_ready = self._wait_for_objects(
             pending,
             num_returns=len(pending),
             timeout=_FETCH_WAIT_TIMEOUT_S,
@@ -410,7 +424,7 @@ class ThreadedMetadataFetcher(MetadataFetcher):
 
         retry: List["ray.ObjectRef"] = []
         try:
-            values = ray.get(ready, timeout=0)
+            values = self._get_objects(ready, timeout=0)
             results: Dict["ray.ObjectRef", Any] = dict(zip(ready, values))
         except Exception:
             # A batched get raises on the first error and hides which ref
@@ -418,7 +432,7 @@ class ThreadedMetadataFetcher(MetadataFetcher):
             results = {}
             for ref in ready:
                 try:
-                    results[ref] = ray.get(ref, timeout=0)
+                    results[ref] = self._get_objects(ref, timeout=0)
                 except GetTimeoutError:
                     # ray.wait reported it ready but it's no longer local (e.g. a
                     # raced eviction). Re-queue rather than treating it as a

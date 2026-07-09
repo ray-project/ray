@@ -265,6 +265,14 @@ class DataOpTask(OpTask):
         generator and let ``metadata_fetcher`` turn each into an emitted
         ``RefBundle``.
 
+        "Emitting" a pair means invoking this task's ``output_ready_callback``
+        with a ``RefBundle`` wrapping the block ref and its resolved metadata —
+        i.e. handing the block downstream into the operator's output queue. In
+        the inline mode a pair is emitted synchronously inside this call; in the
+        threaded mode emission is deferred and happens later, once the fetcher's
+        background thread has the metadata (so a pair pulled here may not be
+        emitted until a subsequent scheduling iteration).
+
         This method owns the shared pull loop; how a pair's metadata is fetched
         and emitted is delegated to ``metadata_fetcher``
         (:meth:`MetadataFetcher.in_data_ready_get_object_size`). The generator yields a block
@@ -368,14 +376,12 @@ class DataOpTask(OpTask):
 
                 self._metadata_ready_callback(self._pending_meta_ref)
 
-            # Delegate metadata fetch + emit (inline) or defer (threaded). A
-            # None result means the metadata isn't available yet: leave the
-            # pair pending (refs stay set) and retry next call.
-            object_size = metadata_fetcher.in_data_ready_get_object_size(
-                self,
-                self._pending_block_ref,
-                self._pending_meta_ref,
-            )
+            # Delegate metadata fetch + emit (inline) or defer (threaded). The
+            # fetcher reads the pair off the task (``pending_block_ref`` /
+            # ``pending_meta_ref``). A None result means the metadata isn't
+            # available yet: leave the pair pending (refs stay set) and retry
+            # next call.
+            object_size = metadata_fetcher.in_data_ready_get_object_size(self)
             if object_size is None:
                 break
             self._object_size_ready_callback(self._pending_block_ref, object_size)
@@ -425,6 +431,18 @@ class DataOpTask(OpTask):
     @property
     def task_error(self) -> Optional[Exception]:
         return self._task_error
+
+    @property
+    def pending_block_ref(self) -> "ray.ObjectRef[Block]":
+        """The block ref of the pair currently being handled by the fetcher
+        (nil when no pair is in flight)."""
+        return self._pending_block_ref
+
+    @property
+    def pending_meta_ref(self) -> "ray.ObjectRef[BlockMetadata]":
+        """The metadata ref of the pair currently being handled by the fetcher
+        (nil when no pair is in flight)."""
+        return self._pending_meta_ref
 
     def is_drained(self) -> bool:
         return self._state is TaskGeneratorState.DRAINED
