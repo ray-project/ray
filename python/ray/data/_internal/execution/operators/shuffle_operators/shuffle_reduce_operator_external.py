@@ -218,6 +218,12 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             **reduce_resources,
             "scheduling_strategy": "SPREAD",
             "num_returns": "streaming",
+            # On task failure (worker crash, mapper's ShuffleHandle ref lost
+            # because its node died, etc.), let Ray retry. Ray Core's lineage
+            # kicks in on retry: nested handle refs inside ``handles_ref``
+            # that are missing get their producing mapper re-executed
+            # automatically before the reducer re-runs.
+            "max_retries": 3,
         }
 
         block_gen = external_hash_shuffle_reduce_task.options(**reduce_options).remote(
