@@ -274,6 +274,8 @@ steps:
       - forge
       - ray-wheel-build(python=3.10)
 
+  # Premerge runs only the lowest and highest supported Python versions. The
+  # intermediate versions are covered by the postmerge-only step below.
   - label: ":ray: core: minimal tests {{array.python}}"
     key: core_minimal_tests
     tags:
@@ -293,7 +295,6 @@ steps:
         --test-env=RAY_MINIMAL=1
         --test-env=EXPECTED_PYTHON_VERSION={{array.python}}
         --only-tags minimal
-        --python-version {{array.python}}
         --except-tags basic_test,manual,cgroup
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
         --parallelism-per-worker 3
@@ -328,10 +329,65 @@ steps:
     array:
       python:
         - "3.10"
+        - "3.14"
+
+  # Intermediate Python versions only run on postmerge (skipped on premerge).
+  - label: ":ray: core: minimal tests {{array.python}}"
+    key: core_minimal_tests_postmerge
+    tags:
+      - python
+      - dashboard
+      - oss
+      - min_build
+      - skip-on-premerge
+    instance_type: medium
+    commands:
+      # validate minimal installation
+      - python ./ci/env/check_minimal_install.py
+      # core tests
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
+        --parallelism-per-worker 3
+        --python-version {{array.python}}
+        --build-name minbuild-core-py{{array.python}}
+        --test-env=RAY_MINIMAL=1
+        --test-env=EXPECTED_PYTHON_VERSION={{array.python}}
+        --only-tags minimal
+        --except-tags basic_test,manual,cgroup
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
+        --parallelism-per-worker 3
+        --python-version {{array.python}}
+        --build-name minbuild-core-py{{array.python}}
+        --test-env=RAY_MINIMAL=1
+        --test-env=EXPECTED_PYTHON_VERSION={{array.python}}
+        --only-tags minimal
+        --except-tags no_basic_test,manual
+        --skip-ray-installation
+      # core redis tests
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
+        --parallelism-per-worker 3
+        --python-version {{array.python}}
+        --build-name minbuild-core-py{{array.python}}
+        --test-env=RAY_MINIMAL=1
+        --test-env=TEST_EXTERNAL_REDIS=1
+        --test-env=EXPECTED_PYTHON_VERSION={{array.python}}
+        --only-tags minimal
+        --except-tags no_basic_test,manual
+        --skip-ray-installation
+      # serve tests
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... serve
+        --parallelism-per-worker 3
+        --python-version {{array.python}}
+        --build-name minbuild-core-py{{array.python}}
+        --test-env=RAY_MINIMAL=1
+        --only-tags minimal
+        --skip-ray-installation
+    depends_on:
+      - minbuild-core($)
+    array:
+      python:
         - "3.11"
         - "3.12"
         - "3.13"
-        - "3.14"
 
   - label: ":ray: core: cgroup tests"
     tags:
