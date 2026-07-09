@@ -55,6 +55,15 @@ Status TaskGeneratorBackpressureWaiter::WaitUntilObjectConsumed() {
   return return_status;
 }
 
+bool TaskGeneratorBackpressureWaiter::IsBackpressured() const {
+  if (backpressure_threshold_ < 0) {
+    return false;
+  }
+  absl::MutexLock lock(&mutex_);
+  return !backpressure_disabled_ &&
+         total_objects_generated_ - total_objects_consumed_ >= backpressure_threshold_;
+}
+
 Status TaskGeneratorBackpressureWaiter::WaitAllObjectsReported() {
   absl::MutexLock lock(&mutex_);
   auto return_status = Status::OK();
@@ -150,6 +159,22 @@ Status ActorWideGeneratorBackpressureWaiter::ReserveActorWideSlot(
   return Status::OK();
 }
 
+bool ActorWideGeneratorBackpressureWaiter::TryReserveActorWideSlot(
+    ActorTaskBackpressureMetadata &metadata, int64_t num_objects) {
+  absl::MutexLock lock(&mutex_);
+  if (!metadata.task_alive) {
+    // Mirror ReserveActorWideSlot, which returns OK without admitting when the
+    // task is no longer alive. The caller stops streaming shortly after.
+    return true;
+  }
+  if (total_objects_generated_ - total_objects_consumed_ >= backpressure_threshold_) {
+    return false;
+  }
+  total_objects_generated_ += num_objects;
+  metadata.per_task_generated += num_objects;
+  return true;
+}
+
 void ActorWideGeneratorBackpressureWaiter::ReleaseActorWideSlot(
     ActorTaskBackpressureMetadata &metadata, int64_t num_objects) {
   absl::MutexLock lock(&mutex_);
@@ -218,6 +243,10 @@ int64_t ActorWideGeneratorBackpressureWaiter::TotalObjectGenerated() const {
 
 Status ActorTaskBackpressureMetadata::ReserveSlot(int64_t num_objects) {
   return actor_waiter->ReserveActorWideSlot(*this, num_objects);
+}
+
+bool ActorTaskBackpressureMetadata::TryReserveSlot(int64_t num_objects) {
+  return actor_waiter->TryReserveActorWideSlot(*this, num_objects);
 }
 
 void ActorTaskBackpressureMetadata::ReleaseSlot(int64_t num_objects) {
