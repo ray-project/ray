@@ -345,8 +345,6 @@ def test__wait_generators_bulk_after_partial_error(ray_start_regular):
     with pytest.raises(RayTaskError) as exc_info:
         ray.get(refs[1])
     assert isinstance(exc_info.value.as_instanceof_cause(), ValueError)
-    # An application error goes through the normal completion path, so refs past
-    # the produced items still mean plain end-of-stream.
     with pytest.raises(ObjectRefStreamEndOfStreamError):
         ray.get(refs[2])
 
