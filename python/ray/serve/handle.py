@@ -92,6 +92,7 @@ class _DeploymentHandleBase(Generic[T]):
         )
 
         self._router: Optional[Router] = _router
+        self._create_router: CreateRouterCallable
         if _create_router is None:
             self._create_router = create_router
         else:
@@ -323,6 +324,8 @@ class _DeploymentHandleBase(Generic[T]):
             if self._is_router_running_in_separate_loop:
                 await asyncio.wrap_future(shutdown_future)
             else:
+                # In same-loop mode the future is an `asyncio.Future`.
+                # pyrefly: ignore[not-async]
                 await shutdown_future
 
     def __repr__(self) -> str:
@@ -406,9 +409,12 @@ class _DeploymentResponseBase(Generic[R]):
                 # Use `asyncio.wrap_future` so `self._replica_result_future` can be awaited
                 # safely from any asyncio loop.
                 # self._replica_result_future is a object of type concurrent.futures.Future
-                self._replica_result = await asyncio.wrap_future(
-                    self._replica_result_future
+                concurrent_future = cast(
+                    "concurrent.futures.Future[ReplicaResult]",
+                    self._replica_result_future,
                 )
+                result: ReplicaResult = await asyncio.wrap_future(concurrent_future)
+                self._replica_result = result
             else:
                 # self._replica_result_future is a object of type asyncio.Future
                 async_future = cast(
@@ -457,6 +463,8 @@ class _DeploymentResponseBase(Generic[R]):
         except RequestCancelledError:
             # request is already cancelled nothing to do here
             return
+        # Populated by `_fetch_future_result_sync()` above.
+        # pyrefly: ignore[missing-attribute]
         self._replica_result.cancel()
 
     @DeveloperAPI
@@ -883,6 +891,8 @@ class DeploymentBroadcastResponse:
                 self._replica_results = self._ensure_scheduled().result(
                     timeout=timeout_s
                 )
+        # Non-None invariant: populated above.
+        # pyrefly: ignore[bad-return]
         return self._replica_results
 
     async def _fetch_replica_results_async(self) -> List[ReplicaResult]:
@@ -957,8 +967,8 @@ class DeploymentBroadcastResponse:
         )
         futures = [executor.submit(_fetch_one, rr) for rr in replica_results]
 
-        collected = []
-        first_error = None
+        collected: List[Any] = []
+        first_error: Optional[Exception] = None
         for fut in futures:
             try:
                 collected.append(fut.result())

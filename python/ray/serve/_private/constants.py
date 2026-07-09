@@ -106,7 +106,7 @@ RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS = int(
 # than to calculate them on raw data, both in terms of time and space.
 
 #: Default histogram buckets for latency tracker.
-DEFAULT_LATENCY_BUCKET_MS = [
+DEFAULT_LATENCY_BUCKET_MS: List[float] = [
     1,
     2,
     5,
@@ -156,7 +156,7 @@ MODEL_LOAD_LATENCY_BUCKETS_MS = parse_latency_buckets(
 
 #: Histogram buckets for replica startup and reconfigure latency.
 #: These are longer operations (constructor, model loading) so buckets start higher.
-DEFAULT_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS = [
+DEFAULT_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS: List[float] = [
     5,
     20,
     50,
@@ -185,7 +185,7 @@ BATCH_EXECUTION_TIME_BUCKETS_MS = REQUEST_LATENCY_BUCKETS_MS
 BATCH_WAIT_TIME_BUCKETS_MS = REQUEST_LATENCY_BUCKETS_MS
 
 #: Histogram buckets for batch utilization percentage.
-DEFAULT_BATCH_UTILIZATION_BUCKETS_PERCENT = [
+DEFAULT_BATCH_UTILIZATION_BUCKETS_PERCENT: List[float] = [
     5,
     10,
     20,
@@ -223,7 +223,7 @@ RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS = int(
 )
 
 #: Histogram buckets for actual batch size.
-DEFAULT_BATCH_SIZE_BUCKETS = [
+DEFAULT_BATCH_SIZE_BUCKETS: List[float] = [
     1,
     2,
     4,
@@ -797,13 +797,17 @@ RAY_SERVE_HAPROXY_LOG_TARGET = get_env_str(
 
 # HAProxy timeout configurations (in seconds, None = no timeout)
 RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S = (
-    int(os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S"))
+    # Guarded by the truthiness check below; the two get() calls can't be
+    # narrowed by mypy.
+    int(os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S"))  # type: ignore[arg-type]
     if os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S")
     else None
 )
 
 RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = (
-    int(os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S"))
+    # Guarded by the truthiness check below; the two get() calls can't be
+    # narrowed by mypy.
+    int(os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S"))  # type: ignore[arg-type]
     if os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S")
     else None
 )
@@ -927,7 +931,7 @@ RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS = get_env_int(
 # Flip this to true if the configured request router needs the body for its
 # decision, e.g. prefix-aware / prefix-cache routing.
 RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY = get_env_bool(
-    "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY", False
+    "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY", False  # type: ignore[arg-type]
 )
 
 # Emit per-request metrics from the ingress-request-router data path:
@@ -1086,7 +1090,7 @@ RAY_SERVE_EVENT_LOOP_MONITORING_INTERVAL_S = get_env_float_positive(
 # - 100-500ms: problematic, likely blocking code
 # - > 500ms: severe, definitely blocking
 # - > 5s: catastrophic
-SERVE_EVENT_LOOP_LATENCY_HISTOGRAM_BOUNDARIES_MS = [
+SERVE_EVENT_LOOP_LATENCY_HISTOGRAM_BOUNDARIES_MS: List[float] = [
     1,  # 1ms
     5,  # 5ms
     10,  # 10ms

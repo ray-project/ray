@@ -348,7 +348,7 @@ _serve_batch_request_context = contextvars.ContextVar(
 )
 
 
-def _get_serve_request_context():
+def _get_serve_request_context() -> "_RequestContext":
     """Get the current request context.
 
     Returns:
