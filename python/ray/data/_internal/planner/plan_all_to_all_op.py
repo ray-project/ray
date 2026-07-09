@@ -14,14 +14,14 @@ from ray.data._internal.execution.operators.hash_shuffle_v2 import (
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
 )
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator_v3 import (  # noqa: E501
-    ShuffleMapOpV3,
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator_external import (  # noqa: E501
+    ExternalHashShuffleMapOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
     ShuffleReduceOp,
 )
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator_v3 import (  # noqa: E501
-    ShuffleReduceOpV3,
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator_external import (  # noqa: E501
+    ExternalHashShuffleReduceOp,
 )
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
@@ -115,15 +115,15 @@ def _plan_hash_shuffle_repartition(
     return reduce_op
 
 
-def _plan_hash_shuffle_repartition_v3(
+def _plan_hash_shuffle_repartition_external(
     data_context: DataContext,
     logical_op: Repartition,
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
-    """Plan ``Repartition`` through the v3 file-transport hash shuffle.
+    """Plan ``Repartition`` through the external-shuffle variant.
 
-    Returns the ``ShuffleReduceOpV3`` (the downstream root) which wraps the
-    ``ShuffleMapOpV3`` as its single input dependency.
+    Returns the ``ExternalHashShuffleReduceOp`` (the downstream root) which wraps the
+    ``ExternalHashShuffleMapOp`` as its single input dependency.
 
     ``logical_op.sort=True`` produces a **per-partition local sort** by the
     hash keys (mirrors v2's ``Repartition(sort=True)`` semantics). The
@@ -132,8 +132,8 @@ def _plan_hash_shuffle_repartition_v3(
     ``sort=True`` without keys is rejected (nothing to sort by).
     """
     from ray.data._internal.arrow_ops.transform_pyarrow import hash_partition
-    from ray.data._internal.execution.operators.hash_shuffle_v3 import (
-        _concat_reduce as _concat_reduce_v3,
+    from ray.data._internal.execution.operators.hash_shuffle_external import (
+        _concat_reduce as _concat_reduce_external,
     )
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
@@ -166,25 +166,25 @@ def _plan_hash_shuffle_repartition_v3(
         reduce_fn = _sort_reduce(list(key_cols))
         streaming_reduce = False
     else:
-        reduce_fn = _concat_reduce_v3
+        reduce_fn = _concat_reduce_external
         streaming_reduce = True
     # Honor the repartition(N) -> exactly N blocks contract by coalescing all
     # reduce_fn outputs into a single block per partition. Independent of the
     # input-side streaming flag.
     coalesce_output = True
 
-    map_op = ShuffleMapOpV3(
+    map_op = ExternalHashShuffleMapOp(
         input_physical_op,
         data_context,
         num_partitions=target_num_partitions,
         partition_fn=_partition_fn,
         map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
         name=(
-            f"HashShuffleMapV3(keys={key_cols}, "
+            f"ExternalHashShuffleMap(keys={key_cols}, "
             f"partitions={target_num_partitions})"
         ),
     )
-    reduce_op = ShuffleReduceOpV3(
+    reduce_op = ExternalHashShuffleReduceOp(
         map_op,
         data_context,
         num_partitions=target_num_partitions,
@@ -193,7 +193,7 @@ def _plan_hash_shuffle_repartition_v3(
         coalesce_output=coalesce_output,
         disallow_block_splitting=True,
         name=(
-            f"HashShuffleReduceV3(keys={key_cols}, "
+            f"ExternalHashShuffleReduce(keys={key_cols}, "
             f"partitions={target_num_partitions})"
         ),
     )
@@ -302,11 +302,11 @@ def plan_all_to_all_op(
         )
 
     elif isinstance(op, Repartition):
-        # v3 file-transport hash shuffle takes precedence over v2/GPU paths
-        # when the user opts in via DataContext.use_hash_shuffle_v3. Handles
+        # External-shuffle variant takes precedence over the plasma/GPU paths
+        # when the user opts in via DataContext.use_external_hash_shuffle. Handles
         # both keyed and keyless repartition (keyless = hash on all columns).
-        if data_context.use_hash_shuffle_v3:
-            return _plan_hash_shuffle_repartition_v3(
+        if data_context.use_external_hash_shuffle:
+            return _plan_hash_shuffle_repartition_external(
                 data_context, op, input_physical_dag
             )
 

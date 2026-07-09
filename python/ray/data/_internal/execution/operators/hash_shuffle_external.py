@@ -1,4 +1,4 @@
-"""hash_shuffle_v3 — file-transport hash shuffle with an out-of-band side-channel.
+"""hash_shuffle_external — file-transport hash shuffle with an out-of-band side-channel.
 
 Design: design/hash-shuffle-bypass.md.
 
@@ -91,7 +91,7 @@ ShuffleCompression = Optional[Literal["lz4", "zstd"]]
 #
 #   ──────────────── Handshake (once per TCP connection) ────────────────
 #     client → server:
-#       u8[4]   magic       = b'V3SH'
+#       u8[4]   magic       = b'EXSH'
 #       u16     token_len
 #       bytes   token       (UTF-8, token_len bytes)
 #     server → client:
@@ -125,8 +125,8 @@ ShuffleCompression = Optional[Literal["lz4", "zstd"]]
 #         bytes msg (UTF-8)
 # =============================================================================
 
-# V3SH for version 3 shuffle, application-level handshake code
-_PROTO_MAGIC = b"V3SH"
+# EXSH for external-shuffle, application-level handshake magic
+_PROTO_MAGIC = b"EXSH"
 
 # Opcodes
 _OPCODE_FETCH = 0x01
@@ -764,7 +764,7 @@ ShuffleHandle = dict  # {path, index:{pid:[(off,len)]}, endpoint:(host,port), to
 
 
 @ray.remote
-def v3_map_task(
+def external_hash_shuffle_map_task(
     *blocks: Block,
     partition_fn: PartitionFn,
     num_partitions: int,
@@ -773,7 +773,7 @@ def v3_map_task(
     shuffle_id: str,
     token: str,
     transformer: MapBlockTransformer = None,
-    map_op_name: str = "ShuffleMapV3",
+    map_op_name: str = "ExternalHashShuffleMap",
     pool_budget_bytes: int = 16 * 1024 * 1024,
     compression: ShuffleCompression = None,
     fsync_on_close: bool = True,
@@ -808,7 +808,7 @@ def v3_map_task(
     node_id = ray.get_runtime_context().get_node_id()
     manager = ShuffleManager.options(
         name=f"shuffle_mgr:{shuffle_id}:{node_id}",
-        namespace="ray_data_shuffle_v3",
+        namespace="ray_data_shuffle_external",
         get_if_exists=True,
         lifetime="detached",
         max_restarts=-1,
@@ -925,7 +925,7 @@ def v3_map_task(
                 expected_size = 0
             if final_size_on_close != expected_size:
                 raise RuntimeError(
-                    f"v3_map_task: file size mismatch — wrote "
+                    f"external_hash_shuffle_map_task: file size mismatch — wrote "
                     f"{final_size_on_close} bytes, index implies "
                     f"{expected_size}. Refusing to publish corrupt file."
                 )
@@ -965,7 +965,7 @@ class ShuffleFetchError(RuntimeError):
 class ShuffleNodeLostError(ShuffleFetchError):
     """Raised when a source ShuffleManager's node has died.
 
-    v3 shuffle materializes mapper output on the mapper node's local disk and
+    The external-shuffle variant materializes mapper output on the mapper node's local disk and
     embeds a NodeAffinity-pinned ActorHandle in the ShuffleHandle. If that
     node dies, the on-disk output is gone with it AND Ray lineage cannot
     reconstruct the mapper (the handle-refs are currently aggregated
@@ -973,7 +973,7 @@ class ShuffleNodeLostError(ShuffleFetchError):
     the reducer against the same dead manager would just hang or fail again.
 
     Fail loudly with an actionable message so the user knows the job is not
-    recoverable in the current v3 design, rather than waiting on a silent
+    recoverable in the current design, rather than waiting on a silent
     ``ray.get(manager.endpoint.remote())`` hang against a permanently-pending
     (soft=False, max_restarts=-1) actor.
     """
@@ -1115,7 +1115,7 @@ def _prefetch_node_into(
             if alive is False:
                 raise ShuffleNodeLostError(
                     f"ShuffleManager node {node_id} is dead; the mapper's "
-                    f"on-disk shuffle output was lost with the node. v3 does "
+                    f"on-disk shuffle output was lost with the node. External-shuffle does "
                     f"not yet reconstruct across node loss — retry the job "
                     f"(a fresh mapper on a live node will produce new output)."
                 )
@@ -1137,7 +1137,7 @@ def _prefetch_node_into(
         raise
     except Exception as e:
         # Cross-reference the manager's node against ``ray.nodes()``. If the
-        # node is dead, this is unrecoverable in v3 — surface it as a
+        # node is dead, this is unrecoverable — surface it as a
         # ShuffleNodeLostError so the user gets an actionable message instead
         # of an opaque ShuffleFetchError chain. Node alive → the underlying
         # cause is transient / local (e.g. mid-restart TCP refuse); keep the
@@ -1145,7 +1145,7 @@ def _prefetch_node_into(
         if _is_node_alive(node_id) is False:
             raise ShuffleNodeLostError(
                 f"ShuffleManager node {node_id} is dead mid-fetch; "
-                f"lost on-disk output for {len(members)} source(s). v3 does "
+                f"lost on-disk output for {len(members)} source(s). External-shuffle does "
                 f"not yet reconstruct across node loss."
             ) from e
         raise ShuffleFetchError(
@@ -1272,7 +1272,7 @@ def _compute_prefetch_layout(
 
 
 @ray.remote
-def v3_reduce_task(
+def external_hash_shuffle_reduce_task(
     handles: List[ShuffleHandle],
     partition_id: int,
     reduce_fn: ReduceFn,
@@ -1281,7 +1281,7 @@ def v3_reduce_task(
     target_max_block_size: Optional[int] = None,
     streaming: bool = True,
     downstream_map_transformer: Optional[Any] = None,
-    reduce_op_name: str = "ShuffleReduceV3",
+    reduce_op_name: str = "ExternalHashShuffleReduce",
     downstream_map_task_kwargs: Optional[Dict[str, Any]] = None,
     coalesce_output: bool = False,
     downstream_map_target_max_block_size_override: Optional[int] = None,

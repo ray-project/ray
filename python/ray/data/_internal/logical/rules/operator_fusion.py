@@ -27,8 +27,8 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
     ShuffleReduceOp,
 )
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator_v3 import (  # noqa: E501
-    ShuffleReduceOpV3,
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator_external import (  # noqa: E501
+    ExternalHashShuffleReduceOp,
 )
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
@@ -78,7 +78,7 @@ class FuseOperators(Rule):
         fused_dag = self._fuse_all_to_all_operators_in_dag(fused_dag)
 
         # Fuse a downstream task-pool map into the hash-shuffle reduce
-        # (V2 ``ShuffleReduceOp`` or V3 ``ShuffleReduceOpV3``). Runs after
+        # (``ShuffleReduceOp`` (plasma) or ``ExternalHashShuffleReduceOp`` (external)). Runs after
         # map fusion so a downstream map chain is already collapsed into
         # one TaskPoolMapOperator. Both reduce classes share the same
         # fusion policy via ``_can_fuse_map_into_shuffle_reduce``;
@@ -110,8 +110,8 @@ class FuseOperators(Rule):
     ) -> PhysicalOperator:
         """Starting at the given operator, traverses up the DAG and fuses a
         task-pool map sitting directly downstream of a hash-shuffle reduce
-        (V2 ``ShuffleReduceOp`` or V3 ``ShuffleReduceOpV3``) into the
-        reduce — i.e. a ``ShuffleReduce[V3]? -> TaskPoolMapOperator`` pair.
+        (``ShuffleReduceOp`` (plasma) or ``ExternalHashShuffleReduceOp`` (external)) into the
+        reduce — i.e. a ``ShuffleReduce[External]? -> TaskPoolMapOperator`` pair.
         Both reduce classes share the same fusion policy (concurrency-cap,
         downstream-limit, non-file-datasink, already-fused, remote-args
         checks) via ``_can_fuse_map_into_shuffle_reduce``; construction
@@ -136,8 +136,7 @@ class FuseOperators(Rule):
         self, dag: PhysicalOperator, has_downstream_limit: bool
     ) -> bool:
         """Whether ``dag`` is a task-pool map that can be fused into the
-        hash-shuffle reduce (V2 ``ShuffleReduceOp`` or V3
-        ``ShuffleReduceOpV3``) immediately upstream of it.
+        hash-shuffle reduce (``ShuffleReduceOp`` (plasma) or ``ExternalHashShuffleReduceOp`` (external)) immediately upstream of it.
         """
         # `dag` must be a fusable task-pool map.
         if not (isinstance(dag, TaskPoolMapOperator) and dag.supports_fusion()):
@@ -168,19 +167,19 @@ class FuseOperators(Rule):
         ):
             return False
 
-        # The sole upstream must be a hash-shuffle reduce (V2 or V3) that
+        # The sole upstream must be a hash-shuffle reduce (plasma or external) that
         # hasn't already fused with a map.
         upstream_ops = dag.input_dependencies
         if len(upstream_ops) != 1 or not isinstance(
-            upstream_ops[0], (ShuffleReduceOp, ShuffleReduceOpV3)
+            upstream_ops[0], (ShuffleReduceOp, ExternalHashShuffleReduceOp)
         ):
             return False
         reduce_op = upstream_ops[0]
         # Already-fused check: V2 stores the absorbed transformer in
-        # ``_fused_output_map_transformer``; V3 stores it in
+        # ``_fused_output_map_transformer``; the external variant stores it in
         # ``_downstream_map_transformer``. Both signal "this reduce has
         # already absorbed one downstream map; refuse a second".
-        if isinstance(reduce_op, ShuffleReduceOpV3):
+        if isinstance(reduce_op, ExternalHashShuffleReduceOp):
             already_fused = reduce_op._downstream_map_transformer is not None
         else:
             already_fused = reduce_op._fused_output_map_transformer is not None
@@ -403,15 +402,15 @@ class FuseOperators(Rule):
     def _get_fused_map_into_shuffle_reduce_operator(
         self,
         down_op: TaskPoolMapOperator,
-        up_op: Union[ShuffleReduceOp, ShuffleReduceOpV3],
-    ) -> Union[ShuffleReduceOp, ShuffleReduceOpV3]:
+        up_op: Union[ShuffleReduceOp, ExternalHashShuffleReduceOp],
+    ) -> Union[ShuffleReduceOp, ExternalHashShuffleReduceOp]:
         """Build the fused replacement for a
-        ``ShuffleReduce[V3]? -> TaskPoolMapOperator`` edge. Constructs a new
-        reduce op of the same class as ``up_op`` (V2 or V3) with the
+        ``ShuffleReduce[External]? -> TaskPoolMapOperator`` edge. Constructs a new
+        reduce op of the same class as ``up_op`` (plasma or external) with the
         downstream map's transformer / kwargs plumbed into the reduce task
         body. The two reduce classes carry different ctor arguments and use
         different field names for the absorbed transformer / kwargs
-        (``fused_output_map_*`` for V2, ``downstream_map_*`` for V3), so
+        (``fused_output_map_*`` for the plasma variant, ``downstream_map_*`` for the external variant), so
         each branch below constructs its own class explicitly.
         """
         name = up_op.name + "->" + down_op.name
@@ -419,8 +418,8 @@ class FuseOperators(Rule):
         up_logical_op = self._op_map.pop(up_op)
         self._op_map.pop(down_op)
 
-        if isinstance(up_op, ShuffleReduceOpV3):
-            fused_op = ShuffleReduceOpV3(
+        if isinstance(up_op, ExternalHashShuffleReduceOp):
+            fused_op = ExternalHashShuffleReduceOp(
                 input_op=up_op.input_dependencies[0],
                 data_context=up_op.data_context,
                 num_partitions=up_op._num_partitions,

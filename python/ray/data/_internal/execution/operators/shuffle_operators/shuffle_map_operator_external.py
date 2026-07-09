@@ -1,10 +1,10 @@
-"""ShuffleMapOpV3 — map phase of the v3 file-transport hash shuffle.
+"""ExternalHashShuffleMapOp — map phase of the external-shuffle variant.
 
-Drives one ``v3_map_task`` per input group and, once all mappers finish,
+Drives one ``external_hash_shuffle_map_task`` per input group and, once all mappers finish,
 emits N ``RefBundle`` wrappers to the output queue — one per partition_id,
 each carrying the SAME shared plasma object (the list of handle refs)
 and a distinct ``__partition__<pid>`` sentinel. Wire protocol and task
-body live in ``hash_shuffle_v3.py``.
+body live in ``hash_shuffle_external.py``.
 """
 
 import functools
@@ -36,10 +36,10 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
-from ray.data._internal.execution.operators.hash_shuffle_v3 import (
+from ray.data._internal.execution.operators.hash_shuffle_external import (
     PartitionFn,
     ShuffleCompression,
-    v3_map_task,
+    external_hash_shuffle_map_task,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     make_partition_sentinel,
@@ -59,15 +59,15 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-_MAPPER_ID_SENTINEL = "__v3_mapper__"
+_MAPPER_ID_SENTINEL = "__external_mapper__"
 
 
 def _make_mapper_sentinel(mapper_id: int) -> List[str]:
     return [f"{_MAPPER_ID_SENTINEL}{mapper_id}"]
 
 
-class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarMixin):
-    """V3 file-transport map operator. See module docstring."""
+class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarMixin):
+    """External-shuffle map operator. See module docstring."""
 
     _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS = 1.0
     _DEFAULT_PRE_MAP_MERGE_THRESHOLD = 1024 * 1024 * 1024  # 1 GB
@@ -90,7 +90,7 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         pre_map_merge_threshold: int = _DEFAULT_PRE_MAP_MERGE_THRESHOLD,
         map_runtime_env: Optional[Dict[str, Any]] = None,
         base_dir: Optional[str] = None,
-        name: str = "ShuffleMapV3",
+        name: str = "ExternalHashShuffleMap",
     ):
         super().__init__(
             name=name,
@@ -130,7 +130,7 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         self._total_input_bytes: int = 0
         self._map_blocks_stats: List[BlockStats] = []
         # Per-partition decoded (pa.Table.nbytes, pre-compression) byte total,
-        # summed across all completed mappers. Consumed by ShuffleReduceOpV3
+        # summed across all completed mappers. Consumed by ExternalHashShuffleReduceOp
         # via ``get_partition_bytes`` — mirrors v2's ``_partition_bytes``.
         self._partition_bytes: Dict[int, int] = defaultdict(int)
 
@@ -138,15 +138,15 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         self._map_bar: Optional["BaseProgressBar"] = None
 
         # =====================================================================
-        # V3-specific state below.
+        # External-shuffle-specific state below.
         # =====================================================================
 
-        # -- V3: shuffle config knobs ----------------------------------------
+        # -- External-shuffle config knobs -----------------------------------
         # Fixed override; ``None`` ⇒ ``_UNBOUNDED_POOL_BYTES``.
         self._pool_budget_override: Optional[int] = pool_budget_bytes
         self._fsync_on_close: bool = fsync_on_close
 
-        # -- V3: per-shuffle identity & on-disk staging ----------------------
+        # -- Per-shuffle identity & on-disk staging --------------------------
         # ``base_dir`` is a directory-name template — each node mkdirs the
         # same path on its OWN local FS. Driver owns nothing on remote disks.
         # Cleanup layers, precedence:
@@ -161,10 +161,10 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         # does NOT mkdir — mappers create their own local copy on the node
         # they run on. Caller-supplied ``base_dir`` is treated as scratch.
         self._base_dir: str = base_dir or os.path.join(
-            tempfile.gettempdir(), f"ray_shuffle_v3_{self._shuffle_id}"
+            tempfile.gettempdir(), f"ray_shuffle_external_{self._shuffle_id}"
         )
 
-        # -- V3: partition-wrapper emission state ----------------------------
+        # -- Partition-wrapper emission state --------------------------------
         # Handles returned by completed mappers; drained into
         # ``_shared_handles_ref`` at wrapper-emit time.
         self._completed_handle_refs: List[ObjectRef] = []
@@ -262,14 +262,14 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         if self._map_runtime_env is not None:
             ray_options["runtime_env"] = self._map_runtime_env
 
-        # v3's task body wants Optional[Literal["lz4", "zstd"]]; data_context
+        # The task body wants Optional[Literal["lz4", "zstd"]]; data_context
         # stores the raw string ("none" | "lz4" | "zstd"). Translate here.
         raw_compression = (self.data_context.hash_shuffle_compression or "none").lower()
         compression: ShuffleCompression = (
             None if raw_compression == "none" else raw_compression
         )
 
-        handle_ref = v3_map_task.options(**ray_options).remote(
+        handle_ref = external_hash_shuffle_map_task.options(**ray_options).remote(
             *block_refs,
             partition_fn=self._partition_fn,
             num_partitions=self._num_partitions,
@@ -327,7 +327,7 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         assert requested is not None
         self._map_resource_usage = self._map_resource_usage.subtract(requested)
 
-        # Roll up input stats from the bundles now — v3's task return
+        # Roll up input stats from the bundles now — the task return
         # doesn't carry them (v2 gets them from ``ray.get`` below), so
         # compute before ``destroy_if_owned`` drops the metadata.
         input_rows = sum(
@@ -474,7 +474,7 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         self._merge_buffer_bundles_by_node.clear()
         self._merge_buffer_bytes_by_node.clear()
         self._output_queue.clear()
-        # V3-specific: detached ShuffleManagers don't die via ref-count.
+        # External-shuffle-specific: detached ShuffleManagers don't die via ref-count.
         # Terminate them gracefully (__ray_shutdown__ rmtrees base_dir +
         # stops server) before dropping their handle refs.
         self._kill_managers_from_completed_handles()
@@ -560,7 +560,7 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         if name == "Map":
             self._map_bar = pg
 
-    # V3-specific accessors consumed by ShuffleReduceOpV3.
+    # External-shuffle-specific accessors consumed by ExternalHashShuffleReduceOp.
     @property
     def num_partitions(self) -> int:
         return self._num_partitions

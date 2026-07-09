@@ -1,5 +1,5 @@
-"""Smoke test for the v3 shuffle operator pair (ShuffleMapOpV3 +
-ShuffleReduceOpV3).
+"""Smoke test for the external-shuffle operator pair (ExternalHashShuffleMapOp +
+ExternalHashShuffleReduceOp).
 
 This wires the operators directly — bypassing the Ray Data planner — to
 verify the simplest end-to-end story: feed N input blocks → hash-partition
@@ -14,7 +14,7 @@ get their own tests later.
 
 Run with::
 
-    pytest python/ray/data/tests/test_shuffle_v3_smoke.py -xvs
+    pytest python/ray/data/tests/test_hash_shuffle_external_smoke.py -xvs
 """
 
 import os
@@ -31,14 +31,14 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     RefBundle,
 )
-from ray.data._internal.execution.operators.hash_shuffle_v3 import (
+from ray.data._internal.execution.operators.hash_shuffle_external import (
     _concat_reduce,
 )
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator_v3 import (  # noqa: E501
-    ShuffleMapOpV3,
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator_external import (  # noqa: E501
+    ExternalHashShuffleMapOp,
 )
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator_v3 import (  # noqa: E501
-    ShuffleReduceOpV3,
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator_external import (  # noqa: E501
+    ExternalHashShuffleReduceOp,
 )
 from ray.data._internal.stats import Timer
 from ray.data.block import BlockAccessor
@@ -145,14 +145,14 @@ def ray_init_shutdown():
 
 
 @pytest.mark.parametrize("num_blocks,rows,num_parts", [(4, 250, 4), (8, 100, 3)])
-def test_v3_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_parts):
+def test_external_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_parts):
     """End-to-end: map → reduce, verify total row count preserved."""
     ctx = DataContext.get_current()
     input_bundles = _build_input_bundles(num_blocks, rows)
     expected_total_rows = num_blocks * rows
 
     # Use a stub upstream op via a no-op input dependency. The MVP path
-    # plugs ShuffleMapOpV3.input_dependencies[0] into a real upstream; for
+    # plugs ExternalHashShuffleMapOp.input_dependencies[0] into a real upstream; for
     # smoke we just feed bundles in manually.
     from ray.data._internal.execution.operators.input_data_buffer import (
         InputDataBuffer,
@@ -164,23 +164,23 @@ def test_v3_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_parts):
     block_ref_counter = BlockRefCounter()
     upstream.start(ExecutionOptions(), block_ref_counter)
 
-    map_op = ShuffleMapOpV3(
+    map_op = ExternalHashShuffleMapOp(
         upstream,
         ctx,
         num_partitions=num_parts,
         partition_fn=_make_partition_fn(["id"], num_parts),
         pool_budget_bytes=4 * 1024 * 1024,
         fsync_on_close=False,  # don't pay fsync cost on a smoke test
-        name="ShuffleMapV3-smoke",
+        name="ExternalHashShuffleMap-smoke",
     )
-    reduce_op = ShuffleReduceOpV3(
+    reduce_op = ExternalHashShuffleReduceOp(
         map_op,
         ctx,
         num_partitions=num_parts,
         reduce_fn=_concat_reduce,
         streaming_reduce=False,
         # default target_max_block_size = None ⇒ partition = block
-        name="ShuffleReduceV3-smoke",
+        name="ExternalHashShuffleReduce-smoke",
     )
 
     map_op.start(ExecutionOptions(), block_ref_counter)
@@ -192,7 +192,7 @@ def test_v3_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_parts):
             map_op.add_input(upstream.get_next(), input_index=0)
         map_op.all_inputs_done()
 
-        # Drain map → feed reduce. ShuffleMapOpV3 now emits N partition
+        # Drain map → feed reduce. ExternalHashShuffleMapOp now emits N partition
         # wrapper bundles (one per partition_id, each carrying the same
         # shared handle-list ref + a __partition__<pid> sentinel), mirroring
         # v2's map->reduce contract. So we expect num_parts bundles, not
@@ -222,7 +222,7 @@ def test_v3_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_parts):
         # we expect coverage of every partition).
         partition_ids_seen = set()
         for bundle in reduce_output:
-            # We don't carry partition_id sentinels on the v3 reduce
+            # We don't carry partition_id sentinels on the external-shuffle reduce
             # output (the partition was an internal concept of the
             # ShuffleHandle), so we just count distinct output bundles.
             partition_ids_seen.add(id(bundle))
@@ -233,19 +233,19 @@ def test_v3_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_parts):
         upstream.shutdown(Timer(), force=True)
 
 
-def test_v3_base_dir_cleaned_up_on_actor_release(ray_init_shutdown, tmp_path):
+def test_external_base_dir_cleaned_up_on_actor_release(ray_init_shutdown, tmp_path):
     """When the last ``ActorHandle`` to a ``ShuffleManager`` is dropped,
     Ray gracefully terminates the actor process, the ``atexit`` hook fires,
-    and ``base_dir`` is removed.  This is the property that lets v3 NOT
+    and ``base_dir`` is removed.  This is the property that lets external-shuffle NOT
     leak files in /tmp across many shuffles."""
     import gc
     import time as _time
 
-    from ray.data._internal.execution.operators.hash_shuffle_v3 import (
+    from ray.data._internal.execution.operators.hash_shuffle_external import (
         ShuffleManager,
     )
 
-    base_dir = str(tmp_path / "shuffle_v3_atexit")
+    base_dir = str(tmp_path / "shuffle_external_atexit")
     actor = ShuffleManager.remote(base_dir, token="test-token")
     # Make sure the actor's __init__ has run (and that mkdirs has happened).
     ray.get(actor.endpoint.remote())
