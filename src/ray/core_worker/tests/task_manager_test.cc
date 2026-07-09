@@ -2044,9 +2044,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamNoRetryThenFailurePropagatesError) {
   manager_.TryDelObjectRefStream(generator_id);
 }
 
-// Cancellation (repro scenario 1): MarkTaskCanceled ends the stream first (with
-// TASK_CANCELLED), before FailPendingTask runs. The peeked refs must carry
-// TASK_CANCELLED, and the later FailPendingTask must not downgrade it.
+// Cancellation must win over a later actor-death notification: both the
+// eagerly-peeked refs and the generator completion object report TASK_CANCELLED.
 TEST_F(TaskManagerTest, TestObjectRefStreamBulkPeekCancellationPropagatesError) {
   auto spec =
       CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
@@ -2061,13 +2060,15 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBulkPeekCancellationPropagatesError) 
   auto peeked = manager_.PeekObjectRefStreamN(generator_id, 3);
   ASSERT_EQ(peeked.size(), 3);
 
-  // ray.cancel(): MarkTaskCanceled ends the stream first, then FailPendingTask
-  // arrives with TASK_CANCELLED. First-writer-wins keeps TASK_CANCELLED.
+  // Simulate cancellation racing with actor death. Cancellation is published
+  // under mu_ before the stream is ended, so FailPendingTask uses the same
+  // TASK_CANCELLED terminal reason for the generator completion object.
   manager_.MarkTaskCanceled(spec.TaskId());
-  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::TASK_CANCELLED);
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::ACTOR_DIED);
 
   ExpectStreamRefsCarryError(
       *store_, {value_id, eof_id, post_eof_id}, rpc::ErrorType::TASK_CANCELLED);
+  ExpectStreamRefsCarryError(*store_, {generator_id}, rpc::ErrorType::TASK_CANCELLED);
 
   manager_.TryDelObjectRefStream(generator_id);
 }

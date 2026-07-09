@@ -1724,17 +1724,35 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
 }
 
 void TaskManager::MarkTaskNoRetryInternal(const TaskID &task_id, bool canceled) {
-  ObjectID generator_id = TaskGeneratorId(task_id);
-  if (!generator_id.IsNil() && canceled) {
+  ObjectID generator_id = ObjectID::Nil();
+  {
+    absl::MutexLock lock(&mu_);
+    absl::flat_hash_map<TaskID, TaskEntry>::iterator it = submissible_tasks_.find(task_id);
+    if (it == submissible_tasks_.end()) {
+      return;
+    }
+
+    it->second.num_retries_left_ = 0;
+    it->second.num_oom_retries_left_ = 0;
+    if (canceled) {
+      // Publish cancellation before marking the stream terminal. A concurrent
+      // FailPendingTask then uses TASK_CANCELLED for the generator completion
+      // object, matching the EOF-region refs below.
+      it->second.is_canceled_ = true;
+      if (it->second.spec_.ReturnsDynamic()) {
+        generator_id = it->second.spec_.ReturnId(0);
+      }
+    }
+  }
+
+  // Non-cancel no-retry paths leave generator_id nil, so FailPendingTask
+  // records their real terminal error instead of ending the stream here.
+  if (!generator_id.IsNil()) {
     // Pass -1 because the task has been canceled, so we should just end the
     // stream at the caller's current index. This is needed because we may
     // receive generator reports out of order. If the task reports a later
     // index then exits because it was canceled, we will hang waiting for the
     // intermediate indices.
-    //
-    // For non-cancel no-retry paths (for example, tasks queued on a dead
-    // actor), leave the stream open until FailPendingTask records the real
-    // terminal error.
     rpc::RayErrorInfo error_info;
     error_info.set_error_type(rpc::ErrorType::TASK_CANCELLED);
     error_info.set_error_message(
@@ -1743,16 +1761,6 @@ void TaskManager::MarkTaskNoRetryInternal(const TaskID &task_id, bool canceled) 
                     /*end_of_stream_index=*/-1,
                     rpc::ErrorType::TASK_CANCELLED,
                     &error_info);
-  }
-
-  absl::MutexLock lock(&mu_);
-  auto it = submissible_tasks_.find(task_id);
-  if (it != submissible_tasks_.end()) {
-    it->second.num_retries_left_ = 0;
-    it->second.num_oom_retries_left_ = 0;
-    if (canceled) {
-      it->second.is_canceled_ = true;
-    }
   }
 }
 
