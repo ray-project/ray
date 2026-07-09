@@ -88,10 +88,11 @@ class WorkerMetricsCallback(WorkerCallback, TrainContextCallback):
             self._run_name, self._run_id, world_rank, worker_actor_id
         )
 
-    def before_shutdown(self):
+    def before_worker_shutdown(self):
         """Shutdown metrics before shutdown."""
-        for metric in self._metrics.values():
-            metric.reset()
+        if self._metrics:
+            for metric in self._metrics.values():
+                metric.reset()
 
     @contextmanager
     def on_report(self):
@@ -102,3 +103,22 @@ class WorkerMetricsCallback(WorkerCallback, TrainContextCallback):
         yield
         elapsed_time_s = time_monotonic() - start_time_s
         self._metrics[WorkerMetrics.REPORT_TOTAL_BLOCKED_TIME_S].record(elapsed_time_s)
+
+    @contextmanager
+    def on_checkpoint_sync(self):
+        """Measure time spent in the cross-rank barrier that synchronizes the
+        checkpoint directory name across all workers."""
+        start_time_s = time_monotonic()
+        yield
+        elapsed_time_s = time_monotonic() - start_time_s
+        self._metrics[WorkerMetrics.CHECKPOINT_SYNC_TOTAL_TIME_S].record(elapsed_time_s)
+
+    @contextmanager
+    def on_checkpoint_transfer(self):
+        """Measure time spent transferring checkpoint files to storage."""
+        start_time_s = time_monotonic()
+        yield
+        elapsed_time_s = time_monotonic() - start_time_s
+        self._metrics[WorkerMetrics.CHECKPOINT_TRANSFER_TOTAL_TIME_S].record(
+            elapsed_time_s
+        )

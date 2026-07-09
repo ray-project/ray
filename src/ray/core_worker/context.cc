@@ -231,22 +231,24 @@ const TaskID &WorkerContext::GetCurrentInternalTaskId() const {
 }
 
 PlacementGroupID WorkerContext::GetCurrentPlacementGroupId() const {
+  PlacementGroupID placement_group_id = GetThreadContext().GetCurrentPlacementGroupId();
   absl::ReaderMutexLock lock(&mutex_);
   // If the worker is an actor, we should return the actor's placement group id.
   if (current_actor_id_ != ActorID::Nil()) {
     return current_actor_placement_group_id_;
   } else {
-    return GetThreadContext().GetCurrentPlacementGroupId();
+    return placement_group_id;
   }
 }
 
 bool WorkerContext::ShouldCaptureChildTasksInPlacementGroup() const {
+  bool should_capture_child_tasks = GetThreadContext().PlacementGroupCaptureChildTasks();
   absl::ReaderMutexLock lock(&mutex_);
   // If the worker is an actor, we should return the actor's placement group id.
   if (current_actor_id_ != ActorID::Nil()) {
     return placement_group_capture_child_tasks_;
   } else {
-    return GetThreadContext().PlacementGroupCaptureChildTasks();
+    return should_capture_child_tasks;
   }
 }
 

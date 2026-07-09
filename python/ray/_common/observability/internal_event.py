@@ -5,11 +5,14 @@ emit events to dashboard-agents aggregator agent service.
 """
 
 from abc import ABC, abstractmethod
+from typing import Optional
 
 from ray._raylet import RayEvent
 from ray.core.generated.events_base_event_pb2 import RayEvent as RayEventProto
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class InternalEventBuilder(ABC):
     """Abstract base class for building internal Ray events.
 
@@ -35,12 +38,12 @@ class InternalEventBuilder(ABC):
                 RayEventProto.SourceType.GCS).
             event_type: RayEvent.EventType enum value. Use
                 RayEventProto.EventType.<NAME> constants (e.g.,
-                RayEventProto.EventType.DRIVER_JOB_DEFINITION_EVENT,
+                RayEventProto.EventType.SUBMISSION_JOB_DEFINITION_EVENT,
                 RayEventProto.EventType.DRIVER_JOB_LIFECYCLE_EVENT).
             nested_event_field_number: The field number in RayEvent proto for the
                 nested event message. Use RayEventProto.<FIELD>_FIELD_NUMBER
                 constants (e.g.,
-                RayEventProto.DRIVER_JOB_DEFINITION_EVENT_FIELD_NUMBER).
+                RayEventProto.SUBMISSION_JOB_DEFINITION_EVENT_FIELD_NUMBER).
             severity: RayEvent.Severity enum value (default INFO).
             message: Optional message associated with the event.
             session_name: The Ray session name.
@@ -70,12 +73,26 @@ class InternalEventBuilder(ABC):
 
         Returns:
             Serialized protobuf bytes of the nested event message
-            (e.g., DriverJobDefinitionEvent.SerializeToString()).
+            (e.g., SubmissionJobDefinitionEvent.SerializeToString()).
         """
         pass
 
-    def build(self) -> RayEvent:
+    def build(
+        self,
+        event_id: Optional[bytes] = None,
+        timestamp_ns: Optional[int] = None,
+    ) -> RayEvent:
         """Build the Cython RayEvent object for submission.
+
+        Args:
+            event_id: Optional explicit event id bytes. When omitted, the C++ layer
+                generates a random id (matching the convention used by the other
+                RayEventInterface subclasses). Provide an explicit value to reuse
+                an id from an upstream source (e.g., a Kubernetes event uid).
+            timestamp_ns: Optional explicit event timestamp in nanoseconds since the
+                unix epoch. When omitted, the C++ layer captures the current time
+                at construction. Provide an explicit value for platform events that
+                carry their own source timestamp.
 
         Returns:
             A RayEvent object.
@@ -89,4 +106,6 @@ class InternalEventBuilder(ABC):
             session_name=self._session_name,
             serialized_data=self.serialize_event_data(),
             nested_event_field_number=self._nested_event_field_number,
+            event_id=event_id if event_id is not None else b"",
+            timestamp_ns=int(timestamp_ns) if timestamp_ns is not None else 0,
         )

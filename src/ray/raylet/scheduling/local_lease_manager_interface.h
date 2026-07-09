@@ -69,9 +69,7 @@ class LocalLeaseManagerInterface {
                                     absl::flat_hash_map<WorkerID, int64_t>>
       &GetBackLogTracker() const = 0;
 
-  virtual void SetWorkerBacklog(SchedulingClass scheduling_class,
-                                const WorkerID &worker_id,
-                                int64_t backlog_size) = 0;
+  virtual void SetWorkerBacklog(rpc::ReportWorkerBacklogRequest request) = 0;
 
   virtual void ClearWorkerBacklog(const WorkerID &worker_id) = 0;
 
@@ -80,7 +78,7 @@ class LocalLeaseManagerInterface {
 
   virtual void LeasesUnblocked(const std::vector<LeaseID> &ready_ids) = 0;
 
-  virtual void CleanupLease(std::shared_ptr<WorkerInterface> worker, RayLease *lease) = 0;
+  virtual void CleanupLease(const std::shared_ptr<WorkerInterface> &worker) = 0;
 
   virtual void ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) = 0;
 

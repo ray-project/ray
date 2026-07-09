@@ -247,7 +247,9 @@ Increasing ``batch_size`` improves the performance of vectorized transformations
 as performance of model inference. However, if your batch size is too large, your
 program might run into out-of-memory (OOM) errors.
 
-If you encounter an OOM errors, try decreasing your ``batch_size``.
+Use ``batch_size="auto"`` to let Ray Data automatically determine an appropriate batch
+size based on the size of your data. For GPU workloads, you must specify an explicit
+integer batch size. If you encounter OOM errors with an explicit batch size, try decreasing it.
 
 .. _stateful_transforms:
 
@@ -500,7 +502,11 @@ You can do this by using :ref:`placement groups <ray-placement-group-doc-ref>` a
     def ray_remote_args_fn():
         from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
         pg = ray.util.placement_group([{"CPU": 1}] * NUM_SHARDS)
-        return {"scheduling_strategy": PlacementGroupSchedulingStrategy(placement_group=pg)}
+        scheduling_strategy = PlacementGroupSchedulingStrategy(
+            placement_group=pg,
+            placement_group_capture_child_tasks=True,
+        )
+        return {"scheduling_strategy": scheduling_strategy}
 
     ds = ray.data.range(10).map_batches(DistributedModel, ray_remote_args_fn=ray_remote_args_fn)
     ds.take_all()

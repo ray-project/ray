@@ -36,6 +36,9 @@ def assert_no_leak():
     sys.platform != "linux" and sys.platform != "linux2",
     reason="This test requires Linux.",
 )
+# This test can spill many GiB to disk (the normal-return task may not OOM and
+# instead materializes all returns), so it needs a longer timeout.
+@pytest.mark.timeout(600)
 def test_generator_oom(ray_start_regular_shared):
     num_returns = 100
 
@@ -327,14 +330,12 @@ def test_dynamic_generator(
 
     if num_returns_type == "dynamic":
         # Normal remote functions don't work with num_returns="dynamic".
-        @ray.remote(num_returns=num_returns_type)
-        def static(num_returns):
-            return list(range(num_returns))
+        # This should fail at decoration time, not at runtime.
+        with pytest.raises(ValueError, match="can only be used with generator"):
 
-        with pytest.raises(ray.exceptions.RayTaskError):
-            gen = ray.get(static.remote(3))
-            for ref in gen:
-                ray.get(ref)
+            @ray.remote(num_returns=num_returns_type)
+            def static(num_returns):
+                return list(range(num_returns))
 
 
 def test_dynamic_generator_gc_each_yield(ray_start_cluster):

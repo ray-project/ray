@@ -77,6 +77,6 @@ class DatasetWriter(OutputWriter):
             elif self.format == "parquet":
                 ds.write_parquet(self.path, try_create_dir=True)
             else:
-                raise ValueError("Unknown output type: ", self.format)
+                raise ValueError(f"Unknown output type: {self.format}")
             self.samples = []
             logger.debug("Wrote dataset in {}s".format(time.time() - start))

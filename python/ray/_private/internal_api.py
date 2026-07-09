@@ -53,7 +53,9 @@ def memory_summary(
     ) + store_stats_summary(reply)
 
 
-def get_memory_info_reply(state, node_manager_address=None, node_manager_port=None):
+def get_memory_info_reply(
+    state, node_manager_address=None, node_manager_port=None, timeout_seconds=60.0
+):
     """Returns global memory info."""
 
     from ray._private.grpc_utils import init_grpc_channel
@@ -86,7 +88,7 @@ def get_memory_info_reply(state, node_manager_address=None, node_manager_port=No
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     reply = stub.FormatGlobalMemoryInfo(
         node_manager_pb2.FormatGlobalMemoryInfoRequest(include_memory_info=False),
-        timeout=60.0,
+        timeout=timeout_seconds,
     )
     return reply
 
@@ -209,9 +211,12 @@ def free(object_refs: list, local_only: bool = False):
             free([obj_ref])  # unpin & delete object globally
 
     Args:
-        object_refs (List[ObjectRef]): List of object refs to delete.
+        object_refs: List of object refs to delete.
         local_only: Whether only deleting the list of objects in local
             object store or all object stores.
+
+    Returns:
+        None.
     """
     warnings.warn(
         "`free` is a deprecated API and will be removed in a future version of Ray. "

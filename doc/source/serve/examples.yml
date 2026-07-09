@@ -1,3 +1,9 @@
+# This file is used to auto-generate the Examples Gallery page.
+# Do not edit the generated examples.rst page directly.
+# To request formatting changes to the generated page, file an issue with the Ray docs team.
+# To reference the generated page, use examples.html.
+# When adding a new example, include the skill level and framework, if applicable.
+
 text: Below are tutorials for exploring Ray Serve capabilities and learning how to integrate different modeling frameworks.
 groupby: related_technology
 examples:
@@ -80,7 +86,7 @@ examples:
       - generative ai
       - large language models
       - natural language processing
-    link: tutorials/deployment-serve-llm/content/small-size-llm/README
+    link: ../_collections/serve/tutorials/deployment-serve-llm/small-size-llm/README
     related_technology: llm applications
   - title: Deploy a medium-sized LLM
     skill_level: beginner
@@ -88,7 +94,7 @@ examples:
       - generative ai
       - large language models
       - natural language processing
-    link: tutorials/deployment-serve-llm/content/medium-size-llm/README
+    link: ../_collections/serve/tutorials/deployment-serve-llm/medium-size-llm/README
     related_technology: llm applications
   - title: Deploy a large-sized LLM
     skill_level: beginner
@@ -96,7 +102,7 @@ examples:
       - generative ai
       - large language models
       - natural language processing
-    link: tutorials/deployment-serve-llm/content/large-size-llm/README
+    link: ../_collections/serve/tutorials/deployment-serve-llm/large-size-llm/README
     related_technology: llm applications
   - title: Deploy a vision LLM
     skill_level: beginner
@@ -104,7 +110,7 @@ examples:
       - generative ai
       - large language models
       - natural language processing
-    link: tutorials/deployment-serve-llm/content/vision-llm/README
+    link: ../_collections/serve/tutorials/deployment-serve-llm/vision-llm/README
     related_technology: llm applications
   - title: Deploy a reasoning LLM
     skill_level: beginner
@@ -112,7 +118,7 @@ examples:
       - generative ai
       - large language models
       - natural language processing
-    link: tutorials/deployment-serve-llm/content/reasoning-llm/README
+    link: ../_collections/serve/tutorials/deployment-serve-llm/reasoning-llm/README
     related_technology: llm applications
   - title: Deploy a hybrid reasoning LLM
     skill_level: beginner
@@ -120,7 +126,7 @@ examples:
       - generative ai
       - large language models
       - natural language processing
-    link: tutorials/deployment-serve-llm/content/hybrid-reasoning-llm/README
+    link: ../_collections/serve/tutorials/deployment-serve-llm/hybrid-reasoning-llm/README
     related_technology: llm applications
   - title: Deploy gpt-oss
     skill_level: beginner
@@ -128,7 +134,7 @@ examples:
       - generative ai
       - large language models
       - natural language processing
-    link: tutorials/deployment-serve-llm/content/gpt-oss/README
+    link: ../_collections/serve/tutorials/deployment-serve-llm/gpt-oss/README
     related_technology: llm applications
   - title: Serve a Chatbot with Request and Response Streaming
     skill_level: intermediate
@@ -153,19 +159,19 @@ examples:
     skill_level: intermediate
     use_cases:
       - time series forecasting
-    link: tutorials/model_multiplexing_forecast/content/README
+    link: ../_collections/serve/tutorials/model_multiplexing_forecast/README
     related_technology: deployment patterns
   - title: Model Composition for Recommendation Systems
     skill_level: intermediate
     use_cases:
       - recommendation systems
-    link: tutorials/model_composition_recsys/content/README
+    link: ../_collections/serve/tutorials/model-composition-recsys/README
     related_technology: deployment patterns
   - title: Asynchronous Inference using Ray Serve
     skill_level: advanced
     use_cases:
       - generative ai
-    link: tutorials/asynchronous-inference/content/asynchronous-inference
+    link: ../_collections/serve/tutorials/asynchronous-inference/asynchronous-inference
     related_technology: integrations
   - title: Video Analysis Inference Pipeline
     skill_level: advanced

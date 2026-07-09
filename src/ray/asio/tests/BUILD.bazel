@@ -1,0 +1,24 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "asio_defer_test",
+    size = "small",
+    srcs = ["asio_defer_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/asio:asio_chaos",
+        "//src/ray/common:ray_config",
+    ],
+)
+
+ray_cc_test(
+    name = "io_context_monitor_test",
+    size = "small",
+    srcs = ["io_context_monitor_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/asio:io_context_monitor",
+        "//src/ray/observability:fake_metric",
+    ],
+)

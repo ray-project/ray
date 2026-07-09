@@ -1,6 +1,6 @@
 """Unit tests for extract_route_patterns function."""
 import pytest
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 
@@ -90,6 +90,51 @@ def test_extract_route_patterns_with_mounts():
     assert has_path(patterns, "/")
     assert has_path(patterns, "/admin/health")
     assert has_path(patterns, "/admin/status")
+
+
+def test_extract_route_patterns_included_router():
+    """Routes registered via `include_router` must be extracted.
+
+    On FastAPI >= 0.137 these routes are nested under an `_IncludedRouter` node
+    instead of being flattened into `app.routes` (see #64475).
+    """
+    app = FastAPI()
+
+    @app.get("/direct")
+    def direct():
+        return {}
+
+    # Router with its own prefix, included without an include-time prefix.
+    router = APIRouter(prefix="/prefix")
+
+    @router.get("/routed/{user_id}")
+    def routed():
+        return {}
+
+    @router.websocket("/ws")
+    async def ws():
+        pass
+
+    # Router included with an include-time prefix.
+    other = APIRouter()
+
+    @other.post("/create")
+    def create():
+        return {}
+
+    app.include_router(router)
+    app.include_router(other, prefix="/other")
+
+    patterns = extract_route_patterns(app)
+
+    assert has_path(patterns, "/direct")
+    assert has_path(patterns, "/prefix/routed/{user_id}")
+    assert get_methods_for_path(patterns, "/prefix/routed/{user_id}") == ["GET"]
+    assert has_path(patterns, "/other/create")
+    assert get_methods_for_path(patterns, "/other/create") == ["POST"]
+    # WebSocket routes have no method restrictions.
+    assert has_path(patterns, "/prefix/ws")
+    assert get_methods_for_path(patterns, "/prefix/ws") is None
 
 
 def test_extract_route_patterns_nested_mounts():

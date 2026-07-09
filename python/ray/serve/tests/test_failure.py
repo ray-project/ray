@@ -14,6 +14,7 @@ from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.test_utils import (
     Counter,
+    SharedCounter,
     check_num_replicas_eq,
     get_deployment_details,
     request_with_retries,
@@ -108,22 +109,13 @@ def test_worker_restart(serve_instance):
 # Test that if there are multiple replicas for a worker and one dies
 # unexpectedly, the others continue to serve requests.
 def test_worker_replica_failure(serve_instance):
-    @ray.remote
-    class Counter:
-        def __init__(self):
-            self.count = 0
-
-        def inc_and_get(self):
-            self.count += 1
-            return self.count
-
     @serve.deployment(name="replica_failure")
     class Worker:
         # Assumes that two replicas are started. Will hang forever in the
         # constructor for any workers that are restarted.
         def __init__(self, counter):
             self.should_hang = False
-            self.index = ray.get(counter.inc_and_get.remote())
+            self.index = ray.get(counter.inc.remote())
             if self.index > 2:
                 while True:
                     pass
@@ -131,7 +123,7 @@ def test_worker_replica_failure(serve_instance):
         def __call__(self, *args):
             return self.index
 
-    counter = Counter.remote()
+    counter = SharedCounter.remote()
     serve.run(Worker.options(num_replicas=2).bind(counter))
 
     # Wait until both replicas have been started.

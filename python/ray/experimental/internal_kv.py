@@ -76,8 +76,14 @@ def _internal_kv_put(
 
     This only has an effect if the key does not already have a value.
 
+    Args:
+        key: The binary key to associate the value with.
+        value: The binary value to store under the key.
+        overwrite: Whether to overwrite an existing value for the key.
+        namespace: Optional namespace under which the key is scoped.
+
     Returns:
-        already_exists: whether the value already exists.
+        Whether the value already exists.
     """
 
     if isinstance(key, str):

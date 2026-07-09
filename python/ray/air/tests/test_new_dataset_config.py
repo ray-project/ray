@@ -285,22 +285,22 @@ def _run_data_config_resource_test(data_config):
         def __init__(self, **kwargs):
             def train_loop_fn():
                 train_ds = train.get_dataset_shard("train")
-                new_execution_options = train_ds._base_dataset.context.execution_options
+                new_execution_options = train_ds.get_context().execution_options
                 if original_execution_options.is_resource_limits_default():
                     # If the original resource limits are default, the new resource
                     # limits should be the default as well.
-                    # Under the V2 cluster autoscaler (default), training resources
-                    # are registered with the AutoscalingCoordinator directly, so
-                    # exclude_resources should remain as user-configured.
                     assert new_execution_options.is_resource_limits_default()
                     exclude_resources = new_execution_options.exclude_resources
                     assert (
                         exclude_resources.cpu
                         == original_execution_options.exclude_resources.cpu
+                        + cpus_per_worker * num_workers
+                        + 1  # trainer coordinator
                     )
                     assert (
                         exclude_resources.gpu
                         == original_execution_options.exclude_resources.gpu
+                        + gpus_per_worker * num_workers
                     )
                 else:
                     # If the original resource limits are not default, the new resource
@@ -356,6 +356,34 @@ def test_data_config_manual_resource_limits(shutdown_only):
     data_config = DataConfig(execution_options=execution_options)
 
     _run_data_config_resource_test(data_config)
+
+
+def test_v1_train_with_v2_data_autoscaler_sets_exclude_resources(
+    shutdown_only, monkeypatch
+):
+    """Regression test for the Train V1 + V2 cluster autoscaler combination."""
+    monkeypatch.setenv("RAY_DATA_CLUSTER_AUTOSCALER", "V2")
+
+    ray.init(num_cpus=10, num_gpus=2)
+
+    num_train_cpus, num_train_gpus = 4.0, 2.0
+    data_config = DataConfig()
+    data_config.set_train_total_resources(
+        num_train_cpus=num_train_cpus, num_train_gpus=num_train_gpus
+    )
+
+    iterators = data_config.configure(
+        datasets={"train": ray.data.range(10)},
+        world_size=2,
+        worker_handles=None,
+        worker_node_ids=None,
+    )
+
+    exclude_resources = (
+        iterators[0]["train"].get_context().execution_options.exclude_resources
+    )
+    assert exclude_resources.cpu == num_train_cpus
+    assert exclude_resources.gpu == num_train_gpus
 
 
 if __name__ == "__main__":
