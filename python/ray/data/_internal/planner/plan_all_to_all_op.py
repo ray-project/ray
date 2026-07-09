@@ -143,18 +143,24 @@ def _plan_hash_shuffle_repartition_v3(
             "sort by without them."
         )
 
-    num_partitions = logical_op.num_outputs
-    if num_partitions is None or num_partitions <= 0:
-        num_partitions = data_context.default_hash_shuffle_parallelism
+    key_cols = tuple(SortKey(logical_op.keys).get_columns()) if logical_op.keys else ()
+
+    input_logical_op = input_physical_op._logical_operators[0]
+    estimated_input_blocks = input_logical_op.estimated_num_outputs()
+    target_num_partitions = (
+        logical_op.num_outputs
+        or estimated_input_blocks
+        or data_context.default_hash_shuffle_parallelism
+    )
 
     # When the user supplies hash keys, partition on those; otherwise hash
     # on the full row (consistent with v2's HashShuffleOperator behavior
     # for keyed repartition, and a stable fallback for keyless).
-    key_cols = tuple(SortKey(logical_op.keys).get_columns()) if logical_op.keys else ()
-
     def _partition_fn(table):
         cols = list(key_cols) if key_cols else list(table.column_names)
-        return hash_partition(table, hash_cols=cols, num_partitions=num_partitions)
+        return hash_partition(
+            table, hash_cols=cols, num_partitions=target_num_partitions
+        )
 
     if logical_op.sort:
         reduce_fn = _sort_reduce(list(key_cols))
@@ -170,16 +176,18 @@ def _plan_hash_shuffle_repartition_v3(
     map_op = ShuffleMapOpV3(
         input_physical_op,
         data_context,
-        num_partitions=num_partitions,
+        num_partitions=target_num_partitions,
         partition_fn=_partition_fn,
+        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
     )
     reduce_op = ShuffleReduceOpV3(
         map_op,
         data_context,
-        num_partitions=num_partitions,
+        num_partitions=target_num_partitions,
         reduce_fn=reduce_fn,
         streaming_reduce=streaming_reduce,
         coalesce_output=coalesce_output,
+        disallow_block_splitting=True,
     )
     return reduce_op
 
