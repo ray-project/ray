@@ -37,6 +37,25 @@ class TestExtractConciseErrorMessage:
         message = "Request failed with status code 500: no further detail"
         assert extract_concise_error_message(message) == message
 
+    def test_trailing_metadata_after_summary_is_not_mistaken_for_it(self):
+        # Lowercase, snake_case "key: value" lines after the real exception
+        # summary must not be selected instead of it (regression test for a
+        # code-review finding that flagged the original overly broad regex).
+        message = (
+            "ValueError: Job with submission_id my_job already exists.\n"
+            "submission_id: my_job\n"
+            "status: FAILED"
+        )
+        assert extract_concise_error_message(message) == (
+            "ValueError: Job with submission_id my_job already exists."
+        )
+
+    def test_dotted_qualified_exception_name(self):
+        message = (
+            "requests.exceptions.ConnectionError: Failed to establish a connection."
+        )
+        assert extract_concise_error_message(message) == message
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

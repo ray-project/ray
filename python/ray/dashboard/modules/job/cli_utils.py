@@ -5,10 +5,14 @@ from typing import Union
 import click
 
 # Matches an unindented "ExceptionType: message" summary line, the last line
-# of any standard Python traceback. Requires the part before ": " to contain
-# no whitespace, which excludes prose lines like "Request failed with status
-# code 500: ..." while still matching dotted/qualified exception names.
-_EXCEPTION_SUMMARY_RE = re.compile(r"^(\S+): (.+)$", re.MULTILINE)
+# of any standard Python traceback. The exception-type part is restricted to
+# (optionally dotted/qualified) identifiers whose final component starts with
+# an uppercase letter, per PEP 8 exception naming, so prose or trailing
+# metadata lines like "Request failed with status code 500: ..." or
+# "submission_id: my_job" aren't mistaken for the actual exception summary.
+_EXCEPTION_SUMMARY_RE = re.compile(
+    r"^((?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*): (.+)$", re.MULTILINE
+)
 
 
 def extract_concise_error_message(message: str) -> str:

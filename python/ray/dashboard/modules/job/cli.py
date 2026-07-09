@@ -329,7 +329,10 @@ def submit(
             entrypoint_label_selector=entrypoint_label_selector,
         )
     except RuntimeError as e:
-        cli_logger.abort(extract_concise_error_message(str(e)))
+        # no_format=True: the extracted message is server-provided and may
+        # contain literal "{...}" (e.g. a dict/set repr), which would
+        # otherwise be passed through str.format() and crash.
+        cli_logger.abort(extract_concise_error_message(str(e)), no_format=True)
 
     _log_big_success_msg(f"Job '{job_id}' submitted successfully")
 
