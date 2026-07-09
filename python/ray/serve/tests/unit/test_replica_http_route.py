@@ -1,4 +1,5 @@
 import sys
+from typing import Dict, Optional
 from unittest.mock import MagicMock
 
 import pytest
@@ -7,18 +8,20 @@ from fastapi import FastAPI
 from ray.serve._private.replica import Replica
 
 
-def _make_fake(*, route_prefix, asgi_app):
+def _make_fake(
+    *, route_prefix: Optional[str], asgi_app: Optional[FastAPI]
+) -> MagicMock:
     fake = MagicMock()
     fake._route_prefix = route_prefix
     fake._user_callable_asgi_app = asgi_app
     return fake
 
 
-def _scope(method, path):
+def _scope(method: str, path: str) -> Dict[str, str]:
     return {"type": "http", "method": method, "path": path}
 
 
-def _router_app():
+def _router_app() -> FastAPI:
     app = FastAPI()
 
     @app.post("/internal/route")
@@ -52,7 +55,6 @@ def test_determine_http_route(route_prefix, method, path, expected):
     fake = _make_fake(route_prefix=route_prefix, asgi_app=_router_app())
     route = Replica._determine_http_route(fake, _scope(method, path))
     assert route == expected
-    assert isinstance(route, str)
 
 
 def test_determine_http_route_no_asgi_app():
