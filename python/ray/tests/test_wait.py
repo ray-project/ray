@@ -444,6 +444,56 @@ def test__get_next_ref_n_actor_crash_surfaces_actor_died(ray_start_regular):
         ray.get(g.completed(), timeout=30)
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
+def test__get_next_ref_n_actor_crash_after_yield_surfaces_actor_died(ray_start_regular):
+    """After one successful yield, an actor that dies before producing the next
+    value must leave the produced ref retrievable while the peeked next ref
+    surfaces ActorDiedError (the EOF marker lands on an already-produced index)."""
+
+    @ray.remote
+    class Signal:
+        def __init__(self):
+            self.ready = False
+
+        def wait(self):
+            while not self.ready:
+                time.sleep(0.01)
+
+        def send(self):
+            self.ready = True
+
+    @ray.remote
+    class Crasher:
+        @ray.method(num_returns="streaming")
+        def gen(self, signal):
+            yield "value"
+            # Block until the consumer has taken the first value, then die
+            # before producing the value at stream position 1.
+            ray.get(signal.wait.remote())
+            sys.exit(0)
+            yield "never"
+
+    signal = Signal.remote()
+    actor = Crasher.remote()
+    g = actor.gen.remote(signal)
+
+    # Peek the produced value ref and the not-yet-produced next ref together.
+    value_ref, next_ref = g._get_next_ref_n(2)
+
+    # The first yield completed and stays retrievable.
+    assert ray.get(value_ref, timeout=30) == "value"
+
+    # Let the actor die now that the first value has been consumed.
+    signal.send.remote()
+
+    # The second position is never produced because the actor died.
+    with pytest.raises(ActorDiedError):
+        ray.get(next_ref, timeout=30)
+    # Oracle: the peeked ref surfaces the same error as the completion ref.
+    with pytest.raises(ActorDiedError):
+        ray.get(g.completed(), timeout=30)
+
+
 def _assert_no_owned_refs_leak():
     """Wait until the owner holds no live references and the store is empty."""
 
