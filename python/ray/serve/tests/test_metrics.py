@@ -46,6 +46,15 @@ from ray.serve.config import RequestRouterConfig
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
 
+def drop_health_check_samples(metrics):
+    """Drop the metric samples HAProxy's periodic health checks generate."""
+    return [
+        m
+        for m in metrics
+        if "Healthz" not in m.get("method", "") and m.get("route") != "/-/healthz"
+    ]
+
+
 def extract_tags(line: str) -> Dict[str, str]:
     """Extracts any tags from the metrics line."""
 
@@ -463,14 +472,9 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
         assert num_errors[0]["method"] == "GET"
         print("serve_num_http_error_requests working as expected.")
 
-    num_requests = get_metric_dictionaries("ray_serve_num_grpc_requests_total")
-    # Ignore HAProxy's health-check samples. The real ping's route is empty
-    # too, so key on method.
-    num_requests = [
-        m
-        for m in num_requests
-        if "/ray.serve.RayServeAPIService/Healthz" not in m["method"]
-    ]
+    num_requests = drop_health_check_samples(
+        get_metric_dictionaries("ray_serve_num_grpc_requests_total")
+    )
     assert len(num_requests) == 1
     assert num_requests[0]["route"] == ""
     assert num_requests[0]["method"] == "/ray.serve.UserDefinedService/__call__"
@@ -478,14 +482,9 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     assert num_requests[0]["status_code"] == grpc.StatusCode.NOT_FOUND.name
     print("serve_num_grpc_requests working as expected.")
 
-    num_errors = get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
-    # Ignore HAProxy's health-check samples. The real ping's route is empty
-    # too, so key on method.
-    num_errors = [
-        m
-        for m in num_errors
-        if "/ray.serve.RayServeAPIService/Healthz" not in m["method"]
-    ]
+    num_errors = drop_health_check_samples(
+        get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
+    )
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == ""
     assert num_errors[0]["error_code"] == grpc.StatusCode.NOT_FOUND.name
@@ -534,9 +533,9 @@ def test_proxy_timeout_metrics(metrics_start_shutdown):
     assert num_errors[0]["method"] == "GET"
     assert num_errors[0]["application"] == "status_code_timeout"
 
-    num_errors = get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
-    # Ignore HAProxy's periodic health-check samples.
-    num_errors = [m for m in num_errors if m["route"] == "status_code_timeout"]
+    num_errors = drop_health_check_samples(
+        get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
+    )
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "status_code_timeout"
     assert num_errors[0]["error_code"] == grpc.StatusCode.DEADLINE_EXCEEDED.name
@@ -624,9 +623,9 @@ def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     thread.join()
     ray.get(signal.send.remote(clear=True))
 
-    num_errors = get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
-    # Ignore HAProxy's periodic health-check samples.
-    num_errors = [m for m in num_errors if m["route"] == "disconnect"]
+    num_errors = drop_health_check_samples(
+        get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
+    )
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "disconnect"
     assert num_errors[0]["error_code"] == grpc.StatusCode.CANCELLED.name
@@ -679,9 +678,9 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     assert num_deployment_errors[0]["application"] == real_app_name
     print("serve_num_deployment_grpc_error_requests working as expected.")
 
-    latency_metrics = get_metric_dictionaries("ray_serve_http_request_latency_ms_sum")
-    # Ignore HAProxy's periodic health-check samples.
-    latency_metrics = [m for m in latency_metrics if m["route"] != "/-/healthz"]
+    latency_metrics = drop_health_check_samples(
+        get_metric_dictionaries("ray_serve_http_request_latency_ms_sum")
+    )
     assert len(latency_metrics) == 1
     assert latency_metrics[0]["method"] == "GET"
     assert latency_metrics[0]["route"] == "/real_route"
@@ -689,13 +688,9 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     assert latency_metrics[0]["status_code"] == "500"
     print("serve_http_request_latency_ms working as expected.")
 
-    latency_metrics = get_metric_dictionaries("ray_serve_grpc_request_latency_ms_sum")
-    # Ignore HAProxy's periodic health-check samples.
-    latency_metrics = [
-        m
-        for m in latency_metrics
-        if "/ray.serve.RayServeAPIService/Healthz" not in m["method"]
-    ]
+    latency_metrics = drop_health_check_samples(
+        get_metric_dictionaries("ray_serve_grpc_request_latency_ms_sum")
+    )
     assert len(latency_metrics) == 1
     assert latency_metrics[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     assert latency_metrics[0]["route"] == real_app_name
