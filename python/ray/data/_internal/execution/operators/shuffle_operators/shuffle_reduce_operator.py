@@ -60,8 +60,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             `(partition_id, tables_by_input)` where `tables_by_input` is
             aligned with `input_op`.
         disallow_block_splitting: If True, output blocks are emitted as-is
-            without being reshaped to `target_max_block_size` — required
-            for hash-shuffle's "partition = block" contract.
+            without being reshaped to `target_max_block_size`.
         reduce_ray_remote_args: Remote args for the reducer tasks.
         name: Display name shown in progress bars and logs.
         fused_output_map_transformer: Set by ``FuseOperators`` when a
@@ -135,6 +134,17 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         # -- Sub-progress bars -----------------------------------------------
         self._reduce_bar: Optional["BaseProgressBar"] = None
 
+    def _reduce_task_remote_args(self, memory_estimate: int) -> Dict[str, Any]:
+        remote_args: Dict[str, Any] = {
+            "num_cpus": self._DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS,
+            "scheduling_strategy": "SPREAD",
+        }
+        if memory_estimate > 0:
+            remote_args["memory"] = memory_estimate
+        remote_args.update(self._reduce_ray_remote_args)
+        remote_args["num_returns"] = "streaming"
+        return remote_args
+
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         """Buffer this input's partition-bundle; submit when all inputs paired.
 
@@ -197,21 +207,15 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             ]
             self._submit_reduce_task(partition_id, bundles)
 
-    def _reduce_task_remote_args(self, memory_estimate: int) -> Dict[str, Any]:
-        remote_args: Dict[str, Any] = {
-            "num_cpus": self._DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS,
-            "scheduling_strategy": "SPREAD",
-        }
-        if memory_estimate > 0:
-            remote_args["memory"] = memory_estimate
-        remote_args.update(self._reduce_ray_remote_args)
-        remote_args["num_returns"] = "streaming"
-        return remote_args
-
     def _submit_reduce_task(self, partition_id: int, bundles: List[RefBundle]) -> None:
         """Submit one reduce task for a fully-paired partition."""
-        shard_refs_by_input = [list(b.block_refs) for b in bundles]
-        estimated_bytes = sum((m.size_bytes or 0) for b in bundles for m in b.metadata)
+        shard_refs_by_input = []
+        metrics_blocks = []
+        estimated_bytes = 0
+        for bundle in bundles:
+            shard_refs_by_input.append(list(bundle.block_refs))
+            metrics_blocks.extend(bundle.blocks)
+            estimated_bytes += sum((m.size_bytes or 0) for m in bundle.metadata)
 
         reduce_options = self._reduce_task_remote_args(
             int(estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
@@ -248,7 +252,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             self.data_context,
         )
         metrics_bundle = RefBundle(
-            sum((b.blocks for b in bundles), ()), schema=None, owns_blocks=False
+            tuple(metrics_blocks), schema=None, owns_blocks=False
         )
 
         data_task = DataOpTask(

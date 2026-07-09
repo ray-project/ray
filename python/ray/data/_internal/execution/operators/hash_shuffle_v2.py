@@ -29,11 +29,7 @@ def _make_hash_partition_fn(key_columns: List[str], num_partitions: int) -> Part
 def _concat_reduce(
     partition_id: int, tables_by_input: List[List[pa.Table]]
 ) -> Iterable[pa.Table]:
-    """Concatenate all shards of a (single-input) partition into one block.
-
-    Used under the partition = block contract: called once per partition with
-    the full shard list so the output is exactly one block.
-    """
+    """Concatenate all shards of a (single-input) partition into one block."""
     tables = tables_by_input[0]
     if not tables:
         return
