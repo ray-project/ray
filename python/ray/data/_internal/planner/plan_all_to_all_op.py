@@ -120,30 +120,20 @@ def _plan_hash_shuffle_repartition_external(
     logical_op: Repartition,
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
-    """Plan ``Repartition`` through the external-shuffle variant.
+    """Build the two-op (ExternalHashShuffleMapOp → ExternalHashShuffleReduceOp)
+    DAG for the external-shuffle variant of hash shuffle.
 
-    Returns the ``ExternalHashShuffleReduceOp`` (the downstream root) which wraps the
-    ``ExternalHashShuffleMapOp`` as its single input dependency.
-
-    ``logical_op.sort=True`` produces a **per-partition local sort** by the
-    hash keys (mirrors v2's ``Repartition(sort=True)`` semantics). The
-    reduce_fn must see all of a partition's shards before it can sort, so
-    we set ``streaming_reduce=False`` on the reduce op for this case.
-    ``sort=True`` without keys is rejected (nothing to sort by).
+    Scope matches ``_plan_hash_shuffle_repartition`` (the plasma-based Family A):
+    keyed Repartition only. Caller in ``plan_all_to_all_op`` guarantees
+    ``logical_op.keys`` is non-empty and ``shuffle_strategy == HASH_SHUFFLE``.
     """
-    from ray.data._internal.arrow_ops.transform_pyarrow import hash_partition
     from ray.data._internal.execution.operators.hash_shuffle_external import (
         _concat_reduce as _concat_reduce_external,
     )
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
-    if logical_op.sort and not logical_op.keys:
-        raise ValueError(
-            "Repartition(sort=True) requires `keys` — there's nothing to "
-            "sort by without them."
-        )
-
-    key_cols = tuple(SortKey(logical_op.keys).get_columns()) if logical_op.keys else ()
+    normalized_key_columns = SortKey(logical_op.keys).get_columns()
+    key_list = list(normalized_key_columns)
 
     input_logical_op = input_physical_op._logical_operators[0]
     estimated_input_blocks = input_logical_op.estimated_num_outputs()
@@ -153,21 +143,13 @@ def _plan_hash_shuffle_repartition_external(
         or data_context.default_hash_shuffle_parallelism
     )
 
-    # When the user supplies hash keys, partition on those; otherwise hash
-    # on the full row (consistent with v2's HashShuffleOperator behavior
-    # for keyed repartition, and a stable fallback for keyless).
-    def _partition_fn(table):
-        cols = list(key_cols) if key_cols else list(table.column_names)
-        return hash_partition(
-            table, hash_cols=cols, num_partitions=target_num_partitions
-        )
-
-    if logical_op.sort:
-        reduce_fn = _sort_reduce(list(key_cols))
-        streaming_reduce = False
-    else:
-        reduce_fn = _concat_reduce_external
-        streaming_reduce = True
+    partition_fn = _make_hash_partition_fn(key_list, target_num_partitions)
+    reduce_fn = (
+        _sort_reduce(key_list) if logical_op.sort else _concat_reduce_external
+    )
+    # Repartition(sort=True) fans out to a per-partition local sort, so the
+    # reduce_fn must see every shard for its partition before it can sort.
+    streaming_reduce = not logical_op.sort
     # Honor the repartition(N) -> exactly N blocks contract by coalescing all
     # reduce_fn outputs into a single block per partition. Independent of the
     # input-side streaming flag.
@@ -177,10 +159,10 @@ def _plan_hash_shuffle_repartition_external(
         input_physical_op,
         data_context,
         num_partitions=target_num_partitions,
-        partition_fn=_partition_fn,
+        partition_fn=partition_fn,
         map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
         name=(
-            f"ExternalHashShuffleMap(keys={key_cols}, "
+            f"ExternalHashShuffleMap(keys={tuple(key_list)}, "
             f"partitions={target_num_partitions})"
         ),
     )
@@ -193,7 +175,7 @@ def _plan_hash_shuffle_repartition_external(
         coalesce_output=coalesce_output,
         disallow_block_splitting=True,
         name=(
-            f"ExternalHashShuffleReduce(keys={key_cols}, "
+            f"ExternalHashShuffleReduce(keys={tuple(key_list)}, "
             f"partitions={target_num_partitions})"
         ),
     )
@@ -302,20 +284,19 @@ def plan_all_to_all_op(
         )
 
     elif isinstance(op, Repartition):
-        # External-shuffle variant takes precedence over the plasma/GPU paths
-        # when the user opts in via DataContext.use_external_hash_shuffle. Handles
-        # both keyed and keyless repartition (keyless = hash on all columns).
-        if data_context.use_external_hash_shuffle:
-            return _plan_hash_shuffle_repartition_external(
-                data_context, op, input_physical_dag
-            )
-
         if op.keys:
             if data_context.shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
                 return _plan_gpu_shuffle_repartition(
                     data_context, op, input_physical_dag
                 )
             elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+                # External-shuffle is a within-strategy transport swap: same
+                # scope as the plasma-based hash-shuffle path (keyed
+                # Repartition), just files instead of plasma.
+                if data_context.use_external_hash_shuffle:
+                    return _plan_hash_shuffle_repartition_external(
+                        data_context, op, input_physical_dag
+                    )
                 return _plan_hash_shuffle_repartition(
                     data_context, op, input_physical_dag
                 )
@@ -352,16 +333,22 @@ def plan_all_to_all_op(
         )
 
     elif isinstance(op, Aggregate):
-        # External-shuffle only implements Repartition today. Aggregate would
-        # otherwise silently fall through to the plasma-based HashAggregate
-        # (or the generic AllToAll aggregate) — leaving the user thinking
-        # they're on the external path while plasma-pressure builds. Fail
-        # loudly with an actionable message.
-        if data_context.use_external_hash_shuffle:
+        # External-shuffle only mirrors the plasma-based ShuffleMap/Reduce
+        # path (Family A), which covers Repartition. Aggregate uses the
+        # HashAggregateOperator family, which external does not implement.
+        # Fail loudly *only when the external opt-in would actually change
+        # behavior* — i.e. HASH_SHUFFLE strategy. Under GPU_SHUFFLE or the
+        # generic fall-through, plasma hash-shuffle wouldn't run either, so
+        # external opt-in is irrelevant and we don't surprise the user.
+        if (
+            data_context.use_external_hash_shuffle
+            and data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE
+        ):
             raise NotImplementedError(
-                "External hash-shuffle currently supports Repartition only; "
-                "got Aggregate. Set DataContext.use_external_hash_shuffle=False "
-                "to use the plasma-based HashAggregate path."
+                "External hash-shuffle currently mirrors the plasma "
+                "ShuffleMap/Reduce scope (Repartition only); Aggregate is not "
+                "supported. Set DataContext.use_external_hash_shuffle=False to "
+                "use the plasma-based HashAggregate path."
             )
         if data_context.shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
             return _plan_gpu_shuffle_aggregate(data_context, op, input_physical_dag)
