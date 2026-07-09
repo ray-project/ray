@@ -1,6 +1,5 @@
 import glob
 import logging
-import math
 import os
 import re
 from functools import lru_cache
@@ -224,55 +223,6 @@ def _get_default_chips_per_vm(topology: str, accelerator_version: str) -> int:
             return total_chips
 
     return DEFAULT_TPU_NUM_CHIPS_PER_HOST
-
-
-def _resolve_parent_topology(
-    subslice_topology: str,
-    accelerator_version: str,
-    chips_per_vm: int,
-) -> str:
-    """Resolve the smallest valid parent topology for a given subslice.
-
-    Args:
-        subslice_topology: Desired subslice topology (e.g. "2x4").
-        accelerator_version: Accelerator version (e.g. "v6e").
-        chips_per_vm: Chips per VM for the worker dimension calculation.
-
-    Returns:
-        The smallest parent topology string that can contain the subslice.
-
-    Raises:
-        ValueError: If no valid parent topology is found.
-    """
-    # Convert subslice topology to worker dimensions first.
-    sub_worker_dims = _get_worker_dims_for_topology(subslice_topology, "")
-    is_3d = len(sub_worker_dims) == 3
-
-    dims_map = (
-        _VALID_TOPOLOGY_WORKER_DIMS_3D if is_3d else _VALID_TOPOLOGY_WORKER_DIMS_2D
-    )
-
-    # Collect topologies strictly larger than the subslice. A topology cannot
-    # be a parent of itself, so the subslice topology is excluded explicitly.
-    candidates = [
-        (topo, worker_dims)
-        for topo, worker_dims in dims_map.items()
-        if topo != subslice_topology
-        and all(pd >= sd for pd, sd in zip(worker_dims, sub_worker_dims))
-    ]
-
-    if not candidates:
-        # No topology larger than the subslice exists (e.g. the subslice is
-        # already the maximum size for this accelerator). Return the subslice
-        # topology itself so the caller can detect the condition and fall back
-        # to a full SlicePlacementGroup.
-        return subslice_topology
-
-    # Return the smallest qualifying parent (by total worker count).
-    # Use math.prod — the product of the worker dimensions is the actual
-    # total worker count, which sum() only approximates for symmetric dims.
-    candidates.sort(key=lambda x: math.prod(x[1]))
-    return candidates[0][0]
 
 
 def _get_tpu_metadata(key: str) -> Optional[str]:

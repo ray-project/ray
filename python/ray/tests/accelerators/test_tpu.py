@@ -384,22 +384,6 @@ def test_get_default_chips_per_vm():
     assert tpu._get_default_chips_per_vm("2x2x2", "v4") == 4
 
 
-def test_resolve_parent_topology_2d():
-    """Test parent topology resolution for 2D."""
-    assert tpu._resolve_parent_topology("2x4", "v6e", 4) == "4x4"
-    assert tpu._resolve_parent_topology("2x2", "v6e", 4) == "2x4"
-    assert tpu._resolve_parent_topology("4x8", "v6e", 4) == "8x8"
-    # When no strictly larger parent exists, returns self so the caller can
-    # detect the condition and fall back to a full SlicePlacementGroup.
-    assert tpu._resolve_parent_topology("16x16", "v6e", 4) == "16x16"
-
-
-def test_resolve_parent_topology_3d():
-    """Test parent topology resolution for 3D."""
-    assert tpu._resolve_parent_topology("2x2x2", "v4", 4) == "2x2x4"
-    assert tpu._resolve_parent_topology("4x4x4", "v4", 4) == "4x4x8"
-
-
 @pytest.mark.parametrize(
     "physical_worker_id, parent_topology, expected_labels",
     [

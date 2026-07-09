@@ -3,7 +3,7 @@ import json
 import logging
 import math
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray._private.accelerators import TPUAcceleratorManager
@@ -14,8 +14,8 @@ from ray._private.accelerators.tpu import (
     _build_subslice_labels,
     _get_default_chips_per_vm,
     _get_physical_worker_id_from_coords,
+    _get_worker_dims_for_topology,
     _parse_topology_dims,
-    _resolve_parent_topology,
     get_chips_per_host,
     get_num_chips_from_topology,
     infer_tpu_pod_type_from_topology,
@@ -1028,6 +1028,66 @@ def _get_subslice_kv_key(slice_name: str) -> bytes:
     return f"tpu_subslice/{slice_name}".encode()
 
 
+def _resolve_parent_from_cluster(
+    subslice_topology: str,
+    nodes: List[Dict[str, Any]],
+) -> Optional[str]:
+    """Find the smallest topology in the cluster that can serve as a parent.
+
+    Consults the cluster's actual node labels rather than a static topology
+    table, so the result always reflects what the cluster physically has.
+    For example, if only a 16x16 slice is present, a "2x2" subslice request
+    correctly resolves to "16x16" rather than the theoretically-minimal "2x4"
+    (which does not exist in the cluster and would cause a timeout).
+
+    Args:
+        subslice_topology: The requested subslice topology (e.g. "2x2").
+        nodes: Node dicts from ``ray.nodes()``.
+
+    Returns:
+        The smallest topology in the cluster whose worker-grid dimensions all
+        exceed the subslice's, or the subslice topology itself if it is
+        present in the cluster but no strictly larger parent exists (the
+        caller should fall back to :class:`SlicePlacementGroup`), or
+        ``None`` if no suitable topology is found at all.
+    """
+    sub_worker_dims = _get_worker_dims_for_topology(subslice_topology, "")
+
+    # Collect topology strings from alive cluster nodes.
+    cluster_topologies: Set[str] = {
+        topo
+        for node in nodes
+        if node.get("Alive")
+        for topo in [node.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY)]
+        if topo is not None
+    }
+
+    # Find valid parent candidates: present in the cluster, in the known
+    # dims map, not the subslice itself, same dimensionality, and with all
+    # worker-grid dimensions >= those of the subslice.
+    candidates: List[Tuple[str, Tuple[int, ...]]] = []
+    for topo in cluster_topologies:
+        if topo == subslice_topology:
+            continue
+        try:
+            topo_worker_dims = _get_worker_dims_for_topology(topo, "")
+        except ValueError:
+            continue  # topology not in the known dims map; skip
+        if len(topo_worker_dims) != len(sub_worker_dims):
+            continue  # dimensionality mismatch (e.g. 2-D subslice, 3-D topo)
+        if all(pd >= sd for pd, sd in zip(topo_worker_dims, sub_worker_dims)):
+            candidates.append((topo, topo_worker_dims))
+
+    if candidates:
+        candidates.sort(key=lambda x: math.prod(x[1]))
+        return candidates[0][0]
+
+    # No strictly-larger parent present in the cluster. Return the subslice
+    # topology itself if it exists so the caller can fall back to a full
+    # SlicePlacementGroup; return None if the topology isn't here at all.
+    return subslice_topology if subslice_topology in cluster_topologies else None
+
+
 def _discover_tpu_node_coords(
     mock_coords: Optional[List] = None,
 ) -> Dict[str, Any]:
@@ -1193,6 +1253,7 @@ def _get_or_create_subslice_labels(
     accelerator_version: str,
     chips_per_vm: int,
     head_reservation_timeout_s: Optional[float],
+    nodes: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[str, Dict[str, Dict[str, str]]]:
     """Ensure subslice labels exist for a slice of the given parent topology.
 
@@ -1217,11 +1278,15 @@ def _get_or_create_subslice_labels(
         accelerator_version: Accelerator version (e.g. "v6e").
         chips_per_vm: Chips per VM.
         head_reservation_timeout_s: Timeout for head PG reservation.
+        nodes: Pre-fetched ``ray.nodes()`` snapshot. If ``None``, a fresh
+            call is made. Passing the snapshot avoids a redundant GCS
+            round-trip when the caller already holds one.
 
     Returns:
         (slice_name, {worker_id_label: {label_key: label_value}}).
     """
-    nodes = ray.nodes()
+    if nodes is None:
+        nodes = ray.nodes()
 
     # Check runtime cache.
     for slice_name, labels in list(_tpu_subslice_cache.items()):
@@ -1317,9 +1382,6 @@ def _find_available_subslice(
         if sn and wid_label:
             slice_worker_to_node[(sn, wid_label)] = n
 
-    # Sort numerically so lower-indexed subslices are preferred over
-    # higher-indexed ones. (Indices are stored as strings in labels;
-    # lexicographic order would put "10" before "2" for large slices.)
     for idx in sorted(subslice_indices.keys(), key=int):
         worker_ids = subslice_indices[idx]
         all_idle = True
@@ -1581,13 +1643,28 @@ def subslice_placement_group(
             f"accelerator version '{version}'."
         )
 
-    # Resolve the parent topology first. chips_per_vm is not used inside
-    # _resolve_parent_topology, so it is safe to call before chips_per_vm
-    # is finalised. Pass the user-supplied value when present; fall back to
-    # a non-zero sentinel otherwise (the value is ignored either way).
-    parent_topology = _resolve_parent_topology(
-        subslice_topology, version, chips_per_vm if chips_per_vm is not None else 4
-    )
+    # Resolve the parent topology from the cluster. Querying ray.nodes() here
+    # rather than consulting a static topology table ensures the parent always
+    # matches what is physically present. E.g. a cluster with only a 16x16
+    # slice correctly resolves a "2x2" subslice to "16x16", not to "2x4"
+    # (which does not exist and would cause a confusing head-PG timeout).
+    nodes = ray.nodes()
+    parent_topology = _resolve_parent_from_cluster(subslice_topology, nodes)
+    if parent_topology is None:
+        cluster_topos = sorted(
+            topo
+            for node in nodes
+            if node.get("Alive")
+            for topo in [
+                node.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY)
+            ]
+            if topo is not None
+        )
+        raise ValueError(
+            f"No topology in the cluster can serve as a parent for subslice "
+            f"'{subslice_topology}'. Alive TPU topologies found: "
+            f"{cluster_topos or ['(none)']}"
+        )
 
     # Derive chips_per_vm from the *parent* topology, not the subslice.
     # All VMs in the physical parent slice share the same chip count; using
@@ -1657,9 +1734,10 @@ def subslice_placement_group(
             bundle_label_selectors=full_slice.bundle_label_selector,
         )
 
-    # Get or discover subslice labels.
+    # Get or discover subslice labels. Pass the nodes snapshot we already
+    # hold to avoid a redundant ray.nodes() call inside.
     slice_name, worker_labels = _get_or_create_subslice_labels(
-        parent_topology, version, chips_per_vm, head_reservation_timeout_s
+        parent_topology, version, chips_per_vm, head_reservation_timeout_s, nodes
     )
 
     # Select target workers by requested index, else automatically selecting

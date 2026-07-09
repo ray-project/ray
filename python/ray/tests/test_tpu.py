@@ -5,7 +5,11 @@ import pytest
 
 import ray
 from ray._private.accelerators import TPUAcceleratorManager, tpu
-from ray.util.tpu import SlicePlacementGroup, SubslicePlacementGroup
+from ray.util.tpu import (
+    SlicePlacementGroup,
+    SubslicePlacementGroup,
+    _resolve_parent_from_cluster,
+)
 
 
 def test_get_current_pod_name_smoke():
@@ -1439,7 +1443,73 @@ def mock_4x4_pgs():
     return mock_head_pg, mock_worker_pg
 
 
-# SubslicePlacementGroup validation
+# ---------------------------------------------------------------------------
+# Cluster-aware parent topology resolution
+# ---------------------------------------------------------------------------
+
+
+def _alive_node(topology: str) -> dict:
+    """Minimal alive node dict with the given topology label."""
+    return {"Alive": True, "Labels": {ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: topology}}
+
+
+def test_resolve_parent_from_cluster_basic():
+    """Smallest valid parent in the cluster is returned."""
+    nodes = [_alive_node("4x4"), _alive_node("16x16")]
+    assert _resolve_parent_from_cluster("2x4", nodes) == "4x4"
+
+
+def test_resolve_parent_from_cluster_uses_cluster_not_theory():
+    """Uses the cluster's actual topology, not the theoretical minimum.
+
+    Regression test: a 16x16 cluster requesting a 2x2 subslice used to
+    resolve the parent as '2x4' (theoretical minimum) then time out trying
+    to reserve a 2x4 slice that does not exist in the cluster.
+    """
+    nodes = [_alive_node("16x16")]
+    assert _resolve_parent_from_cluster("2x2", nodes) == "16x16"
+
+
+def test_resolve_parent_from_cluster_picks_smallest_available():
+    """When multiple valid topologies exist, the smallest is chosen."""
+    nodes = [_alive_node("4x4"), _alive_node("8x8"), _alive_node("16x16")]
+    assert _resolve_parent_from_cluster("2x2", nodes) == "4x4"
+
+
+def test_resolve_parent_from_cluster_self_when_no_larger():
+    """Returns the subslice topology itself when no larger parent exists,
+    signalling the caller to fall back to SlicePlacementGroup.
+    """
+    nodes = [_alive_node("4x4")]
+    assert _resolve_parent_from_cluster("4x4", nodes) == "4x4"
+
+
+def test_resolve_parent_from_cluster_none_when_absent():
+    """Returns None when no cluster topology can contain the subslice."""
+    nodes = [_alive_node("4x4")]
+    assert _resolve_parent_from_cluster("16x16", nodes) is None
+
+
+def test_resolve_parent_from_cluster_ignores_dead_nodes():
+    """Dead nodes' topology labels are not considered."""
+    nodes = [
+        {"Alive": False, "Labels": {ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "4x4"}},
+        _alive_node("16x16"),
+    ]
+    assert _resolve_parent_from_cluster("2x2", nodes) == "16x16"
+
+
+def test_resolve_parent_from_cluster_3d():
+    """3D topologies resolve correctly from cluster labels."""
+    nodes = [_alive_node("4x4x4"), _alive_node("8x8x8")]
+    assert _resolve_parent_from_cluster("2x2x2", nodes) == "4x4x4"
+
+
+# ---------------------------------------------------------------------------
+# Validation tests
+# ---------------------------------------------------------------------------
+
+
 def test_subslice_placement_group_validation():
     """Test validation and error handling for subslice_placement_group."""
     # Invalid subslice topology for accelerator (non-numeric)
@@ -1480,14 +1550,15 @@ def test_subslice_placement_group_basic_mocked(mock_4x4_pgs):
     slice_name = "test-slice-basic"
     dummy_nodes = _make_dummy_nodes(slice_name, "4x4", 4)
 
-    with patch(
-        "ray.util.tpu.reserve_tpu_slice",
-        return_value=(slice_name, mock_head_pg),
-    ), patch("ray.util.tpu.placement_group", return_value=mock_worker_pg), patch(
-        "ray.nodes", return_value=dummy_nodes
-    ), patch(
-        "ray.get"
-    ) as mock_ray_get:
+    with (
+        patch(
+            "ray.util.tpu.reserve_tpu_slice",
+            return_value=(slice_name, mock_head_pg),
+        ),
+        patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
+        patch("ray.nodes", return_value=dummy_nodes),
+        patch("ray.get") as mock_ray_get,
+    ):
         mock_ray_get.side_effect = [None, _4X4_DISCOVERY_RESULTS]
 
         sg = ray.util.tpu.subslice_placement_group(
@@ -1523,14 +1594,15 @@ def test_subslice_placement_group_subslice_index_1(mock_4x4_pgs):
     slice_name = "test-slice-sg1"
     dummy_nodes = _make_dummy_nodes(slice_name, "4x4", 4)
 
-    with patch(
-        "ray.util.tpu.reserve_tpu_slice",
-        return_value=(slice_name, mock_head_pg),
-    ), patch("ray.util.tpu.placement_group", return_value=mock_worker_pg), patch(
-        "ray.nodes", return_value=dummy_nodes
-    ), patch(
-        "ray.get"
-    ) as mock_ray_get:
+    with (
+        patch(
+            "ray.util.tpu.reserve_tpu_slice",
+            return_value=(slice_name, mock_head_pg),
+        ),
+        patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
+        patch("ray.nodes", return_value=dummy_nodes),
+        patch("ray.get") as mock_ray_get,
+    ):
         mock_ray_get.side_effect = [None, _4X4_DISCOVERY_RESULTS]
 
         sg = ray.util.tpu.subslice_placement_group(
@@ -1569,14 +1641,15 @@ def test_subslice_invalid_subslice_index():
     mock_worker_pg.bundle_count = 2
     mock_worker_pg.ready.return_value = "ready_ref"
 
-    with patch(
-        "ray.util.tpu.reserve_tpu_slice",
-        return_value=("test-slice-invalid-idx", mock_head_pg),
-    ), patch("ray.util.tpu.placement_group", return_value=mock_worker_pg), patch(
-        "ray.nodes", return_value=dummy_nodes
-    ), patch(
-        "ray.get"
-    ) as mock_ray_get:
+    with (
+        patch(
+            "ray.util.tpu.reserve_tpu_slice",
+            return_value=("test-slice-invalid-idx", mock_head_pg),
+        ),
+        patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
+        patch("ray.nodes", return_value=dummy_nodes),
+        patch("ray.get") as mock_ray_get,
+    ):
         mock_ray_get.side_effect = [None, discovery_results_2w]
 
         with pytest.raises(ValueError, match="Subslice index 5 is not valid"):
@@ -1627,16 +1700,15 @@ def test_subslice_cache_hit_after_discovery(mock_4x4_pgs):
     slice_name = "test-slice-cache"
     dummy_nodes = _make_dummy_nodes(slice_name, "4x4", 4)
 
-    with patch(
-        "ray.util.tpu.reserve_tpu_slice",
-        return_value=(slice_name, mock_head_pg),
-    ) as mock_reserve, patch(
-        "ray.util.tpu.placement_group", return_value=mock_worker_pg
-    ), patch(
-        "ray.nodes", return_value=dummy_nodes
-    ), patch(
-        "ray.get"
-    ) as mock_ray_get:
+    with (
+        patch(
+            "ray.util.tpu.reserve_tpu_slice",
+            return_value=(slice_name, mock_head_pg),
+        ) as mock_reserve,
+        patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
+        patch("ray.nodes", return_value=dummy_nodes),
+        patch("ray.get") as mock_ray_get,
+    ):
         mock_ray_get.side_effect = [None, _4X4_DISCOVERY_RESULTS]
 
         # First call: triggers discovery and populates the runtime cache.
@@ -1692,11 +1764,15 @@ def test_subslice_same_as_parent_falls_back_to_full_slice():
         for i in range(4)
     ]
 
-    # Patch _resolve_parent_topology to return the same topology as the
-    # subslice request, simulating the "no larger parent" condition.
-    with patch("ray.util.tpu._resolve_parent_topology", return_value="4x4",), patch(
-        "ray.util.tpu.SlicePlacementGroup",
-        return_value=mock_slice,
+    # Cluster has only a 4x4 slice — no larger parent exists, so
+    # _resolve_parent_from_cluster returns the subslice topology itself
+    # ("4x4"), triggering the SlicePlacementGroup fallback path.
+    with (
+        patch("ray.nodes", return_value=[_alive_node("4x4")]),
+        patch(
+            "ray.util.tpu.SlicePlacementGroup",
+            return_value=mock_slice,
+        ),
     ):
         sg = ray.util.tpu.subslice_placement_group(
             subslice_topology="4x4",
