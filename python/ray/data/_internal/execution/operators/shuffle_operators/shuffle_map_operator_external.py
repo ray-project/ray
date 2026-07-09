@@ -84,13 +84,14 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         *,
         num_partitions: int,
         partition_fn: PartitionFn,
-        pool_budget_bytes: Optional[int] = None,
-        fsync_on_close: bool = True,
-        map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
         pre_map_merge_threshold: int = _DEFAULT_PRE_MAP_MERGE_THRESHOLD,
         map_runtime_env: Optional[Dict[str, Any]] = None,
-        base_dir: Optional[str] = None,
+        map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
         name: str = "ExternalHashShuffleMap",
+        # -- External-shuffle-specific below --
+        pool_budget_bytes: Optional[int] = None,
+        fsync_on_close: bool = True,
+        base_dir: Optional[str] = None,
     ):
         super().__init__(
             name=name,
