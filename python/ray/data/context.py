@@ -769,6 +769,9 @@ class DataContext:
 
     # (Advanced) Following configuration allows to override `num_cpus` allocation for the
     # Join/Aggregate/Shuffle workers (utilizing hash-shuffle)
+    #
+    # DEPRECATED: `join_operator_actor_num_cpus_override` is ignored, joins now run on
+    # the hash-shuffle v2 path, whose reduce tasks are not actor-based.
     join_operator_actor_num_cpus_override: float = None
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
@@ -982,6 +985,14 @@ class DataContext:
                 self.arrow_fixed_shape_tensor_format = FixedShapeTensorFormat.V2
             else:
                 self.arrow_fixed_shape_tensor_format = FixedShapeTensorFormat.V1
+
+        elif name == "join_operator_actor_num_cpus_override" and value is not None:
+            warnings.warn(
+                "`join_operator_actor_num_cpus_override` is deprecated and ignored, "
+                "joins now run on the hash-shuffle v2 path, whose reduce tasks are "
+                "not actor-based.",
+                DeprecationWarning,
+            )
 
         super().__setattr__(name, value)
 
