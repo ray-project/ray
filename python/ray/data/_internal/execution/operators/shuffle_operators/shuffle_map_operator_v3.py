@@ -181,14 +181,6 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
     def _output_queues(self) -> List[BaseBundleQueue]:
         return [self._output_queue]
 
-    def _pick_target_node(self, refs: RefBundle) -> Optional[str]:
-        """Node hint for locality-preferred map submission. ``None`` when
-        the upstream bundle carries no location info."""
-        prefer_locs = refs.get_preferred_object_locations()
-        if prefer_locs:
-            return max(prefer_locs, key=lambda n: prefer_locs[n])
-        return None
-
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert input_index == 0
         if not refs.block_refs:
@@ -196,7 +188,12 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
             return
 
         if self._pre_map_merge_threshold > 0:
-            node_id = self._pick_target_node(refs) or "unknown"
+            preferred_locs = refs.get_preferred_object_locations()
+            node_id = (
+                max(preferred_locs, key=lambda n: preferred_locs[n])
+                if preferred_locs
+                else "unknown"
+            )
             for block_ref, block_metadata in zip(refs.block_refs, refs.metadata):
                 self._merge_buffer_refs_by_node[node_id].append(block_ref)
                 self._merge_buffer_bytes_by_node[node_id] += (
@@ -257,11 +254,8 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         if estimated_bytes > 0:
             resources["memory"] = estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER
 
-        ray_options: Dict[str, Any] = dict(resources)
+        ray_options: Dict[str, Any] = {**resources}
         if target_node_id is not None:
-            # soft=True: on task retry (worker death) Ray can pick a
-            # different live node; the retried mapper spawns a fresh local
-            # manager there and returns a fresh handle.
             ray_options["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                 target_node_id, soft=True
             )
