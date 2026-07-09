@@ -311,8 +311,7 @@ class TestRequestContextMetrics:
                     timeout=PROMETHEUS_METRICS_TIMEOUT_S,
                 )[metric_name]
             ]
-            # Under HAProxy, its periodic gRPC Healthz probe adds a spurious
-            # route="" sample; filter it out before comparing routes.
+            # Ignore HAProxy's periodic health-check samples.
             routes = {metric["route"] for metric in metrics} - {""}
             assert routes == {"app1", "app2", "app3"}
 

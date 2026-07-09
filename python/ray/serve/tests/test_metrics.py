@@ -269,15 +269,13 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
                 continue
-            # Under HAProxy, its periodic gRPC Healthz probe hits the fallback proxy
-            # and shows up as a spurious sample for the Healthz method. The real
-            # gRPC ping in this test is itself a NOT_FOUND ping (route=""), so
-            # filter on method instead of route to avoid dropping the real sample.
+            # Skip HAProxy's health-check samples. The real ping's route is
+            # empty too, so key on method.
             if "/ray.serve.RayServeAPIService/Healthz" in metrics:
                 continue
             # Under HAProxy, unmatched routes are rejected by HAProxy itself and
             # never reach a replica, so these HTTP error metrics have a different
-            # shape; covered by test_metrics_haproxy.py::test_proxy_metrics_not_found.
+            # shape. Covered by test_metrics_haproxy.py::test_proxy_metrics_not_found.
             if not RAY_SERVE_ENABLE_HA_PROXY:
                 if "serve_num_http_error_requests" in metrics:
                     # route "/B/" should have error count 2
@@ -381,13 +379,12 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
                 continue
-            # Under HAProxy, its periodic gRPC Healthz probe hits the fallback proxy
-            # and shows up as a spurious sample for the Healthz method.
+            # Skip HAProxy's health-check samples.
             if "/ray.serve.RayServeAPIService/Healthz" in metrics:
                 continue
             # Under HAProxy, a dead backend gets a 502 from HAProxy itself rather
             # than a replica-attributed 500, so these HTTP error metrics have a
-            # different shape; covered by
+            # different shape. Covered by
             # test_metrics_haproxy.py::test_proxy_metrics_internal_error.
             if not RAY_SERVE_ENABLE_HA_PROXY:
                 if "serve_num_http_error_requests" in metrics:
@@ -448,8 +445,8 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     ping_grpc_call_method(channel=channel, app_name=fake_app_name, test_not_found=True)
 
     # Under HAProxy, the route-miss 404 is handled by HAProxy itself and never
-    # forwarded to a replica, so these HTTP metrics have a different shape;
-    # covered by test_metrics_haproxy.py::test_proxy_metrics_fields_not_found.
+    # forwarded to a replica, so these HTTP metrics have a different shape.
+    # Covered by test_metrics_haproxy.py::test_proxy_metrics_fields_not_found.
     if not RAY_SERVE_ENABLE_HA_PROXY:
         num_requests = get_metric_dictionaries("ray_serve_num_http_requests_total")
         assert len(num_requests) == 1
@@ -467,10 +464,8 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
         print("serve_num_http_error_requests working as expected.")
 
     num_requests = get_metric_dictionaries("ray_serve_num_grpc_requests_total")
-    # Under HAProxy, its periodic gRPC Healthz probe hits the fallback proxy
-    # and shows up as a spurious sample for the Healthz method. The real gRPC
-    # ping in this test is itself a NOT_FOUND ping (route=""), so filter on
-    # method instead of route to avoid dropping the real sample.
+    # Ignore HAProxy's health-check samples. The real ping's route is empty
+    # too, so key on method.
     num_requests = [
         m
         for m in num_requests
@@ -484,10 +479,8 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     print("serve_num_grpc_requests working as expected.")
 
     num_errors = get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
-    # Under HAProxy, its periodic gRPC Healthz probe hits the fallback proxy
-    # and shows up as a spurious sample for the Healthz method. The real gRPC
-    # ping in this test is itself a NOT_FOUND ping (route=""), so filter on
-    # method instead of route to avoid dropping the real sample.
+    # Ignore HAProxy's health-check samples. The real ping's route is empty
+    # too, so key on method.
     num_errors = [
         m
         for m in num_errors
@@ -542,8 +535,7 @@ def test_proxy_timeout_metrics(metrics_start_shutdown):
     assert num_errors[0]["application"] == "status_code_timeout"
 
     num_errors = get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
-    # Under HAProxy, its periodic gRPC Healthz probe hits the fallback proxy
-    # with no application header and shows up as a spurious route="" sample.
+    # Ignore HAProxy's periodic health-check samples.
     num_errors = [m for m in num_errors if m["route"] == "status_code_timeout"]
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "status_code_timeout"
@@ -633,8 +625,7 @@ def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     ray.get(signal.send.remote(clear=True))
 
     num_errors = get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
-    # Under HAProxy, its periodic gRPC Healthz probe hits the fallback proxy
-    # with no application header and shows up as a spurious route="" sample.
+    # Ignore HAProxy's periodic health-check samples.
     num_errors = [m for m in num_errors if m["route"] == "disconnect"]
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "disconnect"
@@ -689,8 +680,7 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     print("serve_num_deployment_grpc_error_requests working as expected.")
 
     latency_metrics = get_metric_dictionaries("ray_serve_http_request_latency_ms_sum")
-    # Under HAProxy, its periodic HTTP healthz probe also emits a
-    # route="/-/healthz" latency sample.
+    # Ignore HAProxy's periodic health-check samples.
     latency_metrics = [m for m in latency_metrics if m["route"] != "/-/healthz"]
     assert len(latency_metrics) == 1
     assert latency_metrics[0]["method"] == "GET"
@@ -700,8 +690,7 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     print("serve_http_request_latency_ms working as expected.")
 
     latency_metrics = get_metric_dictionaries("ray_serve_grpc_request_latency_ms_sum")
-    # Under HAProxy, its periodic gRPC Healthz probe also emits a latency
-    # sample for the /ray.serve.RayServeAPIService/Healthz method.
+    # Ignore HAProxy's periodic health-check samples.
     latency_metrics = [
         m
         for m in latency_metrics
