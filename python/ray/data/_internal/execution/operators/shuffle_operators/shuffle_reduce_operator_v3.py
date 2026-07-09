@@ -46,6 +46,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.operators.hash_shuffle_v3 import (
+    _DEFAULT_MAX_BYTES_PER_FETCH,
     ReduceFn,
     v3_reduce_task,
 )
@@ -85,7 +86,6 @@ class ShuffleReduceOpV3(PhysicalOperator, SubProgressBarMixin):
     """
 
     _DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS = 1.0
-    _DEFAULT_MAX_BYTES_PER_FETCH = 256 * 1024 * 1024  # 256 MiB
 
     def __init__(
         self,

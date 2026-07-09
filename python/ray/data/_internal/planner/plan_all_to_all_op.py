@@ -14,8 +14,14 @@ from ray.data._internal.execution.operators.hash_shuffle_v2 import (
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
 )
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator_v3 import (  # noqa: E501
+    ShuffleMapOpV3,
+)
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
     ShuffleReduceOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator_v3 import (  # noqa: E501
+    ShuffleReduceOpV3,
 )
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
@@ -127,13 +133,7 @@ def _plan_hash_shuffle_repartition_v3(
     """
     from ray.data._internal.arrow_ops.transform_pyarrow import hash_partition
     from ray.data._internal.execution.operators.hash_shuffle_v3 import (
-        concat_reduce,
-    )
-    from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator_v3 import (  # noqa: E501
-        ShuffleMapOpV3,
-    )
-    from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator_v3 import (  # noqa: E501
-        ShuffleReduceOpV3,
+        _concat_reduce as _concat_reduce_v3,
     )
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
@@ -166,7 +166,7 @@ def _plan_hash_shuffle_repartition_v3(
         reduce_fn = _sort_reduce(list(key_cols))
         streaming_reduce = False
     else:
-        reduce_fn = concat_reduce
+        reduce_fn = _concat_reduce_v3
         streaming_reduce = True
     # Honor the repartition(N) -> exactly N blocks contract by coalescing all
     # reduce_fn outputs into a single block per partition. Independent of the

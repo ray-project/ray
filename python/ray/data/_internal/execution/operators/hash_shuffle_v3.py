@@ -1535,7 +1535,7 @@ def v3_reduce_task(
                 pass
 
 
-def concat_reduce(partition_id: int, tables: List[pa.Table]) -> Iterable[pa.Table]:
+def _concat_reduce(partition_id: int, tables: List[pa.Table]) -> Iterable[pa.Table]:
     if not tables:
         return
     yield pa.concat_tables(tables) if len(tables) > 1 else tables[0]

@@ -3,7 +3,7 @@ ShuffleReduceOpV3).
 
 This wires the operators directly — bypassing the Ray Data planner — to
 verify the simplest end-to-end story: feed N input blocks → hash-partition
-into K partitions → reduce each with ``concat_reduce`` → row count
+into K partitions → reduce each with ``_concat_reduce`` → row count
 preserved, partition count == K, no leaked actors / files.
 
 The point is to catch wiring bugs (RefBundle shape, sentinel metadata,
@@ -32,7 +32,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.operators.hash_shuffle_v3 import (
-    concat_reduce,
+    _concat_reduce,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator_v3 import (  # noqa: E501
     ShuffleMapOpV3,
@@ -177,7 +177,7 @@ def test_v3_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_parts):
         map_op,
         ctx,
         num_partitions=num_parts,
-        reduce_fn=concat_reduce,
+        reduce_fn=_concat_reduce,
         streaming_reduce=False,
         # default target_max_block_size = None ⇒ partition = block
         name="ShuffleReduceV3-smoke",
@@ -217,7 +217,7 @@ def test_v3_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_parts):
             f"{expected_total_rows}"
         )
         # No more in-flight reducer tasks; every dispatched partition
-        # produced at least one output bundle (concat_reduce + empty input
+        # produced at least one output bundle (_concat_reduce + empty input
         # combined could legitimately emit zero, but for non-empty inputs
         # we expect coverage of every partition).
         partition_ids_seen = set()
