@@ -15,9 +15,34 @@ from ray.core.generated.events_autoscaler_scaling_decision_event_pb2 import (
 from ray.core.generated.events_base_event_pb2 import RayEvent as RayEventProto
 
 
-def is_ray_event_enabled() -> bool:
-    """Check whether Python-side ONE-event publishing is active."""
-    return ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT
+# Event type names (from RayEvent.EventType in
+# src/ray/protobuf/public/events_base_event.proto) for autoscaler events
+# emitted through the Python EventRecorder (One-Event framework).
+AUTOSCALER_CONFIG_DEFINITION_EVENT_TYPE = "AUTOSCALER_CONFIG_DEFINITION_EVENT"
+AUTOSCALER_SCALING_DECISION_EVENT_TYPE = "AUTOSCALER_SCALING_DECISION_EVENT"
+AUTOSCALER_NODE_PROVISIONING_EVENT_TYPE = "AUTOSCALER_NODE_PROVISIONING_EVENT"
+AUTOSCALER_EVENT_TYPES = frozenset(
+    {
+        AUTOSCALER_CONFIG_DEFINITION_EVENT_TYPE,
+        AUTOSCALER_SCALING_DECISION_EVENT_TYPE,
+        AUTOSCALER_NODE_PROVISIONING_EVENT_TYPE,
+    }
+)
+
+
+def is_ray_event_enabled(event_type: Optional[str] = None) -> bool:
+    """Check whether Python-side ONE-event publishing is active.
+
+    Args:
+        event_type: When given, check that specific RayEvent.EventType name
+            against RAY_ENABLE_PYTHON_RAY_EVENT_TYPES; otherwise check whether
+            any autoscaler event type is enabled.
+    """
+    if event_type is not None:
+        return event_type in ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT_TYPES
+    return bool(
+        AUTOSCALER_EVENT_TYPES & ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT_TYPES
+    )
 
 
 # ---------------------------------------------------------------------------
