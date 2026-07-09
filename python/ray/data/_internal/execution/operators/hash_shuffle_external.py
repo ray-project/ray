@@ -444,6 +444,30 @@ class _ThreadingServer(socketserver.ThreadingTCPServer):
     request_queue_size = 256
 
 
+# -- ShuffleManager identity -------------------------------------------------
+#
+# The actor's real identity is its ``(name, namespace)`` GCS entry; ActorHandle
+# is a cache. We construct the name deterministically from ``shuffle_id`` +
+# ``node_id`` so any process can rebuild the identity from handle-dict fields
+# and look the actor up via ``ray.get_actor`` — no ActorHandle needs to
+# travel through the map→reduce plumbing.
+_SHUFFLE_MANAGER_NAMESPACE = "ray_data_shuffle_external"
+
+
+def _manager_name(shuffle_id: str, node_id: str) -> str:
+    return f"shuffle_mgr:{shuffle_id}:{node_id}"
+
+
+def _lookup_manager(shuffle_id: str, node_id: str) -> "ray.actor.ActorHandle":
+    """Locate the ShuffleManager for this shuffle+node in the named-actor
+    namespace. Raises ``ValueError`` if the actor has never been registered
+    (or has been terminated and garbage-collected)."""
+    return ray.get_actor(
+        _manager_name(shuffle_id, node_id),
+        namespace=_SHUFFLE_MANAGER_NAMESPACE,
+    )
+
+
 @ray.remote
 class ShuffleManager:
     """Per-node file fetch service: owns a socket server that serves byte-ranges
@@ -806,9 +830,12 @@ def external_hash_shuffle_map_task(
     only matters if node-reboot recovery is later added to the FT model.
     """
     node_id = ray.get_runtime_context().get_node_id()
-    manager = ShuffleManager.options(
-        name=f"shuffle_mgr:{shuffle_id}:{node_id}",
-        namespace="ray_data_shuffle_external",
+    # Ensure the manager actor exists (get_if_exists=True → reuse across
+    # mappers on the same node). We don't need to keep the handle: reducers
+    # will look the manager up by name via ``_lookup_manager``.
+    ShuffleManager.options(
+        name=_manager_name(shuffle_id, node_id),
+        namespace=_SHUFFLE_MANAGER_NAMESPACE,
         get_if_exists=True,
         lifetime="detached",
         max_restarts=-1,
@@ -943,8 +970,10 @@ def external_hash_shuffle_map_task(
     return {
         "path": os.path.realpath(final_path),
         "index": index,
-        # ActorHandle to this node's ShuffleManager
-        "manager": manager,
+        # ShuffleManager identity: reducers rebuild the actor name from
+        # (shuffle_id, node_id) and call ``_lookup_manager`` when they need
+        # the handle. No ActorHandle in the wire format.
+        "shuffle_id": shuffle_id,
         "node_id": node_id,
         "token": token,
         "num_partitions": num_partitions,
@@ -999,7 +1028,7 @@ _DEFAULT_MAX_BYTES_PER_FETCH = 256 * 1024 * 1024  # 256 MiB per FETCH frame
 
 # Process-global cache of ShuffleManager endpoints: {actor_id_bytes: (ip, port)}.
 # When an file server actor is respawned (due to failure), the CACHE will be re-populated
-_ENDPOINT_CACHE: Dict[bytes, Tuple[str, int]] = {}
+_ENDPOINT_CACHE: Dict[str, Tuple[str, int]] = {}
 
 # --------------------------------------------------------- fetch routing types
 # Named containers replace the anonymous tuples the reducer used to thread
@@ -1013,9 +1042,12 @@ class _SourceRef:
     """One (mapper file, partition slice) the reducer needs to pull.
 
     Built once per input handle for a given partition_id at reducer start.
+    The (shuffle_id, node_id) pair is the manager's named-actor identity;
+    the reducer calls ``_lookup_manager(shuffle_id, node_id)`` when it
+    actually needs an ActorHandle for the fetch RPC.
     """
 
-    manager: "ray.actor.ActorHandle"
+    shuffle_id: str
     node_id: str
     token: str
     path: str
@@ -1039,11 +1071,11 @@ class _NodeMember:
 @dataclass(slots=True)
 class _NodeGroup:
     """All sources on one ShuffleManager, grouped so we open ONE TCP
-    connection per manager. Multiple deserialized ActorHandle instances
-    pointing at the same actor collapse via ``manager._actor_id``.
+    connection per manager. Sources collapse to the same group when their
+    ``(shuffle_id, node_id)`` — the manager's named-actor identity — matches.
     """
 
-    manager: "ray.actor.ActorHandle"
+    shuffle_id: str
     node_id: str
     token: str
     members: List[_NodeMember] = field(default_factory=list)
@@ -1072,17 +1104,18 @@ class _PwriteSink:
 
 def _prefetch_node_into(
     out_file_obj,
-    manager: "ray.actor.ActorHandle",
+    shuffle_id: str,
     node_id: str,
     token: str,
     members: List[_NodeMember],
     max_bytes_per_fetch: int,
 ) -> None:
-    """Open ONE keep-alive connection to ``manager``'s endpoint and stream
+    """Open ONE keep-alive connection to the manager's endpoint and stream
     every member's shards into ``out_file_obj`` via 1+ multi-source FETCH
     frames, each bounded by ``max_bytes_per_fetch``.
 
-    Endpoint is resolved at call-time via ``manager.endpoint.remote()`` —
+    Manager is located via named-actor lookup (``_lookup_manager``); its
+    endpoint is resolved at call-time via ``manager.endpoint.remote()`` —
     survives ShuffleManager restart on a new port. If the first connect
     fails with a transient error (typical sign of mid-restart), re-resolve
     once and retry; persistent failure surfaces as ShuffleFetchError so the
@@ -1098,10 +1131,11 @@ def _prefetch_node_into(
         # on a new port mid-task, the cached endpoint goes stale and the
         # connect fails downstream; recovery is via Ray task retry (which
         # starts a fresh worker with an empty cache), not in-task re-resolve.
-        key = manager._actor_id.binary()
+        key = _manager_name(shuffle_id, node_id)
         ep = _ENDPOINT_CACHE.get(key)
         if ep is not None:
             return ep
+        manager = _lookup_manager(shuffle_id, node_id)
         # Bounded wait: manager is NodeAffinity-pinned (soft=False) with
         # max_restarts=-1, so if the node dies the actor stays PENDING forever
         # and a naked ``ray.get`` hangs indefinitely. ``ray.wait`` bails out
@@ -1217,7 +1251,7 @@ def _handles_to_sources(
         if ranges:
             sources.append(
                 _SourceRef(
-                    manager=h["manager"],
+                    shuffle_id=h["shuffle_id"],
                     node_id=h.get("node_id", ""),
                     token=h["token"],
                     path=h["path"],
@@ -1230,18 +1264,22 @@ def _handles_to_sources(
 def _group_by_manager(sources: List[_SourceRef]) -> List[_NodeGroup]:
     """Collapse sources by manager so each manager gets ONE TCP connection.
 
-    Multiple deserialized ActorHandle instances that point at the same actor
-    collapse to one group via ``manager._actor_id``. ``idx`` on each member
-    preserves the source's original position across all reducer sources —
-    used to keep the sequential pwrite layout stable across FETCH batches.
+    Sources on the same manager share a ``(shuffle_id, node_id)`` — the
+    manager's named-actor identity — which is used as the collapse key.
+    ``idx`` on each member preserves the source's original position across
+    all reducer sources — used to keep the sequential pwrite layout stable
+    across FETCH batches.
     """
-    by_key: Dict[bytes, _NodeGroup] = {}
+    by_key: Dict[Tuple[str, str], _NodeGroup] = {}
     for idx, s in enumerate(sources):
-        key = s.manager._actor_id.binary()
+        key = (s.shuffle_id, s.node_id)
         group = by_key.get(key)
         if group is None:
             group = _NodeGroup(
-                manager=s.manager, node_id=s.node_id, token=s.token, members=[]
+                shuffle_id=s.shuffle_id,
+                node_id=s.node_id,
+                token=s.token,
+                members=[],
             )
             by_key[key] = group
         group.members.append(_NodeMember(idx=idx, path=s.path, ranges=s.ranges))
@@ -1412,7 +1450,7 @@ def external_hash_shuffle_reduce_task(
                 base, size, group = args
                 _prefetch_node_into(
                     _PwriteSink(fd, base),
-                    group.manager,
+                    group.shuffle_id,
                     group.node_id,
                     group.token,
                     group.members,

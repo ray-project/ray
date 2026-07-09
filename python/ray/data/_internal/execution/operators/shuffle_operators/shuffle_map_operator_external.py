@@ -483,10 +483,20 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         self._shared_handles_ref = None
 
     def _kill_managers_from_completed_handles(self) -> None:
-        """Dedup manager ActorHandles across the completed handles and
+        """Dedup manager identities across the completed handles and
         gracefully terminate each. ``__ray_terminate__`` drains pending
         tasks, invokes the actor's ``__ray_shutdown__``, and exits with
-        a 30s Ray-default cap after which the actor is force-killed."""
+        a 30s Ray-default cap after which the actor is force-killed.
+
+        Each manager is located by ``(shuffle_id, node_id)`` via
+        ``_lookup_manager``; a handle whose actor has already been
+        garbage-collected (``ValueError`` from ``ray.get_actor``) is
+        silently skipped — nothing to terminate.
+        """
+        from ray.data._internal.execution.operators.hash_shuffle_external import (
+            _lookup_manager,
+        )
+
         seen: set = set()
         mgrs = []
         for ref in self._completed_handle_refs:
@@ -494,14 +504,21 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
                 handle = ray.get(ref)
             except Exception:
                 continue
-            mgr = handle.get("manager") if isinstance(handle, dict) else None
-            if mgr is None:
+            if not isinstance(handle, dict):
                 continue
-            key = mgr._actor_id.binary()
+            shuffle_id = handle.get("shuffle_id")
+            node_id = handle.get("node_id")
+            if not shuffle_id or not node_id:
+                continue
+            key = (shuffle_id, node_id)
             if key in seen:
                 continue
             seen.add(key)
-            mgrs.append(mgr)
+            try:
+                mgrs.append(_lookup_manager(shuffle_id, node_id))
+            except (ValueError, Exception):
+                # Actor name not registered / already gone — nothing to kill.
+                continue
 
         # Fire graceful shutdowns in parallel; wall time = slowest
         # ``__ray_shutdown__``, not their sum.
