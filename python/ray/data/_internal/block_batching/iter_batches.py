@@ -67,8 +67,9 @@ class BatchIterator:
     Args:
         ref_bundles: An iterator over RefBundles.
         stats: DatasetStats object to record timing and other statistics.
-        metrics_tags: Prometheus tags (``dataset`` and ``rank``) applied to the
-            iteration metrics recorded for this iterator.
+        dataset_tag: The iterator's iteration-metric tags, a dict with keys
+            ``dataset`` (the dataset execution id) and ``split_index`` (the
+            output split index, or an empty string for plain iterators).
         clear_block_after_read: Whether to clear the block from object store
             manually (i.e. without waiting for Python's automatic GC) after it
             is read. Doing so will reclaim memory faster and hence reduce the
@@ -114,7 +115,7 @@ class BatchIterator:
         ref_bundles: Iterator[RefBundle],
         *,
         stats: Optional[DatasetStats] = None,
-        metrics_tags: Optional[Dict[str, str]] = None,
+        dataset_tag: Optional[Dict[str, str]] = None,
         clear_block_after_read: bool = False,
         batch_size: Optional[int] = None,
         batch_format: Optional[str] = "default",
@@ -130,7 +131,7 @@ class BatchIterator:
     ):
         self._ref_bundles = ref_bundles
         self._stats = stats
-        self._metrics_tags = metrics_tags
+        self._dataset_tag = dataset_tag
         self._batch_size = batch_size
         self._batch_format = batch_format
         self._drop_last = drop_last
@@ -273,10 +274,14 @@ class BatchIterator:
         if self._prefetch_bytes_callback is not None:
             self._prefetch_bytes_callback(0)
 
-        if self._stats is None:
+        if self._stats is None or self._dataset_tag is None:
             return
 
-        _StatsManager.update_iteration_metrics(self._stats, self._metrics_tags)
+        _StatsManager.update_iteration_metrics(
+            self._stats,
+            self._dataset_tag["dataset"],
+            self._dataset_tag["split_index"],
+        )
 
     @contextmanager
     def get_next_batch_context(self):
@@ -306,11 +311,15 @@ class BatchIterator:
         if self._prefetch_bytes_callback is not None and self._stats is not None:
             self._prefetch_bytes_callback(self._stats.iter_prefetched_bytes)
 
-        if self._stats is None:
+        if self._stats is None or self._dataset_tag is None:
             return
         now = time.time()
         if (now - self._metrics_last_updated) > self.UPDATE_METRICS_INTERVAL_S:
-            _StatsManager.update_iteration_metrics(self._stats, self._metrics_tags)
+            _StatsManager.update_iteration_metrics(
+                self._stats,
+                self._dataset_tag["dataset"],
+                self._dataset_tag["split_index"],
+            )
             self._metrics_last_updated = now
 
 

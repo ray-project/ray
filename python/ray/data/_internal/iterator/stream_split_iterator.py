@@ -8,11 +8,7 @@ from ray.data._internal.execution.interfaces import (
     NodeIdStr,
     RefBundle,
 )
-from ray.data._internal.stats import (
-    DATASET_METRICS_TAG_KEY,
-    RANK_METRICS_TAG_KEY,
-    DatasetStats,
-)
+from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
@@ -183,10 +179,8 @@ class StreamSplitDataIterator(DataIterator):
         """Returns the number of splits total."""
         return self._world_size
 
-    def _get_metrics_tags(self) -> Dict[str, str]:
-        return ray.get(
-            self._coord_actor.get_metrics_tags.remote(self._output_split_idx)
-        )
+    def _get_dataset_tag(self) -> Dict[str, str]:
+        return ray.get(self._coord_actor.get_dataset_tag.remote(self._output_split_idx))
 
 
 @ray.remote(num_cpus=0)
@@ -254,13 +248,13 @@ class SplitCoordinator:
     def get_dataset_context(self) -> DataContext:
         return self._data_context
 
-    def get_metrics_tags(self, output_split_idx: int) -> Dict[str, str]:
+    def get_dataset_tag(self, output_split_idx: int) -> Dict[str, str]:
         # ``dataset`` is the (un-suffixed) execution id so it matches the
-        # execution-side metrics; the split index is surfaced as ``rank`` so
-        # each consumer gets its own iteration-metric series.
+        # execution-side metrics; the output split index is surfaced as
+        # ``split_index`` so each consumer gets its own iteration-metric series.
         return {
-            DATASET_METRICS_TAG_KEY: self._base_dataset.get_dataset_id(),
-            RANK_METRICS_TAG_KEY: str(output_split_idx),
+            "dataset": self._base_dataset.get_dataset_id(),
+            "split_index": str(output_split_idx),
         }
 
     def get_dataset_schema(self):

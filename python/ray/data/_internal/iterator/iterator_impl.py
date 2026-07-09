@@ -1,12 +1,7 @@
 from typing import TYPE_CHECKING, Dict, Iterator, Optional, Tuple
 
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
-from ray.data._internal.stats import (
-    DATASET_METRICS_TAG_KEY,
-    DEFAULT_METRICS_RANK,
-    RANK_METRICS_TAG_KEY,
-    DatasetStats,
-)
+from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 
@@ -50,11 +45,11 @@ class DataIteratorImpl(DataIterator):
     def get_context(self) -> DataContext:
         return self._base_dataset.context
 
-    def _get_metrics_tags(self) -> Dict[str, str]:
-        # Plain iterators have no consumer/rank dimension, so use the default
-        # rank sentinel. This keeps the iteration metric label set uniform with
-        # the stream-split path while collapsing back to a single series.
+    def _get_dataset_tag(self) -> Dict[str, str]:
+        # Plain iterators have no split dimension, so ``split_index`` is an empty
+        # string. This keeps the iteration metric label set uniform with the
+        # stream-split path while collapsing back to a single series.
         return {
-            DATASET_METRICS_TAG_KEY: self._base_dataset.get_dataset_id(),
-            RANK_METRICS_TAG_KEY: DEFAULT_METRICS_RANK,
+            "dataset": self._base_dataset.get_dataset_id(),
+            "split_index": "",
         }

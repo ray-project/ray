@@ -56,16 +56,6 @@ STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
 UNKNOWN = "unknown"
 UNKNOWN_UUID = "unknown_uuid"
 
-# Prometheus tag keys applied to all iteration (``data_iter_*``) metrics.
-# ``dataset`` is the dataset execution id (``get_dataset_id()``); ``rank``
-# identifies the consumer within that execution. For stream-split iterators
-# ``rank`` is the output split index, so each Train worker gets its own series.
-# Plain iterators have no consumer dimension and use ``DEFAULT_METRICS_RANK``,
-# a constant that collapses back to a single series (same as no rank dimension).
-DATASET_METRICS_TAG_KEY = "dataset"
-RANK_METRICS_TAG_KEY = "rank"
-DEFAULT_METRICS_RANK = ""
-
 
 StatsDict = Dict[str, List[BlockStats]]
 
@@ -458,7 +448,7 @@ class _StatsActor:
         # Per Node metrics
         self.per_node_metrics = self._create_prometheus_metrics_for_per_node_metrics()
 
-        iter_tag_keys = (DATASET_METRICS_TAG_KEY, RANK_METRICS_TAG_KEY)
+        iter_tag_keys = ("dataset", "split_index")
 
         self.time_to_first_batch_s = Gauge(
             "data_iter_time_to_first_batch_seconds",
@@ -733,11 +723,14 @@ class _StatsActor:
     def update_iteration_metrics(
         self,
         stats: "DatasetStats",
-        metrics_tags: Dict[str, str],
+        dataset_tag: str,
+        split_index: str,
     ):
-        # ``metrics_tags`` is supplied by the iterator and must match
-        # ``iter_tag_keys`` exactly (``dataset`` and ``rank``).
-        tags = metrics_tags
+        # ``dataset`` identifies the dataset execution; ``split_index`` identifies
+        # the consumer within it (the output split index for stream-split
+        # iterators, or an empty string for plain iterators, which have no split
+        # dimension). Together these must match ``iter_tag_keys`` exactly.
+        tags = {"dataset": dataset_tag, "split_index": split_index}
 
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
         self.iter_get_ref_bundles_s.set(stats.iter_get_ref_bundles_s.get(), tags)
@@ -1046,8 +1039,10 @@ class _StatsManager:
             return
 
     @staticmethod
-    def update_iteration_metrics(stats: "DatasetStats", metrics_tags: Dict[str, str]):
-        args = (stats, metrics_tags)
+    def update_iteration_metrics(
+        stats: "DatasetStats", dataset_tag: str, split_index: str
+    ):
+        args = (stats, dataset_tag, split_index)
         try:
             get_or_create_stats_actor().update_iteration_metrics.remote(*args)
         except Exception as e:

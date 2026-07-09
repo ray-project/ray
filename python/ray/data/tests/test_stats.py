@@ -2036,11 +2036,10 @@ def test_stats_actor_iter_metrics():
     final_stats = update_fn.call_args_list[-1].args[0]
 
     assert final_stats == ds_stats
-    # Iteration metrics are now tagged with a dict of {dataset, rank}. This is a
-    # plain iterator, so it uses the default (empty) rank.
-    metrics_tags = update_fn.call_args_list[-1].args[1]
-    assert metrics_tags["dataset"] == f"dataset_{ds._uuid}_0"
-    assert metrics_tags["rank"] == ""
+    # Iteration metrics are tagged with separate ``dataset`` and ``split_index``
+    # args. This is a plain iterator, so it uses the empty-string split index.
+    assert update_fn.call_args_list[-1].args[1] == f"dataset_{ds._uuid}_0"
+    assert update_fn.call_args_list[-1].args[2] == ""
 
 
 def test_dataset_name_and_id():

@@ -22,12 +22,7 @@ from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import InputData
-from ray.data._internal.stats import (
-    DATASET_METRICS_TAG_KEY,
-    DEFAULT_METRICS_RANK,
-    RANK_METRICS_TAG_KEY,
-    DatasetStats,
-)
+from ray.data._internal.stats import DatasetStats
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
 from ray.data.collate_fn import (
     ArrowBatchCollateFn,
@@ -261,7 +256,7 @@ class DataIterator(abc.ABC):
                 executor,
             ) = self._to_ref_bundle_iterator()
 
-            metrics_tags = self._get_metrics_tags()
+            dataset_tag = self._get_dataset_tag()
 
             # Create a callback to report prefetched bytes to the executor's
             # resource manager.
@@ -281,7 +276,7 @@ class DataIterator(abc.ABC):
             batch_iterator = self._create_batch_iterator(
                 ref_bundles_iterator,
                 stats=stats,
-                metrics_tags=metrics_tags,
+                dataset_tag=dataset_tag,
                 clear_block_after_read=blocks_owned_by_consumer,
                 batch_size=batch_size,
                 batch_format=batch_format,
@@ -313,17 +308,19 @@ class DataIterator(abc.ABC):
 
         return _IterableFromIterator(_create_iterator)
 
-    def _get_metrics_tags(self) -> Dict[str, str]:
-        """Prometheus tags applied to this iterator's ``data_iter_*`` metrics.
+    def _get_dataset_tag(self) -> Dict[str, str]:
+        """Tags applied to this iterator's ``data_iter_*`` iteration metrics.
 
-        Must contain exactly the keys declared in ``iter_tag_keys``
-        (``dataset`` and ``rank``). Subclasses override to supply the real
-        dataset execution id and consumer rank.
+        Returns a dict with keys matching ``iter_tag_keys``:
+
+        - ``dataset``: the dataset execution id.
+        - ``split_index``: the output split index for stream-split iterators,
+          or an empty string for plain iterators (which have no split
+          dimension, so their metrics collapse to a single series).
+
+        Subclasses override this to supply the real dataset id and split index.
         """
-        return {
-            DATASET_METRICS_TAG_KEY: "unknown_dataset",
-            RANK_METRICS_TAG_KEY: DEFAULT_METRICS_RANK,
-        }
+        return {"dataset": "unknown_dataset", "split_index": ""}
 
     @PublicAPI
     def iter_rows(self) -> Iterable[Dict[str, Any]]:
