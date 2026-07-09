@@ -1043,6 +1043,20 @@ py_test(
 )
 
 py_test(
+    name = "test_idempotency_optimizer_guards",
+    size = "small",
+    srcs = ["tests/test_idempotency_optimizer_guards.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_infer_schema",
     size = "small",
     srcs = ["tests/test_infer_schema.py"],
@@ -1344,7 +1358,7 @@ py_test(
 
 py_test(
     name = "test_iceberg",
-    size = "small",
+    size = "medium",
     srcs = ["tests/datasource/test_iceberg.py"],
     tags = [
         "exclusive",
@@ -1402,6 +1416,20 @@ py_test(
     name = "test_operators",
     size = "small",
     srcs = ["tests/test_operators.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_block_ref_counter",
+    size = "small",
+    srcs = ["tests/test_block_ref_counter.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1950,9 +1978,9 @@ py_test(
 )
 
 py_test(
-    name = "test_autoscaler",
+    name = "test_actor_autoscaler",
     size = "small",
-    srcs = ["tests/test_autoscaler.py"],
+    srcs = ["tests/test_actor_autoscaler.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -2233,6 +2261,20 @@ py_test(
     name = "test_read_datasource",
     size = "small",
     srcs = ["tests/test_read_datasource.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_catalog",
+    size = "small",
+    srcs = ["tests/test_catalog.py"],
     tags = [
         "exclusive",
         "team:data",

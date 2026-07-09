@@ -9,7 +9,6 @@ import os
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-import pytest
 
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
     ParquetFileChunker,
@@ -18,7 +17,6 @@ from ray.data._internal.datasource_v2.chunkers.file_chunker import (
     create_chunk_metadata,
 )
 from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
-    _calculate_row_group_range,
     _fragments_from_chunk_metadata,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
@@ -230,53 +228,6 @@ def test_datasource_accepts_custom_chunker(tmp_path):
     assert indexer.file_chunker is custom
 
 
-@pytest.mark.parametrize(
-    "total_row_groups,total_num_chunks,expected_ranges",
-    [
-        # Even distribution.
-        (10, 2, [(0, 5), (5, 10)]),
-        (12, 3, [(0, 4), (4, 8), (8, 12)]),
-        (20, 4, [(0, 5), (5, 10), (10, 15), (15, 20)]),
-        # Uneven distribution: earlier chunks get extra row groups.
-        (10, 3, [(0, 4), (4, 7), (7, 10)]),
-        (11, 3, [(0, 4), (4, 8), (8, 11)]),
-        (13, 4, [(0, 4), (4, 7), (7, 10), (10, 13)]),
-        # Edge cases — over-estimated chunk counts must produce ``None``.
-        (1, 1, [(0, 1)]),
-        (1, 2, [(0, 1), None]),
-        (0, 1, [None]),
-        (5, 10, [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)] + [None] * 5),
-    ],
-)
-def test_calculate_row_group_range_distribution(
-    total_row_groups, total_num_chunks, expected_ranges
-):
-    """Row-group distribution across chunks is even and covers everything."""
-    for chunk_idx in range(total_num_chunks):
-        result = _calculate_row_group_range(
-            chunk_idx, total_num_chunks, total_row_groups
-        )
-        expected = (
-            expected_ranges[chunk_idx] if chunk_idx < len(expected_ranges) else None
-        )
-        assert (
-            result == expected
-        ), f"Chunk {chunk_idx}: expected {expected}, got {result}"
-
-    # No gaps, no overlaps, every row group covered exactly once.
-    covered = set()
-    for chunk_idx in range(total_num_chunks):
-        result = _calculate_row_group_range(
-            chunk_idx, total_num_chunks, total_row_groups
-        )
-        if result is not None:
-            start, end = result
-            chunk_rows = set(range(start, end))
-            assert not (covered & chunk_rows)
-            covered.update(chunk_rows)
-    assert covered == set(range(total_row_groups))
-
-
 def _write_multi_row_group_parquet(path, num_rows: int, row_group_size: int):
     table = pa.table({"id": list(range(num_rows))})
     pq.write_table(table, path, row_group_size=row_group_size)
@@ -284,7 +235,7 @@ def _write_multi_row_group_parquet(path, num_rows: int, row_group_size: int):
 
 
 def test_fragments_from_chunk_metadata_subsets_by_row_group(tmp_path):
-    """``_fragments_from_chunk_metadata`` slices a file fragment per chunk."""
+    """``_fragments_from_chunk_metadata`` slices a fragment to the explicit range."""
     import pyarrow.dataset as pds
 
     file_path = str(tmp_path / "multi.parquet")
@@ -295,24 +246,21 @@ def test_fragments_from_chunk_metadata_subsets_by_row_group(tmp_path):
     (fragment,) = dataset.get_fragments()
     assert fragment.metadata.num_row_groups == 100
 
-    # 100 row groups split into 4 chunks -> 25 row groups each.
+    # Explicit range [25, 50) → 25 row groups, starting row offset 250.
     chunk_md = create_chunk_metadata(
-        ParquetFileChunkMetadata, chunk_idx=1, total_num_chunks=4
+        ParquetFileChunkMetadata, row_group_start=25, row_group_end=50
     )
     sub_fragments = _fragments_from_chunk_metadata(fragment, chunk_md)
     assert len(sub_fragments) == 25
-    # chunk_idx=1, 25 rows/chunk * 10 rows/row_group = starting offset 250.
-    expected_offset = 250
+    expected_offset = 250  # 25 row groups × 10 rows each precede the range.
     for sub, offset in sub_fragments:
         assert len(sub.row_groups) == 1
         assert offset == expected_offset
         expected_offset += sub.metadata.row_group(sub.row_groups[0].id).num_rows
 
 
-def test_fragments_from_chunk_metadata_returns_empty_for_out_of_range_chunk(
-    tmp_path,
-):
-    """Over-estimated chunk indices fall off the end → no sub-fragments."""
+def test_fragments_from_chunk_metadata_clamps_range_beyond_row_groups(tmp_path):
+    """A range beyond the file's actual row-group count is clamped (no crash)."""
     import pyarrow.dataset as pds
 
     file_path = str(tmp_path / "single.parquet")
@@ -321,12 +269,21 @@ def test_fragments_from_chunk_metadata_returns_empty_for_out_of_range_chunk(
 
     dataset = pds.dataset(file_path, format="parquet")
     (fragment,) = dataset.get_fragments()
+    assert fragment.metadata.num_row_groups == 1
 
-    # chunk_idx=4 with 5 chunks but only 1 row group → no sub-fragments.
+    # Fully out-of-range [5, 6) → clamped to [1, 1) → no sub-fragments.
     chunk_md = create_chunk_metadata(
-        ParquetFileChunkMetadata, chunk_idx=4, total_num_chunks=5
+        ParquetFileChunkMetadata, row_group_start=5, row_group_end=6
     )
     assert _fragments_from_chunk_metadata(fragment, chunk_md) == []
+
+    # Partially out-of-range [0, 9) → clamped to [0, 1) → the one real row group.
+    chunk_md = create_chunk_metadata(
+        ParquetFileChunkMetadata, row_group_start=0, row_group_end=9
+    )
+    sub_fragments = _fragments_from_chunk_metadata(fragment, chunk_md)
+    assert len(sub_fragments) == 1
+    assert sub_fragments[0][1] == 0  # row offset
 
 
 def _read_via_reader(reader, manifest):
@@ -346,7 +303,8 @@ def test_parquet_file_reader_reads_chunked_manifest(tmp_path):
     whole_tables = _read_via_reader(reader_whole, whole_manifest)
     whole_rows = pa.concat_tables(whole_tables).column("id").to_pylist()
 
-    chunker = ParquetFileChunker(target_chunk_size=1024)
+    # target_chunk_size=1 forces one chunk per row group.
+    chunker = ParquetFileChunker(target_chunk_size=1)
     chunks = list(chunker.generate_chunk_metadatas(file_path, file_size))
     assert len(chunks) > 1, "test setup expects ParquetFileChunker to chunk"
 
@@ -378,7 +336,7 @@ def test_parquet_file_reader_chunked_row_hashes_are_unique(tmp_path):
     _write_multi_row_group_parquet(file_path, num_rows=expected_rows, row_group_size=20)
     file_size = os.path.getsize(file_path)
 
-    chunker = ParquetFileChunker(target_chunk_size=1024)
+    chunker = ParquetFileChunker(target_chunk_size=1)
     chunks = list(chunker.generate_chunk_metadatas(file_path, file_size))
     assert len(chunks) > 1, "test setup expects ParquetFileChunker to chunk"
 
@@ -399,23 +357,23 @@ def test_parquet_file_reader_chunked_row_hashes_are_unique(tmp_path):
 
 
 def test_parquet_file_reader_handles_out_of_range_chunks(tmp_path):
-    """Out-of-range chunk metadata is silently dropped — no exception, no rows."""
+    """Defensively clamped out-of-range chunk metadata yields no rows, no crash.
+
+    The chunker never emits out-of-range ranges (they're computed from the
+    same footer the reader sees), but a hand-constructed range beyond the
+    file's row groups must be handled gracefully.
+    """
     file_path = str(tmp_path / "tiny.parquet")
+    # 5 rows, single row group.
     _write_multi_row_group_parquet(file_path, num_rows=5, row_group_size=5)
-
     file_size = os.path.getsize(file_path)
-    # ``ParquetFileChunker`` over-estimates here; keep only the over-estimated
-    # tail (chunk_idx >= 1) to assert the reader yields no tables.
-    chunker = ParquetFileChunker(target_chunk_size=128)
-    chunks = list(chunker.generate_chunk_metadatas(file_path, file_size))
-    assert len(chunks) > 1
 
-    paths = [file_path] * (len(chunks) - 1)
-    out_of_range_metadatas = [md for md, _ in chunks[1:]]
-    sizes = [sz for _, sz in chunks[1:]]
-    manifest = FileManifest.construct_manifest(paths, sizes, out_of_range_metadatas)
+    # Explicit range entirely beyond the file's one row group.
+    out_of_range = create_chunk_metadata(
+        ParquetFileChunkMetadata, row_group_start=3, row_group_end=4
+    )
+    manifest = FileManifest.construct_manifest([file_path], [file_size], [out_of_range])
 
     reader = ParquetFileReader()
     tables = list(reader.read(manifest))
-    # All sub-fragments are out-of-range -> 0 tables emitted.
     assert sum(t.num_rows for t in tables) == 0

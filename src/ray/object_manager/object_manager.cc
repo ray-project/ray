@@ -24,12 +24,11 @@
 #include <vector>
 
 #include "absl/time/clock.h"
-#include "ray/asio/asio_util.h"
 #include "ray/common/filter_local_objects_util.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/spilled_object_reader.h"
-#include "ray/util/exponential_backoff.h"
+#include "ray/util/container_util.h"
 #include "ray/util/network_util.h"
 #include "ray/util/time.h"
 
@@ -114,8 +113,9 @@ ObjectManager::ObjectManager(
   auto object_is_local = [this](const ObjectID &object_id) {
     return local_objects_.count(object_id) != 0;
   };
-  auto send_pull_request = [this](const ObjectID &object_id, const NodeID &client_id) {
-    SendPullRequest(object_id, client_id);
+  auto send_pull_request = [this](const std::vector<ObjectID> &object_ids,
+                                  const NodeID &client_id) {
+    SendPullRequest(object_ids, client_id);
   };
   auto cancel_pull_request = [this](const ObjectID &object_id) {
     // We must abort this object because it may have only been partially
@@ -296,23 +296,27 @@ void ObjectManager::MarkObjectFailed(const ObjectID &object_id,
   }
 }
 
-void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &client_id) {
-  auto rpc_client = GetRpcClient(client_id);
+void ObjectManager::SendPullRequest(const std::vector<ObjectID> &object_ids,
+                                    const NodeID &client_id) {
+  if (object_ids.empty()) {
+    return;
+  }
+  std::shared_ptr<rpc::ObjectManagerClientInterface> rpc_client = GetRpcClient(client_id);
   if (rpc_client) {
-    // Try pulling from the client.
     rpc_service_.post(
-        [this, object_id, client_id, rpc_client]() {
+        [this, object_ids, client_id, rpc_client]() {
           rpc::PullRequest pull_request;
-          pull_request.set_object_id(object_id.Binary());
           pull_request.set_node_id(self_node_id_.Binary());
-
+          for (const auto &oid : object_ids) {
+            pull_request.add_object_ids(oid.Binary());
+          }
           rpc_client->Pull(
               pull_request,
-              [object_id, client_id](const Status &status, const rpc::PullReply &reply) {
+              [object_ids, client_id](const Status &status, const rpc::PullReply &reply) {
                 if (!status.ok()) {
                   RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
-                      << "Send pull " << object_id << " request to client " << client_id
-                      << " failed due to " << status;
+                      << "Send pull request for " << debug_string(object_ids)
+                      << " to client " << client_id << " failed due to " << status;
                 }
               });
         },
@@ -320,7 +324,7 @@ void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &cli
   } else {
     RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
         << "Couldn't send pull request from " << self_node_id_ << " to " << client_id
-        << " of object " << object_id << " , setup rpc connection failed.";
+        << " for " << debug_string(object_ids) << ", setup rpc connection failed.";
   }
 }
 
@@ -660,103 +664,19 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
 void ObjectManager::HandlePull(rpc::PullRequest request,
                                rpc::PullReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
-  ObjectID object_id = ObjectID::FromBinary(request.object_id());
   NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG).WithField(node_id).WithField(object_id)
-      << "Received pull request from node for object";
-
-  main_service_->post([this, object_id, node_id]() { Push(object_id, node_id); },
-                      "ObjectManager.HandlePull");
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
-void ObjectManager::HandleFreeObjects(rpc::FreeObjectsRequest request,
-                                      rpc::FreeObjectsReply *reply,
-                                      rpc::SendReplyCallback send_reply_callback) {
-  std::vector<ObjectID> object_ids;
-  for (const auto &e : request.object_ids()) {
-    object_ids.emplace_back(ObjectID::FromBinary(e));
+  for (const auto &binary : request.object_ids()) {
+    ObjectID object_id = ObjectID::FromBinary(binary);
+    RAY_LOG(DEBUG).WithField(node_id).WithField(object_id)
+        << "Received pull request from node for object";
+    main_service_->post([this, object_id, node_id]() { Push(object_id, node_id); },
+                        "ObjectManager.HandlePull");
   }
-  FreeObjects(object_ids, /* local_only */ true);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-// TODO(#63213) will delete local_only=false and related dead code
-void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
-                                bool local_only) {
+void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids) {
   buffer_pool_.FreeObjects(object_ids);
-  if (!local_only) {
-    std::vector<std::pair<NodeID, std::shared_ptr<rpc::ObjectManagerClientInterface>>>
-        rpc_clients;
-    // TODO(#56414): optimize this so we don't have to send a free objects request for
-    // every object to every node
-    const auto &node_info_map = gcs_client_.Nodes().GetAllNodeAddressAndLiveness();
-    for (const auto &[node_id, _] : node_info_map) {
-      if (node_id == self_node_id_) {
-        continue;
-      }
-      auto rpc_client = GetRpcClient(node_id);
-      if (rpc_client != nullptr) {
-        rpc_clients.emplace_back(node_id, std::move(rpc_client));
-      }
-    }
-    rpc_service_.post(
-        [this, object_ids, rpc_clients = std::move(rpc_clients)]() {
-          SpreadFreeObjectsRequest(object_ids, rpc_clients);
-        },
-        "ObjectManager.FreeObjects");
-  }
-}
-
-void ObjectManager::SpreadFreeObjectsRequest(
-    const std::vector<ObjectID> &object_ids,
-    const std::vector<
-        std::pair<NodeID, std::shared_ptr<rpc::ObjectManagerClientInterface>>>
-        &rpc_clients) {
-  // This code path should be called from node manager.
-  rpc::FreeObjectsRequest free_objects_request;
-  for (const auto &e : object_ids) {
-    free_objects_request.add_object_ids(e.Binary());
-  }
-  for (const auto &entry : rpc_clients) {
-    // NOTE: The callback for FreeObjects is posted back onto the main_service_ since
-    // RetryFreeObjects accesses remote_object_manager_clients_ which is not thread safe.
-    entry.second->FreeObjects(
-        free_objects_request,
-        [this, node_id = entry.first, free_objects_request](
-            const Status &status, const rpc::FreeObjectsReply &reply) {
-          if (!status.ok()) {
-            RetryFreeObjects(node_id, 0, free_objects_request);
-          }
-        });
-  }
-}
-
-void ObjectManager::RetryFreeObjects(
-    const NodeID &node_id,
-    uint32_t attempt_number,
-    const rpc::FreeObjectsRequest &free_objects_request) {
-  if (!remote_object_manager_clients_.contains(node_id)) {
-    return;
-  }
-  auto delay_ms = ExponentialBackoff::GetBackoffMs(attempt_number, 1000);
-  execute_after(
-      *main_service_,
-      [this, node_id, attempt_number, free_objects_request] {
-        auto it = remote_object_manager_clients_.find(node_id);
-        if (it == remote_object_manager_clients_.end()) {
-          return;
-        }
-        it->second->FreeObjects(
-            free_objects_request,
-            [this, node_id, attempt_number, free_objects_request](
-                const Status &status, const rpc::FreeObjectsReply &reply) {
-              if (!status.ok()) {
-                RetryFreeObjects(node_id, attempt_number + 1, free_objects_request);
-              }
-            });
-      },
-      std::chrono::milliseconds(delay_ms));
 }
 
 std::shared_ptr<rpc::ObjectManagerClientInterface> ObjectManager::GetRpcClient(
