@@ -353,6 +353,33 @@ class TestSubmit:
                 entrypoint_label_selector=None,
             )
 
+    def test_submit_error_shows_concise_message(self, mock_sdk_client):
+        """A duplicate-submission_id style RuntimeError should surface only the
+        innermost error, not the full nested traceback chain."""
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+        nested_error = (
+            "Request failed with status code 500: Traceback (most recent call last):\n"
+            '  File ".../job_head.py", line 130, in _raise_error\n'
+            "    raise RuntimeError(...)\n"
+            "RuntimeError: Request failed with status code 400: Traceback (most recent "
+            "call last):\n"
+            '  File ".../job_manager.py", line 555, in submit_job\n'
+            "    raise ValueError(\n"
+            "ValueError: Job with submission_id my_job_id already exists."
+        )
+        mock_client_instance.submit_job.side_effect = RuntimeError(nested_error)
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(job_cli_group, ["submit", "--", "echo hello"])
+            check_exit_code(result, 1)
+            assert (
+                "ValueError: Job with submission_id my_job_id already exists."
+                in result.output
+            )
+            assert "Traceback (most recent call last)" not in result.output
+            assert "job_manager.py" not in result.output
+
     def test_entrypoint_num_cpus(self, mock_sdk_client):
         runner = CliRunner()
         mock_client_instance = mock_sdk_client.return_value
