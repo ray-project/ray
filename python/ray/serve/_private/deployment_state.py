@@ -4543,6 +4543,50 @@ class DeploymentState:
 
         return remaining_healthy, remaining_unhealthy
 
+    def _record_health_check_metrics(self, replica) -> None:
+        """Record health-check latency + failure metrics for one replica.
+
+        Shared by the RAY_SERVE_RECON_OPT in-place path and the pop/re-add path
+        in ``check_and_update_replicas``.
+        """
+        if replica.last_health_check_latency_ms is not None:
+            self.health_check_latency_histogram.observe(
+                replica.last_health_check_latency_ms
+            )
+        if replica.last_health_check_failed:
+            if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+                self.health_check_failures_counter.inc(
+                    tags={"replica": replica.replica_id.unique_id}
+                )
+            else:
+                self.health_check_failures_counter.inc()
+
+    def _process_healthy_replica(self, replica) -> None:
+        """Set the health gauge and pull/broadcast routing stats for a healthy replica.
+
+        Container re-bucketing differs between the two reconcile paths, so it is
+        left to the caller.
+        """
+        self._set_health_gauge(replica.replica_id.unique_id, 1)
+        routing_stats = replica.pull_routing_stats()
+        if routing_stats is not None and routing_stats != replica.routing_stats:
+            self._broadcasted_replicas_set_changed = True
+        replica.record_routing_stats(routing_stats)
+
+    def _stop_unhealthy_replica(self, replica, *, remove_from_container) -> None:
+        """Log and stop a replica that failed its health check.
+
+        ``remove_from_container`` is True on the in-place path (the replica was
+        never popped) and False on the pop/re-add path (already removed).
+        """
+        logger.warning(
+            f"Replica {replica.replica_id} failed health check, stopping it."
+        )
+        if remove_from_container:
+            self._replicas.remove({replica.replica_id})
+        graceful = not self.FORCE_STOP_UNHEALTHY_REPLICAS
+        self._stop_replica_mark_unhealthy_if_target_version(replica, graceful)
+
     def check_and_update_replicas(self):
         """
         Check current state of all DeploymentReplica being tracked, and compare
@@ -4567,64 +4611,31 @@ class DeploymentState:
             ]
             healths = [replica.check_health() for replica, _ in pairs]
             for (replica, st), is_healthy in zip(pairs, healths):
-                if replica.last_health_check_latency_ms is not None:
-                    self.health_check_latency_histogram.observe(
-                        replica.last_health_check_latency_ms
-                    )
-                if replica.last_health_check_failed:
-                    if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
-                        self.health_check_failures_counter.inc(
-                            tags={"replica": replica.replica_id.unique_id}
-                        )
-                    else:
-                        self.health_check_failures_counter.inc()
+                self._record_health_check_metrics(replica)
                 if is_healthy:
                     healthy_replicas.append(replica)
                     origin.append(st)
                 else:
                     unhealthy_replicas.append(replica)
             for replica, st in zip(healthy_replicas, origin):
-                self._set_health_gauge(replica.replica_id.unique_id, 1)
-                routing_stats = replica.pull_routing_stats()
-                if routing_stats is not None and routing_stats != replica.routing_stats:
-                    self._broadcasted_replicas_set_changed = True
-                replica.record_routing_stats(routing_stats)
-                # Mirror of the original path's unconditional
-                # self._replicas.add(replica.actor_details.state, replica): re-bucket a
-                # healthy replica only if its state changed. actor_details.state is only
-                # ever set via ReplicaStateContainer.add(), and check_health() never
-                # transitions state, so for RUNNING/PENDING_MIGRATION this is a no-op
-                # today -- kept as a defensive guard so the in-place path stays behavior-
-                # identical to the pop/re-add path if that invariant ever changes.
+                self._process_healthy_replica(replica)
+                # Re-bucket a healthy replica only if its state changed -- avoiding the
+                # pop/re-add churn is the whole point of the in-place path.
+                # actor_details.state is only set via ReplicaStateContainer.add() and
+                # check_health() never transitions state, so for RUNNING/PENDING_MIGRATION
+                # this is a no-op today; kept as a defensive guard so the in-place path
+                # stays behavior-identical to the pop/re-add path if that ever changes.
                 if replica.actor_details.state != st:
                     self._replicas.remove({replica.replica_id})
                     self._replicas.add(replica.actor_details.state, replica)
             for replica in unhealthy_replicas:
-                logger.warning(
-                    f"Replica {replica.replica_id} failed health check, stopping it."
-                )
-                self._replicas.remove({replica.replica_id})
-                graceful = not self.FORCE_STOP_UNHEALTHY_REPLICAS
-                self._stop_replica_mark_unhealthy_if_target_version(replica, graceful)
+                self._stop_unhealthy_replica(replica, remove_from_container=True)
         else:
             for replica in self._replicas.pop(
                 states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
             ):
                 is_healthy = replica.check_health()
-
-                # Record health check latency and failure metrics.
-                if replica.last_health_check_latency_ms is not None:
-                    self.health_check_latency_histogram.observe(
-                        replica.last_health_check_latency_ms
-                    )
-                if replica.last_health_check_failed:
-                    if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
-                        self.health_check_failures_counter.inc(
-                            tags={"replica": replica.replica_id.unique_id}
-                        )
-                    else:
-                        self.health_check_failures_counter.inc()
-
+                self._record_health_check_metrics(replica)
                 if is_healthy:
                     healthy_replicas.append(replica)
                 else:
@@ -4647,19 +4658,11 @@ class DeploymentState:
 
             for replica in healthy_replicas:
                 self._replicas.add(replica.actor_details.state, replica)
-                self._set_health_gauge(replica.replica_id.unique_id, 1)
-                routing_stats = replica.pull_routing_stats()
-                if routing_stats is not None and routing_stats != replica.routing_stats:
-                    self._broadcasted_replicas_set_changed = True
-                replica.record_routing_stats(routing_stats)
+                self._process_healthy_replica(replica)
 
             # Only single-replica scheduling replicas remain.
             for replica in unhealthy_replicas:
-                logger.warning(
-                    f"Replica {replica.replica_id} failed health check, stopping it."
-                )
-                graceful = not self.FORCE_STOP_UNHEALTHY_REPLICAS
-                self._stop_replica_mark_unhealthy_if_target_version(replica, graceful)
+                self._stop_unhealthy_replica(replica, remove_from_container=False)
 
         # In steady state there are no STARTING/UPDATING/RECOVERING/STOPPING
         # replicas, so skip startup/stopping checks.  The rank consistency
