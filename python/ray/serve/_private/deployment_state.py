@@ -3746,7 +3746,7 @@ class DeploymentState:
                     replica.replica_id.unique_id
                 )
                 actor_updating = replica.reconfigure(
-                    self._target_state.version, rank=current_rank.rank
+                    self._target_state.version, rank=current_rank
                 )
                 if actor_updating:
                     self._replicas.add(ReplicaState.UPDATING, replica)
