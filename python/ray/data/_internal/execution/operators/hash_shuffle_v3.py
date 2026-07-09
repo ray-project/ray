@@ -763,7 +763,7 @@ def open_shuffle_connection(
 ShuffleHandle = dict  # {path, index:{pid:[(off,len)]}, endpoint:(host,port), token, node_id}
 
 
-@ray.remote(max_calls=1)
+@ray.remote
 def v3_map_task(
     *blocks: Block,
     partition_fn: PartitionFn,
@@ -1271,7 +1271,7 @@ def _compute_prefetch_layout(
     return acc, base_offsets, sizes
 
 
-@ray.remote(max_calls=1)
+@ray.remote
 def v3_reduce_task(
     handles: List[ShuffleHandle],
     partition_id: int,
