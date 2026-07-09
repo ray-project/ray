@@ -2863,9 +2863,8 @@ class Replica:
         return tracing_ctx
 
     def _determine_http_route(self, scope: Scope) -> str:
-        # Default to route prefix for consistency with non-DI mode. The ingress
-        # request router deployment has no route prefix, so coerce None to "" to
-        # keep the route a string for metric tags.
+        # Default to route prefix for consistency with non-DI mode. Ingress
+        # request routers have no prefix, so coerce None to "" to keep route a str.
         route = self._route_prefix or ""
         if self._user_callable_asgi_app is not None:
             try:
