@@ -32,9 +32,10 @@ class AutoscalerEventLogger:
     """
     Logs events related to the autoscaler.
 
-    When ONE-event is enabled (``RAY_enable_python_ray_event=true``), structured
-    events are published through the dashboard head and the legacy export-event
-    logger is skipped. Otherwise only the legacy export-event logger is used.
+    When ONE-event is enabled (an autoscaler event type is present in
+    ``RAY_ENABLE_PYTHON_RAY_EVENT_TYPES``), structured events are published
+    through the dashboard head and the legacy export-event logger is skipped.
+    Otherwise only the legacy export-event logger is used.
 
     # TODO:
     - Add more logging for other events.
@@ -288,8 +289,13 @@ class AutoscalerEventLogger:
     ) -> None:
         """Publish a structured AutoscalerScalingDecisionEvent."""
         from ray._common.observability.autoscaler_events import (
+            AUTOSCALER_SCALING_DECISION_EVENT_TYPE,
             AutoscalerScalingDecisionEventBuilder,
+            is_ray_event_enabled,
         )
+
+        if not is_ray_event_enabled(AUTOSCALER_SCALING_DECISION_EVENT_TYPE):
+            return
 
         # Convert LaunchRequest protos to dicts for the builder.
         launch_actions = []
@@ -441,8 +447,13 @@ class AutoscalerEventLogger:
     ) -> None:
         """Publish a structured AutoscalerConfigDefinitionEvent."""
         from ray._common.observability.autoscaler_events import (
+            AUTOSCALER_CONFIG_DEFINITION_EVENT_TYPE,
             AutoscalerConfigDefinitionEventBuilder,
+            is_ray_event_enabled,
         )
+
+        if not is_ray_event_enabled(AUTOSCALER_CONFIG_DEFINITION_EVENT_TYPE):
+            return
 
         node_type_configs = config.get_node_type_configs() or {}
         available_node_types = []
@@ -485,8 +496,13 @@ class AutoscalerEventLogger:
     ) -> None:
         """Publish a structured AutoscalerNodeProvisioningEvent."""
         from ray._common.observability.autoscaler_events import (
+            AUTOSCALER_NODE_PROVISIONING_EVENT_TYPE,
             AutoscalerNodeProvisioningEventBuilder,
+            is_ray_event_enabled,
         )
+
+        if not is_ray_event_enabled(AUTOSCALER_NODE_PROVISIONING_EVENT_TYPE):
+            return
 
         requested_instances = []
         for req in autoscaling_state.pending_instance_requests:

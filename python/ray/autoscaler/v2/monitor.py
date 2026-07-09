@@ -103,7 +103,8 @@ class AutoscalerMonitor:
         self.autoscaler = None
 
         # ONE-event and legacy export events are mutually exclusive.
-        # When RAY_enable_python_ray_event is set, publish structured events
+        # When an autoscaler event type is enabled via
+        # RAY_ENABLE_PYTHON_RAY_EVENT_TYPES, publish structured events
         # through the dashboard head; otherwise fall back to the legacy
         # export-event logger.
         self.event_logger = None
