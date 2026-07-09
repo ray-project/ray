@@ -1,7 +1,7 @@
 import ray
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve._private.default_impl import get_controller_impl
-from ray.serve.config import HTTPOptions
+from ray.serve.config import HTTPOptions, ProxyLocation
 from ray.serve.schema import LoggingConfig
 
 
@@ -30,8 +30,13 @@ class ServeControllerAvatar:
             self._controller = None
         if self._controller is None:
             controller_impl = get_controller_impl()
+            # This Java bootstrap builds HTTPOptions directly and previously
+            # relied on the (now removed) HeadOnly default of
+            # HTTPOptions.location. Pass proxy_location explicitly to preserve
+            # head-only proxy placement on multi-node clusters.
             self._controller = controller_impl.remote(
                 http_options=HTTPOptions(port=http_proxy_port),
+                proxy_location=ProxyLocation.HeadOnly,
                 global_logging_config=LoggingConfig(),
             )
 
