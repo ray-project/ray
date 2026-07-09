@@ -120,7 +120,7 @@ def run_with_torchrun(cfg: ExperimentConfig) -> Dict[str, Any]:
     try:
         node_ips, topology, master_addr, master_port = elect_rendezvous(actors)
         logger.info(
-            f"torchrun_ray: world_size={cfg.scaling.num_workers} "
+            f"torchrun: world_size={cfg.scaling.num_workers} "
             f"master={master_addr}:{master_port} nodes={sorted(set(node_ips))}"
         )
         results = ray.get(

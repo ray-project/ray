@@ -7,7 +7,7 @@
 # use SDPA attention + gradient checkpointing and a modest batch. With 48GB you
 # have headroom to raise micro_batch_size or drop gradient_checkpointing.
 #
-# Parity baseline: same experiment with `--set launcher=torchrun_ray`.
+# Parity baseline: same experiment with `--set launcher=torchrun`.
 name: qwen3_06b_deepspeed
 adapter: deepspeed
 launcher: ray_train

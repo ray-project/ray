@@ -1,6 +1,6 @@
 """Reusable helpers for launching torch.distributed across Ray actors.
 
-These are the placement / rendezvous primitives behind the ``torchrun_ray``
+These are the placement / rendezvous primitives behind the ``torchrun``
 launcher — the same pattern the legacy ``air_benchmarks`` benchmark_util used to
 stand up "vanilla torch": place one actor per GPU, elect rank 0 as the master,
 and let each actor ``init_process_group("env://")``.

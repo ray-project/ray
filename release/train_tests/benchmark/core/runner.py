@@ -7,7 +7,7 @@ Usage:
 
     # torch.distributed parity baseline (Ray actors as the launcher)
     python -m core.runner --experiment experiments/qwen3_06b_deepspeed.yaml \
-        --set launcher=torchrun_ray
+        --set launcher=torchrun
 
     # Override any config field inline
     python -m core.runner --experiment experiments/qwen3_06b_deepspeed.yaml \
@@ -63,16 +63,16 @@ def run_experiment(cfg: ExperimentConfig) -> Dict[str, Any]:
         from core.launchers.ray_launcher import run_with_ray
 
         return run_with_ray(cfg)
-    elif cfg.launcher == "torchrun_ray":
+    elif cfg.launcher == "torchrun":
         # The torch.distributed parity baseline: vanilla init_process_group
         # ("env://") with Ray actors as the launcher (placement + rank/master
         # env vars). This is exactly how the legacy air_benchmarks ran "vanilla
         # torch" — Ray actors stand up the process group, no ssh/srun needed.
-        from core.launchers.torchrun_ray_launcher import run_with_torchrun
+        from core.launchers.torchrun_launcher import run_with_torchrun
 
         return run_with_torchrun(cfg)
     raise ValueError(
-        f"Unknown launcher: {cfg.launcher}. Use 'ray_train' or 'torchrun_ray'."
+        f"Unknown launcher: {cfg.launcher}. Use 'ray_train' or 'torchrun'."
     )
 
 
@@ -83,7 +83,7 @@ def main() -> None:
     parser.add_argument(
         "--launcher",
         default=None,
-        help="Override the launcher from the YAML (ray_train | torchrun_ray)",
+        help="Override the launcher from the YAML (ray_train | torchrun)",
     )
     parser.add_argument(
         "--set",

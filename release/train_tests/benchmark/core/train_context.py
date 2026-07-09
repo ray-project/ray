@@ -92,7 +92,7 @@ class TorchrunContext(TrainContext):
     validation are intentionally no-ops: the parity run only needs throughput
     numbers — the real benchmark (with checkpoint/validation, fault tolerance,
     etc.) runs on Ray Train. Final metrics return via the actor's run() value
-    (see torchrun_ray_launcher), so there's nothing to persist here.
+    (see torchrun_launcher), so there's nothing to persist here.
     """
 
     def __init__(self, experiment_name: str):

@@ -10,13 +10,13 @@ case is normally a single new YAML unless a new framework is involved.
 core/
   experiment_config.py   ExperimentConfig schema + YAML loader (with --set overrides)
   metrics.py             FLOPs/MFU + bandwidth tables; TrainMetricsCollector (+GPU subclass)
-  train_context.py       launcher-agnostic worker context (Ray Train | torchrun_ray)
+  train_context.py       launcher-agnostic worker context (Ray Train | torchrun)
   registry.py            adapter name -> FrameworkAdapter class
   runner.py              entrypoint: load YAML, dispatch to launcher
   launchers/
     ray_launcher.py            Ray Train TorchTrainer wiring
-    torchrun_ray_launcher.py   vanilla torch.distributed placed by Ray actors (baseline)
-    ray_actor_utils.py         placement / rendezvous helpers for torchrun_ray
+    torchrun_launcher.py   vanilla torch.distributed placed by Ray actors (baseline)
+    ray_actor_utils.py         placement / rendezvous helpers for torchrun
 frameworks/
   base_adapter.py        FrameworkAdapter ABC
   deepspeed/adapter.py   DeepSpeed ZeRO LLM adapter
@@ -58,7 +58,7 @@ Model/dataset download happens before the timed loop (and warmup steps are
 excluded from steady-state metrics), so it doesn't affect throughput/MFU. Set
 `HF_TOKEN` as a cluster env var if you hit Hub rate limits.
 
-### Torchrun parity baseline (`torchrun_ray`)
+### Torchrun parity baseline (`torchrun`)
 
 The baseline runs the **same adapter** under vanilla `torch.distributed`
 (`init_process_group("env://")`), so the Ray-vs-torch delta on one experiment
@@ -73,18 +73,18 @@ single baseline we keep. Launch it like the Ray run, from the head:
 
 ```bash
 python -m core.runner --experiment experiments/qwen3_06b_deepspeed.yaml \
-    --set launcher=torchrun_ray
+    --set launcher=torchrun
 ```
 
 | Launcher | Control plane | Launch substrate | Needs node ssh? |
 |---|---|---|---|
 | `ray` | Ray Train controller | Ray | no |
-| `torchrun_ray` | none (raw torch.distributed) | Ray actors | no |
+| `torchrun` | none (raw torch.distributed) | Ray actors | no |
 
 Both collect metrics identically: rank 0 writes the results JSON to shared
 storage (`/mnt/cluster_storage` when present), and `collect.py` reads it. (A
 *fully* Ray-free run would need real `torchrun` via ssh/srun on the GPU nodes;
-we don't keep that variant — `torchrun_ray` already isolates the Train control
+we don't keep that variant — `torchrun` already isolates the Train control
 plane, which is the comparison that matters.)
 
 ## Metrics collected

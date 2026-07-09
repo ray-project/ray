@@ -2124,7 +2124,7 @@
 # P0 LLM perf-regression benchmark (Qwen3-0.6B + DeepSpeed on 4x L40S).
 # Tracks tokens/sec, MFU/HFU, and memory via core.runner; results render with
 # `python collect.py --view benchmark`. A torchrun parity baseline can be run
-# manually with `--set launcher=torchrun_ray` (same workload through vanilla
+# manually with `--set launcher=torchrun` (same workload through vanilla
 # torch.distributed); the parity result is published in the benchmark docs
 # rather than gated here.
 - name: train_benchmark-qwen3_06b_deepspeed

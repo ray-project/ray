@@ -127,7 +127,7 @@ class ExperimentConfig:
     checkpoint: CheckpointConfig = field(default_factory=CheckpointConfig)
     validation: ValidationConfig = field(default_factory=ValidationConfig)
     perturbation: Optional[PerturbationConfig] = None
-    # "ray_train" (Ray Train) | "torchrun_ray" (vanilla torch.distributed placed
+    # "ray_train" (Ray Train) | "torchrun" (vanilla torch.distributed placed
     # by Ray actors — the parity baseline; also Ray-based, just not Ray Train).
     launcher: str = "ray_train"
     max_failures: int = 0
