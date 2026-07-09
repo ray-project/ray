@@ -1,3 +1,4 @@
+import json
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -1732,6 +1733,106 @@ def test_subslice_cache_hit_after_discovery(mock_4x4_pgs):
         )
         assert mock_reserve.call_count == 0  # Cache hit — no discovery.
         sg2.shutdown()
+
+
+def test_discover_skips_fan_out_when_kv_already_populated(mock_4x4_pgs):
+    """When the KV store already has subslice labels for the reserved slice,
+    _discover_and_persist_subslices returns the cached data without running the
+    libtpu fan-out.
+
+    This covers the concurrent-caller scenario: the first caller discovers the
+    slice, persists to KV, then releases the head PG. The second caller was
+    blocked waiting for that head PG; when it finally acquires the slice it
+    checks the KV (written by the first caller before shutdown) and short-circuits
+    rather than repeating the expensive coordinate fan-out.
+    """
+    mock_head_pg, mock_worker_pg = mock_4x4_pgs
+    slice_name = "test-slice-concurrent"
+
+    # Pre-populate the KV store as a concurrent caller would have done.
+    preloaded_labels = {
+        "0": {"ray.io/tpu-subslice-2x4": "0"},
+        "1": {"ray.io/tpu-subslice-2x4": "0"},
+        "2": {"ray.io/tpu-subslice-2x4": "1"},
+        "3": {"ray.io/tpu-subslice-2x4": "1"},
+    }
+    ray.experimental.internal_kv._internal_kv_put(
+        ray.util.tpu._get_subslice_kv_key(slice_name),
+        json.dumps(preloaded_labels).encode(),
+        namespace=ray.util.tpu._TPU_SUBSLICE_KV_NAMESPACE,
+    )
+
+    with (
+        patch(
+            "ray.util.tpu.reserve_tpu_slice",
+            return_value=(slice_name, mock_head_pg),
+        ),
+        patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
+        patch("ray.get") as mock_ray_get,
+    ):
+        # Exactly one ray.get call is expected: for full_slice.placement_group.ready().
+        # A second call would indicate the libtpu fan-out ran despite the KV hit.
+        mock_ray_get.return_value = None
+
+        result_name, result_labels = ray.util.tpu._discover_and_persist_subslices(
+            "4x4", "v6e", 4, None
+        )
+
+    assert result_name == slice_name
+    assert result_labels == preloaded_labels
+    assert mock_ray_get.call_count == 1, (
+        f"Expected ray.get called once (for .ready()), got {mock_ray_get.call_count}. "
+        "The libtpu fan-out ran despite KV data being present."
+    )
+
+
+def test_find_available_subslice_skips_incomplete_subslices():
+    """Subslices with fewer workers than the topology requires are skipped.
+
+    Corrupted or partial cache data could leave a subslice entry with too few
+    workers. Selecting such a subslice would produce a PG that never becomes
+    fully ready. The incomplete subslice must be skipped in favour of a valid
+    complete one.
+    """
+    slice_name = "test-slice-partial"
+    subslice_topology = "2x4"  # 2 workers per subslice
+
+    # Subslice 0 has only 1 worker (missing worker-id "1"); subslice 1 is complete.
+    worker_labels = {
+        "0": {"ray.io/tpu-subslice-2x4": "0"},
+        "2": {"ray.io/tpu-subslice-2x4": "1"},
+        "3": {"ray.io/tpu-subslice-2x4": "1"},
+    }
+
+    dummy_nodes = [
+        {
+            "NodeID": f"node_{wid}",
+            "Alive": True,
+            "Resources": {"TPU": 4},
+            "Labels": {
+                ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name,
+                ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: wid,
+            },
+        }
+        for wid in ["0", "2", "3"]
+    ]
+    avail_resources = {f"node_{wid}": {"TPU": 4} for wid in ["0", "2", "3"]}
+
+    with (
+        patch("ray.nodes", return_value=dummy_nodes),
+        patch(
+            "ray._private.state.available_resources_per_node",
+            return_value=avail_resources,
+        ),
+    ):
+        result_ids, result_idx = ray.util.tpu._find_available_subslice(
+            slice_name, subslice_topology, worker_labels
+        )
+
+    # Subslice 0 has only 1 worker and must be skipped.
+    # Subslice 1 has 2 workers and all are idle, so it is selected.
+    assert result_idx == 1
+    assert set(result_ids) == {"2", "3"}
 
 
 def test_subslice_iterates_to_second_slice_when_first_is_occupied():

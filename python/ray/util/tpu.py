@@ -1173,6 +1173,31 @@ def _discover_and_persist_subslices(
                 "Failed to identify TPU slice name during subslice discovery."
             )
 
+        # Short-circuit: a concurrent caller may have already discovered this
+        # slice. The head-PG mechanism guarantees that when this caller
+        # acquired the head resource, the previous holder had already persisted
+        # to KV (persist happens before shutdown()). Skip the expensive libtpu
+        # fan-out and return the cached data.
+        try:
+            existing = ray.experimental.internal_kv._internal_kv_get(
+                _get_subslice_kv_key(slice_name),
+                namespace=_TPU_SUBSLICE_KV_NAMESPACE,
+            )
+            if existing:
+                worker_labels = json.loads(existing)
+                _tpu_subslice_cache[slice_name] = worker_labels
+                logger.info(
+                    "Subslice labels for '%s' found in KV after slice "
+                    "reservation; skipping libtpu discovery.",
+                    slice_name,
+                )
+                return slice_name, worker_labels
+        except Exception:
+            logger.warning(
+                "KV pre-check for '%s' failed; proceeding with full discovery.",
+                slice_name,
+            )
+
         # Fan out coordinate discovery to every worker in the slice.
         discover_remote = ray.remote(_discover_tpu_node_coords)
         futures = []
@@ -1387,8 +1412,28 @@ def _find_available_subslice(
         if sn and wid_label:
             slice_worker_to_node[(sn, wid_label)] = n
 
+    expected_host_count = math.prod(
+        _get_worker_dims_for_topology(subslice_topology, "")
+    )
+
     for idx in sorted(subslice_indices.keys(), key=int):
         worker_ids = subslice_indices[idx]
+
+        # Skip subslices with the wrong number of workers — these indicate
+        # corrupted or partial cache data and would produce a PG that never
+        # becomes ready.
+        if len(worker_ids) != expected_host_count:
+            logger.warning(
+                "Subslice %s of '%s' in '%s' has %d workers but %d are "
+                "expected; skipping.",
+                idx,
+                subslice_topology,
+                slice_name,
+                len(worker_ids),
+                expected_host_count,
+            )
+            continue
+
         all_idle = True
 
         for wid in worker_ids:
