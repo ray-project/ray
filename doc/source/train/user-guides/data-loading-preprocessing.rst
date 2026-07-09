@@ -659,6 +659,64 @@ In general, adding CPU-only nodes can help in two ways:
 * Adding more CPU cores helps further parallelize preprocessing. This approach is helpful when CPU compute time is the bottleneck.
 * Increasing object store memory, which 1) allows Ray Data to buffer more data in between preprocessing and training stages, and 2) provides more memory to make it possible to :ref:`cache the preprocessed dataset <dataset_cache_performance>`. This approach is helpful when memory is the bottleneck.
 
+Isolating Ray Data worker processes from training nodes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You may sometimes want to prevent Ray Data CPU tasks from running on training worker nodes
+when training workers themselves run CPU or RAM-heavy operations
+such as storing large local shuffle buffers or running expensive collate functions.
+Launching more Ray Data processes would oversubscribe the training worker nodes.
+Instead, the Ray Data tasks should run on a separate set of CPU nodes in your heterogeneous
+cluster (for example, 4 GPU training nodes and 4 CPU-only nodes).
+
+One workaround is to force full-node exclusion by reserving all CPUs per training worker via
+``resources_per_worker={"CPU": node_cpus // num_gpus_per_node, "GPU": 1}`` in ``ScalingConfig``.
+This method is fragile since it's tied to node shapes, and Ray Data also doesn't exclude other
+resources such as object store memory properly, since the typical configuration is to only take up logical
+CPUs and GPUs.
+
+The recommended approach is to use :ref:`subclusters <data_concurrent_execution>` to pin the
+training Dataset to CPU-only nodes. This correctly scopes the memory budget to only the nodes
+where data tasks can actually run. It requires adding labels to your worker node configurations and setting the
+``label_selector`` in two places:
+
+.. code-block:: python
+
+    import ray
+    from ray.data import ExecutionOptions
+    from ray.train import DataConfig
+    from ray.train.torch import TorchTrainer
+
+    # (1) Pin construction-time tasks (schema inference, file listing).
+    ctx = ray.data.DataContext.get_current().copy()
+    ctx.execution_options.label_selector = {"ray-subcluster": "data"}
+    with ray.data.DataContext.current(ctx):
+        train_dataset = ray.data.read_parquet(...)
+
+    # (2) Pin per-worker ingest — Train replaces ds.context options
+    # wholesale, so the selector must be restated here.
+    trainer = TorchTrainer(
+        ...,
+        datasets={"train": train_dataset},
+        dataset_config=DataConfig(
+            datasets_to_split=["train"],
+            execution_options={
+                "train": ExecutionOptions(
+                    label_selector={"ray-subcluster": "data"}
+                ),
+            },
+        ),
+    )
+
+.. tip::
+
+    Before resorting to isolating Ray Data tasks from training nodes, consider offloading that
+    heavy work from training workers to the data pipeline instead:
+    :ref:`scale out expensive collation <scaling_collation_functions>`
+    and use :ref:`map_batches-based shuffling <map_batches_shuffle>` in place of large local
+    shuffle buffers. These reduce CPU pressure on training workers and often eliminate the
+    need for node isolation entirely.
+
 .. _balancing-data-production-consumption:
 
 Balancing data production and consumption
