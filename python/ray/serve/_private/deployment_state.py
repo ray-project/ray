@@ -4573,17 +4573,15 @@ class DeploymentState:
             self._broadcasted_replicas_set_changed = True
         replica.record_routing_stats(routing_stats)
 
-    def _stop_unhealthy_replica(self, replica, *, remove_from_container) -> None:
+    def _stop_unhealthy_replica(self, replica) -> None:
         """Log and stop a replica that failed its health check.
 
-        ``remove_from_container`` is True on the in-place path (the replica was
-        never popped) and False on the pop/re-add path (already removed).
+        The caller removes it from ``self._replicas`` first -- the pop/re-add path
+        already popped it; the in-place path batch-removes the whole unhealthy set.
         """
         logger.warning(
             f"Replica {replica.replica_id} failed health check, stopping it."
         )
-        if remove_from_container:
-            self._replicas.remove({replica.replica_id})
         graceful = not self.FORCE_STOP_UNHEALTHY_REPLICAS
         self._stop_replica_mark_unhealthy_if_target_version(replica, graceful)
 
@@ -4628,8 +4626,14 @@ class DeploymentState:
                 if replica.actor_details.state != st:
                     self._replicas.remove({replica.replica_id})
                     self._replicas.add(replica.actor_details.state, replica)
+            # Batch-remove all unhealthy replicas in a single O(num_replicas) pass;
+            # a per-replica remove() would be O(unhealthy * num_replicas) -> O(N^2)
+            # during mass health-check failures (e.g. a node/AZ outage).
+            self._replicas.remove(
+                {replica.replica_id for replica in unhealthy_replicas}
+            )
             for replica in unhealthy_replicas:
-                self._stop_unhealthy_replica(replica, remove_from_container=True)
+                self._stop_unhealthy_replica(replica)
         else:
             for replica in self._replicas.pop(
                 states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
@@ -4662,7 +4666,7 @@ class DeploymentState:
 
             # Only single-replica scheduling replicas remain.
             for replica in unhealthy_replicas:
-                self._stop_unhealthy_replica(replica, remove_from_container=False)
+                self._stop_unhealthy_replica(replica)
 
         # In steady state there are no STARTING/UPDATING/RECOVERING/STOPPING
         # replicas, so skip startup/stopping checks.  The rank consistency
