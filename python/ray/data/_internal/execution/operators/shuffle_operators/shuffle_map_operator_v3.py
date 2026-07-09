@@ -197,9 +197,11 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
 
         if self._pre_map_merge_threshold > 0:
             node_id = self._pick_target_node(refs) or "unknown"
-            for block_ref, meta in zip(refs.block_refs, refs.metadata):
+            for block_ref, block_metadata in zip(refs.block_refs, refs.metadata):
                 self._merge_buffer_refs_by_node[node_id].append(block_ref)
-                self._merge_buffer_bytes_by_node[node_id] += meta.size_bytes or 0
+                self._merge_buffer_bytes_by_node[node_id] += (
+                    block_metadata.size_bytes or 0
+                )
             self._merge_buffer_bundles_by_node[node_id].append(refs)
 
             if (
@@ -212,7 +214,6 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
                 list(refs.block_refs),
                 [refs],
                 estimated_bytes=sum((m.size_bytes or 0) for m in refs.metadata),
-                target_node_id=self._pick_target_node(refs),
             )
 
     def all_inputs_done(self) -> None:
