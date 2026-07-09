@@ -1,3 +1,4 @@
+import concurrent.futures
 import threading
 from collections import defaultdict, deque
 from dataclasses import dataclass
@@ -14,6 +15,15 @@ from ray.experimental.rdt.util import (
 
 if TYPE_CHECKING:
     import torch
+
+# Thread pool for asynchronous tensor transport metadata extraction.
+# Extraction can be expensive for tensors with many views; running it
+# concurrently with store_task_output lets the two operations overlap,
+# reducing the time the task execution thread is blocked.
+_METADATA_EXTRACTION_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=4,
+    thread_name_prefix="rdt_metadata_extraction",
+)
 
 
 def __ray_send__(
@@ -150,6 +160,25 @@ def __ray_fetch_rdt_object__(self, obj_id: str):
     return rdt_object
 
 
+def _extract_tensor_transport_metadata(
+    tensor_transport_manager,
+    obj_id: str,
+    tensors: List[Any],
+    tensor_transport: str,
+) -> TensorTransportMetadata:
+    tensor_transport_meta = tensor_transport_manager.extract_tensor_transport_metadata(
+        obj_id, tensors
+    )
+    if tensor_transport_meta.tensor_meta and not device_match_transport(
+        tensor_transport_meta.tensor_device, tensor_transport
+    ):
+        raise ValueError(
+            f"Tensor transport backend {tensor_transport} does not support "
+            f"tensor transfer on device {tensor_transport_meta.tensor_device}."
+        )
+    return tensor_transport_meta
+
+
 @dataclass
 class _RDTObject:
     # A list of tensors representing the RDT object.
@@ -242,11 +271,7 @@ class RDTStore:
     ) -> TensorTransportMetadata:
         with self._object_present_cv:
             # A primary entry may already exist from a prior attempt of the
-            # same task (e.g., a task that succeeded and populated the RDT
-            # store but whose reply was lost, then got retried). Keep the
-            # existing primary — do not re-store — and return metadata
-            # derived from it so the metadata matches what `__ray_send__`
-            # will actually transmit.
+            # same task. Keep it so metadata matches what __ray_send__ will use.
             queue = self._rdt_store.get(obj_id)
             if queue:
                 tensors_to_describe = queue[0].data
@@ -255,21 +280,36 @@ class RDTStore:
                 tensors_to_describe = tensors
 
         tensor_transport_manager = get_tensor_transport_manager(tensor_transport)
-        tensor_transport_meta = (
-            tensor_transport_manager.extract_tensor_transport_metadata(
-                obj_id, tensors_to_describe
-            )
+        return _extract_tensor_transport_metadata(
+            tensor_transport_manager,
+            obj_id,
+            tensors_to_describe,
+            tensor_transport,
         )
 
-        if tensor_transport_meta.tensor_meta and not device_match_transport(
-            tensor_transport_meta.tensor_device, tensor_transport
-        ):
-            raise ValueError(
-                f"Tensor transport backend {tensor_transport} does not support "
-                f"tensor transfer on device {tensor_transport_meta.tensor_device}."
-            )
+    def add_object_primary_async(
+        self,
+        obj_id: str,
+        tensors: List[Any],
+        tensor_transport: str,
+    ) -> "concurrent.futures.Future[TensorTransportMetadata]":
+        """Add a primary RDT object and extract transport metadata asynchronously."""
+        with self._object_present_cv:
+            queue = self._rdt_store.get(obj_id)
+            if queue:
+                tensors_to_describe = queue[0].data
+            else:
+                self.add_object(obj_id, tensors, is_primary=True)
+                tensors_to_describe = tensors
 
-        return tensor_transport_meta
+        tensor_transport_manager = get_tensor_transport_manager(tensor_transport)
+        return _METADATA_EXTRACTION_EXECUTOR.submit(
+            _extract_tensor_transport_metadata,
+            tensor_transport_manager,
+            obj_id,
+            tensors_to_describe,
+            tensor_transport,
+        )
 
     def is_primary_copy(self, obj_id: str) -> bool:
         with self._lock:

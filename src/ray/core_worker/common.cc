@@ -22,6 +22,18 @@
 namespace ray {
 namespace core {
 
+namespace {
+
+std::shared_ptr<RayObject> MakeDirectTransportMetadataErrorObject(
+    const std::string &error_message) {
+  rpc::RayErrorInfo error_info;
+  error_info.set_error_type(rpc::ErrorType::WORKER_STARTUP_FAILED);
+  error_info.set_error_message(error_message);
+  return std::make_shared<RayObject>(rpc::ErrorType::WORKER_STARTUP_FAILED, &error_info);
+}
+
+}  // namespace
+
 std::string WorkerTypeString(WorkerType type) {
   // TODO(suquark): Use proto3 utils to get the string.
   if (type == WorkerType::DRIVER) {
@@ -66,24 +78,38 @@ void SerializeReturnObject(const ObjectID &object_id,
         << "Failed to create task return object in the object store, exiting.";
     QuickExit();
   }
-  return_object_proto->set_size(return_object->GetSize());
-  if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
+
+  auto object_to_serialize = return_object;
+  return_object->WaitForDirectTransportMetadata();
+  const auto direct_transport_metadata_error =
+      return_object->GetDirectTransportMetadataError();
+  if (direct_transport_metadata_error.has_value()) {
+    object_to_serialize = MakeDirectTransportMetadataErrorObject(
+        "Failed to extract RDT metadata asynchronously: " +
+        *direct_transport_metadata_error);
+  }
+
+  return_object_proto->set_size(object_to_serialize->GetSize());
+  if (object_to_serialize->GetData() != nullptr &&
+      object_to_serialize->GetData()->IsPlasmaBuffer()) {
     return_object_proto->set_in_plasma(true);
   } else {
-    if (return_object->GetData() != nullptr) {
-      return_object_proto->set_data(return_object->GetData()->Data(),
-                                    return_object->GetData()->Size());
+    if (object_to_serialize->GetData() != nullptr) {
+      return_object_proto->set_data(object_to_serialize->GetData()->Data(),
+                                    object_to_serialize->GetData()->Size());
     }
-    if (return_object->GetMetadata() != nullptr) {
-      return_object_proto->set_metadata(return_object->GetMetadata()->Data(),
-                                        return_object->GetMetadata()->Size());
+    if (object_to_serialize->GetMetadata() != nullptr) {
+      return_object_proto->set_metadata(object_to_serialize->GetMetadata()->Data(),
+                                        object_to_serialize->GetMetadata()->Size());
     }
   }
-  for (const auto &nested_ref : return_object->GetNestedRefs()) {
+  for (const auto &nested_ref : object_to_serialize->GetNestedRefs()) {
     return_object_proto->add_nested_inlined_refs()->CopyFrom(nested_ref);
   }
-  const auto &direct_transport_metadata = return_object->GetDirectTransportMetadata();
-  if (direct_transport_metadata.has_value()) {
+  const auto direct_transport_metadata =
+      object_to_serialize->GetDirectTransportMetadata();
+  if (!direct_transport_metadata_error.has_value() &&
+      direct_transport_metadata.has_value()) {
     return_object_proto->set_direct_transport_metadata(*direct_transport_metadata);
   }
 }
