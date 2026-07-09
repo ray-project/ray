@@ -180,17 +180,76 @@ _TEMPLATE_COLLECTIONS = {
 }
 
 
+# Pinned build id per template. The docs build fetches these exact builds
+# instead of `latest`, so a docs build is reproducible: a template rebuilt on
+# templates.ci.ray.io can no longer retroactively change what a previously green
+# docs build fetched. (An unpinned `latest` let a template's notebook rename
+# silently break an otherwise-unchanged docs build the moment the rebuilt
+# artifact was promoted.) Bump an entry to adopt a newer template build; the
+# current id for a template is the `tmpl_build_id` in its latest/channel.json.
+#
+# Pinning assumes templates.ci.ray.io retains per-build artifacts. If an old
+# build is removed, its stale pin no longer fetches.
+_TEMPLATE_PINS = {
+    "asynchronous_inference": "20260709-002741",
+    "audio-dataset-curation-llm-judge": "20260608-222228",
+    "deepspeed_finetune": "20260709-002714",
+    "deployment-serve-llm": "20260709-065934",
+    "distributing-pytorch": "20260709-055846",
+    "e2e-rag-deepdive": "20260709-072710",
+    "e2e-timeseries-forecasting": "20260709-002649",
+    "entity-recognition-with-llms": "20260709-072341",
+    "image-search-and-classification": "20260709-070214",
+    "langchain-agent-ray-serve": "20260709-002749",
+    "llm_batch_inference_text": "20260709-002751",
+    "llm_batch_inference_vision": "20260709-002747",
+    "llm_finetuning": "20260709-002752",
+    "mcp-ray-serve": "20260709-002825",
+    "model-composition-recsys": "20260709-002755",
+    "model-multiplexing": "20260709-002829",
+    "multi_agent_a2a": "20260709-002817",
+    "object-detection-video-processing": "20260709-002754",
+    "pytorch-fsdp": "20260709-002826",
+    "pytorch-profiling": "20260709-002825",
+    "ray_train_workloads": "20260709-002750",
+    "tensor_parallel_autotp": "20260709-002823",
+    "tensor_parallel_dtensor": "20260709-002827",
+    "tune_pytorch_asha": "20260709-002829",
+    "unstructured_data_ingestion": "20260709-002847",
+    "xgboost-training-and-serving": "20260709-002829",
+}
+
+
 def _resolve_template_url(name):
-    """Fetch the build zip URL for a template from the channel API."""
+    """Return the build.zip URL for a template, honoring its pinned build id.
+
+    A pinned template resolves directly to its immutable
+    ``/{build_id}/build.zip``. templates.ci.ray.io serves no per-build
+    channel.json, so the URL is constructed rather than resolved through the
+    channel API. A template not yet in ``_TEMPLATE_PINS`` -- e.g. one just added
+    to ``_TEMPLATE_COLLECTIONS`` -- falls back to ``latest`` with a warning so
+    it still builds until a pin is added.
+    """
+    build_id = _TEMPLATE_PINS.get(name)
+    if build_id is not None:
+        url = f"{_TEMPLATES_CI_BASE}/templates/{name}/{build_id}/build.zip"
+        logger.info("sphinx-collections: resolved pinned URL %s", url)
+        return url
+
+    logger.warning(
+        "sphinx-collections: template %r has no entry in _TEMPLATE_PINS; "
+        "falling back to 'latest'. Add a pin to make the docs build "
+        "reproducible.",
+        name,
+    )
     api_url = _TEMPLATE_CHANNEL_API.format(name=name)
     logger.info("sphinx-collections: resolving template URL from %s", api_url)
     data = json.loads(
         _urlopen_read_with_retries(api_url, _TEMPLATE_CHANNEL_TIMEOUT_S)
     )
-    url = data["url"]
-    # Replace the ascommon:/// protocol with the templates.ci.ray.io base URL.
-    url = url.replace("ascommon:///", _TEMPLATES_CI_BASE + "/")
-    # Append /build.zip to get the docs build archive.
+    # Replace the ascommon:/// protocol with the templates.ci.ray.io base URL,
+    # then append /build.zip to get the docs build archive.
+    url = data["url"].replace("ascommon:///", _TEMPLATES_CI_BASE + "/")
     url = url.rstrip("/") + "/build.zip"
     logger.info("sphinx-collections: resolved URL %s", url)
     return url
