@@ -167,20 +167,11 @@ def _plan_hash_shuffle_repartition_v3(
     # input-side streaming flag.
     coalesce_output = True
 
-    # Compression: reuse the same DataContext field v2 uses
-    # (hash_shuffle_compression). Both v2 and v3 are hash shuffles; the
-    # compression knob applies identically. v2 accepts "none"|"lz4"|"zstd";
-    # the v3 task body expects Optional[Literal["lz4","zstd"]], so map
-    # "none" -> None at this translation boundary.
-    raw_compression = (data_context.hash_shuffle_compression or "none").lower()
-    map_compression = None if raw_compression == "none" else raw_compression
-
     map_op = ShuffleMapOpV3(
         input_physical_op,
         data_context,
         num_partitions=num_partitions,
         partition_fn=_partition_fn,
-        compression=map_compression,
     )
     reduce_op = ShuffleReduceOpV3(
         map_op,

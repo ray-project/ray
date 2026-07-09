@@ -84,11 +84,11 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         *,
         num_partitions: int,
         partition_fn: PartitionFn,
-        compression: ShuffleCompression = None,
         pool_budget_bytes: Optional[int] = None,
         fsync_on_close: bool = True,
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
         pre_map_merge_threshold: int = _DEFAULT_PRE_MAP_MERGE_THRESHOLD,
+        map_runtime_env: Optional[Dict[str, Any]] = None,
         base_dir: Optional[str] = None,
         name: str = "ShuffleMapV3",
     ):
@@ -103,6 +103,7 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
 
         # -- Map task config -------------------------------------------------
         self._shuffle_map_task_num_cpus: float = map_cpus
+        self._map_runtime_env: Optional[Dict[str, Any]] = map_runtime_env
 
         # -- Pre-map merge ---------------------------------------------------
         self._pre_map_merge_threshold: int = pre_map_merge_threshold
@@ -141,7 +142,6 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         # =====================================================================
 
         # -- V3: shuffle config knobs ----------------------------------------
-        self._compression: ShuffleCompression = compression
         # Fixed override; ``None`` ⇒ ``_UNBOUNDED_POOL_BYTES``.
         self._pool_budget_override: Optional[int] = pool_budget_bytes
         self._fsync_on_close: bool = fsync_on_close
@@ -259,6 +259,15 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
             ray_options["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                 target_node_id, soft=True
             )
+        if self._map_runtime_env is not None:
+            ray_options["runtime_env"] = self._map_runtime_env
+
+        # v3's task body wants Optional[Literal["lz4", "zstd"]]; data_context
+        # stores the raw string ("none" | "lz4" | "zstd"). Translate here.
+        raw_compression = (self.data_context.hash_shuffle_compression or "none").lower()
+        compression: ShuffleCompression = (
+            None if raw_compression == "none" else raw_compression
+        )
 
         handle_ref = v3_map_task.options(**ray_options).remote(
             *block_refs,
@@ -270,7 +279,7 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
             token=self._token,
             map_op_name=self.name,
             pool_budget_bytes=pool_budget_bytes,
-            compression=self._compression,
+            compression=compression,
             fsync_on_close=self._fsync_on_close,
         )
 

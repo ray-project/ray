@@ -169,7 +169,6 @@ def test_v3_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_parts):
         ctx,
         num_partitions=num_parts,
         partition_fn=_make_partition_fn(["id"], num_parts),
-        compression=None,
         pool_budget_bytes=4 * 1024 * 1024,
         fsync_on_close=False,  # don't pay fsync cost on a smoke test
         name="ShuffleMapV3-smoke",
