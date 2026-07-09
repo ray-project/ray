@@ -389,12 +389,10 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         self._maybe_emit_partition_bundles()
 
     def _maybe_emit_partition_bundles(self) -> None:
-        """Emit the N partition-wrapper bundles into ``_output_queue``.
+        """Emit one wrapper bundle per partition into ``_output_queue``.
 
-        One bundle per partition_id, each carrying the SAME shared handle-
-        list ref plus a distinct ``__partition__<pid>`` sentinel. Gated on
-        ``_inputs_complete AND no map tasks in flight AND merge buffer
-        empty AND not already emitted``.
+        All N wrappers share the same ``_shared_handles_ref`` and differ
+        only by the stamped ``__partition__<pid>`` sentinel.
         """
         if self._partition_bundles_emitted:
             return
