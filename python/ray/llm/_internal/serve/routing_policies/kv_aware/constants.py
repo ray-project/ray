@@ -1,3 +1,6 @@
+# choose_replica kwarg carrying the prompt token IDs to KV-aware routers.
+REQUEST_TOKEN_IDS_KWARG = "request_token_ids"
+
 # experimental_configs key overriding the per-node base port.
 KV_EVENTS_PORT_BASE_KEY = "KV_EVENTS_PORT_BASE"
 DEFAULT_KV_EVENTS_PORT_BASE = 5557

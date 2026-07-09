@@ -104,7 +104,7 @@ def _build_openai_ingress_request_router(
     )
     return deployment.bind(
         server=server,
-        pre_routing_tokenization=is_kv_aware(llm_config),
+        llm_config=llm_config if is_kv_aware(llm_config) else None,
     )
 
 
