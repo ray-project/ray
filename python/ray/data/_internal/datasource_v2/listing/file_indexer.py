@@ -72,7 +72,7 @@ class NonSamplingFileIndexer(FileIndexer):
         "RAY_DATA_MAX_PATHS_PER_LIST_FILES_OUTPUT", 1000
     )
 
-    _DEFAULT_NUM_WORKERS = env_integer("RAY_DATA_LIST_FILES_THREADED_NUM_WORKERS", 4)
+    _DEFAULT_NUM_WORKERS = env_integer("RAY_DATA_LIST_FILES_THREADED_NUM_WORKERS", 20)
 
     def __init__(
         self,
