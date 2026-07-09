@@ -21,7 +21,7 @@
 
 #include "absl/strings/substitute.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server.h"
 #include "ray/gcs_rpc_client/accessors/actor_info_accessor.h"
@@ -109,6 +109,10 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         scheduler_placement_time_ms_histogram_,
         /*health_check_rpc_latency_ms_histogram=*/
         fake_health_check_rpc_latency_ms_histogram_,
+        /*io_context_monitor_latency_ms_gauge=*/
+        fake_io_context_monitor_latency_ms_gauge_,
+        /*io_context_monitor_unhealthy_counter=*/
+        fake_io_context_monitor_unhealthy_counter_,
     };
 
     gcs_server_ = std::make_unique<gcs::GcsServer>(
@@ -200,6 +204,10 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         scheduler_placement_time_ms_histogram_,
         /*health_check_rpc_latency_ms_histogram=*/
         fake_health_check_rpc_latency_ms_histogram_,
+        /*io_context_monitor_latency_ms_gauge=*/
+        fake_io_context_monitor_latency_ms_gauge_,
+        /*io_context_monitor_unhealthy_counter=*/
+        fake_io_context_monitor_unhealthy_counter_,
     };
 
     gcs_server_.reset(
@@ -404,9 +412,12 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     std::promise<bool> promise;
     std::vector<rpc::GcsNodeInfo> nodes;
     gcs_client_->Nodes().AsyncGetAll(
-        [&nodes, &promise](Status status, std::vector<rpc::GcsNodeInfo> &&result) {
+        [&nodes, &promise](
+            Status status,
+            const std::optional<std::pair<std::vector<rpc::GcsNodeInfo>, int64_t>>
+                &results) {
           assert(!result.empty());
-          nodes = std::move(result);
+          nodes = std::move(results->first);
           promise.set_value(status.ok());
         },
         rpc::GetGcsTimeoutMs());
@@ -493,6 +504,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   observability::FakeGauge fake_resource_usage_gauge_;
   observability::FakeHistogram scheduler_placement_time_ms_histogram_;
   observability::FakeHistogram fake_health_check_rpc_latency_ms_histogram_;
+  observability::FakeGauge fake_io_context_monitor_latency_ms_gauge_;
+  observability::FakeCounter fake_io_context_monitor_unhealthy_counter_;
 };
 
 INSTANTIATE_TEST_SUITE_P(RedisMigration, GcsClientTest, testing::Bool());
@@ -1086,20 +1099,3 @@ TEST_P(GcsClientTest, TestInternalKVDelByPrefix) {
 }
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  InitShutdownRAII ray_log_shutdown_raii(
-      ray::RayLog::StartRayLog,
-      ray::RayLog::ShutDownRayLog,
-      /*app_name=*/argv[0],
-      ray::RayLogLevel::INFO,
-      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
-      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
-  ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 3);
-  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
-  return RUN_ALL_TESTS();
-}

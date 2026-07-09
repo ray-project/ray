@@ -50,8 +50,7 @@ BUCKET=my-bucket
 gcloud storage buckets create gs://$BUCKET --uniform-bucket-level-access
 ```
 
-Bind the `roles/storage.objectUser` role to the Kubernetes service account and bucket IAM policy.
-See [Identifying projects](https://cloud.google.com/resource-manager/docs/creating-managing-projects#identifying_projects) to find your project ID and project number:
+Bind the `roles/storage.objectUser` role to the Kubernetes service account and bucket IAM policy. See [Identifying projects](https://cloud.google.com/resource-manager/docs/creating-managing-projects#identifying_projects) to find your project ID and project number:
 ```bash
 PROJECT_ID=<your project ID>
 PROJECT_NUMBER=<your project number>
@@ -65,7 +64,7 @@ See [Authenticate to Google Cloud APIs from GKE workloads](https://docs.cloud.go
 You can download the RayCluster YAML manifest for this tutorial with `curl` as follows:
 
 ```bash
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.5.1/ray-operator/config/samples/ray-cluster.gke-bucket.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-cluster.gke-bucket.yaml
 ```
 
 The key parts are the following lines:

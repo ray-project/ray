@@ -11,7 +11,6 @@ schema={
    }
 """
 import os
-import time
 from typing import Optional
 
 import cv2
@@ -36,7 +35,6 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED_LIFETIME,
 )
 from ray.rllib.utils.test_utils import should_stop
-from ray.tune.logger.unified import UnifiedLogger
 
 
 # Define a `ConnectorV2` to decode stacked encoded Atari frames.
@@ -212,18 +210,6 @@ print(
     f"{anyscale_rlunplugged_atari_pong_path}"
 )
 
-# As we can not run with `Ray Tune` we use the `UnifiedLogger`.
-def default_logger_creator(config):
-    """Creates a Unified logger with the default prefix."""
-    timestr = time.strftime("%Y-%m-%d_%H:%M:%S")
-    return UnifiedLogger(
-        config,
-        # TODO (simon): Change to a default one.
-        f"/home/ray/default/repos/ray_results/single_learner_gpu_all_data_{timestr}",
-        loggers=None,
-    )
-
-
 # Define the config for Behavior Cloning.
 config = (
     BCConfig()
@@ -312,7 +298,6 @@ config = (
         ),
     )
     .debugging(
-        logger_creator=default_logger_creator,
         log_level="ERROR",
     )
 )

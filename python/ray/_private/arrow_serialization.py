@@ -215,7 +215,6 @@ def _reconstruct_chunked_array(
 
     # Reconstruct chunks from serialization payloads.
     chunks = [chunk.to_array() for chunk in chunks]
-
     return pa.chunked_array(chunks, type_)
 
 
@@ -266,7 +265,11 @@ def _array_payload_to_array(payload: "PicklableArrayPayload") -> "pyarrow.Array"
         # Array.from_buffers() doesn't work for DictionaryArrays.
         assert len(children) == 2, len(children)
         indices, dictionary = children
-        return pa.DictionaryArray.from_arrays(indices, dictionary)
+        return pa.DictionaryArray.from_arrays(
+            indices,
+            dictionary,
+            ordered=payload.type.ordered,  # Explicitly pass the ordered flag to from_arrays() to prevent dropping it as ordered=False by default
+        )
     elif pa.types.is_map(payload.type) and len(children) > 1:
         # In pyarrow<7.0.0, the underlying map child array is not exposed, so we work
         # with the key and item arrays.

@@ -24,11 +24,13 @@
 
 namespace ray {
 
-ClusterResourceManager::ClusterResourceManager(instrumented_io_context &io_service)
-    : timer_(PeriodicalRunner::Create(io_service)),
+ClusterResourceManager::ClusterResourceManager(
+    std::shared_ptr<PeriodicalRunnerInterface> periodical_runner)
+    : periodical_runner_(std::move(periodical_runner)),
       local_resource_view_node_count_gauge_(
           raylet::GetLocalResourceViewNodeCountGaugeMetric()) {
-  timer_->RunFnPeriodically(
+  RAY_CHECK(periodical_runner_ != nullptr);
+  periodical_runner_->RunFnPeriodically(
       [this]() {
         auto syncer_delay = absl::Milliseconds(
             RayConfig::instance().ray_syncer_message_refresh_interval_ms());
@@ -272,29 +274,6 @@ bool ClusterResourceManager::AddNodeAvailableResources(scheduling::NodeID node_i
   return true;
 }
 
-bool ClusterResourceManager::UpdateNodeNormalTaskResources(
-    scheduling::NodeID node_id, const rpc::ResourcesData &resource_data) {
-  auto iter = nodes_.find(node_id);
-  if (iter != nodes_.end()) {
-    auto node_resources = iter->second.GetMutableLocalView();
-    if (resource_data.resources_normal_task_changed() &&
-        resource_data.resources_normal_task_timestamp() >
-            node_resources->latest_resources_normal_task_timestamp) {
-      auto normal_task_resources =
-          ResourceSet(MapFromProtobuf(resource_data.resources_normal_task()));
-      auto &local_normal_task_resources = node_resources->normal_task_resources;
-      if (normal_task_resources != local_normal_task_resources) {
-        local_normal_task_resources = normal_task_resources;
-        node_resources->latest_resources_normal_task_timestamp =
-            resource_data.resources_normal_task_timestamp();
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-
 std::string ClusterResourceManager::DebugString(
     std::optional<size_t> max_num_nodes_to_include) const {
   std::stringstream buffer;
@@ -325,6 +304,18 @@ void ClusterResourceManager::SetNodeLabels(
     it = nodes_.emplace(node_id, node_resources).first;
   }
   it->second.GetMutableLocalView()->labels = std::move(labels);
+}
+
+const absl::flat_hash_map<std::string, std::string>
+    &ClusterResourceManager::GetNodeLabels(scheduling::NodeID node_id) const {
+  const auto &node = map_find_or_die(nodes_, node_id);
+  return node.GetLocalView().labels;
+}
+
+FixedPoint ClusterResourceManager::GetNodeTotalResources(
+    scheduling::NodeID node_id, scheduling::ResourceID resource_id) const {
+  const auto &node = map_find_or_die(nodes_, node_id);
+  return node.GetLocalView().total.Get(resource_id);
 }
 
 void ClusterResourceManager::RecordMetrics() const {

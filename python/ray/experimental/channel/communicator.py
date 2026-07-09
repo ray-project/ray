@@ -45,11 +45,13 @@ class Communicator(ABC):
 
     @abstractmethod
     def get_rank(self, actor: ray.actor.ActorHandle) -> int:
-        """
-        Return the given actor's rank in the group.
+        """Return the given actor's rank in the group.
 
         Args:
             actor: The actor handle to look up.
+
+        Returns:
+            The rank of ``actor`` within the communicator group.
         """
         raise NotImplementedError
 
@@ -90,8 +92,7 @@ class Communicator(ABC):
         peer_rank: int,
         allocator: Optional[TorchTensorAllocator] = None,
     ) -> "torch.Tensor":
-        """
-        Receive a torch.Tensor from a peer and synchronize.
+        """Receive a torch.Tensor from a peer and synchronize.
 
         After this call returns, the receive buffer is safe to read from from
         any stream. An RayChannelError will be raised if an error occurred (e.g.,
@@ -102,6 +103,9 @@ class Communicator(ABC):
             dtype: The dtype of the tensor to receive.
             peer_rank: The rank of the actor to receive from.
             allocator: A function to allocate the tensor to receive into.
+
+        Returns:
+            The tensor received from ``peer_rank``.
         """
         raise NotImplementedError
 

@@ -1,31 +1,31 @@
 {
-    "_dashboard_memory_usage_mb": 155.65619199999998,
+    "_dashboard_memory_usage_mb": 97.652736,
     "_dashboard_test_success": true,
-    "_peak_memory": 4.71,
-    "_peak_process_memory": "PID\tMEM\tCOMMAND\n3636\t2.2GiB\t/home/ray/anaconda3/lib/python3.10/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/\n3050\t1.96GiB\tvector --watch-config --log-format json --config-yaml /etc/vector/vector.yaml\n12074\t0.85GiB\tpython distributed/test_many_actors.py\n3887\t0.21GiB\tray-dashboard-NodeHead-0 (/home/ray/anaconda3/bin/python3.10 -c \"from multiprocessing.spawn import s\n4377\t0.18GiB\tray::DashboardAgent\n3205\t0.11GiB\t/app/infra/dataplane/webterminal/webterminal_sidecar_image.binary.runfiles/python3_9_x86_64-unknown-\n3791\t0.09GiB\t/home/ray/anaconda3/bin/python3.10 /home/ray/anaconda3/lib/python3.10/site-packages/ray/dashboard/da\n1142\t0.08GiB\t/app/product/go/infra/anyscaled/anyscaled_/anyscaled startv2 --control_plane_url=https://console.any\n4379\t0.08GiB\tray::RuntimeEnvAgent\n11782\t0.07GiB\tray::JobSupervisor",
-    "actors_per_second": 421.58470204328825,
+    "_peak_memory": 4.01,
+    "_peak_process_memory": "PID\tMEM\tCOMMAND\n3706\t1.57GiB\t/home/ray/anaconda3/lib/python3.10/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/\n3138\t1.05GiB\tvector --watch-config --log-format json --config-yaml /etc/vector/vector.yaml\n6374\t0.83GiB\tpython distributed/test_many_actors.py\n3932\t0.2GiB\tray-dashboard-NodeHead-0 (/home/ray/anaconda3/bin/python3.10 -c \"from multiprocessing.spawn import s\n4413\t0.17GiB\tray::DashboardAgent\n3177\t0.11GiB\t/app/infra/dataplane/webterminal/webterminal_sidecar_image.binary.runfiles/python3_9_x86_64-unknown-\n1440\t0.1GiB\t/app/product/go/infra/anyscaled/anyscaled_/anyscaled startv2 --control_plane_url=https://console.any\n4415\t0.09GiB\tray::RuntimeEnvAgent\n3849\t0.09GiB\t/home/ray/anaconda3/bin/python3.10 /home/ray/anaconda3/lib/python3.10/site-packages/ray/dashboard/da\n6514\t0.08GiB\tray::DashboardTester.run",
+    "actors_per_second": 528.8023526342919,
     "num_actors": 10000,
     "perf_metrics": [
         {
             "perf_metric_name": "actors_per_second",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 421.58470204328825
+            "perf_metric_value": 528.8023526342919
         },
         {
             "perf_metric_name": "dashboard_p50_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 9.916
+            "perf_metric_value": 9.635
         },
         {
             "perf_metric_name": "dashboard_p95_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 3849.811
+            "perf_metric_value": 1983.793
         },
         {
             "perf_metric_name": "dashboard_p99_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 4939.24
+            "perf_metric_value": 3389.923
         }
     ],
-    "time": 23.720025777816772
+    "time": 18.910657167434692
 }

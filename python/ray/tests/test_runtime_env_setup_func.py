@@ -4,11 +4,18 @@ import platform
 import sys
 import tempfile
 import threading
+from unittest.mock import MagicMock
 
 import pytest
 
 import ray
+import ray._private.ray_constants as ray_constants
 from ray._common.test_utils import wait_for_condition
+from ray._private.function_manager import build_setup_hook_export_entry
+from ray._private.runtime_env.setup_hook import (
+    decode_function_key,
+    upload_worker_process_setup_hook_if_needed,
+)
 from ray._private.test_utils import format_web_url
 from ray.job_submission import JobStatus, JobSubmissionClient
 
@@ -254,6 +261,87 @@ ray.get(f.remote())
             os.remove(file_path)
         if temp_dir:
             os.rmdir(temp_dir)
+
+
+def test_upload_hook_reprocessing_module_match():
+    runtime_env = {
+        "worker_process_setup_hook": "my.module.hook",
+        "env_vars": {
+            ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR: "my.module.hook",
+        },
+    }
+    result = upload_worker_process_setup_hook_if_needed(runtime_env, worker=None)
+    assert (
+        result["env_vars"][ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR]
+        == "my.module.hook"
+    )
+
+
+def test_upload_hook_type_mismatch():
+    """A callable setup_func vs a module-path env var is a type mismatch."""
+    runtime_env = {
+        "worker_process_setup_hook": lambda: None,
+        "env_vars": {
+            ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR: "my.module.hook",
+        },
+    }
+    with pytest.raises(RuntimeError, match="Conflicting worker_process_setup_hook"):
+        upload_worker_process_setup_hook_if_needed(runtime_env, worker=None)
+
+
+def test_upload_hook_str_callable_ref_mismatch():
+    """A module-path setup_func vs a callable-ref env var is a type mismatch."""
+
+    def existing_hook():
+        return None
+
+    _, _, key = build_setup_hook_export_entry(existing_hook, b"\x01" * 4)
+    callable_ref = decode_function_key(key)
+    runtime_env = {
+        "worker_process_setup_hook": "totally.different.module",
+        "env_vars": {
+            ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR: callable_ref,
+        },
+    }
+    with pytest.raises(RuntimeError, match="Conflicting worker_process_setup_hook"):
+        upload_worker_process_setup_hook_if_needed(runtime_env, worker=None)
+
+
+def test_upload_hook_module_mismatch():
+    """Conflicting module-path strings must be detected and rejected."""
+    runtime_env = {
+        "worker_process_setup_hook": "my.module.hook_a",
+        "env_vars": {
+            ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR: "my.module.hook_b",
+        },
+    }
+    with pytest.raises(RuntimeError, match="Conflicting worker_process_setup_hook"):
+        upload_worker_process_setup_hook_if_needed(runtime_env, worker=None)
+
+
+def test_upload_hook_callable_mismatch():
+    """Two different callables referencing different GCS keys must be rejected."""
+    mock_worker = MagicMock()
+    mock_worker.current_job_id.binary.return_value = b"\x00" * 4
+
+    def setup_a():
+        return None
+
+    def setup_b():
+        return "different"
+
+    _, _, key = build_setup_hook_export_entry(
+        setup_a, mock_worker.current_job_id.binary.return_value
+    )
+    existing_callable_ref = decode_function_key(key)
+    runtime_env = {
+        "worker_process_setup_hook": setup_b,
+        "env_vars": {
+            ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR: existing_callable_ref,
+        },
+    }
+    with pytest.raises(RuntimeError, match="Conflicting worker_process_setup_hook"):
+        upload_worker_process_setup_hook_if_needed(runtime_env, worker=mock_worker)
 
 
 if __name__ == "__main__":

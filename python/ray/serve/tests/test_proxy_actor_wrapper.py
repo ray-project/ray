@@ -78,6 +78,34 @@ async def test_wrap_as_future_success():
     assert aio_fut.result() == "test"
 
 
+@pytest.mark.asyncio
+async def test_wrap_as_future_timeout_does_not_assert_on_late_source_completion(
+    monkeypatch,
+):
+    object_ref_mock, fut = _create_object_ref_mock()
+    loop = asyncio.get_running_loop()
+    queued_callbacks = []
+
+    def queue_callback(callback, *args, context=None):
+        queued_callbacks.append((callback, args, context))
+
+    monkeypatch.setattr(loop, "call_soon_threadsafe", queue_callback)
+
+    aio_fut = wrap_as_future(ref=object_ref_mock, timeout_s=0)
+
+    fut.set_result("test")
+    assert len(queued_callbacks) == 1
+
+    await asyncio.sleep(0.001)
+
+    assert aio_fut.done()
+    with pytest.raises(TimeoutError):
+        aio_fut.result()
+
+    callback, args, _ = queued_callbacks.pop()
+    callback(*args)
+
+
 @pytest.mark.parametrize(
     ("response", "is_ready"),
     [

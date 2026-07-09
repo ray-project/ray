@@ -169,6 +169,9 @@ class DependencySetManager:
 
     def _build(self, build_all_configs: Optional[bool] = False):
         """Build the dependency graph from config depsets."""
+        # First pass: add all depset nodes so we can validate edges
+        depset_names = {depset.name for depset in self.config.depsets}
+
         for depset in self.config.depsets:
             if depset.operation == "compile":
                 self.build_graph.add_node(
@@ -179,6 +182,11 @@ class DependencySetManager:
                     config_name=depset.config_name,
                 )
             elif depset.operation == "subset":
+                if depset.source_depset not in depset_names:
+                    raise ValueError(
+                        f"Depset '{depset.name}' references source_depset '{depset.source_depset}' which does not exist. "
+                        f"Available depsets: {sorted(depset_names)}"
+                    )
                 self.build_graph.add_node(
                     depset.name,
                     operation="subset",
@@ -188,6 +196,12 @@ class DependencySetManager:
                 )
                 self.build_graph.add_edge(depset.source_depset, depset.name)
             elif depset.operation == "expand":
+                for dep_name in depset.depsets:
+                    if dep_name not in depset_names:
+                        raise ValueError(
+                            f"Depset '{depset.name}' references depset '{dep_name}' which does not exist. "
+                            f"Available depsets: {sorted(depset_names)}"
+                        )
                 self.build_graph.add_node(
                     depset.name,
                     operation="expand",
@@ -198,6 +212,11 @@ class DependencySetManager:
                 for depset_name in depset.depsets:
                     self.build_graph.add_edge(depset_name, depset.name)
             elif depset.operation == "relax":
+                if depset.source_depset not in depset_names:
+                    raise ValueError(
+                        f"Depset '{depset.name}' references source_depset '{depset.source_depset}' which does not exist. "
+                        f"Available depsets: {sorted(depset_names)}"
+                    )
                 self.build_graph.add_node(
                     depset.name,
                     operation="relax",
@@ -410,9 +429,13 @@ class DependencySetManager:
         # handle both depsets and requirements
         depset_req_list = []
         for depset_name in depsets:
-            depset_req_list.extend(
-                self.get_expanded_depset_requirements(depset_name, [])
-            )
+            dep = _get_depset(self.config.depsets, depset_name)
+            if dep.operation == "relax":
+                depset_req_list.append(dep.output)
+            else:
+                depset_req_list.extend(
+                    self.get_expanded_depset_requirements(depset_name, [])
+                )
         if requirements:
             depset_req_list.extend(requirements)
         self.compile(

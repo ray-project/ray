@@ -202,6 +202,9 @@ void FillTaskInfo(rpc::TaskInfoEntry *task_info, const TaskSpecification &task_s
     type = rpc::TaskType::ACTOR_TASK;
     task_info->set_actor_id(task_spec.ActorId().Binary());
   }
+  if (task_spec.IsDetachedActor()) {
+    task_info->set_is_detached_actor(true);
+  }
   task_info->set_type(type);
   task_info->set_name(task_spec.GetName());
   task_info->set_language(task_spec.GetLanguage());
@@ -231,6 +234,10 @@ void FillTaskInfo(rpc::TaskInfoEntry *task_info, const TaskSpecification &task_s
   if (task_spec.GetMessage().label_selector().label_constraints_size() > 0) {
     *task_info->mutable_label_selector() =
         ray::LabelSelector(task_spec.GetMessage().label_selector()).ToStringMap();
+  }
+  if (task_spec.GetMessage().has_fallback_strategy()) {
+    task_info->mutable_fallback_strategy()->CopyFrom(
+        task_spec.GetMessage().fallback_strategy());
   }
 }
 

@@ -6,7 +6,6 @@ import ray
 import ray.experimental.internal_kv as internal_kv
 from ray.experimental.collective.communicator import CommunicatorHandle
 from ray.util.annotations import PublicAPI
-from ray.util.collective.collective import get_address_and_port
 from ray.util.collective.collective_group.torch_gloo_collective_group import (
     get_master_address_metadata_key,
 )
@@ -130,17 +129,7 @@ def create_collective_group(
 
     metadata_key = None
     if backend == Backend.GLOO:
-        # Perform extra setup for torch.distributed.
-        # torch.distributed requires a master address and port. Find a suitable
-        # port on one of the actors.
-        master_addr, master_port = ray.get(
-            actors[0].__ray_call__.remote(lambda self: get_address_and_port())
-        )
-
-        # Store the metadata on a named actor that all of the other
-        # actors can access.
         metadata_key = get_master_address_metadata_key(name)
-        internal_kv._internal_kv_put(metadata_key, f"{master_addr}:{master_port}")
 
     def _do_init_collective_group(self, rank: int):
         ray.util.collective.init_collective_group(

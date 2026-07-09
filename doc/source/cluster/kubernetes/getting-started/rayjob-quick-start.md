@@ -31,8 +31,7 @@ To understand the following content better, you should understand the difference
   * `clusterSelector` - Use existing **RayCluster** custom resources to run the Ray job instead of creating a new one. See [ray-job.use-existing-raycluster.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-job.use-existing-raycluster.yaml) for example configurations.
 * Ray job configuration
   * `entrypoint` - The submitter runs `ray job submit --address ... --submission-id ... -- $entrypoint` to submit a Ray job to the RayCluster.
-  * `runtimeEnvYAML` (Optional): A runtime environment that describes the dependencies the Ray job needs to run, including files, packages, environment variables, and more. Provide the configuration as a multi-line YAML string.
-  Example:
+  * `runtimeEnvYAML` (Optional): A runtime environment that describes the dependencies the Ray job needs to run, including files, packages, environment variables, and more. Provide the configuration as a multi-line YAML string. Example:
 
     ```yaml
     spec:
@@ -63,13 +62,14 @@ To understand the following content better, you should understand the difference
   * `submitterConfig` (Optional): Additional configurations for the submitter Kubernetes Job.
     * `backoffLimit` (Optional, added in version 1.2.0): The number of retries before marking the submitter Job as failed. The default value is 2.
 * Automatic resource cleanup
+  * `preRunningDeadlineSeconds` (Optional): If the RayJob doesn't transition the `JobDeploymentStatus` to `Running` within `preRunningDeadlineSeconds` seconds, the KubeRay operator transitions the `JobDeploymentStatus` to `Failed` with reason `PreRunningDeadlineExceeded`. The default value is 0 (no pre-running deadline is enforced).
   * `shutdownAfterJobFinishes` (Optional): Determines whether to recycle the RayCluster after the Ray job finishes. The default value is false.
   * `ttlSecondsAfterFinished` (Optional): Only works if `shutdownAfterJobFinishes` is true. The KubeRay operator deletes the RayCluster and the submitter `ttlSecondsAfterFinished` seconds after the Ray job finishes. The default value is 0.
   * `activeDeadlineSeconds` (Optional): If the RayJob doesn't transition the `JobDeploymentStatus` to `Complete` or `Failed` within `activeDeadlineSeconds`, the KubeRay operator transitions the `JobDeploymentStatus` to `Failed`, citing `DeadlineExceeded` as the reason.
   * `DELETE_RAYJOB_CR_AFTER_JOB_FINISHES` (Optional, added in version 1.2.0): Set this environment variable for the KubeRay operator, not the RayJob resource. If you set this environment variable to true, the RayJob custom resource itself is deleted if you also set `shutdownAfterJobFinishes` to true. Note that KubeRay deletes all resources created by the RayJob, including the Kubernetes Job.
 * Others
   * `suspend` (Optional): If `suspend` is true, KubeRay deletes both the RayCluster and the submitter. Note that Kueue also implements scheduling strategies by mutating this field. Avoid manually updating this field if you use Kueue to schedule RayJob.
-  * `deletionStrategy` (Optional, alpha in v1.5.1): Configures automated cleanup after the RayJob reaches a terminal state. This field requires the `RayJobDeletionPolicy` feature gate to be enabled. Two mutually exclusive styles are supported:
+  * `deletionStrategy` (alpha in v1.5.1, beta in v1.6.0): Configures automated cleanup after the RayJob reaches a terminal state. This field requires the `RayJobDeletionPolicy` feature gate to be enabled. Two mutually exclusive styles are supported:
     * **Rules-based** (Recommended): Define `deletionRules` as a list of deletion actions triggered by specific conditions. Each rule specifies:
       * `policy`: The deletion action to perform — `DeleteCluster` (delete the entire RayCluster and its Pods), `DeleteWorkers` (delete only worker Pods), `DeleteSelf` (delete the RayJob and all associated resources), or `DeleteNone` (no deletion).
       * `condition`: When to trigger the deletion, based on `jobStatus` (`SUCCEEDED` or `FAILED`) and an optional `ttlSeconds` delay.
@@ -96,7 +96,7 @@ Follow the [KubeRay Operator Installation](kuberay-operator-deploy) to install t
 ## Step 3: Install a RayJob
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.5.1/ray-operator/config/samples/ray-job.sample.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-job.sample.yaml
 ```
 
 ## Step 4: Verify the Kubernetes cluster status
@@ -136,9 +136,7 @@ kubectl get rayjobs.ray.io rayjob-sample -o jsonpath='{.status.jobDeploymentStat
 # [Expected output]: "Complete"
 ```
 
-The KubeRay operator creates a RayCluster custom resource based on the `rayClusterSpec` and a submitter Kubernetes Job to submit a Ray job to the RayCluster.
-In this example, the `entrypoint` is `python /home/ray/samples/sample_code.py`, and `sample_code.py` is a Python script stored in a Kubernetes ConfigMap mounted to the head Pod of the RayCluster.
-Because the default value of `shutdownAfterJobFinishes` is false, the KubeRay operator doesn't delete the RayCluster or the submitter when the Ray job finishes.
+The KubeRay operator creates a RayCluster custom resource based on the `rayClusterSpec` and a submitter Kubernetes Job to submit a Ray job to the RayCluster. In this example, the `entrypoint` is `python /home/ray/samples/sample_code.py`, and `sample_code.py` is a Python script stored in a Kubernetes ConfigMap mounted to the head Pod of the RayCluster. Because the default value of `shutdownAfterJobFinishes` is false, the KubeRay operator doesn't delete the RayCluster or the submitter when the Ray job finishes.
 
 ## Step 5: Check the output of the Ray job
 
@@ -163,19 +161,16 @@ The Python script `sample_code.py` used by `entrypoint` is a simple Ray script t
 ## Step 6: Delete the RayJob
 
 ```sh
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.5.1/ray-operator/config/samples/ray-job.sample.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-job.sample.yaml
 ```
 
 ## Step 7: Create a RayJob with `shutdownAfterJobFinishes` set to true
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.5.1/ray-operator/config/samples/ray-job.shutdown.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-job.shutdown.yaml
 ```
 
-The `ray-job.shutdown.yaml` defines a RayJob custom resource with `shutdownAfterJobFinishes: true` and `ttlSecondsAfterFinished: 10`.
-Hence, the KubeRay operator deletes the RayCluster 10 seconds after the Ray job finishes. Note that the submitter job isn't deleted
-because it contains the ray job logs and doesn't use any cluster resources once completed. In addition, the RayJob cleans up the submitter job
-when the RayJob is eventually deleted due to its owner reference back to the RayJob.
+The `ray-job.shutdown.yaml` defines a RayJob custom resource with `shutdownAfterJobFinishes: true` and `ttlSecondsAfterFinished: 10`. Hence, the KubeRay operator deletes the RayCluster 10 seconds after the Ray job finishes. Note that the submitter job isn't deleted because it contains the ray job logs and doesn't use any cluster resources once completed. In addition, the RayJob cleans up the submitter job when the RayJob is eventually deleted due to its owner reference back to the RayJob.
 
 ## Step 8: Check the RayJob status
 
@@ -197,7 +192,7 @@ kubectl get raycluster
 
 ```sh
 # Step 10.1: Delete the RayJob
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.5.1/ray-operator/config/samples/ray-job.shutdown.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-job.shutdown.yaml
 
 # Step 10.2: Delete the KubeRay operator
 helm uninstall kuberay-operator

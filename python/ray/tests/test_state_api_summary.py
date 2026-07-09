@@ -12,10 +12,10 @@ from click.testing import CliRunner
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import wait_for_aggregator_agent_if_enabled
-from ray._raylet import ActorID, ObjectID, TaskID
+from ray._raylet import ActorID, NodeID, ObjectID, TaskID
 from ray.core.generated.common_pb2 import TaskStatus, TaskType, WorkerType
 from ray.core.generated.gcs_pb2 import ActorTableData, GcsNodeInfo
-from ray.core.generated.gcs_service_pb2 import GetAllActorInfoReply, GetAllNodeInfoReply
+from ray.core.generated.gcs_service_pb2 import GetAllActorInfoReply
 from ray.core.generated.node_manager_pb2 import GetObjectsInfoReply
 from ray.dashboard.state_aggregator import StateAPIManager
 from ray.tests.test_state_api import (
@@ -70,30 +70,35 @@ async def test_api_manager_summary_tasks(state_api_manager):
             [
                 generate_task_event(
                     id=ids[0].binary(),
+                    name="",
                     func_or_class=first_task_name,
                     state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     type=TaskType.NORMAL_TASK,
                 ),
                 generate_task_event(
                     id=ids[1].binary(),
+                    name="",
                     func_or_class=first_task_name,
                     state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     type=TaskType.NORMAL_TASK,
                 ),
                 generate_task_event(
                     id=ids[2].binary(),
+                    name="",
                     func_or_class=first_task_name,
                     state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     type=TaskType.NORMAL_TASK,
                 ),
                 generate_task_event(
                     id=ids[3].binary(),
+                    name="",
                     func_or_class=first_task_name,
                     state=TaskStatus.RUNNING,
                     type=TaskType.NORMAL_TASK,
                 ),
                 generate_task_event(
                     id=ids[4].binary(),
+                    name="",
                     func_or_class=second_task_name,
                     state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     type=TaskType.ACTOR_TASK,
@@ -198,11 +203,16 @@ async def test_api_manager_summary_objects(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     object_ids = [ObjectID((f"{i}" * 28).encode()) for i in range(9)]
     data_source_client.get_all_node_info = AsyncMock()
-    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
-        node_info_list=[
-            GcsNodeInfo(node_id=b"1" * 28, state=GcsNodeInfo.GcsNodeState.ALIVE),
-            GcsNodeInfo(node_id=b"2" * 28, state=GcsNodeInfo.GcsNodeState.ALIVE),
-        ]
+    data_source_client.get_all_node_info.return_value = (
+        {
+            NodeID.from_binary(b"1" * 28): GcsNodeInfo(
+                node_id=b"1" * 28, state=GcsNodeInfo.GcsNodeState.ALIVE
+            ),
+            NodeID.from_binary(b"2" * 28): GcsNodeInfo(
+                node_id=b"2" * 28, state=GcsNodeInfo.GcsNodeState.ALIVE
+            ),
+        },
+        0,
     )
     first_callsite = "first.py"
     second_callsite = "second.py"
@@ -350,6 +360,22 @@ def test_task_summary(ray_start_cluster):
         return True
 
     wait_for_condition(verify)
+
+    # Test custom task name
+    task_wait_for_dep.options(name="custom_task_name").remote(
+        run_long_time_task.remote()
+    )
+
+    def verify_custom_name():
+        task_summary = summarize_tasks()
+        task_summary = task_summary["cluster"]["summary"]
+        assert "custom_task_name" in task_summary
+        assert (
+            task_summary["custom_task_name"]["state_counts"]["PENDING_ARGS_AVAIL"] >= 1
+        )
+        return True
+
+    wait_for_condition(verify_custom_name)
 
     """
     Test CLI

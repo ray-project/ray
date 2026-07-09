@@ -1,3 +1,5 @@
+import operator
+
 import pytest
 
 import ray
@@ -9,11 +11,9 @@ from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data.context import (
-    MAX_SAFE_BLOCK_SIZE_FACTOR,
-    DataContext,
-)
+from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.conftest import noop_counter
 from ray.data.tests.test_operators import _mul2_map_data_prcessor
 from ray.data.tests.util import run_op_tasks_sync
 
@@ -209,14 +209,14 @@ def test_task_pool_resource_reporting(ray_start_10_cpus_shared):
         name="TestMapper",
         compute_strategy=TaskPoolStrategy(),
     )
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
 
     assert op.current_logical_usage() == ExecutionResources(cpu=0, gpu=0, memory=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
-    # No tasks running yet, so pending task outputs is 0.
-    assert op.metrics.obj_store_mem_pending_task_outputs == 0
+    # No tasks running yet, so pending task outputs is None.
+    assert op.metrics.obj_store_mem_pending_task_outputs is None
 
     op.add_input(input_op.get_next(), 0)
     op.add_input(input_op.get_next(), 0)
@@ -224,11 +224,8 @@ def test_task_pool_resource_reporting(ray_start_10_cpus_shared):
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == pytest.approx(1600, rel=0.5)
-    # No sample available yet, uses fallback estimate: 2 tasks * per_task_output.
-    assert (
-        op.metrics.obj_store_mem_pending_task_outputs
-        == 2 * op.data_context.target_max_block_size * MAX_SAFE_BLOCK_SIZE_FACTOR
-    )
+    # No sample available yet, so pending task outputs is None.
+    assert op.metrics.obj_store_mem_pending_task_outputs is None
 
     run_op_tasks_sync(op)
 
@@ -237,6 +234,37 @@ def test_task_pool_resource_reporting(ray_start_10_cpus_shared):
     assert op.metrics.obj_store_mem_internal_outqueue == pytest.approx(3200, rel=0.5)
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
     assert op.metrics.obj_store_mem_pending_task_outputs == 0
+
+
+def test_task_pool_resource_reporting_with_dynamic_remote_args(
+    ray_start_10_cpus_shared,
+):
+    """Test that current_logical_usage reflects dynamic resources from ray_remote_args_fn,
+    not just the statically defined ray_remote_args."""
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[SMALL_STR] for i in range(100)])
+    )
+    # ray_remote_args set 1 CPU, but ray_remote_args_fn overrides memory to 500
+    op = MapOperator.create(
+        _mul2_map_data_prcessor,
+        data_context=DataContext.get_current(),
+        input_op=input_op,
+        name="TestMapper",
+        compute_strategy=TaskPoolStrategy(),
+        ray_remote_args={"num_cpus": 1},
+        ray_remote_args_fn=lambda: {"memory": 500},
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    assert op.current_logical_usage() == ExecutionResources(cpu=0, gpu=0, memory=0)
+
+    op.add_input(input_op.get_next(), 0)
+    op.add_input(input_op.get_next(), 0)
+    # Should reflect actual dynamic resources: 2 tasks * (1 cpu, 500 memory)
+    assert op.current_logical_usage() == ExecutionResources(cpu=2, gpu=0, memory=1000)
+
+    run_op_tasks_sync(op)
+    assert op.current_logical_usage() == ExecutionResources(cpu=0, gpu=0, memory=0)
 
 
 def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
@@ -253,14 +281,14 @@ def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
         compute_strategy=TaskPoolStrategy(),
         min_rows_per_bundle=3,
     )
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
 
     assert op.current_logical_usage() == ExecutionResources(cpu=0, gpu=0, memory=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
-    # No tasks running yet, so pending task outputs is 0.
-    assert op.metrics.obj_store_mem_pending_task_outputs == 0
+    # No tasks running yet, so pending task outputs is None.
+    assert op.metrics.obj_store_mem_pending_task_outputs is None
 
     op.add_input(input_op.get_next(), 0)
     # No tasks submitted yet due to bundling.
@@ -268,8 +296,8 @@ def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     assert op.metrics.obj_store_mem_internal_inqueue == pytest.approx(800, rel=0.5)
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
-    # No tasks running yet, so pending task outputs is 0.
-    assert op.metrics.obj_store_mem_pending_task_outputs == 0
+    # No tasks running yet, so pending task outputs is None.
+    assert op.metrics.obj_store_mem_pending_task_outputs is None
 
     op.add_input(input_op.get_next(), 0)
     # No tasks submitted yet due to bundling.
@@ -277,8 +305,8 @@ def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     assert op.metrics.obj_store_mem_internal_inqueue == pytest.approx(1600, rel=0.5)
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
-    # No tasks running yet, so pending task outputs is 0.
-    assert op.metrics.obj_store_mem_pending_task_outputs == 0
+    # No tasks running yet, so pending task outputs is None.
+    assert op.metrics.obj_store_mem_pending_task_outputs is None
 
     op.add_input(input_op.get_next(), 0)
     # Task has now been submitted since we've met the minimum bundle size.
@@ -286,11 +314,8 @@ def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == pytest.approx(2400, rel=0.5)
-    # No sample available yet, uses fallback estimate: 1 task * per_task_output.
-    assert (
-        op.metrics.obj_store_mem_pending_task_outputs
-        == 1 * op.data_context.target_max_block_size * MAX_SAFE_BLOCK_SIZE_FACTOR
-    )
+    # No sample available yet, so pending task outputs is None.
+    assert op.metrics.obj_store_mem_pending_task_outputs is None
 
 
 def test_actor_pool_scheduling(ray_start_10_cpus_shared, restore_data_context):
@@ -316,7 +341,7 @@ def test_actor_pool_scheduling(ray_start_10_cpus_shared, restore_data_context):
     )
 
     # NOTE: This is blocking, until actors are fully started up
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
 
     min_resource_usage, _ = op.min_max_resource_requirements()
     assert min_resource_usage == ExecutionResources(cpu=2, gpu=0, object_store_memory=0)
@@ -361,7 +386,7 @@ def test_actor_pool_scheduling(ray_start_10_cpus_shared, restore_data_context):
     assert op.num_active_tasks() == 4
 
     assert op._actor_pool.num_pending_actors() == 0
-    assert len(op._actor_pool.running_actors()) == 2
+    assert op._actor_pool.num_running_actors() == 2
 
     assert op.current_logical_usage() == ExecutionResources(cpu=2, gpu=0, memory=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
@@ -416,6 +441,34 @@ def test_actor_pool_scheduling(ray_start_10_cpus_shared, restore_data_context):
     assert op.metrics.obj_store_mem_pending_task_outputs == 0
 
 
+def test_actor_pool_resource_reporting_with_dynamic_remote_args(
+    ray_start_10_cpus_shared,
+):
+    """Test that current_logical_usage reflects dynamic resources from ray_remote_args_fn,
+    not just the statically defined ray_remote_args."""
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[SMALL_STR] for i in range(100)])
+    )
+    # ray_remote_args set 1 CPU, but ray_remote_args_fn overrides memory to 500
+    op = MapOperator.create(
+        _mul2_map_data_prcessor,
+        min_rows_per_bundle=None,
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        name="TestMapper",
+        compute_strategy=ActorPoolStrategy(min_size=2, max_size=2),  # Create two actors
+        ray_remote_args={"num_cpus": 1},
+        ray_remote_args_fn=lambda: {"memory": 500},
+    )
+
+    # Blocking until actors are fully started
+    op.start(ExecutionOptions(), noop_counter())
+    run_op_tasks_sync(op, only_existing=True)
+
+    # Should reflect dynamic resources: 2 actors * (1 cpu, 500 memory)
+    assert op.current_logical_usage() == ExecutionResources(cpu=2, gpu=0, memory=1000)
+
+
 def test_actor_pool_scheduling_with_bundling(
     ray_start_10_cpus_shared, restore_data_context
 ):
@@ -439,7 +492,7 @@ def test_actor_pool_scheduling_with_bundling(
     )
 
     # NOTE: This is blocking, until actor pool is fully started up
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
 
     min_resource_usage, _ = op.min_max_resource_requirements()
     assert min_resource_usage == ExecutionResources(cpu=2, gpu=0, object_store_memory=0)
@@ -465,7 +518,7 @@ def test_actor_pool_scheduling_with_bundling(
 
     # Assert all actors are running
     assert op._actor_pool.num_pending_actors() == 0
-    assert len(op._actor_pool.running_actors()) == 2
+    assert op._actor_pool.num_running_actors() == 2
 
     # Add inputs
     for i in range(MIN_ROWS_PER_BUNDLE - 1):
@@ -589,7 +642,7 @@ def test_limit_resource_reporting(ray_start_10_cpus_shared):
         make_ref_bundles([[SMALL_STR, SMALL_STR] for i in range(2)]),
     )  # Two two-row bundles
     op = LimitOperator(3, input_op, DataContext.get_current())
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
 
     assert op.current_logical_usage() == ExecutionResources(
         cpu=0, gpu=0, object_store_memory=0, memory=0
@@ -622,7 +675,7 @@ def test_output_splitter_resource_reporting(ray_start_10_cpus_shared):
         data_context=DataContext.get_current(),
         locality_hints=["0", "1"],
     )
-    op.start(ExecutionOptions(actor_locality_enabled=True))
+    op.start(ExecutionOptions(actor_locality_enabled=True), noop_counter())
 
     assert op.current_logical_usage() == ExecutionResources(
         cpu=0, gpu=0, object_store_memory=0, memory=0
@@ -657,6 +710,43 @@ def test_execution_resources_to_resource_dict():
         "object_store_memory": 3,
         "memory": 4,
     }
+
+
+def test_execution_resources_combine_sum_empty_reuses_zero():
+    # An empty fold returns the shared zero singleton instead of allocating.
+    assert ExecutionResources.combine_sum([]) is ExecutionResources.zero()
+    # Works for a one-shot generator (can't be len()'d or re-iterated).
+    assert ExecutionResources.combine_sum(iter([])) is ExecutionResources.zero()
+
+
+def test_execution_resources_combine_sum():
+    rs = [
+        ExecutionResources(cpu=1, gpu=2, object_store_memory=3, memory=4),
+        ExecutionResources(cpu=10, gpu=20, object_store_memory=30, memory=40),
+    ]
+    expected = ExecutionResources(cpu=11, gpu=22, object_store_memory=33, memory=44)
+    assert ExecutionResources.combine_sum(rs) == expected
+    # Same result from a one-shot generator.
+    assert ExecutionResources.combine_sum(r for r in rs) == expected
+
+
+def test_execution_resources_combine():
+    rs = [
+        ExecutionResources(cpu=1, gpu=5, object_store_memory=3, memory=40),
+        ExecutionResources(cpu=10, gpu=2, object_store_memory=30, memory=4),
+    ]
+    # Per-dimension fold with an arbitrary float op.
+    assert ExecutionResources.combine(rs, operator.add) == ExecutionResources(
+        11, 7, 33, 44
+    )
+    assert ExecutionResources.combine(rs, max) == ExecutionResources(10, 5, 30, 40)
+    assert ExecutionResources.combine(rs, min) == ExecutionResources(1, 2, 3, 4)
+    # Single-pass over a one-shot generator.
+    assert ExecutionResources.combine((r for r in rs), max) == ExecutionResources(
+        10, 5, 30, 40
+    )
+    # Empty -> None (no identity to seed a general fn with).
+    assert ExecutionResources.combine([], operator.add) is None
 
 
 if __name__ == "__main__":

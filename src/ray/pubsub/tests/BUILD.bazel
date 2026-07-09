@@ -6,8 +6,9 @@ ray_cc_test(
     srcs = ["publisher_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/pubsub:publisher",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -20,7 +21,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/pubsub:subscriber",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -30,6 +30,8 @@ ray_cc_test(
     srcs = ["pubsub_integration_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/asio:io_service_pool",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:grpc_util",
         "//src/ray/protobuf:pubsub_cc_grpc",
         "//src/ray/pubsub:publisher",
@@ -37,7 +39,6 @@ ray_cc_test(
         "//src/ray/util:network_util",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -55,6 +56,5 @@ ray_cc_test(
         "//src/ray/rpc/authentication:authentication_token",
         "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/util:env",
-        "@com_google_googletest//:gtest_main",
     ],
 )

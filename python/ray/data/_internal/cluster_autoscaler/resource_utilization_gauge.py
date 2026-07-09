@@ -17,10 +17,12 @@ class ClusterUtil:
 
     def __post_init__(self):
         # If we overcommit tasks, the logical utilization can exceed 1.0.
-        assert math.isfinite(self.cpu) and 0 <= self.cpu
-        assert math.isfinite(self.gpu) and 0 <= self.gpu
-        assert math.isfinite(self.memory) and 0 <= self.memory
-        assert math.isfinite(self.object_store_memory) and 0 <= self.object_store_memory
+        assert math.isfinite(self.cpu) and 0 <= self.cpu, self.cpu
+        assert math.isfinite(self.gpu) and 0 <= self.gpu, self.gpu
+        assert math.isfinite(self.memory) and 0 <= self.memory, self.memory
+        assert (
+            math.isfinite(self.object_store_memory) and 0 <= self.object_store_memory
+        ), self.object_store_memory
 
 
 class ResourceUtilizationGauge(abc.ABC):
@@ -128,10 +130,12 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
 
     def get(self) -> ClusterUtil:
         """Get the average cluster utilization based on global usage / global limits."""
+        # Clamp to 0 to handle floating-point drift in the rolling average.
         return ClusterUtil(
-            cpu=self._cluster_cpu_util_calculator.get_average() or 0,
-            gpu=self._cluster_gpu_util_calculator.get_average() or 0,
-            memory=self._cluster_mem_util_calculator.get_average() or 0,
-            object_store_memory=self._cluster_obj_mem_util_calculator.get_average()
-            or 0,
+            cpu=max(0, self._cluster_cpu_util_calculator.get_average() or 0),
+            gpu=max(0, self._cluster_gpu_util_calculator.get_average() or 0),
+            memory=max(0, self._cluster_mem_util_calculator.get_average() or 0),
+            object_store_memory=max(
+                0, self._cluster_obj_mem_util_calculator.get_average() or 0
+            ),
         )

@@ -9,6 +9,7 @@ import random
 import re
 import time
 import uuid
+import zlib
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
@@ -18,13 +19,15 @@ import requests
 
 import ray
 import ray.util.serialization_addons
+from ray import cloudpickle
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.utils import get_random_alphanumeric_string, import_attr
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
-from ray.serve._private.common import RequestMetadata, ServeComponentType
+from ray.serve._private.common import DeploymentID, RequestMetadata, ServeComponentType
 from ray.serve._private.constants import (
     HTTP_PROXY_TIMEOUT,
+    SERVE_DEPLOYMENT_ACTOR_PREFIX,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
@@ -44,6 +47,52 @@ except ImportError:
 FILE_NAME_REGEX = r"[^\x20-\x7E]|[<>:\"/\\|?*]"
 
 MESSAGE_PACK_OFFSET = 9
+
+# Attribute set on functions/methods decorated with `@serve.multiplexed`. The
+# `__serve_multiplex_wrapper` is only created lazily on the first call, so this
+# marker is used to detect multiplexing statically (e.g. at replica startup)
+# without invoking user code.
+MULTIPLEXED_FUNCTION_MARKER_ATTR = "_serve_multiplexed_function"
+
+
+def _callable_uses_multiplexing(callable_obj: Any) -> bool:
+    """Whether `callable_obj` is or defines an `@serve.multiplexed` function.
+
+    Accepts a standalone function, a class, or a class instance, so it can be used
+    both at build time (where the deployment's `func_or_class` is available) and at
+    runtime (where an initialized instance is available).
+
+    For an instance it also inspects instance attributes, so multiplexing that is
+    wired up dynamically at init time (e.g. ``self._load_model =
+    serve.multiplexed(...)(fn)``) is detected. This case can only be caught at
+    runtime, since it is not visible on the class statically.
+    """
+    # NOTE: the marker is checked with `is True` rather than truthiness because some
+    # objects (e.g. `DeploymentHandle`, whose `__getattr__` returns a handle for any
+    # name) return a truthy value for an arbitrary attribute. The decorator always
+    # sets the marker to the literal `True`, so this stays exact without false
+    # positives.
+    def _has_marker(obj: Any) -> bool:
+        return getattr(obj, MULTIPLEXED_FUNCTION_MARKER_ATTR, False) is True
+
+    # Standalone function deployment decorated with `@serve.multiplexed`.
+    if _has_marker(callable_obj):
+        return True
+
+    # A class (or instance of one) with a method decorated with `@serve.multiplexed`.
+    klass = callable_obj if isinstance(callable_obj, type) else type(callable_obj)
+    for base in klass.__mro__:
+        for attr in base.__dict__.values():
+            if _has_marker(attr):
+                return True
+
+    # An instance that stored a multiplexed wrapper as an instance attribute.
+    if not isinstance(callable_obj, type):
+        for attr in getattr(callable_obj, "__dict__", {}).values():
+            if _has_marker(attr):
+                return True
+
+    return False
 
 
 def asyncio_grpc_exception_handler(loop, context):
@@ -78,6 +127,25 @@ def validate_ssl_config(
             "Both ssl_keyfile and ssl_certfile must be provided together "
             "to enable HTTPS."
         )
+
+
+def get_deployment_actor_name(
+    deployment_id: DeploymentID,
+    actor_name: str,
+    code_version: str,
+) -> str:
+    """Return the deterministic Ray actor name for a deployment-scoped actor.
+
+    The name is versioned by code_version to allow old and new replicas to
+    coexist during rollout (each uses its version's actors). Actors serve as
+    central state for replicas, so we version by code_version to ensure fresh
+    actors when a new code version is deployed.
+    """
+    base = (
+        f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}{deployment_id.app_name}"
+        f"::{deployment_id.name}"
+    )
+    return f"{base}::{code_version}::{actor_name}"
 
 
 GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR = RuntimeError(
@@ -295,7 +363,8 @@ def override_runtime_envs_except_env_vars(parent_env: Dict, child_env: Dict) -> 
         parent_env: The environment to inherit settings from.
         child_env: The environment with override settings.
 
-    Returns: A new dictionary containing the merged runtime_env settings.
+    Returns:
+        A new dictionary containing the merged runtime_env settings.
 
     Raises:
         TypeError: If a dictionary is not passed in for parent_env or child_env.
@@ -354,6 +423,13 @@ def require_packages(packages: List[str]):
         >>> func() # doctest: +SKIP
         ImportError: func requires ["numpy", "package_a"] but
         ["package_a"] are not available, please pip install them.
+
+    Args:
+        packages: The list of package names that must be importable when the
+            decorated function is invoked.
+
+    Returns:
+        A decorator that wraps the target function with the package check.
     """
 
     def decorator(func):
@@ -417,6 +493,19 @@ def check_obj_ref_ready_nowait(obj_ref: ObjectRef) -> bool:
     return len(finished) == 1
 
 
+def compress_metric_report(report: Any) -> bytes:
+    """Compress a metric report (HandleMetricReport or ReplicaMetricReport) for RPC.
+
+    Uses zlib level 9 (stdlib, no extra deps). ~75KB uncompressed -> ~5KB for 1000 replicas.
+    """
+    return zlib.compress(cloudpickle.dumps(report), level=9)
+
+
+def decompress_metric_report(compressed: bytes) -> Any:
+    """Decompress a metric report from RPC."""
+    return cloudpickle.loads(zlib.decompress(compressed))
+
+
 def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[object]:
     """Check if this is a method rather than a function.
 
@@ -425,11 +514,12 @@ def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[obj
     robust solution to this I was able to find. It would also be preferable
     to do this check when the decorator runs, rather than when the method is.
 
-    Returns the `self` object if it's a method call, else None.
-
     Arguments:
         args: arguments to the function/method call.
         func: the unbound function that was called.
+
+    Returns:
+        The ``self`` object if it's a method call, else ``None``.
     """
     if len(args) > 0:
         method = getattr(args[0], func.__name__, False)

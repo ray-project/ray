@@ -6,13 +6,13 @@ from packaging.version import parse as parse_version
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
-from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
     NodeIdStr,
 )
 from ray.data._internal.logging import configure_logging
+from ray.data._internal.random_config import RandomSeedConfig
 from ray.data.context import DataContext, DatasetContext
 from ray.data.dataset import (
     Dataset,
@@ -20,6 +20,9 @@ from ray.data.dataset import (
     SinkMode,
     ClickHouseTableSettings,
     SaveMode,
+)
+from ray.data._internal.logical.operators.n_ary_operator import (
+    MixStoppingCondition,
 )
 from ray.data.stats import DatasetSummary
 from ray.data.datasource import (
@@ -79,6 +82,13 @@ from ray.data.read_api import (  # noqa: F401
     read_unity_catalog,
     read_videos,
     read_webdataset,
+    read_zarr,
+)
+from ray.data.catalog import (
+    Catalog,
+    ReaderFormat,
+    ResolvedSource,
+    DatabricksUnityCatalog,
 )
 
 # Module-level cached global functions for callable classes. It needs to be defined here
@@ -137,7 +147,9 @@ __all__ = [
     "ExecutionOptions",
     "ExecutionResources",
     "FileShuffleConfig",
+    "MixStoppingCondition",
     "NodeIdStr",
+    "RandomSeedConfig",
     "ReadTask",
     "RowBasedFileDatasink",
     "Schema",
@@ -149,6 +161,7 @@ __all__ = [
     "from_items",
     "from_arrow",
     "from_arrow_refs",
+    "from_blocks",
     "from_mars",
     "from_modin",
     "from_numpy",
@@ -185,8 +198,12 @@ __all__ = [
     "read_tfrecords",
     "read_unity_catalog",
     "read_videos",
+    "read_zarr",
     "read_webdataset",
+    "Catalog",
+    "ReaderFormat",
+    "ResolvedSource",
+    "DatabricksUnityCatalog",
     "KafkaAuthConfig",
     "Preprocessor",
-    "TFXReadOptions",
 ]

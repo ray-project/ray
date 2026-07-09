@@ -1,5 +1,6 @@
 import abc
 import logging
+import pickle
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -17,11 +18,13 @@ from typing import (
 )
 
 import ray
-from .ref_bundle import RefBundle
+from .ref_bundle import BlockEntry, RefBundle
 from ray._raylet import ObjectRefGenerator
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
+    ActorPoolInfo,
     AutoscalingActorPool,
 )
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -35,6 +38,7 @@ from ray.data.context import DataContext
 
 if TYPE_CHECKING:
 
+    from ray.data._internal.execution.streaming_executor_state import OpState
     from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
@@ -47,6 +51,23 @@ METADATA_WAIT_TIMEOUT_S = 0.1
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
 Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
+
+
+@dataclass(frozen=True)
+class ObjectStoreUsage:
+    """Per-op object store accounting.
+
+    Attributes:
+        internal: Bytes held by this op's currently-running tasks
+            (outputs not yet yielded to the object store).
+        outputs: Bytes this op has produced that are still live in
+            the object store — its internal output queue, its
+            ``OpState`` external output queue, and the downstream
+            eligible ops' inputs.
+    """
+
+    internal: int
+    outputs: int
 
 
 class OpTask(ABC):
@@ -76,7 +97,6 @@ class OpTask(ABC):
         ...
 
     def _cancel(self, force: bool):
-
         is_actor_task = not self.get_task_id().actor_id().is_nil()
 
         ray.cancel(
@@ -115,6 +135,8 @@ class DataOpTask(OpTask):
         self,
         task_index: int,
         streaming_gen: ObjectRefGenerator,
+        block_ref_counter: BlockRefCounter,
+        producer_id: str,
         output_ready_callback: Callable[[RefBundle], None] = lambda bundle: None,
         task_done_callback: TaskDoneCallbackType = lambda exc, worker_stats, driver_stats: None,
         block_ready_callback: Callable[
@@ -130,6 +152,9 @@ class DataOpTask(OpTask):
         Args:
             task_index: Index of the task. Used for callbacks.
             streaming_gen: The streaming generator of this task. It should yield blocks.
+            block_ref_counter: The centralized block reference counter. on_block_produced
+                is called for each block yielded by this task.
+            producer_id: The id of the operator that produces the blocks from this task.
             output_ready_callback: The callback to call when a new RefBundle is output
                 from the generator.
             task_done_callback: The callback to call when the task is done.
@@ -152,6 +177,8 @@ class DataOpTask(OpTask):
         self._block_ready_callback = block_ready_callback
         self._metadata_ready_callback = metadata_ready_callback
         self._operator_name = operator_name
+        self._block_ref_counter: BlockRefCounter = block_ref_counter
+        self._producer_id: str = producer_id
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -175,7 +202,9 @@ class DataOpTask(OpTask):
         Args:
             max_bytes_to_read: Max bytes of blocks to read. If None, all available
                 will be read.
-        Returns: The number of blocks read.
+
+        Returns:
+            The number of blocks read.
         """
         bytes_read = 0
 
@@ -189,9 +218,24 @@ class DataOpTask(OpTask):
                     "block, it means there's an error in the implementation."
                 )
 
+                # Poll for the next block non-blockingly (timeout_s=0) while the
+                # task is still producing. Once the stream is exhausted, the same
+                # `_next_sync` call must `ray.get` the generator's return object
+                # to surface StopIteration / task errors. A 0 timeout there
+                # issues and then immediately cancels the pull of a
+                # plasma-resident return object on every poll, so it would never
+                # arrive and the task would never be observed as finished. In
+                # that end-of-stream case only, use a bounded blocking timeout so
+                # the return object can be pulled; on timeout (e.g. lost to a
+                # dead node) we still fall through and retry on a later call.
+                next_timeout_s = (
+                    METADATA_GET_TIMEOUT_S
+                    if self._streaming_gen._stream_exhausted()
+                    else 0
+                )
                 try:
                     self._pending_block_ref = self._streaming_gen._next_sync(
-                        timeout_s=0
+                        timeout_s=next_timeout_s
                     )
                 except StopIteration:
                     self._task_done_callback(
@@ -251,7 +295,7 @@ class DataOpTask(OpTask):
                 # block metadata to this node. So, if we set the timeout to 0, `ray.get`
                 # will timeout and possible cancel the download. To avoid this issue,
                 # we set the timeout to a small non-zero value.
-                meta_with_schema: "BlockMetadataWithSchema" = ray.get(
+                meta_with_schema_bytes: bytes = ray.get(
                     self._pending_meta_ref, timeout=METADATA_GET_TIMEOUT_S
                 )
             except ray.exceptions.GetTimeoutError:
@@ -267,10 +311,16 @@ class DataOpTask(OpTask):
                 )
                 break
 
+            meta_with_schema: "BlockMetadataWithSchema" = pickle.loads(
+                meta_with_schema_bytes
+            )
             meta = meta_with_schema.metadata
+            self._block_ref_counter.on_block_produced(
+                self._pending_block_ref, meta.size_bytes or 0, self._producer_id
+            )
             self._output_ready_callback(
                 RefBundle(
-                    [(self._pending_block_ref, meta)],
+                    [BlockEntry(self._pending_block_ref, meta)],
                     owns_blocks=True,
                     schema=meta_with_schema.schema,
                 ),
@@ -317,10 +367,13 @@ class MetadataOpTask(OpTask):
         task_done_callback: Callable[[], None],
         task_resource_bundle: Optional[ExecutionResources] = None,
     ):
-        """
+        """Initialize a metadata-only OpTask.
+
         Args:
+            task_index: Index identifying this task within its operator.
             object_ref: The ObjectRef of the task.
             task_done_callback: The callback to call when the task is done.
+            task_resource_bundle: Optional resource bundle reserved for this task.
         """
         super().__init__(task_index, task_resource_bundle)
         self._object_ref = object_ref
@@ -332,21 +385,6 @@ class MetadataOpTask(OpTask):
     def on_task_finished(self):
         """Callback when the task is finished."""
         self._task_done_callback()
-
-
-@dataclass
-class _ActorPoolInfo:
-    """Breakdown of the state of the actors used by the ``PhysicalOperator``"""
-
-    running: int
-    pending: int
-    restarting: int
-
-    def __str__(self):
-        return (
-            f"running={self.running}, restarting={self.restarting}, "
-            f"pending={self.pending}"
-        )
 
 
 class PhysicalOperator(Operator):
@@ -390,12 +428,27 @@ class PhysicalOperator(Operator):
         input_dependencies: List["PhysicalOperator"],
         data_context: DataContext,
         target_max_block_size_override: Optional[int] = None,
+        num_output_splits: int = 1,
     ):
-        super().__init__(name, input_dependencies)
+        self._name = name
+        self._input_dependencies = input_dependencies
         self._output_dependencies: List["PhysicalOperator"] = []
 
-        for x in input_dependencies:
-            assert isinstance(x, PhysicalOperator), x
+        for input in input_dependencies:
+            assert isinstance(
+                input, PhysicalOperator
+            ), "Must inherit from PhysicalOperator"
+
+            # Assert that number of output splits produced by this operator is not
+            # exceeded by its input deps
+            assert num_output_splits >= input.num_output_splits(), (
+                f"Number of output splits of the upstream may not exceed that one of the downstream: "
+                f"{num_output_splits} for {self}, {input.num_output_splits()} for {input}"
+            )
+
+        # Number of output splits this operator partitions its output by
+        self._num_output_splits = num_output_splits
+
         self._wire_output_deps(input_dependencies)
         self._inputs_complete = not input_dependencies
         self._output_block_size_option_override = OutputBlockSizeOption.of(
@@ -433,8 +486,29 @@ class PhysicalOperator(Operator):
     # Override the following methods to correct type hints.
 
     @property
+    def name(self) -> str:
+        return self._name
+
+    @property
     def input_dependencies(self) -> List["PhysicalOperator"]:
-        return super().input_dependencies  # type: ignore
+        return self._input_dependencies
+
+    @property
+    def dag_str(self) -> str:
+        """String representation of the whole physical DAG."""
+        if self.input_dependencies:
+            out_str = ", ".join([x.dag_str for x in self.input_dependencies])
+            out_str += " -> "
+        else:
+            out_str = ""
+        out_str += f"{self.__class__.__name__}[{self._name}]"
+        return out_str
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}[{self._name}]"
+
+    def __str__(self) -> str:
+        return repr(self)
 
     @property
     def output_dependencies(self) -> List["PhysicalOperator"]:
@@ -688,12 +762,26 @@ class PhysicalOperator(Operator):
         """
         return self._estimated_output_num_rows
 
-    def start(self, options: ExecutionOptions) -> None:
+    def num_output_splits(self) -> int:
+        """Returns the number of splits for this operator's output is partitioned into.
+
+        Most operators have a single output split.
+        """
+        return self._num_output_splits
+
+    def start(
+        self,
+        options: ExecutionOptions,
+        block_ref_counter: BlockRefCounter,
+    ) -> None:
         """Called by the executor when execution starts for an operator.
 
         Args:
             options: The global options used for the overall execution.
+            block_ref_counter: The executor-wide shared counter for tracking
+                object-store memory.
         """
+        self._block_ref_counter = block_ref_counter
         self._started = True
 
     def can_add_input(self) -> bool:
@@ -831,6 +919,41 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources.zero()
 
+    def estimate_object_store_usage(self, state: "OpState") -> ObjectStoreUsage:
+        """Returns the bytes this operator contributes to the global object
+        store budget. Subclasses may override this when their object store
+        footprint doesn't match the generic model.
+        """
+        # Operator's internal Object Store usage
+        mem_op_internal = self.metrics.obj_store_mem_pending_task_outputs or 0
+
+        # Operator's outputs' Object Store usage
+        op_outputs_bytes = (
+            # Internal output queue
+            self.metrics.obj_store_mem_internal_outqueue
+            +
+            # External output queue
+            state.output_queue_bytes()
+        )
+
+        # TODO fix ineligible ops: this needs to include usage of all of OS
+        #      for ineligible ops
+        #
+        # Outputs of this operator used downstream
+        used_op_outputs_bytes = sum(
+            (
+                downstream_op.metrics.obj_store_mem_internal_inqueue_for_input(
+                    downstream_op.input_dependencies.index(self)
+                )
+                + downstream_op.metrics.obj_store_mem_pending_task_inputs
+            )
+            for downstream_op in self.output_dependencies
+        )
+        return ObjectStoreUsage(
+            internal=int(mem_op_internal),
+            outputs=int(op_outputs_bytes + used_op_outputs_bytes),
+        )
+
     def running_logical_usage(self) -> ExecutionResources:
         """Returns the estimated running CPU, GPU, and memory usage of this operator,
         excluding object store memory.
@@ -917,18 +1040,30 @@ class PhysicalOperator(Operator):
         """Returns ```True``` if this operator can be fused with other operators."""
         return False
 
-    def update_resource_usage(self) -> None:
-        """Updates resource usage of this operator at runtime.
+    def refresh_state(self):
+        """Refreshes the state of the operator at runtime.
 
         This method will be called at runtime in each StreamingExecutor iteration.
-        Subclasses can override it to account for dynamic resource usage updates due to
-        restarting actors, retrying tasks, lost objects, etc.
+        Subclasses can override it to account for asynchronous updates, like restarting
+        actors, retrying tasks, or lost objects which are NOT transparent to the
+        StreamingExecutor.
+
+        TODO: Currently this method is synchronous. We should consider making this async,
+        or calling it in an asynchronous context.
         """
         pass
 
-    def get_actor_info(self) -> _ActorPoolInfo:
+    def get_actor_info(self) -> ActorPoolInfo:
         """Returns the current status of actors being used by the operator"""
-        return _ActorPoolInfo(running=0, pending=0, restarting=0)
+        return ActorPoolInfo(
+            running=0,
+            restarting=0,
+            pending=0,
+            active=0,
+            idle=0,
+            pool_utilization=0,
+            tasks_in_flight=0,
+        )
 
     def _cancel_active_tasks(self, force: bool):
         tasks: List[OpTask] = self.get_active_tasks()

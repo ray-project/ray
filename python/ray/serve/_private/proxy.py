@@ -29,10 +29,13 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     HEALTHY_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
+    RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
+    RAY_SERVE_HAPROXY_METRICS_ENABLED,
     RAY_SERVE_PROXY_GC_THRESHOLD,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
-    REQUEST_LATENCY_BUCKETS_MS,
+    RAY_SERVE_WORKER_PROXY_GRPC_PORT,
+    RAY_SERVE_WORKER_PROXY_HTTP_PORT,
     SERVE_CONTROLLER_NAME,
     SERVE_HTTP_REQUEST_ID_HEADER,
     SERVE_LOG_COMPONENT,
@@ -52,9 +55,12 @@ from ray.serve._private.grpc_util import (
 )
 from ray.serve._private.http_util import (
     MessageQueue,
+    _matches_session_id_header,
     configure_http_middlewares,
     convert_object_to_asgi_messages,
     get_http_response_status,
+    parse_disconnect_disabled_header,
+    parse_request_timeout_header,
     receive_http_body,
     send_http_response_on_exception,
     start_asgi_http_server,
@@ -63,6 +69,7 @@ from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
     configure_component_memory_profiler,
+    format_client_address,
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
@@ -78,6 +85,7 @@ from ray.serve._private.proxy_request_response import (
 )
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
+from ray.serve._private.request_ingress_metrics import RequestIngressMetrics
 from ray.serve._private.tracing_utils import (
     is_span_recording,
     set_http_span_attributes,
@@ -100,7 +108,6 @@ from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import EncodingType, LoggingConfig
-from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -157,65 +164,12 @@ class GenericProxy(ABC):
         self._is_head = is_head
 
         self.proxy_router = proxy_router
-        self.request_counter = metrics.Counter(
-            f"serve_num_{self.protocol.lower()}_requests",
-            description=f"The number of {self.protocol} requests processed.",
-            tag_keys=("route", "method", "application", "status_code"),
-        )
 
-        self.request_error_counter = metrics.Counter(
-            f"serve_num_{self.protocol.lower()}_error_requests",
-            description=f"The number of errored {self.protocol} responses.",
-            tag_keys=(
-                "route",
-                "error_code",
-                "method",
-                "application",
-            ),
-        )
-
-        self.deployment_request_error_counter = metrics.Counter(
-            f"serve_num_deployment_{self.protocol.lower()}_error_requests",
-            description=(
-                f"The number of errored {self.protocol} "
-                "responses returned by each deployment."
-            ),
-            tag_keys=(
-                "deployment",
-                "error_code",
-                "method",
-                "route",
-                "application",
-            ),
-        )
-
-        # log REQUEST_LATENCY_BUCKET_MS
-        logger.debug(f"REQUEST_LATENCY_BUCKET_MS: {REQUEST_LATENCY_BUCKETS_MS}")
-        self.processing_latency_tracker = metrics.Histogram(
-            f"serve_{self.protocol.lower()}_request_latency_ms",
-            description=(
-                f"The end-to-end latency of {self.protocol} requests "
-                f"(measured from the Serve {self.protocol} proxy)."
-            ),
-            boundaries=REQUEST_LATENCY_BUCKETS_MS,
-            tag_keys=(
-                "method",
-                "route",
-                "application",
-                "status_code",
-            ),
-        )
-
-        self.num_ongoing_requests_gauge = metrics.Gauge(
-            name=f"serve_num_ongoing_{self.protocol.lower()}_requests",
-            description=f"The number of ongoing requests in this {self.protocol} "
-            "proxy.",
-            tag_keys=("node_id", "node_ip_address"),
-        ).set_default_tags(
-            {
-                "node_id": node_id,
-                "node_ip_address": node_ip_address,
-            }
+        self._proxy_metrics = RequestIngressMetrics(
+            self.protocol,
+            source="proxy",
+            node_id=node_id,
+            node_ip_address=node_ip_address,
         )
 
         # `self._ongoing_requests` is used to count the number of ongoing requests
@@ -293,6 +247,22 @@ class GenericProxy(ABC):
     ) -> ResponseGenerator:
         raise NotImplementedError
 
+    def _should_emit_request_ingress_metrics(self) -> bool:
+        """Whether this proxy emits the RequestIngressMetrics family itself.
+
+        In HAProxy mode (with HAProxy metrics enabled), this proxy runs as the
+        head-node fallback behind HAProxy. HAProxy already counts every request
+        it forwards -- including the ones it routes to this fallback -- from its
+        per-request log datagrams, so emitting here too would double-count HTTP
+        ingress metrics. gRPC is not proxied by HAProxy, so the fallback proxy
+        still emits gRPC.
+        """
+        return not (
+            RAY_SERVE_ENABLE_HA_PROXY
+            and RAY_SERVE_HAPROXY_METRICS_ENABLED
+            and self.protocol == RequestProtocol.HTTP
+        )
+
     def _ongoing_requests_start(self):
         """Ongoing requests start.
 
@@ -302,7 +272,8 @@ class GenericProxy(ABC):
         alive while draining requests, so they are not dropped unintentionally.
         """
         self._ongoing_requests += 1
-        self.num_ongoing_requests_gauge.set(self._ongoing_requests)
+        if self._should_emit_request_ingress_metrics():
+            self._proxy_metrics.set_num_ongoing_requests(self._ongoing_requests)
 
     def _ongoing_requests_end(self):
         """Ongoing requests end.
@@ -311,7 +282,8 @@ class GenericProxy(ABC):
         signaling that the node can be downscaled safely.
         """
         self._ongoing_requests -= 1
-        self.num_ongoing_requests_gauge.set(self._ongoing_requests)
+        if self._should_emit_request_ingress_metrics():
+            self._proxy_metrics.set_num_ongoing_requests(self._ongoing_requests)
 
     def _setup_proxy_tracing(
         self,
@@ -509,6 +481,11 @@ class GenericProxy(ABC):
                 self._ongoing_requests_end()
 
         latency_ms = (time.time() - start_time) * 1000.0
+        status_code = (
+            status.code.name
+            if self.protocol == RequestProtocol.GRPC
+            else str(status.code)
+        )
         if response_handler_info.should_record_access_log:
             request_context = ray.serve.context._get_serve_request_context()
             self._access_log_context[SERVE_LOG_ROUTE] = request_context.route
@@ -517,47 +494,22 @@ class GenericProxy(ABC):
                 access_log_msg(
                     method=proxy_request.method,
                     route=request_context.route,
-                    status=str(status.code),
+                    status=status_code,
                     latency_ms=latency_ms,
+                    client=format_client_address(proxy_request.client),
                 ),
                 extra=self._access_log_context,
             )
 
-        self.request_counter.inc(
-            tags={
-                "route": response_handler_info.metadata.route,
-                "method": proxy_request.method,
-                "application": response_handler_info.metadata.application_name,
-                "status_code": str(status.code),
-            }
-        )
-
-        self.processing_latency_tracker.observe(
-            latency_ms,
-            tags={
-                "route": response_handler_info.metadata.route,
-                "method": proxy_request.method,
-                "application": response_handler_info.metadata.application_name,
-                "status_code": str(status.code),
-            },
-        )
-        if status.is_error:
-            self.request_error_counter.inc(
-                tags={
-                    "route": response_handler_info.metadata.route,
-                    "method": proxy_request.method,
-                    "application": response_handler_info.metadata.application_name,
-                    "error_code": str(status.code),
-                }
-            )
-            self.deployment_request_error_counter.inc(
-                tags={
-                    "route": response_handler_info.metadata.route,
-                    "method": proxy_request.method,
-                    "application": response_handler_info.metadata.application_name,
-                    "error_code": str(status.code),
-                    "deployment": response_handler_info.metadata.deployment_name,
-                }
+        if self._should_emit_request_ingress_metrics():
+            self._proxy_metrics.record_request(
+                route=response_handler_info.metadata.route,
+                method=proxy_request.method,
+                application=response_handler_info.metadata.application_name,
+                status_code=status_code,
+                latency_ms=latency_ms,
+                is_error=status.is_error,
+                deployment_name=response_handler_info.metadata.deployment_name,
             )
 
     @abstractmethod
@@ -822,6 +774,7 @@ class gRPCProxy(GenericProxy):
         handle.
         """
         multiplexed_model_id = proxy_request.multiplexed_model_id
+        session_id = proxy_request.session_id
         request_id = proxy_request.request_id
         if not request_id:
             request_id = generate_request_id()
@@ -830,6 +783,7 @@ class gRPCProxy(GenericProxy):
         handle = handle.options(
             stream=proxy_request.stream,
             multiplexed_model_id=multiplexed_model_id,
+            session_id=session_id,
             method_name=proxy_request.method_name,
         )
 
@@ -839,7 +793,9 @@ class gRPCProxy(GenericProxy):
             "_internal_request_id": internal_request_id,
             "app_name": app_name,
             "multiplexed_model_id": multiplexed_model_id,
+            "session_id": session_id,
             "grpc_context": proxy_request.ray_serve_grpc_context,
+            "_client": proxy_request.client,
         }
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(**request_context_info)
@@ -1223,12 +1179,23 @@ class HTTPProxy(GenericProxy):
             "app_name": app_name,
             "_internal_request_id": internal_request_id,
             "is_http_request": True,
+            "_client": format_client_address(proxy_request.client),
         }
         for key, value in proxy_request.headers:
-            if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
+            # Normalize the header key: lowercase and replace hyphens with
+            # underscores so that both "serve_multiplexed_model_id" and
+            # "serve-multiplexed-model-id" (the form produced by proxies such
+            # as nginx / AWS API Gateway that convert underscores to hyphens)
+            # are recognised correctly.
+            normalized_key = key.decode().lower().replace("-", "_")
+            if normalized_key == SERVE_MULTIPLEXED_MODEL_ID:
                 multiplexed_model_id = value.decode()
                 handle = handle.options(multiplexed_model_id=multiplexed_model_id)
                 request_context_info["multiplexed_model_id"] = multiplexed_model_id
+            elif _matches_session_id_header(key.decode()):
+                session_id = value.decode()
+                handle = handle.options(session_id=session_id)
+                request_context_info["session_id"] = session_id
             if key.decode() == SERVE_HTTP_REQUEST_ID_HEADER:
                 request_context_info["request_id"] = value.decode()
         ray.serve.context._serve_request_context.set(
@@ -1336,10 +1303,20 @@ class HTTPProxy(GenericProxy):
             self.proxy_asgi_receive(proxy_request.receive, receive_queue)
         )
 
+        # Per-request headers override the global HTTPOptions timeout and disconnect
+        # policy, enabling HAProxy (or other callers) to pass per-request hints.
+        request_headers = dict(proxy_request.headers)
+        request_timeout_s = parse_request_timeout_header(
+            request_headers, self.request_timeout_s
+        )
+        request_disconnect_disabled = parse_disconnect_disabled_header(request_headers)
+
         response_generator = ProxyResponseGenerator(
             handle.remote(handle_arg_bytes),
-            timeout_s=self.request_timeout_s,
-            disconnected_task=proxy_asgi_receive_task,
+            timeout_s=request_timeout_s,
+            disconnected_task=(
+                None if request_disconnect_disabled else proxy_asgi_receive_task
+            ),
             result_callback=result_callback,
         )
 
@@ -1397,9 +1374,11 @@ class HTTPProxy(GenericProxy):
                     yield asgi_message
                     response_started = True
         except BaseException as e:
-            status = get_http_response_status(e, self.request_timeout_s, request_id)
+            error_status = get_http_response_status(e, request_timeout_s, request_id)
+            if status is None:
+                status = error_status
             for asgi_message in send_http_response_on_exception(
-                status, response_started
+                error_status, response_started
             ):
                 yield asgi_message
             exc = e
@@ -1446,6 +1425,23 @@ class HTTPProxy(GenericProxy):
         # The status code should always be set.
         assert status is not None
         yield status
+
+
+def apply_per_node_port_overrides(
+    http_options: HTTPOptions, grpc_options: gRPCOptions, is_head: bool
+) -> None:
+    """Override this proxy's HTTP and gRPC bind ports from the per-node env knobs.
+
+    Worker proxies bind RAY_SERVE_WORKER_PROXY_HTTP_PORT and
+    RAY_SERVE_WORKER_PROXY_GRPC_PORT when set. The head node is exempt so its
+    configured ports and the fallback proxy stay intact.
+    """
+    if is_head:
+        return
+    if RAY_SERVE_WORKER_PROXY_HTTP_PORT is not None:
+        http_options.port = RAY_SERVE_WORKER_PROXY_HTTP_PORT
+    if RAY_SERVE_WORKER_PROXY_GRPC_PORT is not None:
+        grpc_options.port = RAY_SERVE_WORKER_PROXY_GRPC_PORT
 
 
 class ProxyActorInterface(ABC):
@@ -1615,6 +1611,9 @@ class ProxyActor(ProxyActorInterface):
             logging_config=logging_config,
         )
 
+        is_head = self._node_id == get_head_node_id()
+        apply_per_node_port_overrides(http_options, grpc_options, is_head)
+
         self._grpc_options = grpc_options
         self._http_options = configure_http_middlewares(http_options)
         grpc_enabled = is_grpc_enabled(self._grpc_options)
@@ -1626,6 +1625,7 @@ class ProxyActor(ProxyActorInterface):
                 LongPollNamespace.ROUTE_TABLE: self._update_routes_in_proxies,
             },
             call_in_event_loop=event_loop,
+            client_id=f"{type(self).__name__}:{ray.get_runtime_context().get_actor_id()}",
         )
 
         try:
@@ -1681,7 +1681,6 @@ class ProxyActor(ProxyActorInterface):
                 "serve_access_log": True,
             }
 
-        is_head = self._node_id == get_head_node_id()
         self.proxy_router = ProxyRouter(get_proxy_handle)
         self.http_proxy = HTTPProxy(
             node_id=self._node_id,
@@ -1784,14 +1783,16 @@ class ProxyActor(ProxyActorInterface):
         Raises any exceptions that occur setting up the HTTP or gRPC server.
         """
         try:
-            self._running_http_server_task = await self._start_http_server_task
+            # The proxy has its own draining; the returned server object is
+            # unused.
+            self._running_http_server_task, _ = await self._start_http_server_task
         except Exception as e:
             logger.exception("Failed to start proxy HTTP server.")
             raise e from None
 
         try:
             if self._start_grpc_server_task is not None:
-                self._running_grpc_server_task = await self._start_grpc_server_task
+                self._running_grpc_server_task, _ = await self._start_grpc_server_task
         except Exception as e:
             logger.exception("Failed to start proxy gRPC server.")
             raise e from None

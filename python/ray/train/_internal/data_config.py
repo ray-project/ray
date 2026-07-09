@@ -97,7 +97,7 @@ class DataConfig:
             world_size: The number of Train workers in total.
             worker_handles: The actor handles of the Train workers.
             worker_node_ids: The node ids of the Train workers.
-            kwargs: Forwards compatibility placeholder.
+            **kwargs: Forwards compatibility placeholder.
 
         Returns:
             A list of dataset splits for each worker. The size of the list must be
@@ -124,15 +124,14 @@ class DataConfig:
             execution_options = self._get_execution_options(name)
 
             if execution_options.is_resource_limits_default():
-                # If "resource_limits" is not overridden by the user,
-                # add training-reserved resources to Data's exclude_resources.
-                execution_options.exclude_resources = (
-                    execution_options.exclude_resources.add(
-                        ExecutionResources(
-                            cpu=self._num_train_cpus, gpu=self._num_train_gpus
+                if not self._scaling_policy_reserves_train_resources():
+                    execution_options.exclude_resources = (
+                        execution_options.exclude_resources.add(
+                            ExecutionResources(
+                                cpu=self._num_train_cpus, gpu=self._num_train_gpus
+                            )
                         )
                     )
-                )
 
             ds = ds.copy(ds)
             ds.context.execution_options = execution_options
@@ -149,6 +148,16 @@ class DataConfig:
                     output[i][name] = ds.iterator()
 
         return output
+
+    @classmethod
+    def _scaling_policy_reserves_train_resources(cls) -> bool:
+        """True iff Ray Train V2's ScalingPolicy will register training resources
+        with the AutoscalingCoordinator for this run.
+
+        """
+        from ray.train.v2._internal.constants import is_v2_enabled
+
+        return is_v2_enabled()
 
     @staticmethod
     def default_ingest_options() -> "ExecutionOptions":

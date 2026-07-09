@@ -11,7 +11,7 @@ from ray.tune import (
 )
 from ray.tune.experiment import Experiment
 from ray.tune.experiment.trial import ExportFormat, Trial
-from ray.tune.logger import LegacyLoggerCallback, Logger
+from ray.tune.logger import LoggerCallback
 from ray.tune.result import TIMESTEPS_TOTAL
 
 
@@ -169,14 +169,14 @@ class RunExperimentTest(unittest.TestCase):
         """Does not create CSV/JSON logger callbacks automatically"""
         os.environ["TUNE_DISABLE_AUTO_CALLBACK_LOGGERS"] = "1"
 
-        class CustomLogger(Logger):
-            def on_result(self, result):
-                with open(os.path.join(self.logdir, "test.log"), "w") as f:
+        class CustomLoggerCallback(LoggerCallback):
+            def log_trial_result(self, iteration, trial, result):
+                with open(os.path.join(trial.local_path, "test.log"), "w") as f:
                     f.write("hi")
 
         [trial] = run_experiments(
             {"foo": {"run": "f1", "stop": {"training_iteration": 1}}},
-            callbacks=[LegacyLoggerCallback(logger_classes=[CustomLogger])],
+            callbacks=[CustomLoggerCallback()],
         )
         self.assertTrue(os.path.exists(os.path.join(trial.local_path, "test.log")))
         self.assertFalse(os.path.exists(os.path.join(trial.local_path, "params.json")))
@@ -188,7 +188,6 @@ class RunExperimentTest(unittest.TestCase):
 
         [trial] = run_experiments(
             {"foo": {"run": "f1", "stop": {"training_iteration": 1}}},
-            callbacks=[LegacyLoggerCallback(logger_classes=[])],
         )
         self.assertFalse(os.path.exists(os.path.join(trial.local_path, "params.json")))
 
@@ -197,26 +196,20 @@ class RunExperimentTest(unittest.TestCase):
         if "TUNE_DISABLE_AUTO_CALLBACK_LOGGERS" in os.environ:
             del os.environ["TUNE_DISABLE_AUTO_CALLBACK_LOGGERS"]
 
-        class CustomLogger(Logger):
-            def on_result(self, result):
-                with open(os.path.join(self.logdir, "test.log"), "w") as f:
+        class CustomLoggerCallback(LoggerCallback):
+            def log_trial_result(self, iteration, trial, result):
+                with open(os.path.join(trial.local_path, "test.log"), "w") as f:
                     f.write("hi")
 
         [trial] = run_experiments(
             {"foo": {"run": "f1", "stop": {"training_iteration": 1}}},
-            callbacks=[LegacyLoggerCallback(logger_classes=[CustomLogger])],
+            callbacks=[CustomLoggerCallback()],
         )
         self.assertTrue(os.path.exists(os.path.join(trial.local_path, "test.log")))
         self.assertTrue(os.path.exists(os.path.join(trial.local_path, "params.json")))
 
         [trial] = run_experiments(
             {"foo": {"run": "f1", "stop": {"training_iteration": 1}}}
-        )
-        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "params.json")))
-
-        [trial] = run_experiments(
-            {"foo": {"run": "f1", "stop": {"training_iteration": 1}}},
-            callbacks=[LegacyLoggerCallback(logger_classes=[])],
         )
         self.assertTrue(os.path.exists(os.path.join(trial.local_path, "params.json")))
 

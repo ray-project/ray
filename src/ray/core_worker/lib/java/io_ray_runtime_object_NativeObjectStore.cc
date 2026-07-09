@@ -31,8 +31,7 @@ Status PutSerializedObject(JNIEnv *env,
                            jobject obj,
                            ObjectID object_id,
                            ObjectID *out_object_id,
-                           bool pin_object = true,
-                           const std::unique_ptr<rpc::Address> &owner_address = nullptr) {
+                           bool pin_object = true) {
   auto native_ray_object = JavaNativeRayObjectToNativeRayObject(env, obj);
   RAY_CHECK(native_ray_object != nullptr);
   size_t data_size = 0;
@@ -52,8 +51,7 @@ Status PutSerializedObject(JNIEnv *env,
         data_size,
         nested_ids,
         out_object_id,
-        &data,
-        /*owner_address=*/owner_address);
+        &data);
   } else {
     status = CoreWorkerProcess::GetCoreWorker().CreateExisting(
         native_ray_object->GetMetadata(),
@@ -75,14 +73,13 @@ Status PutSerializedObject(JNIEnv *env,
       memcpy(data->Data(), native_ray_object->GetData()->Data(), data->Size());
     }
     if (object_id.IsNil()) {
-      RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealOwned(
-          *out_object_id, pin_object, owner_address));
+      RAY_CHECK_OK(
+          CoreWorkerProcess::GetCoreWorker().SealOwned(*out_object_id, pin_object));
     } else {
       RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealExisting(
           *out_object_id,
           /* pin_object = */ false,
-          /* generator_id = */ ObjectID::Nil(),
-          owner_address));
+          /* generator_id = */ ObjectID::Nil()));
     }
   }
   return Status::OK();
@@ -93,21 +90,14 @@ extern "C" {
 #endif
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_NativeRayObject_2_3B(
-    JNIEnv *env, jclass, jobject obj, jbyteArray serialized_owner_actor_address_bytes) {
+Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_NativeRayObject_2(
+    JNIEnv *env, jclass, jobject obj) {
   ObjectID object_id;
-  std::unique_ptr<rpc::Address> owner_address = nullptr;
-  if (serialized_owner_actor_address_bytes != nullptr) {
-    owner_address = std::make_unique<rpc::Address>();
-    owner_address->ParseFromString(
-        JavaByteArrayToNativeString(env, serialized_owner_actor_address_bytes));
-  }
   auto status = PutSerializedObject(env,
                                     obj,
                                     /*object_id=*/ObjectID::Nil(),
                                     /*out_object_id=*/&object_id,
-                                    /*pin_object=*/true,
-                                    /*owner_address=*/owner_address);
+                                    /*pin_object=*/true);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return IdToJavaByteArray<ObjectID>(env, object_id);
 }

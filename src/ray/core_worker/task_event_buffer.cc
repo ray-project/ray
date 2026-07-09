@@ -250,6 +250,11 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
         ray::LabelSelector(label_selector).ToStringMap();
   }
 
+  const auto &fallback_strategy = task_spec_->GetMessage().fallback_strategy();
+  if (fallback_strategy.options_size() > 0) {
+    definition_event_data.mutable_fallback_strategy()->CopyFrom(fallback_strategy);
+  }
+
   // Specific fields
   if constexpr (std::is_same_v<T, rpc::events::ActorTaskDefinitionEvent>) {
     definition_event_data.mutable_actor_func()->CopyFrom(
@@ -261,6 +266,9 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
         task_spec_->FunctionDescriptor()->GetMessage());
     definition_event_data.set_task_type(task_spec_->GetMessage().type());
     definition_event_data.set_task_name(task_spec_->GetName());
+  }
+  if (task_spec_->IsDetachedActor()) {
+    definition_event_data.set_is_detached_actor(true);
   }
 }
 
@@ -429,15 +437,24 @@ void TaskProfileEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
   // Using profile start time as the event generation timestamp
   google::protobuf::Timestamp timestamp = AbslTimeNanosToProtoTimestamp(start_time_);
 
-  // Populate Ray event base fields
-  auto &ray_event = ray_events_tuple.task_profile_event.emplace();
-  PopulateRpcRayEventBaseFields(ray_event, timestamp);
+  // Populate Ray event base fields only if not already populated
+  rpc::events::RayEvent *ray_event_ptr;
+  if (!ray_events_tuple.task_profile_event) {
+    auto &ray_event = ray_events_tuple.task_profile_event.emplace();
+    PopulateRpcRayEventBaseFields(ray_event, timestamp);
+    ray_event_ptr = &ray_event;
 
-  // Populate the task profile event
-  auto *task_profile_events = ray_event.mutable_task_profile_events();
-  task_profile_events->set_task_id(task_id_.Binary());
-  task_profile_events->set_job_id(job_id_.Binary());
-  task_profile_events->set_attempt_number(attempt_number_);
+    // Populate the task profile event base fields
+    auto *task_profile_events = ray_event_ptr->mutable_task_profile_events();
+    task_profile_events->set_task_id(task_id_.Binary());
+    task_profile_events->set_job_id(job_id_.Binary());
+    task_profile_events->set_attempt_number(attempt_number_);
+  } else {
+    ray_event_ptr = &ray_events_tuple.task_profile_event.value();
+  }
+
+  // Add this profile event to the events list
+  auto *task_profile_events = ray_event_ptr->mutable_task_profile_events();
   auto profile_events = task_profile_events->mutable_profile_events();
   profile_events->set_component_type(component_type_);
   profile_events->set_component_id(component_id_);
@@ -469,7 +486,7 @@ bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
       job_id,
       attempt_number,
       status,
-      /* timestamp */ absl::GetCurrentTimeNanos(),
+      /* timestamp */ clock_.NowUnixNanos(),
       /*is_actor_task_event=*/spec.IsActorTask(),
       session_name_,
       node_id_,
@@ -484,13 +501,15 @@ TaskEventBufferImpl::TaskEventBufferImpl(
     std::unique_ptr<gcs::GcsClient> gcs_client,
     std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client,
     std::string session_name,
-    const NodeID &node_id)
+    const NodeID &node_id,
+    ClockInterface &clock)
     : work_guard_(boost::asio::make_work_guard(io_service_)),
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
       gcs_client_(std::move(gcs_client)),
       event_aggregator_client_(std::move(event_aggregator_client)),
       session_name_(session_name),
-      node_id_(node_id) {}
+      node_id_(node_id),
+      clock_(clock) {}
 
 TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
 
@@ -571,7 +590,7 @@ void TaskEventBufferImpl::Stop() {
 
     bool WaitUntilIdle(absl::Duration timeout) override {
       absl::MutexLock lock(&buffer_->grpc_completion_mutex_);
-      auto deadline = absl::Now() + timeout;
+      auto deadline = buffer_->clock_.Now() + timeout;
       while (buffer_->gcs_grpc_in_progress_.load() > 0 ||
              buffer_->event_aggregator_grpc_in_progress_.load() > 0) {
         if (buffer_->grpc_completion_cv_.WaitWithDeadline(

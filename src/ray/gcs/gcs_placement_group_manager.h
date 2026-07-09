@@ -23,7 +23,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_placement_group.h"
@@ -34,6 +34,7 @@
 #include "ray/gcs/usage_stats_client.h"
 #include "ray/observability/metric_interface.h"
 #include "ray/observability/ray_event_recorder_interface.h"
+#include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/exponential_backoff.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -70,7 +71,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
           &placement_group_scheduling_latency_in_ms_histogram,
       ray::observability::MetricInterface &placement_group_count_gauge,
       ray::observability::RayEventRecorderInterface &ray_event_recorder,
-      const std::string &session_name);
+      const std::string &session_name,
+      ClockInterface &clock);
 
   ~GcsPlacementGroupManager() override = default;
 
@@ -235,7 +237,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
           &placement_group_scheduling_latency_in_ms_histogram,
       ray::observability::MetricInterface &placement_group_count_gauge,
       ray::observability::RayEventRecorderInterface &ray_event_recorder,
-      const std::string &session_name);
+      const std::string &session_name,
+      ClockInterface &clock);
 
  private:
   /// Push a placement group to pending queue.
@@ -368,6 +371,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
   ray::observability::MetricInterface
       &placement_group_scheduling_latency_in_ms_histogram_;
   ray::observability::MetricInterface &placement_group_count_gauge_;
+  ClockInterface &clock_;
 
   ray::observability::RayEventRecorderInterface &ray_event_recorder_;
   std::string session_name_;

@@ -131,6 +131,29 @@ class Partitioning:
             self._normalize_base_dir()
         return self._resolved_filesystem
 
+    def to_pyarrow(self) -> "pyarrow.dataset.Partitioning":
+        """Convert to a PyArrow dataset Partitioning.
+
+        Returns:
+            Equivalent ``pyarrow.dataset.Partitioning`` instance.
+
+        Raises:
+            ValueError: If the partition style is not supported.
+        """
+        import pyarrow.dataset as pds
+
+        schema = _partition_field_types_to_pa_schema(
+            self.field_names or [],
+            self.field_types or {},
+        )
+
+        if self.style == PartitionStyle.HIVE:
+            return pds.HivePartitioning(schema)
+        elif self.style == PartitionStyle.DIRECTORY:
+            return pds.DirectoryPartitioning(schema)
+        else:
+            raise ValueError(f"Unsupported partition style: {self.style}")
+
     def _normalize_base_dir(self):
         """Normalizes the partition base directory for compatibility with the
         given filesystem.
@@ -308,18 +331,35 @@ class PathPartitionParser:
             evaluator = NativeExpressionEvaluator(partition_table)
             result = evaluator.visit(predicate)
 
-            # Extract boolean result from array-like types
-            # Check for specific array types to avoid issues with strings (which are iterable)
-            if isinstance(result, (pa.Array, pa.ChunkedArray, np.ndarray)):
+            # Extract boolean result from array-like types.
+            # NOTE: We must use ``.as_py()`` for PyArrow scalars because
+            #       ``bool(pa.BooleanScalar(False))`` returns ``True`` (it
+            #       checks validity/not-null, not the boolean value).
+            if isinstance(result, (pa.Array, pa.ChunkedArray)):
+                assert (
+                    len(result) == 1
+                ), f"Result expected to be of length 1 (got {result})"
+                return bool(result[0].as_py())
+
+            if isinstance(result, np.ndarray):
+                assert (
+                    len(result) == 1
+                ), f"Result expected to be of length 1 (got {result})"
                 return bool(result[0])
 
             # Import pandas here to avoid circular dependencies
             import pandas as pd
 
             if isinstance(result, pd.Series):
+                assert (
+                    len(result) == 1
+                ), f"Result expected to be of length 1 (got {result})"
                 return bool(result.iloc[0])
 
-            # Scalar result (shouldn't happen with table evaluation, but handle conservatively)
+            # Scalar result
+            if isinstance(result, pa.Scalar):
+                return bool(result.as_py())
+
             return bool(result)
         except Exception:
             logger.debug(
@@ -526,6 +566,36 @@ class PathPartitionFilter:
     def parser(self) -> PathPartitionParser:
         """Returns the path partition parser for this filter."""
         return self._parser
+
+
+def _partition_field_types_to_pa_schema(
+    field_names: List[str],
+    field_types: Dict[str, PartitionDataType],
+) -> "pyarrow.Schema":
+    """Build a PyArrow schema from partition field names and Python types.
+
+    Args:
+        field_names: Ordered partition key names.
+        field_types: Mapping from field name to Python type. Fields not
+            present in the map default to ``str`` (``pa.string()``).
+
+    Returns:
+        A ``pyarrow.Schema`` with one field per partition key.
+    """
+    import pyarrow as pa
+
+    type_map = {
+        int: pa.int64(),
+        float: pa.float64(),
+        bool: pa.bool_(),
+        str: pa.string(),
+    }
+    fields = []
+    for name in field_names:
+        py_type: PartitionDataType = field_types.get(name, str)
+        pa_type = type_map.get(py_type, pa.string())
+        fields.append(pa.field(name, pa_type))
+    return pa.schema(fields)
 
 
 def _cast_value(value: str, data_type: PartitionDataType) -> Any:

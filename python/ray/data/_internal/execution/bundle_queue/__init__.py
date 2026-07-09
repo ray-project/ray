@@ -4,9 +4,11 @@ from .base import (
     BaseBundleQueue,
     QueueWithRemoval,
 )
+from .bundler import EstimateSize, ExactMultipleSize, RebundleQueue
 from .fifo import FIFOBundleQueue
 from .hash_link import HashLinkedQueue
 from .reordering import ReorderingBundleQueue
+from .thread_safe import ThreadSafeBundleQueue
 
 
 def create_bundle_queue() -> QueueWithRemoval:
@@ -16,8 +18,12 @@ def create_bundle_queue() -> QueueWithRemoval:
 __all__ = [
     "BaseBundleQueue",
     "create_bundle_queue",
+    "HashLinkedQueue",
+    "RebundleQueue",
+    "EstimateSize",
     "ReorderingBundleQueue",
     "FIFOBundleQueue",
+    "ExactMultipleSize",
     "QueueWithRemoval",
-    "HashLinkedQueue",
+    "ThreadSafeBundleQueue",
 ]

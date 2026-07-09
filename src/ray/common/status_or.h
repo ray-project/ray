@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <new>
 #include <stdexcept>
 #include <string_view>
 #include <type_traits>
@@ -201,8 +202,8 @@ class StatusOr {
   // REQUIRES: `this->ok() == true`, otherwise the behavior is undefined.
   //
   // Use `this->ok()` to verify that there is a current value.
-  T *operator->() & { return &data_; }
-  T *operator->() const & { return &data_; }
+  T *operator->() & { return std::launder(&data_); }
+  const T *operator->() const & { return std::launder(&data_); }
 
   // Returns a reference to the held value if `this->ok()`. Otherwise, throws
   // `std::runtime_error`.
@@ -236,13 +237,11 @@ class StatusOr {
   // Copy current value out if OK status, otherwise construct default value.
   T value_or_default() const & {
     static_assert(std::is_copy_constructible_v<T>, "T must by copy constructable");
-    if (ok()) return get();
-    return T{};
+    return ok() ? get() : T{};
   }
   T value_or_default() && {
     static_assert(std::is_copy_constructible_v<T>, "T must by copy constructable");
-    if (ok()) return std::move(get());
-    return T{};
+    return ok() ? std::move(get()) : T{};
   }
 
   static_assert(std::is_default_constructible_v<T>,
@@ -253,8 +252,8 @@ class StatusOr {
   std::string ToString() const { return status_.ToString(); }
 
  private:
-  T &get() { return data_; }
-  const T &get() const { return data_; }
+  T &get() { return *std::launder(&data_); }
+  const T &get() const { return *std::launder(&data_); }
 
   template <typename... Args>
   void MakeValue(Args &&...arg) {

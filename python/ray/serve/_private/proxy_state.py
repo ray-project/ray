@@ -1,7 +1,7 @@
 import asyncio
+import concurrent.futures
 import json
 import logging
-import os
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from typing import Dict, List, Optional, Set, Tuple, Type
@@ -34,7 +34,7 @@ from ray.serve._private.utils import (
     format_actor_name,
     is_grpc_enabled,
 )
-from ray.serve.config import DeploymentMode, HTTPOptions, gRPCOptions
+from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.schema import (
     LoggingConfig,
     ProxyDetails,
@@ -42,7 +42,6 @@ from ray.serve.schema import (
     Target,
 )
 from ray.util import metrics
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -164,7 +163,7 @@ class ActorProxyWrapper(ProxyWrapper):
         except ValueError:
             addr = build_address(http_options.host, http_options.port)
             logger.info(
-                f"Starting proxy on node '{node_id}' listening on '{addr}'.",
+                f"Starting proxy '{name}' on node '{node_id}' listening on '{addr}'.",
                 extra={"log_to_stderr": False},
             )
 
@@ -175,7 +174,7 @@ class ActorProxyWrapper(ProxyWrapper):
             lifetime="detached",
             max_concurrency=ASYNC_CONCURRENCY,
             max_restarts=0,
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: node_id},
             enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
         ).remote(
             http_options,
@@ -452,7 +451,7 @@ class ProxyState:
 
     def update_actor_details(self, **kwargs) -> None:
         """Updates _actor_details with passed in kwargs."""
-        details_kwargs = self._actor_details.dict()
+        details_kwargs = self._actor_details.model_dump()
         details_kwargs.update(kwargs)
         self._actor_details = ProxyDetails(**details_kwargs)
 
@@ -599,6 +598,7 @@ class ProxyStateManager:
         cluster_node_info_cache: ClusterNodeInfoCache,
         logging_config: LoggingConfig,
         grpc_options: Optional[gRPCOptions] = None,
+        proxy_location: Optional[ProxyLocation] = None,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
         actor_proxy_wrapper_class: Type[ProxyWrapper] = ActorProxyWrapper,
         timer: TimerBase = Timer(),
@@ -607,6 +607,7 @@ class ProxyStateManager:
         self.logging_config = logging_config
         self._http_options = http_options or HTTPOptions()
         self._grpc_options = grpc_options or gRPCOptions()
+        self._proxy_location = proxy_location
         self._proxy_states: Dict[NodeId, ProxyState] = dict()
         self._proxy_restart_counts: Dict[NodeId, int] = dict()
         self._head_node_id: str = head_node_id
@@ -658,6 +659,18 @@ class ProxyStateManager:
 
     def get_grpc_config(self) -> gRPCOptions:
         return self._grpc_options
+
+    def _resolved_proxy_location(self) -> ProxyLocation:
+        # `location` on HTTPOptions is a deprecated override; `proxy_location`
+        # is the authority. Default to EveryNode when neither is set.
+        return (
+            self._http_options.location
+            or self._proxy_location
+            or ProxyLocation.EveryNode
+        )
+
+    def get_proxy_location(self) -> ProxyLocation:
+        return self._resolved_proxy_location()
 
     def get_proxy_handles(self) -> Dict[str, ActorHandle]:
         handles = {
@@ -726,6 +739,9 @@ class ProxyStateManager:
 
         Args:
             protocol: Either "http" or "grpc"
+
+        Returns:
+            One ``Target`` per healthy proxy reachable on the requested protocol.
         """
         targets = []
         if protocol == RequestProtocol.HTTP:
@@ -784,9 +800,9 @@ class ProxyStateManager:
     def _get_target_nodes(self, proxy_nodes) -> List[Tuple[str, str, str]]:
         """Return the list of (node_id, ip_address) to deploy HTTP and gRPC servers
         on."""
-        location = self._http_options.location
+        location = self._resolved_proxy_location()
 
-        if location == DeploymentMode.NoServer:
+        if location == ProxyLocation.Disabled:
             return []
 
         target_nodes = [
@@ -795,7 +811,7 @@ class ProxyStateManager:
             if node_id in proxy_nodes
         ]
 
-        if location == DeploymentMode.HeadOnly:
+        if location == ProxyLocation.HeadOnly:
             nodes = [
                 (node_id, ip_address, instance_id)
                 for node_id, ip_address, instance_id in target_nodes
@@ -823,35 +839,11 @@ class ProxyStateManager:
     ) -> ProxyWrapper:
         """Helper to start or reuse existing proxy and wrap in the proxy actor wrapper.
 
-        Compute the HTTP port based on `TEST_WORKER_NODE_HTTP_PORT` env var and gRPC
-        port based on `TEST_WORKER_NODE_GRPC_PORT` env var. Passed all the required
-        variables into the proxy actor wrapper class and return the proxy actor wrapper.
+        Pass all the required variables into the proxy actor wrapper class and return
+        the proxy actor wrapper.
         """
         http_options = http_options or self._http_options
         grpc_options = grpc_options or self._grpc_options
-
-        if (
-            node_id != self._head_node_id
-            and os.getenv("TEST_WORKER_NODE_HTTP_PORT") is not None
-        ):
-            logger.warning(
-                f"`TEST_WORKER_NODE_HTTP_PORT` env var is set. "
-                f"Using it for worker node {node_id}."
-            )
-            http_options = deepcopy(http_options)
-            http_options.port = int(os.getenv("TEST_WORKER_NODE_HTTP_PORT"))
-
-        if (
-            node_id != self._head_node_id
-            and os.getenv("TEST_WORKER_NODE_GRPC_PORT") is not None
-        ):
-            logger.warning(
-                f"`TEST_WORKER_NODE_GRPC_PORT` env var is set. "
-                f"Using it for worker node {node_id}."
-                f"{int(os.getenv('TEST_WORKER_NODE_GRPC_PORT'))}"
-            )
-            grpc_options = deepcopy(grpc_options)
-            grpc_options.port = int(os.getenv("TEST_WORKER_NODE_GRPC_PORT"))
 
         return self._actor_proxy_wrapper_class(
             logging_config=self.logging_config,
@@ -872,7 +864,6 @@ class ProxyStateManager:
             and self._running_native_proxies
             and self._fallback_proxy_state is None
         ):
-            logger.info(f"Starting fallback proxy on head node '{node_id}'.")
             name = self._generate_actor_name(node_id=f"fallback-{node_id}")
 
             http_options = deepcopy(self._http_options)
@@ -990,21 +981,47 @@ def _try_set_exception(fut: asyncio.Future, e: Exception):
         fut.set_exception(e)
 
 
+def _propagate_concurrent_future_state(
+    source_fut: concurrent.futures.Future, dest_fut: asyncio.Future
+):
+    if dest_fut.done():
+        return
+
+    if source_fut.cancelled():
+        dest_fut.cancel()
+        return
+
+    exception = source_fut.exception()
+    if exception is not None:
+        dest_fut.set_exception(exception)
+        return
+
+    dest_fut.set_result(source_fut.result())
+
+
 def wrap_as_future(ref: ObjectRef, timeout_s: Optional[float] = None) -> asyncio.Future:
     loop = asyncio.get_running_loop()
+    source_fut = ref.future()
 
-    aio_fut = asyncio.wrap_future(ref.future())
+    if timeout_s is None:
+        return asyncio.wrap_future(source_fut)
 
-    if timeout_s is not None:
-        assert timeout_s >= 0, "Timeout value should be non-negative"
-        # Schedule handler to complete future exceptionally
-        timeout_handler = loop.call_later(
-            max(timeout_s, 0),
-            _try_set_exception,
-            aio_fut,
-            TimeoutError(f"Future cancelled after timeout {timeout_s}s"),
+    result_fut = loop.create_future()
+    source_fut.add_done_callback(
+        lambda fut: loop.call_soon_threadsafe(
+            _propagate_concurrent_future_state, fut, result_fut
         )
-        # Cancel timeout handler upon completion of the future
-        aio_fut.add_done_callback(lambda _: timeout_handler.cancel())
+    )
 
-    return aio_fut
+    assert timeout_s >= 0, "Timeout value should be non-negative"
+    # Apply timeout to an outer future so the wrapped future is only completed
+    # by asyncio's chaining callback.
+    timeout_handler = loop.call_later(
+        max(timeout_s, 0),
+        _try_set_exception,
+        result_fut,
+        TimeoutError(f"Future cancelled after timeout {timeout_s}s"),
+    )
+    result_fut.add_done_callback(lambda _: timeout_handler.cancel())
+
+    return result_fut

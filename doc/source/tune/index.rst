@@ -11,7 +11,6 @@ Ray Tune: Hyperparameter Tuning
     tutorials/overview
     examples/index
     faq
-    api/api
 
 .. image:: images/tune_overview.png
     :scale: 50%

@@ -22,6 +22,7 @@
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/grpc_service.h"
 #include "ray/core_worker/metrics.h"
+#include "ray/util/clock.h"
 #include "ray/util/mutex_protected.h"
 
 namespace ray {
@@ -152,6 +153,9 @@ class CoreWorkerProcessImpl {
   /// The various options.
   const CoreWorkerOptions options_;
 
+  /// Real-time clock used by the core worker and its subcomponents.
+  Clock clock_;
+
   /// The worker ID of this worker.
   const WorkerID worker_id_;
 
@@ -161,6 +165,15 @@ class CoreWorkerProcessImpl {
 
   /// Keeps the io_service_ alive.
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
+
+  /// Dedicated io_context for out-of-scope callbacks registered by users (e.g. Python).
+  instrumented_io_context object_freed_callback_service_{
+      /*enable_lag_probe=*/false,
+      /*running_on_single_thread=*/true};
+
+  /// Keeps object_freed_callback_service_ alive until explicitly stopped.
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      object_freed_callback_service_work_;
 
   /// Shared client call manager across all gRPC clients in the core worker process.
   /// This is used by the CoreWorker and the MetricsAgentClient.
@@ -179,6 +192,9 @@ class CoreWorkerProcessImpl {
   // Thread that runs a boost::asio service to process IO events.
   boost::thread io_thread_;
 
+  /// Thread that drains object_freed_callback_service_.
+  boost::thread object_freed_callback_thread_;
+
   /// The core worker instance of this worker process.
   MutexProtected<std::shared_ptr<CoreWorker>> core_worker_;
 
@@ -190,7 +206,7 @@ class CoreWorkerProcessImpl {
   std::unique_ptr<ray::stats::Gauge> total_lineage_bytes_gauge_;
   std::unique_ptr<ray::stats::Gauge> owned_objects_counter_;
   std::unique_ptr<ray::stats::Gauge> owned_objects_size_counter_;
-  std::unique_ptr<ray::stats::Histogram> scheduler_placement_time_ms_histogram_;
+  std::unique_ptr<ray::stats::PercentileMetric> scheduler_placement_time_percentile_ms_;
 };
 }  // namespace core
 }  // namespace ray
