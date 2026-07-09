@@ -49,7 +49,7 @@ TEST(PythonRayEventTest, TestSerializeDefinitionEvent) {
             rpc::events::RayEvent::SUBMISSION_JOB_DEFINITION_EVENT);
 
   // Serialize to RayEvent proto and verify nested message.
-  rpc::events::RayEvent ray_event = std::move(*event).Serialize();
+  rpc::events::RayEvent ray_event = std::move(*event).Serialize().value();
 
   EXPECT_EQ(ray_event.source_type(), rpc::events::RayEvent::GCS);
   EXPECT_EQ(ray_event.event_type(),
@@ -88,7 +88,7 @@ TEST(PythonRayEventTest, TestSerializeLifecycleEvent) {
       /*nested_event_field_number=*/
       rpc::events::RayEvent::kSubmissionJobLifecycleEventFieldNumber);
 
-  rpc::events::RayEvent ray_event = std::move(*event).Serialize();
+  rpc::events::RayEvent ray_event = std::move(*event).Serialize().value();
 
   ASSERT_TRUE(ray_event.has_submission_job_lifecycle_event());
   const auto &nested = ray_event.submission_job_lifecycle_event();
@@ -99,11 +99,91 @@ TEST(PythonRayEventTest, TestSerializeLifecycleEvent) {
   EXPECT_EQ(nested.state_transitions(0).message(), "Job started running");
 }
 
-TEST(PythonRayEventTest, TestSerializeInvalidFieldNumber) {
-  // Use an invalid field number — should log error but not crash.
+TEST(PythonRayEventDeathTest, TestInvalidFieldNumberCrashes) {
+  EXPECT_DEATH(
+      CreatePythonRayEvent(
+          /*source_type=*/static_cast<int>(rpc::events::RayEvent::GCS),
+          /*event_type=*/
+          static_cast<int>(rpc::events::RayEvent::SUBMISSION_JOB_DEFINITION_EVENT),
+          /*severity=*/static_cast<int>(rpc::events::RayEvent::INFO),
+          /*entity_id=*/"test-submission",
+          /*message=*/"",
+          /*session_name=*/"test-session",
+          /*serialized_event_data=*/"",
+          /*nested_event_field_number=*/9999),
+      "Invalid nested event field number");
+}
+
+TEST(PythonRayEventTest, TestExplicitEventIdIsPreserved) {
+  // When an explicit event_id is provided, Serialize() uses it verbatim. This is
+  // how upstream ids (e.g., a Kubernetes event uid) flow through unchanged.
   rpc::events::SubmissionJobDefinitionEvent def_event;
-  def_event.set_submission_id("test-submission");
   std::string serialized = def_event.SerializeAsString();
+  const std::string explicit_event_id = "upstream-k8s-uid-bytes";
+
+  auto event = CreatePythonRayEvent(
+      static_cast<int>(rpc::events::RayEvent::GCS),
+      static_cast<int>(rpc::events::RayEvent::SUBMISSION_JOB_DEFINITION_EVENT),
+      static_cast<int>(rpc::events::RayEvent::INFO),
+      /*entity_id=*/"test-submission",
+      /*message=*/"",
+      /*session_name=*/"test-session",
+      serialized,
+      rpc::events::RayEvent::kSubmissionJobDefinitionEventFieldNumber,
+      /*event_id=*/explicit_event_id,
+      /*timestamp_ns=*/0);
+  rpc::events::RayEvent ray_event = std::move(*event).Serialize().value();
+  EXPECT_EQ(ray_event.event_id(), explicit_event_id);
+}
+
+TEST(PythonRayEventTest, TestDefaultEventIdIsRandomAndNotEntityId) {
+  // Default event_id must not collide with entity_id — that was the anomaly vs. the
+  // other RayEventInterface subclasses, which use UniqueID::FromRandom().Binary().
+  rpc::events::SubmissionJobDefinitionEvent def_event;
+  std::string serialized = def_event.SerializeAsString();
+  const std::string entity_id = "test-submission";
+
+  auto event = CreatePythonRayEvent(
+      static_cast<int>(rpc::events::RayEvent::GCS),
+      static_cast<int>(rpc::events::RayEvent::SUBMISSION_JOB_DEFINITION_EVENT),
+      static_cast<int>(rpc::events::RayEvent::INFO),
+      entity_id,
+      /*message=*/"",
+      /*session_name=*/"test-session",
+      serialized,
+      rpc::events::RayEvent::kSubmissionJobDefinitionEventFieldNumber);
+  rpc::events::RayEvent ray_event = std::move(*event).Serialize().value();
+  EXPECT_FALSE(ray_event.event_id().empty());
+  EXPECT_NE(ray_event.event_id(), entity_id);
+}
+
+TEST(PythonRayEventTest, TestExplicitTimestampIsPreserved) {
+  rpc::events::SubmissionJobDefinitionEvent def_event;
+  std::string serialized = def_event.SerializeAsString();
+  // Pick a fixed non-zero nanosecond value well away from absl::Now().
+  const int64_t explicit_ts_ns = 1'700'000'000'000'000'000LL;
+
+  auto event = CreatePythonRayEvent(
+      static_cast<int>(rpc::events::RayEvent::GCS),
+      static_cast<int>(rpc::events::RayEvent::SUBMISSION_JOB_DEFINITION_EVENT),
+      static_cast<int>(rpc::events::RayEvent::INFO),
+      /*entity_id=*/"test-submission",
+      /*message=*/"",
+      /*session_name=*/"test-session",
+      serialized,
+      rpc::events::RayEvent::kSubmissionJobDefinitionEventFieldNumber,
+      /*event_id=*/"",
+      explicit_ts_ns);
+  rpc::events::RayEvent ray_event = std::move(*event).Serialize().value();
+  ASSERT_TRUE(ray_event.has_timestamp());
+  const int64_t got_ns =
+      ray_event.timestamp().seconds() * 1'000'000'000LL + ray_event.timestamp().nanos();
+  EXPECT_EQ(got_ns, explicit_ts_ns);
+}
+
+TEST(PythonRayEventTest, TestSerializeReturnsErrorOnParseFailure) {
+  // Random bytes that are not a valid SubmissionJobDefinitionEvent encoding.
+  const std::string garbage = "\xff\xff\xff\xff\xff";
 
   auto event = CreatePythonRayEvent(
       /*source_type=*/static_cast<int>(rpc::events::RayEvent::GCS),
@@ -113,19 +193,13 @@ TEST(PythonRayEventTest, TestSerializeInvalidFieldNumber) {
       /*entity_id=*/"test-submission",
       /*message=*/"",
       /*session_name=*/"test-session",
-      /*serialized_event_data=*/serialized,
-      /*nested_event_field_number=*/9999);  // Invalid field number
+      /*serialized_event_data=*/garbage,
+      /*nested_event_field_number=*/
+      rpc::events::RayEvent::kSubmissionJobDefinitionEventFieldNumber);
 
-  // Should not crash — just log an error and not set the nested field.
-  rpc::events::RayEvent ray_event = std::move(*event).Serialize();
-
-  // Common fields should still be set.
-  EXPECT_EQ(ray_event.source_type(), rpc::events::RayEvent::GCS);
-  EXPECT_EQ(ray_event.session_name(), "test-session");
-
-  // No nested event should be set.
-  EXPECT_FALSE(ray_event.has_submission_job_definition_event());
-  EXPECT_FALSE(ray_event.has_submission_job_lifecycle_event());
+  auto result = std::move(*event).Serialize();
+  EXPECT_TRUE(result.has_error());
+  EXPECT_TRUE(std::holds_alternative<StatusT::Invalid>(result.error()));
 }
 
 TEST(PythonRayEventTest, TestSupportsMerge) {

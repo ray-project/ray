@@ -21,11 +21,13 @@
 
 #include "gtest/gtest.h"
 #include "mock/ray/gcs_client/gcs_client.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/placement_group_util.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 
@@ -74,6 +76,7 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
   std::unique_ptr<raylet::NewPlacementGroupResourceManager>
       new_placement_group_resource_manager_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+  ray::Clock clock_;
   ray::observability::FakeGauge fake_gauge_;
   std::unique_ptr<gcs::MockGcsClient> gcs_client_;
   std::function<bool(scheduling::NodeID)> is_node_available_fn_;
@@ -90,11 +93,12 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
   void InitLocalAvailableResource(
       absl::flat_hash_map<std::string, double> &unit_resource) {
     cluster_resource_scheduler_ =
-        std::make_shared<ClusterResourceScheduler>(io_context,
+        std::make_shared<ClusterResourceScheduler>(PeriodicalRunner::Create(io_context),
                                                    scheduling::NodeID("local"),
                                                    unit_resource,
                                                    is_node_available_fn_,
-                                                   fake_gauge_);
+                                                   fake_gauge_,
+                                                   clock_);
     new_placement_group_resource_manager_ =
         std::make_unique<raylet::NewPlacementGroupResourceManager>(
             *cluster_resource_scheduler_);
@@ -584,8 +588,3 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleFailure) {
 }
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

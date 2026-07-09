@@ -39,6 +39,7 @@ def test_serve_deployment_processor(dtype_mapping):
         "app_name": app_name,
         "dtype_mapping": dtype_mapping,
         "should_continue_on_error": False,
+        "request_timeout_s": None,
     }
 
     assert "compute" in stage.map_batches_kwargs

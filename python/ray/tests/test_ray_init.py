@@ -358,5 +358,20 @@ def test_ray_init_with_runtime_env_as_object(
     assert "gcs://" in parsed_runtime_env["py_modules"][0]
 
 
+def test_shutdown_wait_for_processes(shutdown_only):
+    ray.init()
+    node = ray._private.worker._global_node
+    procs = [proc for _, proc in node.live_processes()]
+    assert procs, "ray.init() should have started subprocesses"
+
+    with unittest.mock.patch.object(
+        node, "kill_all_processes", wraps=node.kill_all_processes
+    ) as mock_kill:
+        ray.shutdown(wait_for_processes=True)
+
+    assert mock_kill.call_args.kwargs.get("wait") is True
+    assert all(proc.poll() is not None for proc in procs)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

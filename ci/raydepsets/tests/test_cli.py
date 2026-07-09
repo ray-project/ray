@@ -244,7 +244,7 @@ class TestCli(unittest.TestCase):
 
     def test_subset_with_expanded_depsettest_subset_with_expanded_depset(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir)
+            copy_data_to_tmpdir(tmpdir, ignore_patterns="test2.depsets.yaml")
             compile_depset = Depset(
                 name="compile_depset",
                 operation="compile",
@@ -497,6 +497,57 @@ class TestCli(unittest.TestCase):
                 "Invalid operation: invalid_op for depset invalid_op_depset in config test.depsets.yaml"
                 in str(e.exception)
             )
+
+    def test_build_graph_subset_missing_source_depset(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir, ignore_patterns="test2.depsets.yaml")
+            depset = Depset(
+                name="bad_subset",
+                operation="subset",
+                source_depset="nonexistent_depset",
+                requirements=["requirements_test.txt"],
+                output="requirements_compiled_bad_subset.txt",
+                config_name="test.depsets.yaml",
+            )
+            write_to_config_file(tmpdir, [depset], "test.depsets.yaml")
+            with self.assertRaises(ValueError) as e:
+                _create_test_manager(tmpdir)
+            assert "nonexistent_depset" in str(e.exception)
+            assert "does not exist" in str(e.exception)
+
+    def test_build_graph_expand_missing_depset(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir, ignore_patterns="test2.depsets.yaml")
+            depset = Depset(
+                name="bad_expand",
+                operation="expand",
+                depsets=["nonexistent_depset"],
+                requirements=["requirements_test.txt"],
+                output="requirements_compiled_bad_expand.txt",
+                config_name="test.depsets.yaml",
+            )
+            write_to_config_file(tmpdir, [depset], "test.depsets.yaml")
+            with self.assertRaises(ValueError) as e:
+                _create_test_manager(tmpdir)
+            assert "nonexistent_depset" in str(e.exception)
+            assert "does not exist" in str(e.exception)
+
+    def test_build_graph_relax_missing_source_depset(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir, ignore_patterns="test2.depsets.yaml")
+            depset = Depset(
+                name="bad_relax",
+                operation="relax",
+                source_depset="nonexistent_depset",
+                packages=["emoji"],
+                output="requirements_compiled_bad_relax.txt",
+                config_name="test.depsets.yaml",
+            )
+            write_to_config_file(tmpdir, [depset], "test.depsets.yaml")
+            with self.assertRaises(ValueError) as e:
+                _create_test_manager(tmpdir)
+            assert "nonexistent_depset" in str(e.exception)
+            assert "does not exist" in str(e.exception)
 
     def test_execute(self):
         with tempfile.TemporaryDirectory() as tmpdir:

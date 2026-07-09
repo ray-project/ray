@@ -11,6 +11,7 @@ from ray.train.v2._internal.execution.context import (
     TrainRunContext,
     get_train_context,
 )
+from ray.train.v2._internal.execution.preemption import PreemptionInfo
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group.worker import RayTrainWorker
 from ray.train.v2._internal.util import ObjectRefWrapper
@@ -68,6 +69,33 @@ def test_worker_finished_after_all_threads_finish(monkeypatch, created_nested_th
         assert queue_contents == ["nested"]
     else:
         assert queue_contents == ["main"]
+
+
+def test_mark_preempt_stores_info(monkeypatch):
+    """mark_preempt stores the signal in the worker's PreemptionContext."""
+    # Disable this to avoid TypeError from logging MagicMock
+    monkeypatch.setenv(ENABLE_WORKER_STRUCTURED_LOGGING_ENV_VAR, False)
+
+    worker = RayTrainWorker()
+    worker.init_train_context(
+        train_run_context=create_autospec(TrainRunContext, instance=True),
+        distributed_context=DistributedContext(
+            world_rank=0,
+            world_size=1,
+            local_rank=0,
+            local_world_size=1,
+            node_rank=0,
+        ),
+        synchronization_actor=create_autospec(ActorHandle, instance=True),
+        storage_context=create_autospec(StorageContext, instance=True),
+        worker_callbacks=[],
+        controller_actor=create_autospec(ActorHandle, instance=True),
+    )
+
+    info = PreemptionInfo(deadline_ms=30_000, preempted_node_to_ranks={"node-a": [0]})
+    worker.mark_preempt(info)
+
+    assert get_train_context().preemption_context.get() is info
 
 
 if __name__ == "__main__":

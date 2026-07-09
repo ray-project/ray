@@ -4,7 +4,10 @@ load("//bazel:python.bzl", "doctest")
 doctest(
     name = "py_doctest[train]",
     size = "large",
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "1",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     files = glob(
         ["**/*.py"],
         exclude = [
@@ -159,7 +162,10 @@ py_test(
     name = "tensorflow_quick_start",
     size = "medium",
     srcs = ["examples/tf/tensorflow_quick_start.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "1",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     main = "examples/tf/tensorflow_quick_start.py",
     tags = [
         "exclusive",
@@ -238,7 +244,10 @@ py_test(
     size = "medium",
     srcs = ["examples/tf/tensorflow_regression_example.py"],
     args = ["--smoke-test"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "1",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     main = "examples/tf/tensorflow_regression_example.py",
     tags = [
         "exclusive",
@@ -438,7 +447,10 @@ py_test(
     name = "test_examples",
     size = "large",
     srcs = ["tests/test_examples.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "1",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     tags = [
         "exclusive",
         "team:ml",
@@ -520,7 +532,10 @@ py_test(
     name = "test_gpu_examples",
     size = "large",
     srcs = ["tests/test_gpu_examples.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "1",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     tags = [
         "exclusive",
         "team:ml",
@@ -559,22 +574,6 @@ py_test(
 )
 
 py_test(
-    name = "test_lightgbm_predictor",
-    size = "small",
-    srcs = ["tests/test_lightgbm_predictor.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
-    tags = [
-        "exclusive",
-        "team:ml",
-        "train_v2",
-    ],
-    deps = [
-        ":conftest",
-        ":train_lib",
-    ],
-)
-
-py_test(
     name = "test_lightgbm_trainer",
     size = "medium",
     srcs = ["tests/test_lightgbm_trainer.py"],
@@ -593,7 +592,7 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
-        "ptl_v2",
+        "ptl_v1",
         "team:ml",
         "train_v2_gpu",
     ],
@@ -698,19 +697,6 @@ py_test(
 )
 
 py_test(
-    name = "test_predictor",
-    size = "small",
-    srcs = ["tests/test_predictor.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
-    tags = [
-        "exclusive",
-        "team:ml",
-        "train_v2",
-    ],
-    deps = [":train_lib"],
-)
-
-py_test(
     name = "test_result",
     size = "medium",
     srcs = ["tests/test_result.py"],
@@ -788,9 +774,12 @@ py_test(
 
 py_test(
     name = "test_tensorflow_checkpoint",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_tensorflow_checkpoint.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "1",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     tags = [
         "exclusive",
         "team:ml",
@@ -800,26 +789,13 @@ py_test(
 )
 
 py_test(
-    name = "test_tensorflow_predictor",
-    size = "small",
-    srcs = ["tests/test_tensorflow_predictor.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
-    tags = [
-        "exclusive",
-        "team:ml",
-        "train_v2_gpu",
-    ],
-    deps = [
-        ":conftest",
-        ":train_lib",
-    ],
-)
-
-py_test(
     name = "test_tensorflow_trainer",
     size = "medium",
     srcs = ["tests/test_tensorflow_trainer.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "0",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     tags = [
         "exclusive",
         "team:ml",
@@ -836,38 +812,6 @@ py_test(
         "exclusive",
         "team:ml",
         "train_v2",
-    ],
-    deps = [
-        ":conftest",
-        ":train_lib",
-    ],
-)
-
-py_test(
-    name = "test_torch_predictor",
-    size = "medium",
-    srcs = ["tests/test_torch_predictor.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
-    tags = [
-        "exclusive",
-        "team:ml",
-        "train_v2_gpu",
-    ],
-    deps = [
-        ":conftest",
-        ":train_lib",
-    ],
-)
-
-py_test(
-    name = "test_torch_detection_predictor",
-    size = "medium",
-    srcs = ["tests/test_torch_detection_predictor.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
-    tags = [
-        "exclusive",
-        "team:ml",
-        "train_v2_gpu",
     ],
     deps = [
         ":conftest",
@@ -933,7 +877,10 @@ py_test(
     name = "test_training_iterator",
     size = "large",
     srcs = ["tests/test_training_iterator.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "0",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     tags = [
         "exclusive",
         "team:ml",
@@ -945,7 +892,10 @@ py_test(
     name = "test_tune",
     size = "large",
     srcs = ["tests/test_tune.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "0",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     tags = [
         "exclusive",
         "team:ml",
@@ -991,22 +941,6 @@ py_test(
         "team:ml",
     ],
     deps = [":train_lib"],
-)
-
-py_test(
-    name = "test_xgboost_predictor",
-    size = "small",
-    srcs = ["tests/test_xgboost_predictor.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
-    tags = [
-        "exclusive",
-        "team:ml",
-        "train_v2",
-    ],
-    deps = [
-        ":conftest",
-        ":train_lib",
-    ],
 )
 
 py_test(

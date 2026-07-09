@@ -1,5 +1,4 @@
 import argparse
-
 import functools
 import time
 import numpy
@@ -37,8 +36,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--batch-size",
-        type=int,
-        default=10_000,
+        type=lambda v: v if v == "auto" else int(v),
+        default="auto",
         help="Batch size to use with 'map_batches'.",
     )
     parser.add_argument(

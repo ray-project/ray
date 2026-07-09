@@ -33,10 +33,10 @@ class ResolvedStreamFileInfo(BaseModel):
 
     # Start offset in the log file to stream from. None to indicate beginning of
     # the file, or determined by last tail lines.
-    start_offset: Optional[int]
+    start_offset: Optional[int] = None
 
     # End offset in the log file to stream from. None to indicate the end of the file.
-    end_offset: Optional[int]
+    end_offset: Optional[int] = None
 
 
 class LogsManager:
@@ -87,9 +87,11 @@ class LogsManager:
 
         Args:
             options: The option for streaming logs.
+            get_actor_fn: Callable used to resolve actor metadata when the
+                request targets an actor's logs.
 
-        Return:
-            Async generator of streamed logs in bytes.
+        Yields:
+            bytes: Successive chunks of log content streamed from the agent.
         """
         node_id = options.node_id
         if node_id is None:
@@ -362,6 +364,8 @@ class LogsManager:
             log_filename: Filename of the log file.
             actor_id: Id of the actor that generates the log file.
             task_id: Id of the task that generates the log file.
+            attempt_number: The attempt number of the task. Used with
+                ``task_id`` to disambiguate retries.
             pid: Id of the worker process that generates the log file.
             get_actor_fn: Callback to get the actor's data by id.
             timeout: Timeout for the gRPC to listing logs on the node
@@ -369,6 +373,10 @@ class LogsManager:
             suffix: Log suffix if no `log_filename` is provided, when
                 resolving by other ids'. Default to "out".
             submission_id: The submission id for a submission job.
+
+        Returns:
+            A ``ResolvedStreamFileInfo`` describing the resolved node id,
+            filename, and (optional) byte offsets to stream.
         """
         start_offset = None
         end_offset = None
@@ -434,6 +442,10 @@ class LogsManager:
 
     def _categorize_log_files(self, log_files: List[str]) -> Dict[str, List[str]]:
         """Categorize the given log files after filterieng them out using a given glob.
+
+        Args:
+            log_files: Filenames returned from a ``list_logs`` query, already
+                filtered by the caller's glob.
 
         Returns:
             Dictionary of {component_name -> list of log files}

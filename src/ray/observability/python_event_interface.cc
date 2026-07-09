@@ -14,8 +14,10 @@
 
 #include "ray/observability/python_event_interface.h"
 
+#include "absl/strings/str_cat.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/observability/metrics.h"
@@ -27,20 +29,24 @@ namespace observability {
 PythonRayEvent::PythonRayEvent(rpc::events::RayEvent::SourceType source_type,
                                rpc::events::RayEvent::EventType event_type,
                                rpc::events::RayEvent::Severity severity,
-                               std::string entity_id,
-                               std::string message,
-                               std::string session_name,
-                               std::string serialized_event_data,
-                               int nested_event_field_number)
+                               const std::string &entity_id,
+                               const std::string &message,
+                               const std::string &session_name,
+                               const std::string &serialized_event_data,
+                               int nested_event_field_number,
+                               const std::string &event_id,
+                               int64_t timestamp_ns)
     : source_type_(source_type),
       event_type_(event_type),
       severity_(severity),
-      entity_id_(std::move(entity_id)),
-      message_(std::move(message)),
-      session_name_(std::move(session_name)),
-      serialized_event_data_(std::move(serialized_event_data)),
+      entity_id_(entity_id),
+      message_(message),
+      session_name_(session_name),
+      serialized_event_data_(serialized_event_data),
       nested_event_field_number_(nested_event_field_number),
-      event_timestamp_(absl::Now()) {}
+      event_id_(event_id),
+      event_timestamp_(timestamp_ns == 0 ? absl::Now()
+                                         : absl::FromUnixNanos(timestamp_ns)) {}
 
 std::string PythonRayEvent::GetEntityId() const { return entity_id_; }
 
@@ -51,11 +57,10 @@ void PythonRayEvent::Merge(RayEventInterface &&other) {
                    << "The recorder should skip grouping for non-mergeable events.";
 }
 
-rpc::events::RayEvent PythonRayEvent::Serialize() && {
+StatusSetOr<rpc::events::RayEvent, StatusT::Invalid> PythonRayEvent::Serialize() && {
   rpc::events::RayEvent event;
 
-  // Set common fields
-  event.set_event_id(UniqueID::FromRandom().Binary());
+  event.set_event_id(event_id_.empty() ? UniqueID::FromRandom().Binary() : event_id_);
   event.set_source_type(source_type_);
   event.set_event_type(event_type_);
   event.set_severity(severity_);
@@ -66,17 +71,14 @@ rpc::events::RayEvent PythonRayEvent::Serialize() && {
 
   // Use protobuf reflection to set the nested event message by field number.
   // this way, adding new Python event types will not require C++ changes.
-  const auto *descriptor = event.GetDescriptor();
-  const auto *field = descriptor->FindFieldByNumber(nested_event_field_number_);
-  if (field != nullptr &&
-      field->type() == google::protobuf::FieldDescriptor::TYPE_MESSAGE) {
-    auto *nested = event.GetReflection()->MutableMessage(&event, field);
-    if (!nested->ParseFromString(serialized_event_data_)) {
-      RAY_LOG(ERROR) << "Failed to parse nested event data for field " << field->name();
-      event.GetReflection()->ClearField(&event, field);
-    }
-  } else {
-    RAY_LOG(ERROR) << "Invalid nested event field number: " << nested_event_field_number_;
+  // The field number is validated in CreatePythonRayEvent.
+  const google::protobuf::FieldDescriptor *field =
+      event.GetDescriptor()->FindFieldByNumber(nested_event_field_number_);
+  google::protobuf::Message *nested =
+      event.GetReflection()->MutableMessage(&event, field);
+  if (!nested->ParseFromString(serialized_event_data_)) {
+    return StatusT::Invalid(
+        absl::StrCat("Failed to parse nested event data for field ", field->name()));
   }
 
   return event;
@@ -94,7 +96,21 @@ std::unique_ptr<RayEventInterface> CreatePythonRayEvent(
     const std::string &message,
     const std::string &session_name,
     const std::string &serialized_event_data,
-    int nested_event_field_number) {
+    int nested_event_field_number,
+    const std::string &event_id,
+    int64_t timestamp_ns) {
+  RAY_CHECK(rpc::events::RayEvent::SourceType_IsValid(source_type))
+      << "Invalid SourceType enum value: " << source_type;
+  RAY_CHECK(rpc::events::RayEvent::EventType_IsValid(event_type))
+      << "Invalid EventType enum value: " << event_type;
+  RAY_CHECK(rpc::events::RayEvent::Severity_IsValid(severity))
+      << "Invalid Severity enum value: " << severity;
+  const google::protobuf::FieldDescriptor *field =
+      rpc::events::RayEvent::descriptor()->FindFieldByNumber(nested_event_field_number);
+  RAY_CHECK(field != nullptr &&
+            field->type() == google::protobuf::FieldDescriptor::TYPE_MESSAGE)
+      << "Invalid nested event field number: " << nested_event_field_number;
+
   return std::make_unique<PythonRayEvent>(
       static_cast<rpc::events::RayEvent::SourceType>(source_type),
       static_cast<rpc::events::RayEvent::EventType>(event_type),
@@ -103,11 +119,12 @@ std::unique_ptr<RayEventInterface> CreatePythonRayEvent(
       message,
       session_name,
       serialized_event_data,
-      nested_event_field_number);
+      nested_event_field_number,
+      event_id,
+      timestamp_ns);
 }
 
-PythonEventRecorder::PythonEventRecorder(const std::string &aggregator_address,
-                                         int aggregator_port,
+PythonEventRecorder::PythonEventRecorder(int aggregator_port,
                                          const std::string &node_ip,
                                          const std::string &node_id_hex,
                                          size_t max_buffer_size,
@@ -130,12 +147,15 @@ PythonEventRecorder::PythonEventRecorder(const std::string &aggregator_address,
       std::make_unique<rpc::EventAggregatorClientImpl>(*client_call_manager_);
   event_aggregator_client_->Connect(aggregator_port);
 
+  NodeID node_id = NodeID::FromHex(node_id_hex);
+  RAY_CHECK(!node_id.IsNil()) << "Invalid node ID: " << node_id_hex;
+
   recorder_ = std::make_unique<RayEventRecorder>(*event_aggregator_client_,
-                                                 *io_context_,
+                                                 PeriodicalRunner::Create(*io_context_),
                                                  max_buffer_size,
                                                  metric_source_str_,
                                                  dropped_events_counter_,
-                                                 NodeID::FromHex(node_id_hex));
+                                                 node_id);
   recorder_->StartExportingEvents();
 }
 
@@ -144,10 +164,10 @@ PythonEventRecorder::~PythonEventRecorder() { Shutdown(); }
 void PythonEventRecorder::Shutdown() {
   if (recorder_) {
     recorder_->StopExportingEvents();
-    recorder_.reset();
   }
-  event_aggregator_client_.reset();
-  client_call_manager_.reset();
+  // Stop and join io_thread before destroying recorder_, event_aggregator_client_,
+  // and client_call_manager_ so that no periodical-runner timer or in-flight gRPC
+  // callback on io_thread can touch their members during destruction.
   work_guard_.reset();
   if (io_context_) {
     io_context_->stop();
@@ -155,6 +175,9 @@ void PythonEventRecorder::Shutdown() {
   if (io_thread_ && io_thread_->joinable()) {
     io_thread_->join();
   }
+  recorder_.reset();
+  event_aggregator_client_.reset();
+  client_call_manager_.reset();
   io_thread_.reset();
   io_context_.reset();
 }

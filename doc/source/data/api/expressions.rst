@@ -24,11 +24,13 @@ Public API
     pyarrow_udf
     download
     monotonically_increasing_id
+    random
+    uuid
 
 Expression Classes
 ------------------
 
-These classes represent the structure of expressions. You typically don't need to 
+These classes represent the structure of expressions. You typically don't need to
 instantiate them directly, but you may encounter them when working with expressions.
 
 .. autosummary::
@@ -42,6 +44,10 @@ instantiate them directly, but you may encounter them when working with expressi
     UnaryExpr
     UDFExpr
     StarExpr
+    DownloadExpr
+    MonotonicallyIncreasingIdExpr
+    RandomExpr
+    UUIDExpr
 
 Expression namespaces
 ------------------------------------

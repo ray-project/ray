@@ -3,10 +3,9 @@ import sys
 import httpx
 import pytest
 from openai import OpenAI
-
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.llm.examples.sglang.modules.sglang_engine import SGLangServer
+from ray.llm._internal.serve.engines.sglang import SGLangServer
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.llm import LLMConfig, build_openai_app
 from ray.serve.schema import ApplicationStatus
@@ -170,6 +169,29 @@ def test_sglang_detokenize(sglang_client):
     assert "Hello world" in data["text"]
 
 
+def test_sglang_batched_completions(sglang_client):
+    """Verify that batched completions (multiple prompts) return one choice per prompt."""
+    prompts = [
+        "The capital of France is",
+        "The capital of Germany is",
+        "The capital of Japan is",
+    ]
+    batch_resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID,
+        prompt=prompts,
+        max_tokens=16,
+        temperature=0.0,
+    )
+
+    assert len(batch_resp.choices) == len(prompts)
+
+    for i, choice in enumerate(batch_resp.choices):
+        assert choice.index == i
+        assert choice.text.strip()
+
+    assert batch_resp.usage.total_tokens > 0
+
+
 @pytest.fixture(scope="module")
 def sglang_embedding_client():
     """Start an SGLang server with is_embedding enabled for embedding tests."""
@@ -224,6 +246,315 @@ def test_sglang_embeddings(sglang_embedding_client):
     assert len(emb_batch_resp.data) == 2
     assert emb_batch_resp.data[0].embedding
     assert emb_batch_resp.data[1].embedding
+
+
+def test_sglang_serve_e2e_multi_gpu():
+    """Verify SGLang multi-GPU deployment works with tp_size=2.
+
+    Requires a node with at least 2 GPUs. Confirms that:
+    - Placement group bundles are correctly constructed as [{"GPU": 1, "CPU": 1}, {"GPU": 1}]
+    - The model loads and serves inference correctly across both GPUs.
+    """
+    llm_config = LLMConfig(
+        model_loading_config={
+            "model_id": RAY_MODEL_ID,
+            "model_source": MODEL_ID,
+        },
+        deployment_config={
+            "autoscaling_config": {
+                "min_replicas": 1,
+                "max_replicas": 1,
+            }
+        },
+        server_cls=SGLangServer,
+        engine_kwargs={
+            "model_path": MODEL_ID,
+            "tp_size": 2,
+            "mem_fraction_static": 0.8,
+        },
+    )
+
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+
+    try:
+        wait_for_condition(_app_is_running, timeout=300)
+
+        deployment_options = SGLangServer.get_deployment_options(llm_config)
+        expected_bundles = [{"GPU": 1, "CPU": 1}, {"GPU": 1}]
+        assert deployment_options["placement_group_bundles"] == expected_bundles, (
+            f"Expected placement group bundles {expected_bundles}, "
+            f"got {deployment_options['placement_group_bundles']}"
+        )
+
+        client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
+
+        chat_resp = client.chat.completions.create(
+            model=RAY_MODEL_ID,
+            messages=[{"role": "user", "content": "What is the capital of France?"}],
+            max_tokens=64,
+            temperature=0.0,
+        )
+        assert chat_resp.choices[0].message.content.strip()
+
+        comp_resp = client.completions.create(
+            model=RAY_MODEL_ID,
+            prompt="The capital of France is",
+            max_tokens=64,
+            temperature=0.0,
+        )
+        assert comp_resp.choices[0].text.strip()
+    finally:
+        serve.shutdown()
+
+
+def test_sglang_serve_e2e_pipeline_parallel():
+    """Verify SGLang multi-GPU deployment works with tp_size=2, pp_size=2.
+
+    Requires a node with at least 4 GPUs. Confirms that:
+    - Placement group bundles are correctly constructed as
+      [{"GPU": 1, "CPU": 1}, {"GPU": 1}, {"GPU": 1}, {"GPU": 1}]
+    - The model loads and serves inference correctly across all 4 GPUs.
+    """
+    llm_config = LLMConfig(
+        model_loading_config={
+            "model_id": RAY_MODEL_ID,
+            "model_source": MODEL_ID,
+        },
+        deployment_config={
+            "autoscaling_config": {
+                "min_replicas": 1,
+                "max_replicas": 1,
+            }
+        },
+        server_cls=SGLangServer,
+        engine_kwargs={
+            "model_path": MODEL_ID,
+            "tp_size": 2,
+            "pp_size": 2,
+            "mem_fraction_static": 0.8,
+        },
+    )
+
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+
+    try:
+        wait_for_condition(_app_is_running, timeout=300)
+
+        # tp_size=2, pp_size=2 → num_devices=4 → 4 GPU bundles
+        # first bundle merges replica actor CPU with first GPU worker
+        deployment_options = SGLangServer.get_deployment_options(llm_config)
+        expected_bundles = [{"GPU": 1, "CPU": 1}, {"GPU": 1}, {"GPU": 1}, {"GPU": 1}]
+        assert deployment_options["placement_group_bundles"] == expected_bundles, (
+            f"Expected placement group bundles {expected_bundles}, "
+            f"got {deployment_options['placement_group_bundles']}"
+        )
+
+        client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
+
+        chat_resp = client.chat.completions.create(
+            model=RAY_MODEL_ID,
+            messages=[{"role": "user", "content": "What is the capital of France?"}],
+            max_tokens=64,
+            temperature=0.0,
+        )
+        assert chat_resp.choices[0].message.content.strip()
+
+        comp_resp = client.completions.create(
+            model=RAY_MODEL_ID,
+            prompt="The capital of France is",
+            max_tokens=64,
+            temperature=0.0,
+        )
+        assert comp_resp.choices[0].text.strip()
+    finally:
+        serve.shutdown()
+
+
+def test_sglang_custom_placement_group_config():
+    """Verify explicit placement_group_config is respected by get_deployment_options.
+
+    Covers the configuration pattern used in serve_sglang_multinode_example.py
+    where users provide custom bundles and strategy for multi-node TP/PP.
+    Does not require GPUs — only tests configuration logic.
+    """
+    custom_bundles = [{"GPU": 1}] * 8
+    custom_strategy = "PACK"
+
+    llm_config = LLMConfig(
+        model_loading_config={
+            "model_id": RAY_MODEL_ID,
+            "model_source": MODEL_ID,
+        },
+        deployment_config={
+            "autoscaling_config": {
+                "min_replicas": 1,
+                "max_replicas": 2,
+                "target_ongoing_requests": 4,
+            }
+        },
+        placement_group_config={
+            "placement_group_bundles": custom_bundles,
+            "placement_group_strategy": custom_strategy,
+        },
+        server_cls=SGLangServer,
+        engine_kwargs={
+            "model_path": MODEL_ID,
+            "tp_size": 4,
+            "pp_size": 2,
+            "mem_fraction_static": 0.8,
+        },
+    )
+
+    deployment_options = SGLangServer.get_deployment_options(llm_config)
+    assert deployment_options["placement_group_bundles"] == custom_bundles, (
+        f"Expected custom bundles {custom_bundles}, "
+        f"got {deployment_options['placement_group_bundles']}"
+    )
+    assert deployment_options["placement_group_strategy"] == custom_strategy, (
+        f"Expected strategy '{custom_strategy}', "
+        f"got '{deployment_options['placement_group_strategy']}'"
+    )
+
+
+def test_sglang_custom_placement_group_default_strategy():
+    """Verify that custom bundles without an explicit strategy default to PACK."""
+    custom_bundles = [{"GPU": 1}] * 4
+
+    llm_config = LLMConfig(
+        model_loading_config={
+            "model_id": RAY_MODEL_ID,
+            "model_source": MODEL_ID,
+        },
+        server_cls=SGLangServer,
+        engine_kwargs={
+            "model_path": MODEL_ID,
+            "tp_size": 2,
+            "pp_size": 2,
+        },
+        placement_group_config={
+            "placement_group_bundles": custom_bundles,
+        },
+    )
+
+    deployment_options = SGLangServer.get_deployment_options(llm_config)
+    assert deployment_options["placement_group_bundles"] == custom_bundles
+    assert deployment_options["placement_group_strategy"] == "PACK"
+
+
+def _get_llm_handle(model_id: str = RAY_MODEL_ID):
+    """Return a Ray Serve handle to the LLMServer deployment for model_id."""
+    cleaned_id = model_id.replace("/", "--").replace(".", "_")
+    deployment_name = f"{SGLangServer.__name__}:{cleaned_id}"
+    return serve.get_deployment_handle(deployment_name, SERVE_DEFAULT_APP_NAME)
+
+
+@pytest.mark.asyncio
+async def test_sglang_pause_resume(sglang_client):
+    """Verify pause/resume lifecycle: server accepts requests before and after."""
+    handle = _get_llm_handle()
+
+    # Baseline: inference works before pause.
+    resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID, prompt="Hello", max_tokens=4, temperature=0.0
+    )
+    assert resp.choices[0].text is not None
+
+    # Pause with default mode ("abort").
+    await handle.pause.remote()
+    assert await handle.is_paused.remote() is True
+
+    # Resume and confirm state clears.
+    await handle.resume.remote()
+    assert await handle.is_paused.remote() is False
+
+    # Inference must work again after resume.
+    resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID, prompt="Hello", max_tokens=4, temperature=0.0
+    )
+    assert resp.choices[0].text is not None
+
+
+@pytest.mark.asyncio
+async def test_sglang_pause_resume_modes(sglang_client):
+    """Verify all three pause modes are accepted without error."""
+    handle = _get_llm_handle()
+
+    for mode in ("abort", "in_place", "retract"):
+        await handle.pause.remote(mode=mode)
+        assert await handle.is_paused.remote() is True
+        await handle.resume.remote()
+        assert await handle.is_paused.remote() is False
+
+
+@pytest.mark.asyncio
+async def test_sglang_sleep_wakeup(sglang_client):
+    """Verify sleep/wakeup lifecycle: GPU memory released then restored."""
+    handle = _get_llm_handle()
+
+    # Baseline inference.
+    resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID, prompt="Hello", max_tokens=4, temperature=0.0
+    )
+    assert resp.choices[0].text is not None
+
+    # Sleep (release all GPU memory).
+    await handle.sleep.remote()
+    assert await handle.is_sleeping.remote() is True
+
+    # Wakeup and confirm state clears.
+    await handle.wakeup.remote()
+    assert await handle.is_sleeping.remote() is False
+
+    # Inference must work again after wakeup.
+    resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID, prompt="Hello", max_tokens=4, temperature=0.0
+    )
+    assert resp.choices[0].text is not None
+
+
+@pytest.mark.asyncio
+async def test_sglang_sleep_wakeup_with_tags(sglang_client):
+    """Verify selective sleep/wakeup using component tags."""
+    handle = _get_llm_handle()
+
+    await handle.sleep.remote(tags=["kv_cache"])
+    assert await handle.is_sleeping.remote() is True
+
+    await handle.wakeup.remote(tags=["kv_cache"])
+    assert await handle.is_sleeping.remote() is False
+
+    resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID, prompt="Hello", max_tokens=4, temperature=0.0
+    )
+    assert resp.choices[0].text is not None
+
+
+@pytest.mark.asyncio
+async def test_sglang_reset_prefix_cache(sglang_client):
+    """Verify reset_prefix_cache completes and inference continues to work."""
+    handle = _get_llm_handle()
+
+    # Warm the cache with a request.
+    sglang_client.completions.create(
+        model=RAY_MODEL_ID,
+        prompt="The capital of France is",
+        max_tokens=8,
+        temperature=0.0,
+    )
+
+    # Flush the cache.
+    await handle.reset_prefix_cache.remote()
+
+    # Inference must still work after cache flush.
+    resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID,
+        prompt="The capital of France is",
+        max_tokens=8,
+        temperature=0.0,
+    )
+    assert resp.choices[0].text.strip()
 
 
 # ---------------------------------------------------------------------------

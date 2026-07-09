@@ -9,6 +9,7 @@ from ray.data._internal.execution.interfaces.transform_fn import (
     AllToAllTransformFnResult,
 )
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
+from ray.data._internal.execution.util import merge_label_selector
 from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler import (
     PullBasedShuffleTaskScheduler,
 )
@@ -54,6 +55,7 @@ def generate_random_shuffle_fn(
             map_transformer.override_target_max_block_size(None)
 
             def upstream_map_fn(blocks):
+                DataContext._set_current(data_context)
                 return map_transformer.apply_transform(blocks, ctx)
 
             # If there is a fused upstream operator,
@@ -78,12 +80,19 @@ def generate_random_shuffle_fn(
         else:
             scheduler = PullBasedShuffleTaskScheduler(shuffle_spec)
 
+        label_selector = data_context.execution_options.label_selector
+        map_ray_remote_args = merge_label_selector(
+            ray_remote_args or {}, label_selector
+        )
+        reduce_ray_remote_args = merge_label_selector(
+            ray_remote_args or {}, label_selector
+        )
         return scheduler.execute(
             refs,
             num_outputs or num_input_blocks,
             task_ctx=ctx,
-            map_ray_remote_args=ray_remote_args,
-            reduce_ray_remote_args=ray_remote_args,
+            map_ray_remote_args=map_ray_remote_args,
+            reduce_ray_remote_args=reduce_ray_remote_args,
             _debug_limit_execution_to_num_blocks=(
                 _debug_limit_shuffle_execution_to_num_blocks
             ),

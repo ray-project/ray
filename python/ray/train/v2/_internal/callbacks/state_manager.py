@@ -1,6 +1,9 @@
 import importlib
 import logging
-from typing import Optional
+from typing import TYPE_CHECKING, Dict, Optional
+
+if TYPE_CHECKING:
+    from ray.data import Dataset
 
 import ray
 from ray.train.v2._internal.execution.callback import (
@@ -66,6 +69,9 @@ def _get_framework_version(framework: Optional[TrainingFramework]):
 
 
 class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
+    def __init__(self, datasets: Dict[str, "Dataset"]):
+        self._datasets = datasets
+
     def after_controller_start(self, train_run_context: TrainRunContext):
         self._state_manager = TrainStateManager()
         self._run_name = train_run_context.get_run_config().name
@@ -88,7 +94,7 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
             train_loop_config=train_run_context.train_loop_config,
             scaling_config=train_run_context.scaling_config,
             backend_config=train_run_context.backend_config,
-            datasets=train_run_context.datasets,
+            datasets=self._datasets,
             dataset_config=train_run_context.dataset_config,
         )
 

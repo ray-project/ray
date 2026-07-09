@@ -4,6 +4,7 @@ the C++ RayEventRecorder.
 """
 
 from ray._common.observability.internal_event import InternalEventBuilder
+from ray._common.observability.platform_events import PlatformEventBuilder
 from ray._common.observability.submission_job_events import (
     SubmissionJobDefinitionEventBuilder,
     SubmissionJobLifecycleEventBuilder,
@@ -12,6 +13,7 @@ from ray._common.observability.submission_job_events import (
 
 __all__ = [
     "InternalEventBuilder",
+    "PlatformEventBuilder",
     "SubmissionJobDefinitionEventBuilder",
     "SubmissionJobLifecycleEventBuilder",
     "job_status_to_proto_state",

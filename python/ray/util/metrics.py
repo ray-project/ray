@@ -120,6 +120,8 @@ class Metric:
 
         Args:
             value: The value to be recorded as a metric point.
+            tags: Tags to set or override for this record. Merged on top of
+                the metric's default tags.
         """
         if self._discard_metric:
             return
@@ -225,8 +227,8 @@ class Counter(Metric):
         Tags passed in will take precedence over the metric's default tags.
 
         Args:
-            value(int, float): Value to increment the counter by (default=1).
-            tags(Dict[str, str]): Tags to set or override for this counter.
+            value: Value to increment the counter by (default=1).
+            tags: Tags to set or override for this counter.
         """
         if not isinstance(value, (int, float)):
             raise TypeError(f"value must be int or float, got {type(value)}.")
@@ -288,8 +290,8 @@ class Histogram(Metric):
         Tags passed in will take precedence over the metric's default tags.
 
         Args:
-            value(int, float): Value to set the gauge to.
-            tags(Dict[str, str]): Tags to set or override for this gauge.
+            value: Value to set the gauge to.
+            tags: Tags to set or override for this gauge.
         """
         if not isinstance(value, (int, float)):
             raise TypeError(f"value must be int or float, got {type(value)}.")
@@ -347,9 +349,12 @@ class Gauge(Metric):
         Tags passed in will take precedence over the metric's default tags.
 
         Args:
-            value(int, float): Value to set the gauge to. If `None`, this method is a
+            value: Value to set the gauge to. If `None`, this method is a
                 no-op.
-            tags(Dict[str, str]): Tags to set or override for this gauge.
+            tags: Tags to set or override for this gauge.
+
+        Returns:
+            None. The gauge is updated in place.
         """
         if value is None:
             return
