@@ -100,31 +100,9 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
 
         self._num_partitions: int = num_partitions
         self._partition_fn: PartitionFn = partition_fn
-        self._compression: ShuffleCompression = compression
-        # Fixed override; ``None`` ⇒ ``_UNBOUNDED_POOL_BYTES``.
-        self._pool_budget_override: Optional[int] = pool_budget_bytes
-        self._fsync_on_close: bool = fsync_on_close
 
         # -- Map task config -------------------------------------------------
         self._shuffle_map_task_num_cpus: float = map_cpus
-
-        # -- Per-shuffle identity & on-disk staging --------------------------
-        # ``base_dir`` is a directory-name template — each node mkdirs the
-        # same path on its OWN local FS. Driver owns nothing on remote disks.
-        # Cleanup layers, precedence:
-        #   1. Driver ``_do_shutdown`` → ``mgr.__ray_terminate__.remote()``.
-        #   2. atexit hook on ShuffleManager (graceful Python shutdown).
-        #   3. Actor crash + ``max_restarts=-1`` same-node respawn (files
-        #      stay on disk for the respawn to pick up).
-        #   4. OS tmpwatch: base_dir sits under ``$TMPDIR``.
-        self._token: str = secrets.token_hex(16)
-        self._shuffle_id: str = secrets.token_hex(8)
-        # Default name is derived from ``shuffle_id``; driver deliberately
-        # does NOT mkdir — mappers create their own local copy on the node
-        # they run on. Caller-supplied ``base_dir`` is treated as scratch.
-        self._base_dir: str = base_dir or os.path.join(
-            tempfile.gettempdir(), f"ray_shuffle_v3_{self._shuffle_id}"
-        )
 
         # -- Pre-map merge ---------------------------------------------------
         self._pre_map_merge_threshold: int = pre_map_merge_threshold
@@ -144,13 +122,6 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         # (one per partition_id), each sharing ``_shared_handles_ref`` plus
         # a distinct partition_id sentinel in metadata.
         self._output_queue: FIFOBundleQueue = FIFOBundleQueue()
-        # Handles returned by completed mappers; drained into
-        # ``_shared_handles_ref`` at wrapper-emit time.
-        self._completed_handle_refs: List[ObjectRef] = []
-        # Single plasma object holding the handle-ref list. Every partition
-        # wrapper points at this one ref (1 nested-ref serialization per
-        # reducer dispatch, not M).
-        self._shared_handles_ref: Optional[ObjectRef] = None
         self._partition_bundles_emitted: bool = False
 
         # -- Stats -----------------------------------------------------------
@@ -164,6 +135,43 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
 
         # -- Sub-progress bars -----------------------------------------------
         self._map_bar: Optional["BaseProgressBar"] = None
+
+        # =====================================================================
+        # V3-specific state below.
+        # =====================================================================
+
+        # -- V3: shuffle config knobs ----------------------------------------
+        self._compression: ShuffleCompression = compression
+        # Fixed override; ``None`` ⇒ ``_UNBOUNDED_POOL_BYTES``.
+        self._pool_budget_override: Optional[int] = pool_budget_bytes
+        self._fsync_on_close: bool = fsync_on_close
+
+        # -- V3: per-shuffle identity & on-disk staging ----------------------
+        # ``base_dir`` is a directory-name template — each node mkdirs the
+        # same path on its OWN local FS. Driver owns nothing on remote disks.
+        # Cleanup layers, precedence:
+        #   1. Driver ``_do_shutdown`` → ``mgr.__ray_terminate__.remote()``.
+        #   2. atexit hook on ShuffleManager (graceful Python shutdown).
+        #   3. Actor crash + ``max_restarts=-1`` same-node respawn (files
+        #      stay on disk for the respawn to pick up).
+        #   4. OS tmpwatch: base_dir sits under ``$TMPDIR``.
+        self._token: str = secrets.token_hex(16)
+        self._shuffle_id: str = secrets.token_hex(8)
+        # Default name is derived from ``shuffle_id``; driver deliberately
+        # does NOT mkdir — mappers create their own local copy on the node
+        # they run on. Caller-supplied ``base_dir`` is treated as scratch.
+        self._base_dir: str = base_dir or os.path.join(
+            tempfile.gettempdir(), f"ray_shuffle_v3_{self._shuffle_id}"
+        )
+
+        # -- V3: partition-wrapper emission state ----------------------------
+        # Handles returned by completed mappers; drained into
+        # ``_shared_handles_ref`` at wrapper-emit time.
+        self._completed_handle_refs: List[ObjectRef] = []
+        # Single plasma object holding the handle-ref list. Every partition
+        # wrapper points at this one ref (1 nested-ref serialization per
+        # reducer dispatch, not M).
+        self._shared_handles_ref: Optional[ObjectRef] = None
 
     @property
     def _input_queues(self) -> List[BaseBundleQueue]:
