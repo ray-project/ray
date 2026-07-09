@@ -1291,6 +1291,8 @@ class DatasetStats:
                 return self.iter_blocked_collate_s
             case IterationStage.FINALIZE:
                 return self.iter_blocked_finalize_s
+            case _:
+                raise ValueError(f"Unknown iteration stage: {stage}")
 
     @property
     def stats_actor(self):
