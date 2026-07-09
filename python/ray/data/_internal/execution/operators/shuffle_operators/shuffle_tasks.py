@@ -33,7 +33,7 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 PartitionFn = Callable[[pa.Table], Dict[int, pa.Table]]
-ReduceFn = Callable[[int, List[pa.Table]], Iterable[Block]]
+ReduceFn = Callable[[int, List[List[pa.Table]]], Iterable[Block]]
 
 # Peak working-set of a shuffle map/reduce task is ~2x the input bytes
 SHUFFLE_PEAK_MEMORY_MULTIPLIER = 2
@@ -209,37 +209,54 @@ def _get_shard_batch(
         raise
 
 
+def _gather_input_shards(
+    shard_refs: List[ObjectRef],
+    partition_id: int,
+    batch_size: int,
+    get_timeout_s: float,
+) -> List[pa.Table]:
+    """Fetch + decompress every shard of one input for one partition."""
+    tables: List[pa.Table] = []
+    num_batches = math.ceil(len(shard_refs) / batch_size) if batch_size else 0
+    for batch_index, batch_start in enumerate(range(0, len(shard_refs), batch_size)):
+        batch = shard_refs[batch_start : batch_start + batch_size]
+        for buf in _get_shard_batch(
+            batch, partition_id, batch_index, num_batches, get_timeout_s
+        ):
+            if buf is None:
+                continue
+            table = _read_partition_ipc(buf)
+            if table is None:
+                continue
+            tables.append(table)
+    return tables
+
+
 @ray.remote(max_calls=1)
 def _shuffle_reduce_task(
-    shard_refs: List[ObjectRef],
+    shard_refs_by_input: List[List[ObjectRef]],
     partition_id: int,
     reduce_fn: ReduceFn,
     target_max_block_size: Optional[int],
-    streaming: bool,
     batch_size: int,
     get_timeout_s: float,
     map_transformer: Optional["MapTransformer"],
     map_task_context: Optional["TaskContext"],
     data_context: Optional["DataContext"],
 ) -> Generator[Union[Block, bytes], None, None]:
-    """Reduce stage: fetch one partition's shards and run reduce_fn over them.
+    """Reduce stage: fetch this partition's shards and run reduce_fn over them.
 
-    With streaming=True, reduce_fn is called each time the accumulated input
-    passes target_max_block_size and its output is reshaped to that size via a
-    BlockOutputBuffer; this bounds peak input memory but requires reduce_fn to
-    produce valid output from partial input.  With streaming=False, all shards
-    are accumulated and reduce_fn is called once, use this when it needs the
-    whole partition (sort, aggregate).
+    ``shard_refs_by_input`` carries one shard-ref list per upstream input -- one
+    for single-input shuffles (repartition/sort), several for multi-input ones
+    (e.g. join).  Every input's full shard list is accumulated, then reduce_fn is
+    called once with ``tables_by_input`` aligned with ``shard_refs_by_input``.
 
     Args:
-        shard_refs: ObjectRefs to this partition's IPC shards from every mapper.
-            May contain None for mappers that produced no rows here.
+        shard_refs_by_input: Per-input lists of ObjectRefs to this partition's
+            IPC shards from every mapper.  May contain None for empty shards.
         partition_id: Partition this reducer owns.
         reduce_fn: User-supplied reduce callable.
-        target_max_block_size: Output block size, and the streaming flush
-            threshold.  None emits blocks as-is (no reshaping, no streaming
-            flush) -- the "partition = block" contract.
-        streaming: Flush incrementally (True) or accumulate then reduce (False).
+        target_max_block_size: Output block size.  None emits blocks as-is.
         batch_size: Number of shard refs to ray.get() at a time.
         get_timeout_s: Timeout for batch ray.get().
         map_transformer: Fused downstream map applied to reduce output (or None).
@@ -250,8 +267,6 @@ def _shuffle_reduce_task(
     """
     start_time_s = time.perf_counter()
 
-    accum_tables: List[pa.Table] = []
-    accum_bytes: int = 0
     output_buffer: Optional[BlockOutputBuffer] = None
 
     def _yield_with_stats(block: Block):
@@ -270,7 +285,7 @@ def _shuffle_reduce_task(
 
         yield from yield_block_with_stats(block, build_metadata)
 
-    def _flush(tables: List[pa.Table]):
+    def _flush(tables_by_input: List[List[pa.Table]]):
         nonlocal output_buffer
         if output_buffer is None:
             output_buffer = BlockOutputBuffer(
@@ -278,54 +293,24 @@ def _shuffle_reduce_task(
                     target_max_block_size=target_max_block_size,
                 )
             )
-        for block in reduce_fn(partition_id, tables):
+        for block in reduce_fn(partition_id, tables_by_input):
             output_buffer.add_block(block)
             # Yield raw blocks: a fused map (and `_yield_with_stats`) is applied
             # downstream of ``_reduce_output_blocks``.
             yield from output_buffer.iter_ready_blocks()
 
     def _reduce_output_blocks():
-        nonlocal accum_tables, accum_bytes
-        # Step 1: fetch shard refs in batches, decompress, accumulate.  In
-        # streaming mode, when the accumulator reaches target_max_block_size,
-        # flush through reduce_fn and yield any ready output blocks.
-        num_batches = math.ceil(len(shard_refs) / batch_size) if batch_size else 0
-        for batch_index, batch_start in enumerate(
-            range(0, len(shard_refs), batch_size)
-        ):
-            batch = shard_refs[batch_start : batch_start + batch_size]
-            shard_bufs = _get_shard_batch(
-                batch,
-                partition_id,
-                batch_index,
-                num_batches,
-                get_timeout_s,
-            )
-            for buf in shard_bufs:
-                if buf is None:
-                    continue
-                table = _read_partition_ipc(buf)
-                if table is None:
-                    continue
-                accum_tables.append(table)
-                accum_bytes += table.nbytes
+        # Gather every input's full shard list, then call reduce_fn exactly once
+        # with all inputs together (no streaming: a multi-input reducer needs
+        # every input's shards, and single-input reducers run blocking too).
+        tables_by_input = [
+            _gather_input_shards(shard_refs, partition_id, batch_size, get_timeout_s)
+            for shard_refs in shard_refs_by_input
+        ]
+        if any(tables_by_input):
+            yield from _flush(tables_by_input)
 
-                if (
-                    streaming
-                    and target_max_block_size is not None
-                    and accum_bytes >= target_max_block_size
-                ):
-                    tables, accum_tables = accum_tables, []
-                    accum_bytes = 0
-                    yield from _flush(tables)
-
-        # Step 2: drain remaining shards through reduce_fn.  This is the only
-        # reduce_fn call in blocking mode, and the tail-flush in streaming mode.
-        if accum_tables:
-            yield from _flush(accum_tables)
-
-        # Step 3: if reduce_fn ran at least once, finalize the buffer to flush
-        # any partial block.
+        # Finalize the buffer to flush any partial block.
         if output_buffer is not None:
             output_buffer.finalize()
             yield from output_buffer.iter_ready_blocks()

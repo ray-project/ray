@@ -1,8 +1,7 @@
 (kuberay-serve-high-throughput)=
 # Enable High Throughput on Ray Serve with KubeRay
 
-Take advantage of major upgrades to Ray Serve, delivering online inference with
-88% lower latency and 11.1x higher throughput.
+Take advantage of major upgrades to Ray Serve, delivering online inference with 88% lower latency and 11.1x higher throughput.
 
 ## Prerequisites
 
@@ -11,8 +10,7 @@ Take advantage of major upgrades to Ray Serve, delivering online inference with
 ## Enabling high throughput mode
 
 
-With Ray 2.56 and later, high throughput config options are available for Ray
-Serve by setting the following environment variables:
+With Ray 2.56 and later, high throughput config options are available for Ray Serve by setting the following environment variables:
 
 - `RAY_SERVE_ENABLE_HA_PROXY=1`: Enables HAProxy ingress for each Ray pod's proxy ingress (serving on port 8000 by default), which is a highly optimized, battle-tested open-source load balancer written in C.
 - `RAY_SERVE_THROUGHPUT_OPTIMIZED=1`: Enables multiple high throughput serving optimizations, including direct gRPC data-plane communications between Ray Serve replicas, improving the performance of inter-deployment traffic.
@@ -21,9 +19,7 @@ Serve by setting the following environment variables:
 
 ## Example: Serving Qwen on GKE
 
-The following example demonstrates how to deploy Qwen 3.5 on four replicas
-with NVIDIA L4 GPUs using KubeRay on Google Kubernetes Engine (GKE) with [this
-sample RayService](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-throughput-llm.yaml).
+The following example demonstrates how to deploy Qwen 3.5 on four replicas with NVIDIA L4 GPUs using KubeRay on Google Kubernetes Engine (GKE) with [this sample RayService](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-throughput-llm.yaml).
 
 A corresponding sample for high-performance serving with [Gemma 4 E2B with NVIDIA B200s is also available here](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-throughput-gemma4.yaml).
 
@@ -85,8 +81,7 @@ Deploy the example high-throughput LLM service:
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-throughput-llm.yaml
 ```
 
-To enable these optimizations on your own Ray Service, add these environment
-variables to both the head and worker group specifications:
+To enable these optimizations on your own Ray Service, add these environment variables to both the head and worker group specifications:
 
 ```yaml
 apiVersion: ray.io/v1
@@ -129,39 +124,30 @@ spec:
 
 ### 7. Verify HAProxy status
 
-Using the {ref}`Ray kubectl plugin <kubectl-plugin>` or `kubectl port-forward`
-to establish a connection to the Ray head:
+Using the {ref}`Ray kubectl plugin <kubectl-plugin>` or `kubectl port-forward` to establish a connection to the Ray head:
 
 ```
 CLUSTER=$(kubectl get raycluster -o jsonpath='{.items[0].metadata.name}')
 kubectl ray session $CLUSTER
 ```
 
-Now, use the Ray CLI to check for HAProxy. Alternatively, navigate to the Ray
-dashboard's Actors tab and search for class `HAProxyManager`.
+Now, use the Ray CLI to check for HAProxy. Alternatively, navigate to the Ray dashboard's Actors tab and search for class `HAProxyManager`.
 
 ```
 ray list actors | grep HAProxy
 ```
 
-You should see an HAProxy for the head pod and every worker. If there are fewer
-HAProxy actors than there are pods, double check your configuration.
+You should see an HAProxy for the head pod and every worker. If there are fewer HAProxy actors than there are pods, double check your configuration.
 
-For example: ![HAProxy actors in the Ray
-dashboard](images/kuberay-rayservice-haproxy-actors.png).
+For example: ![HAProxy actors in the Ray dashboard](images/kuberay-rayservice-haproxy-actors.png).
 
 ## Expected performance
 
-See [the announcement blog post for detailed performance
-numbers](https://www.anyscale.com/blog/ray-serve-inference-lower-latency-higher-throughput-haproxy).
+See [the announcement blog post for detailed performance numbers](https://www.anyscale.com/blog/ray-serve-inference-lower-latency-higher-throughput-haproxy).
 
-The optimizations work best with deployments with high load, where the serve app
-handles 50+ requests per second, concurrent connections per replica is greater
-than 250, and bursty traffic.
+The optimizations work best with deployments with high load, where the serve app handles 50+ requests per second, concurrent connections per replica is greater than 250, and bursty traffic.
 
-Performance gains scale with the size of the deployment. The more replicas your
-RayService is using, the greater the performance improvement compared to
-versions preceding 2.56.
+Performance gains scale with the size of the deployment. The more replicas your RayService is using, the greater the performance improvement compared to versions preceding 2.56.
 
 ## Next steps
 
