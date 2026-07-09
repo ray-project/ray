@@ -21,8 +21,7 @@ Scope: works single-node (one actor) and is structured for multi-node (one actor
 per node). No planner/ShuffleStrategy wiring yet (driven by a harness).
 """
 
-# todo: for single node, don't even persist to disk, just read directly into heap
-# todo: while doing join, maybe pre-check same-key skew in mapphase would be smart
+# todo: pre-check same-key skew in mapphase would be smart
 import atexit
 import os
 import pickle
@@ -54,6 +53,7 @@ import ray
 from ray._raylet import (
     StreamingGeneratorStats,  # pyrefly: ignore[missing-module-attribute]
 )
+from ray.exceptions import ActorDiedError
 from ray.data._internal.output_buffer import (
     BlockOutputBuffer,
     OutputBlockSizeOption,
@@ -992,20 +992,81 @@ class ShuffleFetchError(RuntimeError):
 
 
 class ShuffleNodeLostError(ShuffleFetchError):
-    """Raised when a source ShuffleManager's node has died.
+    """Raised when a source ShuffleManager's node is confirmed dead
+    (via ``ray.nodes()``).
 
-    The external-shuffle variant materializes mapper output on the mapper node's local disk and
-    embeds a NodeAffinity-pinned ActorHandle in the ShuffleHandle. If that
-    node dies, the on-disk output is gone with it AND Ray lineage cannot
-    reconstruct the mapper (the handle-refs are currently aggregated
+    External-shuffle materializes mapper output on the mapper node's local
+    disk. If that node dies, the on-disk output is gone with it and Ray
+    lineage cannot reconstruct the mapper (the handle-refs are aggregated
     driver-side, so mapper return-refs are not observed as lost). Retrying
-    the reducer against the same dead manager would just hang or fail again.
+    the reducer against the same dead node would just hang or fail again.
 
-    Fail loudly with an actionable message so the user knows the job is not
-    recoverable in the current design, rather than waiting on a silent
-    ``ray.get(manager.endpoint.remote())`` hang against a permanently-pending
-    (soft=False, max_restarts=-1) actor.
+    Under the current FT design (no mapper re-execution yet) this is
+    surfaced as fatal so the user knows the job is not recoverable — no
+    silent hang against a permanently-pending (soft=False, max_restarts=-1)
+    actor. Phase 3 of the FT rollout will convert this into a signal
+    that triggers upstream mapper re-execution to a live node.
     """
+
+
+class ShuffleManagerAnomalyError(ShuffleFetchError):
+    """Raised when a ShuffleManager reports as dead but its node is still alive.
+
+    Under our configuration (``max_restarts=-1``, ``lifetime="detached"``,
+    ``NodeAffinitySchedulingStrategy(node_id, soft=False)``) an actor should
+    NEVER be permanently dead while its node is alive: Ray restarts it on
+    every crash, and a dead node produces PENDING (``ActorUnavailableError``)
+    not ``ActorDiedError``. If this fires, one of the following unusual
+    things has happened:
+
+    - External ``ray.kill(actor, no_restart=True)`` from user code.
+    - An unhandled exception in ``ShuffleManager.__init__`` that Ray cannot
+      recover from within its restart budget.
+    - A Ray-internal state inconsistency (rare GCS races).
+
+    We fail loudly (rather than trying to recover) so the underlying cause
+    is visible in the traceback instead of being masked by opaque
+    retry-and-still-broken behavior.
+    """
+
+
+def _classify_and_raise(
+    node_id: str,
+    *,
+    exc: Optional[BaseException],
+    context: str,
+    num_sources: int,
+) -> "NoReturn":
+    """Diagnose a manager RPC failure and raise the appropriate typed error.
+
+    - Node dead → ``ShuffleNodeLostError`` (recoverable via mapper re-execution
+      in Phase 3; fatal today).
+    - Node alive → ``ShuffleManagerAnomalyError`` (unexpected under our
+      configuration; fail loudly, no auto-recovery).
+    - Node liveness inconclusive (GCS lag) → ``ShuffleFetchError`` (treated
+      as transient).
+    """
+    alive = _is_node_alive(node_id)
+    detail = f"context={context!r}; sources={num_sources}"
+    if alive is False:
+        raise ShuffleNodeLostError(
+            f"ShuffleManager node {node_id} is dead — on-disk shuffle output "
+            f"lost with the node. External-shuffle does not yet reconstruct "
+            f"across node loss. ({detail})"
+        ) from exc
+    if alive is True:
+        raise ShuffleManagerAnomalyError(
+            f"ShuffleManager for node {node_id} is dead but the node is "
+            f"still alive. This is not expected under max_restarts=-1 + "
+            f"detached lifetime; failing loudly so the underlying cause is "
+            f"visible. ({detail})"
+        ) from exc
+    # alive is None: GCS inconclusive. Treat as transient — Ray task retry
+    # or a resubmit will get a fresh view.
+    raise ShuffleFetchError(
+        f"ShuffleManager RPC failed and node liveness is inconclusive "
+        f"(node_id={node_id!r}, likely transient GCS lag). ({detail})"
+    ) from exc
 
 
 def _is_node_alive(node_id: str) -> Optional[bool]:
@@ -1145,19 +1206,19 @@ def _prefetch_node_into(
         ref = manager.endpoint.remote()
         ready, _ = ray.wait([ref], timeout=60)
         if not ready:
-            alive = _is_node_alive(node_id)
-            if alive is False:
-                raise ShuffleNodeLostError(
-                    f"ShuffleManager node {node_id} is dead; the mapper's "
-                    f"on-disk shuffle output was lost with the node. External-shuffle does "
-                    f"not yet reconstruct across node loss — retry the job "
-                    f"(a fresh mapper on a live node will produce new output)."
-                )
-            raise ShuffleFetchError(
-                f"Timed out resolving ShuffleManager endpoint after 60s "
-                f"(node_id={node_id}, alive={alive})."
+            _classify_and_raise(
+                node_id,
+                exc=None,
+                context="Timed out resolving ShuffleManager endpoint after 60s",
+                num_sources=len(members),
             )
-        ep = ray.get(ref)
+        try:
+            ep = ray.get(ready[0])
+        except ActorDiedError as e:
+            _classify_and_raise(
+                node_id, exc=e, context="ActorDiedError resolving endpoint",
+                num_sources=len(members),
+            )
         _ENDPOINT_CACHE[key] = ep
         return ep
 
@@ -1167,20 +1228,29 @@ def _prefetch_node_into(
             for batch in _chunk_members_by_bytes(members, max_bytes_per_fetch):
                 sources = [(m.path, m.ranges) for m in batch]
                 conn.fetch_into(sources, out_file_obj)
-    except ShuffleNodeLostError:
+    except ShuffleFetchError:
+        # Already the right type (ShuffleNodeLostError / ShuffleManagerAnomalyError
+        # from _resolve, or a re-raised one from the connection code).
         raise
+    except ActorDiedError as e:
+        # Actor died mid-fetch — could be node loss or an anomaly on a
+        # live node. Classify.
+        _classify_and_raise(
+            node_id, exc=e, context="ActorDiedError mid-fetch",
+            num_sources=len(members),
+        )
     except Exception as e:
-        # Cross-reference the manager's node against ``ray.nodes()``. If the
-        # node is dead, this is unrecoverable — surface it as a
-        # ShuffleNodeLostError so the user gets an actionable message instead
-        # of an opaque ShuffleFetchError chain. Node alive → the underlying
-        # cause is transient / local (e.g. mid-restart TCP refuse); keep the
-        # existing ShuffleFetchError semantics.
+        # TCP / network / other transient. Still cross-check node liveness:
+        # if the node died mid-fetch, upgrade to ShuffleNodeLostError so the
+        # user gets an actionable message instead of an opaque
+        # ShuffleFetchError chain. Node alive → the underlying cause is
+        # transient / local (e.g. mid-restart TCP refuse); keep the existing
+        # ShuffleFetchError semantics for now.
         if _is_node_alive(node_id) is False:
             raise ShuffleNodeLostError(
-                f"ShuffleManager node {node_id} is dead mid-fetch; "
-                f"lost on-disk output for {len(members)} source(s). External-shuffle does "
-                f"not yet reconstruct across node loss."
+                f"ShuffleManager node {node_id} died mid-fetch; "
+                f"lost on-disk output for {len(members)} source(s). External-"
+                f"shuffle does not yet reconstruct across node loss."
             ) from e
         raise ShuffleFetchError(
             f"fetch from {endpoint} (sources={len(members)}) failed: {e}"

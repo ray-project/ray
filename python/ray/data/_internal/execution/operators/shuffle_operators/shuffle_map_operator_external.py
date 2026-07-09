@@ -12,9 +12,10 @@ import logging
 import os
 import secrets
 import tempfile
+import time
 import typing
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.bundle_queue import (
@@ -485,13 +486,24 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
     def _kill_managers_from_completed_handles(self) -> None:
         """Dedup manager identities across the completed handles and
         gracefully terminate each. ``__ray_terminate__`` drains pending
-        tasks, invokes the actor's ``__ray_shutdown__``, and exits with
-        a 30s Ray-default cap after which the actor is force-killed.
+        tasks, invokes the actor's ``__ray_shutdown__`` (rmtrees base_dir),
+        and exits.
 
         Each manager is located by ``(shuffle_id, node_id)`` via
         ``_lookup_manager``; a handle whose actor has already been
         garbage-collected (``ValueError`` from ``ray.get_actor``) is
-        silently skipped — nothing to terminate.
+        silently skipped.
+
+        Robustness:
+        - We bound the wait on the graceful terminate refs. If a manager's
+          node has died, ``__ray_terminate__`` sends against a
+          NodeAffinity-pinned actor that Ray will never re-schedule, and
+          ``ray.get`` would hang indefinitely. After the timeout we fall
+          back to ``ray.kill`` (fire-and-forget) so shutdown always makes
+          forward progress.
+        - Applies uniformly to the ``ActorDied + node alive`` anomaly
+          case too: the graceful call raises immediately, the fallback
+          kill is a no-op on an already-dead actor — cleanup completes.
         """
         from ray.data._internal.execution.operators.hash_shuffle_external import (
             _lookup_manager,
@@ -522,15 +534,42 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
 
         # Fire graceful shutdowns in parallel; wall time = slowest
         # ``__ray_shutdown__``, not their sum.
-        term_refs = []
+        term_refs_by_mgr: List[Tuple[Any, Any]] = []
         for mgr in mgrs:
             try:
-                term_refs.append(mgr.__ray_terminate__.remote())
+                term_refs_by_mgr.append((mgr, mgr.__ray_terminate__.remote()))
             except Exception:
                 pass
-        for ref in term_refs:
+
+        # Bounded wait: 30s covers a normal graceful shutdown but bails out
+        # before an unschedulable-actor (dead node) hang. Anything not done
+        # after that gets a hard ray.kill so cleanup always progresses.
+        _GRACEFUL_TERM_TIMEOUT_S = 30.0
+        pending = list(term_refs_by_mgr)
+        deadline = time.monotonic() + _GRACEFUL_TERM_TIMEOUT_S
+        while pending and time.monotonic() < deadline:
+            refs = [r for _, r in pending]
+            ready, _ = ray.wait(
+                refs,
+                num_returns=len(refs),
+                timeout=max(0.1, deadline - time.monotonic()),
+            )
+            if not ready:
+                break
+            ready_set = set(ready)
+            for r in ready:
+                try:
+                    ray.get(r)
+                except Exception:
+                    # Terminate call failed (e.g. actor already dead) —
+                    # already-terminated is a success for our purposes.
+                    pass
+            pending = [(m, r) for m, r in pending if r not in ready_set]
+
+        # Anything still not done: hard-kill so shutdown progresses.
+        for mgr, _ in pending:
             try:
-                ray.get(ref)
+                ray.kill(mgr, no_restart=True)
             except Exception:
                 pass
 
