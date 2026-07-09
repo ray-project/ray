@@ -393,8 +393,11 @@ CoreWorker::CoreWorker(
                                   std::placeholders::_8,
                                   std::placeholders::_9);
     actor_task_execution_arg_waiter_ = std::make_unique<ActorTaskExecutionArgWaiter>(
-        [this](const std::vector<rpc::ObjectReference> &args, int64_t tag) {
-          RAY_CHECK_OK(raylet_ipc_client_->WaitForActorCallArgs(args, tag))
+        [this](const std::vector<rpc::ObjectReference> &args,
+               const TaskID &task_id,
+               int32_t attempt_number) {
+          RAY_CHECK_OK(
+              raylet_ipc_client_->WaitForActorCallArgs(args, task_id, attempt_number))
               << "WaitForActorCallArgs IPC failed unexpectedly";
         });
     task_receiver_ = std::make_unique<TaskReceiver>(task_execution_service_,
@@ -3684,6 +3687,9 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   // For actor tasks, we just need to post a HandleActorTask instance to the task
   // execution service.
   if (request.task_spec().type() == TaskType::ACTOR_TASK) {
+    // Fire the args-fetch IPC eagerly on the gRPC handler thread so it is
+    // pipelined with any in-progress work on the task execution service.
+    task_receiver_->BeginActorTaskArgsFetch(request);
     task_execution_service_.post(
         [this,
          request = std::move(request),
@@ -3732,9 +3738,12 @@ void CoreWorker::HandleActorCallArgWaitComplete(
   // Post on the task execution event loop since this may trigger the
   // execution of a task that is now ready to run.
   task_execution_service_.post(
-      [this, tag = request.tag()] {
-        RAY_LOG(DEBUG) << "Actor task args are ready for tag: " << tag;
-        actor_task_execution_arg_waiter_->MarkReady(tag);
+      [this,
+       task_id = TaskID::FromBinary(request.task_id()),
+       attempt_number = request.attempt_number()] {
+        RAY_LOG(DEBUG).WithField(task_id)
+            << "Actor task args are ready for attempt " << attempt_number;
+        actor_task_execution_arg_waiter_->MarkReady(TaskAttempt{task_id, attempt_number});
       },
       "CoreWorker.MarkActorTaskArgsReady");
 
