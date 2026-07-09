@@ -565,11 +565,13 @@ exclude_patterns = [
     # link to /_collections/train/tutorials/README.
     "_collections/train/tutorials/*/README.*",  # one-level sidecars (getting-started, workload-patterns)
     "_collections/train/tutorials/*/**/README.*",  # deeper sidecars, if any
-    # Sidecar README.md files in fetched template dirs duplicate the canonical
-    # notebook that the gallery / toctree already links to. Exclude to avoid
-    # orphan warnings without losing reachable content.
+    # asynchronous-inference has no docs landing page (nothing links to it), so
+    # exclude its README.md to avoid an orphan warning. Do NOT list a template
+    # that IS linked from a toctree here: README.ipynb is already globally
+    # excluded above, so README.md is that template's canonical page — excluding
+    # it deletes the page and breaks the reference (this happened to
+    # tune_pytorch_asha when its notebook was renamed to README.ipynb).
     "_collections/serve/tutorials/asynchronous-inference/README.md",
-    "_collections/tune/examples/tune_pytorch_asha/README.md",
     # llamafactory: master excludes the in-tree paths only, but this branch
     # also pulls a copy via sphinx-collections (see _TEMPLATE_COLLECTIONS).
     # Mirror the in-tree patterns under _collections/ so the fetched copy
@@ -984,16 +986,27 @@ def setup(app):
     app.connect('source-read', mark_orphans)
 
     # Fix code-block language tags in _collections markdown files.
-    # Notebooks converted to markdown tag Jupyter magic shell commands
-    # (e.g. ``!serve run ...``) as ``python`` code blocks, which causes
-    # Sphinx highlighting warnings.  Re-tag them as ``ipython3`` so the
-    # python parts stay highlighted as python and ``!magic`` / ``%magic``
-    # lines render as shell.
-    _MAGIC_CODE_BLOCK_RE = re.compile(r"```python\n((?:#[^\n]*\n)*)([!%]\S)")
+    # Notebooks converted to markdown tag cells that contain a Jupyter magic or
+    # shell escape (e.g. ``!uv pip install ...`` / ``%matplotlib``) as
+    # ``python`` code blocks, which Pygments can't lex as Python and which fail
+    # the build under ``-W``.  Re-tag any such block as ``ipython3`` so the
+    # python parts stay highlighted as python and ``!``/``%`` lines render as
+    # shell.  The magic can appear anywhere in the cell (a cell often runs some
+    # Python and then shells out), not only on the first line.
+    _PY_CODE_FENCE_RE = re.compile(r"```python\n(.*?)```", re.DOTALL)
+    _MAGIC_LINE_RE = re.compile(r"^[ \t]*[!%]\S", re.MULTILINE)
 
     def fix_collections_code_blocks(app, docname, source):
-        if docname.startswith("_collections/"):
-            source[0] = _MAGIC_CODE_BLOCK_RE.sub(r"```ipython3\n\1\2", source[0])
+        if not docname.startswith("_collections/"):
+            return
+
+        def _retag(match):
+            body = match.group(1)
+            if _MAGIC_LINE_RE.search(body):
+                return "```ipython3\n" + body + "```"
+            return match.group(0)
+
+        source[0] = _PY_CODE_FENCE_RE.sub(_retag, source[0])
 
     app.connect('source-read', fix_collections_code_blocks)
 
