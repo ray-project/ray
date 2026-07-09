@@ -15,10 +15,7 @@ from ray._common.test_utils import (
     fetch_prometheus_metric_timeseries,
     wait_for_condition,
 )
-from ray.serve._private.constants import (
-    DEFAULT_LATENCY_BUCKET_MS,
-    RAY_SERVE_ENABLE_DIRECT_INGRESS,
-)
+from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
 from ray.serve._private.test_utils import (
     PROMETHEUS_METRICS_TIMEOUT_S,
     get_application_url,
@@ -96,11 +93,8 @@ class TestRequestContextMetrics:
             assert metric[key] == expected_output[key]
 
     @skip_if_haproxy(
-        "direct ingress invokes the ingress deployment without a handle or "
-        "router hop, so ray_serve_handle_request_counter_total and "
-        "ray_serve_num_router_requests_total are never emitted for it; those "
-        "metrics are still exercised under HAProxy by "
-        "test_request_context_pass_for_grpc_proxy"
+        "direct ingress invokes the ingress deployment without a handle or router "
+        "hop, so these metrics are not emitted"
     )
     def test_request_context_pass_for_http_proxy(self, metrics_start_shutdown):
         """Test HTTP proxy passing request context"""
@@ -219,6 +213,10 @@ class TestRequestContextMetrics:
             assert metrics_app_name["g"] == "app2", msg
             assert metrics_app_name["h"] == "app3", msg
 
+    @skip_if_haproxy(
+        "direct ingress skips the handle and router hop and HAProxy counts its "
+        "health-check probes in these metrics"
+    )
     def test_request_context_pass_for_grpc_proxy(self, metrics_start_shutdown):
         """Test gRPC proxy passing request context"""
 
@@ -311,46 +309,27 @@ class TestRequestContextMetrics:
                     timeout=PROMETHEUS_METRICS_TIMEOUT_S,
                 )[metric_name]
             ]
-            # Ignore HAProxy's periodic health-check samples.
-            routes = {metric["route"] for metric in metrics} - {""}
-            assert routes == {"app1", "app2", "app3"}
+            assert {metric["route"] for metric in metrics} == {
+                "app1",
+                "app2",
+                "app3",
+            }
 
-        # handle_request_counter and num_router_requests are emitted only for a
-        # handle call between deployments. Under direct ingress the proxy calls
-        # the ingress deployment directly, so single-deployment apps app1 and
-        # app3 make no handle call. Only app2, the composition app, emits them.
         for metric_name in [
             "ray_serve_handle_request_counter_total",
             "ray_serve_num_router_requests_total",
+            "ray_serve_deployment_processing_latency_ms_sum",
         ]:
             metrics_route, metrics_app_name = self._generate_metrics_summary(
                 get_metric_dictionaries(metric_name, timeseries=timeseries),
             )
             msg = f"Incorrect metrics for {metric_name}"
-            if RAY_SERVE_ENABLE_DIRECT_INGRESS:
-                assert metrics_route[depl_name2] == {"app2"}, msg
-                assert metrics_app_name[depl_name2] == "app2", msg
-            else:
-                assert metrics_route[depl_name1] == {"app1"}, msg
-                assert metrics_route[depl_name2] == {"app2"}, msg
-                assert metrics_route[depl_name3] == {"app3"}, msg
-                assert metrics_app_name[depl_name1] == "app1", msg
-                assert metrics_app_name[depl_name2] == "app2", msg
-                assert metrics_app_name[depl_name3] == "app3", msg
-
-        metrics_route, metrics_app_name = self._generate_metrics_summary(
-            get_metric_dictionaries(
-                "ray_serve_deployment_processing_latency_ms_sum",
-                timeseries=timeseries,
-            ),
-        )
-        msg = "Incorrect metrics for ray_serve_deployment_processing_latency_ms_sum"
-        assert metrics_route[depl_name1] == {"app1"}, msg
-        assert metrics_route[depl_name2] == {"app2"}, msg
-        assert metrics_route[depl_name3] == {"app3"}, msg
-        assert metrics_app_name[depl_name1] == "app1", msg
-        assert metrics_app_name[depl_name2] == "app2", msg
-        assert metrics_app_name[depl_name3] == "app3", msg
+            assert metrics_route[depl_name1] == {"app1"}, msg
+            assert metrics_route[depl_name2] == {"app2"}, msg
+            assert metrics_route[depl_name3] == {"app3"}, msg
+            assert metrics_app_name[depl_name1] == "app1", msg
+            assert metrics_app_name[depl_name2] == "app2", msg
+            assert metrics_app_name[depl_name3] == "app3", msg
 
     def test_request_context_pass_for_handle_passing(self, metrics_start_shutdown):
         """Test handle passing contexts between replicas"""

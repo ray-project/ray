@@ -46,15 +46,6 @@ from ray.serve.config import RequestRouterConfig
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
 
-def drop_health_check_samples(metrics):
-    """Drop the metric samples HAProxy's periodic health checks generate."""
-    return [
-        m
-        for m in metrics
-        if "Healthz" not in m.get("method", "") and m.get("route") != "/-/healthz"
-    ]
-
-
 def extract_tags(line: str) -> Dict[str, str]:
     """Extracts any tags from the metrics line."""
 
@@ -214,6 +205,10 @@ def test_http_replica_gauge_metrics(metrics_start_shutdown):
     wait_for_condition(ensure_request_processing, timeout=5)
 
 
+@skip_if_haproxy(
+    "HAProxy answers unmatched-route 404s itself and counts its health-check "
+    "probes in these metrics"
+)
 def test_proxy_metrics_not_found(metrics_start_shutdown):
     # NOTE: These metrics should be documented at
     # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
@@ -278,27 +273,19 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
                 continue
-            # Skip HAProxy's health-check samples. The real ping's route is
-            # empty too, so key on method.
-            if "/ray.serve.RayServeAPIService/Healthz" in metrics:
-                continue
-            # Under HAProxy, unmatched routes are rejected by HAProxy itself and
-            # never reach a replica, so these HTTP error metrics have a different
-            # shape. Covered by test_metrics_haproxy.py::test_proxy_metrics_not_found.
-            if not RAY_SERVE_ENABLE_HA_PROXY:
-                if "serve_num_http_error_requests" in metrics:
-                    # route "/B/" should have error count 2
-                    if do_assert:
-                        assert "2.0" in metrics
-                    if "2.0" not in metrics:
-                        return False
-                elif "serve_num_deployment_http_error_requests" in metrics:
-                    # deployment B should have error count 2
-                    if do_assert:
-                        assert 'error_code="404"' in metrics and "2.0" in metrics
-                    if 'error_code="404"' not in metrics or "2.0" not in metrics:
-                        return False
-            if "serve_num_grpc_error_requests" in metrics:
+            if "serve_num_http_error_requests" in metrics:
+                # route "/B/" should have error count 2
+                if do_assert:
+                    assert "2.0" in metrics
+                if "2.0" not in metrics:
+                    return False
+            elif "serve_num_deployment_http_error_requests" in metrics:
+                # deployment B should have error count 2
+                if do_assert:
+                    assert 'error_code="404"' in metrics and "2.0" in metrics
+                if 'error_code="404"' not in metrics or "2.0" not in metrics:
+                    return False
+            elif "serve_num_grpc_error_requests" in metrics:
                 # gRPC pinged "B" once
                 if do_assert:
                     assert "1.0" in metrics
@@ -319,6 +306,10 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
         verify_error_count(do_assert=True)
 
 
+@skip_if_haproxy(
+    "HAProxy returns 502 for a dead backend instead of a replica 500 and counts "
+    "its health-check probes in these metrics"
+)
 def test_proxy_metrics_internal_error(metrics_start_shutdown):
     # This test kills the replica process so metrics are not emitted.
     if RAY_SERVE_ENABLE_DIRECT_INGRESS and not RAY_SERVE_ENABLE_HA_PROXY:
@@ -388,27 +379,19 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
                 continue
-            # Skip HAProxy's health-check samples.
-            if "/ray.serve.RayServeAPIService/Healthz" in metrics:
-                continue
-            # Under HAProxy, a dead backend gets a 502 from HAProxy itself rather
-            # than a replica-attributed 500, so these HTTP error metrics have a
-            # different shape. Covered by
-            # test_metrics_haproxy.py::test_proxy_metrics_internal_error.
-            if not RAY_SERVE_ENABLE_HA_PROXY:
-                if "serve_num_http_error_requests" in metrics:
-                    # route "/A/" should have error count 2
-                    if do_assert:
-                        assert "2.0" in metrics
-                    if "2.0" not in metrics:
-                        return False
-                elif "serve_num_deployment_http_error_requests" in metrics:
-                    # deployment A should have error count 2
-                    if do_assert:
-                        assert 'deployment="A"' in metrics and "2.0" in metrics
-                    if 'deployment="A"' not in metrics or "2.0" not in metrics:
-                        return False
-            if "serve_num_grpc_error_requests" in metrics:
+            if "serve_num_http_error_requests" in metrics:
+                # route "/A/" should have error count 2
+                if do_assert:
+                    assert "2.0" in metrics
+                if "2.0" not in metrics:
+                    return False
+            elif "serve_num_deployment_http_error_requests" in metrics:
+                # deployment A should have error count 2
+                if do_assert:
+                    assert 'deployment="A"' in metrics and "2.0" in metrics
+                if 'deployment="A"' not in metrics or "2.0" not in metrics:
+                    return False
+            elif "serve_num_grpc_error_requests" in metrics:
                 # gRPC pinged "A" once
                 if do_assert:
                     assert "1.0" in metrics
@@ -429,6 +412,10 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
         verify_error_count(do_assert=True)
 
 
+@skip_if_haproxy(
+    "HAProxy answers the 404 itself and counts its health-check probes in these "
+    "metrics"
+)
 def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for not found."""
 
@@ -453,28 +440,15 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     fake_app_name = "fake-app"
     ping_grpc_call_method(channel=channel, app_name=fake_app_name, test_not_found=True)
 
-    # Under HAProxy, the route-miss 404 is handled by HAProxy itself and never
-    # forwarded to a replica, so these HTTP metrics have a different shape.
-    # Covered by test_metrics_haproxy.py::test_proxy_metrics_fields_not_found.
-    if not RAY_SERVE_ENABLE_HA_PROXY:
-        num_requests = get_metric_dictionaries("ray_serve_num_http_requests_total")
-        assert len(num_requests) == 1
-        assert num_requests[0]["route"] == ""
-        assert num_requests[0]["method"] == "GET"
-        assert num_requests[0]["application"] == ""
-        assert num_requests[0]["status_code"] == "404"
-        print("serve_num_http_requests working as expected.")
+    num_requests = get_metric_dictionaries("ray_serve_num_http_requests_total")
+    assert len(num_requests) == 1
+    assert num_requests[0]["route"] == ""
+    assert num_requests[0]["method"] == "GET"
+    assert num_requests[0]["application"] == ""
+    assert num_requests[0]["status_code"] == "404"
+    print("serve_num_http_requests working as expected.")
 
-        num_errors = get_metric_dictionaries("ray_serve_num_http_error_requests_total")
-        assert len(num_errors) == 1
-        assert num_errors[0]["route"] == ""
-        assert num_errors[0]["error_code"] == "404"
-        assert num_errors[0]["method"] == "GET"
-        print("serve_num_http_error_requests working as expected.")
-
-    num_requests = drop_health_check_samples(
-        get_metric_dictionaries("ray_serve_num_grpc_requests_total")
-    )
+    num_requests = get_metric_dictionaries("ray_serve_num_grpc_requests_total")
     assert len(num_requests) == 1
     assert num_requests[0]["route"] == ""
     assert num_requests[0]["method"] == "/ray.serve.UserDefinedService/__call__"
@@ -482,9 +456,14 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     assert num_requests[0]["status_code"] == grpc.StatusCode.NOT_FOUND.name
     print("serve_num_grpc_requests working as expected.")
 
-    num_errors = drop_health_check_samples(
-        get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
-    )
+    num_errors = get_metric_dictionaries("ray_serve_num_http_error_requests_total")
+    assert len(num_errors) == 1
+    assert num_errors[0]["route"] == ""
+    assert num_errors[0]["error_code"] == "404"
+    assert num_errors[0]["method"] == "GET"
+    print("serve_num_http_error_requests working as expected.")
+
+    num_errors = get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == ""
     assert num_errors[0]["error_code"] == grpc.StatusCode.NOT_FOUND.name
@@ -499,6 +478,7 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     ],
     indirect=True,
 )
+@skip_if_haproxy("HAProxy counts its gRPC health-check probes in these metrics")
 def test_proxy_timeout_metrics(metrics_start_shutdown):
     """Test that HTTP timeout metrics are reported correctly."""
     signal = SignalActor.remote()
@@ -533,9 +513,7 @@ def test_proxy_timeout_metrics(metrics_start_shutdown):
     assert num_errors[0]["method"] == "GET"
     assert num_errors[0]["application"] == "status_code_timeout"
 
-    num_errors = drop_health_check_samples(
-        get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
-    )
+    num_errors = get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "status_code_timeout"
     assert num_errors[0]["error_code"] == grpc.StatusCode.DEADLINE_EXCEEDED.name
@@ -580,6 +558,7 @@ def test_proxy_disconnect_http_metrics(metrics_start_shutdown):
     assert num_errors[0]["application"] == "disconnect"
 
 
+@skip_if_haproxy("HAProxy counts its gRPC health-check probes in these metrics")
 def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     """Test that gRPC disconnect metrics are reported correctly."""
     signal = SignalActor.remote()
@@ -623,9 +602,7 @@ def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     thread.join()
     ray.get(signal.send.remote(clear=True))
 
-    num_errors = drop_health_check_samples(
-        get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
-    )
+    num_errors = get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "disconnect"
     assert num_errors[0]["error_code"] == grpc.StatusCode.CANCELLED.name
@@ -633,6 +610,7 @@ def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     assert num_errors[0]["application"] == "disconnect"
 
 
+@skip_if_haproxy("HAProxy counts its health-check probes in these latency metrics")
 def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for internal error."""
 
@@ -678,9 +656,7 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     assert num_deployment_errors[0]["application"] == real_app_name
     print("serve_num_deployment_grpc_error_requests working as expected.")
 
-    latency_metrics = drop_health_check_samples(
-        get_metric_dictionaries("ray_serve_http_request_latency_ms_sum")
-    )
+    latency_metrics = get_metric_dictionaries("ray_serve_http_request_latency_ms_sum")
     assert len(latency_metrics) == 1
     assert latency_metrics[0]["method"] == "GET"
     assert latency_metrics[0]["route"] == "/real_route"
@@ -688,9 +664,7 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     assert latency_metrics[0]["status_code"] == "500"
     print("serve_http_request_latency_ms working as expected.")
 
-    latency_metrics = drop_health_check_samples(
-        get_metric_dictionaries("ray_serve_grpc_request_latency_ms_sum")
-    )
+    latency_metrics = get_metric_dictionaries("ray_serve_grpc_request_latency_ms_sum")
     assert len(latency_metrics) == 1
     assert latency_metrics[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     assert latency_metrics[0]["route"] == real_app_name
@@ -1201,10 +1175,8 @@ def test_multiplexed_metrics(metrics_start_shutdown):
 
 
 @skip_if_haproxy(
-    "HAProxy emits HTTP ingress metrics from its own log parser using the "
-    "static backend path_prefix, so it cannot label requests with FastAPI "
-    "route patterns; the replica computes patterns but does not emit HTTP "
-    "ingress metrics under HAProxy"
+    "HAProxy labels HTTP metrics with the static backend path_prefix, not "
+    "FastAPI route patterns"
 )
 @pytest.mark.parametrize("use_factory_pattern", [False, True])
 def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_pattern):
