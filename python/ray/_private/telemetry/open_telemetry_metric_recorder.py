@@ -108,15 +108,13 @@ class OpenTelemetryMetricRecorder:
                     # evict only observations that have gone stale.
                     stored = self._gauge_observations_by_name.get(metric_name, {})
                     now = time.monotonic()
-                    retained = {
-                        tag_set: (val, ts)
-                        for tag_set, (val, ts) in stored.items()
-                        if now - ts <= self._gauge_metric_ttl_s
-                    }
+                    retained = {}
+                    observations = {}
+                    for tag_set, (val, ts) in stored.items():
+                        if now - ts <= self._gauge_metric_ttl_s:
+                            retained[tag_set] = (val, ts)
+                            observations[tag_set] = val
                     self._gauge_observations_by_name[metric_name] = retained
-                    observations = {
-                        tag_set: val for tag_set, (val, _) in retained.items()
-                    }
                 elif metric_type == MetricType.COUNTER:
                     observations = self._counter_observations_by_name.get(
                         metric_name, {}
