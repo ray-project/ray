@@ -92,6 +92,10 @@ class TestRequestContextMetrics:
         for key in expected_output:
             assert metric[key] == expected_output[key]
 
+    @skip_if_haproxy(
+        "direct ingress invokes the ingress deployment without a handle or router "
+        "hop, so these metrics are not emitted"
+    )
     def test_request_context_pass_for_http_proxy(self, metrics_start_shutdown):
         """Test HTTP proxy passing request context"""
 
@@ -209,6 +213,10 @@ class TestRequestContextMetrics:
             assert metrics_app_name["g"] == "app2", msg
             assert metrics_app_name["h"] == "app3", msg
 
+    @skip_if_haproxy(
+        "direct ingress skips the handle and router hop and HAProxy counts its "
+        "health-check probes in these metrics"
+    )
     def test_request_context_pass_for_grpc_proxy(self, metrics_start_shutdown):
         """Test gRPC proxy passing request context"""
 
