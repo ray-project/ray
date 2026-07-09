@@ -124,6 +124,11 @@ static inline void InitOpenTelemetryExporter(const int metrics_agent_port) {
   if (!RayConfig::instance().enable_open_telemetry()) {
     return;
   }
+  // NOTE: the export interval below (metrics_report_interval_ms) is the cadence at
+  // which live gauge values reach the dashboard agent. The agent derives its
+  // gauge-metric TTL as 2x this interval (see `_resolve_gauge_ttl_seconds` in
+  // python/ray/_private/telemetry/open_telemetry_metric_recorder.py). If this export
+  // cadence changes, update that derivation accordingly.
   OpenTelemetryMetricRecorder::GetInstance().Start(
       /*endpoint=*/BuildAddress(GetLocalhostIP(), metrics_agent_port),
       /*interval=*/
