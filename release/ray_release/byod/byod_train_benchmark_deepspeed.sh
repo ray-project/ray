@@ -2,9 +2,11 @@
 # Dependencies for the DeepSpeed LLM training benchmark
 # (release/train_tests/benchmark, deepspeed adapter).
 #
-# Installed on top of the ray-ml GPU image's existing CUDA-matched torch. Do NOT
-# reinstall torch here: DeepSpeed JIT-compiles ops against the image's CUDA
-# toolkit, and a mismatched torch wheel breaks that build.
+# Layered onto the gpu-cu130 BYOD image (anyscale/ray + CUDA 13), with torch
+# pinned by the gpu_cu130_py3.10.lock python_depset. Do NOT reinstall torch
+# here: DeepSpeed JIT-compiles its ops at runtime against the image's CUDA
+# toolkit and the depset's torch build, and a mismatched torch wheel breaks
+# that.
 #
 # transformers must be >= 4.51.0 for Qwen3 (`model_type: qwen3`).
 
