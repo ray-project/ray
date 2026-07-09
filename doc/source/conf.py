@@ -137,8 +137,8 @@ _TEMPLATE_CHANNEL_API = _TEMPLATES_CI_BASE + "/templates/{name}/latest/channel.j
 # Hard timeouts on the templates.ci.ray.io HTTP calls. The doc build previously
 # stalled when the templates host was slow or unresponsive (#63112 revert);
 # explicit timeouts let urlopen surface a TimeoutError instead of hanging
-# indefinitely so the per-template error handler in `_fetch_and_extract_zip`
-# can log a warning and continue with the remaining templates.
+# indefinitely so `_fetch_and_extract_zip` fails fast with a clear error
+# instead of blocking the build.
 _TEMPLATE_CHANNEL_TIMEOUT_S = 30
 _TEMPLATE_DOWNLOAD_TIMEOUT_S = 90
 
@@ -160,8 +160,8 @@ def _urlopen_read_with_retries(url, timeout):
     Retries cover both the connection and the body read (a slow `read()` under
     load can itself time out). Only transient conditions are retried — a 4xx
     other than 429 won't fix itself, so it's raised immediately. After the
-    final attempt the last exception propagates to the caller's handler, which
-    preserves the existing per-template skip semantics.
+    final attempt the last exception propagates to the caller, which aborts the
+    build with a clear, attributed error.
     """
     last_exc = None
     for attempt in range(_TEMPLATE_FETCH_ATTEMPTS):
@@ -294,11 +294,14 @@ def _resolve_template_url(name):
 def _fetch_and_extract_zip(config):
     """Download a zip archive and extract it into the collection target directory.
 
-    Failures fetching, downloading, or extracting an individual template are
-    logged as warnings and the target directory is cleared, so a single bad
-    template doesn't abort the entire doc build. Pages that depended on the
-    skipped template will surface as broken refs at build time and can be
-    triaged independently.
+    A failure fetching, downloading, or extracting a template aborts the build
+    immediately with an error naming the template. Every template is wired into
+    a toctree, so a missing one fails the build anyway under `fail_on_warning`,
+    but as a "nonexisting document" warning emitted far downstream of the real
+    cause. Failing here, at the fetch, points straight at the actual problem
+    (the templates host or the archive) instead of a dangling toctree ref.
+    Transient host errors are already absorbed by the retry/backoff in
+    `_urlopen_read_with_retries`; this fires only once those are exhausted.
     """
     import shutil
 
@@ -321,15 +324,19 @@ def _fetch_and_extract_zip(config):
             target,
         )
     except Exception as exc:
-        logger.warning(
-            "sphinx-collections: skipping template %r — fetch/extract failed: %s",
-            name,
-            exc,
-        )
-        # Leave any partial state out of the build tree so downstream sphinx
-        # passes don't trip over a half-extracted archive.
+        # Don't leave a half-extracted archive in the tree, then abort with a
+        # clear, attributed error. sphinx-collections runs in `safe` mode by
+        # default, so re-raising here surfaces as a build-halting
+        # CollectionsDriverError rather than a swallowed skip.
         if target.is_dir():
             shutil.rmtree(target, ignore_errors=True)
+        raise RuntimeError(
+            f"sphinx-collections: template {name!r} failed to fetch/extract into "
+            f"{target} after {_TEMPLATE_FETCH_ATTEMPTS} attempt(s): {exc}. This is "
+            f"a template fetch failure (templates.ci.ray.io or the archive), not a "
+            f"broken toctree reference — fix the fetch and rebuild; don't chase the "
+            f"downstream 'nonexisting document' warnings it would otherwise cause."
+        ) from exc
 
 
 collections = {
