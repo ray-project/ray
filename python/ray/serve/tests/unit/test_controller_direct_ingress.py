@@ -1138,12 +1138,11 @@ def test_stop_one_running_replica_for_testing_delegates_to_manager(
 
 
 def test_recon_port_gate_feeds_only_new_ingress_tuples(
-    monkeypatch, direct_ingress_controller: FakeDirectIngressController
+    direct_ingress_controller: FakeDirectIngressController,
 ):
-    """C3: with RAY_SERVE_RECON_PORT_GATE on, update_ports is fed only the set-diff of
+    """C3: update_ports is fed only the set-diff of
     ingress tuples new since the last sync -- the full set on the first tick (empty
     cache) and an empty list on an unchanged second tick."""
-    monkeypatch.setattr("ray.serve._private.controller.RAY_SERVE_RECON_PORT_GATE", True)
     tuples = [("node1", "r1", 30000, 40000), ("node2", "r2", 30001, 40001)]
     direct_ingress_controller.deployment_state_manager.get_ingress_replicas_info = (
         lambda: list(tuples)
@@ -1161,13 +1160,10 @@ def test_recon_port_gate_feeds_only_new_ingress_tuples(
 
 
 def test_recon_port_gate_prune_skips_unchanged_node(
-    monkeypatch, direct_ingress_controller: FakeDirectIngressController
+    direct_ingress_controller: FakeDirectIngressController,
 ):
-    """C4: with RAY_SERVE_RECON_PORT_GATE on, prune skips a node's O(replicas) reclaim
+    """C4: prune skips a node's O(replicas) reclaim
     scan when that node's alive-replica set is unchanged since the last prune."""
-    monkeypatch.setattr(
-        "ray.serve._private.node_port_manager.RAY_SERVE_RECON_PORT_GATE", True
-    )
     deployment_id = DeploymentID(name="app1_ingress", app_name="app1")
     replica_id = ReplicaID(unique_id="replica1", deployment_id=deployment_id)
     replica_info = RunningReplicaInfo(

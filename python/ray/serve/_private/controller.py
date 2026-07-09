@@ -40,7 +40,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_LOG_TO_STDERR,
-    RAY_SERVE_RECON_PORT_GATE,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
@@ -699,14 +698,9 @@ class ServeController:
             # the tuples NEW since the last sync (set-diff) -> the reconcile loop is
             # O(changed) not O(replicas). Full-tuple set recomputed + replaced each
             # tick, so it is restart-safe (empty cache -> full emit on the first tick).
-            if RAY_SERVE_RECON_PORT_GATE:
-                fresh = set(ingress_replicas_info_list)
-                NodePortManager.update_ports(
-                    list(fresh - self._last_ingress_port_tuples)
-                )
-                self._last_ingress_port_tuples = fresh
-            else:
-                NodePortManager.update_ports(ingress_replicas_info_list)
+            fresh = set(ingress_replicas_info_list)
+            NodePortManager.update_ports(list(fresh - self._last_ingress_port_tuples))
+            self._last_ingress_port_tuples = fresh
 
             # Clean up stale ports
             # get all alive replica ids and their node ids.

@@ -10,7 +10,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT,
     RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
     RAY_SERVE_PORT_QUARANTINE_S,
-    RAY_SERVE_RECON_PORT_GATE,
     SERVE_LOGGER_NAME,
 )
 
@@ -250,7 +249,7 @@ class NodePortManager:
             # replica that left / arrived / moved nodes is caught). Liveness-only: a
             # skipped node never reuses a live port (allocate() guards that). Teardown
             # of an emptied+drained manager below still runs every tick.
-            if RAY_SERVE_RECON_PORT_GATE and alive == manager._last_pruned_alive:
+            if alive == manager._last_pruned_alive:
                 pass
             else:
                 # Release ports of replicas no longer alive (quarantines them).
