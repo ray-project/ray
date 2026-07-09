@@ -25,9 +25,6 @@ class PipelinedFinalizeFn:
 
         compute_stream = torch.cuda.current_stream(self.device)
         with torch.cuda.stream(self._copy_stream):
-            # arbitrary use of .to(). Normally we will need modifications
-            # because a batch may be a list of tensors, etc. See next
-            # section for more details.
             moved = batch.to(self.device, non_blocking=True)
             moved.record_stream(compute_stream)
 
