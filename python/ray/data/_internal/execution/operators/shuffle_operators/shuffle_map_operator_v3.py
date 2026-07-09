@@ -327,36 +327,25 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         assert requested is not None
         self._map_resource_usage = self._map_resource_usage.subtract(requested)
 
-        # Fold this mapper's per-partition decoded bytes for the reducer's
-        # memory ask. If deref fails, raise — silently continuing would
-        # under-count partition bytes and OOM the reducer downstream
-        # (matches v2, which lets ray.get propagate).
-        handle = ray.get(handle_ref)
-        for pid, nbytes in (handle.get("decoded_bytes") or {}).items():
-            self._partition_bytes[pid] += nbytes
-
-        # Roll up input stats BEFORE destroying the bundles.
+        # Roll up input stats from the bundles now — v3's task return
+        # doesn't carry them (v2 gets them from ``ray.get`` below), so
+        # compute before ``destroy_if_owned`` drops the metadata.
         input_rows = sum(
             m.num_rows or 0 for bundle in input_bundles for m in bundle.metadata
         )
         input_bytes = sum(
             m.size_bytes or 0 for bundle in input_bundles for m in bundle.metadata
         )
-        self._total_input_rows += input_rows
-        self._total_input_bytes += input_bytes
-        # Mirror v2 shuffle_map_operator.py:310 — append a per-task stats
-        # entry so ``get_stats()`` isn't empty.
-        input_meta = BlockMetadata(
-            num_rows=input_rows,
-            size_bytes=input_bytes,
-            exec_stats=None,
-            input_files=None,
-        )
-        self._map_blocks_stats.append(input_meta.to_stats())
 
-        # Synthetic output bundle for per-task metric bookkeeping only —
-        # not pushed to the output queue (downstream sees the N partition
-        # wrappers built at all_inputs_done).
+        # `task_done_callback` fires only after the handle ref is ready,
+        # so this is just local deserialization.
+        handle = ray.get(handle_ref)
+        for pid, nbytes in (handle.get("decoded_bytes") or {}).items():
+            self._partition_bytes[pid] += nbytes
+
+        # Synthetic per-mapper output bundle for metric bookkeeping only
+        # — not pushed to the output queue (downstream sees the N
+        # partition wrappers built at all_inputs_done).
         exec_stats = BlockExecStats.builder().build(block_ser_time_s=0.0)
         out_meta = BlockMetadata(
             num_rows=0,
@@ -369,22 +358,34 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
             schema=None,
             owns_blocks=False,
         )
-
         self._completed_handle_refs.append(handle_ref)
+
         for bundle in input_bundles:
             bundle.destroy_if_owned()
+
+        self._total_input_rows += input_rows
+        self._total_input_bytes += input_bytes
+        input_meta = BlockMetadata(
+            num_rows=input_rows,
+            size_bytes=input_bytes,
+            exec_stats=None,
+            input_files=None,
+        )
+        self._map_blocks_stats.append(input_meta.to_stats())
 
         # Order: on_task_output_generated needs the task still in
         # _running_tasks; on_task_finished pops it.
         self._metrics.on_task_output_generated(task_index=task_idx, output=out_bundle)
         self._metrics.on_task_finished(
-            task_idx, None, task_exec_stats=None, task_exec_driver_stats=None
+            task_idx,
+            None,
+            task_exec_stats=None,
+            task_exec_driver_stats=None,
         )
 
         if self._map_bar is not None:
             self._map_bar.update(increment=input_rows)
 
-        # Either this or ``all_inputs_done`` may be the last-to-fire gate.
         self._maybe_emit_partition_bundles()
 
     def _maybe_emit_partition_bundles(self) -> None:
