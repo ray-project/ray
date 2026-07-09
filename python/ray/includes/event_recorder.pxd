@@ -1,3 +1,4 @@
+from libc.stdint cimport int64_t
 from libcpp.string cimport string as c_string
 from libcpp.memory cimport unique_ptr
 from libcpp.vector cimport vector as c_vector
@@ -15,7 +16,18 @@ cdef extern from "ray/observability/python_event_interface.h" namespace "ray::ob
         const c_string &message,
         const c_string &session_name,
         const c_string &serialized_event_data,
-        int nested_event_field_number)
+        int nested_event_field_number,
+        const c_string &event_id,
+        int64_t timestamp_ns)
+
+    cdef cppclass CPythonEventRecorder "ray::observability::PythonEventRecorder":
+        CPythonEventRecorder(int aggregator_port,
+                             const c_string &node_ip,
+                             const c_string &node_id_hex,
+                             size_t max_buffer_size,
+                             const c_string &metric_source)
+        void AddEvents(c_vector[unique_ptr[CRayEventInterface]] &&data_list)
+        void Shutdown()
 
     c_string SerializeEventsToRayEventsDataJson(
         c_vector[unique_ptr[CRayEventInterface]] &&events)

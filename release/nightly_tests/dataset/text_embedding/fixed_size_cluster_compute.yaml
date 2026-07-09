@@ -1,21 +1,16 @@
-cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
-region: us-west-2
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
-advanced_configurations_json:
+advanced_instance_config:
     IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
 
-head_node_type:
-    name: head-node
+head_node:
     instance_type: r6a.8xlarge
-    resources:
-      cpu: 0
 
-worker_node_types:
-    - name: gpu-node
-      instance_type: g5.xlarge
-      min_workers: 100
-      max_workers: 100
-      use_spot: false
+worker_nodes:
+    - instance_type: g5.xlarge
+      min_nodes: 100
+      max_nodes: 100
+      market_type: ON_DEMAND
 
 flags:
   allow-cross-zone-autoscaling: true

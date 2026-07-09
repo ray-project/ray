@@ -93,9 +93,9 @@ class BackendExecutor:
     Args:
         backend_config: The configurations for this
             specific backend.
+        trial_info: Information about the current Tune trial, if running under Tune.
         num_workers: Number of workers to use for training.
-        resources_per_worker (Optional[Dict[str, float]]):
-            Dictionary specifying the resources that will be
+        resources_per_worker: Dictionary specifying the resources that will be
             requested for each worker. Defaults to {"CPU": 1}.
         max_retries: Number of retries when Ray actors fail.
             Defaults to 3. Set to -1 for unlimited retries.
@@ -382,14 +382,20 @@ class BackendExecutor:
             resource_name: The name of the resource/accelerator.
             enable_sharing_env: The name of the environment variable
                 to check.
+
+        Returns:
+            True if resource sharing is enabled, False otherwise.
         """
         has_resource_requested = self._resources_per_worker.get(resource_name, 0) > 0
         return has_resource_requested and ray_constants.env_bool(
             enable_sharing_env, True
         )
 
-    def _create_rank_world_size_mappings(self) -> List[Dict]:
+    def _create_rank_world_size_mappings(
+        self,
+    ) -> Tuple[Dict[int, int], Dict[int, int], Dict[int, int]]:
         """Create rank and world size mappings for workers.
+
         There are three maps returned:
             - local_rank_map, which maps from worker world_rank to local_rank.
             - local_world_size_map, which maps from world_rank to local_world_size
@@ -432,6 +438,8 @@ class BackendExecutor:
                 4 -> 1
             }
 
+        Returns:
+            A tuple of (local_rank_map, local_world_size_map, node_rank_map).
         """
         local_rank_map = {}  # map from world rank to local rank
         local_world_size_map = {}  # map from world rank to local world size
@@ -486,7 +494,11 @@ class BackendExecutor:
         Args:
             train_func: The training function to run on each worker.
             datasets: The base datasets.
+            metadata: User-supplied metadata dict propagated to checkpoints
+                created during training.
             data_config: The config object for creating dataset shards for workers.
+            storage: The storage context, providing access to the experiment
+                directory and other persistent storage state.
             checkpoint: The checkpoint data that
                 should be loaded onto each worker and accessed by the
                 training function via ``session.get_checkpoint()``. If this
@@ -718,7 +730,7 @@ class BackendExecutor:
                 end_time_ms=int(time.time() * 1000),
             )
 
-    def get_with_failure_handling(self, remote_values):
+    def get_with_failure_handling(self, remote_values: List[ray.ObjectRef]):
         """Gets the remote values while handling for worker failures.
 
         This method should be called instead of ``ray.get()`` directly in

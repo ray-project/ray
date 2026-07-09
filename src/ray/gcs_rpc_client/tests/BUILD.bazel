@@ -10,7 +10,6 @@ ray_cc_test(
     deps = [
         "//src/ray/common:test_utils",
         "//src/ray/gcs_rpc_client:gcs_client",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -20,14 +19,14 @@ ray_cc_test(
     srcs = [
         "global_state_accessor_test.cc",
     ],
-    args = [
-        "$(location //:redis-server)",
-        "$(location //:redis-cli)",
-    ],
     data = [
         "//:redis-cli",
         "//:redis-server",
     ],
+    env = {
+        "TEST_REDIS_SERVER_EXEC_PATH": "$(rootpath //:redis-server)",
+        "TEST_REDIS_CLIENT_EXEC_PATH": "$(rootpath //:redis-cli)",
+    },
     features = select({
         "@platforms//os:windows": ["compiler_param_file"],
         "//conditions:default": [],
@@ -41,7 +40,6 @@ ray_cc_test(
         "//src/ray/observability:fake_metric",
         "//src/ray/util:path_utils",
         "//src/ray/util:raii",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -51,14 +49,14 @@ ray_cc_test(
     srcs = [
         "gcs_client_test.cc",
     ],
-    args = [
-        "$(location //:redis-server)",
-        "$(location //:redis-cli)",
-    ],
     data = [
         "//:redis-cli",
         "//:redis-server",
     ],
+    env = {
+        "TEST_REDIS_SERVER_EXEC_PATH": "$(rootpath //:redis-server)",
+        "TEST_REDIS_CLIENT_EXEC_PATH": "$(rootpath //:redis-cli)",
+    },
     features = select({
         "@platforms//os:windows": ["compiler_param_file"],
         "//conditions:default": [],
@@ -76,7 +74,6 @@ ray_cc_test(
         "//src/ray/util:network_util",
         "//src/ray/util:raii",
         "//src/ray/util:time",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -85,14 +82,14 @@ ray_cc_test(
     srcs = [
         "gcs_client_reconnection_test.cc",
     ],
-    args = [
-        "$(location //:redis-server)",
-        "$(location //:redis-cli)",
-    ],
     data = [
         "//:redis-cli",
         "//:redis-server",
     ],
+    env = {
+        "TEST_REDIS_SERVER_EXEC_PATH": "$(rootpath //:redis-server)",
+        "TEST_REDIS_CLIENT_EXEC_PATH": "$(rootpath //:redis-cli)",
+    },
     tags = [
         "no_windows",
         "team:core",
@@ -105,7 +102,6 @@ ray_cc_test(
         "//src/ray/util:network_util",
         "//src/ray/util:path_utils",
         "//src/ray/util:raii",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -118,6 +114,5 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/gcs_rpc_client:gcs_client",
-        "@com_google_googletest//:gtest_main",
     ],
 )

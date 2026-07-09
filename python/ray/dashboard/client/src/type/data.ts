@@ -13,6 +13,7 @@ export type DatasetMetrics = DataMetrics & {
 export type OperatorMetrics = DataMetrics & {
   operator: string;
   name: string;
+  queued_blocks: number;
 };
 
 export type DataMetrics = {

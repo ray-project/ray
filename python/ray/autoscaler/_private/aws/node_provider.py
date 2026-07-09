@@ -69,11 +69,13 @@ def list_ec2_instances(
     region: str, aws_credentials: Dict[str, Any] = None
 ) -> List[Dict[str, Any]]:
     """Get all instance-types/resources available in the user's AWS region.
+
     Args:
         region: the region of the AWS provider. e.g., "us-west-2".
+        aws_credentials: AWS credentials to use for the boto3 client.
+
     Returns:
-        final_instance_types: a list of instances. An example of one element in
-        the list:
+        A list of instances. An example of one element in the list:
             {'InstanceType': 'm5a.xlarge', 'ProcessorInfo':
             {'SupportedArchitectures': ['x86_64'], 'SustainedClockSpeedInGhz':
             2.5},'VCpuInfo': {'DefaultVCpus': 4, 'DefaultCores': 2,
@@ -345,8 +347,8 @@ class AWSNodeProvider(NodeProvider):
         tag specs.
 
         Args:
-            tag_specs (List[Dict[str, Any]]): base node provider tag specs
-            user_tag_specs (List[Dict[str, Any]]): user's node config tag specs
+            tag_specs: base node provider tag specs
+            user_tag_specs: user's node config tag specs
         """
 
         for user_tag_spec in user_tag_specs:

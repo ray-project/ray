@@ -34,7 +34,8 @@ ci_pipeline:
     - hi
     - three
 release_image_step:
-  ray: anyscalebuild
+  ray_cpu: anyscalecpubuild
+  ray_cuda: anyscalecudabuild
   ray_ml: anyscalemlbuild
   ray_llm: anyscalellmbuild
 """
@@ -56,7 +57,8 @@ def test_init_global_config() -> None:
         )
         assert config["state_machine_pr_aws_bucket"] == "ray-ci-pr-results"
         assert config["state_machine_disabled"] is True
-        assert config["release_image_step_ray"] == "anyscalebuild"
+        assert config["release_image_step_ray_cpu"] == "anyscalecpubuild"
+        assert config["release_image_step_ray_cuda"] == "anyscalecudabuild"
         assert config["release_image_step_ray_ml"] == "anyscalemlbuild"
         assert config["release_image_step_ray_llm"] == "anyscalellmbuild"
         assert config["byod_ecr"] == "029272617770.dkr.ecr.us-west-2.amazonaws.com"

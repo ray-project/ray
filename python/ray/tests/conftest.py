@@ -70,7 +70,10 @@ def pre_envs(monkeypatch):
 
 
 def wait_for_redis_to_start(
-    redis_ip_address: str, redis_port: bool, password=None, username=None
+    redis_ip_address: str,
+    redis_port: int,
+    password: Optional[str] = None,
+    username: Optional[str] = None,
 ):
     """Wait for a Redis server to be available.
 
@@ -80,8 +83,8 @@ def wait_for_redis_to_start(
     Args:
         redis_ip_address: The IP address of the redis server.
         redis_port: The port of the redis server.
-        username: The username of the Redis server.
         password: The password of the Redis server.
+        username: The username of the Redis server.
 
     Raises:
         Exception: An exception is raised if we could not connect with Redis.
@@ -390,7 +393,9 @@ def start_redis(db_dir):
                 proc.process.kill()
 
             if retry_num > 5:
-                raise RuntimeError("Failed to start redis after {retry_num} attempts.")
+                raise RuntimeError(
+                    f"Failed to start Redis on port {port} after {retry_num} attempts."
+                )
             print(
                 "Retry to start redis because the process failed to "
                 + f"listen to the port({port}), retry num:{retry_num}."
@@ -416,8 +421,6 @@ def kill_all_redis_server():
           when the python Subprocess tracking the
           underlying process is garbage collected.
     """
-    import psutil
-
     # Find Redis server processes
     redis_procs = []
     for proc in psutil.process_iter(["name", "cmdline"]):
@@ -1554,6 +1557,27 @@ def cleanup_auth_token_env():
         reset_auth_token_state()
         yield
         reset_auth_token_state()
+
+
+@pytest.fixture(autouse=False)
+def clean_token_sources(cleanup_auth_token_env):
+    """Ensure authentication-related state is clean around each test."""
+    clear_auth_token_sources(remove_default=True)
+    reset_auth_token_state()
+
+    yield
+
+    if ray.is_initialized():
+        ray.shutdown()
+
+    subprocess.run(
+        ["ray", "stop", "--force"],
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+
+    reset_auth_token_state()
 
 
 @pytest.fixture

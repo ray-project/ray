@@ -1,7 +1,6 @@
 (profiling)=
 # Profiling
-Profiling is one of the most important debugging tools to diagnose performance, out of memory, hanging, or other application issues.
-Here is a list of common profiling tools you may use when debugging Ray applications. 
+Profiling is one of the most important debugging tools to diagnose performance, out of memory, hanging, or other application issues. Here is a list of common profiling tools you may use when debugging Ray applications.
 - CPU profiling
     - py-spy
 - Memory profiling
@@ -12,6 +11,21 @@ Here is a list of common profiling tools you may use when debugging Ray applicat
 - Ray Task / Actor timeline
 
 If Ray doesn't work with certain profiling tools, try running them without Ray to debug the issues.
+
+(profiling-enabling)=
+## Enabling dashboard profiling
+
+The Ray Dashboard's built-in profiling features (CPU flame graphs, stack traces, and memory profiling) are disabled by default for security reasons. These endpoints trigger profiling work on Ray workers on demand and return the results. On deployments where the dashboard is exposed without authentication, a malicious web page could exploit DNS rebinding to reach these endpoints from a browser.
+
+To enable dashboard profiling, set the following environment variable on the Ray head node before starting Ray:
+
+```bash
+export RAY_DASHBOARD_ENABLE_PROFILING=1
+```
+
+:::{warning}
+If your dashboard is accessible over a network without authentication, enabling profiling exposes side-effecting endpoints to potential abuse. Enable {ref}`token authentication <token-auth>` when using profiling on an exposed dashboard.
+:::
 
 (profiling-cpu)=
 ## CPU profiling

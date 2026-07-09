@@ -18,11 +18,12 @@ def test_randomize_blocks_operator(ray_start_regular_shared):
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = RandomizeBlocks(
-        read_op,
         seed_config=RandomSeedConfig(seed=0),
+        input_dependencies=[read_op],
     )
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
 
     assert op.name == "RandomizeBlockOrder"
     assert isinstance(physical_op, AllToAllOperator)

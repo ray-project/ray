@@ -1,11 +1,16 @@
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Iterable, Iterator, List, Optional
+from typing import Iterable, Iterator, List, Optional, Tuple
 
 from pyarrow.fs import FileSystem
 
 from ray._common.utils import env_integer
+from ray.data._internal.datasource_v2.chunkers.file_chunker import (
+    ChunkMetadata,
+    FileChunker,
+    WholeFileChunker,
+)
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.listing.file_pruners import FilePruner
 from ray.data._internal.datasource_v2.listing.indexing_utils import _get_file_infos
@@ -17,6 +22,12 @@ logger = logging.getLogger(__name__)
 
 
 class FileIndexer(ABC):
+    @property
+    @abstractmethod
+    def file_chunker(self) -> FileChunker:
+        """The file chunker that this indexer uses."""
+        ...
+
     @abstractmethod
     def list_files(
         self,
@@ -69,6 +80,7 @@ class NonSamplingFileIndexer(FileIndexer):
         ignore_missing_paths: bool,
         num_workers: Optional[int] = None,
         max_paths_per_output: Optional[int] = None,
+        file_chunker: Optional[FileChunker] = None,
     ):
         self._ignore_missing_paths = ignore_missing_paths
         self._max_paths_per_output = (
@@ -83,6 +95,18 @@ class NonSamplingFileIndexer(FileIndexer):
             "RAY_DATA_LIST_FILES_QUEUE_SIZE_PER_THREAD",
             self._max_paths_per_output * 4,
         )
+        self._file_chunker: FileChunker = (
+            file_chunker if file_chunker is not None else WholeFileChunker()
+        )
+
+    @property
+    def file_chunker(self) -> FileChunker:
+        """The file chunker that this indexer uses.
+
+        Exposed primarily for tests and shuffle-aware planning code that needs
+        to introspect or override the chunking strategy.
+        """
+        return self._file_chunker
 
     def list_files(
         self,
@@ -98,9 +122,12 @@ class NonSamplingFileIndexer(FileIndexer):
             else self._get_file_info_iterator_sequential(paths, filesystem)
         )
 
-        yield from self._process_file_infos_to_manifests(
-            file_info_iterator, pruners or []
-        )
+        # Stage pipeline: list → prune (cheap, inline) → chunk (may read
+        # per-file metadata) → batch into manifests. Pruning runs *before*
+        # chunking so we never read a footer for a file we'd discard.
+        pruned = self._filter_file_infos(file_info_iterator, pruners or [])
+        chunk_records = self._generate_chunk_records(pruned, filesystem, preserve_order)
+        yield from self._batch_chunk_records_to_manifests(chunk_records)
 
     def _get_file_info_iterator_sequential(
         self,
@@ -152,41 +179,111 @@ class NonSamplingFileIndexer(FileIndexer):
             buffer_size=self._queue_size_per_thread,
         )
 
-    def _process_file_infos_to_manifests(
+    def _filter_file_infos(
         self,
         file_infos: Iterable[FileInfo],
         pruners: List[FilePruner],
+    ) -> Iterator[FileInfo]:
+        """Drop zero-size and pruned files before any per-file metadata read."""
+        for file_info in file_infos:
+            if file_info.size is None or file_info.size == 0:
+                logger.warning(f"Skipping zero-size file: {file_info.path!r}")
+                continue
+            if not all(pruner.should_include(file_info.path) for pruner in pruners):
+                continue
+            yield file_info
+
+    def _generate_chunk_records(
+        self,
+        file_infos: Iterable[FileInfo],
+        filesystem: "FileSystem",
+        preserve_order: bool,
+    ) -> Iterator[Tuple[str, int, Optional[ChunkMetadata]]]:
+        """Drive the chunker per file, yielding ``(path, chunk_size, metadata)``.
+
+        When the chunker reads per-file metadata (e.g. ``ParquetFileChunker``
+        reading footers), fan the work across the indexer's thread pool so the
+        I/O parallelizes even for a single input directory — ``make_async_gen``
+        over the *discovered files*, not the input paths. Chunkers that don't
+        read metadata (whole-file / line-delimited) are driven inline to avoid
+        a pointless thread hand-off.
+        """
+        chunker = self._file_chunker
+
+        def chunk_file(
+            fi: FileInfo,
+        ) -> List[Tuple[str, int, Optional[ChunkMetadata]]]:
+            return [
+                (fi.path, chunk_size, chunk_metadata)
+                for chunk_metadata, chunk_size in chunker.generate_chunk_metadatas(
+                    fi.path, fi.size, filesystem
+                )
+            ]
+
+        if chunker.reads_file_metadata and self._num_workers > 1:
+            # Fan per-file footer reads across the thread pool. ``make_async_gen``
+            # only preserves ordering for a 1:1 map (one output per input item), so
+            # emit ONE record list per file and flatten here. Yielding chunk rows
+            # individually would let its round-robin merge interleave chunks from
+            # the files processed concurrently -- breaking per-file contiguity and
+            # discovery order under ``preserve_order=True``.
+            def chunk_files(
+                infos: Iterator[FileInfo],
+            ) -> Iterator[List[Tuple[str, int, Optional[ChunkMetadata]]]]:
+                for fi in infos:
+                    yield chunk_file(fi)
+
+            for records in make_async_gen(
+                # ``iter(...)`` so a non-iterator iterable (e.g. a list from a
+                # test or subclass) is still consumed correctly by the helper.
+                base_iterator=iter(file_infos),
+                fn=chunk_files,
+                preserve_ordering=preserve_order,
+                num_workers=self._num_workers,
+                buffer_size=self._queue_size_per_thread,
+            ):
+                yield from records
+        else:
+            for fi in file_infos:
+                yield from chunk_file(fi)
+
+    def _batch_chunk_records_to_manifests(
+        self,
+        chunk_records: Iterable[Tuple[str, int, Optional[ChunkMetadata]]],
     ) -> Iterable[FileManifest]:
+        """Batch chunk records into ``FileManifest`` blocks of bounded size."""
         running_paths: List[str] = []
         running_file_sizes: List[int] = []
+        running_chunk_metadatas: List[Optional[ChunkMetadata]] = []
         manifests_count = 0
-        files_count = 0
+        chunks_count = 0
 
-        for file_info in file_infos:
-            path, file_size = file_info.path, file_info.size
-
-            if file_size == 0:
-                logger.warning(f"Skipping zero-size file: {path!r}")
-                continue
-
-            if not all(pruner.should_include(path) for pruner in pruners):
-                continue
-
+        for path, chunk_size, chunk_metadata in chunk_records:
             running_paths.append(path)
-            running_file_sizes.append(file_size)
-            files_count += 1
+            running_file_sizes.append(chunk_size)
+            running_chunk_metadatas.append(chunk_metadata)
+            chunks_count += 1
 
             if len(running_paths) >= self._max_paths_per_output:
                 manifests_count += 1
-                yield FileManifest.construct_manifest(running_paths, running_file_sizes)
+                yield FileManifest.construct_manifest(
+                    running_paths,
+                    running_file_sizes,
+                    running_chunk_metadatas,
+                )
                 running_paths = []
                 running_file_sizes = []
+                running_chunk_metadatas = []
 
         if running_paths:
             manifests_count += 1
-            yield FileManifest.construct_manifest(running_paths, running_file_sizes)
+            yield FileManifest.construct_manifest(
+                running_paths,
+                running_file_sizes,
+                running_chunk_metadatas,
+            )
 
         logger.debug(
             f"Listing files: constructed {manifests_count} manifests "
-            f"with {files_count} files"
+            f"with {chunks_count} file chunks"
         )

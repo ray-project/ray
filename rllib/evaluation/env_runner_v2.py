@@ -161,7 +161,7 @@ def _build_multi_agent_batch(
                     batch_builder.agent_steps, batch_builder.env_steps, episode_id
                 )
                 + "are buffered in the sampler. If this is more than you "
-                "expected, check that that you set a horizon on your "
+                "expected, check that you set a horizon on your "
                 "environment correctly and that it terminates at some "
                 "point. Note: In multi-agent environments, "
                 "`rollout_fragment_length` sets the batch size based on "
