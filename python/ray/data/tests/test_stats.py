@@ -2118,14 +2118,20 @@ def test_iter_stats_summary_has_new_fields():
     summary = stats.to_summary()
     iter_summary = summary.iter_stats
 
-    assert hasattr(iter_summary, "blocked_production_wait_time")
-    assert hasattr(iter_summary, "blocked_data_transfer_time")
-    assert hasattr(iter_summary, "blocked_batching_time")
-    assert hasattr(iter_summary, "blocked_format_time")
-    assert hasattr(iter_summary, "blocked_collate_time")
-    assert hasattr(iter_summary, "blocked_finalize_time")
-    assert hasattr(iter_summary, "batches_total")
-    assert hasattr(iter_summary, "rows_total")
+    expected_fields = {
+        "blocked_production_wait_time",
+        "blocked_data_transfer_time",
+        "blocked_batching_time",
+        "blocked_format_time",
+        "blocked_collate_time",
+        "blocked_finalize_time",
+        "batches_total",
+        "rows_total",
+    }
+    actual_fields = {f.name for f in fields(iter_summary)}
+    assert expected_fields.issubset(
+        actual_fields
+    ), f"missing fields: {expected_fields - actual_fields}"
 
 
 def test_iter_stats_summary_reflects_accumulated_values():

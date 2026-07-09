@@ -31,7 +31,7 @@ DEFAULT_FORMAT_THREADPOOL_NUM_WORKERS = env_integer(
 )
 
 
-def _overlapping_duration(
+def _merged_duration(
     spans: List["TimeSpan"], blocked_start_s: float, blocked_end_s: float
 ) -> float:
     """Total time ``spans`` overlap with ``[blocked_start_s, blocked_end_s]``,
@@ -46,7 +46,8 @@ def _overlapping_duration(
         return 0.0
     intervals.sort()
     merged = [intervals[0]]
-    for lo, hi in intervals[1:]:
+    for i in range(1, len(intervals)):
+        lo, hi = intervals[i]
         if lo <= merged[-1][1]:
             merged[-1] = (merged[-1][0], max(merged[-1][1], hi))
         else:
@@ -327,7 +328,7 @@ class BatchIterator:
             return
         timings = batch.metadata.stage_timings
         for stage, spans in timings.stages():
-            overlap_s = _overlapping_duration(spans, blocked_start_s, blocked_end_s)
+            overlap_s = _merged_duration(spans, blocked_start_s, blocked_end_s)
             if overlap_s > 0:
                 self._stats.get_blocked_timer(stage).add(overlap_s)
         self._stats.iter_batches_total += 1
