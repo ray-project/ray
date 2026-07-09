@@ -380,6 +380,20 @@ class TestSubmit:
             assert "Traceback (most recent call last)" not in result.output
             assert "job_manager.py" not in result.output
 
+    def test_submit_error_with_braces_does_not_crash(self, mock_sdk_client):
+        """A message containing literal '{...}' (e.g. a dict repr) must not be
+        passed through str.format(), which would crash and mask the real
+        error with an unrelated KeyError/IndexError."""
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+        error_with_braces = "ValueError: Job config {'a': 1} is invalid."
+        mock_client_instance.submit_job.side_effect = RuntimeError(error_with_braces)
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(job_cli_group, ["submit", "--", "echo hello"])
+            check_exit_code(result, 1)
+            assert "Job config {'a': 1} is invalid." in result.output
+
     def test_entrypoint_num_cpus(self, mock_sdk_client):
         runner = CliRunner()
         mock_client_instance = mock_sdk_client.return_value
