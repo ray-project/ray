@@ -167,6 +167,11 @@ Reading files from local disk
 To read files from local disk, call a function like :func:`~ray.data.read_parquet` and
 specify paths with the ``local://`` schema. Paths can point to files or directories.
 
+.. warning::
+
+    The ``local://`` scheme is deprecated and will be removed in a future release.
+    Use shared or cloud storage for distributed reads.
+
 To read formats other than Parquet, see the :ref:`Loading Data API <loading-data-api>`.
 
 .. tip::

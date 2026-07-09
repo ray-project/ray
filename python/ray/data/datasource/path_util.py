@@ -1,6 +1,7 @@
 import logging
 import pathlib
 import sys
+import warnings
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 from urllib.parse import quote, unquote, urlparse
 
@@ -361,6 +362,13 @@ def _resolve_paths_and_filesystem(
         schemes in a single call is unsupported and may fail when reading.
     """
     paths = _normalize_paths_to_strings(paths)
+    if any(urlparse(path).scheme == "local" for path in paths):
+        warnings.warn(
+            "`local://` paths in Ray Data are deprecated and will be removed in a "
+            "future release. Use shared or cloud storage for distributed execution.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
 
     # Validate/wrap filesystem upfront so we return a proper PyArrow filesystem
     filesystem = _validate_and_wrap_filesystem(filesystem)

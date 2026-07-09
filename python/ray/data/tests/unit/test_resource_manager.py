@@ -24,6 +24,19 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import noop_counter
 
 
+@pytest.mark.parametrize(
+    ("attr", "value"),
+    [
+        ("actor_locality_enabled", False),
+        ("exclude_resources", ExecutionResources(cpu=1)),
+    ],
+)
+def test_execution_options_emits_deprecation_warning(attr, value):
+    options = ExecutionOptions()
+    with pytest.warns(DeprecationWarning, match=rf"ExecutionOptions\.{attr}"):
+        setattr(options, attr, value)
+
+
 def test_physical_operator_tracks_output_dependencies():
     input_op = PhysicalOperator("input", [], DataContext.get_current())
     downstream_op = PhysicalOperator(

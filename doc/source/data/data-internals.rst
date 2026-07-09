@@ -278,11 +278,11 @@ Ray Data uses Ray Core for execution. Below is a summary of the :ref:`scheduling
 Ray Data and placement groups
 -----------------------------
 
-By default, Ray Data configures its tasks and actors to use the cluster-default scheduling strategy (``"DEFAULT"``). You can inspect this configuration variable here:
-:class:`ray.data.DataContext.get_current().scheduling_strategy <ray.data.DataContext>`. This scheduling strategy schedules these Tasks and Actors outside any present
-placement group. To use current placement group resources specifically for Ray Data, set ``ray.data.DataContext.get_current().scheduling_strategy = None``.
+By default, Ray Data manages task and actor scheduling internally. The
+``DataContext.scheduling_strategy`` override is deprecated and will be removed in a
+future release.
 
-Consider this override only for advanced use cases to improve performance predictability. The general recommendation is to let Ray Data run outside placement groups.
+The general recommendation is to let Ray Data manage placement group behavior.
 
 .. _datasets_tune:
 

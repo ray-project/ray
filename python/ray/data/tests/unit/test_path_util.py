@@ -80,6 +80,14 @@ def test_weird_local_paths(path):
     assert resolved_paths[0] == path
 
 
+def test_resolve_local_scheme_emits_deprecation_warning(tmp_path):
+    path = tmp_path / "data.txt"
+    path.write_text("")
+
+    with pytest.warns(DeprecationWarning, match="local://"):
+        _resolve_paths_and_filesystem(f"local://{path}")
+
+
 class TestIsFilesystemCompatibleWithScheme:
     """Tests for _is_filesystem_compatible_with_scheme with real filesystem implementations."""
 

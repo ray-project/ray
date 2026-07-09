@@ -25,6 +25,11 @@ directory with the `local://` scheme.
 
 .. warning::
 
+    The ``local://`` scheme is deprecated and will be removed in a future release.
+    Use shared or cloud storage for distributed writes.
+
+.. warning::
+
     If your cluster contains multiple nodes and you don't use `local://`, Ray Data
     writes different partitions of data to different nodes.
 
