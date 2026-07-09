@@ -5,10 +5,12 @@ from typing import List, Optional
 import ray
 from ray.actor import ActorHandle
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
-from ray.llm._internal.serve.core.ingress.tokenizer import REQUEST_TOKEN_IDS_KWARG
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     KV_ROUTER_ACTOR_NAME,
     get_worker_id,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.tokenizer import (
+    REQUEST_TOKEN_IDS_KWARG,
 )
 from ray.serve._private.constants import (
     SERVE_DEPLOYMENT_ACTOR_PREFIX,

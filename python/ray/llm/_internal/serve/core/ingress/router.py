@@ -5,12 +5,12 @@ from typing import List, Optional, Tuple
 from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
-from ray.llm._internal.serve.core.ingress.tokenizer import (
+from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.tokenizer import (
     REQUEST_TOKEN_IDS_KWARG,
     TokenizeError,
     Tokenizer,
 )
-from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve._private.http_util import _matches_session_id_header
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
