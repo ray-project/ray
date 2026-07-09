@@ -1282,7 +1282,6 @@ def external_hash_shuffle_reduce_task(
     downstream_map_transformer: Optional[Any] = None,
     reduce_op_name: str = "ExternalHashShuffleReduce",
     downstream_map_task_kwargs: Optional[Dict[str, Any]] = None,
-    coalesce_output: bool = False,
     downstream_map_target_max_block_size_override: Optional[int] = None,
 ) -> Generator[Union[Block, bytes], None, None]:
     """Fetch one partition's shards and stream ``reduce_fn`` output as
@@ -1295,12 +1294,8 @@ def external_hash_shuffle_reduce_task(
     The reducer always runs in blocking mode — accumulate the partition,
     reduce once, then finalize (mirrors v2's decision in #64481: repartition
     needs "one partition = one block", so incremental flush was dead code).
-
-    Output shaping (mutually exclusive):
-    - ``coalesce_output=False`` (default): ``BlockOutputBuffer`` reshapes to
-      ``target_max_block_size``-sized chunks; ``None`` disables reshape.
-    - ``coalesce_output=True``: concatenate all output into one block
-      (honors the N-partitions → N-blocks contract for repartition/sort).
+    Output is reshaped to ``target_max_block_size`` via ``BlockOutputBuffer``
+    (a no-op passthrough when ``target_max_block_size`` is None).
 
     ``downstream_map_transformer`` runs a fused downstream map (typically
     Write) inline on each emitted block before yielding.
@@ -1351,16 +1346,11 @@ def external_hash_shuffle_reduce_task(
         ):
             yield from _yield_with_stats(out_block)
 
-    # Empty-input shortcut. coalesce_output must emit exactly one 0-row block
-    # to honor the N-partitions → N-blocks contract; non-coalesce lets
-    # reduce_fn decide (it may legitimately yield nothing).
+    # Empty-input shortcut: no shards for this partition, hand [] to
+    # reduce_fn and emit whatever it yields (may be nothing — same as v2).
     if not sources:
-        if coalesce_output:
-            if output_schema is not None:
-                yield from _emit(output_schema.empty_table())
-        else:
-            for block in reduce_fn(partition_id, []):
-                yield from _emit(block)
+        for block in reduce_fn(partition_id, []):
+            yield from _emit(block)
         return
 
     # Decide where the prefetch file lives, and whether we own the cleanup.
@@ -1382,48 +1372,14 @@ def external_hash_shuffle_reduce_task(
         _fetch_threads = int(os.environ.get("RAY_DATA_SHUFFLE_FETCH_THREADS", "32"))
         total_size, base_offsets, node_sizes = _compute_prefetch_layout(groups)
 
-        # Streaming accumulator; bounded by target_max_block_size on flush.
+        # Accumulator for the final reduce.
         accum_tables: List[pa.Table] = []
         accum_bytes: int = 0
         output_buffer: Optional[BlockOutputBuffer] = None
 
-        class _OutputBlockCoalescer:
-            """Buffer reduce_fn output; finalize into one block (or one
-            typed 0-row block) to honor the N-partitions → N-blocks
-            contract."""
-
-            def __init__(self, fallback_schema):
-                self._blocks = []
-                self._schema = fallback_schema
-
-            def add(self, block):
-                if self._schema is None:
-                    self._schema = getattr(block, "schema", None)
-                if block.num_rows > 0:
-                    self._blocks.append(block)
-
-            def finalize(self):
-                if self._blocks:
-                    if len(self._blocks) == 1:
-                        return self._blocks[0]
-                    return pa.concat_tables(self._blocks)
-                if self._schema is not None:
-                    return self._schema.empty_table()
-                return None
-
-        coalescer = (
-            _OutputBlockCoalescer(fallback_schema=output_schema)
-            if coalesce_output
-            else None
-        )
-
         def _flush(tables: List[pa.Table]):
-            """Call reduce_fn on `tables` and yield reshaped output."""
+            """Call reduce_fn on ``tables`` and yield reshaped output."""
             nonlocal output_buffer
-            if coalescer is not None:
-                for block in reduce_fn(partition_id, tables):
-                    coalescer.add(block)
-                return
             if output_buffer is None and target_max_block_size is not None:
                 output_buffer = BlockOutputBuffer(
                     OutputBlockSizeOption.of(
@@ -1504,11 +1460,7 @@ def external_hash_shuffle_reduce_task(
             if accum_tables:
                 yield from _flush(accum_tables)
                 accum_tables = []
-            if coalescer is not None:
-                final_block = coalescer.finalize()
-                if final_block is not None:
-                    yield from _emit(final_block)
-            elif output_buffer is not None:
+            if output_buffer is not None:
                 output_buffer.finalize()
                 while output_buffer.has_next():
                     yield from _emit(output_buffer.next())

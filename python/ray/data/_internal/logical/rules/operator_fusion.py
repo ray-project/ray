@@ -403,9 +403,9 @@ class FuseOperators(Rule):
         reduce op of the same class as ``up_op`` (plasma or external) with the
         downstream map's transformer / kwargs plumbed into the reduce task
         body. The two reduce classes share their ``fused_output_map_*`` API
-        but the external variant carries a few extra ctor knobs
-        (``coalesce_output``, ``max_bytes_per_fetch``, ``reduce_prefetch_dir``),
-        so each branch below constructs its own class explicitly.
+        but the external variant carries a couple of extra ctor knobs
+        (``max_bytes_per_fetch``, ``reduce_prefetch_dir``), so each branch
+        below constructs its own class explicitly.
         """
         name = up_op.name + "->" + down_op.name
 
@@ -418,7 +418,6 @@ class FuseOperators(Rule):
                 up_op.data_context,
                 num_partitions=up_op._num_partitions,
                 reduce_fn=up_op._reduce_fn,
-                coalesce_output=up_op._coalesce_output,
                 disallow_block_splitting=up_op._disallow_block_splitting,
                 max_bytes_per_fetch=up_op._max_bytes_per_fetch,
                 reduce_prefetch_dir=up_op._reduce_prefetch_dir,

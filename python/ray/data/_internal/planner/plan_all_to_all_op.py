@@ -142,9 +142,6 @@ def _plan_hash_shuffle_repartition_external(
 
     partition_fn = _make_hash_partition_fn(key_list, target_num_partitions)
     reduce_fn = _sort_reduce(key_list) if logical_op.sort else _concat_reduce
-    # Honor the repartition(N) -> exactly N blocks contract by coalescing all
-    # reduce_fn outputs into a single block per partition.
-    coalesce_output = True
 
     map_op = ExternalHashShuffleMapOp(
         input_physical_op,
@@ -162,7 +159,6 @@ def _plan_hash_shuffle_repartition_external(
         data_context,
         num_partitions=target_num_partitions,
         reduce_fn=reduce_fn,
-        coalesce_output=coalesce_output,
         disallow_block_splitting=True,
         name=(
             f"ExternalHashShuffleReduce(keys={tuple(key_list)}, "
