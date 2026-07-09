@@ -49,9 +49,16 @@ or ``ray.get``, the object is gone. ``ray.wait`` then keeps the ref in the
 *not ready* list until the timeout fires, which surfaces as
 "``ray.wait`` is broken".
 
-**Recommended pattern:** pass the ``ObjectRef`` itself as a task argument
-or return value. Wrap a single ref in a list (``f.remote([obj_ref])``) if
-the task signature expects a collection.
+**Recommended pattern:** pass the ``ObjectRef`` as a task argument or
+return value so Ray's distributed reference counter tracks it and keeps
+the underlying object pinned for the duration of the task. Ray
+auto-dereferences a *top-level* ``ObjectRef`` argument, so the task
+receives the underlying value rather than the reference. When the task
+still needs the reference itself -- for example, to reconstruct it from
+hex on the consumer side -- pass the live ``ObjectRef`` nested inside a
+container, as in ``f.remote([obj_ref])``. Ray then registers the task as
+a borrower and keeps the object resolvable even after the caller drops
+its own copy of the reference.
 
 .. literalinclude:: ../doc_code/anti_pattern_out_of_band_object_ref_serialization_hex.py
     :language: python
