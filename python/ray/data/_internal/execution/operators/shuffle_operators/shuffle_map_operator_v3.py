@@ -327,18 +327,13 @@ class ShuffleMapOpV3(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBa
         assert requested is not None
         self._map_resource_usage = self._map_resource_usage.subtract(requested)
 
-        # Metrics-only fold. Silent failure would collapse the reducer
-        # memory ask to zero (past prod OOM), so log-and-continue loudly.
-        try:
-            handle = ray.get(handle_ref)
-            for pid, nbytes in (handle.get("decoded_bytes") or {}).items():
-                self._partition_bytes[pid] += nbytes
-        except Exception:
-            logger.exception(
-                "ShuffleMapOpV3: failed to fold decoded_bytes for "
-                "map_id=%s; reducer memory ask will be under-counted",
-                task_idx,
-            )
+        # Fold this mapper's per-partition decoded bytes for the reducer's
+        # memory ask. If deref fails, raise — silently continuing would
+        # under-count partition bytes and OOM the reducer downstream
+        # (matches v2, which lets ray.get propagate).
+        handle = ray.get(handle_ref)
+        for pid, nbytes in (handle.get("decoded_bytes") or {}).items():
+            self._partition_bytes[pid] += nbytes
 
         # Roll up input stats BEFORE destroying the bundles.
         input_rows = sum(
