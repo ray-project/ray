@@ -1,0 +1,14 @@
+Build: state=Finished  success=False  exit=1  build finished with problems, 1 warning.
+
+Findings (1):
+  Tier 3 — warnings:
+    [T3] intersphinx-inventory-unreachable  (no location)
+          msg:    failed to reach any of the inventories with the following issues:
+          fix:    Re-run the build first -- this is usually transient. If it persists, the inventory URL in intersphinx_mapping (conf.py) is unreachable or wrong: confirm the URL. This is not a per-page content fix.
+          safety: judgment (needs your call)
+
+Unclassified (0) — no rule matched; resolve with the user, then file a skill-improvement ticket to add a rule:
+
+Suppressed (0) — known-benign, not actionable:
+
+Next: apply the fixes above, then rebuild and re-run to confirm clean.

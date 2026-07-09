@@ -1,0 +1,8 @@
+Build: 4159413   State: Finished   Success: False   Duration: 1078s
+Failing command: python -m sphinx -T -W --keep-going -j auto -b html -d _build/doctrees -D language=en . $READTHEDOCS_OUTPUT/html
+Exit code: 1
+
+WARNING: failed to reach any of the inventories with the following issues:
+intersphinx inventory 'https://docs.python.org/3/objects.inv' not fetchable due to <class 'requests.exceptions.ConnectionError'>: HTTPSConnectionPool(host='docs.python.org', port=443): Max retries exceeded with url: /3/objects.inv (Caused by NewConnectionError('Failed to establish a new connection: [Errno 101] Network is unreachable'))
+
+Summary line: build finished with problems, 1 warning.
