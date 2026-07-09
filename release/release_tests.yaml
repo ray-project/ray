@@ -2121,11 +2121,12 @@
         timeout: 1200
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=ray_data --num_workers=8 --train_batch_size=8192 --validation_batch_size=16384 --num_epochs=1
 
-# P0 LLM perf-regression benchmark (Qwen3-0.6B + DeepSpeed on 8x A10G).
+# P0 LLM perf-regression benchmark (Qwen3-0.6B + DeepSpeed on 4x L40S).
 # Tracks tokens/sec, MFU/HFU, and memory via core.runner; results render with
-# `python collect.py --view benchmark`. The torchrun_parity variation runs the
-# identical workload through vanilla torch.distributed (Ray actors as the
-# launcher) to guard the "Ray Train is on par with torchrun" claim.
+# `python collect.py --view benchmark`. A torchrun parity baseline can be run
+# manually with `--set launcher=torchrun_ray` (same workload through vanilla
+# torch.distributed); the parity result is published in the benchmark docs
+# rather than gated here.
 - name: train_benchmark-qwen3_06b_deepspeed
   # GPU BYOD tests must use Python 3.10 (the ray-ml GPU image's version).
   python: "3.10"
@@ -2144,21 +2145,11 @@
     anyscale_sdk_2026: true
     cluster_compute: compute_configs/compute_gpu_4xL40S_aws.yaml
 
-  variations:
-    - __suffix__: ray_train
-      run:
-        timeout: 2400
-        script: python -m core.runner --experiment experiments/qwen3_06b_deepspeed.yaml
-        wait_for_nodes:
-          num_nodes: 2
-
-    - __suffix__: torchrun_parity
-      frequency: weekly
-      run:
-        timeout: 2400
-        script: python -m core.runner --experiment experiments/qwen3_06b_deepspeed.yaml --set launcher=torchrun_ray
-        wait_for_nodes:
-          num_nodes: 2
+  run:
+    timeout: 2400
+    script: python -m core.runner --experiment experiments/qwen3_06b_deepspeed.yaml
+    wait_for_nodes:
+      num_nodes: 2
 
   smoke_test:
     frequency: manual
