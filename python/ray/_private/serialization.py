@@ -131,6 +131,12 @@ def _rdt_ref_deserializer(
     return obj_ref
 
 
+def _jax_array_deserializer(np_arr):
+    # Return as numpy so the receiver can place the data on whichever device
+    # it needs.  See the registration block in SerializationContext.__init__.
+    return np_arr
+
+
 def _actor_handle_deserializer(serialized_obj, weak_ref):
     # If this actor handle was stored in another object, then tell the
     # core worker.
@@ -180,6 +186,27 @@ class SerializationContext:
                     stacklevel=3,
                 )
                 self._zero_copy_tensors_enabled = False
+
+        # Serialize jax.Array as numpy so it is device-neutral after
+        # deserialization.  Without this, JAX's default __reduce__ restores
+        # the array on the process-default device, which in multi-host TPU
+        # deployments (JAX_PLATFORMS=tpu,cpu) is often the CPU, causing
+        # "incompatible devices" errors when the array is later used inside
+        # a TPU-mesh jit context.
+        # NOTE: jax.Array is an abstract base class; cloudpickle dispatch
+        # uses exact type() matching so we must register the concrete type.
+        try:
+            import jax
+            import numpy as np
+            from jaxlib.xla_extension import ArrayImpl as _jax_concrete_type
+
+            self._register_cloudpickle_serializer(
+                _jax_concrete_type,
+                custom_serializer=lambda arr: np.asarray(jax.device_get(arr)),
+                custom_deserializer=_jax_array_deserializer,
+            )
+        except ImportError:
+            pass
 
         def actor_handle_reducer(obj):
             ray._private.worker.global_worker.check_connected()
