@@ -565,11 +565,13 @@ exclude_patterns = [
     # link to /_collections/train/tutorials/README.
     "_collections/train/tutorials/*/README.*",  # one-level sidecars (getting-started, workload-patterns)
     "_collections/train/tutorials/*/**/README.*",  # deeper sidecars, if any
-    # Sidecar README.md files in fetched template dirs duplicate the canonical
-    # notebook that the gallery / toctree already links to. Exclude to avoid
-    # orphan warnings without losing reachable content.
+    # asynchronous-inference has no docs landing page (nothing links to it), so
+    # exclude its README.md to avoid an orphan warning. Do NOT list a template
+    # that IS linked from a toctree here: README.ipynb is already globally
+    # excluded above, so README.md is that template's canonical page — excluding
+    # it deletes the page and breaks the reference (this happened to
+    # tune_pytorch_asha when its notebook was renamed to README.ipynb).
     "_collections/serve/tutorials/asynchronous-inference/README.md",
-    "_collections/tune/examples/tune_pytorch_asha/README.md",
     # llamafactory: master excludes the in-tree paths only, but this branch
     # also pulls a copy via sphinx-collections (see _TEMPLATE_COLLECTIONS).
     # Mirror the in-tree patterns under _collections/ so the fetched copy
