@@ -349,7 +349,7 @@ class StateSchema(ABC):
             for col in cols:
                 if col in keys:
                     headers.append(col.upper())
-            table.append([data[header.lower()] for header in headers])
+            table.append([data[h.lower()] for h in headers])
         return f"""
 {header}
 Stats:

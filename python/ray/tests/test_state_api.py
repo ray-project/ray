@@ -592,8 +592,10 @@ def test_runtime_env_state_humanify_creation_time_ms():
 
 
 def test_default_table_output_preserves_wrapper_for_non_node_resources():
-    """Regression:搬默认表格逻辑进 StateSchema.format_table_output 后,
-    非 Node 资源(PlacementGroupState)默认表格仍带 Stats/Table 包装头与原列。"""
+    """Regression test: After moving the default table logic into
+    StateSchema.format_table_output, non-Node resources
+    (PlacementGroupState) should still render with the Stats/Table
+    wrapper and original columns."""
     pg = {
         "placement_group_id": "pg_abcdef0123456789",
         "name": "test-pg",
@@ -638,8 +640,9 @@ def _sample_node_state():
 
 
 def test_node_default_output_is_concise():
-    """`ray list nodes` 默认输出为精简裸表:
-    截断 node_id、CPU/GPU/MEMORY/OBJ_STORE 独立列、无行号、无 Stats/Table 包装头。"""
+    """The default `ray list nodes` output is a concise bare table:
+    truncated node_id, separate CPU/GPU/MEMORY/OBJ_STORE columns, no row
+    index, and no Stats/Table wrapper."""
     out = output_with_format(
         [_sample_node_state()],
         schema=NodeState,
@@ -647,11 +650,11 @@ def test_node_default_output_is_concise():
         detail=False,
     )
     lines = out.splitlines()
-    # 裸表:无包装头
+    # Bare table: no wrapper header.
     assert "Stats:" not in out
     assert "Table:" not in out
     assert "List:" not in out
-    # 表头是第一行,且含新资源列
+    # First line is the header row and contains the new resource columns.
     assert lines[0].startswith("NODE_ID")
     for col in (
         "NODE_IP",
@@ -664,36 +667,40 @@ def test_node_default_output_is_concise():
         "OBJ_STORE",
     ):
         assert col in lines[0]
-    # 旧的冗长列已从默认输出移除
+    # Verbose legacy columns are removed from the default output.
     assert "STATE_MESSAGE" not in out
     assert "LABELS" not in out
     assert "RESOURCES_TOTAL" not in out
-    # node_id 截断为前 8 字符 + ...
+    # node_id is truncated to the first 8 chars + "...".
     assert "057ae870..." in out
-    # 完整 node_id 不出现在默认输出中(未截断部分不出现)
+    # The full node_id does not appear in the default output (the untruncated
+    # part is absent).
     full_id = "057ae8704b49ce135e8f6665d66f44c6a81572f7e9d6475cd507ab9f"
     assert full_id not in out
-    # 数据行直接以截断 id 开头(无行号索引)
+    # The data row starts directly with the truncated id (no row index).
     assert lines[1].startswith("057ae870...")
-    # memory / object_store_memory 已被 humanify 成可读单位
+    # memory / object_store_memory are humanified into readable units.
     assert "8.000 GiB" in out
     assert "48.000 GiB" in out
 
 
 def test_node_detail_output_delegates_to_base():
-    """`detail=True` 委托基类默认实现:完整表 + 包装头(Stats/Table)。"""
+    """`detail=True` delegates to the base class implementation: a full table
+    with the Stats/Table wrapper."""
     out = NodeState.format_table_output([_sample_node_state()], detail=True)
     assert "Stats:" in out
     assert "Table:" in out
-    # detail=True 委托基类:完整 node_id(未截断)+ RESOURCES_TOTAL 全列
+    # detail=True delegates to the base: full node_id (untruncated) + the full
+    # RESOURCES_TOTAL column.
     full_id = "057ae8704b49ce135e8f6665d66f44c6a81572f7e9d6475cd507ab9f"
     assert full_id in out
     assert "RESOURCES_TOTAL" in out
 
 
 def test_node_json_yaml_unchanged():
-    """json / yaml 路径(detail=False)逐字节不变:
-    resources_total 完整(含 CPU/GPU/memory/object_store_memory)、node_id 完整未截断。"""
+    """JSON/YAML output paths (with detail=False) remain byte-identical:
+    resources_total is complete (including CPU/GPU/memory/object_store_memory)
+    and node_id is untruncated."""
     node = _sample_node_state()
     # JSON
     out_json = output_with_format(
