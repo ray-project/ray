@@ -20,9 +20,12 @@
 ! linux_wheels macos_wheels docker doc python_dependencies min_build tools windows
 ! release_tests spark_on_ray
 
-# NOTE: dstrodtman is leading effort to rework content in RST files, and wanted to shift
-# from blocking premerge for these changes. We can remove this pass block once effort concludes,
-# or earlier should regressions become an issue.
+# Documentation prose (.md and .rst) does not block premerge. A content-only
+# change to narrative docs triggers no library test steps: prose can't change
+# tested code, and the post-merge documentation build is the coverage for these
+# changes. Executable doc assets such as .py and .ipynb are matched by the rules
+# below and still run tests.
+doc/*.md
 doc/*.rst
 # pass
 ;
