@@ -22,7 +22,7 @@ import ray
 import ray._common.usage.usage_constants as usage_constant
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-from ray._common.network_utils import build_address, parse_address
+from ray._common.network_utils import build_address, get_localhost_ip, parse_address
 from ray._common.usage import usage_lib
 from ray._common.utils import load_class
 from ray._private.authentication.authentication_token_setup import (
@@ -41,6 +41,7 @@ from ray._private.utils import (
     parse_resources_json,
 )
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
+from ray.autoscaler._private.cli_output_helpers import print_next_steps_context_note
 from ray.autoscaler._private.commands import (
     RUN_ENV_TYPES,
     attach_cluster,
@@ -142,7 +143,53 @@ def _check_ray_version(gcs_client):
         )
 
 
-@click.group()
+class RayCLI(click.Group):
+    """Custom click.Group that groups observability commands (State CLI commands) in help output.
+
+    This overrides format_commands to split subcommands into "Observability"
+    and "Commands" sections for better readability of ray --help output.
+    """
+
+    def format_commands(self, ctx, formatter):
+        commands = []
+        for subcommand in self.list_commands(ctx):
+            cmd = self.get_command(ctx, subcommand)
+            if cmd is None:
+                continue
+            if cmd.hidden:
+                continue
+            commands.append((subcommand, cmd))
+
+        if len(commands):
+            limit = formatter.width - 6 - max(len(cmd[0]) for cmd in commands)
+
+            observability_commands = []
+            other_commands = []
+
+            observability_names = {
+                "summary",
+                "list",
+                "get",
+                "logs",
+            }
+
+            for subcommand, cmd in commands:
+                help = cmd.get_short_help_str(limit)
+                if subcommand in observability_names:
+                    observability_commands.append((subcommand, help))
+                else:
+                    other_commands.append((subcommand, help))
+
+            if other_commands:
+                with formatter.section("Commands"):
+                    formatter.write_dl(other_commands)
+
+            if observability_commands:
+                with formatter.section("Observability"):
+                    formatter.write_dl(observability_commands)
+
+
+@click.group(cls=RayCLI)
 @click.option(
     "--logging-level",
     required=False,
@@ -554,10 +601,10 @@ Windows powershell users need additional escaping:
 @click.option(
     "--dashboard-host",
     required=False,
-    default=ray_constants.DEFAULT_DASHBOARD_IP,
-    help="the host to bind the dashboard server to, either localhost "
-    "(127.0.0.1) or 0.0.0.0 (available from all interfaces). By default, this "
-    "is 127.0.0.1",
+    default=get_localhost_ip(),
+    help="the host to bind the dashboard server to. Use localhost "
+    "(127.0.0.1/::1) for local access only, or 0.0.0.0/:: for all "
+    "interfaces. Defaults to localhost.",
 )
 @click.option(
     "--dashboard-port",
@@ -844,17 +891,11 @@ def start(
             )
     labels_dict = {**labels_from_file, **labels_from_string}
 
-    available_memory_bytes = ray._private.utils.estimate_available_memory()
-    object_store_memory = ray._private.utils.resolve_object_store_memory(
-        available_memory_bytes, object_store_memory
-    )
-
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=enable_resource_isolation,
         cgroup_path=cgroup_path,
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
-        object_store_memory=object_store_memory,
     )
 
     # - For non-worker processes, thread the behavior explicitly via RayParams.log_to_stderr.
@@ -888,7 +929,6 @@ def start(
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
         memory=memory,
-        available_memory_bytes=available_memory_bytes,
         object_store_memory=object_store_memory,
         redis_username=redis_username,
         redis_password=redis_password,
@@ -1043,6 +1083,7 @@ def start(
         cli_logger.success("-" * len(startup_msg))
         cli_logger.newline()
         with cli_logger.group("Next steps"):
+            print_next_steps_context_note(cli_logger, cf)
             dashboard_url = node.address_info["webui_url"]
             if ray_constants.ENABLE_RAY_CLUSTER:
                 cli_logger.print("To add another node to this Ray cluster, run")
@@ -1312,6 +1353,16 @@ def stop(force: bool, grace_period: int):
         Unless `force` is specified, it gracefully kills processes. If
         processes are not cleaned within `grace_period`, it force kill all
         remaining processes.
+
+        Args:
+            force: When ``True``, send ``SIGKILL`` immediately. Otherwise send
+                ``SIGTERM`` and escalate to ``SIGKILL`` after ``grace_period``.
+            grace_period: Number of seconds to wait for graceful termination
+                before sending ``SIGKILL`` to processes that are still alive.
+            processes_to_kill: Sequence of ``(keyword, filter_by_cmd)`` pairs
+                identifying the processes to terminate. ``keyword`` is matched
+                against either the process name (when ``filter_by_cmd`` is
+                ``True``) or the joined command line.
 
         Returns:
             total_procs_found: Total number of processes found from
@@ -1923,18 +1974,18 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
 )
 @add_click_logging_options
 def submit(
-    cluster_config_file,
-    screen,
-    tmux,
-    stop,
-    start,
-    cluster_name,
-    no_config_cache,
-    port_forward,
-    script,
-    args,
-    script_args,
-    disable_usage_stats,
+    cluster_config_file: str,
+    screen: bool,
+    tmux: bool,
+    stop: bool,
+    start: bool,
+    cluster_name: Optional[str],
+    no_config_cache: bool,
+    port_forward: Tuple[int, ...],
+    script: str,
+    args: Optional[str],
+    script_args: Tuple[str, ...],
+    disable_usage_stats: bool,
     extra_screen_args: Optional[str] = None,
 ):
     """Uploads and runs a script on the specified cluster.
@@ -1945,6 +1996,21 @@ def submit(
 
     Example:
         ray submit [CLUSTER.YAML] experiment.py -- --smoke-test
+
+    Args:
+        cluster_config_file: Path to the cluster YAML configuration file.
+        screen: When ``True``, run the script inside a ``screen`` session.
+        tmux: When ``True``, run the script inside a ``tmux`` session.
+        stop: When ``True``, stop the cluster after the script finishes.
+        start: When ``True``, start the cluster if it is not already running.
+        cluster_name: Optional override for the cluster name configured in the cluster YAML.
+        no_config_cache: When ``True``, disable the local cluster config cache.
+        port_forward: Local ports to forward to the cluster head node.
+        script: Path to the Python script to upload and run.
+        args: Deprecated single-string form of ``script_args``. Prefer ``-- --arg1 --arg2``.
+        script_args: Positional arguments forwarded to the remote script.
+        disable_usage_stats: When ``True``, disable usage statistics collection.
+        extra_screen_args: Extra arguments appended to the ``screen`` invocation when ``screen`` is enabled.
     """
     cli_logger.doassert(
         not (screen and tmux),
@@ -2594,10 +2660,14 @@ def drain_node(
     reason_message: str,
     deadline_remaining_seconds: int,
 ):
-    """
-    This is NOT a public API.
+    """Manually drain a worker node.
 
-    Manually drain a worker node.
+    This is a developer-facing command used to request that GCS gracefully
+    drain a node (e.g., before manual termination). The same underlying API
+    is invoked by autoscaler v2 for idle and preemption-based termination.
+
+    The command is hidden from the top-level `ray --help` output and its
+    interface is not covered by Ray's public API stability guarantees.
     """
     # This should be before get_runtime_context() so get_runtime_context()
     # doesn't start a new worker here.

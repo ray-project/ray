@@ -158,8 +158,9 @@ def _shutdown_torch(destroy_process_group=False):
         dist.destroy_process_group()
     if torch.cuda.is_available():
         for device in devices:
-            with torch.cuda.device(device):
-                torch.cuda.empty_cache()
+            if device.type == "cuda":
+                with torch.cuda.device(device):
+                    torch.cuda.empty_cache()
 
 
 def _set_torch_distributed_env_vars():

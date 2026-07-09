@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/chunk_object_reader.h"
@@ -103,12 +103,21 @@ class ObjectManagerInterface {
                         BundlePriority prio,
                         const TaskMetricsKey &task_key) = 0;
   virtual void CancelPull(uint64_t request_id) = 0;
+  /// Mark the specified object as failed with the given error type.
+  ///
+  /// \param object_id The object id to store error message into.
+  /// \param error_type The type of the error that caused this task to fail.
+  virtual void MarkObjectFailed(const ObjectID &object_id, rpc::ErrorType error_type) = 0;
   virtual bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const = 0;
   virtual int64_t PullManagerNumInactivePullsByTaskName(
       const TaskMetricsKey &task_key) const = 0;
   virtual int GetServerPort() const = 0;
-  virtual void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only) = 0;
+  virtual void FreeObjects(const std::vector<ObjectID> &object_ids) = 0;
   virtual void HandleNodeRemoved(const NodeID &node_id) = 0;
+  virtual std::vector<ObjectID> GetLocalObjectsOwnedBy(
+      const WorkerID &worker_id) const = 0;
+  virtual std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
+      const NodeID &node_id) const = 0;
   virtual bool IsPlasmaObjectSpillable(const ObjectID &object_id) = 0;
   virtual int64_t GetUsedMemory() const = 0;
   virtual bool PullManagerHasPullsQueued() const = 0;
@@ -151,15 +160,6 @@ class ObjectManager : public ObjectManagerInterface,
                   rpc::PullReply *reply,
                   rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle free objects request
-  ///
-  /// \param request Free objects request
-  /// \param reply Reply
-  /// \param send_reply_callback
-  void HandleFreeObjects(rpc::FreeObjectsRequest request,
-                         rpc::FreeObjectsReply *reply,
-                         rpc::SendReplyCallback send_reply_callback) override;
-
   /// Get the port of the object manager rpc server.
   int GetServerPort() const override { return object_manager_server_.GetPort(); }
 
@@ -188,7 +188,6 @@ class ObjectManager : public ObjectManagerInterface,
       RestoreSpilledObjectCallback restore_spilled_object,
       std::function<std::string(const ObjectID &)> get_spilled_object_url,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-      std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
       const std::shared_ptr<plasma::PlasmaClientInterface> &buffer_pool_store_client,
       std::unique_ptr<ObjectStoreRunner> object_store_internal,
       std::function<std::shared_ptr<rpc::ObjectManagerClientInterface>(
@@ -235,18 +234,25 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param pull_request_id The request to cancel.
   void CancelPull(uint64_t pull_request_id) override;
 
-  /// Free a list of objects from object store.
+  void MarkObjectFailed(const ObjectID &object_id, rpc::ErrorType error_type) override;
+
+  /// Free a list of objects from the local object store.
   ///
   /// \param object_ids the The list of ObjectIDs to be deleted.
-  /// \param local_only Whether keep this request with local object store
-  ///                   or send it to all the object stores.
-  void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only) override;
+  void FreeObjects(const std::vector<ObjectID> &object_ids) override;
 
   /// Cancel all pushes that have not yet been sent to the removed node and erases the
   /// associated client if it exists.
   ///
   /// \param node_id The ID of the node that was removed.
   void HandleNodeRemoved(const NodeID &node_id) override;
+
+  /// Return IDs of local plasma-resident objects whose owner matches the given
+  /// worker or node. Includes both primary copies (also tracked by
+  /// LocalObjectManager) and secondary copies pulled from other nodes.
+  std::vector<ObjectID> GetLocalObjectsOwnedBy(const WorkerID &worker_id) const override;
+  std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
+      const NodeID &node_id) const override;
 
   /// Returns debug string for class.
   ///
@@ -277,17 +283,7 @@ class ObjectManager : public ObjectManagerInterface,
   }
 
  private:
-  friend class TestObjectManager;
-  friend uint32_t NumRemoteFreeObjectsRequests(const ObjectManager &object_manager);
-
-  /// Spread the Free request to all objects managers.
-  ///
-  /// \param object_ids the The list of ObjectIDs to be deleted.
-  void SpreadFreeObjectsRequest(
-      const std::vector<ObjectID> &object_ids,
-      const std::vector<
-          std::pair<NodeID, std::shared_ptr<rpc::ObjectManagerClientInterface>>>
-          &rpc_clients);
+  friend class ObjectManagerTest;
 
   /// Pushing a known local object to a remote object manager.
   ///
@@ -402,20 +398,14 @@ class ObjectManager : public ObjectManagerInterface,
                           uint64_t chunk_index,
                           const std::string &data);
 
-  /// Send pull request
-  ///
-  /// \param object_id Object id
-  /// \param client_id Remote server client id
-  void SendPullRequest(const ObjectID &object_id, const NodeID &client_id);
-
-  /// Retry free objects request
-  ///
-  /// \param node_id Remote node id
-  /// \param attempt_number Attempt number
-  /// \param free_objects_request Free objects request
-  void RetryFreeObjects(const NodeID &node_id,
-                        uint32_t attempt_number,
-                        const rpc::FreeObjectsRequest &free_objects_request);
+  /**
+   * Send pull request for a batch of objects to a single remote node.
+   *
+   * \param object_ids Objects to pull from the same remote node. Must be
+   *     non-empty.
+   * \param client_id Remote server client id.
+   */
+  void SendPullRequest(const std::vector<ObjectID> &object_ids, const NodeID &client_id);
 
   /// Get the rpc client according to the node ID
   ///

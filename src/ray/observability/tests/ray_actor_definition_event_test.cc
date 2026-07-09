@@ -41,7 +41,7 @@ TEST_F(RayActorDefinitionEventTest, TestSerialize) {
   (*data.mutable_labels())["__data_operator_id"] = "op_id_0";
 
   auto event = std::make_unique<RayActorDefinitionEvent>(data, "test_session_name");
-  auto serialized_event = std::move(*event).Serialize();
+  auto serialized_event = std::move(*event).Serialize().value();
 
   ASSERT_EQ(serialized_event.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(serialized_event.session_name(), "test_session_name");

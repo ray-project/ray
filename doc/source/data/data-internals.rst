@@ -298,24 +298,59 @@ To ensure CPU resources are always available for Ray Data execution, limit the n
   :start-after: __resource_allocation_1_begin__
   :end-before: __resource_allocation_1_end__
 
-Memory Management
-=================
+.. _data_memory_management:
+
+Memory Model
+============
 
 This section describes how Ray Data manages execution and object store memory.
 
-Execution Memory
-----------------
+Ray divides each node's memory into three pools. By default, it reserves 30% for the
+object store and 10% for system overhead, and treats the remaining as logical memory.
 
-During execution, a task can read multiple input blocks, and write multiple output blocks. Input and output blocks consume both worker heap memory and shared memory through Ray's object store.
-Ray caps object store memory usage by spilling to disk, but excessive worker heap memory usage can cause out-of-memory errors.
+.. image:: ./data-memory-model-1.svg
+   :width: 300
+   :align: center
 
-For more information on tuning memory usage and preventing out-of-memory errors, see the :ref:`performance guide <data_memory>`.
+Each pool serves a different purpose:
 
-Object Store Memory
--------------------
+- **Logical memory** is what's available for the heap of UDFs and built-in
+  transformations like reads.
+- **Object store** holds buffered blocks.
+- **System memory** is what's left for Ray Core (the raylet) and other processes outside
+  your tasks. 
 
-Ray Data uses the Ray object store to store data blocks, which means it inherits the memory management features of the Ray object store. This section discusses the relevant features:
+.. note::
 
-* Object Spilling: Since Ray Data uses the Ray object store to store data blocks, any blocks that can't fit into object store memory are automatically spilled to disk. The objects are automatically reloaded when needed by downstream compute tasks:
-* Locality Scheduling: Ray preferentially schedules compute tasks on nodes that already have a local copy of the object, reducing the need to transfer objects between nodes in the cluster.
-* Reference Counting: Dataset blocks are kept alive by object store reference counting as long as there is any Dataset that references them. To free memory, delete any Python references to the Dataset object.
+  Zero-copy deserializable objects are an exception. They're used in the UDF but
+  accounted for only in the object store, so they serve as both the buffer and the
+  working memory.
+
+.. image:: ./data-memory-model-2.svg
+   :width: 360
+   :align: center
+
+When a UDF processes data, it uses heap memory to do the work. For example, a UDF that
+calls a Torch preprocessor holds the tensors on the heap. As the UDF produces output 
+rows or batches, Ray Data serializes them into PyArrow tables and stores them in the 
+shared object store.
+
+.. image:: ./data-memory-model-3.svg
+   :width: 550
+   :align: center
+
+To limit object store use, Ray Data applies backpressure and stops launching tasks once
+enough data is buffered. If Ray Data produces more data than fits, Ray Core *spills* 
+those objects to disk. 
+
+.. note::
+
+    A common misconception is that heavy queuing causes OOMs. While it's true that heavy 
+    object store use contributes to worker OOMs by leaving less memory for the heaps of 
+    tasks and actors, heavy queuing doesn't cause OOMs directly because Ray spills objects
+    to disk. If Ray Data queues too much data, you see out-of-disk errors instead.
+
+To limit heap memory use, Ray Data relies on memory hints from you to estimate how much
+heap memory each UDF needs. It passes those hints to Ray Core so the scheduler doesn't
+oversubscribe the cluster. These hints don't enforce any OS-level limit. They only guide
+scheduling.

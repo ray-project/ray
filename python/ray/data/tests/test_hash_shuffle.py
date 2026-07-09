@@ -1,19 +1,53 @@
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
+import pyarrow as pa
 import pytest
 
+import ray
 from ray.data import DataContext, ExecutionResources
-from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.execution.interfaces import (
+    BlockEntry,
+    PhysicalOperator,
+    RefBundle,
+)
 from ray.data._internal.execution.operators.hash_aggregate import HashAggregateOperator
 from ray.data._internal.execution.operators.hash_shuffle import HashShuffleOperator
 from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import JoinType
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import GiB, MiB
-from ray.data.aggregate import Count, Sum
-from ray.data.block import BlockMetadata
+from ray.data.aggregate import AggregateFnV2, Count, Sum
+from ray.data.block import BlockAccessor, BlockMetadata
+
+
+def _create_aggregator_pool_for_test(op, estimated_dataset_bytes: Optional[int]):
+    pool = op._create_aggregator_pool(
+        estimated_dataset_bytes=estimated_dataset_bytes,
+    )
+    op._aggregator_pool = pool
+    return pool
+
+
+def _make_ref_bundle(size_bytes: int) -> RefBundle:
+    block = pa.table({"id": [1]})
+    return RefBundle(
+        [
+            BlockEntry(
+                ray.put(block),
+                BlockMetadata(
+                    num_rows=1,
+                    size_bytes=size_bytes,
+                    exec_stats=None,
+                    input_files=None,
+                ),
+            )
+        ],
+        schema=block.schema,
+        owns_blocks=False,
+    )
 
 
 @dataclass
@@ -229,12 +263,17 @@ def test_join_aggregator_remote_args(
 
         # Validate the estimations
         assert op._num_partitions == tc.expected_num_partitions
+        assert op._aggregator_pool is None
 
-        assert op._aggregator_pool.num_aggregators == tc.expected_num_aggregators
-        assert (
-            op._aggregator_pool._aggregator_ray_remote_args
-            == tc.expected_ray_remote_args
+        estimated_dataset_bytes = (
+            tc.left_size_bytes + tc.right_size_bytes
+            if tc.left_size_bytes is not None and tc.right_size_bytes is not None
+            else None
         )
+        pool = _create_aggregator_pool_for_test(op, estimated_dataset_bytes)
+
+        assert pool.num_aggregators == tc.expected_num_aggregators
+        assert pool._aggregator_ray_remote_args == tc.expected_ray_remote_args
 
 
 @dataclass
@@ -266,8 +305,10 @@ class HashOperatorTestCase:
             expected_num_aggregators=4,
             expected_ray_remote_args={
                 "max_concurrency": 4,
-                "num_cpus": 0.16,
-                "memory": 671088640,
+                # estimate-derived 640MiB is floored up to the modest default:
+                #   min(32GiB / 4 / 2, DEFAULT_ALLOCATION=1GiB) = 1GiB
+                "num_cpus": 0.25,  # min(min(4, 4*0.25/4), 1GiB / 4GiB) = 0.25
+                "memory": 1073741824,
                 "scheduling_strategy": "SPREAD",
                 "allow_out_of_order_execution": True,
             },
@@ -385,11 +426,12 @@ def test_hash_aggregate_operator_remote_args(
 
         # Validate the estimations
         assert op._num_partitions == tc.expected_num_partitions
-        assert op._aggregator_pool.num_aggregators == tc.expected_num_aggregators
-        assert (
-            op._aggregator_pool._aggregator_ray_remote_args
-            == tc.expected_ray_remote_args
-        )
+        assert op._aggregator_pool is None
+
+        pool = _create_aggregator_pool_for_test(op, tc.input_size_bytes)
+
+        assert pool.num_aggregators == tc.expected_num_aggregators
+        assert pool._aggregator_ray_remote_args == tc.expected_ray_remote_args
 
 
 @pytest.mark.parametrize(
@@ -559,11 +601,48 @@ def test_hash_shuffle_operator_remote_args(
 
             # Validate the estimations
             assert op._num_partitions == tc.expected_num_partitions
-            assert op._aggregator_pool.num_aggregators == tc.expected_num_aggregators
-            assert (
-                op._aggregator_pool._aggregator_ray_remote_args
-                == tc.expected_ray_remote_args
-            )
+            assert op._aggregator_pool is None
+
+            pool = _create_aggregator_pool_for_test(op, tc.input_size_bytes)
+
+            assert pool.num_aggregators == tc.expected_num_aggregators
+            assert pool._aggregator_ray_remote_args == tc.expected_ray_remote_args
+
+
+def test_aggregator_ray_remote_args_includes_context_label_selector(
+    ray_start_regular, restore_data_context
+):
+    """ExecutionOptions.label_selector should appear on aggregator actor args."""
+    DataContext.get_current().execution_options.label_selector = {"subcluster": "train"}
+
+    logical_op_mock = MagicMock(LogicalOperator)
+    logical_op_mock.infer_metadata.return_value = BlockMetadata(
+        num_rows=None,
+        size_bytes=2 * GiB,
+        exec_stats=None,
+        input_files=None,
+    )
+    logical_op_mock.estimated_num_outputs.return_value = 16
+
+    op_mock = MagicMock(PhysicalOperator)
+    op_mock._output_dependencies = []
+    op_mock._logical_operators = [logical_op_mock]
+    op_mock.num_output_splits.return_value = 1
+
+    with patch(
+        "ray.data._internal.execution.operators.hash_shuffle.ray.cluster_resources",
+        return_value={"CPU": 4.0, "memory": 32 * GiB},
+    ):
+        op = HashAggregateOperator(
+            input_op=op_mock,
+            data_context=DataContext.get_current(),
+            aggregation_fns=[Count()],
+            key_columns=("id",),
+        )
+
+    pool = _create_aggregator_pool_for_test(op, 2 * GiB)
+
+    assert pool._aggregator_ray_remote_args["label_selector"] == {"subcluster": "train"}
 
 
 def test_aggregator_ray_remote_args_partial_override(ray_start_regular):
@@ -603,26 +682,539 @@ def test_aggregator_ray_remote_args_partial_override(ray_start_regular):
             },  # Only override num_cpus
         )
 
+        pool = _create_aggregator_pool_for_test(op, 2 * GiB)
+
         # Verify that num_cpus was overridden
-        assert op._aggregator_pool._aggregator_ray_remote_args["num_cpus"] == 0.5
+        assert pool._aggregator_ray_remote_args["num_cpus"] == 0.5
 
         # Verify that default values are retained
-        assert (
-            op._aggregator_pool._aggregator_ray_remote_args["scheduling_strategy"]
-            == "SPREAD"
-        )
-        assert (
-            op._aggregator_pool._aggregator_ray_remote_args[
-                "allow_out_of_order_execution"
-            ]
-            is True
-        )
+        assert pool._aggregator_ray_remote_args["scheduling_strategy"] == "SPREAD"
+        assert pool._aggregator_ray_remote_args["allow_out_of_order_execution"] is True
 
         # Verify that max_concurrency is still present
-        assert "max_concurrency" in op._aggregator_pool._aggregator_ray_remote_args
+        assert "max_concurrency" in pool._aggregator_ray_remote_args
 
         # Verify that memory is still present
-        assert "memory" in op._aggregator_pool._aggregator_ray_remote_args
+        assert "memory" in pool._aggregator_ray_remote_args
+
+
+def test_hash_shuffle_does_not_infer_metadata_for_memory_during_construction(
+    ray_start_regular,
+):
+    logical_op_mock = MagicMock(LogicalOperator)
+    logical_op_mock.infer_metadata.side_effect = AssertionError(
+        "logical metadata should not be used for hash-shuffle memory sizing"
+    )
+    logical_op_mock.estimated_num_outputs.return_value = 16
+
+    op_mock = MagicMock(PhysicalOperator)
+    op_mock._output_dependencies = []
+    op_mock._logical_operators = [logical_op_mock]
+    op_mock.num_output_splits.return_value = 1
+
+    with patch(
+        "ray.data._internal.execution.operators.hash_shuffle"
+        "._get_total_cluster_resources",
+        return_value=ExecutionResources(cpu=4.0, memory=32 * GiB),
+    ):
+        op = HashShuffleOperator(
+            input_op=op_mock,
+            data_context=DataContext.get_current(),
+            key_columns=("id",),
+        )
+
+    assert op._aggregator_pool is None
+    logical_op_mock.infer_metadata.assert_not_called()
+
+
+def test_hash_shuffle_buffers_inputs_to_estimate_memory_at_execution(
+    ray_start_regular,
+):
+    logical_op_mock = MagicMock(LogicalOperator)
+    logical_op_mock.estimated_num_outputs.return_value = 16
+
+    op_mock = MagicMock(PhysicalOperator)
+    op_mock._output_dependencies = []
+    op_mock._logical_operators = [logical_op_mock]
+    op_mock.num_output_splits.return_value = 1
+    op_mock.num_outputs_total.return_value = 4
+
+    with patch(
+        "ray.data._internal.execution.operators.hash_shuffle"
+        "._get_total_cluster_resources",
+        return_value=ExecutionResources(cpu=4.0, memory=32 * GiB),
+    ):
+        op = HashShuffleOperator(
+            input_op=op_mock,
+            data_context=DataContext.get_current(),
+            key_columns=("id",),
+        )
+
+    first_bundle = _make_ref_bundle(100)
+    second_bundle = _make_ref_bundle(200)
+
+    mock_pool = MagicMock()
+    with patch.object(
+        op, "_create_aggregator_pool", return_value=mock_pool
+    ) as create_pool, patch.object(op, "_do_add_input_inner") as replay:
+        op._add_input_inner(first_bundle, input_index=0)
+        op._add_input_inner(second_bundle, input_index=0)
+
+        assert not op._shuffle_started
+        create_pool.assert_not_called()
+        replay.assert_not_called()
+
+        op.all_inputs_done()
+
+    create_pool.assert_called_once_with(estimated_dataset_bytes=300)
+    mock_pool.start.assert_called_once()
+    assert replay.call_args_list == [
+        call(first_bundle, 0),
+        call(second_bundle, 0),
+    ]
+
+
+def test_hash_shuffle_starts_from_empty_buffer_when_inputs_done(
+    ray_start_regular,
+):
+    logical_op_mock = MagicMock(LogicalOperator)
+    logical_op_mock.estimated_num_outputs.return_value = 16
+
+    op_mock = MagicMock(PhysicalOperator)
+    op_mock._output_dependencies = []
+    op_mock._logical_operators = [logical_op_mock]
+    op_mock.num_output_splits.return_value = 1
+
+    with patch(
+        "ray.data._internal.execution.operators.hash_shuffle"
+        "._get_total_cluster_resources",
+        return_value=ExecutionResources(cpu=4.0, memory=32 * GiB),
+    ):
+        op = HashShuffleOperator(
+            input_op=op_mock,
+            data_context=DataContext.get_current(),
+            key_columns=("id",),
+        )
+
+    mock_pool = MagicMock()
+    with patch.object(
+        op, "_create_aggregator_pool", return_value=mock_pool
+    ) as create_pool:
+        op.all_inputs_done()
+
+    create_pool.assert_called_once_with(estimated_dataset_bytes=0)
+    mock_pool.start.assert_called_once()
+
+
+def _make_shuffle_op(upstream_num_outputs):
+    """Build a HashShuffleOperator whose single upstream reports
+    ``upstream_num_outputs`` bundles (None/0 => unknown)."""
+    logical_op_mock = MagicMock(LogicalOperator)
+    logical_op_mock.estimated_num_outputs.return_value = 16
+    # No logical size estimate by default (mirrors DataSource V2); tests that
+    # exercise the logical-estimate path override this.
+    logical_op_mock.infer_metadata.return_value = BlockMetadata(
+        num_rows=None,
+        size_bytes=None,
+        exec_stats=None,
+        input_files=None,
+    )
+
+    op_mock = MagicMock(PhysicalOperator)
+    op_mock._output_dependencies = []
+    op_mock._logical_operators = [logical_op_mock]
+    op_mock.num_output_splits.return_value = 1
+    op_mock.num_outputs_total.return_value = upstream_num_outputs
+
+    with patch(
+        "ray.data._internal.execution.operators.hash_shuffle"
+        "._get_total_cluster_resources",
+        return_value=ExecutionResources(cpu=4.0, memory=32 * GiB),
+    ):
+        op = HashShuffleOperator(
+            input_op=op_mock,
+            data_context=DataContext.get_current(),
+            key_columns=("id",),
+        )
+    return op, logical_op_mock
+
+
+def test_hash_shuffle_sample_window_trips_on_max_bundles_when_count_unknown(
+    ray_start_regular,
+):
+    # Upstream output count never materializes -> defer to MAX_BUNDLES.
+    op, _ = _make_shuffle_op(upstream_num_outputs=None)
+
+    mock_pool = MagicMock()
+    with patch.object(
+        op, "_create_aggregator_pool", return_value=mock_pool
+    ) as create_pool, patch.object(op, "_do_add_input_inner") as replay:
+        # First MAX_BUNDLES - 1 bundles only buffer; none trip the window.
+        for _ in range(op._MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES - 1):
+            op._add_input_inner(_make_ref_bundle(10), input_index=0)
+        create_pool.assert_not_called()
+        assert not op._shuffle_started
+
+        # The MAX_BUNDLES-th bundle trips the window mid-stream.
+        op._add_input_inner(_make_ref_bundle(10), input_index=0)
+        assert op._shuffle_started
+        create_pool.assert_called_once()
+        # All buffered bundles are replayed exactly once.
+        assert replay.call_count == op._MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES
+
+        # Subsequent bundles stream straight through (not buffered).
+        op._add_input_inner(_make_ref_bundle(10), input_index=0)
+        assert replay.call_count == op._MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES + 1
+        assert not op._buffered_input_bundles[0]
+
+
+def test_hash_shuffle_sample_window_trips_on_byte_ceiling(ray_start_regular):
+    op, _ = _make_shuffle_op(upstream_num_outputs=10_000)
+
+    mock_pool = MagicMock()
+    with patch.object(
+        op, "_create_aggregator_pool", return_value=mock_pool
+    ) as create_pool, patch.object(op, "_do_add_input_inner"):
+        # A single bundle at/above the byte ceiling trips the window
+        # immediately, regardless of bundle count.
+        op._add_input_inner(_make_ref_bundle(op._sample_byte_limit), input_index=0)
+
+    assert op._shuffle_started
+    create_pool.assert_called_once()
+
+
+def test_hash_shuffle_extrapolates_dataset_bytes_from_sample(ray_start_regular):
+    op, _ = _make_shuffle_op(upstream_num_outputs=100)
+    # 8 bundles averaging 200 bytes, inputs still streaming.
+    op._sample_bytes = 1600
+    op._sample_bundles = 8
+    assert not op._inputs_complete
+
+    # avg_bytes_per_bundle (200) * max(upstream=100, sample=8) = 20_000
+    assert op._extrapolate_dataset_bytes() == 20_000
+
+
+def test_hash_shuffle_extrapolation_never_below_observed(ray_start_regular):
+    # Upstream reports fewer bundles than we've already sampled -> use sample.
+    op, _ = _make_shuffle_op(upstream_num_outputs=2)
+    op._sample_bytes = 1000
+    op._sample_bundles = 10
+    assert not op._inputs_complete
+
+    # avg (100) * max(upstream=2, sample=10) = 1000 (not 200)
+    assert op._extrapolate_dataset_bytes() == 1000
+
+
+def test_hash_shuffle_extrapolation_falls_back_to_logical_estimate(
+    ray_start_regular,
+):
+    # Upstream count unknown (DataSource-V2-like) -> logical fallback.
+    op, logical_op_mock = _make_shuffle_op(upstream_num_outputs=0)
+    logical_op_mock.infer_metadata.return_value = BlockMetadata(
+        num_rows=None,
+        size_bytes=4242,
+        exec_stats=None,
+        input_files=None,
+    )
+    op._sample_bytes = 500
+    op._sample_bundles = 4
+    assert not op._inputs_complete
+
+    assert op._extrapolate_dataset_bytes() == 4242
+
+
+def test_hash_shuffle_extrapolation_modest_default_when_no_signal(
+    ray_start_regular,
+):
+    # Upstream count unknown AND logical estimate unavailable, and nothing has
+    # been buffered yet -> None, so the remote-args builder falls back to its
+    # modest default.
+    op, logical_op_mock = _make_shuffle_op(upstream_num_outputs=0)
+    logical_op_mock.infer_metadata.return_value = BlockMetadata(
+        num_rows=None,
+        size_bytes=None,
+        exec_stats=None,
+        input_files=None,
+    )
+    op._sample_bytes = 0
+    op._sample_bundles = 0
+    assert not op._inputs_complete
+
+    assert op._extrapolate_dataset_bytes() is None
+
+
+def test_hash_shuffle_extrapolation_floors_at_observed_bytes_without_count(
+    ray_start_regular,
+):
+    # Regression: the bounded sample window can trip before any upstream output
+    # count materializes (e.g. DataSource V2), so neither the sampled-ratio nor
+    # the logical estimate is available. We must still size off the bytes already
+    # buffered rather than collapsing to the modest default.
+    op, logical_op_mock = _make_shuffle_op(upstream_num_outputs=0)
+    logical_op_mock.infer_metadata.return_value = BlockMetadata(
+        num_rows=None,
+        size_bytes=None,
+        exec_stats=None,
+        input_files=None,
+    )
+    op._sample_bytes = 500
+    op._sample_bundles = 4
+    assert not op._inputs_complete
+
+    assert op._extrapolate_dataset_bytes() == 500
+
+
+def test_hash_shuffle_prefers_logical_estimate_when_sample_underestimates(
+    ray_start_regular,
+):
+    # Regression: a shuffle fed by a read whose runtime output count is still a
+    # large under-estimate when sampled. The accurate logical estimate must win
+    # so aggregators aren't under-sized (cf. the aggregate_groups timeout).
+    op, logical_op_mock = _make_shuffle_op(upstream_num_outputs=10)
+    logical_op_mock.infer_metadata.return_value = BlockMetadata(
+        num_rows=None,
+        size_bytes=50 * GiB,
+        exec_stats=None,
+        input_files=None,
+    )
+    # Small early sample -> sampled estimate ~= 100 bytes * max(10, 4) = 1000.
+    op._sample_bytes = 400
+    op._sample_bundles = 4
+    assert not op._inputs_complete
+
+    # max(sampled=1000, logical=50 GiB) -> logical.
+    assert op._extrapolate_dataset_bytes() == 50 * GiB
+
+
+def test_hash_shuffle_floors_aggregator_memory_at_modest_default(
+    ray_start_regular,
+):
+    # Regression: a tiny dataset estimate (e.g. a chained join whose upstream is
+    # back-loaded and sampled at ~0 bytes) must not size aggregators below the
+    # modest default (cf. the TPC-H Q3 0.0GiB -> 11.5MiB OOM).
+    op, _ = _make_shuffle_op(upstream_num_outputs=16)
+
+    cluster = ExecutionResources(cpu=4.0, memory=32 * GiB)
+    args = op._get_default_aggregator_ray_remote_args(
+        num_partitions=16,
+        num_aggregators=16,
+        total_available_cluster_resources=cluster,
+        estimated_dataset_bytes=1 * MiB,  # absurdly small
+    )
+
+    # modest default = min(32GiB / 16 / 2, DEFAULT_ALLOCATION=1GiB) = 1 GiB
+    assert args["memory"] == 1 * GiB
+
+
+def test_hash_shuffle_partition_size_hint_skips_sampling(ray_start_regular):
+    op, _ = _make_shuffle_op(upstream_num_outputs=10_000)
+    # Simulate a partition-size hint (not exposed on HashShuffleOperator ctor).
+    op._partition_size_hint = 1234
+
+    mock_pool = MagicMock()
+    with patch.object(
+        op, "_create_aggregator_pool", return_value=mock_pool
+    ) as create_pool, patch.object(op, "_do_add_input_inner"):
+        # The very first bundle trips the window since the estimate is exact.
+        op._add_input_inner(_make_ref_bundle(10), input_index=0)
+
+    assert op._shuffle_started
+    create_pool.assert_called_once_with(
+        estimated_dataset_bytes=1234 * op._num_partitions
+    )
+
+
+def test_hash_shuffle_does_not_double_start(ray_start_regular):
+    # Window trips mid-stream, then all_inputs_done fires: pool created once.
+    op, _ = _make_shuffle_op(upstream_num_outputs=None)
+
+    mock_pool = MagicMock()
+    with patch.object(
+        op, "_create_aggregator_pool", return_value=mock_pool
+    ) as create_pool, patch.object(op, "_do_add_input_inner"):
+        for _ in range(op._MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES):
+            op._add_input_inner(_make_ref_bundle(10), input_index=0)
+        assert op._shuffle_started
+        create_pool.assert_called_once()
+
+        op.all_inputs_done()
+
+    create_pool.assert_called_once()
+    mock_pool.start.assert_called_once()
+
+
+def test_hash_shuffle_aggregate_sampling_across_input_sequences(ray_start_regular):
+    # Sampling is aggregated across input sequences (e.g. joins): the byte
+    # ceiling accounts for bundles arriving on multiple input indices.
+    def _join_input_mock():
+        logical_op_mock = MagicMock(LogicalOperator)
+        logical_op_mock.estimated_num_outputs.return_value = 16
+        logical_op_mock.infer_metadata.return_value = BlockMetadata(
+            num_rows=None,
+            size_bytes=None,
+            exec_stats=None,
+            input_files=None,
+        )
+        op_mock = MagicMock(PhysicalOperator)
+        op_mock._output_dependencies = []
+        op_mock._logical_operators = [logical_op_mock]
+        op_mock.num_output_splits.return_value = 1
+        op_mock.num_outputs_total.return_value = 10_000
+        return op_mock
+
+    with patch(
+        "ray.data._internal.execution.operators.hash_shuffle.ray.cluster_resources",
+        return_value={"CPU": 4.0, "memory": 32 * GiB},
+    ):
+        op = JoinOperator(
+            left_input_op=_join_input_mock(),
+            right_input_op=_join_input_mock(),
+            data_context=DataContext.get_current(),
+            left_key_columns=("id",),
+            right_key_columns=("id",),
+            join_type=JoinType.INNER,
+            num_partitions=16,
+        )
+
+    half = op._sample_byte_limit // 2
+    mock_pool = MagicMock()
+    with patch.object(
+        op, "_create_aggregator_pool", return_value=mock_pool
+    ) as create_pool, patch.object(op, "_do_add_input_inner"):
+        op._add_input_inner(_make_ref_bundle(half), input_index=0)
+        create_pool.assert_not_called()
+        # A bundle on the *other* input sequence pushes the aggregate sample
+        # over the ceiling, proving the sample is shared across sequences.
+        op._add_input_inner(_make_ref_bundle(half + 1), input_index=1)
+
+    assert op._shuffle_started
+    create_pool.assert_called_once()
+
+
+def _make_join_op(left_num_outputs, right_num_outputs):
+    """Build a JoinOperator whose two upstreams report the given output-bundle
+    counts (None/0 => unknown)."""
+
+    def _join_input_mock(num_outputs):
+        logical_op_mock = MagicMock(LogicalOperator)
+        logical_op_mock.estimated_num_outputs.return_value = 16
+        # No logical size estimate (mirrors DataSource V2), so the sampled
+        # estimate is what `_extrapolate_dataset_bytes` returns.
+        logical_op_mock.infer_metadata.return_value = BlockMetadata(
+            num_rows=None,
+            size_bytes=None,
+            exec_stats=None,
+            input_files=None,
+        )
+        op_mock = MagicMock(PhysicalOperator)
+        op_mock._output_dependencies = []
+        op_mock._logical_operators = [logical_op_mock]
+        op_mock.num_output_splits.return_value = 1
+        op_mock.num_outputs_total.return_value = num_outputs
+        return op_mock
+
+    with patch(
+        "ray.data._internal.execution.operators.hash_shuffle.ray.cluster_resources",
+        return_value={"CPU": 4.0, "memory": 32 * GiB},
+    ):
+        op = JoinOperator(
+            left_input_op=_join_input_mock(left_num_outputs),
+            right_input_op=_join_input_mock(right_num_outputs),
+            data_context=DataContext.get_current(),
+            left_key_columns=("id",),
+            right_key_columns=("id",),
+            join_type=JoinType.INNER,
+            num_partitions=16,
+        )
+    return op
+
+
+def test_hash_shuffle_extrapolates_per_input_sequence(ray_start_regular):
+    # Each input is extrapolated against its OWN output count using its OWN
+    # sampled per-bundle average, so a sample dominated by one (light) input
+    # doesn't drag down the estimate for the other (heavy) input.
+    op = _make_join_op(left_num_outputs=100, right_num_outputs=100)
+    # input 0: 8 bundles @ 200 bytes/bundle. input 1: 2 bundles @ 2000 bytes.
+    op._sample_bytes_by_input[0] = 1600
+    op._sample_bundles_by_input[0] = 8
+    op._sample_bytes_by_input[1] = 4000
+    op._sample_bundles_by_input[1] = 2
+    op._sample_bytes = 5600
+    op._sample_bundles = 10
+    assert not op._inputs_complete
+
+    # Per-input: 200 * 100 + 2000 * 100 = 220_000.
+    # (A global average of 560 bytes/bundle would give only 560 * 200 = 112_000,
+    # badly under-sizing the pool for the heavy right input.)
+    assert op._extrapolate_dataset_bytes() == 220_000
+
+
+def test_hash_shuffle_unsampled_input_falls_back_to_global_average(
+    ray_start_regular,
+):
+    # An input with a known output count but no sampled bundles yet uses the
+    # global average bundle size rather than being dropped from the estimate.
+    op = _make_join_op(left_num_outputs=100, right_num_outputs=50)
+    # Only input 0 has been sampled: 8 bundles @ 200 bytes.
+    op._sample_bytes_by_input[0] = 1600
+    op._sample_bundles_by_input[0] = 8
+    op._sample_bytes = 1600
+    op._sample_bundles = 8
+    assert not op._inputs_complete
+
+    # input 0: 200 * 100 = 20_000; input 1 (unsampled): global avg 200 * 50 =
+    # 10_000. Total = 30_000.
+    assert op._extrapolate_dataset_bytes() == 30_000
+
+
+def test_partial_aggregate_preserves_sort_after_builder_compaction(
+    ray_start_regular,
+    monkeypatch,
+):
+    """Regression test for HashAggregate producing duplicate group rows when
+    `TableBlockBuilder.build()` reorders rows across an internal compaction.
+
+    For an `AggregateFnV2` whose accumulator can vary in size between groups
+    (here, an empty list vs. a non-empty list), the per-block partial-aggregate
+    output is built by `_aggregate` row-by-row via the table builder. If
+    `_compact_if_needed` triggered mid-loop, the legacy `build()` placed the
+    still-uncompacted (newest) rows in front of the compacted (older) tables,
+    breaking the "blocks reaching `_combine_aggregated_blocks` are sorted by
+    key" precondition that `heapq.merge` relies on. That precondition violation
+    surfaced as duplicate group rows whose count varied with the parallelism
+    arg (since parallelism changes per-block row count, and therefore whether
+    compaction triggers inside the partial-aggregate loop).
+
+    We force compaction on every row via `MAX_UNCOMPACTED_SIZE_BYTES=1` and
+    assert that the partial-aggregate output is still sorted by the group key.
+    """
+    import ray.data._internal.table_block as table_block
+
+    class EmptyAccumulatorForOddKeys(AggregateFnV2):
+        def __init__(self):
+            super().__init__(
+                name="items",
+                on=None,
+                ignore_nulls=False,
+                zero_factory=lambda: [],
+            )
+
+        def aggregate_block(self, block):
+            table = BlockAccessor.for_block(block).to_arrow()
+            group_key = table.column("A")[0].as_py()
+            return [] if group_key % 2 else ["value"]
+
+        def combine(self, current, new):
+            return current + new
+
+    monkeypatch.setattr(table_block, "MAX_UNCOMPACTED_SIZE_BYTES", 1)
+
+    source = pa.table({"A": [1, 2, 3, 4], "B": [0, 0, 0, 0]})
+    partial = BlockAccessor.for_block(source)._aggregate(
+        SortKey("A"), (EmptyAccumulatorForOddKeys(),)
+    )
+
+    assert partial.column("A").to_pylist() == [1, 2, 3, 4]
 
 
 if __name__ == "__main__":

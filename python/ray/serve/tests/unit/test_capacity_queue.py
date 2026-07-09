@@ -4,6 +4,7 @@ from typing import List
 
 import pytest
 
+from ray.serve._private.common import DeploymentID
 from ray.serve.experimental.capacity_queue import (
     CapacityQueue,
     CapacityQueueStats,
@@ -22,8 +23,6 @@ def _create_queue(acquire_timeout_s=30.0, token_ttl_s=None):
     return raw_class(
         acquire_timeout_s=acquire_timeout_s,
         token_ttl_s=token_ttl_s,
-        deployment_id_name="",
-        deployment_id_app="",
         _enable_long_poll=False,
     )
 
@@ -509,7 +508,6 @@ class TestReplicaLifecycleOnDeploymentTargetUpdate:
     def _make_target_info(replica_specs):
         """Build a DeploymentTargetInfo from a list of (unique_id, capacity) tuples."""
         from ray.serve._private.common import (
-            DeploymentID,
             DeploymentTargetInfo,
             ReplicaID,
             RunningReplicaInfo,

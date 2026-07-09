@@ -5,6 +5,7 @@ from ray._private.accelerators.accelerator import (
     AcceleratorManager,
 )
 from ray._private.accelerators.amd_gpu import AMDGPUAcceleratorManager
+from ray._private.accelerators.furiosa import FuriosaAcceleratorManager
 from ray._private.accelerators.hpu import HPUAcceleratorManager
 from ray._private.accelerators.intel_gpu import IntelGPUAcceleratorManager
 from ray._private.accelerators.metax_gpu import MetaxGPUAcceleratorManager
@@ -27,6 +28,7 @@ def get_all_accelerator_managers() -> Set[AcceleratorManager]:
         NPUAcceleratorManager,
         RBLNAcceleratorManager,
         MetaxGPUAcceleratorManager,
+        FuriosaAcceleratorManager,
     }
 
 
@@ -82,6 +84,7 @@ __all__ = [
     "NPUAcceleratorManager",
     "RBLNAcceleratorManager",
     "MetaxGPUAcceleratorManager",
+    "FuriosaAcceleratorManager",
     "get_all_accelerator_managers",
     "get_all_accelerator_resource_names",
     "get_accelerator_manager_for_resource",

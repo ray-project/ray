@@ -111,7 +111,7 @@ def report(
 
     if delete_local_checkpoint_after_upload is None:
         delete_local_checkpoint_after_upload = (
-            checkpoint_upload_mode._default_delete_local_checkpoint_after_upload()
+            checkpoint_upload_mode.default_delete_local_checkpoint_after_upload()
         )
 
     if checkpoint:
@@ -196,6 +196,7 @@ def get_checkpoint() -> Optional["Checkpoint"]:
 @requires_train_worker()
 def get_all_reported_checkpoints(
     consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
+    timeout_s: Optional[float] = None,
 ) -> List["ReportedCheckpoint"]:
     """Get all the reported checkpoints so far.
 
@@ -237,13 +238,15 @@ def get_all_reported_checkpoints(
         consistency_mode: Read semantics for checkpoint retrieval during an ongoing run.
             Defaults to CheckpointConsistencyMode.VALIDATED.
             See :class:`~ray.train.CheckpointConsistencyMode` for more details.
+        timeout_s: Timeout in seconds to collecting checkpoint and validation information.
+            Defaults to None to wait indefinitely.
 
     Returns:
         List of ReportedCheckpoint objects that represent the checkpoints and
         corresponding metrics reported by the workers.
     """
     return get_train_fn_utils().get_all_reported_checkpoints(
-        consistency_mode=consistency_mode
+        consistency_mode=consistency_mode, timeout_s=timeout_s
     )
 
 
@@ -285,6 +288,10 @@ def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional["DataItera
         The ``DataIterator`` shard to use for this worker.
         If no dataset is passed into Trainer, then return None.
     """
-    return get_train_fn_utils().get_dataset_shard(
-        DatasetShardMetadata(dataset_name=dataset_name)
+    train_fn_utils = get_train_fn_utils()
+    return train_fn_utils.get_dataset_shard(
+        DatasetShardMetadata(
+            dataset_name=dataset_name,
+            world_rank=train_fn_utils.get_context().get_world_rank(),
+        )
     )

@@ -47,4 +47,6 @@ message ActorTaskDefinitionEvent {
   // The key-value label constraints of the node to schedule this actor task on.
   map<string, string> label_selector = 15;
   optional FallbackStrategy fallback_strategy = 16;
+  // True if the target actor was created with lifetime="detached".
+  bool is_detached_actor = 17;
 }

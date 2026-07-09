@@ -72,7 +72,9 @@ def test_metrics_folder_and_content(is_temp_dir_set, temp_dir_val):
 
         assert os.path.exists(f"{session_dir}/metrics/prometheus/prometheus.yml")
         with open(f"{session_dir}/metrics/prometheus/prometheus.yml", "r") as f:
-            target_path = os.path.join(temp_dir, "prom_metrics_service_discovery.json")
+            target_path = os.path.join(
+                session_dir, "prom_metrics_service_discovery.json"
+            )
             assert f"- '{target_path}'" in f.read()
 
 

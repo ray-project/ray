@@ -144,7 +144,7 @@ def test_basic(ray_start_regular):
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
     logger.info("Test agent register is OK.")
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     assert dashboard_proc.status() in [psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING]
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
@@ -188,7 +188,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -209,7 +209,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     all_processes = ray._private.worker._global_node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -253,7 +253,7 @@ def test_agent_report_unexpected_raylet_death(
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -295,7 +295,7 @@ def test_agent_report_unexpected_raylet_death_large_file(
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -735,6 +735,42 @@ def test_deny_fetch_requests(enable_test_module, ray_start_with_dashboard):
     # Getting jobs should be fine for browsers
     response = requests.get(webui_url + "/api/jobs/")
     response.raise_for_status()
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_profiling_endpoints_disabled_by_default(
+    enable_test_module, ray_start_with_dashboard
+):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    profiling_endpoints = [
+        "/worker/traceback?pid=1&node_id=abc",
+        "/worker/cpu_profile?pid=1&node_id=abc",
+        "/worker/gpu_profile?pid=1&node_id=abc",
+        "/task/traceback?task_id=abc&attempt_number=0&node_id=abc",
+        "/task/cpu_profile?task_id=abc&attempt_number=0&node_id=abc",
+        "/memory_profile?pid=1&node_id=abc",
+        "/memory_profile?task_id=abc&attempt_number=0&node_id=abc",
+    ]
+
+    for endpoint in profiling_endpoints:
+        response = requests.get(webui_url + endpoint)
+        assert response.status_code == 403, (
+            f"Expected 403 for {endpoint} when profiling is disabled, "
+            f"got {response.status_code}"
+        )
+        assert "RAY_DASHBOARD_ENABLE_PROFILING" in response.text
+
+    # The status endpoint should report profiling as disabled.
+    response = requests.get(webui_url + "/api/profiling_enabled")
+    response.raise_for_status()
+    data = response.json()
+    assert data["data"]["profilingEnabled"] is False
 
 
 @pytest.mark.skipif(
@@ -1326,7 +1362,7 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -1376,7 +1412,7 @@ def test_agent_port_conflict(shutdown_only):
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 

@@ -32,6 +32,7 @@
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 
@@ -102,7 +103,8 @@ class NormalTaskSubmitter {
       std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
       const TensorTransportGetter &tensor_transport_getter,
       instrumented_io_context &io_service,
-      ray::observability::MetricInterface &scheduler_placement_time_ms_histogram)
+      ray::observability::MetricInterface &scheduler_placement_time_ms_histogram,
+      ClockInterface &clock)
       : rpc_address_(std::move(rpc_address)),
         local_raylet_client_(std::move(local_raylet_client)),
         raylet_client_pool_(std::move(raylet_client_pool)),
@@ -118,7 +120,8 @@ class NormalTaskSubmitter {
         job_id_(job_id),
         lease_request_rate_limiter_(std::move(lease_request_rate_limiter)),
         io_service_(io_service),
-        scheduler_placement_time_ms_histogram_(scheduler_placement_time_ms_histogram) {}
+        scheduler_placement_time_ms_histogram_(scheduler_placement_time_ms_histogram),
+        clock_(clock) {}
 
   /// Schedule a task for direct submission to a worker.
   void SubmitTask(TaskSpecification task_spec);
@@ -177,9 +180,6 @@ class NormalTaskSubmitter {
       bool worker_exiting,
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  /// Report worker backlog information to the local raylet
-  void ReportWorkerBacklogInternal() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Request a new worker from the raylet if no such requests are currently in
   /// flight and there are tasks queued. If a raylet address is provided, then
@@ -307,7 +307,7 @@ class NormalTaskSubmitter {
     // Keep track of pending worker lease requests to the raylet.
     absl::flat_hash_map<LeaseID, rpc::Address> pending_lease_requests;
 
-    LeaseSpecification lease_spec;
+    std::optional<LeaseSpecification> lease_spec;
     // Tasks that are queued for execution. We keep an individual queue per
     // scheduling class to ensure fairness.
     std::deque<TaskSpecification> task_queue;
@@ -365,6 +365,10 @@ class NormalTaskSubmitter {
   // should be retried or permanently failed.
   absl::flat_hash_set<TaskID> failed_tasks_pending_failure_cause_ ABSL_GUARDED_BY(mu_);
 
+  // True if the last backlog report sent to the raylet was non-empty.
+  // Used to ensure we send one final empty report to clear stale backlog.
+  bool last_backlog_report_nonempty_ = false;
+
   // Ratelimiter controls the num of pending lease requests.
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;
 
@@ -372,6 +376,8 @@ class NormalTaskSubmitter {
   instrumented_io_context &io_service_;
 
   ray::observability::MetricInterface &scheduler_placement_time_ms_histogram_;
+
+  ClockInterface &clock_;
 };
 
 }  // namespace core

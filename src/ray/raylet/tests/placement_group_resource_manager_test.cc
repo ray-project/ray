@@ -21,6 +21,7 @@
 
 #include "gtest/gtest.h"
 #include "mock/ray/gcs_client/gcs_client.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/placement_group_util.h"
@@ -92,7 +93,7 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
   void InitLocalAvailableResource(
       absl::flat_hash_map<std::string, double> &unit_resource) {
     cluster_resource_scheduler_ =
-        std::make_shared<ClusterResourceScheduler>(io_context,
+        std::make_shared<ClusterResourceScheduler>(PeriodicalRunner::Create(io_context),
                                                    scheduling::NodeID("local"),
                                                    unit_resource,
                                                    is_node_available_fn_,
@@ -587,8 +588,3 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleFailure) {
 }
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

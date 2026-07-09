@@ -33,7 +33,6 @@ from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME,
 )
 from ray.dashboard.modules.event.event_utils import monitor_events, parse_event_strings
-from ray.dashboard.modules.job.utils import get_head_node_id
 from ray.dashboard.state_api_utils import do_filter, handle_list_api
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
@@ -55,10 +54,17 @@ RAY_DASHBOARD_EVENT_HEAD_TPE_MAX_WORKERS = env_integer(
 
 
 async def _list_cluster_events_impl(
-    *, all_events, executor: ThreadPoolExecutor, option: ListApiOptions
+    *,
+    all_events: Dict[str, JobEvents],
+    executor: ThreadPoolExecutor,
+    option: ListApiOptions,
 ) -> ListApiResponse:
-    """
-    List all cluster events from the cluster. Made a free function to allow unit tests.
+    """List all cluster events from the cluster. Made a free function to allow unit tests.
+
+    Args:
+        all_events: Mapping of ``job_id`` to per-job event dictionaries.
+        executor: Executor used to run the (CPU-bound) transform off the event loop.
+        option: Query options (filters, limit, detail flag).
 
     Returns:
         A list of cluster events in the cluster.
@@ -204,7 +210,7 @@ class EventHead(
     async def _get_head_node_id(self) -> Union[str, None]:
         if self._head_node_id is not None:
             return self._head_node_id
-        self._head_node_id = await get_head_node_id(self.gcs_client)
+        self._head_node_id = await dashboard_utils.get_head_node_id(self.gcs_client)
         return self._head_node_id
 
     async def _get_head_aggregator_stub(self):

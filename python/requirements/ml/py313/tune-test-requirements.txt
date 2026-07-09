@@ -1,10 +1,11 @@
 aim==3.23.0; python_version < "3.12"
+boto3==1.29.7
 
 jupyterlab
 matplotlib!=3.4.3
 
 pytest-remotedata==0.3.2
-pytorch-lightning>=1.8.6
+lightning>2
 fairscale==0.4.6
 shortuuid==1.0.1
 timm==0.9.2

@@ -1,5 +1,4 @@
 # __validation_fn_simple_start__
-
 import os
 import torch
 
@@ -26,8 +25,6 @@ def validation_fn(checkpoint: ray.train.Checkpoint) -> dict:
             outputs = model(images)
             total_accuracy += (outputs.argmax(1) == labels).sum().item()
     return {"score": total_accuracy / len(validation_dataset)}
-
-
 # __validation_fn_simple_end__
 
 # __validation_fn_torch_trainer_start__
@@ -35,9 +32,10 @@ import torchmetrics
 from torch.nn import CrossEntropyLoss
 
 import ray.train.torch
+from ray.data import ExecutionOptions
 
 
-def eval_only_train_fn(config_dict: dict) -> None:
+def eval_only_train_fn(config_dict: dict) -> dict:
     # Load the checkpoint
     model = ...
     with config_dict["checkpoint"].as_directory() as checkpoint_dir:
@@ -51,23 +49,14 @@ def eval_only_train_fn(config_dict: dict) -> None:
     test_data_shard = ray.train.get_dataset_shard("validation")
     test_dataloader = test_data_shard.iter_torch_batches(batch_size=128)
 
-    # Compute and report metric
+    # Compute metric and return it directly from the train function
     with torch.no_grad():
         for batch in test_dataloader:
             images, labels = batch["image"], batch["label"]
             outputs = model(images)
             loss = criterion(outputs, labels)
             mean_valid_loss(loss)
-    # Report metrics and placeholder checkpoint so validation_fn can access them.
-    ray.train.report(
-        metrics={"score": mean_valid_loss.compute().item()},
-        checkpoint=ray.train.Checkpoint(
-            ray.train.get_context()
-            .get_storage()
-            .build_checkpoint_path_from_name("placeholder")
-        ),
-        checkpoint_upload_mode=ray.train.CheckpointUploadMode.NO_UPLOAD,
-    )
+    return {"score": mean_valid_loss.compute().item()}
 
 
 def validation_fn(checkpoint: ray.train.Checkpoint, train_run_name: str, epoch: int) -> dict:
@@ -84,14 +73,23 @@ def validation_fn(checkpoint: ray.train.Checkpoint, train_run_name: str, epoch: 
         ),
         # Use weaker GPUs for validation
         datasets={"validation": validation_dataset},
+        # Pin to the "validation" subcluster so it doesn't compete with
+        # training. See https://docs.ray.io/en/latest/data/concurrent-dataset-execution.html.
+        dataset_config=ray.train.DataConfig(
+            execution_options={
+                "validation": ExecutionOptions(
+                    label_selector={"ray-subcluster": "validation"}
+                ),
+            },
+        ),
     )
     result = trainer.fit()
-    return result.metrics
-
-
+    # return_value holds the value returned by train function of worker 0
+    return result.return_value
 # __validation_fn_torch_trainer_end__
 
 # __validation_fn_map_batches_start__
+import ray.data
 
 
 class Predictor:
@@ -109,6 +107,18 @@ class Predictor:
         return {"res": (pred.argmax(1) == label).cpu().numpy()}
 
 
+# Construct ``validation_dataset`` under a DataContext copy pinned to the
+# "validation" subcluster. ``Dataset.context`` is a deep copy of the
+# current context taken at construction, so the selector is baked in and
+# every downstream operator (including the ``map_batches`` below) inherits
+# it — no in-function mutation needed. See
+# https://docs.ray.io/en/latest/data/concurrent-dataset-execution.html.
+ctx = ray.data.DataContext.get_current().copy()
+ctx.execution_options.label_selector = {"ray-subcluster": "validation"}
+with ray.data.DataContext.current(ctx):
+    validation_dataset = ray.data.read_parquet(...)
+
+
 def validation_fn(checkpoint: ray.train.Checkpoint) -> dict:
     # Set name to avoid confusion; default name is "Dataset"
     validation_dataset.set_name("validation")
@@ -123,13 +133,12 @@ def validation_fn(checkpoint: ray.train.Checkpoint) -> dict:
     return {
         "score": mean,
     }
-
-
 # __validation_fn_map_batches_end__
 
 # __validation_fn_report_start__
 import tempfile
 
+from ray.data import ExecutionOptions
 from ray.train import ValidationConfig, ValidationTaskConfig
 
 
@@ -161,12 +170,33 @@ def train_func(config: dict) -> None:
 
 
 def run_trainer() -> ray.train.Result:
-    train_dataset = ray.data.read_parquet(...)
+    # 1) Construction-time tasks (parquet schema inference, file listing)
+    # read the current DataContext. Pin them to "training" with a copy of
+    # the DataContext applied via the DataContext.current() context
+    # manager — scoped to the `with` block so it doesn't leak. See
+    # https://docs.ray.io/en/latest/data/concurrent-dataset-execution.html.
+    ctx = ray.data.DataContext.get_current().copy()
+    ctx.execution_options.label_selector = {"ray-subcluster": "training"}
+    with ray.data.DataContext.current(ctx):
+        train_dataset = ray.data.read_parquet(...)
+
     trainer = ray.train.torch.TorchTrainer(
         train_func,
         validation_config=ValidationConfig(fn=validation_fn),
         # Pass training dataset in datasets arg to split it across training workers
         datasets={"train": train_dataset},
+        # 2) DataConfig.execution_options REPLACES ds.context.execution_options
+        # wholesale at training start, dropping anything not re-specified
+        # (including label_selector). Restate the selector here so per-worker
+        # ingest stays pinned to "training".
+        dataset_config=ray.train.DataConfig(
+            datasets_to_split=["train"],
+            execution_options={
+                "train": ExecutionOptions(
+                    label_selector={"ray-subcluster": "training"}
+                ),
+            },
+        ),
         scaling_config=ray.train.ScalingConfig(
             num_workers=2,
             use_gpu=True,
@@ -175,8 +205,6 @@ def run_trainer() -> ray.train.Result:
         ),
     )
     return trainer.fit()
-
-
 # __validation_fn_report_end__
 
 # __exp_tracking_same_run_wandb_start__

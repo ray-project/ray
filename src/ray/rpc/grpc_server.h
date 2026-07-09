@@ -23,7 +23,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/rpc/server_call.h"
@@ -101,19 +101,13 @@ class GrpcServer {
   /// interfaces. \param[in] num_threads Number of gRPC completion queue threads to use.
   /// \param[in] keepalive_time_ms Connection keepalive time (ms).
   /// \param[in] auth_token Authentication token that clients must present when making
-  /// RPCs to the server. If nullptr, no authentication token is required. \param[in]
-  /// enable_default_health_check_service If true, enables gRPC's default health check
-  /// service handler. This health check is effectively a no-op that runs on a gRPC
-  /// internal thread. Server implementations can override it by defining a handler for
-  /// `grpc::health::v1::Health`, for example to check the health of a boost::asio event
-  /// loop.
+  /// RPCs to the server. If nullptr, no authentication token is required.
   GrpcServer(std::string name,
              const uint32_t port,
              bool listen_to_localhost_only,
              int num_threads = 1,
              int64_t keepalive_time_ms = 7200000, /*2 hours, grpc default*/
-             std::shared_ptr<const AuthenticationToken> auth_token = nullptr,
-             bool enable_default_health_check_service = true)
+             std::shared_ptr<const AuthenticationToken> auth_token = nullptr)
       : name_(std::move(name)),
         port_(port),
         listen_to_localhost_only_(listen_to_localhost_only),
@@ -126,7 +120,7 @@ class GrpcServer {
     } else {
       auth_token_ = AuthenticationTokenLoader::instance().GetToken();
     }
-    Init(enable_default_health_check_service);
+    Init();
   }
 
   /// Destruct this gRPC server.
@@ -170,7 +164,7 @@ class GrpcServer {
 
  protected:
   /// Initialize this server.
-  void Init(bool enable_default_health_check_service = true);
+  void Init();
 
   /// This function runs in a background thread. It keeps polling events from the
   /// `ServerCompletionQueue`, and dispaches the event to the `ServiceHandler` instances

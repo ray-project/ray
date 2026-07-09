@@ -7,7 +7,17 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/observability:open_telemetry_metric_recorder",
-        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "windowed_max_test",
+    size = "small",
+    srcs = ["windowed_max_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/observability:windowed_max",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -17,13 +27,15 @@ ray_cc_test(
     srcs = ["ray_event_recorder_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/asio:periodical_runner",
         "//src/ray/observability:fake_metric",
+        "//src/ray/observability:python_event_interface",
         "//src/ray/observability:ray_actor_definition_event",
         "//src/ray/observability:ray_actor_lifecycle_event",
         "//src/ray/observability:ray_driver_job_definition_event",
         "//src/ray/observability:ray_driver_job_lifecycle_event",
         "//src/ray/observability:ray_event_recorder",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/protobuf/public:events_submission_job_definition_event_cc_proto",
     ],
 )
 
@@ -34,9 +46,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/observability:python_event_interface",
-        "//src/ray/protobuf/public:events_driver_job_definition_event_cc_proto",
-        "//src/ray/protobuf/public:events_driver_job_lifecycle_event_cc_proto",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/protobuf/public:events_submission_job_definition_event_cc_proto",
+        "//src/ray/protobuf/public:events_submission_job_lifecycle_event_cc_proto",
     ],
 )
 
@@ -47,7 +58,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/observability:ray_driver_job_lifecycle_event",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -58,7 +68,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/observability:ray_actor_definition_event",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -69,7 +78,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/observability:ray_actor_lifecycle_event",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -80,6 +88,5 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/observability:ray_node_definition_event",
-        "@com_google_googletest//:gtest_main",
     ],
 )

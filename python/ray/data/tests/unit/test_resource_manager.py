@@ -1,7 +1,12 @@
 import pytest
 
 import ray
-from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+from ray.data._internal.execution.interfaces import (
+    BlockEntry,
+    PhysicalOperator,
+    RefBundle,
+)
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -16,6 +21,7 @@ from ray.data._internal.execution.streaming_executor_state import (
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.conftest import noop_counter
 
 
 def test_physical_operator_tracks_output_dependencies():
@@ -120,7 +126,7 @@ def test_does_not_double_count_usage_from_union():
     input1 = PhysicalOperator("op1", [], DataContext.get_current())
     input2 = PhysicalOperator("op2", [], DataContext.get_current())
     union_op = UnionOperator(DataContext.get_current(), input1, input2)
-    topology = build_streaming_topology(union_op, ExecutionOptions())
+    topology = build_streaming_topology(union_op, ExecutionOptions(), noop_counter())
 
     # Create a resource manager.
     total_resources = ExecutionResources(cpu=0, object_store_memory=2)
@@ -129,6 +135,7 @@ def test_does_not_double_count_usage_from_union():
         ExecutionOptions(),
         lambda: total_resources,
         DataContext.get_current(),
+        BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
     )
 
     # Create two 1-byte `RefBundle`s.
@@ -137,8 +144,12 @@ def test_does_not_double_count_usage_from_union():
     block_metadata = BlockMetadata(
         num_rows=1, size_bytes=1, input_files=None, exec_stats=None
     )
-    bundle1 = RefBundle([(block_ref1, block_metadata)], owns_blocks=True, schema=None)
-    bundle2 = RefBundle([(block_ref2, block_metadata)], owns_blocks=True, schema=None)
+    bundle1 = RefBundle(
+        [BlockEntry(block_ref1, block_metadata)], owns_blocks=True, schema=None
+    )
+    bundle2 = RefBundle(
+        [BlockEntry(block_ref2, block_metadata)], owns_blocks=True, schema=None
+    )
 
     # Add two 1-byte `RefBundle` to the union operator.
     topology[union_op].add_output(bundle1)
@@ -178,7 +189,7 @@ def test_per_input_inqueue_attribution_for_union():
 
     options = ExecutionOptions()
     options.preserve_order = True
-    topology = build_streaming_topology(union_op, options)
+    topology = build_streaming_topology(union_op, options, noop_counter())
 
     # Create a resource manager.
     total_resources = ExecutionResources(cpu=0, object_store_memory=200)
@@ -187,6 +198,7 @@ def test_per_input_inqueue_attribution_for_union():
         options,
         lambda: total_resources,
         DataContext.get_current(),
+        BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
     )
 
     # Create two 10-byte RefBundles with distinct block refs (simulates real execution
@@ -196,8 +208,12 @@ def test_per_input_inqueue_attribution_for_union():
     block_metadata = BlockMetadata(
         num_rows=1, size_bytes=10, input_files=None, exec_stats=None
     )
-    bundle1 = RefBundle([(block_ref1, block_metadata)], owns_blocks=True, schema=None)
-    bundle2 = RefBundle([(block_ref2, block_metadata)], owns_blocks=True, schema=None)
+    bundle1 = RefBundle(
+        [BlockEntry(block_ref1, block_metadata)], owns_blocks=True, schema=None
+    )
+    bundle2 = RefBundle(
+        [BlockEntry(block_ref2, block_metadata)], owns_blocks=True, schema=None
+    )
 
     # Add blocks only to input2's buffer inside the union operator.
     # With preserve_order=True, _add_input_inner routes to _input_buffers[input_index].
