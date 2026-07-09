@@ -1734,6 +1734,74 @@ def test_subslice_cache_hit_after_discovery(mock_4x4_pgs):
         sg2.shutdown()
 
 
+def test_subslice_iterates_to_second_slice_when_first_is_occupied():
+    """When a cluster has two slices of the same parent topology and the first
+    is fully occupied, the second slice's subslice is selected instead of
+    raising RuntimeError.
+    """
+    ray.util.tpu._tpu_subslice_cache.clear()
+
+    # Pre-populate the runtime cache with two 4x4 slices.
+    subslice_labels = {
+        "0": {"ray.io/tpu-subslice-2x4": "0"},
+        "1": {"ray.io/tpu-subslice-2x4": "0"},
+        "2": {"ray.io/tpu-subslice-2x4": "1"},
+        "3": {"ray.io/tpu-subslice-2x4": "1"},
+    }
+    ray.util.tpu._tpu_subslice_cache["slice-A"] = subslice_labels
+    ray.util.tpu._tpu_subslice_cache["slice-B"] = subslice_labels
+
+    def _make_slice_nodes(slice_name):
+        return [
+            {
+                "NodeID": f"node_{slice_name}_{i}",
+                "Alive": True,
+                "Resources": {"TPU": 4},
+                "Labels": {
+                    ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name,
+                    ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: str(i),
+                    ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "4x4",
+                },
+            }
+            for i in range(4)
+        ]
+
+    dummy_nodes = _make_slice_nodes("slice-A") + _make_slice_nodes("slice-B")
+
+    # slice-A: all workers fully occupied
+    # slice-B: all workers idle
+    avail_resources = {
+        **{f"node_slice-A_{i}": {"TPU": 0} for i in range(4)},
+        **{f"node_slice-B_{i}": {"TPU": 4} for i in range(4)},
+    }
+
+    from ray.util.placement_group import PlacementGroup
+
+    mock_pg = MagicMock(spec=PlacementGroup)
+    mock_id = MagicMock()
+    mock_id.is_nil.return_value = False
+    mock_pg.id = mock_id
+
+    with (
+        patch("ray.nodes", return_value=dummy_nodes),
+        patch("ray.util.tpu.placement_group", return_value=mock_pg),
+        patch(
+            "ray._private.state.available_resources_per_node",
+            return_value=avail_resources,
+        ),
+    ):
+        sg = ray.util.tpu.subslice_placement_group(
+            subslice_topology="2x4",
+            accelerator_version="v6e",
+            chips_per_vm=4,
+        )
+
+    assert sg.slice_name == "slice-B"
+    assert sg.subslice_index in (0, 1)
+    assert sg.num_hosts == 2
+    sg.shutdown()
+
+
 def test_subslice_same_as_parent_falls_back_to_full_slice():
     """When no strictly larger parent topology exists, subslice_placement_group
     falls back to SlicePlacementGroup and wraps the result in a

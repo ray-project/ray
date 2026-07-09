@@ -1225,6 +1225,19 @@ def _discover_and_persist_subslices(
             labels = _build_subslice_labels(physical_worker, parent_topology)
             subslice_labels_by_worker_id[worker_id_label] = labels
 
+        # Validate that every expected worker was labeled. If any worker
+        # lacked a tpu-worker-id label or returned no chip coordinates, the
+        # mapping is incomplete. Persisting partial data would later produce
+        # placement groups with the wrong number of hosts, so we fail fast here.
+        expected_workers = math.prod(_get_worker_dims_for_topology(parent_topology, ""))
+        if len(subslice_labels_by_worker_id) < expected_workers:
+            raise RuntimeError(
+                f"Subslice discovery for '{slice_name}' is incomplete: "
+                f"labeled {len(subslice_labels_by_worker_id)} of "
+                f"{expected_workers} expected workers. Workers may be missing "
+                f"'tpu-worker-id' labels or failed to return chip coordinates."
+            )
+
         # Persist to internal KV.
         ray.experimental.internal_kv._internal_kv_put(
             _get_subslice_kv_key(slice_name),
@@ -1248,47 +1261,41 @@ def _discover_and_persist_subslices(
         full_slice.shutdown()
 
 
-def _get_or_create_subslice_labels(
+def _collect_known_slice_labels(
     parent_topology: str,
-    accelerator_version: str,
-    chips_per_vm: int,
-    head_reservation_timeout_s: Optional[float],
     nodes: Optional[List[Dict[str, Any]]] = None,
-) -> Tuple[str, Dict[str, Dict[str, str]]]:
-    """Ensure subslice labels exist for a slice of the given parent topology.
+) -> List[Tuple[str, Dict[str, Dict[str, str]]]]:
+    """Return worker-label mappings for every discovered slice with the
+    given parent topology, from the runtime cache then the internal KV store.
 
-    Physical position of the TPU chips is not known at raylet start time and
-    must always be derived from ``libtpu.sdk.slice.get_chip_coordinates()`` as
-    a source of truth, and then may be cached for reuse.
+    Does NOT trigger libtpu discovery. Callers should fall through to
+    ``_discover_and_persist_subslices`` when this list is empty or when none
+    of the returned slices have available subslices.
 
-    Lookup order:
-    1. Runtime cache (fastest — populated by a previous discovery).
-    2. Internal KV (persisted across jobs in the same Ray session).
-    3. Full-slice reservation + coordinated libtpu discovery, then release.
-
-    Concurrent callers are serialized naturally: step 3 creates a
-    ``SlicePlacementGroup`` which acquires the exclusive
-    ``TPU-{pod_type}-head`` resource for the target slice. Only one caller
-    can hold that resource at a time, so only one discovery run can proceed
-    for a given slice simultaneously. When the first caller finishes and
-    persists to KV, any blocked caller will find the data in step 2.
+    Concurrent callers are serialized naturally when discovery is needed:
+    ``_discover_and_persist_subslices`` creates a ``SlicePlacementGroup``
+    which acquires the exclusive ``TPU-{pod_type}-head`` resource for the
+    target slice. Only one caller can hold that resource at a time, so only
+    one discovery run can proceed for a given slice simultaneously. When the
+    first caller finishes and persists to KV, any blocked caller will find
+    the data here on its next invocation.
 
     Args:
-        parent_topology: Full parent topology (e.g. "4x4").
-        accelerator_version: Accelerator version (e.g. "v6e").
-        chips_per_vm: Chips per VM.
-        head_reservation_timeout_s: Timeout for head PG reservation.
-        nodes: Pre-fetched ``ray.nodes()`` snapshot. If ``None``, a fresh
-            call is made. Passing the snapshot avoids a redundant GCS
-            round-trip when the caller already holds one.
+        parent_topology: Parent topology string (e.g. "4x4").
+        nodes: Node dicts from ``ray.nodes()``. A fresh call is made if
+            ``None``.
 
     Returns:
-        (slice_name, {worker_id_label: {label_key: label_value}}).
+        List of ``(slice_name, worker_labels)`` pairs with runtime-cache
+        hits first. May be empty if no slice has been discovered yet.
     """
     if nodes is None:
         nodes = ray.nodes()
 
-    # Check runtime cache.
+    results: List[Tuple[str, Dict[str, Dict[str, str]]]] = []
+    found_names: Set[str] = set()
+
+    # Tier 1: runtime cache
     for slice_name, labels in list(_tpu_subslice_cache.items()):
         for node in nodes:
             node_labels = node.get("Labels", {})
@@ -1297,19 +1304,24 @@ def _get_or_create_subslice_labels(
                 and node_labels.get(ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY)
                 == parent_topology
             ):
-                return slice_name, labels
+                results.append((slice_name, labels))
+                found_names.add(slice_name)
+                break
 
-    # Check internal KV for previously discovered slices. A slice has one
-    # entry per worker node, so deduplicate by slice name to avoid N redundant
-    # GCS round-trips for the same key.
-    seen_slice_names: set = set()
+    # Tier 2: KV store — slices not already loaded from the runtime cache.
+    # Each slice has one node per worker; deduplicate by slice name to avoid
+    # redundant GCS round-trips for the same key.
+    seen_slice_names: Set[str] = set()
     for node in nodes:
         node_labels = node.get("Labels", {})
         slice_name = node_labels.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
         node_topology = node_labels.get(ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY)
-        if slice_name and node_topology == parent_topology:
-            if slice_name in seen_slice_names:
-                continue
+        if (
+            slice_name
+            and node_topology == parent_topology
+            and slice_name not in found_names
+            and slice_name not in seen_slice_names
+        ):
             seen_slice_names.add(slice_name)
             try:
                 existing = ray.experimental.internal_kv._internal_kv_get(
@@ -1324,17 +1336,10 @@ def _get_or_create_subslice_labels(
                 logger.info(
                     "Loaded subslice labels for '%s' from KV store.", slice_name
                 )
-                return slice_name, worker_labels
+                results.append((slice_name, worker_labels))
+                found_names.add(slice_name)
 
-    # Coordinated libtpu discovery: temporarily reserve a full slice, fan out
-    # get_chip_coordinates() to every worker, compute physical mesh positions,
-    # persist results, then release the slice.
-    return _discover_and_persist_subslices(
-        parent_topology,
-        accelerator_version,
-        chips_per_vm,
-        head_reservation_timeout_s,
-    )
+    return results
 
 
 def _find_available_subslice(
@@ -1634,7 +1639,12 @@ def subslice_placement_group(
     version = get_tpu_version_from_type(accelerator_version)
     subslice_topology = subslice_topology.strip().lower()
 
-    # Validate topology strings are parseable before proceeding.
+    # Validate the subslice topology before touching the cluster. Two checks:
+    # 1. The string must be parseable as a topology (e.g. "2x4", not "foo").
+    # 2. It must be a valid topology for the requested accelerator version
+    #    (e.g. "2x2x2" is not valid for v6e which only supports 2D).
+    # Both checks raise ValueError with a consistent message so callers do
+    # not need to distinguish between them.
     try:
         _parse_topology_dims(subslice_topology)
     except ValueError:
@@ -1642,6 +1652,18 @@ def subslice_placement_group(
             f"Subslice topology '{subslice_topology}' is not valid for "
             f"accelerator version '{version}'."
         )
+    if not TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
+        version, subslice_topology
+    ):
+        raise ValueError(
+            f"Subslice topology '{subslice_topology}' is not valid for "
+            f"accelerator version '{version}'."
+        )
+
+    # If chips_per_vm was supplied explicitly, validate it immediately so the
+    # caller gets a clear error before we touch the cluster.
+    if chips_per_vm is not None and chips_per_vm <= 0:
+        raise ValueError("chips_per_vm must be positive.")
 
     # Resolve the parent topology from the cluster. Querying ray.nodes() here
     # rather than consulting a static topology table ensures the parent always
@@ -1734,45 +1756,93 @@ def subslice_placement_group(
             bundle_label_selectors=full_slice.bundle_label_selector,
         )
 
-    # Get or discover subslice labels. Pass the nodes snapshot we already
-    # hold to avoid a redundant ray.nodes() call inside.
-    slice_name, worker_labels = _get_or_create_subslice_labels(
-        parent_topology, version, chips_per_vm, head_reservation_timeout_s, nodes
-    )
+    # Collect all previously discovered slices for this parent topology and
+    # search each one for an available (or specifically-indexed) subslice.
+    # Iterating all known slices means a fully-occupied first slice does not
+    # block selection from a second idle slice of the same topology.
+    label_key = f"{TPU_SUBSLICE_LABEL_PREFIX}{subslice_topology}"
+    known_slices = _collect_known_slice_labels(parent_topology, nodes)
 
-    # Select target workers by requested index, else automatically selecting
-    # the first available.
-    if subslice_index is not None:
-        label_key = f"{TPU_SUBSLICE_LABEL_PREFIX}{subslice_topology}"
-        target_worker_ids = [
-            wid
-            for wid, labels in worker_labels.items()
-            if labels.get(label_key) == str(subslice_index)
-        ]
-        if not target_worker_ids:
-            max_idx = max(
-                (
-                    int(labels.get(label_key, "-1"))
-                    for labels in worker_labels.values()
-                    if label_key in labels
-                ),
-                default=-1,
-            )
-            raise ValueError(
-                f"Subslice index {subslice_index} is not valid for "
-                f"subslice '{subslice_topology}' in slice '{slice_name}'. "
-                f"Valid indices: 0..{max_idx}."
-            )
-    else:
-        target_worker_ids, selected_index = _find_available_subslice(
-            slice_name, subslice_topology, worker_labels
+    target_worker_ids: Optional[List[str]] = None
+    slice_name: Optional[str] = None
+    worker_labels: Optional[Dict[str, Dict[str, str]]] = None
+
+    for s_name, s_labels in known_slices:
+        if subslice_index is not None:
+            # Specific index requested: use the first slice that has workers
+            # labeled with it. Availability is not checked — the PG will wait
+            # for those workers to become free, consistent with how
+            # SlicePlacementGroup handles resource contention.
+            candidates = [
+                wid
+                for wid, lbs in s_labels.items()
+                if lbs.get(label_key) == str(subslice_index)
+            ]
+            if candidates:
+                target_worker_ids = candidates
+                slice_name = s_name
+                worker_labels = s_labels
+                break
+        else:
+            wids, idx = _find_available_subslice(s_name, subslice_topology, s_labels)
+            if wids is not None:
+                target_worker_ids = wids
+                subslice_index = idx
+                slice_name = s_name
+                worker_labels = s_labels
+                break
+
+    if target_worker_ids is None:
+        # No known slice satisfied the request. Run coordinated libtpu
+        # discovery on a newly reserved slice.
+        slice_name, worker_labels = _discover_and_persist_subslices(
+            parent_topology, version, chips_per_vm, head_reservation_timeout_s
         )
-        if target_worker_ids is None:
-            raise RuntimeError(
-                f"No available subslice of topology '{subslice_topology}' "
-                f"found in slice '{slice_name}'."
+        if subslice_index is not None:
+            # Specific index: find the matching workers in the new slice.
+            target_worker_ids = [
+                wid
+                for wid, lbs in worker_labels.items()
+                if lbs.get(label_key) == str(subslice_index)
+            ]
+            if not target_worker_ids:
+                max_idx = max(
+                    (
+                        int(lbs.get(label_key, "-1"))
+                        for lbs in worker_labels.values()
+                        if label_key in lbs
+                    ),
+                    default=-1,
+                )
+                raise ValueError(
+                    f"Subslice index {subslice_index} is not valid for "
+                    f"subslice '{subslice_topology}' in slice '{slice_name}'. "
+                    f"Valid indices: 0..{max_idx}."
+                )
+        else:
+            # Auto-select: find the first idle subslice in the newly
+            # discovered slice.
+            target_worker_ids, selected_index = _find_available_subslice(
+                slice_name, subslice_topology, worker_labels
             )
-        subslice_index = selected_index
+            if target_worker_ids is None:
+                raise RuntimeError(
+                    f"No available subslice of topology '{subslice_topology}' "
+                    f"found in any slice of topology '{parent_topology}'."
+                )
+            subslice_index = selected_index
+
+    # Verify the resolved worker list has the right size. This guards against
+    # incomplete discovery data reaching the placement-group creation step.
+    expected_hosts = math.prod(_get_worker_dims_for_topology(subslice_topology, ""))
+    if len(target_worker_ids) != expected_hosts:
+        raise RuntimeError(
+            f"Subslice {subslice_index} of '{subslice_topology}' in "
+            f"'{slice_name}' resolved to {len(target_worker_ids)} workers "
+            f"but {expected_hosts} are required. The cached discovery data "
+            f"may be incomplete; try clearing ray.util.tpu._tpu_subslice_cache "
+            f"and rerunning."
+        )
 
     # Build bundles.
     if resources_per_bundle is None:
