@@ -317,6 +317,14 @@ def test__wait_generators_bulk_after_partial_eof(ray_start_regular):
         with pytest.raises(ObjectRefStreamEndOfStreamError):
             ray.get(ref)
 
+    ready_again = _wait_generators_bulk([(one_item, [False])], timeout=1)
+    assert len(ready_again) == 1
+    _, refs_again = ready_again[0]
+    assert len(refs_again) == 1
+    assert refs_again[0] not in refs
+    with pytest.raises(ObjectRefStreamEndOfStreamError):
+        ray.get(refs_again[0])
+
 
 @pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
 def test__wait_generators_bulk_after_partial_error(ray_start_regular):
@@ -368,6 +376,46 @@ def test__get_next_ref_n_cancelled_surfaces_task_cancelled(ray_start_regular):
     # Oracle: the peeked ref surfaces the same error as the completion ref.
     with pytest.raises(TaskCancelledError):
         ray.get(g.completed(), timeout=30)
+
+
+@pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
+def test__get_next_ref_n_consumed_value_not_repeated_after_cancel(ray_start_regular):
+    """If cancellation collides with an already-produced value ref, consuming the
+    peeked value must still advance the bulk cursor past that ref."""
+
+    @ray.remote
+    class Signal:
+        def __init__(self):
+            self.ready = False
+
+        def wait(self):
+            while not self.ready:
+                time.sleep(0.01)
+
+        def send(self):
+            self.ready = True
+
+    @ray.remote(num_returns="streaming")
+    def gen(signal):
+        yield 1
+        ray.get(signal.wait.remote())
+        yield 2
+
+    signal = Signal.remote()
+    g = gen.remote(signal)
+
+    [first_ref] = g._get_next_ref_n(1)
+    assert ray.get(first_ref) == 1
+
+    ray.cancel(g)
+    with pytest.raises(TaskCancelledError):
+        ray.get(g.completed(), timeout=30)
+
+    g._consume_next_ref_n(1)
+    [next_ref] = g._get_next_ref_n(1)
+    assert next_ref != first_ref
+    with pytest.raises(TaskCancelledError):
+        ray.get(next_ref, timeout=30)
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
