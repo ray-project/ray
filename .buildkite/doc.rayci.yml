@@ -38,7 +38,7 @@ steps:
     if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - oss
-      - python
+      - core_python
       - dashboard
       - ray_client
       - data
@@ -61,7 +61,7 @@ steps:
     if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - oss
-      - python
+      - core_python
       - dashboard
       - ray_client
       - data

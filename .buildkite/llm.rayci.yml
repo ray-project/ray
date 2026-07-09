@@ -30,7 +30,6 @@ steps:
     if: '!(build.pull_request.labels includes "docs-go")'
     key: "llm-cpu-tests"
     tags:
-      - python
       - llm
       - cpu
     instance_type: medium
