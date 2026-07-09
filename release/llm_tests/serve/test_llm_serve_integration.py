@@ -1,4 +1,6 @@
+import os
 import pytest
+import requests
 import sys
 
 from ray import serve
@@ -12,6 +14,16 @@ from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.schema import ApplicationStatus
 import time
+
+# Pooling models (classify/reward) are only served through vLLM's native ASGI
+# app, which is used when direct streaming is enabled. The default OpenAiIngress
+# path does not expose /classify or /pooling, so these tests only run when
+# RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1.
+direct_streaming_only = pytest.mark.skipif(
+    os.environ.get("RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING", "0") != "1",
+    reason="Pooling/classify endpoints are only served in direct-streaming mode "
+    "(RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1).",
+)
 
 
 @pytest.mark.asyncio(scope="function")
@@ -178,6 +190,149 @@ def test_transcription_model(model_name):
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=180)
+    serve.shutdown()
+    time.sleep(1)
+
+
+@pytest.mark.parametrize("model_name", ["BAAI/bge-small-en-v1.5"])
+def test_embedding_model(model_name):
+    """
+    Test that embedding models can be loaded and serve embedding requests.
+    """
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id=model_name,
+        ),
+        deployment_config=dict(
+            num_replicas=1,
+        ),
+        engine_kwargs=dict(
+            enforce_eager=True,
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=180)
+
+    response = requests.post(
+        "http://localhost:8000/v1/embeddings",
+        json={
+            "model": model_name,
+            "input": "Hello, world!",
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert "data" in data
+    assert len(data["data"]) > 0
+    embedding = data["data"][0]["embedding"]
+    assert isinstance(embedding, list)
+    assert len(embedding) > 0
+    assert all(isinstance(x, float) for x in embedding)
+
+    serve.shutdown()
+    time.sleep(1)
+
+
+@pytest.mark.parametrize("model_name", ["BAAI/bge-small-en-v1.5"])
+def test_score_model(model_name):
+    """
+    Test that embedding models can serve score requests.
+    """
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id=model_name,
+        ),
+        deployment_config=dict(
+            num_replicas=1,
+        ),
+        engine_kwargs=dict(
+            enforce_eager=True,
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=180)
+
+    response = requests.post(
+        "http://localhost:8000/v1/score",
+        json={
+            "model": model_name,
+            "text_1": "What is the capital of France?",
+            "text_2": ["Paris is the capital of France.", "Berlin is in Germany."],
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert "data" in data
+    assert len(data["data"]) == 2
+    for item in data["data"]:
+        assert "score" in item
+        assert isinstance(item["score"], float)
+
+    serve.shutdown()
+    time.sleep(1)
+
+
+def _validate_classify(item):
+    assert isinstance(item["probs"], list)
+    assert len(item["probs"]) > 0
+    assert item["num_classes"] == len(item["probs"])
+
+
+def _validate_pooling(item):
+    # Reward models emit a per-token pooling vector; ensure it is non-empty.
+    assert len(item["data"]) > 0
+
+
+@direct_streaming_only
+@pytest.mark.parametrize(
+    "model_name,engine_kwargs,endpoint,validate_item",
+    [
+        pytest.param(
+            "Qwen/Qwen3-Reranker-0.6B",
+            dict(
+                hf_overrides={
+                    "architectures": ["Qwen3ForSequenceClassification"],
+                    "classifier_from_token": ["no", "yes"],
+                    "is_original_qwen3_reranker": True,
+                },
+            ),
+            "/classify",
+            _validate_classify,
+            id="classify",
+        ),
+        pytest.param(
+            "internlm/internlm2-1_8b-reward",
+            dict(trust_remote_code=True),
+            "/pooling",
+            _validate_pooling,
+            id="pooling",
+        ),
+    ],
+)
+def test_pooling_model(model_name, engine_kwargs, endpoint, validate_item):
+    """Pooling models (classify/reward) are served via vLLM's native /classify
+    and /pooling endpoints, which are only mounted in direct-streaming mode."""
+    llm_config = LLMConfig(
+        model_loading_config=dict(model_id=model_name),
+        deployment_config=dict(num_replicas=1),
+        engine_kwargs=dict(enforce_eager=True, max_model_len=512, **engine_kwargs),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=300)
+
+    response = requests.post(
+        f"http://localhost:8000{endpoint}",
+        json={"model": model_name, "input": "The chef prepared a delicious meal."},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["object"] == "list"
+    assert len(data["data"]) == 1
+    validate_item(data["data"][0])
+
     serve.shutdown()
     time.sleep(1)
 

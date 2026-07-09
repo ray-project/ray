@@ -67,19 +67,18 @@ _AUTOSCALER_EVENT_TYPES = {
 
 async def _list_cluster_events_impl(
     *,
-    all_events,
-    autoscaler_events,
+    all_events: Dict[str, JobEvents],
+    autoscaler_events: List[dict],
     executor: ThreadPoolExecutor,
     option: ListApiOptions,
 ) -> ListApiResponse:
-    """
-    List all cluster events from the cluster. Made a free function to allow unit tests.
+    """List all cluster events from the cluster. Made a free function to allow unit tests.
 
     Args:
-        all_events: The job or actor events to include (typically an OrderedDict).
+        all_events: Mapping of ``job_id`` to per-job event dictionaries.
         autoscaler_events: List of autoscaler event dictionaries.
-        executor: The executor to use for running the transformation.
-        option: Options for list API (filtering, limits, etc.).
+        executor: Executor used to run the (CPU-bound) transform off the event loop.
+        option: Query options (filters, limit, detail flag).
 
     Returns:
         A list of cluster events in the cluster.
@@ -248,16 +247,7 @@ class EventHead(
     async def _get_head_node_id(self) -> Union[str, None]:
         if self._head_node_id is not None:
             return self._head_node_id
-
-        head_node_id = await self.gcs_client.async_internal_kv_get(
-            ray_constants.KV_HEAD_NODE_ID_KEY,
-            namespace=ray_constants.KV_NAMESPACE_JOB,
-            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
-        )
-        if head_node_id is None:
-            return None
-
-        self._head_node_id = head_node_id.decode()
+        self._head_node_id = await dashboard_utils.get_head_node_id(self.gcs_client)
         return self._head_node_id
 
     async def _get_head_aggregator_stub(self):
@@ -327,16 +317,36 @@ class EventHead(
 
     @routes.post("/api/v0/external/ray_events")
     async def report_external_ray_events(self, request):
+        """Receive structured RayEvents from external components and forward
+        to the aggregator.
+
+        The request body must be a JSON array of RayEvent protobuf-compatible
+        objects, e.g.::
+
+            [{"sourceType": "AUTOSCALER", "eventType": "...", "severity": "INFO", ...}]
+
+        Each event must have an event_type in the external ray event allowlist
+        (configured via RAY_EXTERNAL_RAY_EVENT_ALLOWLIST).
+
+        HTTP status codes: 200 on success, 400 if the payload is malformed or
+        fails protobuf parsing, 403 if an event type is not in the allowlist,
+        500 if forwarding to the aggregator fails.
+        """
         try:
             request_body = await request.json()
             events = self._parse_external_ray_events(request_body)
-            self._validate_external_ray_events(events)
         except (ValueError, ProtobufParseError) as e:
             logger.warning("Invalid external Ray event payload: %s", e)
             raise aiohttp.web.HTTPBadRequest(reason=str(e))
         except Exception as e:
             logger.warning("Failed to parse external Ray event payload: %s", e)
             raise aiohttp.web.HTTPBadRequest()
+
+        try:
+            self._validate_external_ray_events(events)
+        except ValueError as e:
+            logger.warning("Forbidden external Ray event type: %s", e)
+            raise aiohttp.web.HTTPForbidden(reason=str(e))
 
         try:
             await self._forward_external_ray_events(events)

@@ -86,7 +86,8 @@ def round_robin_partitioner(
         num_partitions: Number of output partitions.
 
     Yields:
-        Tuples of (partition id, input item).
+        Tuple[PartitionID, InType]: A tuple of partition id and the
+            corresponding input item.
     """
     i = 0
     for item in input_stream:

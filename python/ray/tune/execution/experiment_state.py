@@ -41,6 +41,9 @@ def _find_newest_experiment_checkpoint(
     Args:
         experiment_path: Local or remote path to the experiment directory
             containing at least one experiment checkpoint file.
+        fs: Optional custom ``pyarrow.fs.FileSystem`` corresponding to
+            ``experiment_path``. If not provided, one is inferred from the
+            path.
 
     Returns:
         str: The local or remote path to the latest experiment checkpoint file
@@ -131,7 +134,7 @@ class _ExperimentCheckpointManager:
         save_fn: Callable[[], None],
         force: bool = False,
         wait: bool = False,
-    ):
+    ) -> None:
         """Saves execution state to the experiment directory on the storage path.
         This includes an experiment checkpoint file that contains trial statuses
         and the searcher state.

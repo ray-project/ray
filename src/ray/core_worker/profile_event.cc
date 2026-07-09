@@ -18,8 +18,6 @@
 #include <string>
 #include <utility>
 
-#include "absl/time/clock.h"
-
 namespace ray {
 namespace core {
 
@@ -28,8 +26,9 @@ namespace worker {
 ProfileEvent::ProfileEvent(TaskEventBuffer &task_event_buffer,
                            WorkerContext &worker_context,
                            const std::string &node_ip_address,
-                           const std::string &event_name)
-    : task_event_buffer_(task_event_buffer) {
+                           const std::string &event_name,
+                           ClockInterface &clock)
+    : task_event_buffer_(task_event_buffer), clock_(clock) {
   const auto &task_spec = worker_context.GetCurrentTask();
   if (task_spec && !task_spec->EnableTaskEvents()) {
     event_ = nullptr;
@@ -48,7 +47,7 @@ ProfileEvent::ProfileEvent(TaskEventBuffer &task_event_buffer,
       worker_context.GetWorkerID().Binary(),
       node_ip_address,
       event_name,
-      absl::GetCurrentTimeNanos(),
+      clock_.NowUnixNanos(),
       task_event_buffer_.GetSessionName(),
       task_event_buffer_.GetNodeID());
 }
@@ -57,7 +56,7 @@ ProfileEvent::~ProfileEvent() {
   if (event_ == nullptr) {
     return;
   }
-  event_->SetEndTime(absl::GetCurrentTimeNanos());
+  event_->SetEndTime(clock_.NowUnixNanos());
   // Add task event to the task event buffer
   task_event_buffer_.AddTaskEvent(std::move(event_));
 }

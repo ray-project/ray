@@ -31,7 +31,7 @@ To use it, modify the attributes in the current :class:`~ray.data.DataContext` o
 * `resource_limits`: Set a soft limit on the resource usage during execution. For example, if there are other parts of the code which require some minimum amount of resources, you may want to limit the amount of resources that Ray Data uses. Auto-detected by default.
 * `exclude_resources`: Amount of resources to exclude from Ray Data. Set this if you have other workloads running on the same cluster. Note:
 
-  * If you're using Ray Data with Ray Train, training resources are automatically excluded. Otherwise, off by default.
+  * If you're using Ray Data with Ray Train, training resources are automatically reserved and you don't need to set ``exclude_resources`` for them. Otherwise, off by default.
   * For each resource type, you can't set both ``resource_limits`` and ``exclude_resources``.
 
 * `preserve_order`: Set this to preserve the ordering between blocks processed by operators under the streaming executor. Off by default.

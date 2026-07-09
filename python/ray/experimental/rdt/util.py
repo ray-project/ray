@@ -208,15 +208,11 @@ def normalize_and_validate_tensor_transport(tensor_transport: str) -> str:
     return tensor_transport
 
 
-def validate_one_sided(tensor_transport: str, ray_usage_func: str):
+def is_one_sided_transport(tensor_transport: str) -> bool:
     _ensure_default_transports_registered()
-    if not transport_manager_info[
+    return transport_manager_info[
         tensor_transport
-    ].transport_manager_class.is_one_sided():
-        raise ValueError(
-            f"Trying to use two-sided tensor transport: {tensor_transport} for {ray_usage_func}. "
-            "This is only supported for one-sided transports such as NIXL or the OBJECT_STORE."
-        )
+    ].transport_manager_class.is_one_sided()
 
 
 @PublicAPI(stability="alpha")
@@ -263,6 +259,81 @@ def register_nixl_memory(tensor: "torch.Tensor") -> None:
     """
     nixl_transport = get_tensor_transport_manager("NIXL")
     nixl_transport.register_nixl_memory(tensor)
+
+
+@PublicAPI(stability="alpha")
+def deregister_nixl_memory(tensor: "torch.Tensor") -> None:
+    """Decrements the reference count for the tensor's NIXL memory registration added by :func:`ray.experimental.register_nixl_memory`.
+
+    If the reference count reaches 0, the memory is deregistered from NIXL.
+    This should only be called after :func:`ray.experimental.register_nixl_memory` has been called for this tensor.
+    Any existing ``ray.ObjectRef`` instances that reference this tensor's memory will keep the
+    NIXL memory registration alive independently until they go out of scope.
+
+    Args:
+        tensor: A PyTorch tensor whose NIXL memory registration reference count should be decremented.
+
+    Example:
+
+        .. code-block:: python
+
+            # Extending the example from register_nixl_memory:
+            @ray.remote(num_gpus=1, enable_tensor_transport=True)
+            class Trainer:
+                def deregister_weight(self):
+                    # Remove the NIXL memory registration added by register_nixl_memory.
+                    # The memory may still be registered if there are live ObjectRefs
+                    # that reference it.
+                    deregister_nixl_memory(self.weight)
+    """
+    nixl_transport = get_tensor_transport_manager("NIXL")
+    nixl_transport.deregister_nixl_memory(tensor)
+
+
+@PublicAPI(stability="alpha")
+def register_nixl_memory_pool(size: int, device: "torch.device") -> None:
+    """Pre-allocates a memory pool and registers it with NIXL.
+
+    This enables pool-based memory management for NIXL transfers, which can improve
+    performance by avoiding repeated memory registration/deregistration. The pool is
+    registered once with NIXL and individual tensors are copied into it on ``ray.put``.
+
+    Within a single ``ray.put`` call, tensors sharing the same underlying storage
+    (including views) are automatically deduplicated — only one copy of each unique
+    storage is allocated. Across multiple ``ray.put`` calls, if the same storage
+    appears again, the existing pool slot is reused without re-copying the data.
+    As a result, data can be potentially stale once you ``ray.put`` the storage
+    tensor — subsequent mutations to that storage may not be reflected in outstanding refs.
+    Clone the tensor before ``ray.put`` if snapshot semantics are required.
+
+    If the pool has insufficient space for an allocation,
+    :class:`NixlOutOfMemoryError` is raised.
+
+    Args:
+        size: Size of the memory pool in bytes.
+        device: Device to allocate the pool on (e.g., ``torch.device("cpu")``
+            or ``torch.device("cuda")``).
+
+    Example:
+
+        .. code-block:: python
+
+            import torch
+            import ray
+            from ray.experimental import register_nixl_memory_pool
+
+            @ray.remote(num_gpus=1, enable_tensor_transport=True)
+            class Trainer:
+                def __init__(self):
+                    # Pre-allocate a 1GB GPU memory pool for NIXL transfers
+                    register_nixl_memory_pool(1024 * 1024 * 1024, torch.device("cuda"))
+
+                def get_weight_ref(self):
+                    weight = torch.randn(1000, 1000, device="cuda")
+                    return ray.put(weight, _tensor_transport="nixl")
+    """
+    nixl_transport = get_tensor_transport_manager("NIXL")
+    nixl_transport.register_nixl_memory_pool(size, device)
 
 
 def create_empty_tensors_from_metadata(

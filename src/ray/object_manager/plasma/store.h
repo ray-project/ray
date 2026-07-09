@@ -26,7 +26,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/file_system_monitor.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -36,7 +36,7 @@
 #include "ray/object_manager/plasma/create_request_queue.h"
 #include "ray/object_manager/plasma/eviction_policy.h"
 #include "ray/object_manager/plasma/get_request_queue.h"
-#include "ray/object_manager/plasma/obj_lifecycle_mgr.h"
+#include "ray/object_manager/plasma/object_lifecycle_manager.h"
 #include "ray/object_manager/plasma/object_store.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
@@ -83,31 +83,31 @@ class PlasmaStore {
   /// Return the number of plasma objects that have been created.
   int64_t GetCumulativeCreatedObjects() const {
     absl::MutexLock lock(&mutex_);
-    return object_lifecycle_mgr_.GetNumObjectsCreatedTotal();
+    return object_lifecycle_manager_.GetNumObjectsCreatedTotal();
   }
 
   /// Return the plasma object bytes that have been created.
   int64_t GetCumulativeCreatedBytes() const {
     absl::MutexLock lock(&mutex_);
-    return object_lifecycle_mgr_.GetNumBytesCreatedTotal();
+    return object_lifecycle_manager_.GetNumBytesCreatedTotal();
   }
 
   /// Get the available memory for new objects to be created. This includes
   /// memory that is currently being used for created but unsealed objects.
   size_t GetAvailableMemory() const ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock lock(&mutex_);
-    RAY_CHECK((object_lifecycle_mgr_.GetNumBytesUnsealed() > 0 &&
-               object_lifecycle_mgr_.GetNumObjectsUnsealed() > 0) ||
-              (object_lifecycle_mgr_.GetNumBytesUnsealed() == 0 &&
-               object_lifecycle_mgr_.GetNumObjectsUnsealed() == 0))
+    RAY_CHECK((object_lifecycle_manager_.GetNumBytesUnsealed() > 0 &&
+               object_lifecycle_manager_.GetNumObjectsUnsealed() > 0) ||
+              (object_lifecycle_manager_.GetNumBytesUnsealed() == 0 &&
+               object_lifecycle_manager_.GetNumObjectsUnsealed() == 0))
         << "Tracking for available memory in the plasma store has gone out of sync. "
            "Please file a GitHub issue.";
-    RAY_CHECK(object_lifecycle_mgr_.GetNumBytesInUse() >=
-              object_lifecycle_mgr_.GetNumBytesUnsealed());
+    RAY_CHECK(object_lifecycle_manager_.GetNumBytesInUse() >=
+              object_lifecycle_manager_.GetNumBytesUnsealed());
     // We do not count unsealed objects as in use because these may have been
     // created by the object manager.
-    int64_t num_bytes_in_use = object_lifecycle_mgr_.GetNumBytesInUse() -
-                               object_lifecycle_mgr_.GetNumBytesUnsealed();
+    int64_t num_bytes_in_use = object_lifecycle_manager_.GetNumBytesInUse() -
+                               object_lifecycle_manager_.GetNumBytesUnsealed();
     size_t available = 0;
     if (num_bytes_in_use < allocator_.GetFootprintLimit()) {
       available = allocator_.GetFootprintLimit() - num_bytes_in_use;
@@ -288,7 +288,7 @@ class PlasmaStore {
   /// shared with the main raylet thread.
   const ray::DeleteObjectCallback delete_object_callback_;
 
-  ObjectLifecycleManager object_lifecycle_mgr_ ABSL_GUARDED_BY(mutex_);
+  ObjectLifecycleManager object_lifecycle_manager_ ABSL_GUARDED_BY(mutex_);
 
   /// The amount of time to wait before retrying a creation request after an
   /// OOM error.

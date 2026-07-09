@@ -12,6 +12,7 @@ from collections import OrderedDict, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pprint import pprint
+from unittest.mock import MagicMock
 
 import aiohttp
 import numpy as np
@@ -22,12 +23,14 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray._common.utils import binary_to_hex
 from ray._private.event.event_logger import (
+    EventLoggerAdapter,
     filter_event_by_level,
     get_event_id,
     get_event_logger,
 )
 from ray._private.event.export_event_logger import (
     EventLogType,
+    ExportEventLoggerAdapter,
     get_export_event_logger,
 )
 from ray._private.protobuf_compat import message_to_dict
@@ -742,7 +745,7 @@ async def test_report_external_ray_events_rejects_disallowed_event_types(monkeyp
     ]
     monkeypatch.setattr(EventHead, "_get_external_ray_event_allowlist", lambda: set())
 
-    with pytest.raises(aiohttp.web.HTTPBadRequest):
+    with pytest.raises(aiohttp.web.HTTPForbidden):
         await event_head.report_external_ray_events(_FakeRequest(payload))
 
 
@@ -1037,6 +1040,83 @@ def test_export_event_logger(tmp_path):
             preserving_proto_field_name=True,
             use_integers_for_enums=False,
         )
+
+
+def test_event_logger_flushes_all_handlers():
+    mock_logger = MagicMock()
+    handlers = [MagicMock() for _ in range(3)]
+    mock_logger.handlers = handlers
+
+    adapter = EventLoggerAdapter(event_pb2.Event.GCS, mock_logger)
+    adapter.info("message")
+
+    for handler in handlers:
+        handler.flush.assert_called_once()
+
+
+def test_event_logger_allows_empty_handlers():
+    mock_logger = MagicMock()
+    mock_logger.handlers = []
+
+    adapter = EventLoggerAdapter(event_pb2.Event.GCS, mock_logger)
+    adapter.info("message")
+
+
+def test_export_event_logger_flushes_all_handlers():
+    mock_logger = MagicMock()
+    handlers = [MagicMock() for _ in range(3)]
+    mock_logger.handlers = handlers
+
+    adapter = ExportEventLoggerAdapter(EventLogType.SUBMISSION_JOB, mock_logger)
+    event_data = export_submission_job_event_pb2.ExportSubmissionJobEventData(
+        submission_job_id="submission_job_id0",
+        status=(
+            export_submission_job_event_pb2.ExportSubmissionJobEventData.JobStatus.RUNNING
+        ),
+        entrypoint="ls",
+        metadata={},
+    )
+    adapter.send_event(event_data)
+
+    for handler in handlers:
+        handler.flush.assert_called_once()
+
+
+def test_export_event_logger_allows_empty_handlers():
+    mock_logger = MagicMock()
+    mock_logger.handlers = []
+
+    adapter = ExportEventLoggerAdapter(EventLogType.SUBMISSION_JOB, mock_logger)
+    event_data = export_submission_job_event_pb2.ExportSubmissionJobEventData(
+        submission_job_id="submission_job_id0",
+        status=(
+            export_submission_job_event_pb2.ExportSubmissionJobEventData.JobStatus.RUNNING
+        ),
+        entrypoint="ls",
+        metadata={},
+    )
+    adapter.send_event(event_data)
+
+
+def test_export_event_logger_continues_flushing_after_handler_error():
+    mock_logger = MagicMock()
+    handler1 = MagicMock()
+    handler1.flush.side_effect = RuntimeError("flush failed")
+    handler2 = MagicMock()
+    mock_logger.handlers = [handler1, handler2]
+
+    adapter = ExportEventLoggerAdapter(EventLogType.SUBMISSION_JOB, mock_logger)
+    event_data = export_submission_job_event_pb2.ExportSubmissionJobEventData(
+        submission_job_id="submission_job_id0",
+        status=(
+            export_submission_job_event_pb2.ExportSubmissionJobEventData.JobStatus.RUNNING
+        ),
+        entrypoint="ls",
+        metadata={},
+    )
+    adapter.send_event(event_data)
+
+    handler2.flush.assert_called_once()
 
 
 if __name__ == "__main__":

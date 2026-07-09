@@ -19,7 +19,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker_rpc_client/core_worker_client_interface.h"

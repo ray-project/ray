@@ -4,8 +4,19 @@ import inspect
 import logging
 import queue
 import time
+from contextlib import asynccontextmanager
 from functools import wraps
-from typing import Any, Callable, Coroutine, Dict, Optional, Tuple, Union
+from typing import (
+    Any,
+    AsyncIterator,
+    Callable,
+    Coroutine,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray import cloudpickle
@@ -16,6 +27,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.replica import UserCallableWrapper
 from ray.serve._private.replica_result import ReplicaResult
+from ray.serve._private.request_router.replica_wrapper import ReplicaSelection
 from ray.serve._private.router import Router
 from ray.serve._private.utils import GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
 from ray.serve.deployment import Deployment
@@ -340,6 +352,53 @@ class LocalRouter(Router):
             )
         )
         return noop_future
+
+    @asynccontextmanager
+    async def choose_replica(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> AsyncIterator[ReplicaSelection]:
+        """Choose replica is not supported in local testing mode.
+
+        This is a stub implementation to satisfy the Router ABC interface.
+        """
+        raise NotImplementedError(
+            "choose_replica is not supported in local testing mode. "
+            "Use assign_request instead."
+        )
+        yield  # Make this a generator for asynccontextmanager
+
+    def dispatch(
+        self,
+        selection: ReplicaSelection,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> concurrent.futures.Future[ReplicaResult]:
+        """Dispatch is not supported in local testing mode.
+
+        This is a stub implementation to satisfy the Router ABC interface.
+        """
+        raise NotImplementedError(
+            "dispatch is not supported in local testing mode. "
+            "Use assign_request instead."
+        )
+
+    async def broadcast(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> List[ReplicaResult]:
+        """Broadcast in local testing mode calls the single local replica."""
+        result_future = self.assign_request(
+            request_meta, *request_args, **request_kwargs
+        )
+        # In local testing mode there is only one replica.
+        replica_result = result_future.result()
+        return [replica_result]
 
     def shutdown(self):
         noop_future = concurrent.futures.Future()

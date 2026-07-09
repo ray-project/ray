@@ -15,6 +15,7 @@ import pytest
 
 from ray._common.utils import (
     _BACKGROUND_TASKS,
+    env_bool,
     get_or_create_event_loop,
     get_system_memory,
     load_class,
@@ -52,6 +53,37 @@ class TestGetOrCreateEventLoop:
             warnings.simplefilter("error")
             loop = get_or_create_event_loop()
             assert loop is not None, "new event loop should be created."
+
+
+class TestEnvBool:
+    """Tests for the env_bool utility function."""
+
+    _KEY = "_RAY_TEST_ENV_BOOL"
+
+    @pytest.mark.parametrize(
+        "env_value, expected",
+        [
+            ("1", True),
+            ("true", True),
+            ("True", True),
+            ("TRUE", True),
+            ("0", False),
+            ("false", False),
+            ("False", False),
+            ("FALSE", False),
+            ("yes", False),
+            ("no", False),
+            ("", False),
+        ],
+    )
+    def test_env_bool_values(self, env_value, expected, monkeypatch):
+        monkeypatch.setenv(self._KEY, env_value)
+        assert env_bool(self._KEY, False) is expected
+
+    def test_env_bool_default_when_unset(self, monkeypatch):
+        monkeypatch.delenv(self._KEY, raising=False)
+        assert env_bool(self._KEY, False) is False
+        assert env_bool(self._KEY, True) is True
 
 
 @pytest.mark.asyncio

@@ -53,7 +53,10 @@ class RandomAccessDataset:
         start = time.perf_counter()
         logger.info("[setup] Indexing dataset by sort key.")
         sorted_ds = ds.sort(key)
+        ctx_label_selector = DataContext.get_current().execution_options.label_selector
         get_bounds = cached_remote_fn(_get_bounds)
+        if ctx_label_selector:
+            get_bounds = get_bounds.options(label_selector=ctx_label_selector)
         bundles = sorted_ds.iter_internal_ref_bundles()
         blocks = _ref_bundles_iterator_to_block_refs_list(bundles)
 
@@ -71,11 +74,11 @@ class RandomAccessDataset:
 
         logger.info("[setup] Creating {} random access workers.".format(num_workers))
         ctx = DataContext.get_current()
-        scheduling_strategy = ctx.scheduling_strategy
+        worker_options = {"scheduling_strategy": ctx.scheduling_strategy}
+        if ctx_label_selector:
+            worker_options["label_selector"] = ctx_label_selector
         self._workers = [
-            _RandomAccessWorker.options(scheduling_strategy=scheduling_strategy).remote(
-                key
-            )
+            _RandomAccessWorker.options(**worker_options).remote(key)
             for _ in range(num_workers)
         ]
         (

@@ -3,6 +3,7 @@ import concurrent.futures
 import sys
 import time
 from collections import defaultdict
+from typing import Set
 
 import pytest
 
@@ -61,7 +62,6 @@ def test_async_actor_cancel(shutdown_only):
                 await asyncio.sleep(10)
             except asyncio.CancelledError:
                 # It is False until this except block is finished.
-                print(asyncio.current_task().cancelled())
                 assert not asyncio.current_task().cancelled()
                 ray.get(verify_actor.called.remote())
                 raise
@@ -471,98 +471,88 @@ def test_concurrent_submission_and_cancellation(shutdown_only):
         with pytest.raises(ray.exceptions.TaskCancelledError):
             ray.get(ref)
 
-    print(f"All {NUM_TASKS} tasks were cancelled successfully.")
-
 
 def test_is_canceled_sync_actor_task(shutdown_only):
     """Test that is_canceled() works correctly for sync actor tasks."""
 
+    signal_actor = SignalActor.remote()
+
     @ray.remote
     class Actor:
         def __init__(self):
-            self.is_canceled = False
+            self._was_canceled = False
 
-        def task_with_cancel_check(self, signal_actor):
+        def wait_until_canceled(self):
             ray.get(signal_actor.wait.remote())
+            wait_for_condition(lambda: ray.get_runtime_context().is_canceled())
+            self._was_canceled = True
 
-            # Check if the task was cancelled
-            if ray.get_runtime_context().is_canceled():
-                self.is_canceled = True
-                return "canceled"
+        def was_canceled(self) -> bool:
+            return self._was_canceled
 
-            return "completed"
+    a = Actor.remote()
+    ref = a.wait_until_canceled.remote()
 
-        def is_canceled(self):
-            return self.is_canceled
+    # Wait for the task to be actively waiting on the signal.
+    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
 
-    sig = SignalActor.remote()
-    actor = Actor.remote()
-
-    ref = actor.task_with_cancel_check.remote(sig)
-
-    # Wait for the task to be actively waiting on the signal
-    wait_for_condition(lambda: ray.get(sig.cur_num_waiters.remote()) == 1)
-
-    # Cancel the task while it's blocked on the signal
+    # Cancel the task while it's blocked on the signal.
     ray.cancel(ref, recursive=False)
-    ray.get(sig.send.remote())
 
-    # The task should raise TaskCancelledError
+    # Now signal the task to unblock. The task result should be `TaskCancelledError`.
+    ray.get(signal_actor.send.remote())
     with pytest.raises(TaskCancelledError):
         ray.get(ref)
 
-    # Verify the actor state is changed
-    assert ray.get(actor.is_canceled.remote())
+    # Check that `is_canceled` was set correctly.
+    assert ray.get(a.was_canceled.remote())
 
 
 def test_is_canceled_concurrent_actor_task(shutdown_only):
     """Test that is_canceled() works correctly for concurrent actor tasks."""
 
+    signal_actor = SignalActor.remote()
+
     @ray.remote
     class ConcurrentActor:
         def __init__(self):
-            self.canceled_tasks = set()
+            self._canceled_task_indices = set()
 
-        def task_with_cancel_check(self, task_id, signal_actor):
+        def task_with_cancel_check(self, task_index: int, expect_canceled: bool):
             ray.get(signal_actor.wait.remote())
 
-            # Check if the task was cancelled
-            if ray.get_runtime_context().is_canceled():
-                self.canceled_tasks.add(task_id)
-                return f"task_{task_id}_canceled"
+            if expect_canceled:
+                wait_for_condition(lambda: ray.get_runtime_context().is_canceled())
+                self._canceled_task_indices.add(task_index)
 
-            return f"task_{task_id}_completed"
+            return task_index
 
-        def get_canceled_tasks(self):
-            return self.canceled_tasks
+        def get_canceled_task_indices(self) -> Set[int]:
+            return self._canceled_task_indices
 
-    sig = SignalActor.remote()
     actor = ConcurrentActor.options(max_concurrency=3).remote()
 
-    # Submit multiple tasks concurrently
-    refs = [actor.task_with_cancel_check.remote(i, sig) for i in range(3)]
+    # Submit multiple tasks concurrently. Only task_index=1 will be canceled.
+    refs = [actor.task_with_cancel_check.remote(i, i == 1) for i in range(3)]
 
-    # Wait for all tasks to be waiting on the signal
-    wait_for_condition(lambda: ray.get(sig.cur_num_waiters.remote()) == 3)
+    # Wait for all tasks to be running (waiting on the signal).
+    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 3)
 
-    # Cancel one of the task
+    # Cancel task_index=1.
     ray.cancel(refs[1], recursive=False)
 
-    # Send signal to unblock all tasks
-    ray.get(sig.send.remote())
+    # Send signal to unblock all tasks.
+    ray.get(signal_actor.send.remote())
 
-    # Canceled tasks should raise TaskCancelledError
+    # The canceled task should raise TaskCancelledError.
     with pytest.raises(TaskCancelledError):
         ray.get(refs[1])
 
-    # Other tasks should complete normally
-    for i in [0, 2]:
-        result = ray.get(refs[i])
-        assert result == f"task_{i}_completed"
+    # The other tasks should complete normally.
+    assert ray.get([refs[0], refs[2]]) == [0, 2]
 
-    # Verify that task 1 is marked canceled
-    canceled_tasks = ray.get(actor.get_canceled_tasks.remote())
-    assert canceled_tasks == {1}
+    # Verify that `is_canceled` was propagated for task_index=1.
+    assert ray.get(actor.get_canceled_task_indices.remote()) == {1}
 
 
 def test_is_canceled_not_supported_in_async_actor(shutdown_only):

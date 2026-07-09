@@ -81,6 +81,31 @@ class TorchRLModule(nn.Module, RLModule):
         """
         return compile_wrapper(self, compile_config)
 
+    @override(RLModule)
+    def forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        was_training = self.training
+        self.eval()
+        try:
+            return self._forward_inference(batch, **kwargs)
+        finally:
+            if was_training:
+                self.train()
+
+    @override(RLModule)
+    def forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        was_training = self.training
+        self.eval()
+        try:
+            return self._forward_exploration(batch, **kwargs)
+        finally:
+            if was_training:
+                self.train()
+
+    @override(RLModule)
+    def forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        self.train()
+        return super().forward_train(batch, **kwargs)
+
     @OverrideToImplementCustomLogic
     def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         # By default, calls the generic `_forward()` method, but with a no-grad context

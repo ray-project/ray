@@ -27,7 +27,7 @@ void GcsPlacementGroup::UpdateState(
     RAY_CHECK_EQ(placement_group_table_data_.state(),
                  rpc::PlacementGroupTableData::PREPARED);
     placement_group_table_data_.set_placement_group_final_bundle_placement_timestamp_ms(
-        current_sys_time_ms());
+        clock_.NowUnixMillis());
 
     double duration_ms =
         placement_group_table_data_
@@ -83,6 +83,10 @@ GcsPlacementGroup::GetUnplacedBundles() const {
 
 bool GcsPlacementGroup::HasUnplacedBundles() const {
   return !GetUnplacedBundles().empty();
+}
+
+bool GcsPlacementGroup::AllUnplacedBundles() const {
+  return GetBundles().size() == GetUnplacedBundles().size();
 }
 
 rpc::PlacementStrategy GcsPlacementGroup::GetStrategy() const {
@@ -142,6 +146,39 @@ const rpc::PlacementGroupStats &GcsPlacementGroup::GetStats() const {
 
 rpc::PlacementGroupStats *GcsPlacementGroup::GetMutableStats() {
   return placement_group_table_data_.mutable_stats();
+}
+
+std::optional<std::vector<std::string>> GcsPlacementGroup::GetTopologyStrategyKeys()
+    const {
+  const auto &entries = placement_group_table_data_.topology_strategy();
+  if (entries.empty()) {
+    return std::nullopt;
+  }
+  std::vector<std::string> keys;
+  keys.reserve(entries.size());
+  for (const auto &entry : entries) {
+    keys.push_back(entry.first);
+  }
+  return keys;
+}
+
+std::optional<std::string> GcsPlacementGroup::GetTopologyAssignment(
+    const std::string &label_key) const {
+  const auto &assignments = placement_group_table_data_.topology_assignments();
+  auto it = assignments.find(label_key);
+  if (it != assignments.end()) {
+    return it->second;
+  }
+  return std::nullopt;
+}
+
+void GcsPlacementGroup::SetTopologyAssignment(const std::string &label_key,
+                                              const std::string &label_value) {
+  (*placement_group_table_data_.mutable_topology_assignments())[label_key] = label_value;
+}
+
+void GcsPlacementGroup::ClearTopologyAssignments() {
+  placement_group_table_data_.mutable_topology_assignments()->clear();
 }
 
 }  // namespace gcs
