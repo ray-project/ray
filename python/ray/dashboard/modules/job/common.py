@@ -31,6 +31,21 @@ JOB_ACTOR_NAME_TEMPLATE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}job_actor_" + "{job_i
 SUPERVISOR_ACTOR_RAY_NAMESPACE = "SUPERVISOR_ACTOR_RAY_NAMESPACE"
 JOB_LOGS_PATH_TEMPLATE = "job-driver-{submission_id}.log"
 
+# Event type names (from RayEvent.EventType in
+# src/ray/protobuf/public/events_base_event.proto) for submission job events
+# emitted through the Python EventRecorder (One-Event framework).
+SUBMISSION_JOB_DEFINITION_EVENT_TYPE = "SUBMISSION_JOB_DEFINITION_EVENT"
+SUBMISSION_JOB_LIFECYCLE_EVENT_TYPE = "SUBMISSION_JOB_LIFECYCLE_EVENT"
+
+
+def submission_job_events_enabled() -> bool:
+    """Whether submission job events should be emitted via the One-Event framework."""
+    return bool(
+        {SUBMISSION_JOB_DEFINITION_EVENT_TYPE, SUBMISSION_JOB_LIFECYCLE_EVENT_TYPE}
+        & ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT_TYPES
+    )
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -283,7 +298,7 @@ class JobInfoStorageClient:
             timeout=timeout,
         )
         if added_num == 1 or overwrite:
-            if ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT:
+            if submission_job_events_enabled():
                 try:
                     self._emit_submission_job_events(
                         job_id, job_info, is_new=(added_num == 1)
@@ -311,7 +326,11 @@ class JobInfoStorageClient:
         from ray._raylet import EventRecorder
 
         # Emit definition event once per job (first write)
-        if is_new:
+        if (
+            is_new
+            and SUBMISSION_JOB_DEFINITION_EVENT_TYPE
+            in ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT_TYPES
+        ):
             builder = SubmissionJobDefinitionEventBuilder(
                 submission_id=job_id,
                 entrypoint=job_info.entrypoint,
@@ -327,6 +346,12 @@ class JobInfoStorageClient:
             EventRecorder.emit(builder.build())
 
         # Emit lifecycle event on every status change
+        if (
+            SUBMISSION_JOB_LIFECYCLE_EVENT_TYPE
+            not in ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT_TYPES
+        ):
+            return
+
         state = job_status_to_proto_state(job_info.status.name)
         if state is None:
             logger.error(

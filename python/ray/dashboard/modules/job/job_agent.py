@@ -7,7 +7,6 @@ import aiohttp
 from aiohttp.web import Request, Response
 
 import ray
-import ray._private.ray_constants as ray_constants
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.job.common import (
@@ -16,6 +15,7 @@ from ray.dashboard.modules.job.common import (
     JobStopResponse,
     JobSubmitRequest,
     JobSubmitResponse,
+    submission_job_events_enabled,
 )
 from ray.dashboard.modules.job.job_manager import JobManager
 from ray.dashboard.modules.job.pydantic_models import JobType
@@ -204,12 +204,11 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         return self._job_manager
 
     async def run(self, server):
-        if ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT:
+        if submission_job_events_enabled():
             try:
                 from ray._raylet import EventRecorder
 
                 EventRecorder.initialize(
-                    aggregator_address=self._dashboard_agent.ip,
                     aggregator_port=self._dashboard_agent.grpc_port,
                     node_ip=self._dashboard_agent.ip,
                     node_id_hex=self._dashboard_agent.node_id,

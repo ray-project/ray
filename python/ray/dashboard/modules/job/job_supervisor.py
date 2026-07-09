@@ -24,6 +24,7 @@ from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
     JobInfoStorageClient,
+    submission_job_events_enabled,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.job_submission import JobErrorType, JobStatus
@@ -348,7 +349,7 @@ class JobSupervisor:
 
         # Initialize ray event recorder if enabled, so lifecycle events
         # (RUNNING, SUCCEEDED, STOPPED, FAILED) from this process are captured.
-        if ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT:
+        if submission_job_events_enabled():
             try:
                 from ray._private.ray_constants import KV_NAMESPACE_DASHBOARD
                 from ray._raylet import EventRecorder
@@ -361,7 +362,6 @@ class JobSupervisor:
                 if agent_info_raw:
                     _, _, grpc_port = json.loads(agent_info_raw)
                     EventRecorder.initialize(
-                        aggregator_address=node.node_ip_address,
                         aggregator_port=int(grpc_port),
                         node_ip=node.node_ip_address,
                         node_id_hex=driver_node_id,
@@ -515,7 +515,7 @@ class JobSupervisor:
                 )
         finally:
             # Flush any remaining events before the actor exits.
-            if ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT:
+            if submission_job_events_enabled():
                 try:
                     from ray._raylet import EventRecorder
 
