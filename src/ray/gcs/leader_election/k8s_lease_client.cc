@@ -47,6 +47,9 @@ LeaseMetadata ParseLeaseMetadata(const nlohmann::json &response) {
       std::string parse_err;
       if (!absl::ParseTime(
               absl::RFC3339_full, renew_str, &metadata.renew_time, &parse_err)) {
+        // Leave renew_time at its default (absl::InfiniteFuture()) so an unparseable
+        // timestamp is treated as "unknown / not yet expired" rather than triggering
+        // an eager preemption via the absolute-expiration path.
         RAY_LOG(ERROR) << "Failed to parse lease renewTime: " << parse_err;
         metadata.renew_time = absl::InfiniteFuture();
       }
@@ -126,6 +129,19 @@ Status K8sLeaseClient::UpdateLease(const LeaseMetadata &metadata,
     return Status::Invalid("Lease record is not a valid JSON object.");
   }
   update_req.erase("__api_server_date__");
+
+  // Split-brain guard: taking over a lease from a *different* holder must go through
+  // Kubernetes optimistic concurrency control (OCC). If we don't have a
+  // resourceVersion to condition the PUT on, an unconditional write could overwrite a
+  // concurrent acquirer and let two nodes believe they hold the lease. In that case,
+  // refuse to acquire and let the caller retry after a fresh GET. Renewing our own
+  // lease (same holder) does not need this guard.
+  const bool is_takeover = !metadata.holder_id.empty() && metadata.holder_id != holder_id;
+  if (is_takeover && metadata.resource_version.empty()) {
+    return Status::Invalid(
+        "Refusing to acquire lease from another holder without a resourceVersion "
+        "(no optimistic concurrency guard available).");
+  }
 
   update_req["spec"]["holderIdentity"] = holder_id;
   update_req["spec"]["leaseDurationSeconds"] = ttl_seconds;

@@ -35,8 +35,11 @@ struct LeaseMetadata {
   std::string holder_id;
   // The lease lock TTL duration in seconds, default to 15 seconds.
   int duration_seconds = 15;
-  // The timestamp of the last successful lease renewal.
-  absl::Time renew_time = absl::UnixEpoch();
+  // The timestamp of the last successful lease renewal. Defaults to
+  // absl::InfiniteFuture() so that a missing/unparseable renewTime is treated as
+  // "not yet expired" (fail-safe: never fast-preempt a possibly-live leader via the
+  // absolute-expiration path; fall back to the local observed countdown instead).
+  absl::Time renew_time = absl::InfiniteFuture();
   // The Optimistic Concurrency Control (OCC) version token required by K8s for safe
   // updates.
   std::string resource_version;

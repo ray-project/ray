@@ -14,6 +14,8 @@
 
 #include "ray/gcs/leader_election/leader_election_client_factory.h"
 
+#include <mutex>
+
 #include "ray/gcs/leader_election/k8s_lease_client.h"
 #include "ray/rpc/authentication/k8s_util.h"
 
@@ -22,6 +24,13 @@ namespace gcs {
 
 std::unique_ptr<LeaderLeaseClientInterface> LeaderLeaseClientFactory::Create(
     const std::string &lease_namespace, const std::string &lease_key) {
+  // Ensure the in-cluster Kubernetes client configuration is initialized before any
+  // K8sApiGet/Post/Put call. Otherwise those helpers return Status::Invalid until some
+  // other subsystem (currently only the auth-token validator) happens to initialize it
+  // first. Using the same shared std::once_flag makes this idempotent and independent of
+  // call order.
+  std::call_once(rpc::k8s::k8s_client_config_flag, rpc::k8s::InitK8sClientConfig);
+
   return std::make_unique<K8sLeaseClient>(
       lease_namespace,
       lease_key,

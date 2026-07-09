@@ -80,6 +80,9 @@ TEST_F(K8sLeaseClientTest, AcquireSuccessWhenExpired) {
     absl::Time past = absl::Now() - absl::Seconds(100);
     resp["spec"]["renewTime"] =
         absl::FormatTime("%Y-%m-%dT%H:%M:%E6SZ", past, absl::UTCTimeZone());
+    // Real Kubernetes always assigns a resourceVersion; it is required for the
+    // optimistic-concurrency-guarded takeover PUT.
+    resp["metadata"]["resourceVersion"] = "v1";
     return Status::OK();
   };
 
@@ -107,6 +110,9 @@ TEST_F(K8sLeaseClientTest, AcquireSuccessWhenExpiredByLocalObservedTime) {
     resp["spec"]["leaseDurationSeconds"] = 1;
     resp["spec"]["renewTime"] =
         absl::FormatTime("%Y-%m-%dT%H:%M:%E6SZ", static_future, absl::UTCTimeZone());
+    // Real Kubernetes always assigns a resourceVersion; it is required for the
+    // optimistic-concurrency-guarded takeover PUT.
+    resp["metadata"]["resourceVersion"] = "v1";
     return Status::OK();
   };
 
@@ -295,6 +301,71 @@ TEST_F(K8sLeaseClientTest, ReleaseSuccess) {
   K8sLeaseClient client(lease_namespace_, lease_key_, get_api, post_api, put_api);
   client.Release(my_id_);
   EXPECT_TRUE(put_called.load());
+}
+
+TEST_F(K8sLeaseClientTest, AcquireDoesNotInstantPreemptWhenRenewTimeMissing) {
+  // A lease is held by another node but the record has no renewTime field (e.g. a
+  // freshly-created lease, a partial patch, or a foreign writer). renew_time defaults
+  // to absl::InfiniteFuture(), so the absolute-expiration path must NOT fire; the
+  // standby must fall back to the local observed countdown and wait instead of
+  // instantly preempting a possibly-live leader (split-brain guard).
+  std::atomic<bool> put_called{false};
+  auto get_api = [&](const std::string &, nlohmann::json &resp) {
+    resp["spec"]["holderIdentity"] = "node-2";
+    resp["spec"]["leaseDurationSeconds"] = 100;
+    // Intentionally omit "renewTime".
+    resp["metadata"]["resourceVersion"] = "v1";
+    return Status::OK();
+  };
+
+  auto post_api = [](const std::string &, const nlohmann::json &, nlohmann::json &) {
+    return Status::IOError("Failure");
+  };
+
+  auto put_api = [&](const std::string &, const nlohmann::json &, nlohmann::json &) {
+    put_called = true;
+    return Status::OK();
+  };
+
+  K8sLeaseClient client(lease_namespace_, lease_key_, get_api, post_api, put_api);
+  std::string leader = "";
+  // Should observe the current holder and NOT take over.
+  EXPECT_TRUE(client.TryAcquire(my_id_, 100, leader).ok());
+  EXPECT_EQ(leader, "node-2");
+  EXPECT_FALSE(put_called.load());
+}
+
+TEST_F(K8sLeaseClientTest, AcquireRefusedOnTakeoverWithoutResourceVersion) {
+  // A different node holds an expired lease, but the record carries no resourceVersion,
+  // so an acquiring PUT could not be guarded by optimistic concurrency control. To
+  // avoid an unconditional overwrite that could cause split-brain, the takeover must be
+  // refused with Status::Invalid and no PUT should be issued.
+  std::atomic<bool> put_called{false};
+  auto get_api = [&](const std::string &, nlohmann::json &resp) {
+    resp["spec"]["holderIdentity"] = "node-2";
+    resp["spec"]["leaseDurationSeconds"] = 1;
+    absl::Time past = absl::Now() - absl::Seconds(100);
+    resp["spec"]["renewTime"] =
+        absl::FormatTime("%Y-%m-%dT%H:%M:%E6SZ", past, absl::UTCTimeZone());
+    // Intentionally omit "resourceVersion".
+    return Status::OK();
+  };
+
+  auto post_api = [](const std::string &, const nlohmann::json &, nlohmann::json &) {
+    return Status::IOError("Failure");
+  };
+
+  auto put_api = [&](const std::string &, const nlohmann::json &, nlohmann::json &) {
+    put_called = true;
+    return Status::OK();
+  };
+
+  K8sLeaseClient client(lease_namespace_, lease_key_, get_api, post_api, put_api);
+  std::string leader = "";
+  Status status = client.TryAcquire(my_id_, 10000, leader);
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(status.IsInvalid());
+  EXPECT_FALSE(put_called.load());
 }
 }  // namespace gcs
 }  // namespace ray
