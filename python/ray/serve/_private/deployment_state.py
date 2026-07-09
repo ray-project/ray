@@ -4559,14 +4559,14 @@ class DeploymentState:
         # churn (~17-20% of the control loop at scale). Gang deployments fall back to the
         # original pop/re-add path (their force-stop reshuffles the lists).
         if RAY_SERVE_RECON_OPT and not self._is_gang_deployment:
-            _origin: List[ReplicaState] = []
-            _pairs = [
-                (replica, _st)
-                for _st in (ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION)
-                for replica in self._replicas.get([_st])
+            origin: List[ReplicaState] = []
+            pairs = [
+                (replica, st)
+                for st in (ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION)
+                for replica in self._replicas.get([st])
             ]
-            _healths = [_replica.check_health() for _replica, _ in _pairs]
-            for (replica, _st), is_healthy in zip(_pairs, _healths):
+            healths = [replica.check_health() for replica, _ in pairs]
+            for (replica, st), is_healthy in zip(pairs, healths):
                 if replica.last_health_check_latency_ms is not None:
                     self.health_check_latency_histogram.observe(
                         replica.last_health_check_latency_ms
@@ -4580,10 +4580,10 @@ class DeploymentState:
                         self.health_check_failures_counter.inc()
                 if is_healthy:
                     healthy_replicas.append(replica)
-                    _origin.append(_st)
+                    origin.append(st)
                 else:
                     unhealthy_replicas.append(replica)
-            for replica, _st in zip(healthy_replicas, _origin):
+            for replica, st in zip(healthy_replicas, origin):
                 self._set_health_gauge(replica.replica_id.unique_id, 1)
                 routing_stats = replica.pull_routing_stats()
                 if routing_stats is not None and routing_stats != replica.routing_stats:
@@ -4596,7 +4596,7 @@ class DeploymentState:
                 # transitions state, so for RUNNING/PENDING_MIGRATION this is a no-op
                 # today -- kept as a defensive guard so the in-place path stays behavior-
                 # identical to the pop/re-add path if that invariant ever changes.
-                if replica.actor_details.state != _st:
+                if replica.actor_details.state != st:
                     self._replicas.remove({replica.replica_id})
                     self._replicas.add(replica.actor_details.state, replica)
             for replica in unhealthy_replicas:
