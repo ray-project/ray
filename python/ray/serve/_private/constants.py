@@ -752,10 +752,9 @@ RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S", "30")
 )
 
-# HAProxy close-spread-time (seconds; None = directive omitted): a soft-stopping
-# worker spreads closing its idle frontend connections over this window instead
-# of holding them until hard-stop-after. Size
-# hard-stop-after >= close-spread-time + max request duration.
+# HAProxy close-spread-time. Drains the old worker's idle connections over this
+# window at soft-stop so they migrate to the reloaded config instead of lingering
+# until hard-stop-after. None omits it.
 RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S = (
     int(os.environ.get("RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S"))
     if os.environ.get("RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S")
