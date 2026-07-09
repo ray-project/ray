@@ -65,7 +65,7 @@ def _run_in_worker(
 
     ctx = TorchrunContext(cfg.name)
     try:
-        metrics = get_adapter_cls(cfg.adapter)(cfg, ctx).run()
+        metrics = get_adapter_cls(cfg.framework)(cfg, ctx).run()
     finally:
         # Tear down in finally so a failing rank doesn't strand its group. NO
         # final barrier: if one rank raised, a barrier would hang every healthy

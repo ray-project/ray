@@ -31,7 +31,7 @@ def train_fn_per_worker(train_loop_config: Dict[str, Any]) -> None:
     """Ray Train entrypoint: run the adapter; rank 0 writes its final metrics."""
     cfg: ExperimentConfig = train_loop_config["cfg"]
     ctx = RayTrainContext()
-    metrics = get_adapter_cls(cfg.adapter)(cfg, ctx).run()
+    metrics = get_adapter_cls(cfg.framework)(cfg, ctx).run()
 
     if ctx.world_rank == 0 and metrics:
         with open(METRICS_OUTPUT_PATH, "w") as f:

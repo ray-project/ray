@@ -119,7 +119,7 @@ class ExperimentConfig:
     name: str
     # Framework / training-path selector. Dispatched by core.registry:
     # "deepspeed" | "torchtitan" | "maxtext" | "image_classification" | ...
-    adapter: str
+    framework: str
     model: ModelConfig
     data: DataConfig = field(default_factory=DataConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)

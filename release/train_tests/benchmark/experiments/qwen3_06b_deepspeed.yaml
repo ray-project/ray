@@ -9,7 +9,7 @@
 #
 # Parity baseline: same experiment with `--set launcher=torchrun`.
 name: qwen3_06b_deepspeed
-adapter: deepspeed
+framework: deepspeed
 launcher: ray_train
 scaling:
   num_workers: 4                 # 4x L40S on a single g6e.12xlarge node

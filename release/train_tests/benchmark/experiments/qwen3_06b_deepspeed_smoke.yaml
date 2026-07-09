@@ -2,7 +2,7 @@
 # worker. Validates the full harness path (config -> adapter -> metrics) on a
 # single small GPU without downloading a dataset. Not a perf-of-record run.
 name: qwen3_06b_deepspeed_smoke
-adapter: deepspeed
+framework: deepspeed
 launcher: ray_train
 scaling:
   num_workers: 1

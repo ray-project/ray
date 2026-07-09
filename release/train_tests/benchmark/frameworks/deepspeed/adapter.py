@@ -414,7 +414,7 @@ class DeepSpeedAdapter(FrameworkAdapter):
         grad_accum = self.cfg.grad_accum_steps(data_parallel_size=self.ctx.world_size)
         global_batch = batch_size * self.ctx.world_size * grad_accum
         metrics["config/model"] = self.cfg.model.name
-        metrics["config/adapter"] = self.cfg.adapter
+        metrics["config/framework"] = self.cfg.framework
         metrics["config/launcher"] = self.cfg.launcher
         metrics["config/dataloader"] = self.cfg.data.dataloader
         metrics["config/precision"] = self.cfg.model.precision
