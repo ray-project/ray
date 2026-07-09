@@ -55,7 +55,6 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
     right_columns_suffix: Optional[str] = None
     partition_size_hint: Optional[int] = None
     aggregator_ray_remote_args: Optional[Dict[str, Any]] = None
-    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
 
     def __post_init__(
