@@ -5,6 +5,9 @@ from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
+from ray.data._internal.execution.operators.hash_shuffle_external import (
+    _concat_reduce as _concat_reduce_external,
+)
 from ray.data._internal.execution.operators.hash_shuffle_v2 import (
     _SHUFFLE_MAP_RUNTIME_ENV,
     _concat_reduce,
@@ -127,9 +130,6 @@ def _plan_hash_shuffle_repartition_external(
     keyed Repartition only. Caller in ``plan_all_to_all_op`` guarantees
     ``logical_op.keys`` is non-empty and ``shuffle_strategy == HASH_SHUFFLE``.
     """
-    from ray.data._internal.execution.operators.hash_shuffle_external import (
-        _concat_reduce as _concat_reduce_external,
-    )
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
     normalized_key_columns = SortKey(logical_op.keys).get_columns()
