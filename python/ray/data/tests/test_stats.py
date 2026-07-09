@@ -2832,27 +2832,37 @@ class TestTimeSpan:
 class TestTimerSpan:
     """Tests for Timer.timer() returning a TimeSpan and accumulating."""
 
-    def test_timer_yields_timespan(self):
+    def test_timer_yields_timespan(self, monkeypatch):
         """timer() yields a fresh TimeSpan whose duration is accumulated."""
-        t = Timer()
-        with t.timer() as span:
-            time.sleep(0.01)
-        assert isinstance(span, TimeSpan)
-        assert span.duration > 0
-        # The span's duration is accumulated into the Timer.
-        assert t.get() == pytest.approx(span.duration, rel=0.5)
-        assert t.max() > 0
-        assert t.min() == pytest.approx(span.duration, rel=0.5)
+        perf = [0.0]
+        monkeypatch.setattr("time.perf_counter", lambda: perf[0])
 
-    def test_each_call_returns_fresh_span(self):
-        """Each timer() call yields a distinct TimeSpan instance."""
         t = Timer()
+        perf[0] = 1.0
+        with t.timer() as span:
+            perf[0] = 1.5
+        assert isinstance(span, TimeSpan)
+        assert span.duration == 0.5
+        assert t.get() == 0.5
+        assert t.max() == 0.5
+        assert t.min() == 0.5
+
+    def test_each_call_returns_fresh_span(self, monkeypatch):
+        """Each timer() call yields a distinct TimeSpan instance."""
+        perf = [0.0]
+        monkeypatch.setattr("time.perf_counter", lambda: perf[0])
+
+        t = Timer()
+        perf[0] = 1.0
         with t.timer() as s1:
-            pass
+            perf[0] = 2.0
+        perf[0] = 10.0
         with t.timer() as s2:
-            pass
+            perf[0] = 12.0
         assert s1 is not s2
-        assert t.get() == pytest.approx(s1.duration + s2.duration, rel=0.5)
+        assert s1.duration == 1.0
+        assert s2.duration == 2.0
+        assert t.get() == 3.0
 
     def test_maybe_time_skips_when_timer_none(self):
         """_maybe_time(None) yields None."""
@@ -2860,14 +2870,18 @@ class TestTimerSpan:
             assert span is None
         assert span is None
 
-    def test_maybe_time_yields_span_when_timer_given(self):
+    def test_maybe_time_yields_span_when_timer_given(self, monkeypatch):
         """_maybe_time(Timer) yields a TimeSpan backed by the Timer."""
+        perf = [0.0]
+        monkeypatch.setattr("time.perf_counter", lambda: perf[0])
+
         t = Timer()
+        perf[0] = 1.0
         with _maybe_time(t) as span:
-            time.sleep(0.01)
+            perf[0] = 1.5
         assert isinstance(span, TimeSpan)
-        assert span.duration > 0
-        assert t.get() == pytest.approx(span.duration, rel=0.5)
+        assert span.duration == 0.5
+        assert t.get() == 0.5
 
 
 @pytest.mark.parametrize(
