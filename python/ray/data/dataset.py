@@ -86,7 +86,6 @@ from ray.data._internal.logical.operators import (
     Write,
     Zip,
 )
-from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.random_config import RandomSeedConfig
@@ -97,6 +96,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     ArrowVariableShapedTensorType,
     get_arrow_extension_fixed_shape_tensor_types,
 )
+from ray.data._internal.usage.util import record_operators_usage
 from ray.data._internal.util import (
     AllToAllAPI,
     ConsumptionAPI,
@@ -6529,7 +6529,7 @@ class Dataset:
     @PublicAPI(api_group=IOC_API_GROUP)
     def to_daft(self) -> "daft.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
-        `Daft DataFrame <https://docs.getdaft.io/en/stable/api/dataframe/>`_.
+        `Daft DataFrame <https://docs.daft.ai/en/stable/api/dataframe/>`_.
 
         This will convert all the data inside the Ray Dataset into a Daft DataFrame in a zero-copy way
         (using Arrow as the intermediate data format).

@@ -330,7 +330,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       std::make_shared<pubsub::Publisher>(
           /*channels=*/
           std::vector<rpc::ChannelType>{
-              rpc::ChannelType::WORKER_OBJECT_EVICTION,
               rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
               rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
           /*periodical_runner=*/*periodical_runner,
@@ -342,8 +341,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto object_info_subscriber = std::make_unique<pubsub::Subscriber>(
       /*subscriber_id=*/worker_context->GetWorkerID(),
       /*channels=*/
-      std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                    rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+      std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                     rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
       /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
       /*get_client=*/
