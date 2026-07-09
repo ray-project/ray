@@ -1727,7 +1727,8 @@ void TaskManager::MarkTaskNoRetryInternal(const TaskID &task_id, bool canceled) 
   ObjectID generator_id = ObjectID::Nil();
   {
     absl::MutexLock lock(&mu_);
-    absl::flat_hash_map<TaskID, TaskEntry>::iterator it = submissible_tasks_.find(task_id);
+    absl::flat_hash_map<TaskID, TaskEntry>::iterator it =
+        submissible_tasks_.find(task_id);
     if (it == submissible_tasks_.end()) {
       return;
     }
