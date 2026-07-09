@@ -152,6 +152,18 @@ class TorchCheckpoint(FrameworkCheckpoint):
     def get_model(self, model: Optional[torch.nn.Module] = None) -> torch.nn.Module:
         """Retrieve the model stored in this checkpoint.
 
+        .. warning::
+
+            The checkpoint path must point to a **trusted** source.
+            Checkpoints created with
+            :meth:`~ray.train.torch.TorchCheckpoint.from_model` store the entire
+            ``nn.Module`` via pickle serialization. Loading such a checkpoint from an
+            untrusted path (shared storage, downloaded artifact, checkpoint produced by
+            a different party) is equivalent to executing arbitrary Python code. Prefer
+            checkpoints created with
+            :meth:`~ray.train.torch.TorchCheckpoint.from_state_dict`, which stores
+            only model weights and is safe to load from untrusted sources.
+
         Args:
             model: If the checkpoint contains a model state dict, and not
                 the model itself, then the state dict will be loaded to this
