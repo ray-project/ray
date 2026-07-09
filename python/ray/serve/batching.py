@@ -160,6 +160,7 @@ class _BatchQueue:
         self.requests_available_event = asyncio.Event()
         self.tasks: Set[asyncio.Task] = set()
         self._pending_batch_count = 0
+        self._current_batch: List[_SingleRequest] = []
 
         # Used for observability.
         self.curr_iteration_start_times: Dict[asyncio.Task, float] = {}
@@ -268,103 +269,112 @@ class _BatchQueue:
         """
 
         batch = []
-        first_item = await self.queue.get()  # Block until first item arrives
+        try:
+            first_item = await self.queue.get()  # Block until first item arrives
+            batch.append(first_item)
+            self._current_batch = batch
 
-        # Cache current max_batch_size and batch_wait_timeout_s for this batch.
-        max_batch_size = self.max_batch_size
-        batch_wait_timeout_s = self.batch_wait_timeout_s
+            # Cache current max_batch_size and batch_wait_timeout_s for this batch.
+            max_batch_size = self.max_batch_size
+            batch_wait_timeout_s = self.batch_wait_timeout_s
 
-        # Check if first item alone exceeds max_batch_size (only with batch_size_fn)
-        if self.batch_size_fn is not None:
-            first_item_size = self._compute_batch_size([first_item])
-            if first_item_size > max_batch_size:
-                exc = RuntimeError(
-                    "Size of item is greater than max_batch_size. "
-                    "Please increase the max_batch_size or check the "
-                    "implementation of the batch_size_fn."
-                )
-                # Set exception on the future so the caller receives it
-                first_item.future.set_exception(exc)
-                return [], 0
-
-        batch.append(first_item)
-
-        # Wait self.timeout_s seconds for new queue arrivals.
-        batch_start_time = time.time()
-        while True:
-            # Record queue length metric.
-            self._batch_queue_length_gauge.set(
-                self.queue.qsize(), tags={"function_name": self._function_name}
-            )
-
-            remaining_batch_time_s = max(
-                batch_wait_timeout_s - (time.time() - batch_start_time), 0
-            )
-            try:
-                # Wait for new arrivals.
-                await asyncio.wait_for(
-                    self.requests_available_event.wait(), remaining_batch_time_s
-                )
-            except asyncio.TimeoutError:
-                pass
-
-            # Custom batch size function logic
+            # Check if first item alone exceeds max_batch_size (only with batch_size_fn)
             if self.batch_size_fn is not None:
-                # Add all new arrivals to the batch.
-                # Track items we need to put back if they don't fit
-                deferred_item = None
-                while not self.queue.empty():
-                    next_item = self.queue.get_nowait()
-                    # Temporarily add to check size
-                    batch.append(next_item)
-                    new_size = self._compute_batch_size(batch)
+                first_item_size = self._compute_batch_size([first_item])
+                if first_item_size > max_batch_size:
+                    exc = RuntimeError(
+                        "Size of item is greater than max_batch_size. "
+                        "Please increase the max_batch_size or check the "
+                        "implementation of the batch_size_fn."
+                    )
+                    # Set exception on the future so the caller receives it
+                    first_item.future.set_exception(exc)
+                    return [], 0
 
-                    if new_size > max_batch_size:
-                        # Would exceed limit, remove it and save for later
-                        batch.pop()
-                        deferred_item = next_item
+            # Wait self.timeout_s seconds for new queue arrivals.
+            batch_start_time = time.time()
+            while True:
+                # Record queue length metric.
+                self._batch_queue_length_gauge.set(
+                    self.queue.qsize(), tags={"function_name": self._function_name}
+                )
+
+                remaining_batch_time_s = max(
+                    batch_wait_timeout_s - (time.time() - batch_start_time), 0
+                )
+                try:
+                    # Wait for new arrivals.
+                    await asyncio.wait_for(
+                        self.requests_available_event.wait(), remaining_batch_time_s
+                    )
+                except asyncio.TimeoutError:
+                    pass
+
+                # Custom batch size function logic
+                if self.batch_size_fn is not None:
+                    # Add all new arrivals to the batch.
+                    # Track items we need to put back if they don't fit
+                    deferred_item = None
+                    while not self.queue.empty():
+                        next_item = self.queue.get_nowait()
+                        # Temporarily add to check size
+                        batch.append(next_item)
+                        new_size = self._compute_batch_size(batch)
+
+                        if new_size > max_batch_size:
+                            # Would exceed limit, remove it and save for later
+                            batch.pop()
+                            deferred_item = next_item
+                            break
+                        # Size is OK, keep it in the batch (already added above)
+
+                    # Put deferred item back in queue for next batch
+                    if deferred_item is not None:
+                        # NOTE: The deferred item goes to the back of the queue
+                        # (FIFO), so newer requests may be processed before it.
+                        # Consider using asyncio.PriorityQueue if strict ordering
+                        # is required.
+                        self.queue.put_nowait(deferred_item)
+                        # Compute final batch size before breaking (batch is now
+                        # valid after popping the deferred item).
+                        current_batch_size = self._compute_batch_size(batch)
+                        # break the loop early because the deferred item is too
+                        # large to fit in the batch
                         break
-                    # Size is OK, keep it in the batch (already added above)
+                else:
+                    # Default behavior: use original len() check logic
+                    while len(batch) < max_batch_size and not self.queue.empty():
+                        batch.append(self.queue.get_nowait())
 
-                # Put deferred item back in queue for next batch
-                if deferred_item is not None:
-                    # NOTE: The deferred item goes to the back of the queue (FIFO),
-                    # so newer requests may be processed before it. Consider using
-                    # asyncio.PriorityQueue if strict ordering is required.
-                    self.queue.put_nowait(deferred_item)
-                    # Compute final batch size before breaking (batch is now valid
-                    # after popping the deferred item).
-                    current_batch_size = self._compute_batch_size(batch)
-                    # break the loop early because the deferred item is too large to fit in the batch
+                # Only clear the put event if the queue is empty. If it's not empty
+                # we can start constructing a new batch immediately in the next loop.
+                # The code that puts items into the queue runs on the same event loop
+                # as this code, so there's no race condition between the time we
+                # get objects in the queue (and clear the event) and when objects
+                # get added to the queue.
+                if self.queue.empty():
+                    self.requests_available_event.clear()
+
+                current_batch_size = self._compute_batch_size(batch)
+                if (
+                    time.time() - batch_start_time >= batch_wait_timeout_s
+                    or current_batch_size >= max_batch_size
+                ):
                     break
-            else:
-                # Default behavior: use original len() check logic
-                while len(batch) < max_batch_size and not self.queue.empty():
-                    batch.append(self.queue.get_nowait())
 
-            # Only clear the put event if the queue is empty. If it's not empty
-            # we can start constructing a new batch immediately in the next loop.
-            # The code that puts items into the queue runs on the same event loop
-            # as this code, so there's no race condition between the time we
-            # get objects in the queue (and clear the event) and when objects
-            # get added to the queue.
-            if self.queue.empty():
-                self.requests_available_event.clear()
+            # Record batch wait time metric (time spent waiting for batch to fill).
+            batch_wait_time_ms = (time.time() - batch_start_time) * 1000
+            self._batch_wait_time_histogram.observe(
+                batch_wait_time_ms, tags={"function_name": self._function_name}
+            )
 
-            current_batch_size = self._compute_batch_size(batch)
-            if (
-                time.time() - batch_start_time >= batch_wait_timeout_s
-                or current_batch_size >= max_batch_size
-            ):
-                break
-
-        # Record batch wait time metric (time spent waiting for batch to fill).
-        batch_wait_time_ms = (time.time() - batch_start_time) * 1000
-        self._batch_wait_time_histogram.observe(
-            batch_wait_time_ms, tags={"function_name": self._function_name}
-        )
-
-        return batch, current_batch_size
+            return batch, current_batch_size
+        except asyncio.CancelledError as e:
+            for request in batch:
+                _set_exception_if_not_done(request.future, e)
+            raise
+        finally:
+            self._current_batch = []
 
     def _validate_results(
         self, results: Iterable[Any], input_batch_length: int
@@ -455,7 +465,9 @@ class _BatchQueue:
             self._pending_batch_count += 1
             try:
                 await self.semaphore.acquire()
-            except asyncio.CancelledError:
+            except asyncio.CancelledError as e:
+                for request in batch:
+                    _set_exception_if_not_done(request.future, e)
                 self._pending_batch_count -= 1
                 raise
 
@@ -568,6 +580,7 @@ class _BatchQueue:
             and self._pending_batch_count == 0
             and len(self.tasks) == 0
             and len(self.curr_iteration_start_times) == 0
+            and len(self._current_batch) == 0
         )
 
     def shutdown(self) -> None:

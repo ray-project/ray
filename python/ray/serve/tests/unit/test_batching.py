@@ -37,6 +37,21 @@ class FakeStream:
         self.messages = []
 
 
+def _make_request(func, request, model_id: str = ""):
+    future = get_or_create_event_loop().create_future()
+    request_context = ray.serve.context._RequestContext(
+        multiplexed_model_id=model_id
+    )
+    single_request = _SingleRequest(
+        self_arg=None,
+        flattened_args=flatten_args(extract_signature(func), (request,), {}),
+        future=future,
+        request_context=request_context,
+        trace_context=None,
+    )
+    return single_request, future
+
+
 # We use a single event loop for the entire test session. Without this
 # fixture, the event loop is sometimes prematurely terminated by pytest.
 @pytest.fixture(scope="session")
@@ -529,6 +544,114 @@ async def test_pending_multiplexed_batch_queue_not_cleaned_up():
     finally:
         model_queue._pending_batch_count = 0
         model_queue._handle_batch_task.cancel()
+
+
+@pytest.mark.asyncio
+async def test_accumulating_multiplexed_batch_queue_not_cleaned_up():
+    batch_started_event = asyncio.Event()
+    finish_batch_event = asyncio.Event()
+
+    async def blocked_batch(requests):
+        batch_started_event.set()
+        await finish_batch_event.wait()
+        return requests
+
+    wrapper = _LazyBatchQueueWrapper(
+        max_batch_size=2,
+        batch_wait_timeout_s=1000,
+        max_concurrent_batches=1,
+        handle_batch_func=blocked_batch,
+    )
+    model_queue = wrapper.get_queue("model-a")
+
+    try:
+        first_request, first_future = _make_request(
+            blocked_batch, "request-1", "model-a"
+        )
+        second_request, second_future = _make_request(
+            blocked_batch, "request-2", "model-a"
+        )
+        model_queue.put(first_request)
+        model_queue.put(second_request)
+
+        await asyncio.wait_for(batch_started_event.wait(), timeout=1)
+
+        third_request, third_future = _make_request(
+            blocked_batch, "request-3", "model-a"
+        )
+        model_queue.put(third_request)
+
+        for _ in range(100):
+            if model_queue.queue.empty():
+                break
+            await asyncio.sleep(0)
+        assert model_queue.queue.empty()
+
+        finish_batch_event.set()
+        assert await asyncio.wait_for(
+            asyncio.gather(first_future, second_future), timeout=1
+        ) == ["request-1", "request-2"]
+
+        await asyncio.sleep(0)
+        assert wrapper._queues["model-a"] is model_queue
+        assert not model_queue._handle_batch_task.cancelled()
+        assert not third_future.done()
+
+        fourth_request, fourth_future = _make_request(
+            blocked_batch, "request-4", "model-a"
+        )
+        model_queue.put(fourth_request)
+
+        assert await asyncio.wait_for(
+            asyncio.gather(third_future, fourth_future), timeout=1
+        ) == ["request-3", "request-4"]
+
+        for _ in range(10):
+            if "model-a" not in wrapper._queues:
+                break
+            await asyncio.sleep(0)
+        assert "model-a" not in wrapper._queues
+    finally:
+        if "model-a" in wrapper._queues:
+            model_queue.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_pending_batch_sets_dequeued_request_exceptions():
+    async def no_op(requests):
+        return requests
+
+    semaphore = asyncio.Semaphore(1)
+    await semaphore.acquire()
+
+    queue = _BatchQueue(
+        max_batch_size=1,
+        batch_wait_timeout_s=0,
+        max_concurrent_batches=1,
+        handle_batch_func=no_op,
+        semaphore=semaphore,
+    )
+    request, future = _make_request(no_op, "request")
+    queue.put(request)
+
+    try:
+        for _ in range(100):
+            if queue._pending_batch_count == 1 and queue.queue.empty():
+                break
+            await asyncio.sleep(0)
+        assert queue._pending_batch_count == 1
+        assert queue.queue.empty()
+
+        queue.shutdown()
+        with pytest.raises(asyncio.CancelledError):
+            await queue._handle_batch_task
+
+        assert future.done()
+        with pytest.raises(asyncio.CancelledError):
+            future.result()
+    finally:
+        semaphore.release()
+        queue.shutdown()
 
 
 @pytest.mark.asyncio
