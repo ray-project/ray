@@ -48,6 +48,9 @@ class UsageCallback(ExecutionCallback):
         self._spilled_at_end: Optional[int] = None
         self._dead_nodes_at_start: Optional[int] = None
         self._dead_nodes_at_end: Optional[int] = None
+        # (oom_kills, unexpected_worker_kills) sampled from the GCS worker table.
+        self._worker_kills_at_start: Tuple[Optional[int], Optional[int]] = (None, None)
+        self._worker_kills_at_end: Tuple[Optional[int], Optional[int]] = (None, None)
         self._executor: Optional["StreamingExecutor"] = None
         self._finished = False
 
@@ -105,6 +108,7 @@ class UsageCallback(ExecutionCallback):
         self._started_at = time.time()
         self._spilled_at_start = collector.cluster_spilled_bytes()
         self._dead_nodes_at_start = collector.cluster_dead_node_count()
+        self._worker_kills_at_start = collector.cluster_worker_kill_counts()
 
     def on_collection_end(
         self, executor: "StreamingExecutor", error: Optional[Exception]
@@ -114,6 +118,7 @@ class UsageCallback(ExecutionCallback):
         success); subclasses may override to capture it."""
         self._spilled_at_end = collector.cluster_spilled_bytes()
         self._dead_nodes_at_end = collector.cluster_dead_node_count()
+        self._worker_kills_at_end = collector.cluster_worker_kill_counts()
 
     def build_usage_info(self) -> UsageInfo:
         """Assemble the usage collection payload for this execution."""
@@ -126,9 +131,15 @@ class UsageCallback(ExecutionCallback):
             )
         performance = None
         if self._finished:
+            oom_at_start, unexpected_at_start = self._worker_kills_at_start
+            oom_at_end, unexpected_at_end = self._worker_kills_at_end
             performance = PipelinePerf(
                 bytes_spilled=collector.compute_delta(
                     self._spilled_at_start, self._spilled_at_end
+                ),
+                oom_kills=collector.compute_delta(oom_at_start, oom_at_end),
+                unexpected_worker_kills=collector.compute_delta(
+                    unexpected_at_start, unexpected_at_end
                 ),
                 node_deaths=collector.compute_delta(
                     self._dead_nodes_at_start, self._dead_nodes_at_end

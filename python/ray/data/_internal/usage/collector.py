@@ -26,8 +26,10 @@ from ray._common.usage.usage_lib import (
     usage_stats_enabled,
 )
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray._private.state import state as global_state
 from ray._private.worker import global_worker
-from ray.core.generated.gcs_pb2 import GcsNodeInfo
+from ray.core.generated.common_pb2 import WorkerExitType
+from ray.core.generated.gcs_pb2 import GcsNodeInfo, WorkerTableData
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import MapBatches
 from ray.data._internal.usage.util import anonymize_op_name
@@ -183,6 +185,39 @@ def cluster_dead_node_count() -> Optional[int]:
     except Exception:
         logger.debug("Failed to read cluster dead node count", exc_info=True)
         return None
+
+
+def cluster_worker_kill_counts() -> Tuple[Optional[int], Optional[int]]:
+    """Get counts of dead workers by exit type on the cluster, read from the GCS
+    worker table. Return tuple of number of ``(oom_kills, unexpected_worker_kills)``.
+
+    ``oom_kills`` counts workers killed by Ray's memory monitor
+    (``NODE_OUT_OF_MEMORY``); ``unexpected_worker_kills`` counts workers that
+    exited due to a system error (``SYSTEM_ERROR``), e.g. a crash or kernel OOM.
+
+    The worker table has no server-side exit-type filter, so the whole table is
+    fetched and counted client-side. Returns ``(None, None)`` on any failure.
+    """
+    if not ray.is_initialized():
+        return None, None
+    try:
+        accessor = global_state._connect_and_get_accessor()
+        oom_kills = 0
+        unexpected_worker_kills = 0
+        for serialized in accessor.get_worker_table():
+            worker = WorkerTableData.FromString(serialized)
+            # exit_type is only meaningful for dead workers, and is optional so
+            # an unset field must not be miscounted as SYSTEM_ERROR (value 0).
+            if worker.is_alive or not worker.HasField("exit_type"):
+                continue
+            if worker.exit_type == WorkerExitType.NODE_OUT_OF_MEMORY:
+                oom_kills += 1
+            elif worker.exit_type == WorkerExitType.SYSTEM_ERROR:
+                unexpected_worker_kills += 1
+        return oom_kills, unexpected_worker_kills
+    except Exception:
+        logger.debug("Failed to read cluster worker kill counts", exc_info=True)
+        return None, None
 
 
 def compute_delta(start: Optional[int], end: Optional[int]) -> Optional[int]:

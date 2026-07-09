@@ -43,6 +43,7 @@ def reset_collector(monkeypatch):
     # zero so tests never touch the real cluster and deltas are deterministic.
     monkeypatch.setattr(collector, "cluster_spilled_bytes", lambda: 0)
     monkeypatch.setattr(collector, "cluster_dead_node_count", lambda: 0)
+    monkeypatch.setattr(collector, "cluster_worker_kill_counts", lambda: (0, 0))
     yield
     collector.reset_for_testing()
 
@@ -76,6 +77,8 @@ def test_round_trip_payload_shape(reset_collector, mock_record, executor):
     # return 0 at start and end, so the clamped deltas are 0.
     assert entry["performance"]["bytes_spilled"] == 0
     assert entry["performance"]["node_deaths"] == 0
+    assert entry["performance"]["oom_kills"] == 0
+    assert entry["performance"]["unexpected_worker_kills"] == 0
     # No issues detected in this run; the key is present and empty.
     assert entry["detected_issues"] == []
 
