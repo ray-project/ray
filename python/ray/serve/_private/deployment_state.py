@@ -4600,7 +4600,7 @@ class DeploymentState:
         # Profile-guided (RAY_SERVE_RECON_OPT): for the common non-gang case, iterate
         # RUNNING/PENDING_MIGRATION IN PLACE. Healthy replicas that stay in their state
         # bucket are never popped+re-added -> eliminates the O(num_replicas) container
-        # churn (~17-20% of the control loop at scale). Gang deployments fall back to the
+        # churn on the control loop at scale. Gang deployments fall back to the
         # original pop/re-add path (their force-stop reshuffles the lists).
         if RAY_SERVE_RECON_OPT and not self._is_gang_deployment:
             origin: List[ReplicaState] = []
