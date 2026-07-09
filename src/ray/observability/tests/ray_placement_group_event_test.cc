@@ -74,7 +74,7 @@ TEST_P(DefinitionEventStrategyTest, TestSerializeWithStrategy) {
       strategy, rpc::PlacementGroupTableData::PENDING, rpc::PlacementGroupStats::QUEUED);
 
   auto event = std::make_unique<RayPlacementGroupDefinitionEvent>(data, "test_session");
-  auto serialized_event = std::move(*event).Serialize();
+  auto serialized_event = std::move(*event).Serialize().value();
 
   ASSERT_EQ(serialized_event.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(serialized_event.session_name(), "test_session");
@@ -123,7 +123,7 @@ TEST_F(RayPlacementGroupDefinitionEventTest, TestMergeIsNoOp) {
   auto event2 = std::make_unique<RayPlacementGroupDefinitionEvent>(data2, "test_session");
 
   event1->Merge(std::move(*event2));
-  auto serialized_event = std::move(*event1).Serialize();
+  auto serialized_event = std::move(*event1).Serialize().value();
 
   const auto &pg_def = serialized_event.placement_group_definition_event();
   // Original data should be preserved, not merged
@@ -149,7 +149,7 @@ TEST_P(LifecycleEventStateTest, TestStateConversion) {
 
   auto event = std::make_unique<RayPlacementGroupLifecycleEvent>(
       data, converted_state, "test_session");
-  auto serialized_event = std::move(*event).Serialize();
+  auto serialized_event = std::move(*event).Serialize().value();
 
   ASSERT_TRUE(serialized_event.has_placement_group_lifecycle_event());
   const auto &pg_life = serialized_event.placement_group_lifecycle_event();
@@ -189,7 +189,7 @@ TEST_P(LifecycleEventSchedulingStateTest, TestSchedulingStateConversion) {
 
   auto event = std::make_unique<RayPlacementGroupLifecycleEvent>(
       data, rpc::events::PlacementGroupLifecycleEvent::PENDING, "test_session");
-  auto serialized_event = std::move(*event).Serialize();
+  auto serialized_event = std::move(*event).Serialize().value();
 
   const auto &pg_life = serialized_event.placement_group_lifecycle_event();
   ASSERT_EQ(pg_life.state_transitions(0).scheduling_state(), expected_event_state);
@@ -240,7 +240,7 @@ TEST_P(EventMergingTest, TestMergeMultipleTransitions) {
     first_event->Merge(std::move(*next_event));
   }
 
-  auto serialized_event = std::move(*first_event).Serialize();
+  auto serialized_event = std::move(*first_event).Serialize().value();
 
   ASSERT_EQ(serialized_event.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(serialized_event.event_type(),
@@ -266,7 +266,7 @@ TEST_F(RayPlacementGroupLifecycleEventTest, TestCreatedStateIncludesSchedulingSt
 
   auto event = std::make_unique<RayPlacementGroupLifecycleEvent>(
       data, rpc::events::PlacementGroupLifecycleEvent::CREATED, "test_session");
-  auto serialized_event = std::move(*event).Serialize();
+  auto serialized_event = std::move(*event).Serialize().value();
 
   const auto &pg_life = serialized_event.placement_group_lifecycle_event();
   const auto &transition = pg_life.state_transitions(0);
@@ -286,7 +286,7 @@ TEST_F(RayPlacementGroupLifecycleEventTest, TestNonCreatedStateIncludesSchedulin
 
   auto event = std::make_unique<RayPlacementGroupLifecycleEvent>(
       data, rpc::events::PlacementGroupLifecycleEvent::PENDING, "test_session");
-  auto serialized_event = std::move(*event).Serialize();
+  auto serialized_event = std::move(*event).Serialize().value();
 
   const auto &pg_life = serialized_event.placement_group_lifecycle_event();
   const auto &transition = pg_life.state_transitions(0);
@@ -306,7 +306,7 @@ TEST_F(RayPlacementGroupLifecycleEventTest, TestPreparedStateIncludesBundlePlace
 
   auto event = std::make_unique<RayPlacementGroupLifecycleEvent>(
       data, rpc::events::PlacementGroupLifecycleEvent::PREPARED, "test_session");
-  auto serialized_event = std::move(*event).Serialize();
+  auto serialized_event = std::move(*event).Serialize().value();
 
   const auto &pg_life = serialized_event.placement_group_lifecycle_event();
   const auto &transition = pg_life.state_transitions(0);
