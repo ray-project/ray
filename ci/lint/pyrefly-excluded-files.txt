@@ -6,7 +6,6 @@ python/ray/data/_internal/batcher.py
 python/ray/data/_internal/block_batching/iter_batches.py
 python/ray/data/_internal/block_batching/util.py
 python/ray/data/_internal/cluster_autoscaler/default_autoscaling_coordinator.py
-python/ray/data/_internal/cluster_autoscaler/default_cluster_autoscaler.py
 python/ray/data/_internal/cluster_autoscaler/default_cluster_autoscaler_v2.py
 python/ray/data/_internal/dataset_repr.py
 python/ray/data/_internal/datasource/bigquery_datasource.py
@@ -251,7 +250,7 @@ python/ray/data/tests/test_agg_e2e.py
 python/ray/data/tests/test_arrow_block.py
 python/ray/data/tests/test_arrow_serialization.py
 python/ray/data/tests/test_auto_parallelism.py
-python/ray/data/tests/test_autoscaler.py
+python/ray/data/tests/test_actor_autoscaler.py
 python/ray/data/tests/test_autoscaling_coordinator.py
 python/ray/data/tests/test_backpressure_e2e.py
 python/ray/data/tests/test_backpressure_policies.py
