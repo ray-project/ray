@@ -28,7 +28,7 @@
 #include "ray/core_worker/actor_management/actor_creator.h"
 #include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/task_submission/actor_submit_queue.h"
+#include "ray/core_worker/task_submission/actor_submit_queue_interface.h"
 #include "ray/core_worker/task_submission/dependency_resolver.h"
 #include "ray/core_worker/task_submission/out_of_order_actor_submit_queue.h"
 #include "ray/core_worker/task_submission/sequential_actor_submit_queue.h"
@@ -319,7 +319,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     bool is_restartable_ = false;
 
     /// The queue that orders actor requests.
-    std::unique_ptr<IActorSubmitQueue> actor_submit_queue_;
+    std::unique_ptr<ActorSubmitQueueInterface> actor_submit_queue_;
 
     /// Tasks that can't be sent because 1) the callee actor is dead. 2) network error.
     /// For 1) the task will wait for the DEAD state notification, then mark task as

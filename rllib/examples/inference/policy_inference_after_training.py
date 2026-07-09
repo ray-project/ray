@@ -81,7 +81,6 @@ import os
 
 import gymnasium as gym
 import numpy as np
-import tree  # pip install dm_tree
 
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
@@ -98,7 +97,27 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.numpy import convert_to_numpy, softmax
 from ray.tune.registry import get_trainable_cls
 
-torch, _ = try_import_torch()
+torch, nn = try_import_torch()
+
+
+class _ONNXWrapper(nn.Module if nn else object):
+    """Thin `nn.Module` wrapper for ONNX export of a (non-recurrent) RLModule.
+
+    `torch.onnx.export(..., dynamo=True)` (the default since
+    torch 2.9) traces a module whose `forward` takes and returns flat, named
+    tensors. RLModules instead consume/produce nested dicts, so we wrap the
+    module to expose a tensor-in/tensor-out signature and call its public
+    `forward_inference` API.
+    """
+
+    def __init__(self, rl_module):
+        super().__init__()
+        self.rl_module = rl_module
+
+    def forward(self, obs):
+        out = self.rl_module.forward_inference({Columns.OBS: obs})
+        return out[Columns.ACTION_DIST_INPUTS]
+
 
 parser = add_rllib_example_script_args(default_reward=200.0)
 parser.add_argument(
@@ -182,30 +201,31 @@ if __name__ == "__main__":
             input_dict = {Columns.OBS: torch.from_numpy(obs).unsqueeze(0)}
 
         # If ONNX and module has not been exported yet, do this here using
-        # the input_dict as example input.
+        # the input_dict as example input. We give the in- and outputs explicit
+        # names so the ONNX runtime can be fed and read by name (instead of by
+        # positional index).
         elif ort_session is None:
-            tensor_input_dict = {Columns.OBS: torch.from_numpy(obs).unsqueeze(0)}
-            torch.onnx.export(rl_module, {"batch": tensor_input_dict}, f="test.onnx")
+            example_obs = torch.from_numpy(obs).unsqueeze(0)
+            torch.onnx.export(
+                _ONNXWrapper(rl_module),
+                (example_obs,),
+                f="test.onnx",
+                input_names=[Columns.OBS],
+                output_names=[Columns.ACTION_DIST_INPUTS],
+                dynamic_shapes={Columns.OBS: {0: torch.export.Dim("batch")}},
+                dynamo=True,
+            )
             ort_session = onnxruntime.InferenceSession(
                 "test.onnx", providers=["CPUExecutionProvider"]
             )
 
         # No exploration (using ONNX).
         if ort_session is not None:
-            rl_module_out = ort_session.run(
-                None,
-                {
-                    key.name: val
-                    for key, val in dict(
-                        zip(
-                            tree.flatten(ort_session.get_inputs()),
-                            tree.flatten(input_dict),
-                        )
-                    ).items()
-                },
+            outputs = ort_session.run(
+                [Columns.ACTION_DIST_INPUTS],
+                {Columns.OBS: input_dict[Columns.OBS]},
             )
-            # [0]=encoder outs; [1]=action logits
-            rl_module_out = {Columns.ACTION_DIST_INPUTS: rl_module_out[1]}
+            rl_module_out = {Columns.ACTION_DIST_INPUTS: outputs[0]}
         # No exploration (using RLModule).
         elif not args.explore_during_inference:
             rl_module_out = rl_module.forward_inference(input_dict)

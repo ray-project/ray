@@ -38,7 +38,11 @@ from ray._common.test_utils import (
 from ray._common.utils import reset_ray_address
 from ray.serve import HTTPOptions
 from ray.serve._private.long_poll import LongPollHost, UpdatedObject
-from ray.serve._private.test_utils import get_application_url, get_metric_dictionaries
+from ray.serve._private.test_utils import (
+    expected_proxy_actors,
+    get_application_url,
+    get_metric_dictionaries,
+)
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.tests.conftest import (
     TEST_METRICS_EXPORT_PORT,
@@ -955,7 +959,18 @@ def test_multiplexed_metrics(metrics_start_shutdown):
             await self.get_model(model_id)
             return
 
-    handle = serve.run(Model.bind(), name="app", route_prefix="/app")
+    # Multiplexing is not supported on the ingress deployment when direct ingress /
+    # HAProxy is enabled, so keep the multiplexed deployment downstream of a plain
+    # ingress.
+    @serve.deployment
+    class Ingress:
+        def __init__(self, model):
+            self._model = model
+
+        async def __call__(self, model_id: str):
+            await self._model.remote(model_id)
+
+    handle = serve.run(Ingress.bind(Model.bind()), name="app", route_prefix="/app")
     handle.remote("model1")
     handle.remote("model2")
     # Trigger model eviction.
@@ -1051,7 +1066,7 @@ def test_actor_summary(serve_instance):
     actors = list_actors(filters=[("state", "=", "ALIVE")])
     class_names = {actor["class_name"] for actor in actors}
     assert class_names.issuperset(
-        {"ServeController", "HAProxyManager", "ServeReplica:app:f"}
+        {"ServeController", *expected_proxy_actors(), "ServeReplica:app:f"}
     )
 
 

@@ -34,7 +34,7 @@ steps:
     key: windows_wheels
     tags:
       - oss
-      - python
+      - core_python
       - core_cpp
       - release_wheels
     job_env: WINDOWS
@@ -72,7 +72,7 @@ steps:
 
   - label: ":ray: core: :windows: python tests"
     tags:
-      - python
+      - core_python
       - windows
     job_env: WINDOWS
     instance_type: windows
