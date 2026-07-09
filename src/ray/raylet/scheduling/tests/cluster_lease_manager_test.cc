@@ -1307,7 +1307,7 @@ TEST_F(ClusterLeaseManagerTest, TestIdleNode) {
       false,
       std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   pool_.TriggerCallbacks();
-  ASSERT_TRUE(scheduler_->GetLocalResourceManager().IsLocalNodeIdle());
+  ASSERT_TRUE(scheduler_->GetLocalResourceManager().WasLastRecordedNodeStateIdle());
   ASSERT_FALSE(callback_occurred);
   ASSERT_EQ(leased_workers_.size(), 0);
 
@@ -1318,7 +1318,7 @@ TEST_F(ClusterLeaseManagerTest, TestIdleNode) {
 
   ASSERT_TRUE(callback_occurred);
   ASSERT_EQ(leased_workers_.size(), 1);
-  ASSERT_FALSE(scheduler_->GetLocalResourceManager().IsLocalNodeIdle());
+  ASSERT_FALSE(scheduler_->GetLocalResourceManager().WasLastRecordedNodeStateIdle());
   ASSERT_EQ(node_info_calls_, 0);
 }
 

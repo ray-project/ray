@@ -21,8 +21,7 @@ kind create cluster
 
 ## Step 2: Install Apache YuniKorn
 
-You need to successfully install Apache YuniKorn on your Kubernetes cluster before enabling Apache YuniKorn integration with KubeRay.
-See [Get Started](https://yunikorn.apache.org/docs/) for Apache YuniKorn installation instructions.
+You need to successfully install Apache YuniKorn on your Kubernetes cluster before enabling Apache YuniKorn integration with KubeRay. See [Get Started](https://yunikorn.apache.org/docs/) for Apache YuniKorn installation instructions.
 
 ## Step 3: Install the KubeRay operator with Apache YuniKorn support
 
