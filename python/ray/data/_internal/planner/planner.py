@@ -183,7 +183,7 @@ def _plan_join_shuffle_v2(
         reduce_fn=reduce_fn,
         disallow_block_splitting=False,
         reduce_ray_remote_args=logical_op.aggregator_ray_remote_args,
-        name=f"Join(num_partitions={num_partitions})",
+        name=f"JoinShuffleReduce(num_partitions={num_partitions})",
     )
 
 
