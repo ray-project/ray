@@ -67,5 +67,6 @@
 //python/ray/serve/tests:test_task_processor
 //python/ray/serve/tests:test_telemetry
 //python/ray/serve/tests:test_telemetry_2
+//python/ray/serve/tests:test_tracing_utils
 //python/ray/serve/tests:test_util
 //python/ray/serve/tests:test_websockets
