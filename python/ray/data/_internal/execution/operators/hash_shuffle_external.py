@@ -680,7 +680,7 @@ class _ShuffleConnection:
     def fetch_into(
         self,
         sources: List[Tuple[str, List[Tuple[int, int]]]],
-        out_file_obj,
+        out_file_obj: "_PwriteSink",
         chunk_size: int = 64 * 1024,
     ) -> None:
         """Single FETCH whose entire response streams into ``out_file_obj``
@@ -1213,7 +1213,7 @@ _FETCH_RETRY_INTERVAL_S = 5.0
 
 
 def _prefetch_node_into(
-    out_file_obj,
+    out_file_obj: "_PwriteSink",
     shuffle_id: str,
     node_id: str,
     token: str,
@@ -1303,8 +1303,7 @@ def _prefetch_node_into(
             # on the next attempt (server re-sends the same bytes), so
             # rewind the sink so subsequent writes don't overrun into the
             # next fetch group's region.
-            if hasattr(out_file_obj, "reset"):
-                out_file_obj.reset()
+            out_file_obj.reset()
             # Force the endpoint to be re-resolved on the next iteration
             # in case the manager restarted on a new port.
             _ENDPOINT_CACHE.pop(_manager_name(shuffle_id, node_id), None)
