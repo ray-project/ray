@@ -815,13 +815,13 @@ tag_keys=iter_tag_keys,
     def update_iteration_metrics(
         self,
         stats: "DatasetStats",
-        dataset_tag: str,
+        dataset_id: str,
         split_index: str,
     ):
         # ``dataset`` is the dataset id; ``split_index`` indicates the split
         # (empty for plain iterators, which have no split dimension). Together
         # these must match ``iter_tag_keys`` exactly.
-        tags = self._create_tags(dataset_tag=dataset_tag, split_index=split_index)
+        tags = self._create_tags(dataset_tag=dataset_id, split_index=split_index)
 
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
         self.iter_total_s.set(stats.iter_total_s.get(), tags)
