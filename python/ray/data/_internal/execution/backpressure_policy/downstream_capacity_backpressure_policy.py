@@ -159,7 +159,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
 
         return False
 
-    def _get_queue_ratio(self, op: "PhysicalOperator") -> float:
+    def _get_output_ratio(self, op: "PhysicalOperator") -> float:
         """Get ratio of buffered outputs to downstream inputs.
 
         BlockRefCounter tracks blocks from production until freed, so
@@ -190,7 +190,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         utilized_budget_fraction = get_utilized_object_store_budget_fraction(
             self._resource_manager, op, consider_downstream_ineligible_ops=True
         )
-        queue_ratio = self._get_queue_ratio(op)
+        output_ratio = self._get_output_ratio(op)
         if (
             utilized_budget_fraction is not None
             and utilized_budget_fraction <= self.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
@@ -198,16 +198,17 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             # Utilized budget fraction is below threshold, so should skip backpressure.
             result = False
         else:
-            # Apply backpressure if queue ratio exceeds the threshold.
-            result = queue_ratio > self._backpressure_capacity_ratio
+            result = output_ratio > self._backpressure_capacity_ratio
 
         prev = self._prev_should_backpressure.get(op)
         if prev != result:
-            queue_size_bytes = self._get_queue_size_bytes(op)
+            output_size_bytes = self._resource_manager.get_op_usage(
+                op
+            ).object_store_memory
             downstream_capacity_bytes = self._get_downstream_capacity_size_bytes(op)
             logger.debug(
                 f"Backpressure change {op.name}: {prev} -> {result} "
-                f"(queue_ratio={queue_ratio:.2f}, {queue_size_bytes=}, "
+                f"(output_ratio={output_ratio:.2f}, {output_size_bytes=}, "
                 f"{downstream_capacity_bytes=}, {utilized_budget_fraction=})"
             )
             self._prev_should_backpressure[op] = result

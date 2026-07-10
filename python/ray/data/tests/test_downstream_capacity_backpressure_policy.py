@@ -199,7 +199,7 @@ class TestDownstreamCapacityBackpressurePolicy:
     def _set_queue_ratio(self, op, op_state, rm, queue_size, downstream_capacity):
         """Helper to set queue ratio via mocks.
 
-        Matches _get_queue_ratio logic:
+        Matches _get_output_ratio logic:
         - queue_size_bytes = output_queue_bytes() + sum(get_op_usage(ineligible).object_store_memory)
         - downstream_capacity_size_bytes = sum(eligible_downstream.metrics.obj_store_mem_pending_task_inputs)
         - If downstream_capacity == 0, returns 0 (no backpressure)
