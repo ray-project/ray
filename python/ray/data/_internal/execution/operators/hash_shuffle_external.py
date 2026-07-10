@@ -995,17 +995,21 @@ class ShuffleNodeLostError(ShuffleFetchError):
     """Raised when a source ShuffleManager's node is confirmed dead
     (via ``ray.nodes()``).
 
-    External-shuffle materializes mapper output on the mapper node's local
-    disk. If that node dies, the on-disk output is gone with it and Ray
-    lineage cannot reconstruct the mapper (the handle-refs are aggregated
-    driver-side, so mapper return-refs are not observed as lost). Retrying
-    the reducer against the same dead node would just hang or fail again.
+    Recovery story: the mapper's return handle is a plasma ObjectRef;
+    when its owning node dies, Ray Core marks the ref as lost, and on
+    the reducer's next retry (see ``max_retries`` on
+    ``external_hash_shuffle_reduce_task.options``) Ray Core's lineage
+    kicks in — the mapper task is re-executed on a live node, the
+    ObjectRef re-materializes with a fresh handle (new node_id, new
+    path), and the retried reducer transparently reads from the new
+    location. No app-level orchestration is needed.
 
-    Under the current FT design (no mapper re-execution yet) this is
-    surfaced as fatal so the user knows the job is not recoverable — no
-    silent hang against a permanently-pending (soft=False, max_restarts=-1)
-    actor. Phase 3 of the FT rollout will convert this into a signal
-    that triggers upstream mapper re-execution to a live node.
+    If this error still propagates past the reducer's retry budget, it
+    means either (a) the same or another mapper's node kept dying across
+    retries, or (b) lineage reconstruction failed (rare — e.g. Ray Core
+    still has a stale "live" copy record). Either way we fail loudly
+    instead of hanging on a permanently-pending
+    (soft=False, max_restarts=-1) actor — the job should be re-run.
     """
 
 
@@ -1039,8 +1043,8 @@ def _classify_and_raise(
 ) -> "NoReturn":
     """Diagnose a manager RPC failure and raise the appropriate typed error.
 
-    - Node dead → ``ShuffleNodeLostError`` (recoverable via mapper re-execution
-      in Phase 3; fatal today).
+    - Node dead → ``ShuffleNodeLostError`` (Ray-Core lineage handles most
+      cases via reducer retry; propagation past that budget = fatal).
     - Node alive → ``ShuffleManagerAnomalyError`` (unexpected under our
       configuration; fail loudly, no auto-recovery).
     - Node liveness inconclusive (GCS lag) → ``ShuffleFetchError`` (treated
@@ -1050,9 +1054,11 @@ def _classify_and_raise(
     detail = f"context={context!r}; sources={num_sources}"
     if alive is False:
         raise ShuffleNodeLostError(
-            f"ShuffleManager node {node_id} is dead — on-disk shuffle output "
-            f"lost with the node. External-shuffle does not yet reconstruct "
-            f"across node loss. ({detail})"
+            f"ShuffleManager node {node_id} is dead — on-disk shuffle "
+            f"output lost with the node. Ray-Core lineage will re-execute "
+            f"the affected mapper on the reducer's next retry; if this "
+            f"error propagates past that budget, the job needs to be "
+            f"re-run. ({detail})"
         ) from exc
     if alive is True:
         raise ShuffleManagerAnomalyError(
@@ -1249,8 +1255,9 @@ def _prefetch_node_into(
         if _is_node_alive(node_id) is False:
             raise ShuffleNodeLostError(
                 f"ShuffleManager node {node_id} died mid-fetch; "
-                f"lost on-disk output for {len(members)} source(s). External-"
-                f"shuffle does not yet reconstruct across node loss."
+                f"lost on-disk output for {len(members)} source(s). "
+                f"Ray-Core lineage will re-execute affected mappers on "
+                f"reducer retry."
             ) from e
         raise ShuffleFetchError(
             f"fetch from {endpoint} (sources={len(members)}) failed: {e}"
