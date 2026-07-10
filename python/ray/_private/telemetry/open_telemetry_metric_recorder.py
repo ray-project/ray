@@ -67,22 +67,30 @@ class OpenTelemetryMetricRecorder:
         """Returns how long (in seconds) a gauge observation is retained without a
         refresh before it is evicted on scrape.
 
-        Emitters export their live gauge values to the agent every
-        ``metrics_report_interval_ms`` (the OTLP export interval, configured in
-        ``InitOpenTelemetryExporter`` in ``src/ray/stats/stats.h``). Retaining a value
-        for 2 export intervals lets an actively-reported series survive a missed/late
-        export, while a series that stops being reported (finished task, dead worker)
-        ages out after ~2 intervals.
+        Emitters export their live gauge values to the agent every export interval.
+        The effective export interval is ``max(metrics_report_interval_ms, 1000)`` --
+        the emitter floors it at 1000ms via ``SetReportInterval`` in
+        ``src/ray/stats/stats.h`` (``GetReportInterval()`` is what actually drives the
+        OTLP export in ``InitOpenTelemetryExporter``). We apply the same floor here so
+        the TTL is exactly 2x the true export cadence, even when the raw config value
+        is below 1000ms. Retaining a value for 2 export intervals lets an
+        actively-reported series survive a missed/late export, while a series that
+        stops being reported (finished task, dead worker) ages out after ~2 intervals.
 
-        NOTE: this assumes the export cadence == ``metrics_report_interval_ms``. If
-        that export interval changes (see ``stats.h``), update this derivation.
+        NOTE: this mirrors the ``max(..., 1000)`` clamp and the export cadence in
+        ``stats.h``. If either changes, update this derivation.
 
         Callers may pass an explicit ``override`` (used by tests and available for
         future injection from above).
         """
         if override is not None:
             return override
-        return 2 * ray._config.metrics_report_interval_ms() / 1000.0
+        # Mirror the emitter's SetReportInterval floor (stats.h): the export cadence is
+        # max(metrics_report_interval_ms, 1000ms), never less than 1s.
+        effective_report_interval_ms = max(
+            ray._config.metrics_report_interval_ms(), 1000
+        )
+        return 2 * effective_report_interval_ms / 1000.0
 
     def _create_observable_callback(
         self, metric_name: str, metric_type: MetricType
