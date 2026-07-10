@@ -49,6 +49,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.hash_shuffle_external import (
     _DEFAULT_MAX_BYTES_PER_FETCH,
     ReduceFn,
+    ShuffleNodeLostError,
     external_hash_shuffle_reduce_task,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
@@ -308,12 +309,47 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             task_exec_driver_stats=task_exec_driver_stats,
         )
         if exc:
+            if isinstance(exc, ShuffleNodeLostError):
+                self._on_shuffle_node_lost(partition_id, exc)
             logger.error(
                 "Reduce of partition %d failed: %s",
                 partition_id,
                 exc,
                 exc_info=exc,
             )
+
+    def _on_shuffle_node_lost(
+        self, partition_id: int, exc: ShuffleNodeLostError
+    ) -> None:
+        """Hook for node-loss recovery. **Not implemented yet.**
+
+        Fires when a reducer task raised ``ShuffleNodeLostError`` (a source
+        mapper's node was confirmed dead by ``ray.nodes()``) and Ray's
+        built-in retries (``max_retries=3``) were exhausted without success.
+
+        Today: no-op — the exception continues to propagate through
+        ``_handle_reduce_done`` and the shuffle fails. Ray-Core lineage
+        recovery *does* cover the case where the mapper's plasma
+        ObjectRef was actually lost with the node (the reducer's retry
+        picks up a re-executed mapper's fresh handle transparently), so
+        this hook is only needed for scenarios lineage misses — e.g. the
+        node came back up but the mapper's ``.shf`` file is gone.
+
+        Future implementation sketch:
+
+        1. Extract dead node_id from ``exc``.
+        2. Call ``ExternalHashShuffleMapOp.request_mapper_re_execution(node_id)``
+           (a matching hook on the map op side, also not yet implemented).
+        3. Wait for the map op to publish a fresh ``_shared_handles_ref``
+           whose nested handle refs no longer touch the dead node.
+        4. Re-dispatch this reducer with the fresh wrapper bundle,
+           respecting a per-shuffle retry budget so a persistently-
+           unhealthy cluster fails fast instead of looping.
+        """
+        # Intentionally left as pass — caller (``_handle_reduce_done``)
+        # already logs + propagates ``exc``. This hook exists so the
+        # future recovery path has a clear insertion point.
+        return
 
     def has_next(self) -> bool:
         return len(self._output_queue) > 0
