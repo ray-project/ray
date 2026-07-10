@@ -545,10 +545,19 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
                     pass
             pending = [(m, r) for m, r in pending if r not in ready_set]
 
-        # Timed-out (dead node) or otherwise stuck: hard kill so shutdown
-        # progresses. Skips ``__ray_shutdown__`` — base_dir may leak on disk
-        # for this manager (OS tmpwatch cleans it up eventually).
-        for mgr, _ in pending:
+        # Belt-and-suspenders hard kill for every manager, whether the
+        # graceful terminate acked or timed out:
+        # - Pending (dead node / stuck): kill so shutdown progresses.
+        # - Already acked: a SIGKILL to the actor process mid-atexit can
+        #   cause Ray (with max_restarts=-1) to auto-respawn a fresh
+        #   actor under the same name — our ``ray.get(term_ref)`` returned
+        #   "success" against the old instance but a new one is now
+        #   running idle. ``ray.kill(no_restart=True)`` prevents that
+        #   restart loop.
+        # Either way ``no_restart=True`` skips ``__ray_shutdown__``; a
+        # ``base_dir`` may leak on disk for managers that only reached
+        # this fallback (OS tmpwatch cleans it up eventually).
+        for mgr, _ in term_refs_by_mgr:
             try:
                 ray.kill(mgr, no_restart=True)
             except Exception:
