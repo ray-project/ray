@@ -9641,5 +9641,112 @@ class TestGangDraining:
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
+def _ingress_deployment_info(num_replicas=1):
+    """Like deployment_info() but marks the deployment as a direct-ingress deployment.
+
+    DeploymentInfo.ingress lives on DeploymentInfo (not DeploymentConfig), so the shared
+    deployment_info() helper -- which forwards **config_opts to DeploymentConfig -- can't
+    set it.
+    """
+    info = DeploymentInfo(
+        version="1",
+        start_time_ms=0,
+        actor_name="abc",
+        deployment_config=DeploymentConfig(num_replicas=num_replicas),
+        replica_config=ReplicaConfig.create(lambda x: x),
+        deployer_job_id="",
+        ingress=True,
+    )
+    version = DeploymentVersion(
+        "1", info.deployment_config, info.replica_config.ray_actor_options
+    )
+    return info, version
+
+
+def test_ingress_membership_version_bumps_on_add_and_removal(
+    mock_deployment_state_manager,
+):
+    """The direct-ingress port reconcile is gated on get_ingress_membership_version().
+
+    The version must advance both when an ingress replica is ADDED (so its port is
+    assigned) and when one is permanently REMOVED from the container (so its port is
+    reclaimed). The removal case is the regression: a replica leaves the running set
+    ({RUNNING, PENDING_MIGRATION}) at RUNNING->STOPPING, so comparing the running set
+    alone does NOT observe the later container removal -- yet the reconcile/prune key off
+    all container states. Without the explicit removal signal the version stays flat at
+    removal and the departed replica's port is never reclaimed.
+    """
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    info, _ = _ingress_deployment_info()
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # A STARTING replica is not yet in the running set -> no bump.
+    v_start = dsm.get_ingress_membership_version()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, None)])
+    assert dsm.get_ingress_membership_version() == v_start
+
+    # STARTING -> RUNNING adds it to the running set -> version bumps (port assigned).
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+    v_running = dsm.get_ingress_membership_version()
+    assert v_running > v_start
+
+    # Steady state: no membership change over many ticks -> version stays constant
+    # (churn-insensitive -- this is what lets the reconcile be skipped).
+    for _ in range(3):
+        dsm.update()
+    assert dsm.get_ingress_membership_version() == v_running
+
+    # Delete -> RUNNING -> STOPPING: the replica leaves the running set -> bumps once.
+    ds.delete()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.STOPPING, 1, None)])
+    v_stopping = dsm.get_ingress_membership_version()
+    assert v_stopping > v_running
+
+    # Still STOPPING (not yet removed) -> no further bump.
+    dsm.update()
+    assert dsm.get_ingress_membership_version() == v_stopping
+
+    # Permanent removal from the container MUST bump again so the port is reclaimed,
+    # even though the running set already excluded the replica back at STOPPING.
+    ds._replicas.get()[0]._actor.set_done_stopping()
+    dsm.update()
+    check_counts(ds, total=0)
+    assert dsm.get_ingress_membership_version() > v_stopping
+
+
+def test_ingress_membership_version_ignores_non_ingress_deployment(
+    mock_deployment_state_manager,
+):
+    """A non-ingress deployment's replica churn must never bump the ingress version."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    info, _ = deployment_info()  # ingress defaults to False
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    v0 = dsm.get_ingress_membership_version()
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()  # STARTING -> RUNNING
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+
+    ds.delete()
+    dsm.update()  # RUNNING -> STOPPING
+    ds._replicas.get()[0]._actor.set_done_stopping()
+    dsm.update()  # removed
+    check_counts(ds, total=0)
+
+    # A full add + removal on a non-ingress deployment: the ingress version never moved.
+    assert dsm.get_ingress_membership_version() == v0
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
