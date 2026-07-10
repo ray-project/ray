@@ -39,14 +39,6 @@ def train_fn_per_worker(train_loop_config: Dict[str, Any]) -> None:
 
 
 def run_with_ray(cfg: ExperimentConfig) -> Dict[str, Any]:
-    # #region agent log
-    logger.info(
-        "DEBUG e07b5f run_with_ray: job_runtime_env=%s | env_vars=%s",
-        str(ray.get_runtime_context().runtime_env),
-        cfg.env_vars,
-    )
-    # #endregion
-
     run_config_kwargs = {}
     # Experiment-declared env vars (if any) land in each worker process at launch
     # (before torch/CUDA init). Anything cluster-wide should be set on the cluster.
