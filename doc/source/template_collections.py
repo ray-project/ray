@@ -24,6 +24,7 @@ changes to template fetching/publishing are scoped for CI and ownership, and
 import io
 import json
 import logging
+import os
 import pathlib
 import random
 import re
@@ -222,6 +223,22 @@ def _fetch_and_extract_zip(config):
             _urlopen_read_with_retries(url, _TEMPLATE_DOWNLOAD_TIMEOUT_S)
         )
         with zipfile.ZipFile(zip_bytes) as zf:
+            # Guard against Zip Slip: a member name like `../../foo` would make
+            # extractall write outside `target`. These archives come from the
+            # first-party templates.ci.ray.io host, so this is defense in depth,
+            # not a live threat, but the check is cheap and fails the build
+            # clearly if a malformed archive ever ships. Normalize member paths
+            # lexically (os.path.normpath, no filesystem I/O per member);
+            # extractall writes symlink entries as regular files, so there's no
+            # symlink-traversal risk that would need physical resolution.
+            target_resolved = target.resolve()
+            for member in zf.namelist():
+                dest = pathlib.Path(os.path.normpath(target_resolved / member))
+                if not dest.is_relative_to(target_resolved):
+                    raise RuntimeError(
+                        f"sphinx-collections: refusing to extract {member!r} from "
+                        f"template {name!r}: path escapes {target_resolved}."
+                    )
             zf.extractall(target)
         logger.info(
             "sphinx-collections: extracted %d files to %s",
