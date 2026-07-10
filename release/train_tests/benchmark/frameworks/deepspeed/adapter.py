@@ -121,17 +121,30 @@ class DeepSpeedAdapter(FrameworkAdapter):
 
     # ---- config construction -------------------------------------------------
 
-    def _precision_config(self) -> Dict[str, Any]:
-        """Map the experiment precision to DeepSpeed fp16/bf16 blocks.
-
-        Falls back from bf16 to fp16 on GPUs without bf16 support (e.g. T4),
-        matching the doc example, so the same YAML runs across GPU classes.
+    def _effective_precision(self) -> str:
+        """The precision that actually runs: bf16 falls back to fp16 on GPUs
+        without bf16 support (e.g. T4), so the same YAML runs across GPU
+        classes. Everything precision-dependent (the DeepSpeed config AND the
+        peak-FLOPs lookup for MFU/HFU) must use this, not the configured value.
         """
         precision = self.cfg.model.precision
+        if (
+            precision == "bf16"
+            and torch.cuda.is_available()
+            and not torch.cuda.is_bf16_supported()
+        ):
+            return "fp16"
+        return precision
+
+    def _precision_config(self) -> Dict[str, Any]:
+        """Map the effective precision to DeepSpeed fp16/bf16 blocks."""
+        precision = self._effective_precision()
+        if precision != self.cfg.model.precision:
+            logger.warning(
+                f"{self.cfg.model.precision} unsupported on this GPU; "
+                f"falling back to {precision}."
+            )
         if precision == "bf16":
-            if torch.cuda.is_available() and not torch.cuda.is_bf16_supported():
-                logger.warning("bf16 unsupported on this GPU; falling back to fp16.")
-                return {"fp16": {"enabled": True}}
             return {"bf16": {"enabled": True}}
         if precision == "fp16":
             return {"fp16": {"enabled": True}}
@@ -297,8 +310,10 @@ class DeepSpeedAdapter(FrameworkAdapter):
 
         peak_flops = None
         if torch.cuda.is_available():
+            # Effective (not configured) precision: on a bf16->fp16 fallback
+            # the fp16 peak is what the silicon can actually do.
             peak_flops = get_gpu_peak_flops(
-                torch.cuda.get_device_name(device), self.cfg.model.precision
+                torch.cuda.get_device_name(device), self._effective_precision()
             )
 
         if torch.cuda.is_available():
@@ -432,6 +447,9 @@ class DeepSpeedAdapter(FrameworkAdapter):
         metrics["config/launcher"] = self.cfg.launcher
         metrics["config/dataloader"] = self.cfg.data.dataloader
         metrics["config/precision"] = self.cfg.model.precision
+        # What actually ran (bf16 may fall back to fp16 on pre-Ampere GPUs);
+        # MFU/HFU peaks are computed against this.
+        metrics["config/effective_precision"] = self._effective_precision()
         metrics["config/zero_stage"] = (self.cfg.model.parallelism or {}).get(
             "zero_stage"
         )
