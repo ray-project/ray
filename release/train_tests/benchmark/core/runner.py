@@ -59,6 +59,11 @@ def write_results(metrics: Dict[str, Any], experiment_name: str) -> None:
 
 def run_experiment(cfg: ExperimentConfig) -> Dict[str, Any]:
     """Dispatch an experiment to its launcher and return final metrics."""
+    # Register the harness as a Ray job-level working_dir so it is uploaded
+    # once and inherited by ALL workers (which may be on other nodes).
+    if not ray.is_initialized():
+        ray.init(runtime_env={"working_dir": HARNESS_ROOT})
+
     if cfg.launcher == "ray_train":
         from core.launchers.ray_launcher import run_with_ray
 
@@ -99,15 +104,6 @@ def main() -> None:
         cfg.launcher = args.launcher
 
     logger.info("Experiment config:\n" + pprint.pformat(cfg.to_dict()))
-
-    # Register the harness as a Ray job-level working_dir so it is uploaded once
-    # and inherited by the Train controller and ALL workers (which may be on other
-    # nodes). Anyscale sets the *job* working_dir outside Ray's runtime_env, so the
-    # driver's Ray runtime_env is empty and remote workers otherwise can't import
-    # `core`. Local dirs are only uploadable via ray.init (not per-actor runtime
-    # envs), so this must happen here, before any implicit ray.init.
-    if not ray.is_initialized():
-        ray.init(runtime_env={"working_dir": HARNESS_ROOT})
 
     metrics = run_experiment(cfg)
 
