@@ -16,6 +16,7 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow as pa
     from pyiceberg.catalog import Catalog
+    from pyiceberg.expressions import BooleanExpression
     from pyiceberg.manifest import DataFile
     from pyiceberg.table import Table, Transaction
 

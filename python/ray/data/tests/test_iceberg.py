@@ -2160,6 +2160,48 @@ class TestDynamicOverwrite:
         )
         assert rows_same(result, expected)
 
+    def test_dynamic_overwrite_bucket_first_identity_second_spec(self):
+        """bucket(col_a) at position 0, identity(col_c) at position 1.
+
+        Regression guard for partition-record indexing: the delete filter must read the
+        identity value from its ABSOLUTE position in the partition record (index 1 here),
+        not from a position relative to the filtered identity-only list (which would be 0
+        and would read the bucket hash instead, deleting the wrong partitions).
+        """
+        from pyiceberg.transforms import BucketTransform
+
+        spec = PartitionSpec(
+            PartitionField(source_id=1, field_id=1000, transform=BucketTransform(4), name="col_a_bucket"),
+            PartitionField(source_id=3, field_id=1001, transform=IdentityTransform(), name="col_c"),
+        )
+        identifier = self._make_table("dyn_bucket_first", spec)
+
+        initial = _create_typed_dataframe(
+            {"col_a": [1, 2, 3, 4], "col_b": ["a", "b", "c", "d"], "col_c": [1, 1, 2, 2]}
+        )
+        ray.data.from_pandas(initial).write_iceberg(
+            table_identifier=identifier, catalog_kwargs=_CATALOG_KWARGS.copy(), mode=SaveMode.APPEND
+        )
+
+        # Replace col_c == 1 (spans multiple col_a buckets). A relative-index regression
+        # would instead filter on a bucket hash and fail to replace these rows correctly.
+        new_data = _create_typed_dataframe(
+            {"col_a": [100, 200], "col_b": ["new_a", "new_b"], "col_c": [1, 1]}
+        )
+        ray.data.from_pandas(new_data).write_iceberg(
+            table_identifier=identifier,
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+            mode=SaveMode.DYNAMIC_OVERWRITE,
+        )
+
+        result = ray.data.read_iceberg(
+            table_identifier=identifier, catalog_kwargs=_CATALOG_KWARGS.copy()
+        ).to_pandas().sort_values("col_a").reset_index(drop=True)
+        expected = _create_typed_dataframe(
+            {"col_a": [3, 4, 100, 200], "col_b": ["c", "d", "new_a", "new_b"], "col_c": [2, 2, 1, 1]}
+        )
+        assert rows_same(result, expected)
+
     def test_dynamic_overwrite_multiple_workers_overlapping_partitions(self, clean_table):
         """Multiple write tasks writing to the same partitions still replace correctly."""
         initial = _create_typed_dataframe(
