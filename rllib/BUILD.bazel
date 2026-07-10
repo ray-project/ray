@@ -1674,6 +1674,17 @@ py_test(
 )
 
 py_test(
+    name = "test_replay_buffer_type_resolution",
+    size = "small",
+    srcs = ["algorithms/tests/test_replay_buffer_type_resolution.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "test_registry",
     size = "small",
     srcs = ["algorithms/tests/test_registry.py"],
