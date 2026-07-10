@@ -370,6 +370,26 @@ class IcebergDatasink(
                         "when table has no identifier fields"
                     )
 
+        # Validate DYNAMIC_OVERWRITE constraints before any worker writes data
+        if self._mode == SaveMode.DYNAMIC_OVERWRITE:
+            from pyiceberg.transforms import IdentityTransform
+
+            spec = self._table.metadata.spec()
+            if spec.is_unpartitioned():
+                raise ValueError(
+                    "SaveMode.DYNAMIC_OVERWRITE cannot be applied to an unpartitioned "
+                    f"table: {self.table_identifier}"
+                )
+            has_identity = any(
+                isinstance(field.transform, IdentityTransform) for field in spec.fields
+            )
+            if not has_identity:
+                raise ValueError(
+                    "SaveMode.DYNAMIC_OVERWRITE requires at least one identity partition "
+                    f"field, but table {self.table_identifier} has none. Its partitions "
+                    "cannot be uniquely identified for replacement."
+                )
+
     def write(
         self, blocks: Iterable[Block], ctx: TaskContext
     ) -> Union[List["DataFile"], tuple[List["DataFile"], Dict[str, List[Any]]]]:

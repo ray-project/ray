@@ -2046,6 +2046,47 @@ class TestDynamicOverwrite:
                 overwrite_filter=col("col_c") == 1,
             )
 
+    def _make_table(self, name, partition_spec):
+        """Create a fresh table with the given partition spec; drop if it exists."""
+        sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+        identifier = f"{_DB_NAME}.{name}"
+        if (_DB_NAME, name) in sql_catalog.list_tables(_DB_NAME):
+            sql_catalog.drop_table(identifier)
+        schema = pyi_schema.Schema(
+            pyi_types.NestedField(1, "col_a", pyi_types.IntegerType(), required=False),
+            pyi_types.NestedField(2, "col_b", pyi_types.StringType(), required=False),
+            pyi_types.NestedField(3, "col_c", pyi_types.IntegerType(), required=False),
+        )
+        sql_catalog.create_table(identifier, schema=schema, partition_spec=partition_spec)
+        return identifier
+
+    def test_dynamic_overwrite_rejects_unpartitioned(self):
+        identifier = self._make_table("dyn_unpart", PartitionSpec())  # empty spec == unpartitioned
+        df = _create_typed_dataframe({"col_a": [1], "col_b": ["x"], "col_c": [1]})
+        ds = ray.data.from_pandas(df)
+        with pytest.raises(ValueError, match="unpartitioned"):
+            ds.write_iceberg(
+                table_identifier=identifier,
+                catalog_kwargs=_CATALOG_KWARGS.copy(),
+                mode=SaveMode.DYNAMIC_OVERWRITE,
+            )
+
+    def test_dynamic_overwrite_rejects_no_identity_field(self):
+        from pyiceberg.transforms import BucketTransform
+
+        spec = PartitionSpec(
+            PartitionField(source_id=1, field_id=1000, transform=BucketTransform(4), name="col_a_bucket")
+        )
+        identifier = self._make_table("dyn_bucket_only", spec)
+        df = _create_typed_dataframe({"col_a": [1], "col_b": ["x"], "col_c": [1]})
+        ds = ray.data.from_pandas(df)
+        with pytest.raises(ValueError, match="identity"):
+            ds.write_iceberg(
+                table_identifier=identifier,
+                catalog_kwargs=_CATALOG_KWARGS.copy(),
+                mode=SaveMode.DYNAMIC_OVERWRITE,
+            )
+
 
 if __name__ == "__main__":
     import sys
