@@ -216,7 +216,10 @@ repos:
         name: pyrefly (ray serve)
         language: python
         additional_dependencies: [pyrefly==1.1.1]
-        entry: pyrefly check
+        # The repo-root pyrefly.toml belongs to the ray/data CI job
+        # (ci/lint/pyrefly-check.sh); pass the serve-scoped config explicitly
+        # under a name pyrefly does not auto-discover.
+        entry: pyrefly check --config python/ray/serve/pyrefly-serve.toml
         pass_filenames: true
         files: |
           (?x)^(

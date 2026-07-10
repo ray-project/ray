@@ -1,8 +1,8 @@
 # Pyrefly config for the Serve type-checking ratchet, deliberately scoped to
-# ray/serve by living in this directory: pyrefly discovers config by walking
-# up from each checked file, and a repo-root config would also be picked up
-# by the ray/data pyrefly CI job (ci/lint/pyrefly-check.sh), changing its
-# behavior. Paths below are relative to this directory.
+# ray/serve via an explicit --config in the pre-commit hook. The filename is
+# deliberately NOT pyrefly.toml: that name is auto-discovered, and the
+# repo-root pyrefly.toml belongs to the ray/data CI job
+# (ci/lint/pyrefly-check.sh). Paths below are relative to this directory.
 # (See .pre-commit-config.yaml
 # "mypy (ray serve)" hook; this covers the same allowlist).
 project-includes = [
