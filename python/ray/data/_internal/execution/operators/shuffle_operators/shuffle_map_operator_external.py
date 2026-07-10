@@ -39,7 +39,6 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.hash_shuffle_external import (
     PartitionFn,
-    ShuffleCompression,
     external_hash_shuffle_map_task,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
@@ -264,10 +263,11 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         if self._map_runtime_env is not None:
             ray_options["runtime_env"] = self._map_runtime_env
 
-        # The task body wants Optional[Literal["lz4", "zstd"]]; data_context
+        # The task body wants Optional[str] (None or a pyarrow codec name);
+        # data_context
         # stores the raw string ("none" | "lz4" | "zstd"). Translate here.
         raw_compression = (self.data_context.hash_shuffle_compression or "none").lower()
-        compression: ShuffleCompression = (
+        compression: Optional[str] = (
             None if raw_compression == "none" else raw_compression
         )
 

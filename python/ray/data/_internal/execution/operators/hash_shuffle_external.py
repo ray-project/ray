@@ -6,8 +6,7 @@
   stays on local disk and never enters Ray's object store.
 - a per-node ``ShuffleManager`` Ray actor runs its OWN socket server that
   ``pread``s requested byte-ranges and streams them back. The REDUCE task is a
-  client of that server: bytes arrive directly in user space and are consumed
-  inline — no Ray-object-store round-trip, preserving the 1× data copy.
+  client of that server.
   Cross-node this is the real out-of-band transport; single-node it is a
   loopback socket (still the real code path, not a direct ``open``).
 
@@ -35,7 +34,6 @@ from typing import (
     Generator,
     Iterable,
     List,
-    Literal,
     Optional,
     Tuple,
     Union,
@@ -64,12 +62,6 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 PartitionFn = Callable[[pa.Table], Dict[int, pa.Table]]
 ReduceFn = Callable[[int, List[pa.Table]], Iterable[pa.Table]]
 MapBlockTransformer = Callable[[pa.Table], pa.Table]
-
-# Per-RecordBatch IPC compression. None preserves zero-copy mmap into Arrow
-# (uncompressed bytes are directly the on-wire IPC buffer). LZ4 is the
-# recommended default for cross-node clusters: ~2-5x smaller for tabular data
-# with sub-µs/MB decompression. ZSTD trades CPU for higher ratio on slow links.
-ShuffleCompression = Optional[Literal["lz4", "zstd"]]
 
 # =============================================================================
 # Wire protocol.
@@ -142,7 +134,7 @@ _MAX_RANGE_BYTES: int = (1 << 32) - 1
 
 
 # ----------------------------------------------------------------- Arrow IPC
-def _ipc_buffer(table: pa.Table, compression: ShuffleCompression = None) -> pa.Buffer:
+def _ipc_buffer(table: pa.Table, compression: Optional[str] = None) -> pa.Buffer:
     """Serialize an Arrow ``Table`` to an IPC stream and return the result as
     a zero-copy ``pa.Buffer``.
 
@@ -793,7 +785,7 @@ def external_hash_shuffle_map_task(
     transformer: MapBlockTransformer = None,
     map_op_name: str = "ExternalHashShuffleMap",
     pool_budget_bytes: int = 16 * 1024 * 1024,
-    compression: ShuffleCompression = None,
+    compression: Optional[str] = None,
     fsync_on_close: bool = True,
 ) -> ShuffleHandle:
     """Streaming write with a shared, byte-accounted staging pool, sealed
