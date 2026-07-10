@@ -3084,6 +3084,17 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_rollout_ops",
+    size = "small",
+    srcs = ["execution/tests/test_rollout_ops.py"],
+    tags = [
+        "team:rllib",
+        "utils",
+    ],
+    deps = [":conftest"],
+)
+
 # @OldAPIStack
 py_test(
     name = "test_value_predictions",

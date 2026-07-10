@@ -1,4 +1,5 @@
 import logging
+import math
 from typing import List, Optional, Union
 
 import tree
@@ -138,10 +139,15 @@ def synchronous_parallel_sample(
         # Update our counters for the stopping criterion of the while loop.
         if _return_metrics:
             if max_agent_steps:
+                # Agents that stepped earlier in training but are absent from the
+                # currently sampled episodes keep a `NaN` NUM_AGENT_STEPS_SAMPLED
+                # entry (their per-agent stat is never updated this round). Skip
+                # those so we don't crash on `int(NaN)` (issue #62635).
                 agent_or_env_steps += sum(
                     int(agent_stat)
                     for stat_dict in stats_dicts
                     for agent_stat in stat_dict[NUM_AGENT_STEPS_SAMPLED].values()
+                    if not math.isnan(float(agent_stat))
                 )
             else:
                 agent_or_env_steps += sum(
