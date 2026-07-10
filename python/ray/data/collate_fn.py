@@ -176,9 +176,6 @@ class ArrowBatchCollateFn(CollateFn["pyarrow.Table"]):
     Arrow tables with chunked arrays can be efficiently transferred to GPUs without
     combining the chunks with the `arrow_batch_to_tensors` utility function.
     See `DefaultCollateFn` for example.
-
-    Memory pinning can be enabled via `iter_torch_batches(pin_memory=True)` and
-    recommended to not be done inside the collate fn.
     """
 
     def __call__(self, batch: "pyarrow.Table") -> "CollatedData":
@@ -195,11 +192,7 @@ class ArrowBatchCollateFn(CollateFn["pyarrow.Table"]):
 
 @DeveloperAPI
 class NumpyBatchCollateFn(CollateFn[Dict[str, np.ndarray]]):
-    """Collate function that takes a dictionary of numpy arrays as the input batch type.
-
-    Memory pinning can be enabled via `iter_torch_batches(pin_memory=True)` and
-    recommended to not be done inside the collate fn.
-    """
+    """Collate function that takes a dictionary of numpy arrays as the input batch type."""
 
     def __call__(self, batch: Dict[str, np.ndarray]) -> "CollatedData":
         """Convert a batch of numpy arrays to collated format.
@@ -215,11 +208,7 @@ class NumpyBatchCollateFn(CollateFn[Dict[str, np.ndarray]]):
 
 @DeveloperAPI
 class PandasBatchCollateFn(CollateFn["pandas.DataFrame"]):
-    """Collate function that takes a pandas.DataFrame as the input batch type.
-
-    Memory pinning can be enabled via `iter_torch_batches(pin_memory=True)` and
-    recommended to not be done inside the collate fn.
-    """
+    """Collate function that takes a pandas.DataFrame as the input batch type."""
 
     def __call__(self, batch: "pandas.DataFrame") -> "CollatedData":
         """Convert a batch of pandas.DataFrame to collated format.

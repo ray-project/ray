@@ -496,7 +496,8 @@ class DataIterator(abc.ABC):
                 shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
             pin_memory: [Alpha] Pin memory if True and the collate output is a
-                `TensorBatchType`.
+                `TensorBatchType`. It is recommended to use this flag to pin
+                memory instead of manually pinning memory in the collate function.
 
         Returns:
             An iterable over Torch Tensor batches.
