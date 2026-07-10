@@ -729,7 +729,7 @@ class _StatsActor:
         # ``dataset`` is the dataset id; ``split_index`` indicates the split
         # (empty for plain iterators, which have no split dimension). Together
         # these must match ``iter_tag_keys`` exactly.
-        tags = {"dataset": dataset_tag, "split_index": split_index}
+        tags = self._create_tags(dataset_tag=dataset_tag, split_index=split_index)
 
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
         self.iter_get_ref_bundles_s.set(stats.iter_get_ref_bundles_s.get(), tags)
@@ -937,12 +937,15 @@ class _StatsActor:
         dataset_tag: str,
         operator_tag: Optional[str] = None,
         node_ip_tag: Optional[str] = None,
+        split_index: Optional[str] = None,
     ):
         tags = {"dataset": dataset_tag}
         if operator_tag is not None:
             tags["operator"] = operator_tag
         if node_ip_tag is not None:
             tags["node_ip"] = node_ip_tag
+        if split_index is not None:
+            tags["split_index"] = split_index
         return tags
 
 
