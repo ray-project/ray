@@ -98,12 +98,18 @@ class WorkerGroupPollStatus:
         )
 
     def get_preemption_info(self) -> Optional[PreemptionInfo]:
-        """Return the preemption signal echoed by any worker, or None.
+        """Return the preemption info echoed by any worker, or None.
 
         The PreemptionWatcher fans the same PreemptionInfo out to every worker,
         so any non-None echo reflects the current preemption; return the first.
-        A worker killed by a node reclaim with no advance signal is classified
-        by the failure policy instead, via ``RayActorError.preempted``.
+
+        The controller reads the info from the worker poll (rather than from
+        the watcher directly) so that it rides the existing status channel with
+        no extra RPC or watcher lifecycle coupling, and so that entering
+        PreemptingState implies the workers have actually received the info --
+        the training function and the controller always see the same thing.
+        A worker killed by a preemption before any info was delivered is
+        classified by the failure policy instead, via ``RayActorError.preempted``.
         """
         for status in self.worker_statuses.values():
             if status.preemption_info is not None:

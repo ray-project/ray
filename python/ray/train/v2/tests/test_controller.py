@@ -1,9 +1,8 @@
-from unittest.mock import create_autospec, patch
+from unittest.mock import create_autospec
 
 import pytest
 
 import ray
-import ray.train.v2._internal.execution.controller.controller as controller_module
 from ray.train.backend import Backend, BackendConfig
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 from ray.train.v2._internal.exceptions import (
@@ -350,9 +349,8 @@ async def test_preemption_partial_kill_keeps_draining():
 @pytest.mark.asyncio
 async def test_preemption_clean_exit_finishes():
     """If the workers return cleanly, the run finishes rather than restarting,
-    even when a preemption signal is present -- the training function finished
-    before its node was reclaimed. A warning is logged so a training function
-    that returned early expecting a restart can catch the misuse."""
+    even when a preemption is in progress -- the training function finished
+    before its node was reclaimed."""
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
     train_run_context = create_dummy_run_context()
@@ -366,54 +364,17 @@ async def test_preemption_clean_exit_finishes():
     await _advance_to_running(controller, scaling_policy, num_workers=2)
     worker_group = controller.get_worker_group()
 
-    # A signal is present (echoed) but the workers return cleanly.
+    # A preemption is in progress (echoed) but the workers return cleanly.
     info = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"node-a": [0]})
     worker_group.preempt_worker(0, info)
     worker_group.finish_worker(0)
     worker_group.finish_worker(1)
-    with patch.object(controller_module.logger, "warning") as mock_warning:
-        await controller._run_control_loop_iteration()
+    await controller._run_control_loop_iteration()
 
     # Genuine completion: shut down toward FinishedState, not PreemptingState.
     state = controller.get_state()
     assert isinstance(state, ShuttingDownState)
     assert isinstance(state.next_state, FinishedState)
-    # The finished-during-preemption warning fired.
-    assert any(
-        "finished while a preemption was in progress" in str(call.args[0])
-        for call in mock_warning.call_args_list
-    )
-
-
-@pytest.mark.asyncio
-async def test_clean_exit_without_preemption_does_not_warn():
-    """A normal completion with no preemption signal finishes without the
-    finished-during-preemption warning."""
-    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
-    failure_policy = MockFailurePolicy(failure_config=None)
-    train_run_context = create_dummy_run_context()
-    controller = TrainController(
-        train_fn_ref=DummyObjectRefWrapper(lambda: None),
-        train_run_context=train_run_context,
-        scaling_policy=scaling_policy,
-        failure_policy=failure_policy,
-    )
-
-    await _advance_to_running(controller, scaling_policy, num_workers=2)
-    worker_group = controller.get_worker_group()
-
-    worker_group.finish_worker(0)
-    worker_group.finish_worker(1)
-    with patch.object(controller_module.logger, "warning") as mock_warning:
-        await controller._run_control_loop_iteration()
-
-    state = controller.get_state()
-    assert isinstance(state, ShuttingDownState)
-    assert isinstance(state.next_state, FinishedState)
-    assert not any(
-        "finished while a preemption was in progress" in str(call.args[0])
-        for call in mock_warning.call_args_list
-    )
 
 
 @pytest.mark.asyncio

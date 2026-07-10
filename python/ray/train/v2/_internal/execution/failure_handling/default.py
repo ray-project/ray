@@ -26,10 +26,15 @@ RETRYABLE_CONTROLLER_ERRORS = (
 def _is_preemption_failure(training_failed_error: TrainingFailedError) -> bool:
     """Whether a failure should be charged to the preemption retry budget.
 
-    True for a `PreemptionError` (raised by the controller while draining a
-    preemption) and for a `WorkerGroupError` in which a worker was killed by a
-    node reclaim (`RayActorError.preempted`), e.g. a preemption whose advance
-    signal was never observed.
+    True for a `PreemptionError` (raised by the controller after waiting out a
+    preemption) and for a `WorkerGroupError` in which any worker death was
+    caused by a preemption (`RayActorError.preempted`), e.g. a preemption whose
+    advance info was never observed. If a preemption-caused death appears
+    alongside other worker errors, the preemption wins: when one rank dies, the
+    surviving ranks routinely fail with collateral errors (collective aborts,
+    connection resets), so requiring *all* errors to be preemption-caused would
+    misclassify most real preemptions. A genuine bug re-fires on the next
+    attempt without a preemption and is charged to `max_failures` then.
     """
     if isinstance(training_failed_error, PreemptionError):
         return True

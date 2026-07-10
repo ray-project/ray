@@ -4,7 +4,7 @@ from ray.train.v2._internal.exceptions import RayTrainError
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
-    from ray.train.v2._internal.execution.preemption import PreemptionInfo
+    from ray.train.v2.api.preemption import PreemptionInfo
 
 
 @PublicAPI(stability="alpha")
@@ -62,14 +62,17 @@ class PreemptionError(TrainingFailedError):
     real failures (OOM, hardware faults, user-code bugs).
 
     Args:
-        preemption_info: Details of the preemption (the affected node IDs and
-            ranks, and the reclaim deadline).
-        worker_failures: A mapping from worker rank to the exception observed on
-            that worker at teardown, if any.
-        drain_timed_out: True if the worker group was torn down because the
-            preemption deadline elapsed before all ranks had exited (i.e. the
-            drain did not complete in time), rather than all workers exiting
-            cleanly first.
+        preemption_info: Which nodes / world ranks were preempted and the
+            reclaim deadline, for logging and debugging which preemption caused
+            the restart.
+        worker_failures: Map of world rank to the exception that terminated that
+            worker (typically the preemption-caused actor death), so the
+            underlying errors are preserved for debugging rather than swallowed
+            by the retry.
+        drain_timed_out: True when Ray Train stopped waiting because the reclaim
+            deadline passed while workers were still running (and tore them down
+            itself); False when every worker had already exited. Distinguishes
+            a forced teardown from an observed one when debugging.
     """
 
     def __init__(

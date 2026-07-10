@@ -15,7 +15,7 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     from ray.data import DataIterator
     from ray.train import Checkpoint
-    from ray.train.v2._internal.execution.preemption import PreemptionInfo
+    from ray.train.v2.api.preemption import PreemptionInfo
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 
@@ -148,20 +148,15 @@ def get_context() -> TrainContext:
 @PublicAPI(stability="alpha")
 @requires_train_worker(raise_in_tune_session=True)
 def get_preemption_info() -> Optional["PreemptionInfo"]:
-    """Return the preemption signal for the current worker, or ``None``.
+    """Return the imminent preemption info for the current worker, or ``None``.
 
-    Ray Train surfaces the cloud's advance preemption notice (e.g. a spot/TPU
-    node drain) here so the training loop can react before the node is
-    reclaimed — for example, save a just-in-time checkpoint or run cleanup, then
-    exit cleanly. Returns ``None`` until a preemption affecting this worker
-    group is detected.
-
-    Reading the signal is informational. The recommended pattern is to save a
+    Returns ``None`` until a node hosting one of the workers is being preempted
+    (e.g. a spot instance reclaim). The recommended reaction is to save a
     just-in-time checkpoint and keep training: when the node is actually
-    reclaimed, Ray Train restarts and resumes the run from the latest checkpoint
-    (consuming the ``FailureConfig.max_preemption_failures`` budget). A run that
-    returns cleanly finishes regardless of any signal, so you do not need to
-    return early to trigger a restart.
+    preempted, Ray Train restarts the run and resumes it from the latest
+    checkpoint, retrying against ``FailureConfig.max_preemption_failures``.
+    A run that returns cleanly always finishes, whether or not a preemption
+    is in progress.
 
     Example:
 
@@ -173,17 +168,14 @@ def get_preemption_info() -> Optional["PreemptionInfo"]:
             def train_func(config):
                 for step in range(config["total_steps"]):
                     if ray.train.get_preemption_info() is not None:
-                        # Reclaim imminent: save a just-in-time checkpoint so the
-                        # restarted run resumes with minimal lost work. Keep
-                        # training -- Ray Train restarts you when the node is
-                        # actually reclaimed.
+                        # Save a just-in-time checkpoint and keep training.
                         ray.train.report(metrics, checkpoint=checkpoint)
                     # ... normal training step ...
 
     Returns:
-        A :class:`PreemptionInfo` describing the imminent preemption (which
-        node IDs / ranks are affected and the reclaim deadline), or ``None`` if
-        no preemption has been signaled.
+        A :class:`~ray.train.PreemptionInfo` with the affected node ids / world
+        ranks and the reclaim deadline, or ``None`` if no preemption has been
+        detected.
     """
     return get_train_fn_utils().get_preemption_info()
 

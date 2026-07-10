@@ -1,47 +1,18 @@
 import logging
 import threading
 from collections import defaultdict
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
 import ray
 from ray.actor import ActorHandle
 from ray.train.v2._internal.constants import DEFAULT_PREEMPTION_POLL_INTERVAL_S
-from ray.util.annotations import PublicAPI
+from ray.train.v2.api.preemption import PreemptionInfo
 from ray.util.tpu import get_tpu_slice_name_from_node
 
 if TYPE_CHECKING:
     from ray.train.v2._internal.worker import RayTrainWorker
 
 logger = logging.getLogger(__name__)
-
-
-@PublicAPI(stability="alpha")
-@dataclass(frozen=True)
-class PreemptionInfo:
-    """Information about an imminent preemption event.
-
-    Attributes:
-        deadline_ms: Earliest preemption deadline (UNIX time in milliseconds)
-            across all preempted nodes. ``None`` if no deadline was reported.
-        preempted_node_to_ranks: Map of each preempted ``node_id`` to the
-            affected worker world ranks when that node is preempted.
-    """
-
-    deadline_ms: Optional[int]
-    preempted_node_to_ranks: Dict[str, List[int]]
-
-    @property
-    def preempted_node_ids(self) -> List[str]:
-        """Preempted node IDs, sorted lexicographically."""
-        return sorted(self.preempted_node_to_ranks)
-
-    @property
-    def preempted_ranks(self) -> List[int]:
-        """All affected ranks across the preempted nodes, sorted ascending."""
-        return sorted(
-            {r for ranks in self.preempted_node_to_ranks.values() for r in ranks}
-        )
 
 
 def merge_preemption_info(old: PreemptionInfo, new: PreemptionInfo) -> PreemptionInfo:
@@ -67,28 +38,29 @@ def merge_preemption_info(old: PreemptionInfo, new: PreemptionInfo) -> Preemptio
     )
 
 
-@dataclass
 class PreemptionContext:
-    """Thread-shared preemption signal for one worker actor."""
+    """Holds the preemption info for one worker actor.
 
-    _preemption_info: Optional[PreemptionInfo] = field(default=None, init=False)
-    _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
+    Written by the worker actor's main thread (``mark_preempt``) and read from
+    the training thread (``ray.train.get_preemption_info``) and the status
+    poll. No lock is needed: it is a single reference that is swapped
+    atomically, and ``PreemptionInfo`` is immutable.
+    """
+
+    def __init__(self):
+        self._preemption_info: Optional[PreemptionInfo] = None
 
     def set(self, info: PreemptionInfo) -> None:
-        with self._lock:
-            self._preemption_info = info
+        self._preemption_info = info
 
     def get(self) -> Optional[PreemptionInfo]:
-        """Return the current preemption signal, or ``None`` if none received.
+        """Return the current preemption info, or ``None`` if none received.
 
-        Reading the signal is informational: it lets the training function react
-        (e.g. save a just-in-time checkpoint and keep training) before its node
-        is reclaimed. It has no effect on control flow -- Ray Train restarts the
-        run when a node is actually reclaimed (or the reclaim deadline elapses),
-        and a run that returns cleanly finishes regardless of any signal.
+        Reading it is informational: it lets the training function react (e.g.
+        save a just-in-time checkpoint and keep training) before its node is
+        reclaimed. It has no effect on control flow.
         """
-        with self._lock:
-            return self._preemption_info
+        return self._preemption_info
 
 
 def _get_draining_nodes() -> Dict[str, int]:

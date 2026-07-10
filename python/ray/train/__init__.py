@@ -35,9 +35,6 @@ if is_v2_enabled():
             "`ray.train.v2` requires the pydantic package, which is missing. "
             "Run the following command to fix this: `pip install pydantic`"
         ) from exc
-    from ray.train.v2._internal.execution.preemption import (  # noqa: F811
-        PreemptionInfo,
-    )
     from ray.train.v2.api.callback import UserCallback  # noqa: F811
     from ray.train.v2.api.config import (  # noqa: F811
         CheckpointConfig,
@@ -53,6 +50,7 @@ if is_v2_enabled():
         TrainingFailedError,
         WorkerGroupError,
     )
+    from ray.train.v2.api.preemption import PreemptionInfo  # noqa: F811
     from ray.train.v2.api.report_config import (  # noqa: F811
         CheckpointConsistencyMode,
         CheckpointUploadMode,
