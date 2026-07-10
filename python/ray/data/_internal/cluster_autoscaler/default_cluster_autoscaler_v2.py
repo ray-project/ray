@@ -118,13 +118,11 @@ def _get_node_resource_spec_and_count(
     # shapes and counts don't leak into this requester's active / pending
     # bundles. Head detection is intentionally not subcluster-scoped: the head
     # node group is global.
-    head_node_spec = None
     worker_node_resources = []
     for node in ray.nodes():
         if not node["Alive"]:
             continue
         if "node:__internal_head__" in node["Resources"]:
-            head_node_spec = _NodeResourceSpec.from_bundle(node["Resources"])
             continue
         if (node.get("Labels") or {}).get(
             SUBCLUSTER_LABEL_KEY, DEFAULT_SUBCLUSTER
@@ -137,15 +135,13 @@ def _get_node_resource_spec_and_count(
             if not node_group_config.resources or node_group_config.max_count == 0:
                 continue
 
+            # Skip the head node group by name.
+            if node_group_config.name == "head":
+                continue
+
             node_resource_spec = _NodeResourceSpec.from_bundle(
                 node_group_config.resources
             )
-            # Skip a node group dedicated to the head node, since it can't be scaled up and thus shouldn't be counted towards the current cluster capacity or used as a template for scaling up.
-            if (
-                node_group_config.max_count == 1
-                and node_resource_spec == head_node_spec
-            ):
-                continue
 
             nodes_resource_spec_count[node_resource_spec] = 0
 

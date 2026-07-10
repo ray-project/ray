@@ -499,8 +499,8 @@ class TestClusterAutoscaling:
                 [
                     # Worker group: can scale up to 10 nodes.
                     {"resources": {"CPU": 8, "memory": 32 * GiB}, "max_count": 10},
-                    # Dedicated head group: matches the head node, max_count == 1.
-                    {"resources": {"memory": 32 * GiB}, "max_count": 1},
+                    # Dedicated head group: identified by name="head".
+                    {"resources": {"memory": 32 * GiB}, "max_count": 1, "name": "head"},
                 ],
                 None,
                 # Only the worker shape is present (with the 2 running workers);
@@ -570,11 +570,36 @@ class TestClusterAutoscaling:
                 ],
                 [
                     {"resources": {"CPU": 8, "memory": 32 * GiB}, "max_count": 10},
-                    {"resources": {"memory": 32 * GiB}, "max_count": 1},
+                    {"resources": {"memory": 32 * GiB}, "max_count": 1, "name": "head"},
                 ],
                 "training",
                 {_NodeResourceSpec.of(cpu=8, gpu=0, mem=32 * GiB): 2},
                 id="dedicated_head_excluded_and_subcluster_scoped",
+            ),
+            pytest.param(
+                # Head group excluded even when ray.nodes() memory (physical)
+                # differs from node_group_config memory (logical).
+                [
+                    {
+                        "resources": {
+                            "memory": 34 * GiB,
+                            "node:__internal_head__": 1.0,
+                        }
+                    },
+                    {"resources": {"CPU": 8, "memory": 34 * GiB}},
+                ],
+                [
+                    {"resources": {"CPU": 8, "memory": 24 * GiB}, "max_count": 10},
+                    {"resources": {"memory": 24 * GiB}, "max_count": 1, "name": "head"},
+                ],
+                None,
+                {
+                    # Config shape (logical memory)
+                    _NodeResourceSpec.of(cpu=8, gpu=0, mem=24 * GiB): 0,
+                    # Running worker shape (physical memory from ray.nodes())
+                    _NodeResourceSpec.of(cpu=8, gpu=0, mem=34 * GiB): 1,
+                },
+                id="head_excluded_despite_physical_logical_memory_mismatch",
             ),
         ],
     )
@@ -604,6 +629,8 @@ class TestClusterAutoscaling:
             for name, value in group["resources"].items():
                 node_group_config.resources[name] = value
             node_group_config.max_count = group["max_count"]
+            if "name" in group:
+                node_group_config.name = group["name"]
             cluster_config.node_group_configs.append(node_group_config)
 
         with patch("ray.nodes", return_value=node_table):
