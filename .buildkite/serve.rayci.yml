@@ -209,7 +209,7 @@ steps:
     depends_on: servetracingbuild
 
   - label: ":ray-serve: serve: HAProxy tests"
-    parallelism: 6
+    parallelism: 3
     tags:
       - serve
     instance_type: large
