@@ -12,29 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Microbenchmark: RocksDbStoreClient (inline + offload) vs
-// InMemoryStoreClient on the operations GCS uses on the hot path
-// (AsyncPut, AsyncGet, AsyncGetAll, AsyncGetKeys). Measures per-op
-// end-to-end latency (issue → callback) and wall-clock throughput,
-// computes p50/p95/p99 distributions, and emits a structured JSON
-// report.
+// Microbenchmark: RocksDbStoreClient vs InMemoryStoreClient on the
+// operations GCS uses on the hot path (AsyncPut, AsyncGet, AsyncGetAll,
+// AsyncGetKeys). Measures per-op end-to-end latency (issue → callback)
+// and wall-clock throughput, computes p50/p95/p99 distributions, and
+// emits a structured JSON report.
 //
 // **End-to-end latency.** Per-op samples capture time from the
 // AsyncPut call site to the user-supplied callback firing. This is
-// the metric the caller actually observes, and is the only fair
-// comparison between the inline and offload paths (issue-only timing
-// makes offload look ~5000x faster than it really is — that number
-// is just the enqueue cost, not the work).
+// the metric the caller actually observes. Issue-only timing would
+// look ~5000x faster (that number is just the enqueue cost, not the
+// work), so it is deliberately not used.
 //
-// **Three backends in one run** when --include-offload is passed:
-// in_memory, rocksdb_inline, rocksdb_offload. Redis is not included;
-// a fair comparison against Redis needs a Redis container plus
-// careful network-vs-local latency accounting and belongs in a
+// **Two backends in one run:** in_memory and rocksdb. RocksDB runs its
+// I/O on the offload pool (the only execution model). Redis is not
+// included; a fair comparison against Redis needs a Redis container
+// plus careful network-vs-local latency accounting and belongs in a
 // separate end-to-end benchmark.
 //
 // Usage (no line continuations to keep -Werror=comment happy):
 //   bazel run --config=ci -c opt //src/ray/gcs/store_client/tests:storage_microbench --
-//   --include-offload
 //   --io-pool-size 4
 //   --output <path>.json
 //
@@ -326,19 +323,16 @@ BackendResult BenchInMemory(IoFixture &io_fixture) {
 
 BackendResult BenchRocksDb(IoFixture &io_fixture,
                            const std::string &db_path,
-                           bool offload_io,
                            std::size_t io_pool_size,
                            std::size_t strand_buckets) {
-  std::cerr << "==> RocksDbStoreClient (" << (offload_io ? "offload" : "inline")
-            << ") at " << db_path << std::endl;
+  std::cerr << "==> RocksDbStoreClient at " << db_path << std::endl;
   RocksDbStoreClient client(io_fixture.io(),
                             db_path,
                             /*expected_cluster_id=*/"",
-                            offload_io,
                             io_pool_size,
                             strand_buckets);
   BackendResult br;
-  br.name = offload_io ? "rocksdb_offload" : "rocksdb_inline";
+  br.name = "rocksdb";
   auto [put_samples, put_total] = RunPutBench(client, io_fixture);
   br.put = Summarise(std::move(put_samples));
   br.put_total_seconds = put_total;
@@ -396,7 +390,6 @@ int main(int argc, char **argv) {
   std::string db_dir =
       std::string(std::getenv("HOME") ? std::getenv("HOME") : "/var/tmp") +
       "/.cache/ray-storage-microbench";
-  bool include_offload = false;
   std::size_t io_pool_size = 4;
   std::size_t strand_buckets = 64;
   for (int i = 1; i < argc; ++i) {
@@ -405,8 +398,6 @@ int main(int argc, char **argv) {
       output_path = argv[++i];
     } else if (a == "--db-dir" && i + 1 < argc) {
       db_dir = argv[++i];
-    } else if (a == "--include-offload") {
-      include_offload = true;
     } else if (a == "--io-pool-size" && i + 1 < argc) {
       io_pool_size = static_cast<std::size_t>(std::stoul(argv[++i]));
     } else if (a == "--strand-buckets" && i + 1 < argc) {
@@ -427,31 +418,13 @@ int main(int argc, char **argv) {
   std::random_device rd;
   std::mt19937_64 rng(rd());
 
-  fs::path inline_db = fs::path(db_dir) / ("phase7-inline-" + std::to_string(rng()));
-  fs::create_directories(inline_db);
-  std::cerr << "RocksDB inline working under: " << inline_db << std::endl;
-  results.push_back(BenchRocksDb(io_fixture,
-                                 inline_db.string(),
-                                 /*offload_io=*/false,
-                                 io_pool_size,
-                                 strand_buckets));
-  fs::remove_all(inline_db);
-
-  if (include_offload) {
-    fs::path offload_db = fs::path(db_dir) / ("phase7-offload-" + std::to_string(rng()));
-    fs::create_directories(offload_db);
-    std::cerr << "RocksDB offload working under: " << offload_db
-              << " (pool=" << io_pool_size << ", strand_buckets=" << strand_buckets << ")"
-              << std::endl;
-    results.push_back(BenchRocksDb(io_fixture,
-                                   offload_db.string(),
-                                   /*offload_io=*/true,
-                                   io_pool_size,
-                                   strand_buckets));
-    fs::remove_all(offload_db);
-  }
-
-  EmitJson(std::cout, results);
+  fs::path rocksdb_db = fs::path(db_dir) / ("phase7-rocksdb-" + std::to_string(rng()));
+  fs::create_directories(rocksdb_db);
+  std::cerr << "RocksDB working under: " << rocksdb_db << " (pool=" << io_pool_size
+            << ", strand_buckets=" << strand_buckets << ")" << std::endl;
+  results.push_back(
+      BenchRocksDb(io_fixture, rocksdb_db.string(), io_pool_size, strand_buckets));
+  fs::remove_all(rocksdb_db);  EmitJson(std::cout, results);
   if (!output_path.empty()) {
     fs::create_directories(fs::path(output_path).parent_path());
     std::ofstream f(output_path);

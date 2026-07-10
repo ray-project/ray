@@ -18,17 +18,16 @@
 //   1. AsyncPut + AsyncGet roundtrip a value within a single client.
 //   2. State persists across close+reopen of the client at the same
 //      path — the core GCS recovery claim.
-//   3. GetNextJobIDSync (the synchronous helper exercised by the
-//      concurrency tests) is monotonic within a process and persists
+//   3. AsyncGetNextJobID is monotonic within a process and persists
 //      across restart so a recovered cluster doesn't re-issue old
 //      job IDs.
 //   4. The cluster-ID marker fail-fast on PVC reuse.
-//   5. The offload path roundtrips writes across pool threads.
+//   5. Writes roundtrip across the I/O offload pool threads.
 //
 // `rocksdb_parity_test` covers the full StoreClient API surface against
 // the same fixture `in_memory_store_client_test` and
 // `redis_store_client_test` use; this file owns the RocksDb-specific
-// scenarios (close+reopen, cluster-id marker, offload path) that don't
+// scenarios (close+reopen, cluster-id marker, pool roundtrip) that don't
 // fit StoreClientTestBase.
 
 #include "ray/gcs/store_client/rocksdb_store_client.h"
@@ -36,6 +35,7 @@
 #include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <future>
 #include <memory>
 #include <optional>
 #include <random>
@@ -89,6 +89,16 @@ bool WaitFor(std::function<bool()> pred,
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
   return pred();
+}
+
+// Blocks on the async job-ID interface method. The production API is
+// async-only; tests that need a value synchronously drive it through a
+// promise/future rather than reaching for an internal helper.
+int SyncGetNextJobID(RocksDbStoreClient &client, instrumented_io_context &io) {
+  std::promise<int> p;
+  auto f = p.get_future();
+  client.AsyncGetNextJobID({[&p](int id) { p.set_value(id); }, io});
+  return f.get();
 }
 
 }  // namespace
@@ -183,16 +193,16 @@ TEST(RocksDbStoreClientTest, JobIdMonotonicAndPersists) {
   int last;
   {
     RocksDbStoreClient client(io.io(), db.string(), "");
-    int a = client.GetNextJobIDSync();
-    int b = client.GetNextJobIDSync();
-    int c = client.GetNextJobIDSync();
+    int a = SyncGetNextJobID(client, io.io());
+    int b = SyncGetNextJobID(client, io.io());
+    int c = SyncGetNextJobID(client, io.io());
     EXPECT_LT(a, b);
     EXPECT_LT(b, c);
     last = c;
   }
   {
     RocksDbStoreClient client(io.io(), db.string(), "");
-    int next = client.GetNextJobIDSync();
+    int next = SyncGetNextJobID(client, io.io());
     EXPECT_GT(next, last)
         << "Expected job ID to advance beyond the previous lifetime's max (" << last
         << "), got " << next;
@@ -214,20 +224,17 @@ TEST(RocksDbStoreClientTest, ClusterIdMarkerWritesOnFirstOpen) {
 }
 
 TEST(RocksDbStoreClientTest, OffloadPathRoundtripsAcrossPoolThreads) {
-  // Construct with offload_io=true so RocksDB calls run on the pool,
-  // not the caller's thread. Issues 64 concurrent Puts back-to-back from
-  // a single thread (the io_service thread) — without offload, those
-  // would serialize on the caller; with offload, the pool drains them
-  // in parallel. Either way, every callback must fire and every Get
-  // must return the right value. This is the correctness contract;
-  // throughput vs. inline is a microbench question, not a unit-test
-  // concern.
+  // RocksDB calls run on the I/O offload pool, not the caller's thread.
+  // Issues 64 concurrent Puts back-to-back from a single thread (the
+  // io_service thread); the pool drains them in parallel. Every callback
+  // must fire and every Get must return the right value. This is the
+  // correctness contract; throughput is a microbench question, not a
+  // unit-test concern.
   IoServiceFixture io;
   const fs::path db = UniqueTempDir("offload-roundtrip");
   RocksDbStoreClient client(io.io(),
                             db.string(),
                             /*expected_cluster_id=*/"",
-                            /*offload_io=*/true,
                             /*io_pool_size=*/4);
 
   constexpr int kN = 64;
@@ -276,7 +283,6 @@ TEST(RocksDbStoreClientTest, OffloadPathDestructorJoinsBeforeDbClose) {
     RocksDbStoreClient client(io.io(),
                               db.string(),
                               /*expected_cluster_id=*/"",
-                              /*offload_io=*/true,
                               /*io_pool_size=*/2);
     std::atomic<int> done{0};
     for (int i = 0; i < 16; ++i) {
@@ -322,7 +328,6 @@ TEST(RocksDbStoreClientTest, OffloadStrandSerializesOverwriteFalseRace) {
   RocksDbStoreClient client(io.io(),
                             db.string(),
                             /*expected_cluster_id=*/"",
-                            /*offload_io=*/true,
                             /*io_pool_size=*/4,
                             /*strand_buckets=*/64);
 
@@ -374,7 +379,6 @@ TEST(RocksDbStoreClientTest, OffloadStrandPreservesLastWriterWinsForSameKey) {
   RocksDbStoreClient client(io.io(),
                             db.string(),
                             /*expected_cluster_id=*/"",
-                            /*offload_io=*/true,
                             /*io_pool_size=*/4,
                             /*strand_buckets=*/64);
 
@@ -419,7 +423,6 @@ TEST(RocksDbStoreClientTest, OffloadStrandPreservesDeleteThenPut) {
   RocksDbStoreClient client(io.io(),
                             db.string(),
                             /*expected_cluster_id=*/"",
-                            /*offload_io=*/true,
                             /*io_pool_size=*/4,
                             /*strand_buckets=*/64);
 
@@ -478,7 +481,6 @@ TEST(RocksDbStoreClientTest, OffloadStrandPreservesCrossKeyParallelism) {
   RocksDbStoreClient client(io.io(),
                             db.string(),
                             /*expected_cluster_id=*/"",
-                            /*offload_io=*/true,
                             /*io_pool_size=*/4,
                             /*strand_buckets=*/64);
 
@@ -527,7 +529,6 @@ TEST(RocksDbStoreClientTest, OffloadStrandOrdersBatchDeleteAfterSameKeyPut) {
   RocksDbStoreClient client(io.io(),
                             db.string(),
                             /*expected_cluster_id=*/"",
-                            /*offload_io=*/true,
                             /*io_pool_size=*/4,
                             /*strand_buckets=*/64);
 
@@ -594,7 +595,6 @@ TEST(RocksDbStoreClientTest, OffloadStrandOrdersMultiGetAfterSameKeyPut) {
   RocksDbStoreClient client(io.io(),
                             db.string(),
                             /*expected_cluster_id=*/"",
-                            /*offload_io=*/true,
                             /*io_pool_size=*/4,
                             /*strand_buckets=*/64);
 

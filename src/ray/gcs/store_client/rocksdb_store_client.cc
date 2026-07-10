@@ -90,25 +90,22 @@ RocksDbStoreClient::RocksDbStoreClient(
     [[maybe_unused]] instrumented_io_context &io_service,
     const std::string &db_path,
     const std::string &expected_cluster_id,
-    bool offload_io,
     std::size_t io_pool_size,
     std::size_t strand_buckets,
     const std::string &soft_durability_tables)
     : soft_durability_tables_(ParseTableSet(soft_durability_tables)) {
-  if (offload_io) {
-    // Boost requires >=1 thread; clamp here so pool_size=0 from a bad
-    // config can't crash the GCS at startup.
-    io_pool_ =
-        std::make_unique<boost::asio::thread_pool>(io_pool_size > 0 ? io_pool_size : 1);
-    // Build the strand bucket array off the pool's executor. Strands
-    // wrap the executor; same-bucket posts run serialized, different
-    // buckets run concurrently up to pool size. Clamp to >= 1 for the
-    // same reason as io_pool_size.
-    const std::size_t buckets = strand_buckets > 0 ? strand_buckets : 1;
-    strands_.reserve(buckets);
-    for (std::size_t i = 0; i < buckets; ++i) {
-      strands_.emplace_back(std::make_unique<StrandT>(io_pool_->get_executor()));
-    }
+  // Boost requires >=1 thread; clamp here so pool_size=0 from a bad
+  // config can't crash the GCS at startup.
+  io_pool_ =
+      std::make_unique<boost::asio::thread_pool>(io_pool_size > 0 ? io_pool_size : 1);
+  // Build the strand bucket array off the pool's executor. Strands
+  // wrap the executor; same-bucket posts run serialized, different
+  // buckets run concurrently up to pool size. Clamp to >= 1 for the
+  // same reason as io_pool_size.
+  const std::size_t buckets = strand_buckets > 0 ? strand_buckets : 1;
+  strands_.reserve(buckets);
+  for (std::size_t i = 0; i < buckets; ++i) {
+    strands_.emplace_back(std::make_unique<StrandT>(io_pool_->get_executor()));
   }
   RAY_CHECK(!db_path.empty()) << "RAY_gcs_storage_path must be set when "
                                  "RAY_gcs_storage=rocksdb. (RAY_CONFIG env "
@@ -221,12 +218,6 @@ RocksDbStoreClient::~RocksDbStoreClient() {
 void RocksDbStoreClient::RunIoForKey(const std::string &table_name,
                                      const std::string &key,
                                      std::function<void()> work) {
-  if (strands_.empty()) {
-    // Inline path: io_service is single-threaded so per-key submission
-    // order is preserved by direct execution.
-    work();
-    return;
-  }
   // absl::HashOf combines the table and key into a single 64-bit hash;
   // collisions across (table, key) pairs are expected and harmless —
   // they just mean two unrelated keys share a strand bucket and become
@@ -237,10 +228,6 @@ void RocksDbStoreClient::RunIoForKey(const std::string &table_name,
 }
 
 void RocksDbStoreClient::RunIoUnordered(std::function<void()> work) {
-  if (!io_pool_) {
-    work();
-    return;
-  }
   boost::asio::post(*io_pool_, std::move(work));
 }
 

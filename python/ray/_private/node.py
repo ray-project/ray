@@ -474,35 +474,39 @@ class Node:
     def _is_rocksdb_gcs(self):
         return self._resolve_ray_config("gcs_storage", "memory") == "rocksdb"
 
+    def _check_persisted_rocksdb_session_name(self):
+        # Read the session_name marker file written by the previous head
+        # process. GCS isn't up yet at this point in startup, so we can't
+        # query the rocksdb-backed internal_kv directly; the marker file
+        # bridges that gap. (This is a plain file on the GCS storage
+        # volume, not a Kubernetes sidecar container.) See
+        # src/ray/gcs/store_client/rocksdb_session_name_recovery.md for
+        # the full rationale and write-path invariants.
+        rocksdb_storage_path = self._resolve_ray_config("gcs_storage_path", "")
+        if not rocksdb_storage_path:
+            # Mirrors the C++ RAY_CHECK in
+            # gcs_server.cc::GetStorageType(); fail loudly rather
+            # than silently skipping recovery, which would
+            # generate a fresh session_name and trip the assert
+            # at the persisted-value check below.
+            raise ValueError(
+                "RAY_gcs_storage=rocksdb requires RAY_gcs_storage_path "
+                "to be set to a writable directory."
+            )
+        session_name_file = os.path.join(rocksdb_storage_path, "session_name")
+        try:
+            with open(session_name_file, "rb") as f:
+                persisted = f.read().strip()
+                return persisted if persisted else None
+        except FileNotFoundError:
+            return None
+
     def check_persisted_session_name(self):
-        # When the GCS backend is rocksdb, read the session_name marker
-        # file written by the previous head process. GCS isn't up yet at
-        # this point in startup, so we can't query the rocksdb-backed
-        # internal_kv directly; the marker file bridges that gap. (This
-        # is a plain file on the GCS storage volume, not a Kubernetes
-        # sidecar container.) Falls through to the Redis path below for
-        # non-rocksdb deployments. See
-        # src/ray/gcs/store_client/rocksdb_session_name_recovery.md for the
-        # full rationale and write-path invariants.
+        # For the rocksdb GCS backend the session_name lives in a marker
+        # file on the storage volume; delegate to the helper. Non-rocksdb
+        # deployments fall through to the Redis path below.
         if self._is_rocksdb_gcs():
-            rocksdb_storage_path = self._resolve_ray_config("gcs_storage_path", "")
-            if not rocksdb_storage_path:
-                # Mirrors the C++ RAY_CHECK in
-                # gcs_server.cc::GetStorageType(); fail loudly rather
-                # than silently skipping recovery, which would
-                # generate a fresh session_name and trip the assert
-                # at the persisted-value check below.
-                raise ValueError(
-                    "RAY_gcs_storage=rocksdb requires RAY_gcs_storage_path "
-                    "to be set to a writable directory."
-                )
-            session_name_file = os.path.join(rocksdb_storage_path, "session_name")
-            try:
-                with open(session_name_file, "rb") as f:
-                    persisted = f.read().strip()
-                    return persisted if persisted else None
-            except FileNotFoundError:
-                return None
+            return self._check_persisted_rocksdb_session_name()
 
         if self._ray_params.external_addresses is None:
             return None

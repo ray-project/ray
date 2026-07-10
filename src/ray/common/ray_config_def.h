@@ -443,25 +443,20 @@ RAY_CONFIG(std::string, gcs_storage, "memory")
 /// gcs_storage == "rocksdb".
 RAY_CONFIG(std::string, gcs_storage_path, "")
 
-/// Offload RocksDB I/O (including the WAL fsync that dominates per-call
-/// latency) to a background thread pool so blocking ops do not stall the
-/// GCS event loop. When false, each Async* call runs synchronously on
-/// the caller's thread, matching InMemoryStoreClient semantics.
-RAY_CONFIG(bool, gcs_rocksdb_async_offload, false)
-
-/// Number of worker threads in the RocksDB offload pool. Only meaningful
-/// when gcs_rocksdb_async_offload is true. RocksDB serializes WAL writes
-/// internally and batches concurrent in-flight writers into one fsync
-/// (group commit), so a small pool (~4) is enough to capture the
-/// aggregate-throughput benefit on the GCS metadata workload.
+/// Number of worker threads in the RocksDB I/O offload pool. RocksDB I/O
+/// (including the WAL fsync that dominates per-call latency) always runs
+/// on this pool so blocking ops do not stall the GCS event loop. RocksDB
+/// serializes WAL writes internally and batches concurrent in-flight
+/// writers into one fsync (group commit), so a small pool (~4) is enough
+/// to capture the aggregate-throughput benefit on the GCS metadata
+/// workload.
 RAY_CONFIG(uint32_t, gcs_rocksdb_io_pool_size, 4)
 
 /// Number of per-key strand buckets used for single-key op ordering on
-/// the offload path. Single-key ops (Put/Get/Delete/Exists) are bucketed
-/// by hash(table, key) and serialized within a bucket; different buckets
-/// run concurrently up to the pool size. Default 64 gives ~16x headroom
-/// over the typical pool size (4). Only meaningful when
-/// gcs_rocksdb_async_offload is true.
+/// the RocksDB I/O offload pool. Single-key ops (Put/Get/Delete/Exists)
+/// are bucketed by hash(table, key) and serialized within a bucket;
+/// different buckets run concurrently up to the pool size. Default 64
+/// gives ~16x headroom over the typical pool size (4).
 RAY_CONFIG(uint32_t, gcs_rocksdb_strand_buckets, 64)
 
 /// Comma-separated GCS table names whose RocksDB writes skip the per-write

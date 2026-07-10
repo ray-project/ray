@@ -17,8 +17,8 @@
 // Tests two correctness claims under contention:
 //   1. The mutex-RMW JobID counter is atomic and produces no
 //      duplicates / no skips under N-thread contention. Exercised via
-//      `GetNextJobIDSync()` (the synchronous helper retained for
-//      test purposes; production code goes through `AsyncGetNextJobID`).
+//      the public `AsyncGetNextJobID` interface, blocked on a
+//      promise/future so the test can compare returned values.
 //   2. AsyncPut from multiple producer threads against a single
 //      io_context yields fully-recoverable, value-correct state.
 
@@ -26,6 +26,7 @@
 #include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -83,6 +84,17 @@ bool WaitFor(std::function<bool()> pred,
   return pred();
 }
 
+// Blocks on the public async job-ID interface. The RMW-under-mutex
+// contention this file stresses is identical whether callers invoke the
+// internal helper directly or drive it through `AsyncGetNextJobID`; the
+// latter is the only interface production code has, so tests use it too.
+int SyncGetNextJobID(RocksDbStoreClient &client, instrumented_io_context &io) {
+  std::promise<int> p;
+  auto f = p.get_future();
+  client.AsyncGetNextJobID({[&p](int id) { p.set_value(id); }, io});
+  return f.get();
+}
+
 class RocksDbConcurrencyTest : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -119,7 +131,7 @@ TEST_F(RocksDbConcurrencyTest, JobIdNoDuplicatesAcrossThreads) {
       std::vector<int> local;
       local.reserve(kPerThread);
       for (int i = 0; i < kPerThread; ++i) {
-        local.push_back(client_->GetNextJobIDSync());
+        local.push_back(SyncGetNextJobID(*client_, io_fixture_->io()));
       }
       std::lock_guard<std::mutex> lock(collector_mutex);
       for (int id : local) all_ids.push_back(id);
@@ -148,7 +160,7 @@ TEST_F(RocksDbConcurrencyTest, JobIdMonotonicPerThread) {
       auto &v = per_thread[t];
       v.reserve(kPerThread);
       for (int i = 0; i < kPerThread; ++i) {
-        v.push_back(client_->GetNextJobIDSync());
+        v.push_back(SyncGetNextJobID(*client_, io_fixture_->io()));
       }
     });
   }
@@ -235,7 +247,7 @@ TEST_F(RocksDbConcurrencyTest, JobIdSurvivesRestartAfterConcurrentLoad) {
     workers.emplace_back([this, &m, &ids_first_lifetime] {
       std::vector<int> local;
       for (int i = 0; i < kPerThread; ++i) {
-        local.push_back(client_->GetNextJobIDSync());
+        local.push_back(SyncGetNextJobID(*client_, io_fixture_->io()));
       }
       std::lock_guard<std::mutex> lock(m);
       for (int id : local) ids_first_lifetime.push_back(id);
@@ -251,7 +263,7 @@ TEST_F(RocksDbConcurrencyTest, JobIdSurvivesRestartAfterConcurrentLoad) {
   client_ =
       std::make_unique<RocksDbStoreClient>(io_fixture_->io(), db_path_.string(), "");
 
-  int next = client_->GetNextJobIDSync();
+  int next = SyncGetNextJobID(*client_, io_fixture_->io());
   EXPECT_GT(next, max_first)
       << "Job ID rolled back across restart; this would let a recovered "
          "cluster re-issue an old job ID — silent corruption.";
