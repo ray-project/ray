@@ -2027,6 +2027,26 @@ class TestCaseInsensitiveColumns:
             ctx.iceberg_case_sensitive = original
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+class TestDynamicOverwrite:
+    """Tests for SaveMode.DYNAMIC_OVERWRITE."""
+
+    def test_dynamic_overwrite_rejects_overwrite_filter(self):
+        """overwrite_filter is meaningless in DYNAMIC_OVERWRITE and must be rejected."""
+        from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
+
+        with pytest.raises(ValueError, match="overwrite_filter"):
+            IcebergDatasink(
+                table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+                catalog_kwargs=_CATALOG_KWARGS.copy(),
+                mode=SaveMode.DYNAMIC_OVERWRITE,
+                overwrite_filter=col("col_c") == 1,
+            )
+
+
 if __name__ == "__main__":
     import sys
 

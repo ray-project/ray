@@ -199,7 +199,7 @@ class IcebergDatasink(
             self._case_sensitive = self._upsert_kwargs.pop(
                 "case_sensitive", ctx_case_sensitive
             )
-        elif self._mode == SaveMode.OVERWRITE:
+        elif self._mode in (SaveMode.OVERWRITE, SaveMode.DYNAMIC_OVERWRITE):
             self._case_sensitive = self._overwrite_kwargs.pop(
                 "case_sensitive", ctx_case_sensitive
             )
@@ -211,9 +211,19 @@ class IcebergDatasink(
             raise ValueError(
                 f"upsert_kwargs can only be specified when mode is SaveMode.UPSERT, but mode is {self._mode}"
             )
-        if self._overwrite_kwargs and self._mode != SaveMode.OVERWRITE:
+        if self._overwrite_kwargs and self._mode not in (
+            SaveMode.OVERWRITE,
+            SaveMode.DYNAMIC_OVERWRITE,
+        ):
             raise ValueError(
-                f"overwrite_kwargs can only be specified when mode is SaveMode.OVERWRITE, but mode is {self._mode}"
+                "overwrite_kwargs can only be specified when mode is SaveMode.OVERWRITE "
+                f"or SaveMode.DYNAMIC_OVERWRITE, but mode is {self._mode}"
+            )
+
+        if self._mode == SaveMode.DYNAMIC_OVERWRITE and self._overwrite_filter is not None:
+            raise ValueError(
+                "overwrite_filter cannot be used with SaveMode.DYNAMIC_OVERWRITE; "
+                "partitions to replace are detected automatically from the data."
             )
 
         # Remove invalid parameters from overwrite_kwargs if present
