@@ -1,12 +1,46 @@
 """Utility functions for expression-based operations."""
 
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Hashable, List, Optional
 
 if TYPE_CHECKING:
-    from ray.data.expressions import Expr
+    from ray.data.expressions import (
+        AliasExpr,
+        BinaryExpr,
+        ColumnExpr,
+        DownloadExpr,
+        Expr,
+        LiteralExpr,
+        MonotonicallyIncreasingIdExpr,
+        RandomExpr,
+        UDFExpr,
+        UnaryExpr,
+        UUIDExpr,
+    )
 
 
-def create_callable_class_udf_init_fn(
+def _get_setting_with_copy_warning() -> Optional[type]:
+    """Get the SettingWithCopyWarning class from pandas, if available.
+
+    Pandas has moved/renamed this warning across versions, and pandas 3.x may not
+    expose it at all. This function handles the version differences gracefully
+    using hasattr checks instead of try-except blocks.
+
+    Returns:
+        The SettingWithCopyWarning class if found, None otherwise.
+    """
+    import pandas as pd
+
+    # Use hasattr to avoid try-catch blocks as suggested
+    if hasattr(pd.core.common, "SettingWithCopyWarning"):
+        return pd.core.common.SettingWithCopyWarning
+    elif hasattr(pd.errors, "SettingWithCopyWarning"):
+        return pd.errors.SettingWithCopyWarning
+    else:
+        # Warning not available in this pandas version
+        return None
+
+
+def _create_callable_class_udf_init_fn(
     exprs: List["Expr"],
 ) -> Optional[Callable[[], None]]:
     """Create an init_fn to initialize all callable class UDFs in expressions.
@@ -110,3 +144,121 @@ def _call_udf_instance_with_async_bridge(
     else:
         # Synchronous instance - direct call
         return instance(*args, **kwargs)
+
+
+def _make_hashable(value: Any) -> Hashable:
+    try:
+        hash(value)
+        return value
+    except TypeError:
+        pass
+
+    if isinstance(value, list):
+        return tuple(_make_hashable(v) for v in value)
+    if isinstance(value, tuple):
+        return tuple(_make_hashable(v) for v in value)
+    if isinstance(value, dict):
+        return tuple(
+            sorted(
+                ((k, _make_hashable(v)) for k, v in value.items()),
+                key=lambda item: repr(item[0]),
+            )
+        )
+    if isinstance(value, set):
+        return frozenset(_make_hashable(v) for v in value)
+
+    return repr(value)
+
+
+def _data_type_key(expr: "Expr") -> Hashable:
+    return repr(getattr(expr, "data_type", None))
+
+
+def _udf_function_key(fn: Any) -> Hashable:
+    from ray.data.expressions import _CallableClassUDF
+
+    if isinstance(fn, _CallableClassUDF):
+        return ("callable_class", fn.callable_class_spec.make_key())
+    return ("function", _make_hashable(fn))
+
+
+def _column_fingerprint_key(expr: "ColumnExpr") -> Hashable:
+    return ("column", expr.name)
+
+
+def _literal_fingerprint_key(expr: "LiteralExpr") -> Hashable:
+    return ("literal", type(expr.value), _make_hashable(expr.value))
+
+
+def _binary_fingerprint_key(
+    expr: "BinaryExpr", left_key: Hashable, right_key: Hashable
+) -> Hashable:
+    return ("binary", expr.op, left_key, right_key)
+
+
+def _unary_fingerprint_key(expr: "UnaryExpr", operand_key: Hashable) -> Hashable:
+    return ("unary", expr.op, operand_key)
+
+
+def _udf_fingerprint_key(
+    expr: "UDFExpr",
+    arg_keys: tuple[Hashable, ...],
+    kwarg_keys: tuple[tuple[str, Hashable], ...],
+) -> Hashable:
+    from ray.data.expressions import PyArrowComputeUDFExpr
+
+    if isinstance(expr, PyArrowComputeUDFExpr):
+        return (
+            "pyarrow_compute_udf",
+            _make_hashable(expr.pc_func),
+            _make_hashable(expr.pc_positional),
+            _make_hashable(expr.pc_kwargs),
+            arg_keys,
+            kwarg_keys,
+            _data_type_key(expr),
+        )
+
+    return (
+        "udf",
+        _udf_function_key(expr.fn),
+        arg_keys,
+        kwarg_keys,
+        _data_type_key(expr),
+    )
+
+
+def _alias_fingerprint_key(expr: "AliasExpr", child_key: Hashable) -> Hashable:
+    return (
+        "alias",
+        expr.name,
+        expr._is_rename,
+        child_key,
+        _data_type_key(expr),
+    )
+
+
+def _download_fingerprint_key(expr: "DownloadExpr") -> Hashable:
+    return ("download", expr.uri_column_name)
+
+
+def _star_fingerprint_key() -> Hashable:
+    return ("star",)
+
+
+def _monotonically_increasing_id_fingerprint_key(
+    expr: "MonotonicallyIncreasingIdExpr",
+) -> Hashable:
+    return ("monotonically_increasing_id", expr._instance_id)
+
+
+def _random_fingerprint_key(expr: "RandomExpr") -> Hashable:
+    return (
+        "random",
+        expr.seed,
+        expr.reseed_after_execution,
+        _data_type_key(expr),
+    )
+
+
+def _uuid_fingerprint_key(expr: "UUIDExpr") -> Hashable:
+    return ("uuid", _data_type_key(expr))

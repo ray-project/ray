@@ -12,9 +12,7 @@
 ### Writing Applications
 
 <!---
-NOTE: `serve.deployment` and `serve.Deployment` have an autosummary-generated filename collision due to case insensitivity.
-This is fixed by added custom filename mappings in `source/conf.py` (look for "autosummary_filename_map").
---->
+NOTE: `serve.deployment` and `serve.Deployment` have an autosummary-generated filename collision due to case insensitivity. This is fixed by added custom filename mappings in `source/conf.py` (look for "autosummary_filename_map"). --->
 
 ```{eval-rst}
 .. autosummary::
@@ -43,8 +41,7 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
 #### Deployment Handles
 
 :::{note}
-The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully removed as of Ray 2.10.
-See the [model composition guide](serve-model-composition) for how to update code to use the {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` API instead.
+The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully removed as of Ray 2.10. See the [model composition guide](serve-model-composition) for how to update code to use the {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` API instead.
 :::
 
 ```{eval-rst}
@@ -56,6 +53,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.handle.DeploymentHandle
    serve.handle.DeploymentResponse
    serve.handle.DeploymentResponseGenerator
+   serve.handle.DeploymentBroadcastResponse
 ```
 
 ### Running Applications
@@ -79,19 +77,28 @@ See the [model composition guide](serve-model-composition) for how to update cod
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
 
    serve.config.ProxyLocation
+   serve.config.AutoscalingContext
+   serve.autoscaling_policy.replica_queue_length_autoscaling_policy
+   serve.config.AggregationFunction
+   serve.config.GangPlacementStrategy
+   serve.config.GangRuntimeFailurePolicy
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/autopydantic.rst
+
+   serve.config.ControllerOptions
    serve.config.gRPCOptions
    serve.config.HTTPOptions
    serve.config.AutoscalingConfig
    serve.config.AutoscalingPolicy
-   serve.config.AutoscalingContext
-   serve.autoscaling_policy.replica_queue_length_autoscaling_policy
-   serve.config.AggregationFunction
    serve.config.RequestRouterConfig
    serve.config.GangSchedulingConfig
-   serve.config.GangPlacementStrategy
-   serve.config.GangRuntimeFailurePolicy
+   serve.config.DeploymentActorConfig
 ```
 
 ### Schemas
@@ -113,6 +120,15 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.schema.ScalingDecision
    serve.schema.DeploymentAutoscalingDetail
    serve.schema.ReplicaRank
+```
+
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
+
+   serve.schema.TaskProcessorAdapter
 ```
 
 ### Request Router
@@ -139,6 +155,8 @@ See the [model composition guide](serve-model-composition) for how to update cod
    :toctree: doc/
 
    serve.get_replica_context
+   serve.get_trace_context
+   serve.get_deployment_actor
    serve.context.ReplicaContext
    serve.context.GangContext
    serve.get_multiplexed_model_id
@@ -151,6 +169,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.exceptions.RequestCancelledError
    serve.exceptions.gRPCStatusError
    serve.exceptions.DeploymentUnavailableError
+   serve.exceptions.ReplicaUnavailableError
 ```
 
 
@@ -392,6 +411,7 @@ Content-Type: application/json
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :template: autosummary/autopydantic.rst
 
    schema.ServeDeploySchema
    schema.gRPCOptionsSchema
@@ -403,7 +423,7 @@ Content-Type: application/json
    schema.TaskProcessorConfig
    schema.TaskResult
    schema.ScaleDeploymentRequest
-   schema.TaskProcessorAdapter
+
 ```
 
 (serve-rest-api-response-schema)=
@@ -413,18 +433,27 @@ Content-Type: application/json
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :template: autosummary/autopydantic.rst
 
    schema.ServeInstanceDetails
-   schema.APIType
-   schema.ApplicationStatus
    schema.ApplicationDetails
    schema.DeploymentDetails
    schema.ReplicaDetails
-   schema.ProxyStatus
    schema.TargetGroup
    schema.Target
    schema.DeploymentNode
    schema.DeploymentTopology
+   schema.ControllerHealthMetrics
+   schema.DurationStats
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
+
+   schema.APIType
+   schema.ApplicationStatus
+   schema.ProxyStatus
 
 ```
 
@@ -434,10 +463,17 @@ Content-Type: application/json
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
 
    metrics.Counter
    metrics.Histogram
    metrics.Gauge
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/autopydantic.rst
+
    schema.LoggingConfig
 ```
 

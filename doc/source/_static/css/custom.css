@@ -177,6 +177,15 @@ div.navbar-content a {
   align-items: start;
   white-space: pre;
   justify-content: center;
+  /* pydata-sphinx-theme 0.14's `.navbar-nav li a { height: 100% }` was
+     scoped to `ul.navbar-nav li a` in 0.17, which no longer matches our
+     `<nav class="navbar-nav">`. Without height: 100% on <a>, the <a>
+     shrinks to text height (~26px) inside its 64px-tall <p> parent,
+     leaving the link text top-aligned in the navbar and the chevron
+     (which is centered on the .ref-container) visually below the text.
+     Restoring height: 100% lets justify-content: center vertically
+     center the text in the full-height anchor. */
+  height: 100%;
 }
 div.navbar-content {
   height: 100%;
@@ -215,6 +224,20 @@ li.active-link {
 /* Disable underline for hovered links in the nav bar */
 .navbar-nav li a:hover {
   text-decoration: none;
+}
+/* pydata-sphinx-theme 0.17 stopped removing text-decoration on
+   <a class="reference internal"> inside the top navbar (the rule it
+   ships now only matches <a class="nav-link">). Re-add it for our
+   reference-internal anchors. */
+.navbar-toplevel a.reference {
+  text-decoration: none;
+}
+/* pydata-sphinx-theme 0.17 stopped hiding the sidebar-header-items__title
+   element (Ray's navbar-links.html template emits "Site Navigation" as
+   a screen-reader heading). Hide it in the header context — it still
+   renders in the actual sidebar drawer where the heading is useful. */
+.navbar-header-items .sidebar-header-items__title {
+  display: none;
 }
 .navbar-header-items {
   padding-left: 0;
@@ -375,11 +398,14 @@ table.autosummary tr > td:first-child > p > a > code > span {
   width: 30%;
 }
 
+/* pydata-sphinx-theme 0.14 painted the announcement banner background via
+   an absolutely-positioned `::after` pseudo-element. 0.17 replaced that
+   with `background-color: var(--pst-color-secondary-bg)` directly on
+   `.bd-header-announcement`, so the `::after` rule is now a no-op and
+   pydata's default secondary-bg paints the banner lavender. Set the
+   background directly on the element to keep Ray's teal. */
 .bd-header-announcement {
   color: var(--pst-color-light);
-}
-
-.bd-header-announcement::after {
   background-color: var(--ray-blue);
 }
 

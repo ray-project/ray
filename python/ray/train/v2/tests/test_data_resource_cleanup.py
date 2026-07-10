@@ -1,6 +1,6 @@
 import sys
 import time
-from unittest.mock import MagicMock, create_autospec
+from unittest.mock import create_autospec
 
 import pytest
 
@@ -11,91 +11,51 @@ from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator impor
 from ray.data._internal.iterator.stream_split_iterator import (
     SplitCoordinator,
 )
-from ray.train.v2._internal.callbacks.datasets import DatasetsCallback
-from ray.train.v2._internal.execution.worker_group import (
-    WorkerGroup,
-    WorkerGroupContext,
+from ray.train.v2._internal.callbacks.datasets import (
+    DatasetsCallback,
+    RayDatasetShardProvider,
 )
+from ray.train.v2._internal.execution.worker_group import WorkerGroupContext
 from ray.train.v2.tests.util import DummyObjectRefWrapper, create_dummy_run_context
 
 pytestmark = pytest.mark.usefixtures("mock_runtime_context")
 
 
-def test_datasets_callback_multiple_datasets(ray_start_4_cpus):
-    """Test that the DatasetsCallback properly collects the coordinator actors for multiple datasets"""
-    # Start worker group
-    worker_group_context = WorkerGroupContext(
+def _dummy_worker_group_context() -> WorkerGroupContext:
+    return WorkerGroupContext(
         run_attempt_id="test",
         train_fn_ref=DummyObjectRefWrapper(lambda: None),
         num_workers=4,
         resources_per_worker={"CPU": 1},
     )
-    wg = WorkerGroup.create(
-        train_run_context=create_dummy_run_context(),
-        worker_group_context=worker_group_context,
-    )
-
-    # Create train run context
-    NUM_ROWS = 100
-
-    datasets = {
-        "sharded_1": ray.data.range(NUM_ROWS),
-        "sharded_2": ray.data.range(NUM_ROWS),
-        "unsharded": ray.data.range(NUM_ROWS),
-    }
-    dataset_config = ray.train.DataConfig(datasets_to_split=["sharded_1", "sharded_2"])
-    train_run_context = create_dummy_run_context(
-        datasets=datasets, dataset_config=dataset_config
-    )
-
-    callback = DatasetsCallback(train_run_context)
-    callback.before_init_train_context(wg.get_workers())
-
-    # Two coordinator actors, one for each sharded dataset
-    coordinator_actors = callback._coordinator_actors
-    assert len(coordinator_actors) == 2
-
-
-def test_after_worker_group_abort():
-    callback = DatasetsCallback(create_dummy_run_context())
-
-    # Mock SplitCoordinator shutdown_executor method
-    coord_mock = create_autospec(SplitCoordinator)
-    remote_mock = MagicMock()
-    coord_mock.shutdown_executor.remote = remote_mock
-    callback._coordinator_actors = [coord_mock]
-
-    dummy_wg_context = WorkerGroupContext(
-        run_attempt_id="test",
-        train_fn_ref=DummyObjectRefWrapper(lambda: None),
-        num_workers=4,
-        resources_per_worker={"CPU": 1},
-    )
-    callback.after_worker_group_abort(dummy_wg_context)
-
-    # shutdown_executor called on SplitCoordinator
-    remote_mock.assert_called_once()
 
 
 def test_after_worker_group_shutdown():
-    callback = DatasetsCallback(create_dummy_run_context())
-
-    # Mock SplitCoordinator shutdown_executor method
-    coord_mock = create_autospec(SplitCoordinator)
-    remote_mock = MagicMock()
-    coord_mock.shutdown_executor.remote = remote_mock
-    callback._coordinator_actors = [coord_mock]
-
-    dummy_wg_context = WorkerGroupContext(
-        run_attempt_id="test",
-        train_fn_ref=DummyObjectRefWrapper(lambda: None),
-        num_workers=4,
-        resources_per_worker={"CPU": 1},
+    """The callback delegates shutdown to the dataset shard provider."""
+    callback = DatasetsCallback(
+        train_run_context=create_dummy_run_context(), datasets={}
     )
-    callback.after_worker_group_shutdown(dummy_wg_context)
+    shard_provider = create_autospec(RayDatasetShardProvider)
+    callback._dataset_shard_provider = shard_provider
 
-    # shutdown_executor called on SplitCoordinator
-    remote_mock.assert_called_once()
+    callback.after_worker_group_shutdown(
+        worker_group_context=_dummy_worker_group_context()
+    )
+    shard_provider.shutdown_data_executors.assert_called_once()
+
+
+def test_after_worker_group_abort():
+    """The callback delegates abort cleanup to the dataset shard provider."""
+    callback = DatasetsCallback(
+        train_run_context=create_dummy_run_context(), datasets={}
+    )
+    shard_provider = create_autospec(RayDatasetShardProvider)
+    callback._dataset_shard_provider = shard_provider
+
+    callback.after_worker_group_abort(
+        worker_group_context=_dummy_worker_group_context()
+    )
+    shard_provider.shutdown_data_executors.assert_called_once()
 
 
 def test_split_coordinator_shutdown_executor(ray_start_4_cpus):
@@ -125,7 +85,7 @@ def test_split_coordinator_shutdown_executor(ray_start_4_cpus):
     # Explicitly trigger autoscaling
     ray.get(
         coord.__ray_call__.remote(
-            lambda coord: coord._executor._cluster_autoscaler.try_trigger_scaling()
+            lambda coord: coord._current_executor._cluster_autoscaler.try_trigger_scaling()
         )
     )
 

@@ -27,6 +27,8 @@ config = (
             head_fcnet_activation=None,
             head_fcnet_kernel_initializer="orthogonal_",
             head_fcnet_kernel_initializer_kwargs={"gain": 0.01},
+            fusionnet_hiddens=[256, 256, 256],
+            fusionnet_activation="relu",
         ),
     )
     .reporting(

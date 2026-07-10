@@ -14,8 +14,6 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray._common.retry import call_with_retry
-from ray.data._internal.arrow_block import ArrowBlockAccessor
-from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import _check_import
@@ -58,7 +56,12 @@ class TurbopufferDatasink(Datasink):
             column is removed from the data before writing.  Mutually
             exclusive with ``namespace``.
         region: Turbopuffer region identifier (for example,
-            ``"gcp-us-central1"``).
+            ``"gcp-us-central1"``).  Mutually exclusive with ``base_url``.
+            Exactly one of ``region`` or ``base_url`` must be supplied.
+        base_url: Base URL for the Turbopuffer API (for example,
+            ``"https://gcp-us-central1.turbopuffer.com"``).  Mutually
+            exclusive with ``region``.  Exactly one of ``region`` or
+            ``base_url`` must be supplied.
         api_key: Turbopuffer API key. If omitted, the value is read from the
             ``TURBOPUFFER_API_KEY`` environment variable.
         schema: Optional Turbopuffer schema definition to pass along with
@@ -79,7 +82,7 @@ class TurbopufferDatasink(Datasink):
             :meth:`~ray.data.Dataset.write_datasink` ``concurrency``.
 
     Examples:
-        Write to a single namespace:
+        Write to a single namespace using a region:
 
         .. testcode::
            :skipif: True
@@ -97,6 +100,19 @@ class TurbopufferDatasink(Datasink):
                    namespace="my-namespace",
                    api_key="<YOUR_API_KEY>",
                    region="gcp-us-central1",
+               )
+           )
+
+        Write using a base URL instead of a region:
+
+        .. testcode::
+           :skipif: True
+
+           ds.write_datasink(
+               TurbopufferDatasink(
+                   namespace="my-namespace",
+                   api_key="<YOUR_API_KEY>",
+                   base_url="https://gcp-us-central1.turbopuffer.com",
                )
            )
 
@@ -119,7 +135,8 @@ class TurbopufferDatasink(Datasink):
         namespace: Optional[str] = None,
         *,
         namespace_column: Optional[str] = None,
-        region: str,
+        region: Optional[str] = None,
+        base_url: Optional[str] = None,
         api_key: Optional[str] = None,
         schema: Optional[dict] = None,
         id_column: str = "id",
@@ -142,11 +159,18 @@ class TurbopufferDatasink(Datasink):
                 "Either 'namespace' or 'namespace_column' must be provided."
             )
 
+        # Validate region / base_url mutual exclusivity.
+        if region is not None and base_url is not None:
+            raise ValueError("Specify exactly one of 'region' or 'base_url', not both.")
+        if region is None and base_url is None:
+            raise ValueError("Either 'region' or 'base_url' must be provided.")
+
         # Store configuration
         self.namespace = namespace
         self.namespace_column = namespace_column
         self.api_key = api_key or os.getenv(TURBOPUFFER_API_KEY_ENV_VAR)
         self.region = region
+        self.base_url = base_url
         self.schema = schema
         self.id_column = id_column
         self.vector_column = vector_column
@@ -195,9 +219,12 @@ class TurbopufferDatasink(Datasink):
         if self._client is None:
             import turbopuffer
 
-            self._client = turbopuffer.Turbopuffer(
-                api_key=self.api_key, region=self.region
-            )
+            kwargs = {"api_key": self.api_key}
+            if self.region is not None:
+                kwargs["region"] = self.region
+            else:
+                kwargs["base_url"] = self.base_url
+            self._client = turbopuffer.Turbopuffer(**kwargs)
         return self._client
 
     def write(
@@ -329,8 +356,9 @@ class TurbopufferDatasink(Datasink):
         # Sort by the namespace column so _iter_groups_sorted can yield
         # contiguous zero-copy slices for each unique namespace value.
         sort_key = SortKey(key=group_col_name, descending=False)
-        sorted_table = transform_pyarrow.sort(table, sort_key)
-        block_accessor = ArrowBlockAccessor.for_block(sorted_table)
+        block_accessor = BlockAccessor.for_block(
+            BlockAccessor.for_block(table).sort(sort_key)
+        )
 
         for (namespace_name,), group_table in block_accessor._iter_groups_sorted(
             sort_key

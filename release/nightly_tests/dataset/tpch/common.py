@@ -9,6 +9,65 @@ from benchmark import Benchmark
 
 # Define schemas for TPC-H tables
 TABLE_COLUMNS = {
+    "region": {
+        "column0": "r_regionkey",
+        "column1": "r_name",
+        "column2": "r_comment",
+    },
+    "nation": {
+        "column0": "n_nationkey",
+        "column1": "n_name",
+        "column2": "n_regionkey",
+        "column3": "n_comment",
+    },
+    "supplier": {
+        "column0": "s_suppkey",
+        "column1": "s_name",
+        "column2": "s_address",
+        "column3": "s_nationkey",
+        "column4": "s_phone",
+        "column5": "s_acctbal",
+        "column6": "s_comment",
+    },
+    "customer": {
+        "column0": "c_custkey",
+        "column1": "c_name",
+        "column2": "c_address",
+        "column3": "c_nationkey",
+        "column4": "c_phone",
+        "column5": "c_acctbal",
+        "column6": "c_mktsegment",
+        "column7": "c_comment",
+    },
+    "orders": {
+        "column0": "o_orderkey",
+        "column1": "o_custkey",
+        "column2": "o_orderstatus",
+        "column3": "o_totalprice",
+        "column4": "o_orderdate",
+        "column5": "o_orderpriority",
+        "column6": "o_clerk",
+        "column7": "o_shippriority",
+        "column8": "o_comment",
+    },
+    "part": {
+        "column0": "p_partkey",
+        "column1": "p_name",
+        "column2": "p_mfgr",
+        "column3": "p_brand",
+        "column4": "p_type",
+        "column5": "p_size",
+        "column6": "p_container",
+        "column7": "p_retailprice",
+        "column8": "p_comment",
+    },
+    "partsupp": {
+        "column0": "ps_partkey",
+        "column1": "ps_suppkey",
+        "column2": "ps_availqty",
+        "column3": "ps_supplycost",
+        "column4": "ps_comment",
+    },
     "lineitem": {
         "column00": "l_orderkey",
         "column01": "l_partkey",
@@ -26,7 +85,7 @@ TABLE_COLUMNS = {
         "column13": "l_shipinstruct",
         "column14": "l_shipmode",
         "column15": "l_comment",
-    }
+    },
 }
 
 

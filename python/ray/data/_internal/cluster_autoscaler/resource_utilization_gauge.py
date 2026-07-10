@@ -1,12 +1,28 @@
 import abc
+import math
+from dataclasses import dataclass
 from typing import Optional
 
 from ray.data._internal.average_calculator import TimeWindowAverageCalculator
-from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.util.metrics import Gauge
 
-ClusterUtil = ExecutionResources
+
+@dataclass(frozen=True)
+class ClusterUtil:
+    cpu: float = 0.0
+    gpu: float = 0.0
+    memory: float = 0.0
+    object_store_memory: float = 0.0
+
+    def __post_init__(self):
+        # If we overcommit tasks, the logical utilization can exceed 1.0.
+        assert math.isfinite(self.cpu) and 0 <= self.cpu, self.cpu
+        assert math.isfinite(self.gpu) and 0 <= self.gpu, self.gpu
+        assert math.isfinite(self.memory) and 0 <= self.memory, self.memory
+        assert (
+            math.isfinite(self.object_store_memory) and 0 <= self.object_store_memory
+        ), self.object_store_memory
 
 
 class ResourceUtilizationGauge(abc.ABC):
@@ -112,11 +128,14 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
                     obj_store_mem_util * 100, tags=tags
                 )
 
-    def get(self) -> ExecutionResources:
+    def get(self) -> ClusterUtil:
         """Get the average cluster utilization based on global usage / global limits."""
-        return ExecutionResources(
-            cpu=self._cluster_cpu_util_calculator.get_average(),
-            gpu=self._cluster_gpu_util_calculator.get_average(),
-            memory=self._cluster_mem_util_calculator.get_average(),
-            object_store_memory=self._cluster_obj_mem_util_calculator.get_average(),
+        # Clamp to 0 to handle floating-point drift in the rolling average.
+        return ClusterUtil(
+            cpu=max(0, self._cluster_cpu_util_calculator.get_average() or 0),
+            gpu=max(0, self._cluster_gpu_util_calculator.get_average() or 0),
+            memory=max(0, self._cluster_mem_util_calculator.get_average() or 0),
+            object_store_memory=max(
+                0, self._cluster_obj_mem_util_calculator.get_average() or 0
+            ),
         )

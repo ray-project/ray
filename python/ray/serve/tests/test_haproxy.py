@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import socket
 import subprocess
 import sys
 import threading
@@ -12,20 +13,32 @@ import requests
 
 import ray
 from ray import serve
+from ray._common.network_utils import get_all_interfaces_ip
 from ray._common.test_utils import (
     SignalActor,
     wait_for_condition,
 )
 from ray.actor import ActorHandle
 from ray.cluster_utils import Cluster
+from ray.serve._private.build_app import CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
+    RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
+    RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_NAMESPACE,
+    SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy import HAProxyManager
-from ray.serve._private.test_utils import get_application_url
+from ray.serve._private.test_utils import (
+    alive_actor_counts,
+    expected_proxy_actors,
+    get_application_url,
+)
+from ray.serve.config import HTTPOptions, RequestRouterConfig
 from ray.serve.context import _get_global_client
+from ray.serve.exceptions import RayServeException
+from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.schema import (
     ProxyStatus,
     ServeDeploySchema,
@@ -35,6 +48,8 @@ from ray.serve.tests.conftest import *  # noqa
 from ray.serve.tests.test_cli_2 import ping_endpoint
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -75,11 +90,11 @@ def test_deploy_with_no_applications(ray_shutdown):
     ray.init(num_cpus=8)
     serve.start(http_options=dict(port=8003))
     client = _get_global_client()
-    config = ServeDeploySchema.parse_obj({"applications": []})
+    config = ServeDeploySchema.model_validate({"applications": []})
     client.deploy_apps(config)
 
     def serve_running():
-        ServeInstanceDetails.parse_obj(
+        ServeInstanceDetails.model_validate(
             ray.get(client._controller.get_serve_instance_details.remote())
         )
         actors = list_actors(
@@ -112,7 +127,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HAProxyManager",
+        *expected_proxy_actors(),
         "ServeReplica:app:f",
     }
 
@@ -153,7 +168,7 @@ async def test_single_app_shutdown_actors_async(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HAProxyManager",
+        *expected_proxy_actors(),
         "ServeReplica:app:f",
     }
 
@@ -297,12 +312,29 @@ async def test_drain_and_undrain_haproxy_manager(
     HEALTHY, DRAINING and DRAINED
     """
     monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "10")
-    monkeypatch.setenv("SERVE_SOCKET_REUSE_PORT_ENABLED", "1")
 
+    # No SO_REUSEPORT. Each node's HAProxy binds its own port. The head keeps the
+    # default 8000. Each worker gets a distinct HTTP port via
+    # RAY_SERVE_WORKER_PROXY_HTTP_PORT and distinct stats/metrics ports so the
+    # three co-located HAProxies don't collide.
     cluster = Cluster()
     head_node = cluster.add_node(num_cpus=0)
-    cluster.add_node(num_cpus=1)
-    cluster.add_node(num_cpus=1)
+    cluster.add_node(
+        num_cpus=1,
+        env_vars={
+            "RAY_SERVE_WORKER_PROXY_HTTP_PORT": "8001",
+            "RAY_SERVE_HAPROXY_STATS_PORT": "8405",
+            "RAY_SERVE_HAPROXY_METRICS_PORT": "9102",
+        },
+    )
+    cluster.add_node(
+        num_cpus=1,
+        env_vars={
+            "RAY_SERVE_WORKER_PROXY_HTTP_PORT": "8002",
+            "RAY_SERVE_HAPROXY_STATS_PORT": "8406",
+            "RAY_SERVE_HAPROXY_METRICS_PORT": "9103",
+        },
+    )
     cluster.wait_for_nodes()
     ray.init(address=head_node.address)
     serve.start(http_options={"location": "EveryNode"})
@@ -317,8 +349,13 @@ async def test_drain_and_undrain_haproxy_manager(
 
     serve.run(HelloModel.options(num_replicas=2).bind())
 
-    # 3 proxies, 1 controller, 2 replicas, 1 signal actor
-    wait_for_condition(lambda: len(list_actors()) == 7)
+    expected_actors = {
+        "ServeController": 1,
+        **expected_proxy_actors(num_proxy_nodes=3),
+        "ServeReplica:default:HelloModel": 2,
+        "SignalActor": 1,
+    }
+    wait_for_condition(lambda: alive_actor_counts() == expected_actors)
     assert len(ray.nodes()) == 3
 
     client = _get_global_client()
@@ -328,6 +365,20 @@ async def test_drain_and_undrain_haproxy_manager(
     proxy_actor_ids = {proxy.actor_id for _, proxy in serve_details.proxies.items()}
 
     assert len(proxy_actor_ids) == 3
+
+    # Each HAProxy binds its own port (head 8000, workers 8001/8002); wait until
+    # all three answer health checks.
+    def all_haproxies_ready():
+        try:
+            return all(
+                httpx.get(f"http://localhost:{port}/-/healthz", timeout=2).status_code
+                == 200
+                for port in (8000, 8001, 8002)
+            )
+        except Exception:
+            return False
+
+    wait_for_condition(all_haproxies_ready, timeout=20)
 
     # Start a long-running request in background to test draining behavior
     request_result = []
@@ -358,7 +409,7 @@ async def test_drain_and_undrain_haproxy_manager(
         current_status = {
             status: proxy_status_list.count(status) for status in proxy_status_list
         }
-        return current_status == proxy_status_to_count, current_status
+        return current_status == proxy_status_to_count
 
     wait_for_condition(
         condition_predictor=check_proxy_status,
@@ -586,6 +637,34 @@ def test_haproxy_http_options(ray_shutdown):
     serve.shutdown()
 
 
+@pytest.mark.parametrize(
+    "header_key",
+    [
+        SERVE_SESSION_ID,  # underscore form
+        "x-session-id",  # hyphenated form
+        "X-Session-Id",  # title-cased hyphenated form
+    ],
+)
+def test_session_id_header_forwarded_through_haproxy(ray_shutdown, header_key):
+    """The session_id header must survive an HAProxy hop and reach the deployment."""
+    ray.init(num_cpus=4)
+    serve.start()
+
+    @serve.deployment
+    class Model:
+        def __call__(self) -> str:
+            return ray.serve.context._get_serve_request_context().session_id
+
+    serve.run(Model.bind())
+
+    session_id = "sess_user_42"
+    resp = httpx.get("http://localhost:8000/", headers={header_key: session_id})
+    assert resp.status_code == 200
+    assert resp.text == session_id
+
+    serve.shutdown()
+
+
 def test_haproxy_metrics(ray_shutdown):
     """Test that the haproxy metrics are exported correctly."""
     ray.init(num_cpus=4)
@@ -603,13 +682,28 @@ def test_haproxy_metrics(ray_shutdown):
 
     assert httpx.get("http://localhost:8000/").text == "hello1"
 
-    metrics_response = httpx.get("http://localhost:9101/metrics")
-    assert metrics_response.status_code == 200
-
-    http_backend_metrics = (
-        'haproxy_backend_http_responses_total{proxy="http-default",code="2xx"} 1'
+    metric_prefix = (
+        'haproxy_backend_http_responses_total{proxy="http-default",code="2xx"} '
     )
-    assert http_backend_metrics in metrics_response.text
+    last_metrics = [""]
+
+    def metrics_show_2xx_response():
+        assert httpx.get("http://localhost:8000/").text == "hello1"
+        resp = httpx.get("http://localhost:9101/metrics")
+        assert resp.status_code == 200
+        last_metrics[0] = resp.text
+        for line in resp.text.splitlines():
+            if line.startswith(metric_prefix):
+                return float(line[len(metric_prefix) :]) >= 1
+        return False
+
+    try:
+        wait_for_condition(metrics_show_2xx_response, timeout=30)
+    except RuntimeError:
+        # Dump full /metrics so bazel test logs show the real backend counters
+        # instead of pytest's truncated assertion message.
+        print("Final /metrics output:\n" + last_metrics[0])
+        raise
 
     serve.shutdown()
 
@@ -765,7 +859,7 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
     Expectations:
     - With two servers per backend, healthz returns 200 (all backends have a primary UP).
     - Disabling one primary in each backend keeps health at 200 (the other primary is UP).
-    - Disabling all servers in each backend results in healthz 503.
+    - Disabling all servers in each backend results in healthz 200 (the fallback proxy is UP).
     """
     ray.init(num_cpus=8)
     serve.start()
@@ -775,22 +869,25 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
         return "hello"
 
     # Helpers
-    SOCKET_PATH = "/tmp/haproxy-serve/admin.sock"
+    SOCKET_PATH = (
+        f"/tmp/haproxy-serve/{ray.get_runtime_context().get_node_id()}/admin.sock"
+    )
 
     def app_to_backend(app: str) -> str:
         return f"http-{app}"
 
     def haproxy_show_stat() -> str:
-        result = subprocess.run(
-            f'echo "show stat" | socat - {SOCKET_PATH}',
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to query HAProxy stats: {result.stderr}")
-        return result.stdout
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(5)
+            s.connect(SOCKET_PATH)
+            s.sendall(b"show stat\n")
+            chunks = []
+            while True:
+                data = s.recv(4096)
+                if not data:
+                    break
+                chunks.append(data)
+        return b"".join(chunks).decode("utf-8", errors="ignore")
 
     def list_primary_servers(backend_name: str) -> list:
         lines = haproxy_show_stat().strip().split("\n")
@@ -808,12 +905,10 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
         return servers
 
     def set_server_state(backend: str, server: str, state: str) -> None:
-        subprocess.run(
-            f'echo "set server {backend}/{server} state {state}" | socat - {SOCKET_PATH}',
-            shell=True,
-            capture_output=True,
-            timeout=5,
-        )
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(5)
+            s.connect(SOCKET_PATH)
+            s.sendall(f"set server {backend}/{server} state {state}\n".encode())
 
     def wait_health(expected: int, timeout: float = 15.0) -> None:
         wait_for_condition(
@@ -854,7 +949,7 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
 
     wait_health(200, timeout=20)
 
-    # Disable the remaining primary per backend, should become unhealthy (no servers UP)
+    # Disable the remaining primary per backend, should remain healthy (the fallback proxy is UP).
     disabled_all = []
     for be in backends:
         servers = list_primary_servers(be)
@@ -865,9 +960,10 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
                 disabled_all.append((be, sv))
                 break
 
-    wait_health(503, timeout=20)
+    # The fallback proxy is UP.
+    wait_health(200, timeout=20)
 
-    # Re-enable all servers and expect health back to 200
+    # Re-enable all servers and expect health to be 200.
     for be, sv in disabled_servers + disabled_all:
         set_server_state(be, sv, "ready")
     wait_health(200, timeout=20)
@@ -908,7 +1004,224 @@ def test_haproxy_empty_backends_for_scaled_down_apps(ray_shutdown):
     r = httpx.get("http://localhost:8000/test")
     assert r.status_code == 404
 
+    # Healthz stays 200 with no app backends instead of hitting the 404 default backend.
+    wait_for_condition(
+        lambda: httpx.get("http://localhost:8000/-/healthz").status_code == 200
+    )
+
     serve.shutdown()
+
+
+def test_fallback_proxy_starts_with_native_proxy_on_head_node(
+    shutdown_ray, call_ray_stop_only  # noqa: F811
+):
+    """When HAProxy is enabled, verify that two proxy actors run on the head
+    node (the native proxy + the fallback Serve proxy) and only the native
+    proxy runs on worker nodes."""
+    cluster = Cluster()
+    head_node = cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+    ray.init(address=head_node.address)
+    serve.start(http_options={"location": "EveryNode"})
+
+    @serve.deployment
+    def hello():
+        return "hello"
+
+    serve.run(hello.options(num_replicas=2).bind(), name="app1", route_prefix="/app1")
+
+    head_node_id = ray.get_runtime_context().get_node_id()
+
+    def check_proxies():
+        actors = list_actors(
+            filters=[
+                ("ray_namespace", "=", SERVE_NAMESPACE),
+                ("state", "=", "ALIVE"),
+            ],
+        )
+
+        # Count native proxies (HAProxyManager) and Serve proxies (ProxyActor)
+        haproxy_actors = [a for a in actors if a["class_name"] == "HAProxyManager"]
+        serve_proxy_actors = [a for a in actors if a["class_name"] == "ProxyActor"]
+
+        # There should be one HAProxy manager per node
+        if len(haproxy_actors) != 2:
+            return False
+
+        # The head node should have a fallback Serve proxy,
+        # worker nodes should not.
+        if len(serve_proxy_actors) != 1:
+            return False
+
+        if serve_proxy_actors[0]["node_id"] != head_node_id:
+            return False
+
+        return True
+
+    wait_for_condition(check_proxies, timeout=30)
+
+    serve.shutdown()
+
+
+def test_scale_from_zero_via_fallback_proxy(ray_shutdown):
+    """Test that a request to an app scaled to zero succeeds via the fallback proxy.
+
+    Flow:
+    1. Deploy an app with autoscaling min_replicas=0
+    2. Wait for it to scale down to 0 replicas
+    3. Send an HTTP request through HAProxy
+    4. HAProxy routes to the fallback Serve proxy (backup server) since
+       there are no ingress replicas
+    5. The fallback proxy queues the request and triggers upscaling
+    6. Once a replica starts, the request completes successfully
+    """
+    ray.init(num_cpus=4)
+    serve.start()
+
+    @serve.deployment(
+        autoscaling_config={
+            "min_replicas": 0,
+            "max_replicas": 1,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 0.2,
+            "downscale_delay_s": 5,
+            "upscale_delay_s": 0,
+        },
+    )
+    class ScaleToZeroApp:
+        def __call__(self):
+            return "hello from scale-to-zero"
+
+    serve.run(ScaleToZeroApp.bind(), name="s2z_app", route_prefix="/s2z")
+
+    wait_for_condition(
+        lambda: httpx.get("http://localhost:8000/-/routes").status_code == 200,
+    )
+    wait_for_condition(
+        lambda: httpx.get("http://localhost:8000/-/healthz").status_code == 200,
+    )
+
+    # Wait for the app to be running and initially serve a request
+    wait_for_condition(
+        lambda: httpx.get("http://localhost:8000/s2z").status_code == 200,
+        timeout=30,
+    )
+    assert httpx.get("http://localhost:8000/s2z").text == "hello from scale-to-zero"
+
+    # Wait for the app to scale down to 0 replicas
+    def check_zero_replicas():
+        actors = list_actors(
+            filters=[
+                ("ray_namespace", "=", SERVE_NAMESPACE),
+                ("state", "=", "ALIVE"),
+                ("class_name", "=", "ServeReplica:s2z_app:ScaleToZeroApp"),
+            ],
+        )
+        return len(actors) == 0
+
+    wait_for_condition(check_zero_replicas, timeout=30)
+
+    # Now send a request. HAProxy has no primary servers for this backend,
+    # so it should route to the fallback Serve proxy (backup server).
+    # The fallback proxy will queue the request and trigger upscaling.
+    # The request should eventually succeed once a replica starts.
+    response = httpx.get("http://localhost:8000/s2z", timeout=30)
+    assert response.status_code == 200, (
+        f"Expected 200 after scale-from-zero, got {response.status_code}: "
+        f"{response.text}"
+    )
+    assert response.text == "hello from scale-to-zero"
+
+    serve.shutdown()
+
+
+def test_default_host_is_all_interfaces(ray_shutdown):
+    """When HAProxy is enabled, the default HTTPOptions.host binds to all
+    interfaces so HAProxy on other nodes can reach the replica backend ports.
+    """
+    serve.start(http_options=HTTPOptions())
+
+    @serve.deployment
+    class App:
+        async def __call__(self):
+            return "ok"
+
+    serve.run(App.bind())
+
+    def _direct_ingress_listeners():
+        return [
+            c
+            for c in psutil.net_connections(kind="tcp")
+            if c.status == psutil.CONN_LISTEN
+            and RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT
+            <= c.laddr.port
+            <= RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT
+        ]
+
+    wait_for_condition(lambda: len(_direct_ingress_listeners()) > 0, timeout=30)
+
+    expected = get_all_interfaces_ip()
+    for conn in _direct_ingress_listeners():
+        assert conn.laddr.ip == expected, (
+            f"direct ingress port {conn.laddr.port} bound to {conn.laddr.ip!r}, "
+            f"expected {expected!r}"
+        )
+
+
+def test_serve_run_rejects_custom_ingress_request_router(ray_shutdown):
+    """serve.run rejects a custom router on the ingress under HAProxy."""
+    ray.init(num_cpus=8)
+    serve.start(http_options=dict(port=8003))
+
+    @serve.deployment(
+        request_router_config=RequestRouterConfig(request_router_class=RoundRobinRouter)
+    )
+    class Ingress:
+        async def __call__(self):
+            return "hi"
+
+    with pytest.raises(
+        RayServeException, match=CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR
+    ):
+        serve.run(Ingress.bind())
+
+
+def test_deploy_config_rejects_custom_ingress_request_router(ray_shutdown):
+    """A config override that sets a custom router on the ingress fails to deploy
+    under HAProxy."""
+    ray.init(num_cpus=8)
+    serve.start(http_options=dict(port=8003))
+    client = _get_global_client()
+
+    module = "ray.serve.tests.test_config_files.use_custom_request_router"
+    config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {
+                    "name": "app",
+                    "import_path": f"{module}.app",
+                    "deployments": [
+                        {
+                            "name": "UniformRequestRouterApp",
+                            "request_router_config": {
+                                "request_router_class": f"{module}.UniformRequestRouter"
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    client.deploy_apps(config)
+
+    def deploy_failed():
+        status = serve.status().applications["app"]
+        assert status.status == "DEPLOY_FAILED"
+        assert CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR in status.message
+        return True
+
+    wait_for_condition(deploy_failed)
 
 
 if __name__ == "__main__":

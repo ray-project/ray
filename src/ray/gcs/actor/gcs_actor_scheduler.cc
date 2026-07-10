@@ -19,9 +19,8 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/util/time.h"
 
 namespace ray {
 namespace gcs {
@@ -34,7 +33,8 @@ GcsActorScheduler::GcsActorScheduler(
     GcsActorSchedulerSuccessCallback schedule_success_handler,
     rpc::RayletClientPool &raylet_client_pool,
     rpc::CoreWorkerClientPool &worker_client_pool,
-    ray::observability::MetricInterface &scheduler_placement_time_ms_histogram)
+    ray::observability::MetricInterface &scheduler_placement_time_ms_histogram,
+    ClockInterface &clock)
     : io_context_(io_context),
       gcs_actor_table_(gcs_actor_table),
       gcs_node_manager_(gcs_node_manager),
@@ -42,7 +42,8 @@ GcsActorScheduler::GcsActorScheduler(
       schedule_success_handler_(std::move(schedule_success_handler)),
       raylet_client_pool_(raylet_client_pool),
       worker_client_pool_(worker_client_pool),
-      scheduler_placement_time_ms_histogram_(scheduler_placement_time_ms_histogram) {
+      scheduler_placement_time_ms_histogram_(scheduler_placement_time_ms_histogram),
+      clock_(clock) {
   RAY_CHECK(schedule_failure_handler_ != nullptr && schedule_success_handler_ != nullptr);
 }
 
@@ -260,14 +261,18 @@ void GcsActorScheduler::LeaseWorkerFromNode(
   static uint32_t lease_id_counter = 0;
   actor->GetMutableLeaseSpec()->set_lease_id(
       LeaseID::FromWorker(WorkerID::FromRandom(), lease_id_counter++).Binary());
+
+  rpc::RequestWorkerLeaseRequest request;
+  request.mutable_lease_spec()->CopyFrom(actor->GetLeaseSpecification().GetMessage());
+  request.set_grant_or_reject(actor->GetGrantOrReject());
+  request.set_backlog_size(0);
+  request.set_is_selected_based_on_locality(false);
   raylet_client->RequestWorkerLease(
-      actor->GetLeaseSpecification().GetMessage(),
-      actor->GetGrantOrReject(),
+      std::move(request),
       [this, actor, node](const Status &status,
                           const rpc::RequestWorkerLeaseReply &reply) {
         HandleWorkerLeaseReply(actor, node, status, reply);
-      },
-      0);
+      });
 }
 
 void GcsActorScheduler::RetryLeasingWorkerFromNode(
@@ -343,7 +348,7 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
     actor->UpdateLocalRayletAddress(actor_local_raylet_address);
     actor->UpdateAddress(leased_worker->GetAddress());
     actor->GetMutableActorTableData()->set_pid(reply.worker_pid());
-    actor->GetMutableTaskSpec()->set_lease_grant_timestamp_ms(current_sys_time_ms());
+    actor->GetMutableTaskSpec()->set_lease_grant_timestamp_ms(clock_.NowUnixMillis());
     actor->GetCreationTaskSpecification().EmitTaskMetrics(
         scheduler_placement_time_ms_histogram_);
     // Make sure to connect to the client before persisting actor info to GCS.

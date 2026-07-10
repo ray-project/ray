@@ -1,4 +1,7 @@
+import asyncio
 import json
+from dataclasses import asdict
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from google.protobuf.json_format import Parse
@@ -7,6 +10,7 @@ from ray.core.generated.gcs_pb2 import JobsAPIInfo
 from ray.dashboard.modules.job.common import (
     JobErrorType,
     JobInfo,
+    JobInfoStorageClient,
     JobStatus,
     JobSubmitRequest,
     http_uri_components_to_uri,
@@ -263,6 +267,33 @@ def test_job_info_json_to_proto():
         "driver_node_id",
     ]:
         assert not minimal_info_proto.HasField(unset_optional_field)
+
+
+def test_get_all_jobs_filters_out_none_job_info():
+    prefix = JobInfoStorageClient.JOB_DATA_KEY_PREFIX
+    mock_gcs = MagicMock()
+    mock_gcs.async_internal_kv_keys = AsyncMock(
+        return_value=[
+            (prefix + "job1").encode(),
+            (prefix + "job2").encode(),
+        ]
+    )
+
+    storage = JobInfoStorageClient(mock_gcs)
+    job_info_1 = JobInfo(status=JobStatus.RUNNING, entrypoint="echo 1")
+
+    async def mock_get_info(job_id, timeout=30):
+        if job_id == "job1":
+            return job_info_1
+        return None
+
+    storage.get_info = mock_get_info
+
+    result = asyncio.run(storage.get_all_jobs())
+
+    assert result == {"job1": job_info_1}
+    for job_id, job_info in result.items():
+        asdict(job_info)  # This should not raise an exception
 
 
 if __name__ == "__main__":

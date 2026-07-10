@@ -1,0 +1,51 @@
+// Copyright 2026 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+
+syntax = "proto3";
+
+package ray.rpc.events;
+
+// Message containing the definition information of a submission job.
+// The message is expected to be emitted once per job submission.
+//
+// For runtime information associated with this event, see SubmissionJobLifecycleEvent.
+message SubmissionJobDefinitionEvent {
+  message Config {
+    // JSON-serialized runtime environment for the job.
+    string serialized_runtime_env = 1;
+    // Arbitrary user-provided metadata for the job.
+    map<string, string> metadata = 2;
+  }
+
+  message EntrypointResources {
+    // The quantity of CPU cores to reserve for the entrypoint command.
+    double num_cpus = 1;
+    // The number of GPUs to reserve for the entrypoint command.
+    double num_gpus = 2;
+    // The amount of memory to reserve for the entrypoint command (bytes).
+    int64 memory = 3;
+    // Custom resources to reserve for the entrypoint command.
+    map<string, double> custom_resources = 4;
+  }
+
+  // Unique submission job identifier.
+  string submission_id = 1;
+  // The entrypoint command for this job.
+  string entrypoint = 2;
+  // Job configuration including runtime_env and metadata.
+  Config config = 3;
+  // Resources reserved for the entrypoint command.
+  EntrypointResources entrypoint_resources = 4;
+}

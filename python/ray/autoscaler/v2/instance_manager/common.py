@@ -33,6 +33,9 @@ class InstanceUtil:
             instance_type: The instance type.
             status: The status of the new instance.
             details: The details of the status transition.
+
+        Returns:
+            The newly-created instance.
         """
         instance = Instance()
         instance.version = 0  # it will be populated by the underlying storage.
@@ -138,6 +141,7 @@ class InstanceUtil:
             not in InstanceUtil.get_valid_transitions()[instance.status]
         ):
             return False
+
         instance.status = new_instance_status
         InstanceUtil._record_status_transition(instance, new_instance_status, details)
         return True
@@ -151,6 +155,7 @@ class InstanceUtil:
         Args:
             instance: The instance to update.
             status: The new status to transition to.
+            details: The details of the status transition.
         """
         now_ns = time.time_ns()
         instance.status_history.append(
@@ -165,11 +170,11 @@ class InstanceUtil:
     def has_timeout(instance: Instance, timeout_s: int) -> bool:
         """
         Returns True if the instance has been in the current status for more
-        than the timeout_seconds.
+        than the given timeout.
 
         Args:
             instance: The instance to check.
-            timeout_seconds: The timeout in seconds.
+            timeout_s: The timeout in seconds.
 
         Returns:
             True if the instance has been in the current status for more than
@@ -298,7 +303,14 @@ class InstanceUtil:
             # a kubernetes pod remains pending due to insufficient resources.
             Instance.ALLOCATION_TIMEOUT: {
                 # Instance is requested to be stopped
-                Instance.TERMINATING
+                Instance.TERMINATING,
+                # Cloud instance already disappeared; skip termination request.
+                # This transition is allowed to avoid unnecessary termination attempts
+                # when the cloud instance has already disappeared (e.g., manually deleted
+                # or terminated by another process). While this helps avoid unnecessary
+                # retries, it's important to monitor this transition as it may indicate
+                # underlying issues with the allocation or termination process itself.
+                Instance.TERMINATED,
             },
             # When in this status, the ray process is requested to be stopped to the
             # ray cluster, but not yet present in the dead ray node list reported by
@@ -336,6 +348,8 @@ class InstanceUtil:
             Instance.TERMINATION_FAILED: {
                 # Retry the termination, become terminating again.
                 Instance.TERMINATING,
+                # Cloud instance already disappeared; skip termination request.
+                Instance.TERMINATED,
             },
             # An instance is marked as terminated when:
             # 1. A cloud instance disappears from the list of running cloud instances
@@ -370,6 +384,10 @@ class InstanceUtil:
             select_instance_status: The go-to status to search for, i.e. select
                 only status history when the instance transitions into the status.
                 If None, returns all status updates.
+
+        Returns:
+            The list of status updates matching ``select_instance_status``,
+            or all status updates when ``select_instance_status`` is None.
         """
         history = []
         for status_update in instance.status_history:
@@ -391,8 +409,11 @@ class InstanceUtil:
 
         Args:
             instance: The instance.
-            instance_status: The status to search for. If None, returns the last
-                status update.
+            select_instance_status: The status to search for. If None, returns
+                the last status update.
+
+        Returns:
+            The last matching status update, or None if no status updates match.
         """
         history = InstanceUtil.get_status_transitions(instance, select_instance_status)
         history.sort(key=lambda x: x.timestamp_ns)
@@ -410,8 +431,8 @@ class InstanceUtil:
 
         Args:
             instance: The instance.
-            instance_status: The status to search for. If None, returns all
-                status updates timestamps.
+            select_instance_status: The status to search for. If None, returns
+                all status update timestamps.
 
         Returns:
             The list of timestamps of the instance status updates.

@@ -112,6 +112,8 @@ config = (
             "post_fcnet_activation": None,
             "post_fcnet_weights_initializer": "orthogonal_",
             "post_fcnet_weights_initializer_config": {"gain": 0.01},
+            "fusionnet_hiddens": [256, 256, 256],
+            "fusionnet_activation": "relu",
         },
     )
     .reporting(

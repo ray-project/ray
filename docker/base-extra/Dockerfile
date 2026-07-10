@@ -126,6 +126,10 @@ elif [[ -d "/usr/local/cuda-12" ]]; then
     EFA_VERSION="1.42.0"
     GDRCOPY_VERSION="2.5"
     AWS_OFI_NCCL_VERSION="1.15.0"
+elif [[ -d "/usr/local/cuda-13" ]]; then
+    EFA_VERSION="1.42.0"
+    GDRCOPY_VERSION="2.5.1"
+    AWS_OFI_NCCL_VERSION="1.18.0"
 else
     echo "Unsupported CUDA major version"
     exit 1

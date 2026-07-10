@@ -25,7 +25,7 @@ def test_normalizer():
     processed_col_c = [2 / np.sqrt(5), 0.8, -0.8]
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -40,7 +40,7 @@ def test_normalizer():
     processed_col_c = [2 / 3, 4 / 7, -4 / 7]
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -55,7 +55,7 @@ def test_normalizer():
     processed_col_c = [1.0, 1.0, -1.0]
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -78,9 +78,41 @@ def test_normalizer():
             "B_normalized": processed_col_b,
             "C_normalized": processed_col_c,
         }
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
+
+
+def test_normalizer_serialization():
+    """Test Normalizer serialization and deserialization functionality."""
+    from ray.data.preprocessor import SerializablePreprocessorBase
+
+    # Create normalizer with test data
+    normalizer = Normalizer(columns=["A", "B"], norm="l1")
+
+    # Serialize using CloudPickle
+    serialized = normalizer.serialize()
+
+    # Verify it's binary CloudPickle format
+    assert isinstance(serialized, bytes)
+    assert serialized.startswith(SerializablePreprocessorBase.MAGIC_CLOUDPICKLE)
+
+    # Deserialize
+    deserialized = Normalizer.deserialize(serialized)
+
+    # Verify type and field values
+    assert isinstance(deserialized, Normalizer)
+    assert deserialized.columns == ["A", "B"]
+    assert deserialized.norm == "l1"
+    assert deserialized.output_columns == ["A", "B"]
+
+    # Verify it works correctly
+    df = pd.DataFrame({"A": [3.0, 4.0], "B": [4.0, 3.0]})
+    result = deserialized.transform_batch(df)
+
+    # For l1 norm, values should sum to 1 for each row
+    assert abs(result["A"][0] + result["B"][0] - 1.0) < 1e-10
+    assert abs(result["A"][1] + result["B"][1] - 1.0) < 1e-10
 
 
 if __name__ == "__main__":

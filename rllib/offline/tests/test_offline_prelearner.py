@@ -206,10 +206,14 @@ class TestOfflinePreLearner:
     ):
         """Tests that _validate_deprecated_map_args: deprecated kwargs are honored and emit warnings."""
 
-        base_config.offline_data(
+        offline_data_kwargs = dict(
             input_=[data_path],
             dataset_num_iters_per_learner=1,
         )
+        if data_path == SAMPLE_BATCH_DATA_PATH:
+            offline_data_kwargs["input_read_method"] = "read_json"
+            offline_data_kwargs["input_read_sample_batches"] = True
+        base_config.offline_data(**offline_data_kwargs)
 
         algo = base_config.build()
         offline_prelearner = OfflinePreLearner(
@@ -320,6 +324,10 @@ class TestOfflinePreLearner:
             .env_runners(
                 batch_mode="complete_episodes",
                 # num_env_runners=1,
+            )
+            .training(
+                train_batch_size=20,
+                minibatch_size=10,
             )
             .offline_data(
                 output=episodes_output_path,

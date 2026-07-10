@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 import logging
 import operator
-from typing import Any, Callable, Dict, List, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import numpy as np
 import pandas as pd
@@ -25,11 +25,14 @@ from ray.data.expressions import (
     LiteralExpr,
     MonotonicallyIncreasingIdExpr,
     Operation,
+    RandomExpr,
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    UUIDExpr,
     _ExprVisitor,
     col,
+    is_rename_expr,
 )
 
 logger = logging.getLogger(__name__)
@@ -335,12 +338,16 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
 
     def visit_UnaryOp(self, node: ast.UnaryOp) -> ds.Expression:
         """Handle case where comparator is UnaryOP (e.g., a == -1).
+
         AST for this expression will be Compare(left=Name(id='a'), ops=[Eq()],
         comparators=[UnaryOp(op=USub(), operand=Constant(value=1))])
 
         Args:
-            node: The constant value."""
+            node: The constant value.
 
+        Returns:
+            A PyArrow scalar expression representing the unary operation result.
+        """
         op = node.op
         if isinstance(op, ast.USub):
             return pc.scalar(-node.operand.value)
@@ -523,8 +530,12 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
         )
 
     def visit_Call(self, node: ast.Call) -> "Expr":
-        """Handle function calls for operations like is_null, is_not_null, is_nan."""
-        from ray.data.expressions import BinaryExpr, Operation, UnaryExpr
+        """Handle function calls for operations like is_null, is_not_null, is_nan, random."""
+        from ray.data.expressions import (
+            BinaryExpr,
+            Operation,
+            UnaryExpr,
+        )
 
         func_name = node.func.id if isinstance(node.func, ast.Name) else str(node.func)
 
@@ -552,6 +563,18 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
             left = self.visit(node.args[0])
             right = self.visit(node.args[1])
             return BinaryExpr(Operation.IN, left, right)
+        elif func_name == "random":
+            raise ValueError(
+                "random() is not supported in string expressions. "
+                "String expressions are deprecated. Please use the expression API instead: "
+                "from ray.data.expressions import random; ds.filter(expr=(random(seed=42)>0.5))"
+            )
+        elif func_name == "uuid":
+            raise ValueError(
+                "uuid() is not supported in string expressions. "
+                "String expressions are deprecated. Please use the expression API instead: "
+                "ds.filter(expr=uuid().str.starts_with('a'))"
+            )
         else:
             raise ValueError(f"Unsupported function: {func_name}")
 
@@ -650,7 +673,8 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
             function_name = expr.fn.__name__
             raise TypeError(
                 f"UDF '{function_name}' returned invalid type {type(result).__name__}. "
-                f"Expected type (pandas.Series, numpy.ndarray, pyarrow.Array, or pyarrow.ChunkedArray)"
+                f"Expected type (pandas.Series, numpy.ndarray, pyarrow.Array, "
+                f"pyarrow.ChunkedArray)"
             )
 
         return result
@@ -728,11 +752,11 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         TASK_BITS = 30
         if end_idx > (1 << ROW_BITS):
             raise ValueError(
-                f"Cannot generate monotonically increasing IDs: row count for this task exceeds the maximum allowed value of {(1<<ROW_BITS)-1}"
+                f"Cannot generate monotonically increasing IDs: row count for this task exceeds the maximum allowed value of {(1 << ROW_BITS) - 1}"
             )
         if ctx.task_idx >= (1 << TASK_BITS):
             raise ValueError(
-                f"Cannot generate monotonically increasing IDs: number of tasks exceeds the maximum allowed value of {(1<<TASK_BITS)-1}"
+                f"Cannot generate monotonically increasing IDs: number of tasks exceeds the maximum allowed value of {(1 << TASK_BITS) - 1}"
             )
 
         partition_mask = ctx.task_idx << ROW_BITS
@@ -745,6 +769,42 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
             return pa.array(ids)
         else:
             raise TypeError(f"Unsupported block type: {block_type}")
+
+    def visit_random(self, expr: RandomExpr) -> Union[BlockColumn, ScalarType]:
+        """Visit a random expression and return the result of the operation.
+
+        Args:
+            expr: The random expression.
+
+        Returns:
+            The result of the random operation as a BlockColumn.
+        """
+        from ray.data._internal.planner.plan_expression.synthetic_impl import (
+            eval_random,
+        )
+
+        return eval_random(
+            self.block_accessor.num_rows(),
+            self.block_accessor.block_type(),
+            seed=expr.seed,
+            reseed_after_execution=expr.reseed_after_execution,
+            instance_id=expr._instance_id,
+        )
+
+    def visit_uuid(self, expr: UUIDExpr) -> Union[BlockColumn, ScalarType]:
+        """Visit a uuid expression and return the result of the operation.
+
+        Args:
+            expr: The uuid expression.
+
+        Returns:
+            The result of the uuid operation as a BlockColumn.
+        """
+        from ray.data._internal.planner.plan_expression.synthetic_impl import eval_uuid
+
+        return eval_uuid(
+            self.block_accessor.num_rows(), self.block_accessor.block_type()
+        )
 
 
 def eval_expr(expr: Expr, block: Block) -> Union[BlockColumn, ScalarType]:
@@ -761,7 +821,7 @@ def eval_expr(expr: Expr, block: Block) -> Union[BlockColumn, ScalarType]:
     return evaluator.visit(expr)
 
 
-def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
+def _eval_projection_without_cse(projection_exprs: List[Expr], block: Block) -> Block:
     """
     Evaluate a projection (list of expressions) against a block.
 
@@ -792,15 +852,38 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
     # Collect input column rename map from the projection list
     input_column_rename_map = _extract_input_columns_renaming_mapping(projection_exprs)
 
-    # Expand star expr (if any)
+    # Expand star expr (if any). ``Project.__post_init__`` eagerly expands
+    # ``StarExpr`` to explicit ``col()`` refs whenever the
+    # input schema is known, so this runtime branch is hit only on the
+    # UDF-fallback path (Project on top of an opaque-schema input).
     if isinstance(projection_exprs[0], StarExpr):
-        # Cherry-pick input block's columns that aren't explicitly removed via
-        # renaming
-        input_column_ref_exprs = [
-            col(c) for c in input_column_names if c not in input_column_rename_map
-        ]
+        # Bucket the trailing exprs: rename ``AliasExpr``s of an input
+        # column get placed into the original column's position (so the
+        # output preserves on-disk column order); anything else (e.g.
+        # ``with_column`` computed expressions) is appended afterwards.
+        rename_exprs_by_source: Dict[str, Expr] = {}
+        extra_exprs: List[Expr] = []
+        for expr in projection_exprs[1:]:
+            # e.g. ``col(source)._rename(new_name)`` — bucket by ``source`` for column order.
+            # ``rename_exprs_by_source``: input column name -> that rename ``AliasExpr``.
+            if is_rename_expr(expr) and expr.expr.name in input_column_rename_map:
+                rename_exprs_by_source[expr.expr.name] = expr
+            else:
+                extra_exprs.append(expr)
 
-        projection_exprs = input_column_ref_exprs + projection_exprs[1:]
+        ordered_exprs: List[Expr] = []
+        for c in input_column_names:
+            if c in rename_exprs_by_source:
+                ordered_exprs.append(rename_exprs_by_source.pop(c))
+            elif c not in input_column_rename_map:
+                ordered_exprs.append(col(c))
+
+        # Any rename whose source column isn't in the block falls through to
+        # ``extra_exprs`` so evaluation raises a "column not found" error
+        # instead of silently dropping the expression.
+        extra_exprs = list(rename_exprs_by_source.values()) + extra_exprs
+
+        projection_exprs = ordered_exprs + extra_exprs
 
     names, output_cols = zip(*[(e.name, eval_expr(e, block)) for e in projection_exprs])
 
@@ -816,3 +899,42 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
         new_block = BlockAccessor.for_block(new_block).fill_column(name, output_col)
 
     return BlockAccessor.for_block(new_block).drop(["__stub__"])
+
+
+def _drop_cse_temp_columns(block: Block, temp_columns: List[str]) -> Block:
+    block_accessor = BlockAccessor.for_block(block)
+    drop_columns = [
+        name for name in temp_columns if name in block_accessor.column_names()
+    ]
+    if not drop_columns:
+        return block
+    return block_accessor.drop(drop_columns)
+
+
+def eval_projection(
+    projection_exprs: List[Expr],
+    block: Block,
+    *,
+    common_sub_exprs: Optional[List[Expr]] = None,
+) -> Block:
+    """
+    Evaluate a projection (list of expressions) against a block.
+
+    If CSE common expressions are provided, they are evaluated first into
+    temporary columns on a working block. Visible projection expressions are
+    then evaluated against that working block.
+    """
+    if not common_sub_exprs:
+        return _eval_projection_without_cse(projection_exprs, block)
+
+    working_block = block
+    for common_expr in common_sub_exprs:
+        assert common_expr.name is not None
+        working_block = BlockAccessor.for_block(working_block).fill_column(
+            common_expr.name,
+            eval_expr(common_expr, working_block),
+        )
+
+    output_block = _eval_projection_without_cse(projection_exprs, working_block)
+    temp_columns = [expr.name for expr in common_sub_exprs]
+    return _drop_cse_temp_columns(output_block, temp_columns)

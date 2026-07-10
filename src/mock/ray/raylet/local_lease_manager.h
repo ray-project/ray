@@ -48,9 +48,7 @@ class MockLocalLeaseManager : public LocalLeaseManagerInterface {
               (const, override));
   MOCK_METHOD(void,
               SetWorkerBacklog,
-              (SchedulingClass scheduling_class,
-               const WorkerID &worker_id,
-               int64_t backlog_size),
+              (rpc::ReportWorkerBacklogRequest request),
               (override));
   MOCK_METHOD(void, ClearWorkerBacklog, (const WorkerID &worker_id), (override));
   MOCK_METHOD(const RayLease *,
@@ -59,7 +57,7 @@ class MockLocalLeaseManager : public LocalLeaseManagerInterface {
               (const, override));
   MOCK_METHOD(void,
               CleanupLease,
-              (std::shared_ptr<WorkerInterface> worker, RayLease *lease),
+              (const std::shared_ptr<WorkerInterface> &worker),
               (override));
   MOCK_METHOD(void, LeasesUnblocked, (const std::vector<LeaseID> &ready_ids), (override));
   MOCK_METHOD(void,
@@ -74,7 +72,6 @@ class MockLocalLeaseManager : public LocalLeaseManagerInterface {
               ReturnCpuResourcesToUnblockedWorker,
               (std::shared_ptr<WorkerInterface> worker),
               (override));
-  MOCK_METHOD(ResourceSet, CalcNormalTaskResources, (), (const, override));
   MOCK_METHOD(void, RecordMetrics, (), (const, override));
   MOCK_METHOD(SchedulerMetrics &, GetSchedulerMetrics, (), (const, override));
   MOCK_METHOD(void, DebugStr, (std::stringstream & buffer), (const, override));

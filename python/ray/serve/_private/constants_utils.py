@@ -259,6 +259,9 @@ def get_env_bool(name: str, default: str) -> bool:
 # Environment variables that are fully deprecated and will be ignored.
 _fully_deprecated_env_vars = {
     "RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S": "http_options.keep_alive_timeout_s",
+    "RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S": "request_router_config.initial_backoff_s",
+    "RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER": "request_router_config.backoff_multiplier",
+    "RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S": "request_router_config.max_backoff_s",
 }
 
 
@@ -267,7 +270,8 @@ def _deprecation_warning(name: str) -> None:
 
     TODO: remove this function for the '3.0.0' release.
 
-    :param name: environment variable name
+    Args:
+        name: Environment variable name.
     """
 
     def get_new_name(name: str) -> str:
@@ -297,7 +301,8 @@ def _deprecation_warning(name: str) -> None:
 def warn_if_deprecated_env_var_set(name: str) -> None:
     """Warn if a fully deprecated environment variable is set.
 
-    :param name: environment variable name
+    Args:
+        name: Environment variable name.
     """
     if name in _fully_deprecated_env_vars and os.environ.get(name):
         config_option = _fully_deprecated_env_vars[name]

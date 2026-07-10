@@ -78,6 +78,9 @@ class StateAPIManager:
     async def list_actors(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all actor information from the cluster.
 
+        Args:
+            option: Query options (filters, limit, timeout, detail flag).
+
         Returns:
             {actor_id -> actor_data_in_dict}
             actor_data_in_dict's schema is in ActorState
@@ -132,6 +135,9 @@ class StateAPIManager:
     async def list_placement_groups(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all placement group information from the cluster.
 
+        Args:
+            option: Query options (filters, limit, timeout, detail flag).
+
         Returns:
             {pg_id -> pg_data_in_dict}
             pg_data_in_dict's schema is in PlacementGroupState
@@ -177,6 +183,9 @@ class StateAPIManager:
     async def list_nodes(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all node information from the cluster.
 
+        Args:
+            option: Query options (filters, limit, timeout, detail flag).
+
         Returns:
             {node_id -> node_data_in_dict}
             node_data_in_dict's schema is in NodeState
@@ -189,10 +198,11 @@ class StateAPIManager:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
         def transform(reply) -> ListApiResponse:
+            node_infos, num_truncated = reply
             result = []
-            for message in reply.node_info_list:
+            for node_info in node_infos.values():
                 data = protobuf_message_to_dict(
-                    message=message, fields_to_decode=["node_id"]
+                    message=node_info, fields_to_decode=["node_id"]
                 )
                 data["node_ip"] = data["node_manager_address"]
                 data["start_time_ms"] = int(data["start_time_ms"])
@@ -205,7 +215,8 @@ class StateAPIManager:
 
                 result.append(data)
 
-            num_after_truncation = len(result) + reply.num_filtered
+            num_after_truncation = len(result)
+            total = num_after_truncation + num_truncated
             result = do_filter(result, option.filters, NodeState, option.detail)
             num_filtered = len(result)
 
@@ -214,7 +225,7 @@ class StateAPIManager:
             result = list(islice(result, option.limit))
             return ListApiResponse(
                 result=result,
-                total=reply.total,
+                total=total,
                 num_after_truncation=num_after_truncation,
                 num_filtered=num_filtered,
             )
@@ -225,6 +236,9 @@ class StateAPIManager:
 
     async def list_workers(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all worker information from the cluster.
+
+        Args:
+            option: Query options (filters, limit, timeout, detail flag).
 
         Returns:
             {worker_id -> worker_data_in_dict}
@@ -254,7 +268,7 @@ class StateAPIManager:
                 data["worker_launched_time_ms"] = int(data["worker_launched_time_ms"])
                 result.append(data)
 
-            num_after_truncation = len(result) + reply.num_filtered
+            num_after_truncation = len(result)
             result = do_filter(result, option.filters, WorkerState, option.detail)
             num_filtered = len(result)
             # Sort to make the output deterministic.
@@ -297,6 +311,10 @@ class StateAPIManager:
 
     async def list_tasks(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all task information from the cluster.
+
+        Args:
+            option: Query options (filters, limit, timeout, detail flag,
+                exclude_driver).
 
         Returns:
             {task_id -> task_data_in_dict}
@@ -358,11 +376,14 @@ class StateAPIManager:
     async def list_objects(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all object information from the cluster.
 
+        Args:
+            option: Query options (filters, limit, timeout, detail flag).
+
         Returns:
             {object_id -> object_data_in_dict}
             object_data_in_dict's schema is in ObjectState
         """
-        all_node_info_reply = await self._client.get_all_node_info(
+        all_node_infos, _ = await self._client.get_all_node_info(
             timeout=option.timeout,
             limit=None,
             filters=[("state", "=", "ALIVE")],
@@ -373,7 +394,7 @@ class StateAPIManager:
                 node_info.node_manager_port,
                 timeout=option.timeout,
             )
-            for node_info in all_node_info_reply.node_info_list
+            for node_info in all_node_infos.values()
         ]
 
         replies = await asyncio.gather(
@@ -470,6 +491,9 @@ class StateAPIManager:
     async def list_runtime_envs(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all runtime env information from the cluster.
 
+        Args:
+            option: Query options (filters, limit, timeout, detail flag).
+
         Returns:
             A list of runtime env information in the cluster.
             The schema of returned "dict" is equivalent to the
@@ -477,14 +501,14 @@ class StateAPIManager:
             We don't have id -> data mapping like other API because runtime env
             doesn't have unique ids.
         """
-        live_node_info_reply = await self._client.get_all_node_info(
+        live_node_infos, _ = await self._client.get_all_node_info(
             timeout=option.timeout,
             limit=None,
             filters=[("state", "=", "ALIVE")],
         )
         node_infos = [
             node_info
-            for node_info in live_node_info_reply.node_info_list
+            for node_info in live_node_infos.values()
             if node_info.runtime_env_agent_port is not None
         ]
         tasks = [
@@ -568,20 +592,22 @@ class StateAPIManager:
 
     async def summarize_tasks(self, option: SummaryApiOptions) -> SummaryApiResponse:
         summary_by = option.summary_by or "func_name"
-        if summary_by not in ["func_name", "lineage"]:
-            raise ValueError('summary_by must be one of "func_name" or "lineage".')
+        if summary_by not in ["func_name", "task_name", "lineage"]:
+            raise ValueError(
+                'summary_by must be one of "func_name", "task_name", or "lineage".'
+            )
 
         # For summary, try getting as many entries as possible to minimze data loss.
         result = await self.list_tasks(
             option=ListApiOptions(
-                timeout=option.timeout,
                 limit=RAY_MAX_LIMIT_FROM_API_SERVER,
+                timeout=option.timeout,
                 filters=option.filters,
                 detail=summary_by == "lineage",
             )
         )
 
-        if summary_by == "func_name":
+        if summary_by in ("func_name", "task_name"):
             summary_results = TaskSummaries.to_summary_by_func_name(tasks=result.result)
         else:
             # We will need the actors info for actor tasks.

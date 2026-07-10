@@ -4,7 +4,6 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Union
-from urllib.parse import urlparse
 
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
@@ -68,7 +67,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 if not dashboard_http_address:
                     raise ValueError("Dashboard http address not found in InternalKV.")
                 address = dashboard_http_address.decode()
-                if not urlparse(address).scheme:
+                if not address.startswith(("http://", "https://")):
                     address = f"http://{address}"
                 self._dashboard_http_address = address
                 return self._dashboard_http_address

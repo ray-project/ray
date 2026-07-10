@@ -2,15 +2,13 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Tuple
 
 # https://github.com/ray-project/ray/issues/54868
-# In the future, ray will avoid overriding the accelerator ids environment variables
-# when the number of accelerators is zero.
-# For example, when this environment variable is set, if a user sets `num_gpus=0`
-# in the `ray.init()` call, the environment variable `CUDA_VISIBLE_DEVICES` will
-# not be set to an empty string.
+# Ray no longer overrides accelerator ids environment variables when the number
+# of accelerators is zero. For example, if a user sets `num_gpus=0` in
+# `ray.init()`, the environment variable `CUDA_VISIBLE_DEVICES` will not be
+# set to an empty string.
 #
-# This environment variable is used to disable this behavior temporarily.
-# And to avoid breaking changes, this environment variable is set to True by default
-# to follow the previous behavior.
+# Set RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=1 to restore the old behavior where
+# Ray would override accelerator env vars even when zero accelerators are assigned.
 #
 RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR = "RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO"
 

@@ -120,6 +120,41 @@ class TestTorchVisionPreprocessor:
             preprocessor.transform(dataset).materialize()
 
 
+def test_torchvision_preprocessor_serialization():
+    """Test TorchVisionPreprocessor serialization and deserialization functionality."""
+    from torchvision import transforms
+
+    from ray.data.preprocessor import SerializablePreprocessorBase
+
+    # Create preprocessor
+    transform = transforms.Compose([transforms.ToTensor()])
+    preprocessor = TorchVisionPreprocessor(columns=["image"], transform=transform)
+
+    # Serialize using CloudPickle
+    serialized = preprocessor.serialize()
+
+    # Verify it's binary CloudPickle format
+    assert isinstance(serialized, bytes)
+    assert serialized.startswith(SerializablePreprocessorBase.MAGIC_CLOUDPICKLE)
+
+    # Deserialize
+    deserialized = TorchVisionPreprocessor.deserialize(serialized)
+
+    # Verify type and field values
+    assert isinstance(deserialized, TorchVisionPreprocessor)
+    assert deserialized.columns == ["image"]
+    assert isinstance(deserialized.torchvision_transform, type(transform))
+
+    # Verify it works correctly
+    test_data = {"image": np.zeros((32, 32, 3), dtype=np.uint8)}
+    result = deserialized.transform_batch(test_data)
+
+    # Verify transformation was applied - ToTensor converts uint8 [0,255] to float [0.0, 1.0]
+    assert "image" in result
+    assert result["image"].dtype in (np.float32, np.float64)
+    assert result["image"].min() >= 0.0 and result["image"].max() <= 1.0
+
+
 if __name__ == "__main__":
     import sys
 

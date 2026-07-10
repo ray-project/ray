@@ -290,21 +290,6 @@ std::string GcsResourceManager::DebugString() const {
   return stream.str();
 }
 
-void GcsResourceManager::AddResourcesChangedListener(std::function<void()> &&listener) {
-  RAY_CHECK(listener != nullptr);
-  resources_changed_listeners_.emplace_back(std::move(listener));
-}
-
-void GcsResourceManager::UpdateNodeNormalTaskResources(
-    const NodeID &node_id, const rpc::ResourcesData &heartbeat) {
-  if (cluster_resource_manager_.UpdateNodeNormalTaskResources(
-          scheduling::NodeID(node_id.Binary()), heartbeat)) {
-    for (const auto &listener : resources_changed_listeners_) {
-      listener();
-    }
-  }
-}
-
 std::string GcsResourceManager::ToString() const {
   std::ostringstream ostr;
   const int indent = 0;

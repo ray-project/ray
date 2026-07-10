@@ -17,6 +17,7 @@ from ray._common.test_utils import (
 )
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
 from ray.serve._private.test_utils import (
+    PROMETHEUS_METRICS_TIMEOUT_S,
     get_application_url,
     ping_fruit_stand,
     ping_grpc_call_method,
@@ -124,6 +125,7 @@ class TestRequestContextMetrics:
                 get_metric_dictionaries(
                     "ray_serve_deployment_processing_latency_ms_sum",
                     timeseries=timeseries,
+                    wait=False,
                 )
             )
             == 3,
@@ -172,7 +174,9 @@ class TestRequestContextMetrics:
             metrics = [
                 sample.labels
                 for sample in fetch_prometheus_metric_timeseries(
-                    ["localhost:9999"], timeseries
+                    ["localhost:9999"],
+                    timeseries,
+                    timeout=PROMETHEUS_METRICS_TIMEOUT_S,
                 )[metric_name]
             ]
             assert {metric["route"] for metric in metrics} == {
@@ -190,7 +194,9 @@ class TestRequestContextMetrics:
                 [
                     sample.labels
                     for sample in fetch_prometheus_metric_timeseries(
-                        ["localhost:9999"], timeseries
+                        ["localhost:9999"],
+                        timeseries,
+                        timeout=PROMETHEUS_METRICS_TIMEOUT_S,
                     )[metric_name]
                 ]
             )
@@ -234,6 +240,7 @@ class TestRequestContextMetrics:
                 get_metric_dictionaries(
                     "ray_serve_deployment_processing_latency_ms_sum",
                     timeseries=timeseries,
+                    wait=False,
                 )
             )
             == 5,
@@ -288,7 +295,9 @@ class TestRequestContextMetrics:
             metrics = [
                 sample.labels
                 for sample in fetch_prometheus_metric_timeseries(
-                    ["localhost:9999"], timeseries
+                    ["localhost:9999"],
+                    timeseries,
+                    timeout=PROMETHEUS_METRICS_TIMEOUT_S,
                 )[metric_name]
             ]
             assert {metric["route"] for metric in metrics} == {
@@ -358,8 +367,10 @@ class TestRequestContextMetrics:
         wait_for_condition(
             lambda: len(
                 get_metric_dictionaries(
-                    "ray_serve_deployment_request_counter_total", timeseries=timeseries
-                ),
+                    "ray_serve_deployment_request_counter_total",
+                    timeseries=timeseries,
+                    wait=False,
+                )
             )
             == 4,
             timeout=40,
@@ -409,7 +420,9 @@ class TestRequestContextMetrics:
         wait_for_condition(
             lambda: len(
                 get_metric_dictionaries(
-                    "ray_serve_deployment_request_counter_total", timeseries=timeseries
+                    "ray_serve_deployment_request_counter_total",
+                    timeseries=timeseries,
+                    wait=False,
                 )
             )
             == 2,
@@ -479,7 +492,9 @@ class TestRequestContextMetrics:
         deployment_name, replica_id = resp.json()
         wait_for_condition(
             lambda: len(
-                get_metric_dictionaries("ray_my_gauge", timeseries=timeseries),
+                get_metric_dictionaries(
+                    "ray_my_gauge", timeseries=timeseries, wait=False
+                ),
             )
             == 1,
             timeout=40,
@@ -624,7 +639,9 @@ class TestRequestContextMetrics:
         timeseries = PrometheusTimeseries()
         wait_for_condition(
             lambda: len(
-                get_metric_dictionaries("ray_my_gauge", timeseries=timeseries),
+                get_metric_dictionaries(
+                    "ray_my_gauge", timeseries=timeseries, wait=False
+                ),
             )
             == 1,
             timeout=40,
@@ -964,7 +981,7 @@ class TestProxyStateMetrics:
         # Wait for the proxy to become healthy and metric to be reported
         def check_proxy_status():
             metrics = get_metric_dictionaries(
-                "ray_serve_proxy_status", timeseries=timeseries
+                "ray_serve_proxy_status", timeseries=timeseries, wait=False
             )
             if not metrics:
                 return False
@@ -1020,7 +1037,9 @@ class TestProxyStateMetrics:
         # The histogram metric will have _sum and _count suffixes
         def check_shutdown_duration_metric_exists():
             metrics = get_metric_dictionaries(
-                "ray_serve_proxy_shutdown_duration_ms_sum", timeseries=timeseries
+                "ray_serve_proxy_shutdown_duration_ms_sum",
+                timeseries=timeseries,
+                wait=False,
             )
             if not metrics:
                 return False
@@ -1034,7 +1053,9 @@ class TestProxyStateMetrics:
 
         # Verify the metric has the expected tags
         metrics = get_metric_dictionaries(
-            "ray_serve_proxy_shutdown_duration_ms_sum", timeseries=timeseries
+            "ray_serve_proxy_shutdown_duration_ms_sum",
+            timeseries=timeseries,
+            wait=False,
         )
         assert len(metrics) == 1
         for metric in metrics:
@@ -1043,7 +1064,9 @@ class TestProxyStateMetrics:
 
         # Also verify _count metric exists
         count_metrics = get_metric_dictionaries(
-            "ray_serve_proxy_shutdown_duration_ms_count", timeseries=timeseries
+            "ray_serve_proxy_shutdown_duration_ms_count",
+            timeseries=timeseries,
+            wait=False,
         )
         assert len(count_metrics) == 1
 

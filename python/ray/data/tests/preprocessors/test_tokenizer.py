@@ -22,7 +22,9 @@ def test_tokenizer():
         ["the", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog"],
         ["banana", "banana"],
     ]
-    expected_df = pd.DataFrame.from_dict({"A": processed_col_a, "B": processed_col_b})
+    expected_df = pd.DataFrame.from_dict(
+        {"A": processed_col_a, "B": processed_col_b}
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -45,7 +47,7 @@ def test_tokenizer():
             "A_tokenized": processed_col_a,
             "B_tokenized": processed_col_b,
         }
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -73,9 +75,41 @@ def test_tokenizer():
             "A_custom": custom_processed_col_a,
             "B_custom": custom_processed_col_b,
         }
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
+
+
+def test_tokenizer_serialization():
+    """Test Tokenizer serialization and deserialization functionality."""
+    from ray.data.preprocessor import SerializablePreprocessorBase
+
+    # Create tokenizer
+    tokenizer = Tokenizer(columns=["text"])
+
+    # Serialize using CloudPickle
+    serialized = tokenizer.serialize()
+
+    # Verify it's binary CloudPickle format
+    assert isinstance(serialized, bytes)
+    assert serialized.startswith(SerializablePreprocessorBase.MAGIC_CLOUDPICKLE)
+
+    # Deserialize
+    deserialized = Tokenizer.deserialize(serialized)
+
+    # Verify type and field values
+    assert isinstance(deserialized, Tokenizer)
+    assert deserialized.columns == ["text"]
+    assert callable(deserialized.tokenization_fn)
+    assert deserialized.output_columns == ["text"]
+
+    # Verify it works correctly
+    df = pd.DataFrame({"text": ["hello world", "foo bar"]})
+    result = deserialized.transform_batch(df)
+
+    # Verify tokenization was applied correctly
+    assert result["text"][0] == ["hello", "world"]
+    assert result["text"][1] == ["foo", "bar"]
 
 
 if __name__ == "__main__":

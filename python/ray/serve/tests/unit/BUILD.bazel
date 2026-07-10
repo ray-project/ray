@@ -10,7 +10,8 @@ py_test_run_all_subdirectory(
     size = "small",
     include = glob(["test_*.py"]),
     exclude = [
-        "test_controller_haproxy.py",  # Requires RAY_SERVE_ENABLE_HA_PROXY=1
+        "test_haproxy_binary.py",
+        "test_round_robin_router.py",
     ],
     extra_srcs = [],
     tags = ["team:serve"],
@@ -21,18 +22,21 @@ py_test_run_all_subdirectory(
     ],
 )
 
-# HAProxy controller unit tests (require RAY_SERVE_ENABLE_HA_PROXY=1).
 py_test_module_list(
     size = "small",
-    env = {
-        "RAY_SERVE_ENABLE_HA_PROXY": "1",
-        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
-    },
-    files = [
-        "test_controller_haproxy.py",
+    files = ["test_round_robin_router.py"],
+    tags = ["team:serve"],
+    deps = [
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+        "//python/ray/serve/tests:common",
     ],
+)
+
+py_test_module_list(
+    size = "small",
+    files = ["test_haproxy_binary.py"],
     tags = [
-        "haproxy",
         "no_windows",
         "team:serve",
     ],

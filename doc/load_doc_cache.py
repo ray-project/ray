@@ -9,7 +9,7 @@ import requests
 LAST_BUILD_CUTOFF = 3  # how many days ago to consider a build outdated
 PENDING_FILES_PATH = "pending_files.txt"
 ENVIRONMENT_PICKLE = "_build/doctrees/environment.pickle"
-DOC_BUILD_CACHE_URL = "https://rayci.anyscale.dev/ray/doc/build-cache"
+DOC_BUILD_CACHE_URL = "https://ci.ray.io/ray/doc/build-cache"
 
 
 def _build_cache_url(commit: str):
@@ -17,17 +17,28 @@ def _build_cache_url(commit: str):
 
 
 def find_latest_master_commit():
-    """Find latest commit that was pushed to origin/master that is also on local env."""
+    """Find the latest origin/master commit that has a build cache uploaded.
+
+    Walk origin/master, not HEAD. Read the Docs checks out PRs with a shallow
+    ``git clone --depth 1``, so HEAD's history is grafted -- a plain ``git log``
+    then sees ~1 commit and never reaches a cached master commit. post_checkout
+    in .readthedocs.yaml deepens origin/master (``git fetch --depth=500 origin
+    master``), so that ref has real history to probe. Fall back to HEAD when
+    origin/master is unavailable (e.g. a local checkout without that
+    remote-tracking ref).
+    """
+    has_origin_master = (
+        subprocess.run(
+            ["git", "rev-parse", "--verify", "origin/master"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode
+        == 0
+    )
+    ref = "origin/master" if has_origin_master else "HEAD"
+
     latest_commits = (
-        subprocess.check_output(
-            [
-                "git",
-                "log",
-                "-n",
-                "100",
-                "--format=%H",
-            ]
-        )
+        subprocess.check_output(["git", "log", "-n", "100", "--format=%H", ref])
         .strip()
         .decode("utf-8")
         .split("\n")
@@ -44,7 +55,7 @@ def find_latest_master_commit():
 
 def fetch_cache(commit, target_file_path):
     """
-    Fetch doc cache archive from rayci.anyscale.dev
+    Fetch doc cache archive from ci.ray.io
 
     Args:
         commit: The commit hash of the doc cache to fetch

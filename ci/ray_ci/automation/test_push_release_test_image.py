@@ -6,7 +6,10 @@ from ci.ray_ci.automation.image_tags_lib import (
     format_platform_tag,
     format_python_tag,
 )
-from ci.ray_ci.automation.push_release_test_image import ReleaseTestImagePushContext
+from ci.ray_ci.automation.push_release_test_image import (
+    ReleaseTestImagePushContext,
+    _annotate_pushed_image,
+)
 from ci.ray_ci.configs import DEFAULT_PYTHON_TAG_VERSION
 from ci.ray_ci.docker_container import GPU_PLATFORM
 
@@ -70,10 +73,10 @@ class TestWandaImageName:
             ("3.11", "cu12.1.1-cudnn8", "ray", "ray-anyscale-py3.11-cu12.1.1-cudnn8"),
             ("3.10", "cpu", "ray-llm", "ray-llm-anyscale-py3.10-cpu"),
             (
-                "3.11",
-                "cu12.8.1-cudnn",
+                "3.12",
+                "cu13.0.0-cudnn",
                 "ray-llm",
-                "ray-llm-anyscale-py3.11-cu12.8.1-cudnn",
+                "ray-llm-anyscale-py3.12-cu13.0.0-cudnn",
             ),
             ("3.10", "cpu", "ray-ml", "ray-ml-anyscale-py3.10-cpu"),
             (
@@ -261,6 +264,130 @@ class TestDestinationTags:
         # Should have both -cpu and empty platform suffix
         assert "abc123-extra-py311-cpu" in tags
         assert "abc123-extra-py311" in tags
+
+
+class TestAnnotatePushedImage:
+    @pytest.fixture
+    def captured_calls(self, monkeypatch):
+        calls: list = []
+        monkeypatch.setattr(
+            "ci.ray_ci.automation.push_release_test_image.subprocess.run",
+            lambda args: calls.append(args),
+        )
+        return calls
+
+    @staticmethod
+    def _apply_env(monkeypatch, env: dict) -> None:
+        for key, value in env.items():
+            if value is None:
+                monkeypatch.delenv(key, raising=False)
+            else:
+                monkeypatch.setenv(key, value)
+
+    @pytest.mark.parametrize(
+        "env",
+        [
+            pytest.param({"BUILDKITE": None}, id="not_buildkite"),
+            pytest.param(
+                {
+                    "BUILDKITE": "true",
+                    "BUILDKITE_STEP_KEY": "ray",
+                    "RAYCI_SELECT": "ray-ml,ray-data",
+                },
+                id="step_key_is_substring_of_selected",
+            ),
+            pytest.param(
+                {
+                    "BUILDKITE": "true",
+                    "BUILDKITE_STEP_KEY": "release-ray",
+                    "RAYCI_SELECT": None,
+                },
+                id="rayci_select_unset",
+            ),
+            pytest.param(
+                {
+                    "BUILDKITE": "true",
+                    "BUILDKITE_STEP_KEY": "release-ray",
+                    "RAYCI_SELECT": "",
+                },
+                id="rayci_select_empty",
+            ),
+            pytest.param(
+                {
+                    "BUILDKITE": "true",
+                    "BUILDKITE_STEP_KEY": "release-ray",
+                    "RAYCI_SELECT": "release-ray-ml,release-ray-data",
+                },
+                id="step_key_not_in_selection",
+            ),
+            pytest.param(
+                {
+                    "BUILDKITE": "true",
+                    "BUILDKITE_STEP_KEY": None,
+                    "RAYCI_SELECT": "release-ray,release-ray-ml",
+                },
+                id="step_key_unset",
+            ),
+            pytest.param(
+                {
+                    "BUILDKITE": "true",
+                    "BUILDKITE_STEP_KEY": "",
+                    "RAYCI_SELECT": "release-ray,release-ray-ml",
+                },
+                id="step_key_empty_string",
+            ),
+            pytest.param(
+                {
+                    "BUILDKITE": "true",
+                    "BUILDKITE_STEP_KEY": "release-ray",
+                    "RAYCI_SELECT": "  ,  ",
+                },
+                id="rayci_select_whitespace_only",
+            ),
+        ],
+    )
+    def test_skips_annotation(self, monkeypatch, captured_calls, env):
+        self._apply_env(monkeypatch, env)
+
+        _annotate_pushed_image("example/image:tag", "ray")
+
+        assert captured_calls == []
+
+    @pytest.mark.parametrize(
+        "env",
+        [
+            pytest.param(
+                {
+                    "BUILDKITE": "true",
+                    "BUILDKITE_STEP_KEY": "release-ray",
+                    "RAYCI_SELECT": "release-ray,release-ray-ml",
+                },
+                id="exact_step_key_selected",
+            ),
+            pytest.param(
+                {
+                    "BUILDKITE": "true",
+                    "BUILDKITE_STEP_KEY": "release-ray",
+                    "RAYCI_SELECT": "release-ray",
+                },
+                id="single_item_selection_matches",
+            ),
+            pytest.param(
+                {
+                    "BUILDKITE": "true",
+                    "BUILDKITE_STEP_KEY": "release-ray",
+                    "RAYCI_SELECT": "  release-ray , release-ray-ml  ",
+                },
+                id="selection_has_whitespace",
+            ),
+        ],
+    )
+    def test_runs_annotation(self, monkeypatch, captured_calls, env):
+        self._apply_env(monkeypatch, env)
+
+        _annotate_pushed_image("example/image:tag", "ray")
+
+        assert len(captured_calls) == 1
 
 
 if __name__ == "__main__":

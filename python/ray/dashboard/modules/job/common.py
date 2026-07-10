@@ -373,7 +373,10 @@ class JobInfoStorageClient:
         )
         if old_info is not None:
             if status != old_info.status and old_info.status.is_terminal():
-                assert False, "Attempted to change job status from a terminal state."
+                raise RuntimeError(
+                    f"Attempted to change job status from a terminal state: "
+                    f"{old_info.status} -> {status}"
+                )
             new_info = replace(old_info, **jobinfo_replace_kwargs)
         else:
             new_info = JobInfo(
@@ -412,7 +415,10 @@ class JobInfoStorageClient:
             job_info = await self.get_info(job_id, timeout)
             return job_id, job_info
 
-        return dict(await asyncio.gather(*[get_job_info(job_id) for job_id in job_ids]))
+        results = await asyncio.gather(*[get_job_info(job_id) for job_id in job_ids])
+        return {
+            job_id: job_info for job_id, job_info in results if job_info is not None
+        }
 
 
 def uri_to_http_components(package_uri: str) -> Tuple[str, str]:

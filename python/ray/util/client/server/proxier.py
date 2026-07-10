@@ -21,9 +21,12 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
 from ray._common.network_utils import (
     build_address,
+    get_localhost_ip,
     is_ipv6,
     is_localhost,
 )
+from ray._common.tls_utils import add_port_to_grpc_server
+from ray._common.utils import env_integer
 from ray._private.authentication.http_token_authentication import (
     format_authentication_http_error,
     get_auth_headers_if_auth_enabled,
@@ -37,7 +40,6 @@ from ray._private.services import (
     get_node_with_retry,
     start_ray_client_server,
 )
-from ray._private.tls_utils import add_port_to_grpc_server
 from ray._private.utils import detect_fate_sharing_support
 from ray._raylet import GcsClient
 from ray.cloudpickle.compat import pickle
@@ -62,7 +64,7 @@ CHECK_PROCESS_INTERVAL_S = 30
 MIN_SPECIFIC_SERVER_PORT = 23000
 MAX_SPECIFIC_SERVER_PORT = 24000
 
-CHECK_CHANNEL_TIMEOUT_S = 30
+CHECK_CHANNEL_TIMEOUT_S = env_integer("RAY_CLIENT_SERVER_CHECK_CHANNEL_TIMEOUT_S", 30)
 
 LOGSTREAM_RETRIES = 5
 LOGSTREAM_RETRY_INTERVAL_SEC = 2
@@ -229,7 +231,7 @@ class ProxyManager:
                 self.servers.get(client_id) is None
             ), f"Server already created for Client: {client_id}"
 
-            host = "127.0.0.1"
+            host = get_localhost_ip()
             port = self._get_unused_port(
                 socket.AF_INET6 if is_ipv6(host) else socket.AF_INET
             )
@@ -368,7 +370,7 @@ class ProxyManager:
 
         proc = start_ray_client_server(
             self.address,
-            "127.0.0.1",
+            get_localhost_ip(),
             specific_server.port,
             stdout_file=output,
             stderr_file=error,
@@ -925,8 +927,8 @@ def serve_proxier(
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(logs_servicer, server)
     if not is_localhost(host):
-        add_port_to_grpc_server(server, f"127.0.0.1:{port}")
-    add_port_to_grpc_server(server, f"{host}:{port}")
+        add_port_to_grpc_server(server, build_address(get_localhost_ip(), port))
+    add_port_to_grpc_server(server, build_address(host, port))
     server.start()
     return ClientServerHandle(
         task_servicer=task_servicer,

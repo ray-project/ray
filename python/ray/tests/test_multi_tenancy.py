@@ -22,7 +22,8 @@ from ray.util.state.common import WorkerState
 def get_workers() -> List[WorkerState]:
     """Return non-driver workers."""
     return list_workers(
-        filters=[("worker_type", "=", "WORKER"), ("is_alive", "=", "True")]
+        filters=[("worker_type", "=", "WORKER"), ("is_alive", "=", "True")],
+        raise_on_missing_output=False,
     )
 
 

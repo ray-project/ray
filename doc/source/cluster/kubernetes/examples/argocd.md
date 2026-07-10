@@ -2,8 +2,7 @@
 
 # Deploying Ray Clusters via ArgoCD
 
-This guide provides a step-by-step approach for deploying Ray clusters on Kubernetes using ArgoCD. ArgoCD is a declarative GitOps tool that enables you to manage Ray cluster configurations in Git repositories with automated synchronization, version control, and rollback capabilities. This approach is particularly valuable when managing multiple Ray clusters across different environments, implementing audit trails and approval workflows, or maintaining infrastructure-as-code practices. For simpler use cases like single-cluster development or quick experimentation, direct kubectl or Helm deployments may be sufficient.
-You can read more about the benefits of ArgoCD [here](https://argo-cd.readthedocs.io/en/stable/#why-argo-cd).
+This guide provides a step-by-step approach for deploying Ray clusters on Kubernetes using ArgoCD. ArgoCD is a declarative GitOps tool that enables you to manage Ray cluster configurations in Git repositories with automated synchronization, version control, and rollback capabilities. This approach is particularly valuable when managing multiple Ray clusters across different environments, implementing audit trails and approval workflows, or maintaining infrastructure-as-code practices. For simpler use cases like single-cluster development or quick experimentation, direct kubectl or Helm deployments may be sufficient. You can read more about the benefits of ArgoCD [here](https://argo-cd.readthedocs.io/en/stable/#why-argo-cd).
 
 This example demonstrates how to deploy the KubeRay operator and a RayCluster with three different worker groups, leveraging ArgoCD's GitOps capabilities for automated cluster management.
 
@@ -34,7 +33,7 @@ spec:
     namespace: ray-cluster
   source:
     repoURL: https://github.com/ray-project/kuberay
-    targetRevision: v1.5.1  # update this as necessary
+    targetRevision: v1.6.0  # update this as necessary
     path: helm-chart/kuberay-operator/crds
   syncPolicy:
     automated:
@@ -83,7 +82,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/ray-project/kuberay
-    targetRevision: v1.5.1  # update this as necessary
+    targetRevision: v1.6.0  # update this as necessary
     path: helm-chart/kuberay-operator
     helm:
       skipCrds: true   # CRDs are already installed in Step 1
@@ -157,7 +156,7 @@ spec:
   source:
     repoURL: https://ray-project.github.io/kuberay-helm/
     chart: ray-cluster
-    targetRevision: "1.5.1"
+    targetRevision: "1.6.0"
     helm:
       releaseName: raycluster
       valuesObject:
@@ -396,7 +395,7 @@ spec:
     namespace: ray-cluster
   source:
     repoURL: https://github.com/ray-project/kuberay
-    targetRevision: v1.5.1  # update this as necessary
+    targetRevision: v1.6.0  # update this as necessary
     path: helm-chart/kuberay-operator/crds
   syncPolicy:
     automated:
@@ -417,7 +416,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/ray-project/kuberay
-    targetRevision: v1.5.1  # update this as necessary
+    targetRevision: v1.6.0  # update this as necessary
     path: helm-chart/kuberay-operator
     helm:
       skipCrds: true   # CRDs are installed in the first Application

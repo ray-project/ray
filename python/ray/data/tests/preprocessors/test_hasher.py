@@ -39,6 +39,41 @@ def test_feature_hasher():
     assert all(hashed_features.iloc[1] <= 1)
 
 
+def test_feature_hasher_serialization():
+    """Test FeatureHasher serialization and deserialization functionality."""
+    from ray.data.preprocessor import SerializablePreprocessorBase
+
+    # Create hasher
+    hasher = FeatureHasher(
+        columns=["I", "like", "Python"], num_features=8, output_column="hashed"
+    )
+
+    # Serialize using CloudPickle
+    serialized = hasher.serialize()
+
+    # Verify it's binary CloudPickle format
+    assert isinstance(serialized, bytes)
+    assert serialized.startswith(SerializablePreprocessorBase.MAGIC_CLOUDPICKLE)
+
+    # Deserialize
+    deserialized = FeatureHasher.deserialize(serialized)
+
+    # Verify type and field values
+    assert isinstance(deserialized, FeatureHasher)
+    assert deserialized.columns == ["I", "like", "Python"]
+    assert deserialized.num_features == 8
+    assert deserialized.output_column == "hashed"
+
+    # Verify it works correctly
+    df = pd.DataFrame({"I": [1, 1], "like": [1, 0], "Python": [1, 1]})
+    result = deserialized.transform_batch(df)
+
+    # Verify hashing was applied correctly
+    assert "hashed" in result.columns
+    assert len(result["hashed"][0]) == 8
+    assert len(result["hashed"][1]) == 8
+
+
 if __name__ == "__main__":
     import sys
 
