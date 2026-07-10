@@ -752,7 +752,13 @@ class KineticaDatasink(Datasink):
         return errors
 
     def _write_simple(self, client, records: List[Dict[str, Any]]) -> tuple:
-        """Write records using simple insert_records API with JSON encoding."""
+        """Write records using simple insert_records API with JSON encoding.
+
+        Note: Kinetica is not a transactional database. Each batch is committed
+        independently, so if an error occurs, earlier batches remain committed.
+        This method collects all errors across batches to provide comprehensive
+        error reporting rather than failing on the first error.
+        """
         import base64
         import json
 
