@@ -1,5 +1,3 @@
-from typing import Optional
-
 import pytest
 
 from ray.data._internal.dynamic_work_queue import parallel_process_work_stealing
@@ -292,20 +290,18 @@ def test_parallel_process_work_stealing_error_clears_exception():
     class BigObject:
         pass
 
-    ref: Optional["weakref.ref"] = None
+    refs: "list[weakref.ref]" = []
 
     def process(item, add_work, add_result):
-        nonlocal ref
         obj = BigObject()
-        ref = weakref.ref(obj)
+        refs.append(weakref.ref(obj))
         raise ValueError("test error")
 
     with pytest.raises(ValueError, match="test error"):
         list(parallel_process_work_stealing([1], process, num_workers=1))
 
     gc.collect()
-    assert ref is not None
-    assert ref() is None, "BigObject leaked via traceback reference cycle"
+    assert refs[0]() is None, "BigObject leaked via traceback reference cycle"
 
 
 @pytest.mark.parametrize("num_workers", [1, 4])
