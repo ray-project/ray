@@ -293,10 +293,15 @@ std::string GetNodeIpAddressFromPerspective(const std::optional<std::string> &ad
   if (use_hostname_env != nullptr && std::string(use_hostname_env) == "1") {
     boost::system::error_code ec;
     std::string hostname = boost::asio::ip::host_name(ec);
-    if (!ec) {
+    if (!ec && !hostname.empty()) {
       return hostname;
     }
-    RAY_LOG(WARNING) << "Failed to retrieve hostname: " << ec.message();
+    if (ec) {
+      RAY_LOG(WARNING) << "Failed to retrieve hostname: " << ec.message();
+    } else {
+      RAY_LOG(WARNING) << "Retrieved an empty hostname; falling back to IP-based "
+                       << "node address detection.";
+    }
   }
   std::vector<std::pair<std::string, boost::asio::ip::udp>> test_addresses;
   if (address.has_value()) {

@@ -15,6 +15,7 @@
 #include "ray/util/network_util.h"
 
 #include <boost/asio/generic/basic_endpoint.hpp>
+#include <boost/asio/ip/address.hpp>
 #include <boost/asio/ip/host_name.hpp>
 #include <memory>
 #include <string>
@@ -149,9 +150,11 @@ TEST(NetworkUtilTest, TestGetNodeIpAddressHostnameRouting) {
 #endif
   std::string ip_address = GetNodeIpAddressFromPerspective(std::nullopt);
   EXPECT_NE(ip_address, hostname);
-  // Basic IP validation (v4 or v6)
-  EXPECT_TRUE(ip_address.find('.') != std::string::npos ||
-              ip_address.find(':') != std::string::npos);
+  // Validate that the result is a well-formed IP address (v4 or v6), not just a
+  // string that happens to contain '.' or ':'.
+  boost::system::error_code ec;
+  boost::asio::ip::make_address(ip_address, ec);
+  EXPECT_FALSE(ec) << "Expected a valid IP address, got: " << ip_address;
 }
 
 }  // namespace ray
