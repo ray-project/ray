@@ -50,14 +50,14 @@ class TestDtypeAggregatorsForDataset:
                 {"num": "DataType(arrow:int64)", "str": "DataType(arrow:string)"},
                 11,  # 1 numerical * 8 + 1 string * 3
             ),
-            # Boolean treated as numerical
+            # Boolean uses its own aggregator set (see #62235)
             (
                 [{"bool_col": True, "int_col": 1}],
                 {
                     "bool_col": "DataType(arrow:bool)",
                     "int_col": "DataType(arrow:int64)",
                 },
-                16,  # 2 columns * 8 aggregators each
+                13,  # 1 boolean * 5 + 1 numerical * 8
             ),
         ],
     )
