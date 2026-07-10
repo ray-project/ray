@@ -7297,6 +7297,77 @@ class TestDeploymentRankManagerIntegrationE2E:
         # Clean up
         replica_rank_context.clear()
 
+    def test_rank_recovery_after_lightweight_reconfigure(
+        self, mock_deployment_state_manager
+    ):
+        """Lightweight reconfigure must pass the ReplicaRank object, not the int.
+
+        Regression test for the lightweight-update branch calling
+        `replica.reconfigure(version, rank=current_rank.rank)` (a bare int).
+        The replica stored the int and reported it back on controller
+        recovery, where `_recover_rank_impl` failed with
+        `'int' object has no attribute 'rank'`, leaving every surviving
+        replica without a rank and `_check_rank_consistency_impl` looping
+        "Rank system is in an invalid state".
+        """
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        replica_rank_context.clear()
+
+        # Deploy 3 replicas with a user_config and get them running.
+        info_1, v1 = deployment_info(num_replicas=3, version="1", user_config="1")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+        dsm.save_checkpoint()
+        ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.STARTING, 3, v1)])
+        self._set_replicas_ready(ds, [ReplicaState.STARTING])
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
+
+        # Lightweight update: same code version, new user_config. Replicas
+        # are reconfigured in place (rolling), not restarted.
+        info_2, v2 = deployment_info(num_replicas=3, version="1", user_config="2")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        dsm.save_checkpoint()
+        for _ in range(10):
+            dsm.update()
+            self._set_replicas_ready(ds, [ReplicaState.UPDATING])
+        check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v2)])
+
+        # The reconfigure must have handed each replica the full ReplicaRank
+        # object; this is what replicas report back on controller recovery.
+        replicas = ds._replicas.get([ReplicaState.RUNNING])
+        for replica in replicas:
+            stored_rank = replica_rank_context[replica.replica_id.unique_id]
+            assert isinstance(
+                stored_rank, ReplicaRank
+            ), f"Replica stored {stored_rank!r} instead of a ReplicaRank"
+
+        # Simulate controller crash and recover from the live replicas.
+        replica_ids = [replica.replica_id for replica in replicas]
+        new_dsm: DeploymentStateManager = create_dsm(
+            [replica_id.to_full_id_str() for replica_id in replica_ids]
+        )
+        new_ds = new_dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        check_counts(new_ds, total=3, by_state=[(ReplicaState.RECOVERING, 3, v2)])
+        self._set_replicas_ready(new_ds, [ReplicaState.RECOVERING])
+        new_dsm.update()
+        check_counts(new_ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v2)])
+
+        # Every recovered replica must have its rank restored.
+        for replica_id in replica_ids:
+            assert new_ds._rank_manager.has_replica_rank(
+                replica_id.unique_id
+            ), f"Rank for {replica_id.unique_id} was not recovered"
+        ranks_mapping = new_ds._get_replica_ranks_mapping()
+        ranks = sorted([r.rank for r in ranks_mapping.values()])
+        assert ranks == [0, 1, 2], f"Expected recovered ranks [0, 1, 2], got {ranks}"
+
+        # Clean up
+        replica_rank_context.clear()
+
     def test_complex_reassignment_scenario(self, mock_deployment_state_manager):
         """Test complex reassignment with many gaps through deployment state manager."""
         create_dsm, _, _, _ = mock_deployment_state_manager
