@@ -6153,8 +6153,9 @@ class Dataset:
                 the buffer, the remaining rows in the buffer are drained.
                 ``batch_size`` must also be specified when using local shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
-            pin_memory: [Alpha] If True, copies the tensor to pinned memory. Note that
-                `pin_memory` is only supported when using `DefaultCollateFn`.
+            pin_memory: [Alpha] Pin memory if True and the collate output is a
+                `TensorBatchType`. Do not pin tensors inside your ``collate_fn``;
+                pinning an already-pinned tensor is a no-op but wasted work.
 
         Returns:
             An iterable over Torch Tensor batches.
