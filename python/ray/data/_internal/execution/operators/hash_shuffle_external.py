@@ -1204,13 +1204,12 @@ class _PwriteSink:
         return total
 
 
-# In-place retry budget when the manager is transiently unreachable
-# (actor restart on the same node, network hiccup). We keep trying while
-# the node is alive; only give up when node liveness returns ``False``
-# or the deadline expires.
+# In-place retry when the manager is transiently unreachable (actor
+# restart on the same node, network hiccup). Keep trying at a fixed
+# interval while the node is alive; give up only when node liveness
+# returns False or the total deadline expires.
 _FETCH_RETRY_DEADLINE_S = 300.0
-_FETCH_RETRY_INITIAL_BACKOFF_S = 1.0
-_FETCH_RETRY_MAX_BACKOFF_S = 30.0
+_FETCH_RETRY_INTERVAL_S = 5.0
 
 
 def _prefetch_node_into(
@@ -1277,11 +1276,8 @@ def _prefetch_node_into(
         _ENDPOINT_CACHE[key] = ep
         return ep
 
-    start = time.monotonic()
-    deadline = start + _FETCH_RETRY_DEADLINE_S
-    backoff = _FETCH_RETRY_INITIAL_BACKOFF_S
+    deadline = time.monotonic() + _FETCH_RETRY_DEADLINE_S
     attempts = 0
-    last_exc: Optional[BaseException] = None
 
     while True:
         attempts += 1
@@ -1303,7 +1299,6 @@ def _prefetch_node_into(
                 num_sources=len(members),
             )
         except Exception as e:
-            last_exc = e
             # Any pwrites we did on this attempt land at the same offsets
             # on the next attempt (server re-sends the same bytes), so
             # rewind the sink so subsequent writes don't overrun into the
@@ -1314,8 +1309,7 @@ def _prefetch_node_into(
             # in case the manager restarted on a new port.
             _ENDPOINT_CACHE.pop(_manager_name(shuffle_id, node_id), None)
 
-            alive = _is_node_alive(node_id)
-            if alive is False:
+            if _is_node_alive(node_id) is False:
                 raise ShuffleNodeLostError(
                     f"ShuffleManager node {node_id} died mid-fetch; "
                     f"lost on-disk output for {len(members)} source(s). "
@@ -1327,13 +1321,12 @@ def _prefetch_node_into(
             if remaining <= 0:
                 raise ShuffleFetchError(
                     f"Fetch from node {node_id} did not succeed after "
-                    f"{attempts} attempts in {_FETCH_RETRY_DEADLINE_S:.0f}s "
-                    f"(node still alive={alive}, sources={len(members)}). "
-                    f"Last error: {e}"
+                    f"{attempts} attempts in "
+                    f"{_FETCH_RETRY_DEADLINE_S:.0f}s (sources="
+                    f"{len(members)}). Last error: {e}"
                 ) from e
-            # Node alive (or inconclusive) — wait and retry in place.
-            time.sleep(min(backoff, remaining))
-            backoff = min(backoff * 2, _FETCH_RETRY_MAX_BACKOFF_S)
+            # Node alive (or inconclusive) — wait, then retry in place.
+            time.sleep(min(_FETCH_RETRY_INTERVAL_S, remaining))
 
 
 def _chunk_members_by_bytes(
