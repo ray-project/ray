@@ -2939,12 +2939,14 @@ def exit_actor():
     This API can be used only inside an actor. Use ray.kill
     API if you'd like to kill an actor using actor handle.
 
-    When this API is called, an exception is raised and the actor
-    will exit immediately. For asyncio actors, there may be a short
-    delay before the actor exits if the API is called from a background
-    task.
-    Any queued methods will fail. Any ``atexit``
-    handlers installed in the actor will be run.
+    When this API is called, an exception is raised in the calling task and the
+    actor is scheduled to exit. The caller of the task that calls this API
+    observes the actor's death rather than a return value, and methods that have
+    not started executing fail with ``RayActorError``.
+
+    Tasks queued for execution will fail with ``RayActorError``. For concurrent actors, tasks currently executing will run to completion before the actor exits.
+
+    Any ``atexit`` handlers installed in the actor will be run.
 
     Raises:
         TypeError: An exception is raised if this is a driver or this
