@@ -1321,7 +1321,7 @@ oauthlib==3.2.2
     # via requests-oauthlib
 obstore==0.10.0
     # via -r python/requirements/ml/data-test-requirements.txt
-onnx==1.16.0 ; sys_platform != "darwin" or platform_machine != "arm64"
+onnx==1.22.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via
     #   -r python/requirements/ml/rllib-test-requirements.txt
     #   onnx-ir
