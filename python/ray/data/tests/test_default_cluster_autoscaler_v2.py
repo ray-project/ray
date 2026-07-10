@@ -606,13 +606,11 @@ class TestClusterAutoscaling:
     def test_get_node_resource_spec_and_count_head_node_group(
         self, nodes, node_groups, subcluster, expected
     ):
-        """The head node must not be scaled up, but worker-capable groups are.
+        """The head node group must not be scaled up, but worker groups are.
 
-        A node group is only excluded when it's dedicated to the head node
-        (``max_count == 1`` and a shape matching the running head node). Groups
-        that can host workers (``max_count > 1``) or that have a non-head shape
-        are kept so scale-from-zero still works. Head detection spans the whole
-        cluster, while worker counting is scoped to ``subcluster``.
+        A node group is excluded when it's the dedicated head node group
+        (``name == "head"`` and ``max_count == 1``). Worker counting is
+        scoped to ``subcluster``.
         """
         node_table = [
             {

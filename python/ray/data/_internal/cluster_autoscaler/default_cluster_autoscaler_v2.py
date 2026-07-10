@@ -111,13 +111,11 @@ def _get_node_resource_spec_and_count(
     """
     nodes_resource_spec_count = defaultdict(int)
 
-    # Split nodes into the head node and worker nodes. There is exactly one head
-    # node, and it can't be scaled up, so it's excluded from the counts and used
-    # below to identify a node group dedicated to the head. Worker nodes are
-    # further scoped to the requester's subcluster, so foreign subclusters'
+    # Split nodes into the head node and worker nodes. Worker nodes are
+    # scoped to the requester's subcluster, so foreign subclusters'
     # shapes and counts don't leak into this requester's active / pending
-    # bundles. Head detection is intentionally not subcluster-scoped: the head
-    # node group is global.
+    # bundles. Excluding the head node group is intentionally not
+    # subcluster-scoped: the head node group is global.
     worker_node_resources = []
     for node in ray.nodes():
         if not node["Alive"]:
@@ -136,7 +134,7 @@ def _get_node_resource_spec_and_count(
                 continue
 
             # Skip the head node group by name.
-            if node_group_config.name == "head":
+            if node_group_config.name == "head" and node_group_config.max_count == 1:
                 continue
 
             node_resource_spec = _NodeResourceSpec.from_bundle(
