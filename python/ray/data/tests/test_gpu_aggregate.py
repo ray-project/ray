@@ -15,7 +15,7 @@ import pytest
 import ray
 import ray.data._internal.gpu_shuffle.hash_aggregate as hash_aggregate
 from ray.actor import ActorClass, ActorHandle
-from ray.data._internal.execution.interfaces import ExecutionResources, PhysicalOperator
+from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.gpu_shuffle.hash_aggregate import (
     GPUAggregateFn,
     GPUAggregationPlan,
@@ -316,8 +316,8 @@ class TestGPUHashAggregatePlanning:
         assert op._rank_pool.nranks == 4
 
     def test_gpu_shuffle_unsupported_aggregate_falls_back_to_cpu_hash_aggregate(self):
-        from ray.data._internal.execution.operators.hash_aggregate import (
-            HashAggregateOperator,
+        from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
+            ShuffleReduceOp,
         )
 
         ctx = DataContext()
@@ -327,21 +327,13 @@ class TestGPUHashAggregatePlanning:
         logical_op = self._make_aggregate_op([AsList("value")])
         input_physical_op = _make_input_op_mock(num_blocks=8, size_bytes=1024)
 
-        with patch(
-            "ray.data._internal.execution.operators.hash_shuffle"
-            "._get_total_cluster_resources",
-            return_value=ExecutionResources(cpu=4, memory=1024 * 1024 * 1024),
-        ), patch(
-            "ray.data._internal.execution.operators.hash_shuffle.ray.put",
-            return_value=MagicMock(),
-        ):
-            op = plan_all_to_all_op(logical_op, [input_physical_op], ctx)
+        op = plan_all_to_all_op(logical_op, [input_physical_op], ctx)
 
-        assert isinstance(op, HashAggregateOperator)
+        assert isinstance(op, ShuffleReduceOp)
 
     def test_gpu_shuffle_missing_key_schema_falls_back_to_cpu_hash_aggregate(self):
-        from ray.data._internal.execution.operators.hash_aggregate import (
-            HashAggregateOperator,
+        from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
+            ShuffleReduceOp,
         )
 
         ctx = DataContext()
@@ -351,17 +343,9 @@ class TestGPUHashAggregatePlanning:
         logical_op = self._make_aggregate_op([Sum("value")], input_schema=None)
         input_physical_op = _make_input_op_mock(num_blocks=8, size_bytes=1024)
 
-        with patch(
-            "ray.data._internal.execution.operators.hash_shuffle"
-            "._get_total_cluster_resources",
-            return_value=ExecutionResources(cpu=4, memory=1024 * 1024 * 1024),
-        ), patch(
-            "ray.data._internal.execution.operators.hash_shuffle.ray.put",
-            return_value=MagicMock(),
-        ):
-            op = plan_all_to_all_op(logical_op, [input_physical_op], ctx)
+        op = plan_all_to_all_op(logical_op, [input_physical_op], ctx)
 
-        assert isinstance(op, HashAggregateOperator)
+        assert isinstance(op, ShuffleReduceOp)
 
     def test_global_aggregate_uses_synthetic_shuffle_key(self):
         plan = build_gpu_aggregation_plan(tuple(), (Count(), Sum("value")))
