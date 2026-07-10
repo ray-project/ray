@@ -14,6 +14,7 @@
 
 #include "ray/common/task/task_spec.h"
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -162,6 +163,15 @@ TEST(TaskSpecTest, TestSchedulingClassDescriptor) {
               absl::Hash<SchedulingClassDescriptor>()(descriptor9));
   ASSERT_TRUE(SchedulingClassToIds::GetSchedulingClass(descriptor7) ==
               SchedulingClassToIds::GetSchedulingClass(descriptor9));
+
+  // GetSchedulingClassDescriptor round-trips the descriptor registered for an id.
+  // It returns a non-null shared_ptr<const> so callers can read the descriptor
+  // without holding the lock or copying the whole struct.
+  SchedulingClass id1 = SchedulingClassToIds::GetSchedulingClass(descriptor1);
+  std::shared_ptr<const SchedulingClassDescriptor> descriptor1_ptr =
+      SchedulingClassToIds::GetSchedulingClassDescriptor(id1);
+  ASSERT_TRUE(descriptor1_ptr != nullptr);
+  ASSERT_TRUE(*descriptor1_ptr == descriptor1);
 }
 
 TEST(TaskSpecTest, TestActorSchedulingClass) {

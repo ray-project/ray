@@ -103,8 +103,9 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
         break;
       }
 
-      const auto &scheduling_class_descriptor =
+      const auto scheduling_class_descriptor_ptr =
           SchedulingClassToIds::GetSchedulingClassDescriptor(scheduling_class);
+      const auto &scheduling_class_descriptor = *scheduling_class_descriptor_ptr;
       const auto &label_selectors = scheduling_class_descriptor.label_selector;
       const bool is_node_affinity_scheduling_strategy =
           scheduling_class_descriptor.scheduling_strategy.scheduling_strategy_case() ==
@@ -216,7 +217,7 @@ void SchedulerResourceReporter::FillPendingActorCountByShape(
       auto by_shape_entry = resource_load_by_shape->Add();
       for (const auto &resource_entry :
            SchedulingClassToIds::GetSchedulingClassDescriptor(shape_entry.first)
-               .resource_set.GetResourceMap()) {
+               ->resource_set.GetResourceMap()) {
         (*by_shape_entry->mutable_shape())[resource_entry.first] = resource_entry.second;
       }
       by_shape_entry->set_num_infeasible_requests_queued(shape_entry.second.first);

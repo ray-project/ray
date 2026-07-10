@@ -154,7 +154,7 @@ bool ClusterLeaseManager::IsWorkWithResourceShape(
   SchedulingClass scheduling_class =
       work->lease_.GetLeaseSpecification().GetSchedulingClass();
   ResourceSet resource_set =
-      SchedulingClassToIds::GetSchedulingClassDescriptor(scheduling_class).resource_set;
+      SchedulingClassToIds::GetSchedulingClassDescriptor(scheduling_class)->resource_set;
   for (const auto &target_resource_shape : target_resource_shapes) {
     if (resource_set == target_resource_shape) {
       return true;

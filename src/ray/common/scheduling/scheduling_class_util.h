@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -71,12 +72,21 @@ struct SchedulingClassToIds {
   /// Keep global static id mappings for SchedulingClass for performance.
   static absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
       ABSL_GUARDED_BY(mutex_);
-  static absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
-      ABSL_GUARDED_BY(mutex_);
+  static absl::flat_hash_map<SchedulingClass,
+                             std::shared_ptr<const SchedulingClassDescriptor>>
+      sched_id_to_cls_ ABSL_GUARDED_BY(mutex_);
   static int next_sched_id_ ABSL_GUARDED_BY(mutex_);
 
   /// Gets the scheduling class descriptor for the given id.
-  static SchedulingClassDescriptor &GetSchedulingClassDescriptor(SchedulingClass id);
+  ///
+  /// Returns a shared_ptr (not a reference) by design. The descriptors are stored as
+  /// `shared_ptr<const>` and never mutated after insertion, so handing out a shared_ptr
+  /// under `mutex_` lets callers read the descriptor after the lock is released without
+  /// copying it. Returning a reference into `sched_id_to_cls_` would instead dangle if a
+  /// concurrent `GetSchedulingClass()` inserted a new class and rehashed the map (or if
+  /// an entry were ever evicted) after this function released the lock.
+  static std::shared_ptr<const SchedulingClassDescriptor> GetSchedulingClassDescriptor(
+      SchedulingClass id);
 
   /// Gets or creates a scheduling class id for the given descriptor.
   static SchedulingClass GetSchedulingClass(const SchedulingClassDescriptor &sched_cls);

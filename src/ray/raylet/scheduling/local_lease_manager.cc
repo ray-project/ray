@@ -210,14 +210,14 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
         total_cpu_requests_ += cur_dispatch_queue.size() * cpu_request_;
       }
     }
-    const auto &sched_cls_desc =
+    const auto sched_cls_desc =
         SchedulingClassToIds::GetSchedulingClassDescriptor(scheduling_class);
     double total_cpus =
         cluster_resource_scheduler_.GetLocalResourceManager().GetNumCpus();
 
     // Compare total CPU requests with the node's total CPU capacity. If the requests
     // exceed the capacity, check if fair granting is needed.
-    if (sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU()).Double() > 0 &&
+    if (sched_cls_desc->resource_set.Get(scheduling::ResourceID::CPU()).Double() > 0 &&
         total_cpu_requests_ > total_cpus) {
       RAY_LOG(DEBUG)
           << "Applying fairness policy. Total CPU requests in leases_to_grant_ ("
@@ -227,9 +227,9 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
       size_t total_cpu_granted_leases = 0;
       for (auto &entry : info_by_sched_cls_) {
         // Only consider CPU requests
-        const auto &cur_sched_cls_desc =
+        const auto cur_sched_cls_desc =
             SchedulingClassToIds::GetSchedulingClassDescriptor(entry.first);
-        if (cur_sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU()).Double() >
+        if (cur_sched_cls_desc->resource_set.Get(scheduling::ResourceID::CPU()).Double() >
             0) {
           total_cpu_granted_leases += entry.second.granted_leases.size();
         }
@@ -1175,7 +1175,7 @@ bool LocalLeaseManager::ReturnCpuResourcesToUnblockedWorker(
 uint64_t LocalLeaseManager::MaxGrantedLeasesPerSchedulingClass(
     SchedulingClass sched_cls_id) const {
   auto sched_cls = SchedulingClassToIds::GetSchedulingClassDescriptor(sched_cls_id);
-  double cpu_req = sched_cls.resource_set.Get(ResourceID::CPU()).Double();
+  double cpu_req = sched_cls->resource_set.Get(ResourceID::CPU()).Double();
   uint64_t total_cpus =
       cluster_resource_scheduler_.GetLocalResourceManager().GetNumCpus();
 
@@ -1243,9 +1243,8 @@ void LocalLeaseManager::DebugStr(std::stringstream &buffer) const {
   buffer << "}\n";
   buffer << "Backlog Size per scheduling descriptor :{workerId: num backlogs}:\n";
   for (const auto &[sched_cls, worker_to_backlog_size] : backlog_tracker_) {
-    const auto &descriptor =
-        SchedulingClassToIds::GetSchedulingClassDescriptor(sched_cls);
-    buffer << "\t" << descriptor.ResourceSetStr() << ": {\n";
+    const auto descriptor = SchedulingClassToIds::GetSchedulingClassDescriptor(sched_cls);
+    buffer << "\t" << descriptor->ResourceSetStr() << ": {\n";
     for (const auto &[worker_id, backlog_size] : worker_to_backlog_size) {
       buffer << "\t\t" << worker_id << ": " << backlog_size << "\n";
     }
@@ -1257,9 +1256,8 @@ void LocalLeaseManager::DebugStr(std::stringstream &buffer) const {
   for (const auto &pair : info_by_sched_cls_) {
     const auto &sched_cls = pair.first;
     const auto &info = pair.second;
-    const auto &descriptor =
-        SchedulingClassToIds::GetSchedulingClassDescriptor(sched_cls);
-    buffer << "    - " << descriptor.DebugString() << ": " << info.granted_leases.size()
+    const auto descriptor = SchedulingClassToIds::GetSchedulingClassDescriptor(sched_cls);
+    buffer << "    - " << descriptor->DebugString() << ": " << info.granted_leases.size()
            << "/" << info.capacity << "\n";
   }
 }
