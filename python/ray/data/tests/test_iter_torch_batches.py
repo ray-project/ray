@@ -86,9 +86,9 @@ def test_pin_memory_non_tensor_passthrough(fake_pin_memory):
 
 def test_pinning_collate_fn_wrapper(fake_pin_memory):
     """Test that the wrapper pins TensorBatchType collate outputs."""
-    from ray.data.collate_fn import _PinningCollateFnWrapper
+    from ray.data.collate_fn import _PinMemoryCollateFnWrapper
 
-    wrapper = _PinningCollateFnWrapper(
+    wrapper = _PinMemoryCollateFnWrapper(
         lambda batch: {k: torch.as_tensor(v) for k, v in batch.items()}
     )
     out = wrapper({"a": np.arange(3)})
@@ -98,10 +98,10 @@ def test_pinning_collate_fn_wrapper(fake_pin_memory):
 
 def test_pinning_collate_fn_wrapper_passthrough():
     """Test that non-TensorBatchType collate outputs pass through untouched."""
-    from ray.data.collate_fn import _PinningCollateFnWrapper
+    from ray.data.collate_fn import _PinMemoryCollateFnWrapper
 
     sentinel = object()
-    wrapper = _PinningCollateFnWrapper(lambda batch: sentinel)
+    wrapper = _PinMemoryCollateFnWrapper(lambda batch: sentinel)
     assert wrapper({"ignored": 1}) is sentinel
 
 
