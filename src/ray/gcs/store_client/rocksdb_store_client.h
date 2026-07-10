@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "boost/asio/strand.hpp"
 #include "boost/asio/thread_pool.hpp"
@@ -81,8 +80,8 @@ namespace gcs {
 /// volume; operators should verify substrate honesty on their storage
 /// class before relying on this contract.
 ///
-/// *Soft-durability tables.* The tables named in
-/// `gcs_rocksdb_soft_durability_tables` are written with `sync = false`
+/// *Soft-durability tables.* A small, hardcoded set of tables (see
+/// `SoftDurableTables()` in the .cc) is written with `sync = false`
 /// instead. GCS publishes death notifications (node down, actor dead)
 /// from inside the write's completion callback, so the per-write fsync
 /// delays those cluster-wide notifications and widens a pre-existing
@@ -91,7 +90,9 @@ namespace gcs {
 /// at least on par with Ray's recommended Redis GCS, which runs
 /// `appendfsync everysec` (periodic, not per-write). The affected state
 /// (node liveness, actor state) is re-derived after a GCS restart anyway.
-/// See the config docstring for the full rationale.
+/// This set is a fixed design property rather than a config knob; see
+/// `SoftDurableTables()` for the full rationale and the follow-up to
+/// remove the workaround once the root-cause GCS-core race is fixed.
 class RocksDbStoreClient : public StoreClient {
  public:
   /// Open or create a RocksDB at \p db_path and validate the cluster-ID
@@ -114,18 +115,11 @@ class RocksDbStoreClient : public StoreClient {
   ///   ~16x headroom over the typical pool size (4) so collision-
   ///   induced serialization is rare. See class docstring for the
   ///   ordering guarantees this controls.
-  /// \param soft_durability_tables Comma-separated table names whose
-  ///   writes use `sync = false` (skip the per-write WAL fsync). Parsed
-  ///   once into a set at construction. Empty (the default here) keeps
-  ///   the strict per-write fsync on every table. Production wiring is
-  ///   driven by the `gcs_rocksdb_soft_durability_tables` config flag;
-  ///   see that flag and the class docstring for the rationale.
   RocksDbStoreClient([[maybe_unused]] instrumented_io_context &io_service,
                      const std::string &db_path,
                      const std::string &expected_cluster_id,
                      std::size_t io_pool_size = 4,
-                     std::size_t strand_buckets = 64,
-                     const std::string &soft_durability_tables = "");
+                     std::size_t strand_buckets = 64);
 
   ~RocksDbStoreClient() override;
 
@@ -186,8 +180,8 @@ class RocksDbStoreClient : public StoreClient {
 
   /// WriteOptions for a mutating op on \p table_name. Uses `sync = true`
   /// (fsync-on-WAL before ack) unless \p table_name is in
-  /// `soft_durability_tables_`, in which case it uses `sync = false`.
-  /// Calls with no table (cluster-id marker, job counter) always fsync.
+  /// `SoftDurableTables()`, in which case it uses `sync = false`. Calls
+  /// with no table (cluster-id marker, job counter) always fsync.
   rocksdb::WriteOptions SyncWriteOptions(const std::string &table_name = "") const;
 
   /// Increment and durably persist the job counter under
@@ -245,11 +239,6 @@ class RocksDbStoreClient : public StoreClient {
 
   absl::Mutex job_id_mutex_;
   int job_id_ ABSL_GUARDED_BY(job_id_mutex_) = 0;
-
-  /// Table names written with `sync = false`. Parsed from the
-  /// `soft_durability_tables` ctor arg once and read-only thereafter, so
-  /// no lock is needed. See SyncWriteOptions and the class docstring.
-  absl::flat_hash_set<std::string> soft_durability_tables_;
 };
 
 }  // namespace gcs

@@ -38,25 +38,45 @@ namespace {
 
 constexpr char kDefaultCFName[] = "default";
 
-// Parse a comma-separated table-name list (e.g. "NODE,ACTOR") into a set,
-// trimming surrounding spaces and dropping empty entries.
-absl::flat_hash_set<std::string> ParseTableSet(const std::string &csv) {
-  absl::flat_hash_set<std::string> out;
-  std::size_t start = 0;
-  while (start <= csv.size()) {
-    std::size_t comma = csv.find(',', start);
-    std::size_t end = (comma == std::string::npos) ? csv.size() : comma;
-    std::size_t b = csv.find_first_not_of(" \t", start);
-    if (b != std::string::npos && b < end) {
-      std::size_t e = csv.find_last_not_of(" \t", end - 1);
-      out.insert(csv.substr(b, e - b + 1));
-    }
-    if (comma == std::string::npos) {
-      break;
-    }
-    start = comma + 1;
-  }
-  return out;
+// GCS tables written with `sync = false` (skip the per-write WAL fsync).
+// Every other table keeps the fsync-before-ack durability contract.
+//
+// This is a fundamental design property of the RocksDB GCS backend, not an
+// operator-tunable knob: the set is fixed by the correctness/performance
+// argument below and can only change alongside a change to the GCS
+// death-notification design or the Ray-core reconstruction path. It is a
+// hardcoded constant (rather than a config flag) so that intent is explicit
+// and nobody relaxes durability at runtime.
+//
+// Why this exists: GCS publishes death notifications (node down, actor dead)
+// from inside the storage write's completion callback -- i.e.
+// publish-after-persist. Under RocksDB the per-write fsync therefore delays
+// the cluster-wide death notification by the fsync latency, which widens a
+// pre-existing Ray-core object-reconstruction/task-resubmission race far
+// enough that a generator (num_returns=None) reconstruction can hang. The
+// other GCS backends do not expose this because their "persist" is
+// effectively in-memory-fast: Ray's recommended Redis GCS runs with
+// `appendfsync everysec` (fsync once per second, not per write; see
+// doc/.../kuberay-gcs-persistent-ft.md) and Ray's test Redis has no
+// persistence at all.
+//
+// Relaxing the fsync on these tables keeps RocksDB at least as durable as
+// that proven, shipped baseline (a crash can lose only the last,
+// not-yet-fsynced write -- the same window Redis everysec already tolerates),
+// while removing the notification delay. The chosen tables are the two
+// death-notification tables, whose state is re-derivable after a GCS restart
+// anyway: NODE liveness is re-established by health checks and ACTOR state is
+// reconciled from the running cluster.
+//
+// FOLLOW-UP: soft durability is a workaround. The underlying
+// publish-after-persist race is rooted in the GCS core code
+// (https://github.com/ray-project/ray/pull/64187). Once that root cause is
+// fixed, this relaxation should be revisited and, ideally, removed so all
+// tables keep the strict per-write fsync.
+const absl::flat_hash_set<std::string> &SoftDurableTables() {
+  static const auto *const kTables =
+      new absl::flat_hash_set<std::string>{"NODE", "ACTOR"};
+  return *kTables;
 }
 
 rocksdb::Options BuildDbOptions() {
@@ -77,12 +97,12 @@ rocksdb::WriteOptions RocksDbStoreClient::SyncWriteOptions(
     const std::string &table_name) const {
   rocksdb::WriteOptions wo;
   // REP §"Durability and Consistency Semantics": fsync per write is the
-  // GCS FT durability contract. The death-notification tables listed in
-  // gcs_rocksdb_soft_durability_tables are the exception (sync = false):
-  // their per-write fsync would delay publish-after-persist death
-  // notifications and widen a core reconstruction race, and their state
-  // is re-derivable after a restart. See the config docstring.
-  wo.sync = !soft_durability_tables_.contains(table_name);
+  // GCS FT durability contract. The death-notification tables in
+  // SoftDurableTables() are the exception (sync = false): their per-write
+  // fsync would delay publish-after-persist death notifications and widen
+  // a core reconstruction race, and their state is re-derivable after a
+  // restart. See SoftDurableTables() for the full rationale.
+  wo.sync = !SoftDurableTables().contains(table_name);
   return wo;
 }
 
@@ -91,9 +111,7 @@ RocksDbStoreClient::RocksDbStoreClient(
     const std::string &db_path,
     const std::string &expected_cluster_id,
     std::size_t io_pool_size,
-    std::size_t strand_buckets,
-    const std::string &soft_durability_tables)
-    : soft_durability_tables_(ParseTableSet(soft_durability_tables)) {
+    std::size_t strand_buckets) {
   // Boost requires >=1 thread; clamp here so pool_size=0 from a bad
   // config can't crash the GCS at startup.
   io_pool_ =
