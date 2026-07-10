@@ -740,13 +740,22 @@ class TrainController:
 
         `deadline_ms` mirrors Ray Core's draining deadline: an epoch timestamp
         in milliseconds. Ray Core reports 0 (which the watcher maps to None)
-        when no deadline is known, in which case we cap the drain wait at
-        `DEFAULT_PREEMPTION_DEADLINE_S` from when the preemption was first
-        detected, so we never wait indefinitely for workers to exit.
+        when no deadline is known.
+
+        `DEFAULT_PREEMPTION_DEADLINE_S` (measured from when the preemption was
+        first detected) bounds the wait: it is the fallback when no deadline is
+        reported, and also a hard upper bound when one is -- so a reported (or,
+        after a staggered merge, a far-future) deadline can never keep us in
+        PreemptingState longer than the cap. Real cloud grace periods are short
+        (e.g. ~120s for AWS spot), so this only bites an anomalous or merged
+        far-future deadline.
         """
+        fallback_deadline_ms = (detected_at_s + DEFAULT_PREEMPTION_DEADLINE_S) * 1000
         deadline_ms = preemption_info.deadline_ms
         if deadline_ms is None:
-            deadline_ms = (detected_at_s + DEFAULT_PREEMPTION_DEADLINE_S) * 1000
+            deadline_ms = fallback_deadline_ms
+        else:
+            deadline_ms = min(deadline_ms, fallback_deadline_ms)
         return time_seconds() * 1000 >= deadline_ms
 
     async def _handle_preempting_state(
