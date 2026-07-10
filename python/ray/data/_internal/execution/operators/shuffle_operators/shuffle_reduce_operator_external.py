@@ -1,32 +1,15 @@
 """ExternalHashShuffleReduceOp — reduce phase of the external-shuffle variant.
 
-Consumes the N ``partition wrapper`` bundles emitted by
-``ExternalHashShuffleMapOp`` (one per partition_id, each carrying a shared
-handle-list ref + a ``__partition__<pid>`` sentinel in metadata) and
-dispatches one ``external_hash_shuffle_reduce_task`` per bundle. Each reduce task is a Ray
-streaming generator that yields ``(block, pickled metadata)`` pairs
-matching the v2 ``_shuffle_reduce_task`` protocol; we wrap each
-generator in a ``DataOpTask`` so the executor sees ordinary streaming
-output bundles.
+One partition wrapper in (via ``_add_input_inner``), one reduce task out.
+Same one-per-partition dispatch shape as v2's ``ShuffleReduceOp``; the
+executor's normal backpressure + resource manager gate dispatch.
 
-Structurally identical to v2 ``ShuffleReduceOp``: one input bundle in,
-one reduce task out (via ``_add_input_inner``). The executor's normal
-backpressure + resource-manager machinery therefore gates reducer
-dispatch — N gating points (one per partition wrapper), same as v2.
-
-The only external-shuffle-specific twist is what the input bundle carries:
-instead of M shard ObjectRefs (plasma variant), an external-shuffle
-wrapper carries ONE ref pointing at a
-shared plasma object holding the full mapper-handle list. That single
-ref, plus the sentinel-encoded partition_id, is everything
-``external_hash_shuffle_reduce_task`` needs to pull its partition's bytes from every source
-node's ``ShuffleManager``.
-
-Barrier semantics: ``ExternalHashShuffleMapOp.all_inputs_done`` only emits the N
-wrappers after every mapper has finished, so ``ExternalHashShuffleReduceOp``
-still can't dispatch a reducer before map is fully closed — same
-effective ordering as v2 (v2's ``ShuffleMapOp._maybe_emit_partition_bundles``
-also gates on ``_inputs_complete``).
+Wire difference from v2: each wrapper carries a single ObjectRef —
+the shared handle-list plasma object built by the map op — plus a
+``__partition__<pid>`` sentinel in its metadata. The reduce task
+resolves that ref (a list of per-mapper handle refs), materializes
+the individual handle dicts, and TCP-fetches its partition's shards
+from each source node's ``ShuffleManager``.
 """
 
 import functools
@@ -156,30 +139,22 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         self._reduce_prefetch_dir: Optional[str] = reduce_prefetch_dir
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
-        """Executor calls this with one partition wrapper at a time (bundle
-        contains 1 block-ref = ``shared_handles_ref`` + partition_id
-        sentinel in metadata). We extract the two pieces and dispatch one
-        reduce task. Backpressure is fully executor-driven — no
-        accumulation, no dispatch loop.
-        """
+        """Dispatch one reduce task per partition wrapper. Backpressure is
+        executor-driven — no accumulation, no dispatch loop."""
         assert input_index == 0
         if not refs.block_refs:
             refs.destroy_if_owned()
             return
 
         partition_id = extract_partition_id(refs)
-        # The wrapper's sole block-ref IS the shared handle-list plasma
-        # object built by ExternalHashShuffleMapOp.all_inputs_done. Ray dispatch sees
-        # 1 nested borrowed ref per reduce task (not M).
+        # Wrapper carries a single ObjectRef pointing at the map op's
+        # shared handle list; passing that one ref through Ray dispatch
+        # keeps arg bookkeeping O(1) per reducer instead of O(#mappers).
         handles_ref = refs.block_refs[0]
-        # size_bytes comes from the wrapper's metadata (populated by
-        # ExternalHashShuffleMapOp from its per-partition decoded-byte accumulator).
         estimated_bytes = sum((m.size_bytes or 0) for m in refs.metadata)
 
-        # Match v2's disallow_block_splitting semantics
-        # (shuffle_reduce_operator.py:161-165): when True, drop the
-        # BlockOutputBuffer reshape target so a partition emits as a
-        # single block regardless of size.
+        # Same as v2: disallow_block_splitting drops the reshape target
+        # so ``BlockOutputBuffer`` emits one block per partition.
         target_max_block_size = (
             None
             if self._disallow_block_splitting
@@ -192,9 +167,6 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             estimated_bytes,
             target_max_block_size,
         )
-        # Wrapper was built with owns_blocks=False (shared_handles_ref is
-        # owned by the upstream map op), so this is a no-op for the ref —
-        # it just releases the Python-side RefBundle.
         refs.destroy_if_owned()
 
     def _dispatch_one_reducer(
@@ -204,10 +176,8 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         estimated_bytes: int,
         target_max_block_size: Optional[int],
     ) -> None:
-        # Per-partition memory ask: 2× the decoded byte total this reducer
-        # will see (bounds peak heap from accum + reshape carry). Estimate
-        # comes from the wrapper's metadata (populated by the map op from
-        # its per-partition decoded_bytes accumulator).
+        # Per-partition memory ask: 2× decoded bytes (peak = accum +
+        # reshape carry).
         reduce_resources: Dict[str, Any] = {
             "num_cpus": self._shuffle_reduce_task_num_cpus,
         }
@@ -219,18 +189,12 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             **reduce_resources,
             "scheduling_strategy": "SPREAD",
             "num_returns": "streaming",
-            # Give Ray Core a chance to lineage-recover a dead mapper's
-            # handle on retry (node loss → nested handle ObjectRef in
-            # ``handles_ref`` is marked lost → Ray re-executes the mapper
-            # on a live node → retried reducer transparently reads from
-            # the new location). Propagation past this budget = fatal;
-            # we don't attempt app-level recovery beyond what lineage
-            # provides.
+            # max_retries + retry_exceptions together let a
+            # ``ShuffleFetchError`` (usually ``ShuffleNodeLostError``)
+            # trigger a Ray-Core retry, whose arg re-resolution picks up
+            # a lineage-recovered mapper handle. Default retry_exceptions
+            # is False (system failures only), which would defeat that.
             "max_retries": 3,
-            # Ray retries on worker crashes by default; opt in to retrying
-            # on our shuffle-fetch errors too, so that a ``ShuffleFetchError``
-            # (typically ``ShuffleNodeLostError``) raised in the task body
-            # triggers Ray-Core arg re-resolution → lineage recovery.
             "retry_exceptions": [ShuffleFetchError],
         }
 
@@ -264,17 +228,14 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             operator_name=self.name,
         )
 
-        # Map emits each partition exactly once, so no collision possible.
         assert partition_id not in self._shuffle_reduce_tasks, (
-            f"partition_id {partition_id} already has an in-flight reducer "
-            f"— ExternalHashShuffleMapOp should emit each partition wrapper exactly once"
+            f"partition_id {partition_id} already has an in-flight reducer"
         )
         self._shuffle_reduce_tasks[partition_id] = data_task
         self._num_reduce_tasks_submitted += 1
 
-        # For metrics, we don't have a partition-specific data bundle (the
-        # wrapper's only ref is the shared handle list), so pass a synthetic
-        # empty bundle — same pattern as before.
+        # Synthetic empty bundle for metrics: the wrapper's only ref is
+        # the shared handle list, not partition-specific data.
         self._metrics.on_task_submitted(
             partition_id,
             RefBundle((), schema=None, owns_blocks=False),
@@ -351,9 +312,8 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         super()._do_shutdown(force)
         self._shuffle_reduce_tasks.clear()
         self._output_queue.clear()
-        # ShuffleManager actors + handle refs are owned by ExternalHashShuffleMapOp
-        # (via its ``_shared_handles_ref`` + pinned input bundles). Its
-        # own ``_do_shutdown`` releases them; nothing to clean here.
+        # Manager actors + handle refs are owned upstream; nothing to
+        # clean up here.
 
     # Stats / progress
     def get_stats(self) -> Dict[str, List[BlockStats]]:
