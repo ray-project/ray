@@ -232,10 +232,9 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV2UnlimitedSwapFallsBackToHostSwap) {
   std::string proc_dir =
       MockProcMeminfo(mem_total_kb, mem_available_kb, swap_total_kb, swap_free_kb);
 
-  auto cgroup_memory =
-      MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir,
-                                               /*include_swap=*/true,
-                                               proc_dir);
+  auto cgroup_memory = MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir,
+                                                                /*include_swap=*/true,
+                                                                proc_dir);
 
   ASSERT_TRUE(cgroup_memory.has_swap);
   ASSERT_EQ(cgroup_memory.total_bytes, cgroup_total_bytes);
@@ -275,10 +274,9 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupV2OverflowSwapFallsBackToHostSwap) {
   std::string proc_dir =
       MockProcMeminfo(mem_total_kb, mem_available_kb, swap_total_kb, swap_free_kb);
 
-  auto cgroup_memory =
-      MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir,
-                                               /*include_swap=*/true,
-                                               proc_dir);
+  auto cgroup_memory = MemoryMonitorUtils::GetCGroupMemoryBytes(cgroup_dir,
+                                                                /*include_swap=*/true,
+                                                                proc_dir);
 
   ASSERT_TRUE(cgroup_memory.has_swap);
   ASSERT_EQ(cgroup_memory.total_bytes, cgroup_total_bytes);

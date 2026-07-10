@@ -204,10 +204,9 @@ MemoryMonitorUtils::TakeUserAndSystemSliceMemoryUsageSnapshot(
   // kill threshold; for the system slice it keeps `total - threshold` (the
   // reserved-system-memory check) RAM-consistent, since the threshold is likewise
   // swap-inflated and the swap term cancels. 0 when the flag is off.
-  int64_t root_swap_max_bytes =
-      RayConfig::instance().count_swap_in_memory_monitor()
-          ? ResolveRootSwapMaxBytes(root_cgroup_path, proc_dir)
-          : 0;
+  int64_t root_swap_max_bytes = RayConfig::instance().count_swap_in_memory_monitor()
+                                    ? ResolveRootSwapMaxBytes(root_cgroup_path, proc_dir)
+                                    : 0;
   // Anon swap is per-cgroup deterministic, so we credit only the user slice's own
   // swap.current to its usage. We do NOT credit system-slice swap to the user
   // slice.
@@ -519,8 +518,7 @@ std::tuple<int64_t, int64_t> MemoryMonitorUtils::GetHostSwapBytes(
 
 int64_t MemoryMonitorUtils::ResolveRootSwapMaxBytes(const std::string &root_cgroup_path,
                                                     const std::string &proc_dir) {
-  std::string root_swap_max_path =
-      root_cgroup_path + "/" + kCgroupsV2MemorySwapMaxPath;
+  std::string root_swap_max_path = root_cgroup_path + "/" + kCgroupsV2MemorySwapMaxPath;
   std::ifstream root_swap_max_ifs(root_swap_max_path, std::ios::in | std::ios::binary);
   std::string root_swap_max_str;
   if (!(root_swap_max_ifs && (root_swap_max_ifs >> root_swap_max_str))) {
