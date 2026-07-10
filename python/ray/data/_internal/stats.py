@@ -480,7 +480,9 @@ class _StatsActor:
         self.iter_batch_finalizing_s = Gauge(
             "data_iter_batch_finalizing_seconds",
             description="Seconds taken to collate batches by iter_batches()",
-            tag_keys=iter_tag_keys,
+"data_iter_batch_finalizing_seconds",
+description="Seconds taken to finalize batches by iter_batches()",
+tag_keys=iter_tag_keys,
         )
 
         self.iter_total_blocked_s = Gauge(
