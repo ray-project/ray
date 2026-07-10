@@ -32,7 +32,7 @@ from ray.data.collate_fn import (
     PandasBatchCollateFn,
     TensorBatchReturnType,
     TensorBatchType,
-    _PinningCollateFnWrapper,
+    _PinMemoryCollateFnWrapper,
     is_tensor_batch_type,
 )
 from ray.data.context import DataContext
@@ -587,7 +587,7 @@ class DataIterator(abc.ABC):
             raise ValueError(f"Unsupported collate function: {type(collate_fn)}")
 
         if pin_memory:
-            collate_fn = _PinningCollateFnWrapper(collate_fn)
+            collate_fn = _PinMemoryCollateFnWrapper(collate_fn)
 
         return self._iter_batches(
             prefetch_batches=prefetch_batches,

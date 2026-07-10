@@ -298,7 +298,7 @@ class DefaultCollateFn(ArrowBatchCollateFn):
         )
 
 
-class _PinningCollateFnWrapper:
+class _PinMemoryCollateFnWrapper:
     """Composes a collate fn with recursive memory pinning.
 
     Runs in the same threadpool as the collate step. Pins only if the collated
