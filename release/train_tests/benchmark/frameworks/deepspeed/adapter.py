@@ -346,6 +346,8 @@ class DeepSpeedAdapter(FrameworkAdapter):
             batch_size=batch_size,
             seed=self.cfg.training.seed,
             limit_rows=self.cfg.data.limit_training_rows,
+            rank=self.ctx.world_rank,
+            world_size=self.ctx.world_size,
         )
 
         num_steps = self._resolve_num_steps(dataloader)

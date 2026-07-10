@@ -88,6 +88,9 @@ def _build_hf_loader(
     batch_size: int,
     limit_rows: int,
     shuffle: bool,
+    seed: int,
+    rank: int,
+    world_size: int,
 ) -> DataLoader:
     from datasets import DownloadConfig, load_dataset
 
@@ -122,9 +125,23 @@ def _build_hf_loader(
         "input_ids": encodings["input_ids"],
         "attention_mask": encodings["attention_mask"],
     }
-    return DataLoader(
-        TokenizedTextDataset(encodings), batch_size=batch_size, shuffle=shuffle
-    )
+    dataset = TokenizedTextDataset(encodings)
+    if world_size > 1:
+        # Shard rows across DP ranks so each GPU trains on distinct data.
+        # num_replicas/rank are passed explicitly, so no torch.distributed
+        # init is required. shuffle moves into the sampler (mutually
+        # exclusive with DataLoader(shuffle=...)).
+        from torch.utils.data.distributed import DistributedSampler
+
+        sampler = DistributedSampler(
+            dataset,
+            num_replicas=world_size,
+            rank=rank,
+            shuffle=shuffle,
+            seed=seed,
+        )
+        return DataLoader(dataset, batch_size=batch_size, sampler=sampler)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 
 
 def build_text_dataloader(
@@ -136,8 +153,16 @@ def build_text_dataloader(
     limit_rows: int = -1,
     shuffle: bool = True,
     synthetic_vocab_size: int = 32000,
+    rank: int = 0,
+    world_size: int = 1,
 ) -> DataLoader:
-    """Build a causal-LM dataloader.
+    """Build a causal-LM dataloader, sharded per DP rank.
+
+    ``rank``/``world_size`` keep ranks on distinct data: HF datasets shard via
+    DistributedSampler, synthetic data offsets the generator seed per rank.
+    Without them every rank would replay identical micro-batches — step timing
+    would be unaffected (fixed padded shapes), but gradients would average over
+    identical batches and sample counts would not mean distinct samples.
 
     When ``dataset_name == "synthetic"`` the tokenizer is unused and random
     token ids are generated, so this path needs neither network nor a real
@@ -149,10 +174,20 @@ def build_text_dataloader(
             if tokenizer is not None and hasattr(tokenizer, "vocab_size")
             else synthetic_vocab_size
         )
-        return _build_synthetic_loader(seq_len, batch_size, seed, vocab_size)
+        return _build_synthetic_loader(
+            seq_len, batch_size, seed + rank, vocab_size
+        )
 
     if tokenizer is None:
         raise ValueError(f"A tokenizer is required for dataset '{dataset_name}'.")
     return _build_hf_loader(
-        dataset_name, tokenizer, seq_len, batch_size, limit_rows, shuffle
+        dataset_name,
+        tokenizer,
+        seq_len,
+        batch_size,
+        limit_rows,
+        shuffle,
+        seed,
+        rank,
+        world_size,
     )
