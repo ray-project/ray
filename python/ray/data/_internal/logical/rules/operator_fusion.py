@@ -420,6 +420,7 @@ class FuseOperators(Rule):
                 reduce_fn=up_op._reduce_fn,
                 disallow_block_splitting=up_op._disallow_block_splitting,
                 max_bytes_per_fetch=up_op._max_bytes_per_fetch,
+                fetch_threads=up_op._fetch_threads,
                 reduce_prefetch_dir=up_op._reduce_prefetch_dir,
                 reduce_cpus=up_op._shuffle_reduce_task_num_cpus,
                 name=name,

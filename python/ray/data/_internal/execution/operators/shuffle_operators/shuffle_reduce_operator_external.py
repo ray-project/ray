@@ -30,6 +30,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.operators.hash_shuffle_external import (
+    _DEFAULT_FETCH_THREADS,
     _DEFAULT_MAX_BYTES_PER_FETCH,
     ReduceFn,
     ShuffleFetchError,
@@ -87,6 +88,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         fused_output_map_target_max_block_size_override: Optional[int] = None,
         # -- External-shuffle-specific below --
         max_bytes_per_fetch: int = _DEFAULT_MAX_BYTES_PER_FETCH,
+        fetch_threads: int = _DEFAULT_FETCH_THREADS,
         reduce_prefetch_dir: Optional[str] = None,
     ):
         super().__init__(
@@ -134,8 +136,10 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
 
         # external_hash_shuffle_reduce_task behavior knobs:
         # - ``max_bytes_per_fetch``: cap per-FETCH byte volume
+        # - ``fetch_threads``: concurrent per-source-node fetch threads
         # - ``reduce_prefetch_dir``: staging dir for prefetch.bin
         self._max_bytes_per_fetch: int = max_bytes_per_fetch
+        self._fetch_threads: int = fetch_threads
         self._reduce_prefetch_dir: Optional[str] = reduce_prefetch_dir
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
@@ -204,6 +208,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             self._reduce_fn,
             self._reduce_prefetch_dir,
             self._max_bytes_per_fetch,
+            self._fetch_threads,
             target_max_block_size,
             self._fused_output_map_transformer,
             self.name,

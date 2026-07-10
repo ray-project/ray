@@ -1105,6 +1105,7 @@ def _is_node_alive(node_id: str) -> Optional[bool]:
 
 
 _DEFAULT_MAX_BYTES_PER_FETCH = 256 * 1024 * 1024  # 256 MiB per FETCH frame
+_DEFAULT_FETCH_THREADS = 32  # concurrent per-node fetch threads at the reducer
 
 # Process-global cache of ShuffleManager endpoints: {actor_id_bytes: (ip, port)}.
 # When an file server actor is respawned (due to failure), the CACHE will be re-populated
@@ -1443,6 +1444,7 @@ def external_hash_shuffle_reduce_task(
     reduce_fn: ReduceFn,
     prefetch_dir: Optional[str] = None,
     max_bytes_per_fetch: int = _DEFAULT_MAX_BYTES_PER_FETCH,
+    fetch_threads: int = _DEFAULT_FETCH_THREADS,
     target_max_block_size: Optional[int] = None,
     downstream_map_transformer: Optional[Any] = None,
     reduce_op_name: str = "ExternalHashShuffleReduce",
@@ -1536,7 +1538,6 @@ def external_hash_shuffle_reduce_task(
         # Fetch each source region in parallel, pwrite at pre-assigned offsets
         # into one prefetch.bin (disjoint → lock-free). Buffered pwrite lands
         # in page cache so the decode-side mmap reads hit cache.
-        _fetch_threads = int(os.environ.get("RAY_DATA_SHUFFLE_FETCH_THREADS", "32"))
         total_size, base_offsets, node_sizes = _compute_prefetch_layout(groups)
 
         # Accumulator for the final reduce.
@@ -1587,7 +1588,7 @@ def external_hash_shuffle_reduce_task(
                 )
                 return base, size
 
-            n_threads = min(len(groups), max(1, _fetch_threads))
+            n_threads = min(len(groups), max(1, fetch_threads))
             work = list(zip(base_offsets, node_sizes, groups))
             # Rotate submission order by partition_id to spread simultaneous
             # fan-in across all managers (avoids every reducer hitting the same
