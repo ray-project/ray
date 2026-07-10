@@ -1,17 +1,15 @@
 """hash_shuffle_external — file-transport hash shuffle with an out-of-band side-channel.
 
-Design: design/hash-shuffle-bypass.md.
-
 - each MAP task writes ONE file (all its partitions, Arrow IPC) and returns ONE
   small handle (path + per-partition offset index + the source node's fetch
   endpoint + a per-shuffle auth token). Driver tracks O(N) handles; bulk data
   never enters plasma.
-- a per-node ``ShuffleManager`` Ray actor runs its OWN socket server (§3.4/§3.5)
-  that ``pread``s requested byte-ranges and streams them back. The REDUCE task
-  is a client of that server: bytes arrive in its **user space** (NOT plasma →
-  preserves 1×, §4.6) and are consumed inline. Cross-node this is the real
-  out-of-band transport; single-node it is a loopback socket (still the real
-  code path, not a direct ``open``).
+- a per-node ``ShuffleManager`` Ray actor runs its OWN socket server that
+  ``pread``s requested byte-ranges and streams them back. The REDUCE task is a
+  client of that server: bytes arrive in its **user space** (NOT plasma —
+  preserves the 1× data copy) and are consumed inline. Cross-node this is the
+  real out-of-band transport; single-node it is a loopback socket (still the
+  real code path, not a direct ``open``).
 
 Uses the standard ``PartitionFn`` / ``ReduceFn`` / ``MapBlockTransformer``
 contracts, so group-by / sort / aggregate / join factories compose unchanged.
@@ -983,8 +981,8 @@ def external_hash_shuffle_map_task(
 
 
 class ShuffleFetchError(RuntimeError):
-    """Raised when a side-channel fetch fails (source gone / file lost). Surfaced
-    so the executor/lineage can re-run the producer mapper (§4.10/§11 Q1)."""
+    """Raised when a side-channel fetch fails (source gone / file lost).
+    Surfaced so the executor/lineage can re-run the producer mapper."""
 
 
 class ShuffleNodeLostError(ShuffleFetchError):

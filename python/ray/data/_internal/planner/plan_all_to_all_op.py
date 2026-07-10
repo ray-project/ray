@@ -69,7 +69,7 @@ def _plan_hash_shuffle_repartition(
     logical_op: Repartition,
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
-    """Build the two-op (ShuffleMapOp → ShuffleReduceOp) DAG for the plasma-based hash shuffle.
+    """Build the two-op (ShuffleMapOp → ShuffleReduceOp) DAG for the in-memory hash shuffle.
 
     Returns the reduce op; the executor crawls upstream via its
     input_dependencies to find the map op.
@@ -123,7 +123,7 @@ def _plan_hash_shuffle_repartition_external(
     """Build the two-op (ExternalHashShuffleMapOp → ExternalHashShuffleReduceOp)
     DAG for the external-shuffle variant of hash shuffle.
 
-    Scope matches ``_plan_hash_shuffle_repartition`` (the plasma-based Family A):
+    Scope matches ``_plan_hash_shuffle_repartition`` (the in-memory Family A):
     keyed Repartition only. Caller in ``plan_all_to_all_op`` guarantees
     ``logical_op.keys`` is non-empty and ``shuffle_strategy == HASH_SHUFFLE``.
     """
@@ -277,8 +277,8 @@ def plan_all_to_all_op(
                 )
             elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
                 # External-shuffle is a within-strategy transport swap: same
-                # scope as the plasma-based hash-shuffle path (keyed
-                # Repartition), just files instead of plasma.
+                # scope as the in-memory hash-shuffle path (keyed
+                # Repartition), just disk files instead of plasma.
                 if data_context.use_external_hash_shuffle:
                     return _plan_hash_shuffle_repartition_external(
                         data_context, op, input_physical_dag
@@ -319,22 +319,22 @@ def plan_all_to_all_op(
         )
 
     elif isinstance(op, Aggregate):
-        # External-shuffle only mirrors the plasma-based ShuffleMap/Reduce
+        # External-shuffle only mirrors the in-memory ShuffleMap/Reduce
         # path (Family A), which covers Repartition. Aggregate uses the
         # HashAggregateOperator family, which external does not implement.
         # Fail loudly *only when the external opt-in would actually change
         # behavior* — i.e. HASH_SHUFFLE strategy. Under GPU_SHUFFLE or the
-        # generic fall-through, plasma hash-shuffle wouldn't run either, so
-        # external opt-in is irrelevant and we don't surprise the user.
+        # generic fall-through, in-memory hash-shuffle wouldn't run either,
+        # so external opt-in is irrelevant and we don't surprise the user.
         if (
             data_context.use_external_hash_shuffle
             and data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE
         ):
             raise NotImplementedError(
-                "External hash-shuffle currently mirrors the plasma "
+                "External hash-shuffle currently mirrors the in-memory "
                 "ShuffleMap/Reduce scope (Repartition only); Aggregate is not "
                 "supported. Set DataContext.use_external_hash_shuffle=False to "
-                "use the plasma-based HashAggregate path."
+                "use the in-memory HashAggregate path."
             )
         if data_context.shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
             return _plan_gpu_shuffle_aggregate(data_context, op, input_physical_dag)
