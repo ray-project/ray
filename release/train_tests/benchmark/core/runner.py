@@ -123,9 +123,11 @@ def main() -> None:
         + "-" * 80
     )
 
-    # Under torchrun, only rank 0 returns metrics; non-zero ranks skip writing.
-    if metrics:
-        write_results(metrics, cfg.name)
+    if not metrics:
+        # e.g. the torchrun launcher returns {} when no rank reported. Fail
+        # loudly: a release test must never pass without benchmark results.
+        raise RuntimeError(f"{cfg.name} finished but produced no metrics.")
+    write_results(metrics, cfg.name)
 
 
 if __name__ == "__main__":

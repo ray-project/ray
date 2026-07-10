@@ -94,8 +94,10 @@ def main() -> None:
         logger.info(f"=== Running {name} ({combo}) ===")
         try:
             metrics = run_experiment(cfg)
-            if metrics:
-                write_results(metrics, name)
+            if not metrics:
+                # e.g. the torchrun launcher returns {} when no rank reported.
+                raise RuntimeError("run finished but produced no metrics")
+            write_results(metrics, name)
             completed.append(name)
         except Exception as e:  # noqa: BLE001 - one bad cell shouldn't kill the grid
             logger.error(f"Cell {name} failed: {type(e).__name__}: {e}")
