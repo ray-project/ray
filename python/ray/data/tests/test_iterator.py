@@ -420,28 +420,28 @@ def _check_pinned_structure(original, result):
 )
 def test_pin_memory_tensor_batch_variants(fake_pin_memory, batch_factory):
     """Test that pin_memory pins every tensor and preserves the batch structure."""
-    from ray.data.util.torch_utils import pin_memory
+    from ray.data.util.torch_utils import pin_tensors_to_memory
 
     batch = batch_factory()
-    pinned = pin_memory(batch)
+    pinned = pin_tensors_to_memory(batch)
     _check_pinned_structure(batch, pinned)
 
 
 def test_pin_memory_already_pinned_no_op(fake_pin_memory):
     """Test that already-pinned tensors are returned as-is without copying."""
-    from ray.data.util.torch_utils import pin_memory
+    from ray.data.util.torch_utils import pin_tensors_to_memory
 
-    pinned = pin_memory(torch.ones(2))
-    assert pin_memory(pinned) is pinned
+    pinned = pin_tensors_to_memory(torch.ones(2))
+    assert pin_tensors_to_memory(pinned) is pinned
 
 
 def test_pin_memory_non_tensor_passthrough(fake_pin_memory):
     """Test that non-tensor leaves pass through unchanged."""
-    from ray.data.util.torch_utils import pin_memory
+    from ray.data.util.torch_utils import pin_tensors_to_memory
 
-    assert pin_memory(5) == 5
+    assert pin_tensors_to_memory(5) == 5
     batch = {"a": np.ones(2)}
-    assert pin_memory(batch)["a"] is batch["a"]
+    assert pin_tensors_to_memory(batch)["a"] is batch["a"]
 
 
 def test_pinning_collate_fn_wrapper(fake_pin_memory):
