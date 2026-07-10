@@ -46,10 +46,11 @@ struct CgroupSwapMax {
   int64_t bytes = 0;
 };
 
-// Classify a raw `memory.swap.max` string. The all-digit pre-check guarantees
-// std::stoll only ever sees numeric input, so std::invalid_argument is purely
-// defensive; an all-digit value that still overflows int64 is the kernel's
-// "unlimited" sentinel and is reported as unlimited.
+// Classify a raw `memory.swap.max` string. The all-digit (and non-empty)
+// pre-check guarantees std::stoll only ever sees valid numeric input, so the
+// only exception it can throw is std::out_of_range — an all-digit value that
+// overflows int64, which is the kernel's "unlimited" sentinel (e.g. ULLONG_MAX)
+// and is reported as unlimited.
 CgroupSwapMax ParseCgroupSwapMax(const std::string &swap_max_str) {
   CgroupSwapMax result;
   if (swap_max_str.empty() ||
@@ -63,8 +64,6 @@ CgroupSwapMax ParseCgroupSwapMax(const std::string &swap_max_str) {
     result.bytes = std::stoll(swap_max_str);
     result.zero = (result.bytes == 0);
   } catch (const std::out_of_range &) {
-    result.unlimited = true;
-  } catch (const std::invalid_argument &) {
     result.unlimited = true;
   }
   return result;
