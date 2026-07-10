@@ -22,11 +22,10 @@ from ray.data._internal.block_batching.iter_batches import (
 )
 from ray.data._internal.block_batching.util import (
     WaitBlockPrefetcher,
-    _format_batch,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry, RefBundle
 from ray.data._internal.stats import DatasetStats, TimeSpan
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.types import ObjectRef
 
 # Sleep duration injected into each scenario's bottleneck stage. Picked to be
@@ -755,16 +754,26 @@ def test_e2e_blocked_attribution_by_scenario(
         ds = ray.data.range(50, override_num_blocks=5).map(slow_map)
 
     elif scenario == "data_transfer":
-        # Patch ray.get to inject cross-node transfer delay. resolve_block_refs
-        # is the only caller of ray.get in the iter_batches pipeline, so this
-        # specifically slows data_transfer.
+        # Patch ray.get ONLY in util.resolve_block_refs (not globally) so the
+        # streaming executor's own ray.get calls aren't slowed (which would
+        # inflate production_wait). We replace util_mod.ray with a proxy that
+        # has a slow `get` but delegates everything else to the real ray.
+        from ray.data._internal.block_batching import util as util_mod
+
         orig_get = ray.get
 
-        def slow_get(ref):
-            time.sleep(SLEEP_S)
-            return orig_get(ref)
+        class _SlowGetRayProxy:
+            """Proxy that sleeps on `.get` but delegates everything else."""
 
-        patches.append(patch.object(ray, "get", slow_get))
+            def __getattr__(self, name):
+                return getattr(ray, name)
+
+            @staticmethod
+            def get(ref):
+                time.sleep(SLEEP_S)
+                return orig_get(ref)
+
+        patches.append(patch.object(util_mod, "ray", _SlowGetRayProxy()))
         ds = ray.data.range(50, override_num_blocks=5)
 
     elif scenario == "batching":
@@ -781,7 +790,8 @@ def test_e2e_blocked_attribution_by_scenario(
         ds = ray.data.range(50, override_num_blocks=5)
 
     elif scenario == "collate":
-        # Pass _collate_fn directly (exposed on iter_batches signature).
+        # Pass _collate_fn via _iter_batches (private signature accepts it;
+        # public iter_batches does not).
         def slow_collate(batch):
             time.sleep(SLEEP_S)
             return batch
@@ -790,21 +800,22 @@ def test_e2e_blocked_attribution_by_scenario(
         ds = ray.data.range(50, override_num_blocks=5)
 
     elif scenario == "format":
-        # Patch _format_batch to inject slow format (no _format_fn kwarg).
-        def slow_format(batch, batch_format, stats, ensure_copy=False):
+        # Patch BlockAccessor.to_batch_format — it's called INSIDE
+        # _format_batch's _maybe_time context, so the sleep is captured by
+        # the format timing span.
+        orig_to_batch_format = BlockAccessor.to_batch_format
+
+        def slow_to_batch_format(self, batch_format):
             time.sleep(SLEEP_S)
-            return _format_batch(batch, batch_format, stats, ensure_copy)
+            return orig_to_batch_format(self, batch_format)
 
         patches.append(
-            patch(
-                "ray.data._internal.block_batching.util._format_batch",
-                slow_format,
-            )
+            patch.object(BlockAccessor, "to_batch_format", slow_to_batch_format)
         )
         ds = ray.data.range(50, override_num_blocks=5)
 
     elif scenario == "finalize":
-        # Pass _finalize_fn directly (exposed on iter_batches signature).
+        # Pass _finalize_fn via _iter_batches (private signature accepts it).
         def slow_finalize(data):
             time.sleep(SLEEP_S)
             return data
@@ -827,7 +838,9 @@ def test_e2e_blocked_attribution_by_scenario(
     with contextlib.ExitStack() as stack:
         for p in patches:
             stack.enter_context(p)
-        for _ in it.iter_batches(**iter_kwargs):
+        # Use _iter_batches (private) so we can pass _collate_fn / _finalize_fn
+        # which the public iter_batches signature does not expose.
+        for _ in it._iter_batches(**iter_kwargs):
             pass
 
     stats = captured[-1]
