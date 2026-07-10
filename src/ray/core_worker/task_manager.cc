@@ -60,6 +60,18 @@ rpc::ErrorType MapPlasmaPutStatusToErrorType(const Status &status) {
   return rpc::ErrorType::WORKER_DIED;
 }
 
+// Copy a serialized proto field (data or metadata) into an owned buffer so it
+// outlives the transient reply it came from. Returns null for an empty field.
+std::shared_ptr<Buffer> MakeInlinedBuffer(const std::string &field) {
+  if (field.empty()) {
+    return nullptr;
+  }
+  return std::make_shared<LocalMemoryBuffer>(
+      const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(field.data())),
+      field.size(),
+      /*copy_data=*/true);
+}
+
 }  // namespace
 
 absl::flat_hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
@@ -313,8 +325,7 @@ bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_ind
 }
 
 void ObjectRefStream::MarkEndOfStream(int64_t item_index,
-                                      rpc::ErrorType error_type,
-                                      const rpc::RayErrorInfo *error_info,
+                                      RayObject end_of_stream_error,
                                       std::vector<ObjectID> *object_ids_to_eof) {
   RAY_CHECK(object_ids_to_eof != nullptr);
   if (end_of_stream_index_ != -1) {
@@ -326,10 +337,7 @@ void ObjectRefStream::MarkEndOfStream(int64_t item_index,
   // to every EOF-region object so a consumer that eagerly peeked a ref which is
   // now never going to be produced sees the real reason (e.g. TASK_CANCELLED,
   // ACTOR_DIED) rather than a generic end-of-stream.
-  end_of_stream_error_type_ = error_type;
-  if (error_info != nullptr) {
-    end_of_stream_error_info_ = *error_info;
-  }
+  end_of_stream_error_ = std::move(end_of_stream_error);
   // ObjectRefStream should guarantee that next_index_ will always have an
   // object value, to avoid hanging the caller the next time it tries to read
   // the stream.
@@ -938,16 +946,6 @@ std::vector<std::pair<ObjectID, bool>> TaskManager::PeekObjectRefStreamN(
   // Temporarily own refs since the corresponding references are probably
   // not reported yet.
   //
-  // The EOF-region value mirrors the terminal error recorded on the stream when
-  // it ended: END_OF_STREAMING_GENERATOR for a clean completion, or the real
-  // failure (TASK_CANCELLED, ACTOR_DIED, ...) otherwise. This matches the value
-  // MarkEndOfStream writes for the sentinel, so peeking before vs. after EOF is
-  // marked yields the same error for a not-yet-produced ref. Only meaningful
-  // when EofIndex() != -1 (guarded below), by which point the error is recorded.
-  const std::optional<rpc::RayErrorInfo> &eof_error_info =
-      stream_it->second.EndOfStreamErrorInfo();
-  RayObject error(stream_it->second.EndOfStreamErrorType(),
-                  eof_error_info.has_value() ? &eof_error_info.value() : nullptr);
   for (const std::pair<ObjectID, bool> &result : results) {
     TemporarilyOwnGeneratorReturnRefIfNeededInternal(/*=object_id*/ result.first,
                                                      generator_id);
@@ -968,8 +966,9 @@ std::vector<std::pair<ObjectID, bool>> TaskManager::PeekObjectRefStreamN(
     if (stream_it->second.EofIndex() != -1 &&
         result.first.ObjectIndex() >=
             static_cast<ObjectIDIndexType>(stream_it->second.EofIndex() + 2)) {
-      in_memory_store_.Put(
-          error, result.first, reference_counter_.HasReference(result.first));
+      in_memory_store_.Put(stream_it->second.EndOfStreamError(),
+                           result.first,
+                           reference_counter_.HasReference(result.first));
     }
   }
   return results;
@@ -984,7 +983,8 @@ bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {
 void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
                                   int64_t end_of_stream_index,
                                   rpc::ErrorType error_type,
-                                  const rpc::RayErrorInfo *error_info) {
+                                  const rpc::RayErrorInfo *error_info,
+                                  const rpc::ReturnObject *error_return_object) {
   absl::MutexLock lock(&object_ref_stream_ops_mu_);
   std::vector<ObjectID> object_ids_to_eof;
 
@@ -994,28 +994,34 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
     return;
   }
 
-  stream_it->second.MarkEndOfStream(
-      end_of_stream_index, error_type, error_info, &object_ids_to_eof);
-  if (!object_ids_to_eof.empty()) {
-    // Use the error recorded on the stream rather than the arguments: the two
-    // agree on the first call (the only call that populates object_ids_to_eof),
-    // and this keeps the sentinel and any refs materialized later in
-    // PeekObjectRefStreamN carrying the identical value.
-    const std::optional<rpc::RayErrorInfo> &eof_error_info =
-        stream_it->second.EndOfStreamErrorInfo();
-    RayObject error(stream_it->second.EndOfStreamErrorType(),
-                    eof_error_info.has_value() ? &eof_error_info.value() : nullptr);
-    for (const ObjectID &object_id : object_ids_to_eof) {
-      RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: "
-                     << stream_it->second.EofIndex() << ". Object id: " << object_id;
+  // Build the object written to every EOF-region ref once; the stream records
+  // it first-writer-wins. A task that failed before reporting any stream item
+  // (e.g. a failed by-reference dependency) supplies its inlined, serialized
+  // completion error so eager refs surface the real RayTaskError; otherwise we
+  // synthesize the error from its type and info.
+  std::optional<RayObject> end_of_stream_error;
+  if (error_return_object != nullptr) {
+    RAY_CHECK(!error_return_object->in_plasma())
+        << "Streaming generator completion errors used for EOF refs must be inlined.";
+    end_of_stream_error.emplace(MakeInlinedBuffer(error_return_object->data()),
+                                MakeInlinedBuffer(error_return_object->metadata()),
+                                std::vector<rpc::ObjectReference>{});
+  } else {
+    end_of_stream_error.emplace(error_type, error_info);
+  }
 
-      reference_counter_.OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
-      // Put a terminal-error object at the end of the stream and for any
-      // already-peeked refs after EOF. Clean completion raises
-      // ObjectRefStreamEndOfStreamError; failure paths surface their recorded
-      // terminal error.
-      in_memory_store_.Put(error, object_id, reference_counter_.HasReference(object_id));
-    }
+  stream_it->second.MarkEndOfStream(
+      end_of_stream_index, std::move(*end_of_stream_error), &object_ids_to_eof);
+  for (const ObjectID &object_id : object_ids_to_eof) {
+    RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: "
+                   << stream_it->second.EofIndex() << ". Object id: " << object_id;
+
+    reference_counter_.OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
+    // Clean completion raises ObjectRefStreamEndOfStreamError; failure paths
+    // surface their recorded terminal error.
+    in_memory_store_.Put(stream_it->second.EndOfStreamError(),
+                         object_id,
+                         reference_counter_.HasReference(object_id));
   }
 }
 
@@ -1322,10 +1328,26 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   // We handle this logic here because the lock shouldn't be held while calling
   // HandleTaskReturn.
   if (spec.IsStreamingGenerator()) {
-    const auto generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
+    const ObjectID generator_id =
+        ObjectID::FromBinary(reply.return_objects(0).object_id());
     if (first_execution) {
-      ObjectID last_ref_in_stream;
-      MarkEndOfStream(generator_id, reply.streaming_generator_return_ids_size());
+      const int streaming_generator_return_count =
+          reply.streaming_generator_return_ids_size();
+      if (is_application_error && streaming_generator_return_count == 0 &&
+          !reply.return_objects(0).in_plasma()) {
+        // A failure before the generator executor starts (for example, a
+        // failed by-reference dependency) has no streamed error item. Copy the
+        // generator completion error to EOF-region refs so an eagerly peeked
+        // ref surfaces the same serialized RayTaskError as gen.completed().
+        const rpc::ReturnObject &task_error = reply.return_objects(0);
+        MarkEndOfStream(generator_id,
+                        streaming_generator_return_count,
+                        rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
+                        /*error_info=*/nullptr,
+                        &task_error);
+      } else {
+        MarkEndOfStream(generator_id, streaming_generator_return_count);
+      }
     } else {
       // The end of the stream should already have been marked on the first
       // successful execution.

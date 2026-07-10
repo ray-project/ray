@@ -27,6 +27,25 @@
 namespace ray {
 namespace core {
 
+namespace {
+
+void InlinePlasmaBackedReturnObject(const RayObject &return_object,
+                                    rpc::ReturnObject *return_object_proto) {
+  const std::shared_ptr<Buffer> &data = return_object.GetData();
+  if (data == nullptr || !data->IsPlasmaBuffer()) {
+    return;
+  }
+
+  return_object_proto->set_in_plasma(false);
+  return_object_proto->set_data(data->Data(), data->Size());
+  const std::shared_ptr<Buffer> &metadata = return_object.GetMetadata();
+  if (metadata != nullptr) {
+    return_object_proto->set_metadata(metadata->Data(), metadata->Size());
+  }
+}
+
+}  // namespace
+
 void TaskReceiver::HandleTaskExecutionResult(
     Status status,
     const TaskSpecification &task_spec,
@@ -69,6 +88,12 @@ void TaskReceiver::HandleTaskExecutionResult(
   }
 
   if (objects_valid) {
+    // A generator executor reports user failures as stream items, including a
+    // failure before its first user yield. Only a failure before the executor
+    // starts leaves the completion return as the sole error object for eager refs.
+    const bool needs_completion_error_for_eager_refs =
+        task_spec.IsStreamingGenerator() && !result.application_error.empty() &&
+        result.streaming_generator_returns.empty();
     if (task_spec.ReturnsDynamic()) {
       size_t num_dynamic_returns_expected = task_spec.DynamicReturnIds().size();
       if (num_dynamic_returns_expected > 0) {
@@ -92,6 +117,9 @@ void TaskReceiver::HandleTaskExecutionResult(
       auto return_object_proto = reply->add_return_objects();
       SerializeReturnObject(
           return_object.first, return_object.second, return_object_proto);
+      if (needs_completion_error_for_eager_refs) {
+        InlinePlasmaBackedReturnObject(*return_object.second, return_object_proto);
+      }
     }
 
     if (task_spec.IsActorCreationTask()) {
