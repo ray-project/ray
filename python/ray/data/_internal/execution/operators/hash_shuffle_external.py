@@ -1605,8 +1605,10 @@ def external_hash_shuffle_reduce_task(
                 try:
                     os.posix_fallocate(fd, 0, total_size)  # Linux only
                 except AttributeError:
-                    # posix_fallocate not available on this platform
-                    # (macOS, Windows, ...); fall back to sparse ftruncate.
+                    # posix_fallocate not on this platform (macOS /
+                    # Windows / minimal Python). Fall back to sparse
+                    # ftruncate; pwrite allocates blocks on demand and
+                    # will surface a real ENOSPC if the disk fills.
                     os.ftruncate(fd, total_size)
                 except OSError as e:
                     if _is_disk_exhausted(e):
@@ -1614,13 +1616,7 @@ def external_hash_shuffle_reduce_task(
                             f"Disk exhausted pre-allocating {total_size} "
                             f"bytes for prefetch.bin: {e}"
                         ) from e
-                    if e.errno in (errno.EOPNOTSUPP, errno.ENOSYS):
-                        # Underlying fs doesn't support fallocate; sparse
-                        # allocation still succeeds and later pwrites will
-                        # surface a real ENOSPC if the disk fills.
-                        os.ftruncate(fd, total_size)
-                    else:
-                        raise
+                    raise
 
             def _fetch_one(args):
                 base, size, group = args
