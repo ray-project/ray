@@ -239,5 +239,8 @@ repos:
           - eslint-plugin-prefer-arrow@1.2.3
           - '@typescript-eslint/parser@5.41.0'
           - '@typescript-eslint/eslint-plugin@5.41.0'
-          - '@typescript-eslint/parser@5.41.0'
-          - '@typescript-eslint/eslint-plugin@5.41.0'
+          # Pin typescript: eslint-config-react-app declares `typescript: "*"`,
+          # which otherwise floats to a TS major incompatible with
+          # @typescript-eslint 5.41 and breaks plugin load in CI. Matches the
+          # dashboard client's own typescript devDependency.
+          - typescript@4.8.4
