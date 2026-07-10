@@ -1014,23 +1014,23 @@ class ShuffleNodeLostError(ShuffleFetchError):
 
 
 class ShuffleManagerAnomalyError(ShuffleFetchError):
-    """Raised when a ShuffleManager reports as dead but its node is still alive.
+    """Raised when a ShuffleManager is unreachable while its node is alive.
 
     Under our configuration (``max_restarts=-1``, ``lifetime="detached"``,
-    ``NodeAffinitySchedulingStrategy(node_id, soft=False)``) an actor should
-    NEVER be permanently dead while its node is alive: Ray restarts it on
-    every crash, and a dead node produces PENDING (``ActorUnavailableError``)
-    not ``ActorDiedError``. If this fires, one of the following unusual
-    things has happened:
+    ``NodeAffinitySchedulingStrategy(node_id, soft=False)``) Ray restarts
+    the actor on any crash, and a dead node surfaces as PENDING /
+    ``ActorUnavailableError``, not ``ActorDiedError``. So an
+    ``ActorDiedError`` on a live node means one of:
 
     - External ``ray.kill(actor, no_restart=True)`` from user code.
-    - An unhandled exception in ``ShuffleManager.__init__`` that Ray cannot
-      recover from within its restart budget.
-    - A Ray-internal state inconsistency (rare GCS races).
+    - An unrecoverable initialization error keeping Ray from restarting.
+    - A rare Ray-internal state race.
 
-    We fail loudly (rather than trying to recover) so the underlying cause
-    is visible in the traceback instead of being masked by opaque
-    retry-and-still-broken behavior.
+    Recovery is not automatic: the mapper's plasma ObjectRef is still
+    "live" (Ray Core won't trigger lineage), files on disk have no server
+    to serve them, and re-running the mapper requires app-level
+    coordination we intentionally don't do. Retrying the job is the
+    normal remedy.
     """
 
 
@@ -1062,10 +1062,13 @@ def _classify_and_raise(
         ) from exc
     if alive is True:
         raise ShuffleManagerAnomalyError(
-            f"ShuffleManager for node {node_id} is dead but the node is "
-            f"still alive. This is not expected under max_restarts=-1 + "
-            f"detached lifetime; failing loudly so the underlying cause is "
-            f"visible. ({detail})"
+            f"ShuffleManager on node {node_id} is unreachable (actor "
+            f"terminated, node still alive). Possible causes: external "
+            f"ray.kill(), an unrecoverable actor initialization error, or "
+            f"a rare Ray-internal state race. Not automatically recoverable "
+            f"— the mapper's plasma output is still 'live' (so Ray-Core "
+            f"lineage won't re-run it) but no manager exists to serve it. "
+            f"Retry the job. ({detail})"
         ) from exc
     # alive is None: GCS inconclusive. Treat as transient — Ray task retry
     # or a resubmit will get a fresh view.
@@ -1151,13 +1154,21 @@ class _NodeGroup:
 class _PwriteSink:
     """A write-only file-like that ``os.pwrite``s sequentially from a
     fixed base offset on a shared fd. Multiple sinks (one per fetch thread) at
-    DISJOINT base regions write the same fd concurrently without lock"""
+    DISJOINT base regions write the same fd concurrently without lock.
 
-    __slots__ = ("_fd", "_pos")
+    ``reset()`` rewinds ``_pos`` to the base offset so a fetch attempt that
+    partially wrote can be retried in-place — subsequent ``os.pwrite``s
+    overwrite the partial data (same offsets, idempotent write)."""
+
+    __slots__ = ("_fd", "_base_offset", "_pos")
 
     def __init__(self, fd: int, base_offset: int):
         self._fd = fd
+        self._base_offset = base_offset
         self._pos = base_offset
+
+    def reset(self) -> None:
+        self._pos = self._base_offset
 
     def write(self, data) -> int:
         mv = memoryview(data)
@@ -1167,6 +1178,15 @@ class _PwriteSink:
             total += os.pwrite(self._fd, mv[total:], self._pos + total)
         self._pos += total
         return total
+
+
+# In-place retry budget when the manager is transiently unreachable
+# (actor restart on the same node, network hiccup). We keep trying while
+# the node is alive; only give up when node liveness returns ``False``
+# or the deadline expires.
+_FETCH_RETRY_DEADLINE_S = 300.0
+_FETCH_RETRY_INITIAL_BACKOFF_S = 1.0
+_FETCH_RETRY_MAX_BACKOFF_S = 30.0
 
 
 def _prefetch_node_into(
@@ -1181,12 +1201,17 @@ def _prefetch_node_into(
     every member's shards into ``out_file_obj`` via 1+ multi-source FETCH
     frames, each bounded by ``max_bytes_per_fetch``.
 
-    Manager is located via named-actor lookup (``_lookup_manager``); its
-    endpoint is resolved at call-time via ``manager.endpoint.remote()`` —
-    survives ShuffleManager restart on a new port. If the first connect
-    fails with a transient error (typical sign of mid-restart), re-resolve
-    once and retry; persistent failure surfaces as ShuffleFetchError so the
-    operator layer can decide what to do.
+    Manager is located via named-actor lookup (``_lookup_manager``).
+    Endpoint is resolved via ``manager.endpoint.remote()`` — survives a
+    ShuffleManager restart on a new port.
+
+    Retry policy: wait in place across transient failures (TCP break,
+    actor restarting) with exponential backoff. We escalate only when a
+    verdict lands:
+    - Node confirmed dead → ``ShuffleNodeLostError``.
+    - Actor confirmed dead on a live node → ``ShuffleManagerAnomalyError``.
+    - Retry deadline exhausted → ``ShuffleFetchError`` with total wait
+      diagnostics.
     """
 
     def _resolve() -> Tuple[str, int]:
@@ -1228,40 +1253,63 @@ def _prefetch_node_into(
         _ENDPOINT_CACHE[key] = ep
         return ep
 
-    endpoint = _resolve()
-    try:
-        with open_shuffle_connection(endpoint, token) as conn:
-            for batch in _chunk_members_by_bytes(members, max_bytes_per_fetch):
-                sources = [(m.path, m.ranges) for m in batch]
-                conn.fetch_into(sources, out_file_obj)
-    except ShuffleFetchError:
-        # Already the right type (ShuffleNodeLostError / ShuffleManagerAnomalyError
-        # from _resolve, or a re-raised one from the connection code).
-        raise
-    except ActorDiedError as e:
-        # Actor died mid-fetch — could be node loss or an anomaly on a
-        # live node. Classify.
-        _classify_and_raise(
-            node_id, exc=e, context="ActorDiedError mid-fetch",
-            num_sources=len(members),
-        )
-    except Exception as e:
-        # TCP / network / other transient. Still cross-check node liveness:
-        # if the node died mid-fetch, upgrade to ShuffleNodeLostError so the
-        # user gets an actionable message instead of an opaque
-        # ShuffleFetchError chain. Node alive → the underlying cause is
-        # transient / local (e.g. mid-restart TCP refuse); keep the existing
-        # ShuffleFetchError semantics for now.
-        if _is_node_alive(node_id) is False:
-            raise ShuffleNodeLostError(
-                f"ShuffleManager node {node_id} died mid-fetch; "
-                f"lost on-disk output for {len(members)} source(s). "
-                f"Ray-Core lineage will re-execute affected mappers on "
-                f"reducer retry."
-            ) from e
-        raise ShuffleFetchError(
-            f"fetch from {endpoint} (sources={len(members)}) failed: {e}"
-        ) from e
+    start = time.monotonic()
+    deadline = start + _FETCH_RETRY_DEADLINE_S
+    backoff = _FETCH_RETRY_INITIAL_BACKOFF_S
+    attempts = 0
+    last_exc: Optional[BaseException] = None
+
+    while True:
+        attempts += 1
+        try:
+            endpoint = _resolve()
+            with open_shuffle_connection(endpoint, token) as conn:
+                for batch in _chunk_members_by_bytes(
+                    members, max_bytes_per_fetch
+                ):
+                    sources = [(m.path, m.ranges) for m in batch]
+                    conn.fetch_into(sources, out_file_obj)
+            return
+        except ShuffleFetchError:
+            # Terminal typed error from _resolve / classify — propagate.
+            raise
+        except ActorDiedError as e:
+            _classify_and_raise(
+                node_id, exc=e, context="ActorDiedError mid-fetch",
+                num_sources=len(members),
+            )
+        except Exception as e:
+            last_exc = e
+            # Any pwrites we did on this attempt land at the same offsets
+            # on the next attempt (server re-sends the same bytes), so
+            # rewind the sink so subsequent writes don't overrun into the
+            # next fetch group's region.
+            if hasattr(out_file_obj, "reset"):
+                out_file_obj.reset()
+            # Force the endpoint to be re-resolved on the next iteration
+            # in case the manager restarted on a new port.
+            _ENDPOINT_CACHE.pop(_manager_name(shuffle_id, node_id), None)
+
+            alive = _is_node_alive(node_id)
+            if alive is False:
+                raise ShuffleNodeLostError(
+                    f"ShuffleManager node {node_id} died mid-fetch; "
+                    f"lost on-disk output for {len(members)} source(s). "
+                    f"Ray-Core lineage will re-execute affected mappers on "
+                    f"reducer retry."
+                ) from e
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ShuffleFetchError(
+                    f"Fetch from node {node_id} did not succeed after "
+                    f"{attempts} attempts in {_FETCH_RETRY_DEADLINE_S:.0f}s "
+                    f"(node still alive={alive}, sources={len(members)}). "
+                    f"Last error: {e}"
+                ) from e
+            # Node alive (or inconclusive) — wait and retry in place.
+            time.sleep(min(backoff, remaining))
+            backoff = min(backoff * 2, _FETCH_RETRY_MAX_BACKOFF_S)
 
 
 def _chunk_members_by_bytes(

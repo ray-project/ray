@@ -49,6 +49,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.hash_shuffle_external import (
     _DEFAULT_MAX_BYTES_PER_FETCH,
     ReduceFn,
+    ShuffleFetchError,
     external_hash_shuffle_reduce_task,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
@@ -226,6 +227,11 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             # we don't attempt app-level recovery beyond what lineage
             # provides.
             "max_retries": 3,
+            # Ray retries on worker crashes by default; opt in to retrying
+            # on our shuffle-fetch errors too, so that a ``ShuffleFetchError``
+            # (typically ``ShuffleNodeLostError``) raised in the task body
+            # triggers Ray-Core arg re-resolution → lineage recovery.
+            "retry_exceptions": [ShuffleFetchError],
         }
 
         block_gen = external_hash_shuffle_reduce_task.options(**reduce_options).remote(
