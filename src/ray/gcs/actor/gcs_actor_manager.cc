@@ -259,15 +259,14 @@ GcsActorManager::GcsActorManager(
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
   actor_state_counter_ = std::make_shared<
       CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>();
+  // On change, only retract keys that dropped to zero (emit their final 0). Live
+  // keys are re-asserted every tick by the ForEachEntry loop in RecordMetrics, so
+  // emitting them here too would double-record. Keeps each key recorded once/tick.
   actor_state_counter_->SetOnChangeCallback(
-      [this](const std::pair<rpc::ActorTableData::ActorState, std::string> key) mutable {
-        int64_t num_actors = actor_state_counter_->Get(key);
-        actor_by_state_gauge_.Record(
-            num_actors,
-            {{"State", rpc::ActorTableData::ActorState_Name(key.first)},
-             {"Name", key.second},
-             {"Source", "gcs"},
-             {"JobId", ""}});
+      [this](const std::pair<rpc::ActorTableData::ActorState, std::string> &key) mutable {
+        if (actor_state_counter_->Get(key) == 0) {
+          RecordActorState(key, /*value=*/0);
+        }
       });
 }
 
@@ -2098,7 +2097,26 @@ void GcsActorManager::RecordMetrics() const {
     usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::ACTOR_NUM_CREATED,
                                                  lifetime_num_created_actors_);
   }
+  // Re-assert every live actor state each tick, not just transitions: the metrics
+  // backend clears gauge observations after each export (#56405), so these gauge
+  // values would otherwise drop out between transitions. FlushOnChangeCallbacks
+  // still emits the final 0 for keys that just dropped to zero (erased from the
+  // counter, so ForEachEntry won't visit them).
   actor_state_counter_->FlushOnChangeCallbacks();
+  actor_state_counter_->ForEachEntry(
+      [this](const std::pair<rpc::ActorTableData::ActorState, std::string> &key,
+             int64_t value) { RecordActorState(key, value); });
+}
+
+void GcsActorManager::RecordActorState(
+    const std::pair<rpc::ActorTableData::ActorState, std::string> &key,
+    int64_t value) const {
+  actor_by_state_gauge_.Record(
+      value,
+      {{"State", rpc::ActorTableData::ActorState_Name(key.first)},
+       {"Name", key.second},
+       {"Source", "gcs"},
+       {"JobId", ""}});
 }
 
 }  // namespace gcs

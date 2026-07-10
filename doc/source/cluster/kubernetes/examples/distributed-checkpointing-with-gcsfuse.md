@@ -2,13 +2,11 @@
 
 # Distributed checkpointing with KubeRay and GCSFuse
 
-This example orchestrates distributed checkpointing with KubeRay, using the GCSFuse CSI driver and Google Cloud Storage as the remote storage system.
-To illustrate the concepts, this guide uses the [Finetuning a Pytorch Image Classifier with Ray Train](https://docs.ray.io/en/latest/train/examples/pytorch/pytorch_resnet_finetune.html) example.
+This example orchestrates distributed checkpointing with KubeRay, using the GCSFuse CSI driver and Google Cloud Storage as the remote storage system. To illustrate the concepts, this guide uses the [Finetuning a Pytorch Image Classifier with Ray Train](https://docs.ray.io/en/latest/train/examples/pytorch/pytorch_resnet_finetune.html) example.
 
 ## Why distributed checkpointing with GCSFuse?
 
-In large-scale, high-performance machine learning, distributed checkpointing is crucial for fault tolerance, ensuring that if a node fails during training, Ray can resume the process from the latest saved checkpoint instead of starting from scratch.
-While it's possible to directly reference remote storage paths (e.g., `gs://my-checkpoint-bucket`), using Google Cloud Storage FUSE (GCSFuse) has distinct advantages for distributed applications. GCSFuse allows you to mount Cloud Storage buckets like local file systems, making checkpoint management more intuitive for distributed applications that rely on these semantics. Furthermore, GCSFuse is designed for high-performance workloads, delivering the performance and scalability you need for distributed checkpointing of large models.
+In large-scale, high-performance machine learning, distributed checkpointing is crucial for fault tolerance, ensuring that if a node fails during training, Ray can resume the process from the latest saved checkpoint instead of starting from scratch. While it's possible to directly reference remote storage paths (e.g., `gs://my-checkpoint-bucket`), using Google Cloud Storage FUSE (GCSFuse) has distinct advantages for distributed applications. GCSFuse allows you to mount Cloud Storage buckets like local file systems, making checkpoint management more intuitive for distributed applications that rely on these semantics. Furthermore, GCSFuse is designed for high-performance workloads, delivering the performance and scalability you need for distributed checkpointing of large models.
 
 [Distributed checkpointing](https://docs.ray.io/en/latest/train/user-guides/checkpoints.html), in combination with [GCSFuse](https://cloud.google.com/storage/docs/gcs-fuse), allows for larger-scale model training with increased availability and efficiency.
 
@@ -40,8 +38,7 @@ gke-kuberay-with-gcsfuse-default-pool-xxxx-3333       1
 
 ## Install the KubeRay operator
 
-Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository.
-The KubeRay operator Pod must be on the CPU node if you set up the taint for the GPU node pool correctly.
+Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository. The KubeRay operator Pod must be on the CPU node if you set up the taint for the GPU node pool correctly.
 
 ## Configuring the GCS Bucket
 
@@ -56,8 +53,7 @@ Create a Kubernetes ServiceAccount that grants the RayCluster access to mount th
 kubectl create serviceaccount pytorch-distributed-training
 ```
 
-Bind the `roles/storage.objectUser` role to the Kubernetes service account and bucket IAM policy.
-See [Identifying projects](https://cloud.google.com/resource-manager/docs/creating-managing-projects#identifying_projects) to find your project ID and project number:
+Bind the `roles/storage.objectUser` role to the Kubernetes service account and bucket IAM policy. See [Identifying projects](https://cloud.google.com/resource-manager/docs/creating-managing-projects#identifying_projects) to find your project ID and project number:
 ```
 PROJECT_ID=<your project ID>
 PROJECT_NUMBER=<your project number>
@@ -159,8 +155,7 @@ gs://my-ray-bucket/finetune-resnet/tuner.pkl
 
 ## Resuming from checkpoint
 
-In the event of a failed job, you can use the latest checkpoint to resume training of the model. This example configures `TorchTrainer` to automatically resume
-from the latest checkpoint:
+In the event of a failed job, you can use the latest checkpoint to resume training of the model. This example configures `TorchTrainer` to automatically resume from the latest checkpoint:
 ```python
 experiment_path = os.path.expanduser("/mnt/cluster_storage/finetune-resnet")
 if TorchTrainer.can_restore(experiment_path):
@@ -184,8 +179,7 @@ You can verify automatic checkpoint recovery by redeploying the same RayJob:
 kubectl create -f ray-job.pytorch-image-classifier.yaml
 ```
 
-If the previous job succeeded, the training job should restore the checkpoint state from the `checkpoint_000009` directory
-and then immediately complete training with 0 iterations:
+If the previous job succeeded, the training job should restore the checkpoint state from the `checkpoint_000009` directory and then immediately complete training with 0 iterations:
 ```
 2024-04-29 15:51:32,528 INFO experiment_state.py:366 -- Trying to find and download experiment checkpoint at /mnt/cluster_storage/finetune-resnet
 2024-04-29 15:51:32,651 INFO experiment_state.py:396 -- A remote experiment checkpoint was found and will be used to restore the previous experiment state.
@@ -202,8 +196,7 @@ Result(
 )
 ```
 
-If the previous job failed at an earlier checkpoint, the job should resume from the last saved checkpoint and run until `max_epochs=10`. For example, if the last run
-failed at epoch 7, the training automatically resumes using `checkpoint_000006` and run 3 more iterations until epoch 10:
+If the previous job failed at an earlier checkpoint, the job should resume from the last saved checkpoint and run until `max_epochs=10`. For example, if the last run failed at epoch 7, the training automatically resumes using `checkpoint_000006` and run 3 more iterations until epoch 10:
 ```
 (TorchTrainer pid=611, ip=10.108.2.65) Restored on 10.108.2.65 from checkpoint: Checkpoint(filesystem=local, path=/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29/checkpoint_000006)
 (RayTrainWorker pid=671, ip=10.108.2.65) Setting up process group for: env:// [rank=0, world_size=4]

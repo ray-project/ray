@@ -33,11 +33,7 @@ When user code runs in a separate thread (the default when `RAY_SERVE_RUN_USER_C
 | `RAY_SERVE_USER_HEALTH_CHECK_PROBE_TIMEOUT_S` | `300` | How long (seconds) each probe waits before counting as a failure. |
 | `RAY_SERVE_USER_HEALTH_CHECK_PROBE_MAX_FAIL` | `3` | Consecutive probe failures before the replica fails its health check. Set to `0` to disable the watchdog. |
 
-You can define custom application-level health-checks and adjust their frequency and timeout.
-To define a custom health-check, add a `check_health` method to your deployment class.
-This method should take no arguments and return no result, and it should raise an exception if Ray Serve considers the replica unhealthy.
-If the health-check fails, the Serve controller logs the exception, kills the unhealthy replica(s), and restarts them.
-You can also use the deployment options to customize how frequently Serve runs the health-check and the timeout after which Serve marks a replica unhealthy.
+You can define custom application-level health-checks and adjust their frequency and timeout. To define a custom health-check, add a `check_health` method to your deployment class. This method should take no arguments and return no result, and it should raise an exception if Ray Serve considers the replica unhealthy. If the health-check fails, the Serve controller logs the exception, kills the unhealthy replica(s), and restarts them. You can also use the deployment options to customize how frequently Serve runs the health-check and the timeout after which Serve marks a replica unhealthy.
 
 ```{literalinclude} ../doc_code/fault_tolerance/replica_health_check.py
 :start-after: __health_check_start__
@@ -100,9 +96,7 @@ In this section, you'll learn how to add fault tolerance to Ray's Global Control
 
 By default, the Ray head node is a single point of failure: if it crashes, the entire Ray cluster crashes and you must restart it. When running on Kubernetes, the `RayService` controller health-checks the Ray cluster and restarts it if this occurs, but this introduces some downtime.
 
-Starting with Ray 2.0+, KubeRay supports [Global Control Store (GCS) fault tolerance](kuberay-gcs-ft), preventing the Ray cluster from crashing if the head node goes down.
-While the head node is recovering, Serve applications can still handle traffic with worker nodes but you can't update or recover from other failures like Actors or Worker nodes crashing.
-Once the GCS recovers, the cluster returns to normal behavior.
+Starting with Ray 2.0+, KubeRay supports [Global Control Store (GCS) fault tolerance](kuberay-gcs-ft), preventing the Ray cluster from crashing if the head node goes down. While the head node is recovering, Serve applications can still handle traffic with worker nodes but you can't update or recover from other failures like Actors or Worker nodes crashing. Once the GCS recovers, the cluster returns to normal behavior.
 
 You can enable GCS fault tolerance on KubeRay by adding an external Redis server and modifying your `RayService` Kubernetes object with the following steps:
 
@@ -285,20 +279,15 @@ Check out the KubeRay guide on [GCS fault tolerance](kuberay-gcs-ft) to learn mo
 
 ### Spreading replicas across nodes
 
-One way to improve the availability of your Serve application is to spread deployment replicas across multiple nodes so that you still have enough running
-replicas to serve traffic even after a certain number of node failures.
+One way to improve the availability of your Serve application is to spread deployment replicas across multiple nodes so that you still have enough running replicas to serve traffic even after a certain number of node failures.
 
 By default, Serve soft spreads all deployment replicas but it has a few limitations:
 
 * The spread is soft and best-effort with no guarantee that the it's perfectly even.
 
-* Serve tries to spread replicas among the existing nodes if possible instead of launching new nodes.
-For example, if you have a big enough single node cluster, Serve schedules all replicas on that single node assuming
-it has enough resources. However, that node becomes the single point of failure.
+* Serve tries to spread replicas among the existing nodes if possible instead of launching new nodes. For example, if you have a big enough single node cluster, Serve schedules all replicas on that single node assuming it has enough resources. However, that node becomes the single point of failure.
 
-You can change the spread behavior of your deployment with the `max_replicas_per_node`
-[deployment option](../../serve/api/doc/ray.serve.deployment_decorator.rst), which hard limits the number of replicas of a given deployment that can run on a single node.
-If you set it to 1 then you're effectively strict spreading the deployment replicas. If you don't set it then there's no hard spread constraint and Serve uses the default soft spread mentioned in the preceding paragraph. `max_replicas_per_node` option is per deployment and only affects the spread of replicas within a deployment. There's no spread between replicas of different deployments.
+You can change the spread behavior of your deployment with the `max_replicas_per_node` [deployment option](../../serve/api/doc/ray.serve.deployment_decorator.rst), which hard limits the number of replicas of a given deployment that can run on a single node. If you set it to 1 then you're effectively strict spreading the deployment replicas. If you don't set it then there's no hard spread constraint and Serve uses the default soft spread mentioned in the preceding paragraph. `max_replicas_per_node` option is per deployment and only affects the spread of replicas within a deployment. There's no spread between replicas of different deployments.
 
 The following code example shows how to set `max_replicas_per_node` deployment option:
 
