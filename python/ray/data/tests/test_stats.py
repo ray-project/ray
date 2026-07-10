@@ -2109,9 +2109,9 @@ def test_update_iteration_metrics_exports_new_iter_metrics():
     ]:
         setattr(actor, attr, FakeGauge(attr))
 
-    actor.update_iteration_metrics(stats, "train_dataset_split_3")
+    actor.update_iteration_metrics(stats, "train_dataset_split_3", "3")
 
-    expected_tags = {"dataset": "train_dataset_split_3"}
+    expected_tags = {"dataset": "train_dataset_split_3", "split_index": "3"}
     assert recorded["iter_total_s"] == (11.0, expected_tags)
     assert recorded["iter_blocked_production_wait_s"] == (1.0, expected_tags)
     assert recorded["iter_blocked_data_transfer_s"] == (1.5, expected_tags)

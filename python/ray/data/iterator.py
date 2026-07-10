@@ -302,7 +302,11 @@ class DataIterator(abc.ABC):
                 try:
                     if stats:
                         stats.iter_total_s.add(time.perf_counter() - time_start)
-                        _StatsManager.update_iteration_metrics(stats, dataset_tag)
+                        _StatsManager.update_iteration_metrics(
+                            stats,
+                            dataset_tags["dataset"],
+                            dataset_tags["split_index"],
+                        )
                 finally:
                     # On early exit (e.g. ``break`` in the for-loop), the
                     # inner ``_ClosingIterator`` would only shut down the
