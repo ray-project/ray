@@ -16,6 +16,7 @@ contracts, so group-by / sort / aggregate / join factories compose unchanged.
 
 # todo: pre-check same-key skew in mapphase would be smart
 import atexit
+import errno
 import os
 import pickle
 import shutil
@@ -977,6 +978,30 @@ class ShuffleFetchError(RuntimeError):
     Surfaced so the executor/lineage can re-run the producer mapper."""
 
 
+# Not a ShuffleFetchError subclass — reducer options list
+# ``retry_exceptions=[ShuffleFetchError]``, and we don't want Ray to
+# retry a disk-exhausted task (the disk stays full across retries).
+class ShuffleDiskError(RuntimeError):
+    """Raised when the reducer's local disk can't accommodate more
+    prefetched bytes (ENOSPC / EDQUOT / similar terminal filesystem
+    errors). Not retriable — Ray retries won't reclaim disk space."""
+
+
+# errno values that indicate the reducer's local disk is exhausted.
+# EDQUOT is glibc's quota-exceeded error; not all platforms expose it.
+_DISK_EXHAUSTED_ERRNOS = frozenset(
+    e for e in (
+        errno.ENOSPC,
+        getattr(errno, "EDQUOT", None),
+    )
+    if e is not None
+)
+
+
+def _is_disk_exhausted(exc: BaseException) -> bool:
+    return isinstance(exc, OSError) and exc.errno in _DISK_EXHAUSTED_ERRNOS
+
+
 class ShuffleNodeLostError(ShuffleFetchError):
     """Raised when a source ShuffleManager's node is confirmed dead
     (via ``ray.nodes()``).
@@ -1286,6 +1311,12 @@ def _prefetch_node_into(
                 num_sources=len(members),
             )
         except Exception as e:
+            # Disk exhausted is terminal — no amount of retry frees space.
+            if _is_disk_exhausted(e):
+                raise ShuffleDiskError(
+                    f"Disk exhausted while writing prefetch.bin for node "
+                    f"{node_id} (sources={len(members)}): {e}"
+                ) from e
             # Any pwrites we did on this attempt land at the same offsets
             # on the next attempt (server re-sends the same bytes), so
             # rewind the sink so subsequent writes don't overrun into the
@@ -1573,8 +1604,23 @@ def external_hash_shuffle_reduce_task(
             if total_size > 0:
                 try:
                     os.posix_fallocate(fd, 0, total_size)  # Linux only
-                except (AttributeError, OSError):
+                except AttributeError:
+                    # posix_fallocate not available on this platform
+                    # (macOS, Windows, ...); fall back to sparse ftruncate.
                     os.ftruncate(fd, total_size)
+                except OSError as e:
+                    if _is_disk_exhausted(e):
+                        raise ShuffleDiskError(
+                            f"Disk exhausted pre-allocating {total_size} "
+                            f"bytes for prefetch.bin: {e}"
+                        ) from e
+                    if e.errno in (errno.EOPNOTSUPP, errno.ENOSYS):
+                        # Underlying fs doesn't support fallocate; sparse
+                        # allocation still succeeds and later pwrites will
+                        # surface a real ENOSPC if the disk fills.
+                        os.ftruncate(fd, total_size)
+                    else:
+                        raise
 
             def _fetch_one(args):
                 base, size, group = args
