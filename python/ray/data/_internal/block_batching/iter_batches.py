@@ -67,7 +67,7 @@ class BatchIterator:
     Args:
         ref_bundles: An iterator over RefBundles.
         stats: DatasetStats object to record timing and other statistics.
-        dataset_tag: The iterator's iteration-metric tags, a dict with keys
+        dataset_tags: The iterator's iteration-metric tags, a dict with keys
             ``dataset`` (the dataset id) and ``split_index`` (indicates the
             split, empty for plain iterators).
         clear_block_after_read: Whether to clear the block from object store
