@@ -724,6 +724,14 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
         produced = re.sub(
             rf"('{key}': )(?:N|Z)\b", rf"\g<1>{not_asserted}", produced, count=1
         )
+    # The per-stage training-thread blocked breakdown is timing-dependent
+    # (depends on whether prefetch hid the stall); strip it before comparing.
+    produced = re.sub(
+        r"\nPer-stage training-thread blocked time breakdown:\n"
+        r"(?:    \* [^\n]+\n)+",
+        "",
+        produced,
+    )
     assert (
         produced
         == f"""Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}
@@ -758,6 +766,8 @@ Dataset iterator time breakdown:
     * In batch creation: T min, T max, T avg, T total
     * In batch formatting: T min, T max, T avg, T total
 Streaming split coordinator overhead time: T
+Total batches consumed: N
+Total rows consumed: N
 """
         f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)', 'split(N, equal=False)'], True)}"  # noqa: E501
     )
@@ -2420,7 +2430,10 @@ def test_stats_manager(mock_get_or_create, shutdown_only):
     # calls will update on the first update (cold start), and on shutdown,
     # which is 2 for each thread.
     assert execution_calls == 2 * num_threads
-    assert iteration_calls == 2 * num_threads
+    # iteration_calls has 3 per thread: cold start + shutdown + the
+    # finally-block flush in DataIterator._iter_batches (added so an
+    # early ``break`` still records iter_total_s and flushes metrics).
+    assert iteration_calls == 3 * num_threads
 
 
 def test_stats_manager_stale_actor_handle(ray_start_cluster):
