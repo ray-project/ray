@@ -1687,6 +1687,10 @@ pygments==2.18.0
     #   nbconvert
     #   rich
     #   sphinx
+# NOTE: SaveMode.DYNAMIC_OVERWRITE requires a PyIceberg build that includes
+# Transaction.replace_partitions (single-snapshot partition replacement). That
+# change is pending upstream (apache/iceberg-python) and carried on a Pinterest
+# patch; bump this pin to the released version once available.
 pyiceberg==0.10.0
     # via -r python/requirements/ml/data-test-requirements.txt
 pyjwt==2.8.0

@@ -160,10 +160,13 @@ class IcebergDatasink(
             table_identifier: The identifier of the table such as `default.taxi_dataset`
             catalog_kwargs: Optional arguments to use when setting up the Iceberg catalog
             snapshot_properties: Custom properties to write to snapshot summary
-            mode: Write mode - APPEND, UPSERT, or OVERWRITE. Defaults to APPEND.
+            mode: Write mode - APPEND, UPSERT, OVERWRITE, or DYNAMIC_OVERWRITE. Defaults to APPEND.
                 - APPEND: Add new data without checking for duplicates
                 - UPSERT: Update existing rows or insert new ones based on a join condition
                 - OVERWRITE: Replace table data (all data or filtered subset)
+                - DYNAMIC_OVERWRITE: Replace only the partitions present in the incoming
+                  data (auto-detected from identity partition columns); requires a
+                  partitioned table with at least one identity partition field
             overwrite_filter: Optional filter for OVERWRITE mode to perform partial overwrites.
                 Must be a Ray Data expression from `ray.data.expressions`. Only rows matching
                 this filter are replaced. If None with OVERWRITE mode, replaces all table data.

@@ -4090,6 +4090,13 @@ class Dataset:
                     overwrite_filter=col("date") >= "2024-10-28"
                 )
 
+                # Dynamic partition overwrite - replace only the partitions present in the data
+                ds.write_iceberg(
+                    table_identifier="events.user_activity",
+                    catalog_kwargs={"name": "default", "type": "rest"},
+                    mode=SaveMode.DYNAMIC_OVERWRITE,
+                )
+
         Args:
             table_identifier: Fully qualified table identifier (``db_name.table_name``)
             catalog_kwargs: Optional arguments to pass to PyIceberg's catalog.load_catalog()
@@ -4106,10 +4113,15 @@ class Dataset:
                   or insert new rows if they don't exist in the table.
                 * SaveMode.OVERWRITE: Replace all existing data in the table with new data, or replace
                   data matching overwrite_filter if specified.
+                * SaveMode.DYNAMIC_OVERWRITE: Replace only the partitions present in the incoming
+                  data, leaving all other partitions untouched. No ``overwrite_filter`` is used --
+                  the partitions to replace are detected automatically from the data. Requires a
+                  partitioned table with at least one identity partition field.
 
             overwrite_filter: Optional filter for OVERWRITE mode to perform partial overwrites.
                 Must be a Ray Data expression from `ray.data.expressions`. Only rows matching
                 this filter are replaced. If None with OVERWRITE mode, replaces all table data.
+                Not used with (and rejected for) SaveMode.DYNAMIC_OVERWRITE.
                 Example: `col("date") >= "2024-01-01"` or `(col("region") == "US") & (col("status") == "active")`
             upsert_kwargs: Optional arguments for upsert operations.
                 Supported parameters: join_cols (List[str]), case_sensitive (bool), branch (str).
