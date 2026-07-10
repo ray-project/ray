@@ -341,7 +341,6 @@ class DeepSpeedAdapter(FrameworkAdapter):
         batch_size = self.cfg.data.micro_batch_size
         dataloader = build_text_dataloader(
             dataset_name=self.cfg.data.dataset,
-            dataset_path=self.cfg.data.dataset_path,
             tokenizer=self._tokenizer,
             seq_len=self.cfg.data.seq_len,
             batch_size=batch_size,

@@ -26,7 +26,6 @@ model:
 data:
   dataloader: native
   dataset: wikitext             # use `synthetic` to isolate compute from data ingest
-  dataset_path: ""
   # Qwen3's ~152k vocab makes the logits/loss head (batch x seq x vocab, upcast
   # to fp32 in cross-entropy) the memory bottleneck on 24GB, not the model body.
   # mbs=2 keeps the logits-grad allocation small enough to fit. Raise on A100.

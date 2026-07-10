@@ -129,7 +129,6 @@ def _build_hf_loader(
 
 def build_text_dataloader(
     dataset_name: str,
-    dataset_path: str,
     tokenizer: Optional[Any],
     seq_len: int,
     batch_size: int,

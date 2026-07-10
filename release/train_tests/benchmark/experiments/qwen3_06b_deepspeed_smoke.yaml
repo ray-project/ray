@@ -15,7 +15,6 @@ model:
 data:
   dataloader: native
   dataset: synthetic            # random token ids, no network / tokenizer needed
-  dataset_path: ""
   micro_batch_size: 2
   seq_len: 512
 training:

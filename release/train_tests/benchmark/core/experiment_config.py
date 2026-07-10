@@ -54,7 +54,6 @@ class DataConfig:
     dataloader: str = "native"
     # Registered dataset name: "synthetic" | "wikitext" (see data/text_dataset).
     dataset: str = "synthetic"
-    dataset_path: str = ""
     # Per-device micro-batch size (= train_micro_batch_size_per_gpu / MBS). The
     # global batch is micro_batch_size x data_parallel_size x grad_accum_steps.
     micro_batch_size: int = 1
