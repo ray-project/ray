@@ -244,11 +244,11 @@ class NodePortManager:
         for node_id in list(cls._node_managers):
             manager = cls._node_managers[node_id]
             alive = node_id_to_alive_replica_ids.get(node_id, set())
-            # P4-ports: skip the O(replicas) reclaim for a node whose alive-replica set
-            # is unchanged since the last prune (fingerprint = the full alive set, so a
-            # replica that left / arrived / moved nodes is caught). Liveness-only: a
-            # skipped node never reuses a live port (allocate() guards that). Teardown
-            # of an emptied+drained manager below still runs every tick.
+            # Skip the reclaim scan for a node whose set of alive replicas is unchanged
+            # since the last prune. Comparing the whole alive set means a replica that
+            # left, arrived, or moved nodes is still caught; skipping only defers reclaim
+            # and never reuses a live port (allocate() guards that). The emptied-manager
+            # teardown below still runs every tick.
             if alive == manager._last_pruned_alive:
                 pass
             else:
@@ -281,8 +281,8 @@ class NodePortManager:
 
     def __init__(self, node_id: str):
         self._node_id = node_id
-        # P4-ports: the alive-replica set this manager last pruned against. Skip the
-        # O(replicas) reclaim scan when unchanged. None sentinel -> first prune runs.
+        # Set of alive replicas this manager last pruned against; when unchanged, the
+        # reclaim scan is skipped. None means never pruned, so the first prune runs.
         self._last_pruned_alive: Optional[Set[str]] = None
 
         self._http_allocator = PortAllocator(

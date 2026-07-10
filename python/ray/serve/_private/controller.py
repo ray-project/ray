@@ -201,7 +201,7 @@ class ServeController:
 
         self._ha_proxy_enabled = RAY_SERVE_ENABLE_HA_PROXY
         self._direct_ingress_enabled = RAY_SERVE_ENABLE_DIRECT_INGRESS
-        # Last full set of ingress-port tuples fed to update_ports (P3-ports diff).
+        # Last full set of ingress-port tuples fed to update_ports (for the per-tick set-diff).
         self._last_ingress_port_tuples: set = set()
         if self._ha_proxy_enabled:
             logger.info(
@@ -694,10 +694,11 @@ class ServeController:
                 Tuple[str, str, int, int]
             ] = self.deployment_state_manager.get_ingress_replicas_info()
 
-            # P3-ports: update_port_if_missing is additive + idempotent, so feed only
-            # the tuples NEW since the last sync (set-diff) -> the reconcile loop is
-            # O(changed) not O(replicas). Full-tuple set recomputed + replaced each
-            # tick, so it is restart-safe (empty cache -> full emit on the first tick).
+            # update_port_if_missing is additive and idempotent, so we send update_ports
+            # only the tuples added since the last tick (the set difference) instead of
+            # the full set every tick -- work proportional to what changed rather than to
+            # the replica count. The full set is recomputed and cached each tick, so after
+            # a controller restart the empty cache re-sends everything on the first tick.
             fresh = set(ingress_replicas_info_list)
             NodePortManager.update_ports(list(fresh - self._last_ingress_port_tuples))
             self._last_ingress_port_tuples = fresh
