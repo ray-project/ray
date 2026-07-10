@@ -1136,6 +1136,55 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEvents) {
   EXPECT_EQ(event_entry.extra_data(), "test_extra_data");
 }
 
+TEST_F(TaskEventBufferTest, TestTaskProfileEventDefaultExtraDataIsEmptyJson) {
+  // A profile event that is flushed without SetExtraData ever being called
+  // (e.g. task:execute events that are not populated with extra data) must
+  // still serialize a valid-JSON extra_data. An empty string is not valid JSON
+  // and makes consumers that json-parse the field (the state API) fail on the
+  // whole request. The default must be "{}".
+  auto make_event = [](const std::string &event_name) {
+    return std::make_unique<TaskProfileEvent>(RandomTaskId(),
+                                              JobID::FromInt(123),
+                                              /*attempt_number=*/1,
+                                              /*component_type=*/"core_worker",
+                                              /*component_id=*/"worker_123",
+                                              /*node_ip_address=*/"127.0.0.1",
+                                              event_name,
+                                              /*start_time=*/1000,
+                                              /*session_name=*/"test_session_name",
+                                              NodeID::Nil());
+  };
+
+  // State API path: ToRpcTaskEvents (rpc::TaskEvents consumed via GCS).
+  {
+    auto profile_event = make_event("task:execute");
+    profile_event->SetEndTime(2000);
+    // Intentionally do NOT call SetExtraData.
+
+    rpc::TaskEvents task_events;
+    profile_event->ToRpcTaskEvents(&task_events);
+
+    ASSERT_EQ(task_events.profile_events().events_size(), 1);
+    EXPECT_EQ(task_events.profile_events().events(0).extra_data(), "{}");
+  }
+
+  // RayEvents path: ToRpcRayEvents.
+  {
+    auto profile_event = make_event("task:execute");
+    profile_event->SetEndTime(2000);
+    // Intentionally do NOT call SetExtraData.
+
+    RayEventsTuple ray_events_tuple;
+    profile_event->ToRpcRayEvents(ray_events_tuple);
+
+    ASSERT_TRUE(ray_events_tuple.task_profile_event.has_value());
+    const auto &profile_events =
+        ray_events_tuple.task_profile_event->task_profile_events().profile_events();
+    ASSERT_EQ(profile_events.events_size(), 1);
+    EXPECT_EQ(profile_events.events(0).extra_data(), "{}");
+  }
+}
+
 TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEventsMultipleEvents) {
   auto task_id = RandomTaskId();
   auto job_id = JobID::FromInt(123);
@@ -1303,30 +1352,42 @@ TEST_P(TaskEventBufferTestDifferentDestination,
   auto task_id = RandomTaskId();
   auto job_id = JobID::FromInt(789);
 
-  // Create a status event (should populate both elements of RayEventsPair)
-  auto status_event = GenStatusTaskEvent(task_id, 1, 1000);
+  auto make_profile_event = [&]() {
+    return std::make_unique<TaskProfileEvent>(task_id,
+                                              job_id,
+                                              1,
+                                              "core_worker",
+                                              "worker_789",
+                                              "192.168.1.3",
+                                              "mixed_test",
+                                              7000,
+                                              "test_session_name",
+                                              NodeID::Nil());
+  };
 
-  // Create a profile event (should populate only first element)
-  auto profile_event = std::make_unique<TaskProfileEvent>(task_id,
-                                                          job_id,
-                                                          1,
-                                                          "core_worker",
-                                                          "worker_789",
-                                                          "192.168.1.3",
-                                                          "mixed_test",
-                                                          7000,
-                                                          "test_session_name",
-                                                          NodeID::Nil());
+  // Create a status event (should populate both elements of RayEventsPair) and a
+  // profile event (should populate only the first). These are the events that get
+  // flushed to produce the actual data.
+  auto status_event = GenStatusTaskEvent(task_id, 1, 1000);
+  auto profile_event = make_profile_event();
+
+  // Build the expected data from SEPARATE, identically-constructed instances:
+  // ToRpcRayEvents/ToRpcTaskExportEvents move fields out of the event (e.g.
+  // extra_data), so serializing is destructive and must not run on the same
+  // objects that are later flushed for the actual data.
+  auto status_event_expected = GenStatusTaskEvent(task_id, 1, 1000);
+  auto profile_event_expected = make_profile_event();
+
   // Expect data flushed match. Generate the expected data
   rpc::TaskEventData expected_task_event_data;
   rpc::events::RayEventsData expected_ray_events_data;
   auto event = expected_task_event_data.add_events_by_task();
-  status_event->ToRpcTaskEvents(event);
-  profile_event->ToRpcTaskEvents(event);
+  status_event_expected->ToRpcTaskEvents(event);
+  profile_event_expected->ToRpcTaskEvents(event);
 
   RayEventsTuple ray_events_tuple;
-  status_event->ToRpcRayEvents(ray_events_tuple);
-  profile_event->ToRpcRayEvents(ray_events_tuple);
+  status_event_expected->ToRpcRayEvents(ray_events_tuple);
+  profile_event_expected->ToRpcRayEvents(ray_events_tuple);
   if (ray_events_tuple.task_definition_event) {
     auto new_event = expected_ray_events_data.add_events();
     *new_event = std::move(ray_events_tuple.task_definition_event.value());
