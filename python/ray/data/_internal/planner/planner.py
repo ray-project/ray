@@ -21,10 +21,10 @@ from ray.data._internal.execution.operators.join import _make_join_reduce_fn
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.mix_operator import MixOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (
     ShuffleMapOp,
 )
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (
     ShuffleReduceOp,
 )
 from ray.data._internal.execution.operators.union_operator import UnionOperator

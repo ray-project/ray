@@ -20,7 +20,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     TaskExecDriverStats,
     estimate_total_num_of_blocks,
 )
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (
     ShuffleMapOp,
     extract_partition_id,
 )
