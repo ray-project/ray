@@ -10,7 +10,6 @@ What's Ray Core?
     Key Concepts <key-concepts>
     User Guides <user-guide>
     Examples <examples/overview>
-    api/index
     Internals <internals>
 
 

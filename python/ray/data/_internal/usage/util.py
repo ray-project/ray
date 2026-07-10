@@ -1,3 +1,6 @@
+"""Utility functions for operator naming and logical-op usage recording for Ray Data telemetry.
+"""
+
 import json
 import threading
 from typing import Dict
@@ -12,13 +15,13 @@ _recorded_operators_lock = threading.Lock()
 
 
 def _is_builtin_cls(cls: type) -> bool:
-    """Return True if ``cls`` is defined under the ``ray.data`` package.
+    """Return True if ``cls`` is defined under the ``ray`` package.
 
     Used to gate which operator / datasource / datasink class names are safe
-    to surface in telemetry. Anything outside ``ray.data.*`` is treated as
+    to surface in telemetry. Anything outside ``ray.*`` is treated as
     user-defined and anonymized.
     """
-    return (cls.__module__ or "").startswith("ray.data.")
+    return (cls.__module__ or "").startswith("ray.")
 
 
 def record_operators_usage(op: LogicalOperator):
@@ -27,9 +30,9 @@ def record_operators_usage(op: LogicalOperator):
     _collect_operators_to_dict(op, ops_dict)
     ops_json_str = ""
     with _recorded_operators_lock:
-        for op, count in ops_dict.items():
-            _recorded_operators.setdefault(op, 0)
-            _recorded_operators[op] += count
+        for op_name, count in ops_dict.items():
+            _recorded_operators.setdefault(op_name, 0)
+            _recorded_operators[op_name] += count
         ops_json_str = json.dumps(_recorded_operators)
 
     record_extra_usage_tag(TagKey.DATA_LOGICAL_OPS, ops_json_str)

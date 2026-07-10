@@ -1,10 +1,14 @@
 import logging
+import os
+import shutil
 import sys
+import tempfile
 from datetime import datetime
 from typing import List
 
 import click
 
+from ci.ray_ci.automation.crane_lib import CraneError, call_crane_export
 from ci.ray_ci.automation.image_tags_lib import (
     ImageTagsError,
     copy_image,
@@ -34,6 +38,14 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 logger = logging.getLogger(__name__)
+
+# rayci auto-uploads everything under /artifact-mount as Buildkite artifacts.
+# Mirrors the old ci/build/build-ray-docker.sh staging location so the artifact
+# filename/layout is unchanged for downstream consumers.
+ARTIFACT_MOUNT_IMAGE_INFO_DIR = "/artifact-mount/.image-info"
+# Path of the pip freeze inside the image filesystem (no leading slash in the
+# crane-exported tar). Written by ci/docker/ray-image.Dockerfile.
+PIP_FREEZE_PATH_IN_IMAGE = os.path.join("home", "ray", "pip-freeze.txt")
 
 
 class PushRayImageError(Exception):
@@ -161,6 +173,34 @@ class RayImagePushContext:
         """Get platform suffixes (includes aliases like -gpu for GPU_PLATFORM)."""
         return get_platform_suffixes(self.platform, self.ray_type.value)
 
+    def pip_freeze_canonical_tag(self) -> str:
+        """
+        Canonical image tag used to name the pip-freeze Buildkite artifact.
+
+        Mirrors the old RayDockerContainer._get_image_tags(external=False)[0]
+        contract: the *internal* version tag (bare "<sha6>" on master/PR/other,
+        "<release_name>.<sha6>" on releases/* branches) -- NOT the external
+        "nightly.*" tag. Format: "<version><variation>-py<NN>-cpu<arch_suffix>".
+
+        This is the source-of-truth filename consumed by the anyscale/product
+        repo at devprod/rayrelease/releaser.py:
+        update_doc_with_latest_docker_dependencies. Keep the two in sync.
+        """
+        sha = self.commit[:6]
+        if self.branch and self.branch.startswith("releases/"):
+            version = f"{self.branch[len('releases/'):]}.{sha}"
+        else:
+            version = sha
+        py_tag = f"-py{self.python_version.replace('.', '')}"
+        return f"{version}{self._variation_suffix()}{py_tag}-cpu{self.arch_suffix}"
+
+    def pip_freeze_artifact_filename(self) -> str:
+        """Buildkite artifact basename: "<image_type>:<canonical_tag>_pip-freeze.txt"."""
+        return (
+            f"{self.ray_image.image_type}:"
+            f"{self.pip_freeze_canonical_tag()}_pip-freeze.txt"
+        )
+
 
 def _image_exists(tag: str) -> bool:
     """Check if a container image manifest exists using crane."""
@@ -173,6 +213,50 @@ def _copy_image(reference: str, destination: str, dry_run: bool = False) -> None
         copy_image(reference, destination, dry_run)
     except ImageTagsError as e:
         raise PushRayImageError(str(e))
+
+
+def _export_pip_freeze(src_ref: str, ctx: RayImagePushContext) -> str:
+    """
+    Export the image's pip-freeze.txt and stage it as a Buildkite artifact.
+
+    Uses `crane export` (no docker daemon) to pull the image filesystem, reads
+    PIP_FREEZE_PATH_IN_IMAGE out of it, and copies it under
+    ARTIFACT_MOUNT_IMAGE_INFO_DIR using ctx.pip_freeze_artifact_filename().
+
+    Runs independently of whether images are pushed (dry_run), so the shipped
+    dependencies record is produced even on PR/dry-run builds -- mirroring the
+    old ci/build/build-ray-docker.sh behavior.
+
+    Returns the staged file path.
+
+    Raises:
+        PushRayImageError: if the image has no pip-freeze.txt, or if the crane
+            export / filesystem staging fails (CraneError / OSError are wrapped,
+            mirroring _copy_image's handling of ImageTagsError).
+    """
+    try:
+        with tempfile.TemporaryDirectory() as export_dir:
+            logger.info(f"Exporting pip freeze from {src_ref}")
+            call_crane_export(src_ref, export_dir)
+
+            freeze_src = os.path.join(export_dir, PIP_FREEZE_PATH_IN_IMAGE)
+            if not os.path.exists(freeze_src):
+                raise PushRayImageError(
+                    f"pip-freeze.txt not found in image {src_ref} "
+                    f"at /{PIP_FREEZE_PATH_IN_IMAGE}"
+                )
+
+            os.makedirs(ARTIFACT_MOUNT_IMAGE_INFO_DIR, exist_ok=True)
+            dest = os.path.join(
+                ARTIFACT_MOUNT_IMAGE_INFO_DIR, ctx.pip_freeze_artifact_filename()
+            )
+            shutil.copyfile(freeze_src, dest)
+            logger.info(f"Staged pip freeze Buildkite artifact at {dest}")
+            return dest
+    except (CraneError, OSError) as e:
+        raise PushRayImageError(
+            f"Failed to export pip-freeze from {src_ref}: {e}"
+        ) from e
 
 
 def _should_upload(pipeline_id: str, branch: str, rayci_schedule: str) -> bool:
@@ -289,6 +373,26 @@ def main(
         logger.info(f"Verifying source image in Wanda cache: {src_ref}")
         if not _image_exists(src_ref):
             raise PushRayImageError(f"Source image not found in Wanda cache: {src_ref}")
+
+        # Re-emit the per-image pip freeze as a Buildkite artifact (cpu only).
+        # Downstream consumer: anyscale/product
+        # devprod/rayrelease/releaser.py:update_doc_with_latest_docker_dependencies.
+        # Runs regardless of dry_run: the shipped-deps record is independent of
+        # whether we push to Docker Hub.
+        #
+        # Best-effort by design: this publish step is skip-on-premerge, so the
+        # path only ever runs in postmerge and cannot be validated pre-merge.
+        # A failure here must never break image publishing (the critical path),
+        # so swallow and log any error rather than propagating it.
+        if plat == "cpu":
+            try:
+                _export_pip_freeze(src_ref, ctx)
+            except Exception as e:
+                logger.error(
+                    f"Failed to stage pip-freeze artifact for {src_ref}; "
+                    f"continuing without it: {e}",
+                    exc_info=True,
+                )
 
         destination_tags = ctx.destination_tags()
         for tag in destination_tags:

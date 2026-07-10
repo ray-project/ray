@@ -16,6 +16,8 @@ For API exposure levels, see {ref}`API Stability <api-stability>`.
 
 Documentation is one of the main channels through which we expose our APIs to users. If we provide incorrect information, it can significantly impact the reliability and maintainability of our users' applications. Based on the API exposure level, here is the policy to ensure the accuracy of our information.
 
+The API reference is generated from your source code, so how you write a public API affects the docs build directly. Before adding or changing one, see {ref}`how the docs build renders your API signatures <api-ref-build-behavior>` for the dependency-mocking and cross-linking behaviors you need to account for.
+
 ```{list-table} API Documentation Policy
 :widths: 20 16 16 16 16 16
 :header-rows: 1

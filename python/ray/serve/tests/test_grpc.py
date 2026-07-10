@@ -29,7 +29,7 @@ from ray.serve._private.test_utils import (
 from ray.serve.config import gRPCOptions
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.grpc_util import RayServegRPCContext, gRPCInputStream
-from ray.serve.tests.test_config_files.grpc_deployment import g, g2
+from ray.serve.tests.test_config_files.grpc_deployment import g, g2, multiplexed_g
 
 
 def test_serving_grpc_requests(ray_cluster):
@@ -65,6 +65,10 @@ def test_serving_grpc_requests(ray_cluster):
 
     serve.run(g)
 
+    # Get the ingress address dynamically
+    grpc_url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(grpc_url)
+
     # Ensures ListApplications method succeeding.
     ping_grpc_list_applications(channel, [app_name])
 
@@ -78,17 +82,43 @@ def test_serving_grpc_requests(ray_cluster):
     ping_grpc_another_method(channel, app_name)
 
     if not RAY_SERVE_ENABLE_HA_PROXY:
-        # Ensures model multiplexing is responding correctly.
-        ping_grpc_model_multiplexing(channel, app_name)
-
         # Ensure Streaming method is responding correctly.
         ping_grpc_streaming(channel, app_name)
 
     serve.run(g2)
 
     # Ensure model composition is responding correctly.
-    channel = grpc.insecure_channel("localhost:9000")
+    grpc_url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(grpc_url)
     ping_fruit_stand(channel, app_name)
+
+
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    reason="Model multiplexing is not supported on the ingress deployment when "
+    "direct ingress / HAProxy is enabled (the multiplexed model ID is not "
+    "propagated to the replica).",
+)
+def test_grpc_model_multiplexing(ray_cluster):
+    """Model multiplexing over gRPC routes requests to the correct model."""
+    cluster = ray_cluster
+    cluster.add_node(num_cpus=2)
+    cluster.connect(namespace=SERVE_NAMESPACE)
+
+    serve.start(
+        grpc_options=gRPCOptions(
+            port=9000,
+            grpc_servicer_functions=[
+                "ray.serve.generated.serve_pb2_grpc."
+                "add_UserDefinedServiceServicer_to_server",
+            ],
+        ),
+    )
+
+    serve.run(multiplexed_g)
+
+    channel = grpc.insecure_channel("localhost:9000")
+    ping_grpc_model_multiplexing(channel, "default")
 
 
 def test_serve_start_dictionary_grpc_options(ray_cluster):

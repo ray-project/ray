@@ -382,6 +382,7 @@ py_binary(
     srcs = ["push_ray_image.py"],
     exec_compatible_with = ["//bazel:py3"],
     deps = [
+        ":crane_lib",
         ":image_tags_lib",
         "//ci/ray_ci:ray_ci_lib",
         "//release:ray_release",
@@ -399,6 +400,7 @@ py_test(
         "team:ci",
     ],
     deps = [
+        ":crane_lib",
         ":push_ray_image",
         ci_require("pytest"),
     ],
