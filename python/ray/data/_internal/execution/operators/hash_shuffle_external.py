@@ -3,13 +3,13 @@
 - each MAP task writes ONE file (all its partitions, Arrow IPC) and returns ONE
   small handle (path + per-partition offset index + the source node's fetch
   endpoint + a per-shuffle auth token). Driver tracks O(N) handles; bulk data
-  never enters plasma.
+  stays on local disk and never enters Ray's object store.
 - a per-node ``ShuffleManager`` Ray actor runs its OWN socket server that
   ``pread``s requested byte-ranges and streams them back. The REDUCE task is a
-  client of that server: bytes arrive in its **user space** (NOT plasma —
-  preserves the 1× data copy) and are consumed inline. Cross-node this is the
-  real out-of-band transport; single-node it is a loopback socket (still the
-  real code path, not a direct ``open``).
+  client of that server: bytes arrive directly in user space and are consumed
+  inline — no Ray-object-store round-trip, preserving the 1× data copy.
+  Cross-node this is the real out-of-band transport; single-node it is a
+  loopback socket (still the real code path, not a direct ``open``).
 
 Uses the standard ``PartitionFn`` / ``ReduceFn`` / ``MapBlockTransformer``
 contracts, so group-by / sort / aggregate / join factories compose unchanged.
@@ -989,7 +989,7 @@ class ShuffleNodeLostError(ShuffleFetchError):
     """Raised when a source ShuffleManager's node is confirmed dead
     (via ``ray.nodes()``).
 
-    Recovery story: the mapper's return handle is a plasma ObjectRef;
+    Recovery story: the mapper's return handle is a Ray ObjectRef;
     when its owning node dies, Ray Core marks the ref as lost, and on
     the reducer's next retry (see ``max_retries`` on
     ``external_hash_shuffle_reduce_task.options``) Ray Core's lineage
@@ -1020,7 +1020,7 @@ class ShuffleManagerAnomalyError(ShuffleFetchError):
     - An unrecoverable initialization error keeping Ray from restarting.
     - A rare Ray-internal state race.
 
-    Recovery is not automatic: the mapper's plasma ObjectRef is still
+    Recovery is not automatic: the mapper's return ObjectRef is still
     "live" (Ray Core won't trigger lineage), files on disk have no server
     to serve them, and re-running the mapper requires app-level
     coordination we intentionally don't do. Retrying the job is the
@@ -1084,7 +1084,7 @@ def _classify_and_raise(
             f"terminated, node still alive). Possible causes: external "
             f"ray.kill(), an unrecoverable actor initialization error, or "
             f"a rare Ray-internal state race. Not automatically recoverable "
-            f"— the mapper's plasma output is still 'live' (so Ray-Core "
+            f"— the mapper's return ObjectRef is still 'live' (so Ray-Core "
             f"lineage won't re-run it) but no manager exists to serve it. "
             f"Retry the job. ({detail})"
         ) from exc
@@ -1458,7 +1458,9 @@ def external_hash_shuffle_reduce_task(
     downstream_map_target_max_block_size_override: Optional[int] = None,
 ) -> Generator[Union[Block, bytes], None, None]:
     """Fetch one partition's shards and stream ``reduce_fn`` output as
-    ``(block, pickled metadata)`` pairs. Bytes stay out of plasma.
+    ``(block, pickled metadata)`` pairs. Shuffle bytes stay out of the
+    Ray object store — they flow directly from the socket into the
+    reducer's user-space accumulator.
 
     Fetch + decode are pipelined: one thread per ShuffleManager pwrites
     response frames into a shared ``prefetch.bin`` at pre-assigned offsets,

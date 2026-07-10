@@ -2,7 +2,7 @@
 
 Drives one ``external_hash_shuffle_map_task`` per input group and, once all mappers finish,
 emits N ``RefBundle`` wrappers to the output queue — one per partition_id,
-each carrying the SAME shared plasma object (the list of handle refs)
+each carrying the SAME shared Ray object (the list of handle refs)
 and a distinct ``__partition__<pid>`` sentinel. Wire protocol and task
 body live in ``hash_shuffle_external.py``.
 """
@@ -170,7 +170,7 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         # Handles returned by completed mappers; drained into
         # ``_shared_handles_ref`` at wrapper-emit time.
         self._completed_handle_refs: List[ObjectRef] = []
-        # Single plasma object holding the handle-ref list. Every partition
+        # Single Ray object holding the handle-ref list. Every partition
         # wrapper points at this one ref (1 nested-ref serialization per
         # reducer dispatch, not M).
         self._shared_handles_ref: Optional[ObjectRef] = None
@@ -407,7 +407,7 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         if not self._completed_handle_refs:
             return
 
-        # One plasma object shared across all N wrappers.
+        # One Ray object shared across all N wrappers.
         self._shared_handles_ref = ray.put(self._completed_handle_refs)
 
         partition_bytes = self.get_partition_bytes()

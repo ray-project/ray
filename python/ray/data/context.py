@@ -776,7 +776,7 @@ class DataContext:
     # When True, route key-based ``Repartition`` (and follow-ons) through the
     # external-shuffle variant (``ExternalHashShuffleMapOp + ExternalHashShuffleReduceOp``)
     # instead of the in-memory ``ShuffleMapOp + ShuffleReduceOp`` path.
-    # The external-shuffle variant bypasses Plasma for bulk shuffle data:
+    # The external-shuffle variant bypasses Ray's object store for bulk shuffle data:
     # each mapper writes one file per node and serves byte-ranges via a
     # per-node ``ShuffleManager`` actor over raw sockets. Default False —
     # opt-in until the external-shuffle path has soaked.

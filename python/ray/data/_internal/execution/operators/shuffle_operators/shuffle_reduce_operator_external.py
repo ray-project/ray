@@ -5,7 +5,7 @@ out. The executor's normal backpressure + resource manager gate
 dispatch.
 
 Each wrapper carries a single ObjectRef — the shared handle-list
-plasma object built by the map op — plus a ``__partition__<pid>``
+Ray object built by the map op — plus a ``__partition__<pid>``
 sentinel in its metadata. The reduce task resolves that ref (a list of
 per-mapper handle refs), materializes the individual handle dicts, and
 TCP-fetches its partition's shards from each source node's
