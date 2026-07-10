@@ -2746,6 +2746,140 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBulkReadAdvancesProducedRefAfterCance
   manager_.TryDelObjectRefStream(generator_id);
 }
 
+TEST_F(TaskManagerTest,
+       TestObjectRefStreamBulkReadCountsProducedRefAtEofForBackpressure) {
+  // Cancellation can set EOF at an index that already holds a produced value.
+  // Bulk-consuming that value must still count it as consumed and notify the
+  // executor for backpressure; otherwise deriving the count from
+  // end_of_stream_index_ - start_index reports zero and skips the notification.
+  TaskSpecification spec = CreateTaskHelper(1,
+                                            {},
+                                            /*dynamic_returns=*/true,
+                                            /*is_streaming_generator=*/true,
+                                            /*generator_backpressure_num_objects=*/1);
+  const ObjectID generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  const ObjectID value_id = ObjectID::FromIndex(spec.TaskId(), 2);
+
+  int consumption_updates = 0;
+  int64_t last_consumed = -1;
+  ConsumptionUpdateCallback consumption_update = [&](Status status,
+                                                     int64_t num_objects_consumed) {
+    if (status.ok()) {
+      consumption_updates++;
+      last_consumed = num_objects_consumed;
+    } else {
+      EXPECT_TRUE(status.IsNotFound()) << status;
+    }
+  };
+
+  std::shared_ptr<Buffer> data = GenerateRandomBuffer();
+  rpc::ReportGeneratorItemReturnsRequest req =
+      GetIntermediateTaskReturn(/*idx*/ 0,
+                                /*finished*/ false,
+                                generator_id,
+                                /*dynamic_return_id*/ value_id,
+                                /*data*/ data,
+                                /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}, consumption_update));
+
+  // Peek so the bulk path owns the ref, then cancel: EOF lands on index 0,
+  // which already holds the produced value. FailOrRetryPendingTask completes
+  // the task lifecycle (the stream and its consumption callback survive until
+  // deletion).
+  ASSERT_EQ(manager_.PeekObjectRefStreamN(generator_id, 2).size(), 2UL);
+  manager_.MarkTaskCanceled(spec.TaskId());
+  ASSERT_FALSE(
+      manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED));
+
+  // Bulk-consume the produced value plus a synthetic EOF ref. Only the
+  // produced value counts toward backpressure, so the executor receives the
+  // one-object consumption update needed to release it.
+  ASSERT_TRUE(manager_.TryReadObjectRefStreamN(generator_id, 2).ok());
+  ASSERT_EQ(consumption_updates, 1);
+  ASSERT_EQ(last_consumed, 1);
+
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
+TEST_F(TaskManagerTest, TestObjectRefStreamBulkReadCountsOutOfOrderRefsForBackpressure) {
+  // The last ref can be reported before earlier refs. Bulk consumption advances
+  // the logical stream cursor, so backpressure must advance by the whole batch,
+  // not only the number of reports already received.
+  TaskSpecification spec = CreateTaskHelper(1,
+                                            {},
+                                            /*dynamic_returns=*/true,
+                                            /*is_streaming_generator=*/true,
+                                            /*generator_backpressure_num_objects=*/1);
+  const ObjectID generator_id = spec.ReturnId(0);
+  const ObjectID first_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  const ObjectID second_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  int consumption_updates = 0;
+  int64_t last_consumed = -1;
+  ConsumptionUpdateCallback consumption_update = [&](Status status,
+                                                     int64_t num_objects_consumed) {
+    if (status.ok()) {
+      consumption_updates++;
+      last_consumed = num_objects_consumed;
+    } else {
+      EXPECT_TRUE(status.IsNotFound()) << status;
+    }
+  };
+
+  std::vector<std::pair<ObjectID, bool>> peeked =
+      manager_.PeekObjectRefStreamN(generator_id, 2);
+  ASSERT_EQ(peeked.size(), 2UL);
+  ASSERT_EQ(peeked[0].first, first_id);
+  ASSERT_EQ(peeked[1].first, second_id);
+
+  std::shared_ptr<Buffer> data = GenerateRandomBuffer();
+  rpc::ReportGeneratorItemReturnsRequest req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ second_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status) {}, consumption_update));
+
+  Status status = manager_.TryReadObjectRefStreamN(generator_id, 2);
+  ASSERT_TRUE(status.ok()) << status;
+  ASSERT_EQ(consumption_updates, 1);
+  ASSERT_EQ(last_consumed, 2);
+
+  // A delayed report must not reduce the already-published consumed total.
+  bool execution_signal_called = false;
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ first_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      [&execution_signal_called](Status callback_status) {
+        ASSERT_TRUE(callback_status.ok());
+        execution_signal_called = true;
+      },
+      consumption_update));
+  ASSERT_TRUE(execution_signal_called);
+  ASSERT_EQ(consumption_updates, 2);
+  ASSERT_EQ(last_consumed, 2);
+
+  CompletePendingStreamingTask(spec, caller_address, 2);
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
 TEST_F(TaskManagerTest, TestObjectRefStreamEndtoEnd) {
   /**
    * Test e2e

@@ -188,11 +188,23 @@ Status ObjectRefStream::TryReadNextItems(int64_t num_items,
         generator_id_.Hex()));
   }
 
+  // Before EOF, cursor progress is generated progress even when reports arrive
+  // out of order. After EOF, only indexes before the EOF sentinel count, except
+  // when cancellation raced with a report that populated the sentinel index.
+  // That collision is a real generated value, while later EOF-region refs are
+  // synthetic errors and must not count toward backpressure.
   int64_t num_generated_items_consumed = num_items;
   if (end_of_stream_index_ != -1) {
     const int64_t remaining_generated_items =
         std::max<int64_t>(0, end_of_stream_index_ - start_index);
     num_generated_items_consumed = std::min(num_items, remaining_generated_items);
+
+    const bool consumes_eof_index = start_index <= end_of_stream_index_ &&
+                                    end_of_stream_index_ <= last_requested_index;
+    if (consumes_eof_index &&
+        refs_written_to_stream_.contains(GetObjectRefAtIndex(end_of_stream_index_))) {
+      num_generated_items_consumed += 1;
+    }
   }
 
   consumed_object_ids->reserve(num_items);
