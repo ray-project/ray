@@ -109,7 +109,7 @@ DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S = env_float(
     "RAY_DATA_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S", 1800.0
 )
 
-DEFAULT_USE_HASH_SHUFFLE_V2 = env_bool("RAY_DATA_USE_HASH_SHUFFLE_V2", True)
+DEFAULT_USE_HASH_SHUFFLE_V2 = env_bool("RAY_DATA_USE_HASH_SHUFFLE_V2", False)
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
@@ -771,9 +771,6 @@ class DataContext:
 
     # (Advanced) Following configuration allows to override `num_cpus` allocation for the
     # Join/Aggregate/Shuffle workers (utilizing hash-shuffle)
-    #
-    # DEPRECATED: `join_operator_actor_num_cpus_override` is ignored, joins now run on
-    # the hash-shuffle v2 path, whose reduce tasks are not actor-based.
     join_operator_actor_num_cpus_override: float = None
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
