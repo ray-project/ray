@@ -33,11 +33,12 @@ from frameworks.base_adapter import FrameworkAdapter
 logger = logging.getLogger(__name__)
 
 
-# Config attribute aliases across HF MoE model families.
-_NUM_EXPERTS_ATTRS = ("num_experts", "num_local_experts", "n_routed_experts")
-_TOP_K_ATTRS = ("num_experts_per_tok", "moe_topk", "num_experts_per_token", "topk")
-# model_type substrings that indicate non-quadratic (linear/recurrent) attention.
-_LINEAR_ATTENTION_HINTS = ("deltanet", "mamba", "rwkv", "retnet", "linear", "lightning")
+# MoE routing attrs, scoped to the Qwen configs this harness benchmarks.
+# Other families spell these differently (Mixtral: num_local_experts,
+# DeepSeek: n_routed_experts); extend deliberately when such a model lands —
+# _count_active_params warns rather than silently over-counting FLOPs.
+_NUM_EXPERTS_ATTRS = ("num_experts",)
+_TOP_K_ATTRS = ("num_experts_per_tok",)
 
 
 def _first_attr(config, names):
@@ -61,6 +62,21 @@ def _count_active_params(model, config) -> int:
     num_experts = _first_attr(config, _NUM_EXPERTS_ATTRS)
     top_k = _first_attr(config, _TOP_K_ATTRS)
     if not num_experts or not top_k:
+        # Guardrail for the Qwen-scoped alias lists above: a config that looks
+        # MoE but isn't recognized falls back to dense, which overstates
+        # MFU/HFU — say so instead of failing silently.
+        known = set(_NUM_EXPERTS_ATTRS + _TOP_K_ATTRS)
+        unrecognized = [
+            k for k in vars(config) if "expert" in k.lower() and k not in known
+        ]
+        if unrecognized or num_experts or top_k:
+            logger.warning(
+                f"Config has MoE-like attrs (unrecognized={unrecognized}, "
+                f"num_experts={num_experts}, top_k={top_k}) but no complete "
+                "routing spec in the Qwen-scoped alias lists; counting the "
+                "model as dense — MFU/HFU may be overstated. Extend "
+                "_NUM_EXPERTS_ATTRS/_TOP_K_ATTRS for this model family."
+            )
         return total  # dense
 
     # Routed experts are named like "...experts.<i>...". Shared experts use a
@@ -78,12 +94,10 @@ def _count_active_params(model, config) -> int:
 def _detect_attention_kind(config) -> str:
     """Pick the FLOPs attention term automatically from the HF config.
 
-    Defaults to "quadratic"; returns "linear" for DeltaNet/SSM/RWKV-style
-    families (where the quadratic seq term would be wrong).
+    Defaults to "quadratic"; returns "linear" when the config declares it —
+    Qwen3.5's hybrid Gated-DeltaNet layers show up via ``layer_types`` (where
+    the quadratic seq term would be wrong).
     """
-    model_type = (getattr(config, "model_type", "") or "").lower()
-    if any(hint in model_type for hint in _LINEAR_ATTENTION_HINTS):
-        return "linear"
     if getattr(config, "linear_attention", False):
         return "linear"
     # Hybrid models may list per-layer types; if any are linear, treat as linear
