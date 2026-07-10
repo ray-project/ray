@@ -19,7 +19,7 @@ import os
 from typing import Any, Dict
 
 from core.experiment_config import ExperimentConfig
-from core.launchers.ray_actor_utils import (
+from core.launchers.benchmark_utils import (
     assign_topology,  # noqa: F401 - re-exported for tests/back-compat
     create_gpu_actor_group,
     elect_rendezvous,
@@ -116,7 +116,13 @@ def run_with_torchrun(cfg: ExperimentConfig) -> Dict[str, Any]:
     # ray.init), so `core`/`frameworks` import on remote GPU nodes. A local path
     # can't be attached to a per-actor runtime_env (Ray only uploads dirs at the
     # job level), so we intentionally do NOT pass runtime_env here.
-    actors, pg = create_gpu_actor_group(_TorchDistWorker, cfg.scaling.num_workers)
+    resources = cfg.scaling.resources_per_worker or {}
+    actors, pg = create_gpu_actor_group(
+        _TorchDistWorker,
+        cfg.scaling.num_workers,
+        cpus_per_worker=int(resources.get("CPU", 1)),
+        gpus_per_worker=int(resources.get("GPU", 1)),
+    )
     try:
         node_ips, topology, master_addr, master_port = elect_rendezvous(actors)
         logger.info(

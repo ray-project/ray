@@ -16,7 +16,7 @@ core/
   launchers/
     ray_launcher.py            Ray Train TorchTrainer wiring
     torchrun_launcher.py   vanilla torch.distributed placed by Ray actors (baseline)
-    ray_actor_utils.py         placement / rendezvous helpers for torchrun
+    benchmark_utils.py         placement / rendezvous helpers for torchrun
 frameworks/
   base_adapter.py        FrameworkAdapter ABC
   deepspeed/adapter.py   DeepSpeed ZeRO LLM adapter

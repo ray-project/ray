@@ -45,24 +45,33 @@ def create_gpu_actor_group(
     actor_cls,
     num_workers: int,
     cpus_per_worker: int = 1,
+    gpus_per_worker: int = 1,
     runtime_env: Dict | None = None,
 ):
     """One GPU bundle per worker via a PACK placement group; returns (actors, pg).
 
-    The actor class must declare ``num_gpus=1``. PACK keeps a single-node job on
-    one node; multi-node spills naturally.
+    PACK keeps a single-node job on one node; multi-node spills naturally.
+
+    ``gpus_per_worker > 1`` reserves multiple GPUs per actor (the
+    air_benchmarks benchmark_util pattern) — for node-level launchers that
+    fork one subprocess per GPU. The in-process torchrun launcher drives
+    exactly one GPU per rank, so it keeps the default of 1.
     """
     import ray
     from ray.util.placement_group import placement_group
     from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
     pg = placement_group(
-        [{"GPU": 1, "CPU": cpus_per_worker} for _ in range(num_workers)],
+        [
+            {"GPU": gpus_per_worker, "CPU": cpus_per_worker}
+            for _ in range(num_workers)
+        ],
         strategy="PACK",
     )
     ray.get(pg.ready())
     actors = [
         actor_cls.options(
+            num_gpus=gpus_per_worker,
             scheduling_strategy=PlacementGroupSchedulingStrategy(
                 placement_group=pg, placement_group_bundle_index=i
             ),
