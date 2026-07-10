@@ -53,6 +53,8 @@ from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if typing.TYPE_CHECKING:
+    import pyarrow as pa
+
     from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
@@ -172,6 +174,12 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         # wrapper points at this one ref (1 nested-ref serialization per
         # reducer dispatch, not M).
         self._shared_handles_ref: Optional[ObjectRef] = None
+        # First non-None schema observed on a completed mapper's handle.
+        # Attached to every emitted partition wrapper so downstream ops
+        # (fusion, empty-partition detection, etc.) see the shuffle output
+        # schema instead of ``None``. Consistent across mappers by
+        # construction — same partition_fn + same input schema.
+        self._output_schema: Optional["pa.Schema"] = None
 
     @property
     def _input_queues(self) -> List[BaseBundleQueue]:
@@ -343,6 +351,8 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         handle = ray.get(handle_ref)
         for pid, nbytes in (handle.get("decoded_bytes") or {}).items():
             self._partition_bytes[pid] += nbytes
+        if self._output_schema is None:
+            self._output_schema = handle.get("schema")
 
         # Synthetic per-mapper output bundle for metric bookkeeping only
         # — not pushed to the output queue (downstream sees the N
@@ -421,7 +431,7 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
             )
             wrapper = RefBundle(
                 (BlockEntry(ref=self._shared_handles_ref, metadata=wrapper_meta),),
-                schema=None,
+                schema=self._output_schema,
                 owns_blocks=False,
             )
             self._output_queue.add(wrapper)
