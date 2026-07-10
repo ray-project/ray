@@ -362,7 +362,7 @@ def _resolve_paths_and_filesystem(
         schemes in a single call is unsupported and may fail when reading.
     """
     paths = _normalize_paths_to_strings(paths)
-    if any(path.lower().startswith("local://") for path in paths):
+    if any(path.lower().startswith("local:") for path in paths):
         warnings.warn(
             "`local://` paths in Ray Data are deprecated and will be removed in a "
             "future release. Use shared or cloud storage for distributed execution.",
