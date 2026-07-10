@@ -1,19 +1,25 @@
 (custom-vllm-guide)=
 # Custom vLLM models
 
+This page provides an example of serving a custom vLLM model with Ray Serve LLM.
+
+The example model is a custom reward model composed of Qwen3-0.6B with its vocabulary LM head replaced by a scalar reward head. The model reuses vLLM's Qwen3 backbone, scores the last token, and returns the reward through vLLM's `/classify` endpoint.
+
+## How does Ray Serve LLM support custom vLLM models?
+
 Ray Serve LLM serves any architecture that vLLM supports. When your model isn't a [built-in vLLM architecture](https://docs.vllm.ai/en/stable/models/supported_models.html), you add it with a [vLLM plugin](https://docs.vllm.ai/en/stable/design/plugin_system.html): a custom package that registers the architecture in vLLM's model registry without patching vLLM. Ray Serve LLM then serves it through the same OpenAI-compatible API as any other model.
 
-This guide serves a reward model: Qwen3-0.6B with its vocabulary LM head replaced by a scalar reward head. The model reuses vLLM's Qwen3 backbone, scores the last token, and returns the reward through vLLM's `/classify` endpoint.
 
 ## Prerequisites
 
-```bash
+Install Ray with the LLM extra:
+
 pip install "ray[llm]"
 ```
 
 ## Write the plugin
 
-The plugin is an installable Python package. Here's an example layout:
+Compose the plugin as an installable Python package. The following is an example layout:
 
 ```text
 qwen3-reward-plugin/          # project directory -- run `pip install .` here
@@ -40,7 +46,7 @@ vLLM calls `register()` in every process it starts, the driver, the engine core,
 
 ### Package it
 
-Declare the `vllm.general_plugins` entry point in `setup.py`. Installing the package is what makes vLLM discover and run `register()`.
+Declare the `vllm.general_plugins` entry point in `setup.py`. vLLM discovers the package and runs `register()` when the package installs.
 
 ```{literalinclude} ../../../llm/doc_code/serve/custom_vllm/setup.py
 :language: python
@@ -103,7 +109,7 @@ Deploy it with `serve run custom_vllm_config.yaml`.
 
 ## Query the model
 
-Send text to the `/classify` endpoint and read the scalar reward from `data[0].probs[0]`. Until you provide trained reward-head weights (see the next section), this value is arbitrary.
+Run the following command to verify your model is serving. This query sends text to the `/classify` endpoint and reads the scalar reward from `data[0].probs[0]`. Until you provide trained reward-head weights (see the next section), this value is arbitrary.
 
 ::::{tab-set}
 
