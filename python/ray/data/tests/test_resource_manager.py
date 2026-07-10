@@ -474,6 +474,131 @@ class TestResourceManager:
 
         assert completed_ops_usage == ExecutionResources(cpu=8, object_store_memory=400)
 
+    def test_set_external_consumer_bytes_rejects_negative(self, restore_data_context):
+        resource_manager = _resource_manager_for_limits_only_test(
+            ExecutionOptions(),
+            MagicMock(return_value=ExecutionResources.zero()),
+        )
+        with pytest.raises(AssertionError):
+            resource_manager.set_external_consumer_bytes(-1)
+
+    def test_external_consumer_bytes_input_data_buffer_sink(self, restore_data_context):
+        """When the execute DAG is only an InputDataBuffer, prefetch bytes still
+        attach to that terminal sink instead of being dropped by the
+        InputDataBuffer early return."""
+        buf = InputDataBuffer(DataContext.get_current(), [])
+        topo = build_streaming_topology(buf, ExecutionOptions(), noop_counter())
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            lambda: ExecutionResources(cpu=10, gpu=0, object_store_memory=1000),
+            DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+        )
+        buf.current_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+        buf.running_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+        buf.pending_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+
+        resource_manager.update_usages()
+        assert resource_manager.get_op_usage(buf).object_store_memory == 0
+
+        resource_manager.set_external_consumer_bytes(150)
+        resource_manager.update_usages()
+        assert resource_manager.get_op_usage(buf).object_store_memory == 150
+
+    def test_external_consumer_bytes_surfaced_in_op_usage_str(
+        self, restore_data_context
+    ):
+        """The terminal operator's verbose usage string should include
+        external_consumer=... when an external consumer is registered, so users
+        can see how much of the operator's object-store memory is held by a
+        downstream iterator vs. the operator's own queues."""
+        cluster_resources = ExecutionResources(cpu=10, gpu=0, object_store_memory=1000)
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = mock_map_op(o2)
+
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            lambda: cluster_resources,
+            DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+        )
+
+        for op in [o1, o2, o3]:
+            op.current_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+            op.running_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+            op.pending_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+
+        resource_manager.update_usages()
+
+        # No external consumer yet: nothing extra in the usage string.
+        terminal_str = resource_manager.get_op_usage_str(o3, verbose=True)
+        upstream_str = resource_manager.get_op_usage_str(o2, verbose=True)
+        assert "external_consumer=" not in terminal_str
+        assert "external_consumer=" not in upstream_str
+
+        # Register an external consumer. Only the terminal operator's string
+        # should pick up `external_consumer=...`.
+        resource_manager.set_external_consumer_bytes(200)
+        resource_manager.update_usages()
+        terminal_str = resource_manager.get_op_usage_str(o3, verbose=True)
+        upstream_str = resource_manager.get_op_usage_str(o2, verbose=True)
+        assert "external_consumer=200.0B" in terminal_str
+        assert "external_consumer=" not in upstream_str
+
+        # The field is inside the existing `(in=...,out=...)` parenthetical.
+        assert ",external_consumer=" in terminal_str
+
+        # Non-verbose output omits the field (existing format unchanged).
+        terminal_str_brief = resource_manager.get_op_usage_str(o3, verbose=False)
+        assert "external_consumer=" not in terminal_str_brief
+
+    def test_topology_rejects_multiple_terminal_operators(self, restore_data_context):
+        ctx = DataContext.get_current()
+        a = PhysicalOperator("a", [], ctx)
+        b = PhysicalOperator("b", [], ctx)
+        topology = {a: MagicMock(), b: MagicMock()}
+        with pytest.raises(ValueError, match="Expected exactly one terminal operator"):
+            ResourceManager(
+                topology,
+                ExecutionOptions(),
+                MagicMock(return_value=ExecutionResources.zero()),
+                DataContext.get_current(),
+                BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+            )
+
+    def test_topology_rejects_empty_topology(self, restore_data_context):
+        with pytest.raises(ValueError, match="topology must be non-empty"):
+            ResourceManager(
+                {},
+                ExecutionOptions(),
+                MagicMock(return_value=ExecutionResources.zero()),
+                DataContext.get_current(),
+                BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+            )
+
+    def test_topology_rejects_no_terminal_operator(self, restore_data_context):
+        # Every op has a downstream in this dict, so there should be no operator with empty
+        # output_dependencies (e.g. a 2-node cycle). Real streaming DAGs from
+        # build_streaming_topology always have a unique sink.
+        a = MagicMock(spec=PhysicalOperator)
+        b = MagicMock(spec=PhysicalOperator)
+        a.output_dependencies = [b]
+        b.output_dependencies = [a]
+        topology = {a: MagicMock(), b: MagicMock()}
+        with pytest.raises(ValueError, match="No terminal operator found"):
+            ResourceManager(
+                topology,
+                ExecutionOptions(),
+                MagicMock(return_value=ExecutionResources.zero()),
+                DataContext.get_current(),
+                BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+            )
+
     def test_is_blocking_materializing_op(self, restore_data_context):
         """Test _is_blocking_materializing_op correctly identifies blocking materializing ops.
 
@@ -645,7 +770,7 @@ class TestOutputBackpressureGuard:
         guard = OutputBackpressureGuard(topo, resource_manager)
 
         # Register an external consumer (e.g., iter_batches or streaming_split).
-        resource_manager.set_external_consumer()
+        resource_manager.set_external_consumer_bytes(0)
 
         dag_output_state = topo[o3]
 
