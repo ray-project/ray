@@ -256,7 +256,7 @@ class DataIterator(abc.ABC):
                 executor,
             ) = self._to_ref_bundle_iterator()
 
-            dataset_tag = self._get_dataset_tag()
+            dataset_tags = self._get_dataset_tag()
 
             # Create a callback to report prefetched bytes to the executor's
             # resource manager.
@@ -276,7 +276,7 @@ class DataIterator(abc.ABC):
             batch_iterator = self._create_batch_iterator(
                 ref_bundles_iterator,
                 stats=stats,
-                dataset_tag=dataset_tag,
+                dataset_tags=dataset_tags,
                 clear_block_after_read=blocks_owned_by_consumer,
                 batch_size=batch_size,
                 batch_format=batch_format,
