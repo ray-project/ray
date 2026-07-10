@@ -67,9 +67,10 @@ def main() -> None:
     )
     parser.add_argument(
         "--continue-on-error",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=True,
-        help="Keep going if a cell fails (e.g. OOM). On by default.",
+        help="Keep going if a cell fails (e.g. OOM). On by default; disable "
+        "with --no-continue-on-error to stop the grid at the first failure.",
     )
     args = parser.parse_args()
 
