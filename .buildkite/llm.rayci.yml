@@ -27,6 +27,7 @@ steps:
     tags: cibase
 
   - label: "llm cpu tests"
+    if: '!(build.pull_request.labels includes "docs-go")'
     key: "llm-cpu-tests"
     tags:
       - llm
@@ -39,6 +40,7 @@ steps:
     depends_on: llmbuild
 
   - label: "llm gpu tests"
+    if: '!(build.pull_request.labels includes "docs-go")'
     key: "llm-gpu-tests"
     tags:
       - llm
@@ -51,6 +53,7 @@ steps:
     depends_on: llmgpubuild
 
   - label: "llm gpu tests (4 GPUs)"
+    if: '!(build.pull_request.labels includes "docs-go")'
     key: "llm-gpu-tests-4gpu"
     tags:
       - llm
