@@ -1,7 +1,9 @@
 import asyncio
 import inspect
 import logging
-from types import FunctionType
+
+# Exists on all supported versions; pyrefly mis-resolves it at python-version 3.9.
+from types import FunctionType  # pyrefly: ignore[missing-module-attribute]
 from typing import Any, Dict, List, Tuple, Union
 
 from pydantic import BaseModel

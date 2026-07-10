@@ -69,6 +69,9 @@ project-includes = [
     "_private/version.py",
 ]
 search-path = ["../.."]
+# Pin so results do not depend on the interpreter the hook env was built with
+# (ray supports 3.9+; CI lint containers and dev machines vary).
+python-version = "3.9"
 
 # Equivalent of mypy --ignore-missing-imports: generated/compiled modules whose
 # names only exist at runtime, plus third-party deps that are not installed in
@@ -79,6 +82,7 @@ replace-imports-with-any = [
     "ray.serve.generated.*",
     "ray.core.generated",
     "ray.core.generated.*",
+    "ray.cloudpickle.*",
     "fastapi.*",
     "grpc.*",
     "memray",
