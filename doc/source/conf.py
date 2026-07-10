@@ -3,21 +3,24 @@ import json
 import logging
 import os
 import pathlib
+import random
 import re
 import sys
+import time
 import zipfile
 from datetime import datetime
 from dataclasses import is_dataclass
 from importlib import import_module
 from typing import Any, Dict
+from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 import sphinx
 from docutils import nodes
 from jinja2.filters import FILTERS
-from sphinx.ext import autodoc
 from sphinx.ext.autosummary import generate
 from sphinx.util.inspect import safe_getattr
+from sphinx.util.matching import compile_matchers
 
 DEFAULT_API_GROUP = "Others"
 
@@ -59,6 +62,7 @@ sys.path.append(os.path.abspath("./_ext"))
 extensions = [
     "callouts",  # custom extension from _ext folder
     "queryparamrefs",
+    "api_sidebar",  # APIs tab: shared client-side API nav (see _ext/api_sidebar.py)
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
@@ -78,16 +82,195 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx_docsearch",
     "sphinx_collections",
+    "sphinx_llms_txt",
+    "sphinxext.opengraph",
 ]
+
+# -- sphinx-llms-txt: agent-friendly summary and full corpus -----------
+
+llms_txt_summary = (
+    "Ray is an open-source unified compute framework for scaling AI and "
+    "Python workloads, including data processing, model training, model "
+    "serving, hyperparameter tuning, and reinforcement learning. The full "
+    "documentation lives at https://docs.ray.io/."
+)
+
+# Filter low-signal pages from llms-full.txt. Auto-generated API reference
+# pages (one per public class/method) are excluded because they would
+# dominate the corpus with autodoc boilerplate. Mirrors the directories in
+# `remove_from_toctrees` below. Agents needing specific API details can
+# fetch per-page markdown twins via Read the Docs' Markdown for Agents
+# content negotiation. Tuning of this list is tracked separately.
+llms_txt_exclude = [
+    "search",
+    "genindex",
+    "404",
+    "_TableOfContents",
+    "cluster/running-applications/job-submission/doc/*",
+    "ray-observability/reference/doc/*",
+    "ray-core/api/doc/*",
+    "data/api/doc/*",
+    "train/api/doc/*",
+    "tune/api/doc/*",
+    "serve/api/doc/*",
+    "rllib/package_ref/*",
+]
+
+# Exclude Jupyter notebooks from llms-full.txt. sphinx-llms-txt reads each
+# docname's source verbatim from `_sources/`, so for `.ipynb` pages it
+# appends raw notebook JSON (cells, outputs, embedded base64 images) into
+# the corpus. `llms_txt_exclude` matches docnames (extension stripped) via
+# fnmatch, so a `**/*.ipynb` pattern can't work — we enumerate each
+# notebook's docname instead. Notebooks remain fully rendered in the HTML
+# build; only the agent corpus drops them.
+_conf_dir = pathlib.Path(__file__).parent
+llms_txt_exclude += sorted(
+    p.relative_to(_conf_dir).with_suffix("").as_posix()
+    for p in _conf_dir.rglob("*.ipynb")
+)
 
 # -- sphinx-collections: pull external template files at build time -----------
 
 _TEMPLATES_CI_BASE = "https://templates.ci.ray.io"
 _TEMPLATE_CHANNEL_API = _TEMPLATES_CI_BASE + "/templates/{name}/latest/channel.json"
 
+# Hard timeouts on the templates.ci.ray.io HTTP calls. The doc build previously
+# stalled when the templates host was slow or unresponsive (#63112 revert);
+# explicit timeouts let urlopen surface a TimeoutError instead of hanging
+# indefinitely so `_fetch_and_extract_zip` fails fast with a clear error
+# instead of blocking the build.
+_TEMPLATE_CHANNEL_TIMEOUT_S = 30
+_TEMPLATE_DOWNLOAD_TIMEOUT_S = 90
+
+# Retry policy for the templates.ci.ray.io HTTP calls. Many doc builds can run
+# concurrently against the same endpoint (PR previews + branch builds); under
+# that load the host returns transient errors (HTTP 5xx/429, connection resets,
+# read timeouts). A single urlopen with no retry would drop the template, and
+# since every template is wired into a toctree that broken ref fails the whole
+# build under `fail_on_warning`. Retry with exponential backoff plus full random
+# jitter so the retry bursts from many concurrent builds don't re-synchronize
+# and hammer the endpoint in lockstep.
+_TEMPLATE_FETCH_ATTEMPTS = 3
+_TEMPLATE_RETRY_BASE_S = 1.0
+
+
+def _urlopen_read_with_retries(url, timeout):
+    """Fetch `url` and return its body bytes, retrying transient failures.
+
+    Retries cover both the connection and the body read (a slow `read()` under
+    load can itself time out). Only transient conditions are retried — a 4xx
+    other than 429 won't fix itself, so it's raised immediately. After the
+    final attempt the last exception propagates to the caller, which aborts the
+    build with a clear, attributed error.
+    """
+    last_exc = None
+    for attempt in range(_TEMPLATE_FETCH_ATTEMPTS):
+        try:
+            with urlopen(url, timeout=timeout) as resp:
+                return resp.read()
+        except HTTPError as exc:
+            last_exc = exc
+            # HTTPError is a subclass of URLError, so it must be caught first.
+            # Don't retry deterministic client errors (4xx except 429).
+            if exc.code != 429 and not (500 <= exc.code < 600):
+                raise
+        except (URLError, TimeoutError, OSError) as exc:
+            # URLError wraps DNS/refused/connection-reset; TimeoutError is the
+            # urlopen/read timeout; OSError covers lower-level socket errors.
+            last_exc = exc
+        if attempt < _TEMPLATE_FETCH_ATTEMPTS - 1:
+            base = _TEMPLATE_RETRY_BASE_S * (2 ** attempt)
+            delay = base + random.uniform(0, base)  # full jitter on the delay
+            logger.info(
+                "sphinx-collections: retrying %s in %.1fs "
+                "(attempt %d/%d) after: %s",
+                url,
+                delay,
+                attempt + 1,
+                _TEMPLATE_FETCH_ATTEMPTS,
+                last_exc,
+            )
+            time.sleep(delay)
+    raise last_exc
+
 _TEMPLATE_COLLECTIONS = {
+    "asynchronous_inference": {
+        "target": "serve/tutorials/asynchronous-inference",
+    },
+    "audio-dataset-curation-llm-judge": {
+        "target": "ray-overview/examples/e2e-audio",
+    },
+    "deepspeed_finetune": {
+        "target": "train/examples/pytorch/deepspeed_finetune",
+    },
     "deployment-serve-llm": {
         "target": "serve/tutorials/deployment-serve-llm",
+    },
+    "distributing-pytorch": {
+        "target": "train/examples/pytorch/distributing-pytorch",
+    },
+    "e2e-rag-deepdive": {
+        "target": "ray-overview/examples/e2e-rag",
+    },
+    "e2e-timeseries-forecasting": {
+        "target": "ray-overview/examples/e2e-timeseries",
+    },
+    "entity-recognition-with-llms": {
+        "target": "ray-overview/examples/entity-recognition-with-llms",
+    },
+    "image-search-and-classification": {
+        "target": "ray-overview/examples/e2e-multimodal-ai-workloads",
+    },
+    "llm_batch_inference_text": {
+        "target": "data/examples/llm_batch_inference_text",
+    },
+    "llm_batch_inference_vision": {
+        "target": "data/examples/llm_batch_inference_vision",
+    },
+    "langchain-agent-ray-serve": {
+        "target": "ray-overview/examples/langchain_agent_ray_serve/content",
+    },
+    "llm_finetuning": {
+        "target": "ray-overview/examples/llamafactory-llm-fine-tune",
+    },
+    "multi_agent_a2a": {
+        "target": "ray-overview/examples/multi_agent_a2a",
+    },
+    "mcp-ray-serve": {
+        "target": "ray-overview/examples/mcp-ray-serve",
+    },
+    "model-composition-recsys": {
+        "target": "serve/tutorials/model-composition-recsys",
+    },
+    "model-multiplexing": {
+        "target": "serve/tutorials/model_multiplexing_forecast",
+    },
+    "object-detection-video-processing": {
+        "target": "ray-overview/examples/object-detection",
+    },
+    "ray_train_workloads": {
+        "target": "train/tutorials",
+    },
+    "pytorch-fsdp": {
+        "target": "train/examples/pytorch/pytorch-fsdp",
+    },
+    "pytorch-profiling": {
+        "target": "train/examples/pytorch/pytorch-profiling",
+    },
+    "tensor_parallel_autotp": {
+        "target": "train/examples/pytorch/tensor_parallel_autotp",
+    },
+    "tensor_parallel_dtensor": {
+        "target": "train/examples/pytorch/tensor_parallel_dtensor",
+    },
+    "tune_pytorch_asha": {
+        "target": "tune/examples/tune_pytorch_asha",
+    },
+    "unstructured_data_ingestion": {
+        "target": "data/examples/unstructured_data_ingestion",
+    },
+    "xgboost-training-and-serving": {
+        "target": "ray-overview/examples/e2e-xgboost",
     },
 }
 
@@ -96,8 +279,9 @@ def _resolve_template_url(name):
     """Fetch the build zip URL for a template from the channel API."""
     api_url = _TEMPLATE_CHANNEL_API.format(name=name)
     logger.info("sphinx-collections: resolving template URL from %s", api_url)
-    with urlopen(api_url) as resp:
-        data = json.loads(resp.read())
+    data = json.loads(
+        _urlopen_read_with_retries(api_url, _TEMPLATE_CHANNEL_TIMEOUT_S)
+    )
     url = data["url"]
     # Replace the ascommon:/// protocol with the templates.ci.ray.io base URL.
     url = url.replace("ascommon:///", _TEMPLATES_CI_BASE + "/")
@@ -108,20 +292,51 @@ def _resolve_template_url(name):
 
 
 def _fetch_and_extract_zip(config):
-    """Download a zip archive and extract it into the collection target directory."""
+    """Download a zip archive and extract it into the collection target directory.
+
+    A failure fetching, downloading, or extracting a template aborts the build
+    immediately with an error naming the template. Every template is wired into
+    a toctree, so a missing one fails the build anyway under `fail_on_warning`,
+    but as a "nonexisting document" warning emitted far downstream of the real
+    cause. Failing here, at the fetch, points straight at the actual problem
+    (the templates host or the archive) instead of a dangling toctree ref.
+    Transient host errors are already absorbed by the retry/backoff in
+    `_urlopen_read_with_retries`; this fires only once those are exhausted.
+    """
     import shutil
 
-    url = _resolve_template_url(config["name"])
+    name = config["name"]
     target = pathlib.Path(config["target"])
-    if target.is_dir():
-        shutil.rmtree(target)
-    target.mkdir(parents=True, exist_ok=True)
-    logger.info("sphinx-collections: downloading %s -> %s", url, target)
-    with urlopen(url) as resp:
-        zip_bytes = io.BytesIO(resp.read())
-    with zipfile.ZipFile(zip_bytes) as zf:
-        zf.extractall(target)
-    logger.info("sphinx-collections: extracted %d files to %s", len(zf.namelist()), target)
+    try:
+        url = _resolve_template_url(name)
+        if target.is_dir():
+            shutil.rmtree(target)
+        target.mkdir(parents=True, exist_ok=True)
+        logger.info("sphinx-collections: downloading %s -> %s", url, target)
+        zip_bytes = io.BytesIO(
+            _urlopen_read_with_retries(url, _TEMPLATE_DOWNLOAD_TIMEOUT_S)
+        )
+        with zipfile.ZipFile(zip_bytes) as zf:
+            zf.extractall(target)
+        logger.info(
+            "sphinx-collections: extracted %d files to %s",
+            len(zf.namelist()),
+            target,
+        )
+    except Exception as exc:
+        # Don't leave a half-extracted archive in the tree, then abort with a
+        # clear, attributed error. sphinx-collections runs in `safe` mode by
+        # default, so re-raising here surfaces as a build-halting
+        # CollectionsDriverError rather than a swallowed skip.
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
+        raise RuntimeError(
+            f"sphinx-collections: template {name!r} failed to fetch/extract into "
+            f"{target} after {_TEMPLATE_FETCH_ATTEMPTS} attempt(s): {exc}. This is "
+            f"a template fetch failure (templates.ci.ray.io or the archive), not a "
+            f"broken toctree reference — fix the fetch and rebuild; don't chase the "
+            f"downstream 'nonexisting document' warnings it would otherwise cause."
+        ) from exc
 
 
 collections = {
@@ -144,7 +359,13 @@ collections_final_clean = True
 # The collections config contains a function reference (for the "function" driver)
 # which Sphinx cannot pickle for caching. This is harmless — suppress the warning
 # so it doesn't cause a build failure under -W (warnings-as-errors).
-suppress_warnings = ["config.cache"]
+suppress_warnings = [
+    "config.cache",
+    # sphinxcontrib-redoc (unmaintained, 1.6.0) redundantly copies its bundled
+    # redoc.js asset; Sphinx 8's new copy_overwrite check flags the second copy over
+    # the existing (identical) file. Benign and not fixable upstream.
+    "misc.copy_overwrite",
+]
 # Disable autodoc_pydantic features that can produce empty raw directives
 # (e.g. when schema JSON fails for models with non-serializable fields)
 autodoc_pydantic_model_show_json = False
@@ -156,6 +377,12 @@ docsearch_app_id = "LBHF0PABBL"
 docsearch_api_key = "6c42f30d9669d8e42f6fc92f44028596"
 docsearch_index_name = "docs-ray"
 
+# Remove the per-symbol autogenerated API reference pages (one page per
+# class/method) from the rendered toctree via sphinx-remove-toctrees, so the
+# navigation sidebar isn't swamped by thousands of API stubs. The pages are
+# still generated and linked from the autosummary tables; this only drops them
+# from the nav tree. These API-ref directories mirror the API-ref entries in
+# `llms_txt_exclude` above, which excludes the same pages from the agent corpus.
 remove_from_toctrees = [
     "cluster/running-applications/job-submission/doc/*",
     "ray-observability/reference/doc/*",
@@ -221,6 +448,8 @@ nitpick_ignore_regex = [
     ("py:obj", r"ray\.serve\.config\.\w+\.all fields"),
     ("py:obj", r"ray\.serve\.config\.GangSchedulingConfig\._validate_runtime_failure_policy"),
     ("py:obj", r"ray\.serve\.schema\.\w+\.all fields"),
+    # autodoc_pydantic also emits invalid field refs for these dashboard job models.
+    ("py:obj", r"ray\.dashboard\.modules\.job\.pydantic_models\.(DriverInfo|JobDetails)\.\w+"),
 ]
 
 # Cache notebook outputs in _build/.jupyter_cache
@@ -243,7 +472,21 @@ nb_mime_priority_overrides = [
 
 html_extra_path = ["robots.txt"]
 
-html_baseurl = "https://docs.ray.io/en/latest"
+html_baseurl = "https://docs.ray.io/en/latest/"
+
+# `html_baseurl` already encodes `/en/latest/`, so override sphinx-sitemap's
+# default `{lang}{version}{link}` scheme to just `{link}`. Otherwise the
+# extension prepends `en/` again, producing URLs like `en/latesten/<page>`.
+sitemap_url_scheme = "{link}"
+
+# sphinxext-opengraph: emit Open Graph metadata per page. Pin `ogp_site_url`
+# to `html_baseurl` so the `og:url` tag tracks the same canonical URL as
+# Sphinx's `<link rel="canonical">`. If `ogp_site_url` were left unset, the
+# extension would fall back to Read the Docs' `READTHEDOCS_CANONICAL_URL`
+# env var (set by RtD's Addons framework from the project's "Canonical
+# version" admin setting), which can diverge from `html_baseurl`. Per-page
+# `:og:description:` and `:og:image:` can still be set in individual files.
+ogp_site_url = html_baseurl
 
 # This pattern matches:
 # - Python Repl prompts (">>> ") and it's continuation ("... ")
@@ -259,24 +502,6 @@ copybutton_selector = "div:not(.no-copybutton) > div.highlight > pre"
 # By default, tabs can be closed by selecting an open tab. We disable this
 # functionality with the `sphinx_tabs_disable_tab_closing` option.
 sphinx_tabs_disable_tab_closing = True
-
-# Special mocking of packaging.version.Version is required when using sphinx;
-# we can't just add this to autodoc_mock_imports, as packaging is imported by
-# sphinx even before it can be mocked. Instead, we patch it here.
-import packaging.version as packaging_version  # noqa
-
-Version = packaging_version.Version
-
-
-class MockVersion(Version):
-    def __init__(self, version: str):
-        if isinstance(version, (str, bytes)):
-            super().__init__(version)
-        else:
-            super().__init__("0")
-
-
-packaging_version.Version = MockVersion
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
@@ -322,9 +547,6 @@ exclude_patterns = [
     "train/examples/**/content/**README.md",
     "tune/examples/**/content/**README.md",
     # Other misc files (overviews, console-only examples, etc)
-    "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
-    "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
-    "train/tutorials/content/**/README.md",
     "serve/tutorials/video-analysis/*.ipynb",
     # Legacy/backward compatibility
     "ray-overview/examples/**/README.md",
@@ -332,6 +554,37 @@ exclude_patterns = [
     "_collections/serve/tutorials/deployment-serve-llm/README.*",
     "_collections/serve/tutorials/deployment-serve-llm/*.ipynb",
     "_collections/serve/tutorials/deployment-serve-llm/**/*.ipynb",
+    # Each template ships README.md + README.ipynb at the same docname; keep
+    # only the .md and exclude the duplicate .ipynb at the template root and
+    # in any sub-template directories. The template root README.md is the
+    # actual content page that toctrees / examples.yml refer to.
+    *[
+        pattern
+        for coll in _TEMPLATE_COLLECTIONS.values()
+        for pattern in (
+            f"_collections/{coll['target']}/README.ipynb",
+            f"_collections/{coll['target']}/**/README.ipynb",
+        )
+    ],
+    # ray_train_workloads bundles sub-folder READMEs that aren't part of any
+    # toctree (only the notebooks are). Exclude them to avoid orphan warnings.
+    # Keep the root README.* — train.rst's toctree and tutorials button both
+    # link to /_collections/train/tutorials/README.
+    "_collections/train/tutorials/*/README.*",  # one-level sidecars (getting-started, workload-patterns)
+    "_collections/train/tutorials/*/**/README.*",  # deeper sidecars, if any
+    # asynchronous-inference has no docs landing page (nothing links to it), so
+    # exclude its README.md to avoid an orphan warning. Do NOT list a template
+    # that IS linked from a toctree here: README.ipynb is already globally
+    # excluded above, so README.md is that template's canonical page — excluding
+    # it deletes the page and breaks the reference (this happened to
+    # tune_pytorch_asha when its notebook was renamed to README.ipynb).
+    "_collections/serve/tutorials/asynchronous-inference/README.md",
+    # llamafactory: master excludes the in-tree paths only, but this branch
+    # also pulls a copy via sphinx-collections (see _TEMPLATE_COLLECTIONS).
+    # Mirror the in-tree patterns under _collections/ so the fetched copy
+    # is suppressed too. The template has no landing page on docs.ray.io.
+    "_collections/ray-overview/examples/llamafactory-llm-fine-tune/README.*",
+    "_collections/ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -443,8 +696,8 @@ html_theme_options = {
         "csat",
     ],
     "navigation_depth": 4,
-    "pygment_light_style": "stata-dark",
-    "pygment_dark_style": "stata-dark",
+    "pygments_light_style": "stata-dark",
+    "pygments_dark_style": "stata-dark",
     "switcher": {
         "json_url": "https://docs.ray.io/en/master/_static/versions.json",
         "version_match": os.getenv("READTHEDOCS_VERSION", "master"),
@@ -458,6 +711,10 @@ html_context = {
     "doc_path": "doc/source/",
 }
 
+# Pick the sidebar template by build environment: Read the Docs builds
+# (READTHEDOCS=True) use `main-sidebar-readthedocs`, all other builds use
+# `main-sidebar`. The `ray-overview/examples` gallery page renders with no
+# sidebar (empty list).
 html_sidebars = {
     "**": [
         (
@@ -702,6 +959,30 @@ def setup(app):
 
     logging.getLogger("sphinx").addFilter(DuplicateObjectFilter())
 
+    class CollectionsFootnoteFilter(logging.Filter):
+        # Example notebooks fetched into _collections (from templates.ci.ray.io) contain
+        # prose that myst-parser 5.x parses as reST footnote refs/targets, which docutils
+        # then flags as errors. That content is external (not in this repo), so it can't
+        # be fixed here -- the fix belongs upstream. Drop these specific errors for
+        # _collections paths so the fail_on_warning build is not blocked by fetched content.
+        # TODO: fix the offending footnote-like text upstream and remove this filter.
+        def filter(self, record):
+            # INFO/DEBUG records (the bulk of build output) can't be the
+            # footnote/target warnings below, so skip getMessage() for them.
+            if record.levelno < logging.WARNING:
+                return True
+            msg = record.getMessage()
+            if (
+                "autonumbered footnote references" in msg
+                or "Unknown target name" in msg
+            ):
+                location = str(getattr(record, "location", "") or "")
+                if "_collections" in location:
+                    return False
+            return True
+
+    logging.getLogger("sphinx").addFilter(CollectionsFootnoteFilter())
+
     # Register hook to mark orphan documents
     example_orphan_documents = collect_example_orphans(app.confdir, app.srcdir)
     def mark_orphans(app, docname, _source):
@@ -712,16 +993,34 @@ def setup(app):
     app.connect('source-read', mark_orphans)
 
     # Fix code-block language tags in _collections markdown files.
-    # Notebooks converted to markdown tag Jupyter magic shell commands
-    # (e.g. ``!serve run ...``) as ``python`` code blocks, which causes
-    # Sphinx highlighting warnings.  Re-tag them as ``bash``.
-    _MAGIC_CODE_BLOCK_RE = re.compile(r"```python\n(![a-z])")
+    # Notebooks converted to markdown tag cells that contain a Jupyter magic or
+    # shell escape (e.g. ``!uv pip install ...`` / ``%matplotlib``) as
+    # ``python`` code blocks, which Pygments can't lex as Python and which fail
+    # the build under ``-W``.  Re-tag any such block as ``ipython3`` so the
+    # python parts stay highlighted as python and ``!``/``%`` lines render as
+    # shell.  The magic can appear anywhere in the cell (a cell often runs some
+    # Python and then shells out), not only on the first line.
+    _PY_CODE_FENCE_RE = re.compile(r"```python\n(.*?)```", re.DOTALL)
+    _MAGIC_LINE_RE = re.compile(r"^[ \t]*[!%]\S", re.MULTILINE)
 
     def fix_collections_code_blocks(app, docname, source):
-        if docname.startswith("_collections/"):
-            source[0] = _MAGIC_CODE_BLOCK_RE.sub(r"```bash\n\1", source[0])
+        if not docname.startswith("_collections/"):
+            return
+
+        def _retag(match):
+            body = match.group(1)
+            if _MAGIC_LINE_RE.search(body):
+                return "```ipython3\n" + body + "```"
+            return match.group(0)
+
+        source[0] = _PY_CODE_FENCE_RE.sub(_retag, source[0])
 
     app.connect('source-read', fix_collections_code_blocks)
+
+    app.add_config_value("ipython3_lexer_patterns", [], "env")
+    app.add_config_value("ipython3_lexer_exclude_patterns", [], "env")
+    app.connect("config-inited", _compile_pattern_matchers)
+    app.connect("source-read", apply_ipython3_lexer)
 
 
 redoc = [
@@ -735,6 +1034,10 @@ redoc = [
 
 redoc_uri = "https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"
 
+# Override the output filenames autosummary generates for these objects.
+# `ray.serve.deployment` (the decorator) and `ray.serve.Deployment` (the class)
+# would otherwise write to filenames that collide on case-insensitive
+# filesystems, so the lowercase decorator is remapped to a distinct name.
 autosummary_filename_map = {
     "ray.serve.deployment": "ray.serve.deployment_decorator",
     "ray.serve.Deployment": "ray.serve.Deployment",
@@ -742,6 +1045,13 @@ autosummary_filename_map = {
 
 # Mock out external dependencies here.
 
+# Prefer not to mock libraries that are actually installed in the docs build
+# environment (doc/requirements-doc.lock.txt). Mocking an installed library
+# shadows the real module: an eager import in a documented class body then hits
+# the mock and aborts the whole package import as a misleading error. numpy and
+# pyarrow are installed, so they are not mocked. tensorflow is also installed (a
+# direct requirements-doc entry), but importing it for real breaks the autodoc
+# import of ray.rllib.algorithms.algorithm at build time, so it stays mocked.
 autodoc_mock_imports = [
     "aiohttp",
     "async_timeout",
@@ -766,10 +1076,7 @@ autodoc_mock_imports = [
     "lightgbm_ray",
     "mlflow",
     "nevergrad",
-    "numpy",
     "pandas",
-    "pyarrow",
-    "pyarrow.compute",
     "pytorch_lightning",
     "scipy",
     "setproctitle",
@@ -807,20 +1114,21 @@ for mock_target in autodoc_mock_imports:
         )
 
 
-class MockedClassDocumenter(autodoc.ClassDocumenter):
-    """Remove note about base class when a class is derived from object."""
-
-    def add_line(self, line: str, source: str, *lineno: int) -> None:
-        if line == "   Bases: :py:class:`object`":
-            return
-        super().add_line(line, source, *lineno)
-
-
-autodoc.ClassDocumenter = MockedClassDocumenter
-
 # Other sphinx docs can be linked to if the appropriate URL to the docs
 # is specified in the `intersphinx_mapping` - for example, types annotations
 # that are defined in dependencies can link to their respective documentation.
+#
+# Each value is (base_url, inventory_url). A None inventory falls back to
+# <base_url>objects.inv. A few projects (pandas, scipy, tensorflow) pin an
+# explicit inventory URL because their hosted objects.inv is unreliable; the
+# ray-project/*/releases/.../object-mirror-* URLs are stable mirrors we control.
+#
+# Maintenance note: the build log emits "intersphinx inventory has moved: A -> B"
+# when A returns a redirect. Only chase it when B is another documentation URL
+# (the project relocated). Do NOT copy B when it points at a signed, expiring
+# release-assets.githubusercontent.com URL - that's just GitHub's normal redirect
+# for a releases/download/ asset, and the github.com/.../releases/download/ URL
+# is the stable one to keep.
 intersphinx_mapping = {
     "aiohttp": ("https://docs.aiohttp.org/en/stable/", None),
     "composer": ("https://docs.mosaicml.com/en/latest/", None),
@@ -840,7 +1148,7 @@ intersphinx_mapping = {
         "https://github.com/ray-project/pandas/releases/download/object-mirror-0.1.0/objects.inv",
     ),
     "pyarrow": ("https://arrow.apache.org/docs", None),
-    "pydantic": ("https://docs.pydantic.dev/latest/", None),
+    "pydantic": ("https://pydantic.dev/docs/validation/latest/", None),
     "pymongoarrow": ("https://mongo-arrow.readthedocs.io/en/latest/", None),
     "pyspark": ("https://spark.apache.org/docs/latest/api/python/", None),
     "python": ("https://docs.python.org/3", None),
@@ -854,10 +1162,15 @@ intersphinx_mapping = {
         "https://www.tensorflow.org/api_docs/python",
         "https://raw.githubusercontent.com/GPflow/tensorflow-intersphinx/master/tf2_py_objects.inv",
     ),
-    "torch": ("https://pytorch.org/docs/stable/", None),
-    "torchvision": ("https://pytorch.org/vision/stable/", None),
+    "torch": (
+        "https://docs.pytorch.org/docs/stable/",
+        "https://docs.pytorch.org/docs/2.7/objects.inv",
+    ),
+    "torchvision": ("https://docs.pytorch.org/vision/stable/", None),
     "transformers": ("https://huggingface.co/docs/transformers/main/en/", None),
 }
+
+intersphinx_timeout = 15
 
 # Ray must not be imported in conf.py because third party modules initialized by
 # `import ray` will no be mocked out correctly. Perform a check here to ensure
@@ -866,6 +1179,49 @@ assert (
     "ray" not in sys.modules
 ), "If ray is already imported, we will not render documentation correctly!"
 
-os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
-
 os.environ["RAY_DOC_BUILD"] = "1"
+
+ipython3_lexer_patterns = [
+    # External templates fetched by sphinx_collections (see #62179) land here at
+    # build time; their notebook JSON has no language_info, so Sphinx defaults
+    # to the python3 lexer and chokes on !pip / %magic cells.
+    "_collections/**/*.ipynb",
+    "ray-overview/examples/**/content/**.ipynb",
+    "serve/tutorials/**/content/**.ipynb",
+    "data/examples/**/content/**.ipynb",
+    "tune/examples/**/content/**.ipynb",
+]
+ipython3_lexer_exclude_patterns = []
+
+
+def _compile_pattern_matchers(app, config):
+    app.ipython3_lexer_patterns = compile_matchers(
+        config.ipython3_lexer_patterns or []
+    )
+    app.ipython3_lexer_exclude_patterns = compile_matchers(
+        config.ipython3_lexer_exclude_patterns or []
+    )
+
+
+def apply_ipython3_lexer(app, docname, source):
+    """Force the ipython3 pygments lexer on notebooks matching
+    ``ipython3_lexer_patterns`` (minus ``ipython3_lexer_exclude_patterns``).
+
+    Sphinx + myst-nb otherwise default to the python3 lexer, which fails on
+    ``!shell`` and ``%magic`` cells and is fatal under Readthedocs ``-W``.
+    """
+    # Sphinx 8 returns a _StrPath from doc2path; coerce to str so the re-based
+    # matchers (compile_matchers) and .endswith below accept it.
+    doc_source = str(app.env.doc2path(docname, base=False))
+    if not doc_source.endswith(".ipynb"):
+        return
+    if any(m(doc_source) for m in app.ipython3_lexer_exclude_patterns):
+        return
+    if not any(m(doc_source) for m in app.ipython3_lexer_patterns):
+        return
+
+    notebook = json.loads(source[0])
+    lang_info = notebook.setdefault("metadata", {}).setdefault("language_info", {})
+    if lang_info.get("pygments_lexer") != "ipython3":
+        lang_info["pygments_lexer"] = "ipython3"
+        source[0] = json.dumps(notebook, ensure_ascii=False)

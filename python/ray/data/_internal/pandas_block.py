@@ -537,7 +537,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
             # Skip coercing tensors to null-type to avoid type information loss
             # See https://github.com/ray-project/ray/issues/59087 for context
-            if isinstance(col.dtype, TensorDtype):
+            if isinstance(col.dtype, (TensorDtype, pd.ArrowDtype)):
                 continue
 
             if not col.notna().any():
@@ -632,8 +632,20 @@ class PandasBlockAccessor(TableBlockAccessor):
                 # Skip size calculation for empty columns
                 if sample_size == 0:
                     continue
-                # Following codes can also handel case that sample_size == total_size
-                sampled_data = self._table[column].sample(n=sample_size).values
+                if sample_size == total_size:
+                    # Sampling the whole column: read values directly to avoid the
+                    # permutation/copy overhead of .sample(). No randomness here, so
+                    # this is trivially deterministic.
+                    sampled_data = self._table[column].values
+                else:
+                    # Use a fixed random_state so size_bytes() is deterministic
+                    # across calls. Non-deterministic size estimation can cause
+                    # streaming generator tasks to produce different block counts
+                    # across replay attempts (e.g. lineage reconstruction), which
+                    # surfaces as a silent hang or silent data loss downstream.
+                    sampled_data = (
+                        self._table[column].sample(n=sample_size, random_state=0).values
+                    )
 
                 try:
                     if isinstance(sampled_data, TensorArray) and np.issubdtype(

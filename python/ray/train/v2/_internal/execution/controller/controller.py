@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 import pandas as pd
 
@@ -12,8 +12,10 @@ import ray._private.ray_constants as ray_constants
 from ray.exceptions import AsyncioActorExit
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
+    DEFAULT_ENABLE_PREEMPTION_WATCHER,
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
     ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
+    ENABLE_PREEMPTION_WATCHER_ENV_VAR,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
 )
 from ray.train.v2._internal.execution.callback import (
@@ -188,8 +190,31 @@ class TrainController:
             else False
         )
 
+        # Register the preemption-observability callback when not in TorchFT
+        # mode (replica groups handle peer loss via their own quorum).
+        enable_preemption_watcher = ray_constants.env_bool(
+            ENABLE_PREEMPTION_WATCHER_ENV_VAR,
+            DEFAULT_ENABLE_PREEMPTION_WATCHER,
+        )
+        if self._manages_replica_groups:
+            if enable_preemption_watcher and ray_constants.env_set_by_user(
+                ENABLE_PREEMPTION_WATCHER_ENV_VAR
+            ):
+                logger.info(
+                    "The preemption watcher is not compatible with replica "
+                    "groups (e.g. TorchFT), which handle peer loss via their "
+                    "own quorum; skipping it."
+                )
+        elif enable_preemption_watcher:
+            from ray.train.v2._internal.callbacks.preemption_callback import (
+                PreemptionCallback,
+            )
+
+            self._worker_group_callbacks_to_propagate.append(PreemptionCallback())
+
         self._worker_group: Optional[WorkerGroup] = None
         self._state = InitializingState()
+        self._return_value: Optional[Any] = None
 
         # TODO: These can be attributes of a RunAttempt?
         self._latest_poll_time = float("-inf")
@@ -417,13 +442,7 @@ class TrainController:
         scaling_config = self._train_run_context.scaling_config
 
         # Check for `label_selector` to influence WorkerGroup scheduling.
-        label_selector = None
-        if isinstance(scaling_config.label_selector, list):
-            label_selector = scaling_config.label_selector[:num_workers]
-        elif isinstance(scaling_config.label_selector, dict):
-            label_selector = [
-                scaling_config.label_selector.copy() for _ in range(num_workers)
-            ]
+        label_selector = scaling_config._label_selector_per_worker(num_workers)
         for callback in self._controller_callbacks:
             selector = callback.on_controller_start_worker_group(
                 scaling_config=scaling_config, num_workers=num_workers
@@ -626,6 +645,7 @@ class TrainController:
             worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
 
             if worker_group_status.finished and not worker_group_status.errors:
+                self._return_value = worker_group_status.worker_statuses[0].return_value
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
                     previous_state=controller_state,
@@ -807,6 +827,7 @@ class TrainController:
             best_checkpoints=best_checkpoints,
             metrics_dataframe=metrics_dataframe,
             _storage_filesystem=storage.storage_filesystem,
+            return_value=self._return_value,
         )
 
     def get_result(self) -> Result:

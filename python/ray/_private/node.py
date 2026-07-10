@@ -14,7 +14,7 @@ import tempfile
 import threading
 import time
 import traceback
-from typing import IO, AnyStr, Optional, Tuple
+from typing import IO, TYPE_CHECKING, AnyStr, Optional, Tuple
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -49,6 +49,9 @@ from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 
 import psutil
 
+if TYPE_CHECKING:
+    from ray._private.parameter import RayParams
+
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
 # using logging.basicConfig in its entry/init points.
@@ -69,7 +72,7 @@ class Node:
 
     def __init__(
         self,
-        ray_params,
+        ray_params: "RayParams",
         head: bool = False,
         shutdown_at_exit: bool = True,
         spawn_reaper: bool = True,
@@ -497,6 +500,9 @@ class Node:
         This will be used to detect if workers or drivers are started using
         different versions of Python, or Ray.
 
+        Returns:
+            None.
+
         Raises:
             Exception: An exception is raised if there is a version mismatch.
         """
@@ -586,11 +592,14 @@ class Node:
                 self._ray_params.num_cpus,
                 self._ray_params.num_gpus,
                 self._ray_params.memory,
-                self._ray_params.available_memory_bytes,
                 self._ray_params.object_store_memory,
                 self._ray_params.resources,
                 self._ray_params.labels,
-            ).resolve(is_head=self.head, node_ip_address=self.node_ip_address)
+            ).resolve(
+                is_head=self.head,
+                node_ip_address=self.node_ip_address,
+                resource_isolation_config=self.resource_isolation_config,
+            )
         return self._resource_and_label_spec
 
     @property
@@ -811,7 +820,7 @@ class Node:
         Args:
             suffix: The suffix of the temp file.
             prefix: The prefix of the temp file.
-            directory_name (str) : The base directory of the temp file.
+            directory_name: The base directory of the temp file.
 
         Returns:
             A string of file name. If there existing a file having
@@ -994,6 +1003,11 @@ class Node:
 
         Args:
             socket_path: the socket file to prepare.
+            default_prefix: the filename prefix to use when ``socket_path`` is
+                ``None`` and a new socket path needs to be generated.
+
+        Returns:
+            The resolved socket path string.
         """
         result = socket_path
         if sys.platform == "win32":
@@ -1152,6 +1166,12 @@ class Node:
         """Start the raylet.
 
         Args:
+            plasma_directory: Filesystem directory backing the plasma store's
+                shared memory.
+            fallback_directory: Directory used by plasma when memory mapped
+                files cannot be created in ``plasma_directory``.
+            object_store_memory: Maximum number of bytes the object store can
+                use.
             use_valgrind: True if we should start the process in
                 valgrind.
             use_profiler: True if we should start the process in the
@@ -1493,7 +1513,7 @@ class Node:
 
     def _kill_process_type(
         self,
-        process_type,
+        process_type: str,
         allow_graceful: bool = False,
         check_alive: bool = True,
         wait: bool = False,
@@ -1541,6 +1561,7 @@ class Node:
         process_infos = self.all_processes[process_type]
         if process_type != ray_constants.PROCESS_TYPE_REDIS_SERVER:
             assert len(process_infos) == 1
+        wait_timeout_seconds = 1
         for process_info in process_infos:
             process = process_info.process
             # Handle the case where the process has already exited.
@@ -1579,19 +1600,21 @@ class Node:
             if allow_graceful:
                 process.terminate()
                 # Allow the process one second to exit gracefully.
-                timeout_seconds = 1
                 try:
-                    process.wait(timeout_seconds)
+                    process.wait(timeout=wait_timeout_seconds)
                 except subprocess.TimeoutExpired:
                     pass
 
             # If the process did not exit, force kill it.
             if process.poll() is None:
                 process.kill()
-                # The reason we usually don't call process.wait() here is that
+                # After kill, wait must be called
+                # The reason we usually don't set timeout=None here is that
                 # there's some chance we'd end up waiting a really long time.
-                if wait:
-                    process.wait()
+                try:
+                    process.wait(timeout=None if wait else wait_timeout_seconds)
+                except subprocess.TimeoutExpired:
+                    pass
 
         del self.all_processes[process_type]
 
@@ -1675,7 +1698,12 @@ class Node:
             ray_constants.PROCESS_TYPE_REAPER, check_alive=check_alive
         )
 
-    def kill_all_processes(self, check_alive=True, allow_graceful=False, wait=False):
+    def kill_all_processes(
+        self,
+        check_alive: bool = True,
+        allow_graceful: bool = False,
+        wait: bool = False,
+    ):
         """Kill all of the processes.
 
         Note that This is slower than necessary because it calls kill, wait,
@@ -1684,6 +1712,8 @@ class Node:
         Args:
             check_alive: Raise an exception if any of the processes were
                 already dead.
+            allow_graceful: Send a SIGTERM first and give each process time
+                to exit gracefully before falling back to SIGKILL.
             wait: If true, then this method will not return until the
                 process in question has exited.
         """

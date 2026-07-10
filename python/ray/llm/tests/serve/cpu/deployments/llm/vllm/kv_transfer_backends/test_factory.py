@@ -7,6 +7,8 @@ import pytest
 from ray import serve
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
     BaseConnectorBackend,
+    DefaultConnectorBackend,
+    DefaultPDProtocolMixin,
 )
 from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
     KVConnectorBackendFactory,
@@ -29,7 +31,7 @@ def test_deployment_handle():
     """Fixture that creates a Serve deployment for testing cross-process registry access."""
 
     # This ensures proper serialization when sent to child processes
-    class TestCrossProcessConnector(BaseConnectorBackend):
+    class TestCrossProcessConnector(DefaultPDProtocolMixin, BaseConnectorBackend):
         def setup(self):
             pass
 
@@ -73,13 +75,20 @@ class TestKVConnectorBackendFactory:
         assert backend_class is not None
         assert hasattr(backend_class, "setup")
 
-    def test_get_backend_class_not_registered_returns_base(self):
-        """Test that getting a non-registered backend returns BaseConnectorBackend."""
+    def test_get_backend_class_not_registered_returns_default(self):
+        """Getting a non-registered backend returns a concrete default backend.
+
+        ``BaseConnectorBackend`` is abstract, so the fallback must be a concrete
+        subclass (``DefaultConnectorBackend``) that is instantiable and provides
+        the default P/D protocol policy.
+        """
         backend_class = KVConnectorBackendFactory.get_backend_class(
             "UnregisteredConnector"
         )
-        assert backend_class == BaseConnectorBackend
+        assert backend_class is DefaultConnectorBackend
         assert issubclass(backend_class, BaseConnectorBackend)
+        # Concrete: can be instantiated.
+        DefaultConnectorBackend(llm_config=None)
 
     def test_create_backend_success(self):
         """Test successful creation of a backend instance."""
@@ -120,7 +129,7 @@ class TestKVConnectorBackendFactory:
     def test_register_backend_with_class_directly(self):
         """Test registering a backend class directly."""
 
-        class CustomBackend(BaseConnectorBackend):
+        class CustomBackend(DefaultPDProtocolMixin, BaseConnectorBackend):
             def setup(self):
                 pass
 

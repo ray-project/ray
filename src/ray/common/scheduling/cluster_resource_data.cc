@@ -41,13 +41,13 @@ ResourceRequest ResourceMapToResourceRequest(
   return res;
 }
 
-/// Convert a map of resources to a ResourceRequest data structure.
+/// Convert a map of resources to a NodeResources data structure.
 ///
-/// \param string_to_int_map: Map between names and ids maintained by the
 /// \param resource_map_total: Total capacities of resources we want to convert.
 /// \param resource_map_available: Available capacities of resources we want to convert.
+/// \param node_labels: Labels for the node.
 ///
-/// \request Conversion result to a ResourceRequest data structure.
+/// \return Conversion result to a NodeResources data structure.
 NodeResources ResourceMapToNodeResources(
     const absl::flat_hash_map<std::string, double> &resource_map_total,
     const absl::flat_hash_map<std::string, double> &resource_map_available,
@@ -129,8 +129,8 @@ bool NodeResources::NodeLabelMatchesConstraint(const LabelConstraint &constraint
     }
   } else {
     RAY_CHECK(false)
-        << "Node label constraint operator type must be one of equals, not equals (!),"
-           "in、or not in (!in)";
+        << "Node label constraint operator type must be one of equals, not equals (!), "
+           "in, or not in (!in)";
   }
   return false;
 }
@@ -147,10 +147,15 @@ bool NodeResources::operator!=(const NodeResources &other) const {
 std::string NodeResources::DebugString() const {
   std::stringstream buffer;
   buffer << "{\"total\":" << total.DebugString();
-  buffer << "}, \"available\": " << available.DebugString();
-  buffer << "}, \"labels\":{";
+  buffer << ", \"available\": " << available.DebugString();
+  buffer << ", \"labels\":{";
+  bool first = true;
   for (const auto &[key, value] : labels) {
-    buffer << "\"" << key << "\":\"" << value << "\",";
+    if (!first) {
+      buffer << ",";
+    }
+    first = false;
+    buffer << "\"" << key << "\":\"" << value << "\"";
   }
   buffer << "}, \"is_draining\": " << is_draining;
   buffer << ", \"draining_deadline_timestamp_ms\": " << draining_deadline_timestamp_ms
@@ -167,12 +172,17 @@ bool NodeResourceInstances::operator==(const NodeResourceInstances &other) const
 std::string NodeResourceInstances::DebugString() const {
   std::stringstream buffer;
   buffer << "{\"total\":" << total.DebugString();
-  buffer << "}, \"available\": " << available.DebugString();
-  buffer << "}, \"labels\":{";
+  buffer << ", \"available\": " << available.DebugString();
+  buffer << ", \"labels\":{";
+  bool first = true;
   for (const auto &[key, value] : labels) {
-    buffer << "\"" << key << "\":\"" << value << "\",";
+    if (!first) {
+      buffer << ",";
+    }
+    first = false;
+    buffer << "\"" << key << "\":\"" << value << "\"";
   }
-  buffer << "}";
+  buffer << "}}";
   return buffer.str();
 };
 

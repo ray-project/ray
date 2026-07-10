@@ -25,7 +25,10 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
 )
 from ray.serve._private.logging_utils import get_serve_logs_dir
-from ray.serve._private.test_utils import get_application_url
+from ray.serve._private.test_utils import (
+    get_application_url,
+    wait_for_haproxy_routing_to_replica,
+)
 from ray.serve._private.tracing_utils import (
     DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
     TRACE_STACK,
@@ -59,19 +62,13 @@ except ImportError:
 CUSTOM_EXPORTER_OUTPUT_FILENAME = "spans.txt"
 
 
-pytestmark = pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Tracing is not supported on Windows.",
-)
-
-
 @pytest.fixture
 def use_custom_tracing_exporter():
     yield "ray.serve.tests.test_tracing_utils:custom_tracing_exporter"
 
     # Clean up output file produced by custom exporter
     if os.path.exists(CUSTOM_EXPORTER_OUTPUT_FILENAME):
-        os.remove(CUSTOM_EXPORTER_OUTPUT_FILENAME)
+        safe_remove(CUSTOM_EXPORTER_OUTPUT_FILENAME)
 
 
 @pytest.fixture
@@ -174,7 +171,6 @@ def test_missing_dependencies():
                 component_type=ServeComponentType.REPLICA,
                 component_name="component_name",
                 component_id="component_id",
-                tracing_exporter_import_path=DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
                 tracing_sampling_ratio=1.0,
             )
 
@@ -199,6 +195,25 @@ def test_default_tracing_exporter(ray_start_cluster):
         assert isinstance(span_processor, SimpleSpanProcessor)
 
 
+def safe_remove(path):
+    """Safely removes a file or directory, handling Windows file locking by using a retry method."""
+    if sys.platform != "win32":
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
+        return
+
+    provider = trace.get_tracer_provider()
+    if hasattr(provider, "shutdown"):
+        provider.shutdown()
+
+    if os.path.isdir(path):
+        shutil.rmtree(path)
+    else:
+        os.remove(path)
+
+
 def test_custom_tracing_exporter(use_custom_tracing_exporter):
     """Test setup_tracing with a custom tracing exporter."""
     custom_tracing_exporter_path = use_custom_tracing_exporter
@@ -211,6 +226,7 @@ def test_custom_tracing_exporter(use_custom_tracing_exporter):
 
     for span_processor in span_processors:
         assert isinstance(span_processor, SimpleSpanProcessor)
+        span_processor.shutdown()
 
     is_tracing_setup_successful = setup_tracing(
         "component_name",
@@ -361,6 +377,7 @@ def test_tracing_e2e(
             )
         )
         serve.run(BasicModel.bind())
+        wait_for_haproxy_routing_to_replica()
 
         setup_tracing(
             component_name="upstream_app",
@@ -383,6 +400,7 @@ def test_tracing_e2e(
             )
         )
         serve.run(StreamingModel.bind())
+        wait_for_haproxy_routing_to_replica()
         setup_tracing(
             component_name="upstream_app",
             component_id="345",
@@ -447,17 +465,15 @@ def test_tracing_e2e(
 
     serve_logs_dir = get_serve_logs_dir()
     spans_dir = os.path.join(serve_logs_dir, "spans")
-
     files = os.listdir(spans_dir)
 
-    if RAY_SERVE_ENABLE_HA_PROXY:
-        # We don't currently trace HAProxy.
-        assert len(files) == 2
-    else:
-        assert len(files) == 3
+    # proxy, replica, and upstream span files. Under HAProxy the proxy file is
+    # written by the fallback ProxyActor on startup but holds no request spans
+    # under direct ingress.
+    assert len(files) == 3
 
     replica_filename = None
-    proxy_filename = None or RAY_SERVE_ENABLE_HA_PROXY
+    proxy_filename = None
     upstream_filename = None
     for file in files:
         if "replica" in file:
@@ -496,7 +512,7 @@ def test_tracing_e2e(
     assert proxy_spans == expected_proxy_spans
     assert replica_spans == expected_replica_spans
 
-    shutil.rmtree(spans_dir)
+    safe_remove(spans_dir)
 
 
 @pytest.mark.parametrize(
@@ -648,17 +664,15 @@ def test_tracing_e2e_with_errors(
     # Verify the trace data
     serve_logs_dir = get_serve_logs_dir()
     spans_dir = os.path.join(serve_logs_dir, "spans")
-
     files = os.listdir(spans_dir)
 
-    if RAY_SERVE_ENABLE_HA_PROXY:
-        # We don't currently trace HAProxy.
-        assert len(files) == 2
-    else:
-        assert len(files) == 3  # proxy, replica, and upstream spans
+    # proxy, replica, and upstream span files. Under HAProxy the proxy file is
+    # written by the fallback ProxyActor on startup but holds no request spans
+    # under direct ingress.
+    assert len(files) == 3
 
     replica_filename = None
-    proxy_filename = None or RAY_SERVE_ENABLE_HA_PROXY
+    proxy_filename = None
     upstream_filename = None
     for file in files:
         if "replica" in file:
@@ -720,16 +734,20 @@ def test_tracing_e2e_with_errors(
         else:
             assert False, "Invalid protocol"
     # Clean up
-    shutil.rmtree(spans_dir)
+    safe_remove(spans_dir)
 
 
 def custom_tracing_exporter():
     """Custom tracing exporter used for testing."""
-    return [
-        SimpleSpanProcessor(
-            ConsoleSpanExporter(out=open(CUSTOM_EXPORTER_OUTPUT_FILENAME, "a"))
-        )
-    ]
+    out_file = open(CUSTOM_EXPORTER_OUTPUT_FILENAME, "a")
+
+    class FileConsoleSpanExporter(ConsoleSpanExporter):
+        def shutdown(self):
+            if not out_file.closed:
+                out_file.flush()
+                out_file.close()
+
+    return [SimpleSpanProcessor(FileConsoleSpanExporter(out=out_file))]
 
 
 def load_json_fixture(file_path):
@@ -743,10 +761,13 @@ def load_spans(file_path):
     This requires special handling because ConsoleSpanExporter
     does not write proper JSON since the data is streamed.
     """
+    if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+        return []
+
     with open(file_path, "r") as file:
         file_contents = file.read()
 
-    raw_spans = file_contents.split("}\n{")
+    raw_spans = re.split(r"}\s*\n\s*{", file_contents)
     spans = []
     for i, raw_span in enumerate(raw_spans):
         if len(raw_spans) > 1:
@@ -1030,7 +1051,7 @@ def test_batched_span_attached_to_first_request_trace():
         len(batch_indices) == 2
     ), f"Expected two distinct batch indices, got {batch_indices}"
 
-    shutil.rmtree(spans_dir)
+    safe_remove(spans_dir)
 
 
 @pytest.mark.parametrize(
@@ -1129,7 +1150,7 @@ def test_grpc_streaming_tracing_attributes(serve_and_ray_shutdown, method_name):
     assert attrs["rpc.grpc.status_code"] == "OK"
     assert grpc_proxy_span["status"]["status_code"] == "OK"
 
-    shutil.rmtree(spans_dir)
+    safe_remove(spans_dir)
 
 
 if __name__ == "__main__":

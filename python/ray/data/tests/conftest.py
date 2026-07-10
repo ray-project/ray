@@ -13,6 +13,7 @@ import pytest
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
@@ -44,8 +45,13 @@ def mock_all_to_all_op(input_op, name="MockAllToAll"):
         data_context=ray.data.DataContext.get_current(),
         name=name,
     )
-    op.start = MagicMock(side_effect=lambda _: None)
+    op.start = MagicMock(side_effect=lambda *_: None)
     return op
+
+
+def noop_counter():
+    """BlockRefCounter that works without a Ray cluster."""
+    return BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True)
 
 
 @pytest.fixture(scope="module")
@@ -487,7 +493,6 @@ def op_two_block():
     block_params = {
         "num_rows": [10000, 5000],
         "size_bytes": [100, 50],
-        "uss_bytes": [1024 * 1024 * 2, 1024 * 1024 * 1],
         "wall_time": [5, 10],
         "cpu_time": [1.2, 3.4],
         "udf_time": [1.1, 1.7],
@@ -507,7 +512,6 @@ def op_two_block():
             cpu_time_s=block_params["cpu_time"][i],
             udf_time_s=block_params["udf_time"][i],
             node_id=block_params["node_id"][i],
-            max_uss_bytes=block_params["uss_bytes"][i],
             task_idx=block_params["task_idx"][i],
         )
         block_meta_list.append(

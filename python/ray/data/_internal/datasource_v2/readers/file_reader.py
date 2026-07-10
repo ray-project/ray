@@ -1,21 +1,49 @@
 from enum import Enum
-from typing import Iterator, List, Optional
+from functools import cached_property, partial
+from typing import Any, Iterator, List, Optional, Set, Tuple
 
 import pyarrow as pa
 import pyarrow.dataset as pds
-from pyarrow import compute as pc
 from pyarrow.fs import FileSystem, LocalFileSystem
 
+from ray._common.utils import env_integer
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
+from ray.data._internal.datasource.parquet_datasource import _compute_row_hashes
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.base_reader import Reader
-from ray.data._internal.util import iterate_with_retry
+from ray.data._internal.util import iterate_with_retry, make_async_gen
 from ray.data.context import DataContext
+from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
+from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
+
+# Synthetic column name produced when ``include_paths=True``. Shared with
+# the V2 datasource and scanner layers so all references are spelled the
+# same way.
+INCLUDE_PATHS_COLUMN_NAME = "path"
 
 # https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_batches
 # Default is specified by PyArrow.
 _ARROW_DEFAULT_BATCH_SIZE = 131_072
+
+# Number of batches read ahead per scanner. PyArrow's default is 16,
+# which can retain a multi-GB working set when scanning jumbo tensor
+# columns. 8 keeps I/O pipelined on remote filesystems for typical
+# Parquet workloads without doubling memory peak. Drop to 1 via the
+# env var when reading wide tensor columns.
+_ARROW_SCANNER_BATCH_READAHEAD = env_integer(
+    "RAY_DATA_ARROW_SCANNER_BATCH_READAHEAD", 8
+)
+
+# Number of worker threads used to read fragments concurrently per task.
+# Defaults to 4 to overlap remote-filesystem I/O latency across multiple
+# fragments. ``_read_fragment_batches`` caps this to ``len(fragments)``
+# at runtime so single-fragment tasks don't spin up extra workers, and
+# falls back to the sequential path entirely when
+# ``DataContext.execution_options.preserve_order`` is set.
+_DEFAULT_NUM_THREADS = env_integer("RAY_DATA_READ_FILES_NUM_THREADS", 4)
+
+ROW_HASH_COLUMN_NAME = "row_hash"
 
 
 class FileFormat(str, Enum):
@@ -42,12 +70,14 @@ class FileReader(Reader[FileManifest]):
         format: FileFormat,
         batch_size: int = _ARROW_DEFAULT_BATCH_SIZE,
         columns: Optional[List[str]] = None,
-        predicate: Optional[pc.Expression] = None,
+        predicate: Optional[Expr] = None,
         limit: Optional[int] = None,
         filesystem: Optional[FileSystem] = None,
-        partitioning: Optional[pds.Partitioning] = None,
+        partitioning: Optional[Partitioning] = None,
         ignore_prefixes: Optional[List[str]] = None,
         include_paths: bool = False,
+        include_row_hash: bool = False,
+        schema: Optional[pa.Schema] = None,
     ):
         """Initialize the reader.
         Refer to https://arrow.apache.org/docs/python/generated/pyarrow.dataset.dataset.html for more details.
@@ -56,13 +86,27 @@ class FileReader(Reader[FileManifest]):
             format: Format of the files to read.
             batch_size: Number of rows per batch.
             columns: Columns to read. None means all columns.
-            predicate: PyArrow compute expression for filtering.
+            predicate: Ray Data expression for filtering. Converted to a
+                PyArrow expression at the scanner-kwargs boundary.
             limit: Maximum number of rows to read.
             filesystem: Filesystem for reading files.
-            partitioning: Partitioning to use for reading files.
+            partitioning: Ray ``Partitioning`` object. Partition columns are
+                synthesized per-path via ``PathPartitionParser`` after each
+                batch is read, producing string-typed columns (V1 parity).
             ignore_prefixes: Prefixes to ignore when reading files. Default is ['.', '_'] set by PyArrow.
             include_paths: If True, include the source file path in a
                 ``'path'`` column for each row.
+            include_row_hash: If True, include a deterministic uint64 hash
+                per row in a ``'row_hash'`` column. The hash is derived from
+                the source file path and the row's post-filter output
+                position within the fragment, matching V1 semantics. If a
+                ``'row_hash'`` column already exists in the file, it is
+                overwritten.
+            schema: Caller-supplied unified schema used both to override
+                pyarrow's per-fragment inference (so a file whose column
+                is all-null doesn't pin the type to ``null``) and to cast
+                path-derived partition values to their target types when
+                ``Partitioning(field_types=...)`` is set.
 
         """
         self._format = format
@@ -71,9 +115,79 @@ class FileReader(Reader[FileManifest]):
         self._batch_size = batch_size
         self._limit = limit
         self._filesystem = filesystem
-        self._partitioning = partitioning
+        self._partition_parser: Optional[PathPartitionParser] = (
+            PathPartitionParser(partitioning) if partitioning is not None else None
+        )
         self._ignore_prefixes = ignore_prefixes
         self._include_paths = include_paths
+        self._include_row_hash = include_row_hash
+        self._schema = schema
+
+    @cached_property
+    def _file_dataset_schema(self) -> Optional[pa.Schema]:
+        """Schema passed to ``pds.dataset`` — partition keys and ``path``
+        stripped out since those are synthesized post-read.
+
+        Pinning the caller-supplied schema at the pyarrow layer is how
+        we cover the "first file has an all-null column, later files
+        have the real type" case (e.g.
+        ``test_read_null_data_in_first_file``): without the pin,
+        pyarrow locks column X to ``null`` across the fragment group
+        and the later string-typed file fails the cast.
+
+        But pyarrow refuses extension-to-extension casts (e.g.
+        ``ArrowTensorTypeV2(shape=X)`` → ``ArrowVariableShapedTensor``),
+        and files with different per-file tensor shapes only unify
+        through ``ArrowVariableShapedTensor``. When the caller schema
+        contains *any* extension column we skip the pin entirely and
+        let pyarrow infer per-file — downstream concat handles the
+        heterogeneous blocks. Losing the all-null promotion in this
+        narrow case is acceptable; the combination of an all-null
+        first file *and* an extension column is uncommon, whereas
+        reading multiple files with variable-shape tensors is a
+        supported V1 feature.
+        """
+        if self._schema is None:
+            return None
+        if any(isinstance(f.type, pa.ExtensionType) for f in self._schema):
+            return None
+        partition_keys = (
+            set(self._partition_parser._scheme.field_names or [])
+            if self._partition_parser is not None
+            else set()
+        )
+        synthesized = {INCLUDE_PATHS_COLUMN_NAME}
+        if self._include_row_hash:
+            # ``row_hash`` is synthesized post-read, and the schema's type
+            # (``uint64``) may not match the on-disk column's type when a
+            # file already carries a ``row_hash`` column. Strip it from the
+            # dataset schema so pyarrow doesn't try to cast.
+            synthesized.add(ROW_HASH_COLUMN_NAME)
+        fields = [
+            f
+            for f in self._schema
+            if f.name not in partition_keys and f.name not in synthesized
+        ]
+        return pa.schema(fields) if fields else None
+
+    def _broadcast_partition_value(
+        self, name: str, value: Any, num_rows: int
+    ) -> pa.Array:
+        """Broadcast a single path-derived partition value to ``num_rows``,
+        casting to the caller-supplied schema's field type if set.
+
+        Values are stringified first (``PathPartitionParser`` in
+        ``explicit`` mode can return arrow-scalar-like non-strings) and
+        then cast to the target type, so ``Partitioning(field_types=
+        {"year": int})`` still promotes them correctly.
+        """
+        str_val = None if value is None else str(value)
+        arr = pa.repeat(pa.scalar(str_val, type=pa.string()), num_rows)
+        if self._schema is not None:
+            idx = self._schema.get_field_index(name)
+            if idx != -1 and self._schema.field(idx).type != pa.string():
+                arr = arr.cast(self._schema.field(idx).type)
+        return arr
 
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
         """Read data from the input bucket and yield Arrow tables.
@@ -87,62 +201,130 @@ class FileReader(Reader[FileManifest]):
         Yields:
             pa.Table: PyArrow Tables containing the read data.
         """
-        if len(input_split) > 0:
-            paths = list(input_split.paths)
-            filesystem = self._filesystem or LocalFileSystem()
+        if len(input_split) == 0:
+            return
 
-            dataset = pds.dataset(
-                source=paths,
-                format=self._format.value,
-                filesystem=filesystem,
-                partitioning=self._partitioning,
-                ignore_prefixes=self._ignore_prefixes,
-            )
+        # Dedupe paths before handing them to pyarrow. When chunking is on,
+        # a manifest can carry multiple rows per file (each describing a
+        # different row-group slice); pyarrow only needs one fragment per
+        # file, and ``_get_fragments_to_read`` then fans out chunk-level
+        # sub-fragments using the per-row chunk metadata.
+        paths = list(dict.fromkeys(list(input_split.paths)))
+        filesystem = self._filesystem or LocalFileSystem()
+        # Build a ``pds.Dataset`` over *all* manifest paths so pyarrow's
+        # listing + column metadata is shared, but then iterate its
+        # fragments one at a time. ``dataset.scanner(fragments=...)``
+        # at the aggregate level would force a cross-fragment cast —
+        # which breaks variable-shape tensor extensions where each
+        # file has its own ``ArrowTensorTypeV2(shape=...)``. Per-
+        # fragment scanners let pyarrow use the native per-file type,
+        # and downstream concat handles unification.
+        dataset = pds.dataset(
+            source=paths,
+            format=self._make_format(),
+            filesystem=filesystem,
+            schema=self._file_dataset_schema,
+            ignore_prefixes=self._ignore_prefixes,
+        )
 
-            batch_size = self._resolve_batch_size(dataset)
+        # Split the requested columns into ones the on-disk file has
+        # (pyarrow reads these) and ones we need to synthesize post-read
+        # (hive partition keys, "path"). ``self._columns is None`` means
+        # "no projection" — read every file column and synthesize every
+        # available partition/path column.
+        on_disk_column_names = set(dataset.schema.names)
+        if self._columns is None:
+            columns_to_read_from_file: Optional[List[str]] = None
+            columns_to_synthesize: Optional[Set[str]] = None
+        else:
+            columns_to_read_from_file = [
+                c for c in self._columns if c in on_disk_column_names
+            ]
+            columns_to_synthesize = set(self._columns) - on_disk_column_names
 
-            scanner_kwargs = dict(
-                columns=self._columns,
-                filter=self._predicate,
-                batch_size=batch_size,
-                batch_readahead=1,
-            )
-            scanner_kwargs.update(self._arrow_scanner_kwargs())
-            scanner = dataset.scanner(**scanner_kwargs)
+        scanner_kwargs = {
+            "columns": columns_to_read_from_file,
+            "filter": (
+                self._predicate.to_pyarrow() if self._predicate is not None else None
+            ),
+            "batch_size": self._resolve_batch_size(dataset),
+            "batch_readahead": _ARROW_SCANNER_BATCH_READAHEAD,
+        }
+        scanner_kwargs.update(self._arrow_scanner_kwargs())
 
-            ctx = DataContext.get_current()
-            rows_read = 0
-            for table, fragment_path in iterate_with_retry(
-                lambda: self._read_batches(scanner),
-                "read batches",
-                match=ctx.retried_io_errors,
+        rows_read = 0
+        for table, fragment_path, fragment_row_offset in self._read_fragment_batches(
+            dataset, scanner_kwargs, input_split
+        ):
+            if self._limit is not None:
+                if rows_read >= self._limit:
+                    break
+                if len(table) > self._limit - rows_read:
+                    table = table.slice(0, self._limit - rows_read)
+
+            # Build the list of (name, value) pairs to synthesize from
+            # the fragment path: hive partitions + optional ``path``.
+            derived_items: List[Tuple[str, Any]] = []
+            if self._partition_parser is not None:
+                derived_items.extend(self._partition_parser(fragment_path).items())
+            if self._include_paths:
+                derived_items.append((INCLUDE_PATHS_COLUMN_NAME, fragment_path))
+
+            for name, value in derived_items:
+                if (
+                    columns_to_synthesize is not None
+                    and name not in columns_to_synthesize
+                ):
+                    continue
+                if name in table.column_names:
+                    # When the caller schema names a partition key, pyarrow
+                    # expects it in every file and fills it with nulls when
+                    # absent (the hive-typical case). Drop that placeholder
+                    # so the path-derived value below replaces it.
+                    table = table.drop([name])
+                table = table.append_column(
+                    name,
+                    self._broadcast_partition_value(name, value, table.num_rows),
+                )
+
+            # Skip when projection pushdown has narrowed ``columns`` to
+            # exclude ``row_hash`` — the projection below would just drop it.
+            if self._include_row_hash and (
+                columns_to_synthesize is None
+                or ROW_HASH_COLUMN_NAME in columns_to_synthesize
             ):
-                if self._limit is not None:
-                    remaining = self._limit - rows_read
-                    if remaining <= 0:
-                        break
-                    if len(table) > remaining:
-                        table = table.slice(0, remaining)
+                hashes = _compute_row_hashes(
+                    fragment_path, fragment_row_offset, table.num_rows
+                )
+                if ROW_HASH_COLUMN_NAME in table.column_names:
+                    table = table.drop([ROW_HASH_COLUMN_NAME])
+                table = table.append_column(
+                    ROW_HASH_COLUMN_NAME, pa.array(hashes, type=pa.uint64())
+                )
 
-                if self._include_paths:
-                    table = table.append_column(
-                        "path",
-                        pa.array([fragment_path] * table.num_rows, type=pa.string()),
-                    )
+            if self._columns is not None:
+                # Project/reorder to the caller's requested column order;
+                # drop any that weren't produced (matches V1's lenient
+                # behavior). Always select — an empty projection must
+                # narrow the table to zero columns so the stub-column
+                # guard below handles row preservation.
+                produced = set(table.column_names)
+                projected = [c for c in self._columns if c in produced]
+                table = table.select(projected)
 
-                if table.num_columns == 0 and table.num_rows > 0:
-                    # Guards against ``pa.concat_tables`` collapsing rows when
-                    # a batch has zero columns (e.g., empty projection for a
-                    # count query). The stub column is dropped by downstream
-                    # projections.
-                    table = table.append_column(
-                        _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
-                        pa.nulls(table.num_rows),
-                    )
+            if table.num_columns == 0 and table.num_rows > 0:
+                # Guards against ``pa.concat_tables`` collapsing rows
+                # when a batch has zero columns (e.g., empty projection
+                # for a count query). The stub column is dropped by
+                # downstream projections.
+                table = table.append_column(
+                    _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
+                    pa.nulls(table.num_rows),
+                )
 
-                self._on_batch_read(table)
-                rows_read += len(table)
-                yield table
+            self._on_batch_read(table)
+            rows_read += len(table)
+            yield table
 
     def _resolve_batch_size(self, dataset: pds.Dataset) -> int:
         """Return the batch size to use for scanning.
@@ -166,12 +348,166 @@ class FileReader(Reader[FileManifest]):
         """
         return {}
 
-    @staticmethod
-    def _read_batches(
-        scanner: pds.Scanner,
-    ) -> Iterator[tuple[pa.Table, str]]:
-        """Yield non-empty (table, fragment_path) pairs from scanner batches."""
+    def _make_format(self) -> Any:
+        """Format passed to ``pds.dataset(format=...)``.
+
+        Defaults to the format string (e.g. ``"parquet"``); subclasses
+        override to return a configured ``pds.FileFormat`` instance when
+        format-specific options (read options, fragment scan options) need
+        to be threaded through.
+        """
+        return self._format.value
+
+    def _get_fragments_to_read(
+        self,
+        dataset: pds.Dataset,
+        manifest: FileManifest,
+    ) -> List[Tuple[pds.Fragment, int]]:
+        """Return ``(fragment, file_row_offset)`` pairs to scan for this
+        manifest.
+
+        ``file_row_offset`` is the cumulative pre-filter row count of all
+        rows in the underlying file that precede this fragment. It seeds
+        the per-fragment hashing offset so chunked sub-fragments of the
+        same file produce unique ``_compute_row_hashes`` keys instead of
+        colliding on ``(path, 0, n)``.
+
+        Default impl returns one ``(fragment, 0)`` per file in the dataset
+        (paths are deduped in :meth:`read` before the dataset is built).
+        Subclasses that support per-row chunk metadata
+        (e.g. :class:`ParquetFileReader`) override this to fan a single
+        file fragment out into N sub-fragments — one per row-group slice —
+        based on :attr:`FileManifest.file_chunk_metadatas`, each paired
+        with its starting row offset in the file.
+        """
+        return [(fragment, 0) for fragment in dataset.get_fragments()]
+
+    def _read_fragment_batches(
+        self,
+        dataset: pds.Dataset,
+        scanner_kwargs: dict,
+        manifest: FileManifest,
+    ) -> Iterator[Tuple[pa.Table, str, int]]:
+        """Yield non-empty (table, fragment_path, fragment_row_offset) triples.
+
+        ``fragment_row_offset`` is the post-filter row position of the first
+        row of ``table`` within its fragment. ``iterate_with_retry`` skips
+        already-yielded items on retry, so ``offset`` reflects only the
+        rows that actually surface to the caller — matching V1 row-hash
+        semantics even when a fragment fails partway through.
+
+        Retry is scoped per-fragment: if a fragment fails mid-read, only
+        that fragment is re-read (skipping batches already yielded).
+        Wrapping the whole manifest in a single retry would re-iterate
+        fragments that already succeeded and double-emit their batches.
+
+        Each fragment gets its own scanner so pyarrow uses the native
+        per-file schema. A cross-fragment scanner would force a unified
+        schema cast, which refuses extension-to-extension conversion
+        (e.g. variable-shape tensors). V1 ``ParquetDatasource`` follows
+        the same per-fragment pattern via ``fragment.to_batches``.
+
+        When ``RAY_DATA_READ_FILES_NUM_THREADS > 1`` and
+        ``execution_options.preserve_order`` is False, fragments are
+        read concurrently via :func:`make_async_gen`. We still pass
+        ``preserve_ordering=True`` so concurrent reads emit blocks in
+        fragment order; otherwise Ray Data task retries (block
+        reconstruction) could produce a different block sequence.
+
+        ``make_async_gen`` consumes the whole input iterator up front
+        when preserving order. That is acceptable here because the input
+        is the finite fragment manifest from ``_get_fragments_to_read``,
+        which we materialize below anyway. File data is still read lazily
+        by the worker threads.
+        """
+        ctx = DataContext.get_current()
+
+        # ``preserve_ordering=True`` would drain the input iterator
+        # eagerly anyway, so materialize once here to (a) cap
+        # ``num_workers`` at the actual fragment count and (b) avoid
+        # an early-fallback when the manifest has a single fragment.
+        # Subclasses (e.g. ``ParquetFileReader``) override
+        # ``_get_fragments_to_read`` to fan out chunk-level
+        # sub-fragments from the manifest's chunk metadata.
+        fragments_with_offsets = self._get_fragments_to_read(dataset, manifest)
+        if not fragments_with_offsets:
+            return
+
+        num_workers = min(_DEFAULT_NUM_THREADS, len(fragments_with_offsets))
+        if num_workers <= 1 or ctx.execution_options.preserve_order:
+            yield from self._read_fragments_sequential(
+                iter(fragments_with_offsets), scanner_kwargs
+            )
+            return
+
+        # Set `preserve_ordering=True` to ensure deterministic output ordering.
+        # This is required so that Ray Data task retries (block reconstruction)
+        yield from make_async_gen(
+            base_iterator=iter(fragments_with_offsets),
+            fn=partial(self._read_fragments_sequential, scanner_kwargs=scanner_kwargs),
+            preserve_ordering=True,
+            num_workers=num_workers,
+        )
+
+    def _read_fragments_sequential(
+        self,
+        fragments_with_offsets: Iterator[Tuple[pds.Fragment, int]],
+        scanner_kwargs: dict,
+    ) -> Iterator[Tuple[pa.Table, str, int]]:
+        """Read each fragment in ``fragments_with_offsets`` in order, yielding
+        ``(table, fragment_path, fragment_row_offset)`` triples.
+
+        Each input pair is ``(fragment, file_row_offset)``. The yielded
+        ``fragment_row_offset`` starts at ``file_row_offset`` (the row
+        position of the fragment's first row within its underlying file)
+        and accumulates per yielded batch, so the per-fragment row-hash
+        math in :meth:`read` keys off the right window even when chunking
+        fans one file into multiple sub-fragments sharing ``fragment.path``.
+
+        ``iterate_with_retry`` is scoped to a single fragment so a
+        transient I/O failure only re-reads the failing file (skipping
+        batches already yielded), not the whole input.
+
+        This is the per-worker body for the threaded path in
+        :meth:`_read_fragment_batches` (one thread per call, each
+        consuming a disjoint slice of fragments via ``make_async_gen``)
+        and is also the entire read loop for the sequential path.
+        """
+        ctx = DataContext.get_current()
+        for fragment, file_row_offset in fragments_with_offsets:
+            offset = file_row_offset
+            for table in iterate_with_retry(
+                partial(self._iter_fragment_tables, fragment, scanner_kwargs),
+                f"read fragment {fragment.path}",
+                match=ctx.retried_io_errors,
+            ):
+                if table.num_rows > 0:
+                    yield table, fragment.path, offset
+                    offset += table.num_rows
+
+    def _iter_fragment_tables(
+        self,
+        fragment: pds.Fragment,
+        scanner_kwargs: dict,
+    ) -> Iterator[pa.Table]:
+        """Yield Arrow tables for a single fragment.
+
+        Subclasses override this to swap in a format-specific reader for
+        fragments that don't fit the default scanner-based path (e.g.
+        Parquet's ARROW-5030 nested-type fallback).
+
+        When a non-extension caller schema is available we pin it at the
+        scanner so pyarrow null-fills any column the unified schema names
+        but the fragment lacks (V1 parity — ``ParquetDatasource`` passes
+        ``read_schema`` to ``fragment.to_batches``). Falling back to the
+        per-fragment ``physical_schema`` preserves the variable-shape
+        tensor escape hatch already encoded in ``_file_dataset_schema``.
+        """
+        fragment_schema = (
+            self._file_dataset_schema
+            if self._file_dataset_schema is not None
+            else fragment.physical_schema
+        )
+        scanner = fragment.scanner(**scanner_kwargs, schema=fragment_schema)
         for tagged in scanner.scan_batches():
-            table = pa.Table.from_batches(batches=[tagged.record_batch])
-            if table.num_rows > 0:
-                yield table, tagged.fragment.path
+            yield pa.Table.from_batches(batches=[tagged.record_batch])

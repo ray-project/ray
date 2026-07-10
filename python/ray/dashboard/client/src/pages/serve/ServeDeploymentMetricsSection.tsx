@@ -22,6 +22,10 @@ import {
   TIME_RANGE_TO_FROM_VALUE,
   TimeRangeOptions,
 } from "../metrics";
+import {
+  grafanaClusterQueryParam,
+  grafanaDatasourceQueryParam,
+} from "../metrics/utils";
 
 // NOTE: please keep the titles here in sync with dashboard/modules/metrics/dashboards/serve_deployment_dashboard_panels.py
 const METRICS_CONFIG: MetricConfig[] = [
@@ -59,6 +63,7 @@ export const ServeReplicaMetricsSection = ({
     dashboardDatasource,
     currentTimeZone,
     themeMode,
+    grafanaClusterFilter,
   } = useContext(GlobalContext);
   const grafanaServeDashboardUid =
     dashboardUids?.serveDeployment ?? "rayServeDashboard";
@@ -89,6 +94,8 @@ export const ServeReplicaMetricsSection = ({
   const toParam = to !== null ? `&to=${to}` : "";
   const timeRangeParams = `${fromParam}${toParam}`;
   const refreshParams = refresh ? `&refresh=${refresh}` : "";
+  const clusterQuery = grafanaClusterQueryParam(grafanaClusterFilter);
+  const datasourceQuery = grafanaDatasourceQueryParam(dashboardDatasource);
 
   const replicaButtonUrl = useViewServeDeploymentMetricsButtonUrl(
     deploymentName,
@@ -190,7 +197,7 @@ export const ServeReplicaMetricsSection = ({
                 deploymentName,
               )}&var-Replica=${encodeURIComponent(
                 replicaId,
-              )}&var-datasource=${dashboardDatasource}`;
+              )}${datasourceQuery}${clusterQuery}`;
             return (
               <Paper
                 key={pathParams}
@@ -232,6 +239,7 @@ export const useViewServeDeploymentMetricsButtonUrl = (
     prometheusHealth,
     dashboardUids,
     dashboardDatasource,
+    grafanaClusterFilter,
   } = useContext(GlobalContext);
   const grafanaServeDashboardUid =
     dashboardUids?.serveDeployment ?? "rayServeDashboard";
@@ -240,9 +248,12 @@ export const useViewServeDeploymentMetricsButtonUrl = (
     ? `&var-Replica=${encodeURIComponent(replicaId)}`
     : "";
 
+  const clusterQuery = grafanaClusterQueryParam(grafanaClusterFilter);
+  const datasourceQuery = grafanaDatasourceQueryParam(dashboardDatasource);
+
   return grafanaHost === undefined || !prometheusHealth
     ? null
     : `${grafanaHost}/d/${grafanaServeDashboardUid}?orgId=${grafanaOrgId}&var-Deployment=${encodeURIComponent(
         deploymentName,
-      )}${replicaStr}&var-datasource=${dashboardDatasource}`;
+      )}${replicaStr}${datasourceQuery}${clusterQuery}`;
 };

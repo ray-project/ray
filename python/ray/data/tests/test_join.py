@@ -66,6 +66,7 @@ def test_simple_inner_join(
 
     # Sort resulting frame and reset index (to be able to compare with expected one)
     joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
+    expected_pd_sorted = expected_pd_sorted.astype(joined_pd_sorted.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
@@ -165,6 +166,9 @@ def test_simple_left_right_outer_semi_anti_join(
         # Sort resulting frame and reset index (to be able to compare with expected one)
         joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
         expected_pd_sorted = expected_pd.sort_values(by=["id"]).reset_index(drop=True)
+        expected_pd_sorted = expected_pd_sorted.astype(
+            joined_pd_sorted.dtypes.to_dict()
+        )
 
         pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
@@ -226,6 +230,9 @@ def test_simple_full_outer_join(
         # Sort resulting frame and reset index (to be able to compare with expected one)
         joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
         expected_pd_sorted = expected_pd.sort_values(by=["id"]).reset_index(drop=True)
+        expected_pd_sorted = expected_pd_sorted.astype(
+            joined_pd_sorted.dtypes.to_dict()
+        )
 
         pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
@@ -389,6 +396,7 @@ def test_anti_join_no_matches(
     # Should get all rows from the respective table
     joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
     expected_pd_sorted = expected_pd.sort_values(by=["id"]).reset_index(drop=True)
+    expected_pd_sorted = expected_pd_sorted.astype(joined_pd_sorted.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
@@ -484,6 +492,7 @@ def test_anti_join_multi_key(
         drop=True
     )
     joined_pd_sorted = joined_pd.sort_values(by=expected_cols).reset_index(drop=True)
+    expected_pd_sorted = expected_pd_sorted.astype(joined_pd_sorted.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
@@ -519,6 +528,26 @@ def _assert_scalar_values(result_by_id, expected_values):
     for row_id, column_values in expected_values.items():
         for column, expected_value in column_values.items():
             assert result_by_id[row_id][column] == expected_value
+
+
+def test_should_not_index_empty_schema_tables():
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import _should_index_side
+
+    supported_table = pa.table({"id": pa.array([1])})
+    unsupported_table = pa.table({"unsupported": pa.array([[1]])})
+    empty_schema_table = pa.table({})
+
+    assert not _should_index_side(
+        "left", empty_schema_table, unsupported_table, JoinType.LEFT_OUTER
+    )
+    assert not _should_index_side(
+        "left", supported_table, empty_schema_table, JoinType.LEFT_OUTER
+    )
+    assert _should_index_side(
+        "left", supported_table, unsupported_table, JoinType.LEFT_OUTER
+    )
 
 
 @pytest.mark.skipif(
@@ -758,7 +787,7 @@ def test_join_with_predicate_pushdown(
     )
 
     # Check plan to verify pushdown behavior
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
     plan_str = optimized_plan.dag.dag_str
 
@@ -838,7 +867,7 @@ def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_
     assert all(row["left_val"] > row["right_val"] for row in result)
 
     # Check plan: filter should NOT be pushed down (should stay after join)
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # Filter should come AFTER Join (not pushed down)

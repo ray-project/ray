@@ -91,8 +91,12 @@ class ExportFormat:
     H5 = "h5"
 
     @staticmethod
-    def validate(formats):
+    def validate(formats: List[str]):
         """Validates formats.
+
+        Args:
+            formats: List of export format strings; each entry is normalized in
+                place and checked against the supported set.
 
         Raises:
             ValueError: if the format is unknown.
@@ -118,6 +122,12 @@ class _TrialInfo:
     """
 
     def __init__(self, trial: "Trial"):
+        """Initialize ``_TrialInfo`` from a ``Trial``.
+
+        Args:
+            trial: The ``Trial`` whose identifying information should be
+                captured into this serializable struct.
+        """
         self._trial_name = str(trial)
         self._trial_id = trial.trial_id
         self._trial_resources = trial.placement_group_factory
@@ -274,6 +284,35 @@ class Trial:
         in ray.tune.experiment.config_parser.
 
         Args:
+            trainable_name: Name of the registered trainable to execute.
+            config: Hyperparameter configuration for this trial.
+            trial_id: Unique identifier for this trial. Auto-generated if not
+                provided.
+            storage: ``StorageContext`` describing where trial results and
+                checkpoints are persisted.
+            evaluated_params: Parameters chosen by the search algorithm, used
+                for display and configuration export.
+            experiment_tag: Identifying trial name to show in the console.
+            placement_group_factory: Resource specification for the trial as a
+                ``PlacementGroupFactory`` (or dict that will be converted to one).
+            stopping_criterion: Mapping of metric name to threshold value that
+                stops the trial once exceeded.
+            checkpoint_config: ``CheckpointConfig`` controlling how trial
+                checkpoints are saved and rotated.
+            export_formats: List of formats (e.g. ``["model"]``) to export at
+                the end of the trial.
+            restore_path: Path to a checkpoint directory used to seed the
+                trial's initial state.
+            trial_name_creator: Optional callable that returns a display name
+                for the trial.
+            trial_dirname_creator: Optional callable that returns the trial
+                directory name relative to the experiment directory.
+            log_to_file: Either a single path or a ``(stdout, stderr)`` pair of
+                paths to which the trial's stdout/stderr should be written.
+            max_failures: Number of times to retry the trial from its latest
+                checkpoint before giving up.
+            stub: If True, skip trainable validation. Used when building
+                ``Trial`` objects from on-disk checkpoints for inspection only.
             _setup_default_resource: Whether to set up default resources.
                 When initializing trials from checkpoints, this field is set to false,
                 so that setting up default resources can be delayed till after
@@ -617,6 +656,10 @@ class Trial:
 
         Should only be called when the trial is not running.
 
+        Args:
+            resources: New resource requirements for the trial; a ``dict``
+                will be converted into a ``PlacementGroupFactory``.
+
         Raises:
             ValueError: if trial status is running.
         """
@@ -845,7 +888,7 @@ class Trial:
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
-            checkpoint: Checkpoint taken.
+            checkpoint_result: Training result containing the checkpoint taken.
         """
         self.run_metadata.checkpoint_manager.register_checkpoint(checkpoint_result)
         # Update the checkpoint index to keep the checkpoint index in sync.
@@ -1018,7 +1061,7 @@ class Trial:
             if key in state:
                 state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
-        # Ensure that stub doesn't get overriden
+        # Ensure that stub doesn't get overridden
         stub = state.pop("stub", True)
         self.__dict__.update(state)
         self.stub = stub or getattr(self, "stub", False)
