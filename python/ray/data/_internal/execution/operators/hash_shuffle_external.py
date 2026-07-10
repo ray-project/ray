@@ -2,23 +2,19 @@
 
 Design: design/hash-shuffle-bypass.md.
 
-vs v2 (N×M plasma ObjectRefs + reducer ``ray.get``):
 - each MAP task writes ONE file (all its partitions, Arrow IPC) and returns ONE
   small handle (path + per-partition offset index + the source node's fetch
-  endpoint + a per-shuffle auth token). Driver tracks O(N) handles, not O(N×M)
-  refs; bulk never enters plasma.
+  endpoint + a per-shuffle auth token). Driver tracks O(N) handles; bulk data
+  never enters plasma.
 - a per-node ``ShuffleManager`` Ray actor runs its OWN socket server (§3.4/§3.5)
-  that ``pread``s requested byte-ranges and streams them back. The REDUCE task is
-  a client of that server: bytes arrive in its **user space** (NOT plasma →
+  that ``pread``s requested byte-ranges and streams them back. The REDUCE task
+  is a client of that server: bytes arrive in its **user space** (NOT plasma →
   preserves 1×, §4.6) and are consumed inline. Cross-node this is the real
   out-of-band transport; single-node it is a loopback socket (still the real
   code path, not a direct ``open``).
 
-Reuses v2's PartitionFn / ReduceFn / MapBlockTransformer contracts verbatim, so
-group-by / sort / aggregate / join factories compose unchanged.
-
-Scope: works single-node (one actor) and is structured for multi-node (one actor
-per node). No planner/ShuffleStrategy wiring yet (driven by a harness).
+Uses the standard ``PartitionFn`` / ``ReduceFn`` / ``MapBlockTransformer``
+contracts, so group-by / sort / aggregate / join factories compose unchanged.
 """
 
 # todo: pre-check same-key skew in mapphase would be smart
@@ -810,11 +806,11 @@ def external_hash_shuffle_map_task(
     - **Output**: all post-hash partition buckets share one pool of that
       size. On overflow the LARGEST bucket is spilled — total staging is
       bounded independent of the partition count M.
-    - **Input**: v2's ``PartitionFn(Table → Dict[pid, Table])`` materializes
-      all M shards at once (~2× copy of its input), so we feed it in
-      row-batches sized ``pool_budget_bytes / avg_row_bytes`` to keep the
-      transient spike ~pool-bounded. If the whole block already fits the
-      pool, we skip batching.
+    - **Input**: ``PartitionFn(Table → Dict[pid, Table])`` materializes all
+      M shards at once (~2× copy of its input), so we feed it in row-batches
+      sized ``pool_budget_bytes / avg_row_bytes`` to keep the transient spike
+      ~pool-bounded. If the whole block already fits the pool, we skip
+      batching.
 
     Net: **map peak ≈ input block + O(pool_budget_bytes)**. Blocking
     ``f.write`` gives natural OS backpressure on slow disks.
@@ -909,10 +905,10 @@ def external_hash_shuffle_map_task(
                 return sum(staging_bytes.values())
 
             for blk in blocks:
-                # Match v2's boundary convention: accept any Ray Data Block
-                # (Arrow / pandas / ...) and normalize to ``pa.Table`` here.
-                # Downstream (partition_fn, transformer, IPC serialize) is
-                # Arrow-only and stays that way. No-op when already Arrow.
+                # Accept any Ray Data Block (Arrow / pandas / ...) at the
+                # boundary and normalize to ``pa.Table`` here. Downstream
+                # (partition_fn, transformer, IPC serialize) is Arrow-only.
+                # No-op when already Arrow.
                 if not isinstance(blk, pa.Table):
                     blk = BlockAccessor.for_block(blk).to_arrow()
                 if transformer is not None:
@@ -1471,10 +1467,10 @@ def external_hash_shuffle_reduce_task(
     and this generator mmap-decodes each region as its future completes.
 
     The reducer always runs in blocking mode — accumulate the partition,
-    reduce once, then finalize (mirrors v2's decision in #64481: repartition
-    needs "one partition = one block", so incremental flush was dead code).
-    Output is reshaped to ``target_max_block_size`` via ``BlockOutputBuffer``
-    (a no-op passthrough when ``target_max_block_size`` is None).
+    reduce once, then finalize. Repartition needs "one partition = one
+    block", so incremental flushing would be dead code. Output is reshaped
+    to ``target_max_block_size`` via ``BlockOutputBuffer`` (a no-op
+    passthrough when ``target_max_block_size`` is None).
 
     ``downstream_map_transformer`` runs a fused downstream map (typically
     Write) inline on each emitted block before yielding.
@@ -1526,7 +1522,7 @@ def external_hash_shuffle_reduce_task(
             yield from _yield_with_stats(out_block)
 
     # Empty-input shortcut: no shards for this partition, hand [] to
-    # reduce_fn and emit whatever it yields (may be nothing — same as v2).
+    # reduce_fn and emit whatever it yields (may be nothing).
     if not sources:
         for block in reduce_fn(partition_id, []):
             yield from _emit(block)

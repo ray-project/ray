@@ -1,15 +1,15 @@
 """ExternalHashShuffleReduceOp — reduce phase of the external-shuffle variant.
 
-One partition wrapper in (via ``_add_input_inner``), one reduce task out.
-Same one-per-partition dispatch shape as v2's ``ShuffleReduceOp``; the
-executor's normal backpressure + resource manager gate dispatch.
+One partition wrapper in (via ``_add_input_inner``), one reduce task
+out. The executor's normal backpressure + resource manager gate
+dispatch.
 
-Wire difference from v2: each wrapper carries a single ObjectRef —
-the shared handle-list plasma object built by the map op — plus a
-``__partition__<pid>`` sentinel in its metadata. The reduce task
-resolves that ref (a list of per-mapper handle refs), materializes
-the individual handle dicts, and TCP-fetches its partition's shards
-from each source node's ``ShuffleManager``.
+Each wrapper carries a single ObjectRef — the shared handle-list
+plasma object built by the map op — plus a ``__partition__<pid>``
+sentinel in its metadata. The reduce task resolves that ref (a list of
+per-mapper handle refs), materializes the individual handle dicts, and
+TCP-fetches its partition's shards from each source node's
+``ShuffleManager``.
 """
 
 import functools
@@ -132,7 +132,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         # External-shuffle-specific state below.
         # =====================================================================
 
-        # external_hash_shuffle_reduce_task behavior knobs (no v2 counterpart):
+        # external_hash_shuffle_reduce_task behavior knobs:
         # - ``max_bytes_per_fetch``: cap per-FETCH byte volume
         # - ``reduce_prefetch_dir``: staging dir for prefetch.bin
         self._max_bytes_per_fetch: int = max_bytes_per_fetch
@@ -153,8 +153,8 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         handles_ref = refs.block_refs[0]
         estimated_bytes = sum((m.size_bytes or 0) for m in refs.metadata)
 
-        # Same as v2: disallow_block_splitting drops the reshape target
-        # so ``BlockOutputBuffer`` emits one block per partition.
+        # disallow_block_splitting drops the reshape target so
+        # ``BlockOutputBuffer`` emits one block per partition.
         target_max_block_size = (
             None
             if self._disallow_block_splitting

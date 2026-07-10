@@ -429,7 +429,7 @@ class FuseOperators(Rule):
                     down_op.target_max_block_size_override
                 ),
             )
-        else:  # V2 ShuffleReduceOp
+        else:  # plasma-based ShuffleReduceOp
             fused_op = ShuffleReduceOp(
                 up_op.input_dependencies[0],
                 up_op.data_context,

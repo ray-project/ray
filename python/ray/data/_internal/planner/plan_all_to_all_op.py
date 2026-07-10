@@ -69,7 +69,7 @@ def _plan_hash_shuffle_repartition(
     logical_op: Repartition,
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
-    """Build the two-op (ShuffleMapOp → ShuffleReduceOp) DAG for V2 hash shuffle.
+    """Build the two-op (ShuffleMapOp → ShuffleReduceOp) DAG for the plasma-based hash shuffle.
 
     Returns the reduce op; the executor crawls upstream via its
     input_dependencies to find the map op.

@@ -73,9 +73,9 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
     _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS = 1.0
     _DEFAULT_PRE_MAP_MERGE_THRESHOLD = 1024 * 1024 * 1024  # 1 GB
     # Default = unbounded partition pool: accumulate every partition fully
-    # and encode it once at end-of-task (matching v2, which has no pool and
-    # bounds memory via the ``memory`` resource request instead). Opt in
-    # to a real pool by passing ``pool_budget_bytes=``.
+    # and encode it once at end-of-task. Memory bounded by the ``memory``
+    # resource request instead. Opt in to a real pool by passing
+    # ``pool_budget_bytes=``.
     _UNBOUNDED_POOL_BYTES = 1 << 62
 
     def __init__(
@@ -132,8 +132,8 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         self._total_input_bytes: int = 0
         self._map_blocks_stats: List[BlockStats] = []
         # Per-partition decoded (pa.Table.nbytes, pre-compression) byte total,
-        # summed across all completed mappers. Consumed by ExternalHashShuffleReduceOp
-        # via ``get_partition_bytes`` — mirrors v2's ``_partition_bytes``.
+        # summed across all completed mappers. Consumed by
+        # ExternalHashShuffleReduceOp via ``get_partition_bytes``.
         self._partition_bytes: Dict[int, int] = defaultdict(int)
 
         # -- Sub-progress bars -----------------------------------------------
@@ -330,8 +330,8 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         self._map_resource_usage = self._map_resource_usage.subtract(requested)
 
         # Roll up input stats from the bundles now — the task return
-        # doesn't carry them (v2 gets them from ``ray.get`` below), so
-        # compute before ``destroy_if_owned`` drops the metadata.
+        # doesn't carry them, so compute before ``destroy_if_owned``
+        # drops the metadata.
         input_rows = sum(
             m.num_rows or 0 for bundle in input_bundles for m in bundle.metadata
         )
