@@ -1,3 +1,5 @@
+from typing import Optional
+
 import pytest
 
 from ray.data._internal.dynamic_work_queue import parallel_process_work_stealing
@@ -290,7 +292,7 @@ def test_parallel_process_work_stealing_error_clears_exception():
     class BigObject:
         pass
 
-    ref = None
+    ref: Optional["weakref.ref"] = None
 
     def process(item, add_work, add_result):
         nonlocal ref
@@ -302,6 +304,7 @@ def test_parallel_process_work_stealing_error_clears_exception():
         list(parallel_process_work_stealing([1], process, num_workers=1))
 
     gc.collect()
+    assert ref is not None
     assert ref() is None, "BigObject leaked via traceback reference cycle"
 
 

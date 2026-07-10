@@ -20,7 +20,7 @@ class _WorkerError:
     output queue are unambiguously distinguishable from legitimate result
     values."""
 
-    exception: BaseException
+    exception: Optional[BaseException]
 
 
 def _raise_if_error(item: Any) -> Any:
@@ -28,6 +28,7 @@ def _raise_if_error(item: Any) -> Any:
     unchanged."""
     if isinstance(item, _WorkerError):
         exception = item.exception
+        assert exception is not None
         item.exception = None
         raise exception
     return item
@@ -283,6 +284,7 @@ def parallel_process_work_stealing(
         )
 
         if preserve_order:
+            assert order_key is not None
             results: list[ResultT] = []
             for item in iter(pool.output_queue.get, SENTINEL):
                 _raise_if_error(item)
