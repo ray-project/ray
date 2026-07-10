@@ -42,6 +42,30 @@ class TestMultiRLModule(unittest.TestCase):
         self.assertIsInstance(multi_rl_module["module1"], VPGTorchRLModule)
         self.assertIsInstance(multi_rl_module["module2"], VPGTorchRLModule)
 
+    def test_multi_rl_module_spec_with_single_shared_spec(self):
+        """MultiRLModuleSpec accepts a single shared RLModuleSpec.
+
+        Regression test for #63616: constructing a `MultiRLModuleSpec` with a
+        single (shared) `RLModuleSpec` - as shown in the shared-policy docs
+        example - used to crash in `__post_init__` with
+        `'RLModuleSpec' object has no attribute 'values'`.
+        """
+        env = gym.make("CartPole-v1")
+        shared_spec = RLModuleSpec(
+            module_class=VPGTorchRLModule,
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config={"hidden_dim": 32},
+            inference_only=False,
+        )
+
+        spec = MultiRLModuleSpec(rl_module_specs=shared_spec)
+
+        # The single shared spec is preserved (AlgorithmConfig expands it into a
+        # per-module dict later), and `inference_only` is derived from it.
+        self.assertIs(spec.rl_module_specs, shared_spec)
+        self.assertFalse(spec.inference_only)
+
     def test_as_multi_rl_module(self):
 
         env_class = make_multi_agent("CartPole-v0")

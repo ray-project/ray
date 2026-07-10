@@ -577,10 +577,18 @@ class MultiRLModuleSpec:
         # Figure out global inference_only setting.
         # If not provided (None), only if all submodules are
         # inference_only, this MultiRLModule will be inference_only.
+        # `rl_module_specs` may be a single (shared) `RLModuleSpec` - as shown in
+        # the shared-policy docs example - not just a dict, so normalize before
+        # iterating (issue #63616). The AlgorithmConfig later expands a single
+        # shared spec into a per-module dict.
+        if isinstance(self.rl_module_specs, dict):
+            specs = self.rl_module_specs.values()
+        else:
+            specs = [self.rl_module_specs]
         self.inference_only = (
             self.inference_only
             if self.inference_only is not None
-            else all(spec.inference_only for spec in self.rl_module_specs.values())
+            else all(spec.inference_only for spec in specs)
         )
 
     @OverrideToImplementCustomLogic
