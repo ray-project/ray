@@ -28,6 +28,7 @@
 #include "ray/common/protobuf_utils.h"
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/spilled_object_reader.h"
+#include "ray/util/container_util.h"
 #include "ray/util/network_util.h"
 #include "ray/util/time.h"
 
@@ -112,8 +113,9 @@ ObjectManager::ObjectManager(
   auto object_is_local = [this](const ObjectID &object_id) {
     return local_objects_.count(object_id) != 0;
   };
-  auto send_pull_request = [this](const ObjectID &object_id, const NodeID &client_id) {
-    SendPullRequest(object_id, client_id);
+  auto send_pull_request = [this](const std::vector<ObjectID> &object_ids,
+                                  const NodeID &client_id) {
+    SendPullRequest(object_ids, client_id);
   };
   auto cancel_pull_request = [this](const ObjectID &object_id) {
     // We must abort this object because it may have only been partially
@@ -294,23 +296,27 @@ void ObjectManager::MarkObjectFailed(const ObjectID &object_id,
   }
 }
 
-void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &client_id) {
-  auto rpc_client = GetRpcClient(client_id);
+void ObjectManager::SendPullRequest(const std::vector<ObjectID> &object_ids,
+                                    const NodeID &client_id) {
+  if (object_ids.empty()) {
+    return;
+  }
+  std::shared_ptr<rpc::ObjectManagerClientInterface> rpc_client = GetRpcClient(client_id);
   if (rpc_client) {
-    // Try pulling from the client.
     rpc_service_.post(
-        [this, object_id, client_id, rpc_client]() {
+        [this, object_ids, client_id, rpc_client]() {
           rpc::PullRequest pull_request;
-          pull_request.set_object_id(object_id.Binary());
           pull_request.set_node_id(self_node_id_.Binary());
-
+          for (const auto &oid : object_ids) {
+            pull_request.add_object_ids(oid.Binary());
+          }
           rpc_client->Pull(
               pull_request,
-              [object_id, client_id](const Status &status, const rpc::PullReply &reply) {
+              [object_ids, client_id](const Status &status, const rpc::PullReply &reply) {
                 if (!status.ok()) {
                   RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
-                      << "Send pull " << object_id << " request to client " << client_id
-                      << " failed due to " << status;
+                      << "Send pull request for " << debug_string(object_ids)
+                      << " to client " << client_id << " failed due to " << status;
                 }
               });
         },
@@ -318,7 +324,7 @@ void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &cli
   } else {
     RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
         << "Couldn't send pull request from " << self_node_id_ << " to " << client_id
-        << " of object " << object_id << " , setup rpc connection failed.";
+        << " for " << debug_string(object_ids) << ", setup rpc connection failed.";
   }
 }
 
@@ -658,13 +664,14 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
 void ObjectManager::HandlePull(rpc::PullRequest request,
                                rpc::PullReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
-  ObjectID object_id = ObjectID::FromBinary(request.object_id());
   NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG).WithField(node_id).WithField(object_id)
-      << "Received pull request from node for object";
-
-  main_service_->post([this, object_id, node_id]() { Push(object_id, node_id); },
-                      "ObjectManager.HandlePull");
+  for (const auto &binary : request.object_ids()) {
+    ObjectID object_id = ObjectID::FromBinary(binary);
+    RAY_LOG(DEBUG).WithField(node_id).WithField(object_id)
+        << "Received pull request from node for object";
+    main_service_->post([this, object_id, node_id]() { Push(object_id, node_id); },
+                        "ObjectManager.HandlePull");
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

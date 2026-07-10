@@ -260,15 +260,15 @@ class TaskManager : public TaskManagerInterface {
         free_actor_object_callback_(std::move(free_actor_object_callback)),
         set_direct_transport_metadata_(std::move(set_direct_transport_metadata)),
         clock_(clock) {
+    // On change, only retract keys that dropped to zero (emit their final 0). Live
+    // keys are re-asserted every tick by the ForEachEntry loop in RecordMetrics, so
+    // emitting them here too would double-record. Keeps each key recorded once/tick.
     task_counter_.SetOnChangeCallback(
         [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key)
             ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
-              task_by_state_counter_.Record(
-                  task_counter_.Get(key),
-                  {{"State", rpc::TaskStatus_Name(std::get<1>(key))},
-                   {"Name", std::get<0>(key)},
-                   {"IsRetry", std::get<2>(key) ? "1" : "0"},
-                   {"Source", "owner"}});
+              if (task_counter_.Get(key) == 0) {
+                RecordTaskState(key, /*value=*/0);
+              }
             });
     reference_counter_.SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
@@ -603,6 +603,16 @@ class TaskManager : public TaskManagerInterface {
   void RecordMetrics();
 
  private:
+  /// Records the owner-side task-state gauge for a single key. Shared by the
+  /// on-change callback and the per-tick re-emit in RecordMetrics so both go
+  /// through one implementation.
+  ///
+  /// \param key The (function name, task status, is_retry) key to record.
+  /// \param value The current count for `key`, passed in by the caller (which
+  /// already has it) to avoid a redundant counter lookup.
+  void RecordTaskState(const std::tuple<std::string, rpc::TaskStatus, bool> &key,
+                       int64_t value) ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_);
+
   struct TaskEntry {
     TaskEntry(TaskSpecification spec,
               int num_retries_left,
