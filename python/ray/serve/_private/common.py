@@ -884,8 +884,9 @@ class StreamingHTTPRequest:
         if self._receive_asgi_messages is None:
             # Constructor invariant: if `receive_asgi_messages` wasn't passed,
             # then `proxy_actor_name` is not None.
+            assert self._proxy_actor_name is not None
             self._cached_proxy_actor = ray.get_actor(
-                self._proxy_actor_name, namespace=SERVE_NAMESPACE  # type: ignore[arg-type]
+                self._proxy_actor_name, namespace=SERVE_NAMESPACE
             )
             self._receive_asgi_messages = (
                 # `ActorHandle.__getattr__` is annotated `Never`; per-method

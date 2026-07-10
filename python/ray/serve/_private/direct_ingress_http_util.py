@@ -59,11 +59,6 @@ class ASGIDIReceiveProxy:
     def put_message(self, msg: Message):
         self.queue.put_nowait(msg)
 
-    def close_queue(self):
-        # NOTE: `asyncio.Queue` has no `close()` on any Python version; this
-        # would raise `AttributeError` if called (currently no callers).
-        self.queue.close()  # pyrefly: ignore[missing-attribute]
-
     def fetch_until_disconnect_task(self) -> asyncio.Task:
         return asyncio.create_task(self._fetch_until_disconnect())
 

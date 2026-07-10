@@ -203,13 +203,11 @@ class LocalReplicaResult(ReplicaResult):
     @_process_response
     def __next__(self):
         assert self._is_streaming, "next() can only be called on a streaming result."
+        # Streaming invariant: `_generator_result_queue` is non-None.
+        assert self._generator_result_queue is not None
 
         while True:
-            # Streaming invariant: `_generator_result_queue` is non-None.
-            if (
-                self._future.done()
-                and self._generator_result_queue.empty()  # pyrefly: ignore[missing-attribute]
-            ):
+            if self._future.done() and self._generator_result_queue.empty():
                 if self._future.exception():
                     # Guarded: `exception()` is non-None per the check above.
                     raise self._future.exception()  # pyrefly: ignore[bad-raise]
@@ -217,15 +215,15 @@ class LocalReplicaResult(ReplicaResult):
                     raise StopIteration
 
             try:
-                return self._generator_result_queue.get(  # pyrefly: ignore[missing-attribute]
-                    timeout=0.01
-                )
+                return self._generator_result_queue.get(timeout=0.01)
             except queue.Empty:
                 pass
 
     @_process_response
     async def __anext__(self):
         assert self._is_streaming, "anext() can only be called on a streaming result."
+        # Streaming invariant: `_generator_result_queue` is non-None.
+        assert self._generator_result_queue is not None
 
         # This callback does not pull from the queue, only checks that a result is
         # available, else there is a race condition where the future finishes and the
@@ -247,10 +245,7 @@ class LocalReplicaResult(ReplicaResult):
             return_when=asyncio.FIRST_COMPLETED,
         )
 
-        # Streaming invariant: `_generator_result_queue` is non-None.
-        # pyrefly: ignore[missing-attribute]
         if not self._generator_result_queue.empty():
-            # pyrefly: ignore[missing-attribute]
             return self._generator_result_queue.get()
 
         if self._asyncio_future.exception():

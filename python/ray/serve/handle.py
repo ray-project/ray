@@ -325,8 +325,7 @@ class _DeploymentHandleBase(Generic[T]):
                 await asyncio.wrap_future(shutdown_future)
             else:
                 # In same-loop mode the future is an `asyncio.Future`.
-                # pyrefly: ignore[not-async]
-                await shutdown_future
+                await cast(asyncio.Future, shutdown_future)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
@@ -892,7 +891,7 @@ class DeploymentBroadcastResponse:
                     timeout=timeout_s
                 )
         # Non-None invariant: populated above.
-        # pyrefly: ignore[bad-return]
+        assert self._replica_results is not None
         return self._replica_results
 
     async def _fetch_replica_results_async(self) -> List[ReplicaResult]:

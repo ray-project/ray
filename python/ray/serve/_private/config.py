@@ -1020,11 +1020,10 @@ class ReplicaConfig:
         """
         if self._init_args is None:
             if self.needs_pickle:
-                self._init_args = cloudpickle.loads(
-                    # Non-None invariant: python deployments always carry
-                    # pickled init_args.
-                    self.serialized_init_args  # type: ignore[arg-type]  # pyrefly: ignore[bad-argument-type]
-                )
+                # Non-None invariant: python deployments always carry
+                # pickled init_args.
+                assert self.serialized_init_args is not None
+                self._init_args = cloudpickle.loads(self.serialized_init_args)
             else:
                 self._init_args = self.serialized_init_args
 
@@ -1039,11 +1038,10 @@ class ReplicaConfig:
         """
 
         if self._init_kwargs is None:
-            self._init_kwargs = cloudpickle.loads(
-                # Non-None invariant: python deployments always carry
-                # pickled init_kwargs.
-                self.serialized_init_kwargs  # type: ignore[arg-type]  # pyrefly: ignore[bad-argument-type]
-            )
+            # Non-None invariant: python deployments always carry
+            # pickled init_kwargs.
+            assert self.serialized_init_kwargs is not None
+            self._init_kwargs = cloudpickle.loads(self.serialized_init_kwargs)
 
         return self._init_kwargs
 

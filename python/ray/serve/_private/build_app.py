@@ -43,19 +43,16 @@ class IDDict(dict, Generic[K, V]):
     """
 
     def __getitem__(self, key: K) -> V:
-        if not isinstance(key, int):
-            key = id(key)  # type: ignore[assignment]
-        return super().__getitem__(key)
+        dict_key = key if isinstance(key, int) else id(key)
+        return super().__getitem__(dict_key)
 
     def __setitem__(self, key: K, value: V):
-        if not isinstance(key, int):
-            key = id(key)  # type: ignore[assignment]
-        return super().__setitem__(key, value)
+        dict_key = key if isinstance(key, int) else id(key)
+        return super().__setitem__(dict_key, value)
 
     def __delitem__(self, key: K):
-        if not isinstance(key, int):
-            key = id(key)  # type: ignore[assignment]
-        return super().__delitem__(key)
+        dict_key = key if isinstance(key, int) else id(key)
+        return super().__delitem__(dict_key)
 
     def __contains__(self, key: object):
         if not isinstance(key, int):

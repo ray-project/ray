@@ -193,7 +193,7 @@ class ActorReplicaResult(ReplicaResult):
         ), "next() can only be called on a streaming ActorReplicaResult."
 
         # Streaming invariant (asserted in the constructor).
-        # pyrefly: ignore[missing-attribute]
+        assert self._obj_ref_gen is not None
         next_obj_ref = self._obj_ref_gen.__next__()
         return ray.get(next_obj_ref)
 
@@ -204,7 +204,7 @@ class ActorReplicaResult(ReplicaResult):
         ), "__anext__() can only be called on a streaming ActorReplicaResult."
 
         # Streaming invariant (asserted in the constructor).
-        # pyrefly: ignore[missing-attribute]
+        assert self._obj_ref_gen is not None
         next_obj_ref = await self._obj_ref_gen.__anext__()
         return await next_obj_ref
 
@@ -332,7 +332,7 @@ class gRPCReplicaResult(ReplicaResult):
         self._consume_task = None
         if self._use_queue:
             # `_grpc_call_loop` is always set when `_use_queue` is.
-            # pyrefly: ignore[missing-attribute]
+            assert self._grpc_call_loop is not None
             self._consume_task = self._grpc_call_loop.create_task(
                 self.consume_messages_from_gen()
             )
@@ -419,7 +419,7 @@ class gRPCReplicaResult(ReplicaResult):
     async def consume_messages_from_gen(self):
         try:
             # Only scheduled when a generator is present.
-            # pyrefly: ignore[not-iterable]
+            assert self._gen is not None
             async for resp in self._gen:
                 self._result_queue.put_nowait(resp)
         except BaseException as e:
