@@ -97,6 +97,13 @@ def main() -> None:
         dest="overrides",
         help="Inline overrides, e.g. training.num_steps=20 data.dataset=synthetic",
     )
+    parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        help="Accepted for release-test compatibility (glue.py appends it to "
+        "smoke runs). A no-op: smoke behavior lives in the smoke experiment "
+        "YAML that the release smoke_test block already points at.",
+    )
     args = parser.parse_args()
 
     cfg = load_experiment(args.experiment, overrides=args.overrides)
