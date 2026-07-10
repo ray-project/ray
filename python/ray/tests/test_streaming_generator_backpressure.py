@@ -1530,6 +1530,10 @@ def test_actor_generator_backpressure_mixed_sync_async(shutdown_only):
     assert ray.get(reporter.total_len.remote()) == 10
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="This test uses os._exit(0), which can report an access violation on Windows.",
+)
 def test_actor_generator_backpressure_async_owner_death_skips_between_yield_work(
     shutdown_only,
 ):
