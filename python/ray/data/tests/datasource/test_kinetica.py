@@ -48,6 +48,7 @@ def mock_gpudb_client():
             )
         ],
         "properties": [{"id": [], "name": [], "value": []}],
+        "sizes": [100],
         "total_size": 100,
     }
 
@@ -294,6 +295,7 @@ class TestKineticaDatasource:
         mock_gpudb_client.show_table.return_value = {
             "type_schemas": [json.dumps({"fields": []})],
             "properties": [{}],
+            "sizes": [0],
             "total_size": 0,
         }
 

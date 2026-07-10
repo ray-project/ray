@@ -442,14 +442,17 @@ class KineticaDatasource(Datasource):
             )
             total_count = count_response.get("total_number_of_records", 0)
         else:
-            # Get count from show_table for unfiltered reads
+            # Get count from show_table for unfiltered reads.
+            # Per Kinetica API docs: when get_sizes is true, `sizes` is an array
+            # containing the number of records in each table, and `total_size`
+            # is the sum across all requested tables. Since we query a single
+            # table by name, `sizes[0]` gives us the row count for that table.
             response = client.show_table(
                 table_name=self._table_name,
                 options={"get_sizes": "true"},
             )
-            total_count = response.get("total_size", 0)
-            if isinstance(total_count, list):
-                total_count = total_count[0] if total_count else 0
+            sizes = response.get("sizes", [])
+            total_count = sizes[0] if sizes else 0
 
         # Apply limit if specified
         if self._limit is not None:
