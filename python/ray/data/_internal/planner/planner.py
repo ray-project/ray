@@ -17,7 +17,10 @@ from ray.data._internal.execution.operators.hash_shuffle_v2 import (
 from ray.data._internal.execution.operators.input_data_buffer import (
     InputDataBuffer,
 )
-from ray.data._internal.execution.operators.join import _make_join_reduce_fn
+from ray.data._internal.execution.operators.join import (
+    JoinOperator,
+    _make_join_reduce_fn,
+)
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.mix_operator import MixOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
@@ -192,7 +195,21 @@ def plan_join_op(
     data_context: DataContext,
 ) -> PhysicalOperator:
     assert len(physical_children) == 2
-    return _plan_join_shuffle_v2(logical_op, physical_children, data_context)
+    if data_context.use_hash_shuffle_v2:
+        return _plan_join_shuffle_v2(logical_op, physical_children, data_context)
+    return JoinOperator(
+        data_context=data_context,
+        left_input_op=physical_children[0],
+        right_input_op=physical_children[1],
+        join_type=logical_op.join_type,
+        left_key_columns=logical_op.left_key_columns,
+        right_key_columns=logical_op.right_key_columns,
+        left_columns_suffix=logical_op.left_columns_suffix,
+        right_columns_suffix=logical_op.right_columns_suffix,
+        num_partitions=logical_op.num_outputs,
+        partition_size_hint=logical_op.partition_size_hint,
+        aggregator_ray_remote_args_override=logical_op.aggregator_ray_remote_args,
+    )
 
 
 def plan_streaming_split_op(

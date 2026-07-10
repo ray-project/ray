@@ -109,6 +109,8 @@ DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S = env_float(
     "RAY_DATA_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S", 1800.0
 )
 
+DEFAULT_USE_HASH_SHUFFLE_V2 = env_bool("RAY_DATA_USE_HASH_SHUFFLE_V2", True)
+
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
 # This default enables locality-based scheduling in Ray for tasks where arg data
@@ -775,6 +777,10 @@ class DataContext:
     join_operator_actor_num_cpus_override: float = None
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
+
+    # Whether to use the task-based hash-shuffle v2 path for join. When
+    # False, fall back to the legacy actor-based `JoinOperator`.
+    use_hash_shuffle_v2: bool = DEFAULT_USE_HASH_SHUFFLE_V2
 
     ################################################################
     # GPU Shuffle configuration
