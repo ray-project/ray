@@ -15,11 +15,9 @@ contracts, so group-by / sort / aggregate / join factories compose unchanged.
 """
 
 # todo: pre-check same-key skew in mapphase would be smart
-import atexit
 import errno
 import os
 import pickle
-import shutil
 import socket
 import socketserver
 import struct
@@ -478,28 +476,6 @@ class ShuffleManager:
         t = threading.Thread(target=self._server.serve_forever, daemon=True)
         t.start()
 
-        # Cleanup fires on two paths:
-        #   1. Graceful actor shutdown via __ray_terminate__ (driver-side),
-        #      which Ray triggers ``__ray_shutdown__`` on after draining
-        #      pending tasks and before exiting the actor.
-        #   2. atexit hook covers the "Ray runtime torn down without going
-        #      through __ray_terminate__" fallback (interpreter shutdown).
-        # Both call the same idempotent method.
-        self._cleaned = False
-        atexit.register(self.__ray_shutdown__)
-
-    def __ray_shutdown__(self) -> None:
-        """Stop the socket server + rmtree ``base_dir``. Idempotent.
-        Best-effort throughout: a cleanup failure must never propagate."""
-        if self._cleaned:
-            return
-        self._cleaned = True
-        try:
-            self._server.shutdown()
-        except Exception:
-            pass
-        shutil.rmtree(self.base_dir, ignore_errors=True)
-
     def endpoint(self) -> Tuple[str, int]:
         return (self._host, self._port)
 
@@ -508,6 +484,19 @@ class ShuffleManager:
 
     def bytes_served(self) -> int:
         return self._server.bytes_served
+
+
+# Import ``shutil`` lazily in the remote task body — module-level import
+# would drag it into every driver / worker process that touches
+# hash_shuffle_external, and it's only needed here.
+@ray.remote(num_cpus=0)
+def _cleanup_shuffle_dir(base_dir: str) -> None:
+    """Best-effort ``rmtree`` of a per-shuffle ``base_dir`` on the target
+    node. Driver submits one of these per source node at end-of-shuffle
+    via NodeAffinity, decoupling file cleanup from actor lifetime.
+    Failure never propagates — OS tmpwatch is the fallback."""
+    import shutil
+    shutil.rmtree(base_dir, ignore_errors=True)
 
 
 # =============================================================================

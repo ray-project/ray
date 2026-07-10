@@ -232,37 +232,24 @@ def test_external_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_par
         upstream.shutdown(Timer(), force=True)
 
 
-def test_external_base_dir_cleaned_up_on_actor_release(ray_init_shutdown, tmp_path):
-    """When the last ``ActorHandle`` to a ``ShuffleManager`` is dropped,
-    Ray gracefully terminates the actor process, the ``atexit`` hook fires,
-    and ``base_dir`` is removed.  This is the property that lets external-shuffle NOT
-    leak files in /tmp across many shuffles."""
-    import gc
-    import time as _time
-
+def test_external_cleanup_shuffle_dir(ray_init_shutdown, tmp_path):
+    """``_cleanup_shuffle_dir`` (fire-and-forget by the map op at shutdown)
+    ``rmtree``s the given ``base_dir`` on the target node. This is the
+    decoupled cleanup path — actor lifetime no longer drives file
+    removal."""
     from ray.data._internal.execution.operators.hash_shuffle_external import (
-        ShuffleManager,
+        _cleanup_shuffle_dir,
     )
 
-    base_dir = str(tmp_path / "shuffle_external_atexit")
-    actor = ShuffleManager.remote(base_dir, token="test-token")
-    # Make sure the actor's __init__ has run (and that mkdirs has happened).
-    ray.get(actor.endpoint.remote())
-    assert os.path.isdir(base_dir), "actor should have created base_dir"
+    base_dir = str(tmp_path / "shuffle_external_cleanup")
+    os.makedirs(base_dir, exist_ok=True)
+    with open(os.path.join(base_dir, "map_0.shf"), "w") as f:
+        f.write("x" * 1024)
+    assert os.path.isdir(base_dir)
 
-    # Drop the only handle.  Ray will detect ref-count → 0, send the
-    # graceful termination, the actor's atexit will rmtree base_dir.
-    del actor
-    gc.collect()
-
-    # Poll for cleanup; Ray actor GC is async so we tolerate a short wait.
-    deadline = _time.monotonic() + 15.0
-    while _time.monotonic() < deadline:
-        if not os.path.exists(base_dir):
-            break
-        _time.sleep(0.2)
+    ray.get(_cleanup_shuffle_dir.remote(base_dir))
 
     assert not os.path.exists(base_dir), (
-        f"base_dir {base_dir} still present 15s after ActorHandle release "
-        "— atexit cleanup did not fire (or actor is still alive)"
+        f"base_dir {base_dir} still present after _cleanup_shuffle_dir "
+        "— cleanup task did not fire"
     )

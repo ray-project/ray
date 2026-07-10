@@ -12,10 +12,9 @@ import logging
 import os
 import secrets
 import tempfile
-import time
 import typing
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import ray
 from ray.data._internal.execution.bundle_queue import (
@@ -476,24 +475,33 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         self._merge_buffer_bundles_by_node.clear()
         self._merge_buffer_bytes_by_node.clear()
         self._output_queue.clear()
-        # External-shuffle-specific: detached ShuffleManagers don't die via ref-count.
-        # Terminate them gracefully (__ray_shutdown__ rmtrees base_dir +
-        # stops server) before dropping their handle refs.
-        self._kill_managers_from_completed_handles()
+        self._teardown_shuffle()
         self._completed_handle_refs.clear()
         self._shared_handles_ref = None
 
-    def _kill_managers_from_completed_handles(self) -> None:
-        """Terminate each unique ShuffleManager referenced by completed
-        handles. Graceful first (``__ray_terminate__`` → ``__ray_shutdown__``
-        → rmtree base_dir), fire in parallel; bounded ``ray.wait`` +
-        ``ray.kill`` fallback so a dead-node hang can't stall shutdown."""
+    def _teardown_shuffle(self) -> None:
+        """End-of-shuffle cleanup — file cleanup is decoupled from actor
+        lifetime, so this method does two independent things:
+
+        1. ``ray.kill(mgr, no_restart=True)`` for every unique
+           ShuffleManager the shuffle produced handles on. Goes through
+           GCS ``DestroyActor`` — an authoritative "no more incarnations
+           of this actor" instruction; no ``__ray_terminate__`` /
+           graceful-shutdown races, no ``max_restarts`` retries, no
+           belt-and-suspenders logic needed.
+
+        2. Fire one ``_cleanup_shuffle_dir`` task per source node
+           (NodeAffinity, soft) to ``rmtree`` the shuffle's ``base_dir``.
+           Short bounded wait so cleanup gets a chance before the driver
+           exits; failures fall back to OS ``tmpwatch``.
+        """
         from ray.data._internal.execution.operators.hash_shuffle_external import (
+            _cleanup_shuffle_dir,
             _lookup_manager,
         )
 
         seen: set = set()
-        mgrs = []
+        seen_nodes: set = set()
         for ref in self._completed_handle_refs:
             try:
                 handle = ray.get(ref)
@@ -509,59 +517,30 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
             if key in seen:
                 continue
             seen.add(key)
-            try:
-                mgrs.append(_lookup_manager(shuffle_id, node_id))
-            except Exception:
-                # Actor name never registered / already GC'd — nothing to kill.
-                continue
+            seen_nodes.add(node_id)
 
-        # All ``.remote()`` calls fire before we wait → wall time = slowest
-        # shutdown, not the sum.
-        term_refs_by_mgr: List[Tuple[Any, Any]] = []
-        for mgr in mgrs:
             try:
-                term_refs_by_mgr.append((mgr, mgr.__ray_terminate__.remote()))
-            except Exception:
-                pass
-
-        _GRACEFUL_TERM_TIMEOUT_S = 30.0
-        pending = list(term_refs_by_mgr)
-        deadline = time.monotonic() + _GRACEFUL_TERM_TIMEOUT_S
-        while pending and time.monotonic() < deadline:
-            refs = [r for _, r in pending]
-            ready, _ = ray.wait(
-                refs,
-                num_returns=len(refs),
-                timeout=max(0.1, deadline - time.monotonic()),
-            )
-            if not ready:
-                break
-            ready_set = set(ready)
-            for r in ready:
-                try:
-                    ray.get(r)
-                except Exception:
-                    # Already-terminated / actor dead = success for us.
-                    pass
-            pending = [(m, r) for m, r in pending if r not in ready_set]
-
-        # Belt-and-suspenders hard kill for every manager, whether the
-        # graceful terminate acked or timed out:
-        # - Pending (dead node / stuck): kill so shutdown progresses.
-        # - Already acked: a SIGKILL to the actor process mid-atexit can
-        #   cause Ray (with max_restarts=-1) to auto-respawn a fresh
-        #   actor under the same name — our ``ray.get(term_ref)`` returned
-        #   "success" against the old instance but a new one is now
-        #   running idle. ``ray.kill(no_restart=True)`` prevents that
-        #   restart loop.
-        # Either way ``no_restart=True`` skips ``__ray_shutdown__``; a
-        # ``base_dir`` may leak on disk for managers that only reached
-        # this fallback (OS tmpwatch cleans it up eventually).
-        for mgr, _ in term_refs_by_mgr:
-            try:
+                mgr = _lookup_manager(shuffle_id, node_id)
                 ray.kill(mgr, no_restart=True)
             except Exception:
+                # Actor name never registered / already GC'd — nothing to kill.
                 pass
+
+        cleanup_refs = []
+        for node_id in seen_nodes:
+            try:
+                cleanup_refs.append(
+                    _cleanup_shuffle_dir.options(
+                        scheduling_strategy=NodeAffinitySchedulingStrategy(
+                            node_id, soft=True
+                        ),
+                    ).remote(self._base_dir)
+                )
+            except Exception:
+                pass
+
+        if cleanup_refs:
+            ray.wait(cleanup_refs, num_returns=len(cleanup_refs), timeout=5.0)
 
     def get_stats(self) -> Dict[str, List[BlockStats]]:
         return {self._name: self._map_blocks_stats}
