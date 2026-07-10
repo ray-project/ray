@@ -10,12 +10,23 @@ from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.aggregate_num_rows import (
     AggregateNumRows,
 )
+from ray.data._internal.execution.operators.hash_shuffle_v2 import (
+    _SHUFFLE_MAP_RUNTIME_ENV,
+    _make_hash_partition_fn,
+)
 from ray.data._internal.execution.operators.input_data_buffer import (
     InputDataBuffer,
 )
+from ray.data._internal.execution.operators.join import _make_join_reduce_fn
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.mix_operator import MixOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
+    ShuffleMapOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
+    ShuffleReduceOp,
+)
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import (
@@ -133,18 +144,6 @@ def _plan_join_shuffle_v2(
     physical_children: List[PhysicalOperator],
     data_context: DataContext,
 ) -> PhysicalOperator:
-    from ray.data._internal.execution.operators.hash_shuffle_v2 import (
-        _SHUFFLE_MAP_RUNTIME_ENV,
-        _make_hash_partition_fn,
-    )
-    from ray.data._internal.execution.operators.join import _make_join_reduce_fn
-    from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
-        ShuffleMapOp,
-    )
-    from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
-        ShuffleReduceOp,
-    )
-
     left_keys = list(logical_op.left_key_columns)
     right_keys = list(logical_op.right_key_columns)
     num_partitions = logical_op.num_partitions

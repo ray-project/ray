@@ -14,6 +14,9 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     ShuffleAggregation,
     _combine,
 )
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
+    ReduceFn,
+)
 from ray.data._internal.logical.operators import JoinType
 from ray.data._internal.util import GiB, MiB
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
@@ -23,10 +26,6 @@ from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     import pyarrow as pa
-
-    from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (  # noqa: E501
-        ReduceFn,
-    )
 
 
 @dataclass(frozen=True)
@@ -128,7 +127,7 @@ def _make_join_reduce_fn(
     right_columns_suffix: Optional[str] = None,
     left_schema: Optional[Any] = None,
     right_schema: Optional[Any] = None,
-) -> "ReduceFn":
+) -> ReduceFn:
     """Build a V2-shuffle reduce fn that joins two co-partitioned inputs."""
     import pyarrow as pa
 

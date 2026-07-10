@@ -384,7 +384,7 @@ class FuseOperators(Rule):
         self._op_map.pop(down_op)
 
         fused_op = ShuffleReduceOp(
-            up_op.input_dependencies,  # pyrefly: ignore[bad-argument-type]
+            up_op.input_dependencies,
             up_op.data_context,
             num_partitions=up_op._num_partitions,
             reduce_fn=up_op._reduce_fn,
