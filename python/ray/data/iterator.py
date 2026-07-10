@@ -502,7 +502,7 @@ class DataIterator(abc.ABC):
         Returns:
             An iterable over Torch Tensor batches.
         """
-        import torch
+        from torch import device as torch_device
 
         from ray.train.torch import get_device
         from ray.train.utils import _in_ray_train_worker
@@ -518,6 +518,7 @@ class DataIterator(abc.ABC):
             # Use the appropriate device for Ray Train, or falls back to CPU if
             # Ray Train is not being used.
             device = get_device() if _in_ray_train_worker() else "cpu"
+        device = torch_device(device)
 
         from ray.data.util.torch_utils import (
             move_tensors_to_device,
@@ -559,7 +560,7 @@ class DataIterator(abc.ABC):
             # combine the chunked arrays first before converting to numpy format
             # and then to Tensors.
 
-            combine_chunks = device is not None and torch.device(device).type == "cpu"
+            combine_chunks = device.type == "cpu"
             collate_fn = DefaultCollateFn(
                 dtypes=dtypes,
                 combine_chunks=combine_chunks,
