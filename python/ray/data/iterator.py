@@ -296,19 +296,22 @@ class DataIterator(abc.ABC):
             try:
                 yield from batch_iterator
             finally:
-                # In `finally` so an early `break` in the training loop still
-                # records the partial iteration's total time and flushes its
-                # final metrics.
-                if stats:
-                    stats.iter_total_s.add(time.perf_counter() - time_start)
-                    _StatsManager.update_iteration_metrics(stats, dataset_tag)
-                # On early exit (e.g. ``break`` in the for-loop), the inner
-                # ``_ClosingIterator`` would only shut down the executor via
-                # its ``__del__``, which is non-deterministic. The hook
-                # shuts it down eagerly (or, for ``StreamSplitDataIterator``,
-                # signals the remote ``SplitCoordinator``) so resources are
-                # released the moment the consumer stops pulling.
-                self._on_iteration_end(executor)
+                # Flush partial-iteration stats on early `break` too, but
+                # guard `_on_iteration_end` with a nested finally so a stats
+                # error can't skip executor shutdown and leak resources.
+                try:
+                    if stats:
+                        stats.iter_total_s.add(time.perf_counter() - time_start)
+                        _StatsManager.update_iteration_metrics(stats, dataset_tag)
+                finally:
+                    # On early exit (e.g. ``break`` in the for-loop), the
+                    # inner ``_ClosingIterator`` would only shut down the
+                    # executor via its ``__del__``, which is non-deterministic.
+                    # The hook shuts it down eagerly (or, for
+                    # ``StreamSplitDataIterator``, signals the remote
+                    # ``SplitCoordinator``) so resources are released the
+                    # moment the consumer stops pulling.
+                    self._on_iteration_end(executor)
 
         return _IterableFromIterator(_create_iterator)
 
