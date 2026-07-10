@@ -1,7 +1,7 @@
 import sys
 
 import pytest
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 
 from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
 
@@ -136,6 +136,70 @@ def test_mounted_app():
         get_asgi_route_name(
             app, {"type": "http", "method": "GET", "path": "/mounted/some-other-path"}
         )
+        is None
+    )
+
+
+def test_included_router():
+    """Routes registered via `include_router` must resolve their route name.
+
+    On FastAPI >= 0.137 these routes are nested under an `_IncludedRouter` node
+    instead of being flattened into `app.routes` (see #64475).
+    """
+    app = FastAPI()
+
+    @app.get("/direct")
+    def direct():
+        pass
+
+    # Router with its own prefix, included without an include-time prefix.
+    router = APIRouter(prefix="/prefix")
+
+    @router.get("/routed/{user_id}")
+    def routed():
+        pass
+
+    @router.websocket("/ws")
+    async def ws():
+        pass
+
+    # Router included with an include-time prefix.
+    other = APIRouter()
+
+    @other.post("/create")
+    def create():
+        pass
+
+    app.include_router(router)
+    app.include_router(other, prefix="/other")
+
+    # Directly decorated route still resolves.
+    assert (
+        get_asgi_route_name(app, {"type": "http", "method": "GET", "path": "/direct"})
+        == "/direct"
+    )
+    # Route from an included router (with dynamic segment).
+    assert (
+        get_asgi_route_name(
+            app, {"type": "http", "method": "GET", "path": "/prefix/routed/abc123"}
+        )
+        == "/prefix/routed/{user_id}"
+    )
+    # WebSocket route from an included router.
+    assert (
+        get_asgi_route_name(app, {"type": "websocket", "path": "/prefix/ws"})
+        == "/prefix/ws"
+    )
+    # Route from a router included with an include-time prefix.
+    assert (
+        get_asgi_route_name(
+            app, {"type": "http", "method": "POST", "path": "/other/create"}
+        )
+        == "/other/create"
+    )
+    # Unknown path still returns None.
+    assert (
+        get_asgi_route_name(app, {"type": "http", "method": "GET", "path": "/nope"})
         is None
     )
 

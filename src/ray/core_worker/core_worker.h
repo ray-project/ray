@@ -114,6 +114,20 @@ class TaskCounter {
                          bool is_retry);
 
  private:
+  /// Records the per-state gauge breakdown for a single RUNNING-state key: the
+  /// RUNNING count (minus its sub-states), the SUBMITTED_TO_WORKER negation that
+  /// cancels the owner's positive count, and the three RUNNING_IN_* sub-states.
+  /// Shared by the on-change callback and the per-tick re-emit in RecordMetrics so
+  /// both go through one implementation.
+  ///
+  /// \param key The (function name, task status type, is_retry) key. Only keys whose
+  /// status is kRunning are recorded; all others are ignored.
+  /// \param running_total The current count for `key`, passed in by the caller
+  /// (which already has it) to avoid a redundant counter lookup.
+  void RecordRunningTaskBreakdown(
+      const std::tuple<std::string, TaskStatusType, bool> &key, int64_t running_total)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_);
+
   mutable absl::Mutex mu_;
   // Tracks all tasks submitted to this worker by state, is_retry.
   CounterMap<std::tuple<std::string, TaskStatusType, bool>> counter_ ABSL_GUARDED_BY(mu_);
@@ -174,6 +188,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   CoreWorker(CoreWorkerOptions options,
              std::unique_ptr<WorkerContext> worker_context,
              instrumented_io_context &io_service,
+             instrumented_io_context &object_freed_callback_service,
              std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
              std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
              std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
@@ -183,6 +198,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
              std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
              std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
              boost::thread &io_thread,
+             boost::thread &object_freed_callback_thread,
              std::shared_ptr<ReferenceCounterInterface> reference_counter,
              std::shared_ptr<CoreWorkerMemoryStore> memory_store,
              std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
@@ -331,6 +347,20 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   Status TryReadObjectRefStream(const ObjectID &generator_id,
                                 rpc::ObjectReference *object_ref_out);
 
+  /**
+   * Advance multiple indexes of an ObjectRefStream.
+   *
+   * This is intended for bulk consumers that have already waited on
+   * deterministic ObjectRefs and only need to mark them as consumed.
+   *
+   * \param[in] generator_id The object ref id of the streaming generator task.
+   * \param[in] num_items The number of indexes to advance past, starting from
+   * the current head of the stream.
+   * \return Status ObjectRefEndOfStream if the stream has already reached EoF.
+   * InvalidArgument if the last requested ref is not ready. OK otherwise.
+   */
+  Status TryReadObjectRefStreamN(const ObjectID &generator_id, int64_t num_items);
+
   /// Return True if there's no more object to read. False otherwise.
   bool StreamingGeneratorIsFinished(const ObjectID &generator_id) const;
 
@@ -342,6 +372,20 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// (meaning if the object's value if retrievable).
   /// It should not be nil.
   std::pair<rpc::ObjectReference, bool> PeekObjectRefStream(const ObjectID &generator_id);
+
+  /**
+   * Read multiple next indexes of an ObjectRefStream of generator_id without
+   * consuming them.
+   *
+   * \param[in] generator_id The object ref id of the streaming generator task.
+   * \param[in] num_items The number of indexes to peek at, starting from the
+   * current head of the stream.
+   * \return A list of num_items object references for the next indexes, each
+   * paired with whether the object is already ready (i.e. its value is
+   * retrievable). None of the references should be nil.
+   */
+  std::vector<std::pair<rpc::ObjectReference, bool>> PeekObjectRefStreamN(
+      const ObjectID &generator_id, int64_t num_items);
 
   /// Read the next index of an ObjectRefStream of generator_id without
   /// consuming an index, and return just the ObjectID of that index.
@@ -400,6 +444,42 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
     // properly from reference counter.
     memory_store_->Delete(deleted);
   }
+
+  /// Register a callback to fire when an object goes out of scope or is freed.
+  /// Can only be called for objects owned by this worker. The callback is posted
+  /// to the dedicated object_freed_callback_service_ thread so it never blocks
+  /// the main IO thread.
+  ///
+  /// \param[in] object_id The owned object to watch.
+  /// \param[in] callback Invoked with the object_id when the object goes out of scope.
+  /// \return true if registered; false if the object is already out of scope or freed
+  ///         (callback will never fire).
+  bool AddObjectOutOfScopeOrFreedCallback(
+      const ObjectID &object_id, const std::function<void(const ObjectID &)> &callback);
+
+  /// C function-pointer overload of AddObjectOutOfScopeOrFreedCallback for use
+  /// from Cython. Can only be called for objects owned by this worker.
+  ///
+  /// \param[in] object_id The owned object to watch.
+  /// \param[in] callback Function to invoke when the object goes out of scope. Called
+  ///            with (object_id, callback_context).
+  /// \param[in] callback_context Opaque pointer forwarded unchanged to `callback`.
+  /// \return true if registered; false if the object is already out of scope or freed
+  ///         (callback will never fire).
+  bool AddObjectOutOfScopeOrFreedCallback(const ObjectID &object_id,
+                                          void (*callback)(const ObjectID &, void *),
+                                          void *callback_context);
+
+  /// Validate that the given object is owned by this worker. Used to gate
+  /// owner-only operations (e.g. registering an out-of-scope/freed callback)
+  /// so the error is constructed in C++ and propagated through the standard
+  /// Status path rather than re-implemented at each binding.
+  ///
+  /// \param[in] object_id The object to check.
+  /// \return Status::OK if this worker is the owner of the object;
+  ///         Status::InvalidArgument otherwise (the rejected case in practice is
+  ///         a borrowed object owned by another worker).
+  Status CheckObjectOwnedByUs(const ObjectID &object_id) const;
 
   int GetMemoryStoreSize() { return memory_store_->Size(); }
 
@@ -804,6 +884,63 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   void MarkGeneratorBackpressureTaskFinished(const ObjectID &generator_id);
   bool TeardownGeneratorBackpressureTask(const ObjectID &generator_id);
+
+  /**
+   * @brief Register the async-streaming-generator unblock notification for a
+   * generator.
+   *
+   * `fn(ctx)` is invoked (from any thread, e.g. the RPC handler that processes
+   * consumption updates) when the task may have become unblocked, so it can set
+   * the generator's asyncio.Event instead of blocking a thread on the
+   * backpressure wait. Use ClearAsyncGeneratorBackpressureUnblockNotify to remove
+   * the entry before the context is destroyed.
+   *
+   * The notification registry is guarded by its own mutex and never by the GIL:
+   * callers MUST invoke this with the GIL released so the lock is always acquired
+   * without holding the GIL (the callback acquires the GIL only after this
+   * lock), keeping a consistent lock order.
+   *
+   * @param[in] generator_id The generator whose async executor should be woken.
+   * @param[in] fn Non-null callback invoked as `fn(ctx)` when the task may have
+   * become unblocked.
+   * @param[in] ctx Borrowed context passed back to `fn`; it must outlive the
+   * registration (cleared via ClearAsyncGeneratorBackpressureUnblockNotify).
+   */
+  void SetAsyncGeneratorBackpressureUnblockNotify(const ObjectID &generator_id,
+                                                  void (*fn)(void *),
+                                                  void *ctx);
+
+  /**
+   * @brief Clear a notification registered with
+   * SetAsyncGeneratorBackpressureUnblockNotify.
+   *
+   * MUST be called (with the GIL released) before the registered context is
+   * destroyed so a late notification never dereferences a freed context.
+   *
+   * @param[in] generator_id The generator whose notification to remove.
+   */
+  void ClearAsyncGeneratorBackpressureUnblockNotify(const ObjectID &generator_id);
+
+  /**
+   * @brief Fire the registered unblock notification(s) for async streaming
+   * generators, waking any parked on the asyncio.Event.
+   *
+   * Called from every path that can unblock a parked async generator: the
+   * consumption RPC handler, owner-death cleanup, the report-RPC-failure
+   * callback, and the executor when it releases an actor-wide slot. This is what
+   * lets the async waits use a plain `await event.wait()` with no polling
+   * fallback.
+   *
+   * MUST be called WITHOUT holding `mutex_`, and (from the executor) with the
+   * GIL released so the notification guard is always taken without the GIL (the
+   * callback re-acquires the GIL); see the guard's declaration.
+   *
+   * @param[in] generator_id The generator to wake when `notify_all` is false.
+   * @param[in] notify_all Wake every registered async generator (used whenever
+   * actor-wide budget may have changed, since it is shared across tasks).
+   */
+  void NotifyAsyncGeneratorBackpressureUnblock(const ObjectID &generator_id,
+                                               bool notify_all);
 
   /// Register a generator-backpressure entry up-front so that owner-failure
   /// sweeps (``HandleOwnerDied``) can find tasks that are still blocked in
@@ -1619,12 +1756,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                                   std::vector<rpc::ObjectReference> *arg_refs,
                                   std::vector<ObjectID> *pinned_ids);
 
-  /// Process a subscribe message for wait for object eviction.
-  /// The object eviction message will be published once the object
-  /// needs to be evicted.
-  void ProcessSubscribeForObjectEviction(
-      const rpc::WorkerObjectEvictionSubMessage &message);
-
   /// Process a subscribe message for wait for ref removed.
   /// It is used for the ref counting protocol. When the borrower
   /// stops using the reference, the message will be published to the owner.
@@ -1798,6 +1929,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   instrumented_io_context &io_service_;
 
+  /// Dedicated event loop for object-freed callbacks, keeping them off io_service_.
+  instrumented_io_context &object_freed_callback_service_;
+
   /// Shared core worker client pool.
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
@@ -1823,6 +1957,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   // Thread that runs a boost::asio service to process IO events.
   boost::thread &io_thread_;
+
+  /// Dedicated thread for user-registered object-freed callbacks.
+  boost::thread &object_freed_callback_thread_;
 
   // Keeps track of object ID reference counts.
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
@@ -1928,6 +2065,16 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   absl::flat_hash_map<ObjectID, GeneratorBackpressureState> generator_backpressure_states_
       ABSL_GUARDED_BY(mutex_);
+
+  /// Registry of async-streaming-generator unblock notifications, keyed by
+  /// generator id. Deliberately guarded by its own mutex (not `mutex_`) so the
+  /// notify path (which calls into Python via the callback) never contends
+  /// with the hot `mutex_`. Always acquired with the GIL released; see
+  /// SetAsyncGeneratorBackpressureUnblockNotify.
+  mutable absl::Mutex generator_backpressure_notification_guard_;
+  absl::flat_hash_map<ObjectID, std::pair<void (*)(void *), void *>>
+      generator_unblock_notifies_
+          ABSL_GUARDED_BY(generator_backpressure_notification_guard_);
 
   /// Number of tasks that have been pushed to the actor but not executed.
   std::atomic<int64_t> task_queue_length_;

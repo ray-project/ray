@@ -169,67 +169,87 @@ TaskCounter::TaskCounter(ray::observability::MetricInterface &task_by_state_gaug
                          ray::observability::MetricInterface &actor_by_state_gauge)
     : task_by_state_gauge_(task_by_state_gauge),
       actor_by_state_gauge_(actor_by_state_gauge) {
+  // On change we only retract keys that just dropped to zero (emit their final 0).
+  // Live keys are re-asserted every tick by the ForEachEntry loop in RecordMetrics,
+  // so emitting them here too would double-record. This split keeps each key
+  // recorded exactly once per tick.
   counter_.SetOnChangeCallback(
-      [this](const std::tuple<std::string, TaskStatusType, bool>
-                 &key) ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
-        if (std::get<1>(key) != TaskStatusType::kRunning) {
-          return;
-        }
-        const auto &func_name = std::get<0>(key);
-        const auto is_retry = std::get<2>(key);
-        const int64_t running_total = counter_.Get(key);
-        const int64_t num_in_get = running_in_get_counter_.Get({func_name, is_retry});
-        const int64_t num_in_wait = running_in_wait_counter_.Get({func_name, is_retry});
-        const int64_t num_getting_pinning_args =
-            pending_getting_and_pinning_args_fetch_counter_.Get({func_name, is_retry});
-        const auto is_retry_label = is_retry ? "1" : "0";
-        // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract
-        // them out to avoid double-counting.
-        task_by_state_gauge_.Record(
-            running_total - num_in_get - num_in_wait - num_getting_pinning_args,
-            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
-             {"Name", func_name},
-             {"IsRetry", is_retry_label},
-             {"JobId", job_id_},
-             {"Source", "executor"}});
-        // Negate the metrics recorded from the submitter process for these tasks.
-        task_by_state_gauge_.Record(
-            -running_total,
-            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
-             {"Name", func_name},
-             {"IsRetry", is_retry_label},
-             {"JobId", job_id_},
-             {"Source", "executor"}});
-        // Record sub-state for get.
-        task_by_state_gauge_.Record(
-            num_in_get,
-            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
-             {"Name", func_name},
-             {"IsRetry", is_retry_label},
-             {"JobId", job_id_},
-             {"Source", "executor"}});
-        // Record sub-state for wait.
-        task_by_state_gauge_.Record(
-            num_in_wait,
-            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
-             {"Name", func_name},
-             {"IsRetry", is_retry_label},
-             {"JobId", job_id_},
-             {"Source", "executor"}});
-        // Record sub-state for pending args fetch.
-        task_by_state_gauge_.Record(
-            num_getting_pinning_args,
-            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::GETTING_AND_PINNING_ARGS)},
-             {"Name", func_name},
-             {"IsRetry", is_retry_label},
-             {"JobId", job_id_},
-             {"Source", "executor"}});
-      });
+      [this](const std::tuple<std::string, TaskStatusType, bool> &key)
+          ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
+            if (counter_.Get(key) == 0) {
+              RecordRunningTaskBreakdown(key, /*running_total=*/0);
+            }
+          });
+}
+
+void TaskCounter::RecordRunningTaskBreakdown(
+    const std::tuple<std::string, TaskStatusType, bool> &key, int64_t running_total) {
+  if (std::get<1>(key) != TaskStatusType::kRunning) {
+    return;
+  }
+  const auto &func_name = std::get<0>(key);
+  const auto is_retry = std::get<2>(key);
+  const int64_t num_in_get = running_in_get_counter_.Get({func_name, is_retry});
+  const int64_t num_in_wait = running_in_wait_counter_.Get({func_name, is_retry});
+  const int64_t num_getting_pinning_args =
+      pending_getting_and_pinning_args_fetch_counter_.Get({func_name, is_retry});
+  const auto is_retry_label = is_retry ? "1" : "0";
+  // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract
+  // them out to avoid double-counting.
+  task_by_state_gauge_.Record(
+      running_total - num_in_get - num_in_wait - num_getting_pinning_args,
+      {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
+       {"Name", func_name},
+       {"IsRetry", is_retry_label},
+       {"JobId", job_id_},
+       {"Source", "executor"}});
+  // Negate the metrics recorded from the submitter process for these tasks.
+  task_by_state_gauge_.Record(
+      -running_total,
+      {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
+       {"Name", func_name},
+       {"IsRetry", is_retry_label},
+       {"JobId", job_id_},
+       {"Source", "executor"}});
+  // Record sub-state for get.
+  task_by_state_gauge_.Record(
+      num_in_get,
+      {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
+       {"Name", func_name},
+       {"IsRetry", is_retry_label},
+       {"JobId", job_id_},
+       {"Source", "executor"}});
+  // Record sub-state for wait.
+  task_by_state_gauge_.Record(
+      num_in_wait,
+      {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
+       {"Name", func_name},
+       {"IsRetry", is_retry_label},
+       {"JobId", job_id_},
+       {"Source", "executor"}});
+  // Record sub-state for pending args fetch.
+  task_by_state_gauge_.Record(
+      num_getting_pinning_args,
+      {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::GETTING_AND_PINNING_ARGS)},
+       {"Name", func_name},
+       {"IsRetry", is_retry_label},
+       {"JobId", job_id_},
+       {"Source", "executor"}});
 }
 
 void TaskCounter::RecordMetrics() {
   absl::MutexLock l(&mu_);
+  // Re-assert every live RUNNING-state entry each tick, not just transitions: the
+  // metrics backend clears gauge observations after each export (#56405), so a
+  // long-running task that hasn't transitioned would otherwise drop out of the
+  // gauge. FlushOnChangeCallbacks still emits the final 0 for keys that just
+  // dropped to zero (erased from the counter, so ForEachEntry won't visit them).
   counter_.FlushOnChangeCallbacks();
+  counter_.ForEachEntry([this](const std::tuple<std::string, TaskStatusType, bool> &key,
+                               int64_t running_total)
+                            ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
+                              RecordRunningTaskBreakdown(key, running_total);
+                            });
   if (IsActor()) {
     float running_tasks = 0.0;
     float idle = 0.0;
@@ -291,6 +311,7 @@ CoreWorker::CoreWorker(
     CoreWorkerOptions options,
     std::unique_ptr<WorkerContext> worker_context,
     instrumented_io_context &io_service,
+    instrumented_io_context &object_freed_callback_service,
     std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
     std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
     std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
@@ -300,6 +321,7 @@ CoreWorker::CoreWorker(
     std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
     std::shared_ptr<RayletClientInterface> local_raylet_rpc_client,
     boost::thread &io_thread,
+    boost::thread &object_freed_callback_thread,
     std::shared_ptr<ReferenceCounterInterface> reference_counter,
     std::shared_ptr<CoreWorkerMemoryStore> memory_store,
     std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
@@ -327,6 +349,7 @@ CoreWorker::CoreWorker(
                          : nullptr),
       worker_context_(std::move(worker_context)),
       io_service_(io_service),
+      object_freed_callback_service_(object_freed_callback_service),
       core_worker_client_pool_(std::move(core_worker_client_pool)),
       raylet_client_pool_(std::move(raylet_client_pool)),
       periodical_runner_(std::move(periodical_runner)),
@@ -336,6 +359,7 @@ CoreWorker::CoreWorker(
       raylet_ipc_client_(std::move(raylet_ipc_client)),
       local_raylet_rpc_client_(std::move(local_raylet_rpc_client)),
       io_thread_(io_thread),
+      object_freed_callback_thread_(object_freed_callback_thread),
       reference_counter_(std::move(reference_counter)),
       memory_store_(std::move(memory_store)),
       plasma_store_provider_(std::move(plasma_store_provider)),
@@ -389,8 +413,11 @@ CoreWorker::CoreWorker(
                                   std::placeholders::_8,
                                   std::placeholders::_9);
     actor_task_execution_arg_waiter_ = std::make_unique<ActorTaskExecutionArgWaiter>(
-        [this](const std::vector<rpc::ObjectReference> &args, int64_t tag) {
-          RAY_CHECK_OK(raylet_ipc_client_->WaitForActorCallArgs(args, tag))
+        [this](const std::vector<rpc::ObjectReference> &args,
+               const TaskID &task_id,
+               int32_t attempt_number) {
+          RAY_CHECK_OK(
+              raylet_ipc_client_->WaitForActorCallArgs(args, task_id, attempt_number))
               << "WaitForActorCallArgs IPC failed unexpectedly";
         });
     task_receiver_ = std::make_unique<TaskReceiver>(task_execution_service_,
@@ -793,6 +820,12 @@ void CoreWorker::HandleOwnerDied(const WorkerID &dead_owner) {
     if (entry.actor_metadata) {
       entry.actor_metadata->Teardown();
     }
+  }
+  // Wake every parked async streaming generator: the dead owner's tasks so they
+  // exit their now-disabled per-task waits, and any actor-wide reserver since
+  // the teardown above freed shared budget.
+  if (!dead_entries.empty()) {
+    NotifyAsyncGeneratorBackpressureUnblock(ObjectID::Nil(), /*notify_all=*/true);
   }
 }
 
@@ -2530,6 +2563,38 @@ bool CoreWorker::IsTaskCanceled(const TaskID &task_id) const {
   return canceled_tasks_.find(task_id) != canceled_tasks_.end();
 }
 
+bool CoreWorker::AddObjectOutOfScopeOrFreedCallback(
+    const ObjectID &object_id, const std::function<void(const ObjectID &)> &callback) {
+  auto wrapped = [&object_freed_callback_service = object_freed_callback_service_,
+                  callback](const ObjectID &id) {
+    object_freed_callback_service.post([callback, id]() { callback(id); },
+                                       "CoreWorker.ObjFreedCb");
+  };
+  return reference_counter_->AddObjectOutOfScopeOrFreedCallback(object_id, wrapped);
+}
+
+bool CoreWorker::AddObjectOutOfScopeOrFreedCallback(const ObjectID &object_id,
+                                                    void (*callback)(const ObjectID &,
+                                                                     void *),
+                                                    void *callback_context) {
+  RAY_CHECK(callback != nullptr) << "callback must not be null";
+  return AddObjectOutOfScopeOrFreedCallback(
+      object_id, [callback, callback_context](const ObjectID &id) {
+        callback(id, callback_context);
+      });
+}
+
+Status CoreWorker::CheckObjectOwnedByUs(const ObjectID &object_id) const {
+  if (reference_counter_->OwnedByUs(object_id)) {
+    return Status::OK();
+  }
+  return Status::InvalidArgument(absl::StrFormat(
+      "Cannot register an out-of-scope/freed callback for object %s: it is not "
+      "owned by this worker (it may be owned by another worker, or have no "
+      "ownership record). These callbacks can only be registered by the owner.",
+      object_id.Hex()));
+}
+
 bool CoreWorker::ShouldInterruptTaskForCancellation() const {
   if (worker_context_->GetCurrentJobID().IsNil()) {
     return false;
@@ -3103,6 +3168,11 @@ Status CoreWorker::TryReadObjectRefStream(const ObjectID &generator_id,
   return status;
 }
 
+Status CoreWorker::TryReadObjectRefStreamN(const ObjectID &generator_id,
+                                           int64_t num_items) {
+  return task_manager_->TryReadObjectRefStreamN(generator_id, num_items);
+}
+
 bool CoreWorker::StreamingGeneratorIsFinished(const ObjectID &generator_id) const {
   return task_manager_->StreamingGeneratorIsFinished(generator_id);
 }
@@ -3114,6 +3184,21 @@ std::pair<rpc::ObjectReference, bool> CoreWorker::PeekObjectRefStream(
   object_ref.set_object_id(object_id.Binary());
   object_ref.mutable_owner_address()->CopyFrom(rpc_address_);
   return {object_ref, ready};
+}
+
+std::vector<std::pair<rpc::ObjectReference, bool>> CoreWorker::PeekObjectRefStreamN(
+    const ObjectID &generator_id, int64_t num_items) {
+  auto object_ids_and_ready =
+      task_manager_->PeekObjectRefStreamN(generator_id, num_items);
+  std::vector<std::pair<rpc::ObjectReference, bool>> results;
+  results.reserve(object_ids_and_ready.size());
+  for (const auto &[object_id, ready] : object_ids_and_ready) {
+    rpc::ObjectReference object_ref;
+    object_ref.set_object_id(object_id.Binary());
+    object_ref.mutable_owner_address()->CopyFrom(rpc_address_);
+    results.emplace_back(std::move(object_ref), ready);
+  }
+  return results;
 }
 
 ObjectID CoreWorker::PeekObjectIdStream(const ObjectID &generator_id) {
@@ -3266,14 +3351,20 @@ Status CoreWorker::ReportGeneratorItemReturns(
           if (actor_metadata) {
             actor_metadata->Teardown();
           }
-          absl::MutexLock lock(&mutex_);
-          generator_backpressure_states_.erase(generator_id);
+          {
+            absl::MutexLock lock(&mutex_);
+            generator_backpressure_states_.erase(generator_id);
+          }
+          // The report to the owner failed, so we gave up on backpressure for
+          // this task (consumed == generated above). Wake it if an async
+          // generator is parked on the per-task wait, plus any actor-wide
+          // reserver since the Teardown above freed shared budget.
+          NotifyAsyncGeneratorBackpressureUnblock(
+              generator_id, /*notify_all=*/actor_metadata != nullptr);
         }
       });
 
-  // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
-  // details.
-  return waiter->WaitUntilObjectConsumed();
+  return Status::OK();
 }
 
 void CoreWorker::RegisterGeneratorBackpressureState(
@@ -3338,6 +3429,41 @@ bool CoreWorker::TeardownGeneratorBackpressureTask(const ObjectID &generator_id)
     actor_metadata->Teardown();
   }
   return true;
+}
+
+void CoreWorker::SetAsyncGeneratorBackpressureUnblockNotify(const ObjectID &generator_id,
+                                                            void (*fn)(void *),
+                                                            void *ctx) {
+  absl::MutexLock lock(&generator_backpressure_notification_guard_);
+  generator_unblock_notifies_[generator_id] = std::make_pair(fn, ctx);
+}
+
+void CoreWorker::ClearAsyncGeneratorBackpressureUnblockNotify(
+    const ObjectID &generator_id) {
+  absl::MutexLock lock(&generator_backpressure_notification_guard_);
+  generator_unblock_notifies_.erase(generator_id);
+}
+
+void CoreWorker::NotifyAsyncGeneratorBackpressureUnblock(const ObjectID &generator_id,
+                                                         bool notify_all) {
+  // Hold generator_backpressure_notification_guard_ across the callback(s): this both
+  // excludes a concurrent ClearAsyncGeneratorBackpressureUnblockNotify (so the borrowed
+  // ctx stays valid for the duration of the call) and keeps a consistent lock
+  // order, since the mutex is always taken with the GIL released and the
+  // callback acquires the GIL only after.
+  absl::MutexLock lock(&generator_backpressure_notification_guard_);
+  if (notify_all) {
+    for (const auto &[id, cb] : generator_unblock_notifies_) {
+      if (cb.first != nullptr) {
+        cb.first(cb.second);
+      }
+    }
+  } else {
+    auto it = generator_unblock_notifies_.find(generator_id);
+    if (it != generator_unblock_notifies_.end() && it->second.first != nullptr) {
+      it->second.first(it->second.second);
+    }
+  }
 }
 
 void CoreWorker::HandleReportGeneratorItemReturns(
@@ -3423,13 +3549,23 @@ void CoreWorker::HandleUpdateGeneratorBackpressureConsumed(
     const bool all_objects_consumed =
         waiter->TotalObjectConsumed() >= waiter->TotalObjectGenerated();
 
-    absl::MutexLock lock(&mutex_);
-    auto it = generator_backpressure_states_.find(generator_id);
-    if (it != generator_backpressure_states_.end() &&
-        (teardown || (it->second.task_finished &&
-                      (it->second.actor_metadata == nullptr || all_objects_consumed)))) {
-      generator_backpressure_states_.erase(it);
+    {
+      absl::MutexLock lock(&mutex_);
+      auto it = generator_backpressure_states_.find(generator_id);
+      if (it != generator_backpressure_states_.end() &&
+          (teardown ||
+           (it->second.task_finished &&
+            (it->second.actor_metadata == nullptr || all_objects_consumed)))) {
+        generator_backpressure_states_.erase(it);
+      }
     }
+
+    // Wake any async streaming generator parked on an asyncio.Event. Done after
+    // releasing mutex_ (the callback acquires the GIL). When this task uses
+    // the actor-wide cap, its consumption frees shared budget, so wake every
+    // registered async generator to re-check; otherwise only this one.
+    NotifyAsyncGeneratorBackpressureUnblock(generator_id,
+                                            /*notify_all=*/actor_metadata != nullptr);
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -3571,6 +3707,9 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   // For actor tasks, we just need to post a HandleActorTask instance to the task
   // execution service.
   if (request.task_spec().type() == TaskType::ACTOR_TASK) {
+    // Fire the args-fetch IPC eagerly on the gRPC handler thread so it is
+    // pipelined with any in-progress work on the task execution service.
+    task_receiver_->BeginActorTaskArgsFetch(request);
     task_execution_service_.post(
         [this,
          request = std::move(request),
@@ -3619,9 +3758,12 @@ void CoreWorker::HandleActorCallArgWaitComplete(
   // Post on the task execution event loop since this may trigger the
   // execution of a task that is now ready to run.
   task_execution_service_.post(
-      [this, tag = request.tag()] {
-        RAY_LOG(DEBUG) << "Actor task args are ready for tag: " << tag;
-        actor_task_execution_arg_waiter_->MarkReady(tag);
+      [this,
+       task_id = TaskID::FromBinary(request.task_id()),
+       attempt_number = request.attempt_number()] {
+        RAY_LOG(DEBUG).WithField(task_id)
+            << "Actor task args are ready for attempt " << attempt_number;
+        actor_task_execution_arg_waiter_->MarkReady(TaskAttempt{task_id, attempt_number});
       },
       "CoreWorker.MarkActorTaskArgsReady");
 
@@ -3746,60 +3888,6 @@ void CoreWorker::HandleWaitForActorRefDeleted(
   }
 }
 
-void CoreWorker::ProcessSubscribeForObjectEviction(
-    const rpc::WorkerObjectEvictionSubMessage &message) {
-  // Send a response to trigger unpinning the object when it is no longer in scope.
-  auto unpin_object = [this](const ObjectID &object_id) {
-    RAY_LOG(DEBUG).WithField(object_id) << "Object is deleted. Unpinning the object.";
-
-    rpc::PubMessage pub_message;
-    pub_message.set_key_id(object_id.Binary());
-    pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
-    pub_message.mutable_worker_object_eviction_message()->set_object_id(
-        object_id.Binary());
-
-    object_info_publisher_->Publish(std::move(pub_message));
-  };
-
-  const auto object_id = ObjectID::FromBinary(message.object_id());
-  const auto intended_worker_id = WorkerID::FromBinary(message.intended_worker_id());
-  if (intended_worker_id != worker_context_->GetWorkerID()) {
-    RAY_LOG(INFO).WithField(object_id)
-        << "The SubscribeForObjectEviction message for object is for worker "
-        << intended_worker_id << ", but the current worker is "
-        << worker_context_->GetWorkerID() << ". The RPC will be no-op.";
-    unpin_object(object_id);
-    return;
-  }
-
-  if (message.has_generator_id()) {
-    // For dynamically generated return values, the raylet may subscribe to
-    // eviction events before we know about the object. This can happen when we
-    // receive the subscription request before the reply from the task that
-    // created the object. Add the dynamically created object to our ref
-    // counter so that we know that it exists.
-    const auto generator_id = ObjectID::FromBinary(message.generator_id());
-    RAY_CHECK(!generator_id.IsNil());
-    if (task_manager_->ObjectRefStreamExists(generator_id)) {
-      // ObjectRefStreamExists is used to distinguigsh num_returns="dynamic" vs
-      // "streaming".
-      task_manager_->TemporarilyOwnGeneratorReturnRefIfNeeded(object_id, generator_id);
-    } else {
-      reference_counter_->AddDynamicReturn(object_id, generator_id);
-    }
-  }
-
-  // Returns true if the object was present and the callback was added. It might have
-  // already been evicted by the time we get this request, in which case we should
-  // respond immediately so the raylet unpins the object.
-  if (!reference_counter_->AddObjectOutOfScopeOrFreedCallback(object_id, unpin_object)) {
-    // If the object is already evicted (callback cannot be set), unregister the
-    // subscription & publish the message so that the subscriber knows it.
-    unpin_object(object_id);
-    RAY_LOG(DEBUG).WithField(object_id) << "Reference for object has already been freed.";
-  }
-}
-
 StatusSet<StatusT::InvalidArgument> CoreWorker::ProcessSubscribeMessage(
     const rpc::SubMessage &sub_message,
     rpc::ChannelType channel_type,
@@ -3811,19 +3899,16 @@ StatusSet<StatusT::InvalidArgument> CoreWorker::ProcessSubscribeMessage(
     return result;
   }
 
-  if (!sub_message.has_worker_object_eviction_message() &&
-      !sub_message.has_worker_ref_removed_message() &&
+  if (!sub_message.has_worker_ref_removed_message() &&
       !sub_message.has_worker_object_locations_message()) {
     return StatusT::InvalidArgument(
         absl::StrFormat("Unexpected subscribe command has been received: %s"
-                        "Expected worker_object_eviction, worker_ref_removed, or "
+                        "Expected worker_ref_removed or "
                         "worker_object_locations message",
                         sub_message.DebugString()));
   }
 
-  if (sub_message.has_worker_object_eviction_message()) {
-    ProcessSubscribeForObjectEviction(sub_message.worker_object_eviction_message());
-  } else if (sub_message.has_worker_ref_removed_message()) {
+  if (sub_message.has_worker_ref_removed_message()) {
     ProcessSubscribeForRefRemoved(sub_message.worker_ref_removed_message());
   } else {  // worker_object_locations_message case
     ProcessSubscribeObjectLocations(sub_message.worker_object_locations_message());

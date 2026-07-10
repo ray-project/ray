@@ -40,8 +40,7 @@ When enabled, the KubeRay operator will:
 * Create a Kubernetes Secret containing a randomly generated token.
 * Automatically set the `RAY_AUTH_TOKEN` and `RAY_AUTH_MODE` environment variables on all Ray containers.
 
-If you are using a KubeRay version older than v1.6.0, you can enable token authentication by creating a Kubernetes Secret containing
-your token and configuring the `RAY_AUTH_MODE` and `RAY_AUTH_TOKEN` environment variables.
+If you are using a KubeRay version older than v1.6.0, you can enable token authentication by creating a Kubernetes Secret containing your token and configuring the `RAY_AUTH_MODE` and `RAY_AUTH_TOKEN` environment variables.
 
 ```bash
 kubectl create secret generic ray-cluster-with-auth --from-literal=auth_token=$(openssl rand -base64 32)
