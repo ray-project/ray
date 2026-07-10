@@ -257,7 +257,7 @@ following conditions:
 
 * The operator has inputs.
 * There are adequate resources available.
-* The operator isn’t backpressured.
+* The operator isn't under back pressure.
 
 If there are multiple viable operators, the executor chooses the operator with the
 smallest out queue.
@@ -278,9 +278,9 @@ Ray Data uses Ray Core for execution. Below is a summary of the :ref:`scheduling
 Ray Data and placement groups
 -----------------------------
 
-By default, Ray Data manages task and actor scheduling internally. The
-``DataContext.scheduling_strategy`` override is deprecated and will be removed in a
-future release.
+By default, Ray Data manages task and actor scheduling internally. Ray Data
+deprecates the ``DataContext.scheduling_strategy`` override and plans to remove
+it in a future release.
 
 The general recommendation is to let Ray Data manage placement group behavior.
 

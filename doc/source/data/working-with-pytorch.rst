@@ -314,7 +314,7 @@ For more information on saving data, read
             tensor = torch.Tensor(1)
             ds = ray.data.from_items([{"tensor": tensor}])
 
-            ds.write_parquet("local:///tmp/tensor")
+            ds.write_parquet("/tmp/tensor")
 
     .. tab-item:: Numpy
 
@@ -326,7 +326,7 @@ For more information on saving data, read
             tensor = torch.Tensor(1)
             ds = ray.data.from_items([{"tensor": tensor}])
 
-            ds.write_numpy("local:///tmp/tensor", column="tensor")
+            ds.write_numpy("/tmp/tensor", column="tensor")
 
 .. _migrate_pytorch:
 

@@ -463,7 +463,10 @@ class ExecutionOptions:
         return self._exclude_resources
 
     @exclude_resources.setter
-    def exclude_resources(self, value: ExecutionResources) -> None:
+    def exclude_resources(self, value: Optional[ExecutionResources]) -> None:
+        if value is None:
+            value = ExecutionResources.zero()
+
         if hasattr(self, "_exclude_resources") or value != ExecutionResources.zero():
             warnings.warn(
                 "`ExecutionOptions.exclude_resources` is deprecated and will be "
@@ -472,6 +475,11 @@ class ExecutionOptions:
                 DeprecationWarning,
                 stacklevel=2,
             )
+        self._set_exclude_resources(value)
+
+    def _set_exclude_resources(self, value: Optional[ExecutionResources]) -> None:
+        if value is None:
+            value = ExecutionResources.zero()
         self._exclude_resources = value
 
     @property
