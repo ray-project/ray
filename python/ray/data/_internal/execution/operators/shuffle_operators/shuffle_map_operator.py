@@ -110,7 +110,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
         self._num_partitions: int = num_partitions
         self._partition_fn: PartitionFn = partition_fn
-        self._block_transform: Optional[BlockTransformer] = block_transformer
+        self._block_transformer: Optional[BlockTransformer] = block_transformer
 
         # -- Map task config -------------------------------------------------
         self._shuffle_map_task_num_cpus: float = map_cpus
@@ -240,7 +240,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
             partition_fn=self._partition_fn,
             num_partitions=self._num_partitions,
             compression=self.data_context.hash_shuffle_compression,
-            block_transformer=self._block_transform,
+            block_transformer=self._block_transformer,
         )
         metadata_ref = map_refs[0]
         partition_refs = list(map_refs[1:])

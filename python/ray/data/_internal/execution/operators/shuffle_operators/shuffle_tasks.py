@@ -125,12 +125,12 @@ def _shuffle_map_task(
             )
         ]
         combined_input = transform_pyarrow.concat(arrow_inputs, promote_types=True)
-        shard_source_blocks: List[Block] = [block_transformer(combined_input)]
+        shard_source_blocks: Tuple[Block, ...] = (block_transformer(combined_input),)
         partition_accumulators = _partition_blocks_to_shards(
             shard_source_blocks, partition_fn
         )
     else:
-        shard_source_blocks = list(blocks)
+        shard_source_blocks = blocks
         partition_accumulators = (
             {}
             if total_rows == 0

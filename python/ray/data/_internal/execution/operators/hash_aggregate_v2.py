@@ -30,12 +30,13 @@ def _make_aggregating_transformer(
         )
 
         # TODO unify block schemas to avoid validating every block.
+        block_schema = BlockAccessor.for_block(block).schema()
         for agg_fn in aggregation_fns:
-            agg_fn._validate(BlockAccessor.for_block(block).schema())
+            agg_fn._validate(block_schema)  # pyrefly: ignore[bad-argument-type]
 
         # Project down to only the key + aggregation-input columns.
         pruned_block = SortAggregateTaskSpec._prune_unused_columns(
-            block, sort_key, aggregation_fns
+            block, sort_key, aggregation_fns  # pyrefly: ignore[bad-argument-type]
         )
 
         # `_aggregate` assumes the block is sorted by key; skip when global.
@@ -45,7 +46,7 @@ def _make_aggregating_transformer(
             target_block = pruned_block
 
         return BlockAccessor.for_block(target_block)._aggregate(
-            sort_key, aggregation_fns
+            sort_key, aggregation_fns  # pyrefly: ignore[bad-argument-type]
         )
 
     return _transform
@@ -70,7 +71,10 @@ def _make_aggregating_reduce_fn(
         combined_block, _ = BlockAccessor.for_block(
             tables[0]
         )._combine_aggregated_blocks(
-            list(tables), sort_key=sort_key, aggs=aggregation_fns, finalize=True
+            list(tables),
+            sort_key=sort_key,
+            aggs=aggregation_fns,  # pyrefly: ignore[bad-argument-type]
+            finalize=True,
         )
         yield combined_block
 
