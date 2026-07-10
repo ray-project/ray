@@ -2087,6 +2087,40 @@ class TestDynamicOverwrite:
                 mode=SaveMode.DYNAMIC_OVERWRITE,
             )
 
+    def test_dynamic_overwrite_replaces_only_present_partitions(self, clean_table):
+        """Partitions present in incoming data are replaced; others survive; one snapshot."""
+        sql_catalog, table = clean_table  # table is partitioned by col_c (identity)
+
+        # Seed 3 partitions: col_c in {1, 2, 3}
+        initial = _create_typed_dataframe(
+            {"col_a": [1, 2, 3], "col_b": ["p1", "p2", "p3"], "col_c": [1, 2, 3]}
+        )
+        _write_to_iceberg(initial, mode=SaveMode.APPEND)
+
+        table.refresh()
+        snapshots_before = len(table.snapshots())
+
+        # Dynamic overwrite touching only col_c in {1, 3}
+        new_data = _create_typed_dataframe(
+            {"col_a": [10, 30], "col_b": ["new1", "new3"], "col_c": [1, 3]}
+        )
+        _write_to_iceberg(new_data, mode=SaveMode.DYNAMIC_OVERWRITE)
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [2, 10, 30],
+                "col_b": ["p2", "new1", "new3"],
+                "col_c": [2, 1, 3],
+            }
+        )
+        assert rows_same(result, expected)
+
+        # Exactly ONE new snapshot, and it is an OVERWRITE (not delete + append)
+        table.refresh()
+        assert len(table.snapshots()) == snapshots_before + 1
+        assert table.current_snapshot().summary.operation.value == "overwrite"
+
 
 if __name__ == "__main__":
     import sys

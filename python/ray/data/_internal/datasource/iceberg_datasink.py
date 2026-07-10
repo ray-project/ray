@@ -510,6 +510,8 @@ class IcebergDatasink(
             self._commit_append(all_data_files)
         elif self._mode == SaveMode.OVERWRITE:
             self._commit_overwrite(all_data_files)
+        elif self._mode == SaveMode.DYNAMIC_OVERWRITE:
+            self._commit_dynamic_overwrite(all_data_files)
         elif self._mode == SaveMode.UPSERT:
             # Execute entire commit in Ray task to avoid OOM on driver
             join_cols = self._get_join_cols()
@@ -570,3 +572,67 @@ class IcebergDatasink(
 
         # Append new data files and commit
         _append_and_commit(txn, data_files, self._snapshot_properties)
+
+    def _build_identity_partition_filter(
+        self, data_files: List["DataFile"]
+    ) -> "BooleanExpression":
+        """Build a delete predicate over the identity partition columns of the data.
+
+        For each distinct combination of identity-partition values present in the
+        written data files, emits an equality (or IS NULL) match; the matches are
+        OR-ed together. Non-identity partition fields (bucket/truncate/etc.) are
+        ignored -- deleting the identity partition sweeps all of its buckets.
+        """
+        from pyiceberg.expressions import (
+            AlwaysFalse,
+            And,
+            EqualTo,
+            IsNull,
+            Or,
+            Reference,
+        )
+        from pyiceberg.transforms import IdentityTransform
+
+        spec = self._table.metadata.spec()
+        schema = self._table.metadata.schema()
+
+        # (position in the partition record, source column name) for identity fields
+        identity_positions = [
+            (pos, schema.find_field(field.source_id).name)
+            for pos, field in enumerate(spec.fields)
+            if isinstance(field.transform, IdentityTransform)
+        ]
+
+        expr: "BooleanExpression" = AlwaysFalse()
+        seen = set()
+        for data_file in data_files:
+            # Distinct identity-partition value tuple for this file
+            key = tuple(data_file.partition[pos] for pos, _ in identity_positions)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            match = None
+            for (_, name), value in zip(identity_positions, key):
+                predicate = (
+                    EqualTo(Reference(name), value)
+                    if value is not None
+                    else IsNull(Reference(name))
+                )
+                match = predicate if match is None else And(match, predicate)
+            if match is not None:
+                expr = Or(expr, match)
+        return expr
+
+    def _commit_dynamic_overwrite(self, data_files: List["DataFile"]) -> None:
+        """Commit a dynamic partition overwrite as a single OVERWRITE snapshot."""
+        delete_filter = self._build_identity_partition_filter(data_files)
+        txn = self._table.transaction()
+        txn.replace_partitions(
+            data_files=data_files,
+            delete_filter=delete_filter,
+            case_sensitive=self._case_sensitive,
+            snapshot_properties=self._snapshot_properties,
+            **self._overwrite_kwargs,
+        )
+        txn.commit_transaction()
