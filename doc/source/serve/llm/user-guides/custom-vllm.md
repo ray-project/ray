@@ -14,6 +14,7 @@ Ray Serve LLM serves any architecture that vLLM supports. When your model isn't 
 
 Install Ray with the LLM extra:
 
+```
 pip install "ray[llm]"
 ```
 
@@ -62,6 +63,10 @@ pip install .  # from the plugin project directory
 
 ## Deploy the model
 
+Configure the model as a pooling deployment, enable direct streaming, then launch it with the Python API or a YAML config.
+
+### Configure the model
+
 Set `runner="pooling"` because a reward model encodes rather than generates, and use `engine_kwargs.hf_overrides` to select the custom architecture and configure a single regression score (`num_labels=1`, `problem_type="regression"` for an identity activation).
 
 The plugin entry point registers the architecture in the vLLM engine and worker processes. Ray Serve LLM also resolves and validates the architecture while it builds the engine configuration, so register it there too: point `server_cls` at an `LLMServer` subclass whose import calls `register()`.
@@ -72,6 +77,8 @@ The plugin entry point registers the architecture in the vLLM engine and worker 
 :end-before: __serve_hook_end__
 ```
 
+### Enable direct streaming
+
 Serve with {doc}`direct streaming <direct-streaming>` so vLLM's native `/classify` route is exposed. Export both environment variables before starting Serve:
 
 ```bash
@@ -79,7 +86,9 @@ export RAY_SERVE_ENABLE_HA_PROXY=1
 export RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
 ```
 
-Then deploy with the Python API or an equivalent YAML config:
+### Deploy
+
+Deploy with the Python API or an equivalent YAML config:
 
 ::::{tab-set}
 
