@@ -90,6 +90,7 @@ from ray.data.catalog import (
     ResolvedSource,
     DatabricksUnityCatalog,
 )
+from ray.data.collate_fn import TensorBatchType, TensorSequenceType
 
 # Module-level cached global functions for callable classes. It needs to be defined here
 # since it has to be process-global across cloudpickled funcs.
@@ -156,6 +157,8 @@ __all__ = [
     "SinkMode",
     "SaveMode",
     "TaskPoolStrategy",
+    "TensorBatchType",
+    "TensorSequenceType",
     "from_daft",
     "from_dask",
     "from_items",
