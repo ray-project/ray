@@ -1043,15 +1043,39 @@ def _classify_and_raise(
 ) -> "NoReturn":
     """Diagnose a manager RPC failure and raise the appropriate typed error.
 
+    Prefers structured hints from ``ActorDiedError`` (``.preempted``,
+    ``.actor_init_failed``) — set by Ray Core itself and more reliable than
+    a delayed ``ray.nodes()`` snapshot. Falls back to ``_is_node_alive``
+    when Ray hasn't told us the cause structurally.
+
     - Node dead → ``ShuffleNodeLostError`` (Ray-Core lineage handles most
       cases via reducer retry; propagation past that budget = fatal).
-    - Node alive → ``ShuffleManagerAnomalyError`` (unexpected under our
-      configuration; fail loudly, no auto-recovery).
-    - Node liveness inconclusive (GCS lag) → ``ShuffleFetchError`` (treated
-      as transient).
+    - Actor unreachable on live node → ``ShuffleManagerAnomalyError``
+      (retry-the-job situation, no auto-recovery).
+    - Node liveness inconclusive (GCS lag) → ``ShuffleFetchError``
+      (transient; caller's retry loop can wait it out).
     """
-    alive = _is_node_alive(node_id)
     detail = f"context={context!r}; sources={num_sources}"
+
+    # Ray Core's own hints on ``ActorDiedError`` are authoritative — no
+    # ``ray.nodes()`` lag, and set at exception-construction time.
+    if isinstance(exc, ActorDiedError):
+        if exc.preempted:
+            raise ShuffleNodeLostError(
+                f"ShuffleManager node {node_id} preempted (autoscaler "
+                f"drain / SIGTERM). Ray-Core lineage will re-execute "
+                f"affected mappers on reducer retry. ({detail}) "
+                f"[cause: {exc}]"
+            ) from exc
+        if exc.actor_init_failed:
+            raise ShuffleManagerAnomalyError(
+                f"ShuffleManager on node {node_id} failed to initialize; "
+                f"Ray gave up restarting it. Not automatically recoverable — "
+                f"retry the job. ({detail}) [cause: {exc}]"
+            ) from exc
+
+    # Fall back to ``ray.nodes()`` for anything not structurally tagged.
+    alive = _is_node_alive(node_id)
     if alive is False:
         raise ShuffleNodeLostError(
             f"ShuffleManager node {node_id} is dead — on-disk shuffle "
@@ -1070,8 +1094,8 @@ def _classify_and_raise(
             f"lineage won't re-run it) but no manager exists to serve it. "
             f"Retry the job. ({detail})"
         ) from exc
-    # alive is None: GCS inconclusive. Treat as transient — Ray task retry
-    # or a resubmit will get a fresh view.
+    # alive is None: GCS inconclusive. Treat as transient — the caller's
+    # in-place retry loop can wait for GCS to catch up.
     raise ShuffleFetchError(
         f"ShuffleManager RPC failed and node liveness is inconclusive "
         f"(node_id={node_id!r}, likely transient GCS lag). ({detail})"
