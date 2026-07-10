@@ -135,7 +135,7 @@ def _worker(
                 )
             except InterruptedError:
                 break
-            except Exception as e:
+            except BaseException as e:
                 pool.output_queue.put(_WorkerError(e))
             finally:
                 pool.work_queue.task_done()
