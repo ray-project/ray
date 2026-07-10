@@ -96,6 +96,9 @@ def _drain_op(op, *, timeout_s: float = 30.0) -> list:
         DataOpTask,
         MetadataOpTask,
     )
+    from ray.data._internal.execution.metadata_fetcher import InlineMetadataFetcher
+
+    metadata_fetcher = InlineMetadataFetcher()
 
     bundles = []
     deadline = time.monotonic() + timeout_s
@@ -118,7 +121,7 @@ def _drain_op(op, *, timeout_s: float = 30.0) -> list:
         for ref in ready:
             task = ref_to_task[ref]
             if isinstance(task, DataOpTask):
-                task.on_data_ready(None)
+                task.on_data_ready(None, metadata_fetcher)
             else:
                 assert isinstance(task, MetadataOpTask)
                 task.on_task_finished()

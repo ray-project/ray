@@ -1536,9 +1536,12 @@ def external_hash_shuffle_reduce_task(
             yield from _yield_with_stats(out_block)
 
     # Empty-input shortcut: no shards for this partition, hand [] to
-    # reduce_fn and emit whatever it yields (may be nothing).
+    # reduce_fn and emit whatever it yields (may be nothing). Wrap in a
+    # 1-element list to match reduce_fn's tables_by_input signature — we
+    # are single-input (external mirrors ShuffleMap→ShuffleReduce, no
+    # multi-input joins today).
     if not sources:
-        for block in reduce_fn(partition_id, []):
+        for block in reduce_fn(partition_id, [[]]):
             yield from _emit(block)
         return
 
@@ -1574,7 +1577,9 @@ def external_hash_shuffle_reduce_task(
                         target_max_block_size=target_max_block_size,
                     )
                 )
-            for block in reduce_fn(partition_id, tables):
+            # Wrap in a 1-element list — external is single-input, but
+            # reduce_fn's signature is ``(partition_id, tables_by_input)``.
+            for block in reduce_fn(partition_id, [tables]):
                 if output_buffer is None:
                     # target_max_block_size=None: emit blocks as-is.
                     yield from _emit(block)
