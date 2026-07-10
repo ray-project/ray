@@ -277,6 +277,37 @@ def _basic_aggregators(column: str) -> List[AggregateFnV2]:
     ]
 
 
+def _boolean_aggregators(column: str) -> List[AggregateFnV2]:
+    """Generate default metrics for boolean columns.
+
+    Booleans are numeric-like, but PyArrow has no compute kernels for the
+    operations behind ``Std`` (``subtract(bool, double)``),
+    ``ApproximateQuantile`` (``quantile(bool)``) and ``ZeroPercentage``
+    (``equal(bool, int64)``), so including those aggregators makes
+    ``Dataset.summary()`` crash with ``ArrowNotImplementedError`` (issue
+    #62235). Only the metrics whose kernels support booleans are returned:
+
+    - count
+    - mean
+    - min
+    - max
+    - missing_value_percentage
+
+    Args:
+        column: The name of the boolean column to compute metrics for.
+
+    Returns:
+        A list of AggregateFnV2 instances that can be used with Dataset.aggregate()
+    """
+    return [
+        Count(on=column, ignore_nulls=False),
+        Mean(on=column, ignore_nulls=True),
+        Min(on=column, ignore_nulls=True),
+        Max(on=column, ignore_nulls=True),
+        MissingValuePercentage(on=column),
+    ]
+
+
 def _default_dtype_aggregators() -> Dict[
     Union["DataType", "TypeCategory"], Callable[[str], List[AggregateFnV2]]
 ]:
@@ -310,7 +341,7 @@ def _default_dtype_aggregators() -> Dict[
         DataType.uint64(): _numerical_aggregators,
         DataType.float32(): _numerical_aggregators,
         DataType.float64(): _numerical_aggregators,
-        DataType.bool(): _numerical_aggregators,
+        DataType.bool(): _boolean_aggregators,
         # String and binary types
         DataType.string(): _basic_aggregators,
         DataType.binary(): _basic_aggregators,

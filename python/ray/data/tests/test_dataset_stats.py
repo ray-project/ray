@@ -21,6 +21,7 @@ from ray.data.datatype import DataType
 from ray.data.stats import (
     DatasetSummary,
     _basic_aggregators,
+    _boolean_aggregators,
     _default_dtype_aggregators,
     _dtype_aggregators_for_dataset,
     _numerical_aggregators,
@@ -194,6 +195,24 @@ class TestIndividualAggregatorFunctions:
             ZeroPercentage,
         ]
 
+    def test_boolean_aggregators(self):
+        """Test _boolean_aggregators excludes aggregators that crash on booleans.
+
+        Regression test for #62235: Std, ApproximateQuantile and ZeroPercentage
+        rely on PyArrow kernels that have no boolean implementation, so they must
+        not be part of the boolean column defaults.
+        """
+        aggs = _boolean_aggregators("test_col")
+
+        assert all(agg.get_target_column() == "test_col" for agg in aggs)
+        assert [type(agg) for agg in aggs] == [
+            Count,
+            Mean,
+            Min,
+            Max,
+            MissingValuePercentage,
+        ]
+
     def test_temporal_aggregators(self):
         """Test _temporal_aggregators function."""
         aggs = _temporal_aggregators("test_col")
@@ -260,13 +279,10 @@ class TestDefaultDtypeAggregators:
                     Mean,
                     Min,
                     Max,
-                    Std,
-                    ApproximateQuantile,
                     MissingValuePercentage,
-                    ZeroPercentage,
                 ],
                 False,
-            ),  # Numerical
+            ),  # Boolean (Std/ApproximateQuantile/ZeroPercentage excluded, see #62235)
             (
                 DataType.string,
                 [Count, MissingValuePercentage, ApproximateTopK],
