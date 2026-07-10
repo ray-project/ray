@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -2006,7 +2007,25 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
 void TaskManager::RecordMetrics() {
   absl::MutexLock lock(&mu_);
   total_lineage_bytes_gauge_.Record(total_lineage_footprint_bytes_);
+  // Re-assert every live owner-side task state each tick, not just transitions:
+  // the metrics backend clears gauge observations after each export (#56405), so
+  // a task that sits in one state (e.g. PENDING_NODE_ASSIGNMENT) would otherwise
+  // drop out of the gauge. FlushOnChangeCallbacks still emits the final 0 for
+  // keys that just dropped to zero (erased from the counter, so ForEachEntry
+  // won't visit them).
   task_counter_.FlushOnChangeCallbacks();
+  task_counter_.ForEachEntry(
+      [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key, int64_t value)
+          ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) { RecordTaskState(key, value); });
+}
+
+void TaskManager::RecordTaskState(
+    const std::tuple<std::string, rpc::TaskStatus, bool> &key, int64_t value) {
+  task_by_state_counter_.Record(value,
+                                {{"State", rpc::TaskStatus_Name(std::get<1>(key))},
+                                 {"Name", std::get<0>(key)},
+                                 {"IsRetry", std::get<2>(key) ? "1" : "0"},
+                                 {"Source", "owner"}});
 }
 
 ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {
