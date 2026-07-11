@@ -442,9 +442,10 @@ def external_hash_shuffle_reduce_task(
 
             def _decode_region(base: int, size: int):
                 """Walk frames in [base, base+size), accumulate for the
-                final reduce, then fdatasync + fadvise DONTNEED so page
-                cache stays bounded by the currently-decoding region +
-                the accumulator."""
+                final reduce, then fdatasync + fadvise DONTNEED as a
+                best-effort hint to release this region's pages (the
+                kernel is free to ignore DONTNEED under memory pressure,
+                and buffered filesystems may retain pages briefly)."""
                 nonlocal accum_bytes
                 pos = base
                 end = base + size

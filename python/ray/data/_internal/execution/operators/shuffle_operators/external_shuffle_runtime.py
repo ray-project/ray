@@ -882,8 +882,12 @@ def _is_node_alive(node_id: str) -> Optional[bool]:
     return None
 
 
-# Process-global cache of ShuffleManager endpoints: {actor_id_bytes: (ip, port)}.
-# When an file server actor is respawned (due to failure), the CACHE will be re-populated
+# Process-global cache of ShuffleManager endpoints: {actor_name: (ip, port)}.
+# Repopulated after actor respawn (retry loop pops the stale entry — see
+# ``_prefetch_node_into``). Concurrent read/write from multiple fetch
+# threads relies on individual dict operations being atomic under
+# CPython's GIL; if this module ever runs on a GIL-free interpreter,
+# wrap accesses in a ``threading.Lock``.
 _ENDPOINT_CACHE: Dict[str, Tuple[str, int]] = {}
 
 # --------------------------------------------------------- fetch routing types
