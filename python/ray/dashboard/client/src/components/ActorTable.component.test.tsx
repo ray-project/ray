@@ -165,6 +165,10 @@ describe("ActorTable", () => {
     expect(actor1Row.compareDocumentPosition(actor2Row)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     ); // actor2Row appear after actor1Row
+
+    // GPU/GRAM columns hidden when no actors have GPUs
+    expect(screen.queryByText("GPU")).not.toBeInTheDocument();
+    expect(screen.queryByText("GRAM")).not.toBeInTheDocument();
   });
 
   it("renders a table of actors sorted by startTime desc when states are the same", () => {
@@ -387,5 +391,9 @@ describe("ActorTable", () => {
     expect(actor2GRAMRow.compareDocumentPosition(actor1GRAMRow)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     ); // actor2Row appear before actor1Row
+
+    // GPU/GRAM columns visible when actors have GPUs
+    expect(screen.getByText("GPU")).toBeInTheDocument();
+    expect(screen.getByText("GRAM")).toBeInTheDocument();
   });
 });

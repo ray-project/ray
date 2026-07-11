@@ -233,6 +233,7 @@ const NodeDetailPage = () => {
                 actors={nodeDetail.actors}
                 workers={nodeDetail?.workers}
                 detailPathPrefix="/actors"
+                showGPUColumn={!!(nodeDetail?.gpus?.length || nodeDetail?.tpus?.length)}
               />
             </TableContainer>
           </React.Fragment>
