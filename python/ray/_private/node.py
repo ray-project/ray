@@ -836,7 +836,24 @@ class Node:
 
         # TODO(ryw) instead of create a new GcsClient, wrap the one from
         # CoreWorkerProcess to save a grpc channel.
-        for _ in range(ray_constants.NUM_REDIS_GET_RETRIES):
+        num_retries = ray_constants.NUM_REDIS_GET_RETRIES
+        if self.head and self._is_rocksdb_gcs():
+            # Head fault-tolerance restarts reuse the existing fixed GCS
+            # port (see __init__), so start_gcs_server()'s extended
+            # RocksDB port-file wait -- which is gated on
+            # gcs_server_port == 0 -- is skipped. On that path GCS
+            # readiness depends entirely on this retry loop. RocksDB
+            # recovery (open two on-disk DBs, WAL replay, GetAll table
+            # scans that grow with cluster state) is slowest exactly on
+            # restart and can exceed the default ~20s window, failing
+            # head startup. Extend the window to the same budget as the
+            # port-zero path, overridable via the same env var. Each
+            # iteration sleeps ~1s below, so retries ~= seconds.
+            rocksdb_wait_s = int(
+                os.environ.get("RAY_gcs_server_port_wait_time_s", "120")
+            )
+            num_retries = max(num_retries, rocksdb_wait_s)
+        for _ in range(num_retries):
             gcs_address = None
             last_ex = None
             try:
