@@ -15,6 +15,13 @@ from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
 
+@pytest.fixture(autouse=True, params=[False, True], ids=["shufflev1", "shufflev2"])
+def hash_shuffle_version(request, restore_data_context):
+    """Run every join test on both v1 (old actor-based) & v2 shuffle."""
+    DataContext.get_current().use_hash_shuffle_v2 = request.param
+    return request.param
+
+
 @pytest.mark.parametrize(
     "num_rows_left,num_rows_right,partition_size_hint",
     [
