@@ -4467,9 +4467,11 @@ class Algorithm(Checkpointable, Trainable):
         # actual class, so `type` may be either a str or a class here. Compare
         # against the class name in both cases; a substring `in` on a class object
         # raises `TypeError: argument of type 'ABCMeta' is not iterable` (#60491).
-        buffer_type = config["replay_buffer_config"]["type"]
+        buffer_type = config["replay_buffer_config"].get("type")
         buffer_type_name = (
-            buffer_type if isinstance(buffer_type, str) else buffer_type.__name__
+            buffer_type
+            if isinstance(buffer_type, str)
+            else getattr(buffer_type, "__name__", "")
         )
         if "EpisodeReplayBuffer" in buffer_type_name:
             # TODO (simon): Subclassing needs a proper class and therefore
