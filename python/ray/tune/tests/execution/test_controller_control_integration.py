@@ -185,5 +185,42 @@ def test_pause_trial_clears_queued_decision(
     assert trial.trial_id not in runner._queued_trial_decisions
 
 
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+def test_stop_trial_clears_queued_decision(
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls
+):
+    """Stopping a trial must clear any queued decision for it.
+
+    Regression test for #58483 (failure/recovery path): a trial can be stopped
+    and requeued with a new actor without going through ``pause_trial``, so a
+    stale queued decision must be dropped in ``_schedule_trial_stop`` as well.
+    """
+    from ray.tune.schedulers import TrialScheduler
+
+    register_mock_trainable()
+    runner = TuneController(
+        resource_manager_factory=lambda: resource_manager_cls(), storage=STORAGE
+    )
+    kwargs = {
+        "stopping_criterion": {"training_iteration": 10},
+        "placement_group_factory": PlacementGroupFactory([{"CPU": 2, "GPU": 1}]),
+        "config": {"sleep": 1},
+        "storage": STORAGE,
+    }
+    trial = Trial(MOCK_TRAINABLE_NAME, **kwargs)
+    runner.add_trial(trial)
+
+    while trial.status != Trial.RUNNING:
+        runner.step()
+
+    runner._queued_trial_decisions[trial.trial_id] = TrialScheduler.CONTINUE
+
+    runner._schedule_trial_stop(trial)
+
+    assert trial.trial_id not in runner._queued_trial_decisions
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "--reruns", "3", __file__]))

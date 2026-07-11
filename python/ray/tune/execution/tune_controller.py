@@ -1371,6 +1371,12 @@ class TuneController:
 
         logger.debug(f"Requesting to STOP actor for trial {trial}")
 
+        # A trial being stopped must not retain a stale queued decision (e.g. a
+        # buffered `CONTINUE`). On the failure/recovery path the trial is requeued
+        # with a new actor without going through `pause_trial`, so a leftover
+        # queued decision could later be executed against the wrong actor (#58483).
+        self._queued_trial_decisions.pop(trial.trial_id, None)
+
         if trial.is_saving:
             logger.debug(
                 f"Trial {trial} is currently saving/pausing. Scheduling STOP after "
