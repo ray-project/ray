@@ -232,6 +232,9 @@ def external_hash_shuffle_map_task(
             final_size_on_close = f.tell()
             if fsync_on_close:
                 os.fsync(f.fileno())
+                # Drop the just-written pages so we don't hold GBs of
+                # warm cache per mapper.
+                _drop_pagecache(f.fileno(), 0, final_size_on_close)
             if index:
                 expected_size = max(
                     off + length for ranges in index.values() for off, length in ranges
@@ -452,9 +455,9 @@ def external_hash_shuffle_reduce_task(
                     table = _read_ipc(ipc_buf)
                     accum_tables.append(table)
                     accum_bytes += table.nbytes
-                # Hint the kernel to drop this region's pages. Effective
-                # only on clean pages; the pwrite'd dirty pages will be
-                # evicted on natural writeback.
+                # fdatasync turns this fd's dirty pwrite'd pages clean,
+                # so the DONTNEED that follows actually evicts them.
+                os.fdatasync(fd)
                 _drop_pagecache(fd, base, size)
 
             with ThreadPoolExecutor(max_workers=n_threads) as ex:
