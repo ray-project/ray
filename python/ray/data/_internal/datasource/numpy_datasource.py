@@ -29,8 +29,10 @@ class NumpyDatasource(FileBasedDatasource):
             numpy_load_args = {}
 
         self._allow_pickle = allow_pickle
-        # Remove allow_pickle from numpy_load_args to avoid duplicate kwarg.
-        numpy_load_args.pop("allow_pickle", None)
+        # Remove allow_pickle to avoid duplicate kwarg in np.load().
+        numpy_load_args = {
+            k: v for k, v in numpy_load_args.items() if k != "allow_pickle"
+        }
         self.numpy_load_args = numpy_load_args
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
