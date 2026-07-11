@@ -4709,7 +4709,7 @@ class Algorithm(Checkpointable, Trainable):
         # `compute_actions` and avoids silently returning actions computed from
         # unfiltered observations (issue #64087). `NoFilter` (the default) leaves
         # the observation unchanged.
-        if observation is not None:
+        if observation is not None and self.env_runner_group is not None:
             local_env_runner = self.env_runner_group.local_env_runner
             obs_filter = (
                 local_env_runner.filters.get(policy_id)
