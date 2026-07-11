@@ -333,7 +333,7 @@ src/ray/core_worker/experimental*.cc
 src/ray/gcs/store_client/
 bazel/rocksdb.BUILD
 @ rocksdb_tests redis_tests
-@ core_cpp cpp java python linux_wheels macos_wheels dashboard release_tests
+@ core_cpp cpp java core_python linux_wheels macos_wheels dashboard release_tests
 ;
 
 src/
