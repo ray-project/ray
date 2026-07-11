@@ -424,7 +424,8 @@ int main(int argc, char **argv) {
             << ", strand_buckets=" << strand_buckets << ")" << std::endl;
   results.push_back(
       BenchRocksDb(io_fixture, rocksdb_db.string(), io_pool_size, strand_buckets));
-  fs::remove_all(rocksdb_db);  EmitJson(std::cout, results);
+  fs::remove_all(rocksdb_db);
+  EmitJson(std::cout, results);
   if (!output_path.empty()) {
     fs::create_directories(fs::path(output_path).parent_path());
     std::ofstream f(output_path);
