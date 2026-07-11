@@ -41,6 +41,7 @@ def test_from_tf_ragged(ray_start_regular_shared_2_cpus):
     # after slicing to reproduce the crash, so use a `ragged_rank=2` tensor:
     # `from_tensor_slices` peels off the outer dimension and leaves each element
     # as a (ragged) `RaggedTensor`.
+    import numpy as np
     import tensorflow as tf
 
     tf_dataset = tf.data.Dataset.from_tensor_slices(
@@ -53,11 +54,16 @@ def test_from_tf_ragged(ray_start_regular_shared_2_cpus):
     ray_dataset = ray.data.from_tf(tf_dataset)
 
     actual_data = extract_values("item", ray_dataset.take_all())
-    expected_data = [[[1, 2], [3]], [[4, 5, 6]]]
+    # Each row materializes as an object-dtype array of variable-length arrays.
+    expected_data = [
+        [np.array([1, 2]), np.array([3])],
+        [np.array([4, 5, 6])],
+    ]
     assert len(actual_data) == len(expected_data)
-    for actual, expected in zip(actual_data, expected_data):
-        # Each row is an object-dtype array of variable-length arrays.
-        assert [list(subarray) for subarray in actual] == expected
+    for actual_row, expected_row in zip(actual_data, expected_data):
+        assert len(actual_row) == len(expected_row)
+        for actual_subarray, expected_subarray in zip(actual_row, expected_row):
+            assert np.array_equal(actual_subarray, expected_subarray)
 
 
 if __name__ == "__main__":
