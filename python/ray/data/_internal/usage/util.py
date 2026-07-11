@@ -102,15 +102,17 @@ def start_metric_sample(sample_fn: Callable[[], T]) -> "Future[T]":
     return future
 
 
-def join_metric_sample(future: "Future[T]", default: T) -> T:
-    """Wait up to ``_SAMPLE_JOIN_TIMEOUT_S`` for the sample started by
-    ``start_metric_sample`` and return its result.
+def join_metric_sample(
+    future: "Future[T]", default: T, timeout: float = _SAMPLE_JOIN_TIMEOUT_S
+) -> T:
+    """Wait up to ``timeout`` seconds (default ``_SAMPLE_JOIN_TIMEOUT_S``) for
+    the sample started by ``start_metric_sample`` and return its result.
 
     Returns ``default`` if the sample is still running (hung) or raised, so a
     stuck reader degrades gracefully instead of blocking teardown.
     """
     try:
-        return future.result(timeout=_SAMPLE_JOIN_TIMEOUT_S)
+        return future.result(timeout=timeout)
     except Exception:
         return default
 

@@ -334,7 +334,7 @@ def test_metric_sample_round_trip():
     assert util.join_metric_sample(future, default=(None, None)) == (2, 5)
 
 
-def test_metric_sample_hung_returns_default(monkeypatch):
+def test_metric_sample_hung_returns_default():
     """If the sampler outlives the join timeout, the sample degrades to default."""
     import threading as _threading
 
@@ -344,10 +344,12 @@ def test_metric_sample_hung_returns_default(monkeypatch):
         release.wait(5)
         return (1, 1)
 
-    monkeypatch.setattr(util, "_SAMPLE_JOIN_TIMEOUT_S", 0.05)
     future = util.start_metric_sample(slow)
     try:
-        assert util.join_metric_sample(future, default=(None, None)) == (None, None)
+        assert util.join_metric_sample(future, default=(None, None), timeout=0.05) == (
+            None,
+            None,
+        )
     finally:
         # Let the worker thread finish so it doesn't linger past the test.
         release.set()
