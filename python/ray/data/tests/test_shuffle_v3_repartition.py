@@ -1,13 +1,13 @@
 """End-to-end test: ``ds.repartition()`` routed through v3 hash shuffle.
 
-Unlike ``test_shuffle_v3_smoke.py`` which hand-drives the operator pair,
+Unlike ``test_hash_shuffle_external_smoke.py`` which hand-drives the operator pair,
 this test goes through the **real** Ray Data planner + StreamingExecutor.
 That exercises:
 
-  * ``DataContext.use_hash_shuffle_v3`` dispatch in
-    ``plan_all_to_all_op._plan_hash_shuffle_repartition_v3``
+  * ``DataContext.use_external_hash_shuffle`` dispatch in
+    ``plan_all_to_all_op._plan_hash_shuffle_repartition_external``
   * the StreamingExecutor's backpressure / scheduling loop driving
-    ``ShuffleMapOpV3`` and ``ShuffleReduceOpV3`` (not the smoke harness)
+    ``ExternalHashShuffleMapOp`` and ``ExternalHashShuffleReduceOp`` (not the smoke harness)
   * full lifecycle: from a ``range`` source through map + reduce, then
     consumed via ``take_all()`` — and ShuffleManager actors getting
     ref-counted down by Ray GC on bundle destruction
@@ -38,15 +38,15 @@ def ray_cluster():
 
 @contextmanager
 def _v3_flag(enabled: bool):
-    """Flip ``use_hash_shuffle_v3`` for the duration of the test and put it
-    back on the way out — regardless of pass / fail."""
+    """Flip ``use_external_hash_shuffle`` for the duration of the test and
+    put it back on the way out — regardless of pass / fail."""
     ctx = DataContext.get_current()
-    prev = ctx.use_hash_shuffle_v3
-    ctx.use_hash_shuffle_v3 = enabled
+    prev = ctx.use_external_hash_shuffle
+    ctx.use_external_hash_shuffle = enabled
     try:
         yield ctx
     finally:
-        ctx.use_hash_shuffle_v3 = prev
+        ctx.use_external_hash_shuffle = prev
 
 
 # ─────────────────────────── correctness ─────────────────────────────────

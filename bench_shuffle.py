@@ -4,10 +4,10 @@ Unifies benchmark_v3_ooc.py and benchmark_ooc_shuffle.py. The only mandatory
 difference between v2 and v3 is which `DataContext` flags get flipped --
 everything else (read, limit, repartition, write, stats collection) is shared.
 
-  v2 -> use_hash_shuffle_v3 = False, shuffle_strategy = HASH_SHUFFLE
-        (plasma map outputs; spills via object store)
-  v3 -> use_hash_shuffle_v3 = True,  shuffle_strategy = HASH_SHUFFLE
-        (file-transport; local disk + socket; plasma carries small handles)
+  v2 -> use_external_hash_shuffle = False, shuffle_strategy = HASH_SHUFFLE
+        (in-memory map outputs via Ray object store; spills to disk when full)
+  v3 -> use_external_hash_shuffle = True,  shuffle_strategy = HASH_SHUFFLE
+        (file-transport; local disk + socket; object store carries small handles)
 
 Optional rich-measurement features (timeline dump, raylet spill-event
 collection) are gated behind flags and degrade gracefully when the
@@ -75,7 +75,7 @@ def configure_shuffle(ctx, shuffle: str) -> None:
     HASH_SHUFFLE strategy (the v3 flag just routes through a different
     transport layer when True)."""
     ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
-    ctx.use_hash_shuffle_v3 = shuffle == "v3"
+    ctx.use_external_hash_shuffle = shuffle == "v3"
 
 
 def _maybe_truncate_spill_logs() -> None:
