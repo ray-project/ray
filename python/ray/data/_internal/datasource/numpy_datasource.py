@@ -20,6 +20,7 @@ class NumpyDatasource(FileBasedDatasource):
         self,
         paths: Union[str, List[str]],
         numpy_load_args: Optional[Dict[str, Any]] = None,
+        allow_pickle: bool = False,
         **file_based_datasource_kwargs,
     ):
         super().__init__(paths, **file_based_datasource_kwargs)
@@ -27,6 +28,9 @@ class NumpyDatasource(FileBasedDatasource):
         if numpy_load_args is None:
             numpy_load_args = {}
 
+        self._allow_pickle = allow_pickle
+        # Remove allow_pickle from numpy_load_args to avoid duplicate kwarg.
+        numpy_load_args.pop("allow_pickle", None)
         self.numpy_load_args = numpy_load_args
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
@@ -37,5 +41,11 @@ class NumpyDatasource(FileBasedDatasource):
         buf.write(data)
         buf.seek(0)
         yield BlockAccessor.batch_to_block(
-            {"data": np.load(buf, allow_pickle=True, **self.numpy_load_args)}
+            {
+                "data": np.load(
+                    buf,
+                    allow_pickle=self._allow_pickle,
+                    **self.numpy_load_args,
+                )
+            }
         )
