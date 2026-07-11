@@ -845,17 +845,23 @@ class Node:
         # RocksDB: the head itself (whose fault-tolerance restart reuses a
         # fixed GCS port, skipping start_gcs_server()'s port-file wait that
         # is gated on gcs_server_port == 0), and also workers/drivers
-        # joining during that window. Extend the retry budget to match the
-        # port-zero path (default 120s) whenever we can tell the backend is
-        # RocksDB. Workers/drivers that can't auto-detect the backend
-        # (their pods often lack RAY_gcs_storage / RAY_gcs_storage_path)
-        # can still opt in by setting RAY_gcs_server_port_wait_time_s, which
-        # is honored here on every node.
+        # joining during that window.
         num_retries = ray_constants.NUM_REDIS_GET_RETRIES
         gcs_wait_override = os.environ.get("RAY_gcs_server_port_wait_time_s")
-        if self._is_rocksdb_gcs() or gcs_wait_override is not None:
-            wait_s = int(gcs_wait_override) if gcs_wait_override is not None else 120
-            num_retries = max(num_retries, wait_s)
+        if gcs_wait_override is not None:
+            # Explicit operator budget: honor it exactly -- may lengthen OR
+            # shorten the window -- so this env var behaves identically here
+            # and in start_gcs_server()'s port-file wait. Floor at one
+            # attempt (~1s per iteration below) so a 0 value still tries
+            # once rather than skipping the connect entirely. This is also
+            # the opt-in for workers/drivers whose pods lack RAY_gcs_storage
+            # / RAY_gcs_storage_path and thus can't auto-detect the backend.
+            num_retries = max(1, int(gcs_wait_override))
+        elif self._is_rocksdb_gcs():
+            # No explicit override, but we can see the backend is RocksDB:
+            # extend to the same 120s budget as the port-zero path, without
+            # shrinking a larger operator-configured retry count.
+            num_retries = max(num_retries, 120)
         for _ in range(num_retries):
             gcs_address = None
             last_ex = None
