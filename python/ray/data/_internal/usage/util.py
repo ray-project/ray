@@ -1,17 +1,118 @@
-"""Utility functions for operator naming and logical-op usage recording for Ray Data telemetry.
+"""Utilities for Ray Data telemetry: operator naming / logical-op usage
+recording, plus helpers for the cluster metric queries fired by the usage collector
+in background threads.
 """
 
 import json
+import logging
+import os
 import threading
-from typing import Dict
+from concurrent.futures import Future
+from typing import Callable, Dict, Optional, TypeVar
+
+import requests
 
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import Read, ReadFiles, Write
 
+logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
 # The dictionary for the operator name and count.
 _recorded_operators = dict()
 _recorded_operators_lock = threading.Lock()
+
+# Cumulative raylet counters exposed via Prometheus, summed cluster-wide.
+_OOM_KILL_QUERY = "sum(ray_memory_manager_worker_eviction_total)"
+_UNEXPECTED_WORKER_KILL_QUERY = "sum(ray_node_manager_unexpected_worker_failure_total)"
+
+# Bounded timeout for the GCS RPC calls
+_GCS_RPC_TIMEOUT_S = 5.0
+# Bounded timeout for the Prometheus counter HTTP queries
+_PROMETHEUS_QUERY_TIMEOUT_S = 1.0
+# Timeout for join_metric_sample: how long the callback waits for a background
+# cluster sample before giving up. Kept >= every reader's own internal timeout
+_SAMPLE_JOIN_TIMEOUT_S = 5.0
+
+
+def _prometheus_host() -> str:
+    """Prometheus base URL, matching the dashboard's ``RAY_PROMETHEUS_HOST``."""
+    return os.environ.get("RAY_PROMETHEUS_HOST", "http://localhost:9090")
+
+
+def _prometheus_headers() -> Dict[str, str]:
+    """Parse ``RAY_PROMETHEUS_HEADERS`` (a JSON dict or list of ``[key, value]``
+    pairs). Returns an empty dict on any parse failure.
+    """
+    try:
+        headers = json.loads(os.environ.get("RAY_PROMETHEUS_HEADERS", "{}"))
+    except Exception:
+        return {}
+    if isinstance(headers, list):
+        return dict(headers)
+    return headers or {}
+
+
+def query_prometheus_counter(promql: str) -> Optional[int]:
+    """Instant-query a cumulative Prometheus counter and return its cluster-wide
+    integer value.
+
+    Returns None on any failure (Prometheus unreachable, non-200, empty result),
+    as usage collection is best effort
+    """
+    try:
+        resp = requests.get(
+            f"{_prometheus_host()}/api/v1/query",
+            params={"query": promql},
+            headers=_prometheus_headers(),
+            timeout=_PROMETHEUS_QUERY_TIMEOUT_S,
+        )
+        if resp.status_code != 200:
+            return None
+        results = resp.json()["data"]["result"]
+        if not results:
+            return None
+        return int(sum(float(r["value"][1]) for r in results))
+    except Exception:
+        logger.debug("Failed to query Prometheus counter %r", promql, exc_info=True)
+        return None
+
+
+def start_metric_sample(sample_fn: Callable[[], T]) -> "Future[T]":
+    """Run ``sample_fn`` on a daemon thread so a blocking metric query runs
+    concurrently with execution instead of blocking the caller (e.g. the
+    execution start path).
+
+    Returns a ``Future``; pass it to ``join_metric_sample`` once the result is
+    needed. The thread is a daemon (not a ThreadPoolExecutor worker, which is
+    non-daemon) so a reader that hangs past its own timeout can never block
+    interpreter shutdown, as usage collection must never block execution.
+    """
+    future: "Future[T]" = Future()
+
+    def run():
+        try:
+            future.set_result(sample_fn())
+        except Exception as exc:
+            future.set_exception(exc)
+
+    threading.Thread(target=run, name="data-usage-metric-sample", daemon=True).start()
+    return future
+
+
+def join_metric_sample(future: "Future[T]", default: T) -> T:
+    """Wait up to ``_SAMPLE_JOIN_TIMEOUT_S`` for the sample started by
+    ``start_metric_sample`` and return its result.
+
+    Returns ``default`` if the sample is still running (hung) or raised, so a
+    stuck reader degrades gracefully instead of blocking teardown.
+    """
+    try:
+        return future.result(timeout=_SAMPLE_JOIN_TIMEOUT_S)
+    except Exception:
+        return default
 
 
 def _is_builtin_cls(cls: type) -> bool:

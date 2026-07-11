@@ -8,7 +8,7 @@ import pytest
 
 import ray
 from ray.data._internal.issue_detection.issue_detector import IssueType
-from ray.data._internal.usage import collector
+from ray.data._internal.usage import collector, util
 from ray.data._internal.usage.execution_callback import UsageCallback
 
 
@@ -32,17 +32,20 @@ def executor():
     return executor
 
 
+def _prometheus_unreachable(*args, **kwargs):
+    raise ConnectionError("Prometheus unreachable (test)")
+
+
 @pytest.fixture
 def reset_collector(monkeypatch):
     collector.reset_for_testing()
     monkeypatch.delenv("RAY_DATA_USAGE_DISABLED", raising=False)
-    # ``ray.init()`` force-sets # RAY_USAGE_STATS_ENABLED=0 for driver-created clusters, so the env var can't
-    # keep the collector's opt-out gate open. Patch the gate directly instead.
+    # ``ray.init()`` force-sets RAY_USAGE_STATS_ENABLED=0 for driver-created
+    # clusters, so the env var can't keep the opt-out gate open. Patch the gate.
     monkeypatch.setattr(collector, "usage_stats_enabled", lambda: True)
-    # The callback reads these module-level cluster metric readers; pin them to
-    # zero so tests never touch the real cluster and deltas are deterministic.
-    monkeypatch.setattr(collector, "cluster_spilled_bytes", lambda: 0)
-    monkeypatch.setattr(collector, "cluster_dead_node_count", lambda: 0)
+    # Prometheus isn't running in tests, so make the counter queries fail fast to
+    # None at the HTTP boundary.
+    monkeypatch.setattr(util.requests, "get", _prometheus_unreachable)
     yield
     collector.reset_for_testing()
 
@@ -72,10 +75,15 @@ def test_round_trip_payload_shape(reset_collector, mock_record, executor):
     ]
     assert entry["workload"]["plan_str"] == "MapBatches\n+- ReadRange\n"
     assert "pyarrow" in entry["env"]
-    # Performance deltas are populated from the injected readers; both readers
-    # return 0 at start and end, so the clamped deltas are 0.
-    assert entry["performance"]["bytes_spilled"] == 0
-    assert entry["performance"]["node_deaths"] == 0
+    # Performance carries all four metric fields. Values are None in this
+    # hermetic run (no cluster / Prometheus); the delta math is covered by
+    # test_compute_delta and the query path by the query_prometheus_counter tests.
+    assert set(entry["performance"]) == {
+        "bytes_spilled",
+        "node_deaths",
+        "oom_kills",
+        "unexpected_worker_kills",
+    }
     # No issues detected in this run; the key is present and empty.
     assert entry["detected_issues"] == []
 
@@ -288,6 +296,61 @@ def test_compute_delta():
     assert collector.compute_delta(None, 100) is None
     assert collector.compute_delta(100, None) is None
     assert collector.compute_delta(None, None) is None
+
+
+def test_query_prometheus_counter_sums_results(monkeypatch):
+    """A successful instant query sums the value of every returned series."""
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {
+        "data": {"result": [{"value": [0, "3"]}, {"value": [0, "4"]}]}
+    }
+    monkeypatch.setattr(util.requests, "get", lambda *a, **k: resp)
+    assert util.query_prometheus_counter("q") == 7
+
+
+@pytest.mark.parametrize(
+    "get_fn",
+    [
+        # Non-200 response.
+        lambda *a, **k: MagicMock(status_code=500),
+        # 200 but no series matched.
+        lambda *a, **k: MagicMock(
+            status_code=200, json=lambda: {"data": {"result": []}}
+        ),
+        # Prometheus unreachable / request raised.
+        MagicMock(side_effect=RuntimeError("no prometheus")),
+    ],
+)
+def test_query_prometheus_counter_returns_none_on_failure(monkeypatch, get_fn):
+    """Any query failure yields None so usage collection never breaks."""
+    monkeypatch.setattr(util.requests, "get", get_fn)
+    assert util.query_prometheus_counter("q") is None
+
+
+def test_metric_sample_round_trip():
+    """start/join returns the sampled value when the query finishes in time."""
+    future = util.start_metric_sample(lambda: (2, 5))
+    assert util.join_metric_sample(future, default=(None, None)) == (2, 5)
+
+
+def test_metric_sample_hung_returns_default(monkeypatch):
+    """If the sampler outlives the join timeout, the sample degrades to default."""
+    import threading as _threading
+
+    release = _threading.Event()
+
+    def slow():
+        release.wait(5)
+        return (1, 1)
+
+    monkeypatch.setattr(util, "_SAMPLE_JOIN_TIMEOUT_S", 0.05)
+    future = util.start_metric_sample(slow)
+    try:
+        assert util.join_metric_sample(future, default=(None, None)) == (None, None)
+    finally:
+        # Let the worker thread finish so it doesn't linger past the test.
+        release.set()
 
 
 if __name__ == "__main__":

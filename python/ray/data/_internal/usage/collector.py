@@ -30,7 +30,13 @@ from ray._private.worker import global_worker
 from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import MapBatches
-from ray.data._internal.usage.util import anonymize_op_name
+from ray.data._internal.usage.util import (
+    _GCS_RPC_TIMEOUT_S,
+    _OOM_KILL_QUERY,
+    _UNEXPECTED_WORKER_KILL_QUERY,
+    anonymize_op_name,
+    query_prometheus_counter,
+)
 from ray.data.block import VALID_BATCH_FORMATS, _apply_batch_format
 
 if TYPE_CHECKING:
@@ -41,9 +47,6 @@ if TYPE_CHECKING:
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 
 logger = logging.getLogger(__name__)
-
-# Bounded timeout for the GCS get_all_node_info query used to count dead nodes.
-_NODE_INFO_RPC_TIMEOUT_S = 5.0
 
 
 @dataclass(frozen=True)
@@ -117,18 +120,9 @@ class UsageInfo:
 # A callable that records config information for a logical operator.
 OpConfigFn = Callable[[LogicalOperator], Optional[OpConfig]]
 
-# A callable that returns process-wide environment info. Overridable so
-# subclasses can collect richer env details.
-EnvFn = Callable[[], EnvInfo]
-
 # A callable that returns the anonymized name for a logical operator.
 # Allows subclasses to add custom anonymization logic.
 OpNameFn = Callable[[LogicalOperator], str]
-
-# A callable that samples a cluster metric (spilled bytes, dead node
-# count, ...)
-MetricReader = Callable[[], Optional[int]]
-
 
 # Bounded buffer of recent executions. OrderedDict so eviction picks the
 # oldest-inserted entry
@@ -157,7 +151,7 @@ def cluster_spilled_bytes() -> Optional[int]:
     try:
         reply = get_memory_info_reply(
             get_state_from_address(ray.get_runtime_context().gcs_address),
-            timeout_seconds=10.0,
+            timeout_seconds=_GCS_RPC_TIMEOUT_S,
         )
         return int(reply.store_stats.spilled_bytes_total)
     except Exception:
@@ -176,13 +170,27 @@ def cluster_dead_node_count() -> Optional[int]:
     try:
         gcs_client = global_worker.gcs_client  # pyrefly: ignore[missing-attribute]
         dead_nodes = gcs_client.get_all_node_info(
-            timeout=_NODE_INFO_RPC_TIMEOUT_S,
+            timeout=_GCS_RPC_TIMEOUT_S,
             state_filter=GcsNodeInfo.GcsNodeState.DEAD,
         )
         return len(dead_nodes)
     except Exception:
         logger.debug("Failed to read cluster dead node count", exc_info=True)
         return None
+
+
+def cluster_oom_kills() -> Optional[int]:
+    """Cluster-wide cumulative OOM (memory-manager) worker evictions from
+    Prometheus. None if the query failed.
+    """
+    return query_prometheus_counter(_OOM_KILL_QUERY)
+
+
+def cluster_unexpected_worker_kills() -> Optional[int]:
+    """Cluster-wide cumulative unexpected (system-error) worker failures from
+    Prometheus. None if the query failed.
+    """
+    return query_prometheus_counter(_UNEXPECTED_WORKER_KILL_QUERY)
 
 
 def compute_delta(start: Optional[int], end: Optional[int]) -> Optional[int]:

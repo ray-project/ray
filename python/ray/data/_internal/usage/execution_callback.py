@@ -10,6 +10,7 @@ are captured even if they fail.
 import logging
 import time
 import uuid
+from concurrent.futures import Future
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.execution_callback import ExecutionCallback
@@ -48,6 +49,19 @@ class UsageCallback(ExecutionCallback):
         self._spilled_at_end: Optional[int] = None
         self._dead_nodes_at_start: Optional[int] = None
         self._dead_nodes_at_end: Optional[int] = None
+        self._oom_kills_at_start: Optional[int] = None
+        self._oom_kills_at_end: Optional[int] = None
+        self._unexpected_worker_kills_at_start: Optional[int] = None
+        self._unexpected_worker_kills_at_end: Optional[int] = None
+        # Cluster metrics are sampled on background threads off the start path
+        # each reader's start sample is fired before execution starts and joined at execution end.
+        self._spilled_sample: Optional[Future] = None
+        self._dead_nodes_sample: Optional[Future] = None
+        self._oom_kills_sample: Optional[Future] = None
+        self._unexpected_worker_kills_sample: Optional[Future] = None
+        # True once on_collection_start has fired all start samples above, so
+        # on_collection_end knows they exist to join.
+        self._start_samples_fired = False
         self._executor: Optional["StreamingExecutor"] = None
         self._finished = False
 
@@ -103,8 +117,18 @@ class UsageCallback(ExecutionCallback):
         """Called once before execution starts. Records start timing and the
         cluster metric baselines used to compute per-execution deltas."""
         self._started_at = time.time()
-        self._spilled_at_start = collector.cluster_spilled_bytes()
-        self._dead_nodes_at_start = collector.cluster_dead_node_count()
+        # Fire every cluster reader on its own background thread so they run
+        # concurrently (and during execution) instead of blocking the start
+        # path; each is joined at execution end.
+        self._spilled_sample = util.start_metric_sample(collector.cluster_spilled_bytes)
+        self._dead_nodes_sample = util.start_metric_sample(
+            collector.cluster_dead_node_count
+        )
+        self._oom_kills_sample = util.start_metric_sample(collector.cluster_oom_kills)
+        self._unexpected_worker_kills_sample = util.start_metric_sample(
+            collector.cluster_unexpected_worker_kills
+        )
+        self._start_samples_fired = True
 
     def on_collection_end(
         self, executor: "StreamingExecutor", error: Optional[Exception]
@@ -112,8 +136,39 @@ class UsageCallback(ExecutionCallback):
         """Called once after execution succeeds or fails. Records the ending
         cluster metric samples. ``error`` is the failure (or ``None`` on
         success); subclasses may override to capture it."""
-        self._spilled_at_end = collector.cluster_spilled_bytes()
-        self._dead_nodes_at_end = collector.cluster_dead_node_count()
+        # Fire every metric reader concurrently for the execution end samples,
+        # so they overlap with the joins for the start samples below
+        end_spilled = util.start_metric_sample(collector.cluster_spilled_bytes)
+        end_dead_nodes = util.start_metric_sample(collector.cluster_dead_node_count)
+        end_oom_kills = util.start_metric_sample(collector.cluster_oom_kills)
+        end_unexpected_worker_kills = util.start_metric_sample(
+            collector.cluster_unexpected_worker_kills
+        )
+
+        # Collect the start samples (all fired together in on_collection_start).
+        # Each degrades to None if the reader is unreachable or still in flight
+        # past the join timeout.
+        if self._start_samples_fired:
+            self._spilled_at_start = util.join_metric_sample(
+                self._spilled_sample, default=None
+            )
+            self._dead_nodes_at_start = util.join_metric_sample(
+                self._dead_nodes_sample, default=None
+            )
+            self._oom_kills_at_start = util.join_metric_sample(
+                self._oom_kills_sample, default=None
+            )
+            self._unexpected_worker_kills_at_start = util.join_metric_sample(
+                self._unexpected_worker_kills_sample, default=None
+            )
+
+        # Collect the end samples.
+        self._spilled_at_end = util.join_metric_sample(end_spilled, default=None)
+        self._dead_nodes_at_end = util.join_metric_sample(end_dead_nodes, default=None)
+        self._oom_kills_at_end = util.join_metric_sample(end_oom_kills, default=None)
+        self._unexpected_worker_kills_at_end = util.join_metric_sample(
+            end_unexpected_worker_kills, default=None
+        )
 
     def build_usage_info(self) -> UsageInfo:
         """Assemble the usage collection payload for this execution."""
@@ -132,6 +187,13 @@ class UsageCallback(ExecutionCallback):
                 ),
                 node_deaths=collector.compute_delta(
                     self._dead_nodes_at_start, self._dead_nodes_at_end
+                ),
+                oom_kills=collector.compute_delta(
+                    self._oom_kills_at_start, self._oom_kills_at_end
+                ),
+                unexpected_worker_kills=collector.compute_delta(
+                    self._unexpected_worker_kills_at_start,
+                    self._unexpected_worker_kills_at_end,
                 ),
             )
         # Both are populated before this runs: on_collection_start sets
