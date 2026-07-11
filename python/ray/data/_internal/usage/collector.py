@@ -32,8 +32,6 @@ from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import MapBatches
 from ray.data._internal.usage.util import (
     _GCS_RPC_TIMEOUT_S,
-    _OOM_KILL_QUERY,
-    _UNEXPECTED_WORKER_KILL_QUERY,
     anonymize_op_name,
     query_prometheus_counter,
 )
@@ -47,6 +45,11 @@ if TYPE_CHECKING:
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 
 logger = logging.getLogger(__name__)
+
+# Cumulative raylet worker-kill counters (Prometheus metric names). Scoped to
+# the current session at query time via ``_worker_kill_query``.
+_OOM_KILL_METRIC = "ray_memory_manager_worker_eviction_total"
+_UNEXPECTED_WORKER_KILL_METRIC = "ray_node_manager_unexpected_worker_failure_total"
 
 
 @dataclass(frozen=True)
@@ -179,18 +182,41 @@ def cluster_dead_node_count() -> Optional[int]:
         return None
 
 
+def _session_name() -> Optional[str]:
+    """This Ray session's name, used to scope Prometheus queries to this
+    cluster. None if unavailable.
+    """
+    try:
+        return global_worker.node.session_name
+    except AttributeError:
+        return None
+
+
+def _worker_kill_query(metric: str, session_name: Optional[str]) -> str:
+    """Cluster-wide ``sum`` of a raylet worker-kill counter, scoped to this
+    session via the ``SessionName`` label. Falls back to an unscoped sum when the
+    session name is unknown.
+    """
+    selector = f"{metric}{{SessionName='{session_name}'}}" if session_name else metric
+    return f"sum({selector})"
+
+
 def cluster_oom_kills() -> Optional[int]:
     """Cluster-wide cumulative OOM (memory-manager) worker evictions from
-    Prometheus. None if the query failed.
+    Prometheus, scoped to this session. None if the query failed.
     """
-    return query_prometheus_counter(_OOM_KILL_QUERY)
+    return query_prometheus_counter(
+        _worker_kill_query(_OOM_KILL_METRIC, _session_name())
+    )
 
 
 def cluster_unexpected_worker_kills() -> Optional[int]:
     """Cluster-wide cumulative unexpected (system-error) worker failures from
-    Prometheus. None if the query failed.
+    Prometheus, scoped to this session. None if the query failed.
     """
-    return query_prometheus_counter(_UNEXPECTED_WORKER_KILL_QUERY)
+    return query_prometheus_counter(
+        _worker_kill_query(_UNEXPECTED_WORKER_KILL_METRIC, _session_name())
+    )
 
 
 def compute_delta(start: Optional[int], end: Optional[int]) -> Optional[int]:

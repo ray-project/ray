@@ -330,6 +330,20 @@ def test_query_prometheus_counter_returns_none_on_failure(monkeypatch, get_fn):
     assert util.query_prometheus_counter("q") is None
 
 
+def test_worker_kill_query_scopes_by_session():
+    """The worker-kill query scopes to this session via the SessionName label,
+    matching the dashboard / RayTurbo selector, and falls back to an unscoped
+    sum when the session name is unknown."""
+    assert (
+        collector._worker_kill_query("ray_metric_total", "session_abc")
+        == "sum(ray_metric_total{SessionName='session_abc'})"
+    )
+    assert (
+        collector._worker_kill_query("ray_metric_total", None)
+        == "sum(ray_metric_total)"
+    )
+
+
 def test_metric_sample_round_trip():
     """start/join returns the sampled value when the query finishes in time."""
     future = util.start_metric_sample(lambda: (2, 5))

@@ -24,10 +24,6 @@ T = TypeVar("T")
 _recorded_operators = dict()
 _recorded_operators_lock = threading.Lock()
 
-# Cumulative raylet counters exposed via Prometheus, summed cluster-wide.
-_OOM_KILL_QUERY = "sum(ray_memory_manager_worker_eviction_total)"
-_UNEXPECTED_WORKER_KILL_QUERY = "sum(ray_node_manager_unexpected_worker_failure_total)"
-
 # Bounded timeout for the GCS RPC calls
 _GCS_RPC_TIMEOUT_S = 5.0
 # Bounded timeout for the Prometheus counter HTTP queries
