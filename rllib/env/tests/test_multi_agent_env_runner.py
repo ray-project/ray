@@ -1,7 +1,11 @@
 import unittest
 
+import gymnasium as gym
+import numpy as np
+
 import ray
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics import (
@@ -9,6 +13,58 @@ from ray.rllib.utils.metrics import (
     EPISODE_MODULE_RETURN_MEAN,
 )
 from ray.rllib.utils.test_utils import check
+
+
+class AgentsComeAndGoEnv(MultiAgentEnv):
+    """A multi-agent env with a changing set of agents.
+
+    Every step the lowest-id agent terminates (leaves) and a brand-new agent id
+    joins, so the set of active agents keeps shifting. Used to reproduce the
+    connector `KeyError` from issue #61602, where a module still emits an action
+    for an agent whose `SingleAgentEpisode` has already been removed.
+    """
+
+    MAX_AGENTS = 300
+
+    def __init__(self, config=None):
+        super().__init__()
+        self._obs_space = gym.spaces.Box(-1.0, 1.0, (3,), np.float32)
+        self._act_space = gym.spaces.Discrete(2)
+        self.possible_agents = [str(i) for i in range(self.MAX_AGENTS)]
+        self.observation_spaces = dict.fromkeys(self.possible_agents, self._obs_space)
+        self.action_spaces = dict.fromkeys(self.possible_agents, self._act_space)
+
+    def reset(self, *, seed=None, options=None):
+        self._next_id = 3
+        self._t = 0
+        self._active = ["0", "1", "2"]
+        self.agents = list(self._active)
+        obs = {a: self._obs_space.sample() for a in self._active}
+        return obs, {a: {} for a in self._active}
+
+    def step(self, action_dict):
+        self._t += 1
+        leaving, survivors = self._active[0], self._active[1:]
+        newcomer = str(self._next_id)
+        self._next_id += 1
+        self._active = survivors + [newcomer]
+
+        obs = {a: self._obs_space.sample() for a in self._active}
+        rewards = dict.fromkeys(self._active, 1.0)
+        rewards[leaving] = 0.0
+        terminateds = dict.fromkeys(self._active, False)
+        terminateds[leaving] = True
+        truncateds = dict.fromkeys(self._active, False)
+        truncateds[leaving] = False
+
+        all_done = self._t >= 25 or self._next_id >= self.MAX_AGENTS - 4
+        terminateds["__all__"] = all_done
+        truncateds["__all__"] = False
+        # `agents` must cover every id referenced this step (incl. the leaver).
+        self.agents = [
+            a for a in set(obs) | set(rewards) | set(terminateds) if a != "__all__"
+        ]
+        return obs, rewards, terminateds, truncateds, {a: {} for a in obs}
 
 
 class TestMultiAgentEnvRunner(unittest.TestCase):
@@ -19,6 +75,31 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
     @classmethod
     def tearDownClass(self) -> None:
         ray.shutdown()
+
+    def test_sample_with_changing_agents(self):
+        """Sampling an env with a changing agent set must not raise KeyError.
+
+        Regression test for #61602: with `batch_mode="truncate_episodes"` and a
+        set `rollout_fragment_length`, the module-to-env connector used to raise
+        `KeyError` when an action was produced for an agent whose
+        `SingleAgentEpisode` had already been removed.
+        """
+        config = (
+            PPOConfig()
+            .environment(AgentsComeAndGoEnv)
+            .multi_agent(
+                policies={"p"},
+                policy_mapping_fn=lambda aid, *args, **kwargs: "p",
+            )
+            .env_runners(
+                batch_mode="truncate_episodes",
+                rollout_fragment_length=32,
+            )
+        )
+        env_runner = MultiAgentEnvRunner(config=config)
+        # Several sampling rounds so the changing-agent connector path is hit.
+        for _ in range(6):
+            env_runner.sample(num_timesteps=64)
 
     def test_sample_timesteps(self):
         # Build a multi agent config.

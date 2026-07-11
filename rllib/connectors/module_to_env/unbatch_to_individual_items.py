@@ -95,14 +95,16 @@ class UnBatchToIndividualItems(ConnectorV2):
                                 "mapping.",
                             )
                         # If an episode has not just started and the agent's episode
-                        # is done do not return data.
+                        # is done (or the agent is no longer part of the episode) do
+                        # not return data. With a changing number of agents, a module
+                        # may still emit an action for an agent whose `SingleAgentEpisode`
+                        # has already been removed, so look the agent up defensively to
+                        # avoid a `KeyError` (issue #61602).
                         # This should not be `True` for new `MultiAgentEpisode`s.
-                        if (
-                            episode.agent_episodes
-                            and episode.agent_episodes[agent_id].is_done
-                            and not episode.is_done
-                        ):
-                            continue
+                        if episode.agent_episodes and not episode.is_done:
+                            agent_eps = episode.agent_episodes.get(agent_id)
+                            if agent_eps is None or agent_eps.is_done:
+                                continue
 
                         new_column_data[key].append(column_data[i])
                     module_data[column] = dict(new_column_data)
