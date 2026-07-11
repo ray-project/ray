@@ -191,9 +191,6 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert input_index == 0
-        if not refs.block_refs:
-            refs.destroy_if_owned()
-            return
 
         if self._pre_map_merge_threshold > 0:
             preferred_locs = refs.get_preferred_object_locations()
@@ -411,6 +408,7 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
             return
         if not self._inputs_complete:
             return
+
         self._partition_bundles_emitted = True
 
         if not self._completed_handle_refs:
@@ -455,14 +453,9 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         if (
             self._shuffle_map_tasks
             or self._merge_buffer_refs_by_node
+            or not self._partition_bundles_emitted
             or self._output_queue.has_next()
         ):
-            return False
-        # Between "last mapper task finished" and
-        # ``_maybe_emit_partition_bundles`` firing, both queues can be
-        # transiently empty. Don't declare finished before emission has
-        # actually happened.
-        if self._inputs_complete and not self._partition_bundles_emitted:
             return False
         return super().has_execution_finished()
 
@@ -470,18 +463,18 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         return (
             not self._shuffle_map_tasks
             and not self._merge_buffer_refs_by_node
+            and self._partition_bundles_emitted
             and not self._output_queue.has_next()
-            and (not self._inputs_complete or self._partition_bundles_emitted)
             and super().has_completed()
         )
 
     def _do_shutdown(self, force: bool = False) -> None:
         super()._do_shutdown(force)
         self._shuffle_map_tasks.clear()
+        self._merge_buffer_refs_by_node.clear()
         for bundles in self._merge_buffer_bundles_by_node.values():
             for bundle in bundles:
                 bundle.destroy_if_owned()
-        self._merge_buffer_refs_by_node.clear()
         self._merge_buffer_bundles_by_node.clear()
         self._merge_buffer_bytes_by_node.clear()
         self._output_queue.clear()
