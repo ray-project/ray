@@ -26,6 +26,13 @@ steps:
       RAY_CUDA_CODE: "cu130"
     tags: cibase
 
+  # Dedicated image for the custom-vllm-model docs example: the LLM GPU image
+  # plus a vllm plugin for model with custom architecture.
+  - name: custom-vllm-plugin-gpubuild
+    wanda: ci/docker/custom-vllm-plugin.build.wanda.yaml
+    depends_on: llmgpubuild
+    tags: cibase
+
   - label: "llm cpu tests"
     if: '!(build.pull_request.labels includes "docs-go")'
     key: "llm-cpu-tests"
@@ -49,7 +56,7 @@ steps:
     commands:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/... llm
         --python-version 3.12 --build-name llmgpubuild --only-tags gpu
-        --except-tags multi_gpu_4
+        --except-tags multi_gpu_4,custom_vllm_plugin
     depends_on: llmgpubuild
 
   - label: "llm gpu tests (4 GPUs)"
@@ -65,3 +72,17 @@ steps:
         --only-tags multi_gpu_4
         --gpus 4
     depends_on: llmgpubuild
+
+  # Custom vLLM model docs example: runs on the dedicated image that has the
+  # qwen3_reward_plugin baked in.
+  - label: "llm custom vllm plugin gpu test"
+    key: "llm-custom-vllm-plugin-gpu-test"
+    tags:
+      - llm
+      - gpu
+    instance_type: g6-large
+    commands:
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //doc/... llm
+        --python-version 3.12 --build-name custom-vllm-plugin-gpubuild
+        --only-tags custom_vllm_plugin
+    depends_on: custom-vllm-plugin-gpubuild
