@@ -4704,6 +4704,21 @@ class Algorithm(Checkpointable, Trainable):
                 ac_o = pp([acd])[0]
                 observation = ac_o.data[Columns.OBS]
 
+        # Apply the observation filter (e.g. `MeanStdFilter`) so filter
+        # statistics learned during training are used here as well. This mirrors
+        # `compute_actions` and avoids silently returning actions computed from
+        # unfiltered observations (issue #64087). `NoFilter` (the default) leaves
+        # the observation unchanged.
+        if observation is not None:
+            local_env_runner = self.env_runner_group.local_env_runner
+            obs_filter = (
+                local_env_runner.filters.get(policy_id)
+                if local_env_runner is not None
+                else None
+            )
+            if obs_filter is not None:
+                observation = obs_filter(observation, update=False)
+
         if input_dict is not None:
             input_dict[Columns.OBS] = observation
             action, state, extra = policy.compute_single_action(

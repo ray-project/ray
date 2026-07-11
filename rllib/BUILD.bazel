@@ -1685,6 +1685,17 @@ py_test(
 )
 
 py_test(
+    name = "test_compute_single_action_filter",
+    size = "medium",
+    srcs = ["algorithms/tests/test_compute_single_action_filter.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "test_node_failures",
     size = "large",
     srcs = ["algorithms/tests/test_node_failures.py"],
