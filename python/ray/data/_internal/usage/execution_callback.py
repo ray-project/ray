@@ -141,26 +141,32 @@ class UsageCallback(ExecutionCallback):
             collector.cluster_unexpected_worker_kills
         )
 
-        # Collect the start samples fired in on_collection_start.
-        self._spilled_at_start = util.join_metric_sample(
-            self._spilled_sample, default=None
-        )
-        self._dead_nodes_at_start = util.join_metric_sample(
-            self._dead_nodes_sample, default=None
-        )
-        self._oom_kills_at_start = util.join_metric_sample(
-            self._oom_kills_sample, default=None
-        )
-        self._unexpected_worker_kills_at_start = util.join_metric_sample(
-            self._unexpected_worker_kills_sample, default=None
-        )
-
-        # Collect the end samples.
-        self._spilled_at_end = util.join_metric_sample(end_spilled, default=None)
-        self._dead_nodes_at_end = util.join_metric_sample(end_dead_nodes, default=None)
-        self._oom_kills_at_end = util.join_metric_sample(end_oom_kills, default=None)
-        self._unexpected_worker_kills_at_end = util.join_metric_sample(
-            end_unexpected_worker_kills, default=None
+        # Join all start, end samples concurrently under a single timeout
+        # ceiling. Joining sequentially would block for up to
+        # timeout * n_samples if every reader hangs. Results unpack positionally,
+        # so the targets below must stay in the same order as the samples passed in.
+        # Tuple unpacking syntax
+        (
+            self._spilled_at_start,
+            self._dead_nodes_at_start,
+            self._oom_kills_at_start,
+            self._unexpected_worker_kills_at_start,
+            self._spilled_at_end,
+            self._dead_nodes_at_end,
+            self._oom_kills_at_end,
+            self._unexpected_worker_kills_at_end,
+        ) = util.join_metric_samples(
+            [
+                self._spilled_sample,
+                self._dead_nodes_sample,
+                self._oom_kills_sample,
+                self._unexpected_worker_kills_sample,
+                end_spilled,
+                end_dead_nodes,
+                end_oom_kills,
+                end_unexpected_worker_kills,
+            ],
+            default=None,
         )
 
     def build_usage_info(self) -> UsageInfo:

@@ -7,8 +7,8 @@ import json
 import logging
 import os
 import threading
-from concurrent.futures import Future
-from typing import Callable, Dict, Optional, TypeVar
+from concurrent.futures import Future, wait
+from typing import Callable, Dict, List, Optional, Sequence, TypeVar
 
 import requests
 
@@ -118,6 +118,24 @@ def join_metric_sample(
         return future.result(timeout=timeout)
     except Exception:
         return default
+
+
+def join_metric_samples(
+    futures: Sequence[Optional["Future[T]"]],
+    default: T,
+    timeout: float = _SAMPLE_JOIN_TIMEOUT_S,
+) -> List[T]:
+    """Join several samples started by ``start_metric_sample`` under a single
+    ``timeout`` ceiling and return their results in order.
+
+    Unlike calling ``join_metric_sample`` in a loop (which waits up to
+    ``timeout`` per future and can block for ``timeout * len(futures)`` if every
+    reader hangs), this waits for all futures concurrently, then drains each
+    result without further blocking. Any future that is missing (``None``), is
+    still running past ``timeout``, or raised degrades to ``default``.
+    """
+    wait([f for f in futures if f is not None], timeout=timeout)
+    return [join_metric_sample(f, default=default, timeout=0.0) for f in futures]
 
 
 def _is_builtin_cls(cls: type) -> bool:

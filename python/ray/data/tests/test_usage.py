@@ -371,5 +371,19 @@ def test_metric_sample_hung_returns_default():
         release.set()
 
 
+def test_join_metric_samples_preserves_order_and_gaps():
+    """Results come back in input order; a missing (None) future degrades."""
+    futures = [
+        util.start_metric_sample(lambda: (1, 1)),
+        None,
+        util.start_metric_sample(lambda: (3, 3)),
+    ]
+    assert util.join_metric_samples(futures, default=(None, None)) == [
+        (1, 1),
+        (None, None),
+        (3, 3),
+    ]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
