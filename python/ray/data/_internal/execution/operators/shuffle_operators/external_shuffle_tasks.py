@@ -78,6 +78,108 @@ _DEFAULT_MAX_BYTES_PER_FETCH = 256 * 1024 * 1024  # 256 MiB per FETCH frame
 _DEFAULT_FETCH_THREADS = 32  # concurrent per-node fetch threads at the reducer
 
 
+class _PartitionSpillWriter:
+    """Byte-budgeted staging pool for per-partition shards, sealed to disk
+    IPC-frame at a time.
+
+    ``add_shard(pid, shard)`` buffers a shard into partition ``pid``'s
+    staging list. Once total staged bytes across ALL partitions reach
+    ``pool_budget_bytes``, the largest partition's shards are IPC-encoded,
+    written to the output file, and their offsets recorded in
+    ``index``. ``flush_all()`` seals what's left at end-of-task.
+
+    Peak on-heap staging is bounded by ``pool_budget_bytes`` — independent
+    of partition count M — because we spill the largest bucket instead of
+    accumulating one per partition.
+    """
+
+    __slots__ = (
+        "_f",
+        "_map_id",
+        "_pool_budget_bytes",
+        "_compression",
+        "_staging",
+        "_staging_bytes",
+        "_index",
+        "_decoded_bytes_per_partition",
+        "_peak_inflight",
+    )
+
+    def __init__(
+        self,
+        f,
+        map_id: int,
+        pool_budget_bytes: int,
+        compression: Optional[str],
+    ):
+        self._f = f
+        self._map_id = map_id
+        self._pool_budget_bytes = pool_budget_bytes
+        self._compression = compression
+        self._staging: Dict[int, List[pa.Table]] = {}
+        self._staging_bytes: Dict[int, int] = {}
+        self._index: Dict[int, List[Tuple[int, int]]] = {}
+        self._decoded_bytes_per_partition: Dict[int, int] = {}
+        self._peak_inflight = 0
+
+    def _pool_size(self) -> int:
+        return sum(self._staging_bytes.values())
+
+    def _flush(self, pid: int) -> None:
+        shards = self._staging.get(pid)
+        if not shards:
+            return
+        tbl = pa.concat_tables(shards) if len(shards) > 1 else shards[0]
+        # ``tbl.nbytes`` is the decoded (pre-IPC, pre-compression) byte count.
+        self._decoded_bytes_per_partition[pid] = (
+            self._decoded_bytes_per_partition.get(pid, 0) + tbl.nbytes
+        )
+        buf = _ipc_buffer(tbl, compression=self._compression)
+        # Refuse frames the u32 response-wire encoding can't represent.
+        if buf.size > _MAX_RANGE_BYTES:
+            raise RuntimeError(
+                f"map_{self._map_id}.shf partition {pid}: IPC frame is "
+                f"{buf.size} bytes, exceeding the u32 wire-protocol "
+                f"per-range limit ({_MAX_RANGE_BYTES}). Reduce "
+                f"``pool_budget_bytes`` or the upstream block size."
+            )
+        off = self._f.tell()
+        self._f.write(memoryview(buf))
+        self._index.setdefault(pid, []).append((off, buf.size))
+        self._staging[pid] = []
+        self._staging_bytes[pid] = 0
+
+    def add_shard(self, pid: int, shard: pa.Table) -> None:
+        if not shard.num_rows:
+            return
+        self._staging.setdefault(pid, []).append(shard)
+        self._staging_bytes[pid] = self._staging_bytes.get(pid, 0) + shard.nbytes
+        self._peak_inflight = max(self._peak_inflight, self._pool_size())
+        # Spill LARGEST bucket(s) on overflow so total staging stays
+        # bounded by ``pool_budget_bytes``.
+        while self._pool_size() >= self._pool_budget_bytes:
+            victim = max(self._staging_bytes, key=self._staging_bytes.get)
+            if self._staging_bytes[victim] == 0:
+                break
+            self._flush(victim)
+
+    def flush_all(self) -> None:
+        for pid in list(self._staging.keys()):
+            self._flush(pid)
+
+    @property
+    def index(self) -> Dict[int, List[Tuple[int, int]]]:
+        return self._index
+
+    @property
+    def decoded_bytes_per_partition(self) -> Dict[int, int]:
+        return self._decoded_bytes_per_partition
+
+    @property
+    def peak_inflight(self) -> int:
+        return self._peak_inflight
+
+
 @ray.remote
 def external_hash_shuffle_map_task(
     *blocks: Block,
@@ -137,12 +239,6 @@ def external_hash_shuffle_map_task(
     final_path = os.path.join(out_dir, f"map_{map_id}.shf")
     # Write to a temp file first; only ``rename`` once we've verified the full file.
     tmp_path = final_path + ".tmp"
-    # index = {partition id, {offset, length}}
-    index: Dict[int, List[Tuple[int, int]]] = {}
-    staging: Dict[int, List[pa.Table]] = {}
-    staging_bytes: Dict[int, int] = {}
-    peak_inflight = 0  # max bytes of partition output held at once (excludes input)
-    decoded_bytes_per_partition: Dict[int, int] = {} # Decoded bytes per partition
     output_schema: Optional[pa.Schema] = None
 
     def _partition_units(blk):
@@ -167,37 +263,9 @@ def external_hash_shuffle_map_task(
     final_size_on_close = -1
     try:
         with open(tmp_path, "wb") as f:
-
-            def flush(pid: int):
-                shards = staging.get(pid)
-                if not shards:
-                    return
-                tbl = pa.concat_tables(shards) if len(shards) > 1 else shards[0]
-                # ``tbl.nbytes`` is the decoded (pre-IPC, pre-compression) byte
-                # count of this shard
-                decoded_bytes_per_partition[pid] = (
-                    decoded_bytes_per_partition.get(pid, 0) + tbl.nbytes
-                )
-
-                buf = _ipc_buffer(tbl, compression=compression)
-                # Refuse frames the u32 response-wire encoding can't
-                # represent (see top-of-file spec).
-                if buf.size > _MAX_RANGE_BYTES:
-                    raise RuntimeError(
-                        f"map_{map_id}.shf partition {pid}: IPC frame is "
-                        f"{buf.size} bytes, exceeding the u32 wire-protocol "
-                        f"per-range limit ({_MAX_RANGE_BYTES}). Reduce "
-                        f"``pool_budget_bytes`` or the upstream block size."
-                    )
-                off = f.tell()
-                f.write(memoryview(buf))
-                index.setdefault(pid, []).append((off, buf.size))
-                staging[pid] = []
-                staging_bytes[pid] = 0
-
-            def pool_size() -> int:
-                return sum(staging_bytes.values())
-
+            writer = _PartitionSpillWriter(
+                f, map_id, pool_budget_bytes, compression
+            )
             for blk in blocks:
                 # Accept any Ray Data Block (Arrow / pandas / ...) at the
                 # boundary and normalize to ``pa.Table`` here. Downstream
@@ -210,20 +278,8 @@ def external_hash_shuffle_map_task(
                     # partitions (ShuffleHandle["schema"]).
                     output_schema = getattr(blk, "schema", None)
                 for pid, shard in _partition_units(blk):
-                    if not shard.num_rows:
-                        continue
-                    staging.setdefault(pid, []).append(shard)
-                    staging_bytes[pid] = staging_bytes.get(pid, 0) + shard.nbytes
-                    peak_inflight = max(peak_inflight, pool_size())
-                    # Spill LARGEST bucket(s) on overflow to bound total
-                    # staging to pool_budget_bytes.
-                    while pool_size() >= pool_budget_bytes:
-                        victim = max(staging_bytes, key=staging_bytes.get)
-                        if staging_bytes[victim] == 0:
-                            break
-                        flush(victim)
-            for pid in list(staging.keys()):
-                flush(pid)
+                    writer.add_shard(pid, shard)
+            writer.flush_all()
 
             # userspace --flush-→ page cache --fsync-→ disk, then sanity-check the file
             # size matches the index. Mismatch = logic bug or silent short
@@ -235,9 +291,11 @@ def external_hash_shuffle_map_task(
                 # Drop the just-written pages so we don't hold GBs of
                 # warm cache per mapper.
                 _drop_pagecache(f.fileno(), 0, final_size_on_close)
-            if index:
+            if writer.index:
                 expected_size = max(
-                    off + length for ranges in index.values() for off, length in ranges
+                    off + length
+                    for ranges in writer.index.values()
+                    for off, length in ranges
                 )
             else:
                 expected_size = 0
@@ -260,7 +318,7 @@ def external_hash_shuffle_map_task(
 
     return {
         "path": os.path.realpath(final_path),
-        "index": index,
+        "index": writer.index,
         # ShuffleManager identity: reducers rebuild the actor name from
         # (shuffle_id, node_id) and call ``_lookup_manager`` when they need
         # the handle.
@@ -268,11 +326,11 @@ def external_hash_shuffle_map_task(
         "node_id": node_id,
         "token": token,
         "num_partitions": num_partitions,
-        "peak_inflight_bytes": peak_inflight,
+        "peak_inflight_bytes": writer.peak_inflight,
         # Total bytes written to the output file, post-seal.
         "total_bytes": final_size_on_close,
         "compression": compression,
-        "decoded_bytes": decoded_bytes_per_partition,
+        "decoded_bytes": writer.decoded_bytes_per_partition,
         "schema": output_schema,
     }
 
