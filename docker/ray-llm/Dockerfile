@@ -8,7 +8,7 @@ COPY python/requirements/llm/patches/vllm-device-aware-compile-cache.patch ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
 # Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
-ARG VLLM_SCRIPTS_REF="v0.24.0"
+ARG VLLM_SCRIPTS_REF="v0.25.0"
 
 # Pin DeepEP to the V1 (NVSHMEM) commit that vLLM's own release image uses. The
 # install script's default drifted to DeepEP V2 ("NCCL Gin"), which needs
@@ -71,7 +71,12 @@ PY
     git apply "${VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH}"
 )
 
-sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake
+# ffmpeg provides the libav* shared libraries that torchcodec loads at import
+# time. vLLM 0.25.0 makes torchcodec a hard dependency and imports it eagerly in
+# vllm.multimodal.video; without the libav* libs torchcodec raises a RuntimeError
+# (not ImportError, so vLLM's guard misses it) and every `import vllm` fails.
+# Matches the ffmpeg install in vLLM's own release image (docker/Dockerfile).
+sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake ffmpeg
 
 # Fetch and run vLLM install scripts at pinned commit
 VLLM_RAW="https://raw.githubusercontent.com/vllm-project/vllm/${VLLM_SCRIPTS_REF}"
