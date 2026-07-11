@@ -59,9 +59,6 @@ class UsageCallback(ExecutionCallback):
         self._dead_nodes_sample: Optional[Future] = None
         self._oom_kills_sample: Optional[Future] = None
         self._unexpected_worker_kills_sample: Optional[Future] = None
-        # True once on_collection_start has fired all start samples above, so
-        # on_collection_end knows they exist to join.
-        self._start_samples_fired = False
         self._executor: Optional["StreamingExecutor"] = None
         self._finished = False
 
@@ -128,7 +125,6 @@ class UsageCallback(ExecutionCallback):
         self._unexpected_worker_kills_sample = util.start_metric_sample(
             collector.cluster_unexpected_worker_kills
         )
-        self._start_samples_fired = True
 
     def on_collection_end(
         self, executor: "StreamingExecutor", error: Optional[Exception]
@@ -145,22 +141,19 @@ class UsageCallback(ExecutionCallback):
             collector.cluster_unexpected_worker_kills
         )
 
-        # Collect the start samples (all fired together in on_collection_start).
-        # Each degrades to None if the reader is unreachable or still in flight
-        # past the join timeout.
-        if self._start_samples_fired:
-            self._spilled_at_start = util.join_metric_sample(
-                self._spilled_sample, default=None
-            )
-            self._dead_nodes_at_start = util.join_metric_sample(
-                self._dead_nodes_sample, default=None
-            )
-            self._oom_kills_at_start = util.join_metric_sample(
-                self._oom_kills_sample, default=None
-            )
-            self._unexpected_worker_kills_at_start = util.join_metric_sample(
-                self._unexpected_worker_kills_sample, default=None
-            )
+        # Collect the start samples fired in on_collection_start.
+        self._spilled_at_start = util.join_metric_sample(
+            self._spilled_sample, default=None
+        )
+        self._dead_nodes_at_start = util.join_metric_sample(
+            self._dead_nodes_sample, default=None
+        )
+        self._oom_kills_at_start = util.join_metric_sample(
+            self._oom_kills_sample, default=None
+        )
+        self._unexpected_worker_kills_at_start = util.join_metric_sample(
+            self._unexpected_worker_kills_sample, default=None
+        )
 
         # Collect the end samples.
         self._spilled_at_end = util.join_metric_sample(end_spilled, default=None)
