@@ -240,7 +240,7 @@ def test_external_cleanup_shuffle_dir(ray_init_shutdown, tmp_path):
     ``rmtree``s the given ``base_dir`` on the target node. This is the
     decoupled cleanup path — actor lifetime no longer drives file
     removal."""
-    from ray.data._internal.execution.operators.hash_shuffle_external import (
+    from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E501
         _cleanup_shuffle_dir,
     )
 

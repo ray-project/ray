@@ -4,7 +4,7 @@ Drives one ``external_hash_shuffle_map_task`` per input group and, once all mapp
 emits N ``RefBundle`` wrappers to the output queue — one per partition_id,
 each carrying the SAME shared Ray object (the list of handle refs)
 and a distinct ``__partition__<pid>`` sentinel. Wire protocol and task
-body live in ``hash_shuffle_external.py``.
+body live in ``external_shuffle_runtime.py`` / ``external_shuffle_tasks.py``.
 """
 
 import functools
@@ -36,7 +36,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
-from ray.data._internal.execution.operators.hash_shuffle_external import (
+from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_tasks import (  # noqa: E501
     PartitionFn,
     external_hash_shuffle_map_task,
 )
@@ -505,7 +505,7 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
            Short bounded wait so cleanup gets a chance before the driver
            exits; failures fall back to OS ``tmpwatch``.
         """
-        from ray.data._internal.execution.operators.hash_shuffle_external import (
+        from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E501
             _cleanup_shuffle_dir,
             _lookup_manager,
         )

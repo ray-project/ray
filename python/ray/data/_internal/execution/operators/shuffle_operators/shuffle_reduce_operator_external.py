@@ -29,11 +29,13 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     TaskExecDriverStats,
     estimate_total_num_of_blocks,
 )
-from ray.data._internal.execution.operators.hash_shuffle_external import (
+from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E501
+    ShuffleFetchError,
+)
+from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_tasks import (  # noqa: E501
     _DEFAULT_FETCH_THREADS,
     _DEFAULT_MAX_BYTES_PER_FETCH,
     ReduceFn,
-    ShuffleFetchError,
     external_hash_shuffle_reduce_task,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
