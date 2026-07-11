@@ -19,6 +19,7 @@
 #include <filesystem>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <system_error>
@@ -29,7 +30,10 @@
 #include "absl/hash/hash.h"
 #include "boost/asio/post.hpp"
 #include "ray/util/logging.h"
+#include "rocksdb/cache.h"
 #include "rocksdb/options.h"
+#include "rocksdb/table.h"
+#include "rocksdb/write_buffer_manager.h"
 
 namespace ray {
 namespace gcs {
@@ -79,16 +83,62 @@ const absl::flat_hash_set<std::string> &SoftDurableTables() {
   return *kTables;
 }
 
-rocksdb::Options BuildDbOptions() {
+// Bounded memory configuration for the embedded RocksDB.
+//
+// The GCS metadata workload is small (10-100 MB across ~10 column
+// families), but RocksDB's defaults reserve memory *per column family*
+// (a 64 MB write buffer and an independent block cache each). Because the
+// GCS opens ~10 column families and RocksDB lives *inside* the GCS server
+// process, the defaults let the DB balloon to gigabytes of memtables plus
+// block cache. On a memory-constrained node that OOM-kills the GCS
+// process, which drops every driver/worker in the cluster. (This is why a
+// broad core test like test_channel::test_payload_large -- which allocates
+// a ~600 MiB object next to the GCS -- fails only under the RocksDB
+// backend.)
+//
+// We therefore cap total memory explicitly and share the budget across
+// every column family:
+//   * one LRU block cache shared by all CFs bounds read/index/filter
+//     memory, and
+//   * one WriteBufferManager (charged to the same cache) bounds the total
+//     memtable memory of all CFs combined, independent of CF count.
+// The per-CF write buffer is also shrunk to match the small workload.
+constexpr std::size_t kBlockCacheBytes = 32ULL << 20;          // 32 MiB, all CFs
+constexpr std::size_t kWriteBufferManagerBytes = 64ULL << 20;  // 64 MiB, all CFs
+constexpr std::size_t kPerCfWriteBufferBytes = 8ULL << 20;     // 8 MiB per CF
+
+// The Options plus the ColumnFamilyOptions that must be applied identically
+// to every column family (including the default) so they share the single
+// block cache and WriteBufferManager. The shared_ptrs are held by `options`
+// (and kept alive by the open DB), so callers only need to keep `cf_options`
+// around long enough to open the descriptors.
+struct RocksDbOptions {
   rocksdb::Options options;
-  options.create_if_missing = true;
-  options.create_missing_column_families = true;
-  // Per REP §"RocksDB Configuration": hardcoded conservative settings
-  // sized for the GCS metadata workload (10–100 MB across ~10 column
-  // families).
-  options.IncreaseParallelism(2);
-  options.OptimizeLevelStyleCompaction();
-  return options;
+  rocksdb::ColumnFamilyOptions cf_options;
+};
+
+RocksDbOptions BuildRocksDbOptions() {
+  auto block_cache = rocksdb::NewLRUCache(kBlockCacheBytes);
+  // Charge memtable memory to the same cache so a single budget bounds
+  // reads and writes together.
+  auto write_buffer_manager = std::make_shared<rocksdb::WriteBufferManager>(
+      kWriteBufferManagerBytes, block_cache);
+
+  rocksdb::ColumnFamilyOptions cf_options;
+  cf_options.write_buffer_size = kPerCfWriteBufferBytes;
+  cf_options.max_write_buffer_number = 2;
+  cf_options.min_write_buffer_number_to_merge = 1;
+  rocksdb::BlockBasedTableOptions table_options;
+  table_options.block_cache = block_cache;
+  cf_options.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
+
+  rocksdb::DBOptions db_options;
+  db_options.create_if_missing = true;
+  db_options.create_missing_column_families = true;
+  db_options.write_buffer_manager = write_buffer_manager;
+  db_options.IncreaseParallelism(2);
+
+  return RocksDbOptions{rocksdb::Options(db_options, cf_options), cf_options};
 }
 
 }  // namespace
@@ -154,14 +204,18 @@ RocksDbStoreClient::RocksDbStoreClient(
 
   std::vector<rocksdb::ColumnFamilyDescriptor> descriptors;
   descriptors.reserve(cf_names.size());
+  auto rocksdb_options = BuildRocksDbOptions();
+  cf_options_ = rocksdb_options.cf_options;
   for (const auto &name : cf_names) {
-    descriptors.emplace_back(name, rocksdb::ColumnFamilyOptions());
+    // Every column family (including the default) uses the same options so
+    // they share the single bounded block cache and WriteBufferManager.
+    descriptors.emplace_back(name, cf_options_);
   }
 
   std::vector<rocksdb::ColumnFamilyHandle *> handles;
   rocksdb::DB *raw_db = nullptr;
   auto open_status =
-      rocksdb::DB::Open(BuildDbOptions(), db_path, descriptors, &handles, &raw_db);
+      rocksdb::DB::Open(rocksdb_options.options, db_path, descriptors, &handles, &raw_db);
   RAY_CHECK(open_status.ok()) << "Failed to open RocksDB at " << db_path << ": "
                               << open_status.ToString();
   db_.reset(raw_db);
@@ -300,8 +354,11 @@ rocksdb::ColumnFamilyHandle *RocksDbStoreClient::GetOrCreateColumnFamily(
     return it->second;
   }
   rocksdb::ColumnFamilyHandle *new_handle = nullptr;
-  auto status =
-      db_->CreateColumnFamily(rocksdb::ColumnFamilyOptions(), table_name, &new_handle);
+  // Reuse the shared bounded options so runtime-created tables (the common
+  // case: every GCS table is created lazily on first touch) also share the
+  // single block cache and WriteBufferManager instead of each reserving an
+  // independent 64 MiB write buffer and block cache.
+  auto status = db_->CreateColumnFamily(cf_options_, table_name, &new_handle);
   RAY_CHECK(status.ok()) << "Failed to create column family '" << table_name
                          << "': " << status.ToString();
   cf_handles_[table_name] = new_handle;

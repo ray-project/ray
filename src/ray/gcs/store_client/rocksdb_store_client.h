@@ -223,6 +223,13 @@ class RocksDbStoreClient : public StoreClient {
   ///      still tears down the pool before the DB. This is a defense-
   ///      in-depth fallback; it does NOT by itself prevent the
   ///      stop()-cancels-handlers problem above.
+  /// Bounded ColumnFamilyOptions (shared block cache + small write buffer)
+  /// applied to every column family, including those created lazily at
+  /// runtime by GetOrCreateColumnFamily. Declared before `db_` so it
+  /// outlives the DB; the shared_ptrs it holds (block cache) are also
+  /// retained internally by `db_`.
+  rocksdb::ColumnFamilyOptions cf_options_;
+
   std::unique_ptr<rocksdb::DB> db_;
   std::unique_ptr<boost::asio::thread_pool> io_pool_;
 
