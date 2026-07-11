@@ -836,23 +836,26 @@ class Node:
 
         # TODO(ryw) instead of create a new GcsClient, wrap the one from
         # CoreWorkerProcess to save a grpc channel.
+        #
+        # RocksDB GCS recovery (open two on-disk DBs, WAL replay, GetAll
+        # table scans that grow with cluster state) is slow -- worst on a
+        # head restart over existing state -- and can exceed the default
+        # ~20s connect window (NUM_REDIS_GET_RETRIES x ~1s sleep below).
+        # This affects any node connecting while the head is reopening
+        # RocksDB: the head itself (whose fault-tolerance restart reuses a
+        # fixed GCS port, skipping start_gcs_server()'s port-file wait that
+        # is gated on gcs_server_port == 0), and also workers/drivers
+        # joining during that window. Extend the retry budget to match the
+        # port-zero path (default 120s) whenever we can tell the backend is
+        # RocksDB. Workers/drivers that can't auto-detect the backend
+        # (their pods often lack RAY_gcs_storage / RAY_gcs_storage_path)
+        # can still opt in by setting RAY_gcs_server_port_wait_time_s, which
+        # is honored here on every node.
         num_retries = ray_constants.NUM_REDIS_GET_RETRIES
-        if self.head and self._is_rocksdb_gcs():
-            # Head fault-tolerance restarts reuse the existing fixed GCS
-            # port (see __init__), so start_gcs_server()'s extended
-            # RocksDB port-file wait -- which is gated on
-            # gcs_server_port == 0 -- is skipped. On that path GCS
-            # readiness depends entirely on this retry loop. RocksDB
-            # recovery (open two on-disk DBs, WAL replay, GetAll table
-            # scans that grow with cluster state) is slowest exactly on
-            # restart and can exceed the default ~20s window, failing
-            # head startup. Extend the window to the same budget as the
-            # port-zero path, overridable via the same env var. Each
-            # iteration sleeps ~1s below, so retries ~= seconds.
-            rocksdb_wait_s = int(
-                os.environ.get("RAY_gcs_server_port_wait_time_s", "120")
-            )
-            num_retries = max(num_retries, rocksdb_wait_s)
+        gcs_wait_override = os.environ.get("RAY_gcs_server_port_wait_time_s")
+        if self._is_rocksdb_gcs() or gcs_wait_override is not None:
+            wait_s = int(gcs_wait_override) if gcs_wait_override is not None else 120
+            num_retries = max(num_retries, wait_s)
         for _ in range(num_retries):
             gcs_address = None
             last_ex = None
