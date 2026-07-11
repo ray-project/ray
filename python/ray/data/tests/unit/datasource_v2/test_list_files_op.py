@@ -72,25 +72,27 @@ def test_shuffle_config_factory_returns_config_when_seeded(tmp_path):
     assert config.seed == 42
 
 
-# --- Plan-time path expansion / listing-task fan-out --------------------------
+# --- Listing-input sharding ---------------------------------------------------
 
 
-def _mk_prefix_list_files(tmp_path, num_files: int, shuffle_seed=None):
-    """A ListFiles op pointing at a SINGLE directory prefix containing
-    ``num_files`` parquet files -- the case that used to collapse to one task."""
+def _mk_multi_path_list_files(tmp_path, num_files: int, shuffle_seed=None):
+    """A ListFiles op pointing at ``num_files`` explicit parquet file paths."""
     import pyarrow.fs as pafs
 
+    paths = []
     for i in range(num_files):
-        pq.write_table(pa.table({"x": [i]}), str(tmp_path / f"f{i:04d}.parquet"))
+        p = str(tmp_path / f"f{i:04d}.parquet")
+        pq.write_table(pa.table({"x": [i]}), p)
+        paths.append(p)
 
     def _shuffle_factory():
         return None if shuffle_seed is None else FileShuffleConfig(seed=shuffle_seed)
 
     return ListFiles(
-        paths=[str(tmp_path)],  # ONE prefix
+        paths=paths,
         file_indexer=_mk_indexer(),
         filesystem=pafs.LocalFileSystem(),
-        source_paths=[str(tmp_path)],
+        source_paths=paths,
         shuffle_config_factory=_shuffle_factory,
     )
 
@@ -105,40 +107,17 @@ def _bundle_paths(buffer):
     return out
 
 
-def test_expand_paths_to_files_lists_and_sorts(tmp_path):
-    # Ray-free: expanding a directory prefix returns every concrete file,
-    # path-sorted, without reading footers.
-    import pyarrow.fs as pafs
-
-    from ray.data._internal.planner.plan_list_files_op import (
-        _expand_paths_to_files,
-    )
-
-    for i in range(5):
-        pq.write_table(pa.table({"x": [i]}), str(tmp_path / f"f{i}.parquet"))
-
-    files = _expand_paths_to_files(
-        [str(tmp_path)], pafs.LocalFileSystem(), False, num_workers=4
-    )
-    assert len(files) == 5
-    assert files == sorted(files)
-    assert all(p.endswith(".parquet") for p in files)
-
-
 @pytest.mark.parametrize("num_files", [1, 2, 50, 250])
-def test_single_prefix_fans_out_across_tasks(
-    ray_start_2_cpus_shared, tmp_path, num_files
-):
-    # THE regression: a single-prefix input with many files must shard into
-    # many listing bundles (one Ray task each), not one. Pre-fix this was
-    # always 1 bundle because sharding keyed on input-path count (== 1).
+def test_raw_paths_shard_across_tasks(ray_start_2_cpus_shared, tmp_path, num_files):
+    # Raw input paths are sharded across listing bundles (one Ray task each),
+    # capped at DEFAULT_MAX_NUM_LIST_FILES_TASKS.
     from ray.data._internal.planner.plan_list_files_op import (
         DEFAULT_MAX_NUM_LIST_FILES_TASKS,
         _create_input_data_buffer,
     )
     from ray.data.context import DataContext
 
-    op = _mk_prefix_list_files(tmp_path, num_files=num_files)
+    op = _mk_multi_path_list_files(tmp_path, num_files=num_files)
     buffer = _create_input_data_buffer(
         op, DataContext.get_current(), should_parallelize=True
     )
@@ -146,43 +125,26 @@ def test_single_prefix_fans_out_across_tasks(
     expected = min(DEFAULT_MAX_NUM_LIST_FILES_TASKS, num_files)
     assert len(buffer._input_data) == expected
 
-    # Files are partitioned exactly once across all bundles (affinity-safe).
+    # Every input path is sharded exactly once across all bundles.
     paths = _bundle_paths(buffer)
     assert len(paths) == num_files
     assert len(set(paths)) == num_files
 
 
-def test_shuffle_forces_single_bundle_with_all_files(ray_start_2_cpus_shared, tmp_path):
+def test_shuffle_forces_single_bundle_with_all_paths(ray_start_2_cpus_shared, tmp_path):
     # Shuffle needs one global permutation, so listing stays a single task
-    # containing every file.
+    # containing every input path.
     from ray.data._internal.planner.plan_list_files_op import (
         _create_input_data_buffer,
     )
     from ray.data.context import DataContext
 
-    op = _mk_prefix_list_files(tmp_path, num_files=30, shuffle_seed=7)
+    op = _mk_multi_path_list_files(tmp_path, num_files=30, shuffle_seed=7)
     buffer = _create_input_data_buffer(
         op, DataContext.get_current(), should_parallelize=False
     )
     assert len(buffer._input_data) == 1
     assert len(_bundle_paths(buffer)) == 30
-
-
-def test_kill_switch_reverts_to_raw_path_sharding(
-    ray_start_2_cpus_shared, tmp_path, restore_data_context
-):
-    # With expansion disabled, a single prefix shards to a single bundle
-    # (pre-fix behavior) -- the instant-rollback escape hatch.
-    from ray.data._internal.planner.plan_list_files_op import (
-        _create_input_data_buffer,
-    )
-    from ray.data.context import DataContext
-
-    ctx = DataContext.get_current()
-    ctx.list_files_expand_paths = False
-    op = _mk_prefix_list_files(tmp_path, num_files=30)
-    buffer = _create_input_data_buffer(op, ctx, should_parallelize=True)
-    assert len(buffer._input_data) == 1
 
 
 if __name__ == "__main__":
