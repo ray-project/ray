@@ -305,13 +305,9 @@ class _FetchHandler(socketserver.StreamRequestHandler):
                 # remains in a well-defined state for future FETCHes on this
                 # connection (the client's protocol contract is "send full
                 # request, then read full response").
-                num_ranges = _recv_u32(sock)
-                _recvall(sock, num_ranges * 16)  # u64 offset + u64 length
-                for _ in range(num_sources - len(requests) - 1):
-                    pl = _recv_u16(sock)
-                    _recvall(sock, pl)
-                    nr = _recv_u32(sock)
-                    _recvall(sock, nr * 16)
+                self._drain_remaining_sources(
+                    sock, remaining_source_count=num_sources - len(requests)
+                )
                 self._send_error(
                     sock, _STATUS_PATH_DENIED, f"path outside base_dir: {path}"
                 )
@@ -369,6 +365,23 @@ class _FetchHandler(socketserver.StreamRequestHandler):
         finally:
             for f in files:
                 f.close()
+
+    @staticmethod
+    def _drain_remaining_sources(sock, remaining_source_count: int) -> None:
+        """Read (and discard) the current source's ranges + all subsequent
+        source frames. Called after we've committed to failing this FETCH
+        so the socket is left at the start of the next request opcode,
+        matching the client's "send full request then read full response"
+        contract."""
+        # Current source: its ranges header + range bytes (u64 off + u64 len each).
+        num_ranges = _recv_u32(sock)
+        _recvall(sock, num_ranges * 16)
+        # Then any sources we hadn't started yet.
+        for _ in range(remaining_source_count - 1):
+            pl = _recv_u16(sock)
+            _recvall(sock, pl)
+            nr = _recv_u32(sock)
+            _recvall(sock, nr * 16)
 
     @staticmethod
     def _send_error(sock, status: int, msg: str):
@@ -978,6 +991,61 @@ _FETCH_RETRY_DEADLINE_S = 300.0
 _FETCH_RETRY_INTERVAL_S = 5.0
 
 
+def _handle_transient_fetch_error(
+    exc: BaseException,
+    *,
+    shuffle_id: str,
+    node_id: str,
+    out_file_obj: "_PwriteSink",
+    members: List[_NodeMember],
+    deadline: float,
+    attempts: int,
+) -> None:
+    """Classify a mid-fetch exception and either raise a terminal typed
+    error or return to let the caller sleep + retry.
+
+    Returning means "transient — try again". Raising ends the retry loop
+    with one of ``ShuffleDiskError`` (disk full), ``ShuffleNodeLostError``
+    (source node confirmed dead), or ``ShuffleFetchError`` (retry deadline
+    exhausted). Handles the shared side-effects on every retry path:
+    sink rewind (idempotent overwrite on retry) and endpoint-cache
+    eviction (force re-resolve in case the manager restarted on a new
+    port).
+    """
+    # Disk exhausted is terminal — no amount of retry frees space.
+    if _is_disk_exhausted(exc):
+        raise ShuffleDiskError(
+            f"Disk exhausted while writing prefetch.bin for node "
+            f"{node_id} (sources={len(members)}): {exc}"
+        ) from exc
+
+    # Any pwrites we did on this attempt land at the same offsets on the
+    # next attempt (server re-sends the same bytes), so rewind the sink
+    # so subsequent writes don't overrun into the next fetch group's region.
+    out_file_obj.reset()
+    _ENDPOINT_CACHE.pop(_manager_name(shuffle_id, node_id), None)
+
+    if _is_node_alive(node_id) is False:
+        raise ShuffleNodeLostError(
+            f"ShuffleManager node {node_id} died mid-fetch; "
+            f"lost on-disk output for {len(members)} source(s). "
+            f"Ray-Core lineage will re-execute affected mappers on "
+            f"reducer retry."
+        ) from exc
+
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise ShuffleFetchError(
+            f"Fetch from node {node_id} did not succeed after "
+            f"{attempts} attempts in "
+            f"{_FETCH_RETRY_DEADLINE_S:.0f}s (sources="
+            f"{len(members)}). Last error: {exc}"
+        ) from exc
+
+    # Node alive (or inconclusive) — wait, then retry in place.
+    time.sleep(min(_FETCH_RETRY_INTERVAL_S, remaining))
+
+
 def _prefetch_node_into(
     out_file_obj: "_PwriteSink",
     shuffle_id: str,
@@ -1066,39 +1134,15 @@ def _prefetch_node_into(
                 num_sources=len(members),
             )
         except Exception as e:
-            # Disk exhausted is terminal — no amount of retry frees space.
-            if _is_disk_exhausted(e):
-                raise ShuffleDiskError(
-                    f"Disk exhausted while writing prefetch.bin for node "
-                    f"{node_id} (sources={len(members)}): {e}"
-                ) from e
-            # Any pwrites we did on this attempt land at the same offsets
-            # on the next attempt (server re-sends the same bytes), so
-            # rewind the sink so subsequent writes don't overrun into the
-            # next fetch group's region.
-            out_file_obj.reset()
-            # Force the endpoint to be re-resolved on the next iteration
-            # in case the manager restarted on a new port.
-            _ENDPOINT_CACHE.pop(_manager_name(shuffle_id, node_id), None)
-
-            if _is_node_alive(node_id) is False:
-                raise ShuffleNodeLostError(
-                    f"ShuffleManager node {node_id} died mid-fetch; "
-                    f"lost on-disk output for {len(members)} source(s). "
-                    f"Ray-Core lineage will re-execute affected mappers on "
-                    f"reducer retry."
-                ) from e
-
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise ShuffleFetchError(
-                    f"Fetch from node {node_id} did not succeed after "
-                    f"{attempts} attempts in "
-                    f"{_FETCH_RETRY_DEADLINE_S:.0f}s (sources="
-                    f"{len(members)}). Last error: {e}"
-                ) from e
-            # Node alive (or inconclusive) — wait, then retry in place.
-            time.sleep(min(_FETCH_RETRY_INTERVAL_S, remaining))
+            _handle_transient_fetch_error(
+                e,
+                shuffle_id=shuffle_id,
+                node_id=node_id,
+                out_file_obj=out_file_obj,
+                members=members,
+                deadline=deadline,
+                attempts=attempts,
+            )
 
 
 def _chunk_members_by_bytes(
