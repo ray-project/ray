@@ -318,12 +318,14 @@ def test_query_prometheus_counter_sums_results(monkeypatch):
         lambda *a, **k: MagicMock(
             status_code=200, json=lambda: {"data": {"result": []}}
         ),
-        # Prometheus unreachable / request raised.
-        MagicMock(side_effect=RuntimeError("no prometheus")),
+        # Prometheus unreachable
+        MagicMock(side_effect=util.requests.ConnectionError("no prometheus")),
+        # 200 but malformed response body
+        lambda *a, **k: MagicMock(status_code=200, json=lambda: {"unexpected": 1}),
     ],
 )
 def test_query_prometheus_counter_returns_none_on_failure(monkeypatch, get_fn):
-    """Any query failure yields None so usage collection never breaks."""
+    """Each realistic query failure yields None so usage collection never breaks."""
     monkeypatch.setattr(util.requests, "get", get_fn)
     assert util.query_prometheus_counter("q") is None
 

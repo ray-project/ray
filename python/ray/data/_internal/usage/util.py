@@ -48,7 +48,7 @@ def _prometheus_headers() -> Dict[str, str]:
     """
     try:
         headers = json.loads(os.environ.get("RAY_PROMETHEUS_HEADERS", "{}"))
-    except Exception:
+    except json.JSONDecodeError:
         return {}
     if isinstance(headers, list):
         return dict(headers)
@@ -75,7 +75,9 @@ def query_prometheus_counter(promql: str) -> Optional[int]:
         if not results:
             return None
         return int(sum(float(r["value"][1]) for r in results))
-    except Exception:
+    except (requests.RequestException, ValueError, KeyError, IndexError, TypeError):
+        # RequestException: unreachable/timeout/non-HTTP error; the rest:
+        # unexpected/empty response shape. Best-effort — return None on any.
         logger.debug("Failed to query Prometheus counter %r", promql, exc_info=True)
         return None
 
