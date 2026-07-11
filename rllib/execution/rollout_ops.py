@@ -146,7 +146,9 @@ def synchronous_parallel_sample(
                 agent_or_env_steps += sum(
                     int(agent_stat)
                     for stat_dict in stats_dicts
-                    for agent_stat in stat_dict[NUM_AGENT_STEPS_SAMPLED].values()
+                    for agent_stat in stat_dict.get(
+                        NUM_AGENT_STEPS_SAMPLED, {}
+                    ).values()
                     if not math.isnan(float(agent_stat))
                 )
             else:
