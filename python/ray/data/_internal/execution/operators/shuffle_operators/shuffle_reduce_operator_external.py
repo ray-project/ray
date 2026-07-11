@@ -18,10 +18,15 @@ import typing
 from collections import deque
 from typing import Any, Dict, List, Optional
 
+import pyarrow as pa
+
+import ray
 from ray.data._internal.execution.interfaces import (
+    BlockEntry,
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
+    TaskContext,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
@@ -47,10 +52,8 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operat
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
 )
-from ray.data._internal.execution.operators.sub_progress import (
-    SubProgressBarMixin,
-)
-from ray.data.block import BlockStats, TaskExecWorkerStats, to_stats
+from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data.block import BlockAccessor, BlockStats, TaskExecWorkerStats, to_stats
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
@@ -83,7 +86,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         num_partitions: int,
         reduce_fn: ReduceFn,
         disallow_block_splitting: bool = False,
-        reduce_cpus: Optional[float] = None,
+        reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         name: str = "ExternalHashShuffleReduce",
         fused_output_map_transformer: Optional["MapTransformer"] = None,
         fused_output_map_task_kwargs: Optional[Dict[str, Any]] = None,
@@ -104,22 +107,16 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         self._disallow_block_splitting: bool = disallow_block_splitting
 
         # -- Reduce task config & tracking -----------------------------------
-        self._shuffle_reduce_task_num_cpus: float = (
-            reduce_cpus
-            if reduce_cpus is not None
-            else self._DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS
+        self._reduce_ray_remote_args: Dict[str, Any] = dict(
+            reduce_ray_remote_args or {}
         )
         self._shuffle_reduce_tasks: Dict[int, DataOpTask] = {}
         self._num_reduce_tasks_submitted: int = 0
 
         # -- Fused downstream map --------------------------------------------
-        self._fused_output_map_transformer: Optional[
-            "MapTransformer"
-        ] = fused_output_map_transformer
-        self._fused_output_map_task_kwargs: Dict[str, Any] = (
-            fused_output_map_task_kwargs or {}
-        )
-        self._fused_output_map_target_max_block_size_override: Optional[int] = (
+        self._fused_output_map_transformer = fused_output_map_transformer
+        self._fused_output_map_task_kwargs = fused_output_map_task_kwargs or {}
+        self._fused_output_map_target_max_block_size_override = (
             fused_output_map_target_max_block_size_override
         )
 
@@ -144,6 +141,24 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         self._fetch_threads: int = fetch_threads
         self._reduce_prefetch_dir: Optional[str] = reduce_prefetch_dir
 
+    def _reduce_task_remote_args(self, memory_estimate: int) -> Dict[str, Any]:
+        remote_args: Dict[str, Any] = {
+            "num_cpus": self._DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS,
+            "scheduling_strategy": "SPREAD",
+        }
+        if memory_estimate > 0:
+            remote_args["memory"] = memory_estimate
+        remote_args.update(self._reduce_ray_remote_args)
+        remote_args["num_returns"] = "streaming"
+        # max_retries + retry_exceptions together let a
+        # ``ShuffleFetchError`` (usually ``ShuffleNodeLostError``) trigger
+        # a Ray-Core retry, whose arg re-resolution picks up a
+        # lineage-recovered mapper handle. Default retry_exceptions is
+        # False (system failures only), which would defeat that.
+        remote_args.setdefault("max_retries", 3)
+        remote_args["retry_exceptions"] = [ShuffleFetchError]
+        return remote_args
+
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         """Dispatch one reduce task per partition wrapper. Backpressure is
         executor-driven — no accumulation, no dispatch loop."""
@@ -153,56 +168,58 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             return
 
         partition_id = extract_partition_id(refs)
+        estimated_bytes = sum((m.size_bytes or 0) for m in refs.metadata)
+
+        # Empty-partition fast path: wrappers for partitions that no
+        # mapper wrote to have ``size_bytes==0`` (the map op sums
+        # per-partition decoded bytes across mappers into wrapper
+        # metadata). Skipped when a downstream map is fused in — the
+        # map still needs to run even on empty partitions (e.g. Write).
+        schema = refs.schema
+        if (
+            self._fused_output_map_transformer is None
+            and isinstance(schema, pa.Schema)
+            and estimated_bytes == 0
+        ):
+            self._emit_empty_partition(schema)
+            return
+
         # Wrapper carries a single ObjectRef pointing at the map op's
         # shared handle list; passing that one ref through Ray dispatch
         # keeps arg bookkeeping O(1) per reducer instead of O(#mappers).
         handles_ref = refs.block_refs[0]
-        estimated_bytes = sum((m.size_bytes or 0) for m in refs.metadata)
 
-        # disallow_block_splitting drops the reshape target so
-        # ``BlockOutputBuffer`` emits one block per partition.
+        self._submit_reduce_task(partition_id, handles_ref, estimated_bytes)
+
+    def _submit_reduce_task(
+        self,
+        partition_id: int,
+        handles_ref: ObjectRef,
+        estimated_bytes: int,
+    ) -> None:
+        """Submit one reduce task for this partition wrapper."""
+        reduce_options = self._reduce_task_remote_args(
+            int(estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
+            if estimated_bytes > 0
+            else 0
+        )
+
         target_max_block_size = (
             None
             if self._disallow_block_splitting
             else self.data_context.target_max_block_size
         )
 
-        self._dispatch_one_reducer(
-            partition_id,
-            handles_ref,
-            estimated_bytes,
-            target_max_block_size,
-        )
-        refs.destroy_if_owned()
-
-    def _dispatch_one_reducer(
-        self,
-        partition_id: int,
-        handles_ref: ObjectRef,
-        estimated_bytes: int,
-        target_max_block_size: Optional[int],
-    ) -> None:
-        # Per-partition memory ask: 2× decoded bytes (peak = accum +
-        # reshape carry).
-        reduce_resources: Dict[str, Any] = {
-            "num_cpus": self._shuffle_reduce_task_num_cpus,
-        }
-        if estimated_bytes > 0:
-            reduce_resources["memory"] = int(
-                estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER
+        map_task_context = None
+        if self._fused_output_map_transformer is not None:
+            map_task_context = TaskContext(
+                task_idx=partition_id,
+                op_name=self.name,
+                target_max_block_size_override=(
+                    self._fused_output_map_target_max_block_size_override
+                ),
             )
-        reduce_options: Dict[str, Any] = {
-            **reduce_resources,
-            "scheduling_strategy": "SPREAD",
-            "num_returns": "streaming",
-            # max_retries + retry_exceptions together let a
-            # ``ShuffleFetchError`` (usually ``ShuffleNodeLostError``)
-            # trigger a Ray-Core retry, whose arg re-resolution picks up
-            # a lineage-recovered mapper handle. Default retry_exceptions
-            # is False (system failures only), which would defeat that.
-            "max_retries": 3,
-            "retry_exceptions": [ShuffleFetchError],
-        }
+            map_task_context.kwargs.update(self._fused_output_map_task_kwargs)
 
         block_gen = external_hash_shuffle_reduce_task.options(**reduce_options).remote(
             handles_ref,
@@ -213,9 +230,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             self._fetch_threads,
             target_max_block_size,
             self._fused_output_map_transformer,
-            self.name,
-            self._fused_output_map_task_kwargs,
-            self._fused_output_map_target_max_block_size_override,
+            map_task_context,
         )
 
         data_task = DataOpTask(
@@ -230,7 +245,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
                 self._handle_reduce_done, partition_id
             ),
             task_resource_bundle=ExecutionResources.from_resource_dict(
-                reduce_resources
+                reduce_options
             ),
             operator_name=self.name,
         )
@@ -249,8 +264,59 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             task_id=data_task.get_task_id(),
         )
 
+    def _emit_empty_partition(self, schema: pa.Schema) -> None:
+        """Emit one empty output block for an empty partition.
+
+        The partition contributed no rows, so there is nothing to reduce; we
+        build the empty block from the schema the map stage propagated onto
+        the wrapper and queue it as this partition's single output block.
+        """
+        empty_block = schema.empty_table()
+        block_meta = BlockAccessor.for_block(empty_block).get_metadata()
+        out_bundle = RefBundle(
+            (
+                BlockEntry(
+                    ref=ray.put(empty_block),
+                    metadata=block_meta,
+                ),
+            ),
+            schema=schema,
+            owns_blocks=True,
+        )
+
+        # Empty partition creates a new block; register it for memory tracking.
+        self._block_ref_counter.on_block_produced(
+            out_bundle.blocks[0].ref,
+            block_meta.size_bytes or 0,
+            self.id,
+        )
+        self._num_reduce_tasks_submitted += 1
+        self._output_queue.append(out_bundle)
+        self._metrics.on_output_queued(out_bundle)
+        _, num_outputs, num_rows = estimate_total_num_of_blocks(
+            self._num_reduce_tasks_submitted,
+            self.upstream_op_num_outputs(),
+            self._metrics,
+            total_num_tasks=self._num_partitions,
+        )
+        self._estimated_num_output_bundles = num_outputs
+        self._estimated_output_num_rows = num_rows
+        if self._reduce_bar is not None:
+            self._reduce_bar.update(increment=0, total=self.num_output_rows_total())
+
+    def has_next(self) -> bool:
+        return len(self._output_queue) > 0
+
+    def _get_next_inner(self) -> RefBundle:
+        bundle: RefBundle = self._output_queue.popleft()
+        self._metrics.on_output_dequeued(bundle)
+        self._output_blocks_stats.extend(to_stats(bundle.metadata))
+        return bundle
+
+    def get_active_tasks(self) -> List[OpTask]:
+        return list(self._shuffle_reduce_tasks.values())
+
     def _handle_reduce_output_ready(self, partition_id: int, bundle: RefBundle) -> None:
-        """Callback for each yielded (block, metadata) pair from a reducer."""
         self._output_queue.append(bundle)
         self._metrics.on_output_queued(bundle)
         self._metrics.on_task_output_generated(task_index=partition_id, output=bundle)
@@ -275,8 +341,10 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         task_exec_stats: Optional[TaskExecWorkerStats],
         task_exec_driver_stats: Optional[TaskExecDriverStats],
     ) -> None:
-        """Callback when a reduce streaming generator finishes."""
-        self._shuffle_reduce_tasks.pop(partition_id, None)
+        """Callback when a reduce task finishes (with or without exception)."""
+        if partition_id not in self._shuffle_reduce_tasks:
+            return
+        self._shuffle_reduce_tasks.pop(partition_id)
         self._metrics.on_task_finished(
             task_index=partition_id,
             exception=exc,
@@ -285,23 +353,8 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         )
         if exc:
             logger.error(
-                "Reduce of partition %d failed: %s",
-                partition_id,
-                exc,
-                exc_info=exc,
+                f"Reduce of partition {partition_id} failed: {exc}", exc_info=exc
             )
-
-    def has_next(self) -> bool:
-        return len(self._output_queue) > 0
-
-    def _get_next_inner(self) -> RefBundle:
-        bundle: RefBundle = self._output_queue.popleft()
-        self._metrics.on_output_dequeued(bundle)
-        self._output_blocks_stats.extend(to_stats(bundle.metadata))
-        return bundle
-
-    def get_active_tasks(self) -> List[OpTask]:
-        return list(self._shuffle_reduce_tasks.values())
 
     def has_execution_finished(self) -> bool:
         if self._shuffle_reduce_tasks or self._output_queue:
@@ -322,7 +375,6 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         # Manager actors + handle refs are owned upstream; nothing to
         # clean up here.
 
-    # Stats / progress
     def get_stats(self) -> Dict[str, List[BlockStats]]:
         return {self._name: self._output_blocks_stats}
 
@@ -350,9 +402,8 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         if sizes:
             avg_bytes = sum(sizes) / len(sizes)
             memory = int(avg_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
-        return ExecutionResources(
-            cpu=self._shuffle_reduce_task_num_cpus,
-            memory=memory,
+        return ExecutionResources.from_resource_dict(
+            self._reduce_task_remote_args(memory)
         )
 
     def min_scheduling_resources(self) -> ExecutionResources:

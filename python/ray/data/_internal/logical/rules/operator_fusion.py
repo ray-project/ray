@@ -422,7 +422,7 @@ class FuseOperators(Rule):
                 max_bytes_per_fetch=up_op._max_bytes_per_fetch,
                 fetch_threads=up_op._fetch_threads,
                 reduce_prefetch_dir=up_op._reduce_prefetch_dir,
-                reduce_cpus=up_op._shuffle_reduce_task_num_cpus,
+                reduce_ray_remote_args=up_op._reduce_ray_remote_args,
                 name=name,
                 fused_output_map_transformer=down_op.get_map_transformer(),
                 fused_output_map_task_kwargs=down_op.get_map_task_kwargs(),
