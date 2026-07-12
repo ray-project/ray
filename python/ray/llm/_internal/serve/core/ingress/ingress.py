@@ -33,7 +33,11 @@ from ray.llm._internal.serve.constants import (
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
+    ChatCompletionResponse,
+    ChatCompletionStreamResponse,
     CompletionRequest,
+    CompletionResponse,
+    CompletionStreamResponse,
     DetokenizeRequest,
     DetokenizeResponse,
     EmbeddingRequest,
@@ -52,6 +56,8 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     TokenizeCompletionRequest,
     TokenizeResponse,
     TranscriptionRequest,
+    TranscriptionResponse,
+    TranscriptionStreamResponse,
 )
 from ray.llm._internal.serve.core.ingress.middleware import (
     SetRequestIdMiddleware,
@@ -63,7 +69,12 @@ from ray.llm._internal.serve.core.ingress.utils import (
     _peek_at_generator,
     _sanitize_chat_completion_request,
 )
-from ray.llm._internal.serve.core.protocol import DeploymentProtocol, RawRequestInfo
+from ray.llm._internal.serve.core.protocol import (
+    DeploymentProtocol,
+    RawRequestInfo,
+    deserialize_openai_model,
+    serialize_openai_model,
+)
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.metrics.fast_api_metrics import (
     add_http_metrics_middleware,
@@ -90,6 +101,23 @@ DEFAULT_INGRESS_OPTIONS = {
     "autoscaling_config": {
         "target_ongoing_requests": DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
     },
+}
+
+_OPENAI_RESPONSE_MODELS = {
+    model.__name__: model
+    for model in (
+        ChatCompletionResponse,
+        ChatCompletionStreamResponse,
+        CompletionResponse,
+        CompletionStreamResponse,
+        DetokenizeResponse,
+        EmbeddingResponse,
+        ErrorResponse,
+        ScoreResponse,
+        TokenizeResponse,
+        TranscriptionResponse,
+        TranscriptionStreamResponse,
+    )
 }
 
 
@@ -399,9 +427,9 @@ class OpenAiIngress(DeploymentProtocol):
             raw_request_info = RawRequestInfo.from_starlette_request(raw_request)
 
         async for response in getattr(model_handle, call_method).remote(
-            body, raw_request_info
+            serialize_openai_model(body), raw_request_info
         ):
-            yield response
+            yield deserialize_openai_model(response, _OPENAI_RESPONSE_MODELS)
 
     async def model(self, model_id: str) -> Optional[ModelCard]:
         if model_id in self._model_cards:

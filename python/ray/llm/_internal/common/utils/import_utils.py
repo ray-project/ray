@@ -7,6 +7,11 @@ from typing import Any, NoReturn, Optional, Type
 logger = logging.getLogger(__name__)
 
 
+def is_missing_module(error: ImportError, module: str) -> bool:
+    """Return whether an import failed because its top-level module is absent."""
+    return isinstance(error, ModuleNotFoundError) and error.name == module
+
+
 def try_import(name: str, error: bool = False) -> Optional[ModuleType]:
     """Try importing the module and returns the module (or None).
 
@@ -44,12 +49,8 @@ def raise_llm_engine_import_error(
         vllm_error: The ImportError raised when importing vLLM.
         sglang_error: The ImportError raised when importing SGLang.
     """
-    vllm_not_installed = (
-        isinstance(vllm_error, ModuleNotFoundError) and vllm_error.name == "vllm"
-    )
-    sglang_not_installed = (
-        isinstance(sglang_error, ModuleNotFoundError) and sglang_error.name == "sglang"
-    )
+    vllm_not_installed = is_missing_module(vllm_error, "vllm")
+    sglang_not_installed = is_missing_module(sglang_error, "sglang")
 
     if vllm_not_installed and sglang_not_installed:
         raise ImportError(
