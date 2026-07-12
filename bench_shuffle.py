@@ -11,9 +11,7 @@ repartition, write, stats collection) is shared.
                 small handles only)
 
 Optional rich-measurement features (timeline dump, raylet spill-event
-collection) are gated behind flags and degrade gracefully when the
-spill_metrics_dump helper isn't on PYTHONPATH (so this script works on a
-bare Anyscale workspace as well as on the original benchmark harness).
+collection) are gated behind CLI flags and off by default.
 
 Usage:
   # quick: one shot, just print the wall-clock
@@ -80,13 +78,9 @@ def configure_shuffle(ctx, shuffle: str) -> None:
 
 
 def _maybe_truncate_spill_logs() -> None:
-    """Try to truncate raylet event logs on all nodes. No-op when the
-    spill_metrics_dump helper isn't importable (e.g. on a bare workspace
-    without that companion script)."""
-    try:
-        from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-    except Exception:
-        return
+    """Truncate raylet spill/pull event logs on every alive node so a
+    fresh benchmark run starts from an empty log baseline."""
+    from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
     @ray.remote(num_cpus=0)
     def _truncate(paths):
