@@ -299,7 +299,7 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
                 await context.abort(
                     grpc.StatusCode.INVALID_ARGUMENT,
                     f"Invalid glob filter: {request.glob_filter}. "
-                    "It must be a relative path and cannot contain '..'."
+                    "It must be a relative path and cannot contain '..'.",
                 )
         log_files = []
         for p in path.glob(request.glob_filter):
