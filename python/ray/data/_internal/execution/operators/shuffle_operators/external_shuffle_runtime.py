@@ -397,21 +397,16 @@ class _FetchHandler(socketserver.StreamRequestHandler):
 class _ThreadingServer(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
-    # socket.listen() backlog. socketserver's default (5) is far below the
-    # SYN burst at shuffle start (all reducers fan-out TCP dial to each
-    # manager roughly at once). On server's overflow, Linux by default silently drops
-    # SYNs (tcp_abort_on_overflow=0), then clients see slow connects, eventually ETIMEDOUT.
-    # kernel silently clamps to somaxconn if lower.
+    # socket.listen() backlog. Default (5) is well below the SYN burst
+    # when all reducers fan-out to every manager at once, causing silent
+    # SYN drops → ETIMEDOUT. Kernel clamps to ``somaxconn`` if lower.
     request_queue_size = 256
 
 
-# -- ShuffleManager identity -------------------------------------------------
-#
-# The actor's real identity is its ``(name, namespace)`` GCS entry; ActorHandle
-# is a cache. We construct the name deterministically from ``shuffle_id`` +
-# ``node_id`` so any process can rebuild the identity from handle-dict fields
-# and look the actor up via ``ray.get_actor`` — no ActorHandle needs to
-# travel through the map→reduce plumbing.
+# ShuffleManager actor identity. Name is deterministic in
+# (shuffle_id, node_id), so any process can rebuild it from a handle
+# dict and ``ray.get_actor`` — no ActorHandle travels through the
+# map→reduce plumbing.
 _SHUFFLE_MANAGER_NAMESPACE = "ray_data_shuffle_external"
 
 
@@ -476,17 +471,9 @@ def _cleanup_shuffle_dir(base_dir: str) -> None:
 
 
 # =============================================================================
-# Client side
-#
-# ``_ShuffleConnection`` is the primitive: an open, handshake'd TCP connection
-# to one ShuffleManager. Once open, you can ``fetch(...)`` or
-# ``fetch_to_files(...)`` any number of times, each with potentially many
-# source paths and many ranges per source. Use within a ``with`` block to make
-# sure the CLOSE opcode is sent and the socket is torn down properly.
-#
-# The two convenience wrappers ``_fetch_ranges`` and ``_fetch_ranges_to_file``
-# preserve the single-source API for tests and ad-hoc callers; they internally
-# open a connection, do one FETCH, and close.
+# Client side: ``_ShuffleConnection`` is an open, handshake'd TCP connection
+# to one ShuffleManager. Use within a ``with`` block; multiple ``fetch(...)``
+# / ``fetch_into(...)`` calls are amortized over the same connection.
 # =============================================================================
 
 

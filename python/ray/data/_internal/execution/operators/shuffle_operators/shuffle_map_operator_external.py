@@ -149,36 +149,25 @@ class ExternalHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, Sub
         self._fsync_on_close: bool = fsync_on_close
 
         # -- Per-shuffle identity & on-disk staging --------------------------
-        # ``base_dir`` is a directory-name template — each node mkdirs the
-        # same path on its OWN local FS. Driver owns nothing on remote disks.
-        # Cleanup layers, precedence:
-        #   1. Driver ``_do_shutdown`` → ``mgr.__ray_terminate__.remote()``.
-        #   2. atexit hook on ShuffleManager (graceful Python shutdown).
-        #   3. Actor crash + ``max_restarts=-1`` same-node respawn (files
-        #      stay on disk for the respawn to pick up).
-        #   4. OS tmpwatch: base_dir sits under ``$TMPDIR``.
+        # Driver only computes the path template; each mapper mkdirs it on
+        # its own local FS. Cleanup is driver-driven via ``_teardown_shuffle``
+        # (ray.kill + per-node ``_cleanup_shuffle_dir`` task); OS tmpwatch
+        # is the last-resort fallback since ``base_dir`` sits under ``$TMPDIR``.
         self._token: str = secrets.token_hex(16)
         self._shuffle_id: str = secrets.token_hex(8)
-        # Default name is derived from ``shuffle_id``; driver deliberately
-        # does NOT mkdir — mappers create their own local copy on the node
-        # they run on. Caller-supplied ``base_dir`` is treated as scratch.
         self._base_dir: str = base_dir or os.path.join(
             tempfile.gettempdir(), f"ray_shuffle_external_{self._shuffle_id}"
         )
 
         # -- Partition-wrapper emission state --------------------------------
-        # Handles returned by completed mappers; drained into
-        # ``_shared_handles_ref`` at wrapper-emit time.
+        # Each completed mapper's handle_ref goes into
+        # ``_completed_handle_refs``; at emit time we ``ray.put`` that list
+        # once into ``_shared_handles_ref`` and every partition wrapper
+        # points at that single ref (O(1) per-reducer arg serialization).
         self._completed_handle_refs: List[ObjectRef] = []
-        # Single Ray object holding the handle-ref list. Every partition
-        # wrapper points at this one ref (1 nested-ref serialization per
-        # reducer dispatch, not M).
         self._shared_handles_ref: Optional[ObjectRef] = None
-        # First non-None schema observed on a completed mapper's handle.
-        # Attached to every emitted partition wrapper so downstream ops
-        # (fusion, empty-partition detection, etc.) see the shuffle output
-        # schema instead of ``None``. Consistent across mappers by
-        # construction — same partition_fn + same input schema.
+        # First non-None schema seen; propagated onto every wrapper so
+        # downstream ops (fusion, empty-partition fast path) don't see None.
         self._output_schema: Optional["pa.Schema"] = None
 
     @property
