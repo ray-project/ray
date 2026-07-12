@@ -164,8 +164,6 @@ class FuseOperators(Rule):
         ):
             return False
         reduce_op = upstream_ops[0]
-        # Already-fused check: both variants store the absorbed transformer in
-        # ``_fused_output_map_transformer`` — refuse a second downstream fuse.
         if reduce_op._fused_output_map_transformer is not None:
             return False
 
