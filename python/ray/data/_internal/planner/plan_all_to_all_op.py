@@ -322,22 +322,17 @@ def plan_all_to_all_op(
         )
 
     elif isinstance(op, Aggregate):
-        # External-shuffle only mirrors the in-memory ShuffleMap/Reduce
-        # path (which covers Repartition). Aggregate uses the
-        # HashAggregateOperator, which external does not implement.
-        # Fail loudly *only when the external opt-in would actually change
-        # behavior* — i.e. HASH_SHUFFLE strategy. Under GPU_SHUFFLE or the
-        # generic fall-through, in-memory hash-shuffle wouldn't run either,
-        # so external opt-in is irrelevant and we don't surprise the user.
+        # External-shuffle only implements Repartition; Aggregate uses
+        # HashAggregateOperator. Reject the combination that would
+        # silently ignore the external opt-in.
         if (
             data_context.use_external_hash_shuffle
             and data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE
         ):
             raise NotImplementedError(
-                "External hash-shuffle currently mirrors the in-memory "
-                "ShuffleMap/Reduce scope (Repartition only); Aggregate is not "
-                "supported. Set DataContext.use_external_hash_shuffle=False to "
-                "use the in-memory HashAggregate path."
+                "External hash-shuffle does not support Aggregate. Set "
+                "DataContext.use_external_hash_shuffle=False to use the "
+                "in-memory HashAggregate path."
             )
         if data_context.shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
             return _plan_gpu_shuffle_aggregate(data_context, op, input_physical_dag)
