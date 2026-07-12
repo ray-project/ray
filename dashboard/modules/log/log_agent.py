@@ -294,9 +294,19 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
                 f"Could not find log dir at path: {self._dashboard_agent.log_dir}"
                 "It is unexpected. Please report an issue to Ray Github."
             )
+
+        if request.glob_filter:
+            glob_path = Path(request.glob_filter)
+            if glob_path.is_absolute() or ".." in glob_path.parts:
+                raise FileNotFoundError(
+                    f"Invalid glob filter: path traversal detected: "
+                    f"{request.glob_filter}"
+                )
+
         log_files = []
         for p in path.glob(request.glob_filter):
             log_files.append(str(p.relative_to(path)) + ("/" if p.is_dir() else ""))
+
         return reporter_pb2.ListLogsReply(log_files=log_files)
 
     @classmethod
