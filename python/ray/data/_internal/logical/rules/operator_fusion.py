@@ -77,13 +77,9 @@ class FuseOperators(Rule):
         # we fuse together MapOperator -> AllToAllOperator pairs.
         fused_dag = self._fuse_all_to_all_operators_in_dag(fused_dag)
 
-        # Fuse a downstream task-pool map into the hash-shuffle reduce
-        # (``ShuffleReduceOp`` (in-memory) or ``ExternalHashShuffleReduceOp`` (external)). Runs after
-        # map fusion so a downstream map chain is already collapsed into
-        # one TaskPoolMapOperator. Both reduce classes share the same
-        # fusion policy via ``_can_fuse_map_into_shuffle_reduce``;
-        # construction of the fused replacement type-branches in
-        # ``_get_fused_map_into_shuffle_reduce_operator``.
+        # Fuse a downstream task-pool map into the hash-shuffle reduce.
+        # Runs after map fusion so any downstream map chain is already
+        # collapsed into a single TaskPoolMapOperator.
         fused_dag = self._fuse_map_into_shuffle_reduce_in_dag(fused_dag)
 
         # Update output dependencies after fusion.
@@ -108,16 +104,9 @@ class FuseOperators(Rule):
     def _fuse_map_into_shuffle_reduce_in_dag(
         self, dag: PhysicalOperator, has_downstream_limit: bool = False
     ) -> PhysicalOperator:
-        """Starting at the given operator, traverses up the DAG and fuses a
-        task-pool map sitting directly downstream of a hash-shuffle reduce
-        (``ShuffleReduceOp`` (in-memory) or ``ExternalHashShuffleReduceOp`` (external)) into the
-        reduce — i.e. a ``ShuffleReduce[External]? -> TaskPoolMapOperator`` pair.
-        Both reduce classes share the same fusion policy (concurrency-cap,
-        downstream-limit, non-file-datasink, already-fused, remote-args
-        checks) via ``_can_fuse_map_into_shuffle_reduce``; construction
-        of the fused replacement type-branches in
-        ``_get_fused_map_into_shuffle_reduce_operator``.
-
+        """Starting at the given operator, traverses up the DAG of operators
+        and fuses compatible ShuffleReduceOp -> TaskPoolMapOperator pairs
+        (in-memory and external variants share the same fusion policy).
         Returns the current (root) operator after completing upstream fusions.
         """
         if self._can_fuse_map_into_shuffle_reduce(dag, has_downstream_limit):
@@ -136,7 +125,7 @@ class FuseOperators(Rule):
         self, dag: PhysicalOperator, has_downstream_limit: bool
     ) -> bool:
         """Whether ``dag`` is a task-pool map that can be fused into the
-        hash-shuffle reduce (``ShuffleReduceOp`` (in-memory) or ``ExternalHashShuffleReduceOp`` (external)) immediately upstream of it.
+        hash-shuffle reduce immediately upstream of it.
         """
         # `dag` must be a fusable task-pool map.
         if not (isinstance(dag, TaskPoolMapOperator) and dag.supports_fusion()):
@@ -398,14 +387,11 @@ class FuseOperators(Rule):
         down_op: TaskPoolMapOperator,
         up_op: Union[ShuffleReduceOp, ExternalHashShuffleReduceOp],
     ) -> Union[ShuffleReduceOp, ExternalHashShuffleReduceOp]:
-        """Build the fused replacement for a
-        ``ShuffleReduce[External]? -> TaskPoolMapOperator`` edge. Constructs a new
-        reduce op of the same class as ``up_op`` (in-memory or external) with the
-        downstream map's transformer / kwargs plumbed into the reduce task
-        body. The two reduce classes share their ``fused_output_map_*`` API
-        but the external variant carries a couple of extra ctor knobs
-        (``max_bytes_per_fetch``, ``reduce_prefetch_dir``), so each branch
-        below constructs its own class explicitly.
+        """Build the fused replacement reduce op of the same class as
+        ``up_op``, with the downstream map's transformer / kwargs plumbed
+        into the reduce task body. External carries extra ctor knobs
+        (``max_bytes_per_fetch``, ``reduce_prefetch_dir``), so each
+        variant is constructed in its own branch below.
         """
         name = up_op.name + "->" + down_op.name
 
