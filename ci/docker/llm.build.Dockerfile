@@ -62,3 +62,8 @@ EOF
 # introduces longer adds a large one-time engine initialization cost. To avoid performance
 # surprises, we disable the FlashInfer sampler by default.
 ENV VLLM_USE_FLASHINFER_SAMPLER=0
+
+# vLLM 0.25.0 defaults to Model Runner V2, which skips multimodal encoder memory
+# profiling and OOMs the LLM GPU tests. Force Model Runner V1 for now.
+# TODO (jeffreywang): Omit this and use the default MRV2 once PR lands.
+ENV VLLM_USE_V2_MODEL_RUNNER=0
