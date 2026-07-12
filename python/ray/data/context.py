@@ -775,13 +775,10 @@ class DataContext:
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
 
-    # When True, route key-based ``Repartition`` (and follow-ons) through the
-    # external-shuffle variant (``ExternalHashShuffleMapOp + ExternalHashShuffleReduceOp``)
-    # instead of the in-memory ``ShuffleMapOp + ShuffleReduceOp`` path.
-    # The external-shuffle variant bypasses Ray's object store for bulk shuffle data:
-    # each mapper writes one file per node and serves byte-ranges via a
-    # per-node ``ShuffleManager`` actor over raw sockets. Default False —
-    # opt-in until the external-shuffle path has soaked.
+    # When True, route key-based ``Repartition`` through the external
+    # (file-transport) hash-shuffle variant instead of the in-memory one.
+    # Bulk data goes to per-node files served over sockets; the object
+    # store carries only small handles.
     use_external_hash_shuffle: bool = False
 
     # Whether to use the task-based hash-shuffle v2 path for join. When
