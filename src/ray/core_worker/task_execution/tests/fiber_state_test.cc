@@ -103,5 +103,76 @@ TEST(FiberStateTest, DoubleStopJoin) {
   fiber_state.Join();
 }
 
+namespace {
+
+// Shared state for FiberPostCallback test below. The hook is a plain C function
+// pointer with no captures, so test state lives at file scope.
+std::atomic<int> post_callback_invocations_{0};
+std::atomic<bool> post_callback_ran_after_user_{false};
+std::atomic<bool> user_callback_completed_{false};
+
+void ResetPostCallbackTestState() {
+  post_callback_invocations_.store(0);
+  post_callback_ran_after_user_.store(false);
+  user_callback_completed_.store(false);
+}
+
+void TestFiberPostCallback() {
+  if (user_callback_completed_.load()) {
+    post_callback_ran_after_user_.store(true);
+  }
+  post_callback_invocations_.fetch_add(1);
+}
+
+}  // namespace
+
+TEST(FiberStateTest, FiberPostCallbackFiresAfterUserCallbackAndIsOptional) {
+  TotalCounter total_counter;
+
+  // Sanity check: with no hook installed, EnqueueFiber runs the user callback
+  // exactly as before -- this validates the `if (post != nullptr)` guard.
+  {
+    ResetPostCallbackTestState();
+    FiberState fiber_state(1);
+    fiber_state.EnqueueFiber([&]() {
+      user_callback_completed_.store(true);
+      total_counter.increment();
+    });
+    total_counter.wait_for(1);
+    EXPECT_TRUE(user_callback_completed_.load());
+    EXPECT_EQ(post_callback_invocations_.load(), 0);
+    fiber_state.Stop();
+    fiber_state.Join();
+  }
+
+  // Install the hook and verify it fires after every user callback.
+  {
+    ResetPostCallbackTestState();
+    FiberState::SetFiberPostCallback(&TestFiberPostCallback);
+    FiberState fiber_state(1);
+    const int kNumDispatches = 5;
+    for (int i = 0; i < kNumDispatches; ++i) {
+      fiber_state.EnqueueFiber([&]() {
+        user_callback_completed_.store(true);
+        total_counter.increment();
+      });
+    }
+    total_counter.wait_for(kNumDispatches);
+    // Spin briefly to let the final fiber's post-callback observe the flag,
+    // since the user callback signals completion before returning.
+    for (int i = 0; i < 100 && post_callback_invocations_.load() < kNumDispatches; ++i) {
+      boost::this_fiber::sleep_for(std::chrono::milliseconds(1));
+    }
+    EXPECT_EQ(post_callback_invocations_.load(), kNumDispatches);
+    EXPECT_TRUE(post_callback_ran_after_user_.load());
+    fiber_state.Stop();
+    fiber_state.Join();
+
+    // The hook is a static member; reset it so it doesn't leak into later
+    // tests in this process.
+    FiberState::SetFiberPostCallback(nullptr);
+  }
+}
+
 }  // namespace core
 }  // namespace ray
