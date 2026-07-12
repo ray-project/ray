@@ -123,9 +123,9 @@ def _plan_hash_shuffle_repartition_external(
     """Build the two-op (ExternalHashShuffleMapOp → ExternalHashShuffleReduceOp)
     DAG for the external-shuffle variant of hash shuffle.
 
-    Scope matches ``_plan_hash_shuffle_repartition`` (the in-memory Family A):
-    keyed Repartition only. Caller in ``plan_all_to_all_op`` guarantees
-    ``logical_op.keys`` is non-empty and ``shuffle_strategy == HASH_SHUFFLE``.
+    Scope matches ``_plan_hash_shuffle_repartition``: keyed Repartition
+    only. Caller in ``plan_all_to_all_op`` guarantees ``logical_op.keys``
+    is non-empty and ``shuffle_strategy == HASH_SHUFFLE``.
     """
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
@@ -321,8 +321,8 @@ def plan_all_to_all_op(
 
     elif isinstance(op, Aggregate):
         # External-shuffle only mirrors the in-memory ShuffleMap/Reduce
-        # path (Family A), which covers Repartition. Aggregate uses the
-        # HashAggregateOperator family, which external does not implement.
+        # path (which covers Repartition). Aggregate uses the
+        # HashAggregateOperator, which external does not implement.
         # Fail loudly *only when the external opt-in would actually change
         # behavior* — i.e. HASH_SHUFFLE strategy. Under GPU_SHUFFLE or the
         # generic fall-through, in-memory hash-shuffle wouldn't run either,
