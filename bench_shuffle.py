@@ -10,8 +10,7 @@ repartition, write, stats collection) is shared.
                (file-transport; local disk + socket; object store carries
                 small handles only)
 
-Optional rich-measurement features (timeline dump, raylet spill-event
-collection) are gated behind CLI flags and off by default.
+Optional timeline dump is gated behind a CLI flag and off by default.
 
 Usage:
   # quick: one shot, just print the wall-clock
@@ -20,10 +19,10 @@ Usage:
   # both back-to-back (prints two RESULT lines for easy diff)
   python bench_shuffle.py --shuffle both --data-size-gb 100 --num-partitions 100
 
-  # full measurement: timeline + spill metrics + per-run stats
+  # with timeline dump + per-run stats
   RAY_DATA_SHUFFLE_PROFILE=1 \
   python bench_shuffle.py --shuffle external --data-size-gb 512 --num-partitions 512 \
-      --timeline-out /tmp/external.json --collect-spill-metrics
+      --timeline-out /tmp/external.json --stats
 """
 
 import argparse
@@ -75,33 +74,6 @@ def configure_shuffle(ctx, shuffle: str) -> None:
     a different transport layer when True)."""
     ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
     ctx.use_external_hash_shuffle = shuffle == "external"
-
-
-def _maybe_truncate_spill_logs() -> None:
-    """Truncate raylet spill/pull event logs on every alive node so a
-    fresh benchmark run starts from an empty log baseline."""
-    from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-    @ray.remote(num_cpus=0)
-    def _truncate(paths):
-        out = []
-        for p in paths:
-            try:
-                open(p, "w").close()
-                out.append(f"truncated {p}")
-            except OSError as e:
-                out.append(f"FAILED to truncate {p}: {e}")
-        return out
-
-    paths = ["/tmp/raylet_spill_events.out", "/tmp/raylet_pull_events.out"]
-    nodes = [n for n in ray.nodes() if n.get("Alive")]
-    futures = []
-    for n in nodes:
-        sched = NodeAffinitySchedulingStrategy(node_id=n["NodeID"], soft=False)
-        futures.append(_truncate.options(scheduling_strategy=sched).remote(paths))
-    for lines in ray.get(futures):
-        for line in lines:
-            print(f"  [event-log] {line}", flush=True)
 
 
 def run_one(
@@ -231,12 +203,6 @@ def main() -> None:
         "after each run as <path>.<shuffle>.json.",
     )
     p.add_argument(
-        "--collect-spill-metrics",
-        action="store_true",
-        help="Try to truncate + harvest raylet event logs. "
-        "No-op when the supporting helpers aren't importable.",
-    )
-    p.add_argument(
         "--result-json",
         type=str,
         default=None,
@@ -269,9 +235,6 @@ def main() -> None:
 
     results = []
     for s in shuffles:
-        if args.collect_spill_metrics:
-            _maybe_truncate_spill_logs()
-
         t0 = time.time()
         bench_start = time.time()
         r = run_one(
