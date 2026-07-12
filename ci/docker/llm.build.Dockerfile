@@ -20,6 +20,11 @@ SKIP_PYTHON_PACKAGES=1 ./ci/env/install-dependencies.sh
 PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.minor}')")"
 pip install --no-deps -r python/deplocks/llm/rayllm_test_${PYTHON_CODE}_${RAY_CUDA_CODE}.lock
 
+# ffmpeg provides the libav* libs torchcodec loads at import time. vLLM 0.25.0
+# imports torchcodec eagerly, and without libav* it raises RuntimeError (not
+# ImportError, so vLLM's guard misses it), so every `import vllm` fails.
+sudo apt-get update -y && sudo apt-get install -y ffmpeg
+
 # Include the CUDA device index in vLLM's compile cache paths so a worker never
 # reloads a torch.compile artifact built for a different physical GPU.
 # TODO (jeffreywang): Remove this patch once https://github.com/vllm-project/vllm/pull/38962 lands.
