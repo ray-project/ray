@@ -1199,29 +1199,6 @@ void LocalLeaseManager::DebugStr(std::stringstream &buffer) const {
          << "\n";
   buffer << "Total size of pinned lease arguments: " << pinned_lease_arguments_bytes_
          << "\n";
-  // [bug1_observe] Orphan detection: leases whose args are still pinned but
-  // whose worker is no longer in leased_workers_ (i.e. HandleReturnWorkerLease
-  // ran but CleanupLease didn't). Persistent orphan_bytes > 0 is direct
-  // evidence of Bug #1 turning into a permanent leak.
-  {
-    size_t orphan_leases = 0;
-    size_t orphan_bytes = 0;
-    for (const auto &[lease_id, arg_ids] : granted_lease_args_) {
-      if (!leased_workers_.contains(lease_id)) {
-        orphan_leases++;
-        for (const auto &arg_id : arg_ids) {
-          auto it = pinned_lease_arguments_.find(arg_id);
-          if (it != pinned_lease_arguments_.end() && it->second.first) {
-            orphan_bytes += it->second.first->GetSize();
-          }
-        }
-      }
-    }
-    buffer << "[bug1_observe] Orphaned granted leases (worker gone but args "
-              "still pinned): "
-           << orphan_leases << "\n";
-    buffer << "[bug1_observe] Orphaned pinned bytes: " << orphan_bytes << "\n";
-  }
   buffer << "Number of total spilled leases: " << num_lease_spilled_ << "\n";
   buffer << "Number of spilled waiting leases: " << num_waiting_lease_spilled_ << "\n";
   buffer << "Number of spilled unschedulable leases: " << num_unschedulable_lease_spilled_

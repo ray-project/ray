@@ -1500,13 +1500,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         << "Disconnecting driver, graceful=" << std::boolalpha << graceful
         << ", disconnect_type=" << disconnect_type;
   } else {
-    // [bug1_observe] Bug #2 gate: DisconnectClient early-returns without
-    // running CleanupLease. If Bug #1 already skipped cleanup for this
-    // worker's lease, its pinned args are now permanently leaked.
-    bug2_unregistered_count_++;
-    RAY_LOG(INFO) << "[bug1_observe] Got disconnect from unregistered client -- "
-                     "backstop CleanupLease BYPASSED (Bug #2 trigger, count="
-                  << bug2_unregistered_count_ << ")";
+    RAY_LOG(INFO) << "Got disconnect message from an unregistered client, ignoring.";
     return;
   }
 
@@ -1541,28 +1535,11 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   if (is_worker) {
     const ActorID &actor_id = worker->GetActorId();
     const LeaseID &lease_id = worker->GetGrantedLeaseId();
-    // [bug1_observe] Bug #3 gate: if the worker had a granted (non-actor)
-    // lease but is already marked IsDead, the CleanupLease call below will
-    // be skipped -> pinned args leak.
-    if (!lease_id.IsNil() && actor_id.IsNil() && worker->IsDead()) {
-      bug3_is_dead_count_++;
-      RAY_LOG(INFO).WithField("lease_id", lease_id)
-          << "[bug1_observe] DisconnectClient sees IsDead=true, backstop "
-             "CleanupLease BYPASSED (Bug #3 trigger, count="
-          << bug3_is_dead_count_ << ")";
-    }
     // If the worker was granted a lease, clean up the lease and push an
     // error to the driver, unless the worker is already dead.
     if ((!lease_id.IsNil() || !actor_id.IsNil()) && !worker->IsDead()) {
       // If the worker was an actor, it'll be cleaned by GCS.
       if (actor_id.IsNil()) {
-        // [bug1_observe] Backstop CleanupLease actually ran. If Bug #1
-        // skipped earlier, this is what saved us.
-        backstop_cleanup_count_++;
-        RAY_LOG(INFO).WithField("lease_id", lease_id)
-            << "[bug1_observe] DisconnectClient backstop CleanupLease fired "
-               "(count="
-            << backstop_cleanup_count_ << ")";
         // Return the resources that were being used by this worker.
         local_lease_manager_.CleanupLease(worker);
       }
@@ -2247,16 +2224,6 @@ void NodeManager::HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
     // and terminate itself.
     if (!request.worker_exiting()) {
       HandleWorkerAvailable(worker);
-    } else {
-      // [bug1_observe] Skipping HandleWorkerAvailable (and therefore CleanupLease
-      // / ReleaseLeaseArgs) on worker_exiting=true is the Bug #1 window. Args
-      // stay pinned here; only the DisconnectClient backstop can release them
-      // later. Count + log so we can correlate with orphan stats.
-      bug1_skip_count_++;
-      RAY_LOG(INFO).WithField("lease_id", lease_id)
-          << "[bug1_observe] worker_exiting=true, skipping CleanupLease "
-             "(count="
-          << bug1_skip_count_ << ")";
     }
   }
 
@@ -2651,20 +2618,6 @@ std::string NodeManager::DebugString() const {
     result << "\nnum async plasma notifications: "
            << async_plasma_objects_notification_.size();
   }
-
-  // [bug1_observe] Lease-arg-leak observability counters.
-  result << "\n[bug1_observe] bug1_skip_count (worker_exiting=true, "
-            "HandleReturnWorkerLease skipped CleanupLease): "
-         << bug1_skip_count_;
-  result << "\n[bug1_observe] backstop_cleanup_count (DisconnectClient's "
-            "CleanupLease actually ran): "
-         << backstop_cleanup_count_;
-  result << "\n[bug1_observe] bug2_unregistered_count (DisconnectClient "
-            "early-return on unregistered client): "
-         << bug2_unregistered_count_;
-  result << "\n[bug1_observe] bug3_is_dead_count (DisconnectClient saw "
-            "IsDead=true and skipped CleanupLease): "
-         << bug3_is_dead_count_;
 
   // Event stats.
   result << "\nEvent stats:" << io_service_.stats()->StatsString();
