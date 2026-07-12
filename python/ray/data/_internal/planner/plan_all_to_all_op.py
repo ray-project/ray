@@ -276,17 +276,19 @@ def plan_all_to_all_op(
                     data_context, op, input_physical_dag
                 )
             elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
-                # External-shuffle is a within-strategy transport swap: same
-                # scope as the in-memory hash-shuffle path (keyed
-                # Repartition), just disk files instead of Ray's object
-                # store.
+                # Transport swap within the same hash-shuffle scope:
+                # external routes bulk data over TCP files, in-memory
+                # uses Ray's object store.
                 if data_context.use_external_hash_shuffle:
+                    # External file-transport variant.
                     return _plan_hash_shuffle_repartition_external(
                         data_context, op, input_physical_dag
                     )
-                return _plan_hash_shuffle_repartition(
-                    data_context, op, input_physical_dag
-                )
+                else:
+                    # In-memory (default) variant.
+                    return _plan_hash_shuffle_repartition(
+                        data_context, op, input_physical_dag
+                    )
             else:
                 raise ValueError(
                     "Key-based repartitioning only supported for "
