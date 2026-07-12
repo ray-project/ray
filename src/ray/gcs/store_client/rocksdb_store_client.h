@@ -165,8 +165,11 @@ class RocksDbStoreClient : public StoreClient {
   void ValidateOrWriteClusterIdMarker(const std::string &expected_cluster_id);
 
   /// WriteOptions for a mutating op. Uses `sync = true` (fsync-on-WAL
-  /// before ack) so every committed GCS write survives a GCS crash.
-  rocksdb::WriteOptions SyncWriteOptions() const;
+  /// before ack) so every committed GCS write survives a GCS crash. The
+  /// options are identical for every synchronous write, so a reference to a
+  /// single shared constant instance is returned to avoid constructing a
+  /// WriteOptions on every mutating call.
+  const rocksdb::WriteOptions &SyncWriteOptions() const;
 
   /// Increment and durably persist the job counter under
   /// `job_id_mutex_`, returning the new value. The internal

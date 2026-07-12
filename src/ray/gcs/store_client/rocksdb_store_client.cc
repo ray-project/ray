@@ -101,13 +101,19 @@ RocksDbOptions BuildRocksDbOptions() {
 
 }  // namespace
 
-rocksdb::WriteOptions RocksDbStoreClient::SyncWriteOptions() const {
-  rocksdb::WriteOptions wo;
+const rocksdb::WriteOptions &RocksDbStoreClient::SyncWriteOptions() const {
   // REP §"Durability and Consistency Semantics": every GCS write fsyncs the
   // WAL before it is acked. This is the RocksDB GCS fault-tolerance
   // durability contract -- a committed write survives a GCS process crash.
-  wo.sync = true;
-  return wo;
+  // The options are identical for every synchronous write, so return a
+  // reference to a single thread-safe static instance rather than
+  // constructing a WriteOptions on every mutating call (a hot path).
+  static const rocksdb::WriteOptions kSyncWriteOptions = [] {
+    rocksdb::WriteOptions wo;
+    wo.sync = true;
+    return wo;
+  }();
+  return kSyncWriteOptions;
 }
 
 RocksDbStoreClient::RocksDbStoreClient(
