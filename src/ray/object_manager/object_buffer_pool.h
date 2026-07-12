@@ -123,11 +123,25 @@ class ObjectBufferPool {
   /// \param object_id The ObjectID.
   /// \param chunk_index The index of the chunk.
   /// \param data The data to write into the chunk.
-  void WriteChunk(const ObjectID &object_id,
+  /// \param defer_release If true and this chunk seals the object, the object
+  /// is sealed but its buffer-pool create-reference is NOT released (and the
+  /// buffer state is retained), keeping the object refcount>0 (non-evictable)
+  /// until ReleaseObject() is called. Used by plasma move semantics so the
+  /// consumer can pin the sealed object before it can be LRU-evicted.
+  /// \return True iff this chunk completed and sealed the object.
+  bool WriteChunk(const ObjectID &object_id,
                   uint64_t data_size,
                   uint64_t metadata_size,
                   uint64_t chunk_index,
-                  const std::string &data) ABSL_LOCKS_EXCLUDED(pool_mutex_);
+                  const std::string &data,
+                  bool defer_release = false) ABSL_LOCKS_EXCLUDED(pool_mutex_);
+
+  /// Release the buffer-pool create-reference for an object that was sealed
+  /// with defer_release=true, and drop its retained buffer state. Safe to call
+  /// once per such object; a no-op if the object has no retained state.
+  ///
+  /// \param object_id The ObjectID.
+  void ReleaseObject(const ObjectID &object_id) ABSL_LOCKS_EXCLUDED(pool_mutex_);
 
   /// Free a list of objects from object store.
   ///

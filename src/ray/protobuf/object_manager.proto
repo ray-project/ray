@@ -36,6 +36,13 @@ message PushRequest {
   uint64 metadata_size = 7;
   // The chunk data
   bytes data = 8;
+  // Plasma move semantics: set by the producer when this push is the move
+  // target for the object (producer will free its copy once the transfer is
+  // acked). Tells the consumer to pin the received copy as the new primary and
+  // report the primary-location move to the owner as part of the receive path,
+  // before acking the sealing chunk. False for non-move pushes (e.g. ray.put
+  // objects, or when move semantics is disabled).
+  bool is_move = 9;
 }
 
 message PullRequest {
@@ -43,25 +50,10 @@ message PullRequest {
   repeated bytes object_ids = 2;
 }
 
-// Tell the receiver raylet that a plasma move-semantics push has completed and
-// the receiver is now the primary copy holder for this object. The receiver
-// should pin the object locally (so it is not LRU-evicted), subscribe to the
-// owner's eviction channel, and inform the owner that the primary location
-// has moved to this node.
-message MoveCompletedRequest {
-  // The object whose primary copy was moved to the receiver.
-  bytes object_id = 1;
-  // The owner of the object. Needed by the receiver to subscribe to the
-  // owner's eviction channel and to send the primary-location update.
-  Address owner_address = 2;
-}
-
 // Reply for request
 message PushReply {
 }
 message PullReply {
-}
-message MoveCompletedReply {
 }
 
 service ObjectManagerService {
@@ -71,8 +63,4 @@ service ObjectManagerService {
   // Try to pull object from remote object manager
   // Failure: Retries, it's idempotent. TODO: Failure behavior needs more tests.
   rpc Pull(PullRequest) returns (PullReply);
-  // Notify the receiver that a move-semantics push has completed and it is now
-  // the primary copy holder. Fire-and-forget; the sender (producer) does not
-  // need the reply to make progress.
-  rpc MoveCompleted(MoveCompletedRequest) returns (MoveCompletedReply);
 }

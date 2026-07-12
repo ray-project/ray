@@ -38,11 +38,6 @@ class ObjectManagerClientInterface {
   /// \param callback The callback function that handles reply from server
   virtual void Pull(const PullRequest &request,
                     const ClientCallback<PullReply> &callback) = 0;
-
-  /// Notify the remote object manager that a plasma move-semantics push has
-  /// completed and it is now the primary copy holder for the given object.
-  virtual void MoveCompleted(const MoveCompletedRequest &request,
-                             const ClientCallback<MoveCompletedReply> &callback) = 0;
 };
 
 }  // namespace rpc

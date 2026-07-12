@@ -36,8 +36,7 @@ class ServerCallFactory;
 
 #define RAY_OBJECT_MANAGER_RPC_HANDLERS        \
   RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(Push) \
-  RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(Pull) \
-  RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(MoveCompleted)
+  RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(Pull)
 
 /// Implementations of the `ObjectManagerGrpcService`, check interface in
 /// `src/ray/protobuf/object_manager.proto`.
@@ -57,10 +56,6 @@ class ObjectManagerServiceHandler {
   virtual void HandlePull(PullRequest request,
                           PullReply *reply,
                           SendReplyCallback send_reply_callback) = 0;
-  /// Handle a `MoveCompleted` request.
-  virtual void HandleMoveCompleted(MoveCompletedRequest request,
-                                   MoveCompletedReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `ObjectManagerGrpcService`.

@@ -131,22 +131,20 @@ class ObjectManagerInterface {
   virtual void HandleObjectDeleted(const ObjectID &object_id) = 0;
 
   /// Register a callback invoked when a move-semantics push to a peer node
-  /// has been fully acked. Fires once per (object_id, peer_node_id). Used by
-  /// the producer raylet to free its local copy after a successful transfer.
+  /// has been fully acked. Fires once per (object_id, peer_node_id). The bool
+  /// argument is whether this push was a move (the producer should free its
+  /// local copy) — true only for the move-target push of a non-put object.
   virtual void SetOnPushComplete(
-      std::function<void(const ObjectID &, const NodeID &)> fn) = 0;
+      std::function<void(const ObjectID &, const NodeID &, bool is_move)> fn) = 0;
 
-  /// Register a callback invoked when this node receives a MoveCompleted RPC,
-  /// i.e., it has just become the primary copy holder for the given object.
-  virtual void SetOnMoveCompleted(
-      std::function<void(const ObjectID &, const rpc::Address &)> fn) = 0;
-
-  /// Send a MoveCompleted RPC to a peer raylet informing it that a plasma
-  /// move-semantics push has completed and it is now the primary copy holder
-  /// for `object_id`. Fire-and-forget from the producer.
-  virtual void NotifyMoveCompleted(const ObjectID &object_id,
-                                   const NodeID &peer_node_id,
-                                   const rpc::Address &owner_address) = 0;
+  /// Register a callback invoked on the consumer when a move-semantics push has
+  /// been fully received and sealed locally (is_move set on the PushRequest).
+  /// The callback should pin the received object as the new primary and report
+  /// the primary-location move to the owner. Runs on the main service. Returns
+  /// true iff the object was successfully fetched + pinned; on false the
+  /// producer keeps its copy (move falls back to a normal copy).
+  virtual void SetOnMovedObjectReceived(
+      std::function<bool(const ObjectID &, const rpc::Address &)> fn) = 0;
 
   virtual ~ObjectManagerInterface() = default;
 };
@@ -177,13 +175,6 @@ class ObjectManager : public ObjectManagerInterface,
   void HandlePull(rpc::PullRequest request,
                   rpc::PullReply *reply,
                   rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle a MoveCompleted request from a remote raylet notifying us that we
-  /// are the new primary copy holder for the given object. Runs on the main
-  /// service.
-  void HandleMoveCompleted(rpc::MoveCompletedRequest request,
-                           rpc::MoveCompletedReply *reply,
-                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Get the port of the object manager rpc server.
   int GetServerPort() const override { return object_manager_server_.GetPort(); }
@@ -235,18 +226,14 @@ class ObjectManager : public ObjectManagerInterface,
   bool IsPlasmaObjectSpillable(const ObjectID &object_id) override;
 
   void SetOnPushComplete(
-      std::function<void(const ObjectID &, const NodeID &)> fn) override {
+      std::function<void(const ObjectID &, const NodeID &, bool is_move)> fn) override {
     on_push_complete_ = std::move(fn);
   }
 
-  void SetOnMoveCompleted(
-      std::function<void(const ObjectID &, const rpc::Address &)> fn) override {
-    on_move_completed_ = std::move(fn);
+  void SetOnMovedObjectReceived(
+      std::function<bool(const ObjectID &, const rpc::Address &)> fn) override {
+    on_moved_object_received_ = std::move(fn);
   }
-
-  void NotifyMoveCompleted(const ObjectID &object_id,
-                           const NodeID &peer_node_id,
-                           const rpc::Address &owner_address) override;
 
   /// Consider pushing an object to a remote object manager. This object manager
   /// may choose to ignore the Push call (e.g., if Push is called twice in a row
@@ -371,7 +358,8 @@ class ObjectManager : public ObjectManagerInterface,
                        std::shared_ptr<rpc::ObjectManagerClientInterface> rpc_client,
                        std::function<void(const Status &)> on_complete,
                        std::shared_ptr<ChunkObjectReader> chunk_reader,
-                       bool from_disk);
+                       bool from_disk,
+                       bool is_move);
 
   /// Handle starting, running, and stopping asio rpc_service.
   void StartRpcService();
@@ -426,6 +414,10 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index
   /// \param data Chunk data
+  /// \param is_move Whether this push is a plasma move (defer the buffer-pool
+  /// release of the sealed object so it stays pinned until the consumer pins).
+  /// \param[out] object_sealed Set to true iff this chunk completed and sealed
+  /// the object. Only meaningful when the return value is true.
   /// \return Whether the chunk was successfully written into the local object
   /// store. This can fail if the chunk was already received in the past, or if
   /// the object is no longer being actively pulled.
@@ -435,7 +427,9 @@ class ObjectManager : public ObjectManagerInterface,
                           uint64_t data_size,
                           uint64_t metadata_size,
                           uint64_t chunk_index,
-                          const std::string &data);
+                          const std::string &data,
+                          bool is_move,
+                          bool *object_sealed);
 
   /**
    * Send pull request for a batch of objects to a single remote node.
@@ -494,13 +488,17 @@ class ObjectManager : public ObjectManagerInterface,
       unfulfilled_push_requests_;
 
   /// Callback invoked when a move-semantics push completes. Receives the
-  /// object id and the peer node id the push was destined for.
-  std::function<void(const ObjectID &, const NodeID &)> on_push_complete_;
+  /// object id, the peer node id the push was destined for, and whether the
+  /// push was a move (producer should free its local copy).
+  std::function<void(const ObjectID &, const NodeID &, bool is_move)>
+      on_push_complete_;
 
-  /// Callback invoked when this node receives a MoveCompleted RPC — i.e., we
-  /// are now the primary copy holder for the referenced object. Receives the
-  /// object id and the owner's address.
-  std::function<void(const ObjectID &, const rpc::Address &)> on_move_completed_;
+  /// Callback invoked on the consumer when a move-semantics push has been fully
+  /// received and sealed locally. Pins the received object as the new primary
+  /// and reports the primary-location move to the owner. Runs on the main
+  /// service. Returns true iff the object was fetched + pinned successfully.
+  std::function<bool(const ObjectID &, const rpc::Address &)>
+      on_moved_object_received_;
 
   /// Per-push ack tracking for move semantics. Records how many chunks of a
   /// given (object, peer) push have been acked so we can fire
@@ -509,6 +507,9 @@ class ObjectManager : public ObjectManagerInterface,
     int64_t total_chunks;
     int64_t acked_chunks = 0;
     bool failed = false;
+    /// Whether this push is the move target for the object (producer frees its
+    /// copy on success). False for non-move pushes (e.g. ray.put objects).
+    bool is_move = false;
   };
   absl::flat_hash_map<std::pair<ObjectID, NodeID>, PushAckState> push_ack_tracking_;
 

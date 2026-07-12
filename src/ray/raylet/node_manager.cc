@@ -292,48 +292,41 @@ NodeManager::NodeManager(
       socket_(std::move(socket)) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
 
-  // Plasma move semantics: when a push completes, the producer raylet notifies
-  // the peer (now the primary copy holder) via a MoveCompleted RPC, then frees
-  // its local copy. Put-produced objects are skipped — they are lineage-
-  // ineligible and would become permanently unrecoverable if the new primary
-  // node died.
+  // Plasma move semantics (producer side): a fully-acked push means the
+  // consumer is durably pinned — it holds the sealing-chunk ack until its pin
+  // completes (see ObjectManager::HandlePush) — so the producer can safely free
+  // its local copy. is_move is false for pushes that must not move (ray.put
+  // objects, or move semantics disabled), in which case we keep our copy.
   object_manager_.SetOnPushComplete(
-      [this](const ObjectID &object_id, const NodeID &peer_node_id) {
-        if (ObjectID::IsForPut(object_id)) {
-          return;
+      [this](const ObjectID &object_id, const NodeID &peer_node_id, bool is_move) {
+        if (is_move) {
+          local_object_manager_.ReleaseFreedLocalObject(object_id);
         }
-        auto owner_address = local_object_manager_.GetOwnerAddress(object_id);
-        if (owner_address.has_value()) {
-          object_manager_.NotifyMoveCompleted(object_id, peer_node_id, *owner_address);
-        } else {
-          RAY_LOG(WARNING).WithField(object_id)
-              << "Move semantics: no owner address on producer raylet; "
-              << "skipping MoveCompleted RPC. Consumer's copy will remain a "
-              << "secondary until the owner learns of the move.";
-        }
-        local_object_manager_.ReleaseFreedLocalObject(object_id);
       });
 
-  // Consumer side: when we receive a MoveCompleted RPC, we are now the primary
-  // copy holder. Pin the object locally (so it survives LRU eviction) and tell
-  // the owner that the primary pin has moved to this node so lineage
-  // reconstruction fires on the right node if we later die.
-  object_manager_.SetOnMoveCompleted([this](const ObjectID &object_id,
-                                            const rpc::Address &owner_address) {
-    std::vector<ObjectID> ids{object_id};
-    std::vector<std::unique_ptr<RayObject>> results;
-    if (!GetObjectsFromPlasma(ids, &results) || results.empty() ||
-        results[0] == nullptr) {
-      RAY_LOG(WARNING).WithField(object_id)
-          << "Move semantics: consumer could not fetch object from plasma "
-          << "on MoveCompleted; skipping pin. It may have been evicted "
-          << "or the push chunk sequence did not complete correctly.";
-      return;
-    }
-    local_object_manager_.PinObjectsAndWaitForFree(
-        ids, std::move(results), owner_address, /*generator_id=*/ObjectID::Nil());
-    object_directory_.ReportObjectPrimaryMoved(object_id, self_node_id_, owner_address);
-  });
+  // Plasma move semantics (consumer side): invoked on the main service once a
+  // move push has been fully received and sealed locally. We are now the
+  // primary copy holder. Pin the object (so it survives LRU eviction) and tell
+  // the owner the primary pin moved here, so lineage reconstruction fires on
+  // the right node if we later die. Returns true iff the pin succeeded; on
+  // false the producer keeps its copy and the move falls back to a normal copy.
+  object_manager_.SetOnMovedObjectReceived(
+      [this](const ObjectID &object_id, const rpc::Address &owner_address) -> bool {
+        std::vector<ObjectID> ids{object_id};
+        std::vector<std::unique_ptr<RayObject>> results;
+        if (!GetObjectsFromPlasma(ids, &results) || results.empty() ||
+            results[0] == nullptr) {
+          RAY_LOG(WARNING).WithField(object_id)
+              << "Move semantics: consumer could not fetch the moved object from "
+              << "plasma to pin it; the producer will keep its copy.";
+          return false;
+        }
+        local_object_manager_.PinObjectsAndWaitForFree(
+            ids, std::move(results), owner_address, /*generator_id=*/ObjectID::Nil());
+        object_directory_.ReportObjectPrimaryMoved(
+            object_id, self_node_id_, owner_address);
+        return true;
+      });
 
   periodical_runner_->RunFnPeriodically(
       [this]() { cluster_lease_manager_.ScheduleAndGrantLeases(); },

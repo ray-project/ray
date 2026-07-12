@@ -67,17 +67,11 @@ class MockObjectManager : public ObjectManagerInterface {
   MOCK_METHOD(void, HandleObjectDeleted, (const ObjectID &object_id), (override));
   MOCK_METHOD(void,
               SetOnPushComplete,
-              ((std::function<void(const ObjectID &, const NodeID &)>)fn),
+              ((std::function<void(const ObjectID &, const NodeID &, bool)>)fn),
               (override));
   MOCK_METHOD(void,
-              SetOnMoveCompleted,
-              ((std::function<void(const ObjectID &, const rpc::Address &)>)fn),
-              (override));
-  MOCK_METHOD(void,
-              NotifyMoveCompleted,
-              (const ObjectID &object_id,
-               const NodeID &peer_node_id,
-               const rpc::Address &owner_address),
+              SetOnMovedObjectReceived,
+              ((std::function<bool(const ObjectID &, const rpc::Address &)>)fn),
               (override));
 };
 

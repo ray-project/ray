@@ -78,9 +78,7 @@ class LocalObjectManagerInterface {
       const NodeID &node_id) const = 0;
 
   /// Return the owner address recorded when the given object was pinned on
-  /// this raylet, or std::nullopt if the object is unknown here. Used by
-  /// plasma move semantics to route MoveCompleted RPCs to the consumer with
-  /// the owner address the receiver needs.
+  /// this raylet, or std::nullopt if the object is unknown here.
   virtual std::optional<rpc::Address> GetOwnerAddress(
       const ObjectID &object_id) const = 0;
 
