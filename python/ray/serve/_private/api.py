@@ -17,7 +17,12 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import get_controller_impl
-from ray.serve.config import ControllerOptions, HTTPOptions, gRPCOptions
+from ray.serve.config import (
+    ControllerOptions,
+    HTTPOptions,
+    ProxyLocation,
+    gRPCOptions,
+)
 from ray.serve.context import (
     _check_cached_client_alive,
     _get_global_client,
@@ -75,6 +80,7 @@ def _create_controller_and_proxy_refs(
     grpc_options: Union[None, dict, gRPCOptions],
     global_logging_config: Union[None, dict, LoggingConfig],
     controller_options: ControllerOptions,
+    proxy_location: Union[None, str, ProxyLocation] = None,
     **kwargs,
 ) -> Tuple[ActorHandle, List[ObjectRef]]:
     """Create the detached ServeController actor in the caller process.
@@ -114,6 +120,8 @@ def _create_controller_and_proxy_refs(
     if http_options is None:
         http_options = HTTPOptions()
 
+    proxy_location = ProxyLocation._normalize(proxy_location)
+
     if isinstance(grpc_options, dict):
         grpc_options = gRPCOptions(**grpc_options)
 
@@ -127,6 +135,7 @@ def _create_controller_and_proxy_refs(
         http_options=http_options,
         grpc_options=grpc_options,
         global_logging_config=global_logging_config,
+        proxy_location=proxy_location,
     )
 
     proxy_handles = ray.get(controller.get_proxies.remote())
@@ -143,6 +152,7 @@ async def serve_start_async(
     grpc_options: Union[None, dict, gRPCOptions] = None,
     global_logging_config: Union[None, dict, LoggingConfig] = None,
     controller_options: Union[None, dict, ControllerOptions] = None,
+    proxy_location: Union[None, str, ProxyLocation] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance asynchronously.
@@ -190,6 +200,7 @@ async def serve_start_async(
         grpc_options,
         global_logging_config,
         controller_options,
+        proxy_location,
         **kwargs,
     )
 
@@ -215,6 +226,7 @@ def serve_start(
     grpc_options: Union[None, dict, gRPCOptions] = None,
     global_logging_config: Union[None, dict, LoggingConfig] = None,
     controller_options: Union[None, dict, ControllerOptions] = None,
+    proxy_location: Union[None, str, ProxyLocation] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -262,6 +274,10 @@ def serve_start(
             is honored; see ``ray.serve.config.ControllerOptions``. Only
             applied on first controller creation -- ignored if the controller
             is already running in this Ray cluster (a log line is emitted).
+        proxy_location: Where to run proxies that handle ingress traffic to
+            the cluster. See ``ProxyLocation`` for supported options. Defaults
+            to ``EveryNode`` when unspecified. An explicit (deprecated)
+            ``HTTPOptions.location`` overrides this.
         **kwargs: Reserved for forwarding to internal controller-start hooks;
             no public keys are currently supported and unknown keys may raise.
 
@@ -294,6 +310,7 @@ def serve_start(
         grpc_options,
         global_logging_config,
         controller_options,
+        proxy_location,
         **kwargs,
     )
 

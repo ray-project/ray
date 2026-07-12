@@ -10,11 +10,6 @@ import requests
 
 from ray.dashboard.consts import PROMETHEUS_CONFIG_INPUT_PATH
 
-# Configure basic logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
 FALLBACK_PROMETHEUS_VERSION = "2.48.1"
 DOWNLOAD_BLOCK_SIZE = 8192  # 8 KB
 TEST_MODE_ENV_VAR = "RAY_PROMETHEUS_DOWNLOAD_TEST_MODE"
@@ -176,6 +171,10 @@ def download_prometheus(os_type=None, architecture=None, prometheus_version=None
 
 
 def main():
+    # Configure logging only when this script is run directly
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+    )
     logging.warning("This script is not intended for production use.")
 
     downloaded, file_name = download_prometheus()

@@ -979,6 +979,7 @@ RAY_SERVE_PORT_QUARANTINE_S = get_env_float_non_negative(
     "RAY_SERVE_PORT_QUARANTINE_S",
     float(RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S + 30),
 )
+
 # The minimum drain period for a HTTP proxy.
 # If RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS is set to 1,
 # then the minimum draining period is 0.
@@ -1049,6 +1050,14 @@ if RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED:
 RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
     "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER", "0"
 )
+
+# Feature flag to include high-cardinality source tags on Serve controller metrics.
+# Disable this to keep deployment/application tags while dropping source identifiers
+# like replica IDs from controller-emitted metrics.
+RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS = get_env_bool(
+    "RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS", "1"
+)
+
 # Feature flag to use compact (low-cardinality) namespace tags on long poll metrics.
 # When enabled, metric tags use only the LongPollNamespace enum name
 # (e.g., "DEPLOYMENT_CONFIG") instead of the full key string which includes

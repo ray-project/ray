@@ -190,6 +190,26 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     RAY_LOG(INFO) << "Core worker main io service stopped.";
   });
 
+  // Start the dedicated callback thread for user-registered object-freed callbacks.
+  // Python code invoked from callbacks may call into numpy or other libraries that
+  // need a large stack; give it the same 16 MB as the IO thread on Mac.
+  boost::thread::attributes obj_freed_cb_thread_attrs;
+#if defined(__APPLE__)
+  obj_freed_cb_thread_attrs.set_stack_size(16777216);
+#endif
+  object_freed_callback_thread_ = boost::thread(obj_freed_cb_thread_attrs, [this]() {
+#ifndef _WIN32
+    sigset_t mask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGINT);
+    sigaddset(&mask, SIGTERM);
+    pthread_sigmask(SIG_BLOCK, &mask, nullptr);
+#endif
+    SetThreadName("worker.user_obj_freed_callback");
+    object_freed_callback_service_.run();
+    RAY_LOG(INFO) << "Object-freed callback service stopped.";
+  });
+
   if (options.worker_type == WorkerType::DRIVER &&
       !options.serialized_job_config.empty()) {
     // Driver populates the job config via initialization.
@@ -310,7 +330,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       std::make_shared<pubsub::Publisher>(
           /*channels=*/
           std::vector<rpc::ChannelType>{
-              rpc::ChannelType::WORKER_OBJECT_EVICTION,
               rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
               rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
           /*periodical_runner=*/*periodical_runner,
@@ -322,8 +341,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto object_info_subscriber = std::make_unique<pubsub::Subscriber>(
       /*subscriber_id=*/worker_context->GetWorkerID(),
       /*channels=*/
-      std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                    rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+      std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                     rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
       /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
       /*get_client=*/
@@ -690,6 +708,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       std::make_shared<CoreWorker>(std::move(options),
                                    std::move(worker_context),
                                    io_service_,
+                                   object_freed_callback_service_,
                                    std::move(core_worker_client_pool),
                                    std::move(raylet_client_pool),
                                    std::move(periodical_runner),
@@ -699,6 +718,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(raylet_ipc_client),
                                    std::move(local_raylet_rpc_client),
                                    io_thread_,
+                                   object_freed_callback_thread_,
                                    std::move(reference_counter),
                                    std::move(memory_store),
                                    std::move(plasma_store_provider),
@@ -731,6 +751,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
                      ? ComputeDriverIdFromJob(options_.job_id)
                      : options_.worker_id),
       io_work_(io_service_.get_executor()),
+      object_freed_callback_service_work_(object_freed_callback_service_.get_executor()),
       client_call_manager_(std::make_unique<rpc::ClientCallManager>(
           io_service_, /*record_stats=*/false, options.node_ip_address)),
       task_execution_service_work_(task_execution_service_.get_executor()),
