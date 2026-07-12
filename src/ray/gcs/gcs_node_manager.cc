@@ -192,8 +192,19 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
   node_info_delta->set_state(node->state());
   node_info_delta->set_end_time_ms(node->end_time_ms());
 
-  auto on_put_done = [this, node_id, node_info_delta, node](const Status &status) {
+  // Publish node death on the in-memory DEAD transition, decoupled from the
+  // (possibly slow) durable write below -- same rationale as
+  // InternalOnNodeFailure (see the detailed comment there and
+  // https://github.com/ray-project/ray/pull/64187). Graceful unregistration is
+  // also a terminal, restart-re-derivable node-death transition, so it must not
+  // gate cluster-wide death detection on persist latency either. Posted onto
+  // io_context_ so it runs outside mutex_ (held here) yet independent of the
+  // persist completing.
+  boost::asio::post(io_context_, [this, node_id, node_info_delta]() {
     PublishNodeInfoToPubsub(node_id, *node_info_delta);
+  });
+
+  auto on_put_done = [this, node](const Status &status) {
     WriteNodeExportEvent(*node, /*is_register_event*/ false);
   };
   gcs_table_storage_->NodeTable().Put(node_id, *node, {on_put_done, io_context_});
