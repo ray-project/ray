@@ -297,8 +297,8 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
 
         if request.glob_filter:
             glob_path = Path(request.glob_filter)
-            if glob_path.is_absolute() or ".." in glob_path.parts:
-                raise FileNotFoundError(
+            if glob_path.anchor or ".." in glob_path.parts:
+                raise ValueError(
                     f"Invalid glob filter: path traversal detected: "
                     f"{request.glob_filter}"
                 )
