@@ -211,8 +211,8 @@ TEST_F(GcsNodeManagerTest, TestNodeFailurePublishesDeathBeforePersist) {
   publish_count = 0;
 
   bool persist_completed = false;
-  node_manager.OnNodeFailure(
-      node_id, [&persist_completed]() { persist_completed = true; });
+  node_manager.OnNodeFailure(node_id,
+                             [&persist_completed]() { persist_completed = true; });
 
   // The publish is posted onto io_context ahead of the durable write's
   // completion callback. Executing exactly one queued handler must run the
