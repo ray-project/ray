@@ -14,6 +14,7 @@
 
 #include "ray/gcs/gcs_node_manager.h"
 
+#include <boost/asio/post.hpp>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -702,17 +703,39 @@ void GcsNodeManager::InternalOnNodeFailure(
     node_info_delta.set_end_time_ms(node->end_time_ms());
     node_info_delta.mutable_death_info()->CopyFrom(node->death_info());
 
-    auto on_done = [this,
-                    node_id,
-                    node_table_updated_callback,
-                    node_info_delta = std::move(node_info_delta),
-                    node](const Status &status) mutable {
-      WriteNodeExportEvent(*node, /*is_register_event*/ false);
-      if (node_table_updated_callback != nullptr) {
-        node_table_updated_callback();
-      }
-      PublishNodeInfoToPubsub(node_id, node_info_delta);
-    };
+    // Publish node death as soon as the in-memory state has flipped to DEAD,
+    // decoupled from the (possibly slow) durable write below -- rather than
+    // from inside the write's completion callback.
+    //
+    // Owners of objects/tasks react to a node's death ONLY from this single
+    // pushed pub/sub notification (core_worker.cc on_node_change, DEAD
+    // branch); there is no owner-side re-poll fallback. Gating the publish on
+    // the storage write's completion therefore couples cluster-wide death
+    // detection to persist latency: under a slow durable backend (e.g. the
+    // RocksDB GCS with per-write fsync) the notification is delayed enough to
+    // strand object recovery and hang dynamic-generator reconstruction. See
+    // https://github.com/ray-project/ray/pull/64187 for the full analysis.
+    //
+    // This relaxes broadcast-after-durable ordering (a subscriber can observe
+    // DEAD before it is persisted), which is safe here because node death is
+    // a terminal, restart-re-derivable transition: on a GCS restart the same
+    // death is re-established by health checks. Do NOT generalize this to the
+    // actor channel, whose state machine can resurrect across a GCS crash.
+    //
+    // Posted onto io_context_ so it runs outside mutex_ (held by our caller
+    // OnNodeFailure) yet independent of the persist completing.
+    boost::asio::post(io_context_,
+                      [this, node_id, node_info_delta = std::move(node_info_delta)]() {
+                        PublishNodeInfoToPubsub(node_id, node_info_delta);
+                      });
+
+    auto on_done =
+        [this, node_id, node_table_updated_callback, node](const Status &status) mutable {
+          WriteNodeExportEvent(*node, /*is_register_event*/ false);
+          if (node_table_updated_callback != nullptr) {
+            node_table_updated_callback();
+          }
+        };
     gcs_table_storage_->NodeTable().Put(
         node_id, *node, {std::move(on_done), io_context_});
   } else if (node_table_updated_callback != nullptr) {
