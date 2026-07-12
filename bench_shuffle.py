@@ -1,13 +1,14 @@
-"""One-knob benchmark: v2 (plasma hash-shuffle) vs v3 (file-transport).
+"""One-knob benchmark: in-memory hash-shuffle vs external (file-transport).
 
-Unifies benchmark_v3_ooc.py and benchmark_ooc_shuffle.py. The only mandatory
-difference between v2 and v3 is which `DataContext` flags get flipped --
-everything else (read, limit, repartition, write, stats collection) is shared.
+The only mandatory difference between the two variants is which
+`DataContext` flag gets flipped -- everything else (read, limit,
+repartition, write, stats collection) is shared.
 
-  v2 -> use_external_hash_shuffle = False, shuffle_strategy = HASH_SHUFFLE
-        (in-memory map outputs via Ray object store; spills to disk when full)
-  v3 -> use_external_hash_shuffle = True,  shuffle_strategy = HASH_SHUFFLE
-        (file-transport; local disk + socket; object store carries small handles)
+  in-memory -> use_external_hash_shuffle = False, shuffle_strategy = HASH_SHUFFLE
+               (map outputs via Ray object store; spills to disk when full)
+  external  -> use_external_hash_shuffle = True,  shuffle_strategy = HASH_SHUFFLE
+               (file-transport; local disk + socket; object store carries
+                small handles only)
 
 Optional rich-measurement features (timeline dump, raylet spill-event
 collection) are gated behind flags and degrade gracefully when the
@@ -16,15 +17,15 @@ bare Anyscale workspace as well as on the original benchmark harness).
 
 Usage:
   # quick: one shot, just print the wall-clock
-  python bench_shuffle.py --shuffle v3 --data-size-gb 100 --num-partitions 100
+  python bench_shuffle.py --shuffle external --data-size-gb 100 --num-partitions 100
 
   # both back-to-back (prints two RESULT lines for easy diff)
   python bench_shuffle.py --shuffle both --data-size-gb 100 --num-partitions 100
 
   # full measurement: timeline + spill metrics + per-run stats
   RAY_DATA_SHUFFLE_PROFILE=1 \
-  python bench_shuffle.py --shuffle v3 --data-size-gb 512 --num-partitions 512 \
-      --timeline-out /tmp/v3.json --collect-spill-metrics
+  python bench_shuffle.py --shuffle external --data-size-gb 512 --num-partitions 512 \
+      --timeline-out /tmp/external.json --collect-spill-metrics
 """
 
 import argparse
@@ -71,11 +72,11 @@ def wait_for_object_store_to_drain(threshold_pct=20, timeout_s=180, poll_s=5):
 
 
 def configure_shuffle(ctx, shuffle: str) -> None:
-    """Flip the one knob that distinguishes v2 from v3. Both keep the
-    HASH_SHUFFLE strategy (the v3 flag just routes through a different
-    transport layer when True)."""
+    """Flip the one knob that distinguishes in-memory from external. Both
+    keep the HASH_SHUFFLE strategy (the external flag just routes through
+    a different transport layer when True)."""
     ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
-    ctx.use_external_hash_shuffle = shuffle == "v3"
+    ctx.use_external_hash_shuffle = shuffle == "external"
 
 
 def _maybe_truncate_spill_logs() -> None:
@@ -209,9 +210,9 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument(
         "--shuffle",
-        choices=["v2", "v3", "both"],
-        default="v3",
-        help="Pick one transport, or 'both' to run v2 then v3 "
+        choices=["in-memory", "external", "both"],
+        default="external",
+        help="Pick one transport, or 'both' to run in-memory then external "
         "back-to-back for direct comparison.",
     )
     p.add_argument("--data-size-gb", type=int, required=True)
@@ -264,7 +265,9 @@ def main() -> None:
     _wait_for_fleet(args.target_cpu)
     _print_cluster_summary(args.data_size_gb)
 
-    shuffles = ["v2", "v3"] if args.shuffle == "both" else [args.shuffle]
+    shuffles = (
+        ["in-memory", "external"] if args.shuffle == "both" else [args.shuffle]
+    )
     print(
         f"Running: {', '.join(shuffles)} ({args.num_partitions} partitions)\n",
         flush=True,
@@ -305,11 +308,12 @@ def main() -> None:
         results.append(r)
 
     if args.shuffle == "both" and len(results) == 2:
-        v2_t = results[0]["elapsed_s"]
-        v3_t = results[1]["elapsed_s"]
-        speedup = v2_t / v3_t if v3_t > 0 else float("inf")
+        in_memory_t = results[0]["elapsed_s"]
+        external_t = results[1]["elapsed_s"]
+        speedup = in_memory_t / external_t if external_t > 0 else float("inf")
         print(
-            f"\nSPEEDUP v3 vs v2: {speedup:.2f}x  " f"(v2={v2_t:.1f}s, v3={v3_t:.1f}s)",
+            f"\nSPEEDUP external vs in-memory: {speedup:.2f}x  "
+            f"(in-memory={in_memory_t:.1f}s, external={external_t:.1f}s)",
             flush=True,
         )
 
