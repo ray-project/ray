@@ -741,7 +741,7 @@ void GcsNodeManager::InternalOnNodeFailure(
                       });
 
     auto on_done =
-        [this, node_id, node_table_updated_callback, node](const Status &status) mutable {
+        [this, node_table_updated_callback, node](const Status &status) mutable {
           WriteNodeExportEvent(*node, /*is_register_event*/ false);
           if (node_table_updated_callback != nullptr) {
             node_table_updated_callback();
