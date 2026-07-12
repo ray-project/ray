@@ -18,7 +18,7 @@ doesn't poison later cases.
 
 Run with::
 
-    pytest python/ray/data/tests/test_shuffle_v3_repartition.py -xvs
+    pytest python/ray/data/tests/test_hash_shuffle_external_repartition.py -xvs
 """
 
 from contextlib import contextmanager
@@ -47,6 +47,29 @@ def _v3_flag(enabled: bool):
         yield ctx
     finally:
         ctx.use_external_hash_shuffle = prev
+
+
+def _keys_per_block(ds, columns):
+    """Return, for each output block, the set of distinct key tuples it holds.
+
+    Used to assert the hash-shuffle co-location guarantee: a key must appear
+    in exactly one block.
+    """
+    per_block = []
+    for ref_bundle in ds.iter_internal_ref_bundles():
+        for block_ref in ref_bundle.block_refs:
+            block = ray.get(block_ref)
+            cols = [block[c].to_pylist() for c in columns]
+            per_block.append(set(zip(*cols)))
+    return per_block
+
+
+def _assert_keys_colocated(per_block):
+    """Every key tuple appears in at most one block."""
+    all_keys = [k for block in per_block for k in block]
+    assert len(all_keys) == len(
+        set(all_keys)
+    ), f"A key landed in more than one block: {per_block}"
 
 
 # ─────────────────────────── correctness ─────────────────────────────────
@@ -95,6 +118,60 @@ def test_v3_repartition_with_key(ray_cluster):
         rows = ds.take_all()
     assert len(rows) == num_rows
     assert {r["id"] for r in rows} == set(range(num_rows))
+
+
+def test_v3_same_key_lands_in_same_block(ray_cluster):
+    """Hash co-location: all rows sharing a key must land in one block."""
+    with _v3_flag(True):
+        ds = ray.data.range(500, override_num_blocks=10).map(
+            lambda row: {"k": row["id"] % 25, "v": row["id"]}
+        )
+        out = ds.repartition(5, keys=["k"]).materialize()
+
+    _assert_keys_colocated(_keys_per_block(out, ["k"]))
+    assert out.count() == 500
+
+
+def test_v3_multi_column_keys(ray_cluster):
+    """Composite keys hash on all columns: every distinct (a, b) tuple lands
+    in exactly one block."""
+    with _v3_flag(True):
+        ds = ray.data.range(500, override_num_blocks=10).map(
+            lambda row: {"a": row["id"] % 5, "b": row["id"] % 7, "v": row["id"]}
+        )
+        out = ds.repartition(4, keys=["a", "b"]).materialize()
+
+    _assert_keys_colocated(_keys_per_block(out, ["a", "b"]))
+    assert out.count() == 500
+
+
+def test_v3_more_partitions_than_keys_emits_empty_blocks(ray_cluster):
+    """More partitions than distinct keys → the surplus partitions still
+    emit 0-row blocks that carry the dataset schema (empty-partition fast
+    path in ``ExternalHashShuffleReduceOp._emit_empty_partition``)."""
+    with _v3_flag(True):
+        # 3 distinct keys into 50 partitions → at most 3 non-empty blocks.
+        ds = ray.data.range(600, override_num_blocks=10).map(
+            lambda row: {"k": row["id"] % 3, "v": row["id"]}
+        )
+        out = ds.repartition(50, keys=["k"]).materialize()
+
+    assert out.count() == 600
+    assert out.num_blocks() == 50
+
+    rows_per_block = []
+    schemas = []
+    for ref_bundle in out.iter_internal_ref_bundles():
+        for block_ref in ref_bundle.block_refs:
+            block = ray.get(block_ref)
+            rows_per_block.append(block.num_rows)
+            schemas.append(block.schema)
+
+    # At least 47 empty blocks (50 - 3 distinct keys); schemas must all agree.
+    assert rows_per_block.count(0) >= 47
+    assert all(schema.equals(schemas[0]) for schema in schemas)
+
+    _assert_keys_colocated(_keys_per_block(out, ["k"]))
 
 
 # ────────────────────────── regression / safety ─────────────────────────
