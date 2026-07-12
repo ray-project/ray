@@ -246,6 +246,23 @@ class TestReplicaStateContainer:
         assert c.get_by_id(r1.replica_id) is None
         assert c.get_by_id(r3.replica_id) is None
 
+    def test_get_by_id_after_remove(self):
+        c = ReplicaStateContainer()
+        r1, r2, r3 = replica(), replica(), replica()
+        c.add(ReplicaState.STARTING, r1)
+        c.add(ReplicaState.RUNNING, r2)
+        c.add(ReplicaState.STOPPING, r3)
+
+        # remove() must clear the id index (like pop()) so get_by_id no longer
+        # returns removed replicas and the index does not leak entries.
+        removed = c.remove({r2.replica_id})
+        assert removed == [r2]
+        assert c.get_by_id(r2.replica_id) is None
+        assert r2.replica_id not in c._replica_id_index
+        # Untouched replicas are still retrievable.
+        assert c.get_by_id(r1.replica_id) is r1
+        assert c.get_by_id(r3.replica_id) is r3
+
     def test_pop_basic(self):
         c = ReplicaStateContainer()
         r1, r2, r3 = replica(), replica(), replica()
