@@ -296,7 +296,8 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         if request.glob_filter:
             glob_path = Path(request.glob_filter)
             if glob_path.anchor or ".." in glob_path.parts:
-                raise ValueError(
+                await context.abort(
+                    grpc.StatusCode.INVALID_ARGUMENT,
                     f"Invalid glob filter: {request.glob_filter}. "
                     "It must be a relative path and cannot contain '..'."
                 )
