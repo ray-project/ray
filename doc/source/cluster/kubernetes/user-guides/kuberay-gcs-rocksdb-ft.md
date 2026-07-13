@@ -44,9 +44,12 @@ For the officially supported, Redis-backed setup, see
 
 ```{admonition} Single writer
 :class: note
-The RocksDB database is embedded in the GCS process and is single-writer: exactly one head
-Pod may open the storage path at a time. Use a `ReadWriteOnce` volume and a single head
-replica, and never share a storage path between clusters.
+The RocksDB database is embedded in the GCS process and is single-writer: at most one GCS
+process may have the database open at any time, and two concurrent writers corrupt it. The
+simplest way to guarantee this on Kubernetes, and what this guide uses, is a `ReadWriteOnce`
+volume with a single head replica. Any other setup must still enforce a single active writer,
+so a storage path must never be opened by more than one Pod at a time, and must never be
+shared between clusters.
 ```
 
 ## Deploy a RayCluster with the RocksDB backend
