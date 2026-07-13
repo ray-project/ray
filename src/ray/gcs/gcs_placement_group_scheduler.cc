@@ -661,9 +661,8 @@ void GcsPlacementGroupScheduler::Initialize(
     RAY_CHECK(placement_group_leasing_in_progress_.emplace(pg_id, tracker).second);
 
     RAY_LOG(DEBUG).WithField(pg_id) << "Recommitting prepared pg";
-    if (req.prepared_callback) {
-      req.prepared_callback(pg);
-    }
+    // prepared_callback is not invoked here because the pg was already PREPARED
+    // before the restart.
     CommitAllBundles(tracker, req.failure_callback, req.success_callback);
   }
 }

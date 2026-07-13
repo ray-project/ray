@@ -1023,16 +1023,8 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
           [this](std::shared_ptr<GcsPlacementGroup> success_placement_group) {
             OnPlacementGroupCreationSuccess(success_placement_group);
           },
-          /*prepared_callback=*/
-          [this](std::shared_ptr<GcsPlacementGroup> prepared_placement_group) {
-            std::vector<std::unique_ptr<observability::RayEventInterface>> events;
-            events.push_back(
-                std::make_unique<observability::RayPlacementGroupLifecycleEvent>(
-                    prepared_placement_group->GetPlacementGroupTableData(),
-                    rpc::events::PlacementGroupLifecycleEvent::PREPARED,
-                    session_name_));
-            ray_event_recorder_.AddEvents(std::move(events));
-          },
+          // The pg is already PREPARED, so there is no state transition to emit.
+          /*prepared_callback=*/nullptr,
       });
     }
     if (state == rpc::PlacementGroupTableData::CREATED ||
