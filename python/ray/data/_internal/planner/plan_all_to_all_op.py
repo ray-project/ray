@@ -238,9 +238,6 @@ def plan_all_to_all_op(
                     data_context, op, input_physical_dag
                 )
             elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
-                # In-memory or external file-transport variant is picked
-                # inside ``_plan_hash_shuffle_repartition`` from
-                # ``data_context.use_external_hash_shuffle``.
                 return _plan_hash_shuffle_repartition(
                     data_context, op, input_physical_dag
                 )
