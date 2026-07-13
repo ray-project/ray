@@ -1817,17 +1817,21 @@ def test_find_available_subslice_skips_incomplete_subslices():
         for wid in ["0", "2", "3"]
     ]
     avail_resources = {f"node_{wid}": {"TPU": 4} for wid in ["0", "2", "3"]}
+    slice_worker_to_node = {
+        (
+            node["Labels"][ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY],
+            node["Labels"][ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY],
+        ): node
+        for node in dummy_nodes
+    }
 
-    with (
-        patch("ray.nodes", return_value=dummy_nodes),
-        patch(
-            "ray._private.state.available_resources_per_node",
-            return_value=avail_resources,
-        ),
-    ):
-        result_ids, result_idx = ray.util.tpu._find_available_subslice(
-            slice_name, subslice_topology, worker_labels
-        )
+    result_ids, result_idx = ray.util.tpu._find_available_subslice(
+        slice_name,
+        subslice_topology,
+        worker_labels,
+        avail_resources,
+        slice_worker_to_node,
+    )
 
     # Subslice 0 has only 1 worker and must be skipped.
     # Subslice 1 has 2 workers and all are idle, so it is selected.

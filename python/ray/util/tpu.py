@@ -1371,6 +1371,8 @@ def _find_available_subslice(
     slice_name: str,
     subslice_topology: str,
     worker_labels: Dict[str, Dict[str, str]],
+    avail: Dict[str, Dict[str, float]],
+    slice_worker_to_node: Dict[Tuple[str, str], Any],
 ) -> Tuple[Optional[List[str]], Optional[int]]:
     """Find an available (idle) subslice of the requested topology.
 
@@ -1381,6 +1383,11 @@ def _find_available_subslice(
         slice_name: Name of the physical TPU slice.
         subslice_topology: Requested subslice topology (e.g. "2x4").
         worker_labels: Mapping of worker_id_label to subslice label dicts.
+        avail: Per-node available resources from
+            ``available_resources_per_node()``.
+        slice_worker_to_node: Pre-built ``(slice_name, worker_id) -> node``
+            lookup map. Callers should build this once and reuse it across
+            multiple calls to avoid redundant ``ray.nodes()`` round-trips.
 
     Returns:
         (target_worker_ids, subslice_index) or (None, None).
@@ -1396,21 +1403,6 @@ def _find_available_subslice(
 
     if not subslice_indices:
         return None, None
-
-    # Check idle resources for each candidate subslice.
-    from ray._private.state import available_resources_per_node
-
-    avail = available_resources_per_node()
-
-    # Pre-build a lookup map for O(1) node resolution by (slice_name, worker_id),
-    # avoiding an O(N) scan per worker inside the subslice loop.
-    slice_worker_to_node: Dict[Tuple[str, str], Any] = {}
-    for n in ray.nodes():
-        nl = n.get("Labels", {})
-        sn = nl.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
-        wid_label = nl.get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY)
-        if sn and wid_label:
-            slice_worker_to_node[(sn, wid_label)] = n
 
     expected_host_count = math.prod(
         _get_worker_dims_for_topology(subslice_topology, "")
@@ -1743,28 +1735,16 @@ def subslice_placement_group(
     if chips_per_vm <= 0:
         raise ValueError("chips_per_vm must be positive.")
 
-    # Validate topologies.
-    if not TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
-        version, subslice_topology
-    ):
-        raise ValueError(
-            f"Subslice topology '{subslice_topology}' is not valid for "
-            f"accelerator version '{version}'."
-        )
+    # Validate that the resolved parent topology is known for this accelerator.
+    # The subslice topology was already validated at the top of the function;
+    # _resolve_parent_from_cluster guarantees the parent's chip dimensions are
+    # >= the subslice's, so no further size comparison is needed here.
     if not TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
         version, parent_topology
     ):
         raise ValueError(
             f"Parent topology '{parent_topology}' is not valid for "
             f"accelerator version '{version}'."
-        )
-
-    sub_dims = _parse_topology_dims(subslice_topology)
-    parent_dims = _parse_topology_dims(parent_topology)
-    if any(sd > pd for sd, pd in zip(sub_dims, parent_dims)):
-        raise ValueError(
-            f"Subslice topology '{subslice_topology}' is larger than "
-            f"parent topology '{parent_topology}'."
         )
 
     # If the subslice topology equals the resolved parent, no strictly larger
@@ -1808,6 +1788,28 @@ def subslice_placement_group(
     label_key = f"{TPU_SUBSLICE_LABEL_PREFIX}{subslice_topology}"
     known_slices = _collect_known_slice_labels(parent_topology, nodes)
 
+    # For the auto-select path, pre-build resource and node-lookup snapshots
+    # once before the loop so we avoid redundant GCS round-trips when there
+    # are multiple known slices to check. The specific-index path doesn't
+    # check availability, so we skip these calls entirely in that case.
+    if subslice_index is None:
+        from ray._private.state import available_resources_per_node
+
+        avail: Dict[str, Dict[str, float]] = available_resources_per_node()
+        slice_worker_to_node: Dict[Tuple[str, str], Any] = {
+            (
+                _nl.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY),
+                _nl.get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY),
+            ): _n
+            for _n in nodes
+            for _nl in [_n.get("Labels", {})]
+            if _nl.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
+            and _nl.get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY)
+        }
+    else:
+        avail = {}
+        slice_worker_to_node = {}
+
     target_worker_ids: Optional[List[str]] = None
     slice_name: Optional[str] = None
     worker_labels: Optional[Dict[str, Dict[str, str]]] = None
@@ -1829,7 +1831,9 @@ def subslice_placement_group(
                 worker_labels = s_labels
                 break
         else:
-            wids, idx = _find_available_subslice(s_name, subslice_topology, s_labels)
+            wids, idx = _find_available_subslice(
+                s_name, subslice_topology, s_labels, avail, slice_worker_to_node
+            )
             if wids is not None:
                 target_worker_ids = wids
                 subslice_index = idx
@@ -1868,7 +1872,11 @@ def subslice_placement_group(
             # Auto-select: find the first idle subslice in the newly
             # discovered slice.
             target_worker_ids, selected_index = _find_available_subslice(
-                slice_name, subslice_topology, worker_labels
+                slice_name,
+                subslice_topology,
+                worker_labels,
+                avail,
+                slice_worker_to_node,
             )
             if target_worker_ids is None:
                 raise RuntimeError(
