@@ -468,6 +468,9 @@ html_sidebars = {
         )
     ],
     "ray-overview/examples": [],
+    # Custom 404 page (DOC-945): drop the section-navigation sidebar so the
+    # standalone error page renders clean and centered, like the examples page.
+    "404": [],
 }
 
 # The name for this set of Sphinx documents.  If None, it defaults to
@@ -601,6 +604,22 @@ def add_custom_assets(
         app.add_css_file("css/index.css")
         app.add_js_file("js/index.js")
         return "index.html"  # Use the special index.html template for this page
+
+    if pagename == "404":
+        # Custom 404 page (DOC-945). Read the Docs serves this page's HTML for
+        # any missing URL under the docs domain while the browser keeps the
+        # originally requested (wrong) path, so the 404 template pins a <base>
+        # to the canonical version root to keep every relative URL working.
+        # Prefer Read the Docs' per-build canonical URL (which is correct on PR
+        # previews and per-version builds); fall back to html_baseurl for local
+        # builds where the env var is unset. Scoped to this page only, so it
+        # cannot re-introduce the sitewide sidebar-href regression from #63343.
+        base_url = os.environ.get("READTHEDOCS_CANONICAL_URL") or app.config.html_baseurl or "/"
+        if not base_url.endswith("/"):
+            base_url += "/"
+        context["notfound_base_url"] = base_url
+        app.add_css_file("css/404.css")
+        return "404.html"  # Use the special 404.html template for this page
 
     if pagename == "ray-overview/examples":
         app.add_css_file("css/examples.css")
