@@ -320,6 +320,8 @@ class TestNormalizeQueryUrl:
             ("http://localhost:9090", "http://localhost:9090/api/v1/query"),
             ("https://prom:9090", "https://prom:9090/api/v1/query"),
             ("localhost:9090/", "http://localhost:9090/api/v1/query"),
+            # Already a full query endpoint: left as-is.
+            ("http://prom:9090/api/v1/query", "http://prom:9090/api/v1/query"),
         ],
     )
     def test_normalize(self, address, expected):

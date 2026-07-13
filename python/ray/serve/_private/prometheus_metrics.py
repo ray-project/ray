@@ -30,6 +30,8 @@ def normalize_query_url(address: str) -> str:
     address = address.rstrip("/")
     if not address.startswith(("http://", "https://")):
         address = f"http://{address}"
+    if address.endswith("/api/v1/query"):
+        return address
     return f"{address}/api/v1/query"
 
 
@@ -52,8 +54,9 @@ async def _evaluate_query(
             # histogram_quantile). Treat those as no data.
             return value if math.isfinite(value) else None
         return None
-    except Exception:
-        logger.warning(f"Failed to evaluate Prometheus query '{query}'.", exc_info=True)
+    except Exception as e:
+        logger.warning(f"Failed to evaluate Prometheus query '{query}': {e}")
+        logger.debug(f"Failed to evaluate Prometheus query '{query}'.", exc_info=True)
         return None
 
 

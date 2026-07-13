@@ -102,6 +102,8 @@ class TTFTAutoscalingPolicy:
         state["requests_per_replica"] = requests_per_replica
 
         if requests_per_replica < self.idle_threshold:
-            return float(max(1, current - 1)), {**state, "signal": "scale_down"}
+            # Let AutoscalingConfig.min_replicas own the floor (allows
+            # scale-to-zero when configured) rather than pinning at 1.
+            return float(max(0, current - 1)), {**state, "signal": "scale_down"}
 
         return float(current), {**state, "signal": "steady"}
