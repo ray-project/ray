@@ -174,9 +174,7 @@ def build_text_dataloader(
             if tokenizer is not None and hasattr(tokenizer, "vocab_size")
             else synthetic_vocab_size
         )
-        return _build_synthetic_loader(
-            seq_len, batch_size, seed + rank, vocab_size
-        )
+        return _build_synthetic_loader(seq_len, batch_size, seed + rank, vocab_size)
 
     if tokenizer is None:
         raise ValueError(f"A tokenizer is required for dataset '{dataset_name}'.")

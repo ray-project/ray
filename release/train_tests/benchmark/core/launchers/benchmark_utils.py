@@ -62,10 +62,7 @@ def create_gpu_actor_group(
     from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
     pg = placement_group(
-        [
-            {"GPU": gpus_per_worker, "CPU": cpus_per_worker}
-            for _ in range(num_workers)
-        ],
+        [{"GPU": gpus_per_worker, "CPU": cpus_per_worker} for _ in range(num_workers)],
         strategy="PACK",
     )
     ray.get(pg.ready())
