@@ -1,3 +1,6 @@
+.. meta::
+   :description: Run Mars tensor and dataframe computations on Ray via mars.new_ray_session, scaling NumPy, Pandas, and scikit-learn workloads.
+
 .. _mars-on-ray:
 
 Using Mars on Ray
