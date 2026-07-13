@@ -348,8 +348,6 @@ void GcsWorkerManager::GetWorkerInfo(
 }
 
 void GcsWorkerManager::RestoreDeadWorkerIdsQueue(const GcsInitData &gcs_init_data) {
-  // Bucket dead workers by retention priority tier, each carrying its death time so we
-  // can seed the tiers in death order.
   std::array<std::vector<std::pair<uint64_t, WorkerID>>, kNumDeadWorkerTiers>
       dead_workers_bucket;
   for (const auto &[worker_id, data] : gcs_init_data.Workers()) {
@@ -360,7 +358,6 @@ void GcsWorkerManager::RestoreDeadWorkerIdsQueue(const GcsInitData &gcs_init_dat
           worker_id);
     }
   }
-  // Seed each tier oldest-first (by death time).
   for (size_t tier = 0; tier < kNumDeadWorkerTiers; ++tier) {
     std::sort(
         dead_workers_bucket[tier].begin(),
@@ -370,7 +367,6 @@ void GcsWorkerManager::RestoreDeadWorkerIdsQueue(const GcsInitData &gcs_init_dat
       dead_workers_by_tier_[tier].push_back(entry.second);
     }
   }
-  // Trim to the cap, draining the lowest-priority tiers first, in one batch delete.
   const size_t cap = RayConfig::instance().maximum_gcs_dead_worker_cached_count();
   const size_t total = TotalDeadWorkers();
   size_t overflow = total > cap ? total - cap : 0;

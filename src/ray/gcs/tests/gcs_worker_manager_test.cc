@@ -399,7 +399,6 @@ TEST_F(GcsWorkerManagerTest, TestPriorityEviction) {
 )");
   auto worker_manager = GetWorkerManager();
 
-  // Seeds a dead row directly into the table (bypasses TrimDeadWorkers), for phase 1.
   auto add_dead_worker = [&](const WorkerID &id, uint64_t end_ms, rpc::WorkerExitType t) {
     rpc::WorkerTableData d;
     d.mutable_worker_address()->set_worker_id(id.Binary());
@@ -417,8 +416,6 @@ TEST_F(GcsWorkerManagerTest, TestPriorityEviction) {
     promise.get_future().get();
   };
 
-  // Reports a worker dead through the RPC path (goes through TrimDeadWorkers), for
-  // phase 2.
   auto report_worker_dead = [&](const WorkerID &id, rpc::WorkerExitType t) {
     rpc::ReportWorkerFailureRequest req;
     req.mutable_worker_failure()->mutable_worker_address()->set_worker_id(id.Binary());
@@ -470,8 +467,8 @@ TEST_F(GcsWorkerManagerTest, TestPriorityEviction) {
 
   auto after_restore = get_all_worker_ids();
   ASSERT_EQ(after_restore.size(), 3);
-  EXPECT_TRUE(contains(after_restore, failure1));  // failure kept
-  EXPECT_FALSE(contains(after_restore, idle[0]));  // oldest idle-kill trimmed first
+  EXPECT_TRUE(contains(after_restore, failure1));
+  EXPECT_FALSE(contains(after_restore, idle[0]));
   EXPECT_TRUE(contains(after_restore, idle[1]));
   EXPECT_TRUE(contains(after_restore, idle[2]));
 
@@ -483,9 +480,9 @@ TEST_F(GcsWorkerManagerTest, TestPriorityEviction) {
 
   auto after_deaths = get_all_worker_ids();
   ASSERT_EQ(after_deaths.size(), 3);
-  EXPECT_TRUE(contains(after_deaths, failure1));  // both failures survive the churn
+  EXPECT_TRUE(contains(after_deaths, failure1));
   EXPECT_TRUE(contains(after_deaths, failure2));
-  EXPECT_TRUE(contains(after_deaths, idle3));     // only the newest idle-kill remains
-  EXPECT_FALSE(contains(after_deaths, idle[1]));  // older idle-kills evicted to make room
+  EXPECT_TRUE(contains(after_deaths, idle3));
+  EXPECT_FALSE(contains(after_deaths, idle[1]));
   EXPECT_FALSE(contains(after_deaths, idle[2]));
 }
