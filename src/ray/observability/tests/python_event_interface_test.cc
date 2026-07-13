@@ -58,6 +58,8 @@ TEST(PythonRayEventTest, TestSerializeDefinitionEvent) {
   EXPECT_EQ(ray_event.session_name(), "test-session");
   EXPECT_FALSE(ray_event.event_id().empty());
   EXPECT_TRUE(ray_event.has_timestamp());
+  EXPECT_FALSE(ray_event.source_hostname().empty());
+  EXPECT_GT(ray_event.source_pid(), 0);
 
   // Verify nested event was correctly deserialized via reflection.
   ASSERT_TRUE(ray_event.has_submission_job_definition_event());

@@ -219,7 +219,11 @@ std::string SerializeEventsToRayEventsDataJson(
     std::string json_str;
     auto status = google::protobuf::util::MessageToJsonString(
         ray_event_or.value(), &json_str, options);
-    RAY_CHECK(status.ok()) << "Failed to serialize event to JSON: " << status.message();
+    if (!status.ok()) {
+      RAY_LOG(WARNING) << "Skipping event that failed to serialize to JSON: "
+                       << status.message();
+      continue;
+    }
     json_parts.push_back(std::move(json_str));
   }
   return absl::StrCat("[", absl::StrJoin(json_parts, ","), "]");
