@@ -861,6 +861,22 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
     callback(it->first);
   }
   it->second.on_object_out_of_scope_or_freed_callbacks.clear();
+
+  // Guarantee the freed-on-producer callbacks fire exactly once, even if the
+  // object was never moved (otherwise the Cython Py_INCREF that keeps the
+  // Python callback alive would never be balanced). When the object is fully
+  // out of scope the producer's copy is definitely gone too, so this is
+  // semantically a producer-free. Guarded by freed_on_producer, and
+  // OnObjectFreedOnProducer clears the vector, so whichever path runs second
+  // is a no-op.
+  if (!it->second.freed_on_producer) {
+    it->second.freed_on_producer = true;
+    for (const auto &callback : it->second.on_object_freed_on_producer_callbacks) {
+      callback(it->first);
+    }
+    it->second.on_object_freed_on_producer_callbacks.clear();
+  }
+
   UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
   UnsetObjectPrimaryCopy(it);
   UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/false);
