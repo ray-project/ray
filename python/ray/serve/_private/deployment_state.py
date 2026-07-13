@@ -3515,12 +3515,10 @@ class DeploymentState:
         )
 
         if deployment_info.deployment_config.num_replicas_per_node:
-            # One replica per node: seed the target with the current schedulable
-            # node count. reconcile_num_replicas_per_node keeps it in sync.
+            # One replica per node: seed the target from the schedulable node
+            # count. reconcile_num_replicas_per_node keeps it in sync.
             self._autoscaling_state_manager.deregister_deployment(self._id)
-            target_num_replicas = self._deployment_scheduler.get_num_schedulable_nodes(
-                self._id
-            )
+            target_num_replicas = self._per_node_target_num_replicas(deployment_info)
         elif deployment_info.deployment_config.autoscaling_config:
             target_num_replicas = self._autoscaling_state_manager.register_deployment(
                 self._id, deployment_info, self._target_state.target_num_replicas
@@ -3655,29 +3653,43 @@ class DeploymentState:
             self._target_state.info, target_num_replicas, updated_via_api=True
         )
 
+    def _per_node_target_num_replicas(self, deployment_info: DeploymentInfo) -> int:
+        """Target replica count for a num_replicas="per_node" deployment.
+
+        One replica per node the replica can be scheduled on. target_capacity=0
+        scales to zero like every other deployment (e.g. during app teardown);
+        fractional target_capacity is not applied, since a per-node deployment
+        is either present on every node or not.
+
+        Node eligibility currently filters by resource fit only, not by node
+        label selectors, so a per-node deployment constrained by node labels may
+        over-count. When no node can host the replica this returns 0 and the
+        deployment reports HEALTHY with no replicas.
+        """
+        if deployment_info.target_capacity == 0:
+            return 0
+        return self._deployment_scheduler.get_num_schedulable_nodes(self._id)
+
     def reconcile_num_replicas_per_node(self) -> None:
         """Keep a num_replicas="per_node" deployment at one replica per node.
 
-        Sets the target replica count to the number of nodes the replica can be
-        scheduled on, recomputed each control loop as nodes join or leave. No-op
-        for deployments that don't use per-node mode or that are being deleted.
+        Recomputed each control loop as nodes join or leave. No-op for
+        deployments that don't use per-node mode or that are being deleted.
         """
         if self._target_state.deleting:
             return
         if not self._target_state.info.deployment_config.num_replicas_per_node:
             return
 
-        num_schedulable_nodes = self._deployment_scheduler.get_num_schedulable_nodes(
-            self._id
-        )
-        if self._target_state.target_num_replicas == num_schedulable_nodes:
+        target = self._per_node_target_num_replicas(self._target_state.info)
+        if self._target_state.target_num_replicas == target:
             return
 
         old_num = self._target_state.target_num_replicas
-        self._set_target_state(self._target_state.info, num_schedulable_nodes)
+        self._set_target_state(self._target_state.info, target)
         logger.info(
-            f"Adjusting {self._id} from {old_num} to {num_schedulable_nodes} "
-            "replicas to match the number of schedulable nodes."
+            f"Adjusting {self._id} from {old_num} to {target} replicas to match "
+            "the number of schedulable nodes."
         )
 
     def _stop_or_update_outdated_version_replicas(
