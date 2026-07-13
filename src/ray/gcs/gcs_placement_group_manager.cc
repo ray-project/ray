@@ -1159,6 +1159,15 @@ bool GcsPlacementGroupManager::RescheduleIfStillHasUnplacedBundles(
                          "it to pending queue again, id:"
                       << placement_group->GetPlacementGroupID();
         placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
+
+        // Emit lifecycle event for RESCHEDULING state
+        std::vector<std::unique_ptr<observability::RayEventInterface>> events;
+        events.push_back(std::make_unique<observability::RayPlacementGroupLifecycleEvent>(
+            placement_group->GetPlacementGroupTableData(),
+            rpc::events::PlacementGroupLifecycleEvent::RESCHEDULING,
+            session_name_));
+        ray_event_recorder_.AddEvents(std::move(events));
+
         AddToPendingQueue(placement_group, 0);
         gcs_table_storage_->PlacementGroupTable().Put(
             placement_group->GetPlacementGroupID(),
