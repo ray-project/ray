@@ -14,6 +14,8 @@ from typing import (
     Union,
 )
 
+import aiohttp
+
 import ray
 from ray._common.network_utils import build_address, get_all_interfaces_ip
 from ray._common.utils import run_background_task
@@ -40,6 +42,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_LOG_TO_STDERR,
+    RAY_SERVE_PROMETHEUS_FETCH_INTERVAL_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
@@ -75,6 +78,7 @@ from ray.serve._private.logging_utils import (
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.node_port_manager import NodePortManager
+from ray.serve._private.prometheus_metrics import fetch_metrics
 from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
@@ -251,6 +255,12 @@ class ServeController:
         ]
 
         self.autoscaling_state_manager = AutoscalingStateManager()
+
+        # Background task that fetches Prometheus autoscaling metrics off the
+        # control loop's critical path. See _maybe_schedule_prometheus_fetch.
+        self._prometheus_fetch_task: Optional[asyncio.Task] = None
+        self._last_prometheus_fetch_time: float = 0.0
+
         self.deployment_state_manager = DeploymentStateManager(
             self.kv_store,
             self.long_poll_host,
@@ -431,6 +441,78 @@ class ServeController:
             },
         )
         self.autoscaling_state_manager.record_async_inference_task_queue_metrics(report)
+
+    def _maybe_schedule_prometheus_fetch(self) -> None:
+        """Kick off a background Prometheus fetch if one is due.
+
+        Called every control loop tick. The fetch runs as a separate task so
+        a slow or unreachable Prometheus never blocks the control loop; the
+        loop only ever reads the cache the task populates. At most one fetch
+        is in flight at a time.
+        """
+        if (
+            self._prometheus_fetch_task is not None
+            and not self._prometheus_fetch_task.done()
+        ):
+            return
+
+        prom_config = (
+            self.autoscaling_state_manager.get_prometheus_config_by_deployment()
+        )
+        if not prom_config:
+            return
+
+        now = time.time()
+        if (
+            now - self._last_prometheus_fetch_time
+            < RAY_SERVE_PROMETHEUS_FETCH_INTERVAL_S
+        ):
+            return
+
+        self._last_prometheus_fetch_time = now
+        self._prometheus_fetch_task = asyncio.ensure_future(
+            self._fetch_prometheus_metrics(prom_config)
+        )
+
+    async def _fetch_prometheus_metrics(
+        self, prom_config: Dict[DeploymentID, Tuple[List[str], str]]
+    ) -> None:
+        """Evaluate every deployment's PromQL queries and cache the results.
+
+        Runs as a background task; logs and swallows failures so a Prometheus
+        outage never propagates into the control loop.
+        """
+        deployment_ids = list(prom_config)
+        async with aiohttp.ClientSession() as session:
+            results = await asyncio.gather(
+                *(
+                    fetch_metrics(
+                        session, prom_config[dep_id][1], prom_config[dep_id][0]
+                    )
+                    for dep_id in deployment_ids
+                ),
+                return_exceptions=True,
+            )
+
+        metrics_by_deployment: Dict[DeploymentID, Dict[str, float]] = {}
+        for dep_id, result in zip(deployment_ids, results):
+            if isinstance(result, Exception):
+                logger.warning(
+                    f"Failed to fetch Prometheus metrics for {dep_id}: {result}"
+                )
+            elif result:
+                metrics_by_deployment[dep_id] = result
+
+        if metrics_by_deployment:
+            self.autoscaling_state_manager.record_prometheus_metrics(
+                metrics_by_deployment, time.time()
+            )
+
+    def _shutdown_prometheus_fetch(self) -> None:
+        """Cancel any in-flight Prometheus fetch task on shutdown."""
+        if self._prometheus_fetch_task is not None:
+            self._prometheus_fetch_task.cancel()
+            self._prometheus_fetch_task = None
 
     def _get_total_num_requests_for_deployment_for_testing(
         self, deployment_id: DeploymentID
@@ -622,6 +704,8 @@ class ServeController:
                     )
         except Exception:
             logger.exception("Exception updating deployment state.")
+
+        self._maybe_schedule_prometheus_fetch()
 
         try:
             asm_update_start_time = time.time()
@@ -1021,6 +1105,7 @@ class ServeController:
         if not self._shutdown_flag_persisted:
             self.kv_store.put(SHUTDOWN_IN_PROGRESS_KEY, b"1")
             self._shutdown_flag_persisted = True
+        self._shutdown_prometheus_fetch()
         self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
         self.kv_store.delete(LOGGING_CONFIG_CHECKPOINT_KEY)
         self.application_state_manager.shutdown()
