@@ -180,20 +180,6 @@ def _recv_u64(sock) -> int:
     return struct.unpack(">Q", _recvall(sock, 8))[0]
 
 
-def _sendfile_all(sock, in_fd: int, offset: int, count: int) -> None:
-    """Send exactly ``count`` bytes of file ``in_fd`` starting at ``offset``
-    straight to ``sock`` via kernel zero-copy. ``os.sendfile`` may transfer
-    fewer bytes per call (socket buffer pressure), so loop until done. Blocking
-    socket -> a short write means EOF/peer-gone, not EAGAIN."""
-    out_fd = sock.fileno()
-    sent = 0
-    while sent < count:
-        n = os.sendfile(out_fd, in_fd, offset + sent, count - sent)
-        if n == 0:
-            raise ConnectionError("peer closed mid-sendfile")
-        sent += n
-
-
 # Linux-only; macOS lacks POSIX_FADV_DONTNEED. Probed once at import time so
 # the hot path is a constant-time attribute check, not a try/except per range.
 _HAS_FADV_DONTNEED = hasattr(os, "posix_fadvise") and hasattr(os, "POSIX_FADV_DONTNEED")
@@ -300,9 +286,9 @@ class _FetchHandler(socketserver.StreamRequestHandler):
                 ranges.append((offset, length))
             requests.append((real, ranges))
 
-        # Zero-copy serve via os.sendfile: validate every file + range FIRST so
+        # Zero-copy serve via sendfile: validate every file + range FIRST so
         # a missing file / bad range still produces an error status before we
-        # commit _STATUS_OK; then os.sendfile each range in REQUEST order
+        # commit _STATUS_OK; then stream each range in REQUEST order.
         files = []
         try:
             for path, ranges in requests:
@@ -331,9 +317,13 @@ class _FetchHandler(socketserver.StreamRequestHandler):
                 sock.sendall(struct.pack(">I", len(ranges)))
                 for off, length in ranges:
                     sock.sendall(struct.pack(">I", length))
-                    _sendfile_all(sock, fd, off, length)
+                    sent = sock.sendfile(f, offset=off, count=length)
+                    if sent != length:
+                        raise ConnectionError(
+                            f"peer closed mid-sendfile: sent {sent} of {length}"
+                        )
                     # Drop these pages from the page cache: hash-shuffle
-                    # ranges are typically read once per reducer
+                    # ranges are typically read once per reducer.
                     _drop_pagecache(fd, off, length)
                     srv.bytes_served += length
         finally:
