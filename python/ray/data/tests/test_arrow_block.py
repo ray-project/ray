@@ -486,6 +486,8 @@ def test_to_pandas_empty_dataset_preserves_columns(ray_start_regular_shared):
     df = ds.to_pandas()
     assert list(df.columns) == ["apples"]
     assert len(df) == 0
+    # Arrow-backed dtypes are preserved (int32 -> pandas int32).
+    assert df["apples"].dtype == np.int32
 
     # Multiple columns are preserved too.
     ds2 = ray.data.from_arrow_refs(
@@ -498,6 +500,16 @@ def test_to_pandas_empty_dataset_preserves_columns(ray_start_regular_shared):
         ]
     )
     assert list(ds2.to_pandas().columns) == ["a", "b"]
+
+    # Pandas-backed empty datasets preserve columns and dtypes too.
+    pandas_df = pd.DataFrame(
+        {"a": pd.Series([], dtype="int64"), "b": pd.Series([], dtype="float64")}
+    )
+    ds3 = ray.data.from_pandas(pandas_df)
+    df3 = ds3.to_pandas()
+    assert list(df3.columns) == ["a", "b"]
+    assert df3["a"].dtype == np.int64
+    assert df3["b"].dtype == np.float64
 
 
 if __name__ == "__main__":
