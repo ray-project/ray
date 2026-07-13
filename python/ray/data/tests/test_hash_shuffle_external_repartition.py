@@ -6,7 +6,7 @@ operator pair, this test goes through the **real** Ray Data planner +
 StreamingExecutor. That exercises:
 
   * ``DataContext.use_external_hash_shuffle`` dispatch in
-    ``plan_all_to_all_op._plan_hash_shuffle_repartition_external``
+    ``plan_all_to_all_op._plan_hash_shuffle_repartition``
   * the StreamingExecutor's backpressure / scheduling loop driving
     ``ExternalHashShuffleMapOp`` and ``ExternalHashShuffleReduceOp``
     (not the smoke harness)

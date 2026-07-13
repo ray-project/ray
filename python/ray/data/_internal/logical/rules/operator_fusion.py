@@ -385,12 +385,6 @@ class FuseOperators(Rule):
         down_op: TaskPoolMapOperator,
         up_op: Union[ShuffleReduceOp, ExternalHashShuffleReduceOp],
     ) -> Union[ShuffleReduceOp, ExternalHashShuffleReduceOp]:
-        """Build the fused replacement reduce op of the same class as
-        ``up_op``, with the downstream map's transformer / kwargs plumbed
-        into the reduce task body. External carries extra ctor knobs
-        (``max_bytes_per_fetch``, ``reduce_prefetch_dir``), so each
-        variant is constructed in its own branch below.
-        """
         name = up_op.name + "->" + down_op.name
 
         up_logical_op = self._op_map.pop(up_op)

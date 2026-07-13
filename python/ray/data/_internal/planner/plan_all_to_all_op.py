@@ -69,10 +69,12 @@ def _plan_hash_shuffle_repartition(
     logical_op: Repartition,
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
-    """Build the two-op (ShuffleMapOp → ShuffleReduceOp) DAG for the in-memory hash shuffle.
+    """Build the two-op Map → Reduce DAG for hash-shuffle repartition.
 
-    Returns the reduce op; the executor crawls upstream via its
-    input_dependencies to find the map op.
+    Picks the external (file-transport) or in-memory (object-store) op pair
+    based on ``data_context.use_external_hash_shuffle``. Returns the reduce
+    op; the executor crawls upstream via its input_dependencies to find the
+    map op.
     """
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
@@ -90,78 +92,38 @@ def _plan_hash_shuffle_repartition(
     partition_fn = _make_hash_partition_fn(key_list, target_num_partitions)
     reduce_fn = _sort_reduce(key_list) if logical_op.sort else _concat_reduce
 
-    map_op = ShuffleMapOp(
+    if data_context.use_external_hash_shuffle:
+        map_cls, reduce_cls, prefix = (
+            ExternalHashShuffleMapOp,
+            ExternalHashShuffleReduceOp,
+            "ExternalHashShuffle",
+        )
+    else:
+        map_cls, reduce_cls, prefix = (
+            ShuffleMapOp,
+            ShuffleReduceOp,
+            "HashShuffle",
+        )
+
+    map_op = map_cls(
         input_physical_op,
         data_context,
         num_partitions=target_num_partitions,
         partition_fn=partition_fn,
         map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
         name=(
-            f"HashShuffleMap(keys={tuple(key_list)}, "
+            f"{prefix}Map(keys={tuple(key_list)}, "
             f"partitions={target_num_partitions})"
         ),
     )
-    reduce_op = ShuffleReduceOp(
+    reduce_op = reduce_cls(
         map_op,
         data_context,
         num_partitions=target_num_partitions,
         reduce_fn=reduce_fn,
         disallow_block_splitting=True,
         name=(
-            f"HashShuffleReduce(keys={tuple(key_list)}, "
-            f"partitions={target_num_partitions})"
-        ),
-    )
-    return reduce_op
-
-
-def _plan_hash_shuffle_repartition_external(
-    data_context: DataContext,
-    logical_op: Repartition,
-    input_physical_op: PhysicalOperator,
-) -> PhysicalOperator:
-    """Build the two-op (ExternalHashShuffleMapOp → ExternalHashShuffleReduceOp)
-    DAG for the external-shuffle variant of hash shuffle.
-
-    Scope matches ``_plan_hash_shuffle_repartition``: keyed Repartition
-    only. Caller in ``plan_all_to_all_op`` guarantees ``logical_op.keys``
-    is non-empty and ``shuffle_strategy == HASH_SHUFFLE``.
-    """
-    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-
-    normalized_key_columns = SortKey(logical_op.keys).get_columns()
-    key_list = list(normalized_key_columns)
-
-    input_logical_op = input_physical_op._logical_operators[0]
-    estimated_input_blocks = input_logical_op.estimated_num_outputs()
-    target_num_partitions = (
-        logical_op.num_outputs
-        or estimated_input_blocks
-        or data_context.default_hash_shuffle_parallelism
-    )
-
-    partition_fn = _make_hash_partition_fn(key_list, target_num_partitions)
-    reduce_fn = _sort_reduce(key_list) if logical_op.sort else _concat_reduce
-
-    map_op = ExternalHashShuffleMapOp(
-        input_physical_op,
-        data_context,
-        num_partitions=target_num_partitions,
-        partition_fn=partition_fn,
-        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
-        name=(
-            f"ExternalHashShuffleMap(keys={tuple(key_list)}, "
-            f"partitions={target_num_partitions})"
-        ),
-    )
-    reduce_op = ExternalHashShuffleReduceOp(
-        map_op,
-        data_context,
-        num_partitions=target_num_partitions,
-        reduce_fn=reduce_fn,
-        disallow_block_splitting=True,
-        name=(
-            f"ExternalHashShuffleReduce(keys={tuple(key_list)}, "
+            f"{prefix}Reduce(keys={tuple(key_list)}, "
             f"partitions={target_num_partitions})"
         ),
     )
@@ -276,19 +238,12 @@ def plan_all_to_all_op(
                     data_context, op, input_physical_dag
                 )
             elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
-                # Transport swap within the same hash-shuffle scope:
-                # external routes bulk data over TCP files, in-memory
-                # uses Ray's object store.
-                if data_context.use_external_hash_shuffle:
-                    # External file-transport variant.
-                    return _plan_hash_shuffle_repartition_external(
-                        data_context, op, input_physical_dag
-                    )
-                else:
-                    # In-memory (default) variant.
-                    return _plan_hash_shuffle_repartition(
-                        data_context, op, input_physical_dag
-                    )
+                # In-memory or external file-transport variant is picked
+                # inside ``_plan_hash_shuffle_repartition`` from
+                # ``data_context.use_external_hash_shuffle``.
+                return _plan_hash_shuffle_repartition(
+                    data_context, op, input_physical_dag
+                )
             else:
                 raise ValueError(
                     "Key-based repartitioning only supported for "
