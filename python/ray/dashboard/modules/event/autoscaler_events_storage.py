@@ -126,9 +126,9 @@ class AutoscalerEventsStorage:
                 {
                     "resource_requests": [
                         {
-                            "request": self._resource_bundle_to_dict(
-                                request_by_count.request
-                            ),
+                            # The helper expects a flat resource map here, same
+                            # as the event logger path.
+                            "request": dict(request_by_count.request.resources),
                             "count": request_by_count.count,
                         }
                         for request_by_count in constraint.resource_requests

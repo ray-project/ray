@@ -348,13 +348,15 @@ class EventHead(
             logger.warning("Forbidden external Ray event type: %s", e)
             raise aiohttp.web.HTTPForbidden(reason=str(e))
 
+        # Cache before forwarding so events stay locally servable even if
+        # forwarding to the aggregator fails.
+        self._cache_supported_external_ray_events(events)
+
         try:
             await self._forward_external_ray_events(events)
         except Exception:
             logger.exception("Failed to forward external Ray events to aggregator.")
             raise aiohttp.web.HTTPInternalServerError()
-
-        self._cache_supported_external_ray_events(events)
 
         return dashboard_optional_utils.rest_response(
             success=True,
