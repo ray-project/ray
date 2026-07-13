@@ -4441,6 +4441,31 @@ def test_num_replicas_per_node_excludes_nodes_without_capacity(
     assert ds.target_num_replicas == 1
 
 
+def test_num_replicas_per_node_target_capacity(mock_deployment_state_manager):
+    """target_capacity=0 scales a per-node deployment to zero; fractional is ignored."""
+    create_dsm, _, cache, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    node_1 = next(iter(cache.alive_node_ids))
+    cache.total_resources_per_node[node_1] = {"CPU": 4}
+    _add_node_with_cpu(cache, NodeID.from_random().hex(), 4)
+
+    # target_capacity=0 (e.g. app teardown) drops per-node to zero.
+    zero_info = deployment_info(num_replicas_per_node=True)[0]
+    zero_info.target_capacity = 0
+    dsm.deploy(TEST_DEPLOYMENT_ID, zero_info)
+    ds_zero = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    dsm.update()
+    assert ds_zero.target_num_replicas == 0
+
+    # Fractional target_capacity is ignored: still one replica per node.
+    half_info = deployment_info(num_replicas_per_node=True)[0]
+    half_info.target_capacity = 50
+    dsm.deploy(TEST_DEPLOYMENT_ID_2, half_info)
+    ds_half = dsm._deployment_states[TEST_DEPLOYMENT_ID_2]
+    dsm.update()
+    assert ds_half.target_num_replicas == 2
+
+
 def test_num_replicas_per_node_only_affects_per_node_deployments(
     mock_deployment_state_manager,
 ):
