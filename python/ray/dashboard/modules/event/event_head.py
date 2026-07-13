@@ -60,7 +60,8 @@ RAY_DASHBOARD_EVENT_HEAD_TPE_MAX_WORKERS = env_integer(
     "RAY_DASHBOARD_EVENT_HEAD_TPE_MAX_WORKERS", 1
 )
 
-_AUTOSCALER_EVENT_TYPES = {
+# Event types cached in the dashboard head for serving via the events APIs.
+_CACHED_AUTOSCALER_EVENT_TYPES = {
     events_base_event_pb2.RayEvent.EventType.AUTOSCALER_SCALING_DECISION_EVENT,
 }
 
@@ -215,17 +216,13 @@ class EventHead(
             if event_type
         }
 
-    @staticmethod
-    def _is_autoscaler_event_type(event_type: int) -> bool:
-        return event_type in _AUTOSCALER_EVENT_TYPES
-
     def _cache_supported_external_ray_events(
         self, events: List[events_base_event_pb2.RayEvent]
     ) -> None:
         autoscaler_events = [
             event
             for event in events
-            if self._is_autoscaler_event_type(event.event_type)
+            if event.event_type in _CACHED_AUTOSCALER_EVENT_TYPES
         ]
         if autoscaler_events:
             self._autoscaler_events_storage.add_events(autoscaler_events)
