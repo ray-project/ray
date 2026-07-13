@@ -45,7 +45,7 @@ from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 
 
-# ─────────────────────────────── helpers ───────────────────────────────
+# --- helpers -----------------------------------------------------------------
 
 
 def _make_partition_fn(key_columns, num_partitions):
@@ -136,7 +136,7 @@ def _total_rows(bundles) -> int:
     return sum(b.num_rows() or 0 for b in bundles)
 
 
-# ─────────────────────────────── tests ────────────────────────────────
+# --- tests -------------------------------------------------------------------
 
 
 @pytest.fixture(scope="module")
