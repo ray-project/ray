@@ -4466,6 +4466,42 @@ def test_num_replicas_per_node_target_capacity(mock_deployment_state_manager):
     assert ds_half.target_num_replicas == 2
 
 
+def test_num_replicas_per_node_status_reflects_scaling(mock_deployment_state_manager):
+    """Node join/leave surfaces UPSCALING/DOWNSCALING status, not a silent HEALTHY."""
+    create_dsm, _, cache, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    node_1 = next(iter(cache.alive_node_ids))
+    cache.total_resources_per_node[node_1] = {"CPU": 4}
+
+    # Reach HEALTHY with one replica on the single node.
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(num_replicas_per_node=True)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    dsm.update()
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    # A node joins: status reflects the upscale while the new replica starts.
+    node_2 = NodeID.from_random().hex()
+    _add_node_with_cpu(cache, node_2, 4)
+    dsm.update()
+    assert ds.target_num_replicas == 2
+    assert ds.curr_status_info.status == DeploymentStatus.UPSCALING
+
+    # New replica comes up: back to HEALTHY.
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    # A node drains: status reflects the downscale.
+    cache.draining_nodes = {node_2: 1}
+    dsm.update()
+    assert ds.target_num_replicas == 1
+    assert ds.curr_status_info.status == DeploymentStatus.DOWNSCALING
+
+
 def test_num_replicas_per_node_only_affects_per_node_deployments(
     mock_deployment_state_manager,
 ):

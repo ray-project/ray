@@ -1820,10 +1820,13 @@ def override_deployment_info(
 
         elif options.get("num_replicas") == "per_node":
             # One replica per node: the controller tracks the schedulable node
-            # count. Pin max_replicas_per_node to 1 to enforce the spread.
+            # count. Pin max_replicas_per_node to 1 to enforce the spread, and
+            # clear any autoscaling config since per-node does not autoscale
+            # (leaving it set would misreport the mode in serve status).
             options["num_replicas"] = None
             options["num_replicas_per_node"] = True
             options["max_replicas_per_node"] = 1
+            options["autoscaling_config"] = None
 
         # What to pass to info.update
         override_options = {}

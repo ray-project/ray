@@ -1589,6 +1589,31 @@ class TestOverrideDeploymentInfo:
         assert updated_info.deployment_config.autoscaling_config.initial_replicas == 12
         assert updated_info.deployment_config.autoscaling_config.max_replicas == 79
 
+    def test_override_num_replicas_per_node_clears_autoscaling(self):
+        """Overriding to num_replicas="per_node" clears a code-set autoscaling_config
+        so the deployment reports as per-node rather than autoscaling."""
+        info = DeploymentInfo(
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig(
+                num_replicas=1,
+                autoscaling_config={"min_replicas": 1, "max_replicas": 5},
+            ),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[DeploymentSchema(name="A", num_replicas="per_node")],
+        )
+
+        updated_info = override_deployment_info({"A": info}, config)["A"]
+        assert updated_info.deployment_config.num_replicas_per_node is True
+        assert updated_info.deployment_config.autoscaling_config is None
+        assert updated_info.replica_config.max_replicas_per_node == 1
+
     def test_override_route_prefix(self, info):
         config = ServeApplicationSchema(
             name="default",
