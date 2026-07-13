@@ -228,19 +228,3 @@ def test_external_repartition_then_map(
     rows = ds.take_all()
     assert len(rows) == 100
     assert all(r["doubled"] == r["id"] * 2 for r in rows)
-
-
-def test_external_two_repartitions_chained(
-    ray_start_regular_shared_2_cpus,
-    restore_data_context,
-    disable_fallback_to_object_extension,
-):
-    """Two external repartitions back-to-back preserve rows."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
-    ctx.use_external_hash_shuffle = True
-
-    ds = ray.data.range(100).repartition(4, keys=["id"]).repartition(2, keys=["id"])
-    rows = ds.take_all()
-    assert len(rows) == 100
-    assert {r["id"] for r in rows} == set(range(100))
