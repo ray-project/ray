@@ -91,5 +91,17 @@ def plan_read_files_op(
         data_context,
         name=op.name,
         compute_strategy=op.compute,
+        # By default, don't fuse the read into its downstream op. Fusing a
+        # ``ReadFiles`` into a downstream actor-pool map turns the read into
+        # actor-pool work, so read throughput becomes hostage to that pool's
+        # autoscaling (which may never scale up) instead of running as freely
+        # scheduled tasks. Accurately deciding when fusion is safe would need
+        # plan-time listing to estimate each side's parallelism, so keep it off
+        # unless explicitly overridden.
+        supports_fusion=(
+            False
+            if data_context._enable_read_files_fusion_override is None
+            else data_context._enable_read_files_fusion_override
+        ),
         ray_remote_args=op.ray_remote_args,
     )

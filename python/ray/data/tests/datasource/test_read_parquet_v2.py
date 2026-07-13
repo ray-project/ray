@@ -40,37 +40,71 @@ def test_v2_flag_default():
     assert isinstance(ctx.use_datasource_v2, bool)
 
 
-def test_read_parquet_v2_count_from_manifest(tmp_path, restore_ctx):
-    # count() on a bare V2 parquet read is answered from the listing manifest
-    # (footer-derived row counts) without materializing data, and equals the
-    # real row count across multiple files.
+def _count_is_pushed_down(ds) -> bool:
+    """Return whether ``PushdownCountFiles`` rewrites this ds's count plan.
+
+    Builds the same ``Count`` plan ``count()`` uses, runs the logical
+    optimizer, and checks the read was replaced by a footer-only metadata
+    pass (a ``MapBatches`` directly over ``ListFiles``) with no ``ReadFiles``
+    left in the plan.
+    """
+    from ray.data._internal.logical.interfaces import LogicalPlan
+    from ray.data._internal.logical.operators.count_operator import Count
+    from ray.data._internal.logical.operators.map_operator import MapBatches, Project
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+
+    count_op = Count(
+        input_dependencies=[
+            Project(exprs=[], input_dependencies=[ds._logical_plan.dag])
+        ]
+    )
+    optimized = LogicalOptimizer().optimize(LogicalPlan(count_op, ds.context)).dag
+
+    if not isinstance(optimized, MapBatches):
+        return False
+    # No ReadFiles anywhere in the optimized plan -> data columns never read.
+    stack, seen_list_files = [optimized], False
+    while stack:
+        op = stack.pop()
+        if isinstance(op, ReadFiles):
+            return False
+        if isinstance(op, ListFiles):
+            seen_list_files = True
+        stack.extend(op.input_dependencies)
+    return seen_list_files
+
+
+def test_read_parquet_v2_count_pushdown(tmp_path, restore_ctx):
+    # count() on a bare V2 parquet read is answered from Parquet footers
+    # (via the PushdownCountFiles rule + SupportsMetadata reader) without
+    # reading data columns, and equals the real row count across files.
     _write(tmp_path / "a.parquet", pa.table({"a": list(range(10))}))
     _write(tmp_path / "b.parquet", pa.table({"a": list(range(25))}))
 
     restore_ctx.use_datasource_v2 = True
     ds = ray.data.read_parquet(str(tmp_path))
 
-    # The fast path fires and returns the exact count.
-    assert ds._try_count_from_manifest() == 35
-    # End-to-end count() agrees.
+    # The rule fires: the read is rewritten to a footer-only metadata pass.
+    assert _count_is_pushed_down(ds)
+    # End-to-end count() returns the exact count.
     assert ds.count() == 35
 
 
 def test_read_parquet_v2_count_falls_back_with_downstream_op(tmp_path, restore_ctx):
     # A row-changing operator above the read (filter / limit) means the plan is
-    # no longer a bare ReadFiles, so the fast path declines and count() returns
-    # the true post-op count via the slow path.
+    # no longer a bare ReadFiles, so the pushdown declines and count() returns
+    # the true post-op count via the full read path.
     from ray.data.expressions import col
 
     _write(tmp_path / "a.parquet", pa.table({"a": list(range(10))}))
 
     restore_ctx.use_datasource_v2 = True
     filtered = ray.data.read_parquet(str(tmp_path)).filter(expr=col("a") >= 7)
-    assert filtered._try_count_from_manifest() is None
+    assert not _count_is_pushed_down(filtered)
     assert filtered.count() == 3
 
     limited = ray.data.read_parquet(str(tmp_path)).limit(4)
-    assert limited._try_count_from_manifest() is None
+    assert not _count_is_pushed_down(limited)
     assert limited.count() == 4
 
 

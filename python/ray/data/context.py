@@ -895,6 +895,12 @@ class DataContext:
     # Batches the pyarrow scanner reads ahead per fragment scan (× batch target
     # ≈ per-scan decoded peak).
     arrow_scanner_batch_readahead: int = DEFAULT_ARROW_SCANNER_BATCH_READAHEAD
+    # (Advanced) Override whether a V2 ``ReadFiles`` op may fuse into its
+    # downstream op. ``None`` (default) keeps read fusion off — fusing a read
+    # into a downstream actor-pool map ties read throughput to that pool's
+    # autoscaling instead of freely scheduled tasks. Set ``True``/``False`` to
+    # force the behavior. See ``plan_read_files_op``.
+    _enable_read_files_fusion_override: Optional[bool] = None
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format

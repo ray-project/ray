@@ -21,6 +21,7 @@ from ray.data._internal.logical.rules import (
     LimitPushdownRule,
     PredicatePushdown,
     ProjectionPushdown,
+    PushdownCountFiles,
     SetReadParallelismRule,
 )
 from ray.util.annotations import DeveloperAPI
@@ -31,6 +32,10 @@ _LOGICAL_RULESET = Ruleset(
         ProjectionPushdown,
         PredicatePushdown,
         CombineShuffles,
+        # Runs after ProjectionPushdown so the empty ``Project`` that
+        # ``Dataset.count()`` inserts has been folded into the read, leaving a
+        # bare ``Count(ReadFiles)`` for this rule to match.
+        PushdownCountFiles,
     ]
 )
 

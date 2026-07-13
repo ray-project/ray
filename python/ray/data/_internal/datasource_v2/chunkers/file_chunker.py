@@ -79,9 +79,9 @@ class ParquetFileChunkMetadata(ChunkMetadata):
     footprint rather than a flat on-disk × ratio guess.
 
     ``num_rows`` is the exact number of rows in this chunk's row-group range,
-    summed from the footer. It lets ``Dataset.count()`` answer from the
-    manifest without reading any data columns (see
-    ``Dataset._try_count_from_manifest``).
+    summed from the footer. (``Dataset.count()`` on a bare Parquet read is
+    answered footer-only via the ``PushdownCountFiles`` rule and the reader's
+    ``SupportsMetadata.read_metadata``, not from this field.)
     """
 
     row_group_start: int  # inclusive
