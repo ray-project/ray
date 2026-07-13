@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Iterator, List, Union
+from typing import TYPE_CHECKING, Iterator
 
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
@@ -11,13 +11,6 @@ class ORCDatasource(FileBasedDatasource):
     """A datasource that reads ORC files."""
 
     _FILE_EXTENSIONS = ["orc"]
-
-    def __init__(
-        self,
-        paths: Union[str, List[str]],
-        **file_based_datasource_kwargs,
-    ):
-        super().__init__(paths, **file_based_datasource_kwargs)
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         from pyarrow import orc
