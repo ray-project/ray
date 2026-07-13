@@ -2,9 +2,9 @@
 
 The Serve controller evaluates user-configured PromQL expressions in a
 background task and caches the results for custom autoscaling policies to
-read via ``AutoscalingContext.prometheus_metrics``. Keeping the HTTP I/O in
-these standalone coroutines (rather than inline on the control loop) lets a
-slow or unreachable Prometheus time out without stalling the control loop.
+read via ``AutoscalingContext.prometheus_metrics``. A per-query timeout
+lets a slow or unreachable Prometheus fail without stalling the control
+loop.
 """
 
 import asyncio
