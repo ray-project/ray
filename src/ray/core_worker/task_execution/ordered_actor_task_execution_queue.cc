@@ -94,8 +94,8 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
       << "Enqueuing in order actor task, seq_no=" << seq_no
       << ", next_seq_no_=" << group_state.next_seq_no << ", group='" << group << "'";
 
-  const auto dependencies = task_spec.GetDependencies();
   const bool is_retry = task_spec.IsRetry();
+
   TaskToExecute *retry_task = nullptr;
   if (is_retry) {
     retry_task = &group_state.pending_retry_tasks.emplace_back(std::move(task));
@@ -111,7 +111,11 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
     pending_task_id_to_is_canceled.emplace(task_spec.TaskId(), false);
   }
 
-  if (!dependencies.empty()) {
+  // Set the OnArgsReady callback. In the general case, this should be called
+  // before MarkReady is called on the waiter for the same (task_id,
+  // attempt_number). But in the other case, the callback is executed
+  // immediately.
+  if (!task_spec.GetDependencies().empty()) {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),
         task_spec.JobId(),
@@ -119,37 +123,39 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
-    waiter_.AsyncWait(dependencies, [this, seq_no, is_retry, retry_task, group]() {
-      TaskToExecute *ready_task = nullptr;
-      if (is_retry) {
-        // retry_task is guaranteed to be a valid pointer for retries
-        // because it won't be erased from the retry list until its
-        // dependencies are fetched and ExecuteRequest happens.
-        ready_task = retry_task;
-      } else {
-        auto &group_state_in = group_states_.at(group);
-        auto it = group_state_in.pending_tasks.find(seq_no);
-        if (it != group_state_in.pending_tasks.end()) {
-          // For non-retry tasks, we need to check if the task is
-          // still in the map because it can be erased due to being
-          // canceled via a higher `client_processed_up_to`.
-          ready_task = &it->second;
-        }
-      }
+    waiter_.OnArgsReady(
+        TaskAttempt{task_spec.TaskId(), task_spec.AttemptNumber()},
+        [this, seq_no, is_retry, retry_task, group]() {
+          TaskToExecute *ready_task = nullptr;
+          if (is_retry) {
+            // retry_task is guaranteed to be a valid pointer for retries
+            // because it won't be erased from the retry list until its
+            // dependencies are fetched and ExecuteRequest happens.
+            ready_task = retry_task;
+          } else {
+            auto &group_state_in = group_states_.at(group);
+            auto it = group_state_in.pending_tasks.find(seq_no);
+            if (it != group_state_in.pending_tasks.end()) {
+              // For non-retry tasks, we need to check if the task is
+              // still in the map because it can be erased due to being
+              // canceled via a higher `client_processed_up_to`.
+              ready_task = &it->second;
+            }
+          }
 
-      if (ready_task != nullptr) {
-        const auto &ready_task_spec = ready_task->TaskSpec();
-        RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-            ready_task_spec.TaskId(),
-            ready_task_spec.JobId(),
-            ready_task_spec.AttemptNumber(),
-            ready_task_spec,
-            rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
-            /* include_task_info */ false));
-        ready_task->MarkDependenciesResolved();
-        ExecuteQueuedTasks();
-      }
-    });
+          if (ready_task != nullptr) {
+            const auto &ready_task_spec = ready_task->TaskSpec();
+            RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+                ready_task_spec.TaskId(),
+                ready_task_spec.JobId(),
+                ready_task_spec.AttemptNumber(),
+                ready_task_spec,
+                rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+                /* include_task_info */ false));
+            ready_task->MarkDependenciesResolved();
+            ExecuteQueuedTasks();
+          }
+        });
   } else {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),
