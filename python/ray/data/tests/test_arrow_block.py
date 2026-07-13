@@ -486,8 +486,12 @@ def test_to_pandas_empty_dataset_preserves_columns(ray_start_regular_shared):
     df = ds.to_pandas()
     assert list(df.columns) == ["apples"]
     assert len(df) == 0
-    # Arrow-backed dtypes are preserved (int32 -> pandas int32).
-    assert df["apples"].dtype == np.int32
+    # The empty-dataset dtype must match what a non-empty dataset of the same
+    # schema produces (routed through the same BlockAccessor conversion).
+    nonempty = ray.data.from_arrow_refs(
+        [ray.put(pa.table([pa.array([1], pa.int32())], ["apples"]))]
+    ).to_pandas()
+    assert df["apples"].dtype == nonempty["apples"].dtype
 
     # Multiple columns are preserved too.
     ds2 = ray.data.from_arrow_refs(
