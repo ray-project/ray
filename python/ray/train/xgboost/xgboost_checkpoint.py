@@ -5,13 +5,27 @@ from typing import TYPE_CHECKING, Optional
 import xgboost
 
 from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
-from ray.util.annotations import PublicAPI
+from ray.train.constants import (
+    V2_MIGRATION_GUIDE_MESSAGE,
+    _v2_migration_warnings_enabled,
+)
+from ray.util.annotations import Deprecated, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
+_XGBOOST_CHECKPOINT_DEPRECATION_MESSAGE = (
+    "`XGBoostCheckpoint` is deprecated and will be removed in a future release. "
+    "Use `ray.train.Checkpoint` directly instead. "
+    f"{V2_MIGRATION_GUIDE_MESSAGE}"
+)
+
 
 @PublicAPI(stability="beta")
+@Deprecated(
+    message=_XGBOOST_CHECKPOINT_DEPRECATION_MESSAGE,
+    warning=_v2_migration_warnings_enabled(),
+)
 class XGBoostCheckpoint(FrameworkCheckpoint):
     """A :py:class:`~ray.train.Checkpoint` with XGBoost-specific functionality."""
 

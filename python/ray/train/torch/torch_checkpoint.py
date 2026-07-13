@@ -11,15 +11,37 @@ from ray.air._internal.torch_utils import (
     load_torch_model,
 )
 from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
-from ray.util.annotations import PublicAPI
+from ray.train.constants import (
+    V2_MIGRATION_GUIDE_MESSAGE,
+    _v2_migration_warnings_enabled,
+)
+from ray.util.annotations import Deprecated, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 ENCODED_DATA_KEY = "torch_encoded_data"
 
+_TORCH_CHECKPOINT_DEPRECATION_MESSAGE = (
+    "`TorchCheckpoint` is deprecated and will be removed in a future release. "
+    "Use `ray.train.Checkpoint` directly instead. "
+    f"{V2_MIGRATION_GUIDE_MESSAGE}"
+)
+
+_TORCH_CHECKPOINT_FROM_MODEL_DEPRECATION_MESSAGE = (
+    "`TorchCheckpoint.from_model()` is deprecated and will be removed in a future "
+    "release. It stores the entire ``nn.Module`` via pickle, which allows arbitrary "
+    "code execution when loaded from an untrusted source. "
+    "Use `TorchCheckpoint.from_state_dict()` or migrate to `ray.train.Checkpoint`. "
+    f"{V2_MIGRATION_GUIDE_MESSAGE}"
+)
+
 
 @PublicAPI(stability="beta")
+@Deprecated(
+    message=_TORCH_CHECKPOINT_DEPRECATION_MESSAGE,
+    warning=_v2_migration_warnings_enabled(),
+)
 class TorchCheckpoint(FrameworkCheckpoint):
     """A :class:`~ray.train.Checkpoint` with Torch-specific functionality."""
 
@@ -95,6 +117,7 @@ class TorchCheckpoint(FrameworkCheckpoint):
         return checkpoint
 
     @classmethod
+    @Deprecated(message=_TORCH_CHECKPOINT_FROM_MODEL_DEPRECATION_MESSAGE)
     def from_model(
         cls,
         model: torch.nn.Module,
