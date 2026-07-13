@@ -2,6 +2,7 @@ import logging
 from typing import TYPE_CHECKING, Optional
 
 import ray
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray.exceptions import RayActorError
 from ray.train.v2._internal.constants import GET_ACTOR_TIMEOUT_S
 from ray.train.v2._internal.execution.callback import (
@@ -56,11 +57,18 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
         core_context = ray.runtime_context.get_runtime_context()
         self._controller_actor_id = core_context.get_actor_id()
         try:
-            # Launch the cleaner as a detached actor so it survives controller death
+            # Launch the cleaner as a detached actor so it survives controller death.
+            # Pin it to the head node (which is never scaled down) so this
+            # lightweight, zero-CPU actor does not keep an otherwise-idle worker
+            # node alive and block autoscaler scale-down. "DEFAULT" scheduling
+            # escapes the training placement group, which the cleaner is
+            # responsible for removing. This mirrors the TrainStateActor.
             cleaner_actor_cls = ray.remote(num_cpus=0)(PlacementGroupCleaner)
             self._cleaner = cleaner_actor_cls.options(
                 lifetime="detached",
                 get_if_exists=False,
+                resources={HEAD_NODE_RESOURCE_NAME: 0.001},
+                scheduling_strategy="DEFAULT",
             ).remote(
                 controller_actor_id=self._controller_actor_id,
                 check_interval_s=self._check_interval_s,
