@@ -1,11 +1,14 @@
 import collections
 import time
 from contextlib import contextmanager, nullcontext
-from typing import Any, Callable, Dict, Iterator, Optional
+from typing import Any, Callable, Dict, Iterator, List, Optional
 
 import ray
 from ray._common.utils import env_integer
-from ray.data._internal.block_batching.interfaces import Batch, BlockPrefetcher
+from ray.data._internal.block_batching.interfaces import (
+    Batch,
+    BlockPrefetcher,
+)
 from ray.data._internal.block_batching.util import (
     ActorBlockPrefetcher,
     WaitBlockPrefetcher,
@@ -18,7 +21,7 @@ from ray.data._internal.block_batching.util import (
 )
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_deallocation
-from ray.data._internal.stats import DatasetStats, _StatsManager
+from ray.data._internal.stats import DatasetStats, TimeSpan, _StatsManager
 from ray.data.block import Block, DataBatch
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -26,6 +29,30 @@ from ray.types import ObjectRef
 DEFAULT_FORMAT_THREADPOOL_NUM_WORKERS = env_integer(
     "RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS", 4
 )
+
+
+def _merged_duration(
+    spans: List["TimeSpan"], blocked_start_s: float, blocked_end_s: float
+) -> float:
+    """Total time ``spans`` overlap with ``[blocked_start_s, blocked_end_s]``,
+    with overlapping spans merged so nothing is double-counted."""
+    intervals = []
+    for s in spans:
+        lo = max(s.start_s, blocked_start_s)
+        hi = min(s.end_s, blocked_end_s)
+        if hi > lo:
+            intervals.append((lo, hi))
+    if not intervals:
+        return 0.0
+    intervals.sort()
+    merged = [intervals[0]]
+    for i in range(1, len(intervals)):
+        lo, hi = intervals[i]
+        if lo <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], hi))
+        else:
+            merged.append((lo, hi))
+    return sum(hi - lo for lo, hi in merged)
 
 
 class BatchIterator:
@@ -176,7 +203,7 @@ class BatchIterator:
 
     def _resolve_block_refs(
         self, block_refs: Iterator[ObjectRef[Block]]
-    ) -> Iterator[Block]:
+    ) -> Iterator[Any]:
         return resolve_block_refs(block_ref_iter=block_refs, stats=self._stats)
 
     def _blocks_to_batches(self, blocks: Iterator[Block]) -> Iterator[Batch]:
@@ -246,20 +273,66 @@ class BatchIterator:
         yield from batch_iter
 
     def _iter_batches(self) -> Iterator[DataBatch]:
+        """Pull batches from the pipeline and yield batch data.
+
+        Captures the training thread's blocked window around each ``next()``
+        call and attributes it to pipeline stages via
+        ``_attribute_blocked_time``.
+        """
         batch_iter = iter_threaded(self._ref_bundles, fn=self._pipeline)
 
         self.before_epoch_start()
 
         while True:
             with self.get_next_batch_context():
+                blocked_start_s = time.perf_counter()
                 try:
                     batch = next(batch_iter)
                 except StopIteration:
                     break
+                blocked_end_s = time.perf_counter()
+            self._attribute_blocked_time(batch, blocked_start_s, blocked_end_s)
             with self.yield_batch_context(batch):
                 yield batch.data
 
         self.after_epoch_end()
+
+    def _attribute_blocked_time(
+        self, batch: Batch, blocked_start_s: float, blocked_end_s: float
+    ) -> None:
+        """Attribute per-stage blocked time via overlap with the training window.
+
+        Each stage's spans on ``batch.metadata.stage_timings`` are intersected
+        with the training thread's blocked window ``[blocked_start_s,
+        blocked_end_s]``. Overlapping spans are merged first, so the result
+        is the total time the stage was active during the stall (no
+        double-counting).
+
+        Limitation: only the yielded batch's spans are attributed. Other
+        in-flight batches (being processed by background threads) may also
+        overlap with the training stall window but are not counted.
+        TODO: track in-flight batches and union their spans for complete
+        attribution. The current implementation suffices for capturing
+        data-loading bottlenecks.
+
+        TODO: reorder buffer wait under ``preserve_order`` is unattributed
+        (per-stage spans are recorded at format/collate completion, before
+        the batch leaves ``restore_original_order``).
+
+        Args:
+            batch: Batch whose per-stage timings should be attributed.
+            blocked_start_s: perf_counter() just before next().
+            blocked_end_s: perf_counter() just after next() returned.
+        """
+        if self._stats is None:
+            return
+        timings = batch.metadata.stage_timings
+        for stage, spans in timings.stages():
+            overlap_s = _merged_duration(spans, blocked_start_s, blocked_end_s)
+            if overlap_s > 0:
+                self._stats.get_blocked_timer(stage).add(overlap_s)
+        self._stats.iter_batches_total += 1
+        self._stats.iter_rows_total += batch.metadata.num_rows
 
     def __iter__(self) -> Iterator[DataBatch]:
         return self._iter_batches()
@@ -279,6 +352,8 @@ class BatchIterator:
 
     @contextmanager
     def get_next_batch_context(self):
+        """Context around ``next(batch_iter)``: tracks total blocked time
+        and time-to-first-batch."""
         try:
             if self._stats:
                 # Always track total blocked time
@@ -298,6 +373,8 @@ class BatchIterator:
 
     @contextmanager
     def yield_batch_context(self, batch: Batch):
+        """Context around yielding a batch to the user: tracks user time
+        and periodically flushes metrics."""
         with self._stats.iter_user_s.timer() if self._stats else nullcontext():
             yield
 
@@ -392,6 +469,9 @@ def prefetch_batches_locally(
         batch_size: User specified batch size, or None to let the system pick.
         eager_free: Whether to eagerly free the object reference from the object store.
         stats: Dataset stats object used to store ref bundle retrieval time.
+
+    Yields:
+        Block: Block references (as ObjectRefs), in order.
     """
 
     def get_next_ref_bundle() -> RefBundle:

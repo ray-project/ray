@@ -3,6 +3,8 @@ from typing import List, Optional
 
 import pytest
 
+from ray_release.bazel import bazel_runfile
+from ray_release.configs.global_config import init_global_config
 from ray_release.result import (
     Result,
     ResultStatus,
@@ -26,6 +28,8 @@ from ray_release.test_automation.state_machine import (
     WEEKLY_RELEASE_BLOCKER_TAG,
     TestStateMachine,
 )
+
+init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 
 
 class MockLabel:
@@ -346,6 +350,49 @@ def test_get_issue_owner() -> None:
     assert TestStateMachine.get_issue_owner(issue) == "core"
     issue = TestStateMachine.ray_repo.create_issue(labels=["w00t"], title="bye")
     assert TestStateMachine.get_issue_owner(issue) == NO_TEAM
+
+
+def test_release_bisect_disabled(monkeypatch) -> None:
+    """When bisect is disabled in config, no bisect build is triggered."""
+    import ray_release.test_automation.state_machine as sm_mod
+
+    real_get_global_config = sm_mod.get_global_config
+
+    def fake_get_global_config():
+        cfg = dict(real_get_global_config())
+        cfg["state_machine_bisect_disabled"] = True
+        return cfg
+
+    monkeypatch.setattr(sm_mod, "get_global_config", fake_get_global_config)
+
+    test = Test(name="bisect-off", team="ci")
+    test.test_results = [
+        TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
+    ]
+    assert test.get_state() == TestState.PASSING
+    test.test_results.insert(
+        0, TestResult.from_result(Result(status=ResultStatus.ERROR.value))
+    )
+    sm = ReleaseTestStateMachine(test)
+    sm.move()
+    assert test.get_state() == TestState.FAILING
+    # Bisect gated off -> no build number recorded.
+    assert test.get(Test.KEY_BISECT_BUILD_NUMBER) is None
+
+
+def test_release_bisect_enabled_triggers(monkeypatch) -> None:
+    """When bisect is enabled (default), a bisect build is triggered."""
+    test = Test(name="bisect-on", team="ci")
+    test.test_results = [
+        TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
+    ]
+    test.test_results.insert(
+        0, TestResult.from_result(Result(status=ResultStatus.ERROR.value))
+    )
+    sm = ReleaseTestStateMachine(test)
+    sm.move()
+    assert test.get_state() == TestState.FAILING
+    assert test[Test.KEY_BISECT_BUILD_NUMBER] == 1
 
 
 if __name__ == "__main__":
