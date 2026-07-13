@@ -301,7 +301,10 @@ class TestFetchMetrics:
         session = _FakeSession(
             {
                 "ok": _vector_payload(1.0),
-                "empty": {"status": "success", "data": {"result": []}},
+                "empty": {
+                    "status": "success",
+                    "data": {"resultType": "vector", "result": []},
+                },
                 "boom": RuntimeError("connection refused"),
             }
         )
@@ -322,6 +325,34 @@ class TestFetchMetrics:
             fetch_metrics(session, "localhost:9090", ["finite", "nan", "inf"])
         )
         assert result == {"finite": 3.0}
+
+    def test_accepts_scalar_result_type(self):
+        session = _FakeSession(
+            {
+                "s": {
+                    "status": "success",
+                    "data": {"resultType": "scalar", "result": [0, "3.5"]},
+                }
+            }
+        )
+        result = asyncio.run(fetch_metrics(session, "localhost:9090", ["s"]))
+        assert result == {"s": 3.5}
+
+    def test_rejects_multi_sample_vector(self):
+        # A query that matches multiple series is not a scalar signal.
+        session = _FakeSession(
+            {
+                "multi": {
+                    "status": "success",
+                    "data": {
+                        "resultType": "vector",
+                        "result": [{"value": [0, "1.0"]}, {"value": [0, "2.0"]}],
+                    },
+                }
+            }
+        )
+        result = asyncio.run(fetch_metrics(session, "localhost:9090", ["multi"]))
+        assert result == {}
 
 
 # ---------------------------------------------------------------------------

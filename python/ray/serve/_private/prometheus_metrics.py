@@ -35,10 +35,37 @@ def normalize_query_url(address: str) -> str:
     return f"{address}/api/v1/query"
 
 
+def _parse_scalar(data: dict, query: str) -> Optional[float]:
+    """Return the single scalar value from a Prometheus response or None.
+
+    An autoscaling signal must resolve to exactly one value. Accepts a
+    scalar result or an instant vector with one sample. An empty vector is
+    no data. Multiple samples or any other shape are rejected.
+    """
+    result_type = data.get("resultType")
+    result = data.get("result", [])
+    if result_type == "scalar":
+        raw = result[1]
+    elif result_type == "vector" and len(result) == 1:
+        raw = result[0]["value"][1]
+    elif result_type == "vector" and not result:
+        return None
+    else:
+        logger.warning(
+            f"Prometheus query '{query}' did not resolve to a single scalar. "
+            f"Got resultType={result_type!r} with {len(result)} samples. Ignoring."
+        )
+        return None
+    value = float(raw)
+    # Prometheus returns NaN or Inf for an empty range such as an idle
+    # histogram_quantile. Treat those as no data.
+    return value if math.isfinite(value) else None
+
+
 async def _evaluate_query(
     session: aiohttp.ClientSession, query_url: str, query: str
 ) -> Optional[float]:
-    """Evaluate one PromQL expression, returning its first scalar or None."""
+    """Evaluate one PromQL expression and return its scalar value or None."""
     try:
         async with session.get(
             query_url,
@@ -47,13 +74,7 @@ async def _evaluate_query(
         ) as resp:
             resp.raise_for_status()
             body = await resp.json()
-        result = body.get("data", {}).get("result", [])
-        if result:
-            value = float(result[0]["value"][1])
-            # Prometheus returns NaN/Inf for empty ranges (e.g. an idle
-            # histogram_quantile). Treat those as no data.
-            return value if math.isfinite(value) else None
-        return None
+        return _parse_scalar(body.get("data", {}), query)
     except Exception as e:
         logger.warning(f"Failed to evaluate Prometheus query '{query}': {e}")
         logger.debug(f"Failed to evaluate Prometheus query '{query}'.", exc_info=True)
