@@ -1,14 +1,17 @@
 import asyncio
 import sys
 import time
+import types
 
 import pytest
 
+import ray.serve._private.controller as controller_mod
 from ray.serve._private.autoscaling_state import (
     AutoscalingStateManager,
     DeploymentAutoscalingState,
 )
 from ray.serve._private.common import DeploymentID
+from ray.serve._private.controller import ServeController
 from ray.serve._private.prometheus_metrics import fetch_metrics, normalize_query_url
 from ray.serve.config import AutoscalingConfig, AutoscalingContext
 
@@ -354,6 +357,139 @@ class TestFetchMetrics:
             fetch_metrics(session, "localhost:9090", ["finite", "nan", "inf"])
         )
         assert result == {"finite": 3.0}
+
+
+# ---------------------------------------------------------------------------
+# Controller background-fetch orchestration
+# ---------------------------------------------------------------------------
+
+
+class _RecordingStateManager:
+    """Stand-in AutoscalingStateManager for the controller fetch methods."""
+
+    def __init__(self, prom_config):
+        self._prom_config = prom_config
+        self.recorded = None
+
+    def get_prometheus_config_by_deployment(self):
+        return self._prom_config
+
+    def record_prometheus_metrics(self, metrics_by_deployment, timestamp):
+        self.recorded = (metrics_by_deployment, timestamp)
+
+
+class _NoopSession:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info):
+        return False
+
+
+def _controller_stub(prom_config, last_fetch_time=0.0):
+    return types.SimpleNamespace(
+        _prometheus_fetch_task=None,
+        _last_prometheus_fetch_time=last_fetch_time,
+        autoscaling_state_manager=_RecordingStateManager(prom_config),
+    )
+
+
+_DEP = DeploymentID(name="d", app_name="a")
+
+
+class TestControllerScheduling:
+    def test_no_schedule_without_config(self):
+        stub = _controller_stub({})
+        ServeController._maybe_schedule_prometheus_fetch(stub)
+        assert stub._prometheus_fetch_task is None
+
+    def test_no_schedule_within_interval(self):
+        # A fetch time in the future keeps every tick inside the interval.
+        stub = _controller_stub(
+            {_DEP: (["q"], "addr")}, last_fetch_time=time.time() + 1e6
+        )
+        ServeController._maybe_schedule_prometheus_fetch(stub)
+        assert stub._prometheus_fetch_task is None
+
+    def test_no_schedule_while_in_flight(self):
+        stub = _controller_stub({_DEP: (["q"], "addr")})
+        stub._prometheus_fetch_task = types.SimpleNamespace(done=lambda: False)
+        ServeController._maybe_schedule_prometheus_fetch(stub)
+        # Existing task left untouched; no new one scheduled.
+        assert stub._prometheus_fetch_task.done() is False
+
+    def test_schedules_when_due(self):
+        fetched = []
+
+        async def fake_fetch(prom_config):
+            fetched.append(prom_config)
+
+        stub = _controller_stub({_DEP: (["q"], "addr")})
+        stub._fetch_prometheus_metrics = fake_fetch
+
+        async def run():
+            ServeController._maybe_schedule_prometheus_fetch(stub)
+            assert stub._prometheus_fetch_task is not None
+            await stub._prometheus_fetch_task
+
+        asyncio.run(run())
+        assert fetched == [{_DEP: (["q"], "addr")}]
+        assert stub._last_prometheus_fetch_time > 0
+
+
+class TestControllerFetch:
+    def test_aggregates_and_records(self, monkeypatch):
+        d1 = DeploymentID(name="d1", app_name="a")
+        d2 = DeploymentID(name="d2", app_name="a")
+        prom_config = {d1: (["q1"], "addr1"), d2: (["q2"], "addr2")}
+        stub = _controller_stub(prom_config)
+
+        async def fake_fetch_metrics(session, address, queries):
+            return {queries[0]: 1.0} if address == "addr1" else {}
+
+        monkeypatch.setattr(controller_mod, "fetch_metrics", fake_fetch_metrics)
+        monkeypatch.setattr(controller_mod.aiohttp, "ClientSession", _NoopSession)
+
+        asyncio.run(ServeController._fetch_prometheus_metrics(stub, prom_config))
+        recorded_metrics, _ = stub.autoscaling_state_manager.recorded
+        # d2 returned nothing, so it is omitted from the recorded batch.
+        assert recorded_metrics == {d1: {"q1": 1.0}}
+
+    def test_per_deployment_error_is_swallowed(self, monkeypatch):
+        prom_config = {_DEP: (["q1"], "addr1")}
+        stub = _controller_stub(prom_config)
+
+        async def boom(session, address, queries):
+            raise RuntimeError("prometheus down")
+
+        monkeypatch.setattr(controller_mod, "fetch_metrics", boom)
+        monkeypatch.setattr(controller_mod.aiohttp, "ClientSession", _NoopSession)
+
+        # Must not raise, and nothing is recorded.
+        asyncio.run(ServeController._fetch_prometheus_metrics(stub, prom_config))
+        assert stub.autoscaling_state_manager.recorded is None
+
+
+class TestControllerShutdown:
+    def test_cancels_in_flight_task(self):
+        async def run():
+            async def forever():
+                await asyncio.sleep(100)
+
+            task = asyncio.ensure_future(forever())
+            await asyncio.sleep(0)
+            stub = types.SimpleNamespace(_prometheus_fetch_task=task)
+            ServeController._shutdown_prometheus_fetch(stub)
+            assert stub._prometheus_fetch_task is None
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+        asyncio.run(run())
+
+    def test_noop_without_task(self):
+        stub = types.SimpleNamespace(_prometheus_fetch_task=None)
+        ServeController._shutdown_prometheus_fetch(stub)
+        assert stub._prometheus_fetch_task is None
 
 
 if __name__ == "__main__":
