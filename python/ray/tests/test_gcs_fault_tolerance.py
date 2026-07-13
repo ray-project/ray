@@ -23,6 +23,7 @@ from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import (
     external_redis_test_enabled,
     generate_system_config_map,
+    persistent_gcs_test_enabled,
     redis_sentinel_replicas,
     wait_for_pid_to_exit,
 )
@@ -843,7 +844,7 @@ def test_raylet_fate_sharing(ray_start_regular):
     ray._private.worker._global_node.kill_gcs_server()
     ray._private.worker._global_node.start_gcs_server()
 
-    if not external_redis_test_enabled():
+    if not persistent_gcs_test_enabled():
         # Waiting for raylet to become unhealthy
         wait_for_condition(lambda: not check_raylet_healthy())
     else:
@@ -876,7 +877,7 @@ def test_session_name(ray_start_cluster):
     head_node = cluster.head_node
     new_session_dir = head_node.get_session_dir_path()
 
-    if not external_redis_test_enabled():
+    if not persistent_gcs_test_enabled():
         assert session_dir != new_session_dir
     else:
         assert session_dir == new_session_dir

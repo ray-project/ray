@@ -17,6 +17,7 @@ py_test_run_all_notebooks(
     include = ["*.ipynb"],
     exclude = [
         "batch_prediction.ipynb",  # Requires GPU (num_gpus=1) and torch.
+        "highly_parallel.ipynb",  # Needs an existing multi-node cluster and belongs in a release test.
         "plot_hyperparameter.ipynb",  # Model-training loop.
         "plot_parameter_server.ipynb",  # Torch training loop; slow/non-deterministic.
         "plot_pong_example.ipynb",  # Long-running RL (Pong) training.
