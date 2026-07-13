@@ -7558,7 +7558,11 @@ class Dataset:
             if schema is not None and schema.names:
                 base_schema = getattr(schema, "base_schema", None)
                 if isinstance(base_schema, pa.Schema):
-                    df = base_schema.empty_table().to_pandas()
+                    # Route the empty Arrow table through the same
+                    # `BlockAccessor.to_pandas()` path used for non-empty blocks
+                    # so the two agree on column types (types_mapper, tensor
+                    # casting, etc.).
+                    df = BlockAccessor.for_block(base_schema.empty_table()).to_pandas()
                 else:
                     import pandas
 
