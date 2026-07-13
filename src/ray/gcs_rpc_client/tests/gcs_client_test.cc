@@ -416,7 +416,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
             Status status,
             const std::optional<std::pair<std::vector<rpc::GcsNodeInfo>, int64_t>>
                 &results) {
-          assert(!result.empty());
+          assert(results.has_value());
+          assert(!results->first.empty());
           nodes = std::move(results->first);
           promise.set_value(status.ok());
         },
