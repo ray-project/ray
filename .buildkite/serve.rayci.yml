@@ -123,6 +123,7 @@ steps:
       - ray-wheel-build(python=3.10)
 
   - label: ":ray-serve: serve: doc tests"
+    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - serve
       - doc
@@ -250,6 +251,7 @@ steps:
     depends_on: servebuild-multipy(python=3.10)
 
   - label: ":ray-serve: serve: doc gpu tests"
+    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - serve
       - doc

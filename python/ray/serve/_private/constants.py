@@ -979,6 +979,7 @@ RAY_SERVE_PORT_QUARANTINE_S = get_env_float_non_negative(
     "RAY_SERVE_PORT_QUARANTINE_S",
     float(RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S + 30),
 )
+
 # The minimum drain period for a HTTP proxy.
 # If RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS is set to 1,
 # then the minimum draining period is 0.
