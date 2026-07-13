@@ -1,9 +1,9 @@
 (kuberay-gcs-rocksdb-ft)=
-# GCS fault tolerance with embedded RocksDB (experimental)
+# GCS fault tolerance with embedded RocksDB (alpha)
 
-```{admonition} Experimental
+```{admonition} Alpha
 :class: warning
-The embedded RocksDB GCS backend is experimental, and we're actively looking for feedback.
+The embedded RocksDB GCS backend is in alpha and may change before becoming stable.
 If you try it, please share your experience on [GitHub](https://github.com/ray-project/ray/issues).
 ```
 

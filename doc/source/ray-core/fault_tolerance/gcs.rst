@@ -9,7 +9,7 @@ By default, the GCS isn't fault tolerant because it stores all data in memory. I
 To enable GCS fault tolerance, back the GCS with durable storage so it can reload cluster metadata after a restart. Ray offers two backends:
 
 - **External Redis** (officially supported): the GCS persists its state to a highly available Redis instance, known as HA Redis.
-- **Embedded RocksDB** (experimental): the GCS persists its state to a local `RocksDB <https://rocksdb.org/>`__ database on a persistent volume, with no external datastore to run. See :ref:`fault-tolerance-gcs-rocksdb`.
+- **Embedded RocksDB** (alpha): the GCS persists its state to a local `RocksDB <https://rocksdb.org/>`__ database on a persistent volume, with no external datastore to run. See :ref:`fault-tolerance-gcs-rocksdb`.
 
 Either way, when the GCS restarts, it loads all the data back from the backing store and resumes regular functions.
 
@@ -76,13 +76,14 @@ the correct GCS. You need to ensure that at any time, only one GCS is alive.
 
 .. _fault-tolerance-gcs-rocksdb:
 
-Embedded RocksDB backend (experimental)
----------------------------------------
+Embedded RocksDB backend (alpha)
+--------------------------------
 
 .. note::
 
-  The embedded RocksDB backend is experimental. We're actively looking for feedback:
-  please share your experience on `GitHub <https://github.com/ray-project/ray/issues>`_.
+  The embedded RocksDB backend is in alpha and may change before becoming stable.
+  We're actively looking for feedback: please share your experience on
+  `GitHub <https://github.com/ray-project/ray/issues>`_.
 
 The Redis-backed setup above makes the GCS fault tolerant, but it also adds an external,
 highly available Redis instance that you have to deploy, secure, and operate. The *embedded
@@ -119,7 +120,7 @@ Redis or RocksDB?
      - Linux only
    * - Maturity
      - Officially supported (with KubeRay for Ray Serve)
-     - Experimental
+     - Alpha
 
 Choose the embedded RocksDB backend when you want GCS fault tolerance without running Redis,
 and you can attach a durable, reattachable volume, for example a Kubernetes ``PersistentVolume``,

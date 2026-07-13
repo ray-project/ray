@@ -17,7 +17,7 @@ See {ref}`Ray Serve end-to-end fault tolerance documentation <serve-e2e-ft-guide
 If you need fault tolerance for Redis as well, see {ref}`Tuning Redis for a
 Persistent Fault Tolerant GCS <kuberay-gcs-persistent-ft>`.
 
-To make the GCS fault tolerant without running Redis, see the experimental
+To make the GCS fault tolerant without running Redis, see the alpha
 {ref}`embedded RocksDB backend <kuberay-gcs-rocksdb-ft>`.
 ```
 
