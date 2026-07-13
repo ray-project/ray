@@ -33,8 +33,10 @@ class AutoscalerEventLogger:
 
     When ONE-event is enabled (an autoscaler event type is present in
     ``RAY_ENABLE_PYTHON_RAY_EVENT_TYPES``), structured events are published
-    through the dashboard head and the legacy export-event logger is skipped.
-    Otherwise only the legacy export-event logger is used.
+    through the dashboard head — each event type only when it is enabled —
+    and the legacy export-event logger is skipped. Human-readable scheduling
+    logs are still written either way. Otherwise only the legacy
+    export-event logger is used.
 
     # TODO:
     - Add more logging for other events.
@@ -286,7 +288,12 @@ class AutoscalerEventLogger:
             List[ClusterResourceConstraint]
         ] = None,
     ) -> None:
-        """Publish a structured AutoscalerScalingDecisionEvent."""
+        """Log the scheduling update and publish a scaling decision event.
+
+        Consecutive identical decisions are deduplicated; the structured
+        event is only published when AUTOSCALER_SCALING_DECISION_EVENT is
+        enabled.
+        """
         from ray._common.observability.autoscaler_events import (
             AUTOSCALER_SCALING_DECISION_EVENT_TYPE,
             AutoscalerScalingDecisionEventBuilder,
@@ -348,12 +355,9 @@ class AutoscalerEventLogger:
                 if label_constraints:
                     entry["label_constraints"] = label_constraints
                 infeasible_resource_dicts.append(entry)
-            infeasible_resource_dicts.sort(
-                key=lambda d: (
-                    d.get("count", 0),
-                    sorted(d.get("resources", {}).items()),
-                )
-            )
+            # Full-content sort key so the dedup hash below is stable across
+            # iterations.
+            infeasible_resource_dicts.sort(key=lambda d: json.dumps(d, sort_keys=True))
 
         # Convert infeasible gang requests, grouping bundles within each gang.
         infeasible_gang_dicts = []
@@ -394,6 +398,16 @@ class AutoscalerEventLogger:
             infeasible_constraint_dicts.sort(
                 key=lambda d: len(d.get("resource_requests", []))
             )
+
+        if not (
+            launch_actions
+            or terminate_actions
+            or infeasible_resource_dicts
+            or infeasible_gang_dicts
+            or infeasible_constraint_dicts
+        ):
+            # Nothing to report; don't publish on plain cluster-shape changes.
+            return
 
         payload_hash = hashlib.sha256(
             json.dumps(
@@ -444,11 +458,11 @@ class AutoscalerEventLogger:
             )
             event = builder.build()
             self._ray_event_publisher.publish(event)
-            self._last_scaling_decision_hash = payload_hash
         except Exception:
+            # The publisher retries transient failures itself; a rejected batch
+            # won't succeed on an identical retry, so keep the hash either way.
             logger.exception("Failed to emit AutoscalerScalingDecisionEvent.")
-            self._last_scaling_decision_hash = ""
-            raise
+        self._last_scaling_decision_hash = payload_hash
 
     def _emit_config_definition_event(
         self,

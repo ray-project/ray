@@ -1,5 +1,7 @@
 from typing import Dict, List, Optional
 
+from google.protobuf.timestamp_pb2 import Timestamp
+
 import ray._private.ray_constants as ray_constants
 from ray._common.observability.internal_event import InternalEventBuilder
 from ray.core.generated.events_autoscaler_config_definition_event_pb2 import (
@@ -45,6 +47,10 @@ def is_ray_event_enabled(event_type: Optional[str] = None) -> bool:
     return bool(
         AUTOSCALER_EVENT_TYPES & ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT_TYPES
     )
+
+
+def _epoch_to_protobuf_timestamp(epoch: float) -> Timestamp:
+    return Timestamp(seconds=int(epoch), nanos=int((epoch % 1) * 1e9))
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +132,8 @@ class AutoscalerConfigDefinitionEventBuilder(InternalEventBuilder):
 class AutoscalerScalingDecisionEventBuilder(InternalEventBuilder):
     """Builds an AutoscalerScalingDecisionEvent.
 
-    Emitted for every autoscaler scaling decision.
+    Emitted when the autoscaler scaling decision changes (consecutive
+    identical decisions are deduplicated by the event logger).
     """
 
     def __init__(
@@ -276,9 +283,6 @@ class AutoscalerNodeProvisioningEventBuilder(InternalEventBuilder):
         return "autoscaler_provisioning"
 
     def serialize_event_data(self) -> bytes:
-        # Lazy import: grpc_utils pulls in grpc, which minimal installs don't have.
-        from ray._private.grpc_utils import epoch_to_protobuf_timestamp
-
         event = AutoscalerNodeProvisioningEvent()
 
         for requested_instance in self._requested_instances:
@@ -288,7 +292,7 @@ class AutoscalerNodeProvisioningEventBuilder(InternalEventBuilder):
             msg.count = requested_instance.get("count", 0)
             if requested_instance.get("request_ts", 0) > 0:
                 msg.request_ts.CopyFrom(
-                    epoch_to_protobuf_timestamp(requested_instance["request_ts"])
+                    _epoch_to_protobuf_timestamp(requested_instance["request_ts"])
                 )
 
         for allocated_instance in self._allocated_instances:
@@ -306,11 +310,11 @@ class AutoscalerNodeProvisioningEventBuilder(InternalEventBuilder):
             msg.reason = failed_instance.get("reason", "")
             if failed_instance.get("start_ts", 0) > 0:
                 msg.start_ts.CopyFrom(
-                    epoch_to_protobuf_timestamp(failed_instance["start_ts"])
+                    _epoch_to_protobuf_timestamp(failed_instance["start_ts"])
                 )
             if failed_instance.get("failed_ts", 0) > 0:
                 msg.failed_ts.CopyFrom(
-                    epoch_to_protobuf_timestamp(failed_instance["failed_ts"])
+                    _epoch_to_protobuf_timestamp(failed_instance["failed_ts"])
                 )
 
         return event.SerializeToString()

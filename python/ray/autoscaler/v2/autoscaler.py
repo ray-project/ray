@@ -99,8 +99,7 @@ class Autoscaler:
             try:
                 self._event_logger.log_config_definition(config)
             except Exception:
-                # Reset so the next iteration retries this event.
-                self._last_config_hash = ""
+                # The publisher retries transient failures itself.
                 logger.exception("Failed to emit config definition event.")
 
     def _init_cloud_instance_provider(
@@ -235,8 +234,7 @@ class Autoscaler:
                     try:
                         self._event_logger.log_config_definition(autoscaling_config)
                     except Exception:
-                        # Reset so the next iteration retries this event.
-                        self._last_config_hash = ""
+                        # The publisher retries transient failures itself.
                         logger.exception(
                             "Failed to emit config definition event on change."
                         )
@@ -304,8 +302,7 @@ class Autoscaler:
                     try:
                         self._event_logger.log_node_provisioning(autoscaling_state)
                     except Exception:
-                        # Reset so the next iteration retries this event.
-                        self._last_provisioning_hash = ""
+                        # The publisher retries transient failures itself.
                         logger.exception("Failed to emit node provisioning event.")
 
             return autoscaling_state
