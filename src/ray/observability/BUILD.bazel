@@ -195,6 +195,8 @@ ray_cc_library(
         "//src/ray/protobuf/public:events_base_event_cc_proto",
         "//src/ray/rpc:event_aggregator_client",
         "//src/ray/util:logging",
+        "//src/ray/util:process_utils",
+        "@boost//:asio",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_protobuf//:protobuf",
