@@ -918,9 +918,9 @@ class ApplicationAutoscalingState:
     ) -> int:
         """Register a single deployment under this application."""
         if deployment_id not in self._deployment_autoscaling_states:
-            self._deployment_autoscaling_states[deployment_id] = (
-                DeploymentAutoscalingState(deployment_id)
-            )
+            self._deployment_autoscaling_states[
+                deployment_id
+            ] = DeploymentAutoscalingState(deployment_id)
 
         if info.deployment_config.autoscaling_config is None:
             raise ValueError(
