@@ -741,6 +741,15 @@ class AutoscalingConfig(BaseModel):
 
         return self
 
+    @model_validator(mode="after")
+    def prometheus_settings_valid(self):
+        if self.prometheus_queries and not self.prometheus_address:
+            logger.warning(
+                "prometheus_queries is set but prometheus_address is not; "
+                "Prometheus autoscaling metrics will not be fetched."
+            )
+        return self
+
     @field_validator("metrics_interval_s")
     @classmethod
     def metrics_interval_s_deprecation_warning(cls, v: PositiveFloat) -> PositiveFloat:

@@ -337,7 +337,7 @@ class DeploymentConfig(BaseModel):
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
         if data.get("autoscaling_config"):
-            # Convert None to empty list for repeated proto field, or keep the list.
+            # Repeated proto fields reject None, so drop the key when unset.
             prom_metrics = data["autoscaling_config"].pop("prometheus_queries", None)
             if prom_metrics:
                 data["autoscaling_config"]["prometheus_queries"] = prom_metrics

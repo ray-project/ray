@@ -470,7 +470,7 @@ class ServeController:
             return
 
         self._last_prometheus_fetch_time = now
-        self._prometheus_fetch_task = asyncio.ensure_future(
+        self._prometheus_fetch_task = run_background_task(
             self._fetch_prometheus_metrics(prom_config)
         )
 
@@ -482,30 +482,36 @@ class ServeController:
         Runs as a background task; logs and swallows failures so a Prometheus
         outage never propagates into the control loop.
         """
-        deployment_ids = list(prom_config)
-        async with aiohttp.ClientSession() as session:
-            results = await asyncio.gather(
-                *(
-                    fetch_metrics(
-                        session, prom_config[dep_id][1], prom_config[dep_id][0]
-                    )
-                    for dep_id in deployment_ids
-                ),
-                return_exceptions=True,
-            )
-
-        metrics_by_deployment: Dict[DeploymentID, Dict[str, float]] = {}
-        for dep_id, result in zip(deployment_ids, results):
-            if isinstance(result, Exception):
-                logger.warning(
-                    f"Failed to fetch Prometheus metrics for {dep_id}: {result}"
+        try:
+            deployment_ids = list(prom_config)
+            async with aiohttp.ClientSession() as session:
+                results = await asyncio.gather(
+                    *(
+                        fetch_metrics(
+                            session, prom_config[dep_id][1], prom_config[dep_id][0]
+                        )
+                        for dep_id in deployment_ids
+                    ),
+                    return_exceptions=True,
                 )
-            elif result:
-                metrics_by_deployment[dep_id] = result
 
-        if metrics_by_deployment:
-            self.autoscaling_state_manager.record_prometheus_metrics(
-                metrics_by_deployment, time.time()
+            metrics_by_deployment: Dict[DeploymentID, Dict[str, float]] = {}
+            for dep_id, result in zip(deployment_ids, results):
+                if isinstance(result, Exception):
+                    logger.warning(
+                        f"Failed to fetch Prometheus metrics for {dep_id}: {result}"
+                    )
+                elif result:
+                    metrics_by_deployment[dep_id] = result
+
+            if metrics_by_deployment:
+                self.autoscaling_state_manager.record_prometheus_metrics(
+                    metrics_by_deployment, time.time()
+                )
+        except Exception:
+            logger.warning(
+                "Unexpected error in the Prometheus metrics fetch task.",
+                exc_info=True,
             )
 
     def _shutdown_prometheus_fetch(self) -> None:

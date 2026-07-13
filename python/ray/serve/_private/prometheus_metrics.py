@@ -9,6 +9,7 @@ slow or unreachable Prometheus time out without stalling the control loop.
 
 import asyncio
 import logging
+import math
 from typing import Dict, List, Optional
 
 import aiohttp
@@ -46,7 +47,10 @@ async def _evaluate_query(
             body = await resp.json()
         result = body.get("data", {}).get("result", [])
         if result:
-            return float(result[0]["value"][1])
+            value = float(result[0]["value"][1])
+            # Prometheus returns NaN/Inf for empty ranges (e.g. an idle
+            # histogram_quantile). Treat those as no data.
+            return value if math.isfinite(value) else None
         return None
     except Exception:
         logger.warning(f"Failed to evaluate Prometheus query '{query}'.", exc_info=True)

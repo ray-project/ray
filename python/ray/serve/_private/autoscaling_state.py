@@ -1123,13 +1123,6 @@ class ApplicationAutoscalingState:
         for dep_state in self._deployment_autoscaling_states.values():
             dep_state.drop_stale_handle_metrics(alive_serve_actor_ids)
 
-    def has_prometheus_queries(self) -> bool:
-        """Whether any deployment in this app has Prometheus queries."""
-        return any(
-            ds.has_prometheus_queries()
-            for ds in self._deployment_autoscaling_states.values()
-        )
-
 
 class AutoscalingStateManager:
     """Manages all things autoscaling related.

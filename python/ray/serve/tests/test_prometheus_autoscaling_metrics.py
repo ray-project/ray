@@ -342,6 +342,19 @@ class TestFetchMetrics:
         )
         assert result == {"ok": 1.0}
 
+    def test_omits_nan_and_inf(self):
+        session = _FakeSession(
+            {
+                "finite": _vector_payload(3.0),
+                "nan": _vector_payload(float("nan")),
+                "inf": _vector_payload(float("inf")),
+            }
+        )
+        result = asyncio.run(
+            fetch_metrics(session, "localhost:9090", ["finite", "nan", "inf"])
+        )
+        assert result == {"finite": 3.0}
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
