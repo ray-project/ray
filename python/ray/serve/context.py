@@ -37,6 +37,10 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 _INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
 _INTERNAL_DEPLOYMENT_ACTOR_CONTEXT: "DeploymentActorContext" = None
 _global_client: ServeControllerClient = None
+# Ray job id (driver session) that created the cached client above. ray.shutdown()
+# leaves this module global intact, so after a reconnect (new job id) the cached
+# handle is unusable and must not be reused. See #64647.
+_global_client_job_id: Optional[str] = None
 
 
 @DeveloperAPI
@@ -114,9 +118,12 @@ def _get_global_client(
             and raise_if_no_controller_running is set to True.
     """
 
-    if _global_client is not None:
+    if _cached_client_from_current_session():
         return _global_client
 
+    # No usable cache (never set, or left over from a previous driver session).
+    # Drop any stale handle and rediscover the controller by name.
+    _disconnect()
     return _connect(raise_if_no_controller_running)
 
 
@@ -125,17 +132,22 @@ def _check_cached_client_alive() -> tuple:
 
     Returns:
         (client, had_cached) tuple.
-        - ``(client, True)`` — cached client is alive.
-        - ``(None, True)``  — cached client existed but is unreachable;
-          the cache has been cleared.  Callers should **not** attempt to
-          reconnect via ``_connect()`` because GCS is likely dead and
+        - ``(client, True)``: cached client from the current session is alive.
+        - ``(None, True)``: cached client from the current session existed but
+          is unreachable; the cache has been cleared. Callers should **not**
+          attempt to reconnect via ``_connect()`` because GCS is likely dead and
           ``ray.get_actor()`` would hang until the 60-second C++ GCS
           reconnection timeout kills the process.
-        - ``(None, False)`` — no cached client.  Callers may safely call
+        - ``(None, False)``: no usable cached client (never set, or left over
+          from a previous driver session). Callers may safely call
           ``_get_global_client()`` to discover a running controller.
     """
 
-    if _global_client is None:
+    if not _cached_client_from_current_session():
+        # Either nothing cached, or a handle left behind by a previous driver
+        # session. In the latter case GCS is alive (we are connected now), so it
+        # is safe for callers to reconnect. Drop any stale handle.
+        _disconnect()
         return None, False
 
     try:
@@ -143,13 +155,38 @@ def _check_cached_client_alive() -> tuple:
         return _global_client, True
     except Exception as e:
         logger.info(f"The cached controller has died or is unreachable: {e}.")
-        _set_global_client(None)
+        _disconnect()
         return None, True
 
 
 def _set_global_client(client):
-    global _global_client
+    global _global_client, _global_client_job_id
     _global_client = client
+    _global_client_job_id = (
+        ray.get_runtime_context().get_job_id() if client is not None else None
+    )
+
+
+def _disconnect():
+    """Forget the cached controller client for this driver session.
+
+    Mirrors ``_connect()``. This does **not** shut Serve down on the cluster; it
+    only drops the local cached handle so the next call rediscovers the
+    controller by name.
+    """
+    _set_global_client(None)
+
+
+def _cached_client_from_current_session() -> bool:
+    """Whether a usable cached client exists for the current Ray session.
+
+    ``_global_client`` is a module global that survives ``ray.shutdown()``, so a
+    handle cached by a previous driver session cannot be used after the driver
+    reconnects (which yields a new job id). Comparing job ids detects that case.
+    """
+    if _global_client is None or not ray.is_initialized():
+        return False
+    return _global_client_job_id == ray.get_runtime_context().get_job_id()
 
 
 def _get_internal_replica_context():

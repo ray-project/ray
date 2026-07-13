@@ -75,7 +75,8 @@ class FakeRayletIpcClient : public RayletIpcClientInterface {
   Status NotifyWorkerUnblocked() override { return Status::OK(); }
 
   Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
-                              int64_t tag) override {
+                              const TaskID &task_id,
+                              int32_t attempt_number) override {
     return Status::OK();
   }
 
