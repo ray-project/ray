@@ -307,7 +307,12 @@ class JobInfoStorageClient:
                     logger.exception(
                         "Error emitting submission job using One-Event framework."
                     )
-            else:
+            # The export event records status transitions; keep writing it
+            # unless the lifecycle event replaces it.
+            if (
+                SUBMISSION_JOB_LIFECYCLE_EVENT_TYPE
+                not in ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT_TYPES
+            ):
                 try:
                     self._write_submission_job_export_event(job_id, job_info)
                 except Exception:
