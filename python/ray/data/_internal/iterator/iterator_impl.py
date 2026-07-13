@@ -48,7 +48,7 @@ class DataIteratorImpl(DataIterator):
     def _get_dataset_tag(self) -> Dict[str, Optional[str]]:
         """Metrics tags for the dataset.
 
-        Plain iterators have no split dimension, so ``split_index`` is ``None``
+        Plain iterators have no split dimension, so ``split_index`` is ``None``.
         """
         return {
             "dataset": self._base_dataset.get_dataset_id(),

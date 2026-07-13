@@ -327,7 +327,7 @@ class DataIterator(abc.ABC):
         - ``dataset``: the dataset id.
         - ``split_index``: the output split index for stream-split iterators, or
           ``None`` for plain iterators (which have no split dimension). ``None``
-          is coerced to the empty-string label downstream so plain-iterator
+          is coerced to the ``"no_split"`` label downstream so plain-iterator
           metrics collapse to a single series.
 
         Subclasses override this to supply the real dataset id and split index.
