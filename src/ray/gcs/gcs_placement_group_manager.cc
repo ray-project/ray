@@ -273,20 +273,23 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
       stats->set_scheduling_state(rpc::PlacementGroupStats::REMOVED);
     }
 
-    // Emit lifecycle event to capture the scheduling state change
-    // (e.g., QUEUED -> NO_RESOURCES/FAILED_TO_COMMIT_RESOURCES).
-    std::vector<std::unique_ptr<observability::RayEventInterface>> events;
-    events.push_back(std::make_unique<observability::RayPlacementGroupLifecycleEvent>(
-        placement_group->GetPlacementGroupTableData(),
-        observability::RayPlacementGroupLifecycleEvent::ConvertState(state),
-        session_name_));
-    ray_event_recorder_.AddEvents(std::move(events));
-
+    // Add to the pending queue first so the event below carries the retry
+    // delay applied for this failure.
+    auto pg = placement_group;
     if (state == rpc::PlacementGroupTableData::RESCHEDULING) {
       AddToPendingQueue(std::move(placement_group), /*rank=*/0);
     } else {
       AddToPendingQueue(std::move(placement_group), std::nullopt, backoff);
     }
+
+    // Emit lifecycle event to capture the scheduling state change
+    // (e.g., QUEUED -> NO_RESOURCES/FAILED_TO_COMMIT_RESOURCES).
+    std::vector<std::unique_ptr<observability::RayEventInterface>> events;
+    events.push_back(std::make_unique<observability::RayPlacementGroupLifecycleEvent>(
+        pg->GetPlacementGroupTableData(),
+        observability::RayPlacementGroupLifecycleEvent::ConvertState(state),
+        session_name_));
+    ray_event_recorder_.AddEvents(std::move(events));
   }
 
   io_context_.post([this] { SchedulePendingPlacementGroups(); },
