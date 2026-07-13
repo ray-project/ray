@@ -4,6 +4,8 @@ Branch: `karticam/plasma-move-semantics`
 
 Created 2026-05-14, after the basic move-semantics machinery was already in place (eoakes' WIP commits + `bd9a10db8e` adding the config flag + `994a229c82` turning it on by default). Rewritten 2026-07-07 after a squash-and-simplify rebase onto `origin/master` (`e002fae45f`) which absorbed master's owner-driven FreeLocalObjects refactor (`ce4ccecfe3` + `0c42834064`).
 
+> **⚠️ The design has evolved — read §7 for how move semantics works today.** The original design used a producer→consumer `MoveCompleted` RPC (see §1's implementation notes and §3 Fix A). On **2026-07-12** that RPC was removed and the consumer now pins the moved object **inline on the push-receive path** (§7). **§1's implementation and §3 (Fix A) are kept only as evolution history — they no longer describe current behavior.** **§5 is the current forward-looking list, and §5 item 1 is the one open correctness gap.** §2 (bugs — including Bug C, the investigation that produced the redesign), §4 (rebase), and §6 (triage) are the historical investigation record; treat their `MoveCompleted`-era details and internal cross-refs as history.
+
 The doc covers:
 1. What move semantics is and how the current implementation works on top of master.
 2. Two bugs surfaced under chaos: a lineage-reconstruction failure on spot preemption, then a `ray.put` regression. Plus one still-open regression on `video_object_detection`.
@@ -15,9 +17,19 @@ The doc covers:
 
 ## Current status (resume point)
 
-Last touched 2026-07-12.
+Last touched 2026-07-13.
 
-**2026-07-12 redesign — see §7.** Removing the `MoveCompleted` RPC entirely and pinning the moved copy **inline on the consumer's push-receive path** (realizes §2.3's "Fix 2"). This structurally fixes the eviction-before-pin bug (§2.3 Bug C). Key enabler: `PushRequest.owner_address` is already populated, so the producer→consumer `MoveCompleted` RPC was redundant. **One correctness gap is knowingly left OPEN, not fixed:** the consumer-dies-before-the-batched-owner-update-lands race (§7.4) — candidate fixes recorded there. Implemented on rayturbo branch `karticam/plasma-move-semantics`.
+### Where things stand (cold-start summary)
+
+The implementation has been **redesigned** (§7): the producer→consumer `MoveCompleted` RPC is removed, and the consumer pins the moved object **inline on the push-receive path**, with the producer's release gated on that pin (realizes §2.3's "Fix 2"). This structurally fixes the eviction-before-pin bug (§2.3 Bug C). Key enabler: `PushRequest.owner_address` is already populated, so the `MoveCompleted` RPC only carried redundant data.
+
+**Two repos — they differ, don't confuse them:**
+- **`~/ray`, branch `karticam/plasma-move-semantics` — CANONICAL; the redesign lives here.** Master-based; post-#63181 (no raylet-to-raylet `FreeObjects` RPC). Compile-verified: `bazel build //src/ray/raylet:raylet //src/ray/object_manager/... //src/ray/raylet/tests:node_manager_test` is green. Pushed for review.
+- **`~/rayturbo`, branch `karticam/plasma-move-semantics`** — the fork used to **build ECR images** (`push_ray_image.sh`); pre-#63181 (still has the `FreeObjects` RPC + `local_only`). The redesign was **reverted here** to the old `MoveCompleted` design; only workload-test scripts remain modified. (Also `karticam/plasma-move-semantics-actor-only` = the jhsu-base variant.) **To validate the fix on a workload, the redesign must be re-applied here and built into an image** — adapt to the pre-#63181 differences (e.g. `FreeObjects` still present; `PullRequest`/service shape differs).
+
+**Verification state:** compile-verified only. **NOT workload-tested** (not yet run on the `image_embedding_from_jsonl` eviction repro with the fix) and **no unit tests added** (§5 item 2).
+
+**One correctness gap is knowingly left OPEN:** the consumer-dies-before-the-owner-learns race — full description + candidate fixes in **§5 item 1**.
 
 Prior state (2026-07-07):
 
@@ -32,10 +44,10 @@ Prior state (2026-07-07):
   - **UPDATE 2026-07-09/10 (post-rebase): root cause CONFIRMED.** Reproduced reliably on `image_embedding_from_jsonl` (0.1× scale) — ON failed 4/5 runs incl. a *solo* run; OFF 5/5; clean on `backpressure_training_prefetch` (no pressure). An **instrumented re-run** proved it is **(a) sealed-then-evicted**: on the consumer the pushed copy sealed, was LRU-evicted **21 ms later** (sealed-but-unpinned), and `MoveCompleted`'s pin ran **~200 ms after seal** → object already gone → skip pin; producer had already released → `ObjectFetchTimedOut`. (`rejecting chunk`/`aborting` = 0 → not the never-sealed case.) Fix: pin at seal / hold a store-ref through the pin (gate release on pin-ack). Full timeline + thread analysis in §2.3.
 
 Re-entry order when picking this back up:
-1. Read §2.3 Bug C and run the greps in "What to look for in logs".
-2. Confirm the deployed wheel actually contains commits from this branch.
-3. Decide between hypothesis (a) LRU on consumer, (b) the §5 item 1 race, (c) spill-restore path.
-4. Once Bug C is resolved, the next pending item is the §5 item 1 race regardless — it's a known correctness hole.
+1. Current design + rationale: **§7**. The single open issue + candidate fixes: **§5 item 1**. Everything before §5 is historical — see the top-of-doc banner.
+2. Validate the eviction fix empirically: re-apply the redesign in `~/rayturbo`, build an image (`push_ray_image.sh`), and run `image_embedding_from_jsonl` (0.1× scale) with move semantics ON — it should now pass (it failed ~4/5 pre-fix). Then re-check `backpressure_training_prefetch` for the memory-relief benefit.
+3. Add the tests in §5 item 2 (none exist yet).
+4. Decide whether to close §5 item 1 (recommended: gate the producer release on an acked owner primary-moved notification).
 
 ---
 
@@ -44,6 +56,8 @@ Re-entry order when picking this back up:
 Goal: when a raylet pushes an object to a remote raylet, the producer should be allowed to free its local primary copy immediately, instead of waiting for the owner to publish an eviction. Reduces peak object-store usage during pipelines where the producer no longer needs its own copy.
 
 ### Implementation on top of master (post-rebase)
+
+> **Historical (pre-2026-07-12).** This describes the original `MoveCompleted`-RPC design. It has been superseded by the push-inline design in §7 — read that for current behavior. Kept here to show what the redesign replaced.
 
 Master (as of `e002fae45f`) already does owner-driven eviction — the owner core worker sends `FreeLocalObjects` RPC directly to each raylet in `pinned_at_node_id_ ∪ locations` when the ref count hits 0 (via `CoreWorker::FreeObjectOnNodesAsync` at `core_worker.cc:4855` → `RayletClient::FreeLocalObjects` → `NodeManager::HandleFreeLocalObjects` at `node_manager.cc:3759` → `LocalObjectManager::ReleaseFreedLocalObject`). This replaces the older pubsub-eviction path. Move semantics plugs into that:
 
@@ -138,7 +152,9 @@ ray.exceptions.ObjectReconstructionFailedError:
 
 The lineage path is doing the right thing. The bug is that **move semantics should never have moved a put object in the first place** — without lineage, once the primary leaves the put-er's node and that destination dies, the object is permanently lost.
 
-### Bug C — `ObjectFetchTimedOutError` on `video_object_detection` (open as of 2026-06-15)
+### Bug C — `ObjectFetchTimedOutError` on `video_object_detection` (RESOLVED by §7 redesign — historical investigation)
+
+> **Resolved by the §7 redesign (2026-07-12).** This is the bug that motivated the redesign, root-caused to eviction-before-pin. The investigation below is kept as history — its "Fix 1 / Fix 2" analysis and any "§5 item 1" references **predate** the redesign: Fix 2 became the §7 design, and the one race that remains open is §5 item 1 (now the batched-owner-update variant, not the versions described below).
 
 **Symptom (abridged):**
 ```
@@ -261,6 +277,8 @@ Note: Fix 1 has the same *kind* of seal→pin window but larger (it inserts a fu
 ## 3. The fixes
 
 ### Fix A — consumer→owner pin update
+
+> **Historical (pre-2026-07-12).** Fix A introduced the producer→consumer `MoveCompleted` RPC. The redesign in §7 **removed** that RPC (the consumer now pins inline on the receive path); the `pinned_at_node_id_` update via `ReportObjectPrimaryMoved` is retained. This section documents the original mechanism for history.
 
 Make the owner's `pinned_at_node_id_` follow the move, with the consumer driving the signal via `MoveCompleted` RPC.
 
@@ -387,18 +405,29 @@ Ordered by priority. Tags: **[correctness]** can lose or corrupt data; **[observ
 
 ### Must fix
 
-1. **Consumer-dies-mid-handoff race  [correctness].** The producer fires `NotifyMoveCompleted` and releases its local copy without waiting for an ack. If the consumer dies between receiving the bytes (plasma seal → `ADDED` to owner) and processing the `MoveCompleted` callback, the owner ends up with `locations={C}`, `pinned_at_node_id_=P` (still alive). `ResetObjectsOnRemovedNode(C)` doesn't match P → no recovery. Same shape as Bug A, narrower window. **Fix:** turn the RPC into callback-bearing; release only on success reply; keep the producer's copy on failure. Modest change in the producer-side `on_push_complete_` lambda. *Cross-ref: this is hypothesis (b) for the open §2.3 Bug C.*
+1. **Consumer-dies-before-the-owner-learns race  [correctness] — OPEN (post-§7 redesign).** After the §7 redesign the producer releases its copy only once the consumer is durably *pinned*, but **not** once the *owner knows* the pin moved. `ReportObjectPrimaryMoved` reaches the owner via the **batched, fire-and-forget** `UpdateObjectLocationBatch` path (`ownership_object_directory.cc:202` → `SendObjectLocationUpdateBatchIfNeeded`); the owner applies it in `HandleUpdateObjectLocationBatch` → `UpdateObjectPinnedAtRaylet(consumer)` (`core_worker.cc:3924-3930`) — the only thing that moves `pinned_at_node_id_` from producer to consumer. The producer's `ReleaseFreedLocalObject` sends **no** removal report (`FreeObjects(local_only=true)`, `main.cc:884`; report methods are only Added/Spilled/PrimaryMoved).
 
-2. **Tests  [correctness — coverage].** Nothing added yet. Minimum set:
+   **The race:** consumer pins → acks producer → producer frees its copy, while the owner still has `pinned_at_node_id_ = producer` (the batched update hasn't flushed). The consumer then **dies before the batch flushes** → the owner never runs `UpdateObjectPinnedAtRaylet(consumer)`; `ResetObjectsOnRemovedNode(consumer)` (`reference_counter.cc:910`) finds nothing pinned at the consumer → no recovery; the producer is alive (no node-death trigger) but has freed the object → **permanent `ObjectFetchTimedOutError`** (a failed pull does not clear an owner location).
+
+   This **supersedes** the pre-redesign "consumer dies *before pinning*" race: the redesign's gated ack closes that one (the producer won't release until the consumer has pinned+acked); this batched-flush variant survives because the *owner notification* is still async. *(Historically = §2.3 Bug C hypothesis (b).)*
+
+   **Candidate fixes (none implemented):**
+   1. **Gate the producer release on the owner durably recording the new primary (recommended).** After pinning, the consumer sends an *acked* primary-moved notification to the owner and only then acks the producer; the owner sets `pinned_at_node_id_` before replying (`core_worker.cc:3930` before `:3934`), so the reply is a durable ack. Needs a dedicated **synchronous** primary-moved RPC for moved objects (cleanest), or a per-object completion callback on the batch reply (today it is per-batch). Cost: one owner RTT before the producer can release. `UpdateObjectPinnedAtRaylet` already handles "target already dead" (`:960-965`: unset primary + queue recovery), so once the owner is told, a later consumer death recovers. Only option that never leaves a false-positive owner location.
+   2. **Producer reports its removal to the owner.** Producer's release also sends a location-removed / primary-cleared update; even if the consumer's add is lost, the owner converges to "no primary" → reconstructs (move-eligible objects are reconstructable; puts are excluded by Fix B). Weaker: eventual-consistency, and can momentarily hit "no locations" out of order (spurious reconstruction) if the removed-update races ahead of the consumer's add.
+   3. **Producer keeps a fallback until the owner confirms.** Producer retains its copy until it observes the owner's `pinned_at_node_id_` flip (poll/subscribe), then frees. More moving parts than (1).
+
+2. **Tests  [correctness — coverage].** Nothing added yet. Minimum set (updated for the §7 design):
    - Unit: `ObjectID::IsForPut` across boundary indices.
+   - Unit: `ObjectBufferPool::WriteChunk(defer_release=true)` seals without releasing (object stays refcount>0) + `ReleaseObject` drops it; and the `defer_release=false` path is unchanged.
+   - Unit: `HandlePush` for a sealed move chunk — reply is deferred until the posted pin runs; not-OK ack on pin failure so the producer keeps its copy.
    - Unit: `OwnershipBasedObjectDirectory::ReportObjectPrimaryMoved` — confirms staging + batched send.
    - Unit: `CoreWorker::HandleUpdateObjectLocationBatch` with `primary_moved_to_node_id`, including the `is_node_dead_` branch.
-   - Integration: push → MoveCompleted → consumer pins → owner updates pin → kill consumer → verify recovery fires.
-   - Race test for item 1.
+   - Integration: push (`is_move`) → consumer pins inline → owner `pinned_at_node_id_` updates → kill consumer → verify recovery fires.
+   - Race test for item 1 (kill the consumer before its batched primary-moved update flushes).
 
 3. **Edge cases to confirm  [correctness — verification]:**
-   - Fan-out (producer pushes O to C1 and C2). `on_push_complete_` fires per peer; after first, `GetOwnerAddress(O)` returns `nullopt` for the second. Current code logs WARNING and skips. Net: pin moves to C1, C2 has a secondary. Should be safe but warrants a test.
-   - Push fails partway: verify `on_push_complete_` doesn't fire on failed pushes (`push_ack_tracking_` failure path).
+   - Fan-out (producer pushes O to C1 and C2, both with `is_move`). Each consumer pins as primary and reports the move to the owner (last write wins on `pinned_at_node_id_`); the producer frees after each push's ack. The old producer-side `GetOwnerAddress`/no-owner-address edge is gone (the owner address rides the push), but marking **more than one** destination as the move is still semantically muddy (two "primaries"). Ideally the producer should set `is_move` on only one destination; warrants a test either way.
+   - Push fails partway: verify `on_push_complete_` doesn't fire (producer keeps its copy) on failed pushes, including the not-OK pin-failure ack (`push_ack_tracking_` failure path).
    - Owner publishes eviction during the move window: should be handled by `is_freed_` early-return after pinning, but worth a regression test.
    - Spilling on the consumer after move: verify `ReportObjectSpilled` works with the `owner_address_` in consumer's `LocalObjectInfo`.
 
@@ -418,9 +447,9 @@ Ordered by priority. Tags: **[correctness]** can lose or corrupt data; **[observ
 
 6. **Rollback story  [operability].** `enable_plasma_move_semantics` is read at NodeManager ctor and in `PushObjectInternal` — disabling requires raylet restart. Confirm and document the rollback path: `RAY_enable_plasma_move_semantics=0`, behavior with mid-job flag flip, etc.
 
-7. **Code-level design comment  [hygiene].** This `.md` file may not survive long-term. Add a short comment block (4–8 lines) at the top of the move-semantics setup in `node_manager.cc` explaining the producer→consumer→owner handshake, and a `// see also` at `ObjectID::IsForPut`.
+7. **Code-level design comment  [hygiene].** This `.md` file may not survive long-term. Add a short comment block (4–8 lines) at the move-semantics setup in `node_manager.cc` explaining the current handshake (producer stamps `is_move` → consumer pins inline before acking → producer frees on the gated ack), and a `// see also` at `ObjectID::IsForPut`.
 
-8. **Cross-region / high-latency note  [docs].** The wider the `MoveCompleted` RPC latency, the wider the race window for item 1. Worth a sentence in this doc once item 1 is fixed.
+8. **Cross-region / high-latency note  [docs].** The wider the consumer's batch-flush delay, the wider the item-1 window (the owner learns the new primary later). And if fix 1 (synchronous owner ack) is adopted, that owner round-trip lands on the move critical path — worth a sentence on the cross-region cost once item 1 is fixed.
 
 ---
 
@@ -515,20 +544,8 @@ Bonus: removes Fix A's fan-out "no owner address on producer" edge — the owner
 
 The producer released its copy on push-*completion*, but a completed push does not mean the consumer's copy is *pinned*: the sealed copy is an unpinned, refcount-0 secondary until the (old) `MoveCompleted`-driven pin ran ~200 ms later. Under memory pressure the plasma store LRU-evicted it ~21 ms after seal (instrumented timeline, §2.3). Producer had already released → object nowhere → `ObjectFetchTimedOutError`. The redesign's pin-before-release fixes exactly this.
 
-### 7.4 STILL OPEN — consumer dies after pin, before the batched owner update lands  [correctness]
+### 7.4 Known open issue
 
-`ReportObjectPrimaryMoved` reaches the owner via the **batched, fire-and-forget** `UpdateObjectLocationBatch` path (`ownership_object_directory.cc:202` → `SendObjectLocationUpdateBatchIfNeeded`, coalesced up to `max_object_report_batch_size`, next batch sent only after the prior reply). The owner applies it in `HandleUpdateObjectLocationBatch` → `UpdateObjectPinnedAtRaylet(consumer)` (`core_worker.cc:3924-3930`) — the **only** thing that moves `pinned_at_node_id_` from producer to consumer. The producer's `ReleaseFreedLocalObject` sends **no** removal report to the owner (`on_objects_freed_` = `FreeObjects(local_only=true)`, `main.cc:884`; report methods are only Added/Spilled/PrimaryMoved — there is no "removed by a live node" report).
+The redesign closes the eviction-before-pin window, but it does **not** close one correctness gap: if the consumer dies *after* pinning but *before* its **batched** `ReportObjectPrimaryMoved` reaches the owner, the owner's `pinned_at_node_id_` stays on the freed-but-alive producer, so lineage reconstruction never fires → permanent `ObjectFetchTimedOutError`. The producer now releases only once the consumer is *pinned*, but not once the owner *knows*.
 
-**The race.** After the redesign the producer releases only once the consumer is *pinned* — but **not** once the owner *knows*:
-1. Consumer pins, acks producer, producer frees its copy. Owner still has `pinned_at_node_id_ = producer` (the batched primary-moved update hasn't flushed yet).
-2. **Consumer dies before that batch flushes.** The queued update is lost with the consumer.
-3. Owner never runs `UpdateObjectPinnedAtRaylet(consumer)`; `pinned_at_node_id_` stays `producer`.
-4. `ResetObjectsOnRemovedNode(consumer)` (`reference_counter.cc:910`) finds nothing pinned at the consumer → no recovery queued. The producer is alive (no node-death trigger) but has freed the object.
-5. → Owner believes the object is pinned on a live node that no longer has it. **Lineage reconstruction never fires.** Every getter times out with `ObjectFetchTimedOutError`. **Permanent** — a failed pull does not clear an owner location.
-
-This is the **batched-flush variant** of §5 item 1. §5 item 1 is "consumer dies *before pinning*," which the redesign's gated ack closes (the producer won't release until the consumer has pinned+acked). This variant survives because the *owner notification* is still async. **Left unsolved in this pass — documented, not fixed.**
-
-**Candidate fixes (not implemented):**
-1. **Gate the producer release on the owner durably recording the new primary (recommended).** After pinning, the consumer sends an *acked* primary-moved notification to the owner and only then acks the producer. The owner sets `pinned_at_node_id_` before replying (`core_worker.cc:3930` before `:3934`), so the reply is a durable ack. Needs either a dedicated **synchronous** primary-moved RPC for moved objects (cleanest — one owner round-trip on the critical path) or a per-object completion callback hooked onto the existing batch reply (today it is per-batch, not per-object). Cost: one owner RTT of latency before the producer can release. `UpdateObjectPinnedAtRaylet` already handles "target already dead" (`:960-965`: unset primary + queue recovery), so once the owner is told, a later consumer death recovers correctly — the gate just guarantees the owner is *always* told before the producer frees. Only option that never leaves a false-positive owner location.
-2. **Producer reports its removal to the owner.** Make the producer's release also send a location-removed / primary-cleared update. Then even if the consumer's add is lost, the owner converges to "no primary" → reconstructs (move-eligible objects are reconstructable; puts are excluded by Fix B). Weaker: relies on eventual consistency and can momentarily hit "no locations" out of order (spurious reconstruction) if the removed-update races ahead of the consumer's add.
-3. **Producer keeps a fallback until the owner confirms.** Producer retains its copy until it observes the owner's `pinned_at_node_id_` flip (poll/subscribe), then frees. More moving parts than (1).
+Full description, why it's permanent, and the candidate fixes live in the single "what's left" list: **§5 item 1**. (It supersedes the pre-redesign "consumer dies before pinning" race, which the gated ack closes.)
