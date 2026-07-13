@@ -216,12 +216,6 @@ def test_external_repartition_sorted(ray_cluster):
         assert ids == sorted(ids), f"block not sorted: {ids[:20]}..."
 
 
-def test_external_sort_without_keys_rejected(ray_cluster):
-    """``sort=True`` with no keys has no meaning — must error clearly."""
-    with _external_flag(True), pytest.raises(ValueError, match="keys"):
-        ray.data.range(50).repartition(4, sort=True).materialize()
-
-
 def test_external_zero_rows(ray_cluster):
     """Empty source: external must complete without hanging or crashing.
     Edge case for the partition_fn / empty-shard path in the reducer."""

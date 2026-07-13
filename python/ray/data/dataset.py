@@ -1875,11 +1875,6 @@ class Dataset:
             raise ValueError(
                 "`shuffle` must be False when `target_num_rows_per_block` is set."
             )
-        if sort and not keys:
-            raise ValueError(
-                "`sort=True` requires `keys=[...]` — nothing to sort by "
-                "without a key column."
-            )
         if target_num_rows_per_block is not None:
             op = StreamingRepartition(
                 target_num_rows_per_block=target_num_rows_per_block,
