@@ -40,7 +40,9 @@ SUBMISSION_JOB_LIFECYCLE_EVENT_TYPE = "SUBMISSION_JOB_LIFECYCLE_EVENT"
 
 def submission_job_events_enabled() -> bool:
     """Whether submission job events should be emitted via the One-Event framework."""
-    return bool(
+    # RAY_enable_ray_event must also be on, otherwise the C++ event recorder
+    # silently drops the events.
+    return ray_constants.RAY_ENABLE_RAY_EVENT and bool(
         {SUBMISSION_JOB_DEFINITION_EVENT_TYPE, SUBMISSION_JOB_LIFECYCLE_EVENT_TYPE}
         & ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT_TYPES
     )
@@ -307,11 +309,14 @@ class JobInfoStorageClient:
                     logger.exception(
                         "Error emitting submission job using One-Event framework."
                     )
-            # The export event records status transitions; keep writing it
-            # unless the lifecycle event replaces it.
-            if (
-                SUBMISSION_JOB_LIFECYCLE_EVENT_TYPE
-                not in ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT_TYPES
+            # The export event carries both definition and status transition
+            # fields; keep writing it unless both One-Events fully replace it.
+            if not (
+                submission_job_events_enabled()
+                and SUBMISSION_JOB_DEFINITION_EVENT_TYPE
+                in ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT_TYPES
+                and SUBMISSION_JOB_LIFECYCLE_EVENT_TYPE
+                in ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT_TYPES
             ):
                 try:
                     self._write_submission_job_export_event(job_id, job_info)
@@ -330,27 +335,33 @@ class JobInfoStorageClient:
         )
         from ray._raylet import EventRecorder
 
-        # Emit definition event once per job (first write)
+        # Emit definition event once per job (first write). A failure here
+        # shouldn't prevent the lifecycle event from being emitted.
         if (
             is_new
             and SUBMISSION_JOB_DEFINITION_EVENT_TYPE
             in ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT_TYPES
         ):
-            builder = SubmissionJobDefinitionEventBuilder(
-                submission_id=job_id,
-                entrypoint=job_info.entrypoint,
-                serialized_runtime_env=(
-                    json.dumps(job_info.runtime_env)
-                    if job_info.runtime_env is not None
-                    else None
-                ),
-                metadata=job_info.metadata,
-                entrypoint_num_cpus=job_info.entrypoint_num_cpus,
-                entrypoint_num_gpus=job_info.entrypoint_num_gpus,
-                entrypoint_memory=job_info.entrypoint_memory,
-                entrypoint_resources=job_info.entrypoint_resources,
-            )
-            EventRecorder.emit(builder.build())
+            try:
+                builder = SubmissionJobDefinitionEventBuilder(
+                    submission_id=job_id,
+                    entrypoint=job_info.entrypoint,
+                    serialized_runtime_env=(
+                        json.dumps(job_info.runtime_env)
+                        if job_info.runtime_env is not None
+                        else None
+                    ),
+                    metadata=job_info.metadata,
+                    entrypoint_num_cpus=job_info.entrypoint_num_cpus,
+                    entrypoint_num_gpus=job_info.entrypoint_num_gpus,
+                    entrypoint_memory=job_info.entrypoint_memory,
+                    entrypoint_resources=job_info.entrypoint_resources,
+                )
+                EventRecorder.emit(builder.build())
+            except Exception:
+                logger.warning(
+                    "Error emitting submission job definition event.", exc_info=True
+                )
 
         # Emit lifecycle event on every status change
         if (
@@ -368,16 +379,21 @@ class JobInfoStorageClient:
             )
             return
 
-        builder = SubmissionJobLifecycleEventBuilder(
-            submission_id=job_id,
-            state=state,
-            message=job_info.message,
-            error_type=(job_info.error_type.value if job_info.error_type else None),
-            driver_node_id=job_info.driver_node_id,
-            driver_agent_http_address=job_info.driver_agent_http_address,
-            driver_exit_code=job_info.driver_exit_code,
-        )
-        EventRecorder.emit(builder.build())
+        try:
+            builder = SubmissionJobLifecycleEventBuilder(
+                submission_id=job_id,
+                state=state,
+                message=job_info.message,
+                error_type=(job_info.error_type.value if job_info.error_type else None),
+                driver_node_id=job_info.driver_node_id,
+                driver_agent_http_address=job_info.driver_agent_http_address,
+                driver_exit_code=job_info.driver_exit_code,
+            )
+            EventRecorder.emit(builder.build())
+        except Exception:
+            logger.warning(
+                "Error emitting submission job lifecycle event.", exc_info=True
+            )
 
     def _write_submission_job_export_event(
         self, job_id: str, job_info: JobInfo
